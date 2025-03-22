@@ -1,0 +1,3 @@
+schema:
+  - ../../../target/anonymous_schema.graphql
+documents: '*.graphql'

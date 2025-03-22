@@ -1,0 +1,5 @@
+query Settings{
+    authentication {
+        clientId
+    }
+}

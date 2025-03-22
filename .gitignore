@@ -1,0 +1,6 @@
+/target/
+/frontend/target/
+/frontend/dist/
+/frontend/node/node_modules/
+/config.yaml
+/.idea
