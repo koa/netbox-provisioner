@@ -4,3 +4,4 @@
 /frontend/node/node_modules/
 /config.yaml
 /.idea
+/.env.local

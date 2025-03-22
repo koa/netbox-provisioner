@@ -1,23 +1,31 @@
-use crate::data::UserSessionData;
-use crate::error::FrontendError;
-use crate::graphql::{anonymous::settings, anonymous::Settings, query_anonymous};
+use crate::{
+    data::UserSessionData,
+    error::FrontendError,
+    graphql::{
+        anonymous::{Settings, settings},
+        query_anonymous,
+    },
+};
 use gloo::timers::callback::Timeout;
 use google_signin_client::{
-    initialize, prompt_async, render_button, ButtonType, DismissedReason,
-    GsiButtonConfiguration, IdConfiguration, NotDisplayedReason, PromptResult,
+    ButtonType, DismissedReason, GsiButtonConfiguration, IdConfiguration, NotDisplayedReason,
+    PromptResult, initialize, prompt_async, render_button,
 };
-use log::{error, info, warn};
+use log::warn;
 use patternfly_yew::prelude::{
     Alert, AlertGroup, AlertType, BackdropViewer, Nav, NavItem, NavRouterItem, Page, PageSidebar,
     ToastViewer,
 };
+use routes::{AppRoute, Sidebar};
 use std::time::Duration;
-use web_sys::{HtmlElement, MouseEvent};
+use web_sys::HtmlElement;
 use yew::{
-    function_component, html, html_nested, platform::spawn_local, Callback, Context, ContextProvider, Html,
-    NodeRef, Properties,
+    Context, ContextProvider, Html, NodeRef, Properties, function_component, html, html_nested,
+    platform::spawn_local,
 };
-use yew_nested_router::{prelude::Switch as RouterSwitch, Router, Target};
+use yew_nested_router::{Router,  prelude::Switch as RouterSwitch};
+
+pub mod routes;
 
 #[derive(Debug)]
 pub struct App {
@@ -33,18 +41,6 @@ enum ErrorState {
     PromptResult(PromptResult),
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Target)]
-pub enum AppRoute {
-    NotFound,
-    #[default]
-    Home,
-}
-fn switch_main(switch: AppRoute) -> Html {
-    match switch {
-        AppRoute::Home => html! {<h1>{"Home"}</h1>},
-        AppRoute::NotFound => html! {<h1>{"Not Found"}</h1>},
-    }
-}
 #[derive(Properties, PartialEq)]
 pub struct Props {}
 
@@ -117,7 +113,7 @@ impl yew::Component for App {
         if context.is_token_valid() {
             html! {
             <ContextProvider<UserSessionData> {context}>
-                <Router<AppRoute> default={AppRoute::Home}>
+                <Router<AppRoute> default={AppRoute::default()}>
                     <MainPage/>
                 </Router<AppRoute>>
             </ContextProvider<UserSessionData>>
@@ -287,18 +283,10 @@ fn main_page() -> Html {
             <ToastViewer>
                     <Page sidebar={html_nested! {<PageSidebar><Sidebar/></PageSidebar>}}>
                         <RouterSwitch<AppRoute>
-                            render = { switch_main}
+                            render = { AppRoute::content}
                         />
                     </Page>
             </ToastViewer>
         </BackdropViewer>
-    }
-}
-#[function_component(Sidebar)]
-pub fn sidebar() -> Html {
-    html! {
-        <Nav>
-            <NavRouterItem<AppRoute> to={AppRoute::Home}>{"Start"}</NavRouterItem<AppRoute>>
-        </Nav>
     }
 }

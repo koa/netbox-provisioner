@@ -14,6 +14,9 @@ pub struct Settings {
     server_port: Option<u16>,
     server_mgmt_port: Option<u16>,
     server_bind_address: Option<IpAddr>,
+
+    pub netbox_url: String,
+    pub netbox_token: String,
 }
 
 impl Settings {
@@ -51,7 +54,7 @@ fn create_settings() -> Result<Settings, ConfigError> {
         .add_source(File::with_name("config.yaml"))
         .add_source(Environment::with_prefix("app"))
         .build()?;
-    let settings: Settings = cfg.get("oauth")?;
+    let settings: Settings = cfg.get("settings")?;
     Ok(settings)
 }
 

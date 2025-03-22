@@ -1,3 +1,4 @@
+use crate::data::UserSessionData;
 use crate::error::FrontendError;
 use graphql_client::GraphQLQuery;
 use graphql_client::reqwest::post_graphql;
@@ -5,9 +6,9 @@ use lazy_static::lazy_static;
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use yew::html::Scope;
 use yew::{Callback, Component};
-use crate::data::UserSessionData;
 
 pub mod anonymous;
+pub mod authenticated;
 
 lazy_static! {
     static ref GRAPHQL_AUTHENTICATED_URL: String = format!("{}/graphql", host());

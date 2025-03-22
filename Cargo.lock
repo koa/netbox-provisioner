@@ -641,8 +641,11 @@ version = "0.1.0"
 dependencies = [
  "async-graphql",
  "config",
+ "graphql_client",
  "lazy_static",
+ "reqwest",
  "serde",
+ "thiserror 2.0.12",
 ]
 
 [[package]]

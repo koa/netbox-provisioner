@@ -1,4 +1,5 @@
 use crate::config::CONFIG;
+use crate::netbox::{Device, list_devices};
 use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
 
 pub type AuthenticatedGraphqlSchema = Schema<QueryAuthenticated, EmptyMutation, EmptySubscription>;
@@ -16,8 +17,8 @@ pub fn create_anonymous_schema() -> AnonymousGraphqlSchema {
 
 #[Object]
 impl QueryAuthenticated {
-    async fn dummy(&self) -> String {
-        String::from("dummy value")
+    async fn devices(&self) -> async_graphql::Result<Box<[Device]>> {
+        Ok(list_devices().await?)
     }
 }
 #[Object]

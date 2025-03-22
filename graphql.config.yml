@@ -1,0 +1,26 @@
+documents: '**/*.graphql'
+projects:
+  backend-netbox:
+    schema: backend/src/netbox/schema.graphqls
+    documents: backend/src/netbox/*.graphql
+    extensions:
+      endpoints:
+        prod:
+          url: https://netbox.berg-turbenthal.ch/graphql/
+      headers:
+        Authorization: Token ${API_TOKEN}
+  frontend-anonymous:
+    schema: frontend/target/anonymous_schema.graphql
+    documents: frontend/src/graphql/anonymous/*.graphql
+    extensions:
+      endpoints:
+        dev:
+          url: http://localhost:8081/graphql_anonymous
+  frontend-authenticated:
+    schema: frontend/target/authenticated_schema.graphql
+    documents: frontend/src/graphql/authenticated/*.graphql
+    extensions:
+      endpoints:
+        dev:
+          url: http://localhost:8081/graphql
+
