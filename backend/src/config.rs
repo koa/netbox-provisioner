@@ -1,8 +1,7 @@
-use std::net::IpAddr;
-
 use config::{Config, ConfigError, Environment, File};
 use lazy_static::lazy_static;
 use serde::Deserialize;
+use std::{collections::HashMap, net::IpAddr};
 
 #[derive(Deserialize)]
 pub struct Settings {
@@ -18,6 +17,26 @@ pub struct Settings {
 
     pub netbox_url: String,
     pub netbox_token: String,
+
+    pub mikrotik_credentials: HashMap<Box<str>, MikrotikCredentials>,
+}
+
+#[derive(Deserialize)]
+pub struct MikrotikCredentials {
+    user: Option<Box<str>>,
+    password: Option<Box<str>>,
+}
+
+impl MikrotikCredentials {
+    pub fn user(&self) -> &str {
+        self.user
+            .as_ref()
+            .map(|u| Box::as_ref(u))
+            .unwrap_or("admin")
+    }
+    pub fn password(&self) -> Option<&str> {
+        self.password.as_ref().map(|p| Box::as_ref(p))
+    }
 }
 
 impl Settings {

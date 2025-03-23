@@ -14,6 +14,20 @@ query PingDevice($id: Int!){
                 ping{
                     duration
                 }
+                detectDevice{
+                    name
+                }
+            }
+        }
+    }
+}
+query DetectDeviceType($id: Int!){
+    topology{
+        deviceById(id: $id){
+            access{
+                detectDevice{
+                    name
+                }
             }
         }
     }

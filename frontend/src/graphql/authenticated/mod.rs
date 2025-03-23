@@ -1,5 +1,7 @@
 use graphql_client::GraphQLQuery;
 
+type ScalarDuration = u64;
+
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "target/authenticated_schema.graphql",
@@ -16,4 +18,10 @@ pub struct ListDevices;
 )]
 pub struct PingDevice;
 
-type ScalarDuration = u64;
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "target/authenticated_schema.graphql",
+    query_path = "src/graphql/authenticated/list-devices.graphql",
+    response_derives = "Debug"
+)]
+pub struct DetectDeviceType;
