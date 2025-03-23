@@ -20,11 +20,12 @@ use routes::{AppRoute, Sidebar};
 use std::time::Duration;
 use web_sys::HtmlElement;
 use yew::{
-    Context, ContextProvider, Html, NodeRef, Properties, function_component, html, html_nested,
-    platform::spawn_local,
+    Context, ContextProvider, Html, NodeRef, Properties, ToHtml, function_component, html,
+    html_nested, platform::spawn_local,
 };
-use yew_nested_router::{Router,  prelude::Switch as RouterSwitch};
+use yew_nested_router::{Router, prelude::Switch as RouterSwitch};
 
+pub mod devices;
 pub mod routes;
 
 #[derive(Debug)]
@@ -120,63 +121,7 @@ impl yew::Component for App {
             }
         } else if let Some(error) = &self.error_state {
             let error_message = match error {
-                ErrorState::FrontendError(FrontendError::JS(js_error)) => {
-                    html! {
-                        <AlertGroup>
-                            <Alert inline=true title="Javascript Error" r#type={AlertType::Danger}>{js_error.to_string()}</Alert>
-                        </AlertGroup>
-                    }
-                }
-                ErrorState::FrontendError(FrontendError::Serde(serde_error)) => {
-                    html! {
-                        <AlertGroup>
-                            <Alert inline=true title="Serialization Error" r#type={AlertType::Danger}>{serde_error.to_string()}</Alert>
-                        </AlertGroup>
-                    }
-                }
-                ErrorState::FrontendError(FrontendError::Graphql(graphql_error)) => {
-                    let graphql_error = graphql_error.clone();
-                    html! {
-                        <AlertGroup>
-                            <Alert inline=true title="Error from Server" r#type={AlertType::Danger}>
-                                <ul>
-                            {
-                              graphql_error.iter().map(|error| {
-                                    let message=&error.message;
-                                    if let Some(path) = error
-                                        .path.as_ref()
-                                        .map(|p|
-                                            p.iter()
-                                                .map(|path| path.to_string())
-                                                .collect::<Vec<String>>()
-                                                .join("/")
-                                        )
-                                    {
-                                        html!{<li>{message}{" at "}{path}</li>}
-                                    }else{
-                                        html!{<li>{message}</li>}
-                                    }
-                                }).collect::<Html>()
-                            }
-                                </ul>
-                            </Alert>
-                        </AlertGroup>
-                    }
-                }
-                ErrorState::FrontendError(FrontendError::Reqwest(reqwest_error)) => {
-                    html! {
-                        <AlertGroup>
-                            <Alert inline=true title="Cannot call Server" r#type={AlertType::Danger}>{reqwest_error.to_string()}</Alert>
-                        </AlertGroup>
-                    }
-                }
-                ErrorState::FrontendError(FrontendError::InvalidHeader(header_error)) => {
-                    html! {
-                        <AlertGroup>
-                            <Alert inline=true title="Header Error" r#type={AlertType::Danger}>{header_error.to_string()}</Alert>
-                        </AlertGroup>
-                    }
-                }
+                ErrorState::FrontendError(e) => e.to_html(),
                 ErrorState::PromptResult(PromptResult::NotDisplayed(
                     NotDisplayedReason::SuppressedByUser,
                 )) => {

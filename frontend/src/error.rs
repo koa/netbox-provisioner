@@ -2,9 +2,11 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 
 use log::error;
+use patternfly_yew::prelude::{Alert, AlertGroup, AlertType};
 use reqwest::header::InvalidHeaderValue;
 use thiserror::Error;
 use wasm_bindgen::JsValue;
+use yew::{Html, ToHtml, html};
 
 pub struct JavascriptError {
     original_value: JsValue,
@@ -53,4 +55,68 @@ pub enum FrontendError {
     Reqwest(#[from] reqwest::Error),
     #[error("Invalid http header")]
     InvalidHeader(#[from] InvalidHeaderValue),
+}
+
+impl ToHtml for FrontendError {
+    fn to_html(&self) -> Html {
+        match self {
+            FrontendError::JS(js_error) => {
+                html! {
+                    <AlertGroup>
+                        <Alert inline=true title="Javascript Error" r#type={AlertType::Danger}>{js_error.to_string()}</Alert>
+                    </AlertGroup>
+                }
+            }
+            FrontendError::Serde(serde_error) => {
+                html! {
+                    <AlertGroup>
+                        <Alert inline=true title="Serialization Error" r#type={AlertType::Danger}>{serde_error.to_string()}</Alert>
+                    </AlertGroup>
+                }
+            }
+            FrontendError::Graphql(graphql_error) => {
+                let graphql_error = graphql_error.clone();
+                html! {
+                    <AlertGroup>
+                        <Alert inline=true title="Error from Server" r#type={AlertType::Danger}>
+                            <ul>
+                        {
+                          graphql_error.iter().map(|error| {
+                                let message=&error.message;
+                                if let Some(path) = error
+                                    .path.as_ref()
+                                    .map(|p|
+                                        p.iter()
+                                            .map(|path| path.to_string())
+                                            .collect::<Vec<String>>()
+                                            .join("/")
+                                    )
+                                {
+                                    html!{<li>{message}{" at "}{path}</li>}
+                                }else{
+                                    html!{<li>{message}</li>}
+                                }
+                            }).collect::<Html>()
+                        }
+                            </ul>
+                        </Alert>
+                    </AlertGroup>
+                }
+            }
+            FrontendError::Reqwest(reqwest_error) => {
+                html! {
+                    <AlertGroup>
+                        <Alert inline=true title="Cannot call Server" r#type={AlertType::Danger}>{reqwest_error.to_string()}</Alert>
+                    </AlertGroup>
+                }
+            }
+            FrontendError::InvalidHeader(header_error) => {
+                html! {
+                    <AlertGroup>
+                        <Alert inline=true title="Header Error" r#type={AlertType::Danger}>{header_error.to_string()}</Alert>
+                    </AlertGroup>
+                }
+            }
+        }
+    }
 }

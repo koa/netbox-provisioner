@@ -10,6 +10,7 @@ pub struct Settings {
     auth_issuer: String,
     auth_token_url: Option<String>,
     auth_url: Option<String>,
+    pub auth_users: Box<[Box<str>]>,
 
     server_port: Option<u16>,
     server_mgmt_port: Option<u16>,

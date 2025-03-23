@@ -1,3 +1,4 @@
+use crate::pages::devices::Devices;
 use patternfly_yew::prelude::{Nav, NavRouterItem};
 use yew::{Html, function_component, html};
 use yew_nested_router::Target;
@@ -12,7 +13,7 @@ pub enum AppRoute {
 impl AppRoute {
     pub fn content(self) -> Html {
         match self {
-            AppRoute::Devices => html! {<h1>{"Home"}</h1>},
+            AppRoute::Devices => html! {<h1><Devices/></h1>},
             AppRoute::NotFound => html! {<h1>{"Not Found"}</h1>},
         }
     }

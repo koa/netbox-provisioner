@@ -13,6 +13,7 @@ use actix_web::{
 use actix_web_prometheus::PrometheusMetricsBuilder;
 use actix_web_static_files::ResourceFiles;
 use async_graphql::futures_util::future::join_all;
+use async_graphql::{Response, ServerError};
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use env_logger::Env;
 use log::{error, info, trace};
@@ -41,6 +42,19 @@ async fn graphql(
     let schema = &context.schema;
     let histogram = context.graphql_request_histogram.clone();
     let request = request.into_inner();
+    let subject = user.as_ref().and_then(|user| {
+        user.payload
+            .registered
+            .subject
+            .as_ref()
+            .map(|subj| subj.as_str())
+    });
+    if !subject
+        .map(|sub| CONFIG.auth_users.iter().any(|id| *sub == **id))
+        .unwrap_or(false)
+    {
+        return Response::from_errors(vec![ServerError::new("User not allowed", None)]).into();
+    }
     let found_user = if let Some(DecodedInfo { jwt: _jwt, payload }) = user {
         match serde_json::from_value::<UserInfo>(payload.private.clone()) {
             Ok(user) => Some(user),
@@ -52,6 +66,9 @@ async fn graphql(
     } else {
         None
     };
+    let hd = found_user
+        .as_ref()
+        .and_then(|user| user.hd.as_ref().map(|hd| hd.as_str()));
     let timer = histogram
         .with_label_values(&[
             request.operation_name.as_deref().unwrap_or_default(),

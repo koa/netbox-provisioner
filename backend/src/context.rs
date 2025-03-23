@@ -5,4 +5,5 @@ pub struct UserInfo {
     pub name: String,
     pub email: Option<String>,
     pub email_verified: Option<bool>,
+    pub hd: Option<String>,
 }
