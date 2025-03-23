@@ -54,8 +54,8 @@ impl Component for Devices {
                 html! {<Spinner/>}
             }
             DeviceState::Data(rows) => {
-                let cards = rows.iter().map(|row|{
-                    html!{
+                let cards = rows.iter().map(|row| {
+                    html! {
                         <Card>
                             <CardHeader><CardTitle>{row.name.as_ref()}</CardTitle></CardHeader>
                         </Card>

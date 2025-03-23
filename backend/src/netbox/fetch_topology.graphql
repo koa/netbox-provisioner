@@ -1,0 +1,69 @@
+query FetchTopology{
+    device_list{
+        id
+        name
+        primary_ip4 {
+            address
+        }
+        primary_ip6 {
+            address
+        }
+        interfaces{
+            id
+            name
+            ip_addresses{
+                address
+            }
+        }
+        platform {
+            name
+        }
+        tenant {
+            id
+        }
+        location {
+            tenant {
+                id
+            }
+        }
+        site{
+            tenant{
+                id
+            }
+        }
+    }
+    tenant_list{
+        id
+        custom_field_data
+    }
+    cable_list{
+        id
+        a_terminations {
+            ...CableConnectionTermination
+        }
+        b_terminations {
+            ...CableConnectionTermination
+        }
+    }
+}
+fragment CableConnectionTermination on CableTerminationTerminationType{
+    __typename
+    ...ConnectedInterface
+    ...ConnectedFrontPort
+    ...ConnectedRearPort
+}
+fragment ConnectedInterface on InterfaceType{
+    id
+}
+fragment ConnectedFrontPort on FrontPortType{
+    id
+    rear_port {
+        id
+    }
+}
+fragment ConnectedRearPort on RearPortType{
+    id
+    frontports{
+        id
+    }
+}
