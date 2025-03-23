@@ -1,7 +1,7 @@
 use crate::data::UserSessionData;
 use crate::error::FrontendError;
-use graphql_client::GraphQLQuery;
 use graphql_client::reqwest::post_graphql;
+use graphql_client::{GraphQLQuery, Response};
 use lazy_static::lazy_static;
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use yew::Component;
@@ -27,6 +27,18 @@ pub async fn query_authenticated<Q: GraphQLQuery, S: Component>(
     scope: Scope<S>,
     request: Q::Variables,
 ) -> Result<Q::ResponseData, FrontendError> {
+    let response = query_authenticated_response::<Q, S>(scope, request).await?;
+    if let Some(data) = response.data {
+        Ok(data)
+    } else {
+        Err(FrontendError::Graphql(response.errors.unwrap_or_default()))
+    }
+}
+
+pub async fn query_authenticated_response<Q: GraphQLQuery, S: Component>(
+    scope: Scope<S>,
+    request: Q::Variables,
+) -> Result<Response<<Q as GraphQLQuery>::ResponseData>, FrontendError> {
     let mut headers = HeaderMap::new();
     if let Some((session_data, _)) = scope.context::<UserSessionData>(Default::default()) {
         if let Some(access_token) = session_data.jwt() {
@@ -36,14 +48,9 @@ pub async fn query_authenticated<Q: GraphQLQuery, S: Component>(
     let client = reqwest::Client::builder()
         .default_headers(headers)
         .build()?;
-    let response =
-        post_graphql::<Q, _>(&client, GRAPHQL_AUTHENTICATED_URL.as_str(), request).await?;
-    if let Some(data) = response.data {
-        Ok(data)
-    } else {
-        Err(FrontendError::Graphql(response.errors.unwrap_or_default()))
-    }
+    Ok(post_graphql::<Q, _>(&client, GRAPHQL_AUTHENTICATED_URL.as_str(), request).await?)
 }
+
 pub async fn query_anonymous<Q: GraphQLQuery>(
     request: Q::Variables,
 ) -> Result<Q::ResponseData, FrontendError> {

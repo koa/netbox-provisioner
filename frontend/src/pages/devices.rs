@@ -1,14 +1,15 @@
-use crate::graphql::authenticated::{ping_device, PingDevice};
+use crate::graphql::authenticated::{PingDevice, ping_device};
+use crate::graphql::query_authenticated_response;
 use crate::{
     error::FrontendError,
     graphql::{
-        authenticated::{list_devices, ListDevices},
+        authenticated::{ListDevices, list_devices},
         query_authenticated,
     },
 };
-use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner};
+use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
 use std::{net::IpAddr, str::FromStr};
-use yew::{html, platform::spawn_local, Component, Context, Html, Properties, ToHtml};
+use yew::{Component, Context, Html, Properties, ToHtml, html, platform::spawn_local};
 
 pub struct Devices {
     state: DeviceState,
@@ -116,7 +117,14 @@ impl Component for Devices {
 #[derive(Debug)]
 struct DeviceEntryCard {
     device: DeviceRow,
-    ping_result: Option<ping_device::PingDeviceTopologyDeviceByIdAccessPing>,
+    ping_result: PingResult,
+}
+#[derive(Debug)]
+enum PingResult {
+    Pending,
+    None,
+    Success(ping_device::PingDeviceTopologyDeviceByIdAccessPing),
+    Failed(FrontendError),
 }
 #[derive(Debug, Clone, Properties, PartialEq)]
 struct DeviceEntryCardProps {
@@ -125,6 +133,8 @@ struct DeviceEntryCardProps {
 enum DeviceEntryCardMsg {
     Data,
     PingResult(ping_device::PingDeviceTopologyDeviceByIdAccessPing),
+    NoPing,
+    PingError(FrontendError),
 }
 
 impl Component for DeviceEntryCard {
@@ -134,7 +144,7 @@ impl Component for DeviceEntryCard {
     fn create(ctx: &Context<Self>) -> Self {
         Self {
             device: ctx.props().device.clone(),
-            ping_result: None,
+            ping_result: PingResult::Pending,
         }
     }
 
@@ -142,7 +152,15 @@ impl Component for DeviceEntryCard {
         match msg {
             DeviceEntryCardMsg::Data => false,
             DeviceEntryCardMsg::PingResult(r) => {
-                self.ping_result = Some(r);
+                self.ping_result = PingResult::Success(r);
+                true
+            }
+            DeviceEntryCardMsg::NoPing => {
+                self.ping_result = PingResult::None;
+                true
+            }
+            DeviceEntryCardMsg::PingError(e) => {
+                self.ping_result = PingResult::Failed(e);
                 true
             }
         }
@@ -156,17 +174,23 @@ impl Component for DeviceEntryCard {
             .as_ref()
             .map(|a| a.to_string())
             .unwrap_or_default();
-        let ping_result = self.ping_result.as_ref().map(|r| {
-            let text = format!("{:.2}ms", r.duration as f32 / 1000.0 / 1000.0);
-            html!(<div class="device-ping">{text}</div>)
-        });
+        let ping_result_data = match &self.ping_result {
+            PingResult::Pending => {
+                html! {<Spinner size={SpinnerSize::Sm}/>}
+            }
+            PingResult::Success(r) => {
+                format!("{:.2}ms", r.duration as f32 / 1000.0 / 1000.0).into_html()
+            }
 
+            PingResult::Failed(e) => e.into_html(),
+            PingResult::None => Default::default(),
+        };
         html! {
             <Card>
                 <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
                 <CardBody>
                     <div class="device-address">{address}</div>
-                    {ping_result}
+                    <div class="device-ping">{ping_result_data}</div>
                 </CardBody>
             </Card>
         }
@@ -177,23 +201,30 @@ impl Component for DeviceEntryCard {
             let scope = ctx.link().clone();
             let id = self.device.id as i64;
             spawn_local(async move {
-                match query_authenticated::<PingDevice, _>(
+                match query_authenticated_response::<PingDevice, _>(
                     scope.clone(),
                     ping_device::Variables { id },
                 )
                 .await
                 {
                     Ok(result) => {
-                        if let Some(ping_result) = result
-                            .topology
-                            .device_by_id
-                            .and_then(|d| d.access)
-                            .and_then(|d| d.ping.into_iter().next())
-                        {
-                            scope.send_message(DeviceEntryCardMsg::PingResult(ping_result));
-                        }
+                        let msg = result
+                            .data
+                            .and_then(|data| {
+                                data.topology
+                                    .device_by_id
+                                    .and_then(|d| d.access)
+                                    .and_then(|d| d.ping.into_iter().next())
+                                    .map(DeviceEntryCardMsg::PingResult)
+                            })
+                            .or(result
+                                .errors
+                                .filter(|e| !e.is_empty())
+                                .map(|e| DeviceEntryCardMsg::PingError(FrontendError::Graphql(e))))
+                            .unwrap_or(DeviceEntryCardMsg::NoPing);
+                        scope.send_message(msg);
                     }
-                    Err(_) => {}
+                    Err(e) => scope.send_message(DeviceEntryCardMsg::PingError(e)),
                 }
             });
         }

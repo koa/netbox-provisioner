@@ -1,6 +1,6 @@
 query ListDevices{
     topology{
-        allDevices{
+        allDevices(filter:{hasRouteros: true}){
             id
             name
             managementAddress

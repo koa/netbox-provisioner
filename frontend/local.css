@@ -10,15 +10,20 @@ div.device-list {
     container-name: ticket-search-width;
 
     display: grid;
-    grid-template-columns: 1em 0fr 0fr 1fr 1fr 0fr;
+    grid-template-columns: 1em 0fr 1fr 0fr;
     column-gap: 1em;
+
+    & > ul.pf-v5-c-alert-group {
+        grid-column: 1 / -1;
+    }
 
     & > div.pf-v5-c-card {
         margin: 0.5em;
         display: grid;
         grid-column: 1 / -1;
         grid-template-columns: subgrid;
-        & > div.pf-v5-c-card__header{
+
+        & > div.pf-v5-c-card__header {
             grid-column: 1 / -1;
         }
 
@@ -32,6 +37,7 @@ div.device-list {
             }
 
             & div.device-ping {
+                color: var(--pf-v5-global--success-color--200);
                 grid-column: 3;
             }
         }
