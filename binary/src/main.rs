@@ -4,6 +4,8 @@ use actix_4_jwt_auth::{
     DecodedInfo, OIDCValidationError, Oidc, OidcBiscuitValidator, OidcConfig,
     biscuit::{Validation, ValidationOptions},
 };
+use actix_web::rt::spawn;
+use actix_web::rt::task::spawn_blocking;
 use actix_web::{
     App, HttpServer, get,
     guard::Post,
@@ -22,6 +24,8 @@ use static_files::Resource;
 use thiserror::Error;
 use tracing_actix_web::TracingLogger;
 
+use backend::netbox::NetboxError;
+use backend::topology::TopologyHolder;
 use backend::{
     config::CONFIG,
     context::UserInfo,
@@ -126,6 +130,8 @@ enum BackendError {
     ActixWebPrometheus(#[from] actix_web_prometheus::error::Error),
     #[error("Error on OIDC Validation {0}")]
     OidcValidationError(#[from] OIDCValidationError),
+    #[error("Error from netbox {0}")]
+    Netbox(#[from] NetboxError),
 }
 
 #[actix_web::main]
@@ -149,8 +155,11 @@ async fn main() -> Result<(), BackendError> {
 
     let registry = prometheus.registry.clone();
     registry.register(Box::new(graphql_request_histogram.clone()))?;
+    let topology = TopologyHolder::default();
+    // ensure initial fetch
+    topology.fetch().await?;
 
-    let schema = create_schema();
+    let schema = create_schema(topology.clone());
     let anonymous_schema = create_anonymous_schema();
 
     let issuer = CONFIG.auth_issuer().to_string();

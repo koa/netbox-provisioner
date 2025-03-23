@@ -1,15 +1,25 @@
-use crate::config::CONFIG;
-use crate::netbox::{Device, list_devices};
+use crate::{
+    config::CONFIG,
+    topology::{DeviceAccess, TopologyHolder},
+};
 use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
 
+pub mod scalars;
 pub type AuthenticatedGraphqlSchema = Schema<QueryAuthenticated, EmptyMutation, EmptySubscription>;
 pub type AnonymousGraphqlSchema = Schema<QueryAnonymous, EmptyMutation, EmptySubscription>;
 
-pub struct QueryAuthenticated;
+pub struct QueryAuthenticated {
+    topology: TopologyHolder,
+}
 pub struct QueryAnonymous;
 
-pub fn create_schema() -> AuthenticatedGraphqlSchema {
-    Schema::build(QueryAuthenticated, EmptyMutation, EmptySubscription).finish()
+pub fn create_schema(topology: TopologyHolder) -> AuthenticatedGraphqlSchema {
+    Schema::build(
+        QueryAuthenticated { topology },
+        EmptyMutation,
+        EmptySubscription,
+    )
+    .finish()
 }
 pub fn create_anonymous_schema() -> AnonymousGraphqlSchema {
     Schema::build(QueryAnonymous, EmptyMutation, EmptySubscription).finish()
@@ -17,8 +27,8 @@ pub fn create_anonymous_schema() -> AnonymousGraphqlSchema {
 
 #[Object]
 impl QueryAuthenticated {
-    async fn devices(&self) -> async_graphql::Result<Box<[Device]>> {
-        Ok(list_devices().await?)
+    async fn topology(&self) -> TopologyHolder {
+        self.topology.clone()
     }
 }
 #[Object]

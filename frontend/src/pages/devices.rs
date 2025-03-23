@@ -1,9 +1,14 @@
-use crate::error::FrontendError;
-use crate::graphql::authenticated::{ListDevices, list_devices};
-use crate::graphql::query_authenticated;
-use patternfly_yew::prelude::{Card, CardHeader, CardTitle, Spinner};
-use yew::platform::spawn_local;
-use yew::{Component, Context, Html, ToHtml, html};
+use crate::graphql::authenticated::{ping_device, PingDevice};
+use crate::{
+    error::FrontendError,
+    graphql::{
+        authenticated::{list_devices, ListDevices},
+        query_authenticated,
+    },
+};
+use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner};
+use std::{net::IpAddr, str::FromStr};
+use yew::{html, platform::spawn_local, Component, Context, Html, Properties, ToHtml};
 
 pub struct Devices {
     state: DeviceState,
@@ -13,9 +18,11 @@ enum DeviceState {
     Loading,
     Data(Box<[DeviceRow]>),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 struct DeviceRow {
+    id: u32,
     name: Box<str>,
+    address: Option<IpAddr>,
 }
 #[derive(Debug)]
 pub enum DevicesMsg {
@@ -56,9 +63,7 @@ impl Component for Devices {
             DeviceState::Data(rows) => {
                 let cards = rows.iter().map(|row| {
                     html! {
-                        <Card>
-                            <CardHeader><CardTitle>{row.name.as_ref()}</CardTitle></CardHeader>
-                        </Card>
+                        <DeviceEntryCard device={row.clone()}/>
                     }
                 });
                 html! {
@@ -67,10 +72,10 @@ impl Component for Devices {
             }
         };
         html! {
-            <>
-            {error_msg}
-            {data}
-            </>
+            <div class="device-list">
+                {error_msg}
+                {data}
+            </div>
         }
     }
 
@@ -86,10 +91,15 @@ impl Component for Devices {
                 {
                     Ok(data) => {
                         scope.send_message(DevicesMsg::Data(
-                            data.devices
+                            data.topology
+                                .all_devices
                                 .into_iter()
                                 .map(|device| DeviceRow {
+                                    id: device.id as u32,
                                     name: device.name.into_boxed_str(),
+                                    address: device
+                                        .management_address
+                                        .and_then(|s| IpAddr::from_str(s.as_str()).ok()),
                                 })
                                 .collect(),
                         ));
@@ -99,6 +109,93 @@ impl Component for Devices {
                     }
                 }
             })
+        }
+    }
+}
+
+#[derive(Debug)]
+struct DeviceEntryCard {
+    device: DeviceRow,
+    ping_result: Option<ping_device::PingDeviceTopologyDeviceByIdAccessPing>,
+}
+#[derive(Debug, Clone, Properties, PartialEq)]
+struct DeviceEntryCardProps {
+    device: DeviceRow,
+}
+enum DeviceEntryCardMsg {
+    Data,
+    PingResult(ping_device::PingDeviceTopologyDeviceByIdAccessPing),
+}
+
+impl Component for DeviceEntryCard {
+    type Message = DeviceEntryCardMsg;
+    type Properties = DeviceEntryCardProps;
+
+    fn create(ctx: &Context<Self>) -> Self {
+        Self {
+            device: ctx.props().device.clone(),
+            ping_result: None,
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            DeviceEntryCardMsg::Data => false,
+            DeviceEntryCardMsg::PingResult(r) => {
+                self.ping_result = Some(r);
+                true
+            }
+        }
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let title = self.device.name.as_ref();
+        let address = self
+            .device
+            .address
+            .as_ref()
+            .map(|a| a.to_string())
+            .unwrap_or_default();
+        let ping_result = self.ping_result.as_ref().map(|r| {
+            let text = format!("{:.2}ms", r.duration as f32 / 1000.0 / 1000.0);
+            html!(<div class="device-ping">{text}</div>)
+        });
+
+        html! {
+            <Card>
+                <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+                <CardBody>
+                    <div class="device-address">{address}</div>
+                    {ping_result}
+                </CardBody>
+            </Card>
+        }
+    }
+
+    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
+        if first_render {
+            let scope = ctx.link().clone();
+            let id = self.device.id as i64;
+            spawn_local(async move {
+                match query_authenticated::<PingDevice, _>(
+                    scope.clone(),
+                    ping_device::Variables { id },
+                )
+                .await
+                {
+                    Ok(result) => {
+                        if let Some(ping_result) = result
+                            .topology
+                            .device_by_id
+                            .and_then(|d| d.access)
+                            .and_then(|d| d.ping.into_iter().next())
+                        {
+                            scope.send_message(DeviceEntryCardMsg::PingResult(ping_result));
+                        }
+                    }
+                    Err(_) => {}
+                }
+            });
         }
     }
 }

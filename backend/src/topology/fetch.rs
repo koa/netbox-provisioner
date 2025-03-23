@@ -333,7 +333,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                     ports,
                     primary_ip,
                     credentials,
-                    has_routeros: platform=="routeros",
+                    has_routeros: platform == "routeros",
                 },
             );
         }

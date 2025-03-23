@@ -1,19 +1,59 @@
+use crate::{netbox::NetboxError, topology::fetch::build_topology};
 use ipnet::IpNet;
 use lazy_static::lazy_static;
+use log::error;
 use regex::Regex;
-use std::fmt::{Display, Formatter};
-use std::str::FromStr;
 use std::{
     collections::{HashMap, HashSet},
+    fmt::{Display, Formatter},
     net::IpAddr,
+    str::FromStr,
     sync::Arc,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, MutexGuard};
 
 pub mod fetch;
+mod graphql;
 
+#[derive(Debug, Default, Clone)]
 pub struct TopologyHolder {
     data: Arc<Mutex<Option<Arc<Topology>>>>,
+}
+
+impl TopologyHolder {
+    pub async fn fetch(&self) -> Result<(), NetboxError> {
+        let data_ref = self.data.clone();
+        match build_topology().await {
+            Ok(value) => {
+                data_ref.lock().await.replace(Arc::new(value));
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
+    }
+    pub async fn topo_lock(&self) -> MutexGuard<Option<Arc<Topology>>> {
+        if self.data.lock().await.is_none() {
+            if let Err(e) = self.fetch().await {
+                error!("Cannot fetch topology data: {e}");
+            }
+        }
+        self.data.lock().await
+    }
+
+    pub async fn devices(&self) -> Box<[DeviceAccess]> {
+        if let Some(device) = self.topo_lock().await.as_ref().cloned() {
+            device.list_devices().collect()
+        } else {
+            Box::default()
+        }
+    }
+    pub async fn devices_by_id(&self, id: u32) -> Option<DeviceAccess> {
+        if let Some(topo) = self.topo_lock().await.as_ref().cloned() {
+            topo.get_device_by_id(&DeviceId(id))
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -148,6 +188,9 @@ impl DeviceAccess {
     pub fn has_routeros(&self) -> bool {
         self.data().map(|d| d.has_routeros).unwrap_or(false)
     }
+    pub fn credentials(&self) -> Option<&str> {
+        self.data().and_then(|d| Device::credentials(d))
+    }
     pub fn interfaces<'a>(&'a self) -> Box<[InterfaceAccess]> {
         self.topology
             .devices
@@ -172,6 +215,7 @@ impl DeviceAccess {
             .unwrap_or_default()
     }
 }
+
 impl InterfaceAccess {
     pub fn id(&self) -> InterfaceId {
         self.id
@@ -221,6 +265,16 @@ impl Topology {
             topology: topo.clone(),
             id: *id,
         })
+    }
+    pub fn get_device_by_id(self: &Arc<Self>, id: &DeviceId) -> Option<DeviceAccess> {
+        if self.devices.contains_key(id) {
+            Some(DeviceAccess {
+                topology: self.clone(),
+                id: id.clone(),
+            })
+        } else {
+            None
+        }
     }
 }
 

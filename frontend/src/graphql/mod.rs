@@ -4,8 +4,8 @@ use graphql_client::GraphQLQuery;
 use graphql_client::reqwest::post_graphql;
 use lazy_static::lazy_static;
 use reqwest::header::{AUTHORIZATION, HeaderMap};
+use yew::Component;
 use yew::html::Scope;
-use yew::{Callback, Component};
 
 pub mod anonymous;
 pub mod authenticated;

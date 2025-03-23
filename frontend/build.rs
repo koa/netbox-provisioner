@@ -10,7 +10,7 @@ fn main() -> Result<()> {
 }
 
 fn write_graphql_schema() -> Result<()> {
-    let schema = create_schema();
+    let schema = create_schema(Default::default());
     fs::write("target/authenticated_schema.graphql", schema.sdl())?;
     Ok(())
 }

@@ -1,5 +1,6 @@
 pub mod config;
 pub mod context;
+pub mod device;
 pub mod graphql;
-mod netbox;
+pub mod netbox;
 pub mod topology;

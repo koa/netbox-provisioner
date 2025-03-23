@@ -1,6 +1,20 @@
 query ListDevices{
-    devices{
-        name
-        managementAddress
+    topology{
+        allDevices{
+            id
+            name
+            managementAddress
+        }
+    }
+}
+query PingDevice($id: Int!){
+    topology{
+        deviceById(id: $id){
+            access{
+                ping{
+                    duration
+                }
+            }
+        }
     }
 }

@@ -4,3 +4,36 @@ div.pf-c-page {
         "header header"
         "nav main";
 }
+
+div.device-list {
+    container-type: inline-size;
+    container-name: ticket-search-width;
+
+    display: grid;
+    grid-template-columns: 1em 0fr 0fr 1fr 1fr 0fr;
+    column-gap: 1em;
+
+    & > div.pf-v5-c-card {
+        margin: 0.5em;
+        display: grid;
+        grid-column: 1 / -1;
+        grid-template-columns: subgrid;
+        & > div.pf-v5-c-card__header{
+            grid-column: 1 / -1;
+        }
+
+        & > div.pf-v5-c-card__body {
+            display: grid;
+            grid-column: 1 / -1;
+            grid-template-columns: subgrid;
+
+            & div.device-address {
+                grid-column: 2;
+            }
+
+            & div.device-ping {
+                grid-column: 3;
+            }
+        }
+    }
+}
