@@ -4,10 +4,12 @@ use crate::{
         authenticated::{ListDevices, PingDevice, list_devices, ping_device},
         query_authenticated, query_authenticated_response,
     },
+    pages::routes::{AppRoute, DeviceView, RouteDevices},
 };
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
 use std::{net::IpAddr, str::FromStr};
 use yew::{Component, Context, Html, Properties, ToHtml, html, platform::spawn_local};
+use yew_nested_router::components::Link;
 
 pub struct Devices {
     state: DeviceState,
@@ -192,9 +194,13 @@ impl Component for DeviceEntryCard {
             PingResult::Failed(e) => (e.into_html(), Html::default()),
             PingResult::None => Default::default(),
         };
+        let to = AppRoute::Devices(RouteDevices::Device {
+            id: self.device.id,
+            view: DeviceView::Show,
+        });
         html! {
             <Card>
-                <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+                <CardHeader><CardTitle><Link<AppRoute> {to}>{title}</Link<AppRoute>></CardTitle></CardHeader>
                 <CardBody>
                     <div class="device-address">{address}</div>
                     <div class="device-ping">{ping_result_data}</div>
