@@ -15,4 +15,6 @@ pub enum Error {
     MikrotikModel(#[from] mikrotik_model::resource::Error),
     #[error("Error credentials")]
     MissingCredentials,
+    #[error("Cannot parse ip address {0}")]
+    AddressParse(#[from] std::net::AddrParseError),
 }

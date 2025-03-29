@@ -17,7 +17,7 @@ projects:
         dev:
           url: http://localhost:8081/graphql_anonymous
   frontend-authenticated:
-    schema: frontend/target/authenticated_schema.graphql
+    schema: frontend/src/graphql/authenticated/schema.graphql
     documents: frontend/src/graphql/authenticated/*.graphql
     extensions:
       endpoints:

@@ -5,3 +5,4 @@
 /config.yaml
 /.idea
 /.env.local
+/frontend/src/graphql/authenticated/schema.graphql

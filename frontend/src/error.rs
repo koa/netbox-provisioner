@@ -55,6 +55,8 @@ pub enum FrontendError {
     Reqwest(#[from] reqwest::Error),
     #[error("Invalid http header")]
     InvalidHeader(#[from] InvalidHeaderValue),
+    #[error("No data received")]
+    MissingData,
 }
 
 impl ToHtml for FrontendError {
@@ -114,6 +116,13 @@ impl ToHtml for FrontendError {
                 html! {
                     <AlertGroup>
                         <Alert inline=true title="Header Error" r#type={AlertType::Danger}>{header_error.to_string()}</Alert>
+                    </AlertGroup>
+                }
+            }
+            FrontendError::MissingData => {
+                html! {
+                    <AlertGroup>
+                        <Alert inline=true title="Missing Data" r#type={AlertType::Danger}>{"No data received from server"}</Alert>
                     </AlertGroup>
                 }
             }

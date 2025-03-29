@@ -1,10 +1,11 @@
-use crate::{
-    Error, device::ros::GraphqlDeviceType, graphql::scalars::ScalarDuration, topology::DeviceAccess,
-};
+use crate::device::ros::{DeviceCfg, DeviceStats};
+use crate::{graphql::scalars::ScalarDuration, topology::DeviceAccess, Error};
 use async_graphql::{ComplexObject, Object, SimpleObject};
-use mikrotik_model::{MikrotikDevice, hwconfig::DeviceType, model::SystemRouterboardState};
+use mikrotik_model::resource::SingleResource;
+use mikrotik_model::{model::SystemRouterboardState, MikrotikDevice};
+use std::collections::HashMap;
 use std::{net::IpAddr, sync::Arc, time::Duration};
-use surge_ping::{IcmpPacket, SurgeError, ping};
+use surge_ping::{ping, IcmpPacket, SurgeError};
 use tokio::sync::Mutex;
 
 pub mod ros;
@@ -12,7 +13,7 @@ pub mod ros;
 pub struct AccessibleDevice {
     address: IpAddr,
     credentials: Box<str>,
-    default_client: Arc<Mutex<Option<MikrotikDevice>>>,
+    clients: Arc<Mutex<HashMap<(IpAddr, Box<str>), MikrotikDevice>>>,
 }
 
 #[derive(SimpleObject)]
@@ -35,7 +36,7 @@ impl From<DeviceAccess> for Option<AccessibleDevice> {
             AccessibleDevice {
                 address,
                 credentials: Box::from(credentials),
-                default_client: Default::default(),
+                clients: Default::default(),
             }
         })
     }
@@ -55,22 +56,47 @@ impl AccessibleDevice {
         Ok(result.into_boxed_slice())
     }
 }
+#[derive(Clone, Debug)]
+struct GraphqlSystemRouterboard(SystemRouterboardState);
+
+#[Object]
+impl GraphqlSystemRouterboard {
+    async fn device_type(&self) -> String {
+        self.0.model.to_string()
+    }
+    async fn serial_number(&self) -> String {
+        self.0.serial_number.to_string()
+    }
+    async fn firmware_type(&self) -> String {
+        self.0.firmware_type.to_string()
+    }
+}
 
 #[Object]
 impl AccessibleDevice {
     async fn ping(&self, count: Option<u8>) -> Result<Box<[PingResult]>, SurgeError> {
         self.simple_ping(count.unwrap_or(1)).await
     }
-    async fn detect_device(&self) -> Result<GraphqlDeviceType, Error> {
-        let device = self.get_default_client().await?;
-        let routerboard =
-            <SystemRouterboardState as mikrotik_model::resource::SingleResource>::fetch(&device)
-                .await?
-                .expect("system/routerboard not found");
-        DeviceType::type_by_name(&routerboard.model.0)
-            .map(|d| d.into())
-            .ok_or(Error::MikrotikModel(
-                mikrotik_model::resource::Error::UnknownType(routerboard.model),
-            ))
+
+    async fn device_stats(
+        &self,
+        target: Option<String>,
+        credentials: Option<Box<str>>,
+    ) -> Result<DeviceStats, Error> {
+        let device = self
+            .create_client(target.map(|v| str::parse(&v)).transpose()?, credentials)
+            .await?;
+        DeviceStats::fetch(&device).await
+    }
+
+    async fn config(
+        &self,
+        target: Option<String>,
+        credentials: Option<Box<str>>,
+    ) -> Result<DeviceCfg, Error> {
+        let client = self
+            .create_client(target.map(|v| str::parse(&v)).transpose()?, credentials)
+            .await?;
+        self.fetch_config(&client).await
     }
 }

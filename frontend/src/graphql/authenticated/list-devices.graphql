@@ -4,6 +4,7 @@ query ListDevices{
             id
             name
             managementAddress
+            serial
         }
     }
 }
@@ -14,8 +15,11 @@ query PingDevice($id: Int!){
                 ping{
                     duration
                 }
-                detectDevice{
-                    name
+                deviceStats{
+                    routerboard {
+                        deviceType
+                        serialNumber
+                    }
                 }
             }
         }
@@ -25,8 +29,11 @@ query DetectDeviceType($id: Int!){
     topology{
         deviceById(id: $id){
             access{
-                detectDevice{
-                    name
+
+                deviceStats{
+                    routerboard {
+                        deviceType
+                    }
                 }
             }
         }

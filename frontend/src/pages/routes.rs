@@ -1,4 +1,5 @@
 use crate::pages::devices::Devices;
+use crate::pages::devices::show::ShowDevice;
 use patternfly_yew::prelude::{Nav, NavRouterItem};
 use yew::{Html, function_component, html};
 use yew_nested_router::Target;
@@ -49,7 +50,7 @@ impl RouteDevices {
 impl DeviceView {
     pub fn content(self, id: u32) -> Html {
         match self {
-            Self::Show => html! {<h1>{"Show"}</h1>},
+            Self::Show => html! {<ShowDevice {id}/>},
         }
     }
 }

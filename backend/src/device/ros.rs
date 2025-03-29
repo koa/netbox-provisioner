@@ -1,11 +1,17 @@
-use crate::{Error, config::CONFIG, device::AccessibleDevice};
-use async_graphql::Object;
-use mikrotik_model::{MikrotikDevice, ascii::AsciiString, hwconfig::DeviceType, mikrotik_model};
-use tokio::sync::{MappedMutexGuard, MutexGuard};
+use crate::device::GraphqlSystemRouterboard;
+use crate::{config::CONFIG, device::AccessibleDevice, Error};
+use async_graphql::{Object, SimpleObject};
+use mikrotik_model::resource::SingleResource;
+use mikrotik_model::{ascii::AsciiString, hwconfig::DeviceType, mikrotik_model, MikrotikDevice};
+use std::borrow::Borrow;
+use std::collections::hash_map::Entry;
+use std::net::IpAddr;
+use std::ops::Deref;
 
 impl AccessibleDevice {
-    pub async fn get_default_client(&self) -> Result<MappedMutexGuard<MikrotikDevice>, Error> {
-        let mut client_ref = self.default_client.lock().await;
+    /*pub async fn get_default_client(&self) -> Result<MappedMutexGuard<MikrotikDevice>, Error> {
+        let mut client_ref = self.clients.lock().await;
+        //        client_ref.entry()
         if client_ref.is_none() {
             if let Some(credentials) = CONFIG.mikrotik_credentials.get(self.credentials.as_ref()) {
                 let connection = MikrotikDevice::connect(
@@ -22,6 +28,38 @@ impl AccessibleDevice {
             Some(c) => Some(c),
         })
         .map_err(|_| Error::MissingCredentials)
+    }*/
+    pub async fn create_client(
+        &self,
+        target: Option<IpAddr>,
+        credentials: Option<Box<str>>,
+    ) -> Result<MikrotikDevice, Error> {
+        let addr = target.unwrap_or(self.address);
+        let credential_name = credentials.unwrap_or_else(|| self.credentials.clone());
+        let key = (addr, credential_name);
+        if let Some(credentials) = CONFIG.mikrotik_credentials.get(key.1.as_ref()) {
+            let mut client_ref = self.clients.lock().await;
+            Ok(match client_ref.entry(key.clone()) {
+                Entry::Occupied(e) => e.get().deref().clone(),
+                Entry::Vacant(v) => v
+                    .insert(
+                        MikrotikDevice::connect(
+                            (self.address, 8728),
+                            credentials.user().as_bytes(),
+                            credentials.password().map(|p| p.as_bytes()),
+                        )
+                        .await?,
+                    )
+                    .clone(),
+            })
+        } else {
+            Err(Error::MissingCredentials)
+        }
+    }
+    pub async fn fetch_config(&self, client: &MikrotikDevice) -> Result<DeviceCfg, Error> {
+        let current = DeviceDataCurrent::fetch(client).await?;
+        let target = DeviceDataTarget::detect_device(client).await?;
+        Ok(DeviceCfg { current, target })
     }
 }
 
@@ -55,6 +93,7 @@ impl DeviceDataTarget {
         self.identity.name = name.into();
     }
 }
+
 pub struct GraphqlDeviceType(DeviceType);
 impl From<DeviceType> for GraphqlDeviceType {
     fn from(value: DeviceType) -> Self {
@@ -65,5 +104,47 @@ impl From<DeviceType> for GraphqlDeviceType {
 impl GraphqlDeviceType {
     async fn name(&self) -> &str {
         self.0.device_type_name()
+    }
+}
+
+struct GraphqlSystemIdentity<'a>(&'a SystemIdentityCfg);
+#[Object]
+impl GraphqlSystemIdentity<'_> {
+    async fn name(&self) -> String {
+        self.0.name.to_string()
+    }
+}
+#[derive(Clone, Debug, SimpleObject)]
+pub struct DeviceCfg {
+    current: DeviceDataCurrent,
+    target: DeviceDataTarget,
+}
+#[derive(Clone, Debug, SimpleObject)]
+pub struct DeviceStats {
+    routerboard: GraphqlSystemRouterboard,
+}
+impl DeviceStats {
+    pub async fn fetch(client: &MikrotikDevice) -> Result<DeviceStats, Error> {
+        Ok(Self {
+            routerboard: GraphqlSystemRouterboard(
+                SystemRouterboardState::fetch(&client)
+                    .await?
+                    .expect("system/routerboard not found"),
+            ),
+        })
+    }
+}
+
+#[Object]
+impl DeviceDataCurrent {
+    async fn identity(&self) -> GraphqlSystemIdentity {
+        GraphqlSystemIdentity(&self.identity)
+    }
+}
+
+#[Object]
+impl DeviceDataTarget {
+    async fn identity(&self) -> GraphqlSystemIdentity {
+        GraphqlSystemIdentity(&self.identity)
     }
 }

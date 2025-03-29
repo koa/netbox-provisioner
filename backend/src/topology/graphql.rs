@@ -56,6 +56,10 @@ impl DeviceAccess {
             .and_then(|a| a.primary_ip)
             .map(|s| s.to_string())
     }
+    #[graphql(name = "serial")]
+    async fn api_serial(&self) -> Option<String> {
+        self.serial().map(ToString::to_string)
+    }
     async fn access(&self) -> Option<AccessibleDevice> {
         self.clone().into()
     }

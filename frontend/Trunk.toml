@@ -17,3 +17,4 @@ command_arguments = ["-c", "cd node && npm install"]
 
 [watch]
 watch = ["src", "Cargo.toml", "local.css"]
+ignore = ["src/graphql/authenticated/schema.graphql"]

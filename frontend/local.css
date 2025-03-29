@@ -47,6 +47,14 @@ div.device-list {
                 grid-row: 2;
                 grid-column: 3;
             }
+            & > div.device-serial {
+                grid-row: 3;
+                grid-column: 2;
+            }
+            & > div.device-detected-serial {
+                grid-row: 3;
+                grid-column: 3;
+            }
         }
     }
 }

@@ -70,6 +70,7 @@ pub struct Device {
     primary_ip: Option<IpAddr>,
     credentials: Option<Box<str>>,
     has_routeros: bool,
+    serial: Option<Box<str>>,
 }
 
 impl Device {
@@ -179,8 +180,11 @@ impl DeviceAccess {
     pub fn name(&self) -> &str {
         self.data().map(|d| d.name()).unwrap_or_default()
     }
+    pub fn serial(&self) -> Option<&str> {
+        self.data().and_then(|d| d.serial.as_deref())
+    }
     pub fn primary_ip(&self) -> Option<IpAddr> {
-        self.data().and_then(|d| Device::primary_ip(d))
+        self.data().and_then(Device::primary_ip)
     }
     pub fn data(&self) -> Option<&Device> {
         self.topology.devices.get(&self.id)
