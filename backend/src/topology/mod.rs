@@ -73,6 +73,7 @@ pub struct Device {
     name: Box<str>,
     ports: HashSet<CablePort>,
     primary_ip: Option<IpAddr>,
+    loopback_ip: Option<IpAddr>,
     credentials: Option<Box<str>>,
     has_routeros: bool,
     serial: Option<Box<str>>,

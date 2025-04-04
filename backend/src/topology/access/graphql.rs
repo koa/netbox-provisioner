@@ -1,6 +1,6 @@
 use crate::device::AccessibleDevice;
-use crate::topology::access::{DeviceAccess, InterfaceAccess, VxlanAccess, WlanGroupAccess};
 use crate::topology::WlanData;
+use crate::topology::access::{DeviceAccess, InterfaceAccess, VxlanAccess, WlanGroupAccess};
 use async_graphql::Object;
 use ipnet::IpNet;
 

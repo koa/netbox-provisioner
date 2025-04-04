@@ -44,6 +44,9 @@ impl DeviceAccess {
     pub fn primary_ip(&self) -> Option<IpAddr> {
         self.data().and_then(Device::primary_ip)
     }
+    pub fn loopback_ip(&self) -> Option<IpAddr> {
+        self.data().and_then(|d| d.loopback_ip.clone())
+    }
     pub fn data(&self) -> Option<&Device> {
         self.topology.devices.get(&self.id)
     }
@@ -212,6 +215,17 @@ impl VxlanAccess {
                 topology: self.topology.clone(),
                 id,
             })
+    }
+    pub fn vteps(&self) -> Box<[IpAddr]> {
+        self.wlan_group()
+            .iter()
+            .flat_map(|wlan| {
+                wlan.aps()
+                    .into_iter()
+                    .chain(wlan.controller())
+                    .filter_map(|device| device.primary_ip())
+            })
+            .collect()
     }
 }
 

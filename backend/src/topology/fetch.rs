@@ -354,7 +354,20 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                     })
                 });
             let mut ports = HashSet::new();
+            let mut loopback_ip = None;
             for interface in device.interfaces {
+                if interface.name.as_str() == "lo" && interface.type_.as_str() == "virtual" {
+                    if let Some(ip) = interface
+                        .ip_addresses
+                        .iter()
+                        .filter_map(|address| IpNet::from_str(&address.address).ok())
+                        .filter(|ip| ip.max_prefix_len() == ip.prefix_len())
+                        .map(|ip| ip.addr())
+                        .next()
+                    {
+                        loopback_ip = Some(ip);
+                    }
+                };
                 if let Some(id) = interface.id.parse().ok().map(InterfaceId) {
                     ports.insert(CablePort::Interface(id));
                     let ips = interface
@@ -393,6 +406,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                     name: device.name.map(String::into_boxed_str).unwrap_or_default(),
                     ports,
                     primary_ip,
+                    loopback_ip,
                     credentials,
                     has_routeros: platform == "routeros",
                     serial,
@@ -468,12 +482,12 @@ fn parse_termination(
             }
         }
         CableConnectionTermination::RearPortType(rp) => {
-            let rear_port_id = rp.id.parse().ok().map(|id| CablePort::RearPort(id));
+            let rear_port_id = rp.id.parse().ok().map(CablePort::RearPort);
             if let Some(rear_port_id) = rear_port_id {
                 let front_ports = rp
                     .frontports
                     .into_iter()
-                    .filter_map(|p| p.id.parse().ok().map(|id| CablePort::FrontPort(id)))
+                    .filter_map(|p| p.id.parse().ok().map(CablePort::FrontPort))
                     .collect();
                 Some((rear_port_id, front_ports))
             } else {

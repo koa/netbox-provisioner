@@ -1,9 +1,4 @@
-use crate::topology::access::DeviceAccess;
-use crate::{
-    Error,
-    device::ros::{DeviceCfg, DeviceStats},
-    graphql::scalars::ScalarDuration,
-};
+use crate::{graphql::scalars::ScalarDuration, topology::access::DeviceAccess};
 use async_graphql::{ComplexObject, Object, SimpleObject};
 use mikrotik_model::{MikrotikDevice, model::SystemRouterboardState};
 use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
@@ -71,34 +66,5 @@ impl GraphqlSystemRouterboard {
     }
     async fn firmware_type(&self) -> String {
         self.0.firmware_type.to_string()
-    }
-}
-
-#[Object]
-impl AccessibleDevice {
-    async fn ping(&self, count: Option<u8>) -> Result<Box<[PingResult]>, SurgeError> {
-        self.simple_ping(count.unwrap_or(1)).await
-    }
-
-    async fn device_stats(
-        &self,
-        target: Option<String>,
-        credentials: Option<Box<str>>,
-    ) -> Result<DeviceStats, Error> {
-        let device = self
-            .create_client(target.map(|v| str::parse(&v)).transpose()?, credentials)
-            .await?;
-        DeviceStats::fetch(&device).await
-    }
-
-    async fn config(
-        &self,
-        target: Option<String>,
-        credentials: Option<Box<str>>,
-    ) -> Result<DeviceCfg, Error> {
-        let client = self
-            .create_client(target.map(|v| str::parse(&v)).transpose()?, credentials)
-            .await?;
-        self.fetch_config(&client).await
     }
 }
