@@ -40,6 +40,7 @@ query FetchTopology{
             }
         }
         serial
+        custom_field_data
     }
     tenant_list{
         id
@@ -52,6 +53,30 @@ query FetchTopology{
         }
         b_terminations {
             ...CableConnectionTermination
+        }
+    }
+    l2vpn_list {
+        id
+        name
+        type
+        identifier
+        terminations{
+            assigned_object{
+                __typename
+                ...ConnectedInterface
+            }
+        }
+    }
+    wireless_lan_group_list {
+        id
+        custom_fields
+        wireless_lans {
+            ssid
+            auth_type
+            auth_psk
+            vlan {
+                vid
+            }
         }
     }
 }

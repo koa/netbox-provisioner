@@ -22,7 +22,7 @@ impl AccessibleDevice {
         if let Some(credentials) = CONFIG.mikrotik_credentials.get(key.1.as_ref()) {
             let mut client_ref = self.clients.lock().await;
             Ok(match client_ref.entry(key.clone()) {
-                Entry::Occupied(e) => e.get().deref().clone(),
+                Entry::Occupied(e) => e.get().clone(),
                 Entry::Vacant(v) => v
                     .insert(
                         MikrotikDevice::connect(

@@ -1,3 +1,5 @@
+extern crate core;
+
 use thiserror::Error;
 
 pub mod config;

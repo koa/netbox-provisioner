@@ -1,9 +1,5 @@
-use crate::{
-    config::CONFIG,
-    topology::{DeviceAccess, TopologyHolder},
-};
+use crate::{config::CONFIG, topology::TopologyHolder};
 use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
-
 pub mod scalars;
 pub type AuthenticatedGraphqlSchema = Schema<QueryAuthenticated, EmptyMutation, EmptySubscription>;
 pub type AnonymousGraphqlSchema = Schema<QueryAnonymous, EmptyMutation, EmptySubscription>;

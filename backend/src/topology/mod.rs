@@ -1,4 +1,6 @@
 use crate::{netbox::NetboxError, topology::fetch::build_topology};
+use access::DeviceAccess;
+use async_graphql::{Enum, Interface, OneofObject, SimpleObject, Union};
 use ipnet::IpNet;
 use lazy_static::lazy_static;
 use log::error;
@@ -12,6 +14,7 @@ use std::{
 };
 use tokio::sync::{Mutex, MutexGuard};
 
+pub mod access;
 pub mod fetch;
 mod graphql;
 
@@ -61,6 +64,8 @@ pub struct Topology {
     devices: HashMap<DeviceId, Device>,
     interfaces: HashMap<InterfaceId, Interface>,
     cable_path_endpoints: HashMap<CablePort, HashSet<CablePort>>,
+    vxlans: HashMap<VxlanId, VxlanData>,
+    wlan_groups: HashMap<WlanGroupId, WlanGroupData>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,8 +76,46 @@ pub struct Device {
     credentials: Option<Box<str>>,
     has_routeros: bool,
     serial: Option<Box<str>>,
+    wlan_controller_of: Option<WlanGroupId>,
+    wlan_ap_of: Option<WlanGroupId>,
+    wlan_vxlan: Option<VxlanId>,
+    //vxlans: Box<[VxlanId]>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VxlanData {
+    name: Box<str>,
+    vni: u32,
+    terminations: HashSet<InterfaceId>,
+    wlan_group: Option<WlanGroupId>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WlanGroupData {
+    transport_vxlan: Option<VxlanId>,
+    controller: DeviceId,
+    aps: Box<[DeviceId]>,
+    wlans: Box<[WlanData]>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct WlanData {
+    ssid: Box<str>,
+    vlan: u16,
+    wlan_auth: WlanAuth,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Union)]
+pub enum WlanAuth {
+    Wpa(WlanWpaSettings),
+    Open(WlanOpenSettings),
+}
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct WlanWpaSettings {
+    key: Box<str>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct WlanOpenSettings {
+    use_owe: bool,
+}
 impl Device {
     pub fn name(&self) -> &str {
         &self.name
@@ -163,124 +206,10 @@ pub struct InterfaceId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct DeviceId(pub u32);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeviceAccess {
-    topology: Arc<Topology>,
-    id: DeviceId,
-}
-pub struct InterfaceAccess {
-    topology: Arc<Topology>,
-    id: InterfaceId,
-}
-
-impl DeviceAccess {
-    pub fn id(&self) -> DeviceId {
-        self.id
-    }
-    pub fn name(&self) -> &str {
-        self.data().map(|d| d.name()).unwrap_or_default()
-    }
-    pub fn serial(&self) -> Option<&str> {
-        self.data().and_then(|d| d.serial.as_deref())
-    }
-    pub fn primary_ip(&self) -> Option<IpAddr> {
-        self.data().and_then(Device::primary_ip)
-    }
-    pub fn data(&self) -> Option<&Device> {
-        self.topology.devices.get(&self.id)
-    }
-    pub fn has_routeros(&self) -> bool {
-        self.data().map(|d| d.has_routeros).unwrap_or(false)
-    }
-    pub fn credentials(&self) -> Option<&str> {
-        self.data().and_then(|d| Device::credentials(d))
-    }
-    pub fn interfaces<'a>(&'a self) -> Box<[InterfaceAccess]> {
-        self.topology
-            .devices
-            .get(&self.id)
-            .map(|data| {
-                data.ports
-                    .iter()
-                    .filter_map(|p| {
-                        if let CablePort::Interface(p) = p {
-                            Some(p)
-                        } else {
-                            None
-                        }
-                    })
-                    .copied()
-                    .map(|p| InterfaceAccess {
-                        topology: self.topology.clone().clone(),
-                        id: p,
-                    })
-                    .collect::<Box<[_]>>()
-            })
-            .unwrap_or_default()
-    }
-}
-
-impl InterfaceAccess {
-    pub fn id(&self) -> InterfaceId {
-        self.id
-    }
-    pub fn name(&self) -> &str {
-        self.data().map(|d| d.name.as_ref()).unwrap_or_default()
-    }
-    pub fn external_port(&self) -> Option<PhysicalPortId> {
-        self.data().and_then(|d| d.external)
-    }
-
-    pub fn data(&self) -> Option<&Interface> {
-        self.topology.interfaces.get(&self.id)
-    }
-    pub fn device(&self) -> Option<DeviceAccess> {
-        self.data().map(|data| DeviceAccess {
-            topology: self.topology.clone(),
-            id: data.device,
-        })
-    }
-    pub fn connected_interfaces(&self) -> Box<[InterfaceAccess]> {
-        self.topology
-            .cable_path_endpoints
-            .get(&CablePort::Interface(self.id))
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|p| {
-                        if let CablePort::Interface(p) = p {
-                            Some(InterfaceAccess {
-                                topology: self.topology.clone(),
-                                id: *p,
-                            })
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-}
-
-impl Topology {
-    pub fn list_devices<'a>(self: &'a Arc<Self>) -> impl Iterator<Item = DeviceAccess> + use<'a> {
-        let topo = self.clone();
-        self.devices.keys().map(move |id| DeviceAccess {
-            topology: topo.clone(),
-            id: *id,
-        })
-    }
-    pub fn get_device_by_id(self: &Arc<Self>, id: &DeviceId) -> Option<DeviceAccess> {
-        if self.devices.contains_key(id) {
-            Some(DeviceAccess {
-                topology: self.clone(),
-                id: id.clone(),
-            })
-        } else {
-            None
-        }
-    }
-}
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct VxlanId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct WlanGroupId(pub u32);
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 enum CablePort {

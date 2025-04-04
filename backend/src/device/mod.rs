@@ -1,8 +1,8 @@
+use crate::topology::access::DeviceAccess;
 use crate::{
     Error,
     device::ros::{DeviceCfg, DeviceStats},
     graphql::scalars::ScalarDuration,
-    topology::DeviceAccess,
 };
 use async_graphql::{ComplexObject, Object, SimpleObject};
 use mikrotik_model::{MikrotikDevice, model::SystemRouterboardState};

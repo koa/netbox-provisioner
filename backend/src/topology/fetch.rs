@@ -1,3 +1,8 @@
+use crate::netbox::fetch_topology::FetchTopologyL2vpnListTerminationsAssignedObject;
+use crate::topology::{
+    VxlanData, VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId, WlanOpenSettings,
+    WlanWpaSettings,
+};
 use crate::{
     netbox::{NetboxError, fetch_topology},
     topology::{
@@ -261,9 +266,58 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
 
     let mut interfaces = HashMap::new();
     let mut devices = HashMap::new();
+    let mut vxlans = HashMap::new();
+    let mut wlan_groups = HashMap::new();
+    let mut controllers = HashMap::new();
+    let mut wlan_member_devices = HashMap::<_, Vec<_>>::new();
+
+    for wlan_group in data.wireless_lan_group_list {
+        if let (Some(id), Some(controller)) = (
+            wlan_group.id.parse().ok().map(WlanGroupId),
+            wlan_group.custom_fields.controller.map(DeviceId),
+        ) {
+            controllers.insert(controller, id);
+            let transport_vxlan = wlan_group.custom_fields.wlan_group.map(VxlanId);
+            let wlans = wlan_group
+                .wireless_lans
+                .into_iter()
+                .filter_map(|wlan| {
+                    if let (Some(wlan_auth), Some(vlan)) = (
+                        match wlan.auth_type.as_deref() {
+                            Some("wpa-personal") => Some(WlanAuth::Wpa(WlanWpaSettings {
+                                key: wlan.auth_psk.into_boxed_str(),
+                            })),
+                            Some("open") => {
+                                Some(WlanAuth::Open(WlanOpenSettings { use_owe: true }))
+                            }
+                            _ => None,
+                        },
+                        wlan.vlan.map(|vlan| vlan.vid as u16),
+                    ) {
+                        Some(WlanData {
+                            ssid: wlan.ssid.into_boxed_str(),
+                            vlan,
+                            wlan_auth,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            wlan_groups.insert(
+                id,
+                WlanGroupData {
+                    transport_vxlan,
+                    controller,
+                    aps: Box::new([]),
+                    wlans,
+                },
+            );
+        }
+    }
 
     for device in data.device_list {
-        if let Some(device_id) = device.id.parse().ok().map(|id| DeviceId(id)) {
+        if let Some(device_id) = device.id.parse().ok().map(DeviceId) {
             let credentials = device
                 .tenant
                 .and_then(|tenant| credentials_by_tenants.get(tenant.id.as_str()))
@@ -280,7 +334,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                         .and_then(|tenant| credentials_by_tenants.get(tenant.id.as_str()))
                 })
                 .copied()
-                .map(|id| Box::<str>::from(id));
+                .map(Box::<str>::from);
             let primary_ip = device
                 .primary_ip6
                 .and_then(|primary_ip| {
@@ -288,7 +342,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                         .address
                         .split_once('/')
                         .and_then(|(address, _)| Ipv6Addr::from_str(address).ok())
-                        .map(|addr| IpAddr::V6(addr))
+                        .map(IpAddr::V6)
                 })
                 .or_else(|| {
                     device.primary_ip4.and_then(|primary_ip| {
@@ -296,12 +350,12 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                             .address
                             .split_once('/')
                             .and_then(|(address, _)| Ipv4Addr::from_str(address).ok())
-                            .map(|addr| IpAddr::V4(addr))
+                            .map(IpAddr::V4)
                     })
                 });
             let mut ports = HashSet::new();
             for interface in device.interfaces {
-                if let Some(id) = interface.id.parse().ok().map(|id| InterfaceId(id)) {
+                if let Some(id) = interface.id.parse().ok().map(InterfaceId) {
                     ports.insert(CablePort::Interface(id));
                     let ips = interface
                         .ip_addresses
@@ -322,20 +376,69 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             }
             let platform = device.platform.map(|p| p.name).unwrap_or_default();
             let serial = Some(device.serial.into_boxed_str()).filter(|s| !s.is_empty());
+            let wlan_controller_of = controllers.get(&device_id).cloned();
+            let wlan_ap_of = device.custom_field_data.wlan_group.map(WlanGroupId);
+            let wlan_vxlan = if let Some(wlan_group) = wlan_ap_of {
+                wlan_member_devices
+                    .entry(wlan_group)
+                    .or_default()
+                    .push(device_id);
+                wlan_groups.get(&wlan_group).and_then(|d| d.transport_vxlan)
+            } else {
+                None
+            };
             devices.insert(
                 device_id,
                 Device {
-                    name: device
-                        .name
-                        .map(|name| String::into_boxed_str(name))
-                        .unwrap_or_default(),
+                    name: device.name.map(String::into_boxed_str).unwrap_or_default(),
                     ports,
                     primary_ip,
                     credentials,
                     has_routeros: platform == "routeros",
                     serial,
+                    wlan_controller_of,
+                    wlan_ap_of,
+                    wlan_vxlan,
                 },
             );
+        }
+    }
+    for (wlan, devices) in wlan_member_devices {
+        if let Some(group) = wlan_groups.get_mut(&wlan) {
+            group.aps = devices.into_boxed_slice();
+        }
+    }
+    for l2vpn_entry in data.l2vpn_list {
+        if l2vpn_entry.type_.as_str() == "vxlan" {
+            if let (Some(vxlan_id), Some(vni)) = (
+                l2vpn_entry.id.parse().ok().map(VxlanId),
+                l2vpn_entry.identifier.map(|id| id as u32),
+            ) {
+                let terminations = l2vpn_entry
+                    .terminations
+                    .into_iter()
+                    .filter_map(|t| match t.assigned_object {
+                        FetchTopologyL2vpnListTerminationsAssignedObject::InterfaceType(
+                            if_type,
+                        ) => if_type.id.parse().ok().map(InterfaceId),
+                        FetchTopologyL2vpnListTerminationsAssignedObject::VLANType => None,
+                        FetchTopologyL2vpnListTerminationsAssignedObject::VMInterfaceType => None,
+                    })
+                    .collect();
+                let wlan_group = wlan_groups
+                    .iter()
+                    .find(|(_, e)| e.transport_vxlan == Some(vxlan_id))
+                    .map(|(id, _)| *id);
+                vxlans.insert(
+                    vxlan_id,
+                    VxlanData {
+                        name: l2vpn_entry.name.into_boxed_str(),
+                        vni,
+                        terminations,
+                        wlan_group,
+                    },
+                );
+            }
         }
     }
 
@@ -343,6 +446,8 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
         devices,
         interfaces,
         cable_path_endpoints,
+        vxlans,
+        wlan_groups,
     })
 }
 

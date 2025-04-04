@@ -17,6 +17,8 @@ pub struct FetchTopology;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct JSON {
     pub mikrotik_credentials: Option<Box<str>>,
+    pub wlan_group: Option<u32>,
+    pub controller: Option<u32>,
 }
 
 #[derive(Debug, SimpleObject)]

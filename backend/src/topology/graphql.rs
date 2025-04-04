@@ -1,5 +1,4 @@
-use crate::device::AccessibleDevice;
-use crate::topology::{DeviceAccess, DeviceId, TopologyHolder};
+use crate::topology::{DeviceId, TopologyHolder, access::DeviceAccess};
 use async_graphql::{InputObject, Object};
 
 #[derive(InputObject)]
@@ -38,29 +37,5 @@ impl TopologyHolder {
         } else {
             None
         }
-    }
-}
-
-#[Object]
-impl DeviceAccess {
-    #[graphql(name = "id")]
-    async fn api_id(&self) -> u32 {
-        self.id.0
-    }
-    #[graphql(name = "name")]
-    async fn api_name(&self) -> &str {
-        self.name()
-    }
-    async fn management_address(&self) -> Option<String> {
-        self.data()
-            .and_then(|a| a.primary_ip)
-            .map(|s| s.to_string())
-    }
-    #[graphql(name = "serial")]
-    async fn api_serial(&self) -> Option<String> {
-        self.serial().map(ToString::to_string)
-    }
-    async fn access(&self) -> Option<AccessibleDevice> {
-        self.clone().into()
     }
 }
