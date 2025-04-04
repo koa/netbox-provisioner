@@ -100,7 +100,9 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32) {
                             (
                                 d.name.into_boxed_str(),
                                 d.access
-                                    .map(|a| a.device_stats.routerboard.device_type.into_boxed_str())
+                                    .map(|a| {
+                                        a.device_stats.routerboard.device_type.into_boxed_str()
+                                    })
                                     .unwrap_or_default(),
                             )
                         })

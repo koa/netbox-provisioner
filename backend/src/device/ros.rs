@@ -1,34 +1,16 @@
-use crate::device::GraphqlSystemRouterboard;
-use crate::{config::CONFIG, device::AccessibleDevice, Error};
+use crate::{
+    Error,
+    config::CONFIG,
+    device::{AccessibleDevice, GraphqlSystemRouterboard},
+};
 use async_graphql::{Object, SimpleObject};
-use mikrotik_model::resource::SingleResource;
-use mikrotik_model::{ascii::AsciiString, hwconfig::DeviceType, mikrotik_model, MikrotikDevice};
-use std::borrow::Borrow;
-use std::collections::hash_map::Entry;
-use std::net::IpAddr;
-use std::ops::Deref;
+use mikrotik_model::{
+    MikrotikDevice, ascii::AsciiString, hwconfig::DeviceType, mikrotik_model,
+    resource::SingleResource, value,
+};
+use std::{collections::hash_map::Entry, net::IpAddr, ops::Deref};
 
 impl AccessibleDevice {
-    /*pub async fn get_default_client(&self) -> Result<MappedMutexGuard<MikrotikDevice>, Error> {
-        let mut client_ref = self.clients.lock().await;
-        //        client_ref.entry()
-        if client_ref.is_none() {
-            if let Some(credentials) = CONFIG.mikrotik_credentials.get(self.credentials.as_ref()) {
-                let connection = MikrotikDevice::connect(
-                    (self.address, 8728),
-                    credentials.user().as_bytes(),
-                    credentials.password().map(|p| p.as_bytes()),
-                )
-                .await?;
-                client_ref.replace(connection);
-            }
-        }
-        MutexGuard::try_map(client_ref, |client| match client {
-            None => None,
-            Some(c) => Some(c),
-        })
-        .map_err(|_| Error::MissingCredentials)
-    }*/
     pub async fn create_client(
         &self,
         target: Option<IpAddr>,
@@ -68,7 +50,11 @@ mikrotik_model!(
     detect = new,
     fields(
         identity(single = "system/identity"),
+        interface_list(by_key(path = "interface/list", key = name)),
+        interface_list_member(by_id(path = "interface/list/member", keys(interface, list))),
+        wireless_cap(single = "interface/wireless/cap"),
         ethernet(by_key(path = "interface/ethernet", key = defaultName)),
+        wireless(by_key(path = "interface/wireless", key = defaultName)),
         bridge(by_key(path = "interface/bridge", key = name)),
         bridge_port(by_id(
             path = "interface/bridge/port",
@@ -87,6 +73,14 @@ impl DeviceDataTarget {
             identity: Default::default(),
             bridge: Default::default(),
             bridge_port: Default::default(),
+            interface_list: Default::default(),
+            interface_list_member: Default::default(),
+            wireless_cap: Default::default(),
+            wireless: device_type
+                .build_wireless_ports()
+                .into_iter()
+                .map(|e| (e.default_name, e.data))
+                .collect(),
         }
     }
     fn set_identity(&mut self, name: impl Into<AsciiString>) {

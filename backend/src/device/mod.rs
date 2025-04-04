@@ -1,11 +1,13 @@
-use crate::device::ros::{DeviceCfg, DeviceStats};
-use crate::{graphql::scalars::ScalarDuration, topology::DeviceAccess, Error};
+use crate::{
+    Error,
+    device::ros::{DeviceCfg, DeviceStats},
+    graphql::scalars::ScalarDuration,
+    topology::DeviceAccess,
+};
 use async_graphql::{ComplexObject, Object, SimpleObject};
-use mikrotik_model::resource::SingleResource;
-use mikrotik_model::{model::SystemRouterboardState, MikrotikDevice};
-use std::collections::HashMap;
-use std::{net::IpAddr, sync::Arc, time::Duration};
-use surge_ping::{ping, IcmpPacket, SurgeError};
+use mikrotik_model::{MikrotikDevice, model::SystemRouterboardState};
+use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
+use surge_ping::{IcmpPacket, SurgeError, ping};
 use tokio::sync::Mutex;
 
 pub mod ros;

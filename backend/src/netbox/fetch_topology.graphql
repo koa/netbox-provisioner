@@ -8,11 +8,19 @@ query FetchTopology{
         primary_ip6 {
             address
         }
+        role {
+            slug
+        }
         interfaces{
             id
             name
             ip_addresses{
                 address
+            }
+            enabled
+            type
+            bridge {
+                id
             }
         }
         platform {

@@ -1,13 +1,11 @@
-use crate::topology::PhysicalPortId;
 use crate::{
     netbox::{NetboxError, fetch_topology},
     topology::{
-        CablePort, Device, DeviceId, Interface, InterfaceId, Topology,
+        CablePort, Device, DeviceId, Interface, InterfaceId, PhysicalPortId, Topology,
         fetch::fetch_topology::CableConnectionTermination,
     },
 };
 use ipnet::IpNet;
-use lazy_static::lazy_static;
 use log::info;
 use std::{
     collections::{HashMap, HashSet},
@@ -323,7 +321,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                 }
             }
             let platform = device.platform.map(|p| p.name).unwrap_or_default();
-            let serial=Some(device.serial.into_boxed_str()).filter(|s| !s.is_empty());
+            let serial = Some(device.serial.into_boxed_str()).filter(|s| !s.is_empty());
             devices.insert(
                 device_id,
                 Device {
