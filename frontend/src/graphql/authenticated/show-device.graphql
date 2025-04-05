@@ -1,9 +1,9 @@
-query DeviceOverview($id: Int!){
+query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
     topology{
         deviceById(id: $id){
             name
             access{
-                deviceStats{
+                deviceStats(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
                     routerboard {
                         deviceType
                         firmwareType

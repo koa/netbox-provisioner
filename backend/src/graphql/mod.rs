@@ -26,6 +26,13 @@ impl QueryAuthenticated {
     async fn topology(&self) -> TopologyHolder {
         self.topology.clone()
     }
+    async fn list_credentials(&self) -> Box<[&str]> {
+        CONFIG
+            .mikrotik_credentials
+            .keys()
+            .map(Box::as_ref)
+            .collect()
+    }
 }
 #[Object]
 impl QueryAnonymous {

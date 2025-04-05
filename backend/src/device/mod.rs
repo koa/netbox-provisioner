@@ -6,11 +6,21 @@ use surge_ping::{IcmpPacket, SurgeError, ping};
 use tokio::sync::Mutex;
 
 pub mod ros;
-
+#[derive(Debug, Default, Clone, PartialEq, Hash, Eq)]
+pub enum Credentials {
+    #[default]
+    Default,
+    Named(Box<str>),
+    Adhoc {
+        username: Option<Box<str>>,
+        password: Option<Box<str>>,
+    },
+}
 pub struct AccessibleDevice {
     address: IpAddr,
     credentials: Box<str>,
-    clients: Arc<Mutex<HashMap<(IpAddr, Box<str>), MikrotikDevice>>>,
+    clients: Arc<Mutex<HashMap<(IpAddr, Credentials), MikrotikDevice>>>,
+    //     clients: Arc<Mutex<LruCache<(IpAddr, Credentials), MikrotikDevice>>>,
 }
 
 #[derive(SimpleObject)]
@@ -33,6 +43,7 @@ impl From<DeviceAccess> for Option<AccessibleDevice> {
             AccessibleDevice {
                 address,
                 credentials: Box::from(credentials),
+                //                 clients: LruCache::new(NonZeroUsize::new(5).expect("5 should be not 0")),
                 clients: Default::default(),
             }
         })

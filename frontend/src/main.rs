@@ -4,6 +4,7 @@ mod data;
 mod error;
 mod graphql;
 pub mod pages;
+pub mod components;
 
 #[wasm_bindgen]
 pub fn init_panic_hook() {

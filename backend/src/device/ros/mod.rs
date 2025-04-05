@@ -1,9 +1,11 @@
+use crate::device::Credentials;
 use crate::topology::access::DeviceAccess;
 use crate::{config::CONFIG, device::AccessibleDevice, Error};
 use convert_case::{Case, Casing};
 use ipnet::IpNet;
 use ipnet::Ipv4Net;
 use ipnet::Ipv6Net;
+use log::info;
 use mikrotik_model::{
     ascii::AsciiString, hwconfig::DeviceType, mikrotik_model, value, MikrotikDevice,
 };
@@ -15,29 +17,48 @@ impl AccessibleDevice {
     pub async fn create_client(
         &self,
         target: Option<IpAddr>,
-        credentials: Option<Box<str>>,
+        credentials: Credentials,
     ) -> Result<MikrotikDevice, Error> {
         let addr = target.unwrap_or(self.address);
-        let credential_name = credentials.unwrap_or_else(|| self.credentials.clone());
-        let key = (addr, credential_name);
-        if let Some(credentials) = CONFIG.mikrotik_credentials.get(key.1.as_ref()) {
-            let mut client_ref = self.clients.lock().await;
-            Ok(match client_ref.entry(key.clone()) {
-                Entry::Occupied(e) => e.get().clone(),
-                Entry::Vacant(v) => v
-                    .insert(
-                        MikrotikDevice::connect(
-                            (self.address, 8728),
-                            credentials.user().as_bytes(),
-                            credentials.password().map(|p| p.as_bytes()),
-                        )
-                        .await?,
+
+        let key = (addr, credentials.clone());
+
+        let mut client_ref = self.clients.lock().await;
+        Ok(match client_ref.entry(key.clone()) {
+            Entry::Occupied(e) => e.get().clone(),
+            Entry::Vacant(v) => {
+                info!("Create Client for {addr}");
+                let (username, password) = match &credentials {
+                    Credentials::Default => {
+                        let c = CONFIG
+                            .mikrotik_credentials
+                            .get(&self.credentials)
+                            .ok_or(Error::MissingCredentials)?;
+                        (c.user(), c.password())
+                    }
+                    Credentials::Named(name) => {
+                        let c = CONFIG
+                            .mikrotik_credentials
+                            .get(name.as_ref())
+                            .ok_or(Error::MissingCredentials)?;
+                        (c.user(), c.password())
+                    }
+                    Credentials::Adhoc { username, password } => (
+                        username.as_ref().map(Box::as_ref).unwrap_or("admin"),
+                        password.as_ref().map(Box::as_ref),
+                    ),
+                };
+                v.insert(
+                    MikrotikDevice::connect(
+                        (addr, 8728),
+                        username.as_bytes(),
+                        password.map(|p| p.as_bytes()),
                     )
-                    .clone(),
-            })
-        } else {
-            Err(Error::MissingCredentials)
-        }
+                    .await?,
+                )
+                .clone()
+            }
+        })
     }
 }
 

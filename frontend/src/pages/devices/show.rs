@@ -1,16 +1,20 @@
+use crate::components::adjust_target::{AdjustTarget, SelectedCredentials, SelectedTarget};
 use crate::{
     error::FrontendError,
     graphql::{
-        authenticated::{DeviceOverview, device_overview},
+        authenticated::{device_overview, DeviceOverview},
         query_authenticated_response,
     },
 };
-use yew::{Component, Context, Html, Properties, ToHtml, html, html::Scope, platform::spawn_local};
+use log::info;
+use patternfly_yew::prelude::ExpandableSection;
+use yew::{html, html::Scope, platform::spawn_local, Component, Context, Html, Properties, ToHtml};
 
 pub struct ShowDevice {
     id: u32,
     error: Option<FrontendError>,
     data: Option<ShowDeviceData>,
+    alternate_target: SelectedTarget,
 }
 #[derive(Debug, PartialEq)]
 pub struct ShowDeviceData {
@@ -29,6 +33,7 @@ pub enum ShowDeviceMessage {
         data: ShowDeviceData,
         error: Option<FrontendError>,
     },
+    AdjustTarget(SelectedTarget),
 }
 
 impl Component for ShowDevice {
@@ -40,10 +45,12 @@ impl Component for ShowDevice {
             id: ctx.props().id,
             error: None,
             data: None,
+            alternate_target: Default::default(),
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        info!("Msg: {:?}", msg);
         match msg {
             ShowDeviceMessage::Error(e) => {
                 self.error = Some(e);
@@ -53,6 +60,15 @@ impl Component for ShowDevice {
                 self.data = Some(data);
                 self.error = error;
                 true
+            }
+            ShowDeviceMessage::AdjustTarget(t) => {
+                if self.alternate_target != t {
+                    self.alternate_target = t;
+                    fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
+                    true
+                } else {
+                    false
+                }
             }
         }
     }
@@ -67,6 +83,9 @@ impl Component for ShowDevice {
         });
         html! {
             <>
+            <ExpandableSection toggle_text_hidden="Change Target" toggle_text_expanded="Hide Target Selection">
+                <AdjustTarget onchange={ctx.link().callback(ShowDeviceMessage::AdjustTarget)} value={self.alternate_target.clone()} />
+            </ExpandableSection>
             {error}
             {data}
             </>
@@ -75,16 +94,32 @@ impl Component for ShowDevice {
 
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
-            fetch_overview(ctx.link().clone(), self.id);
+            fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
         }
     }
 }
 
-fn fetch_overview(scope: Scope<ShowDevice>, id: u32) {
+fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
     spawn_local(async move {
+        let (credential_name, adhoc_credentials) = match target.credentials {
+            SelectedCredentials::Default => (None, None),
+            SelectedCredentials::Named(name) => (Some(name.into_string()), None),
+            SelectedCredentials::Adhoc { username, password } => (
+                None,
+                Some(device_overview::AdhocCredentials {
+                    username: Some(username.to_string()),
+                    password: Some(password.to_string()),
+                }),
+            ),
+        };
         match query_authenticated_response::<DeviceOverview, _>(
             scope.clone(),
-            device_overview::Variables { id: id as i64 },
+            device_overview::Variables {
+                id: id as i64,
+                target: target.address.map(|a| a.to_string()),
+                credential_name,
+                adhoc_credentials,
+            },
         )
         .await
         {

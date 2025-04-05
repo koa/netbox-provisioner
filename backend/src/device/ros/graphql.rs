@@ -1,4 +1,4 @@
-use crate::device::{AccessibleDevice, PingResult};
+use crate::device::{AccessibleDevice, Credentials, PingResult};
 use crate::{
     Error,
     device::{
@@ -6,7 +6,7 @@ use crate::{
         ros::{DeviceDataCurrent, DeviceDataTarget},
     },
 };
-use async_graphql::{Object, SimpleObject};
+use async_graphql::{InputObject, Object, SimpleObject};
 use mikrotik_model::{
     MikrotikDevice,
     hwconfig::DeviceType,
@@ -78,6 +78,12 @@ impl DeviceDataTarget {
         GraphqlSystemIdentity(&self.identity)
     }
 }
+#[derive(InputObject)]
+struct AdhocCredentials {
+    username: Option<Box<str>>,
+    #[graphql(secret)]
+    password: Option<Box<str>>,
+}
 #[Object]
 impl AccessibleDevice {
     async fn ping(&self, count: Option<u8>) -> Result<Box<[PingResult]>, SurgeError> {
@@ -87,10 +93,14 @@ impl AccessibleDevice {
     async fn device_stats(
         &self,
         target: Option<String>,
-        credentials: Option<Box<str>>,
+        credential_name: Option<Box<str>>,
+        adhoc_credentials: Option<AdhocCredentials>,
     ) -> Result<DeviceStats, Error> {
         let device = self
-            .create_client(target.map(|v| str::parse(&v)).transpose()?, credentials)
+            .create_client(
+                target.map(|v| str::parse(&v)).transpose()?,
+                build_credential(credential_name, adhoc_credentials),
+            )
             .await?;
         DeviceStats::fetch(&device).await
     }
@@ -98,11 +108,27 @@ impl AccessibleDevice {
     async fn config(
         &self,
         target: Option<String>,
-        credentials: Option<Box<str>>,
+        credential_name: Option<Box<str>>,
+        adhoc_credentials: Option<AdhocCredentials>,
     ) -> Result<DeviceCfg, Error> {
         let client = self
-            .create_client(target.map(|v| str::parse(&v)).transpose()?, credentials)
+            .create_client(
+                target.map(|v| str::parse(&v)).transpose()?,
+                build_credential(credential_name, adhoc_credentials),
+            )
             .await?;
         self.fetch_config(&client).await
+    }
+}
+fn build_credential(
+    credential_name: Option<Box<str>>,
+    adhoc_credentials: Option<AdhocCredentials>,
+) -> Credentials {
+    if let Some(name) = credential_name {
+        Credentials::Named(name)
+    } else if let Some(AdhocCredentials { username, password }) = adhoc_credentials {
+        Credentials::Adhoc { username, password }
+    } else {
+        Credentials::Default
     }
 }

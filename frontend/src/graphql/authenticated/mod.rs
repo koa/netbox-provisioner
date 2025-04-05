@@ -33,3 +33,12 @@ pub struct DetectDeviceType;
     response_derives = "Debug"
 )]
 pub struct DeviceOverview;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/adjust-target.graphql",
+    response_derives = "Debug"
+)]
+pub struct AdjustTargetListCredentials;
+
