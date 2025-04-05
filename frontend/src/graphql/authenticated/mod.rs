@@ -41,4 +41,3 @@ pub struct DeviceOverview;
     response_derives = "Debug"
 )]
 pub struct AdjustTargetListCredentials;
-

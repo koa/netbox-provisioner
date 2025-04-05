@@ -2,13 +2,13 @@ use crate::components::adjust_target::{AdjustTarget, SelectedCredentials, Select
 use crate::{
     error::FrontendError,
     graphql::{
-        authenticated::{device_overview, DeviceOverview},
+        authenticated::{DeviceOverview, device_overview},
         query_authenticated_response,
     },
 };
 use log::info;
 use patternfly_yew::prelude::ExpandableSection;
-use yew::{html, html::Scope, platform::spawn_local, Component, Context, Html, Properties, ToHtml};
+use yew::{Component, Context, Html, Properties, ToHtml, html, html::Scope, platform::spawn_local};
 
 pub struct ShowDevice {
     id: u32,
@@ -50,7 +50,6 @@ impl Component for ShowDevice {
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
-        info!("Msg: {:?}", msg);
         match msg {
             ShowDeviceMessage::Error(e) => {
                 self.error = Some(e);

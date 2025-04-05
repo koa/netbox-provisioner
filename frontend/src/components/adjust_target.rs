@@ -1,5 +1,5 @@
 use crate::error::FrontendError;
-use crate::graphql::authenticated::{adjust_target_list_credentials, AdjustTargetListCredentials};
+use crate::graphql::authenticated::{AdjustTargetListCredentials, adjust_target_list_credentials};
 use crate::graphql::query_authenticated_response;
 use log::{error, info};
 use patternfly_yew::prelude::{
@@ -9,7 +9,7 @@ use patternfly_yew::prelude::{
 use std::net::IpAddr;
 use yew::html::Scope;
 use yew::platform::spawn_local;
-use yew::{html, Callback, Component, Context, Html, Properties};
+use yew::{Callback, Component, Context, Html, Properties, html};
 
 #[derive(Debug, Clone, PartialOrd, PartialEq, Default)]
 pub enum SelectedCredentials {
@@ -217,7 +217,6 @@ impl Component for AdjustTarget {
                 }
             })
         };
-        info!("IP address: {}", ip_address);
         let mut defined_credentials = Vec::with_capacity(self.available_credentials.len() + 1);
         defined_credentials.push(Box::from(""));
         defined_credentials.extend(self.available_credentials.iter().cloned());

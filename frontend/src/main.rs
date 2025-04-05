@@ -1,10 +1,10 @@
 use crate::pages::App;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
+pub mod components;
 mod data;
 mod error;
 mod graphql;
 pub mod pages;
-pub mod components;
 
 #[wasm_bindgen]
 pub fn init_panic_hook() {

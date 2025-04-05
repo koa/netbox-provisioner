@@ -1,7 +1,8 @@
 use crate::{graphql::scalars::ScalarDuration, topology::access::DeviceAccess};
 use async_graphql::{ComplexObject, Object, SimpleObject};
+use lru::LruCache;
 use mikrotik_model::{MikrotikDevice, model::SystemRouterboardState};
-use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
+use std::{net::IpAddr, num::NonZeroUsize, sync::Arc, time::Duration};
 use surge_ping::{IcmpPacket, SurgeError, ping};
 use tokio::sync::Mutex;
 
@@ -19,7 +20,7 @@ pub enum Credentials {
 pub struct AccessibleDevice {
     address: IpAddr,
     credentials: Box<str>,
-    clients: Arc<Mutex<HashMap<(IpAddr, Credentials), MikrotikDevice>>>,
+    clients: Arc<Mutex<LruCache<(IpAddr, Credentials), MikrotikDevice>>>,
     //     clients: Arc<Mutex<LruCache<(IpAddr, Credentials), MikrotikDevice>>>,
 }
 
@@ -43,8 +44,9 @@ impl From<DeviceAccess> for Option<AccessibleDevice> {
             AccessibleDevice {
                 address,
                 credentials: Box::from(credentials),
-                //                 clients: LruCache::new(NonZeroUsize::new(5).expect("5 should be not 0")),
-                clients: Default::default(),
+                clients: Arc::new(Mutex::new(LruCache::new(
+                    NonZeroUsize::new(5).expect("5 should be not 0"),
+                ))),
             }
         })
     }

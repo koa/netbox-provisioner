@@ -1,22 +1,22 @@
 use actix_4_jwt_auth::{
-    biscuit::{Validation, ValidationOptions}, DecodedInfo, OIDCValidationError, Oidc, OidcBiscuitValidator,
-    OidcConfig,
+    DecodedInfo, OIDCValidationError, Oidc, OidcBiscuitValidator, OidcConfig,
+    biscuit::{Validation, ValidationOptions},
 };
 use actix_web::{
-    get, guard::Post, middleware::Logger,
-    web::{resource, Data},
-    App,
-    HttpServer,
+    App, HttpServer, get,
+    guard::Post,
+    middleware::Logger,
+    web::{Data, resource},
 };
 use actix_web_prometheus::PrometheusMetricsBuilder;
-use actix_web_static_files::{deps::static_files::Resource, ResourceFiles};
-use async_graphql::{futures_util::future::join_all, Response, ServerError};
+use actix_web_static_files::{ResourceFiles, deps::static_files::Resource};
+use async_graphql::{Response, ServerError, futures_util::future::join_all};
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use env_logger::Env;
-use include_dir::{include_dir, Dir};
+use include_dir::{Dir, include_dir};
 use log::{error, info, trace};
 use mime_db::lookup;
-use prometheus::{histogram_opts, HistogramVec};
+use prometheus::{HistogramVec, histogram_opts};
 use std::{collections::HashMap, ffi::OsStr};
 use thiserror::Error;
 use tracing_actix_web::TracingLogger;
@@ -25,13 +25,12 @@ use backend::{
     config::CONFIG,
     context::UserInfo,
     graphql::{
-        create_anonymous_schema, create_schema, AnonymousGraphqlSchema, AuthenticatedGraphqlSchema,
+        AnonymousGraphqlSchema, AuthenticatedGraphqlSchema, create_anonymous_schema, create_schema,
     },
     netbox::NetboxError,
     topology::TopologyHolder,
 };
 
-//include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 const BUILD_TIME: u64 = include!(concat!(env!("OUT_DIR"), "/timestamp.txt"));
 static RESOURCE_FILES: Dir = include_dir!("$CARGO_MANIFEST_DIR/../frontend/dist");
 
