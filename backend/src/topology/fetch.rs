@@ -1,17 +1,18 @@
-use crate::netbox::fetch_topology::FetchTopologyL2vpnListTerminationsAssignedObject;
-use crate::topology::{
-    VxlanData, VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId, WlanOpenSettings,
-    WlanWpaSettings,
-};
 use crate::{
-    netbox::{NetboxError, fetch_topology},
+    netbox::{
+        NetboxError, fetch_topology,
+        fetch_topology::FetchTopologyL2vpnListTerminationsAssignedObject,
+    },
     topology::{
         CablePort, Device, DeviceId, Interface, InterfaceId, PhysicalPortId, Topology,
         fetch::fetch_topology::CableConnectionTermination,
     },
+    topology::{
+        VxlanData, VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId, WlanOpenSettings,
+        WlanWpaSettings,
+    },
 };
 use ipnet::IpNet;
-use log::info;
 use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -252,10 +253,10 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                 .or_default()
                 .extend(chain.left_ports.clone());
         }
-        if chain.cables.len() > 1 {
+        /*if chain.cables.len() > 1 {
             let cables = chain.cables.iter().map(|c| c.id).collect::<Box<[_]>>();
             info!("Cable chain: {cables:?}");
-        }
+        }*/
     }
     let mut credentials_by_tenants = HashMap::<&str, &str>::new();
     for tenant in &data.tenant_list {

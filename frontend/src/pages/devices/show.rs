@@ -1,13 +1,12 @@
-use crate::components::adjust_target::{AdjustTarget, SelectedCredentials, SelectedTarget};
 use crate::{
+    components::adjust_target::{AdjustTarget, SelectedCredentials, SelectedTarget},
     error::FrontendError,
     graphql::{
         authenticated::{DeviceOverview, device_overview},
         query_authenticated_response,
     },
 };
-use log::info;
-use patternfly_yew::prelude::ExpandableSection;
+use patternfly_yew::prelude::{CodeBlock, CodeBlockCode, ExpandableSection};
 use yew::{Component, Context, Html, Properties, ToHtml, html, html::Scope, platform::spawn_local};
 
 pub struct ShowDevice {
@@ -20,6 +19,7 @@ pub struct ShowDevice {
 pub struct ShowDeviceData {
     configured_name: Box<str>,
     current_name: Box<str>,
+    cfg_update: Box<str>,
 }
 #[derive(Debug, Properties, Clone, PartialEq)]
 pub struct ShowDeviceProps {
@@ -78,6 +78,7 @@ impl Component for ShowDevice {
             html! {<dl>
             <dt>{"Name"}</dt><dd>{ data.configured_name.as_ref() }</dd>
             <dt>{"Current Name"}</dt><dd>{ data.current_name.as_ref() }</dd>
+            <dt>{"Update"}</dt><dd><CodeBlock><CodeBlockCode>{ data.cfg_update.as_ref() }</CodeBlockCode></CodeBlock></dd>
             </dl>}
         });
         html! {
@@ -129,13 +130,16 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                         .filter(|e| !e.is_empty())
                         .map(FrontendError::Graphql);
                     let device = data.topology.device_by_id;
-                    let (configured_name, current_name) = device
+                    let (configured_name, (current_name, cfg_update)) = device
                         .map(|d| {
                             (
                                 d.name.into_boxed_str(),
                                 d.access
                                     .map(|a| {
-                                        a.device_stats.routerboard.device_type.into_boxed_str()
+                                        (
+                                            a.device_stats.routerboard.device_type.into_boxed_str(),
+                                            a.generate_cfg.into_boxed_str(),
+                                        )
                                     })
                                     .unwrap_or_default(),
                             )
@@ -146,6 +150,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                         data: ShowDeviceData {
                             configured_name,
                             current_name,
+                            cfg_update,
                         },
                         error,
                     });

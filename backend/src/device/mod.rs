@@ -21,7 +21,7 @@ pub struct AccessibleDevice {
     address: IpAddr,
     credentials: Box<str>,
     clients: Arc<Mutex<LruCache<(IpAddr, Credentials), MikrotikDevice>>>,
-    //     clients: Arc<Mutex<LruCache<(IpAddr, Credentials), MikrotikDevice>>>,
+    device_config: DeviceAccess,
 }
 
 #[derive(SimpleObject)]
@@ -47,6 +47,7 @@ impl From<DeviceAccess> for Option<AccessibleDevice> {
                 clients: Arc::new(Mutex::new(LruCache::new(
                     NonZeroUsize::new(5).expect("5 should be not 0"),
                 ))),
+                device_config: value.clone(),
             }
         })
     }

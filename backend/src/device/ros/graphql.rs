@@ -1,17 +1,18 @@
-use crate::device::{AccessibleDevice, Credentials, PingResult};
 use crate::{
     Error,
     device::{
-        GraphqlSystemRouterboard,
+        AccessibleDevice, Credentials, GraphqlSystemRouterboard, PingResult,
         ros::{DeviceDataCurrent, DeviceDataTarget},
     },
 };
 use async_graphql::{InputObject, Object, SimpleObject};
+use log::info;
 use mikrotik_model::{
     MikrotikDevice,
+    generator::Generator,
     hwconfig::DeviceType,
-    model::{SystemIdentityCfg, SystemRouterboardState},
-    resource::SingleResource,
+    model::{ReferenceType, SystemIdentityCfg, SystemRouterboardState},
+    resource::{ResourceMutation, SingleResource},
 };
 use surge_ping::SurgeError;
 
@@ -118,6 +119,36 @@ impl AccessibleDevice {
             )
             .await?;
         self.fetch_config(&client).await
+    }
+    async fn generate_cfg(
+        &self,
+        target: Option<String>,
+        credential_name: Option<Box<str>>,
+        adhoc_credentials: Option<AdhocCredentials>,
+    ) -> Result<Box<str>, Error> {
+        let client = self
+            .create_client(
+                target.map(|v| str::parse(&v)).transpose()?,
+                build_credential(credential_name, adhoc_credentials),
+            )
+            .await?;
+        let current_data = DeviceDataCurrent::fetch(&client).await?;
+        let mut target_data = DeviceDataTarget::detect_device(&client).await?;
+        target_data.generate_from(&self.device_config);
+
+        let mutations = target_data.generate_mutations(&current_data)?;
+
+        let mutations = ResourceMutation::sort_mutations_with_provided_dependencies(
+            mutations.as_ref(),
+            [(ReferenceType::Interface, b"lo".into())],
+        )?;
+        let mut cfg = String::new();
+        let mut generator = Generator::new(&mut cfg);
+        for mutation in mutations {
+            generator.append_mutation(mutation)?;
+        }
+        info!("Generated configuration: {}", cfg);
+        Ok(cfg.into_boxed_str())
     }
 }
 fn build_credential(

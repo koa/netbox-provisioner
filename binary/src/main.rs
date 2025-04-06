@@ -191,7 +191,7 @@ async fn main() -> Result<(), BackendError> {
     let anonymous_schema = create_anonymous_schema();
 
     let issuer = CONFIG.auth_issuer().to_string();
-    info!("Issuer: {issuer}");
+    //info!("Issuer: {issuer}");
     let oidc = Oidc::new(OidcConfig::Issuer(issuer.clone().into())).await?;
 
     let biscuit_validator = OidcBiscuitValidator {

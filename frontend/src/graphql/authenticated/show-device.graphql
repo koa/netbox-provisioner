@@ -10,6 +10,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                         serialNumber
                     }
                 }
+                generateCfg(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials)
             }
         }
     }
