@@ -2,18 +2,22 @@ use crate::{
     Error,
     device::{
         AccessibleDevice, Credentials, GraphqlSystemRouterboard, PingResult,
-        ros::{DeviceDataCurrent, DeviceDataTarget},
+        ros::{
+            BaseDeviceDataCurrent, BaseDeviceDataTarget, WirelessDeviceDataCurrent,
+            WirelessDeviceDataTarget,
+        },
     },
+    topology::access::DeviceAccess,
 };
 use async_graphql::{InputObject, Object, SimpleObject};
-use log::info;
 use mikrotik_model::{
     MikrotikDevice,
     generator::Generator,
     hwconfig::DeviceType,
-    model::{ReferenceType, SystemIdentityCfg, SystemRouterboardState},
-    resource::{ResourceMutation, SingleResource},
+    model::{ReferenceType, SystemIdentityCfg, SystemPackageState, SystemRouterboardState},
+    resource::{ResourceMutation, SingleResource, collect_resource},
 };
+use std::collections::HashSet;
 use surge_ping::SurgeError;
 
 pub struct GraphqlDeviceType(DeviceType);
@@ -36,17 +40,71 @@ impl GraphqlSystemIdentity<'_> {
         self.0.name.to_string()
     }
 }
-#[derive(Clone, Debug, SimpleObject)]
+#[derive(Clone, Debug)]
 pub struct DeviceCfg {
-    current: DeviceDataCurrent,
-    target: DeviceDataTarget,
+    base_current: BaseDeviceDataCurrent,
+    base_target: BaseDeviceDataTarget,
+    wireless_current: Option<WirelessDeviceDataCurrent>,
+    wireless_target: Option<WirelessDeviceDataTarget>,
+}
+
+impl DeviceCfg {
+    fn generate_from(&mut self, device: &DeviceAccess) {
+        self.base_target.generate_from(device);
+        if let Some(wireless_target) = self.wireless_target.as_mut() {
+            wireless_target.generate_from(device);
+        }
+    }
+    fn generate_mutations(&self) -> Result<Box<[ResourceMutation]>, Error> {
+        let mutations = self.base_target.generate_mutations(&self.base_current)?;
+        let mutations = if let (Some(wireless_target), Some(wireles_current)) =
+            (&self.wireless_target, &self.wireless_current)
+        {
+            let wireless_mutations = wireless_target.generate_mutations(wireles_current)?;
+            mutations.into_iter().chain(wireless_mutations).collect()
+        } else {
+            mutations
+        };
+
+        Ok(mutations)
+    }
+}
+
+#[Object]
+impl DeviceCfg {
+    async fn current(&self) -> &BaseDeviceDataCurrent {
+        &self.base_current
+    }
+    async fn target(&self) -> &BaseDeviceDataTarget {
+        &self.base_target
+    }
 }
 
 impl AccessibleDevice {
     pub async fn fetch_config(&self, client: &MikrotikDevice) -> Result<DeviceCfg, Error> {
-        let current = DeviceDataCurrent::fetch(client).await?;
-        let target = DeviceDataTarget::detect_device(client).await?;
-        Ok(DeviceCfg { current, target })
+        let installed_packages = collect_resource::<SystemPackageState>(client)
+            .await?
+            .into_iter()
+            .filter(|p| !p.disabled)
+            .map(|p| p.name.0)
+            .collect::<HashSet<_>>();
+
+        let current = BaseDeviceDataCurrent::fetch(client).await?;
+        let target = BaseDeviceDataTarget::detect_device(client).await?;
+        let (wireless_current, wireless_target) =
+            if installed_packages.contains(b"wireless".as_ref()) {
+                let current_wireless = WirelessDeviceDataCurrent::fetch(client).await?;
+                let target = WirelessDeviceDataTarget::detect_device(client).await?;
+                (Some(current_wireless), Some(target))
+            } else {
+                (None, None)
+            };
+        Ok(DeviceCfg {
+            base_current: current,
+            base_target: target,
+            wireless_current,
+            wireless_target,
+        })
     }
 }
 
@@ -67,14 +125,14 @@ impl DeviceStats {
 }
 
 #[Object]
-impl DeviceDataCurrent {
+impl BaseDeviceDataCurrent {
     async fn identity(&self) -> GraphqlSystemIdentity {
         GraphqlSystemIdentity(&self.identity)
     }
 }
 
 #[Object]
-impl DeviceDataTarget {
+impl BaseDeviceDataTarget {
     async fn identity(&self) -> GraphqlSystemIdentity {
         GraphqlSystemIdentity(&self.identity)
     }
@@ -132,11 +190,9 @@ impl AccessibleDevice {
                 build_credential(credential_name, adhoc_credentials),
             )
             .await?;
-        let current_data = DeviceDataCurrent::fetch(&client).await?;
-        let mut target_data = DeviceDataTarget::detect_device(&client).await?;
-        target_data.generate_from(&self.device_config);
-
-        let mutations = target_data.generate_mutations(&current_data)?;
+        let mut device_cfg = self.fetch_config(&client).await?;
+        device_cfg.generate_from(&self.device_config);
+        let mutations = device_cfg.generate_mutations()?;
 
         let mutations = ResourceMutation::sort_mutations_with_provided_dependencies(
             mutations.as_ref(),
@@ -147,7 +203,6 @@ impl AccessibleDevice {
         for mutation in mutations {
             generator.append_mutation(mutation)?;
         }
-        info!("Generated configuration: {}", cfg);
         Ok(cfg.into_boxed_str())
     }
 }

@@ -1,12 +1,21 @@
-use crate::device::Credentials;
-use crate::topology::access::DeviceAccess;
-use crate::{Error, config::CONFIG, device::AccessibleDevice};
+use crate::{
+    Error,
+    config::CONFIG,
+    device::{AccessibleDevice, Credentials},
+    topology::access::DeviceAccess,
+};
 use convert_case::{Case, Casing};
-use ipnet::IpNet;
-use ipnet::Ipv4Net;
-use ipnet::Ipv6Net;
+use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use mikrotik_model::{
-    MikrotikDevice, ascii::AsciiString, hwconfig::DeviceType, mikrotik_model, value,
+    MikrotikDevice,
+    ascii::{self, AsciiString},
+    hwconfig::DeviceType,
+    mikrotik_model,
+    model::{
+        InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress, IpAddressCfg,
+        Ipv6AddressByAddress, Ipv6AddressCfg,
+    },
+    value,
 };
 use std::net::IpAddr;
 
@@ -57,15 +66,13 @@ impl AccessibleDevice {
 }
 
 mikrotik_model!(
-    name = DeviceData,
+    name = BaseDeviceData,
     detect = new,
     fields(
         identity(single = "system/identity"),
         interface_list(by_key(path = "interface/list", key = name)),
         interface_list_member(by_id(path = "interface/list/member", keys(interface, list))),
-        wireless_cap(single = "interface/wireless/cap"),
         ethernet(by_key(path = "interface/ethernet", key = defaultName)),
-        wireless(by_key(path = "interface/wireless", key = defaultName)),
         bridge(by_key(path = "interface/bridge", key = name)),
         bridge_port(by_id(
             path = "interface/bridge/port",
@@ -80,7 +87,7 @@ mikrotik_model!(
         )),
     ),
 );
-impl DeviceDataTarget {
+impl BaseDeviceDataTarget {
     fn new(device_type: DeviceType) -> Self {
         Self {
             ethernet: device_type
@@ -93,12 +100,6 @@ impl DeviceDataTarget {
             bridge_port: Default::default(),
             interface_list: Default::default(),
             interface_list_member: Default::default(),
-            wireless_cap: Default::default(),
-            wireless: device_type
-                .build_wireless_ports()
-                .into_iter()
-                .map(|e| (e.default_name, e.data))
-                .collect(),
             ipv_4_address: Default::default(),
             ipv_6_address: Default::default(),
             vxlan: Default::default(),
@@ -109,6 +110,7 @@ impl DeviceDataTarget {
         self.identity.name = name.into();
     }
     fn generate_from(&mut self, device: &DeviceAccess) {
+        self.set_identity(device.name());
         if let Some(loopback_ip) = device.loopback_ip() {
             self.set_loopback_ip(loopback_ip);
         }
@@ -194,6 +196,44 @@ impl DeviceDataTarget {
                     }),
                 );
             }
+        }
+    }
+}
+mikrotik_model!(
+    name = WirelessDeviceData,
+    detect = new,
+    fields(
+        wireless_cap(single = "interface/wireless/cap"),
+        wireless(by_key(path = "interface/wireless", key = defaultName)),
+    ),
+);
+
+impl WirelessDeviceDataTarget {
+    fn new(device_type: DeviceType) -> Self {
+        Self {
+            wireless_cap: Default::default(),
+            wireless: device_type
+                .build_wireless_ports()
+                .into_iter()
+                .map(|e| (e.default_name, e.data))
+                .collect(),
+        }
+    }
+    fn generate_from(&mut self, device: &DeviceAccess) {}
+}
+mikrotik_model!(
+    name = WifiDeviceData,
+    detect = new,
+    fields(
+        cap(single = "interface/wifi/cap"),
+        datapath(by_key(path = "interface/wifi/datapath", key = name)),
+    ),
+);
+impl WifiDeviceDataTarget {
+    fn new(device_type: DeviceType) -> Self {
+        Self {
+            datapath: Default::default(),
+            cap: Default::default(),
         }
     }
 }
