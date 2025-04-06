@@ -116,7 +116,8 @@ impl BaseDeviceDataTarget {
         }
         self.set_fixed_addresses(device);
         if let Some(wlan_group) = device.wlan_ap_of() {
-            if let (Some(vxlan), Some(my_ip)) = (wlan_group.transport_vxlan(), device.loopback_ip())
+            if let (Some(vxlan), Some(my_ip)) =
+                (wlan_group.transport_vxlan(), device.primary_ip_v4())
             {
                 if let (Some(name), Some(vni)) = (
                     vxlan

@@ -4,12 +4,9 @@ use crate::{
         fetch_topology::FetchTopologyL2vpnListTerminationsAssignedObject,
     },
     topology::{
-        CablePort, Device, DeviceId, Interface, InterfaceId, PhysicalPortId, Topology,
+        CablePort, Device, DeviceId, Interface, InterfaceId, PhysicalPortId, Topology, VxlanData,
+        VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId, WlanOpenSettings, WlanWpaSettings,
         fetch::fetch_topology::CableConnectionTermination,
-    },
-    topology::{
-        VxlanData, VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId, WlanOpenSettings,
-        WlanWpaSettings,
     },
 };
 use ipnet::IpNet;
@@ -278,7 +275,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             wlan_group.custom_fields.controller.map(DeviceId),
         ) {
             controllers.insert(controller, id);
-            let transport_vxlan = wlan_group.custom_fields.wlan_group.map(VxlanId);
+            let transport_vxlan = wlan_group.custom_fields.l2_overlay.map(VxlanId);
             let wlans = wlan_group
                 .wireless_lans
                 .into_iter()
@@ -336,24 +333,20 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                 })
                 .copied()
                 .map(Box::<str>::from);
-            let primary_ip = device
-                .primary_ip6
-                .and_then(|primary_ip| {
-                    primary_ip
-                        .address
-                        .split_once('/')
-                        .and_then(|(address, _)| Ipv6Addr::from_str(address).ok())
-                        .map(IpAddr::V6)
-                })
-                .or_else(|| {
-                    device.primary_ip4.and_then(|primary_ip| {
-                        primary_ip
-                            .address
-                            .split_once('/')
-                            .and_then(|(address, _)| Ipv4Addr::from_str(address).ok())
-                            .map(IpAddr::V4)
-                    })
-                });
+            let primary_ip_v6 = device.primary_ip6.and_then(|primary_ip| {
+                primary_ip
+                    .address
+                    .split_once('/')
+                    .and_then(|(address, _)| Ipv6Addr::from_str(address).ok())
+            });
+            let primary_ip_v4 = device.primary_ip4.and_then(|primary_ip| {
+                primary_ip
+                    .address
+                    .split_once('/')
+                    .and_then(|(address, _)| Ipv4Addr::from_str(address).ok())
+            });
+            let primary_ip =
+                Option::or(primary_ip_v6.map(IpAddr::V6), primary_ip_v4.map(IpAddr::V4));
             let mut ports = HashSet::new();
             let mut loopback_ip = None;
             for interface in device.interfaces {
@@ -407,6 +400,8 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                     name: device.name.map(String::into_boxed_str).unwrap_or_default(),
                     ports,
                     primary_ip,
+                    primary_ip_v4,
+                    primary_ip_v6,
                     loopback_ip,
                     credentials,
                     has_routeros: platform == "routeros",

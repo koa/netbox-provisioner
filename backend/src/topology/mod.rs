@@ -8,7 +8,7 @@ use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Display, Formatter},
-    net::IpAddr,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     str::FromStr,
     sync::Arc,
 };
@@ -73,6 +73,8 @@ pub struct Device {
     name: Box<str>,
     ports: HashSet<CablePort>,
     primary_ip: Option<IpAddr>,
+    primary_ip_v4: Option<Ipv4Addr>,
+    primary_ip_v6: Option<Ipv6Addr>,
     loopback_ip: Option<IpAddr>,
     credentials: Option<Box<str>>,
     has_routeros: bool,

@@ -3,7 +3,11 @@ use crate::topology::{
     VxlanId, WlanData, WlanGroupData, WlanGroupId,
 };
 use ipnet::IpNet;
-use std::{net::IpAddr, sync::Arc};
+use log::info;
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::Arc,
+};
 
 pub mod graphql;
 
@@ -44,8 +48,15 @@ impl DeviceAccess {
     pub fn primary_ip(&self) -> Option<IpAddr> {
         self.data().and_then(Device::primary_ip)
     }
+    pub fn primary_ip_v4(&self) -> Option<Ipv4Addr> {
+        self.data().and_then(|d| d.primary_ip_v4)
+    }
+    pub fn primary_ip_v6(&self) -> Option<Ipv6Addr> {
+        self.data().and_then(|d| d.primary_ip_v6)
+    }
+
     pub fn loopback_ip(&self) -> Option<IpAddr> {
-        self.data().and_then(|d| d.loopback_ip.clone())
+        self.data().and_then(|d| d.loopback_ip)
     }
     pub fn data(&self) -> Option<&Device> {
         self.topology.devices.get(&self.id)
@@ -174,7 +185,10 @@ impl WlanGroupAccess {
     }
     pub fn transport_vxlan(&self) -> Option<VxlanAccess> {
         self.data()
-            .and_then(|d| d.transport_vxlan)
+            .and_then(|d| {
+                info!("Transport VXLAN: {:?}", d);
+                d.transport_vxlan
+            })
             .map(|id| VxlanAccess {
                 topology: self.topology.clone(),
                 id,
@@ -223,7 +237,8 @@ impl VxlanAccess {
                 wlan.aps()
                     .into_iter()
                     .chain(wlan.controller())
-                    .filter_map(|device| device.primary_ip())
+                    .filter_map(|device| DeviceAccess::primary_ip_v4(&device))
+                    .map(IpAddr::V4)
             })
             .collect()
     }

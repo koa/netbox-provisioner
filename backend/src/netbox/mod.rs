@@ -18,6 +18,7 @@ pub struct FetchTopology;
 pub struct JSON {
     pub mikrotik_credentials: Option<Box<str>>,
     pub wlan_group: Option<u32>,
+    pub l2_overlay: Option<u32>,
     pub controller: Option<u32>,
 }
 
