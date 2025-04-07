@@ -2,7 +2,7 @@ use crate::{
     Error,
     config::CONFIG,
     device::{AccessibleDevice, Credentials},
-    topology::access::DeviceAccess,
+    topology::access::{DeviceAccess, InterfaceAccess},
 };
 use convert_case::{Case, Casing};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
@@ -13,10 +13,12 @@ use mikrotik_model::{
     mikrotik_model,
     model::{
         InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress, IpAddressCfg,
-        Ipv6AddressByAddress, Ipv6AddressCfg,
+        Ipv6AddressByAddress, Ipv6AddressCfg, RoutingOspfInstanceByName, RoutingOspfInstanceCfg,
+        RoutingOspfInstanceVersion, RoutingRedistribute,
     },
     value,
 };
+use std::collections::BTreeSet;
 use std::net::IpAddr;
 
 mod graphql;
@@ -85,6 +87,9 @@ mikrotik_model!(
             path = "interface/vxlan/vteps",
             keys(interface, remote_ip)
         )),
+        ospf_instance(by_key(path = "routing/ospf/instance", key = name)),
+        ospf_area(by_key(path = "routing/ospf/area", key = name)),
+        ospf_interface(by_id(path = "routing/ospf/interface-template", keys(area))),
     ),
 );
 impl BaseDeviceDataTarget {
@@ -98,12 +103,15 @@ impl BaseDeviceDataTarget {
             identity: Default::default(),
             bridge: Default::default(),
             bridge_port: Default::default(),
+            ospf_area: Default::default(),
             interface_list: Default::default(),
             interface_list_member: Default::default(),
             ipv_4_address: Default::default(),
             ipv_6_address: Default::default(),
             vxlan: Default::default(),
             vxlan_vteps: Default::default(),
+            ospf_instance: Default::default(),
+            ospf_interface: Default::default(),
         }
     }
     fn set_identity(&mut self, name: impl Into<AsciiString>) {
@@ -115,6 +123,7 @@ impl BaseDeviceDataTarget {
             self.set_loopback_ip(loopback_ip);
         }
         self.set_fixed_addresses(device);
+        self.setup_ospf(device);
         if let Some(wlan_group) = device.wlan_ap_of() {
             if let (Some(vxlan), Some(my_ip)) =
                 (wlan_group.transport_vxlan(), device.primary_ip_v4())
@@ -145,10 +154,7 @@ impl BaseDeviceDataTarget {
 
     fn set_fixed_addresses(&mut self, device: &DeviceAccess) {
         for interface in device.interfaces() {
-            if let Some(port) = interface
-                .external_port()
-                .map(|p| AsciiString::from(p.to_string()))
-            {
+            if let Some(port) = interface.external_port().map(|p| p.short_name()) {
                 if self.ethernet.contains_key(&port) {
                     for ipnet in interface.ips() {
                         match ipnet {
@@ -196,6 +202,54 @@ impl BaseDeviceDataTarget {
                         ..Ipv6AddressCfg::default()
                     }),
                 );
+            }
+        }
+    }
+
+    fn setup_ospf(&mut self, device: &DeviceAccess) {
+        if let Some(router_id) = device.primary_ip_v4() {
+            let ports = device
+                .interfaces()
+                .into_iter()
+                .filter(InterfaceAccess::use_ospf)
+                .filter_map(|i| InterfaceAccess::external_port(&i))
+                .map(|p| p.short_name())
+                .collect::<BTreeSet<_>>();
+            if !ports.is_empty() {
+                let v2_instance = self
+                    .ospf_instance
+                    .entry(b"default-v2".into())
+                    .or_insert(RoutingOspfInstanceByName(RoutingOspfInstanceCfg::default()));
+                v2_instance.0.redistribute =
+                    [RoutingRedistribute::Connected, RoutingRedistribute::Static]
+                        .into_iter()
+                        .collect();
+                v2_instance.0.router_id = Some(router_id);
+                v2_instance.0.version = RoutingOspfInstanceVersion::_2;
+                let v3_instance = self
+                    .ospf_instance
+                    .entry(b"default-v3".into())
+                    .or_insert(RoutingOspfInstanceByName(RoutingOspfInstanceCfg::default()));
+                v3_instance.0.redistribute =
+                    [RoutingRedistribute::Connected, RoutingRedistribute::Static]
+                        .into_iter()
+                        .collect();
+                v3_instance.0.router_id = Some(router_id);
+                v3_instance.0.version = RoutingOspfInstanceVersion::_3;
+                let v2_area = self.ospf_area.entry(b"backbone-v2".into()).or_default();
+                v2_area.0.instance = b"default-v2".into();
+                let v3_area = self.ospf_area.entry(b"backbone-v3".into()).or_default();
+                v3_area.0.instance = b"default-v3".into();
+                let v2_backbone = self
+                    .ospf_interface
+                    .entry((b"backbone-v2".into(),))
+                    .or_default();
+                v2_backbone.interfaces = ports.clone();
+                let v3_backbone = self
+                    .ospf_interface
+                    .entry((b"backbone-v3".into(),))
+                    .or_default();
+                v3_backbone.interfaces = ports.clone();
             }
         }
     }

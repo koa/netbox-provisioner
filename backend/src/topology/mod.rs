@@ -1,9 +1,10 @@
 use crate::{netbox::NetboxError, topology::fetch::build_topology};
 use access::DeviceAccess;
-use async_graphql::{Enum, Interface, OneofObject, SimpleObject, Union};
+use async_graphql::{Interface, SimpleObject, Union};
 use ipnet::IpNet;
 use lazy_static::lazy_static;
 use log::error;
+use mikrotik_model::ascii::AsciiString;
 use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
@@ -139,6 +140,7 @@ pub struct Interface {
     device: DeviceId,
     external: Option<PhysicalPortId>,
     ips: Box<[IpNet]>,
+    use_ospf: bool,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
@@ -153,6 +155,24 @@ lazy_static! {
     static ref SFP_PLUS_PORT_PATTERN: Regex = Regex::new("sfp-sfpplus([0-9]+)").unwrap();
     static ref WIFI_PORT_PATTERN: Regex = Regex::new("wifi([0-9]+)").unwrap();
     static ref WLAN_PORT_PATTERN: Regex = Regex::new("wlan([0-9]+)").unwrap();
+}
+impl PhysicalPortId {
+    pub fn short_name(&self) -> AsciiString {
+        AsciiString::from(match self {
+            PhysicalPortId::Ethernet(id) => {
+                format!("e{id:02}")
+            }
+            PhysicalPortId::SfpSfpPlus(id) => {
+                format!("s{id:02}")
+            }
+            PhysicalPortId::Wifi(id) => {
+                format!("w{id:02}")
+            }
+            PhysicalPortId::Wlan(id) => {
+                format!("w{id:02}")
+            }
+        })
+    }
 }
 impl FromStr for PhysicalPortId {
     type Err = ();

@@ -22,7 +22,7 @@ pub enum Error {
     AddressParse(#[from] std::net::AddrParseError),
     #[error("Cannot generate mutations: {0}")]
     ResourceMutation(#[from] ResourceMutationError),
-    #[error("Missing dependencies: {0}")]
+    #[error("{0}")]
     MissingDependenciesError(Box<str>),
     #[error("Missing required dependencies: {0}")]
     ErrorGeneratingString(#[from] std::fmt::Error),

@@ -124,6 +124,9 @@ impl InterfaceAccess {
     pub fn name(&self) -> &str {
         self.data().map(|d| d.name.as_ref()).unwrap_or_default()
     }
+    pub fn use_ospf(&self) -> bool {
+        self.data().map(|d| d.use_ospf).unwrap_or(false)
+    }
     pub fn external_port(&self) -> Option<PhysicalPortId> {
         self.data().and_then(|d| d.external)
     }

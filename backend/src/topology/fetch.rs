@@ -369,6 +369,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                         .into_iter()
                         .filter_map(|address| IpNet::from_str(&address.address).ok())
                         .collect();
+                    let use_ospf = interface.tags.iter().any(|t| t.slug == "ospf");
                     let external = PhysicalPortId::from_str(&interface.name).ok();
                     interfaces.insert(
                         id,
@@ -377,6 +378,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                             device: device_id,
                             external,
                             ips,
+                            use_ospf,
                         },
                     );
                 }

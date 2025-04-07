@@ -196,7 +196,10 @@ impl AccessibleDevice {
 
         let mutations = ResourceMutation::sort_mutations_with_provided_dependencies(
             mutations.as_ref(),
-            [(ReferenceType::Interface, b"lo".into())],
+            [
+                (ReferenceType::Interface, b"lo".into()),
+                (ReferenceType::RoutingTable, b"main".into()),
+            ],
         )?;
         let mut cfg = String::new();
         let mut generator = Generator::new(&mut cfg);
