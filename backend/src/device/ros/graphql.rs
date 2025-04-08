@@ -10,6 +10,7 @@ use crate::{
     topology::access::DeviceAccess,
 };
 use async_graphql::{InputObject, Object, SimpleObject};
+use log::info;
 use mikrotik_model::{
     MikrotikDevice,
     generator::Generator,
@@ -57,10 +58,10 @@ impl DeviceCfg {
     }
     fn generate_mutations(&self) -> Result<Box<[ResourceMutation]>, Error> {
         let mutations = self.base_target.generate_mutations(&self.base_current)?;
-        let mutations = if let (Some(wireless_target), Some(wireles_current)) =
+        let mutations = if let (Some(wireless_target), Some(wireless_current)) =
             (&self.wireless_target, &self.wireless_current)
         {
-            let wireless_mutations = wireless_target.generate_mutations(wireles_current)?;
+            let wireless_mutations = wireless_target.generate_mutations(wireless_current)?;
             mutations.into_iter().chain(wireless_mutations).collect()
         } else {
             mutations
@@ -193,6 +194,9 @@ impl AccessibleDevice {
         let mut device_cfg = self.fetch_config(&client).await?;
         device_cfg.generate_from(&self.device_config);
         let mutations = device_cfg.generate_mutations()?;
+        for m in &mutations {
+            info!("Mutation generated: {:?}", m);
+        }
 
         let mutations = ResourceMutation::sort_mutations_with_provided_dependencies(
             mutations.as_ref(),

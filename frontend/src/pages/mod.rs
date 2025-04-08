@@ -2,16 +2,16 @@ use crate::{
     data::UserSessionData,
     error::FrontendError,
     graphql::{
-        anonymous::{Settings, settings},
+        anonymous::{settings, Settings},
         query_anonymous,
     },
 };
 use gloo::timers::callback::Timeout;
 use google_signin_client::{
-    ButtonType, DismissedReason, GsiButtonConfiguration, IdConfiguration, NotDisplayedReason,
-    PromptResult, initialize, prompt_async, render_button,
+    initialize, prompt_async, render_button, ButtonType, DismissedReason,
+    GsiButtonConfiguration, IdConfiguration, NotDisplayedReason, PromptResult,
 };
-use log::warn;
+use log::{info, warn};
 use patternfly_yew::prelude::{
     Alert, AlertGroup, AlertType, BackdropViewer, Nav, NavItem, NavRouterItem, Page, PageSidebar,
     ToastViewer,
@@ -20,10 +20,10 @@ use routes::{AppRoute, Sidebar};
 use std::time::Duration;
 use web_sys::HtmlElement;
 use yew::{
-    Context, ContextProvider, Html, NodeRef, Properties, ToHtml, function_component, html,
-    html_nested, platform::spawn_local,
+    function_component, html, html_nested, platform::spawn_local, Context, ContextProvider, Html, NodeRef,
+    Properties, ToHtml,
 };
-use yew_nested_router::{Router, prelude::Switch as RouterSwitch};
+use yew_nested_router::{prelude::Switch as RouterSwitch, Router};
 
 pub mod devices;
 pub mod routes;
@@ -97,6 +97,7 @@ impl yew::Component for App {
                 //configuration.set_auto_select(true);
                 let link = ctx.link().clone();
                 configuration.set_callback(Box::new(move |response| {
+                    info!("Got token response: {}", response.credential());
                     link.send_message(AppMessage::TokenReceived(response.credential().to_string()));
                 }));
                 let link = ctx.link().clone();

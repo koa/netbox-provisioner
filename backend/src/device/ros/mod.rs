@@ -6,6 +6,7 @@ use crate::{
 };
 use convert_case::{Case, Casing};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
+use log::error;
 use mikrotik_model::{
     MikrotikDevice,
     ascii::{self, AsciiString},
@@ -18,8 +19,7 @@ use mikrotik_model::{
     },
     value,
 };
-use std::collections::BTreeSet;
-use std::net::IpAddr;
+use std::{collections::BTreeSet, net::IpAddr};
 
 mod graphql;
 
@@ -154,15 +154,18 @@ impl BaseDeviceDataTarget {
 
     fn set_fixed_addresses(&mut self, device: &DeviceAccess) {
         for interface in device.interfaces() {
-            if let Some(port) = interface.external_port().map(|p| p.short_name()) {
-                if self.ethernet.contains_key(&port) {
+            if let Some(port) = interface.external_port().map(|p| p) {
+                if self
+                    .ethernet
+                    .contains_key(&AsciiString::from(port.to_string()))
+                {
                     for ipnet in interface.ips() {
                         match ipnet {
                             IpNet::V4(ip_net) => {
                                 self.ipv_4_address.insert(
                                     *ip_net,
                                     IpAddressByAddress(IpAddressCfg {
-                                        interface: port.clone(),
+                                        interface: port.short_name(),
                                         ..Default::default()
                                     }),
                                 );
@@ -171,13 +174,15 @@ impl BaseDeviceDataTarget {
                                 self.ipv_6_address.insert(
                                     *ip_net,
                                     Ipv6AddressByAddress(Ipv6AddressCfg {
-                                        interface: port.clone(),
+                                        interface: port.short_name(),
                                         ..Default::default()
                                     }),
                                 );
                             }
                         }
                     }
+                } else {
+                    error!("Port not defined {}", port);
                 }
             }
         }

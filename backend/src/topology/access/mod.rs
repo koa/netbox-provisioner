@@ -3,7 +3,6 @@ use crate::topology::{
     VxlanId, WlanData, WlanGroupData, WlanGroupId,
 };
 use ipnet::IpNet;
-use log::info;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::Arc,
@@ -188,10 +187,7 @@ impl WlanGroupAccess {
     }
     pub fn transport_vxlan(&self) -> Option<VxlanAccess> {
         self.data()
-            .and_then(|d| {
-                info!("Transport VXLAN: {:?}", d);
-                d.transport_vxlan
-            })
+            .and_then(|d| d.transport_vxlan)
             .map(|id| VxlanAccess {
                 topology: self.topology.clone(),
                 id,
