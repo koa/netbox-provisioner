@@ -2,14 +2,14 @@ use crate::{
     data::UserSessionData,
     error::FrontendError,
     graphql::{
-        anonymous::{settings, Settings},
+        anonymous::{Settings, settings},
         query_anonymous,
     },
 };
 use gloo::timers::callback::Timeout;
 use google_signin_client::{
-    initialize, prompt_async, render_button, ButtonType, DismissedReason,
-    GsiButtonConfiguration, IdConfiguration, NotDisplayedReason, PromptResult,
+    ButtonType, DismissedReason, GsiButtonConfiguration, IdConfiguration, NotDisplayedReason,
+    PromptResult, initialize, prompt_async, render_button,
 };
 use log::{info, warn};
 use patternfly_yew::prelude::{
@@ -20,10 +20,10 @@ use routes::{AppRoute, Sidebar};
 use std::time::Duration;
 use web_sys::HtmlElement;
 use yew::{
-    function_component, html, html_nested, platform::spawn_local, Context, ContextProvider, Html, NodeRef,
-    Properties, ToHtml,
+    Context, ContextProvider, Html, NodeRef, Properties, ToHtml, function_component, html,
+    html_nested, platform::spawn_local,
 };
-use yew_nested_router::{prelude::Switch as RouterSwitch, Router};
+use yew_nested_router::{Router, prelude::Switch as RouterSwitch};
 
 pub mod devices;
 pub mod routes;
@@ -123,19 +123,17 @@ impl yew::Component for App {
         } else if let Some(error) = &self.error_state {
             let error_message = match error {
                 ErrorState::FrontendError(e) => e.to_html(),
-                ErrorState::PromptResult(PromptResult::NotDisplayed(
-                    NotDisplayedReason::SuppressedByUser,
-                )) => {
+                ErrorState::PromptResult(PromptResult::NotDisplayed) => {
                     html! {
                         <AlertGroup>
-                            <Alert inline=true title="Not Displayed" r#type={AlertType::Danger}>{"Suppressed by user"}</Alert>
+                            <Alert inline=true title="Not Displayed" r#type={AlertType::Danger}>{"Prompt was not displayed to the user"}</Alert>
                         </AlertGroup>
                     }
                 }
-                ErrorState::PromptResult(PromptResult::Skipped(skipped_reason)) => {
+                ErrorState::PromptResult(PromptResult::Skipped) => {
                     html! {
                         <AlertGroup>
-                            <Alert inline=true title="Skipped" r#type={AlertType::Danger}>{format!("{skipped_reason:?}")}</Alert>
+                            <Alert inline=true title="Skipped" r#type={AlertType::Danger}>{"Prompt skipped by the user"}</Alert>
                         </AlertGroup>
                     }
                 }
@@ -143,13 +141,6 @@ impl yew::Component for App {
                     html! {
                         <AlertGroup>
                             <Alert inline=true title="Dismissed" r#type={AlertType::Danger}>{format!("{reason:?}")}</Alert>
-                        </AlertGroup>
-                    }
-                }
-                ErrorState::PromptResult(PromptResult::NotDisplayed(reason)) => {
-                    html! {
-                        <AlertGroup>
-                            <Alert inline=true title="Not Displayed" r#type={AlertType::Danger}>{format!("{reason:?}")}</Alert>
                         </AlertGroup>
                     }
                 }

@@ -1,7 +1,10 @@
 use crate::{
     Error,
     config::CONFIG,
-    device::{AccessibleDevice, Credentials},
+    device::{
+        AccessibleDevice, Credentials,
+        ros::hw_facts::{build_ethernet_ports, build_wireless_ports},
+    },
     topology::access::{DeviceAccess, InterfaceAccess},
 };
 use convert_case::{Case, Casing};
@@ -10,7 +13,6 @@ use log::error;
 use mikrotik_model::{
     MikrotikDevice,
     ascii::{self, AsciiString},
-    hwconfig::DeviceType,
     mikrotik_model,
     model::{
         InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress, IpAddressCfg,
@@ -22,6 +24,7 @@ use mikrotik_model::{
 use std::{collections::BTreeSet, net::IpAddr};
 
 mod graphql;
+mod hw_facts;
 
 impl AccessibleDevice {
     pub async fn create_client(
@@ -93,10 +96,13 @@ mikrotik_model!(
     ),
 );
 impl BaseDeviceDataTarget {
-    fn new(device_type: DeviceType) -> Self {
+    fn new(model: &[u8]) -> Self {
+        let ethernet_ports = build_ethernet_ports(model);
+        if ethernet_ports.is_empty() {
+            error!("No ethernet ports found for device {}",   AsciiString::from(model));
+        }
         Self {
-            ethernet: device_type
-                .build_ethernet_ports()
+            ethernet: ethernet_ports
                 .into_iter()
                 .map(|e| (e.default_name, e.data))
                 .collect(),
@@ -269,11 +275,10 @@ mikrotik_model!(
 );
 
 impl WirelessDeviceDataTarget {
-    fn new(device_type: DeviceType) -> Self {
+    fn new(model: &[u8]) -> Self {
         Self {
             wireless_cap: Default::default(),
-            wireless: device_type
-                .build_wireless_ports()
+            wireless: build_wireless_ports(model)
                 .into_iter()
                 .map(|e| (e.default_name, e.data))
                 .collect(),
@@ -290,7 +295,7 @@ mikrotik_model!(
     ),
 );
 impl WifiDeviceDataTarget {
-    fn new(device_type: DeviceType) -> Self {
+    fn new(model: &[u8]) -> Self {
         Self {
             datapath: Default::default(),
             cap: Default::default(),

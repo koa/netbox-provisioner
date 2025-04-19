@@ -4,9 +4,9 @@ use google_signin_client::prompt_async;
 use graphql_client::reqwest::post_graphql;
 use graphql_client::{GraphQLQuery, Response};
 use lazy_static::lazy_static;
-use reqwest::header::{HeaderMap, AUTHORIZATION};
-use yew::html::Scope;
+use reqwest::header::{AUTHORIZATION, HeaderMap};
 use yew::Component;
+use yew::html::Scope;
 
 pub mod anonymous;
 pub mod authenticated;
