@@ -1,25 +1,26 @@
 use crate::{
     Error,
     config::CONFIG,
-    device::{
-        AccessibleDevice, Credentials,
-        ros::hw_facts::{build_ethernet_ports, build_wireless_ports},
+    device::{AccessibleDevice, Credentials, ros::hw_facts::build_ethernet_ports},
+    topology::{
+        PhysicalPortId,
+        access::{DeviceAccess, InterfaceAccess},
     },
-    topology::access::{DeviceAccess, InterfaceAccess},
 };
 use convert_case::{Case, Casing};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
-use log::error;
+use log::{error, info};
 use mikrotik_model::{
     MikrotikDevice,
     ascii::{self, AsciiString},
     mikrotik_model,
     model::{
-        InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress, IpAddressCfg,
-        Ipv6AddressByAddress, Ipv6AddressCfg, RoutingOspfInstanceByName, RoutingOspfInstanceCfg,
-        RoutingOspfInstanceVersion, RoutingRedistribute,
+        InterfaceBridgeProtocolMode, InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress,
+        IpAddressCfg, Ipv6AddressByAddress, Ipv6AddressCfg, RoutingOspfInstanceByName,
+        RoutingOspfInstanceCfg, RoutingOspfInstanceVersion, RoutingRedistribute,
     },
     value,
+    value::PossibleRangeDash,
 };
 use std::{collections::BTreeSet, net::IpAddr};
 
@@ -83,6 +84,10 @@ mikrotik_model!(
             path = "interface/bridge/port",
             keys(bridge, interface)
         )),
+        bridge_vlan(by_id(
+            path = "interface/bridge/vlan",
+            keys(bridge, tagged, vlan_ids)
+        )),
         ipv4_address(by_key(path = "ip/address", key = address)),
         ipv6_address(by_key(path = "ipv6/address", key = address)),
         vxlan(by_key(path = "interface/vxlan", key = name)),
@@ -95,11 +100,17 @@ mikrotik_model!(
         ospf_interface(by_id(path = "routing/ospf/interface-template", keys(area))),
     ),
 );
+
+const CAPS_BRIDGE_NAME: &'static [u8; 11] = b"bridge-caps";
+
 impl BaseDeviceDataTarget {
     fn new(model: &[u8]) -> Self {
         let ethernet_ports = build_ethernet_ports(model);
         if ethernet_ports.is_empty() {
-            error!("No ethernet ports found for device {}",   AsciiString::from(model));
+            error!(
+                "No ethernet ports found for device {}",
+                AsciiString::from(model)
+            );
         }
         Self {
             ethernet: ethernet_ports
@@ -118,6 +129,7 @@ impl BaseDeviceDataTarget {
             vxlan_vteps: Default::default(),
             ospf_instance: Default::default(),
             ospf_interface: Default::default(),
+            bridge_vlan: Default::default(),
         }
     }
     fn set_identity(&mut self, name: impl Into<AsciiString>) {
@@ -128,9 +140,17 @@ impl BaseDeviceDataTarget {
         if let Some(loopback_ip) = device.loopback_ip() {
             self.set_loopback_ip(loopback_ip);
         }
+
         self.set_fixed_addresses(device);
         self.setup_ospf(device);
+        self.setup_wlan_ap(device);
+    }
+
+    fn setup_wlan_ap(&mut self, device: &DeviceAccess) {
         if let Some(wlan_group) = device.wlan_ap_of() {
+            let bridge_caps = self.bridge.entry(CAPS_BRIDGE_NAME.into()).or_default();
+            bridge_caps.0.vlan_filtering = true;
+            bridge_caps.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
             if let (Some(vxlan), Some(my_ip)) =
                 (wlan_group.transport_vxlan(), device.primary_ip_v4())
             {
@@ -142,6 +162,19 @@ impl BaseDeviceDataTarget {
                         .map(AsciiString::from),
                     vxlan.vni(),
                 ) {
+                    self.bridge_port
+                        .entry((CAPS_BRIDGE_NAME.into(), name.clone()))
+                        .or_default();
+                    self.bridge_vlan
+                        .entry((
+                            CAPS_BRIDGE_NAME.into(),
+                            BTreeSet::from([name.clone()]),
+                            BTreeSet::from([PossibleRangeDash::Range {
+                                start: 1,
+                                end: 4094,
+                            }]),
+                        ))
+                        .or_default();
                     self.vxlan.insert(
                         name.clone(),
                         InterfaceVxlanByName(InterfaceVxlanCfg {
@@ -160,35 +193,44 @@ impl BaseDeviceDataTarget {
 
     fn set_fixed_addresses(&mut self, device: &DeviceAccess) {
         for interface in device.interfaces() {
-            if let Some(port) = interface.external_port().map(|p| p) {
-                if self
-                    .ethernet
-                    .contains_key(&AsciiString::from(port.to_string()))
-                {
-                    for ipnet in interface.ips() {
-                        match ipnet {
-                            IpNet::V4(ip_net) => {
-                                self.ipv_4_address.insert(
-                                    *ip_net,
-                                    IpAddressByAddress(IpAddressCfg {
-                                        interface: port.short_name(),
-                                        ..Default::default()
-                                    }),
-                                );
-                            }
-                            IpNet::V6(ip_net) => {
-                                self.ipv_6_address.insert(
-                                    *ip_net,
-                                    Ipv6AddressByAddress(Ipv6AddressCfg {
-                                        interface: port.short_name(),
-                                        ..Default::default()
-                                    }),
-                                );
-                            }
+            if let (Some(port), Some(name)) =
+                (interface.external_port(), interface.interface_name())
+            {
+                for ip_net in interface.ips() {
+                    match ip_net {
+                        IpNet::V4(ip_net) => {
+                            self.ipv_4_address.insert(
+                                *ip_net,
+                                IpAddressByAddress(IpAddressCfg {
+                                    interface: name.clone(),
+                                    ..Default::default()
+                                }),
+                            );
+                        }
+                        IpNet::V6(ip_net) => {
+                            self.ipv_6_address.insert(
+                                *ip_net,
+                                Ipv6AddressByAddress(Ipv6AddressCfg {
+                                    interface: name.clone(),
+                                    ..Default::default()
+                                }),
+                            );
                         }
                     }
-                } else {
-                    error!("Port not defined {}", port);
+                }
+                match &port {
+                    PhysicalPortId::Ethernet(_) | PhysicalPortId::SfpSfpPlus(_) => {
+                        if let Some(ethernet) =
+                            self.ethernet.get_mut(&AsciiString::from(port.to_string()))
+                        {
+                            ethernet.name = name;
+                        } else {
+                            error!("Ethernet Port not defined {}", port);
+                        }
+                    }
+                    PhysicalPortId::Wifi(_) => {}
+                    PhysicalPortId::Wlan(_) => {}
+                    PhysicalPortId::Loopback => {}
                 }
             }
         }
@@ -223,8 +265,7 @@ impl BaseDeviceDataTarget {
                 .interfaces()
                 .into_iter()
                 .filter(InterfaceAccess::use_ospf)
-                .filter_map(|i| InterfaceAccess::external_port(&i))
-                .map(|p| p.short_name())
+                .filter_map(|i| i.interface_name())
                 .collect::<BTreeSet<_>>();
             if !ports.is_empty() {
                 let v2_instance = self
@@ -256,11 +297,13 @@ impl BaseDeviceDataTarget {
                     .entry((b"backbone-v2".into(),))
                     .or_default();
                 v2_backbone.interfaces = ports.clone();
+                v2_backbone.use_bfd = Some(false);
                 let v3_backbone = self
                     .ospf_interface
                     .entry((b"backbone-v3".into(),))
                     .or_default();
                 v3_backbone.interfaces = ports.clone();
+                v3_backbone.use_bfd = Some(false);
             }
         }
     }
@@ -268,20 +311,13 @@ impl BaseDeviceDataTarget {
 mikrotik_model!(
     name = WirelessDeviceData,
     detect = new,
-    fields(
-        wireless_cap(single = "interface/wireless/cap"),
-        wireless(by_key(path = "interface/wireless", key = defaultName)),
-    ),
+    fields(wireless_cap(single = "interface/wireless/cap"),),
 );
 
 impl WirelessDeviceDataTarget {
     fn new(model: &[u8]) -> Self {
         Self {
             wireless_cap: Default::default(),
-            wireless: build_wireless_ports(model)
-                .into_iter()
-                .map(|e| (e.default_name, e.data))
-                .collect(),
         }
     }
     fn generate_from(&mut self, device: &DeviceAccess) {}

@@ -3,7 +3,7 @@ use access::DeviceAccess;
 use async_graphql::{Interface, SimpleObject, Union};
 use ipnet::IpNet;
 use lazy_static::lazy_static;
-use log::error;
+use log::{error, info};
 use mikrotik_model::ascii::AsciiString;
 use regex::Regex;
 use std::{
@@ -12,8 +12,12 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
-use tokio::sync::{Mutex, MutexGuard};
+use tokio::{
+    sync::{Mutex, MutexGuard},
+    time::Instant,
+};
 
 pub mod access;
 pub mod fetch;
@@ -36,10 +40,21 @@ impl TopologyHolder {
         }
     }
     pub async fn topo_lock(&self) -> MutexGuard<Option<Arc<Topology>>> {
-        if self.data.lock().await.is_none() {
+        let outdated = {
+            let guard = self.data.lock().await;
+            if let Some(data) = &*guard {
+                let duration = data.fetch_time.elapsed();
+                duration > Duration::from_secs(10)
+            } else {
+                true
+            }
+        };
+        if outdated {
+            info!("Fetch Topology");
             if let Err(e) = self.fetch().await {
                 error!("Cannot fetch topology data: {e}");
             }
+            info!("Topology fetched");
         }
         self.data.lock().await
     }
@@ -60,8 +75,9 @@ impl TopologyHolder {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Topology {
+    fetch_time: Instant,
     devices: HashMap<DeviceId, Device>,
     interfaces: HashMap<InterfaceId, Interface>,
     cable_path_endpoints: HashMap<CablePort, HashSet<CablePort>>,
@@ -137,6 +153,7 @@ impl Device {
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct Interface {
     name: Box<str>,
+    label: Box<str>,
     device: DeviceId,
     external: Option<PhysicalPortId>,
     ips: Box<[IpNet]>,
@@ -149,6 +166,7 @@ pub enum PhysicalPortId {
     SfpSfpPlus(u16),
     Wifi(u16),
     Wlan(u16),
+    Loopback,
 }
 lazy_static! {
     static ref ETHER_PORT_PATTERN: Regex = Regex::new("ether([0-9]+)").unwrap();
@@ -171,6 +189,7 @@ impl PhysicalPortId {
             PhysicalPortId::Wlan(id) => {
                 format!("w{id:02}")
             }
+            PhysicalPortId::Loopback => "lo".to_string(),
         })
     }
 }
@@ -178,7 +197,9 @@ impl FromStr for PhysicalPortId {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(c) = ETHER_PORT_PATTERN
+        if s == "lo" {
+            Ok(PhysicalPortId::Loopback)
+        } else if let Some(c) = ETHER_PORT_PATTERN
             .captures(s)
             .and_then(|c| c.get(1).and_then(|c| u16::from_str(c.as_str()).ok()))
         {
@@ -219,6 +240,7 @@ impl Display for PhysicalPortId {
             PhysicalPortId::Wlan(id) => {
                 write!(f, "wlan{}", id)
             }
+            PhysicalPortId::Loopback => f.write_str("lo"),
         }
     }
 }

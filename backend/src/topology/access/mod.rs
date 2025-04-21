@@ -3,6 +3,7 @@ use crate::topology::{
     VxlanId, WlanData, WlanGroupData, WlanGroupId,
 };
 use ipnet::IpNet;
+use mikrotik_model::ascii::AsciiString;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::Arc,
@@ -123,6 +124,12 @@ impl InterfaceAccess {
     pub fn name(&self) -> &str {
         self.data().map(|d| d.name.as_ref()).unwrap_or_default()
     }
+    pub fn label(&self) -> Option<&str> {
+        self.data()
+            .map(|d| d.label.as_ref())
+            .filter(|l| !l.is_empty())
+    }
+
     pub fn use_ospf(&self) -> bool {
         self.data().map(|d| d.use_ospf).unwrap_or(false)
     }
@@ -161,6 +168,30 @@ impl InterfaceAccess {
     }
     pub fn ips(&self) -> &[IpNet] {
         self.data().map(|d| d.ips.as_ref()).unwrap_or_default()
+    }
+    pub fn interface_name(&self) -> Option<AsciiString> {
+        self.external_port().map(|port| {
+            if let Some(label) = self.label() {
+                let mut name = port.short_name().0.to_vec();
+                name.push(b'-');
+                for char in label.chars() {
+                    if char.is_ascii_alphanumeric() {
+                        name.push(char as u8);
+                    } else {
+                        match char {
+                            '-' | '.' => name.push(b'-'),
+                            'ä' => name.extend_from_slice(b"ae"),
+                            'ö' => name.extend_from_slice(b"oe"),
+                            'ü' => name.extend_from_slice(b"ue"),
+                            _ => {}
+                        }
+                    }
+                }
+                name.into_boxed_slice().into()
+            } else {
+                port.short_name()
+            }
+        })
     }
 }
 

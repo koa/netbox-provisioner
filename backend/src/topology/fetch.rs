@@ -15,6 +15,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     str::FromStr,
 };
+use tokio::time::Instant;
 
 #[derive(Debug, Default)]
 struct CableChain {
@@ -153,6 +154,7 @@ impl InternalDeviceConnection {
 }
 
 pub async fn build_topology() -> Result<Topology, NetboxError> {
+    let fetch_time = Instant::now();
     let data = fetch_topology().await?;
     let mut internal_connections = HashMap::<_, HashSet<_>>::new();
     let mut cable_chains = Vec::<CableChain>::new();
@@ -375,6 +377,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                         id,
                         Interface {
                             name: interface.name.into_boxed_str(),
+                            label: interface.label.into_boxed_str(),
                             device: device_id,
                             external,
                             ips,
@@ -455,6 +458,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
     }
 
     Ok(Topology {
+        fetch_time,
         devices,
         interfaces,
         cable_path_endpoints,

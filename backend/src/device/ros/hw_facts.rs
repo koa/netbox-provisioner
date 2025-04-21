@@ -1,7 +1,7 @@
 use mikrotik_model::{
     hwconfig::{
-        generate_ethernet, generate_wifi, generate_wlan, EthernetNamePattern, ADVERTISE_100M,
-        ADVERTISE_10G, ADVERTISE_10G_FULL, ADVERTISE_1G, ADVERTISE_1G_FULL, ADVERTISE_1G_SFP,
+        ADVERTISE_1G, ADVERTISE_1G_FULL, ADVERTISE_1G_SFP, ADVERTISE_10G, ADVERTISE_10G_FULL,
+        ADVERTISE_100M, EthernetNamePattern, generate_ethernet, generate_wifi, generate_wlan,
     },
     model::{
         InterfaceEthernetByDefaultName, InterfaceWifiByDefaultName, InterfaceWirelessByDefaultName,
@@ -11,6 +11,24 @@ use std::iter::repeat_n;
 
 pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName]> {
     match model {
+        b"RB962UiGS-5HacT2HnT" => repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
+            4,
+        )
+        .chain(repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, true),
+            1,
+        ))
+        .enumerate()
+        .chain(
+            repeat_n(
+                generate_ethernet(EthernetNamePattern::Sfp, &ADVERTISE_1G_SFP, 1600, false),
+                1,
+            )
+            .enumerate(),
+        )
+        .map(|(idx, generator)| generator(idx + 1))
+        .collect(),
         b"RB750Gr3" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1596, false),
             5,
@@ -33,7 +51,7 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
         b"CRS318-16P-2S+" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1592, false),
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1592, true),
             16,
         )
         .enumerate()

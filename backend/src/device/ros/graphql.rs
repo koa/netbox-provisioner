@@ -193,6 +193,7 @@ impl AccessibleDevice {
             .await?;
         let mut device_cfg = self.fetch_config(&client).await?;
         device_cfg.generate_from(&self.device_config);
+
         let mutations = device_cfg.generate_mutations()?;
         for m in &mutations {
             info!("Mutation generated: {:?}", m);
