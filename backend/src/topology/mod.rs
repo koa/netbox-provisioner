@@ -156,8 +156,17 @@ pub struct Interface {
     label: Box<str>,
     device: DeviceId,
     external: Option<PhysicalPortId>,
+    port_type: Option<PortType>,
     ips: Box<[IpNet]>,
     use_ospf: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Copy)]
+pub enum PortType {
+    Ethernet,
+    Wireless,
+    Loopback,
+    Bridge,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]

@@ -4,12 +4,13 @@ use crate::{
         fetch_topology::FetchTopologyL2vpnListTerminationsAssignedObject,
     },
     topology::{
-        CablePort, Device, DeviceId, Interface, InterfaceId, PhysicalPortId, Topology, VxlanData,
-        VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId, WlanOpenSettings, WlanWpaSettings,
-        fetch::fetch_topology::CableConnectionTermination,
+        CablePort, Device, DeviceId, Interface, InterfaceId, PhysicalPortId, PortType, Topology,
+        VxlanData, VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId, WlanOpenSettings,
+        WlanWpaSettings, fetch::fetch_topology::CableConnectionTermination,
     },
 };
 use ipnet::IpNet;
+use log::warn;
 use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -373,6 +374,17 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                         .collect();
                     let use_ospf = interface.tags.iter().any(|t| t.slug == "ospf");
                     let external = PhysicalPortId::from_str(&interface.name).ok();
+                    let port_type = match interface.type_.as_str() {
+                        "10gbase-x-sfpp" | "1000base-x-sfp" | "1000base-t" | "100base-tx"
+                        | "40gbase-x-qsfpp" => Some(PortType::Ethernet),
+                        "ieee802.11n" | "ieee802.11ac" | "ieee802.11ad" => Some(PortType::Wireless),
+                        "bridge" => Some(PortType::Bridge),
+                        "virtual" => Some(PortType::Loopback),
+                        &_ => {
+                            warn!("Unknown interface type: {}", interface.type_);
+                            None
+                        }
+                    };
                     interfaces.insert(
                         id,
                         Interface {
@@ -380,6 +392,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                             label: interface.label.into_boxed_str(),
                             device: device_id,
                             external,
+                            port_type,
                             ips,
                             use_ospf,
                         },

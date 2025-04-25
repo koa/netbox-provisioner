@@ -23,7 +23,7 @@ query FetchTopology{
             bridge {
                 id
             }
-            tags(filters: {slug: {exact: "ospf"}}){
+            tags{
                 slug
             }
         }

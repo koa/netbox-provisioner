@@ -89,6 +89,7 @@ type AggregateType {
     changelog: [ObjectChangeType!]!
     class_type: String!
     comments: String!
+    contacts(filters: ContactAssignmentFilter): [ContactAssignmentType!]!
     created: DateTime
     custom_field_data: JSON!
     custom_fields: JSON!
@@ -268,6 +269,7 @@ type ClusterGroupType {
     changelog: [ObjectChangeType!]!
     class_type: String!
     clusters(filters: ClusterFilter): [ClusterType!]!
+    contacts(filters: ContactAssignmentFilter): [ContactAssignmentType!]!
     created: DateTime
     custom_field_data: JSON!
     custom_fields: JSON!
@@ -286,6 +288,7 @@ type ClusterType {
     changelog: [ObjectChangeType!]!
     class_type: String!
     comments: String!
+    contacts(filters: ContactAssignmentFilter): [ContactAssignmentType!]!
     created: DateTime
     custom_field_data: JSON!
     custom_fields: JSON!
@@ -1087,6 +1090,7 @@ type IPAddressType {
     changelog: [ObjectChangeType!]!
     class_type: String!
     comments: String!
+    contacts(filters: ContactAssignmentFilter): [ContactAssignmentType!]!
     created: DateTime
     custom_field_data: JSON!
     custom_fields: JSON!
@@ -1113,6 +1117,7 @@ type IPRangeType {
     changelog: [ObjectChangeType!]!
     class_type: String!
     comments: String!
+    contacts(filters: ContactAssignmentFilter): [ContactAssignmentType!]!
     created: DateTime
     custom_field_data: JSON!
     custom_fields: JSON!
@@ -1843,6 +1848,7 @@ type PrefixType {
     changelog: [ObjectChangeType!]!
     class_type: String!
     comments: String!
+    contacts(filters: ContactAssignmentFilter): [ContactAssignmentType!]!
     created: DateTime
     custom_field_data: JSON!
     custom_fields: JSON!
@@ -1871,6 +1877,7 @@ type ProviderAccountType {
     circuits(filters: CircuitFilter): [CircuitType!]!
     class_type: String!
     comments: String!
+    contacts(filters: ContactAssignmentFilter): [ContactAssignmentType!]!
     created: DateTime
     custom_field_data: JSON!
     custom_fields: JSON!
@@ -2488,6 +2495,7 @@ type ServiceType {
     changelog: [ObjectChangeType!]!
     class_type: String!
     comments: String!
+    contacts(filters: ContactAssignmentFilter): [ContactAssignmentType!]!
     created: DateTime
     custom_field_data: JSON!
     custom_fields: JSON!
@@ -2644,6 +2652,7 @@ type TenantType {
     class_type: String!
     clusters(filters: ClusterFilter): [ClusterType!]!
     comments: String!
+    contacts(filters: ContactAssignmentFilter): [ContactAssignmentType!]!
     created: DateTime
     custom_field_data: JSON!
     custom_fields: JSON!
@@ -2684,6 +2693,7 @@ for example.
 type TunnelGroupType {
     changelog: [ObjectChangeType!]!
     class_type: String!
+    contacts(filters: ContactAssignmentFilter): [ContactAssignmentType!]!
     created: DateTime
     custom_field_data: JSON!
     custom_fields: JSON!
@@ -2720,6 +2730,7 @@ type TunnelType {
     changelog: [ObjectChangeType!]!
     class_type: String!
     comments: String!
+    contacts(filters: ContactAssignmentFilter): [ContactAssignmentType!]!
     created: DateTime
     custom_field_data: JSON!
     custom_fields: JSON!
@@ -3229,6 +3240,8 @@ input ASNFilter {
     rir: [String!]
     rir_id: [String!]
     site: [String!]
+    site_group: [String!]
+    site_group_id: [String!]
     site_id: [String!]
     tag: [String!]
     tenant: [String!]
@@ -3275,6 +3288,9 @@ input AggregateFilter {
     DISTINCT: Boolean
     NOT: AggregateFilter
     OR: AggregateFilter
+    contact: [String!]
+    contact_group: [String!]
+    contact_role: [String!]
     created: DatetimeFilterLookup
     created_by_request: String
     date_added: DateFilterLookup
@@ -3386,6 +3402,7 @@ input CircuitFilter {
     id: IDFilterLookup
     install_date: DateFilterLookup
     last_updated: DatetimeFilterLookup
+    location_id: [String!]
     modified_by_request: String
     provider: [String!]
     provider_account: [String!]
@@ -4635,6 +4652,9 @@ input IPAddressFilter {
     assigned_object_id: IntFilterLookup
     assigned_object_type: DjangoModelFilterInput
     assigned_to_interface: Boolean
+    contact: [String!]
+    contact_group: [String!]
+    contact_role: [String!]
     created: DatetimeFilterLookup
     created_by_request: String
     description: StrFilterLookup
@@ -4679,6 +4699,9 @@ input IPRangeFilter {
     DISTINCT: Boolean
     NOT: IPRangeFilter
     OR: IPRangeFilter
+    contact: [String!]
+    contact_group: [String!]
+    contact_role: [String!]
     contains: String
     created: DatetimeFilterLookup
     created_by_request: String
@@ -5060,6 +5083,9 @@ input L2VPNFilter {
     DISTINCT: Boolean
     NOT: L2VPNFilter
     OR: L2VPNFilter
+    contact: [String!]
+    contact_group: [String!]
+    contact_role: [String!]
     created: DatetimeFilterLookup
     created_by_request: String
     description: StrFilterLookup
@@ -5614,6 +5640,9 @@ input PrefixFilter {
     NOT: PrefixFilter
     OR: PrefixFilter
     children: [String!]
+    contact: [String!]
+    contact_group: [String!]
+    contact_role: [String!]
     contains: String
     created: DatetimeFilterLookup
     created_by_request: String
@@ -5666,6 +5695,9 @@ input ProviderAccountFilter {
     NOT: ProviderAccountFilter
     OR: ProviderAccountFilter
     account: StrFilterLookup
+    contact: [String!]
+    contact_group: [String!]
+    contact_role: [String!]
     created: DatetimeFilterLookup
     created_by_request: String
     description: StrFilterLookup
@@ -6104,6 +6136,9 @@ input ServiceFilter {
     DISTINCT: Boolean
     NOT: ServiceFilter
     OR: ServiceFilter
+    contact: [String!]
+    contact_group: [String!]
+    contact_role: [String!]
     created: DatetimeFilterLookup
     created_by_request: String
     description: StrFilterLookup
@@ -6316,6 +6351,9 @@ input TunnelFilter {
     DISTINCT: Boolean
     NOT: TunnelFilter
     OR: TunnelFilter
+    contact: [String!]
+    contact_group: [String!]
+    contact_role: [String!]
     created: DatetimeFilterLookup
     created_by_request: String
     description: StrFilterLookup
@@ -6349,6 +6387,9 @@ input TunnelGroupFilter {
     DISTINCT: Boolean
     NOT: TunnelGroupFilter
     OR: TunnelGroupFilter
+    contact: [String!]
+    contact_group: [String!]
+    contact_role: [String!]
     created: DatetimeFilterLookup
     created_by_request: String
     description: StrFilterLookup
