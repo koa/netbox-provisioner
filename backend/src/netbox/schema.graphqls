@@ -12,7 +12,7 @@ union CircuitTerminationTerminationType = LocationType | ProviderNetworkType | R
 
 union ClusterScopeType = LocationType | RegionType | SiteGroupType | SiteType
 
-union ConnectedEndpointType = CircuitTerminationType | ConsolePortType | ConsoleServerPortType | FrontPortType | InterfaceType | PowerFeedType | PowerOutletType | PowerPortType | ProviderNetworkType | RearPortType
+union ConnectedEndpointType = CircuitTerminationType | ConsolePortType | ConsoleServerPortType | FrontPortType | InterfaceType | PowerFeedType | PowerOutletType | PowerPortType | ProviderNetworkType | RearPortType | VirtualCircuitTerminationType
 
 union FHRPGroupInterfaceType = InterfaceType | VMInterfaceType
 
@@ -1358,7 +1358,7 @@ type InventoryItemType {
     last_updated: DateTime
     level: Int!
     lft: Int!
-    manufacturer: ManufacturerType!
+    manufacturer: ManufacturerType
     name: String!
     parent: InventoryItemType
     part_id: String!
@@ -4230,6 +4230,7 @@ input DeviceFilter {
     last_updated: DatetimeFilterLookup
     latitude: DecimalFilterLookup
     local_context_data: Boolean
+    location: [String!]
     location_id: [String!]
     longitude: DecimalFilterLookup
     mac_address: [String!]
@@ -5680,6 +5681,8 @@ input PrefixFilter {
     tenant_group_id: [String!]
     tenant_id: [String!]
     updated_by_request: String
+    vlan_group: [String!]
+    vlan_group_id: [String!]
     vlan_id: [String!]
     vlan_vid: Int
     vrf: [String!]

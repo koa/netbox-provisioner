@@ -26,6 +26,13 @@ query FetchTopology{
             tags{
                 slug
             }
+            untagged_vlan {
+                name
+                id
+                group {
+                    name
+                }
+            }
         }
         platform {
             name
