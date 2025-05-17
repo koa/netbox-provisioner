@@ -5,14 +5,15 @@ use crate::{
     },
     topology::{
         CablePort, Device, DeviceId, Interface, InterfaceId, PhysicalPortId, PortType, Topology,
-        VxlanData, VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId, WlanOpenSettings,
-        WlanWpaSettings, fetch::fetch_topology::CableConnectionTermination,
+        VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData,
+        WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
+        fetch::fetch_topology::CableConnectionTermination,
     },
 };
 use ipnet::IpNet;
 use log::warn;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     str::FromStr,
 };
@@ -271,47 +272,52 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
     let mut wlan_groups = HashMap::new();
     let mut controllers = HashMap::new();
     let mut wlan_member_devices = HashMap::<_, Vec<_>>::new();
+    let mut wlans = HashMap::new();
+    let mut wlans_of_vlan = HashMap::<_, BTreeSet<_>>::new();
+    let mut interfaces_of_vlan = HashMap::<_, BTreeSet<_>>::new();
 
     for wlan_group in data.wireless_lan_group_list {
-        if let (Some(id), Some(controller)) = (
+        if let (Some(wlan_group_id), Some(controller)) = (
             wlan_group.id.parse().ok().map(WlanGroupId),
             wlan_group.custom_fields.controller.map(DeviceId),
         ) {
-            controllers.insert(controller, id);
-            let transport_vxlan = wlan_group.custom_fields.l2_overlay.map(VxlanId);
-            let wlans = wlan_group
-                .wireless_lans
-                .into_iter()
-                .filter_map(|wlan| {
-                    if let (Some(wlan_auth), Some(vlan)) = (
-                        match wlan.auth_type.as_deref() {
-                            Some("wpa-personal") => Some(WlanAuth::Wpa(WlanWpaSettings {
-                                key: wlan.auth_psk.into_boxed_str(),
-                            })),
-                            Some("open") => {
-                                Some(WlanAuth::Open(WlanOpenSettings { use_owe: true }))
-                            }
-                            _ => None,
-                        },
-                        wlan.vlan.map(|vlan| vlan.vid as u16),
-                    ) {
-                        Some(WlanData {
+            controllers.insert(controller, wlan_group_id);
+            let mgmt_vlan = wlan_group.custom_fields.wlan_mgmt.map(VlanId);
+            let mut wlans_ids = BTreeSet::new();
+            for wlan in wlan_group.wireless_lans {
+                let vlan = wlan.vlan.and_then(|vlan| vlan.id.parse().ok()).map(VlanId);
+                if let (Some(id), Some(wlan_auth)) = (
+                    wlan.id.parse().ok().map(WlanId),
+                    match wlan.auth_type.as_deref() {
+                        Some("wpa-personal") => Some(WlanAuth::Wpa(WlanWpaSettings {
+                            key: wlan.auth_psk.into_boxed_str(),
+                        })),
+                        Some("open") => Some(WlanAuth::Open(WlanOpenSettings { use_owe: true })),
+                        _ => None,
+                    },
+                ) {
+                    wlans_ids.insert(id);
+                    wlans.insert(
+                        id,
+                        WlanData {
                             ssid: wlan.ssid.into_boxed_str(),
                             vlan,
                             wlan_auth,
-                        })
-                    } else {
-                        None
+                            wlan_group: wlan_group_id,
+                        },
+                    );
+                    if let Some(vlan) = vlan {
+                        wlans_of_vlan.entry(vlan).or_default().insert(id);
                     }
-                })
-                .collect();
+                }
+            }
             wlan_groups.insert(
-                id,
+                wlan_group_id,
                 WlanGroupData {
-                    transport_vxlan,
+                    mgmt_vlan,
                     controller,
                     aps: Box::new([]),
-                    wlans,
+                    wlans: wlans_ids.into_iter().collect(),
                 },
             );
         }
@@ -385,6 +391,9 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                             None
                         }
                     };
+                    let vlan = interface
+                        .untagged_vlan
+                        .and_then(|vlan| vlan.id.parse().ok().map(VlanId));
                     interfaces.insert(
                         id,
                         Interface {
@@ -393,25 +402,30 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                             device: device_id,
                             external,
                             port_type,
+                            vlan,
                             ips,
                             use_ospf,
                         },
                     );
+                    if let Some(vlan_id) = vlan {
+                        interfaces_of_vlan.entry(vlan_id).or_default().insert(id);
+                    }
                 }
             }
             let platform = device.platform.map(|p| p.name).unwrap_or_default();
             let serial = Some(device.serial.into_boxed_str()).filter(|s| !s.is_empty());
             let wlan_controller_of = controllers.get(&device_id).cloned();
             let wlan_ap_of = device.custom_field_data.wlan_group.map(WlanGroupId);
-            let wlan_vxlan = if let Some(wlan_group) = wlan_ap_of {
+            let mut vlans = HashSet::new();
+            if let Some(wlan_group) = wlan_ap_of {
                 wlan_member_devices
                     .entry(wlan_group)
                     .or_default()
                     .push(device_id);
-                wlan_groups.get(&wlan_group).and_then(|d| d.transport_vxlan)
-            } else {
-                None
-            };
+                if let Some(mgmt_vlan) = wlan_groups.get(&wlan_group).and_then(|d| d.mgmt_vlan) {
+                    vlans.insert(mgmt_vlan);
+                }
+            }
             devices.insert(
                 device_id,
                 Device {
@@ -426,7 +440,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                     serial,
                     wlan_controller_of,
                     wlan_ap_of,
-                    wlan_vxlan,
+                    vlans: vlans.into_iter().collect(),
                 },
             );
         }
@@ -436,37 +450,76 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             group.aps = devices.into_boxed_slice();
         }
     }
+    let mut vxlan_of_vlan = HashMap::new();
     for l2vpn_entry in data.l2vpn_list {
         if l2vpn_entry.type_.as_str() == "vxlan" {
             if let (Some(vxlan_id), Some(vni)) = (
                 l2vpn_entry.id.parse().ok().map(VxlanId),
                 l2vpn_entry.identifier.map(|id| id as u32),
             ) {
-                let terminations = l2vpn_entry
-                    .terminations
-                    .into_iter()
-                    .filter_map(|t| match t.assigned_object {
+                let mut interface_terminations = BTreeSet::new();
+                let mut vlan_terminations = BTreeSet::new();
+                for termination in l2vpn_entry.terminations.into_iter() {
+                    match termination.assigned_object {
                         FetchTopologyL2vpnListTerminationsAssignedObject::InterfaceType(
                             if_type,
-                        ) => if_type.id.parse().ok().map(InterfaceId),
-                        FetchTopologyL2vpnListTerminationsAssignedObject::VLANType => None,
-                        FetchTopologyL2vpnListTerminationsAssignedObject::VMInterfaceType => None,
-                    })
-                    .collect();
-                let wlan_group = wlan_groups
-                    .iter()
-                    .find(|(_, e)| e.transport_vxlan == Some(vxlan_id))
-                    .map(|(id, _)| *id);
+                        ) => {
+                            if let Some(if_id) = if_type.id.parse().ok().map(InterfaceId) {
+                                interface_terminations.insert(if_id);
+                            }
+                        }
+                        FetchTopologyL2vpnListTerminationsAssignedObject::VLANType(vlan_type) => {
+                            if let Some(vlan_id) = vlan_type.id.parse().ok().map(VlanId) {
+                                vlan_terminations.insert(vlan_id);
+                                vxlan_of_vlan.insert(vlan_id, vxlan_id);
+                            }
+                        }
+                        FetchTopologyL2vpnListTerminationsAssignedObject::VMInterfaceType => {}
+                    }
+                }
                 vxlans.insert(
                     vxlan_id,
                     VxlanData {
                         name: l2vpn_entry.name.into_boxed_str(),
                         vni,
-                        terminations,
-                        wlan_group,
+                        interface_terminations: Box::from_iter(interface_terminations),
+                        vlan_terminations: Box::from_iter(vlan_terminations),
                     },
                 );
             }
+        }
+    }
+    let mut vlan_groups = HashMap::new();
+    let mut vlans = HashMap::new();
+    for vlan_group in data.vlan_group_list {
+        if let Some(vlan_group_id) = vlan_group.id.parse().ok().map(VlanGroupId) {
+            let mut vlan_ids = BTreeSet::new();
+            for vlan in vlan_group.vlans {
+                if let Some(vlan_id) = vlan.id.parse().ok().map(VlanId) {
+                    vlan_ids.insert(vlan_id);
+                    vlans.insert(
+                        vlan_id,
+                        VlanData {
+                            name: vlan.name.into_boxed_str(),
+                            vlan_id: vlan.vid as u16,
+                            group: vlan_group_id,
+                            terminations: Box::from_iter(
+                                interfaces_of_vlan.remove(&vlan_id).unwrap_or_default(),
+                            ),
+                            vxlan: vxlan_of_vlan.get(&vlan_id).copied(),
+                            wlans: Box::from_iter(
+                                wlans_of_vlan.remove(&vlan_id).unwrap_or_default(),
+                            ),
+                        },
+                    );
+                }
+            }
+            vlan_groups.insert(
+                vlan_group_id,
+                VlanGroupData {
+                    vlans: Box::from_iter(vlan_ids),
+                },
+            );
         }
     }
 
@@ -477,6 +530,9 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
         cable_path_endpoints,
         vxlans,
         wlan_groups,
+        wlans,
+        vlan_groups,
+        vlans,
     })
 }
 

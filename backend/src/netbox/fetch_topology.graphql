@@ -27,11 +27,7 @@ query FetchTopology{
                 slug
             }
             untagged_vlan {
-                name
                 id
-                group {
-                    name
-                }
             }
         }
         platform {
@@ -75,6 +71,7 @@ query FetchTopology{
             assigned_object{
                 __typename
                 ...ConnectedInterface
+                ...ConnectedVlan
             }
         }
     }
@@ -82,12 +79,22 @@ query FetchTopology{
         id
         custom_fields
         wireless_lans {
+            id
             ssid
             auth_type
             auth_psk
             vlan {
-                vid
+                id
             }
+        }
+    }
+    vlan_group_list{
+        id
+        name
+        vlans{
+            id
+            name
+            vid
         }
     }
 }
@@ -98,6 +105,9 @@ fragment CableConnectionTermination on CableTerminationTerminationType{
     ...ConnectedRearPort
 }
 fragment ConnectedInterface on InterfaceType{
+    id
+}
+fragment ConnectedVlan on VLANType{
     id
 }
 fragment ConnectedFrontPort on FrontPortType{

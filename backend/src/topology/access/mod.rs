@@ -1,10 +1,12 @@
 use crate::topology::{
-    CablePort, Device, DeviceId, Interface, InterfaceId, PhysicalPortId, Topology, VxlanData,
-    VxlanId, WlanData, WlanGroupData, WlanGroupId,
+    CablePort, Device, DeviceId, Interface, InterfaceId, PhysicalPortId, Topology, VlanData,
+    VlanId, VxlanData, VxlanId, WlanData, WlanGroupData, WlanGroupId, WlanId,
 };
 use ipnet::IpNet;
 use mikrotik_model::ascii::AsciiString;
 use std::{
+    collections::{BTreeSet, HashSet},
+    hash::{Hash, Hasher},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::Arc,
 };
@@ -33,6 +35,16 @@ pub struct WlanGroupAccess {
 pub struct VxlanAccess {
     topology: Arc<Topology>,
     id: VxlanId,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VlanAccess {
+    topology: Arc<Topology>,
+    id: VlanId,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WlanAccess {
+    topology: Arc<Topology>,
+    id: WlanId,
 }
 
 impl DeviceAccess {
@@ -107,13 +119,18 @@ impl DeviceAccess {
             })
     }
 
-    pub fn wlan_vxlan(&self) -> Option<VxlanAccess> {
+    pub fn vlans(&self) -> impl Iterator<Item = VlanAccess> {
         self.data()
-            .and_then(|d| d.wlan_vxlan)
-            .map(|id| VxlanAccess {
+            .into_iter()
+            .flat_map(|d| d.vlans.iter().cloned())
+            .map(|id| VlanAccess {
                 topology: self.topology.clone(),
                 id,
             })
+    }
+
+    pub fn vxlan(&self) -> HashSet<VxlanAccess> {
+        self.vlans().filter_map(|vl| vl.vxlan()).collect()
     }
 }
 
@@ -216,16 +233,20 @@ impl WlanGroupAccess {
             })
             .collect()
     }
-    pub fn transport_vxlan(&self) -> Option<VxlanAccess> {
+    pub fn mgmt_vlan(&self) -> Option<VlanAccess> {
+        self.data().and_then(|d| d.mgmt_vlan).map(|id| VlanAccess {
+            topology: self.topology.clone(),
+            id,
+        })
+    }
+    pub fn wlan(&self) -> impl Iterator<Item = WlanAccess> {
         self.data()
-            .and_then(|d| d.transport_vxlan)
-            .map(|id| VxlanAccess {
+            .into_iter()
+            .flat_map(|d| d.wlans.iter().cloned())
+            .map(|id| WlanAccess {
                 topology: self.topology.clone(),
                 id,
             })
-    }
-    pub fn wlan(&self) -> &[WlanData] {
-        self.data().map(|d| d.wlans.as_ref()).unwrap_or_default()
     }
 }
 impl VxlanAccess {
@@ -238,10 +259,10 @@ impl VxlanAccess {
     pub fn vni(&self) -> Option<u32> {
         self.data().map(|d| d.vni)
     }
-    pub fn terminations(&self) -> Box<[InterfaceAccess]> {
+    pub fn interface_terminations(&self) -> Box<[InterfaceAccess]> {
         self.data()
             .map(|d| {
-                d.terminations
+                d.interface_terminations
                     .iter()
                     .copied()
                     .map(|id| InterfaceAccess {
@@ -252,25 +273,91 @@ impl VxlanAccess {
             })
             .unwrap_or_default()
     }
-    pub fn wlan_group(&self) -> Option<WlanGroupAccess> {
+    pub fn vlan_terminations(&self) -> Box<[VlanAccess]> {
         self.data()
-            .and_then(|d| d.wlan_group)
-            .map(|id| WlanGroupAccess {
+            .map(|d| {
+                d.vlan_terminations
+                    .iter()
+                    .copied()
+                    .map(|id| VlanAccess {
+                        topology: self.topology.clone(),
+                        id,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn vteps(&self) -> Box<[IpAddr]> {
+        Box::from_iter(
+            self.interface_terminations()
+                .iter()
+                .filter_map(InterfaceAccess::device)
+                .chain(
+                    self.vlan_terminations()
+                        .iter()
+                        .flat_map(|vl| vl.wlan())
+                        .filter_map(|wlan| wlan.wlan_group())
+                        .flat_map(|group| group.aps().into_iter().chain(group.controller())),
+                )
+                .filter_map(|dev| dev.primary_ip_v4())
+                .map(IpAddr::V4)
+                .collect::<BTreeSet<IpAddr>>(),
+        )
+    }
+}
+impl Hash for VxlanAccess {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl VlanAccess {
+    pub fn data(&self) -> Option<&VlanData> {
+        self.topology.vlans.get(&self.id)
+    }
+    pub fn name(&self) -> Option<&str> {
+        self.data().map(|v| v.name.as_ref())
+    }
+    pub fn vlan_id(&self) -> Option<u16> {
+        self.data().map(|v| v.vlan_id)
+    }
+    pub fn vxlan(&self) -> Option<VxlanAccess> {
+        self.data().and_then(|v| v.vxlan).map(|id| VxlanAccess {
+            topology: self.topology.clone(),
+            id,
+        })
+    }
+    pub fn wlan(&self) -> impl Iterator<Item = WlanAccess> {
+        self.data()
+            .into_iter()
+            .flat_map(|d| d.wlans.iter().cloned())
+            .map(|id| WlanAccess {
                 topology: self.topology.clone(),
                 id,
             })
     }
-    pub fn vteps(&self) -> Box<[IpAddr]> {
-        self.wlan_group()
-            .iter()
-            .flat_map(|wlan| {
-                wlan.aps()
-                    .into_iter()
-                    .chain(wlan.controller())
-                    .filter_map(|device| DeviceAccess::primary_ip_v4(&device))
-                    .map(IpAddr::V4)
-            })
-            .collect()
+}
+impl Hash for VlanAccess {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+impl WlanAccess {
+    pub fn data(&self) -> Option<&WlanData> {
+        self.topology.wlans.get(&self.id)
+    }
+    pub fn vlan(&self) -> Option<VlanAccess> {
+        self.data().and_then(|d| d.vlan).map(|id| VlanAccess {
+            topology: self.topology.clone(),
+            id,
+        })
+    }
+    pub fn wlan_group(&self) -> Option<WlanGroupAccess> {
+        self.data().map(|d| d.wlan_group).map(|id| WlanGroupAccess {
+            topology: self.topology.clone(),
+            id,
+        })
     }
 }
 

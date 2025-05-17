@@ -1,6 +1,9 @@
-use crate::device::AccessibleDevice;
-use crate::topology::WlanData;
-use crate::topology::access::{DeviceAccess, InterfaceAccess, VxlanAccess, WlanGroupAccess};
+use crate::{
+    device::AccessibleDevice,
+    topology::access::{
+        DeviceAccess, InterfaceAccess, VlanAccess, VxlanAccess, WlanAccess, WlanGroupAccess,
+    },
+};
 use async_graphql::Object;
 use ipnet::IpNet;
 
@@ -43,8 +46,8 @@ impl WlanGroupAccess {
         self.id.0
     }
     #[graphql(name = "wlanList")]
-    async fn api_wlan_list(&self) -> &[WlanData] {
-        self.wlan()
+    async fn api_wlan_list(&self) -> Box<[WlanAccess]> {
+        self.wlan().collect()
     }
     #[graphql(name = "controller")]
     async fn api_controller(&self) -> Option<DeviceAccess> {
@@ -54,9 +57,12 @@ impl WlanGroupAccess {
     async fn api_aps(&self) -> Box<[DeviceAccess]> {
         self.aps()
     }
-    #[graphql(name = "transportVxlan")]
-    async fn api_transport_vxlan(&self) -> Option<VxlanAccess> {
-        self.transport_vxlan()
+}
+#[Object]
+impl WlanAccess {
+    #[graphql(name = "id")]
+    async fn api_id(&self) -> u32 {
+        self.id.0
     }
 }
 
@@ -70,13 +76,13 @@ impl VxlanAccess {
     async fn api_vni(&self) -> Option<u32> {
         self.vni()
     }
-    #[graphql(name = "terminations")]
-    async fn api_terminations(&self) -> Box<[InterfaceAccess]> {
-        self.terminations()
+    #[graphql(name = "interfaceTerminations")]
+    async fn api_interface_terminations(&self) -> Box<[InterfaceAccess]> {
+        self.interface_terminations()
     }
-    #[graphql(name = "wlanGroup")]
-    async fn api_wlan_group(&self) -> Option<WlanGroupAccess> {
-        self.wlan_group()
+    #[graphql(name = "vlanTerminations")]
+    async fn api_vlan_terminations(&self) -> Box<[VlanAccess]> {
+        self.vlan_terminations()
     }
 }
 
@@ -93,6 +99,20 @@ impl InterfaceAccess {
     #[graphql(name = "ips")]
     async fn api_ips(&self) -> Box<[IpNetGraphql]> {
         self.ips().iter().copied().map(IpNetGraphql).collect()
+    }
+}
+#[Object]
+impl VlanAccess {
+    #[graphql(name = "id")]
+    async fn api_id(&self) -> u32 {
+        self.id.0
+    }
+    #[graphql(name = "name")]
+    async fn api_name(&self) -> &str {
+        self.name().unwrap_or_default()
+    }
+    async fn api_vlan_id(&self) -> u16 {
+        self.vlan_id().expect("vlan_id not set")
     }
 }
 struct IpNetGraphql(IpNet);

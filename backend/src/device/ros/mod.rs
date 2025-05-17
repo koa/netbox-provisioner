@@ -2,6 +2,7 @@ use crate::{
     Error,
     config::CONFIG,
     device::{AccessibleDevice, Credentials, ros::hw_facts::build_ethernet_ports},
+    topology::access::VxlanAccess,
     topology::{
         PhysicalPortId,
         access::{DeviceAccess, InterfaceAccess},
@@ -22,7 +23,10 @@ use mikrotik_model::{
     value,
     value::PossibleRangeDash,
 };
-use std::{collections::BTreeSet, net::IpAddr};
+use std::{
+    collections::{BTreeSet, HashSet},
+    net::{IpAddr, Ipv4Addr},
+};
 
 mod graphql;
 mod hw_facts;
@@ -151,42 +155,59 @@ impl BaseDeviceDataTarget {
             let bridge_caps = self.bridge.entry(CAPS_BRIDGE_NAME.into()).or_default();
             bridge_caps.0.vlan_filtering = true;
             bridge_caps.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
-            if let (Some(vxlan), Some(my_ip)) =
-                (wlan_group.transport_vxlan(), device.primary_ip_v4())
-            {
-                if let (Some(name), Some(vni)) = (
-                    vxlan
-                        .name()
-                        .map(cleanup_name)
-                        .map(|name| format!("vxlan-{name}").to_case(Case::Kebab))
-                        .map(AsciiString::from),
-                    vxlan.vni(),
-                ) {
-                    self.bridge_port
-                        .entry((CAPS_BRIDGE_NAME.into(), name.clone()))
-                        .or_default();
-                    self.bridge_vlan
-                        .entry((
-                            CAPS_BRIDGE_NAME.into(),
-                            BTreeSet::from([name.clone()]),
-                            BTreeSet::from([PossibleRangeDash::Range {
-                                start: 1,
-                                end: 4094,
-                            }]),
-                        ))
-                        .or_default();
-                    self.vxlan.insert(
-                        name.clone(),
-                        InterfaceVxlanByName(InterfaceVxlanCfg {
-                            vni,
-                            ..Default::default()
-                        }),
-                    );
-                    for remote_vtep_addr in vxlan.vteps().into_iter().filter(|ip| ip != &my_ip) {
-                        self.vxlan_vteps
-                            .insert((name.clone(), remote_vtep_addr), Default::default());
+            if let Some(my_ip) = device.primary_ip_v4() {
+                let mut vlans = HashSet::new();
+                if let Some(mgmt_vlan) = wlan_group.mgmt_vlan() {
+                    vlans.insert(mgmt_vlan);
+                }
+                for wlan in wlan_group.wlan() {
+                    if let Some(vlan) = wlan.vlan() {
+                        vlans.insert(vlan);
                     }
                 }
+                let vxlans = vlans
+                    .iter()
+                    .filter_map(|vlan| vlan.vxlan())
+                    .collect::<HashSet<_>>();
+                for vxlan in vxlans {
+                    self.setup_vxlan(vxlan, &my_ip);
+                }
+            }
+        }
+    }
+
+    fn setup_vxlan(&mut self, vxlan: VxlanAccess, my_ip: &Ipv4Addr) {
+        if let (Some(name), Some(vni)) = (
+            vxlan
+                .name()
+                .map(cleanup_name)
+                .map(|name| format!("vxlan-{name}").to_case(Case::Kebab))
+                .map(AsciiString::from),
+            vxlan.vni(),
+        ) {
+            self.bridge_port
+                .entry((CAPS_BRIDGE_NAME.into(), name.clone()))
+                .or_default();
+            self.bridge_vlan
+                .entry((
+                    CAPS_BRIDGE_NAME.into(),
+                    BTreeSet::from([name.clone()]),
+                    BTreeSet::from([PossibleRangeDash::Range {
+                        start: 1,
+                        end: 4094,
+                    }]),
+                ))
+                .or_default();
+            self.vxlan.insert(
+                name.clone(),
+                InterfaceVxlanByName(InterfaceVxlanCfg {
+                    vni,
+                    ..Default::default()
+                }),
+            );
+            for remote_vtep_addr in vxlan.vteps().into_iter().filter(|ip| ip != my_ip) {
+                self.vxlan_vteps
+                    .insert((name.clone(), remote_vtep_addr), Default::default());
             }
         }
     }

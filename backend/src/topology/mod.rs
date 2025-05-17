@@ -9,6 +9,7 @@ use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Display, Formatter},
+    hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     str::FromStr,
     sync::Arc,
@@ -83,6 +84,9 @@ pub struct Topology {
     cable_path_endpoints: HashMap<CablePort, HashSet<CablePort>>,
     vxlans: HashMap<VxlanId, VxlanData>,
     wlan_groups: HashMap<WlanGroupId, WlanGroupData>,
+    wlans: HashMap<WlanId, WlanData>,
+    vlan_groups: HashMap<VlanGroupId, VlanGroupData>,
+    vlans: HashMap<VlanId, VlanData>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,29 +102,42 @@ pub struct Device {
     serial: Option<Box<str>>,
     wlan_controller_of: Option<WlanGroupId>,
     wlan_ap_of: Option<WlanGroupId>,
-    wlan_vxlan: Option<VxlanId>,
-    //vxlans: Box<[VxlanId]>,
+    vlans: Box<[VlanId]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VxlanData {
     name: Box<str>,
     vni: u32,
-    terminations: HashSet<InterfaceId>,
-    wlan_group: Option<WlanGroupId>,
+    interface_terminations: Box<[InterfaceId]>,
+    vlan_terminations: Box<[VlanId]>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VlanData {
+    name: Box<str>,
+    vlan_id: u16,
+    group: VlanGroupId,
+    terminations: Box<[InterfaceId]>,
+    vxlan: Option<VxlanId>,
+    wlans: Box<[WlanId]>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WlanGroupData {
-    transport_vxlan: Option<VxlanId>,
+    mgmt_vlan: Option<VlanId>,
     controller: DeviceId,
     aps: Box<[DeviceId]>,
-    wlans: Box<[WlanData]>,
+    wlans: Box<[WlanId]>,
 }
-#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VlanGroupData {
+    vlans: Box<[VlanId]>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WlanData {
     ssid: Box<str>,
-    vlan: u16,
+    vlan: Option<VlanId>,
     wlan_auth: WlanAuth,
+    wlan_group: WlanGroupId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Union)]
@@ -157,6 +174,7 @@ pub struct Interface {
     device: DeviceId,
     external: Option<PhysicalPortId>,
     port_type: Option<PortType>,
+    vlan: Option<VlanId>,
     ips: Box<[IpNet]>,
     use_ospf: bool,
 }
@@ -262,6 +280,12 @@ pub struct DeviceId(pub u32);
 
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct VxlanId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct VlanId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct WlanId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct VlanGroupId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct WlanGroupId(pub u32);
 
