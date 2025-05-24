@@ -23,6 +23,8 @@ use tokio::{
 pub mod access;
 pub mod fetch;
 mod graphql;
+#[cfg(test)]
+pub mod test;
 
 #[derive(Debug, Default, Clone)]
 pub struct TopologyHolder {
@@ -67,9 +69,9 @@ impl TopologyHolder {
             Box::default()
         }
     }
-    pub async fn devices_by_id(&self, id: u32) -> Option<DeviceAccess> {
+    pub async fn devices_by_id(&self, id: DeviceId) -> Option<DeviceAccess> {
         if let Some(topo) = self.topo_lock().await.as_ref().cloned() {
-            topo.get_device_by_id(&DeviceId(id))
+            topo.get_device_by_id(&id)
         } else {
             None
         }
@@ -89,37 +91,37 @@ pub struct Topology {
     vlans: HashMap<VlanId, VlanData>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Device {
-    name: Box<str>,
-    ports: HashSet<CablePort>,
-    primary_ip: Option<IpAddr>,
-    primary_ip_v4: Option<Ipv4Addr>,
-    primary_ip_v6: Option<Ipv6Addr>,
-    loopback_ip: Option<IpAddr>,
-    credentials: Option<Box<str>>,
-    has_routeros: bool,
-    serial: Option<Box<str>>,
-    wlan_controller_of: Option<WlanGroupId>,
-    wlan_ap_of: Option<WlanGroupId>,
-    vlans: Box<[VlanId]>,
+    pub name: Box<str>,
+    pub ports: HashSet<CablePort>,
+    pub primary_ip: Option<IpAddr>,
+    pub primary_ip_v4: Option<Ipv4Addr>,
+    pub primary_ip_v6: Option<Ipv6Addr>,
+    pub loopback_ip: Option<IpAddr>,
+    pub credentials: Option<Box<str>>,
+    pub has_routeros: bool,
+    pub serial: Option<Box<str>>,
+    pub wlan_controller_of: Option<WlanGroupId>,
+    pub wlan_ap_of: Option<WlanGroupId>,
+    pub vlans: Box<[VlanId]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VxlanData {
-    name: Box<str>,
-    vni: u32,
-    interface_terminations: Box<[InterfaceId]>,
-    vlan_terminations: Box<[VlanId]>,
+    pub name: Box<str>,
+    pub vni: u32,
+    pub interface_terminations: Box<[InterfaceId]>,
+    pub vlan_terminations: Box<[VlanId]>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VlanData {
-    name: Box<str>,
-    vlan_id: u16,
-    group: VlanGroupId,
-    terminations: Box<[InterfaceId]>,
-    vxlan: Option<VxlanId>,
-    wlans: Box<[WlanId]>,
+    pub name: Box<str>,
+    pub vlan_id: u16,
+    pub group: VlanGroupId,
+    pub terminations: Box<[InterfaceId]>,
+    pub vxlan: Option<VxlanId>,
+    pub wlans: Box<[WlanId]>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WlanGroupData {
@@ -130,7 +132,7 @@ pub struct WlanGroupData {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VlanGroupData {
-    vlans: Box<[VlanId]>,
+    pub vlans: Box<[VlanId]>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WlanData {
@@ -167,16 +169,18 @@ impl Device {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
 pub struct Interface {
-    name: Box<str>,
-    label: Box<str>,
-    device: DeviceId,
-    external: Option<PhysicalPortId>,
-    port_type: Option<PortType>,
-    vlan: Option<VlanId>,
-    ips: Box<[IpNet]>,
-    use_ospf: bool,
+    pub name: Box<str>,
+    pub label: Box<str>,
+    pub device: DeviceId,
+    pub external: Option<PhysicalPortId>,
+    pub port_type: Option<PortType>,
+    pub vlan: Option<VlanId>,
+    pub tagged_vlans: Box<[VlanId]>,
+    pub ips: Box<[IpNet]>,
+    pub use_ospf: bool,
+    pub bridge: Option<InterfaceId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Copy)]
@@ -275,7 +279,7 @@ impl Display for PhysicalPortId {
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct InterfaceId(pub u32);
 
-#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
 pub struct DeviceId(pub u32);
 
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
@@ -290,7 +294,7 @@ pub struct VlanGroupId(pub u32);
 pub struct WlanGroupId(pub u32);
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-enum CablePort {
+pub enum CablePort {
     Interface(InterfaceId),
     FrontPort(u32),
     RearPort(u32),

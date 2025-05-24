@@ -2,15 +2,14 @@ use crate::{
     Error,
     config::CONFIG,
     device::{AccessibleDevice, Credentials, ros::hw_facts::build_ethernet_ports},
-    topology::access::VxlanAccess,
     topology::{
         PhysicalPortId,
-        access::{DeviceAccess, InterfaceAccess},
+        access::{DeviceAccess, InterfaceAccess, VxlanAccess},
     },
 };
 use convert_case::{Case, Casing};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
-use log::{error, info};
+use log::error;
 use mikrotik_model::{
     MikrotikDevice,
     ascii::{self, AsciiString},
@@ -30,6 +29,8 @@ use std::{
 
 mod graphql;
 mod hw_facts;
+
+mod l2;
 
 impl AccessibleDevice {
     pub async fn create_client(

@@ -6,6 +6,7 @@ use ipnet::IpNet;
 use mikrotik_model::ascii::AsciiString;
 use std::{
     collections::{BTreeSet, HashSet},
+    fmt::{Debug, Formatter},
     hash::{Hash, Hasher},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::Arc,
@@ -13,35 +14,35 @@ use std::{
 
 pub mod graphql;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct DeviceAccess {
     topology: Arc<Topology>,
     id: DeviceId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct InterfaceAccess {
     topology: Arc<Topology>,
     id: InterfaceId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct WlanGroupAccess {
     topology: Arc<Topology>,
     id: WlanGroupId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct VxlanAccess {
     topology: Arc<Topology>,
     id: VxlanId,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct VlanAccess {
     topology: Arc<Topology>,
-    id: VlanId,
+    pub id: VlanId,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct WlanAccess {
     topology: Arc<Topology>,
     id: WlanId,
@@ -210,6 +211,36 @@ impl InterfaceAccess {
             }
         })
     }
+    pub fn untagged_vlan(&self) -> Option<VlanAccess> {
+        self.data().and_then(|d| d.vlan).map(|id| VlanAccess {
+            topology: self.topology.clone(),
+            id,
+        })
+    }
+    pub fn tagged_vlans(&self) -> impl Iterator<Item = VlanAccess> {
+        self.data().into_iter().flat_map(|data| {
+            data.tagged_vlans.iter().copied().map(|id| VlanAccess {
+                topology: self.topology.clone(),
+                id,
+            })
+        })
+    }
+    pub fn bridge(&self) -> Option<InterfaceAccess> {
+        self.data()
+            .and_then(|d| d.bridge)
+            .map(|id| InterfaceAccess {
+                topology: self.topology.clone(),
+                id,
+            })
+    }
+}
+impl Debug for InterfaceAccess {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let device = self.device();
+        let device_name = device.as_ref().map(|d| d.name()).unwrap_or_default();
+        let if_name = self.name();
+        write!(f, "InterfaceAccess({:?};{device_name}:{if_name})", self.id)
+    }
 }
 
 impl WlanGroupAccess {
@@ -306,6 +337,16 @@ impl VxlanAccess {
         )
     }
 }
+impl Debug for VxlanAccess {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "VxlanAccess({};{})",
+            self.id.0,
+            self.name().unwrap_or_default()
+        )
+    }
+}
 impl Hash for VxlanAccess {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
@@ -336,6 +377,17 @@ impl VlanAccess {
                 topology: self.topology.clone(),
                 id,
             })
+    }
+}
+impl Debug for VlanAccess {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "VlanAccess({};{}({}))",
+            self.id.0,
+            self.name().unwrap_or_default(),
+            self.vlan_id().unwrap_or_default()
+        )
     }
 }
 impl Hash for VlanAccess {

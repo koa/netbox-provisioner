@@ -394,6 +394,15 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                     let vlan = interface
                         .untagged_vlan
                         .and_then(|vlan| vlan.id.parse().ok().map(VlanId));
+                    let tagged_vlans = interface
+                        .tagged_vlans
+                        .into_iter()
+                        .filter_map(|vlan| vlan.id.parse().ok().map(VlanId))
+                        .collect();
+                    let bridge = interface
+                        .bridge
+                        .and_then(|b| b.id.parse().ok())
+                        .map(InterfaceId);
                     interfaces.insert(
                         id,
                         Interface {
@@ -403,8 +412,10 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                             external,
                             port_type,
                             vlan,
+                            tagged_vlans,
                             ips,
                             use_ospf,
+                            bridge,
                         },
                     );
                     if let Some(vlan_id) = vlan {
