@@ -154,6 +154,11 @@ impl InterfaceAccess {
     pub fn external_port(&self) -> Option<PhysicalPortId> {
         self.data().and_then(|d| d.external)
     }
+    pub fn is_ethernet_port(&self) -> bool {
+        self.external_port()
+            .map(|p| p.is_ethernet())
+            .unwrap_or(false)
+    }
 
     pub fn data(&self) -> Option<&Interface> {
         self.topology.interfaces.get(&self.id)

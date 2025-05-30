@@ -55,7 +55,21 @@ impl TopologyBuilder {
     pub fn next_wlan_group_id(&mut self) -> WlanGroupId {
         WlanGroupId(post_incr(&mut self.next_wlan_group_id))
     }
-    pub fn build(self) -> Topology {
+    pub fn build(mut self) -> Topology {
+        for (id, interface) in &self.interfaces {
+            self.devices
+                .get_mut(&interface.device)
+                .expect("device not found")
+                .ports
+                .insert(CablePort::Interface(*id));
+            if let Some(vlan_id) = &interface.vlan {
+                let mut vlan = self.vlans.remove(vlan_id).expect("vlan not found");
+                if !vlan.terminations.contains(id) {
+                    vlan.terminations = vlan.terminations.into_iter().chain(Some(*id)).collect()
+                }
+                self.vlans.insert(*vlan_id, vlan);
+            }
+        }
         Topology {
             fetch_time: Instant::now(),
             devices: self.devices,

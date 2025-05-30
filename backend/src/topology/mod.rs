@@ -223,6 +223,15 @@ impl PhysicalPortId {
             PhysicalPortId::Loopback => "lo".to_string(),
         })
     }
+    pub fn is_ethernet(&self) -> bool {
+        match self {
+            PhysicalPortId::Ethernet(_) => true,
+            PhysicalPortId::SfpSfpPlus(_) => true,
+            PhysicalPortId::Wifi(_) => false,
+            PhysicalPortId::Wlan(_) => false,
+            PhysicalPortId::Loopback => false,
+        }
+    }
 }
 impl FromStr for PhysicalPortId {
     type Err = ();

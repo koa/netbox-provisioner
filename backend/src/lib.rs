@@ -1,5 +1,6 @@
 extern crate core;
 
+use crate::device::ros::SetupError;
 use mikrotik_model::resource::{MissingDependenciesError, ResourceMutationError};
 use thiserror::Error;
 
@@ -26,6 +27,8 @@ pub enum Error {
     MissingDependenciesError(Box<str>),
     #[error("Missing required dependencies: {0}")]
     ErrorGeneratingString(#[from] std::fmt::Error),
+    #[error("Cannot build setup {0}")]
+    SetupError(#[from] SetupError),
 }
 
 impl From<MissingDependenciesError<'_, '_>> for Error {

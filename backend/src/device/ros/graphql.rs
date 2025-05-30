@@ -20,6 +20,7 @@ use mikrotik_model::{
 };
 use std::collections::HashSet;
 use surge_ping::SurgeError;
+use crate::device::ros::SetupError;
 
 pub struct GraphqlDeviceType(DeviceType);
 impl From<DeviceType> for GraphqlDeviceType {
@@ -82,7 +83,7 @@ impl DeviceCfg {
 }
 
 impl AccessibleDevice {
-    pub async fn fetch_config(&self, client: &MikrotikDevice) -> Result<DeviceCfg, Error> {
+    pub async fn fetch_config(&self, client: &MikrotikDevice) -> Result<DeviceCfg, SetupError> {
         let installed_packages = collect_resource::<SystemPackageState>(client)
             .await?
             .into_iter()
@@ -177,7 +178,7 @@ impl AccessibleDevice {
                 build_credential(credential_name, adhoc_credentials),
             )
             .await?;
-        self.fetch_config(&client).await
+        Ok(self.fetch_config(&client).await?)
     }
     async fn generate_cfg(
         &self,
