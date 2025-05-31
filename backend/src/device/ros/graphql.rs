@@ -1,3 +1,4 @@
+use crate::device::ros::SetupError;
 use crate::{
     Error,
     device::{
@@ -20,7 +21,6 @@ use mikrotik_model::{
 };
 use std::collections::HashSet;
 use surge_ping::SurgeError;
-use crate::device::ros::SetupError;
 
 pub struct GraphqlDeviceType(DeviceType);
 impl From<DeviceType> for GraphqlDeviceType {

@@ -23,10 +23,14 @@ async fn test_l2_one_vlan() {
     println!("Setup: {:#?}", setup);
 }
 #[tokio::test]
-async fn test_l2_no_vlan() {
+async fn test_l2_no_vlan() -> Result<(), Box<dyn Error>> {
     let device = create_device_with_ports(1, 0, 3).await;
     let setup = L2Setup::new(device, &mut KeepNameGenerator);
     println!("Setup: {:#?}", setup);
+    let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
+    target_data.setup_l2(&setup)?;
+    dump_mutations(&target_data, &empty_current)?;
+    Ok(())
 }
 #[tokio::test]
 async fn test_l2_multi_vlan() {
@@ -41,13 +45,21 @@ async fn test_l2_untagged_switch() {
     println!("Setup: {:#?}", setup);
 }
 #[tokio::test]
-async fn test_l2_multi_untagged_switch() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_l2_multi_untagged_switch() -> Result<(), Box<dyn Error>> {
     let device = create_device_with_ports(5, 0, 24).await;
     let setup = L2Setup::new(device, &mut KeepNameGenerator);
     println!("Setup: {:#?}", setup);
     let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
     target_data.setup_l2(&setup)?;
-    let mutations = target_data.generate_mutations(&empty_current)?;
+    dump_mutations(&target_data, &empty_current)?;
+    Ok(())
+}
+
+fn dump_mutations(
+    target_data: &BaseDeviceDataTarget,
+    empty_current: &BaseDeviceDataCurrent,
+) -> Result<(), Box<dyn Error>> {
+    let mutations = target_data.generate_mutations(empty_current)?;
     let mutations = ResourceMutation::sort_mutations_with_provided_dependencies(
         mutations.as_ref(),
         [
@@ -117,7 +129,7 @@ async fn create_device_with_ports(
         builder.interfaces.insert(
             bridge_id,
             Interface {
-                name: "bridge".into(),
+                name: format!("bridge-{bridge_idx}").into(),
                 label: "Bridge ".into(),
                 device: d1,
                 ips,
@@ -132,10 +144,11 @@ async fn create_device_with_ports(
         let vlan_group = builder.next_vlan_group_id();
         for vid in 0..vlan_count {
             let vlan_id = builder.next_vlan_id();
+            let string = format!("vlan-{}", vid + 1);
             builder.vlans.insert(
                 vlan_id,
                 VlanData {
-                    name: format!("vlan-{}", vid + 1).into_boxed_str(),
+                    name: string.clone().into_boxed_str(),
                     vlan_id: vid + 1,
                     group: vlan_group,
                     terminations: Box::new([]),
@@ -154,7 +167,7 @@ async fn create_device_with_ports(
             builder.interfaces.insert(
                 vlan_if_id,
                 Interface {
-                    name: format!("vlan-{}", vid + 1).into_boxed_str(),
+                    name: string.into_boxed_str(),
                     device: d1,
                     vlan: Some(vlan_id),
                     ips: Box::new([IpNet::new(
@@ -199,7 +212,7 @@ async fn create_device_with_ports(
         builder.interfaces.insert(
             ifid,
             Interface {
-                name: format!("ether{if_idx}").into_boxed_str(),
+                name: format!("e{if_idx:02}").into_boxed_str(),
                 label: format!("Interface {if_idx}").into_boxed_str(),
                 device: d1,
                 bridge: Some(bridge_id),

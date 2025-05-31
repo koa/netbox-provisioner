@@ -1,4 +1,4 @@
-use crate::device::ros::l2::{L2Port, L2Setup};
+use crate::device::ros::l2::{L2Plane, L2Port, L2Setup};
 use crate::{
     config::CONFIG,
     device::{ros::hw_facts::build_ethernet_ports, AccessibleDevice, Credentials},
@@ -26,6 +26,7 @@ use mikrotik_model::{
     MikrotikDevice,
 };
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::thread::AccessError;
 use std::{
     collections::{BTreeSet, HashSet},
@@ -124,7 +125,7 @@ pub enum SetupError {
     #[error("No ports found for device type {0}")]
     NoPortsFound(AsciiString),
     #[error("Declared port {0} not found on device")]
-    PortNotFound(Box<str>),
+    PortNotFound(AsciiString),
 }
 
 impl BaseDeviceDataTarget {
@@ -169,11 +170,11 @@ impl BaseDeviceDataTarget {
             for port in &plane.ports {
                 match port {
                     L2Port::TaggedEthernet { name, default_name } => {
-                        self.set_ethernet_name(default_name, name)?;
+                        self.set_ethernet_name(default_name, name.clone())?;
                         ports.push(port);
                     }
                     L2Port::UntaggedEthernet { name, default_name } => {
-                        self.set_ethernet_name(default_name, name)?;
+                        self.set_ethernet_name(default_name, name.clone())?;
                         ports.push(port);
                     }
                     L2Port::VxLan { .. } => {
@@ -184,15 +185,15 @@ impl BaseDeviceDataTarget {
                         ports.push(port);
                         todo!("define caps")
                     }
-                    L2Port::L3(addr) => {
-                        addresses.push(addr);
+                    L2Port::L3 { ip, .. } => {
+                        addresses.push(*ip);
                     }
                 }
             }
             match ports.as_slice() {
                 [L2Port::UntaggedEthernet { name, .. }] => {
                     for addr in addresses {
-                        self.set_ip_address(*addr, name);
+                        self.set_ip_address(addr, name.clone());
                     }
                 }
                 _ => {
@@ -201,88 +202,132 @@ impl BaseDeviceDataTarget {
             }
         }
         if !switch_planes.is_empty() {
-            let bridge = self.bridge.entry(DEFAULT_BRIDGE_NAME.into()).or_default();
-            bridge.0.vlan_filtering = true;
-            let mut tags_of_port = HashMap::<&str, (Option<u16>, Vec<u16>)>::new();
-            let mut ports_of_vlan = HashMap::<u16, (Vec<&str>, Vec<&str>)>::new();
-            for plane in switch_planes {
-                for port in &plane.ports {
-                    match port {
-                        L2Port::TaggedEthernet { name, .. } => {
-                            tags_of_port.entry(name).or_default().1.push(plane.vlan_id);
-                            ports_of_vlan
-                                .entry(plane.vlan_id)
-                                .or_default()
-                                .1
-                                .push(name.as_ref());
-                        }
-                        L2Port::UntaggedEthernet { name, .. } => {
-                            tags_of_port.entry(name).or_default().0 = Some(plane.vlan_id);
-                            ports_of_vlan
-                                .entry(plane.vlan_id)
-                                .or_default()
-                                .0
-                                .push(name.as_ref());
-                        }
-                        L2Port::VxLan { .. } => {}
-                        L2Port::Caps => {}
-                        L2Port::L3(addr) => {
-                            let if_name = format!("switch-vlan-{}", plane.vlan_id);
-                            self.set_ip_address(*addr, &if_name);
-                            self.vlan
-                                .entry(AsciiString::from(if_name.as_str()))
-                                .or_insert(InterfaceVlanByName(Default::default()))
-                                .0
-                                .vlan_id = plane.vlan_id;
+            if let [single_plane] = if switch_planes.iter().all(|plane| {
+                plane.ports.iter().all(|port| match port {
+                    L2Port::TaggedEthernet { .. } => false,
+                    L2Port::UntaggedEthernet { .. } => true,
+                    L2Port::VxLan { .. } => false,
+                    L2Port::Caps => false,
+                    L2Port::L3 { .. } => true,
+                })
+            }) {
+                switch_planes.as_slice()
+            } else {
+                &[]
+            } {
+                self.setup_single_switch_without_vlan(single_plane);
+            } else {
+                let bridge = self.bridge.entry(DEFAULT_BRIDGE_NAME.into()).or_default();
+                bridge.0.vlan_filtering = true;
+                bridge.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
+                let mut tags_of_port = HashMap::<&AsciiString, (Option<u16>, Vec<u16>)>::new();
+                let mut ports_of_vlan =
+                    HashMap::<u16, (Vec<&AsciiString>, Vec<&AsciiString>)>::new();
+                for plane in switch_planes {
+                    for port in &plane.ports {
+                        match port {
+                            L2Port::TaggedEthernet { name, .. } => {
+                                tags_of_port.entry(name).or_default().1.push(plane.vlan_id);
+                                ports_of_vlan.entry(plane.vlan_id).or_default().1.push(name);
+                            }
+                            L2Port::UntaggedEthernet { name, .. } => {
+                                tags_of_port.entry(name).or_default().0 = Some(plane.vlan_id);
+                                ports_of_vlan.entry(plane.vlan_id).or_default().0.push(name);
+                            }
+                            L2Port::VxLan { .. } => {}
+                            L2Port::Caps => {}
+                            L2Port::L3 { ip, if_name } => {
+                                let if_name = if let Some(if_name) = if_name {
+                                    if_name.clone()
+                                } else {
+                                    format!("switch-vlan-{}", plane.vlan_id).as_str().into()
+                                };
+                                self.set_ip_address(*ip, if_name.clone());
+                                let vlan_cfg = &mut self
+                                    .vlan
+                                    .entry(if_name)
+                                    .or_insert(InterfaceVlanByName(Default::default()))
+                                    .0;
+                                vlan_cfg.interface = DEFAULT_BRIDGE_NAME.into();
+                                vlan_cfg.vlan_id = plane.vlan_id;
+                            }
                         }
                     }
                 }
-            }
-            for (port, (untagged, tagged)) in tags_of_port {
-                let bridge_port = self
-                    .bridge_port
-                    .entry((
-                        AsciiString::from(DEFAULT_BRIDGE_NAME),
-                        AsciiString::from(port),
-                    ))
-                    .or_default();
-                bridge_port.ingress_filtering = true;
-                bridge_port.frame_types = if let Some(untagged_id) = untagged {
-                    bridge_port.pvid = untagged_id;
-                    if tagged.is_empty() {
-                        VlanFrameTypes::AdmitOnlyUntaggedAndPriorityTagged
+                for (port, (untagged, tagged)) in tags_of_port {
+                    let bridge_port = self
+                        .bridge_port
+                        .entry((AsciiString::from(DEFAULT_BRIDGE_NAME), port.clone()))
+                        .or_default();
+                    bridge_port.ingress_filtering = true;
+                    bridge_port.frame_types = if let Some(untagged_id) = untagged {
+                        bridge_port.pvid = untagged_id;
+                        if tagged.is_empty() {
+                            VlanFrameTypes::AdmitOnlyUntaggedAndPriorityTagged
+                        } else {
+                            VlanFrameTypes::AdmitAll
+                        }
                     } else {
-                        VlanFrameTypes::AdmitAll
-                    }
-                } else {
-                    VlanFrameTypes::AdmitOnlyVlanTagged
-                };
-            }
-            for (vlan_id, (untagged, tagged)) in ports_of_vlan {
-                self.bridge_vlan
-                    .entry((
-                        AsciiString::from(DEFAULT_BRIDGE_NAME),
-                        tagged.into_iter().map(AsciiString::from).collect(),
-                        untagged.into_iter().map(AsciiString::from).collect(),
-                        Some(PossibleRangeDash::Single(vlan_id))
-                            .into_iter()
-                            .collect(),
-                    ))
-                    .or_default();
+                        VlanFrameTypes::AdmitOnlyVlanTagged
+                    };
+                }
+                for (vlan_id, (untagged, tagged)) in ports_of_vlan {
+                    self.bridge_vlan
+                        .entry((
+                            AsciiString::from(DEFAULT_BRIDGE_NAME),
+                            tagged.into_iter().cloned().collect(),
+                            untagged.into_iter().cloned().collect(),
+                            Some(PossibleRangeDash::Single(vlan_id))
+                                .into_iter()
+                                .collect(),
+                        ))
+                        .or_default();
+                }
             }
         }
         Ok(())
     }
 
-    fn set_ethernet_name(&mut self, default_name: &str, name: &str) -> Result<(), SetupError> {
+    fn setup_single_switch_without_vlan(&mut self, single_plane: &L2Plane) {
+        let bridge = self.bridge.entry(DEFAULT_BRIDGE_NAME.into()).or_default();
+        bridge.0.vlan_filtering = false;
+        bridge.0.protocol_mode = InterfaceBridgeProtocolMode::Rstp;
+        for port in &single_plane.ports {
+            match port {
+                L2Port::TaggedEthernet { .. } => {
+                    panic!("Cannot create tagged port on switch without vlan")
+                }
+                L2Port::UntaggedEthernet { name, .. } => {
+                    self.bridge_port
+                        .entry((DEFAULT_BRIDGE_NAME.into(), name.clone()))
+                        .or_default();
+                }
+                L2Port::VxLan { .. } => {
+                    panic!("Cannot create tagged port on switch without vlan")
+                }
+                L2Port::Caps => {
+                    panic!("Cannot create tagged port on switch without vlan")
+                }
+                L2Port::L3 { ip, .. } => {
+                    self.set_ip_address(*ip, DEFAULT_BRIDGE_NAME);
+                }
+            }
+        }
+    }
+
+    fn set_ethernet_name(
+        &mut self,
+        default_name: &AsciiString,
+        name: impl Into<AsciiString>,
+    ) -> Result<(), SetupError> {
         self.ethernet
-            .get_mut(&AsciiString::from(default_name))
-            .ok_or(SetupError::PortNotFound(Box::from(default_name)))?
-            .name = AsciiString::from(name);
+            .get_mut(default_name)
+            .ok_or(SetupError::PortNotFound(default_name.clone()))?
+            .name = name.into();
         Ok(())
     }
 
-    fn set_ip_address(&mut self, ip: IpNet, if_name: &str) {
+    fn set_ip_address(&mut self, ip: IpNet, if_name: impl Into<AsciiString>) {
         match ip {
             IpNet::V4(v4_net) => {
                 self.ipv_4_address
@@ -293,7 +338,7 @@ impl BaseDeviceDataTarget {
                         comment: None,
                     }))
                     .0
-                    .interface = AsciiString::from(if_name);
+                    .interface = if_name.into();
             }
             IpNet::V6(v6_net) => {
                 self.ipv_6_address
@@ -310,7 +355,7 @@ impl BaseDeviceDataTarget {
                         no_dad: false,
                     }))
                     .0
-                    .interface = AsciiString::from(if_name);
+                    .interface = if_name.into();
             }
         }
     }

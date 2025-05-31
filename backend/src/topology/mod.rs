@@ -223,6 +223,16 @@ impl PhysicalPortId {
             PhysicalPortId::Loopback => "lo".to_string(),
         })
     }
+    pub fn default_name(&self) -> Option<AsciiString> {
+        match self {
+            PhysicalPortId::Ethernet(id) => Some(format!("ether{id}")),
+            PhysicalPortId::SfpSfpPlus(id) => Some(format!("sfp-sfpplus{id}")),
+            PhysicalPortId::Wifi(_) => None,
+            PhysicalPortId::Wlan(_) => None,
+            PhysicalPortId::Loopback => None,
+        }
+        .map(AsciiString::from)
+    }
     pub fn is_ethernet(&self) -> bool {
         match self {
             PhysicalPortId::Ethernet(_) => true,

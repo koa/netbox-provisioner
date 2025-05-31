@@ -1,22 +1,36 @@
-use crate::topology::access::InterfaceAccess;
 use crate::topology::{
-    access::{DeviceAccess, VlanAccess}, InterfaceId,
+    access::InterfaceAccess, access::{DeviceAccess, VlanAccess},
+    InterfaceId,
     VlanId,
 };
 use ipnet::IpNet;
-use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use mikrotik_model::ascii::AsciiString;
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap, HashSet},
+};
 
 #[cfg(test)]
 mod test;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum L2Port {
-    TaggedEthernet { name: Box<str>, default_name: Box<str> },
-    UntaggedEthernet { name: Box<str>, default_name: Box<str> },
-    VxLan { name: Box<str> },
+    TaggedEthernet {
+        name: AsciiString,
+        default_name: AsciiString,
+    },
+    UntaggedEthernet {
+        name: AsciiString,
+        default_name: AsciiString,
+    },
+    VxLan {
+        name: AsciiString,
+    },
     Caps,
-    L3(IpNet),
+    L3 {
+        ip: IpNet,
+        if_name: Option<AsciiString>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -49,16 +63,17 @@ impl L2Setup {
             let option = interface.bridge();
             let bridge_id = option.map(|b| b.id()).unwrap_or(interface.id());
             let mut vlan_added = false;
-            if interface.is_ethernet_port() {
+            if let Some(default_name) = interface.external_port().and_then(|p| p.default_name()) {
                 let name = name_generator.generate_interface_name(&interface);
+
                 for (vlan, port) in interface
                     .tagged_vlans()
                     .map(|vlan| {
                         (
                             vlan,
                             L2Port::TaggedEthernet {
-                                name: name.to_string().into_boxed_str(),
-                                default_name: Box::from( interface.name()),
+                                name: name.to_string().into(),
+                                default_name: default_name.clone(),
                             },
                         )
                     })
@@ -66,8 +81,8 @@ impl L2Setup {
                         (
                             vlan,
                             L2Port::UntaggedEthernet {
-                                name: name.to_string().into_boxed_str(),
-                                default_name: Box::from( interface.name()),
+                                name: name.to_string().into(),
+                                default_name: default_name.clone(),
                             },
                         )
                     }))
@@ -84,8 +99,8 @@ impl L2Setup {
                         .entry((bridge_id, None))
                         .or_default()
                         .push(L2Port::UntaggedEthernet {
-                            name: name.to_string().into_boxed_str(),
-                            default_name: Box::from( interface.name()),
+                            name: name.to_string().into(),
+                            default_name: default_name.clone(),
                         });
                 }
             }
@@ -95,7 +110,10 @@ impl L2Setup {
                 if !ips.is_empty() {
                     let ports = &mut planes.entry((bridge_id, tag)).or_default();
                     for ipnet in ips {
-                        ports.push(L2Port::L3(*ipnet))
+                        ports.push(L2Port::L3 {
+                            ip: *ipnet,
+                            if_name: Some(interface.name().into()),
+                        });
                     }
                 }
             }
@@ -133,7 +151,7 @@ impl L2Setup {
 impl L2Plane {
     pub fn ips(&self) -> impl Iterator<Item = &IpNet> {
         self.ports.iter().filter_map(|p| {
-            if let L2Port::L3(ip) = &p {
+            if let L2Port::L3 { ip, .. } = &p {
                 Some(ip)
             } else {
                 None
@@ -150,7 +168,7 @@ impl L2Plane {
                 L2Port::UntaggedEthernet { .. } => false,
                 L2Port::VxLan { .. } => true,
                 L2Port::Caps => true,
-                L2Port::L3(_) => false,
+                L2Port::L3 { .. } => false,
             })
     }
 }
