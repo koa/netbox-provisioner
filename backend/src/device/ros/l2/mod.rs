@@ -1,7 +1,6 @@
 use crate::topology::{
-    access::InterfaceAccess, access::{DeviceAccess, VlanAccess},
-    InterfaceId,
-    VlanId,
+    InterfaceId, VlanId,
+    access::{DeviceAccess, InterfaceAccess, VlanAccess},
 };
 use ipnet::IpNet;
 use mikrotik_model::ascii::AsciiString;

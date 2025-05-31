@@ -1,20 +1,24 @@
-use crate::device::ros::l2::KeepNameGenerator;
-use crate::device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget};
-use crate::topology::PhysicalPortId;
 use crate::{
-    device::ros::l2::L2Setup,
+    device::ros::{
+        BaseDeviceDataCurrent, BaseDeviceDataTarget,
+        l2::{KeepNameGenerator, L2Setup},
+    },
     topology::{
-        access::DeviceAccess, test::TopologyBuilder, Device, Interface, TopologyHolder, VlanData,
-        VlanGroupData,
+        Device, Interface, PhysicalPortId, TopologyHolder, VlanData, VlanGroupData,
+        access::DeviceAccess, test::TopologyBuilder,
     },
 };
 use ipnet::IpNet;
-use mikrotik_model::generator::Generator;
-use mikrotik_model::model::{InterfaceEthernetByDefaultName, ReferenceType};
-use mikrotik_model::resource::ResourceMutation;
-use std::collections::HashMap;
-use std::error::Error;
-use std::net::{IpAddr, Ipv4Addr};
+use mikrotik_model::{
+    generator::Generator,
+    model::{InterfaceEthernetByDefaultName, ReferenceType},
+    resource::ResourceMutation,
+};
+use std::{
+    collections::HashMap,
+    error::Error,
+    net::{IpAddr, Ipv4Addr},
+};
 
 #[tokio::test]
 async fn test_l2_one_vlan() {

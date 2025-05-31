@@ -1,35 +1,34 @@
-use crate::device::ros::l2::{L2Plane, L2Port, L2Setup};
 use crate::{
-    config::CONFIG,
-    device::{ros::hw_facts::build_ethernet_ports, AccessibleDevice, Credentials},
-    topology::{
-        access::{DeviceAccess, InterfaceAccess, VxlanAccess},
-        PhysicalPortId,
-    },
     Error,
+    config::CONFIG,
+    device::{
+        AccessibleDevice, Credentials,
+        ros::hw_facts::build_ethernet_ports,
+        ros::l2::{L2Plane, L2Port, L2Setup},
+    },
+    topology::{
+        PhysicalPortId,
+        access::{DeviceAccess, InterfaceAccess, VxlanAccess},
+    },
 };
 use convert_case::{Case, Casing};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use log::error;
-use mikrotik_model::model::{InterfaceVlanByName, VlanFrameTypes};
-use mikrotik_model::resource::MissingDependenciesError;
 use mikrotik_model::{
+    MikrotikDevice,
     ascii::{self, AsciiString},
     mikrotik_model,
     model::{
-        InterfaceBridgeProtocolMode, InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress,
-        IpAddressCfg, Ipv6AddressByAddress, Ipv6AddressCfg, RoutingOspfInstanceByName,
-        RoutingOspfInstanceCfg, RoutingOspfInstanceVersion, RoutingRedistribute,
+        InterfaceBridgeProtocolMode, InterfaceVlanByName, InterfaceVxlanByName, InterfaceVxlanCfg,
+        IpAddressByAddress, IpAddressCfg, Ipv6AddressByAddress, Ipv6AddressCfg,
+        RoutingOspfInstanceByName, RoutingOspfInstanceCfg, RoutingOspfInstanceVersion,
+        RoutingRedistribute, VlanFrameTypes,
     },
     value,
     value::PossibleRangeDash,
-    MikrotikDevice,
 };
-use std::collections::HashMap;
-use std::ops::Deref;
-use std::thread::AccessError;
 use std::{
-    collections::{BTreeSet, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr},
 };
 
@@ -163,6 +162,17 @@ impl BaseDeviceDataTarget {
         self.identity.name = name.into();
     }
     fn setup_l2(&mut self, setup: &L2Setup) -> Result<(), SetupError> {
+        let mut plane_count_of_port = HashMap::<_, usize>::new();
+        for plane in &setup.planes {
+            for port in &plane.ports {
+                match port {
+                    L2Port::TaggedEthernet { name, .. } | L2Port::UntaggedEthernet { name, .. } => {
+                        *plane_count_of_port.entry(name).or_default() += 1;
+                    }
+                    _ => {}
+                }
+            }
+        }
         let mut switch_planes = Vec::new();
         for plane in &setup.planes {
             let mut ports = Vec::new();
@@ -191,7 +201,9 @@ impl BaseDeviceDataTarget {
                 }
             }
             match ports.as_slice() {
-                [L2Port::UntaggedEthernet { name, .. }] => {
+                [L2Port::UntaggedEthernet { name, .. }]
+                    if plane_count_of_port.get(name) == Some(&1) =>
+                {
                     for addr in addresses {
                         self.set_ip_address(addr, name.clone());
                     }
