@@ -1,16 +1,15 @@
-use crate::device::ros::SetupError;
 use crate::{
     Error,
     device::{
         AccessibleDevice, Credentials, GraphqlSystemRouterboard, PingResult,
         ros::{
-            BaseDeviceDataCurrent, BaseDeviceDataTarget, WirelessDeviceDataCurrent,
+            BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, WirelessDeviceDataCurrent,
             WirelessDeviceDataTarget,
         },
     },
     topology::access::DeviceAccess,
 };
-use async_graphql::{InputObject, Object, SimpleObject};
+use async_graphql::{Object, SimpleObject};
 use log::info;
 use mikrotik_model::{
     MikrotikDevice,
@@ -51,11 +50,12 @@ pub struct DeviceCfg {
 }
 
 impl DeviceCfg {
-    fn generate_from(&mut self, device: &DeviceAccess) {
-        self.base_target.generate_from(device);
+    fn generate_from(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
+        self.base_target.generate_from(device)?;
         if let Some(wireless_target) = self.wireless_target.as_mut() {
             wireless_target.generate_from(device);
         }
+        Ok(())
     }
     fn generate_mutations(&self) -> Result<Box<[ResourceMutation]>, Error> {
         let mutations = self.base_target.generate_mutations(&self.base_current)?;
@@ -139,61 +139,23 @@ impl BaseDeviceDataTarget {
         GraphqlSystemIdentity(&self.identity)
     }
 }
-#[derive(InputObject)]
-struct AdhocCredentials {
-    username: Option<Box<str>>,
-    #[graphql(secret)]
-    password: Option<Box<str>>,
-}
+
 #[Object]
 impl AccessibleDevice {
     async fn ping(&self, count: Option<u8>) -> Result<Box<[PingResult]>, SurgeError> {
         self.simple_ping(count.unwrap_or(1)).await
     }
 
-    async fn device_stats(
-        &self,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
-    ) -> Result<DeviceStats, Error> {
-        let device = self
-            .create_client(
-                target.map(|v| str::parse(&v)).transpose()?,
-                build_credential(credential_name, adhoc_credentials),
-            )
-            .await?;
-        DeviceStats::fetch(&device).await
+    async fn device_stats(&self) -> Result<DeviceStats, Error> {
+        DeviceStats::fetch(&self.client).await
     }
 
-    async fn config(
-        &self,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
-    ) -> Result<DeviceCfg, Error> {
-        let client = self
-            .create_client(
-                target.map(|v| str::parse(&v)).transpose()?,
-                build_credential(credential_name, adhoc_credentials),
-            )
-            .await?;
-        Ok(self.fetch_config(&client).await?)
+    async fn config(&self) -> Result<DeviceCfg, Error> {
+        Ok(self.fetch_config(&self.client).await?)
     }
-    async fn generate_cfg(
-        &self,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
-    ) -> Result<Box<str>, Error> {
-        let client = self
-            .create_client(
-                target.map(|v| str::parse(&v)).transpose()?,
-                build_credential(credential_name, adhoc_credentials),
-            )
-            .await?;
-        let mut device_cfg = self.fetch_config(&client).await?;
-        device_cfg.generate_from(&self.device_config);
+    async fn generate_cfg(&self) -> Result<Box<str>, Error> {
+        let mut device_cfg = self.fetch_config(&self.client).await?;
+        device_cfg.generate_from(&self.device_config)?;
 
         let mutations = device_cfg.generate_mutations()?;
         for m in &mutations {
@@ -213,17 +175,5 @@ impl AccessibleDevice {
             generator.append_mutation(mutation)?;
         }
         Ok(cfg.into_boxed_str())
-    }
-}
-fn build_credential(
-    credential_name: Option<Box<str>>,
-    adhoc_credentials: Option<AdhocCredentials>,
-) -> Credentials {
-    if let Some(name) = credential_name {
-        Credentials::Named(name)
-    } else if let Some(AdhocCredentials { username, password }) = adhoc_credentials {
-        Credentials::Adhoc { username, password }
-    } else {
-        Credentials::Default
     }
 }

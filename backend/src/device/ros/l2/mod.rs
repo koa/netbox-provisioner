@@ -27,9 +27,14 @@ pub enum L2Port {
     },
     Caps,
     L3 {
-        ip: IpNet,
+        access: L3Access,
         if_name: Option<AsciiString>,
     },
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum L3Access {
+    Ip(IpNet),
+    DhcpClient,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -47,7 +52,7 @@ pub trait NameGenerator {
     fn generate_interface_name<'s>(&mut self, interface: &'s InterfaceAccess) -> Cow<'s, str>;
 }
 #[derive(Debug, Copy, Clone)]
-struct KeepNameGenerator;
+pub struct KeepNameGenerator;
 impl NameGenerator for KeepNameGenerator {
     fn generate_interface_name<'s>(&mut self, interface: &'s InterfaceAccess) -> Cow<'s, str> {
         Cow::Borrowed(interface.name())
@@ -55,7 +60,7 @@ impl NameGenerator for KeepNameGenerator {
 }
 
 impl L2Setup {
-    pub fn new<G: NameGenerator>(device: DeviceAccess, name_generator: &mut G) -> Self {
+    pub fn new<G: NameGenerator>(device: &DeviceAccess, name_generator: &mut G) -> Self {
         let mut planes = BTreeMap::<(InterfaceId, Option<VlanId>), Vec<L2Port>>::new();
         let mut vlans = HashMap::new();
         for interface in device.interfaces() {
@@ -106,14 +111,20 @@ impl L2Setup {
             if interface.tagged_vlans().next().is_none() {
                 let tag = interface.untagged_vlan().map(|v| v.id);
                 let ips = interface.ips();
-                if !ips.is_empty() {
-                    let ports = &mut planes.entry((bridge_id, tag)).or_default();
-                    for ipnet in ips {
-                        ports.push(L2Port::L3 {
-                            ip: *ipnet,
+                for access in ips.iter().map(|ip| L3Access::Ip(*ip)).chain(
+                    if ips.is_empty() && interface.enable_dhcp_client() {
+                        Some(L3Access::DhcpClient)
+                    } else {
+                        None
+                    },
+                ) {
+                    planes
+                        .entry((bridge_id, tag))
+                        .or_default()
+                        .push(L2Port::L3 {
+                            access,
                             if_name: Some(interface.name().into()),
                         });
-                    }
                 }
             }
         }
@@ -150,7 +161,11 @@ impl L2Setup {
 impl L2Plane {
     pub fn ips(&self) -> impl Iterator<Item = &IpNet> {
         self.ports.iter().filter_map(|p| {
-            if let L2Port::L3 { ip, .. } = &p {
+            if let L2Port::L3 {
+                access: L3Access::Ip(ip),
+                ..
+            } = &p
+            {
                 Some(ip)
             } else {
                 None

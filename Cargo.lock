@@ -661,13 +661,11 @@ dependencies = [
  "async-graphql",
  "config 0.15.11",
  "convert_case 0.8.0",
- "encoding_rs",
  "env_logger",
  "graphql_client",
  "ipnet",
  "lazy_static",
  "log",
- "lru",
  "mikrotik-api",
  "mikrotik-model",
  "regex",
@@ -942,7 +940,7 @@ dependencies = [
  "serde_json",
  "toml",
  "winnow 0.7.4",
- "yaml-rust2 0.10.1",
+ "yaml-rust2 0.10.2",
 ]
 
 [[package]]
@@ -2119,8 +2117,6 @@ version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
 dependencies = [
- "allocator-api2",
- "equivalent",
  "foldhash",
 ]
 
@@ -2753,15 +2749,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
 
 [[package]]
-name = "lru"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "227748d55f2f0ab4735d87fd623798cb6b664512fe979705f829c9f81c934465"
-dependencies = [
- "hashbrown 0.15.2",
-]
-
-[[package]]
 name = "mac_address"
 version = "1.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2810,7 +2797,7 @@ dependencies = [
 [[package]]
 name = "mikrotik-model"
 version = "0.1.0"
-source = "git+https://github.com/koa/mikrotik-model#38de75d1456881ecaeb6518b47837258dd7674b8"
+source = "git+https://github.com/koa/mikrotik-model#e332180772ceb3a873941570b5f65e20d6eae1de"
 dependencies = [
  "config 0.14.1",
  "const-str",
@@ -2835,7 +2822,7 @@ dependencies = [
 [[package]]
 name = "mikrotik-model-generator"
 version = "0.1.0"
-source = "git+https://github.com/koa/mikrotik-model#38de75d1456881ecaeb6518b47837258dd7674b8"
+source = "git+https://github.com/koa/mikrotik-model#e332180772ceb3a873941570b5f65e20d6eae1de"
 dependencies = [
  "convert_case 0.6.0",
  "darling",
@@ -2852,7 +2839,7 @@ dependencies = [
 [[package]]
 name = "mikrotik-model-generator-macro"
 version = "0.1.0"
-source = "git+https://github.com/koa/mikrotik-model#38de75d1456881ecaeb6518b47837258dd7674b8"
+source = "git+https://github.com/koa/mikrotik-model#e332180772ceb3a873941570b5f65e20d6eae1de"
 dependencies = [
  "darling",
  "mikrotik-model-generator",
@@ -5331,9 +5318,9 @@ dependencies = [
 
 [[package]]
 name = "yaml-rust2"
-version = "0.10.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "818913695e83ece1f8d2a1c52d54484b7b46d0f9c06beeb2649b9da50d9b512d"
+checksum = "18b783b2c2789414f8bb84ca3318fc9c2d7e7be1c22907d37839a58dedb369d3"
 dependencies = [
  "arraydeque",
  "encoding_rs",

@@ -1,16 +1,14 @@
-use crate::{graphql::scalars::ScalarDuration, topology::access::DeviceAccess};
+use crate::{
+    Error, config::CONFIG, graphql::scalars::ScalarDuration, topology::access::DeviceAccess,
+};
 use async_graphql::{ComplexObject, Object, SimpleObject};
-use lru::LruCache;
 use mikrotik_model::{MikrotikDevice, model::SystemRouterboardState};
-use std::{net::IpAddr, num::NonZeroUsize, sync::Arc, time::Duration};
+use std::{net::IpAddr, time::Duration};
 use surge_ping::{IcmpPacket, SurgeError, ping};
-use tokio::sync::Mutex;
 
 pub mod ros;
-#[derive(Debug, Default, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum Credentials {
-    #[default]
-    Default,
     Named(Box<str>),
     Adhoc {
         username: Option<Box<str>>,
@@ -19,8 +17,7 @@ pub enum Credentials {
 }
 pub struct AccessibleDevice {
     address: IpAddr,
-    credentials: Box<str>,
-    clients: Arc<Mutex<LruCache<(IpAddr, Credentials), MikrotikDevice>>>,
+    client: MikrotikDevice,
     device_config: DeviceAccess,
 }
 
@@ -38,22 +35,40 @@ impl PingResult {
     }
 }
 
-impl From<DeviceAccess> for Option<AccessibleDevice> {
-    fn from(value: DeviceAccess) -> Option<AccessibleDevice> {
-        Option::zip(value.primary_ip(), value.credentials()).map(|(address, credentials)| {
+impl AccessibleDevice {
+    pub async fn create_client(
+        device_config: DeviceAccess,
+        address: IpAddr,
+        credentials: Credentials,
+    ) -> Result<AccessibleDevice, Error> {
+        Ok({
+            let (username, password) = match &credentials {
+                Credentials::Named(name) => {
+                    let c = CONFIG
+                        .mikrotik_credentials
+                        .get(name.as_ref())
+                        .ok_or(Error::MissingCredentials)?;
+                    (c.user(), c.password())
+                }
+                Credentials::Adhoc { username, password } => (
+                    username.as_ref().map(Box::as_ref).unwrap_or("admin"),
+                    password.as_ref().map(Box::as_ref),
+                ),
+            };
+            let mikrotik_device = MikrotikDevice::connect(
+                (address, 8728),
+                username.as_bytes(),
+                password.map(|p| p.as_bytes()),
+            )
+            .await?;
             AccessibleDevice {
                 address,
-                credentials: Box::from(credentials),
-                clients: Arc::new(Mutex::new(LruCache::new(
-                    NonZeroUsize::new(5).expect("5 should be not 0"),
-                ))),
-                device_config: value.clone(),
+                client: mikrotik_device,
+                device_config,
             }
         })
     }
-}
 
-impl AccessibleDevice {
     pub async fn simple_ping(&self, count: u8) -> Result<Box<[PingResult]>, SurgeError> {
         let mut result = Vec::new();
         for _i in 0..count {

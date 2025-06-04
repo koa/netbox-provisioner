@@ -2,15 +2,15 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
     topology{
         deviceById(id: $id){
             name
-            access{
-                deviceStats(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
+            access(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
+                deviceStats{
                     routerboard {
                         deviceType
                         firmwareType
                         serialNumber
                     }
                 }
-                generateCfg(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials)
+                generateCfg
             }
         }
     }

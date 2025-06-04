@@ -151,6 +151,9 @@ impl InterfaceAccess {
     pub fn use_ospf(&self) -> bool {
         self.data().map(|d| d.use_ospf).unwrap_or(false)
     }
+    pub fn enable_dhcp_client(&self) -> bool {
+        self.data().map(|d| d.enable_dhcp_client).unwrap_or(false)
+    }
     pub fn external_port(&self) -> Option<PhysicalPortId> {
         self.data().and_then(|d| d.external)
     }

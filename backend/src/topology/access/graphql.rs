@@ -1,11 +1,19 @@
 use crate::{
-    device::AccessibleDevice,
+    device::{AccessibleDevice, Credentials},
     topology::access::{
         DeviceAccess, InterfaceAccess, VlanAccess, VxlanAccess, WlanAccess, WlanGroupAccess,
     },
 };
-use async_graphql::Object;
+use async_graphql::{InputObject, Object};
 use ipnet::IpNet;
+use log::error;
+
+#[derive(InputObject)]
+struct AdhocCredentials {
+    username: Option<Box<str>>,
+    #[graphql(secret)]
+    password: Option<Box<str>>,
+}
 
 #[Object]
 impl DeviceAccess {
@@ -26,8 +34,33 @@ impl DeviceAccess {
     async fn api_serial(&self) -> Option<String> {
         self.serial().map(ToString::to_string)
     }
-    async fn access(&self) -> Option<AccessibleDevice> {
-        self.clone().into()
+    async fn access(
+        &self,
+        target: Option<String>,
+        credential_name: Option<Box<str>>,
+        adhoc_credentials: Option<AdhocCredentials>,
+    ) -> Option<AccessibleDevice> {
+        let addr = target.and_then(|ip| ip.parse().ok()).or(self.primary_ip());
+        let credentials = if let Some(credential_name) = credential_name {
+            Some(Credentials::Named(credential_name))
+        } else if let Some(AdhocCredentials { username, password }) = adhoc_credentials {
+            Some(Credentials::Adhoc { username, password })
+        } else {
+            self.credentials()
+                .map(|cred| Credentials::Named(cred.to_string().into()))
+        };
+        if let (Some(address), Some(credentials)) = (addr, credentials) {
+            let client = AccessibleDevice::create_client(self.clone(), address, credentials).await;
+            match client {
+                Ok(c) => Some(c),
+                Err(error) => {
+                    error!("Cannot access device {}: {}", self.name(), error);
+                    None
+                }
+            }
+        } else {
+            None
+        }
     }
     #[graphql(name = "wlanControllerOf")]
     async fn api_is_wlan_controller_of(&self) -> Option<WlanGroupAccess> {

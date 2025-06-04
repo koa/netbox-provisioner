@@ -180,6 +180,7 @@ pub struct Interface {
     pub tagged_vlans: Box<[VlanId]>,
     pub ips: Box<[IpNet]>,
     pub use_ospf: bool,
+    pub enable_dhcp_client: bool,
     pub bridge: Option<InterfaceId>,
 }
 

@@ -379,6 +379,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                         .filter_map(|address| IpNet::from_str(&address.address).ok())
                         .collect();
                     let use_ospf = interface.tags.iter().any(|t| t.slug == "ospf");
+                    let enable_dhcp_client = interface.tags.iter().any(|t| t.slug == "dhcp-client");
                     let external = PhysicalPortId::from_str(&interface.name).ok();
                     let port_type = match interface.type_.as_str() {
                         "10gbase-x-sfpp" | "1000base-x-sfp" | "1000base-t" | "100base-tx"
@@ -415,6 +416,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                             tagged_vlans,
                             ips,
                             use_ospf,
+                            enable_dhcp_client,
                             bridge,
                         },
                     );

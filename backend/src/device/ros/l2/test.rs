@@ -1,6 +1,6 @@
 use crate::{
     device::ros::{
-        BaseDeviceDataCurrent, BaseDeviceDataTarget,
+        BaseDeviceDataCurrent, BaseDeviceDataTarget, SwitchVlanConcept,
         l2::{KeepNameGenerator, L2Setup},
     },
     topology::{
@@ -23,38 +23,38 @@ use std::{
 #[tokio::test]
 async fn test_l2_one_vlan() {
     let device = create_device_with_ports(1, 1, 3).await;
-    let setup = L2Setup::new(device, &mut KeepNameGenerator);
+    let setup = L2Setup::new(&device, &mut KeepNameGenerator);
     println!("Setup: {:#?}", setup);
 }
 #[tokio::test]
 async fn test_l2_no_vlan() -> Result<(), Box<dyn Error>> {
     let device = create_device_with_ports(1, 0, 3).await;
-    let setup = L2Setup::new(device, &mut KeepNameGenerator);
+    let setup = L2Setup::new(&device, &mut KeepNameGenerator);
     println!("Setup: {:#?}", setup);
     let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
-    target_data.setup_l2(&setup)?;
+    target_data.setup_l2(&setup, SwitchVlanConcept::OneBridge)?;
     dump_mutations(&target_data, &empty_current)?;
     Ok(())
 }
 #[tokio::test]
 async fn test_l2_multi_vlan() {
     let device = create_device_with_ports(1, 3, 3).await;
-    let setup = L2Setup::new(device, &mut KeepNameGenerator);
+    let setup = L2Setup::new(&device, &mut KeepNameGenerator);
     println!("Setup: {:#?}", setup);
 }
 #[tokio::test]
 async fn test_l2_untagged_switch() {
     let device = create_device_with_ports(1, 5, 24).await;
-    let setup = L2Setup::new(device, &mut KeepNameGenerator);
+    let setup = L2Setup::new(&device, &mut KeepNameGenerator);
     println!("Setup: {:#?}", setup);
 }
 #[tokio::test]
 async fn test_l2_multi_untagged_switch() -> Result<(), Box<dyn Error>> {
     let device = create_device_with_ports(5, 0, 24).await;
-    let setup = L2Setup::new(device, &mut KeepNameGenerator);
+    let setup = L2Setup::new(&device, &mut KeepNameGenerator);
     println!("Setup: {:#?}", setup);
     let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
-    target_data.setup_l2(&setup)?;
+    target_data.setup_l2(&setup, SwitchVlanConcept::OneBridge)?;
     dump_mutations(&target_data, &empty_current)?;
     Ok(())
 }
@@ -108,6 +108,7 @@ fn setup_testdata(
         bridge_vlan: Box::new([]),
         ipv_4_address: Box::new([]),
         vlan: Box::new([]),
+        dhcp_v_4_client: Box::new([]),
     };
     Ok((target_data, empty_current))
 }
