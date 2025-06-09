@@ -167,6 +167,9 @@ impl AccessibleDevice {
             [
                 (ReferenceType::Interface, b"lo".into()),
                 (ReferenceType::RoutingTable, b"main".into()),
+                (ReferenceType::FirewallChain, b"input".into()),
+                (ReferenceType::FirewallChain, b"output".into()),
+                (ReferenceType::FirewallChain, b"forward".into()),
             ],
         )?;
         let mut cfg = String::new();

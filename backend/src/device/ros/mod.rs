@@ -64,6 +64,11 @@ mikrotik_model!(
         ospf_area(by_key(path = "routing/ospf/area", key = name)),
         ospf_interface(by_id(path = "routing/ospf/interface-template", keys(area))),
         dhcp_v4_client(by_id(path = "ip/dhcp-client", keys(interface))),
+        ipv6_firewall_address_list(by_id(
+            path = "ipv6/firewall/address-list",
+            keys(address, list)
+        )),
+        ipv6_firewall_filter(by_id(path = "ipv6/firewall/filter", keys())),
     ),
 );
 
@@ -79,7 +84,7 @@ pub enum SetupError {
     #[error("No ports found for device type {0}")]
     NoPortsFound(AsciiString),
     #[error("Declared port {0} not found on device")]
-    PortNotFound(AsciiString),
+    PortNotFound(PhysicalPortId),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -97,7 +102,7 @@ impl BaseDeviceDataTarget {
         if ethernet_ports.is_empty() {
             return Err(SetupError::NoPortsFound(AsciiString::from(model)));
         }
-        Ok(Self {
+        let result = Ok(Self {
             ethernet: ethernet_ports
                 .into_iter()
                 .map(|e| (e.default_name, e.data))
@@ -117,7 +122,10 @@ impl BaseDeviceDataTarget {
             bridge_vlan: Default::default(),
             vlan: Default::default(),
             dhcp_v_4_client: Default::default(),
-        })
+            ipv_6_firewall_address_list: Default::default(),
+            ipv_6_firewall_filter: Default::default(),
+        });
+        result
     }
     fn set_identity(&mut self, name: impl Into<AsciiString>) {
         self.identity.name = name.into();
@@ -141,12 +149,18 @@ impl BaseDeviceDataTarget {
             let mut enable_dhcp = false;
             for port in &plane.ports {
                 match port {
-                    L2Port::TaggedEthernet { name, default_name } => {
-                        self.set_ethernet_name(default_name, name.clone())?;
+                    L2Port::TaggedEthernet {
+                        name,
+                        port: port_id,
+                    } => {
+                        self.set_ethernet_name(*port_id, name.clone())?;
                         ports.push(port);
                     }
-                    L2Port::UntaggedEthernet { name, default_name } => {
-                        self.set_ethernet_name(default_name, name.clone())?;
+                    L2Port::UntaggedEthernet {
+                        name,
+                        port: port_id,
+                    } => {
+                        self.set_ethernet_name(*port_id, name.clone())?;
                         ports.push(port);
                     }
                     L2Port::VxLan { .. } => {
@@ -329,13 +343,15 @@ impl BaseDeviceDataTarget {
 
     fn set_ethernet_name(
         &mut self,
-        default_name: &AsciiString,
+        port: PhysicalPortId,
         name: impl Into<AsciiString>,
     ) -> Result<(), SetupError> {
-        self.ethernet
-            .get_mut(default_name)
-            .ok_or(SetupError::PortNotFound(default_name.clone()))?
-            .name = name.into();
+        if let Some(default_name) = port.default_name() {
+            self.ethernet
+                .get_mut(&default_name)
+                .ok_or(SetupError::PortNotFound(port))?
+                .name = name.into();
+        }
         Ok(())
     }
 
@@ -573,7 +589,7 @@ impl BaseDeviceDataTarget {
                 interface: Default::default(),
                 add_default_route: YesNo::Yes,
                 comment: None,
-                default_route_distance: 10,
+                default_route_distance: Some(10),
                 dhcp_options: Default::default(),
                 script: None,
                 use_peer_dns: true,

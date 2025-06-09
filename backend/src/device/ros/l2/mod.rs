@@ -1,5 +1,5 @@
 use crate::topology::{
-    InterfaceId, VlanId,
+    InterfaceId, PhysicalPortId, VlanId,
     access::{DeviceAccess, InterfaceAccess, VlanAccess},
 };
 use ipnet::IpNet;
@@ -16,11 +16,11 @@ mod test;
 pub enum L2Port {
     TaggedEthernet {
         name: AsciiString,
-        default_name: AsciiString,
+        port: PhysicalPortId,
     },
     UntaggedEthernet {
         name: AsciiString,
-        default_name: AsciiString,
+        port: PhysicalPortId,
     },
     VxLan {
         name: AsciiString,
@@ -67,7 +67,7 @@ impl L2Setup {
             let option = interface.bridge();
             let bridge_id = option.map(|b| b.id()).unwrap_or(interface.id());
             let mut vlan_added = false;
-            if let Some(default_name) = interface.external_port().and_then(|p| p.default_name()) {
+            if let Some(port) = interface.external_port() {
                 let name = name_generator.generate_interface_name(&interface);
 
                 for (vlan, port) in interface
@@ -77,7 +77,7 @@ impl L2Setup {
                             vlan,
                             L2Port::TaggedEthernet {
                                 name: name.to_string().into(),
-                                default_name: default_name.clone(),
+                                port,
                             },
                         )
                     })
@@ -86,7 +86,7 @@ impl L2Setup {
                             vlan,
                             L2Port::UntaggedEthernet {
                                 name: name.to_string().into(),
-                                default_name: default_name.clone(),
+                                port,
                             },
                         )
                     }))
@@ -104,7 +104,7 @@ impl L2Setup {
                         .or_default()
                         .push(L2Port::UntaggedEthernet {
                             name: name.to_string().into(),
-                            default_name: default_name.clone(),
+                            port,
                         });
                 }
             }
