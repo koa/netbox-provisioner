@@ -58,6 +58,15 @@ impl NameGenerator for KeepNameGenerator {
         Cow::Borrowed(interface.name())
     }
 }
+#[derive(Debug, Copy, Clone)]
+pub struct EndpointNameGenerator;
+impl NameGenerator for EndpointNameGenerator {
+    fn generate_interface_name<'s>(&mut self, interface: &'s InterfaceAccess) -> Cow<'s, str> {
+        interface.connected_interfaces();
+        if let Some(port) = interface.external_port() {}
+        todo!()
+    }
+}
 
 impl L2Setup {
     pub fn new<G: NameGenerator>(device: &DeviceAccess, name_generator: &mut G) -> Self {

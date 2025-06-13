@@ -1,7 +1,8 @@
 use crate::{
     device::{AccessibleDevice, Credentials},
     topology::access::{
-        DeviceAccess, InterfaceAccess, VlanAccess, VxlanAccess, WlanAccess, WlanGroupAccess,
+        AccessTopology, DeviceAccess, InterfaceAccess, VlanAccess, VxlanAccess, WlanAccess,
+        WlanGroupAccess,
     },
 };
 use async_graphql::{InputObject, Object};

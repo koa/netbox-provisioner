@@ -33,6 +33,17 @@ query FetchTopology{
                 id
             }
         }
+        frontports{
+            id
+            name
+            rear_port {
+                id
+            }
+        }
+        rearports{
+            id
+            name
+        }
         platform {
             name
         }
@@ -115,13 +126,7 @@ fragment ConnectedVlan on VLANType{
 }
 fragment ConnectedFrontPort on FrontPortType{
     id
-    rear_port {
-        id
-    }
 }
 fragment ConnectedRearPort on RearPortType{
     id
-    frontports{
-        id
-    }
 }

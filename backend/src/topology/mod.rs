@@ -83,7 +83,10 @@ pub struct Topology {
     fetch_time: Instant,
     devices: HashMap<DeviceId, Device>,
     interfaces: HashMap<InterfaceId, Interface>,
-    cable_path_endpoints: HashMap<CablePort, HashSet<CablePort>>,
+    front_ports: HashMap<FrontPortId, FrontPort>,
+    rear_ports: HashMap<RearPortId, RearPort>,
+    cables: HashMap<CableId, Cable>,
+    //cable_path_endpoints: HashMap<CablePort, HashSet<CablePort>>,
     vxlans: HashMap<VxlanId, VxlanData>,
     wlan_groups: HashMap<WlanGroupId, WlanGroupData>,
     wlans: HashMap<WlanId, WlanData>,
@@ -182,6 +185,7 @@ pub struct Interface {
     pub use_ospf: bool,
     pub enable_dhcp_client: bool,
     pub bridge: Option<InterfaceId>,
+    pub cable: Option<CableId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Copy)]
@@ -199,6 +203,25 @@ pub enum PhysicalPortId {
     Wifi(u16),
     Wlan(u16),
     Loopback,
+}
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
+pub struct FrontPort {
+    pub name: Box<str>,
+    pub device: DeviceId,
+    pub rear_port: Option<RearPortId>,
+    pub cable: Option<CableId>,
+}
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
+pub struct RearPort {
+    pub name: Box<str>,
+    pub device: DeviceId,
+    pub front_port: Option<FrontPortId>,
+    pub cable: Option<CableId>,
+}
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
+pub struct Cable {
+    pub port_a: Box<[CablePort]>,
+    pub port_b: Box<[CablePort]>,
 }
 lazy_static! {
     static ref ETHER_PORT_PATTERN: Regex = Regex::new("ether([0-9]+)").unwrap();
@@ -312,10 +335,16 @@ pub struct WlanId(pub u32);
 pub struct VlanGroupId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct WlanGroupId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct FrontPortId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct RearPortId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct CableId(pub u32);
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CablePort {
     Interface(InterfaceId),
-    FrontPort(u32),
-    RearPort(u32),
+    FrontPort(FrontPortId),
+    RearPort(RearPortId),
 }
