@@ -87,7 +87,7 @@ fn dump_mutations(
 fn setup_testdata(
     model: &[u8],
 ) -> Result<(BaseDeviceDataTarget, BaseDeviceDataCurrent), Box<dyn Error>> {
-    let mut target_data = BaseDeviceDataTarget::new(model)?;
+    let target_data = BaseDeviceDataTarget::new(model)?;
     let empty_current = BaseDeviceDataCurrent {
         ospf_interface: Box::new([]),
         interface_list: Box::new([]),
@@ -109,9 +109,11 @@ fn setup_testdata(
         vxlan_vteps: Box::new([]),
         interface_list_member: Box::new([]),
         bridge_vlan: Box::new([]),
+        ipv_6_firewall_address_list: Box::new([]),
         ipv_4_address: Box::new([]),
         vlan: Box::new([]),
         dhcp_v_4_client: Box::new([]),
+        ipv_6_firewall_filter: Box::new([]),
     };
     Ok((target_data, empty_current))
 }

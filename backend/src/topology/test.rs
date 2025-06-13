@@ -1,10 +1,9 @@
 use crate::topology::{
-    CablePort, Device, DeviceId, Interface, InterfaceId, Topology, TopologyHolder, VlanData,
-    VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanData, WlanGroupData, WlanGroupId,
-    WlanId,
+    Cable, CableId, CablePort, Device, DeviceId, FrontPort, FrontPortId, Interface, InterfaceId,
+    RearPort, RearPortId, Topology, TopologyHolder, VlanData, VlanGroupData, VlanGroupId, VlanId,
+    VxlanData, VxlanId, WlanData, WlanGroupData, WlanGroupId, WlanId,
 };
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
@@ -12,13 +11,14 @@ use tokio::time::Instant;
 pub struct TopologyBuilder {
     pub devices: HashMap<DeviceId, Device>,
     pub interfaces: HashMap<InterfaceId, Interface>,
-    pub cable_path_endpoints: HashMap<CablePort, HashSet<CablePort>>,
     pub vxlans: HashMap<VxlanId, VxlanData>,
     pub wlan_groups: HashMap<WlanGroupId, WlanGroupData>,
     pub wlans: HashMap<WlanId, WlanData>,
     pub vlan_groups: HashMap<VlanGroupId, VlanGroupData>,
     pub vlans: HashMap<VlanId, VlanData>,
-
+    pub front_ports: HashMap<FrontPortId, FrontPort>,
+    pub rear_ports: HashMap<RearPortId, RearPort>,
+    pub cables: HashMap<CableId, Cable>,
     next_device_id: u32,
     next_interface_id: u32,
     next_vxlan_id: u32,
@@ -26,6 +26,9 @@ pub struct TopologyBuilder {
     next_vlan_group_id: u32,
     next_wlan_id: u32,
     next_wlan_group_id: u32,
+    next_front_port_id: u32,
+    next_rear_port_id: u32,
+    next_cable_id: u32,
 }
 fn post_incr(id: &mut u32) -> u32 {
     let ret = *id;
@@ -55,6 +58,15 @@ impl TopologyBuilder {
     pub fn next_wlan_group_id(&mut self) -> WlanGroupId {
         WlanGroupId(post_incr(&mut self.next_wlan_group_id))
     }
+    pub fn next_front_port_id(&mut self) -> FrontPortId {
+        FrontPortId(post_incr(&mut self.next_front_port_id))
+    }
+    pub fn next_rear_port_id(&mut self) -> RearPortId {
+        RearPortId(post_incr(&mut self.next_rear_port_id))
+    }
+    pub fn next_cable_id(&mut self) -> CableId {
+        CableId(post_incr(&mut self.next_cable_id))
+    }
     pub fn build(mut self) -> Topology {
         for (id, interface) in &self.interfaces {
             self.devices
@@ -70,11 +82,53 @@ impl TopologyBuilder {
                 self.vlans.insert(*vlan_id, vlan);
             }
         }
+        for (id, cable) in &self.cables {
+            for cable_port in cable.port_b.iter() {
+                match cable_port {
+                    CablePort::Interface(if_id) => {
+                        self.interfaces
+                            .get_mut(&if_id)
+                            .expect("interface not found")
+                            .cable = Some(*id);
+                    }
+                    CablePort::FrontPort(fp_id) => {
+                        self.front_ports
+                            .get_mut(fp_id)
+                            .expect("front_port not found")
+                            .cable = Some(*id);
+                    }
+                    CablePort::RearPort(rp_id) => {
+                        self.rear_ports
+                            .get_mut(rp_id)
+                            .expect("rear_port not found")
+                            .cable = Some(*id);
+                    }
+                }
+            }
+        }
+        for (id, front_port) in &self.front_ports {
+            if let Some(rp_id) = front_port.rear_port {
+                self.rear_ports
+                    .get_mut(&rp_id)
+                    .expect("rear_port not found")
+                    .front_port = Some(*id);
+            }
+        }
+        for (id, rear_port) in &self.rear_ports {
+            if let Some(fp_id) = rear_port.front_port {
+                self.front_ports
+                    .get_mut(&fp_id)
+                    .expect("front_port not found")
+                    .rear_port = Some(*id);
+            }
+        }
         Topology {
             fetch_time: Instant::now(),
             devices: self.devices,
             interfaces: self.interfaces,
-            cable_path_endpoints: self.cable_path_endpoints,
+            front_ports: self.front_ports,
+            rear_ports: self.rear_ports,
+            cables: self.cables,
             vxlans: self.vxlans,
             wlan_groups: self.wlan_groups,
             wlans: self.wlans,
