@@ -101,7 +101,8 @@ impl Component for Devices {
                                     name: device.name.into_boxed_str(),
                                     address: device
                                         .management_address
-                                        .and_then(|s| IpAddr::from_str(s.as_str()).ok()),
+                                        .and_then(|ip| ip.address)
+                                        .and_then(|a| IpAddr::from_str(a.ip.as_str()).ok()),
                                     serial: device.serial.map(|s| s.into_boxed_str()),
                                 })
                                 .collect(),

@@ -6,7 +6,10 @@ use crate::{
     },
     topology::{
         PhysicalPortId,
-        access::{device::DeviceAccess, interface::InterfaceAccess, vxlan::VxlanAccess},
+        access::{
+            device::DeviceAccess, interface::InterfaceAccess, ip_addresses::IpAddressAccess,
+            vxlan::VxlanAccess,
+        },
     },
 };
 use convert_case::{Case, Casing};
@@ -27,7 +30,7 @@ use mikrotik_model::{
 };
 use std::{
     collections::{BTreeSet, HashMap, HashSet, btree_map::Entry},
-    net::{IpAddr, Ipv4Addr},
+    net::IpAddr,
 };
 
 mod graphql;
@@ -380,7 +383,7 @@ impl BaseDeviceDataTarget {
     }
     fn generate_from(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
         self.set_identity(device.name());
-        if let Some(loopback_ip) = device.loopback_ip() {
+        if let Some(loopback_ip) = device.loopback_ip().and_then(|ip| ip.addr()) {
             self.set_loopback_ip(loopback_ip);
         }
 
@@ -409,7 +412,7 @@ impl BaseDeviceDataTarget {
             let bridge_caps = self.bridge.entry(CAPS_BRIDGE_NAME.into()).or_default();
             bridge_caps.0.vlan_filtering = true;
             bridge_caps.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
-            if let Some(my_ip) = device.primary_ip_v4() {
+            if let Some(my_ip) = device.primary_ip_v4().and_then(|ip| ip.addr()) {
                 let mut vlans = HashSet::new();
                 if let Some(mgmt_vlan) = wlan_group.mgmt_vlan() {
                     vlans.insert(mgmt_vlan);
@@ -430,7 +433,7 @@ impl BaseDeviceDataTarget {
         }
     }
 
-    fn setup_vxlan(&mut self, vxlan: VxlanAccess, my_ip: &Ipv4Addr) {
+    fn setup_vxlan(&mut self, vxlan: VxlanAccess, my_ip: &IpAddr) {
         if let (Some(name), Some(vni)) = (
             vxlan
                 .name()
@@ -511,7 +514,7 @@ impl BaseDeviceDataTarget {
     }
 
     fn setup_ospf(&mut self, device: &DeviceAccess, planes: &[(InterfaceAccess, MappedPlane)]) {
-        if let Some(router_id) = device.primary_ip_v4() {
+        if let Some(router_id) = device.primary_ip_v4().and_then(|ip| ip.addr()) {
             let ports = planes
                 .iter()
                 .filter(|(p, _)| p.use_ospf())
@@ -583,8 +586,8 @@ impl BaseDeviceDataTarget {
                 }
             } else {
                 let if_name = self.if_of_mapped_plane(plane);
-                for ip in ips {
-                    self.set_ip_address(*ip, if_name.clone());
+                for ip in ips.iter().filter_map(IpAddressAccess::net) {
+                    self.set_ip_address(ip, if_name.clone());
                 }
             }
         }

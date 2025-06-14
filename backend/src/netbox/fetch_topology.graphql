@@ -3,10 +3,10 @@ query FetchTopology{
         id
         name
         primary_ip4 {
-            address
+            id
         }
         primary_ip6 {
-            address
+            id
         }
         role {
             slug
@@ -16,7 +16,7 @@ query FetchTopology{
             name
             label
             ip_addresses{
-                address
+                id
             }
             enabled
             type
@@ -111,6 +111,14 @@ query FetchTopology{
             name
             vid
         }
+    }
+    ip_address_list{
+        id,
+        address
+    }
+    prefix_list{
+        id
+        prefix
     }
     ip_range_list{
         id

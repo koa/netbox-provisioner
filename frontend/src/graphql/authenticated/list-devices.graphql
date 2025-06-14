@@ -3,7 +3,11 @@ query ListDevices{
         allDevices(filter:{hasRouteros: true}){
             id
             name
-            managementAddress
+            managementAddress{
+                address {
+                    ip
+                }
+            }
             serial
         }
     }

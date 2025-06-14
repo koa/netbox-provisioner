@@ -9,16 +9,16 @@ use crate::{
     },
     topology::{
         Cable, CableId, CablePort, Device, DeviceId, FrontPort, FrontPortId, Interface,
-        InterfaceId, IpRangeData, IpRangeId, PhysicalPortId, PortType, RearPort, RearPortId,
-        Topology, VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth,
-        WlanData, WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
+        InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
+        PhysicalPortId, PortType, RearPort, RearPortId, Topology, VlanData, VlanGroupData,
+        VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId,
+        WlanId, WlanOpenSettings, WlanWpaSettings,
     },
 };
 use ipnet::IpNet;
 use log::warn;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     str::FromStr,
 };
 use tokio::time::Instant;
@@ -330,6 +330,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
         }
     }
 
+    let mut interface_of_address = HashMap::new();
     for device in data.device_list {
         if let Some(device_id) = device.id.parse().ok().map(DeviceId) {
             let credentials = device
@@ -349,20 +350,13 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                 })
                 .copied()
                 .map(Box::<str>::from);
-            let primary_ip_v6 = device.primary_ip6.and_then(|primary_ip| {
-                primary_ip
-                    .address
-                    .split_once('/')
-                    .and_then(|(address, _)| Ipv6Addr::from_str(address).ok())
-            });
-            let primary_ip_v4 = device.primary_ip4.and_then(|primary_ip| {
-                primary_ip
-                    .address
-                    .split_once('/')
-                    .and_then(|(address, _)| Ipv4Addr::from_str(address).ok())
-            });
-            let primary_ip =
-                Option::or(primary_ip_v6.map(IpAddr::V6), primary_ip_v4.map(IpAddr::V4));
+            let primary_ip_v6 = device
+                .primary_ip6
+                .and_then(|primary_ip| primary_ip.id.parse().map(IpAddressId).ok());
+            let primary_ip_v4 = device
+                .primary_ip4
+                .and_then(|primary_ip| primary_ip.id.parse().map(IpAddressId).ok());
+            let primary_ip = Option::or(primary_ip_v6, primary_ip_v4);
             let mut ports = HashSet::new();
             let mut loopback_ip = None;
             for interface in device.interfaces {
@@ -370,9 +364,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                     if let Some(ip) = interface
                         .ip_addresses
                         .iter()
-                        .filter_map(|address| IpNet::from_str(&address.address).ok())
-                        .filter(|ip| ip.max_prefix_len() == ip.prefix_len())
-                        .map(|ip| ip.addr())
+                        .filter_map(|address| address.id.parse().map(IpAddressId).ok())
                         .next()
                     {
                         loopback_ip = Some(ip);
@@ -383,8 +375,11 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                     let ips = interface
                         .ip_addresses
                         .into_iter()
-                        .filter_map(|address| IpNet::from_str(&address.address).ok())
-                        .collect();
+                        .filter_map(|address| address.id.parse().map(IpAddressId).ok())
+                        .collect::<Box<[_]>>();
+                    for ip_id in &ips {
+                        interface_of_address.insert(*ip_id, id);
+                    }
                     let use_ospf = interface.tags.iter().any(|t| t.slug == "ospf");
                     let enable_dhcp_client = interface.tags.iter().any(|t| t.slug == "dhcp-client");
                     let external = PhysicalPortId::from_str(&interface.name).ok();
@@ -613,8 +608,46 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             cables.insert(cable_id, Cable { port_a, port_b });
         }
     }
+    let mut ip_prefixes = HashMap::new();
+    let mut prefix_idx = HashMap::new();
+
+    for prefix_data in data.prefix_list {
+        if let (Ok(id), Ok(prefix)) = (
+            prefix_data.id.parse().map(IpPrefixId),
+            prefix_data.prefix.parse::<IpNet>(),
+        ) {
+            prefix_idx.insert(prefix, id);
+            ip_prefixes.insert(
+                id,
+                IpPrefixData {
+                    prefix,
+                    addresses: Box::new([]),
+                    children: Box::new([]),
+                    parent: None,
+                    ranges: Box::new([]),
+                },
+            );
+        }
+    }
+    let mut children_prefix = HashMap::new();
+    for (id, prefix_data) in &mut ip_prefixes {
+        let mut prefix = prefix_data.prefix;
+        while let Some(net_address) = prefix.supernet() {
+            if let Some(parent_idx) = prefix_idx.get(&net_address) {
+                prefix_data.parent = Some(*parent_idx);
+                children_prefix
+                    .entry(*parent_idx)
+                    .or_insert(Vec::new())
+                    .push(*id);
+                break;
+            }
+            prefix = net_address;
+        }
+    }
+
     let mut ip_ranges = HashMap::new();
     let mut ip_ranges_idx = HashMap::new();
+    let mut ranges_of_prefix = HashMap::new();
     for ip_range in data.ip_range_list {
         let is_dhcp = ip_range
             .role
@@ -625,37 +658,78 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             ip_range.start_address.parse::<IpNet>(),
             ip_range.end_address.parse::<IpNet>(),
         ) {
-            match (
-                IpNet::new(start_addr.network(), start_addr.prefix_len()),
-                IpNet::new(end_addr.network(), end_addr.prefix_len()),
-            ) {
-                (Ok(start_net), Ok(end_net)) if start_net == end_net => {
-                    ip_ranges.insert(
-                        id,
-                        IpRangeData {
-                            is_dhcp,
-                            net: start_net,
-                            start: start_addr.addr(),
-                            end: end_addr.addr(),
-                        },
-                    );
-                    ip_ranges_idx
-                        .entry(start_net)
-                        .or_insert_with(Vec::new)
+            let start_net = start_addr.trunc();
+            let end_net = end_addr.trunc();
+            if start_net == end_net {
+                let prefix = prefix_idx.get(&start_addr).copied();
+                if let Some(prefix_id) = prefix {
+                    ranges_of_prefix
+                        .entry(prefix_id)
+                        .or_insert(Vec::new())
                         .push(id);
                 }
-                (Err(e), _) | (_, Err(e)) => {
-                    log::error!("Failed to parse IP range: {} of {id:?}", e);
-                }
-                (Ok(start_net), Ok(end_net)) => {
-                    log::error!(
-                        "different ranges: start: {}, end: {} on {id:?}",
-                        start_net,
-                        end_net
-                    );
-                }
-            };
+                ip_ranges.insert(
+                    id,
+                    IpRangeData {
+                        is_dhcp,
+                        net: start_net,
+                        start: start_addr.addr(),
+                        end: end_addr.addr(),
+                        prefix,
+                    },
+                );
+                ip_ranges_idx
+                    .entry(start_net)
+                    .or_insert_with(Vec::new)
+                    .push(id);
+            } else {
+                log::error!(
+                    "different ranges: start: {}, end: {} on {id:?}",
+                    start_net,
+                    end_net
+                );
+            }
         }
+    }
+
+    let mut ip_addresses = HashMap::new();
+    let mut ip_addresses_of_prefix = HashMap::new();
+    for ip_addr_data in data.ip_address_list {
+        if let (Ok(id), Ok(ip)) = (
+            ip_addr_data.id.parse().map(IpAddressId),
+            ip_addr_data.address.parse::<IpNet>(),
+        ) {
+            let prefix = prefix_idx.get(&ip).copied();
+            if let Some(prefix_id) = prefix {
+                ip_addresses_of_prefix
+                    .entry(prefix_id)
+                    .or_insert(Vec::new())
+                    .push(id);
+            }
+
+            ip_addresses.insert(
+                id,
+                IpAddressData {
+                    ip,
+                    interface: interface_of_address.get(&id).copied(),
+                    prefix,
+                },
+            );
+        }
+    }
+    for (id, prefix) in &mut ip_prefixes {
+        prefix.children = children_prefix
+            .remove(id)
+            .map(Vec::into_boxed_slice)
+            .unwrap_or_default();
+        prefix.ranges = ranges_of_prefix
+            .remove(id)
+            .map(Vec::into_boxed_slice)
+            .unwrap_or_default();
+        prefix.addresses = ip_addresses_of_prefix
+            .remove(id)
+            .map(Vec::into_boxed_slice)
+            .unwrap_or_default();
     }
 
     Ok(Topology {
@@ -670,6 +744,8 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
         wlans,
         vlan_groups,
         vlans,
+        ip_addresses,
+        ip_prefixes,
         ip_ranges,
         ip_range_idx: ip_ranges_idx
             .into_iter()

@@ -4,12 +4,11 @@ use crate::topology::{
         AccessTopology,
         cable::{CableAccess, CablePortAccess},
         device::DeviceAccess,
-        graphql::IpNetGraphql,
+        ip_addresses::IpAddressAccess,
         vlan::VlanAccess,
     },
 };
 use async_graphql::Object;
-use ipnet::IpNet;
 use mikrotik_model::ascii::AsciiString;
 use std::{
     fmt::{Debug, Formatter},
@@ -93,9 +92,12 @@ impl InterfaceAccess {
         CablePortAccess::Interface(self.clone())
     }
 
-    pub fn ips(&self) -> &[IpNet] {
-        self.data().map(|d| d.ips.as_ref()).unwrap_or_default()
+    pub fn ips(&self) -> Box<[IpAddressAccess]> {
+        self.data()
+            .map(|d| d.ips.iter().copied().map(self.create_access()).collect())
+            .unwrap_or_default()
     }
+
     pub fn interface_name(&self) -> Option<AsciiString> {
         self.external_port().map(|port| {
             if let Some(label) = self.label() {
@@ -156,7 +158,7 @@ impl InterfaceAccess {
         self.name()
     }
     #[graphql(name = "ips")]
-    async fn api_ips(&self) -> Box<[IpNetGraphql]> {
-        self.ips().iter().copied().map(IpNet::into).collect()
+    async fn api_ips(&self) -> Box<[IpAddressAccess]> {
+        self.ips()
     }
 }

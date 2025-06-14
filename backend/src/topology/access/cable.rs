@@ -1,8 +1,7 @@
-use crate::topology::access::connections::CablePath;
 use crate::topology::{
     Cable, CableId, CablePort, Topology,
     access::{
-        AccessTopology, connections::CableConnection, device::DeviceAccess,
+        AccessTopology, connections::CableConnection, connections::CablePath, device::DeviceAccess,
         front_port::FrontPortAccess, interface::InterfaceAccess, rear_port::RearPortAccess,
     },
 };

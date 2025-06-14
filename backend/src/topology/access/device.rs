@@ -3,18 +3,15 @@ use crate::{
     topology::{
         CablePort, Device, DeviceId, Topology,
         access::{
-            AccessTopology, AdhocCredentials, interface::InterfaceAccess, vlan::VlanAccess,
-            vxlan::VxlanAccess, wlan_group::WlanGroupAccess,
+            AccessTopology, AdhocCredentials, interface::InterfaceAccess,
+            ip_addresses::IpAddressAccess, vlan::VlanAccess, vxlan::VxlanAccess,
+            wlan_group::WlanGroupAccess,
         },
     },
 };
 use async_graphql::Object;
 use log::error;
-use std::{
-    collections::HashSet,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    sync::Arc,
-};
+use std::{collections::HashSet, net::IpAddr, sync::Arc};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct DeviceAccess {
@@ -54,17 +51,26 @@ impl DeviceAccess {
         self.data().and_then(|d| d.serial.as_deref())
     }
     pub fn primary_ip(&self) -> Option<IpAddr> {
-        self.data().and_then(Device::primary_ip)
+        self.data()
+            .and_then(|d| d.primary_ip)
+            .map(self.create_access())
+            .and_then(|a: IpAddressAccess| a.addr())
     }
-    pub fn primary_ip_v4(&self) -> Option<Ipv4Addr> {
-        self.data().and_then(|d| d.primary_ip_v4)
+    pub fn primary_ip_v4(&self) -> Option<IpAddressAccess> {
+        self.data()
+            .and_then(|d| d.primary_ip_v4)
+            .map(self.create_access())
     }
-    pub fn primary_ip_v6(&self) -> Option<Ipv6Addr> {
-        self.data().and_then(|d| d.primary_ip_v6)
+    pub fn primary_ip_v6(&self) -> Option<IpAddressAccess> {
+        self.data()
+            .and_then(|d| d.primary_ip_v6)
+            .map(self.create_access())
     }
 
-    pub fn loopback_ip(&self) -> Option<IpAddr> {
-        self.data().and_then(|d| d.loopback_ip)
+    pub fn loopback_ip(&self) -> Option<IpAddressAccess> {
+        self.data()
+            .and_then(|d| d.loopback_ip)
+            .map(self.create_access())
     }
 
     pub fn has_routeros(&self) -> bool {
@@ -126,10 +132,10 @@ impl DeviceAccess {
     async fn api_name(&self) -> &str {
         self.name()
     }
-    async fn management_address(&self) -> Option<String> {
+    async fn management_address(&self) -> Option<IpAddressAccess> {
         self.data()
             .and_then(|a| a.primary_ip)
-            .map(|s| s.to_string())
+            .map(self.create_access())
     }
     #[graphql(name = "serial")]
     async fn api_serial(&self) -> Option<String> {

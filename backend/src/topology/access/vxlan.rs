@@ -83,8 +83,7 @@ impl VxlanAccess {
                         .filter_map(|wlan| wlan.wlan_group())
                         .flat_map(|group| group.aps().into_iter().chain(group.controller())),
                 )
-                .filter_map(|dev| dev.primary_ip_v4())
-                .map(IpAddr::V4)
+                .filter_map(|dev| dev.primary_ip_v4().and_then(|ip| ip.addr()))
                 .collect::<BTreeSet<IpAddr>>(),
         )
     }

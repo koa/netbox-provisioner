@@ -92,6 +92,8 @@ pub struct Topology {
     wlans: HashMap<WlanId, WlanData>,
     vlan_groups: HashMap<VlanGroupId, VlanGroupData>,
     vlans: HashMap<VlanId, VlanData>,
+    ip_addresses: HashMap<IpAddressId, IpAddressData>,
+    ip_prefixes: HashMap<IpPrefixId, IpPrefixData>,
     ip_ranges: HashMap<IpRangeId, IpRangeData>,
     ip_range_idx: HashMap<IpNet, Box<[IpRangeId]>>,
 }
@@ -100,10 +102,10 @@ pub struct Topology {
 pub struct Device {
     pub name: Box<str>,
     pub ports: HashSet<CablePort>,
-    pub primary_ip: Option<IpAddr>,
-    pub primary_ip_v4: Option<Ipv4Addr>,
-    pub primary_ip_v6: Option<Ipv6Addr>,
-    pub loopback_ip: Option<IpAddr>,
+    pub primary_ip: Option<IpAddressId>,
+    pub primary_ip_v4: Option<IpAddressId>,
+    pub primary_ip_v6: Option<IpAddressId>,
+    pub loopback_ip: Option<IpAddressId>,
     pub credentials: Option<Box<str>>,
     pub has_routeros: bool,
     pub serial: Option<Box<str>>,
@@ -130,10 +132,10 @@ pub struct VlanData {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WlanGroupData {
-    mgmt_vlan: Option<VlanId>,
-    controller: DeviceId,
-    aps: Box<[DeviceId]>,
-    wlans: Box<[WlanId]>,
+    pub mgmt_vlan: Option<VlanId>,
+    pub controller: DeviceId,
+    pub aps: Box<[DeviceId]>,
+    pub wlans: Box<[WlanId]>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VlanGroupData {
@@ -141,17 +143,32 @@ pub struct VlanGroupData {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WlanData {
-    ssid: Box<str>,
-    vlan: Option<VlanId>,
-    wlan_auth: WlanAuth,
-    wlan_group: WlanGroupId,
+    pub ssid: Box<str>,
+    pub vlan: Option<VlanId>,
+    pub wlan_auth: WlanAuth,
+    pub wlan_group: WlanGroupId,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IpRangeData {
-    is_dhcp: bool,
-    net: IpNet,
-    start: IpAddr,
-    end: IpAddr,
+    pub is_dhcp: bool,
+    pub net: IpNet,
+    pub start: IpAddr,
+    pub end: IpAddr,
+    pub prefix: Option<IpPrefixId>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IpAddressData {
+    pub ip: IpNet,
+    pub interface: Option<InterfaceId>,
+    pub prefix: Option<IpPrefixId>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IpPrefixData {
+    pub prefix: IpNet,
+    pub addresses: Box<[IpAddressId]>,
+    pub children: Box<[IpPrefixId]>,
+    pub parent: Option<IpPrefixId>,
+    pub ranges: Box<[IpRangeId]>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Union)]
 pub enum WlanAuth {
@@ -171,10 +188,6 @@ impl Device {
         &self.name
     }
 
-    pub fn primary_ip(&self) -> Option<IpAddr> {
-        self.primary_ip
-    }
-
     pub fn credentials(&self) -> Option<&str> {
         self.credentials.as_ref().map(|s| s.as_ref())
     }
@@ -189,7 +202,7 @@ pub struct Interface {
     pub port_type: Option<PortType>,
     pub vlan: Option<VlanId>,
     pub tagged_vlans: Box<[VlanId]>,
-    pub ips: Box<[IpNet]>,
+    pub ips: Box<[IpAddressId]>,
     pub use_ospf: bool,
     pub enable_dhcp_client: bool,
     pub bridge: Option<InterfaceId>,
@@ -330,10 +343,8 @@ impl Display for PhysicalPortId {
 
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct InterfaceId(pub u32);
-
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
 pub struct DeviceId(pub u32);
-
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct VxlanId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
@@ -352,10 +363,80 @@ pub struct RearPortId(pub u32);
 pub struct CableId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct IpRangeId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct IpAddressId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct IpPrefixId(pub u32);
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CablePort {
     Interface(InterfaceId),
     FrontPort(FrontPortId),
     RearPort(RearPortId),
+}
+
+impl From<u32> for DeviceId {
+    fn from(value: u32) -> Self {
+        DeviceId(value)
+    }
+}
+impl From<u32> for VxlanId {
+    fn from(value: u32) -> Self {
+        VxlanId(value)
+    }
+}
+impl From<u32> for VlanId {
+    fn from(value: u32) -> Self {
+        VlanId(value)
+    }
+}
+impl From<u32> for WlanId {
+    fn from(value: u32) -> Self {
+        WlanId(value)
+    }
+}
+impl From<u32> for VlanGroupId {
+    fn from(value: u32) -> Self {
+        VlanGroupId(value)
+    }
+}
+impl From<u32> for WlanGroupId {
+    fn from(value: u32) -> Self {
+        WlanGroupId(value)
+    }
+}
+impl From<u32> for FrontPortId {
+    fn from(value: u32) -> Self {
+        FrontPortId(value)
+    }
+}
+impl From<u32> for RearPortId {
+    fn from(value: u32) -> Self {
+        RearPortId(value)
+    }
+}
+impl From<u32> for CableId {
+    fn from(value: u32) -> Self {
+        CableId(value)
+    }
+}
+impl From<u32> for IpRangeId {
+    fn from(value: u32) -> Self {
+        IpRangeId(value)
+    }
+}
+impl From<u32> for IpAddressId {
+    fn from(value: u32) -> Self {
+        IpAddressId(value)
+    }
+}
+impl From<u32> for IpPrefixId {
+    fn from(value: u32) -> Self {
+        IpPrefixId(value)
+    }
+}
+impl From<u32> for InterfaceId {
+    fn from(value: u32) -> Self {
+        InterfaceId(value)
+    }
 }

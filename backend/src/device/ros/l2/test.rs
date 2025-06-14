@@ -4,8 +4,8 @@ use crate::{
         l2::{KeepNameGenerator, L2Setup},
     },
     topology::{
-        Device, Interface, PhysicalPortId, TopologyHolder, VlanData, VlanGroupData,
-        access::device::DeviceAccess, test::TopologyBuilder,
+        Device, Interface, IpAddressData, IpAddressId, PhysicalPortId, TopologyHolder, VlanData,
+        VlanGroupData, access::device::DeviceAccess, test::TopologyBuilder,
     },
 };
 use ipnet::IpNet;
@@ -126,17 +126,25 @@ async fn create_device_with_ports(
     port_count: usize,
 ) -> DeviceAccess {
     let mut builder = TopologyBuilder::default();
-    let d1 = builder.next_device_id();
+    let d1 = builder.devices.next_id();
     let mut bridges = Vec::new();
     for bridge_idx in 0..bridge_count.max(1) {
-        let bridge_id = builder.next_interface_id();
+        let bridge_id = builder.interfaces.next_id();
         bridges.push(bridge_id);
-        let ips: Box<[IpNet]> = if vlan_count > 0 {
+        let ips: Box<[IpAddressId]> = if vlan_count > 0 {
             Box::from([])
         } else {
-            Box::new([
-                IpNet::new(IpAddr::V4(Ipv4Addr::new(192, 168, bridge_idx as u8, 1)), 24).unwrap(),
-            ])
+            let ip_id = builder.ip_addresses.next_id();
+            builder.ip_addresses.insert(
+                ip_id,
+                IpAddressData {
+                    ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(192, 168, bridge_idx as u8, 1)), 24)
+                        .unwrap(),
+                    interface: None,
+                    prefix: None,
+                },
+            );
+            Box::new([ip_id])
         };
         builder.interfaces.insert(
             bridge_id,
@@ -153,9 +161,9 @@ async fn create_device_with_ports(
     let mut vlan_ports = Vec::new();
     let mut bridge_of_vlan = HashMap::<_, Vec<_>>::new();
     if vlan_count > 0 {
-        let vlan_group = builder.next_vlan_group_id();
+        let vlan_group = builder.vlan_groups.next_id();
         for vid in 0..vlan_count {
-            let vlan_id = builder.next_vlan_id();
+            let vlan_id = builder.vlans.next_id();
             let string = format!("vlan-{}", vid + 1);
             builder.vlans.insert(
                 vlan_id,
@@ -169,24 +177,30 @@ async fn create_device_with_ports(
                 },
             );
             vlans.push(vlan_id);
-            let vlan_if_id = builder.next_interface_id();
+            let vlan_if_id = builder.interfaces.next_id();
             vlan_ports.push(vlan_if_id);
             let bridge_id = bridges[vid as usize % bridges.len()];
             bridge_of_vlan
                 .entry(Some(vlan_id))
                 .or_default()
                 .push(bridge_id);
+            let ip_id = builder.ip_addresses.next_id();
+            builder.ip_addresses.insert(
+                ip_id,
+                IpAddressData {
+                    ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(192, 168, (vid + 1) as u8, 1)), 24)
+                        .unwrap(),
+                    interface: None,
+                    prefix: None,
+                },
+            );
             builder.interfaces.insert(
                 vlan_if_id,
                 Interface {
                     name: string.into_boxed_str(),
                     device: d1,
                     vlan: Some(vlan_id),
-                    ips: Box::new([IpNet::new(
-                        IpAddr::V4(Ipv4Addr::new(192, 168, (vid + 1) as u8, 1)),
-                        24,
-                    )
-                    .unwrap()]),
+                    ips: Box::new([ip_id]),
                     bridge: Some(bridge_id),
                     ..Default::default()
                 },
@@ -210,7 +224,7 @@ async fn create_device_with_ports(
     );
 
     for (if_idx, ifid) in (0..port_count)
-        .map(|idx| (idx + 1, builder.next_interface_id()))
+        .map(|idx| (idx + 1, builder.interfaces.next_id()))
         .collect::<Vec<_>>()
         .into_iter()
     {
