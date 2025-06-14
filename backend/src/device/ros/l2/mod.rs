@@ -1,13 +1,12 @@
-use crate::topology::access::CablePortAccess;
 use crate::topology::{
     InterfaceId, PhysicalPortId, VlanId,
-    access::{DeviceAccess, InterfaceAccess, VlanAccess},
+    access::{CablePortAccess, DeviceAccess, InterfaceAccess, VlanAccess},
 };
 use convert_case::{Case, Casing};
-use ipnet::IpNet;
 use mikrotik_model::ascii::AsciiString;
 use std::{
     borrow::Cow,
+    cmp::Ordering,
     collections::{BTreeMap, HashMap, HashSet},
 };
 
@@ -28,15 +27,6 @@ pub enum L2Port {
         name: AsciiString,
     },
     Caps,
-    L3 {
-        access: L3Access,
-        if_name: Option<AsciiString>,
-    },
-}
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum L3Access {
-    Ip(IpNet),
-    DhcpClient,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,7 +82,7 @@ impl NameGenerator for EndpointNameGenerator {
             parts.push(port.short_name().to_string());
         }
         if let WalkResult::Single(access) = walk_result {
-            if let Some(device) = (access.device()) {
+            if let Some(device) = access.device() {
                 parts.push(device.name().to_case(Case::Kebab));
             }
             let mut short_name_added = false;
@@ -167,26 +157,6 @@ impl L2Setup {
                         });
                 }
             }
-            if interface.tagged_vlans().next().is_none() {
-                let tag = interface.untagged_vlan().map(|v| v.id);
-                let ips = interface.ips();
-                for access in ips.iter().map(|ip| L3Access::Ip(*ip)).chain(
-                    if ips.is_empty() && interface.enable_dhcp_client() {
-                        Some(L3Access::DhcpClient)
-                    } else {
-                        None
-                    },
-                ) {
-                    planes
-                        .entry((bridge_id, tag))
-                        .or_insert_with(|| (root_device.clone(), Vec::new()))
-                        .1
-                        .push(L2Port::L3 {
-                            access,
-                            if_name: Some(interface.name().into()),
-                        });
-                }
-            }
         }
         let mut used_vlans = planes
             .keys()
@@ -220,31 +190,18 @@ impl L2Setup {
         }
     }
 }
-impl L2Plane {
-    pub fn ips(&self) -> impl Iterator<Item = &IpNet> {
-        self.ports.iter().filter_map(|p| {
-            if let L2Port::L3 {
-                access: L3Access::Ip(ip),
-                ..
-            } = &p
-            {
-                Some(ip)
-            } else {
-                None
-            }
-        })
+impl PartialOrd for L2Plane {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
-    pub fn need_tag(&self) -> bool {
+}
+impl Ord for L2Plane {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.vlan
             .as_ref()
-            .map(|vlan| vlan.vlan_id().is_none())
-            .unwrap_or(false)
-            && self.ports.iter().any(|p| match p {
-                L2Port::TaggedEthernet { .. } => true,
-                L2Port::UntaggedEthernet { .. } => false,
-                L2Port::VxLan { .. } => true,
-                L2Port::Caps => true,
-                L2Port::L3 { .. } => false,
-            })
+            .map(|vlan| vlan.id)
+            .cmp(&other.vlan.as_ref().map(|vlan| vlan.id))
+            .then_with(|| self.root_port.id().cmp(&other.root_port.id()))
+            .then_with(|| self.vlan_id.cmp(&other.vlan_id))
     }
 }

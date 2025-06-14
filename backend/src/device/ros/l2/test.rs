@@ -11,7 +11,7 @@ use crate::{
 use ipnet::IpNet;
 use mikrotik_model::{
     generator::Generator,
-    model::{InterfaceEthernetByDefaultName, ReferenceType},
+    model::{InterfaceEthernetByDefaultName, InterfaceEthernetCfg, ReferenceType},
     resource::ResourceMutation,
 };
 use std::{
@@ -29,10 +29,8 @@ async fn test_l2_one_vlan() {
 #[tokio::test]
 async fn test_l2_no_vlan() -> Result<(), Box<dyn Error>> {
     let device = create_device_with_ports(1, 0, 3).await;
-    let setup = L2Setup::new(&device, &mut KeepNameGenerator);
-    println!("Setup: {:#?}", setup);
     let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
-    target_data.setup_l2(&setup, SwitchVlanConcept::OneBridge)?;
+    target_data.generate_from(&device)?;
     dump_mutations(&target_data, &empty_current)?;
     Ok(())
 }
@@ -54,7 +52,8 @@ async fn test_l2_multi_untagged_switch() -> Result<(), Box<dyn Error>> {
     let setup = L2Setup::new(&device, &mut KeepNameGenerator);
     println!("Setup: {:#?}", setup);
     let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
-    target_data.setup_l2(&setup, SwitchVlanConcept::OneBridge)?;
+    let mut mapped_planes = Vec::new();
+    target_data.setup_l2(&setup, SwitchVlanConcept::OneBridge, &mut mapped_planes)?;
     dump_mutations(&target_data, &empty_current)?;
     Ok(())
 }
@@ -99,7 +98,10 @@ fn setup_testdata(
             .iter()
             .map(|(default_name, e)| InterfaceEthernetByDefaultName {
                 default_name: default_name.clone(),
-                data: e.clone(),
+                data: InterfaceEthernetCfg {
+                    name: default_name.clone(),
+                    ..e.clone()
+                },
             })
             .collect(),
         ipv_6_address: Box::new([]),
@@ -222,7 +224,7 @@ async fn create_device_with_ports(
         builder.interfaces.insert(
             ifid,
             Interface {
-                name: format!("e{if_idx:02}").into_boxed_str(),
+                name: format!("ether{if_idx:2}").into_boxed_str(),
                 label: format!("Interface {if_idx}").into_boxed_str(),
                 device: d1,
                 bridge: Some(bridge_id),
