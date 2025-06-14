@@ -4,14 +4,14 @@ use crate::{
         fetch_topology::{
             CableConnectionTermination, CableConnectionTerminationOnFrontPortType,
             CableConnectionTerminationOnInterfaceType, CableConnectionTerminationOnRearPortType,
-            FetchTopologyCableListATerminations, FetchTopologyL2vpnListTerminationsAssignedObject,
+            FetchTopologyL2vpnListTerminationsAssignedObject,
         },
     },
     topology::{
         Cable, CableId, CablePort, Device, DeviceId, FrontPort, FrontPortId, Interface,
-        InterfaceId, PhysicalPortId, PortType, RearPort, RearPortId, Topology, VlanData,
-        VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData, WlanGroupData,
-        WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
+        InterfaceId, IpRangeData, IpRangeId, PhysicalPortId, PortType, RearPort, RearPortId,
+        Topology, VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth,
+        WlanData, WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
     },
 };
 use ipnet::IpNet;
@@ -613,6 +613,50 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             cables.insert(cable_id, Cable { port_a, port_b });
         }
     }
+    let mut ip_ranges = HashMap::new();
+    let mut ip_ranges_idx = HashMap::new();
+    for ip_range in data.ip_range_list {
+        let is_dhcp = ip_range
+            .role
+            .map(|role| role.slug.as_str() == "dhcp")
+            .unwrap_or(false);
+        if let (Ok(id), Ok(start_addr), Ok(end_addr)) = (
+            ip_range.id.parse().map(IpRangeId),
+            ip_range.start_address.parse::<IpNet>(),
+            ip_range.end_address.parse::<IpNet>(),
+        ) {
+            match (
+                IpNet::new(start_addr.network(), start_addr.prefix_len()),
+                IpNet::new(end_addr.network(), end_addr.prefix_len()),
+            ) {
+                (Ok(start_net), Ok(end_net)) if start_net == end_net => {
+                    ip_ranges.insert(
+                        id,
+                        IpRangeData {
+                            is_dhcp,
+                            net: start_net,
+                            start: start_addr.addr(),
+                            end: end_addr.addr(),
+                        },
+                    );
+                    ip_ranges_idx
+                        .entry(start_net)
+                        .or_insert_with(Vec::new)
+                        .push(id);
+                }
+                (Err(e), _) | (_, Err(e)) => {
+                    log::error!("Failed to parse IP range: {} of {id:?}", e);
+                }
+                (Ok(start_net), Ok(end_net)) => {
+                    log::error!(
+                        "different ranges: start: {}, end: {} on {id:?}",
+                        start_net,
+                        end_net
+                    );
+                }
+            };
+        }
+    }
 
     Ok(Topology {
         fetch_time,
@@ -626,6 +670,11 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
         wlans,
         vlan_groups,
         vlans,
+        ip_ranges,
+        ip_range_idx: ip_ranges_idx
+            .into_iter()
+            .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
+            .collect(),
     })
 }
 

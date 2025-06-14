@@ -1,13 +1,13 @@
 use crate::{
     Error,
     device::{
-        AccessibleDevice, Credentials, GraphqlSystemRouterboard, PingResult,
+        AccessibleDevice, GraphqlSystemRouterboard, PingResult,
         ros::{
             BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, WirelessDeviceDataCurrent,
             WirelessDeviceDataTarget,
         },
     },
-    topology::access::DeviceAccess,
+    topology::access::device::DeviceAccess,
 };
 use async_graphql::{Object, SimpleObject};
 use log::info;

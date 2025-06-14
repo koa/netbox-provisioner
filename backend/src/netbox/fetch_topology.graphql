@@ -112,6 +112,14 @@ query FetchTopology{
             vid
         }
     }
+    ip_range_list{
+        id
+        role {
+            slug
+        }
+        start_address
+        end_address
+    }
 }
 fragment CableConnectionTermination on CableTerminationTerminationType{
     __typename

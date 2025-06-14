@@ -1,5 +1,5 @@
 use crate::{
-    Error, config::CONFIG, graphql::scalars::ScalarDuration, topology::access::DeviceAccess,
+    Error, config::CONFIG, graphql::scalars::ScalarDuration, topology::access::device::DeviceAccess,
 };
 use async_graphql::{ComplexObject, Object, SimpleObject};
 use mikrotik_model::{MikrotikDevice, model::SystemRouterboardState};

@@ -1,5 +1,5 @@
 use crate::{netbox::NetboxError, topology::fetch::build_topology};
-use access::DeviceAccess;
+use access::device::DeviceAccess;
 use async_graphql::{Interface, SimpleObject, Union};
 use ipnet::IpNet;
 use lazy_static::lazy_static;
@@ -92,6 +92,8 @@ pub struct Topology {
     wlans: HashMap<WlanId, WlanData>,
     vlan_groups: HashMap<VlanGroupId, VlanGroupData>,
     vlans: HashMap<VlanId, VlanData>,
+    ip_ranges: HashMap<IpRangeId, IpRangeData>,
+    ip_range_idx: HashMap<IpNet, Box<[IpRangeId]>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -144,7 +146,13 @@ pub struct WlanData {
     wlan_auth: WlanAuth,
     wlan_group: WlanGroupId,
 }
-
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IpRangeData {
+    is_dhcp: bool,
+    net: IpNet,
+    start: IpAddr,
+    end: IpAddr,
+}
 #[derive(Debug, Clone, PartialEq, Eq, Union)]
 pub enum WlanAuth {
     Wpa(WlanWpaSettings),
@@ -342,6 +350,8 @@ pub struct FrontPortId(pub u32);
 pub struct RearPortId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct CableId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct IpRangeId(pub u32);
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CablePort {

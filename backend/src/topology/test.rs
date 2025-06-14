@@ -1,11 +1,11 @@
 use crate::topology::{
     Cable, CableId, CablePort, Device, DeviceId, FrontPort, FrontPortId, Interface, InterfaceId,
-    RearPort, RearPortId, Topology, TopologyHolder, VlanData, VlanGroupData, VlanGroupId, VlanId,
-    VxlanData, VxlanId, WlanData, WlanGroupData, WlanGroupId, WlanId,
+    IpRangeData, IpRangeId, RearPort, RearPortId, Topology, TopologyHolder, VlanData,
+    VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanData, WlanGroupData, WlanGroupId,
+    WlanId,
 };
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
-use tokio::time::Instant;
+use tokio::{sync::Mutex, time::Instant};
 
 #[derive(Default, Clone)]
 pub struct TopologyBuilder {
@@ -19,6 +19,7 @@ pub struct TopologyBuilder {
     pub front_ports: HashMap<FrontPortId, FrontPort>,
     pub rear_ports: HashMap<RearPortId, RearPort>,
     pub cables: HashMap<CableId, Cable>,
+    pub ip_ranges: HashMap<IpRangeId, IpRangeData>,
     next_device_id: u32,
     next_interface_id: u32,
     next_vxlan_id: u32,
@@ -29,6 +30,7 @@ pub struct TopologyBuilder {
     next_front_port_id: u32,
     next_rear_port_id: u32,
     next_cable_id: u32,
+    next_ip_range_id: u32,
 }
 fn post_incr(id: &mut u32) -> u32 {
     let ret = *id;
@@ -66,6 +68,9 @@ impl TopologyBuilder {
     }
     pub fn next_cable_id(&mut self) -> CableId {
         CableId(post_incr(&mut self.next_cable_id))
+    }
+    pub fn next_ip_range_id(&mut self) -> IpRangeId {
+        IpRangeId(post_incr(&mut self.next_ip_range_id))
     }
     pub fn build(mut self) -> Topology {
         for (id, interface) in &self.interfaces {
@@ -122,6 +127,15 @@ impl TopologyBuilder {
                     .rear_port = Some(*id);
             }
         }
+
+        let mut ip_ranges_idx = HashMap::new();
+        for (id, range) in &self.ip_ranges {
+            ip_ranges_idx
+                .entry(range.net)
+                .or_insert_with(Vec::new)
+                .push(*id);
+        }
+
         Topology {
             fetch_time: Instant::now(),
             devices: self.devices,
@@ -134,6 +148,11 @@ impl TopologyBuilder {
             wlans: self.wlans,
             vlan_groups: self.vlan_groups,
             vlans: self.vlans,
+            ip_ranges: self.ip_ranges,
+            ip_range_idx: ip_ranges_idx
+                .into_iter()
+                .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
+                .collect(),
         }
     }
 }

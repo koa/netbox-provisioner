@@ -1,6 +1,8 @@
 use crate::topology::{
     InterfaceId, PhysicalPortId, VlanId,
-    access::{CablePortAccess, DeviceAccess, InterfaceAccess, VlanAccess},
+    access::{
+        cable::CablePortAccess, device::DeviceAccess, interface::InterfaceAccess, vlan::VlanAccess,
+    },
 };
 use convert_case::{Case, Casing};
 use mikrotik_model::ascii::AsciiString;

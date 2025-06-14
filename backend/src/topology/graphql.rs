@@ -1,4 +1,4 @@
-use crate::topology::{DeviceId, TopologyHolder, access::DeviceAccess};
+use crate::topology::{DeviceId, TopologyHolder, access::device::DeviceAccess};
 use async_graphql::{InputObject, Object};
 
 #[derive(InputObject)]

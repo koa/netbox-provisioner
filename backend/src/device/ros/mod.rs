@@ -2,11 +2,11 @@ use crate::{
     Error,
     device::ros::{
         hw_facts::build_ethernet_ports,
-        l2::{EndpointNameGenerator, KeepNameGenerator, L2Plane, L2Port, L2Setup},
+        l2::{EndpointNameGenerator, L2Plane, L2Port, L2Setup},
     },
     topology::{
         PhysicalPortId,
-        access::{DeviceAccess, InterfaceAccess, VxlanAccess},
+        access::{device::DeviceAccess, interface::InterfaceAccess, vxlan::VxlanAccess},
     },
 };
 use convert_case::{Case, Casing};
@@ -467,51 +467,6 @@ impl BaseDeviceDataTarget {
         }
     }
 
-    fn set_fixed_addresses(&mut self, device: &DeviceAccess) {
-        for interface in device.interfaces() {
-            if let (Some(port), Some(name)) =
-                (interface.external_port(), interface.interface_name())
-            {
-                for ip_net in interface.ips() {
-                    match ip_net {
-                        IpNet::V4(ip_net) => {
-                            self.ipv_4_address.insert(
-                                *ip_net,
-                                IpAddressByAddress(IpAddressCfg {
-                                    interface: name.clone(),
-                                    ..Default::default()
-                                }),
-                            );
-                        }
-                        IpNet::V6(ip_net) => {
-                            self.ipv_6_address.insert(
-                                *ip_net,
-                                Ipv6AddressByAddress(Ipv6AddressCfg {
-                                    interface: name.clone(),
-                                    ..Default::default()
-                                }),
-                            );
-                        }
-                    }
-                }
-                match &port {
-                    PhysicalPortId::Ethernet(_) | PhysicalPortId::SfpSfpPlus(_) => {
-                        if let Some(ethernet) =
-                            self.ethernet.get_mut(&AsciiString::from(port.to_string()))
-                        {
-                            ethernet.name = name;
-                        } else {
-                            error!("Ethernet Port not defined {}", port);
-                        }
-                    }
-                    PhysicalPortId::Wifi(_) => {}
-                    PhysicalPortId::Wlan(_) => {}
-                    PhysicalPortId::Loopback => {}
-                }
-            }
-        }
-    }
-
     fn set_loopback_ip(&mut self, loopback_ip: IpAddr) {
         match loopback_ip {
             IpAddr::V4(loopback_ip) => {
@@ -597,7 +552,7 @@ impl BaseDeviceDataTarget {
                     .ospf_interface
                     .entry((b"backbone-v3".into(),))
                     .or_default();
-                v3_backbone.interfaces = ports.clone();
+                v3_backbone.interfaces = ports;
                 v3_backbone.use_bfd = Some(false);
             }
         }

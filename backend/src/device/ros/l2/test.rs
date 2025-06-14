@@ -5,7 +5,7 @@ use crate::{
     },
     topology::{
         Device, Interface, PhysicalPortId, TopologyHolder, VlanData, VlanGroupData,
-        access::DeviceAccess, test::TopologyBuilder,
+        access::device::DeviceAccess, test::TopologyBuilder,
     },
 };
 use ipnet::IpNet;
