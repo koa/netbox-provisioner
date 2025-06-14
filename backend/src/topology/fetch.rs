@@ -411,6 +411,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                         .bridge
                         .and_then(|b| b.id.parse().ok())
                         .map(InterfaceId);
+                    let enable_poe = interface.poe_mode.map(|v| v == "pse").unwrap_or(false);
                     interfaces.insert(
                         id,
                         Interface {
@@ -426,6 +427,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                             enable_dhcp_client,
                             bridge,
                             cable: None,
+                            enable_poe,
                         },
                     );
                     if let Some(vlan_id) = vlan {

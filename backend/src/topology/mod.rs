@@ -186,6 +186,7 @@ pub struct Interface {
     pub enable_dhcp_client: bool,
     pub bridge: Option<InterfaceId>,
     pub cable: Option<CableId>,
+    pub enable_poe: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Copy)]

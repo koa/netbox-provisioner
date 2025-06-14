@@ -2,8 +2,7 @@ use crate::{
     Error,
     device::ros::{
         hw_facts::build_ethernet_ports,
-        l2::{KeepNameGenerator, L3Access},
-        l2::{L2Plane, L2Port, L2Setup},
+        l2::{EndpointNameGenerator, KeepNameGenerator, L2Plane, L2Port, L2Setup, L3Access},
     },
     topology::{
         PhysicalPortId,
@@ -18,8 +17,9 @@ use mikrotik_model::{
     ascii::{self, AsciiString},
     mikrotik_model,
     model::{
-        InterfaceBridgeProtocolMode, InterfaceVlanByName, InterfaceVxlanByName, InterfaceVxlanCfg,
-        IpAddressByAddress, IpAddressCfg, IpDhcpClientCfg, Ipv6AddressByAddress, Ipv6AddressCfg,
+        InterfaceBridgeProtocolMode, InterfaceEthernetCfg, InterfaceEthernetPoeOut,
+        InterfaceVlanByName, InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress,
+        IpAddressCfg, IpDhcpClientCfg, Ipv6AddressByAddress, Ipv6AddressCfg,
         RoutingOspfInstanceByName, RoutingOspfInstanceCfg, RoutingOspfInstanceVersion,
         RoutingRedistribute, VlanFrameTypes, YesNo,
     },
@@ -153,14 +153,21 @@ impl BaseDeviceDataTarget {
                         name,
                         port: port_id,
                     } => {
-                        self.set_ethernet_name(*port_id, name.clone())?;
+                        let port1 = *port_id;
+                        if let Some(ethernet_port) = self.get_ethernet_port(port1)? {
+                            ethernet_port.name = name.clone();
+                        }
+                        ();
                         ports.push(port);
                     }
                     L2Port::UntaggedEthernet {
                         name,
                         port: port_id,
                     } => {
-                        self.set_ethernet_name(*port_id, name.clone())?;
+                        let port1 = *port_id;
+                        if let Some(ethernet_port) = self.get_ethernet_port(port1)? {
+                            ethernet_port.name = name.clone();
+                        }
                         ports.push(port);
                     }
                     L2Port::VxLan { .. } => {
@@ -341,18 +348,19 @@ impl BaseDeviceDataTarget {
         }
     }
 
-    fn set_ethernet_name(
+    fn get_ethernet_port(
         &mut self,
         port: PhysicalPortId,
-        name: impl Into<AsciiString>,
-    ) -> Result<(), SetupError> {
-        if let Some(default_name) = port.default_name() {
-            self.ethernet
-                .get_mut(&default_name)
-                .ok_or(SetupError::PortNotFound(port))?
-                .name = name.into();
-        }
-        Ok(())
+    ) -> Result<Option<&mut InterfaceEthernetCfg>, SetupError> {
+        Ok(if let Some(default_name) = port.default_name() {
+            Some(
+                self.ethernet
+                    .get_mut(&default_name)
+                    .ok_or(SetupError::PortNotFound(port))?,
+            )
+        } else {
+            None
+        })
     }
 
     fn set_ip_address(&mut self, ip: IpNet, if_name: impl Into<AsciiString>) {
@@ -393,10 +401,19 @@ impl BaseDeviceDataTarget {
             self.set_loopback_ip(loopback_ip);
         }
 
-        let l2 = L2Setup::new(device, &mut KeepNameGenerator);
+        let l2 = L2Setup::new(device, &mut EndpointNameGenerator);
         self.setup_l2(&l2, SwitchVlanConcept::OneBridge)?;
-
-        //        self.set_fixed_addresses(device);
+        for port in device.interfaces() {
+            if let Some(port_id) = port.external_port() {
+                if let Some(ethernet_port) = self.get_ethernet_port(port_id)? {
+                    ethernet_port.poe_out = if port.enable_poe() {
+                        Some(InterfaceEthernetPoeOut::AutoOn)
+                    } else {
+                        Some(InterfaceEthernetPoeOut::Off)
+                    };
+                }
+            }
+        }
         self.setup_ospf(device);
         self.setup_wlan_ap(device);
         Ok(())
@@ -550,7 +567,7 @@ impl BaseDeviceDataTarget {
                     [RoutingRedistribute::Connected, RoutingRedistribute::Static]
                         .into_iter()
                         .collect();
-                v2_instance.0.router_id = Some(router_id);
+                v2_instance.0.router_id = Some(router_id.to_string().into());
                 v2_instance.0.version = RoutingOspfInstanceVersion::_2;
                 let v3_instance = self
                     .ospf_instance
@@ -560,7 +577,7 @@ impl BaseDeviceDataTarget {
                     [RoutingRedistribute::Connected, RoutingRedistribute::Static]
                         .into_iter()
                         .collect();
-                v3_instance.0.router_id = Some(router_id);
+                v3_instance.0.router_id = Some(router_id.to_string().into());
                 v3_instance.0.version = RoutingOspfInstanceVersion::_3;
                 let v2_area = self.ospf_area.entry(b"backbone-v2".into()).or_default();
                 v2_area.0.instance = b"default-v2".into();

@@ -32,6 +32,7 @@ query FetchTopology{
             tagged_vlans{
                 id
             }
+            poe_mode
         }
         frontports{
             id

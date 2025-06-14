@@ -229,6 +229,9 @@ impl InterfaceAccess {
     pub fn name(&self) -> &str {
         self.data().map(|d| d.name.as_ref()).unwrap_or_default()
     }
+    pub fn cable(&self) -> Option<CableAccess> {
+        self.data().and_then(|c| c.cable).map(self.create_access())
+    }
     pub fn label(&self) -> Option<&str> {
         self.data()
             .map(|d| d.label.as_ref())
@@ -255,7 +258,7 @@ impl InterfaceAccess {
     }
     pub fn connected_interfaces(&self) -> Box<[InterfaceAccess]> {
         let mut result = Vec::new();
-        CablePortAccess::Interface(self.clone()).walk_cable(
+        self.cable_port().walk_cable(
             &mut (|p| {
                 if let CablePortAccess::Interface(a) = p.far_port() {
                     result.push(a.clone())
@@ -264,6 +267,11 @@ impl InterfaceAccess {
         );
         result.into_boxed_slice()
     }
+
+    pub fn cable_port(&self) -> CablePortAccess {
+        CablePortAccess::Interface(self.clone())
+    }
+
     pub fn ips(&self) -> &[IpNet] {
         self.data().map(|d| d.ips.as_ref()).unwrap_or_default()
     }
@@ -301,6 +309,9 @@ impl InterfaceAccess {
     }
     pub fn bridge(&self) -> Option<InterfaceAccess> {
         self.data().and_then(|d| d.bridge).map(self.create_access())
+    }
+    pub fn enable_poe(&self) -> bool {
+        self.data().map(|d| d.enable_poe).unwrap_or(false)
     }
 }
 impl Debug for InterfaceAccess {
@@ -690,6 +701,14 @@ impl CableAccess {
     }
 }
 impl CablePortAccess {
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            CablePortAccess::Interface(a) => Some(a.name()),
+            CablePortAccess::FrontPort(a) => a.name(),
+            CablePortAccess::RearPort(a) => a.name(),
+        }
+    }
+
     pub fn device(&self) -> Option<DeviceAccess> {
         match self {
             CablePortAccess::Interface(a) => a.device(),
@@ -706,7 +725,7 @@ impl CablePortAccess {
     }
     pub fn cable(&self) -> Option<CableAccess> {
         match self {
-            CablePortAccess::Interface(_) => None,
+            CablePortAccess::Interface(a) => a.cable(),
             CablePortAccess::FrontPort(a) => a.cable(),
             CablePortAccess::RearPort(a) => a.cable(),
         }
@@ -760,11 +779,13 @@ impl CablePortAccess {
         self.append_cable_segments(
             Vec::new(),
             &mut (|cable_segments, end_port| {
-                result(CablePath {
-                    start_port: self.clone(),
-                    cable_segments,
-                    end_port,
-                });
+                if end_port.as_ref() != Some(self) {
+                    result(CablePath {
+                        start_port: self.clone(),
+                        cable_segments,
+                        end_port,
+                    });
+                }
             }),
         );
     }
