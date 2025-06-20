@@ -1,5 +1,9 @@
 use crate::topology::{IpRangeData, IpRangeId, Topology, access::AccessTopology};
-use std::sync::Arc;
+use ipnet::IpNet;
+use std::{
+    net::IpAddr,
+    sync::Arc
+};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct IpRangeAccess {
@@ -25,5 +29,19 @@ impl AccessTopology for IpRangeAccess {
 
     fn create(topology: Arc<Topology>, id: Self::Id) -> Self {
         IpRangeAccess { topology, id }
+    }
+}
+impl IpRangeAccess {
+    pub fn is_dhcp(&self) -> bool {
+        self.data().map(|d| d.is_dhcp).unwrap_or(false)
+    }
+    pub fn start(&self) -> Option<IpAddr> {
+        self.data().map(|d| d.start)
+    }
+    pub fn end(&self) -> Option<IpAddr> {
+        self.data().map(|d| d.end)
+    }
+    pub fn net(&self) -> Option<IpNet> {
+        self.data().map(|d| d.net)
     }
 }

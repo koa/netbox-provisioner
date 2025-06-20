@@ -116,6 +116,9 @@ fn setup_testdata(
         vlan: Box::new([]),
         dhcp_v_4_client: Box::new([]),
         ipv_6_firewall_filter: Box::new([]),
+        dhcp_v_4_server: Box::new([]),
+        dhcp_v_4_server_network: Box::new([]),
+        ipv_4_pool: Box::new([]),
     };
     Ok((target_data, empty_current))
 }

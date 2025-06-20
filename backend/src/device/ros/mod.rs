@@ -6,15 +6,12 @@ use crate::{
     },
     topology::{
         PhysicalPortId,
-        access::{
-            device::DeviceAccess, interface::InterfaceAccess, ip_addresses::IpAddressAccess,
-            vxlan::VxlanAccess,
-        },
+        access::{device::DeviceAccess, interface::InterfaceAccess, vxlan::VxlanAccess},
     },
 };
 use convert_case::{Case, Casing};
-use ipnet::{IpNet, Ipv4Net, Ipv6Net};
-use log::error;
+use ipnet::{IpAdd, IpNet, IpSub, Ipv4Net, Ipv6Net};
+use log::{error, info};
 use mikrotik_model::{
     MikrotikDevice,
     ascii::{self, AsciiString},
@@ -29,14 +26,20 @@ use mikrotik_model::{
     value,
 };
 use std::{
-    collections::{BTreeSet, HashMap, HashSet, btree_map::Entry},
-    net::IpAddr,
+    collections::{
+        BTreeMap, BTreeSet, HashMap, HashSet,
+        btree_map::{Entry, Iter},
+    },
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    ops::Range,
 };
 
 mod graphql;
 mod hw_facts;
 
 mod l2;
+#[cfg(test)]
+mod test;
 
 mikrotik_model!(
     name = BaseDeviceData,
@@ -72,6 +75,9 @@ mikrotik_model!(
             keys(address, list)
         )),
         ipv6_firewall_filter(by_id(path = "ipv6/firewall/filter", keys())),
+        dhcp_v4_server(by_key(path = "ip/dhcp-server", key = name)),
+        dhcp_v4_server_network(by_key(path = "ip/dhcp-server/network", key = address)),
+        ipv4_pool(by_key(path = "ip/pool", key = name)),
     ),
 );
 
@@ -132,6 +138,9 @@ impl BaseDeviceDataTarget {
             dhcp_v_4_client: Default::default(),
             ipv_6_firewall_address_list: Default::default(),
             ipv_6_firewall_filter: Default::default(),
+            dhcp_v_4_server: Default::default(),
+            dhcp_v_4_server_network: Default::default(),
+            ipv_4_pool: Default::default(),
         });
         result
     }
@@ -580,16 +589,167 @@ impl BaseDeviceDataTarget {
         for (if_access, plane) in mapped_planes {
             let ips = if_access.ips();
             if ips.is_empty() {
-                if if_access.enable_dhcp_client() {
+                if if_access.is_enable_dhcp_client() {
                     let if_name = self.if_of_mapped_plane(plane);
                     self.enable_dhcp_client(if_name);
                 }
             } else {
                 let if_name = self.if_of_mapped_plane(plane);
-                for ip in ips.iter().filter_map(IpAddressAccess::net) {
-                    self.set_ip_address(ip, if_name.clone());
+                let dhcp_server = if_access.is_enable_dhcp_server();
+                for (ip_idx, ip_address) in ips.iter().enumerate() {
+                    if let Some(ip) = ip_address.net() {
+                        self.set_ip_address(ip, if_name.clone());
+                        if dhcp_server {
+                            if let Some(prefix) = ip_address.prefix() {
+                                if let Some(IpNet::V4(net)) = prefix.prefix() {
+                                    let mut dhcp_ranges_explicit = Vec::new();
+                                    let mut gap_finder = GapFinder::<Ipv4Addr>::new();
+                                    for range in prefix.ranges() {
+                                        if let (Some(IpAddr::V4(start)), Some(IpAddr::V4(end))) =
+                                            (range.start(), range.end())
+                                        {
+                                            if range.is_dhcp() {
+                                                dhcp_ranges_explicit.push(start..end);
+                                            }
+                                            gap_finder.reserve_ipv4_range(start..end);
+                                        }
+                                    }
+                                    let dhcp_ranges = if dhcp_ranges_explicit.is_empty() {
+                                        for child_prefix in prefix.children() {
+                                            if let Some(IpNet::V4(net)) = child_prefix.prefix() {
+                                                gap_finder.reserve_ipv4_net(net);
+                                            }
+                                        }
+                                        for ip in prefix.ips() {
+                                            if let Some(IpAddr::V4(ip)) = ip.addr() {
+                                                gap_finder.reserve_ipv4(ip)
+                                            }
+                                        }
+
+                                        gap_finder.find_gaps_ipv4(net).collect()
+                                    } else {
+                                        dhcp_ranges_explicit
+                                    };
+                                    if !dhcp_ranges.is_empty() {
+                                        let suffix = if ip_idx == 0 {
+                                            if_name.to_string()
+                                        } else {
+                                            format!("{if_name}-{ip_idx}")
+                                        };
+                                        let server_name: AsciiString =
+                                            format!("dhcp-{suffix}").into();
+                                        let server = &mut self
+                                            .dhcp_v_4_server
+                                            .entry(server_name.clone())
+                                            .or_default()
+                                            .0;
+                                        server.interface = if_name.clone();
+                                        server.address_pool = server_name.clone();
+                                        let network = &mut self
+                                            .dhcp_v_4_server_network
+                                            .entry(net)
+                                            .or_default()
+                                            .0;
+                                        network.gateway.insert(net.addr());
+                                        network.dns_server.insert(net.addr());
+                                        self.ipv_4_pool.entry(server_name).or_default().0.ranges =
+                                            dhcp_ranges
+                                                .iter()
+                                                .map(|r| format!("{}-{}", r.start, r.end).into())
+                                                .collect();
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+struct GapFinder<V: Ord + Copy> {
+    reserved_chunks: BTreeMap<V, i32>,
+}
+
+impl<V: Ord + Copy> GapFinder<V> {
+    pub fn new() -> Self {
+        GapFinder {
+            reserved_chunks: BTreeMap::new(),
+        }
+    }
+    pub fn reserve(&mut self, chunk: Range<V>) {
+        *self.reserved_chunks.entry(chunk.start).or_insert(0) += 1;
+        *self.reserved_chunks.entry(chunk.end).or_insert(0) -= 1;
+    }
+    pub fn gaps(&self, Range { start, end }: Range<V>) -> GapIterator<V> {
+        GapIterator {
+            current_value: 0,
+            last_key: start,
+            start,
+            end,
+            gap_iter: self.reserved_chunks.iter(),
+        }
+    }
+}
+
+impl GapFinder<Ipv4Addr> {
+    pub fn reserve_ipv4(&mut self, ip: Ipv4Addr) {
+        self.reserve(ip.saturating_sub(1)..ip.saturating_add(1))
+    }
+    pub fn reserve_ipv4_range(&mut self, ip: Range<Ipv4Addr>) {
+        self.reserve(ip.start.saturating_sub(1)..ip.end.saturating_add(1))
+    }
+    pub fn reserve_ipv4_net(&mut self, ip: Ipv4Net) {
+        self.reserve_ipv4_range(ip.network()..ip.broadcast());
+    }
+    pub fn find_gaps_ipv4(&self, net: Ipv4Net) -> GapIterator<Ipv4Addr> {
+        self.gaps(net.network().saturating_add(1)..net.broadcast().saturating_sub(1))
+    }
+}
+impl GapFinder<Ipv6Addr> {
+    pub fn reserve_ipv6(&mut self, ip: Ipv6Addr) {
+        self.reserve(ip.saturating_sub(1)..ip.saturating_add(1))
+    }
+}
+impl GapFinder<IpAddr> {
+    pub fn reserve_ip(&mut self, ip: IpAddr) {
+        self.reserve(match ip {
+            IpAddr::V4(ip) => IpAddr::V4(ip.saturating_sub(1))..IpAddr::V4(ip.saturating_add(1)),
+            IpAddr::V6(ip) => IpAddr::V6(ip.saturating_sub(1))..IpAddr::V6(ip.saturating_add(1)),
+        });
+    }
+}
+struct GapIterator<'a, V: Ord + Copy> {
+    current_value: i32,
+    last_key: V,
+    start: V,
+    end: V,
+    gap_iter: Iter<'a, V, i32>,
+}
+impl<'a, V: Ord + Copy> Iterator for GapIterator<'a, V> {
+    type Item = Range<V>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for (current_key, increment) in self.gap_iter.by_ref() {
+            let current_key = (*current_key).clamp(self.start, self.end);
+            let found_gap = if self.current_value <= 0 && current_key > self.last_key {
+                Some(self.last_key..current_key)
+            } else {
+                None
+            };
+            self.current_value += increment;
+            self.last_key = current_key;
+            if let Some(found_gap) = found_gap {
+                return Some(found_gap);
+            }
+        }
+        if self.current_value <= 0 && self.end > self.last_key {
+            let last_key = self.last_key;
+            self.last_key = self.end;
+            Some(last_key..self.end)
+        } else {
+            None
         }
     }
 }

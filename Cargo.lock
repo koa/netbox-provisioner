@@ -2797,7 +2797,7 @@ dependencies = [
 [[package]]
 name = "mikrotik-model"
 version = "0.1.0"
-source = "git+https://github.com/koa/mikrotik-model#f59241515e0e3ac7ce36a4e07b58d1160096e837"
+source = "git+https://github.com/koa/mikrotik-model#73d9085e01d1a5add161ff8182f18ba71142dd49"
 dependencies = [
  "config 0.14.1",
  "const-str",
@@ -2822,7 +2822,7 @@ dependencies = [
 [[package]]
 name = "mikrotik-model-generator"
 version = "0.1.0"
-source = "git+https://github.com/koa/mikrotik-model#f59241515e0e3ac7ce36a4e07b58d1160096e837"
+source = "git+https://github.com/koa/mikrotik-model#73d9085e01d1a5add161ff8182f18ba71142dd49"
 dependencies = [
  "convert_case 0.6.0",
  "darling",
@@ -2839,7 +2839,7 @@ dependencies = [
 [[package]]
 name = "mikrotik-model-generator-macro"
 version = "0.1.0"
-source = "git+https://github.com/koa/mikrotik-model#f59241515e0e3ac7ce36a4e07b58d1160096e837"
+source = "git+https://github.com/koa/mikrotik-model#73d9085e01d1a5add161ff8182f18ba71142dd49"
 dependencies = [
  "darling",
  "mikrotik-model-generator",

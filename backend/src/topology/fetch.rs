@@ -16,7 +16,7 @@ use crate::{
     },
 };
 use ipnet::IpNet;
-use log::warn;
+use log::{info, warn};
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     str::FromStr,
@@ -382,6 +382,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                     }
                     let use_ospf = interface.tags.iter().any(|t| t.slug == "ospf");
                     let enable_dhcp_client = interface.tags.iter().any(|t| t.slug == "dhcp-client");
+                    let enable_dhcp_server = interface.tags.iter().any(|t| t.slug == "dhcp");
                     let external = PhysicalPortId::from_str(&interface.name).ok();
                     let port_type = match interface.type_.as_str() {
                         "10gbase-x-sfpp" | "1000base-x-sfp" | "1000base-t" | "100base-tx"
@@ -420,6 +421,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                             ips,
                             use_ospf,
                             enable_dhcp_client,
+                            enable_dhcp_server,
                             bridge,
                             cable: None,
                             enable_poe,
@@ -699,12 +701,14 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             ip_addr_data.id.parse().map(IpAddressId),
             ip_addr_data.address.parse::<IpNet>(),
         ) {
-            let prefix = prefix_idx.get(&ip).copied();
+            let prefix = prefix_idx.get(&ip.trunc()).copied();
             if let Some(prefix_id) = prefix {
                 ip_addresses_of_prefix
                     .entry(prefix_id)
                     .or_insert(Vec::new())
                     .push(id);
+            } else {
+                info!("Missing prefix {}", ip.trunc());
             }
 
             ip_addresses.insert(

@@ -1,6 +1,9 @@
 use crate::topology::{
     IpAddressData, IpAddressId, Topology,
-    access::{AccessTopology, graphql::IpNetGraphql},
+    access::{
+        AccessTopology, graphql::IpNetGraphql, interface::InterfaceAccess,
+        ip_prefix::IpPrefixAccess,
+    },
 };
 use async_graphql::Object;
 use ipnet::IpNet;
@@ -38,6 +41,14 @@ impl IpAddressAccess {
     }
     pub fn net(&self) -> Option<IpNet> {
         self.data().map(|a| a.ip)
+    }
+    pub fn prefix(&self) -> Option<IpPrefixAccess> {
+        self.data().and_then(|a| a.prefix).map(self.create_access())
+    }
+    pub fn interface(&self) -> Option<InterfaceAccess> {
+        self.data()
+            .and_then(|a| a.interface)
+            .map(self.create_access())
     }
 }
 

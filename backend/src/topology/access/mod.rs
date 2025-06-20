@@ -10,6 +10,7 @@ pub mod front_port;
 pub mod graphql;
 pub mod interface;
 pub mod ip_addresses;
+pub mod ip_prefix;
 pub mod ip_ranges;
 pub mod rear_port;
 pub mod vlan;

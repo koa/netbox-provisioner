@@ -205,6 +205,7 @@ pub struct Interface {
     pub ips: Box<[IpAddressId]>,
     pub use_ospf: bool,
     pub enable_dhcp_client: bool,
+    pub enable_dhcp_server: bool,
     pub bridge: Option<InterfaceId>,
     pub cable: Option<CableId>,
     pub enable_poe: bool,
