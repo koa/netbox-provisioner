@@ -1,9 +1,6 @@
 use crate::topology::{IpRangeData, IpRangeId, Topology, access::AccessTopology};
 use ipnet::IpNet;
-use std::{
-    net::IpAddr,
-    sync::Arc
-};
+use std::{net::IpAddr, sync::Arc};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct IpRangeAccess {

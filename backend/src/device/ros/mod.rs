@@ -5,13 +5,15 @@ use crate::{
         l2::{EndpointNameGenerator, L2Plane, L2Port, L2Setup},
     },
     topology::{
-        PhysicalPortId,
-        access::{device::DeviceAccess, interface::InterfaceAccess, vxlan::VxlanAccess},
+        IpPrefixId, PhysicalPortId,
+        access::{
+            AccessTopology, device::DeviceAccess, interface::InterfaceAccess, vxlan::VxlanAccess,
+        },
     },
 };
 use convert_case::{Case, Casing};
 use ipnet::{IpAdd, IpNet, IpSub, Ipv4Net, Ipv6Net};
-use log::{error, info};
+use log::error;
 use mikrotik_model::{
     MikrotikDevice,
     ascii::{self, AsciiString},
@@ -94,6 +96,10 @@ pub enum SetupError {
     NoPortsFound(AsciiString),
     #[error("Declared port {0} not found on device")]
     PortNotFound(PhysicalPortId),
+    #[error("Missing Prefix configuration for ip address: {ip}")]
+    MissingPrefixOnIpAddress { ip: IpNet },
+    #[error("Address on Prefix {prefix} not found")]
+    MissingAddressOnPrefix { prefix: IpPrefixId },
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -585,7 +591,10 @@ impl BaseDeviceDataTarget {
             });
     }
 
-    fn setup_ip_addresses(&mut self, mapped_planes: &[(InterfaceAccess, MappedPlane)]) {
+    fn setup_ip_addresses(
+        &mut self,
+        mapped_planes: &[(InterfaceAccess, MappedPlane)],
+    ) -> Result<(), SetupError> {
         for (if_access, plane) in mapped_planes {
             let ips = if_access.ips();
             if ips.is_empty() {
@@ -600,64 +609,66 @@ impl BaseDeviceDataTarget {
                     if let Some(ip) = ip_address.net() {
                         self.set_ip_address(ip, if_name.clone());
                         if dhcp_server {
-                            if let Some(prefix) = ip_address.prefix() {
-                                if let Some(IpNet::V4(net)) = prefix.prefix() {
-                                    let mut dhcp_ranges_explicit = Vec::new();
-                                    let mut gap_finder = GapFinder::<Ipv4Addr>::new();
-                                    for range in prefix.ranges() {
-                                        if let (Some(IpAddr::V4(start)), Some(IpAddr::V4(end))) =
-                                            (range.start(), range.end())
-                                        {
-                                            if range.is_dhcp() {
-                                                dhcp_ranges_explicit.push(start..end);
-                                            }
-                                            gap_finder.reserve_ipv4_range(start..end);
+                            let prefix = ip_address
+                                .prefix()
+                                .ok_or(SetupError::MissingPrefixOnIpAddress { ip })?;
+                            if let (IpNet::V4(ip), IpNet::V4(net)) = (
+                                ip,
+                                prefix.prefix().ok_or(SetupError::MissingAddressOnPrefix {
+                                    prefix: prefix.id(),
+                                })?,
+                            ) {
+                                let mut dhcp_ranges_explicit = Vec::new();
+                                let mut gap_finder = GapFinder::<Ipv4Addr>::new();
+                                for range in prefix.ranges() {
+                                    if let (Some(IpAddr::V4(start)), Some(IpAddr::V4(end))) =
+                                        (range.start(), range.end())
+                                    {
+                                        if range.is_dhcp() {
+                                            dhcp_ranges_explicit.push(start..end);
+                                        }
+                                        gap_finder.reserve_ipv4_range(start..end);
+                                    }
+                                }
+                                let dhcp_ranges = if dhcp_ranges_explicit.is_empty() {
+                                    for child_prefix in prefix.children() {
+                                        if let Some(IpNet::V4(net)) = child_prefix.prefix() {
+                                            gap_finder.reserve_ipv4_net(net);
                                         }
                                     }
-                                    let dhcp_ranges = if dhcp_ranges_explicit.is_empty() {
-                                        for child_prefix in prefix.children() {
-                                            if let Some(IpNet::V4(net)) = child_prefix.prefix() {
-                                                gap_finder.reserve_ipv4_net(net);
-                                            }
+                                    for ip in prefix.ips() {
+                                        if let Some(IpAddr::V4(ip)) = ip.addr() {
+                                            gap_finder.reserve_ipv4(ip)
                                         }
-                                        for ip in prefix.ips() {
-                                            if let Some(IpAddr::V4(ip)) = ip.addr() {
-                                                gap_finder.reserve_ipv4(ip)
-                                            }
-                                        }
+                                    }
 
-                                        gap_finder.find_gaps_ipv4(net).collect()
+                                    gap_finder.find_gaps_ipv4(net).collect()
+                                } else {
+                                    dhcp_ranges_explicit
+                                };
+                                if !dhcp_ranges.is_empty() {
+                                    let suffix = if ip_idx == 0 {
+                                        if_name.to_string()
                                     } else {
-                                        dhcp_ranges_explicit
+                                        format!("{if_name}-{ip_idx}")
                                     };
-                                    if !dhcp_ranges.is_empty() {
-                                        let suffix = if ip_idx == 0 {
-                                            if_name.to_string()
-                                        } else {
-                                            format!("{if_name}-{ip_idx}")
-                                        };
-                                        let server_name: AsciiString =
-                                            format!("dhcp-{suffix}").into();
-                                        let server = &mut self
-                                            .dhcp_v_4_server
-                                            .entry(server_name.clone())
-                                            .or_default()
-                                            .0;
-                                        server.interface = if_name.clone();
-                                        server.address_pool = server_name.clone();
-                                        let network = &mut self
-                                            .dhcp_v_4_server_network
-                                            .entry(net)
-                                            .or_default()
-                                            .0;
-                                        network.gateway.insert(net.addr());
-                                        network.dns_server.insert(net.addr());
-                                        self.ipv_4_pool.entry(server_name).or_default().0.ranges =
-                                            dhcp_ranges
-                                                .iter()
-                                                .map(|r| format!("{}-{}", r.start, r.end).into())
-                                                .collect();
-                                    }
+                                    let server_name: AsciiString = format!("dhcp-{suffix}").into();
+                                    let server = &mut self
+                                        .dhcp_v_4_server
+                                        .entry(server_name.clone())
+                                        .or_default()
+                                        .0;
+                                    server.interface = if_name.clone();
+                                    server.address_pool = server_name.clone();
+                                    let network =
+                                        &mut self.dhcp_v_4_server_network.entry(net).or_default().0;
+                                    network.gateway.insert(ip.addr());
+                                    network.dns_server.insert(ip.addr());
+                                    self.ipv_4_pool.entry(server_name).or_default().0.ranges =
+                                        dhcp_ranges
+                                            .iter()
+                                            .map(|r| format!("{}-{}", r.start, r.end).into())
+                                            .collect();
                                 }
                             }
                         }
@@ -665,6 +676,7 @@ impl BaseDeviceDataTarget {
                 }
             }
         }
+        Ok(())
     }
 }
 

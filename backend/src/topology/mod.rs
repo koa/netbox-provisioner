@@ -431,11 +431,22 @@ impl From<u32> for IpAddressId {
         IpAddressId(value)
     }
 }
+impl Display for IpAddressId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
 impl From<u32> for IpPrefixId {
     fn from(value: u32) -> Self {
         IpPrefixId(value)
     }
 }
+impl Display for IpPrefixId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl From<u32> for InterfaceId {
     fn from(value: u32) -> Self {
         InterfaceId(value)

@@ -16,7 +16,7 @@ use crate::{
     },
 };
 use ipnet::IpNet;
-use log::{info, warn};
+use log::warn;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     str::FromStr,
@@ -707,8 +707,6 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                     .entry(prefix_id)
                     .or_insert(Vec::new())
                     .push(id);
-            } else {
-                info!("Missing prefix {}", ip.trunc());
             }
 
             ip_addresses.insert(

@@ -18,7 +18,7 @@ pub mod vxlan;
 pub mod wlan;
 pub mod wlan_group;
 
-trait AccessTopology {
+pub trait AccessTopology {
     type Id: Copy;
     type Data;
     fn topology(&self) -> Arc<Topology>;
