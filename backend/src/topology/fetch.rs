@@ -321,6 +321,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             wlan_groups.insert(
                 wlan_group_id,
                 WlanGroupData {
+                    name: wlan_group.name.into_boxed_str(),
                     mgmt_vlan,
                     controller,
                     aps: Box::new([]),

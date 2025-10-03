@@ -3,11 +3,13 @@ use crate::topology::{
     access::{AccessTopology, interface::InterfaceAccess, vlan::VlanAccess},
 };
 use async_graphql::Object;
+use std::cmp::Ordering;
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Formatter},
     hash::{Hash, Hasher},
     net::IpAddr,
+    ptr,
     sync::Arc,
 };
 
@@ -103,6 +105,20 @@ impl Debug for VxlanAccess {
 impl Hash for VxlanAccess {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
+    }
+}
+impl PartialOrd for VxlanAccess {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if ptr::eq(self.topology.as_ref(), other.topology.as_ref()) {
+            Some(self.id.cmp(&other.id))
+        } else {
+            None
+        }
+    }
+}
+impl Ord for VxlanAccess {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.id.cmp(&other.id)
     }
 }
 

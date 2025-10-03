@@ -1,3 +1,5 @@
+use crate::device::ros::l2::{EndpointNameGenerator, L2Setup, NameGenerator};
+use crate::device::ros::{SwitchVlanConcept, WifiDeviceDataCurrent, WifiDeviceDataTarget};
 use crate::{
     Error,
     device::{
@@ -47,14 +49,30 @@ pub struct DeviceCfg {
     base_target: BaseDeviceDataTarget,
     wireless_current: Option<WirelessDeviceDataCurrent>,
     wireless_target: Option<WirelessDeviceDataTarget>,
+    wifi_current: Option<WifiDeviceDataCurrent>,
+    wifi_target: Option<WifiDeviceDataTarget>,
 }
 
 impl DeviceCfg {
-    fn generate_from(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
-        self.base_target.generate_from(device)?;
+    fn generate_from<N: NameGenerator>(
+        &mut self,
+        device: &DeviceAccess,
+        name_generator: N,
+    ) -> Result<(), SetupError> {
+        self.base_target.set_name_and_loopback(device);
+
+        let mut l2 = L2Setup::new(device, name_generator)?;
+
+        self.base_target.setup_ip_addresses(&mut l2)?;
+        self.base_target.setup_ospf(device, &mut l2);
+        self.base_target.setup_wlan_ap(device, &mut l2);
         if let Some(wireless_target) = self.wireless_target.as_mut() {
-            wireless_target.generate_from(device);
+            wireless_target.generate_from(device, &mut l2);
         }
+        if let Some(wifi_target) = self.wifi_target.as_mut() {
+            wifi_target.generate_from(device, &mut l2)?;
+        }
+        self.base_target.setup_l2(&mut l2)?;
         Ok(())
     }
     fn generate_mutations(&self) -> Result<Box<[ResourceMutation]>, Error> {
@@ -63,6 +81,14 @@ impl DeviceCfg {
             (&self.wireless_target, &self.wireless_current)
         {
             let wireless_mutations = wireless_target.generate_mutations(wireless_current)?;
+            mutations.into_iter().chain(wireless_mutations).collect()
+        } else {
+            mutations
+        };
+        let mutations = if let (Some(wifi_target), Some(wifi_current)) =
+            (&self.wifi_target, &self.wifi_current)
+        {
+            let wireless_mutations = wifi_target.generate_mutations(wifi_current)?;
             mutations.into_iter().chain(wireless_mutations).collect()
         } else {
             mutations
@@ -92,20 +118,35 @@ impl AccessibleDevice {
             .collect::<HashSet<_>>();
 
         let current = BaseDeviceDataCurrent::fetch(client).await?;
-        let target = BaseDeviceDataTarget::detect_device(client).await?;
+        let routerboard = <SystemRouterboardState as SingleResource>::fetch(client)
+            .await?
+            .ok_or(SetupError::RouterboardNotDefined)?;
+        let model = &routerboard.model.0;
+        let target = BaseDeviceDataTarget::new(model)?;
         let (wireless_current, wireless_target) =
             if installed_packages.contains(b"wireless".as_ref()) {
-                let current_wireless = WirelessDeviceDataCurrent::fetch(client).await?;
-                let target = WirelessDeviceDataTarget::detect_device(client).await?;
-                (Some(current_wireless), Some(target))
+                (
+                    Some(WirelessDeviceDataCurrent::fetch(client).await?),
+                    Some(WirelessDeviceDataTarget::detect_device(client).await?),
+                )
             } else {
                 (None, None)
             };
+        let (wifi_current, wifi_target) = if installed_packages.contains(b"wifi-qcom".as_ref()) {
+            let current_wifi = WifiDeviceDataCurrent::fetch(client).await?;
+            let target = WifiDeviceDataTarget::detect_device(client).await?;
+
+            (Some(current_wifi), Some(target))
+        } else {
+            (None, None)
+        };
         Ok(DeviceCfg {
             base_current: current,
             base_target: target,
             wireless_current,
             wireless_target,
+            wifi_current,
+            wifi_target,
         })
     }
 }
@@ -155,7 +196,7 @@ impl AccessibleDevice {
     }
     async fn generate_cfg(&self) -> Result<Box<str>, Error> {
         let mut device_cfg = self.fetch_config(&self.client).await?;
-        device_cfg.generate_from(&self.device_config)?;
+        device_cfg.generate_from(&self.device_config, EndpointNameGenerator)?;
 
         let mutations = device_cfg.generate_mutations()?;
         for m in &mutations {

@@ -46,7 +46,7 @@ impl VlanAccess {
     pub fn vxlan(&self) -> Option<VxlanAccess> {
         self.data().and_then(|v| v.vxlan).map(self.create_access())
     }
-    pub fn wlan(&self) -> impl Iterator<Item = WlanAccess> {
+    pub fn wlan<'s>(&'s self) -> impl Iterator<Item = WlanAccess> + use<'s> {
         self.data()
             .into_iter()
             .flat_map(|d| d.wlans.iter().cloned())

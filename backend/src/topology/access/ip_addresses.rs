@@ -7,7 +7,13 @@ use crate::topology::{
 };
 use async_graphql::Object;
 use ipnet::IpNet;
-use std::{net::IpAddr, sync::Arc};
+use std::{
+    cmp::Ordering,
+    fmt::{Debug, Formatter},
+    hash::{Hash, Hasher},
+    net::IpAddr,
+    sync::Arc,
+};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct IpAddressAccess {
@@ -49,6 +55,35 @@ impl IpAddressAccess {
         self.data()
             .and_then(|a| a.interface)
             .map(self.create_access())
+    }
+}
+
+impl Debug for IpAddressAccess {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "IpAddressAccess({};({:?}))",
+            self.id.0,
+            self.data().map(|d| d.ip).unwrap_or_default()
+        )
+    }
+}
+
+impl Hash for IpAddressAccess {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialOrd for IpAddressAccess {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        AccessTopology::partial_cmp(self, other)
+    }
+}
+
+impl Ord for IpAddressAccess {
+    fn cmp(&self, other: &Self) -> Ordering {
+        AccessTopology::cmp(self, other)
     }
 }
 

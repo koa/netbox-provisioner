@@ -10,7 +10,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::{Display, Formatter},
     hash::Hash,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::IpAddr,
     str::FromStr,
     sync::Arc,
     time::Duration,
@@ -132,6 +132,7 @@ pub struct VlanData {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WlanGroupData {
+    pub name: Box<str>,
     pub mgmt_vlan: Option<VlanId>,
     pub controller: DeviceId,
     pub aps: Box<[DeviceId]>,

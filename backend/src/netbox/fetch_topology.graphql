@@ -93,6 +93,7 @@ query FetchTopology{
     wireless_lan_group_list {
         id
         custom_fields
+        name
         wireless_lans {
             id
             ssid

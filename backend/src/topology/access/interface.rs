@@ -10,8 +10,10 @@ use crate::topology::{
 };
 use async_graphql::Object;
 use mikrotik_model::ascii::AsciiString;
+use std::cmp::Ordering;
 use std::{
     fmt::{Debug, Formatter},
+    ptr,
     sync::Arc,
 };
 
@@ -19,6 +21,20 @@ use std::{
 pub struct InterfaceAccess {
     topology: Arc<Topology>,
     id: InterfaceId,
+}
+impl PartialOrd for InterfaceAccess {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if ptr::eq(self.topology.as_ref(), other.topology.as_ref()) {
+            Some(Ord::cmp(&self, &other))
+        } else {
+            None
+        }
+    }
+}
+impl Ord for InterfaceAccess {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.id.cmp(&other.id)
+    }
 }
 
 impl AccessTopology for InterfaceAccess {

@@ -1,6 +1,8 @@
 use crate::topology::{DeviceId, Topology};
 use async_graphql::InputObject;
 use device::DeviceAccess;
+use std::cmp::Ordering;
+use std::ptr;
 use std::sync::Arc;
 
 pub mod cable;
@@ -19,7 +21,7 @@ pub mod wlan;
 pub mod wlan_group;
 
 pub trait AccessTopology {
-    type Id: Copy;
+    type Id: Copy + Ord;
     type Data;
     fn topology(&self) -> Arc<Topology>;
     fn id(&self) -> Self::Id;
@@ -31,6 +33,18 @@ pub trait AccessTopology {
         Access: AccessTopology<Id = Id>,
     {
         |id| Access::create(self.topology(), id)
+    }
+
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.id().cmp(&other.id())
+    }
+
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if ptr::eq(self.topology().as_ref(), other.topology().as_ref()) {
+            Some(self.cmp(other))
+        } else {
+            None
+        }
     }
 }
 

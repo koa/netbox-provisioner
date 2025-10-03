@@ -9,6 +9,14 @@ use mikrotik_model::{
 };
 use std::iter::repeat_n;
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Default)]
+pub enum WLanMethod {
+    #[default]
+    None,
+    Capsman,
+    Wifi,
+}
+
 pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName]> {
     match model {
         b"RB962UiGS-5HacT2HnT" => repeat_n(
@@ -71,6 +79,17 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         .chain(repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, false),
             4,
+        ))
+        .enumerate()
+        .map(|(idx, generator)| generator(idx + 1))
+        .collect(),
+        b"cAPGi-5HaxD2HaxD" => repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, false),
+            1,
+        )
+        .chain(repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, true),
+            1,
         ))
         .enumerate()
         .map(|(idx, generator)| generator(idx + 1))
@@ -141,6 +160,12 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
         _ => Box::default(),
+    }
+}
+pub fn find_wlan_method(model: &[u8]) -> WLanMethod {
+    match model {
+        b"cAPGi-5HaxD2HaxD" => WLanMethod::Wifi,
+        _ => WLanMethod::default(),
     }
 }
 pub fn build_wifi_ports(model: &[u8]) -> Box<[InterfaceWifiByDefaultName]> {
