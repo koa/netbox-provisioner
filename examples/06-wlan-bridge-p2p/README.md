@@ -5,17 +5,17 @@
 ~2km), carrying the site's full L2 fabric (household VLANs, VXLAN traffic) across the air gap
 rather than being a managed CAPsMAN client.
 
-**Why it matters — highest priority, highest risk.** Per the completion plan (§5, risk 2; Phase 6)
-there is **no existing code at all** for this device role — no station/AP-bridge-mode config, no
-security-profile pairing, nothing. This is the single most important example to fill in, since a
-real, currently-working bridge pair is the only reliable source of truth for what RouterOS config
-pattern actually achieves transparent L2 bridging over a wireless P2P link in this network
-(`interface/wireless` vs. native `interface/wifi` with `WifiMode::StationBridge`, channel/frequency
-locking, security profile matching between both ends, `datapath.bridge` wiring).
+**Why it matters — highest priority, highest risk.** Per the completion plan there was **no
+existing code at all** for this device role. These two examples turned out to reveal two
+structurally different RouterOS interface types depending on radio technology, neither previously
+modeled in `mikrotik-model`: legacy `/interface/wireless` with MikroTik's proprietary Nv2/NSTREME
+protocol for the 5GHz dish link, and the dedicated `/interface/w60g` stanza for the 60GHz link —
+see plan Phase 6 for the field-level breakdown.
 
-**Status:** TODO — needs a real `/export` from **both ends** of a currently-working production
-P2P wireless bridge pair (the two ends' configs need to be read together to understand how they
-associate). Redact WPA keys/serials, keep everything else intact.
-
-`config.rsc` — not yet populated (should eventually hold both `a-end.rsc` and `b-end.rsc`, or
-equivalent).
+**Status:** populated — `config-5ghz.rsc` (`bachmann-hegglin-2`, RBDynaDishG-5HacDr3,
+`mode=station-bridge`, `wireless-protocol=nv2-nstreme-802.11`) and `config-60ghz.rsc`
+(`schopf-hegglin`, RBwAPG-60ad-A, `/interface/w60g`, `mode=station-bridge`). Both confirm the
+transparent-bridge design (simple non-VLAN-filtering bridge, radio port + one ethernet port) and
+both use `/routing/bfd/configuration` for fast link-failure detection. Each file currently shows
+only one end of its link — the other end of each pair would help confirm how the two sides'
+SSID/security settings must match (open question, plan §5 risk 2).

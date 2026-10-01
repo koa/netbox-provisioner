@@ -6,11 +6,13 @@ BGP control plane.
 instead of a VPN gateway — worth keeping as a separate example since Cilium's BGP Control Plane
 may expect different session parameters (e.g. multihop, specific timers) than a VPN gateway does.
 
-**Why it matters:** second confirmation point (alongside scenario 02) for the unverified
-`/routing/bgp/connection` field names in the completion plan, and for whether `bgp_multihop`
-needs to be true for this particular peer.
+**Why it matters:** second confirmation point (alongside scenario 02) for the real
+`/routing/bgp/connection` field names, and revealed that this peer actually uses **iBGP**
+(`local.role=ibgp`, same ASN both sides), not eBGP as originally assumed — corrected in the
+completion plan (§2).
 
-**Status:** TODO — needs a real `/export` (or `/routing/bgp/connection print detail`) from a
-production device peering with the Cilium cluster, redacted as needed.
-
-`config.rsc` — not yet populated.
+**Status:** populated (`config.rsc`, real `/export` from `klr-sw-3`). Notably this "edge router" is
+actually a pure L2/L3-hw-offload **switch** (CRS309) that also speaks iBGP to three Kubernetes
+nodes (`sr02`/`sr03`/`sr04`, presumably Cilium's BGP speakers) over both IPv4 and IPv6, with
+`multihop=yes`. Good evidence that BGP capability should be gated purely by the presence of a
+`bgp-peer`-tagged interface, not by device role (`router` vs `switch`) — matches the plan's design.

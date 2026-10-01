@@ -32,6 +32,9 @@ script is compared against the reference here for *behavioral* equivalence, not 
 | 09 | [wlan-controller](09-wlan-controller/) | CAPsMAN + WiFi-CAPsMAN controller, combined with the router role |
 | 10 | [dhcp-household](10-dhcp-household/) | DHCP server/pool for a household VLAN, auto-derived free-range |
 
-Scenarios 02, 03 and 06 are the highest priority to fill with real exports first — they cover the
-areas flagged as the biggest open risks in the completion plan (exact RouterOS BGP field names,
-and the wireless point-to-point bridge config pattern, which has no existing code at all).
+Scenarios 02, 03 and 06 are populated with real exports and already reshaped the completion plan
+significantly (simplified BGP data model, a new brownfield-safe diffing requirement, two new
+WLAN-bridge interface types) — see the completion plan for details. Remaining scenarios (01, 04,
+05, 07–10) are still TODO and lower priority, since the patterns they'd exercise are either
+already live in the code (CAPsMAN/WiFi AP, VXLAN) or straightforward once Phase 2/3 land (plain
+router/switch, DHCP).

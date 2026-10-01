@@ -12,9 +12,11 @@ This example's real config is the primary way to validate those field names befo
 already runs a mix of 2-byte and 4-byte ASNs in production — capture whichever this device
 actually uses.
 
-**Status:** TODO — needs a real `/export` (or at minimum `/routing/bgp/connection print detail`
-plus the relevant `/routing/ospf/instance print detail`) from a production device that currently
-peers with a VPN gateway. Redact the peer address/AS if sensitive, but keep the field *names* and
-structure intact — that's the point of this example.
-
-`config.rsc` — not yet populated.
+**Status:** populated (`config.rsc`, real `/export` from `router-faesigrund-keller`). Turned out to
+be far richer than "a VPN eBGP peer" — the device is simultaneously a CAPsMAN controller, hosts
+several OpenVPN servers/clients, GRE/IPsec/6to4/IPIPv6 tunnels, full firewall/NAT, and **three
+separate `/routing/bgp/instance` with three different local ASNs**, several `/routing/bgp/template`
+entries, and `/routing/filter/rule` chains per peer. The completion plan was revised accordingly
+(simplified v1 BGP data model, auto-derived instances, no templates, optional filter pass-through)
+— see plan §1.2/§2/§2bis/§2ter. VPN tunnels, firewall/NAT and the operational bits (scheduler,
+netwatch, logging, user groups) are explicitly out of scope for the generator (plan §2ter).
