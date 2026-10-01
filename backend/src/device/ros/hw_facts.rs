@@ -170,7 +170,7 @@ pub fn find_wlan_method(model: &[u8]) -> WLanMethod {
 }
 pub fn build_wifi_ports(model: &[u8]) -> Box<[InterfaceWifiByDefaultName]> {
     match model {
-        b"C52iG-5HaxD2HaxD" => repeat_n(generate_wifi(1560), 2)
+        b"C52iG-5HaxD2HaxD" => repeat_n(generate_wifi(), 2)
             .enumerate()
             .map(|(idx, generator)| generator(idx + 1))
             .collect(),
