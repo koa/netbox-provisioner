@@ -8,7 +8,7 @@ use crate::{
         },
     },
     topology::{
-        Cable, CableId, CablePort, Device, DeviceId, FrontPort, FrontPortId, Interface,
+        Cable, CableId, CablePort, Device, DeviceId, DeviceRole, FrontPort, FrontPortId, Interface,
         InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
         PhysicalPortId, PortType, RearPort, RearPortId, Topology, VlanData, VlanGroupData,
         VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId,
@@ -269,7 +269,6 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             credentials_by_tenants.insert(tenant.id.as_ref(), cred);
         }
     }
-
     let mut interfaces = HashMap::new();
     let mut devices = HashMap::new();
     let mut vxlans = HashMap::new();
@@ -334,6 +333,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
     let mut interface_of_address = HashMap::new();
     for device in data.device_list {
         if let Some(device_id) = device.id.parse().ok().map(DeviceId) {
+            let role = DeviceRole::from_slug(device.role.slug.as_str());
             let credentials = device
                 .tenant
                 .and_then(|tenant| credentials_by_tenants.get(tenant.id.as_str()))
@@ -496,6 +496,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
                     wlan_controller_of,
                     wlan_ap_of,
                     vlans: vlans.into_iter().collect(),
+                    role,
                 },
             );
         }

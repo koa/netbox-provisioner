@@ -1,7 +1,7 @@
 use crate::{
     device::{AccessibleDevice, Credentials},
     topology::{
-        CablePort, Device, DeviceId, Topology,
+        CablePort, Device, DeviceId, DeviceRole, Topology,
         access::{
             AccessTopology, AdhocCredentials, interface::InterfaceAccess,
             ip_addresses::IpAddressAccess, vlan::VlanAccess, vxlan::VxlanAccess,
@@ -119,6 +119,10 @@ impl DeviceAccess {
 
     pub fn vxlan(&self) -> HashSet<VxlanAccess> {
         self.vlans().filter_map(|vl| vl.vxlan()).collect()
+    }
+
+    pub fn role(&self) -> Option<DeviceRole> {
+        self.data().and_then(|d| d.role)
     }
 }
 

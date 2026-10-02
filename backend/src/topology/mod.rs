@@ -112,6 +112,29 @@ pub struct Device {
     pub wlan_controller_of: Option<WlanGroupId>,
     pub wlan_ap_of: Option<WlanGroupId>,
     pub vlans: Box<[VlanId]>,
+    pub role: Option<DeviceRole>,
+}
+
+/// Device-role slugs relevant to config generation. Other NetBox roles (anything not
+/// listed here) are intentionally not modeled - `wlan-ap`/`wlan-controller` behavior
+/// is already derived from the `wlan_group`/`controller` custom fields, not from this
+/// enum (see `Device.wlan_ap_of`/`wlan_controller_of`).
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum DeviceRole {
+    Router,
+    Switch,
+    WlanBridge,
+}
+
+impl DeviceRole {
+    pub fn from_slug(slug: &str) -> Option<DeviceRole> {
+        match slug {
+            "router" => Some(DeviceRole::Router),
+            "switch" => Some(DeviceRole::Switch),
+            "wlan-bridge" => Some(DeviceRole::WlanBridge),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
