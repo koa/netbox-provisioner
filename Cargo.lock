@@ -658,6 +658,7 @@ dependencies = [
  "async-graphql",
  "config 0.15.11",
  "convert_case 0.8.0",
+ "encoding_rs",
  "env_logger",
  "graphql_client",
  "ipnet",
@@ -668,9 +669,11 @@ dependencies = [
  "regex",
  "reqwest 0.12.23",
  "serde",
+ "sha2",
  "surge-ping",
  "thiserror 2.0.16",
  "tokio",
+ "tokio-stream",
 ]
 
 [[package]]

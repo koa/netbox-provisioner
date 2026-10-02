@@ -6,3 +6,4 @@
 /.idea
 /.env.local
 /frontend/src/graphql/authenticated/schema.graphql
+/.chr-test-cache/

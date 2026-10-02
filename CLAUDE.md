@@ -28,6 +28,16 @@ design, apply/diff/review pipeline, etc.) are tracked outside this repo in the p
 the `examples/` directory here for reference RouterOS configurations the generator must remain
 capable of producing the functionality of (not byte-for-byte).
 
+`backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR
+instances under QEMU (software emulation, no KVM needed) and proves actual distributed network
+behavior, not just that the generator's output parses. `--ignored` by default (`cargo test -p
+backend --test chr_network -- --ignored`) since it needs `nix` on PATH and takes real wall-clock
+time to boot VMs; every test in it skips cleanly with a message if `nix` isn't available, and it
+must never slow down or break a normal `cargo test` run. `golden_image.rs` builds and caches
+(default `../.chr-test-cache/`, override via `CHR_TEST_CACHE_DIR`) a disk image with the license
+accepted and the admin password set once; every actual test run is meant to boot a disposable
+`qcow2` overlay on top of that image so a hard `kill -9` teardown is always safe.
+
 ## Commits
 
 - One focused commit per logical change; split unrelated work (e.g. a refactor and the feature
