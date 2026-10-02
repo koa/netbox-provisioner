@@ -322,11 +322,19 @@ impl BaseDeviceDataTarget {
         for port in device.interfaces() {
             if let Some(port_id) = port.external_port() {
                 if let Some(ethernet_port) = self.get_ethernet_port(port_id)? {
-                    ethernet_port.poe_out = if port.enable_poe() {
-                        Some(InterfaceEthernetPoeOut::AutoOn)
-                    } else {
-                        Some(InterfaceEthernetPoeOut::Off)
-                    };
+                    // `generate_ethernet()` already leaves `poe_out` at `None` for
+                    // boards without PoE-out hardware (e.g. CHR, several switch
+                    // models); only override it here if the baseline already
+                    // established PoE capability, otherwise RouterOS rejects the
+                    // whole `/interface/ethernet/set` call with "bad parameter
+                    // poe-out" - breaking the rename bundled into the same call.
+                    if ethernet_port.poe_out.is_some() {
+                        ethernet_port.poe_out = Some(if port.enable_poe() {
+                            InterfaceEthernetPoeOut::AutoOn
+                        } else {
+                            InterfaceEthernetPoeOut::Off
+                        });
+                    }
                 }
             }
         }
