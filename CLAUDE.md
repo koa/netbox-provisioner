@@ -48,6 +48,32 @@ instead of dialing the target directly (RouterOS defaults `/ip socks` to SOCKS4,
 `enable_socks` must keep requesting `version=5`) - every other access in a scenario (setup,
 `fetch_config` reads, final assertions) is allowed to go directly to a node's own hostfwd port;
 only the actual apply-under-test call is meant to take this realistic, routed-only path.
+`wait.rs`'s `wait_for_ospf_full` polls `/routing/ospf/neighbor/print` (no typed model exists for
+it yet) for a given OSPF instance name - the generator always provisions both a `default-v2` and a
+`default-v3` instance the moment any interface has OSPF enabled, regardless of whether IPv6 is
+actually in play, so a v4-only scenario must wait on `default-v2` specifically rather than "every
+neighbor". `ospf_chain.rs`'s `three_node_ospf_chain_apply_via_entry` is the harness's end-to-end
+proof scenario (project plan Schritt 7): a 3-node chain `entry -- a -- target` (a direct 2-node
+cable would degenerate the realistic path into a same-subnet relay that never exercises routing at
+all). Each node's own generated config is bootstrapped directly against itself first (scenario
+setup, not the access pattern under test - a real device's actual management path is never the
+one being reconfigured by its own diff), then a config change to `target` goes through `entry`'s
+SOCKS proxy and `a`'s OSPF-learned route. `DeviceCfg::fetch_with_board_model` exists because CHR
+has no `/system/routerboard` at all (it isn't a physical RouterBOARD), so the board has to be
+supplied explicitly instead of detected live - this is the first time anything in this harness ran
+`fetch_config`/`generate_mutations`/apply against a live CHR rather than a synthetic fixture, which
+surfaced several real RouterOS/CHR quirks now handled in `ospf_chain.rs`'s bootstrap step: CHR's
+factory dhcp-client on ether1 (the harness's own management NIC, never part of a scenario's
+declared topology) must not be removed by the generated diff, since doing so over the very
+connection riding on it severs that connection mid-command and hangs forever; CHR's virtio-net
+ports reject `bandwidth` on `/interface/ethernet/set` outright (a known CHR hardware-emulation
+gap, alongside the already-documented lack of PoE/combo/SFP+); and scenario link subnets must
+avoid `10.0.2.0/24`, which QEMU's "user" netdev backing every node's management NIC uses
+internally (gateway `10.0.2.2`), so an interface address landing in it collides with the slirp
+virtual router and silently breaks guest networking. OSPF neighbor state reaching `Full` doesn't
+mean the route is in the FIB yet under this harness's software-emulated (TCG, no KVM) CHRs - the
+realistic-path apply retries "General SOCKS server failure" against a deadline rather than failing
+on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 
 ## Commits
 

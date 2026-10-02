@@ -11,10 +11,12 @@
 mod chr_network {
     pub mod apply;
     pub mod golden_image;
+    pub mod ospf_chain;
     pub mod qemu;
     pub mod scenario;
     pub mod serial;
     pub mod vm;
+    pub mod wait;
 }
 
 use backend::topology::test::TopologyBuilder;

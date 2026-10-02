@@ -108,8 +108,31 @@ impl DeviceCfg {
     }
 }
 
-impl AccessibleDevice {
-    pub async fn fetch_config(&self, client: &MikrotikDevice) -> Result<DeviceCfg, SetupError> {
+impl DeviceCfg {
+    /// Fetches a device's current config over an already-connected client.
+    /// A free function rather than a method on `AccessibleDevice` (which has
+    /// no public constructor outside this crate) since it never actually
+    /// used `AccessibleDevice`'s own state - any reachable `MikrotikDevice`
+    /// connection works, which is what the multi-CHR test harness
+    /// (`netbox-provisioner/backend/tests/chr_network/`) needs: its nodes
+    /// are reached via dynamic hostfwd ports, not `AccessibleDevice::
+    /// create_client`'s hardcoded port 8728.
+    pub async fn fetch(client: &MikrotikDevice) -> Result<DeviceCfg, SetupError> {
+        let routerboard = <SystemRouterboardState as SingleResource>::fetch(client)
+            .await?
+            .ok_or(SetupError::RouterboardNotDefined)?;
+        Self::fetch_with_board_model(client, &routerboard.model.0).await
+    }
+
+    /// Like [`Self::fetch`], but takes the board model name directly instead
+    /// of reading it from `/system/routerboard` - CHR has no routerboard at
+    /// all (it isn't a physical RouterBOARD), so the multi-CHR test harness
+    /// (`netbox-provisioner/backend/tests/chr_network/`) needs to supply the
+    /// board it's emulating itself rather than have it detected live.
+    pub async fn fetch_with_board_model(
+        client: &MikrotikDevice,
+        model: &[u8],
+    ) -> Result<DeviceCfg, SetupError> {
         let installed_packages = collect_resource::<SystemPackageState>(client)
             .await?
             .into_iter()
@@ -118,10 +141,6 @@ impl AccessibleDevice {
             .collect::<HashSet<_>>();
 
         let current = BaseDeviceDataCurrent::fetch(client).await?;
-        let routerboard = <SystemRouterboardState as SingleResource>::fetch(client)
-            .await?
-            .ok_or(SetupError::RouterboardNotDefined)?;
-        let model = &routerboard.model.0;
         let target = BaseDeviceDataTarget::new(model)?;
         let (wireless_current, wireless_target) =
             if installed_packages.contains(b"wireless".as_ref()) {
@@ -192,10 +211,10 @@ impl AccessibleDevice {
     }
 
     async fn config(&self) -> Result<DeviceCfg, Error> {
-        Ok(self.fetch_config(&self.client).await?)
+        Ok(DeviceCfg::fetch(&self.client).await?)
     }
     async fn generate_cfg(&self) -> Result<Box<str>, Error> {
-        let mut device_cfg = self.fetch_config(&self.client).await?;
+        let mut device_cfg = DeviceCfg::fetch(&self.client).await?;
         device_cfg.generate_from(&self.device_config, EndpointNameGenerator)?;
 
         let mutations = device_cfg.generate_mutations()?;
