@@ -9,6 +9,7 @@
 //! and skipping with a clear message if it's missing.
 
 mod chr_network {
+    pub mod apply;
     pub mod golden_image;
     pub mod qemu;
     pub mod scenario;
@@ -186,10 +187,10 @@ async fn two_nodes_directly_cabled_can_ping() {
     let mut saw_reply = false;
     while let Some(result) = stream.next().await {
         eprintln!("ping result: {result:?}");
-        if let mikrotik_api::simple::SimpleResult::Sentence(row) = &result {
-            if row.get("received").and_then(|v| v.as_deref()) == Some("1") {
-                saw_reply = true;
-            }
+        if let mikrotik_api::simple::SimpleResult::Sentence(row) = &result
+            && row.get("received").and_then(|v| v.as_deref()) == Some("1")
+        {
+            saw_reply = true;
         }
     }
     assert!(saw_reply, "node a never got a ping reply from node b over the cabled NIC");
@@ -294,16 +295,175 @@ async fn scenario_derived_wiring_can_ping() {
     let mut saw_reply = false;
     while let Some(result) = stream.next().await {
         eprintln!("ping result: {result:?}");
-        if let mikrotik_api::simple::SimpleResult::Sentence(row) = &result {
-            if row.get("received").and_then(|v| v.as_deref()) == Some("1") {
-                saw_reply = true;
-            }
+        if let mikrotik_api::simple::SimpleResult::Sentence(row) = &result
+            && row.get("received").and_then(|v| v.as_deref()) == Some("1")
+        {
+            saw_reply = true;
         }
     }
     assert!(
         saw_reply,
         "scenario-derived wiring never delivered a ping reply between the two nodes"
     );
+}
+
+/// Regression test for a real finding: RouterOS's `/ip socks` defaults to
+/// SOCKS4, which silently drops a SOCKS5 greeting (connection closes with no
+/// bytes sent back - surfaces upstream as a confusing "unexpected end of
+/// file" rather than a clear protocol-mismatch error). `enable_socks` must
+/// keep requesting `version=5` for `apply.rs`'s SOCKS5 client to work at all.
+#[tokio::test]
+#[ignore]
+async fn entry_socks_proxy_speaks_socks5() {
+    use chr_network::apply::enable_socks;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    if nix_unavailable() {
+        eprintln!("skipping: `nix` is not available in this environment");
+        return;
+    }
+    let golden = ensure_golden_image(&cache_dir(), TEST_PASSWORD)
+        .await
+        .expect("golden image build failed");
+    let work_dir = std::env::temp_dir().join("chr-network-socks5-handshake-test");
+    let entry = boot_node(&golden, &work_dir, "entry", &[], TEST_PASSWORD)
+        .await
+        .expect("entry boot failed");
+    let entry_device = entry.connect_api(TEST_PASSWORD).await.expect("entry api");
+    enable_socks(&entry_device).await.expect("enable socks failed");
+
+    let mut conn = tokio::net::TcpStream::connect(("127.0.0.1", entry.socks_port))
+        .await
+        .expect("tcp connect to socks port failed");
+    conn.write_all(&[0x05, 0x01, 0x00]).await.expect("write socks5 greeting");
+    let mut buf = [0u8; 2];
+    conn.read_exact(&mut buf).await.expect("read socks5 greeting reply");
+    assert_eq!(buf, [0x05, 0x00], "proxy did not accept a SOCKS5 no-auth greeting");
+}
+
+/// Validates the realistic-path apply helper in isolation (SOCKS proxying +
+/// connect_with_stream + apply_mutation), on a simple directly-cabled
+/// two-node setup rather than the full OSPF chain - that's the next thing
+/// to build on top of this.
+#[tokio::test]
+#[ignore]
+async fn apply_via_entry_socks_proxy() {
+    use chr_network::apply::{apply_mutations_via_entry, enable_socks};
+    use mikrotik_model::resource::{ResourceMutation, ResourceMutationOperation};
+    use mikrotik_model::value::KeyValuePair;
+    use std::borrow::Cow;
+    use tokio_stream::StreamExt;
+
+    if nix_unavailable() {
+        eprintln!("skipping: `nix` is not available in this environment");
+        return;
+    }
+    let golden = ensure_golden_image(&cache_dir(), TEST_PASSWORD)
+        .await
+        .expect("golden image build failed");
+    let cable_port = free_tcp_port().expect("free port");
+    let work_dir = std::env::temp_dir().join("chr-network-apply-via-entry-test");
+
+    let entry = boot_node(
+        &golden,
+        &work_dir,
+        "entry",
+        &[PortWiring::Listen(cable_port)],
+        TEST_PASSWORD,
+    )
+    .await
+    .expect("entry boot failed");
+    let target = boot_node(
+        &golden,
+        &work_dir,
+        "target",
+        &[PortWiring::Connect(cable_port)],
+        TEST_PASSWORD,
+    )
+    .await
+    .expect("target boot failed");
+
+    let entry_device = entry.connect_api(TEST_PASSWORD).await.expect("entry api");
+    let target_device = target.connect_api(TEST_PASSWORD).await.expect("target api (direct, setup-only)");
+
+    // Direct setup on both ends is allowed: giving the target an address to
+    // be reachable at, and turning on the entry's SOCKS proxy.
+    run_to_done(
+        &target_device,
+        b"/ip/address/add",
+        &[(b"address", b"10.30.30.2/24"), (b"interface", b"ether2")],
+    )
+    .await;
+    run_to_done(
+        &entry_device,
+        b"/ip/address/add",
+        &[(b"address", b"10.30.30.1/24"), (b"interface", b"ether2")],
+    )
+    .await;
+    enable_socks(&entry_device).await.expect("enable socks failed");
+
+    // Warm up ARP/neighbor resolution for the target before asking the
+    // SOCKS proxy to dial it - without this, the very first connection
+    // attempt through a just-addressed interface can fail with RouterOS's
+    // generic "General SOCKS server failure" (observed live) rather than a
+    // clear reachability error. The real Schritt 7 scenario doesn't need
+    // this explicitly: waiting for OSPF to reach Full already provides the
+    // same warm-up time.
+    {
+        let mut stream = entry_device
+            .send_command(
+                b"/ping".as_slice(),
+                |cmd| {
+                    cmd.attribute(b"address".as_slice(), b"10.30.30.2".as_slice())
+                        .attribute(b"count".as_slice(), b"4".as_slice())
+                },
+                (),
+            )
+            .await;
+        while let Some(result) = stream.next().await {
+            eprintln!("warmup ping: {result:?}");
+        }
+    }
+
+    // The actual call under test: apply to the target through the entry's
+    // SOCKS proxy, never touching target's own hostfwd API port.
+    let mutations = [ResourceMutation {
+        resource: b"interface/bridge",
+        operation: ResourceMutationOperation::Add,
+        fields: Box::new([KeyValuePair {
+            key: b"name",
+            value: Cow::Borrowed(b"apply-via-entry-test"),
+        }]),
+        depends: Box::new([]),
+        provides: Box::new([]),
+    }];
+    apply_mutations_via_entry(
+        entry.socks_port,
+        "10.30.30.2".parse().unwrap(),
+        &mutations,
+        TEST_PASSWORD,
+    )
+    .await
+    .expect("apply via entry failed");
+
+    // Verify directly against the target (allowed for assertions) that the
+    // bridge really exists, proving the mutation actually reached it
+    // through the proxy rather than silently no-opping.
+    let mut stream = target_device
+        .send_command(
+            b"/interface/bridge/print".as_slice(),
+            |cmd| cmd.query_equal(b"name".as_slice(), b"apply-via-entry-test".as_slice()),
+            (),
+        )
+        .await;
+    let mut found = false;
+    while let Some(result) = stream.next().await {
+        eprintln!("verify: {result:?}");
+        if matches!(result, mikrotik_api::simple::SimpleResult::Sentence(_)) {
+            found = true;
+        }
+    }
+    assert!(found, "bridge applied via entry's SOCKS proxy was not found on the target");
 }
 
 async fn run_to_done(

@@ -38,6 +38,14 @@ pub struct RunningNode {
     /// "realistic path" scenarios - only the specific apply-under-test call
     /// is meant to avoid it.
     pub api_port: u16,
+    /// Host-reachable port forwarded to this node's guest port 1080
+    /// (hostfwd onto slot 0's NIC, same as `api_port`). Only meaningful once
+    /// `/ip/socks` has actually been enabled on the node - a node acting as
+    /// a scenario's "entry" node uses this to let the test harness reach it
+    /// as a SOCKS proxy from the host, the way the "realistic apply path"
+    /// is meant to be reached. Forwarded unconditionally on every node since
+    /// it costs nothing when unused.
+    pub socks_port: u16,
     child: Child,
     overlay_path: PathBuf,
 }
@@ -119,12 +127,15 @@ pub async fn boot_node(
     anyhow::ensure!(status.success(), "qemu-img create for node {name:?} failed with {status}");
 
     let api_port = free_tcp_port()?;
+    let socks_port = free_tcp_port()?;
     let mut cmd = qemu_command();
     cmd.args(["-machine", "pc,accel=tcg", "-cpu", "max", "-m", "512", "-smp", "2"])
         .arg("-drive")
         .arg(format!("file={},format=qcow2", overlay_path.display()))
         .arg("-netdev")
-        .arg(format!("user,id=net0,hostfwd=tcp:127.0.0.1:{api_port}-:8728"))
+        .arg(format!(
+            "user,id=net0,hostfwd=tcp:127.0.0.1:{api_port}-:8728,hostfwd=tcp:127.0.0.1:{socks_port}-:1080"
+        ))
         .args(["-device", "virtio-net-pci,netdev=net0"])
         .args(["-display", "none", "-monitor", "none"]);
 
@@ -151,6 +162,7 @@ pub async fn boot_node(
     let node = RunningNode {
         name: name.to_string(),
         api_port,
+        socks_port,
         child,
         overlay_path,
     };

@@ -43,6 +43,11 @@ or an idle placeholder. `scenario.rs`'s `boot_scenario` derives that wiring stra
 builder type production fixtures already use - rather than a second scenario DSL; it only resolves
 plain interface-to-interface cables (no patch-panel `FrontPort`/`RearPort` chains yet), and slot 0
 (`ether1`) is always reserved for management, so scenario topologies must cable `ether2` and up.
+`apply.rs` applies config to a target node through a designated entry node's `/ip socks` proxy
+instead of dialing the target directly (RouterOS defaults `/ip socks` to SOCKS4, not SOCKS5 -
+`enable_socks` must keep requesting `version=5`) - every other access in a scenario (setup,
+`fetch_config` reads, final assertions) is allowed to go directly to a node's own hostfwd port;
+only the actual apply-under-test call is meant to take this realistic, routed-only path.
 
 ## Commits
 
