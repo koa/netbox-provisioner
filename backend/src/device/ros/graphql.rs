@@ -54,7 +54,7 @@ pub struct DeviceCfg {
 }
 
 impl DeviceCfg {
-    fn generate_from<N: NameGenerator>(
+    pub fn generate_from<N: NameGenerator>(
         &mut self,
         device: &DeviceAccess,
         name_generator: N,
@@ -75,7 +75,7 @@ impl DeviceCfg {
         self.base_target.setup_l2(&l2)?;
         Ok(())
     }
-    fn generate_mutations(&self) -> Result<Box<[ResourceMutation]>, Error> {
+    pub fn generate_mutations(&self) -> Result<Box<[ResourceMutation]>, Error> {
         let mutations = self.base_target.generate_mutations(&self.base_current)?;
         let mutations = if let (Some(wireless_target), Some(wireless_current)) =
             (&self.wireless_target, &self.wireless_current)

@@ -33,10 +33,10 @@ use std::{
     ops::Range,
 };
 
-mod graphql;
+pub mod graphql;
 mod hw_facts;
 
-mod l2;
+pub mod l2;
 #[cfg(test)]
 mod test;
 
@@ -307,7 +307,7 @@ impl BaseDeviceDataTarget {
             }
         }
     }
-    fn generate_from<N: NameGenerator>(
+    pub fn generate_from<N: NameGenerator>(
         &mut self,
         device: &DeviceAccess,
         name_generator: N,
