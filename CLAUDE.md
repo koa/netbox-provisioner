@@ -38,3 +38,5 @@ capable of producing the functionality of (not byte-for-byte).
 - Commits by Claude end with the `Co-Authored-By: Claude …` trailer, without a session link.
 - Push to `master` only when asked — once CI is set up here, a push to `master` will publish a
   Docker image and Helm chart, so this matters more here than in the other two repos.
+- Verify with `cargo clippy` in addition to `cargo check`/`cargo test` — not every pre-existing
+  warning needs fixing, but a change shouldn't leave new, avoidable ones behind.
