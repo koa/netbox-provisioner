@@ -23,7 +23,6 @@ use tokio::{
 pub mod access;
 pub mod fetch;
 mod graphql;
-#[cfg(test)]
 pub mod test;
 
 #[derive(Debug, Default, Clone)]

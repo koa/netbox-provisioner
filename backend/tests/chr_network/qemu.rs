@@ -11,6 +11,16 @@ const NIXPKGS_REV: &str = "b6c8664de9b6cc07fe5666a29f91884ba81197c4";
 /// Builds a `tokio::process::Command` that runs `qemu-system-x86_64` via the
 /// pinned nixpkgs revision. Append qemu's own arguments with `.arg`/`.args`.
 pub fn qemu_command() -> tokio::process::Command {
+    nix_shell_command("qemu-system-x86_64")
+}
+
+/// Same as [`qemu_command`] but for `qemu-img` (same nixpkgs package,
+/// different binary) - used to create the disposable per-node overlay disks.
+pub fn qemu_img_command() -> tokio::process::Command {
+    nix_shell_command("qemu-img")
+}
+
+fn nix_shell_command(binary: &str) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new("nix");
     cmd.args([
         "--extra-experimental-features",
@@ -18,7 +28,7 @@ pub fn qemu_command() -> tokio::process::Command {
         "shell",
         &format!("github:NixOS/nixpkgs/{NIXPKGS_REV}#qemu"),
         "-c",
-        "qemu-system-x86_64",
+        binary,
     ]);
     cmd
 }

@@ -35,8 +35,14 @@ backend --test chr_network -- --ignored`) since it needs `nix` on PATH and takes
 time to boot VMs; every test in it skips cleanly with a message if `nix` isn't available, and it
 must never slow down or break a normal `cargo test` run. `golden_image.rs` builds and caches
 (default `../.chr-test-cache/`, override via `CHR_TEST_CACHE_DIR`) a disk image with the license
-accepted and the admin password set once; every actual test run is meant to boot a disposable
-`qcow2` overlay on top of that image so a hard `kill -9` teardown is always safe.
+accepted and the admin password set once; `vm.rs`'s `boot_node` boots a disposable `qcow2` overlay
+on top of that image per node (`kill -9`-safe, verified live), wiring NIC slots either to a
+host-reachable hostfwd (slot 0, management), a cabled peer (`-netdev socket` listen/connect pairs),
+or an idle placeholder. `scenario.rs`'s `boot_scenario` derives that wiring straight from a
+`topology::test::TopologyBuilder` plus a `DeviceId -> hwconfig::DeviceType` board map - the same
+builder type production fixtures already use - rather than a second scenario DSL; it only resolves
+plain interface-to-interface cables (no patch-panel `FrontPort`/`RearPort` chains yet), and slot 0
+(`ether1`) is always reserved for management, so scenario topologies must cable `ether2` and up.
 
 ## Commits
 

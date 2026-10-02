@@ -71,12 +71,6 @@ impl<ID: From<u32> + Copy + Eq + Hash, Data> From<MapBuilder<ID, Data>> for Hash
     }
 }
 
-fn post_incr(id: &mut u32) -> u32 {
-    let ret = *id;
-    *id += 1;
-    ret
-}
-
 impl TopologyBuilder {
     pub fn build(mut self) -> Topology {
         for (id, interface) in self.interfaces.deref() {
