@@ -1,15 +1,14 @@
 use crate::{
-    device::ros::{
-        BaseDeviceDataCurrent, BaseDeviceDataTarget, SwitchVlanConcept,
-        l2::{KeepNameGenerator, L2Setup},
-    },
+    device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget},
     topology::{
-        Device, Interface, IpAddressData, IpAddressId, PhysicalPortId, TopologyHolder, VlanData,
-        VlanGroupData, access::device::DeviceAccess, test::TopologyBuilder,
+        Device, Interface, IpAddressData, IpAddressId, IpPrefixData, IpRangeData, PhysicalPortId,
+        TopologyHolder, VlanData, VlanGroupData, access::device::DeviceAccess,
+        test::TopologyBuilder,
     },
 };
 use ipnet::IpNet;
 use mikrotik_model::{
+    ascii::AsciiString,
     generator::Generator,
     model::{InterfaceEthernetByDefaultName, InterfaceEthernetCfg, ReferenceType},
     resource::ResourceMutation,
@@ -20,42 +19,467 @@ use std::{
     net::{IpAddr, Ipv4Addr},
 };
 
+use super::{EndpointNameGenerator, KeepNameGenerator, L2Port, L2Setup, SimpleBridgePort};
+
 #[tokio::test]
 async fn test_l2_one_vlan() {
     let device = create_device_with_ports(1, 1, 3).await;
-    let setup = L2Setup::new(&device, &mut KeepNameGenerator);
-    println!("Setup: {:#?}", setup);
+    let setup = L2Setup::new(&device, KeepNameGenerator).expect("no ambiguous vlans");
+
+    assert_eq!(setup.single_ports.len(), 0);
+    assert_eq!(setup.simple_bridges.len(), 0);
+    assert_eq!(setup.tagged_bridges.len(), 1);
+
+    let bridge = &setup.tagged_bridges[0];
+    assert_eq!(bridge.name, AsciiString::from(b"bridge"));
+    assert_eq!(bridge.ports.len(), 1);
+    let entry = &bridge.ports[&1u16];
+    assert_eq!(entry.if_name, AsciiString::from(b"vlan-1"));
+    assert_eq!(count_ethernet(&entry.ports), 3);
+    assert_eq!(count_ips(&entry.ports), 1);
 }
+
 #[tokio::test]
 async fn test_l2_no_vlan() -> Result<(), Box<dyn Error>> {
     let device = create_device_with_ports(1, 0, 3).await;
+    let setup = L2Setup::new(&device, KeepNameGenerator)?;
+
+    assert_eq!(setup.single_ports.len(), 0);
+    assert_eq!(setup.tagged_bridges.len(), 0);
+    assert_eq!(setup.simple_bridges.len(), 1);
+    let bridge = &setup.simple_bridges[0];
+    assert_eq!(bridge.name, AsciiString::from(b"bridge"));
+    let ethernet_count = bridge
+        .ports
+        .iter()
+        .filter(|p| matches!(p, SimpleBridgePort::Ethernet { .. }))
+        .count();
+    let ip_count = bridge
+        .ports
+        .iter()
+        .filter(|p| matches!(p, SimpleBridgePort::Ip(_)))
+        .count();
+    assert_eq!(ethernet_count, 3);
+    assert_eq!(ip_count, 1);
+
     let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
-    target_data.generate_from(&device)?;
+    target_data.generate_from(&device, KeepNameGenerator)?;
     dump_mutations(&target_data, &empty_current)?;
     Ok(())
 }
+
 #[tokio::test]
 async fn test_l2_multi_vlan() {
     let device = create_device_with_ports(1, 3, 3).await;
-    let setup = L2Setup::new(&device, &mut KeepNameGenerator);
-    println!("Setup: {:#?}", setup);
+    let setup = L2Setup::new(&device, KeepNameGenerator).expect("no ambiguous vlans");
+
+    assert_eq!(setup.single_ports.len(), 0);
+    assert_eq!(setup.simple_bridges.len(), 0);
+    assert_eq!(setup.tagged_bridges.len(), 1);
+
+    let bridge = &setup.tagged_bridges[0];
+    assert_eq!(bridge.ports.len(), 3);
+    for vlan_id in 1u16..=3 {
+        let entry = bridge
+            .ports
+            .get(&vlan_id)
+            .unwrap_or_else(|| panic!("missing vlan {vlan_id}"));
+        assert_eq!(entry.if_name, AsciiString::from(format!("vlan-{vlan_id}")));
+        assert_eq!(count_ethernet(&entry.ports), 1);
+        assert_eq!(count_ips(&entry.ports), 1);
+    }
 }
+
 #[tokio::test]
 async fn test_l2_untagged_switch() {
     let device = create_device_with_ports(1, 5, 24).await;
-    let setup = L2Setup::new(&device, &mut KeepNameGenerator);
-    println!("Setup: {:#?}", setup);
+    let setup = L2Setup::new(&device, KeepNameGenerator).expect("no ambiguous vlans");
+
+    assert_eq!(setup.single_ports.len(), 0);
+    assert_eq!(setup.simple_bridges.len(), 0);
+    assert_eq!(setup.tagged_bridges.len(), 1);
+
+    let bridge = &setup.tagged_bridges[0];
+    assert_eq!(bridge.ports.len(), 5);
+    let total_ethernet: usize = bridge.ports.values().map(|e| count_ethernet(&e.ports)).sum();
+    assert_eq!(total_ethernet, 24);
 }
+
 #[tokio::test]
 async fn test_l2_multi_untagged_switch() -> Result<(), Box<dyn Error>> {
     let device = create_device_with_ports(5, 0, 24).await;
-    let setup = L2Setup::new(&device, &mut KeepNameGenerator);
-    println!("Setup: {:#?}", setup);
+    let setup = L2Setup::new(&device, KeepNameGenerator)?;
+
+    assert_eq!(setup.single_ports.len(), 0);
+    assert_eq!(setup.tagged_bridges.len(), 0);
+    assert_eq!(setup.simple_bridges.len(), 5);
+    let total_ethernet: usize = setup
+        .simple_bridges
+        .iter()
+        .map(|b| {
+            b.ports
+                .iter()
+                .filter(|p| matches!(p, SimpleBridgePort::Ethernet { .. }))
+                .count()
+        })
+        .sum();
+    assert_eq!(total_ethernet, 24);
+
     let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
-    let mut mapped_planes = Vec::new();
-    target_data.setup_l2(&setup, SwitchVlanConcept::OneBridge, &mut mapped_planes)?;
+    target_data.setup_l2(&setup)?;
     dump_mutations(&target_data, &empty_current)?;
     Ok(())
+}
+
+/// Szenario "Kernrouter", nachgebaut nach dem echten Referenz-Export
+/// `examples/01-core-router-ospf/config.rsc`: mehrere direkt geroutete,
+/// gelabelte Kundenlinks (kein Bridge, kein VLAN - `SingleInterfaceEntry`),
+/// Loopback + dual-stack OSPF. Nutzt - anders als die anderen Szenario-Tests hier -
+/// bewusst `EndpointNameGenerator` statt `KeepNameGenerator`, weil genau dieser
+/// Pfad (Label -> Interface-Name) der real produktiv genutzte ist und den im
+/// Vergleich mit dem Referenz-Export gefundenen Namens-Bug (`EndpointNameGenerator`
+/// ignorierte `label` komplett, siehe `test_endpoint_name_generator_uses_own_label`)
+/// end-to-end abdeckt. Zeigt die generierten `/interface/ethernet`, `/ip/address`
+/// und `/routing/ospf/*`-Befehle.
+#[tokio::test]
+async fn test_scenario_core_router() -> Result<(), Box<dyn Error>> {
+    let mut builder = TopologyBuilder::default();
+    let d1 = builder.devices.next_id();
+
+    let loopback_id = builder.ip_addresses.next_id();
+    builder.ip_addresses.insert(
+        loopback_id,
+        IpAddressData {
+            ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(192, 168, 255, 1)), 32).unwrap(),
+            interface: None,
+            prefix: None,
+        },
+    );
+
+    for (idx, label, net) in [
+        (2u16, "Hegglin", (172, 17, 0, 49)),
+        (3, "Walter", (172, 17, 0, 57)),
+        (4, "Burri", (172, 17, 0, 41)),
+        (5, "AP Schopf", (172, 17, 1, 65)),
+    ] {
+        let if_id = builder.interfaces.next_id();
+        let ip_id = builder.ip_addresses.next_id();
+        builder.ip_addresses.insert(
+            ip_id,
+            IpAddressData {
+                ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(net.0, net.1, net.2, net.3)), 29).unwrap(),
+                interface: None,
+                prefix: None,
+            },
+        );
+        builder.interfaces.insert(
+            if_id,
+            Interface {
+                name: format!("ether{idx}").into_boxed_str(),
+                label: label.into(),
+                device: d1,
+                external: Some(PhysicalPortId::Ethernet(idx)),
+                ips: Box::new([ip_id]),
+                use_ospf: true,
+                ..Default::default()
+            },
+        );
+    }
+
+    builder.devices.insert(
+        d1,
+        Device {
+            name: "router-schopf".into(),
+            primary_ip_v4: Some(loopback_id),
+            loopback_ip: Some(loopback_id),
+            ..Default::default()
+        },
+    );
+
+    let device = Into::<TopologyHolder>::into(builder)
+        .devices_by_id(d1)
+        .await
+        .expect("device not found");
+
+    let setup = L2Setup::new(&device, EndpointNameGenerator)?;
+    assert_eq!(setup.single_ports.len(), 4);
+    assert_eq!(setup.simple_bridges.len(), 0);
+    assert_eq!(setup.tagged_bridges.len(), 0);
+    let mut names: Vec<_> = setup
+        .single_ports
+        .iter()
+        .map(|p| p.name.to_string())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        vec!["e02-hegglin", "e03-walter", "e04-burri", "e05-ap-schopf"]
+    );
+
+    let (mut target_data, empty_current) = setup_testdata(b"CCR1009-7G-1C-1S+")?;
+    target_data.generate_from(&device, EndpointNameGenerator)?;
+    println!(
+        "--- Szenario: Kernrouter nach examples/01-core-router-ospf (gelabelte Kundenlinks, OSPF, Loopback) ---"
+    );
+    dump_mutations(&target_data, &empty_current)?;
+    Ok(())
+}
+
+/// Szenario "Switch mit mehreren Haushalts-VLANs": ein Uplink mit zwei tagged VLANs,
+/// je ein untagged Access-Port pro VLAN, OSPF auf der Bridge (gilt dann für alle ihre
+/// VLAN-Subinterfaces). Zeigt die generierten `/interface/bridge`,
+/// `/interface/bridge/port`, `/interface/bridge/vlan`, `/interface/vlan` und
+/// `/routing/ospf/*`-Befehle.
+#[tokio::test]
+async fn test_scenario_switch_multi_vlan() -> Result<(), Box<dyn Error>> {
+    let mut builder = TopologyBuilder::default();
+    let d1 = builder.devices.next_id();
+
+    let bridge_id = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        bridge_id,
+        Interface {
+            name: "bridge-sw".into(),
+            device: d1,
+            use_ospf: true,
+            ..Default::default()
+        },
+    );
+
+    let vlan_group = builder.vlan_groups.next_id();
+    let mut vlan_ids = Vec::new();
+    for vid in [10u16, 20] {
+        let vlan_id = builder.vlans.next_id();
+        builder.vlans.insert(
+            vlan_id,
+            VlanData {
+                name: format!("haushalt-{vid}").into_boxed_str(),
+                vlan_id: vid,
+                group: vlan_group,
+                terminations: Box::new([]),
+                vxlan: None,
+                wlans: Box::new([]),
+            },
+        );
+        vlan_ids.push(vlan_id);
+
+        let gateway_ip = builder.ip_addresses.next_id();
+        builder.ip_addresses.insert(
+            gateway_ip,
+            IpAddressData {
+                ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(192, 168, vid as u8, 1)), 24).unwrap(),
+                interface: None,
+                prefix: None,
+            },
+        );
+        let vlan_if_id = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            vlan_if_id,
+            Interface {
+                name: format!("haushalt-{vid}").into_boxed_str(),
+                device: d1,
+                vlan: Some(vlan_id),
+                bridge: Some(bridge_id),
+                ips: Box::new([gateway_ip]),
+                ..Default::default()
+            },
+        );
+
+        let access_port_id = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            access_port_id,
+            Interface {
+                name: format!("ether{}", vid / 10 + 1).into_boxed_str(),
+                device: d1,
+                external: Some(PhysicalPortId::Ethernet(vid / 10 + 1)),
+                bridge: Some(bridge_id),
+                vlan: Some(vlan_id),
+                ..Default::default()
+            },
+        );
+    }
+    builder.vlan_groups.insert(
+        vlan_group,
+        VlanGroupData {
+            vlans: vlan_ids.clone().into_boxed_slice(),
+        },
+    );
+
+    let uplink_id = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        uplink_id,
+        Interface {
+            name: "ether1".into(),
+            label: "Uplink".into(),
+            device: d1,
+            external: Some(PhysicalPortId::Ethernet(1)),
+            bridge: Some(bridge_id),
+            tagged_vlans: vlan_ids.clone().into_boxed_slice(),
+            ..Default::default()
+        },
+    );
+
+    builder.devices.insert(
+        d1,
+        Device {
+            name: "switch-1".into(),
+            ..Default::default()
+        },
+    );
+
+    let device = Into::<TopologyHolder>::into(builder)
+        .devices_by_id(d1)
+        .await
+        .expect("device not found");
+
+    let setup = L2Setup::new(&device, KeepNameGenerator)?;
+    assert_eq!(setup.tagged_bridges.len(), 1);
+    assert_eq!(setup.tagged_bridges[0].ports.len(), 2);
+
+    let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
+    target_data.generate_from(&device, KeepNameGenerator)?;
+    println!(
+        "--- Szenario: Switch mit 2 Haushalts-VLANs (tagged Uplink, untagged Access, OSPF auf der Bridge) ---"
+    );
+    dump_mutations(&target_data, &empty_current)?;
+    Ok(())
+}
+
+/// Szenario "DHCP-Haushalt": ein Haushalts-VLAN mit einem `IpRangeData` (`is_dhcp`),
+/// DHCP-Server auf der Bridge aktiviert. Zeigt, dass `setup_ip_addresses` den
+/// `GapFinder`-Pool-Bereich jetzt End-to-End über die echte Pipeline erzeugt (bisher
+/// nur isoliert in `device/ros/test.rs` getestet), inkl. `/ip/pool`,
+/// `/ip/dhcp-server` und `/ip/dhcp-server/network`.
+#[tokio::test]
+async fn test_scenario_dhcp_household() -> Result<(), Box<dyn Error>> {
+    let mut builder = TopologyBuilder::default();
+    let d1 = builder.devices.next_id();
+
+    let bridge_id = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        bridge_id,
+        Interface {
+            name: "bridge-sw".into(),
+            device: d1,
+            enable_dhcp_server: true,
+            ..Default::default()
+        },
+    );
+
+    let vlan_group = builder.vlan_groups.next_id();
+    let vlan_id = builder.vlans.next_id();
+    builder.vlans.insert(
+        vlan_id,
+        VlanData {
+            name: "haushalt-50".into(),
+            vlan_id: 50,
+            group: vlan_group,
+            terminations: Box::new([]),
+            vxlan: None,
+            wlans: Box::new([]),
+        },
+    );
+    builder.vlan_groups.insert(
+        vlan_group,
+        VlanGroupData {
+            vlans: Box::new([vlan_id]),
+        },
+    );
+
+    let prefix_id = builder.ip_prefixes.next_id();
+    builder.ip_prefixes.insert(
+        prefix_id,
+        IpPrefixData {
+            prefix: IpNet::new(IpAddr::V4(Ipv4Addr::new(192, 168, 50, 0)), 24).unwrap(),
+            addresses: Box::new([]),
+            children: Box::new([]),
+            parent: None,
+            ranges: Box::new([]),
+        },
+    );
+    let range_id = builder.ip_ranges.next_id();
+    builder.ip_ranges.insert(
+        range_id,
+        IpRangeData {
+            is_dhcp: true,
+            net: IpNet::new(IpAddr::V4(Ipv4Addr::new(192, 168, 50, 0)), 24).unwrap(),
+            start: IpAddr::V4(Ipv4Addr::new(192, 168, 50, 100)),
+            end: IpAddr::V4(Ipv4Addr::new(192, 168, 50, 200)),
+            prefix: Some(prefix_id),
+        },
+    );
+
+    let gateway_ip = builder.ip_addresses.next_id();
+    builder.ip_addresses.insert(
+        gateway_ip,
+        IpAddressData {
+            ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(192, 168, 50, 1)), 24).unwrap(),
+            interface: None,
+            prefix: Some(prefix_id),
+        },
+    );
+    let vlan_if_id = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        vlan_if_id,
+        Interface {
+            name: "haushalt-50".into(),
+            device: d1,
+            vlan: Some(vlan_id),
+            bridge: Some(bridge_id),
+            ips: Box::new([gateway_ip]),
+            ..Default::default()
+        },
+    );
+
+    let access_port_id = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        access_port_id,
+        Interface {
+            name: "ether4".into(),
+            device: d1,
+            external: Some(PhysicalPortId::Ethernet(4)),
+            bridge: Some(bridge_id),
+            vlan: Some(vlan_id),
+            ..Default::default()
+        },
+    );
+
+    builder.devices.insert(
+        d1,
+        Device {
+            name: "switch-2".into(),
+            ..Default::default()
+        },
+    );
+
+    let device = Into::<TopologyHolder>::into(builder)
+        .devices_by_id(d1)
+        .await
+        .expect("device not found");
+
+    let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
+    target_data.generate_from(&device, KeepNameGenerator)?;
+    println!(
+        "--- Szenario: DHCP-Haushalts-VLAN (Pool/Range automatisch aus IpPrefixData/IpRangeData abgeleitet) ---"
+    );
+    dump_mutations(&target_data, &empty_current)?;
+    Ok(())
+}
+
+fn count_ethernet(ports: &std::collections::BTreeSet<L2Port>) -> usize {
+    ports
+        .iter()
+        .filter(|p| {
+            matches!(
+                p,
+                L2Port::TaggedEthernet { .. } | L2Port::UntaggedEthernet { .. }
+            )
+        })
+        .count()
+}
+
+fn count_ips(ports: &std::collections::BTreeSet<L2Port>) -> usize {
+    ports.iter().filter(|p| matches!(p, L2Port::Ip(_))).count()
 }
 
 fn dump_mutations(
@@ -256,4 +680,109 @@ async fn create_device_with_ports(
         .devices_by_id(d1)
         .await
         .expect("device not found")
+}
+
+/// Real reference configs (`examples/01-core-router-ospf`, `examples/02-edge-router-bgp-vpn`)
+/// name customer/household links like `e01-ap-keller` or `e05-bachmann-dachboden` -
+/// a short-name prefix plus a human-entered label, with no separate NetBox device/
+/// cable modeled for the far end. `EndpointNameGenerator::generate_interface_name`
+/// used to ignore the interface's own `label` entirely and only ever derive a
+/// descriptive suffix from cable-topology walking, so an uncabled-but-labeled
+/// interface like this produced just the bare short name (`e01`), silently dropping
+/// the documented intent.
+#[tokio::test]
+async fn test_endpoint_name_generator_uses_own_label() {
+    use super::{EndpointNameGenerator, NameGenerator};
+    let mut builder = TopologyBuilder::default();
+    let d1 = builder.devices.next_id();
+    let if_id = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        if_id,
+        Interface {
+            name: "ether1".into(),
+            label: "AP Keller".into(),
+            device: d1,
+            external: Some(PhysicalPortId::Ethernet(1)),
+            ..Default::default()
+        },
+    );
+    builder.devices.insert(
+        d1,
+        Device {
+            name: "router-1".into(),
+            ..Default::default()
+        },
+    );
+    let device = Into::<TopologyHolder>::into(builder)
+        .devices_by_id(d1)
+        .await
+        .expect("device not found");
+    let interface = device.interfaces().into_iter().next().unwrap();
+    let name = EndpointNameGenerator.generate_interface_name(&interface);
+    assert_eq!(name.as_ref(), "e01-ap-keller");
+}
+
+/// A cabled infrastructure link (router-to-router/switch, typically left unlabeled
+/// in NetBox since the cable topology already documents it) must keep deriving its
+/// name from the far device, exactly as before the label fix above.
+#[tokio::test]
+async fn test_endpoint_name_generator_falls_back_to_cable_when_unlabeled() {
+    use super::{EndpointNameGenerator, NameGenerator};
+    use crate::topology::{Cable, CablePort};
+
+    let mut builder = TopologyBuilder::default();
+    let d1 = builder.devices.next_id();
+    let d2 = builder.devices.next_id();
+    let near_if = builder.interfaces.next_id();
+    let far_if = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        near_if,
+        Interface {
+            name: "ether2".into(),
+            device: d1,
+            external: Some(PhysicalPortId::Ethernet(2)),
+            ..Default::default()
+        },
+    );
+    builder.interfaces.insert(
+        far_if,
+        Interface {
+            name: "ether1".into(),
+            device: d2,
+            ..Default::default()
+        },
+    );
+    let cable_id = builder.cables.next_id();
+    builder.cables.insert(
+        cable_id,
+        Cable {
+            port_a: Box::new([CablePort::Interface(near_if)]),
+            port_b: Box::new([CablePort::Interface(far_if)]),
+        },
+    );
+    builder.devices.insert(
+        d1,
+        Device {
+            name: "router-1".into(),
+            ..Default::default()
+        },
+    );
+    builder.devices.insert(
+        d2,
+        Device {
+            name: "Hegglin".into(),
+            ..Default::default()
+        },
+    );
+    let device = Into::<TopologyHolder>::into(builder)
+        .devices_by_id(d1)
+        .await
+        .expect("device not found");
+    let interface = device
+        .interfaces()
+        .into_iter()
+        .find(|i| i.id() == near_if)
+        .unwrap();
+    let name = EndpointNameGenerator.generate_interface_name(&interface);
+    assert_eq!(name.as_ref(), "e02-hegglin");
 }

@@ -100,7 +100,7 @@ impl TopologyBuilder {
             }
         }
         for (id, cable) in self.cables.deref() {
-            for cable_port in cable.port_b.iter() {
+            for cable_port in cable.port_a.iter().chain(cable.port_b.iter()) {
                 match cable_port {
                     CablePort::Interface(if_id) => {
                         self.interfaces

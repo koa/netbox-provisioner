@@ -1,5 +1,5 @@
 use crate::device::ros::l2::{EndpointNameGenerator, L2Setup, NameGenerator};
-use crate::device::ros::{SwitchVlanConcept, WifiDeviceDataCurrent, WifiDeviceDataTarget};
+use crate::device::ros::{WifiDeviceDataCurrent, WifiDeviceDataTarget};
 use crate::{
     Error,
     device::{
@@ -61,18 +61,18 @@ impl DeviceCfg {
     ) -> Result<(), SetupError> {
         self.base_target.set_name_and_loopback(device);
 
-        let mut l2 = L2Setup::new(device, name_generator)?;
+        let l2 = L2Setup::new(device, name_generator)?;
 
-        self.base_target.setup_ip_addresses(&mut l2)?;
-        self.base_target.setup_ospf(device, &mut l2);
-        self.base_target.setup_wlan_ap(device, &mut l2);
+        self.base_target.setup_ip_addresses(&l2)?;
+        self.base_target.setup_ospf(device, &l2);
+        self.base_target.setup_wlan_ap(device);
         if let Some(wireless_target) = self.wireless_target.as_mut() {
-            wireless_target.generate_from(device, &mut l2);
+            wireless_target.generate_from(device, &l2);
         }
         if let Some(wifi_target) = self.wifi_target.as_mut() {
-            wifi_target.generate_from(device, &mut l2)?;
+            wifi_target.generate_from(device, &l2)?;
         }
-        self.base_target.setup_l2(&mut l2)?;
+        self.base_target.setup_l2(&l2)?;
         Ok(())
     }
     fn generate_mutations(&self) -> Result<Box<[ResourceMutation]>, Error> {

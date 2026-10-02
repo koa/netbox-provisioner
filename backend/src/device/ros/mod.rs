@@ -3,18 +3,15 @@ use crate::{
     Error,
     device::ros::{
         hw_facts::build_ethernet_ports,
-        l2::{EndpointNameGenerator, L2Plane, L2Port, L2Setup},
+        l2::{L2Port, L2Setup, SimpleBridgePort},
     },
     topology::{
         IpPrefixId, PhysicalPortId,
-        access::{
-            AccessTopology, device::DeviceAccess, interface::InterfaceAccess, vxlan::VxlanAccess,
-        },
+        access::{AccessTopology, device::DeviceAccess, vxlan::VxlanAccess},
     },
 };
 use convert_case::{Case, Casing};
 use ipnet::{IpAdd, IpNet, IpSub, Ipv4Net, Ipv6Net};
-use log::error;
 use mikrotik_model::{
     MacAddress, MikrotikDevice,
     ascii::{self, AsciiString},
@@ -31,10 +28,7 @@ use mikrotik_model::{
     value::HasNone,
 };
 use std::{
-    collections::{
-        BTreeMap, BTreeSet, HashMap, HashSet,
-        btree_map::{Entry, Iter},
-    },
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, btree_map::Iter},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::Range,
 };
@@ -87,7 +81,6 @@ mikrotik_model!(
 );
 
 const CAPS_BRIDGE_NAME: &[u8; 11] = b"bridge-caps";
-const DEFAULT_BRIDGE_NAME: &[u8; 6] = b"switch";
 
 #[derive(Error, Debug)]
 pub enum SetupError {
@@ -107,36 +100,6 @@ pub enum SetupError {
     MissingApMgmtIf,
     #[error("Ambigous VLAN IDs on single plane: {0:?}")]
     AmbiguousVlanIds(HashMap<u16, Vec<BTreeSet<L2Port>>>),
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum SwitchVlanConcept {
-    OneBridge,
-}
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-enum MappedExternalPortPlane {
-    Tagged(AsciiString),
-    Untagged(AsciiString),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MappedPlane {
-    physical_interfaces: Vec<MappedExternalPortPlane>,
-    roots: BTreeSet<InterfaceAccess>,
-    internal_port: Option<AsciiString>,
-    vlan_id: Option<u16>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct L2Mapping {
-    planes: Vec<MappedPlane>,
-    ap_mgmt_if: Option<WlanBackboneInterfaces>,
-    controller_mgmt_if: Option<WlanBackboneInterfaces>,
-}
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct WlanBackboneInterfaces {
-    mgmt_if: AsciiString,
-    bridge_if: AsciiString,
 }
 
 impl BaseDeviceDataTarget {
@@ -175,240 +138,127 @@ impl BaseDeviceDataTarget {
     fn set_identity(&mut self, name: impl Into<AsciiString>) {
         self.identity.name = name.into();
     }
-    fn setup_l2<N: NameGenerator>(&mut self, setup: &mut L2Setup<N>) -> Result<(), SetupError> {
-        let bridge_name = setup
-            .can_create_single_plane()
-            .and_then(|p| p.if_name.as_ref())
-            .unwrap_or_else(||
-                //&setup.main_bridge_name()
-                            todo!());
-        let bridge = self.bridge.entry(bridge_name.clone()).or_default();
-
-        todo!("Implement setup_l2")
-        /*let mut plane_count_of_port = HashMap::<_, usize>::new();
-
-        let mut planes = Vec::new();
-        for plane in &setup.planes {
-            for port in &plane.ports {
-                match port {
-                    L2Port::TaggedEthernet { name, .. } | L2Port::UntaggedEthernet { name, .. } => {
-                        *plane_count_of_port.entry(name).or_default() += 1;
-                    }
-                    _ => {}
-                }
+    /// Realizes an already-computed `L2Setup` as RouterOS bridge/bridge-port/
+    /// bridge-vlan/interface-vlan mutations and renames each physical ethernet port
+    /// to its generated name. IP/DHCP/OSPF config is handled separately via
+    /// `L2Setup::logical_interfaces` (see `setup_ip_addresses`/`setup_ospf`), since
+    /// none of that needs to know which of the three L2 domain kinds it came from.
+    fn setup_l2<N: NameGenerator>(&mut self, setup: &L2Setup<N>) -> Result<(), SetupError> {
+        for single in setup.single_ports.iter() {
+            if let Some(ethernet_port) = self.get_ethernet_port(single.port)? {
+                ethernet_port.name = single.name.clone();
             }
         }
-        let mut switch_planes = Vec::new();
-        for plane in &setup.planes {
-            let mut ports = Vec::new();
-            let mut addresses = Vec::new();
-            let mut enable_dhcp = false;
-            let mut root_ports = BTreeSet::new();
-            for port in &plane.ports {
-                match port {
-                    L2Port::TaggedEthernet {
-                        name,
-                        port: port_id,
-                        root,
-                    } => {
-                        if let Some(ethernet_port) = self.get_ethernet_port(*port_id)? {
-                            ethernet_port.name = name.clone();
-                        }
-                        ();
-                        ports.push(port);
-                        root_ports.insert(root.clone());
-                    }
-                    L2Port::UntaggedEthernet {
-                        name,
-                        port: port_id,
-                        root,
-                    } => {
-                        if let Some(ethernet_port) = self.get_ethernet_port(*port_id)? {
-                            ethernet_port.name = name.clone();
-                        }
-                        ports.push(port);
-                        root_ports.insert(root.clone());
-                    }
-
-                    L2Port::VxLan { .. } => {}
-                    L2Port::CapsMan { .. } => {}
-                    L2Port::Cap { .. } => {}
-                    L2Port::CapsManMgmt => {}
-                    L2Port::CapMgmt => {}
-                    L2Port::Ip(_) => {}
-                }
-            }
-            match ports.as_slice() {
-                [L2Port::UntaggedEthernet { name, .. }]
-                    if plane_count_of_port.get(name) == Some(&1) =>
+        for bridge in setup.simple_bridges.iter() {
+            let bridge_cfg = self.bridge.entry(bridge.name.clone()).or_default();
+            bridge_cfg.0.vlan_filtering = false;
+            bridge_cfg.0.ingress_filtering = Some(false);
+            bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Rstp;
+            for port in &bridge.ports {
+                if let SimpleBridgePort::Ethernet {
+                    name,
+                    port: port_id,
+                    ..
+                } = port
                 {
-                    planes.push(MappedPlane {
-                        physical_interfaces: vec![MappedExternalPortPlane::Untagged(name.clone())],
-                        roots: root_ports.clone(),
-                        internal_port: Some(name.clone()),
-                        vlan_id: None,
-                    });
-                    if addresses.is_empty() && enable_dhcp {
-                        self.enable_dhcp_client(name.clone());
+                    if let Some(ethernet_port) = self.get_ethernet_port(*port_id)? {
+                        ethernet_port.name = name.clone();
                     }
-                    for addr in addresses {
-                        self.set_ip_address(addr, name.clone());
-                    }
-                }
-                _ => {
-                    switch_planes.push(plane);
-                }
-            }
-        }
-        let mut l2mapping = L2Mapping {
-            planes,
-            ap_mgmt_if: None,
-            controller_mgmt_if: None,
-        };
-        if !switch_planes.is_empty() {
-            if setup.main_bridge_name.is_none()
-                && let [single_plane] = switch_planes.as_slice()
-            {
-                self.setup_single_switch_without_vlan(single_plane, &mut l2mapping);
-            } else {
-                match concept {
-                    SwitchVlanConcept::OneBridge => {
-                        self.setup_big_bridge(switch_planes, &mut l2mapping);
-                    }
-                }
-            }
-        }
-        Ok(l2mapping)*/
-    }
-
-    fn setup_big_bridge(&mut self, switch_planes: Vec<&L2Plane>, l2mapping: &mut L2Mapping) {
-        /*let bridge = self.bridge.entry(DEFAULT_BRIDGE_NAME.into()).or_default();
-        bridge.0.vlan_filtering = true;
-        bridge.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
-        let mut tags_of_port = HashMap::<&AsciiString, (Option<u16>, Vec<u16>)>::new();
-        let mut ports_of_vlan = HashMap::<u16, (Vec<&AsciiString>, Vec<&AsciiString>)>::new();
-        for plane in switch_planes {
-            let mut physical_interfaces = Vec::new();
-            let mut roots = BTreeSet::new();
-            let mut vlan_ids = HashMap::new();
-            for port in &plane.ports {
-                match port {
-                    L2Port::TaggedEthernet { name, port, root } => {
-                        physical_interfaces.push(MappedExternalPortPlane::Tagged(name.clone()));
-                        vlan_ids
-                            .entry(plane.vlan_id)
-                            .or_insert_with(Vec::new)
-                            .push(*port);
-                        roots.insert(root.clone());
-
-                        tags_of_port.entry(name).or_default().1.push(plane.vlan_id);
-                        ports_of_vlan.entry(plane.vlan_id).or_default().1.push(name);
-                    }
-                    L2Port::UntaggedEthernet { name, root, .. } => {
-                        physical_interfaces.push(MappedExternalPortPlane::Untagged(name.clone()));
-                        roots.insert(root.clone());
-
-                        tags_of_port.entry(name).or_default().0 = Some(plane.vlan_id);
-                        ports_of_vlan.entry(plane.vlan_id).or_default().0.push(name);
-                    }
-                    L2Port::VxLan { vxlan } => {}
-
-                    L2Port::CapsMan { .. } => {}
-                    L2Port::Cap { .. } => {}
-                    L2Port::CapsManMgmt => {}
-                    L2Port::CapMgmt => {}
-                    L2Port::Ip(ip) => {
-                        let if_name = plane.if_name.as_ref().expect("missing if_name on plane with IP").clone();
-                        self.set_ip_address(ip.clone(), if_name);
-                    }
-                }
-            }
-            if vlan_ids.len() > 1 {
-                SetupError::AmbiguousVlanIds(vlan_ids);
-                todo!("Process error")
-            } else {
-                let vlan_id = vlan_ids.keys().next().copied();
-                l2mapping.planes.push(MappedPlane {
-                    physical_interfaces,
-                    roots,
-                    internal_port: None,
-                    vlan_id,
-                });
-            }
-        }
-        for (port, (untagged, tagged)) in tags_of_port {
-            let bridge_port = self
-                .bridge_port
-                .entry((AsciiString::from(DEFAULT_BRIDGE_NAME), port.clone()))
-                .or_default();
-            bridge_port.ingress_filtering = true;
-            bridge_port.frame_types = if let Some(untagged_id) = untagged {
-                bridge_port.pvid = untagged_id;
-                if tagged.is_empty() {
-                    VlanFrameTypes::AdmitOnlyUntaggedAndPriorityTagged
-                } else {
-                    VlanFrameTypes::AdmitAll
-                }
-            } else {
-                VlanFrameTypes::AdmitOnlyVlanTagged
-            };
-        }
-        for (vlan_id, (untagged, tagged)) in ports_of_vlan {
-            self.bridge_vlan
-                .entry((
-                    AsciiString::from(DEFAULT_BRIDGE_NAME),
-                    tagged.into_iter().cloned().collect(),
-                    untagged.into_iter().cloned().collect(),
-                    Some(value::PossibleRangeDash::Single(vlan_id))
-                        .into_iter()
-                        .collect(),
-                ))
-                .or_default();
-        }*/
-    }
-
-    /*fn setup_single_switch_without_vlan(
-        &mut self,
-        single_plane: &L2Plane,
-        l2mapping: &mut L2Mapping,
-    ) {
-        let bridge = self.bridge.entry(DEFAULT_BRIDGE_NAME.into()).or_default();
-        bridge.0.vlan_filtering = false;
-        bridge.0.ingress_filtering = Some(false);
-        bridge.0.protocol_mode = InterfaceBridgeProtocolMode::Rstp;
-        l2mapping.physical_interfaces.push((
-            single_plane.root_port.clone(),
-            MappedExternalPortPlane::Untagged(DEFAULT_BRIDGE_NAME.into()),
-        ));
-
-        let mut physical_interfaces = Vec::new();
-        for port in &single_plane.ports {
-            match port {
-                L2Port::TaggedEthernet { .. } => {
-                    panic!("Cannot create tagged port on switch without vlan")
-                }
-                L2Port::UntaggedEthernet { name, .. } => {
-                    physical_interfaces.push(MappedExternalPortPlane::Untagged(name.clone()));
                     self.bridge_port
-                        .entry((DEFAULT_BRIDGE_NAME.into(), name.clone()))
+                        .entry((bridge.name.clone(), name.clone()))
                         .or_default()
                         .frame_types = VlanFrameTypes::AdmitOnlyUntaggedAndPriorityTagged;
                 }
-                L2Port::VxLan { .. } => {
-                    panic!("Cannot create tagged port on switch without vlan")
-                }
-                L2Port::Caps => {
-                    panic!("Cannot create tagged port on switch without vlan")
-                }
             }
         }
-        l2mapping.planes.push(MappedPlane {
-            physical_interfaces,
-            roots: Default::default(),
-            internal_port: None,
-            vlan_id: None,
-        });
-    }*/
+        for bridge in setup.tagged_bridges.iter() {
+            let bridge_cfg = self.bridge.entry(bridge.name.clone()).or_default();
+            bridge_cfg.0.vlan_filtering = true;
+            bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
+            let mut tags_of_port = HashMap::<AsciiString, (Option<u16>, Vec<u16>)>::new();
+            let mut ports_of_vlan = HashMap::<u16, (Vec<AsciiString>, Vec<AsciiString>)>::new();
+            for (&vlan_id, entry) in &bridge.ports {
+                let is_physical_name = entry.ports.iter().any(|p| {
+                    matches!(
+                        p,
+                        L2Port::TaggedEthernet { name, .. } | L2Port::UntaggedEthernet { name, .. }
+                            if *name == entry.if_name
+                    )
+                });
+                if !is_physical_name {
+                    self.vlan.entry(entry.if_name.clone()).or_insert_with(|| {
+                        InterfaceVlanByName(InterfaceVlanCfg {
+                            interface: bridge.name.clone(),
+                            vlan_id,
+                            ..Default::default()
+                        })
+                    });
+                }
+                for port in &entry.ports {
+                    match port {
+                        L2Port::TaggedEthernet {
+                            name,
+                            port: port_id,
+                            ..
+                        } => {
+                            if let Some(ethernet_port) = self.get_ethernet_port(*port_id)? {
+                                ethernet_port.name = name.clone();
+                            }
+                            tags_of_port.entry(name.clone()).or_default().1.push(vlan_id);
+                            ports_of_vlan.entry(vlan_id).or_default().1.push(name.clone());
+                        }
+                        L2Port::UntaggedEthernet {
+                            name,
+                            port: port_id,
+                            ..
+                        } => {
+                            if let Some(ethernet_port) = self.get_ethernet_port(*port_id)? {
+                                ethernet_port.name = name.clone();
+                            }
+                            tags_of_port.entry(name.clone()).or_default().0 = Some(vlan_id);
+                            ports_of_vlan.entry(vlan_id).or_default().0.push(name.clone());
+                        }
+                        L2Port::VxLan { .. }
+                        | L2Port::CapsMan { .. }
+                        | L2Port::Cap { .. }
+                        | L2Port::CapsManMgmt
+                        | L2Port::CapMgmt
+                        | L2Port::Ip(_) => {}
+                    }
+                }
+            }
+            for (port_name, (untagged, tagged)) in tags_of_port {
+                let bridge_port = self
+                    .bridge_port
+                    .entry((bridge.name.clone(), port_name))
+                    .or_default();
+                bridge_port.ingress_filtering = true;
+                bridge_port.frame_types = if let Some(untagged_id) = untagged {
+                    bridge_port.pvid = untagged_id;
+                    if tagged.is_empty() {
+                        VlanFrameTypes::AdmitOnlyUntaggedAndPriorityTagged
+                    } else {
+                        VlanFrameTypes::AdmitAll
+                    }
+                } else {
+                    VlanFrameTypes::AdmitOnlyVlanTagged
+                };
+            }
+            for (vlan_id, (untagged, tagged)) in ports_of_vlan {
+                self.bridge_vlan
+                    .entry((
+                        bridge.name.clone(),
+                        tagged.into_iter().collect(),
+                        untagged.into_iter().collect(),
+                        Some(value::PossibleRangeDash::Single(vlan_id))
+                            .into_iter()
+                            .collect(),
+                    ))
+                    .or_default();
+            }
+        }
+        Ok(())
+    }
 
     fn get_ethernet_port(
         &mut self,
@@ -464,11 +314,11 @@ impl BaseDeviceDataTarget {
     ) -> Result<L2Setup<N>, SetupError> {
         self.set_name_and_loopback(device);
 
-        let mut l2 = L2Setup::new(device, name_generator)?;
-        self.setup_ip_addresses(&mut l2)?;
-        self.setup_ospf(device, &mut l2);
-        self.setup_wlan_ap(device, &mut l2);
-        let l2_mapping = self.setup_l2(&mut l2)?;
+        let l2 = L2Setup::new(device, name_generator)?;
+        self.setup_ip_addresses(&l2)?;
+        self.setup_ospf(device, &l2);
+        self.setup_wlan_ap(device);
+        self.setup_l2(&l2)?;
         for port in device.interfaces() {
             if let Some(port_id) = port.external_port() {
                 if let Some(ethernet_port) = self.get_ethernet_port(port_id)? {
@@ -490,12 +340,8 @@ impl BaseDeviceDataTarget {
         }
     }
 
-    fn setup_wlan_ap<N: NameGenerator>(&mut self, device: &DeviceAccess, l2: &mut L2Setup<N>) {
+    fn setup_wlan_ap(&mut self, device: &DeviceAccess) {
         if let Some(wlan_group) = device.wlan_ap_of() {
-            let bridge_name = l2.main_bridge_name();
-            //let bridge_caps = self.bridge.entry(bridge_name.clone()).or_default();
-            //bridge_caps.0.vlan_filtering = true;
-            //bridge_caps.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
             if let Some(my_ip) = device.primary_ip_v4().and_then(|ip| ip.addr()) {
                 let mut vlans = HashSet::new();
                 if let Some(mgmt_vlan) = wlan_group.mgmt_vlan() {
@@ -515,24 +361,6 @@ impl BaseDeviceDataTarget {
                 }
             }
         }
-    }
-
-    fn setup_xvlan_l2(&mut self, l2: &mut L2Setup<EndpointNameGenerator>) {
-        todo!()
-        /*l2.planes.iter_mut().map(|plane| {
-            plane
-                .ports
-                .iter()
-                .filter_map(|port| {
-                    if let L2Port::VxLan { vxlan } = port {
-                        plane.if_name(&mut l2.name_generator);
-                        Some(vxlan)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-        });*/
     }
 
     fn setup_vxlan(&mut self, vxlan: VxlanAccess, my_ip: &IpAddr) {
@@ -595,34 +423,12 @@ impl BaseDeviceDataTarget {
         }
     }
 
-    /*fn if_of_mapped_plane(&mut self, plane: &MappedExternalPortPlane) -> AsciiString {
-        match plane {
-            MappedExternalPortPlane::Tagged { if_name, vid } => {
-                let mut vlan_port_name = Vec::from(if_name.0.as_ref());
-                vlan_port_name.push(b'-');
-                vlan_port_name.extend(AsciiString::from(vid.to_string()).0);
-                let vlan_port_name = AsciiString::from(vlan_port_name.as_slice());
-                if let Entry::Vacant(vlan_port_entry) = self.vlan.entry(vlan_port_name.clone()) {
-                    vlan_port_entry.insert(InterfaceVlanByName(InterfaceVlanCfg {
-                        interface: if_name.clone(),
-                        vlan_id: *vid,
-                        ..Default::default()
-                    }));
-                }
-                vlan_port_name
-            }
-            MappedExternalPortPlane::Untagged(if_name) => if_name.clone(),
-        }
-    }*/
-
-    fn setup_ospf<N: NameGenerator>(&mut self, device: &DeviceAccess, l2mapping: &mut L2Setup<N>) {
+    fn setup_ospf<N: NameGenerator>(&mut self, device: &DeviceAccess, l2: &L2Setup<N>) {
         if let Some(router_id) = device.primary_ip_v4().and_then(|ip| ip.addr()) {
-            todo!()
-            /*let ports = l2mapping
-                .planes
-                .iter_mut()
-                .filter(|p| p.interfaces().any(|ia| ia.use_ospf()))
-                .map(|p| p.if_name(&mut l2mapping.name_generator).clone())
+            let ports = l2
+                .logical_interfaces()
+                .filter(|p| p.use_ospf)
+                .map(|p| p.if_name.clone())
                 .collect::<BTreeSet<_>>();
             if !ports.is_empty() {
                 let v2_instance = self
@@ -661,7 +467,7 @@ impl BaseDeviceDataTarget {
                     .or_default();
                 v3_backbone.interfaces = ports;
                 v3_backbone.use_bfd = Some(false);
-            }*/
+            }
         }
     }
 
@@ -680,31 +486,20 @@ impl BaseDeviceDataTarget {
             });
     }
 
-    fn setup_ip_addresses<N: NameGenerator>(
-        &mut self,
-        l2_mapping: &mut L2Setup<N>,
-    ) -> Result<(), SetupError> {
-        todo!()
-        /*for (plane) in l2_mapping.planes.iter_mut() {
-            let if_name = plane.if_name(&mut l2_mapping.name_generator).clone();
-            let ips = plane
-                .ports
+    fn setup_ip_addresses<N: NameGenerator>(&mut self, l2: &L2Setup<N>) -> Result<(), SetupError> {
+        for logical in l2.logical_interfaces() {
+            let if_name = logical.if_name.clone();
+            let ips = logical
+                .addresses
                 .iter()
-                .filter_map(|p| {
-                    if let L2Port::Ip(ip) = p {
-                        Some(ip.clone())
-                    } else {
-                        None
-                    }
-                })
-                .filter_map(|ip| ip.net().map(|a| (a, ip)))
+                .filter_map(|ip| ip.net().map(|a| (a, ip.clone())))
                 .collect::<Vec<_>>();
             if ips.is_empty() {
-                if plane.interfaces().any(|p| p.is_enable_dhcp_client()) {
+                if logical.enable_dhcp_client {
                     self.enable_dhcp_client(if_name);
                 }
             } else {
-                let dhcp_server = plane.interfaces().any(|p| p.is_enable_dhcp_server());
+                let dhcp_server = logical.enable_dhcp_server;
                 for (ip_idx, (ip, ip_address)) in ips.iter().enumerate() {
                     self.set_ip_address(*ip, if_name.clone());
                     if dhcp_server {
@@ -774,7 +569,7 @@ impl BaseDeviceDataTarget {
                 }
             }
         }
-        Ok(())*/
+        Ok(())
     }
 }
 
@@ -875,7 +670,7 @@ impl WirelessDeviceDataTarget {
             wireless_cap: Default::default(),
         }
     }
-    fn generate_from<N: NameGenerator>(&mut self, device: &DeviceAccess, l2: &mut L2Setup<N>) {}
+    fn generate_from<N: NameGenerator>(&mut self, _device: &DeviceAccess, _l2: &L2Setup<N>) {}
 }
 mikrotik_model!(
     name = WifiDeviceData,
@@ -910,10 +705,10 @@ impl WifiDeviceDataTarget {
     fn generate_from<N: NameGenerator>(
         &mut self,
         device: &DeviceAccess,
-        l2: &mut L2Setup<N>,
+        _l2: &L2Setup<N>,
     ) -> Result<(), SetupError> {
-        if let Some(ap) = device.wlan_ap_of() {
-            todo!();
+        if let Some(_ap) = device.wlan_ap_of() {
+            todo!("generate CAPsMan/wifi config for the mgmt VLAN - not part of L2Setup completion");
             /*let mgmt_if = l2.ap_mgmt_if.as_ref().ok_or(SetupError::MissingApMgmtIf)?;
             let datapath = &mut self.datapath.entry(b"dp-caps".into()).or_default().0;
             let configuration = &mut self.configuration.entry(b"capsman".into()).or_default().0;
