@@ -5,6 +5,9 @@ RouterOS-Konfiguration ableitet. Es beschreibt **Verhalten und Design-Entscheidu
 Rust-Typen selbst — die sind im Code (`device/ros/mod.rs`, `device/ros/l2/mod.rs`) meist gut genug
 benannt, dass eine zusätzliche Typ-Referenz hier nur veralten würde.
 
+Wie Router und Switches in NetBox gepflegt werden müssen, damit die Generierung funktioniert,
+steht in [netbox-modeling.md](netbox-modeling.md).
+
 ## Die Pipeline (`device/ros/graphql.rs::DeviceCfg`)
 
 1. **Fetch**: `DeviceCfg::fetch`/`fetch_with_board_model` liest den **Ist-Zustand** direkt vom

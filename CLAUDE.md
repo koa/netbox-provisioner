@@ -29,6 +29,9 @@ the `examples/` directory here for reference RouterOS configurations the generat
 capable of producing the functionality of (not byte-for-byte). `docs/` describes how the
 NetBox-to-RouterOS config generation itself works (interface naming, L2/bridge/VLAN generation,
 OSPF, VXLAN, WLAN/CAPsMAN) - read it before changing anything under `device/ros/`.
+`docs/netbox-modeling.md` is the user-facing contract for how devices must be modeled in NetBox
+(tags, custom fields, interface names, VLAN groups, L2VPNs); update it whenever `fetch.rs` or
+`fetch_topology.graphql` changes what is read.
 
 `backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR
 instances under QEMU (software emulation, no KVM needed) and proves actual distributed network

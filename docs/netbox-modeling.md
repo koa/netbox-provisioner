@@ -1,0 +1,291 @@
+# Geräte in NetBox modellieren
+
+Diese Anleitung beschreibt, welche NetBox-Features der Provisioner auswertet und wie Router und
+Switches gepflegt werden müssen, damit am Ende eine korrekte RouterOS-Konfiguration herauskommt.
+Was der Provisioner aus den Daten macht, steht in den anderen Dateien dieses Ordners (siehe
+[overview.md](overview.md)).
+
+Grundlage ist ausschließlich das, was `backend/src/netbox/fetch_topology.graphql` abfragt und
+`backend/src/topology/fetch.rs` auswertet. Alles, was dort nicht vorkommt, ignoriert der
+Provisioner, auch wenn es in NetBox gepflegt ist (siehe [Was nicht ausgewertet wird](#was-nicht-ausgewertet-wird)).
+
+## Einmalige Einrichtung in NetBox
+
+Diese Objekte müssen in NetBox existieren, bevor irgendein Gerät provisioniert werden kann.
+
+### Tags
+
+Die Slugs müssen exakt so heißen:
+
+| Tag-Slug      | Wirkung, wenn am Interface gesetzt                            |
+|---------------|---------------------------------------------------------------|
+| `ospf`        | OSPF (v2 und v3) auf diesem Interface aktivieren              |
+| `dhcp`        | DHCP-**Server** auf diesem Interface (nur IPv4)               |
+| `dhcp-client` | DHCP-**Client** auf diesem Interface, falls es keine IP hat   |
+
+### Custom Fields
+
+| Objekt-Typ          | Name                   | Typ                          | Zweck                                         |
+|---------------------|------------------------|------------------------------|-----------------------------------------------|
+| Tenant              | `mikrotik_credentials` | Text                         | Name eines Zugangsdaten-Eintrags im Provisioner |
+| Device              | `wlan_group`           | Objekt → Wireless LAN Group  | Gerät ist Access Point dieser WLAN-Gruppe     |
+| Wireless LAN Group  | `controller`           | Objekt → Device              | CAPsMAN-Controller der Gruppe                 |
+| Wireless LAN Group  | `wlan_mgmt`            | Objekt → VLAN                | Management-VLAN der Gruppe                    |
+
+Die Namen müssen exakt stimmen; der Provisioner liest sie über `custom_field_data` per Namen aus
+(`JSON`-Struct in `backend/src/netbox/mod.rs`).
+
+### Weitere Stammdaten
+
+- **Platform** mit Name `routeros`: markiert ein Gerät als RouterOS-Gerät. Die Geräteliste im
+  Frontend filtert darauf (`has_routeros`).
+- **IP-Range-Rolle** mit Slug `dhcp`: markiert eine IP-Range als DHCP-Pool.
+- **VLAN-Gruppe(n)**: jedes VLAN muss in einer VLAN-Gruppe liegen (siehe [VLANs](#vlans)).
+
+## Zugangsdaten
+
+Der Provisioner speichert keine Passwörter in NetBox. Stattdessen:
+
+1. In der Provisioner-Konfiguration (`config.yaml`, Abschnitt `settings`) einen benannten Eintrag
+   anlegen:
+   ```yaml
+   settings:
+     mikrotik_credentials:
+       standort-berg:
+         user: provisioner     # optional, Standard: admin
+         password: "..."
+   ```
+2. Am **Tenant** das Custom Field `mikrotik_credentials` auf diesen Namen setzen
+   (`standort-berg`).
+
+Der Tenant wird in dieser Reihenfolge gesucht: Tenant des Geräts, dann Tenant der Location, dann
+Tenant der Site. Der erste Tenant, der das Feld gesetzt hat, gewinnt. Findet sich keiner, ist das
+Gerät nicht erreichbar. Im Frontend kann man dann noch Ad-hoc-Zugangsdaten eingeben.
+
+## Gerät (Device)
+
+| NetBox-Feld                  | Verwendung                                                              |
+|------------------------------|-------------------------------------------------------------------------|
+| Name                         | `/system identity`; außerdem Teil generierter Bridge-Namen              |
+| Platform                     | `routeros` = RouterOS-Gerät                                             |
+| Tenant / Location / Site     | Zugangsdaten (siehe oben)                                               |
+| Primary IPv6 / Primary IPv4  | **Management-Adresse**: der Provisioner verbindet sich zur primären IPv6, falls gesetzt, sonst zur primären IPv4 |
+| Primary IPv4                 | **OSPF-Router-ID** und **VXLAN-VTEP-Adresse**. Ohne primäre IPv4 wird **kein OSPF** generiert |
+| Custom Field `wlan_group`    | nur für Access Points, siehe [WLAN](#wlan)                              |
+
+Das **Board-Modell** kommt nicht aus NetBox (der Device Type wird nicht gelesen), sondern wird
+live vom Gerät gelesen (`/system/routerboard`). Unterstützt sind nur die Modelle in
+`backend/src/device/ros/hw_facts.rs`: `RB962UiGS-5HacT2HnT`, `RB750Gr3`, `CRS326-24G-2S+`,
+`CRS318-16P-2S+`, `C52iG-5HaxD2HaxD`, `cAPGi-5HaxD2HaxD`, `CCR1009-7G-1C-1S+`,
+`CRS354-48G-4S+2Q+`, `CRS109-8G-1S-2HnD`. Für jedes andere Modell bricht die Generierung mit
+`NoPortsFound` ab.
+
+**Empfehlung:** Die primäre IPv4 auf das Loopback-Interface legen (siehe unten). Dann ist die
+Router-ID stabil, und die VTEP-Adresse hängt an keinem physischen Link.
+
+## Interfaces
+
+### Namen müssen den RouterOS-Standardnamen entsprechen
+
+Der Provisioner erkennt ein Interface nur am **Namen** als physischen Port (`PhysicalPortId::from_str`):
+
+| NetBox-Interface-Name | wird zu                                           |
+|-----------------------|---------------------------------------------------|
+| `ether<N>`            | Ethernet-Port N (`/interface ethernet`, `ether<N>`) |
+| `sfp-sfpplus<N>`      | SFP+-Port N                                       |
+| `wifi<N>`, `wlan<N>`  | WLAN-Interface (wird derzeit nicht konfiguriert)  |
+| `lo`                  | Loopback                                          |
+| alles andere          | **virtuelles** Interface (Bridge, VLAN-Interface …) |
+
+Die NetBox-Namen bleiben also immer `ether1`, `ether2` usw. Den sprechenden Namen auf dem Gerät
+(z.B. `e03-ap-keller`) erzeugt der Provisioner selbst aus Port und **Label** (siehe
+[interface-naming.md](interface-naming.md)). Der menschenlesbare Teil gehört deshalb ins Feld
+**Label**, nicht in den Namen.
+
+Achtung:
+- Der Namensabgleich ist nicht verankert: ein virtuelles Interface namens `uplink-ether3` würde
+  als Port `ether3` erkannt. Virtuelle Interfaces deshalb nie mit `ether…`/`sfp-sfpplus…` im Namen
+  benennen.
+- `sfp<N>`, `combo<N>` und `qsfpplus…` werden **nicht** erkannt, obwohl einige unterstützte Boards
+  solche Ports haben (`RB962…`/`CRS109…` haben `sfp1`, `CCR1009…` hat `combo1`, `CRS354…` hat
+  QSFP+). Solche Ports lassen sich aus NetBox heraus derzeit nicht konfigurieren.
+
+### Felder pro Interface
+
+| NetBox-Feld          | Verwendung                                                                 |
+|----------------------|----------------------------------------------------------------------------|
+| Name                 | Port-Erkennung (siehe oben)                                                |
+| Label                | sprechender Name auf dem Gerät, z.B. Label `AP Keller` an `ether3` → `e03-ap-keller` |
+| Type                 | nur relevant für `lo`: das Loopback muss Typ **Virtual** haben             |
+| Bridge               | Mitglied welcher Bridge (siehe [Bridges](#bridges-und-vlans))              |
+| 802.1Q: Untagged VLAN | Access-VLAN des Ports bzw. VLAN eines VLAN-Interfaces                     |
+| 802.1Q: Tagged VLANs | getaggte VLANs (Trunk)                                                     |
+| IP Addresses         | IP-Adressen auf dem Interface                                              |
+| Tags                 | `ospf`, `dhcp`, `dhcp-client` (siehe oben)                                 |
+| PoE Mode             | `PSE` → PoE-Ausgang `auto-on`, sonst `off` (nur auf PoE-fähigen Boards)    |
+| Cable                | nur für die Namensgenerierung, wenn kein Label gesetzt ist                 |
+
+Der 802.1Q-Mode selbst (Access/Tagged) wird nicht ausgewertet. NetBox verlangt ihn aber, damit
+man VLANs zuweisen kann.
+
+### Loopback
+
+Ein Interface mit Name `lo` und Typ **Virtual** anlegen und ihm eine `/32`- (bzw. `/128`-)Adresse
+geben. Die erste IP darauf wird als Loopback-Adresse gesetzt. Diese Adresse in der Regel auch als
+primäre IPv4 des Geräts markieren.
+
+## Bridges und VLANs
+
+### Bridges
+
+Eine Bridge wird in NetBox als **virtuelles Interface** am Gerät angelegt (Typ Bridge). Alle
+Ports, VLAN-Interfaces und IPs, die dazugehören sollen, bekommen im Feld **Bridge** diese Bridge
+eingetragen.
+
+- Der Name der Bridge in NetBox wird **nicht** übernommen. Auf dem Gerät heißt sie
+  `bridge-<name-des-bridge-interfaces>` (z.B. NetBox-Name `sw` → `bridge-sw`).
+- Ob daraus eine einfache Bridge, eine VLAN-Filtering-Bridge oder gar keine Bridge wird, entscheidet
+  der Provisioner selbst (siehe [l2-generation.md](l2-generation.md)). Ein Port ohne Bridge und
+  ohne VLAN bleibt ein eigenständiger Port.
+- **Tags an der Bridge gelten für alle VLANs dieser Bridge.** Die Tags `ospf`/`dhcp`/`dhcp-client`
+  werden bei Bridges vom Bridge-Interface gelesen, nicht von den Ports und nicht von den
+  VLAN-Interfaces. `dhcp` an der Bridge aktiviert also einen DHCP-Server auf **jeder** VLAN der
+  Bridge, die eine IP hat.
+
+### VLANs
+
+- Jedes VLAN muss in einer **VLAN-Gruppe** liegen. Der Provisioner liest VLANs nur über die
+  VLAN-Gruppen. Ein VLAN ohne Gruppe ist für ihn unsichtbar: ein Port, der es referenziert, bekommt
+  dann eine synthetische VLAN-ID ab 60000 statt der echten.
+- Dieselbe VLAN-ID darf auf einem Gerät nicht in zwei unabhängigen Bridges vorkommen, sonst bricht
+  die Generierung mit `AmbiguousVlanIds` ab.
+- Der VLAN-Name fließt in den Interface-Namen ein (`vlan-<name>-<vid>`).
+
+### L3 auf einem VLAN (Gateway-Adresse)
+
+Für eine IP-Adresse auf einem VLAN ein **virtuelles Interface** anlegen (Typ Virtual) mit:
+- **Bridge** = die Bridge,
+- **Untagged VLAN** = das VLAN,
+- **IP Address** = die Gateway-Adresse.
+
+Der Provisioner legt dafür ein `/interface vlan` auf der Bridge an und setzt die IP dort. Die IP
+nie direkt an einen Bridge-Port hängen; ein Bridge-Mitglied kann in RouterOS keine eigene IP
+tragen.
+
+Das Feld **Bridge** am VLAN-Interface ist Pflicht. Fehlt es, landet das VLAN-Interface in einer
+eigenen Gruppe, und dieselbe VLAN-ID kommt doppelt vor (einmal bei den Ports, einmal beim
+VLAN-Interface). Die Generierung bricht dann mit `AmbiguousVlanIds` ab.
+
+## IP-Adressen, Prefixe und DHCP
+
+- Zu jeder IP-Adresse muss ein **Prefix** mit genau derselben Länge existieren (Adresse
+  `192.168.50.1/24` braucht Prefix `192.168.50.0/24`). Für DHCP-Server ist das zwingend,
+  sonst `MissingPrefixOnIpAddress`.
+- **DHCP-Pool explizit:** im Prefix eine **IP-Range** mit Rolle `dhcp` anlegen. Start und Ende
+  müssen im selben Prefix liegen.
+- **DHCP-Pool automatisch:** ohne `dhcp`-Range nimmt der Provisioner den gesamten freien Rest des
+  Prefixes, abzüglich aller dort vergebenen IP-Adressen, Kind-Prefixe und anderen Ranges.
+- Gateway und DNS-Server des DHCP-Netzes sind immer die eigene Adresse des Routers auf diesem
+  Interface.
+
+> **Bekannter Fehler (Stand dieser Doku):** `fetch.rs` ordnet IP-Ranges ihrem Prefix über die
+> *nicht abgeschnittene* Startadresse zu (`prefix_idx.get(&start_addr)` statt `start_net`). Eine
+> Range, die nicht exakt an der Netzadresse beginnt, wird dadurch keinem Prefix zugeordnet. In der
+> Praxis heißt das: explizite `dhcp`-Ranges werden derzeit ignoriert, und es greift immer die
+> automatische Berechnung, die andere Ranges dann ebenfalls nicht ausspart.
+
+## Rezept: Router
+
+Beispiel: Core-Router mit Uplink, OSPF zu zwei Nachbarn und einem Kunden-Port.
+
+1. **Gerät** anlegen: Name, Platform `routeros`, Tenant mit `mikrotik_credentials`.
+2. **Loopback**: Interface `lo`, Typ Virtual, IP `172.16.1.1/32`. Diese IP als **Primary IPv4**
+   markieren. Optional eine IPv6 als **Primary IPv6** (wird dann Management-Adresse).
+3. **Transit-Links zu OSPF-Nachbarn**: auf `ether1`, `ether2` je eine Transfer-IP (z.B.
+   `10.172.12.65/30`), Tag `ospf`, Label mit dem Ziel (z.B. `Kirche`). Ohne Bridge, ohne VLAN →
+   eigenständige Ports.
+4. **Kabel** zu den Nachbargeräten in NetBox eintragen. Das ist nicht nötig für die Config, hilft
+   aber bei der Namensgebung, falls kein Label gesetzt ist.
+5. **Kunden-/Haushalts-Port** mit DHCP: `ether5` mit Label `Bachmann Dachboden`, IP
+   `192.168.30.1/24`, Tags `dhcp`. Prefix `192.168.30.0/24` muss existieren.
+6. **Uplink ohne feste IP**: `ether8` mit Tag `dhcp-client` und ohne IP.
+
+## Rezept: Switch mit Haushalts-VLANs
+
+Beispiel: Switch mit getaggtem Uplink, zwei Haushalts-VLANs als Access-Ports, Management per OSPF.
+
+1. **Gerät** wie oben (Platform, Tenant, Loopback, Primary IPv4).
+2. **VLAN-Gruppe** mit den Haushalts-VLANs anlegen, z.B. `haushalt-10` (VID 10), `haushalt-20`
+   (VID 20).
+3. **Bridge**: virtuelles Interface `sw`, Typ Bridge. Tag `ospf` hier setzen, falls OSPF über
+   die VLANs laufen soll (gilt dann für alle VLANs der Bridge).
+4. **Uplink** `ether1`: Bridge = `sw`, 802.1Q Mode Tagged, Tagged VLANs = `haushalt-10`,
+   `haushalt-20`, Label `Uplink`.
+5. **Access-Ports** `ether2`, `ether3`: Bridge = `sw`, 802.1Q Mode Access, Untagged VLAN =
+   `haushalt-10` bzw. `haushalt-20`, Label = Wohnung/Dose.
+6. **Gateway auf einem VLAN** (falls der Switch dort L3 machen soll): virtuelles Interface
+   `haushalt-10`, Bridge = `sw`, Untagged VLAN = `haushalt-10`, IP `192.168.10.1/24`.
+
+Daraus entsteht eine VLAN-Filtering-Bridge `bridge-sw`. `ether1` wird als nur-getaggt konfiguriert,
+`ether2`/`ether3` als ungetaggt mit passender PVID, und es gibt ein `/interface vlan` mit der
+Gateway-IP.
+
+## VXLAN
+
+Ein VXLAN ist ein **L2VPN** mit Typ **VXLAN**:
+
+- **Identifier** = VNI (Pflicht; ohne Identifier wird das L2VPN ignoriert).
+- **Name** = Basis für den Interface-Namen.
+- **Terminierungen**:
+  - **VLAN-Terminierung**: dieses VLAN wird über das VXLAN transportiert. Ein VXLAN kann mehrere
+    VLANs tragen; die Frames laufen darin getaggt.
+  - **Interface-Terminierung**: dieser Port bzw. dieses VLAN-Interface nimmt am VXLAN teil, und das
+    Gerät wird VTEP.
+
+### Rezept: Wohnungs-Ports an das WLAN-VXLAN hängen
+
+Ziel: Ein Drucker an der LAN-Dose einer Wohnung soll im selben Netz wie das WLAN der Wohnung sein.
+
+1. Das Haushalts-VLAN (z.B. `wohnung-koa`, VID 1) ist bereits per **VLAN-Terminierung** am
+   WLAN-VXLAN (z.B. `client-berg`, VNI 1).
+2. Die Ports der Wohnung auf dem Switch bekommen **Untagged VLAN** = `wohnung-koa` (wie jeder
+   Access-Port).
+3. Dieselben Ports zusätzlich als **Interface-Terminierung** an das L2VPN `client-berg` hängen.
+4. Der Switch braucht eine **Primary IPv4**; sie ist seine VTEP-Adresse.
+
+Alle anderen Teilnehmer (APs, andere Switches) tragen den Switch dann automatisch als
+Remote-VTEP ein. Details: [vxlan-generation.md](vxlan-generation.md).
+
+Nur Ports terminieren, an denen tatsächlich Wohnungs-Geräte hängen. Ein Switch, der das VLAN nur
+weiterreicht, darf **keine** Terminierung bekommen, sonst läuft das VLAN doppelt (VXLAN und
+Kabel), und es entsteht eine Schleife.
+
+## WLAN
+
+> Die eigentliche CAPsMAN-/WiFi-Konfiguration ist noch nicht implementiert (siehe
+> [wlan-generation.md](wlan-generation.md)). Was hier steht, wird bereits gelesen und für L2 und
+> VXLAN verwendet.
+
+1. **Wireless LAN Group** anlegen, Custom Field `controller` = Controller-Gerät (Pflicht; eine
+   Gruppe ohne Controller wird komplett ignoriert), `wlan_mgmt` = Management-VLAN. Pro Controller
+   nur **eine** Gruppe; ist ein Gerät Controller mehrerer Gruppen, gewinnt eine davon.
+2. **Wireless LANs** in der Gruppe anlegen: SSID, VLAN und Authentifizierung. Ausgewertet werden
+   nur **WPA Personal** (mit PSK) und **Open** (wird als OWE umgesetzt). WLANs mit anderer
+   Authentifizierung werden übersprungen.
+3. Jeden **Access Point**: Custom Field `wlan_group` = die Gruppe.
+4. VLANs der WLANs und das Management-VLAN per **VLAN-Terminierung** an das WLAN-VXLAN hängen.
+
+## Was nicht ausgewertet wird
+
+Diese Felder werden gelesen oder sind in NetBox vorhanden, beeinflussen die Config aber nicht. Es
+reicht also nicht, sie zu setzen:
+
+- **Interface `enabled`**: wird abgefragt, aber ignoriert. Ein in NetBox deaktiviertes Interface
+  wird trotzdem konfiguriert.
+- **Device Role** (`router`, `switch`, `wlan-bridge`): wird gelesen, aber nirgends verwendet.
+  Router und Switch unterscheiden sich nur durch ihre Interfaces.
+- **Device Type**: wird nicht gelesen, das Board kommt live vom Gerät.
+- **802.1Q Mode**: siehe oben; nur die VLAN-Zuweisungen zählen.
+- **Tags an VLAN-Interfaces und Bridge-Ports**: bei Bridges zählen nur die Tags des
+  Bridge-Interfaces.
+- **VLANs ohne VLAN-Gruppe**, **L2VPNs ohne Identifier**, **WLAN-Gruppen ohne Controller**.
