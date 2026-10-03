@@ -449,7 +449,13 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             }
             for front_port in device.frontports {
                 if let Ok(port_id) = front_port.id.parse().map(FrontPortId) {
-                    let rear_port = front_port.rear_port.id.parse().ok().map(RearPortId);
+                    // NetBox maps a front port to rear port positions via a list;
+                    // the topology model only knows a single rear port per front port.
+                    let rear_port = front_port
+                        .mappings
+                        .first()
+                        .and_then(|m| m.rear_port.id.parse().ok())
+                        .map(RearPortId);
                     front_ports.insert(
                         port_id,
                         FrontPort {

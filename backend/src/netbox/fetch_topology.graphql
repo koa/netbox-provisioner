@@ -37,8 +37,10 @@ query FetchTopology{
         frontports{
             id
             name
-            rear_port {
-                id
+            mappings {
+                rear_port {
+                    id
+                }
             }
         }
         rearports{
