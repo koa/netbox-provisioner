@@ -107,7 +107,9 @@ Erst **nachdem** `L2Setup::new` die komplette Klassifizierung oben berechnet hat
     ungetaggte VLAN.
   - nur getaggt (keine ungetaggte VLAN) → `AdmitOnlyVlanTagged`, kein `pvid`.
   Zusätzlich wird pro VLAN-ID ein `/interface/bridge/vlan`-Eintrag erzeugt, der die Liste der
-  getaggten bzw. ungetaggten Mitgliedsports dieser VLAN zusammenfasst.
+  getaggten bzw. ungetaggten Mitgliedsports dieser VLAN zusammenfasst. Hat die VLAN ein eigenes
+  `/interface/vlan`, ist die **Bridge selbst** getaggtes Mitglied; mit VLAN-Filtering sieht das
+  VLAN-Interface sonst keinen Verkehr (und z.B. ein DHCP-Server darauf keine Anfragen).
   Ein `L2Port::VxLan` wird dabei wie ein nur-getaggter Port behandelt: das VXLAN-Interface wird
   angelegt (inkl. VTEPs) und getaggtes Mitglied der VLAN. Ausnahme: VXLANs, die `setup_wlan_ap`
   schon an `bridge-caps` gehängt hat. Die übrigen virtuellen Varianten (`CapsMan`/`Cap`/`*Mgmt`/`Ip`)

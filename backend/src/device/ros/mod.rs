@@ -208,6 +208,13 @@ impl BaseDeviceDataTarget {
                             ..Default::default()
                         })
                     });
+                    // With VLAN filtering, a VLAN interface on the bridge only sees
+                    // traffic if the bridge itself is a tagged member of that VLAN.
+                    ports_of_vlan
+                        .entry(vlan_id)
+                        .or_default()
+                        .1
+                        .push(bridge.name.clone());
                 }
                 for port in &entry.ports {
                     match port {
