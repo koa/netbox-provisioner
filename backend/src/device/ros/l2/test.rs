@@ -1,8 +1,8 @@
 use crate::{
-    device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget},
+    device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError},
     topology::{
         Device, Interface, IpAddressData, IpAddressId, IpPrefixData, IpRangeData, PhysicalPortId,
-        TopologyHolder, VlanData, VlanGroupData, access::device::DeviceAccess,
+        TopologyHolder, VlanData, VlanGroupData, VxlanData, access::device::DeviceAccess,
         test::TopologyBuilder,
     },
 };
@@ -126,7 +126,7 @@ async fn test_l2_multi_untagged_switch() -> Result<(), Box<dyn Error>> {
     assert_eq!(total_ethernet, 24);
 
     let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
-    target_data.setup_l2(&setup)?;
+    target_data.setup_l2(&device, &setup)?;
     dump_mutations(&target_data, &empty_current)?;
     Ok(())
 }
@@ -464,6 +464,175 @@ async fn test_scenario_dhcp_household() -> Result<(), Box<dyn Error>> {
     );
     dump_mutations(&target_data, &empty_current)?;
     Ok(())
+}
+
+/// Builds a switch whose household access ports `ether2`/`ether3` are terminated
+/// directly on the household VXLAN (NetBox L2VPN interface termination), plus a
+/// second VXLAN participant (`ap-wohnung`) so the switch has a remote VTEP.
+async fn create_vxlan_port_group_switch(ports_carry_vlan: bool) -> DeviceAccess {
+    let mut builder = TopologyBuilder::default();
+    let switch = builder.devices.next_id();
+    let ap = builder.devices.next_id();
+    let vxlan_id = builder.vxlans.next_id();
+
+    let primary_ip = |builder: &mut TopologyBuilder, last_octet: u8| {
+        let ip_id = builder.ip_addresses.next_id();
+        builder.ip_addresses.insert(
+            ip_id,
+            IpAddressData {
+                ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(172, 16, 1, last_octet)), 32).unwrap(),
+                interface: None,
+                prefix: None,
+            },
+        );
+        ip_id
+    };
+    let switch_ip = primary_ip(&mut builder, 70);
+    let ap_ip = primary_ip(&mut builder, 61);
+
+    let vlan_group = builder.vlan_groups.next_id();
+    let vlan = builder.vlans.next_id();
+    builder.vlans.insert(
+        vlan,
+        VlanData {
+            name: "wohnung-koa".into(),
+            vlan_id: 1,
+            group: vlan_group,
+            terminations: Box::new([]),
+            vxlan: Some(vxlan_id),
+            wlans: Box::new([]),
+        },
+    );
+    builder.vlan_groups.insert(vlan_group, VlanGroupData { vlans: Box::new([vlan]) });
+
+    let bridge = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        bridge,
+        Interface {
+            name: "bridge-sw".into(),
+            device: switch,
+            ..Default::default()
+        },
+    );
+    let uplink = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        uplink,
+        Interface {
+            name: "ether1".into(),
+            device: switch,
+            external: Some(PhysicalPortId::Ethernet(1)),
+            use_ospf: true,
+            ..Default::default()
+        },
+    );
+    let mut terminations = Vec::new();
+    for idx in [2u16, 3] {
+        let port = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            port,
+            Interface {
+                name: format!("ether{idx}").into_boxed_str(),
+                device: switch,
+                external: Some(PhysicalPortId::Ethernet(idx)),
+                bridge: Some(bridge),
+                vlan: ports_carry_vlan.then_some(vlan),
+                ..Default::default()
+            },
+        );
+        terminations.push(port);
+    }
+    let ap_port = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        ap_port,
+        Interface {
+            name: "ether2".into(),
+            device: ap,
+            external: Some(PhysicalPortId::Ethernet(2)),
+            vlan: Some(vlan),
+            ..Default::default()
+        },
+    );
+    terminations.push(ap_port);
+
+    builder.vxlans.insert(
+        vxlan_id,
+        VxlanData {
+            name: "client-berg".into(),
+            vni: 1,
+            interface_terminations: terminations.into_boxed_slice(),
+            vlan_terminations: Box::new([vlan]),
+        },
+    );
+    builder.devices.insert(
+        switch,
+        Device {
+            name: "switch-haus".into(),
+            primary_ip_v4: Some(switch_ip),
+            ..Default::default()
+        },
+    );
+    builder.devices.insert(
+        ap,
+        Device {
+            name: "ap-wohnung".into(),
+            primary_ip_v4: Some(ap_ip),
+            ..Default::default()
+        },
+    );
+
+    Into::<TopologyHolder>::into(builder)
+        .devices_by_id(switch)
+        .await
+        .expect("device not found")
+}
+
+/// Szenario "Port-Gruppe im VXLAN": ein Drucker an `ether2`/`ether3` einer Wohnung
+/// soll im selben L2 wie das WLAN der Wohnung landen, das per VXLAN transportiert
+/// wird. Die Ports bleiben untagged im Wohnungs-VLAN, das VXLAN-Interface wird
+/// getaggtes Mitglied dieses VLANs (das VXLAN ist ein VLAN-Trunk, wie auf der
+/// AP-/Controller-Seite, siehe `examples/08-wlan-ap-wifi-new`).
+#[tokio::test]
+async fn test_scenario_switch_vxlan_port_group() -> Result<(), Box<dyn Error>> {
+    let device = create_vxlan_port_group_switch(true).await;
+
+    let setup = L2Setup::new(&device, KeepNameGenerator)?;
+    assert_eq!(setup.single_ports.len(), 1, "uplink stays a standalone port");
+    assert_eq!(setup.tagged_bridges.len(), 1);
+    let entry = &setup.tagged_bridges[0].ports[&1];
+    assert_eq!(count_ethernet(&entry.ports), 2);
+    assert!(entry.ports.iter().any(
+        |p| matches!(p, L2Port::VxLan { name, .. } if name == &AsciiString::from("client-berg"))
+    ));
+
+    let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
+    target_data.generate_from(&device, KeepNameGenerator)?;
+
+    let vxlan_name = AsciiString::from("client-berg");
+    let own_ip = IpAddr::V4(Ipv4Addr::new(172, 16, 1, 70));
+    let remote_ip = IpAddr::V4(Ipv4Addr::new(172, 16, 1, 61));
+    let vxlan = &target_data.vxlan[&vxlan_name].0;
+    assert_eq!(vxlan.vni, 1);
+    assert_eq!(vxlan.local_address, Some(own_ip));
+    assert!(target_data.vxlan_vteps.contains_key(&(vxlan_name.clone(), remote_ip)));
+    assert!(!target_data.vxlan_vteps.contains_key(&(vxlan_name.clone(), own_ip)));
+    assert!(target_data.bridge_vlan.keys().any(|(_, tagged, untagged, _)| {
+        tagged.contains(&vxlan_name)
+            && untagged.contains(&AsciiString::from("ether2"))
+            && untagged.contains(&AsciiString::from("ether3"))
+    }));
+
+    println!("--- Szenario: Switch-Port-Gruppe einer Wohnung im Haushalts-VXLAN ---");
+    dump_mutations(&target_data, &empty_current)?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_vxlan_port_group_requires_vlan() {
+    let device = create_vxlan_port_group_switch(false).await;
+    assert!(matches!(
+        L2Setup::new(&device, KeepNameGenerator),
+        Err(SetupError::VxlanTerminationWithoutVlan(_))
+    ));
 }
 
 fn count_ethernet(ports: &std::collections::BTreeSet<L2Port>) -> usize {

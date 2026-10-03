@@ -100,6 +100,10 @@ pub enum SetupError {
     MissingApMgmtIf,
     #[error("Ambigous VLAN IDs on single plane: {0:?}")]
     AmbiguousVlanIds(HashMap<u16, Vec<BTreeSet<L2Port>>>),
+    #[error("Interface {0} is terminated on a VXLAN but carries no VLAN to select inside it")]
+    VxlanTerminationWithoutVlan(AsciiString),
+    #[error("Device has ports on VXLAN {0} but no primary IPv4 address to use as VTEP")]
+    MissingVtepAddress(AsciiString),
 }
 
 impl BaseDeviceDataTarget {
@@ -143,7 +147,18 @@ impl BaseDeviceDataTarget {
     /// to its generated name. IP/DHCP/OSPF config is handled separately via
     /// `L2Setup::logical_interfaces` (see `setup_ip_addresses`/`setup_ospf`), since
     /// none of that needs to know which of the three L2 domain kinds it came from.
-    fn setup_l2<N: NameGenerator>(&mut self, setup: &L2Setup<N>) -> Result<(), SetupError> {
+    fn setup_l2<N: NameGenerator>(
+        &mut self,
+        device: &DeviceAccess,
+        setup: &L2Setup<N>,
+    ) -> Result<(), SetupError> {
+        // VXLANs `setup_wlan_ap` already attached to `bridge-caps`; an interface can
+        // only be a member of one bridge, so those stay owned by the AP path.
+        let ap_managed_vnis = self
+            .vxlan
+            .values()
+            .map(|v| v.0.vni)
+            .collect::<HashSet<_>>();
         for single in setup.single_ports.iter() {
             if let Some(ethernet_port) = self.get_ethernet_port(single.port)? {
                 ethernet_port.name = single.name.clone();
@@ -218,8 +233,31 @@ impl BaseDeviceDataTarget {
                             tags_of_port.entry(name.clone()).or_default().0 = Some(vlan_id);
                             ports_of_vlan.entry(vlan_id).or_default().0.push(name.clone());
                         }
-                        L2Port::VxLan { .. }
-                        | L2Port::CapsMan { .. }
+                        L2Port::VxLan { name, vxlan } => {
+                            let Some(vni) = vxlan.vni() else { continue };
+                            if ap_managed_vnis.contains(&vni) {
+                                continue;
+                            }
+                            let my_ip = device
+                                .primary_ip_v4()
+                                .and_then(|ip| ip.addr())
+                                .ok_or_else(|| SetupError::MissingVtepAddress(name.clone()))?;
+                            self.vxlan.entry(name.clone()).or_insert_with(|| {
+                                InterfaceVxlanByName(InterfaceVxlanCfg {
+                                    vni,
+                                    local_address: Some(my_ip),
+                                    ..Default::default()
+                                })
+                            });
+                            for remote in vxlan.vteps().into_iter().filter(|ip| *ip != my_ip) {
+                                self.vxlan_vteps
+                                    .entry((name.clone(), remote))
+                                    .or_default();
+                            }
+                            tags_of_port.entry(name.clone()).or_default().1.push(vlan_id);
+                            ports_of_vlan.entry(vlan_id).or_default().1.push(name.clone());
+                        }
+                        L2Port::CapsMan { .. }
                         | L2Port::Cap { .. }
                         | L2Port::CapsManMgmt
                         | L2Port::CapMgmt
@@ -318,7 +356,7 @@ impl BaseDeviceDataTarget {
         self.setup_ip_addresses(&l2)?;
         self.setup_ospf(device, &l2);
         self.setup_wlan_ap(device);
-        self.setup_l2(&l2)?;
+        self.setup_l2(device, &l2)?;
         for port in device.interfaces() {
             if let Some(port_id) = port.external_port() {
                 if let Some(ethernet_port) = self.get_ethernet_port(port_id)? {

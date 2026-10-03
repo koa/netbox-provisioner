@@ -6,6 +6,7 @@ use crate::topology::{
         device::DeviceAccess,
         ip_addresses::IpAddressAccess,
         vlan::VlanAccess,
+        vxlan::VxlanAccess,
     },
 };
 use async_graphql::Object;
@@ -148,6 +149,16 @@ impl InterfaceAccess {
         self.data()
             .into_iter()
             .flat_map(|data| data.tagged_vlans.iter().copied().map(self.create_access()))
+    }
+    /// VXLANs this interface is directly terminated on (NetBox L2VPN interface
+    /// termination), as opposed to reaching a VXLAN only via a VLAN termination.
+    pub fn vxlan_terminations(&self) -> Box<[VxlanAccess]> {
+        self.topology
+            .vxlans
+            .iter()
+            .filter(|(_, data)| data.interface_terminations.contains(&self.id))
+            .map(|(id, _)| self.create_access()(*id))
+            .collect()
     }
     pub fn bridge(&self) -> Option<InterfaceAccess> {
         self.data().and_then(|d| d.bridge).map(self.create_access())

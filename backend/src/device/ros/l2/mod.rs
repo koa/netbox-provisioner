@@ -32,6 +32,7 @@ pub enum L2Port {
         root: InterfaceAccess,
     },
     VxLan {
+        name: AsciiString,
         vxlan: VxlanAccess,
     },
     CapsMan {
@@ -332,10 +333,41 @@ impl<G: NameGenerator> L2Setup<G> {
                     .or_default()
                     .insert(L2Port::Ip(ip));
             }
+            // A port (or VLAN interface) terminated directly on a VXLAN joins that
+            // VXLAN on whichever VLAN(s) it carries, under its own root - so the
+            // VXLAN lands on the same plane as the port itself, not on a root-less
+            // one. The VXLAN is a VLAN trunk (one VXLAN carries every household VLAN
+            // of a WLAN group, tagged), so the port's VLAN is what selects the
+            // household inside it; without one there is nothing to select.
+            for vxlan in interface.vxlan_terminations() {
+                let carried_vlans = interface
+                    .untagged_vlan()
+                    .into_iter()
+                    .chain(interface.tagged_vlans())
+                    .collect::<Vec<_>>();
+                if carried_vlans.is_empty() {
+                    return Err(SetupError::VxlanTerminationWithoutVlan(
+                        interface.name().into(),
+                    ));
+                }
+                let name = AsciiString::from(name_generator.generate_vxlan_name(&vxlan).as_ref());
+                for vlan in carried_vlans {
+                    planes
+                        .entry((Some(bridge_id), Some(vlan.id)))
+                        .or_default()
+                        .insert(L2Port::VxLan {
+                            name: name.clone(),
+                            vxlan: vxlan.clone(),
+                        });
+                    vlans.insert(vlan.id, vlan);
+                }
+            }
         }
         for vxlan in device.vxlan() {
+            let name = AsciiString::from(name_generator.generate_vxlan_name(&vxlan).as_ref());
             for vlan in vxlan.vlan_terminations().iter().map(|vlan| vlan.id()) {
                 plane_of_vlan(&mut planes, vlan).insert(L2Port::VxLan {
+                    name: name.clone(),
                     vxlan: vxlan.clone(),
                 });
             }

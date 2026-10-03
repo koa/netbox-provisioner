@@ -72,7 +72,7 @@ impl DeviceCfg {
         if let Some(wifi_target) = self.wifi_target.as_mut() {
             wifi_target.generate_from(device, &l2)?;
         }
-        self.base_target.setup_l2(&l2)?;
+        self.base_target.setup_l2(device, &l2)?;
         Ok(())
     }
     pub fn generate_mutations(&self) -> Result<Box<[ResourceMutation]>, Error> {
