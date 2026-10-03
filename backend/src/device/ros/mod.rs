@@ -7,10 +7,9 @@ use crate::{
     },
     topology::{
         IpPrefixId, PhysicalPortId,
-        access::{AccessTopology, device::DeviceAccess, vxlan::VxlanAccess},
+        access::{AccessTopology, device::DeviceAccess},
     },
 };
-use convert_case::{Case, Casing};
 use ipnet::{IpAdd, IpNet, IpSub, Ipv4Net, Ipv6Net};
 use mikrotik_model::{
     MacAddress, MikrotikDevice,
@@ -28,7 +27,7 @@ use mikrotik_model::{
     value::HasNone,
 };
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet, btree_map::Iter},
+    collections::{BTreeMap, BTreeSet, HashMap, btree_map::Iter},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::Range,
 };
@@ -80,7 +79,7 @@ mikrotik_model!(
     ),
 );
 
-const CAPS_BRIDGE_NAME: &[u8; 11] = b"bridge-caps";
+pub(crate) const CAPS_BRIDGE_NAME: &[u8; 11] = b"bridge-caps";
 
 #[derive(Error, Debug)]
 pub enum SetupError {
@@ -104,6 +103,8 @@ pub enum SetupError {
     VxlanTerminationWithoutVlan(AsciiString),
     #[error("Device has ports on VXLAN {0} but no primary IPv4 address to use as VTEP")]
     MissingVtepAddress(AsciiString),
+    #[error("Port {0} would be a member of more than one bridge (its VLANs are split across bridges)")]
+    PortInMultipleBridges(AsciiString),
 }
 
 impl BaseDeviceDataTarget {
@@ -152,13 +153,6 @@ impl BaseDeviceDataTarget {
         device: &DeviceAccess,
         setup: &L2Setup<N>,
     ) -> Result<(), SetupError> {
-        // VXLANs `setup_wlan_ap` already attached to `bridge-caps`; an interface can
-        // only be a member of one bridge, so those stay owned by the AP path.
-        let ap_managed_vnis = self
-            .vxlan
-            .values()
-            .map(|v| v.0.vni)
-            .collect::<HashSet<_>>();
         for single in setup.single_ports.iter() {
             if let Some(ethernet_port) = self.get_ethernet_port(single.port)? {
                 ethernet_port.name = single.name.clone();
@@ -242,9 +236,6 @@ impl BaseDeviceDataTarget {
                         }
                         L2Port::VxLan { name, vxlan } => {
                             let Some(vni) = vxlan.vni() else { continue };
-                            if ap_managed_vnis.contains(&vni) {
-                                continue;
-                            }
                             let my_ip = device
                                 .primary_ip_v4()
                                 .and_then(|ip| ip.addr())
@@ -268,7 +259,7 @@ impl BaseDeviceDataTarget {
                         | L2Port::Cap { .. }
                         | L2Port::CapsManMgmt
                         | L2Port::CapMgmt
-                        | L2Port::Ip(_) => {}
+                        | L2Port::Ip { .. } => {}
                     }
                 }
             }
@@ -362,7 +353,6 @@ impl BaseDeviceDataTarget {
         let l2 = L2Setup::new(device, name_generator)?;
         self.setup_ip_addresses(&l2)?;
         self.setup_ospf(device, &l2);
-        self.setup_wlan_ap(device);
         self.setup_l2(device, &l2)?;
         for port in device.interfaces() {
             if let Some(port_id) = port.external_port() {
@@ -390,66 +380,6 @@ impl BaseDeviceDataTarget {
         self.set_identity(device.name());
         if let Some(loopback_ip) = device.loopback_ip().and_then(|ip| ip.addr()) {
             self.set_loopback_ip(loopback_ip);
-        }
-    }
-
-    fn setup_wlan_ap(&mut self, device: &DeviceAccess) {
-        if let Some(wlan_group) = device.wlan_ap_of() {
-            if let Some(my_ip) = device.primary_ip_v4().and_then(|ip| ip.addr()) {
-                let mut vlans = HashSet::new();
-                if let Some(mgmt_vlan) = wlan_group.mgmt_vlan() {
-                    vlans.insert(mgmt_vlan);
-                }
-                for wlan in wlan_group.wlan() {
-                    if let Some(vlan) = wlan.vlan() {
-                        vlans.insert(vlan);
-                    }
-                }
-                let vxlans = vlans
-                    .iter()
-                    .filter_map(|vlan| vlan.vxlan())
-                    .collect::<HashSet<_>>();
-                for vxlan in vxlans {
-                    self.setup_vxlan(vxlan, &my_ip);
-                }
-            }
-        }
-    }
-
-    fn setup_vxlan(&mut self, vxlan: VxlanAccess, my_ip: &IpAddr) {
-        if let (Some(name), Some(vni)) = (
-            vxlan
-                .name()
-                .map(cleanup_name)
-                .map(|name| format!("vxlan-{name}").to_case(Case::Kebab))
-                .map(AsciiString::from),
-            vxlan.vni(),
-        ) {
-            self.bridge_port
-                .entry((CAPS_BRIDGE_NAME.into(), name.clone()))
-                .or_default();
-            self.bridge_vlan
-                .entry((
-                    CAPS_BRIDGE_NAME.into(),
-                    BTreeSet::from([name.clone()]),
-                    BTreeSet::default(),
-                    BTreeSet::from([value::PossibleRangeDash::Range {
-                        start: 1,
-                        end: 4094,
-                    }]),
-                ))
-                .or_default();
-            self.vxlan.insert(
-                name.clone(),
-                InterfaceVxlanByName(InterfaceVxlanCfg {
-                    vni,
-                    ..Default::default()
-                }),
-            );
-            for remote_vtep_addr in vxlan.vteps().into_iter().filter(|ip| ip != my_ip) {
-                self.vxlan_vteps
-                    .insert((name.clone(), remote_vtep_addr), Default::default());
-            }
         }
     }
 
@@ -783,6 +713,6 @@ impl WifiDeviceDataTarget {
         Ok(())
     }
 }
-fn cleanup_name(name: &str) -> String {
+pub(crate) fn cleanup_name(name: &str) -> String {
     name.replace(['.', '/', '+', ':'], "_")
 }

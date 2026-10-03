@@ -1,4 +1,4 @@
-use crate::device::ros::SetupError;
+use crate::device::ros::{CAPS_BRIDGE_NAME, SetupError, cleanup_name};
 use crate::topology::access::AccessTopology;
 use crate::topology::access::ip_addresses::IpAddressAccess;
 use crate::topology::access::vxlan::VxlanAccess;
@@ -43,7 +43,13 @@ pub enum L2Port {
     },
     CapsManMgmt,
     CapMgmt,
-    Ip(IpAddressAccess),
+    /// An L3 address on this plane, together with the NetBox interface it is
+    /// assigned to - whose tags (`ospf`/`dhcp`/`dhcp-client`) also apply to the
+    /// logical interface the address ends up on.
+    Ip {
+        ip: IpAddressAccess,
+        owner: InterfaceAccess,
+    },
 }
 
 /// A device's full L2 setup, split into three independent kinds of L2 domains rather
@@ -221,24 +227,12 @@ impl NameGenerator for EndpointNameGenerator {
         parts.join("-").into()
     }
 
+    /// `vxlan-{l2vpn-name}`, as in the reference exports (`vxlan-client-berg`).
     fn generate_vxlan_name<'s>(&mut self, vxlan: &'s VxlanAccess) -> Cow<'s, str> {
-        let mut wlan_group_names = HashSet::new();
-        for vlan in vxlan.vlan_terminations() {
-            for wlan in vlan.wlan() {
-                let option = wlan.wlan_group();
-                if let Some(group) = option.as_ref().and_then(|g| g.data()) {
-                    if !wlan_group_names.contains(group.name.as_ref()) {
-                        wlan_group_names.insert(group.name.clone());
-                    }
-                }
-            }
-        }
-        if wlan_group_names.len() == 1 {
-            if let Some(single_name) = wlan_group_names.iter().next() {
-                return Cow::Owned(format!("vxlan-wlan-{}", single_name.to_case(Case::Kebab)));
-            }
-        }
-        KeepNameGenerator.generate_vxlan_name(vxlan)
+        vxlan
+            .name()
+            .map(|name| format!("vxlan-{}", cleanup_name(name)).to_case(Case::Kebab).into())
+            .unwrap_or_else(|| KeepNameGenerator.generate_vxlan_name(vxlan))
     }
 
     fn generate_vlan_name<'s>(
@@ -267,12 +261,31 @@ impl<G: NameGenerator> L2Setup<G> {
         let mut planes = BTreeMap::<(Option<InterfaceId>, Option<VlanId>), BTreeSet<L2Port>>::new();
         let mut vlans = HashMap::new();
         let mut root_interfaces = HashMap::<InterfaceId, InterfaceAccess>::new();
+        let referenced_bridges = device
+            .interfaces()
+            .iter()
+            .filter_map(|interface| interface.bridge().map(|bridge| bridge.id()))
+            .collect::<HashSet<_>>();
         for interface in device.interfaces() {
             let root_device = interface.bridge().unwrap_or(interface.clone());
-            let bridge_id = root_device.id();
-            root_interfaces
-                .entry(bridge_id)
-                .or_insert_with(|| root_device.clone());
+            // An interface that carries a VLAN but names no bridge (and isn't one
+            // itself) joins the device's default bridge - the root-less group, the
+            // same one VXLAN/CAPsMAN/CAP entries land in - so a VLAN that only needs
+            // L2 here (e.g. AP access ports in a VXLAN-transported household VLAN)
+            // doesn't require modeling a bridge in NetBox at all.
+            let carries_vlan =
+                interface.untagged_vlan().is_some() || interface.tagged_vlans().next().is_some();
+            let is_bridge = interface.is_bridge() || referenced_bridges.contains(&interface.id());
+            let bridge_id = if interface.bridge().is_none() && carries_vlan && !is_bridge {
+                None
+            } else {
+                Some(root_device.id())
+            };
+            if let Some(bridge_id) = bridge_id {
+                root_interfaces
+                    .entry(bridge_id)
+                    .or_insert_with(|| root_device.clone());
+            }
             let mut vlan_added = false;
             if let Some(port) = interface.external_port() {
                 let name = name_generator.generate_interface_name(&interface);
@@ -301,14 +314,14 @@ impl<G: NameGenerator> L2Setup<G> {
                 {
                     vlan_added = true;
                     planes
-                        .entry((Some(bridge_id), Some(vlan.id)))
+                        .entry((bridge_id, Some(vlan.id)))
                         .or_default()
                         .insert(port);
                     vlans.insert(vlan.id, vlan);
                 }
                 if !vlan_added {
                     planes
-                        .entry((Some(bridge_id), None))
+                        .entry((bridge_id, None))
                         .or_default()
                         .insert(L2Port::UntaggedEthernet {
                             name: name.to_string().into(),
@@ -329,9 +342,12 @@ impl<G: NameGenerator> L2Setup<G> {
             }
             for ip in interface.ips().into_iter() {
                 planes
-                    .entry((Some(bridge_id), ip_vlan_id))
+                    .entry((bridge_id, ip_vlan_id))
                     .or_default()
-                    .insert(L2Port::Ip(ip));
+                    .insert(L2Port::Ip {
+                        ip,
+                        owner: interface.clone(),
+                    });
             }
             // A port (or VLAN interface) terminated directly on a VXLAN joins that
             // VXLAN on whichever VLAN(s) it carries, under its own root - so the
@@ -353,7 +369,7 @@ impl<G: NameGenerator> L2Setup<G> {
                 let name = AsciiString::from(name_generator.generate_vxlan_name(&vxlan).as_ref());
                 for vlan in carried_vlans {
                     planes
-                        .entry((Some(bridge_id), Some(vlan.id)))
+                        .entry((bridge_id, Some(vlan.id)))
                         .or_default()
                         .insert(L2Port::VxLan {
                             name: name.clone(),
@@ -363,67 +379,48 @@ impl<G: NameGenerator> L2Setup<G> {
                 }
             }
         }
-        for vxlan in device.vxlan() {
-            let name = AsciiString::from(name_generator.generate_vxlan_name(&vxlan).as_ref());
-            for vlan in vxlan.vlan_terminations().iter().map(|vlan| vlan.id()) {
-                plane_of_vlan(&mut planes, vlan).insert(L2Port::VxLan {
-                    name: name.clone(),
-                    vxlan: vxlan.clone(),
-                });
-            }
-        }
+        let mut vxlans = device.vxlan();
         if let Some(wlan) = device.wlan_ap_of() {
             if let Some(vlan) = wlan.mgmt_vlan() {
                 plane_of_vlan(&mut planes, vlan.id).insert(L2Port::CapMgmt);
+                vxlans.extend(vlan.vxlan());
+                vlans.insert(vlan.id, vlan);
             }
             for wlan in wlan.wlan() {
                 if let Some(vlan) = wlan.vlan() {
                     plane_of_vlan(&mut planes, vlan.id).insert(L2Port::Cap { wlan });
+                    // An AP reaches its WLAN VLANs only through their VXLAN; it
+                    // joins each of those VLANs tagged on the same (default) bridge
+                    // the CAP datapath and any local access ports use.
+                    vxlans.extend(vlan.vxlan());
+                    vlans.insert(vlan.id, vlan);
                 }
+            }
+        }
+        for vxlan in vxlans {
+            let name = AsciiString::from(name_generator.generate_vxlan_name(&vxlan).as_ref());
+            for vlan in vxlan.vlan_terminations() {
+                plane_of_vlan(&mut planes, vlan.id).insert(L2Port::VxLan {
+                    name: name.clone(),
+                    vxlan: vxlan.clone(),
+                });
+                vlans.insert(vlan.id, vlan);
             }
         }
         if let Some(wlan) = device.wlan_controller_of() {
             if let Some(vlan) = wlan.mgmt_vlan() {
                 plane_of_vlan(&mut planes, vlan.id).insert(L2Port::CapsManMgmt);
+                vlans.insert(vlan.id, vlan);
             }
             for wlan in wlan.wlan() {
                 if let Some(vlan) = wlan.vlan() {
                     plane_of_vlan(&mut planes, vlan.id).insert(L2Port::CapsMan { wlan });
+                    vlans.insert(vlan.id, vlan);
                 }
             }
         }
-        // Group plane keys (not their contents - that would keep `planes` borrowed
-        // across the move into `by_root` below) by the real numeric VLAN ID they
-        // resolve to, to catch the same NetBox VLAN being used in two unrelated
-        // places, and to seed `next_synthetic_vlan_id` so it never collides with a
-        // real ID.
-        let mut keys_by_real_vlan_id = HashMap::<u16, Vec<(Option<InterfaceId>, Option<VlanId>)>>::new();
-        for key @ (_, vlan_id) in planes.keys() {
-            if let Some(numeric_id) = vlan_id
-                .as_ref()
-                .and_then(|vlan_id| vlans.get(vlan_id))
-                .and_then(VlanAccess::vlan_id)
-            {
-                keys_by_real_vlan_id.entry(numeric_id).or_default().push(*key);
-            }
-        }
-        let ambiguous_vlans = keys_by_real_vlan_id
-            .iter()
-            .filter(|(_, keys)| keys.len() > 1)
-            .map(|(id, keys)| {
-                (
-                    *id,
-                    keys.iter().map(|key| planes[key].clone()).collect(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
-        if !ambiguous_vlans.is_empty() {
-            return Err(SetupError::AmbiguousVlanIds(ambiguous_vlans));
-        }
-        let used_real_vlan_ids = keys_by_real_vlan_id.keys().copied().collect::<HashSet<_>>();
-
         // Regroup by root device: each root ends up with its own map of
-        // vlan -> ports, which `classify_root_group` below turns into exactly one
+        // vlan -> ports, which the classification below turns into exactly one
         // single_ports/simple_bridges/tagged_bridges entry.
         let mut by_root =
             BTreeMap::<Option<InterfaceId>, BTreeMap<Option<VlanId>, BTreeSet<L2Port>>>::new();
@@ -431,20 +428,63 @@ impl<G: NameGenerator> L2Setup<G> {
             by_root.entry(root).or_default().insert(vlan, ports);
         }
 
-        // VXLAN/CAPsMAN/CAP-only entries (`plane_of_vlan` above has no root device to
-        // key them under) belong wherever that same NetBox VLAN is actually carried by
-        // a physical bridge group, if any - merge them in. A VLAN that is only ever
-        // reached via VXLAN/WLAN, with no local tagged/untagged uplink, keeps its own
-        // root-less group and still becomes a `TaggedBridge` (see classification
-        // below), just one with no physical member port.
+        // Entries of the root-less group (VXLAN/CAPsMAN/CAP attachments from
+        // `plane_of_vlan`, and interfaces carrying a VLAN without naming a bridge)
+        // belong wherever that same NetBox VLAN is actually carried by an explicit
+        // bridge, if any - merge them in. A VLAN with no explicit bridge keeps its
+        // place in the root-less group, which becomes the device's default
+        // `TaggedBridge` (see classification below). The untagged/no-VLAN entry is
+        // never merged: it has no VLAN identity that could match another bridge.
         if let Some(virtual_group) = by_root.remove(&None) {
             for (vlan, virtual_ports) in virtual_group {
-                let merged = by_root
-                    .values_mut()
-                    .find_map(|sub| sub.get_mut(&vlan))
+                let merged = vlan
+                    .is_some()
+                    .then(|| by_root.values_mut().find_map(|sub| sub.get_mut(&vlan)))
+                    .flatten()
                     .map(|existing| existing.extend(virtual_ports.iter().cloned()));
                 if merged.is_none() {
                     by_root.entry(None).or_default().insert(vlan, virtual_ports);
+                }
+            }
+        }
+
+        // Only now, after merging, can the same numeric VLAN ID still show up in
+        // more than one place - the same NetBox VLAN on two explicit bridges, or two
+        // different NetBox VLANs sharing an ID on one device. Also collects the
+        // real IDs in use, to seed `next_synthetic_vlan_id` so it never collides.
+        let mut planes_by_real_vlan_id = HashMap::<u16, Vec<BTreeSet<L2Port>>>::new();
+        for sub in by_root.values() {
+            for (vlan_id, ports) in sub {
+                if let Some(numeric_id) = vlan_id
+                    .as_ref()
+                    .and_then(|vlan_id| vlans.get(vlan_id))
+                    .and_then(VlanAccess::vlan_id)
+                {
+                    planes_by_real_vlan_id
+                        .entry(numeric_id)
+                        .or_default()
+                        .push(ports.clone());
+                }
+            }
+        }
+        let used_real_vlan_ids = planes_by_real_vlan_id.keys().copied().collect::<HashSet<_>>();
+        planes_by_real_vlan_id.retain(|_, planes| planes.len() > 1);
+        if !planes_by_real_vlan_id.is_empty() {
+            return Err(SetupError::AmbiguousVlanIds(planes_by_real_vlan_id));
+        }
+
+        // Merging is per VLAN, so a bridge-less trunk port could end up split
+        // across an explicit bridge and the default one - but a port can only be a
+        // member of one bridge.
+        let mut root_of_port = HashMap::<PhysicalPortId, Option<InterfaceId>>::new();
+        for (root, sub) in &by_root {
+            for port in sub.values().flatten() {
+                if let L2Port::TaggedEthernet { name, port, .. }
+                | L2Port::UntaggedEthernet { name, port, .. } = port
+                {
+                    if *root_of_port.entry(*port).or_insert(*root) != *root {
+                        return Err(SetupError::PortInMultipleBridges(name.clone()));
+                    }
                 }
             }
         }
@@ -489,7 +529,7 @@ impl<G: NameGenerator> L2Setup<G> {
                 let addresses = ports
                     .iter()
                     .filter_map(|p| match p {
-                        L2Port::Ip(ip) => Some(ip.clone()),
+                        L2Port::Ip { ip, .. } => Some(ip.clone()),
                         _ => None,
                     })
                     .collect::<Box<[_]>>();
@@ -516,7 +556,7 @@ impl<G: NameGenerator> L2Setup<G> {
                                     root: root.clone(),
                                 })
                             }
-                            L2Port::Ip(ip) => Some(SimpleBridgePort::Ip(ip.clone())),
+                            L2Port::Ip { ip, .. } => Some(SimpleBridgePort::Ip(ip.clone())),
                             _ => None,
                         })
                         .collect();
@@ -526,11 +566,18 @@ impl<G: NameGenerator> L2Setup<G> {
                     });
                 }
             } else {
-                let name = AsciiString::from(
-                    name_generator
-                        .generate_main_bridge(root.and_then(|id| root_interfaces.get(&id)))
-                        .as_ref(),
-                );
+                // On a WLAN AP the default bridge is the one the CAP datapath
+                // references, so WLAN clients, the VXLAN and local access ports of
+                // the same VLAN share one L2 domain.
+                let name = if root.is_none() && device.wlan_ap_of().is_some() {
+                    AsciiString::from(CAPS_BRIDGE_NAME.as_slice())
+                } else {
+                    AsciiString::from(
+                        name_generator
+                            .generate_main_bridge(root.and_then(|id| root_interfaces.get(&id)))
+                            .as_ref(),
+                    )
+                };
                 let mut entries = BTreeMap::new();
                 for (vlan_id, ports) in sub {
                     let vlan = vlan_id.and_then(|id| vlans.get(&id).cloned());
@@ -618,10 +665,14 @@ impl<G: NameGenerator> L2Setup<G> {
                     .ports
                     .iter()
                     .filter_map(|p| match p {
-                        L2Port::Ip(ip) => Some(ip.clone()),
+                        L2Port::Ip { ip, .. } => Some(ip.clone()),
                         _ => None,
                     })
                     .collect();
+                // Tags count from the bridge the member ports belong to and from
+                // whichever interface owns an address on this VLAN - the latter is
+                // the only place to put them for a VLAN on the default bridge, which
+                // has no NetBox interface of its own.
                 let roots = entry
                     .ports
                     .iter()
@@ -629,6 +680,7 @@ impl<G: NameGenerator> L2Setup<G> {
                         L2Port::TaggedEthernet { root, .. } | L2Port::UntaggedEthernet { root, .. } => {
                             Some(root)
                         }
+                        L2Port::Ip { owner, .. } => Some(owner),
                         _ => None,
                     })
                     .collect::<Vec<_>>();

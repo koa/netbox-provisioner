@@ -1,5 +1,5 @@
 use crate::topology::{
-    Interface, InterfaceId, PhysicalPortId, Topology,
+    Interface, InterfaceId, PhysicalPortId, PortType, Topology,
     access::{
         AccessTopology,
         cable::{CableAccess, CablePortAccess},
@@ -162,6 +162,12 @@ impl InterfaceAccess {
     }
     pub fn bridge(&self) -> Option<InterfaceAccess> {
         self.data().and_then(|d| d.bridge).map(self.create_access())
+    }
+    /// Whether NetBox models this interface itself as a bridge (interface type
+    /// `bridge`), regardless of whether any port references it yet.
+    pub fn is_bridge(&self) -> bool {
+        self.data()
+            .is_some_and(|d| d.port_type == Some(PortType::Bridge))
     }
     pub fn enable_poe(&self) -> bool {
         self.data().map(|d| d.enable_poe).unwrap_or(false)

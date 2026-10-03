@@ -65,7 +65,6 @@ impl DeviceCfg {
 
         self.base_target.setup_ip_addresses(&l2)?;
         self.base_target.setup_ospf(device, &l2);
-        self.base_target.setup_wlan_ap(device);
         if let Some(wireless_target) = self.wireless_target.as_mut() {
             wireless_target.generate_from(device, &l2);
         }

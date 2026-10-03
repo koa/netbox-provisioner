@@ -8,10 +8,33 @@ Das ist der komplexeste und zentralste Teil der Generierungs-Pipeline — fast a
 
 ## Schritt 1: "Ebenen" (`planes`) aus der Topologie sammeln
 
-Für jedes Interface eines Geräts wird bestimmt, zu welcher **Root** (dem physischen Gerät, dessen
-Bridge-Mitglied es ist — bzw. es selbst, falls es kein Bridge-Member ist) und welcher **VLAN** (oder
+Für jedes Interface eines Geräts wird bestimmt, zu welcher **Root** und welcher **VLAN** (oder
 "kein VLAN") es gehört. Diese `(root, vlan)`-Paare heißen hier "Ebenen" (`planes:
-BTreeMap<(Option<InterfaceId>, Option<VlanId>), BTreeSet<L2Port>>`).
+BTreeMap<(Option<InterfaceId>, Option<VlanId>), BTreeSet<L2Port>>`). Die Root ist:
+
+- die in NetBox eingetragene **Bridge** (`bridge()`), wenn das Interface eine nennt;
+- sonst, wenn das Interface eine VLAN trägt (ungetaggt oder getaggt) und nicht selbst eine Bridge
+  ist: **keine** Root (`None`), also die [Standard-Bridge](#standard-bridge) des Geräts;
+- sonst das Interface **selbst** (ein einzelner Port ohne VLAN, ein Loopback, eine Bridge).
+
+### Standard-Bridge
+
+Ein Interface, das eine VLAN trägt, aber keine Bridge nennt, landet in der root-losen Gruppe. In
+diese Gruppe sortiert der Code auch alle VXLAN-/CAPsMAN-/CAP-Anbindungen ohne physische Root ein.
+Diese Gruppe wird zur **Standard-Bridge** des Geräts (`bridge`, auf einem Access Point
+`bridge-caps`, siehe [interface-naming.md](interface-naming.md)). Dadurch muss man in NetBox nur
+dann eine Bridge anlegen, wenn man sie wirklich braucht:
+
+- für eine flache Port-Gruppe ohne VLAN (z.B. ein Switch-LAN ohne VLAN-Tagging),
+- für ein bewusst getrenntes L2-Segment, oder
+- für einen eigenen Bridge-Namen.
+
+Für alles andere reicht es, die VLAN an Ports und VLAN-Interfaces einzutragen. Typischer Fall: die
+LAN-Ports eines Access Points, die in einem per VXLAN transportierten Haushalts-VLAN hängen (z.B.
+`ap-mimi-buero` `ether2`–`ether5`). Sie bilden zusammen mit dem VXLAN und dem CAP-Datapath ein L2.
+
+Zwei Interfaces ohne Bridge mit derselben VLAN auf demselben Gerät sind damit dasselbe L2-Segment,
+so wie NetBox eine VLAN ohnehin versteht.
 
 Pro physischem Interface mit externem Port:
 - Jede **getaggte VLAN** (`tagged_vlans()`) erzeugt einen `L2Port::TaggedEthernet`-Eintrag auf der
@@ -21,7 +44,7 @@ Pro physischem Interface mit externem Port:
 - Hat das Interface **weder** getaggte noch ungetaggte VLAN, landet es als
   `L2Port::UntaggedEthernet` auf der "kein VLAN"-Ebene `(root, None)`.
 
-Eigene IP-Adressen eines Interfaces (`interface.ips()`) werden als `L2Port::Ip(...)` auf **derselben
+Eigene IP-Adressen eines Interfaces (`interface.ips()`) werden als `L2Port::Ip { ip, owner }` auf **derselben
 VLAN-Ebene** eingeordnet, zu der das Interface selbst über seine eigene `untagged_vlan()` gehört —
 nicht pauschal auf die "kein VLAN"-Ebene. Das ist, was eine rein virtuelle "VLAN-Schnittstelle" in
 NetBox (ein Interface ohne externen Port, nur mit `vlan` + `ips`) erlaubt, ihre L3-Adresse korrekt
@@ -36,23 +59,28 @@ werden daher auf root-losen Ebenen `(None, Some(vlan))` einsortiert (`L2Port::Vx
 `L2Port::CapsMan`, `L2Port::Cap`, `L2Port::CapsManMgmt`, `L2Port::CapMgmt` — siehe
 [vxlan-generation.md](vxlan-generation.md) und [wlan-generation.md](wlan-generation.md)).
 
-## Schritt 2: Mehrdeutigkeits-Check
+## Schritt 2: Nach Root gruppieren, root-lose Ebenen zusammenführen
 
-Bevor weitergemacht wird, werden alle Ebenen nach ihrer **echten numerischen** NetBox-VLAN-ID
-gruppiert. Taucht dieselbe numerische VLAN-ID in zwei unabhängigen `(root, vlan)`-Schlüsseln auf
-(z.B. weil zwei verschiedene NetBox-VLAN-Objekte zufällig dieselbe Nummer tragen, oder dieselbe
-VLAN auf zwei unterschiedlichen Root-Gruppen referenziert wird, ohne dass das beabsichtigt wäre),
-bricht die Generierung mit `SetupError::AmbiguousVlanIds` ab, statt stillschweigend eine der beiden
-Bedeutungen zu verlieren.
+Alle Ebenen werden nach Root umgruppiert (`by_root: Root -> VLAN -> Ports`). Die root-lose Gruppe
+(Standard-Bridge) wird anschließend **pro VLAN eingemischt**: Führt eine in NetBox modellierte
+Bridge bereits dieselbe VLAN, kommen deren Einträge (VXLAN/CAPsMan/..., bridge-lose Ports und
+VLAN-Interfaces) dorthin. Sonst bleiben sie in der Standard-Bridge. Die "kein VLAN"-Ebene der
+root-losen Gruppe wird nie eingemischt, weil sie keine VLAN-Identität hat, die zu einer anderen
+Bridge passen könnte.
 
-## Schritt 3: Nach Root gruppieren, virtuelle Ebenen zusammenführen
+## Schritt 3: Konsistenz-Checks
 
-Alle Ebenen werden nach Root umgruppiert (`by_root: Root -> VLAN -> Ports`). Root-lose Ebenen
-(VXLAN/WLAN ohne physische Uplink-Ports) werden anschließend **eingemischt**: Hat eine physische
-Root-Gruppe bereits dieselbe VLAN, werden die virtuellen Ports (VXLAN/CAPsMan/...) dort
-hinzugefügt. Gibt es keine passende physische Gruppe, bleibt die Ebene root-los und wird trotzdem
-später als eigene `TaggedBridge` realisiert — einfach eine ohne physisches Mitglied (z.B. eine VLAN,
-die nur per VXLAN erreichbar ist).
+Erst **nach** dem Zusammenführen wird geprüft (vorher würde z.B. ein AP-Port in einer modellierten
+Bridge plus der CAP-Eintrag derselben VLAN fälschlich als Konflikt gelten):
+
+- **Mehrdeutige VLAN-IDs**: Alle Ebenen werden nach ihrer **echten numerischen** NetBox-VLAN-ID
+  gruppiert. Taucht dieselbe Nummer in mehr als einer Ebene auf (dieselbe VLAN auf zwei modellierten
+  Bridges, oder zwei verschiedene NetBox-VLANs mit derselben Nummer auf einem Gerät), bricht die
+  Generierung mit `SetupError::AmbiguousVlanIds` ab, statt stillschweigend eine Bedeutung zu
+  verlieren.
+- **Port in mehreren Bridges**: Weil pro VLAN zusammengeführt wird, könnte ein bridge-loser
+  Trunk-Port mit einer VLAN in einer modellierten Bridge und einer anderen in der Standard-Bridge
+  landen. Ein Port kann aber nur Mitglied einer Bridge sein, daher `SetupError::PortInMultipleBridges`.
 
 ## Schritt 4: Klassifizierung pro Root — welche der drei L2-Domänen-Arten?
 
@@ -75,7 +103,7 @@ Für jede Root-Gruppe wird genau einer von drei Fällen gewählt:
 Jede Ebene innerhalb einer `TaggedBridge` bekommt dabei ihre eigene **numerische VLAN-ID**
 zugewiesen — entweder die echte NetBox-ID, oder, falls keine vorhanden (z.B. die "kein
 VLAN"-Ebene einer sonst getaggten Bridge), eine **synthetische** ID ab `60000` aufwärts
-(`next_synthetic_vlan_id`, kollisionsfrei gegenüber allen in Schritt 2 gesammelten echten IDs).
+(`next_synthetic_vlan_id`, kollisionsfrei gegenüber allen in Schritt 3 gesammelten echten IDs).
 
 Der Interface-Name einer VLAN-Ebene innerhalb einer getaggten Bridge ist:
 - der **Bridge-Name selbst**, wenn es die "kein VLAN"/native Ebene ist (keine eigene
@@ -111,9 +139,11 @@ Erst **nachdem** `L2Setup::new` die komplette Klassifizierung oben berechnet hat
   `/interface/vlan`, ist die **Bridge selbst** getaggtes Mitglied; mit VLAN-Filtering sieht das
   VLAN-Interface sonst keinen Verkehr (und z.B. ein DHCP-Server darauf keine Anfragen).
   Ein `L2Port::VxLan` wird dabei wie ein nur-getaggter Port behandelt: das VXLAN-Interface wird
-  angelegt (inkl. VTEPs) und getaggtes Mitglied der VLAN. Ausnahme: VXLANs, die `setup_wlan_ap`
-  schon an `bridge-caps` gehängt hat. Die übrigen virtuellen Varianten (`CapsMan`/`Cap`/`*Mgmt`/`Ip`)
-  erzeugen keinen Bridge-Port.
+  angelegt (inkl. VTEPs) und getaggtes Mitglied der VLAN. Die übrigen virtuellen Varianten
+  (`CapsMan`/`Cap`/`*Mgmt`/`Ip`) erzeugen keinen Bridge-Port.
+  Pro VLAN gibt es genau einen `/interface/bridge/vlan`-Eintrag; RouterOS lehnt überlappende
+  Einträge derselben VLAN-ID (z.B. ein `1-4094`-Bereich neben einem Eintrag für VLAN 4) mit
+  `vlan already added` ab (geprüft gegen CHR 7.24.5).
 
 ## `logical_interfaces()`: die vereinheitlichte Sicht für alles Nachgelagerte
 
@@ -123,5 +153,9 @@ Erst **nachdem** `L2Setup::new` die komplette Klassifizierung oben berechnet hat
 ausschließlich über diese Sicht und muss daher selbst nie unterscheiden, ob eine logische
 Schnittstelle ein Einzelport, eine flache Bridge oder eine VLAN-Ebene einer getaggten Bridge ist.
 Für eine Bridge (flach oder getaggt) werden `use_ospf`/`enable_dhcp_client`/`enable_dhcp_server`
-dabei als "mindestens einer der beteiligten physischen Root-Ports hat dieses Flag" berechnet (ein
-NetBox-Flag pro Mitgliedsport, zusammengeführt auf Bridge-/VLAN-Ebene).
+dabei als "mindestens eine beteiligte Root hat dieses Flag" berechnet. Die Tags eines
+Bridge-Mitglieds selbst zählen also nicht, nur die der Bridge. Bei einer VLAN-Ebene einer getaggten
+Bridge zählen zusätzlich die Tags des Interfaces, dem eine IP-Adresse auf dieser VLAN gehört
+(`L2Port::Ip`'s `owner`, typischerweise das VLAN-Interface). Auf der Standard-Bridge gibt es kein
+NetBox-Interface für die Bridge, dort ist das VLAN-Interface der einzige Ort für diese Tags. Bei
+bridge-losen Ports der Standard-Bridge ist die Root der Port selbst, dessen Tags zählen deshalb mit.

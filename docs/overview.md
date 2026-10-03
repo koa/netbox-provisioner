@@ -18,24 +18,21 @@ steht in [netbox-modeling.md](netbox-modeling.md).
 2. **Generate (Soll)**: `DeviceCfg::generate_from` baut den **Ziel-Zustand**
    (`BaseDeviceDataTarget` + optional `WirelessDeviceDataTarget`/`WifiDeviceDataTarget`) rein aus
    der NetBox-Topologie (`DeviceAccess` und die anderen `topology::access::*`-Typen). Das passiert
-   in vier Schritten, in dieser Reihenfolge, weil spätere Schritte auf dem Ergebnis früherer
+   in diesen Schritten, in dieser Reihenfolge, weil spätere Schritte auf dem Ergebnis früherer
    aufbauen:
    - `set_name_and_loopback` — Identity + Loopback-IP.
    - `L2Setup::new` — die komplette Schicht-2-Topologie (Bridges, VLANs, welche physischen Ports
-     wohin gehören). Siehe [l2-generation.md](l2-generation.md).
+     wohin gehören), inklusive VXLAN-Transport der WLAN-VLANs auf Access Points. Siehe
+     [l2-generation.md](l2-generation.md) und [vxlan-generation.md](vxlan-generation.md).
    - `setup_ip_addresses` / `setup_ospf` — IP-Adressen, DHCP-Server/-Client, OSPF — operieren auf
      `L2Setup::logical_interfaces()`, einer vereinheitlichten Sicht über alle drei L2-Domänen-Arten,
      und müssen daher selbst nicht wissen, ob eine logische Schnittstelle ein Einzelport, eine
      flache Bridge oder ein VLAN auf einer getaggten Bridge ist. Siehe
      [ospf-generation.md](ospf-generation.md).
-   - `setup_wlan_ap` — VXLAN-Transport für WLAN-Management-/Client-VLANs, falls das Gerät ein
-     Access Point ist. Siehe [vxlan-generation.md](vxlan-generation.md) und
-     [wlan-generation.md](wlan-generation.md).
    - `setup_l2` — realisiert den bereits berechneten `L2Setup` als tatsächliche
      Bridge-/Bridge-Port-/Bridge-VLAN-/Interface-VLAN-Einträge und benennt dabei jeden physischen
-     Ethernet-Port auf seinen generierten Namen um. Legt außerdem die VXLAN-Interfaces für
-     Port-Gruppen an, die an einem VXLAN terminiert sind (siehe
-     [vxlan-generation.md](vxlan-generation.md)).
+     Ethernet-Port auf seinen generierten Namen um. Legt außerdem die geplanten VXLAN-Interfaces
+     samt VTEPs an (siehe [vxlan-generation.md](vxlan-generation.md)).
 3. **Diff**: `DeviceCfg::generate_mutations` vergleicht Ist (Schritt 1) gegen Soll (Schritt 2) und
    erzeugt eine Liste von `ResourceMutation`s (Add/Set/Remove pro RouterOS-Pfad). Das ist generischer
    `mikrotik-model`-Mechanismus, nicht spezifisch für diese Pipeline.

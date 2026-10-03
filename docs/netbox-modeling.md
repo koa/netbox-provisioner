@@ -138,6 +138,14 @@ primäre IPv4 des Geräts markieren.
 
 ### Bridges
 
+Eine Bridge muss man nur anlegen, wenn man sie wirklich braucht. Jedes Interface, das eine VLAN
+trägt und keine Bridge nennt, landet automatisch auf der **Standard-Bridge** des Geräts (`bridge`,
+auf einem Access Point `bridge-caps`). Eine eigene Bridge braucht man nur für:
+
+- eine **flache Port-Gruppe ohne VLAN** (z.B. ein Switch-LAN, dessen Ports keine VLAN tragen),
+- ein bewusst **getrenntes L2-Segment** mit eigener Bridge,
+- einen eigenen Bridge-Namen.
+
 Eine Bridge wird in NetBox als **virtuelles Interface** am Gerät angelegt (Typ Bridge). Alle
 Ports, VLAN-Interfaces und IPs, die dazugehören sollen, bekommen im Feld **Bridge** diese Bridge
 eingetragen.
@@ -147,34 +155,36 @@ eingetragen.
 - Ob daraus eine einfache Bridge, eine VLAN-Filtering-Bridge oder gar keine Bridge wird, entscheidet
   der Provisioner selbst (siehe [l2-generation.md](l2-generation.md)). Ein Port ohne Bridge und
   ohne VLAN bleibt ein eigenständiger Port.
+- Führt eine modellierte Bridge eine VLAN, kommen bridge-lose Ports und VLAN-Interfaces mit
+  derselben VLAN in diese Bridge statt in die Standard-Bridge. Ein bridge-loser Trunk-Port darf
+  dadurch nicht auf zwei Bridges verteilt werden (`PortInMultipleBridges`).
 - **Tags an der Bridge gelten für alle VLANs dieser Bridge.** Die Tags `ospf`/`dhcp`/`dhcp-client`
-  werden bei Bridges vom Bridge-Interface gelesen, nicht von den Ports und nicht von den
-  VLAN-Interfaces. `dhcp` an der Bridge aktiviert also einen DHCP-Server auf **jeder** VLAN der
-  Bridge, die eine IP hat.
+  werden bei Bridges vom Bridge-Interface gelesen, nicht von den Bridge-Ports. `dhcp` an der Bridge
+  aktiviert also einen DHCP-Server auf **jeder** VLAN der Bridge, die eine IP hat. Zusätzlich
+  zählen die Tags des VLAN-Interfaces, das die IP einer VLAN trägt (siehe unten).
 
 ### VLANs
 
 - Jedes VLAN muss in einer **VLAN-Gruppe** liegen. Der Provisioner liest VLANs nur über die
   VLAN-Gruppen. Ein VLAN ohne Gruppe ist für ihn unsichtbar: ein Port, der es referenziert, bekommt
   dann eine synthetische VLAN-ID ab 60000 statt der echten.
-- Dieselbe VLAN-ID darf auf einem Gerät nicht in zwei unabhängigen Bridges vorkommen, sonst bricht
-  die Generierung mit `AmbiguousVlanIds` ab.
+- Dieselbe VLAN-ID darf auf einem Gerät nicht in zwei modellierten Bridges vorkommen, und zwei
+  verschiedene VLANs mit derselben VID dürfen nicht auf demselben Gerät landen. Sonst bricht die
+  Generierung mit `AmbiguousVlanIds` ab.
 - Der VLAN-Name fließt in den Interface-Namen ein (`vlan-<name>-<vid>`).
 
 ### L3 auf einem VLAN (Gateway-Adresse)
 
 Für eine IP-Adresse auf einem VLAN ein **virtuelles Interface** anlegen (Typ Virtual) mit:
-- **Bridge** = die Bridge,
 - **Untagged VLAN** = das VLAN,
-- **IP Address** = die Gateway-Adresse.
+- **IP Address** = die Gateway-Adresse,
+- **Bridge** = die Bridge, falls das VLAN auf einer modellierten Bridge liegt. Ohne Bridge kommt
+  das VLAN-Interface auf die Bridge, die dieses VLAN führt, sonst auf die Standard-Bridge.
+- **Tags** `dhcp`/`dhcp-client`/`ospf` für dieses VLAN.
 
 Der Provisioner legt dafür ein `/interface vlan` auf der Bridge an und setzt die IP dort. Die IP
 nie direkt an einen Bridge-Port hängen; ein Bridge-Mitglied kann in RouterOS keine eigene IP
 tragen.
-
-Das Feld **Bridge** am VLAN-Interface ist Pflicht. Fehlt es, landet das VLAN-Interface in einer
-eigenen Gruppe, und dieselbe VLAN-ID kommt doppelt vor (einmal bei den Ports, einmal beim
-VLAN-Interface). Die Generierung bricht dann mit `AmbiguousVlanIds` ab.
 
 ## IP-Adressen, Prefixe und DHCP
 
@@ -224,6 +234,9 @@ Daraus entsteht eine VLAN-Filtering-Bridge `bridge-sw`. `ether1` wird als nur-ge
 `ether2`/`ether3` als ungetaggt mit passender PVID, und es gibt ein `/interface vlan` mit der
 Gateway-IP.
 
+Die Bridge `sw` (Schritt 3) ist hier optional. Ohne sie und ohne die Bridge-Felder entsteht dieselbe
+Struktur auf der Standard-Bridge `bridge`; das Tag `ospf` kommt dann an das VLAN-Interface.
+
 ## VXLAN
 
 Ein VXLAN ist ein **L2VPN** mit Typ **VXLAN**:
@@ -236,7 +249,19 @@ Ein VXLAN ist ein **L2VPN** mit Typ **VXLAN**:
   - **Interface-Terminierung**: dieser Port bzw. dieses VLAN-Interface nimmt am VXLAN teil, und das
     Gerät wird VTEP.
 
-### Rezept: Wohnungs-Ports an das WLAN-VXLAN hängen
+### Rezept: LAN-Ports eines Access Points im Haushalts-WLAN
+
+Ziel: An einem AP (z.B. `ap-mimi-buero`) sollen `ether2`–`ether5` im selben Netz wie das WLAN
+`wlan-mimi` sein.
+
+1. Der AP ist Mitglied der WLAN-Gruppe (Custom Field `wlan_group`), das Haushalts-VLAN ist per
+   **VLAN-Terminierung** am WLAN-VXLAN.
+2. Die Ports bekommen **Untagged VLAN** = `wlan-mimi`. **Keine** Bridge, **keine**
+   Interface-Terminierung.
+
+Die Ports landen auf `bridge-caps`, zusammen mit dem VXLAN und dem CAP-Datapath.
+
+### Rezept: Wohnungs-Ports eines Switches an das WLAN-VXLAN hängen
 
 Ziel: Ein Drucker an der LAN-Dose einer Wohnung soll im selben Netz wie das WLAN der Wohnung sein.
 
@@ -280,6 +305,6 @@ reicht also nicht, sie zu setzen:
   Router und Switch unterscheiden sich nur durch ihre Interfaces.
 - **Device Type**: wird nicht gelesen, das Board kommt live vom Gerät.
 - **802.1Q Mode**: siehe oben; nur die VLAN-Zuweisungen zählen.
-- **Tags an VLAN-Interfaces und Bridge-Ports**: bei Bridges zählen nur die Tags des
-  Bridge-Interfaces.
+- **Tags an Bridge-Ports**: bei Bridges zählen die Tags des Bridge-Interfaces und des
+  VLAN-Interfaces, das die IP trägt, nicht die der Mitgliedsports.
 - **VLANs ohne VLAN-Gruppe**, **L2VPNs ohne Identifier**, **WLAN-Gruppen ohne Controller**.

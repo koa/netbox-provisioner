@@ -2,7 +2,8 @@ use crate::{
     device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError},
     topology::{
         Device, Interface, IpAddressData, IpAddressId, IpPrefixData, IpRangeData, PhysicalPortId,
-        TopologyHolder, VlanData, VlanGroupData, VxlanData, access::device::DeviceAccess,
+        TopologyHolder, VlanData, VlanGroupData, VxlanData, WlanAuth, WlanData, WlanGroupData,
+        WlanOpenSettings, access::device::DeviceAccess,
         test::TopologyBuilder,
     },
 };
@@ -635,6 +636,235 @@ async fn test_vxlan_port_group_requires_vlan() {
     ));
 }
 
+/// Builds a WLAN AP whose `ether2`/`ether3` carry the VXLAN-transported household
+/// VLAN untagged without naming a bridge (like `ap-mimi-buero` in production),
+/// plus a VLAN interface `haushalt` (no bridge either) holding the VLAN's gateway
+/// address and the `dhcp` tag. With `explicit_bridge`, `ether1` is additionally a
+/// member of a modeled bridge `bridge-sw` in the same VLAN.
+async fn create_default_bridge_device(explicit_bridge: bool) -> DeviceAccess {
+    let mut builder = TopologyBuilder::default();
+    let device = builder.devices.next_id();
+    let controller = builder.devices.next_id();
+    let vxlan_id = builder.vxlans.next_id();
+    let wlan_group = builder.wlan_groups.next_id();
+    let wlan = builder.wlans.next_id();
+
+    let controller_ip = builder.ip_addresses.next_id();
+    builder.ip_addresses.insert(
+        controller_ip,
+        IpAddressData {
+            ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(172, 16, 1, 1)), 32).unwrap(),
+            interface: None,
+            prefix: None,
+        },
+    );
+
+    let own_ip = builder.ip_addresses.next_id();
+    builder.ip_addresses.insert(
+        own_ip,
+        IpAddressData {
+            ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(172, 16, 1, 70)), 32).unwrap(),
+            interface: None,
+            prefix: None,
+        },
+    );
+    let prefix = builder.ip_prefixes.next_id();
+    builder.ip_prefixes.insert(
+        prefix,
+        IpPrefixData {
+            prefix: IpNet::new(IpAddr::V4(Ipv4Addr::new(10, 192, 3, 0)), 24).unwrap(),
+            addresses: Box::new([]),
+            children: Box::new([]),
+            parent: None,
+            ranges: Box::new([]),
+        },
+    );
+    let gateway_ip = builder.ip_addresses.next_id();
+    builder.ip_addresses.insert(
+        gateway_ip,
+        IpAddressData {
+            ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(10, 192, 3, 1)), 24).unwrap(),
+            interface: None,
+            prefix: Some(prefix),
+        },
+    );
+
+    let vlan_group = builder.vlan_groups.next_id();
+    let vlan = builder.vlans.next_id();
+    builder.vlans.insert(
+        vlan,
+        VlanData {
+            name: "wlan-mimi".into(),
+            vlan_id: 4,
+            group: vlan_group,
+            terminations: Box::new([]),
+            vxlan: Some(vxlan_id),
+            wlans: Box::new([wlan]),
+        },
+    );
+    builder.vlan_groups.insert(vlan_group, VlanGroupData { vlans: Box::new([vlan]) });
+    builder.wlans.insert(
+        wlan,
+        WlanData {
+            ssid: "mimi".into(),
+            vlan: Some(vlan),
+            wlan_auth: WlanAuth::Open(WlanOpenSettings { use_owe: true }),
+            wlan_group,
+        },
+    );
+    builder.wlan_groups.insert(
+        wlan_group,
+        WlanGroupData {
+            name: "berg".into(),
+            mgmt_vlan: None,
+            controller,
+            aps: Box::new([device]),
+            wlans: Box::new([wlan]),
+        },
+    );
+    builder.vxlans.insert(
+        vxlan_id,
+        VxlanData {
+            name: "client-berg".into(),
+            vni: 1,
+            interface_terminations: Box::new([]),
+            vlan_terminations: Box::new([vlan]),
+        },
+    );
+
+    if explicit_bridge {
+        let bridge = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            bridge,
+            Interface {
+                name: "bridge-sw".into(),
+                device,
+                ..Default::default()
+            },
+        );
+        let port = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            port,
+            Interface {
+                name: "ether1".into(),
+                device,
+                external: Some(PhysicalPortId::Ethernet(1)),
+                bridge: Some(bridge),
+                vlan: Some(vlan),
+                ..Default::default()
+            },
+        );
+    }
+    for idx in [2u16, 3] {
+        let port = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            port,
+            Interface {
+                name: format!("ether{idx}").into_boxed_str(),
+                device,
+                external: Some(PhysicalPortId::Ethernet(idx)),
+                vlan: Some(vlan),
+                ..Default::default()
+            },
+        );
+    }
+    let vlan_if = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        vlan_if,
+        Interface {
+            name: "haushalt".into(),
+            device,
+            vlan: Some(vlan),
+            ips: Box::new([gateway_ip]),
+            enable_dhcp_server: true,
+            ..Default::default()
+        },
+    );
+    builder.devices.insert(
+        device,
+        Device {
+            name: "ap-wohnung".into(),
+            primary_ip_v4: Some(own_ip),
+            wlan_ap_of: Some(wlan_group),
+            ..Default::default()
+        },
+    );
+    builder.devices.insert(
+        controller,
+        Device {
+            name: "srv-router".into(),
+            primary_ip_v4: Some(controller_ip),
+            wlan_controller_of: Some(wlan_group),
+            ..Default::default()
+        },
+    );
+
+    Into::<TopologyHolder>::into(builder)
+        .devices_by_id(device)
+        .await
+        .expect("device not found")
+}
+
+/// Szenario "Standard-Bridge" auf einem AP: Ports, die ein VLAN tragen, aber in
+/// NetBox keine Bridge nennen, landen zusammen mit dem VXLAN und dem CAP-Datapath
+/// dieses VLANs auf `bridge-caps`, der Standard-Bridge eines APs; die Tags des
+/// VLAN-Interfaces (`dhcp`) gelten für das VLAN, obwohl keine Bridge modelliert
+/// ist. Das VXLAN ist pro VLAN getaggt (nicht als `1-4094`-Bereich, den RouterOS
+/// neben den Access-Port-Einträgen mit "vlan already added" ablehnt).
+#[tokio::test]
+async fn test_scenario_default_bridge_without_netbox_bridge() -> Result<(), Box<dyn Error>> {
+    let device = create_default_bridge_device(false).await;
+
+    let setup = L2Setup::new(&device, KeepNameGenerator)?;
+    assert_eq!(setup.single_ports.len(), 0);
+    assert_eq!(setup.simple_bridges.len(), 0);
+    assert_eq!(setup.tagged_bridges.len(), 1);
+    let bridge = &setup.tagged_bridges[0];
+    assert_eq!(bridge.name, AsciiString::from(b"bridge-caps"));
+    let entry = &bridge.ports[&4];
+    assert_eq!(count_ethernet(&entry.ports), 2);
+    assert_eq!(count_ips(&entry.ports), 1);
+    assert!(entry.ports.iter().any(|p| matches!(p, L2Port::VxLan { .. })));
+    let logical = setup
+        .logical_interfaces()
+        .find(|l| l.if_name == &entry.if_name)
+        .expect("vlan entry is a logical interface");
+    assert!(logical.enable_dhcp_server, "dhcp tag of the VLAN interface applies");
+
+    let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
+    target_data.generate_from(&device, KeepNameGenerator)?;
+    let vxlan_name = AsciiString::from("client-berg");
+    let caps_bridge = AsciiString::from("bridge-caps");
+    assert_eq!(target_data.bridge.len(), 1, "only bridge-caps, no second bridge");
+    assert!(target_data.bridge.contains_key(&caps_bridge));
+    assert!(target_data.vxlan_vteps.contains_key(&(
+        vxlan_name.clone(),
+        IpAddr::V4(Ipv4Addr::new(172, 16, 1, 1))
+    )));
+    assert!(target_data.bridge_vlan.keys().all(|(bridge, ..)| bridge == &caps_bridge));
+    assert!(target_data.bridge_vlan.keys().any(|(_, tagged, untagged, _)| {
+        tagged.contains(&vxlan_name)
+            && untagged.contains(&AsciiString::from("ether2"))
+            && untagged.contains(&AsciiString::from("ether3"))
+    }));
+    assert!(target_data.dhcp_v_4_server.values().any(|s| s.0.interface == AsciiString::from("vlan-4")));
+    println!("--- Szenario: AP-Ports ohne NetBox-Bridge auf der Standard-Bridge (bridge-caps) ---");
+    dump_mutations(&target_data, &empty_current)?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_default_bridge_merges_into_explicit_bridge_of_same_vlan() -> Result<(), Box<dyn Error>> {
+    let device = create_default_bridge_device(true).await;
+
+    let setup = L2Setup::new(&device, KeepNameGenerator)?;
+    assert_eq!(setup.tagged_bridges.len(), 1, "no separate default bridge");
+    let entry = &setup.tagged_bridges[0].ports[&4];
+    assert_eq!(count_ethernet(&entry.ports), 3);
+    assert!(entry.ports.iter().any(|p| matches!(p, L2Port::VxLan { .. })));
+    Ok(())
+}
+
 fn count_ethernet(ports: &std::collections::BTreeSet<L2Port>) -> usize {
     ports
         .iter()
@@ -648,7 +878,7 @@ fn count_ethernet(ports: &std::collections::BTreeSet<L2Port>) -> usize {
 }
 
 fn count_ips(ports: &std::collections::BTreeSet<L2Port>) -> usize {
-    ports.iter().filter(|p| matches!(p, L2Port::Ip(_))).count()
+    ports.iter().filter(|p| matches!(p, L2Port::Ip { .. })).count()
 }
 
 fn dump_mutations(

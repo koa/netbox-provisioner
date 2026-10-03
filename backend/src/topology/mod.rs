@@ -204,7 +204,7 @@ pub struct WlanWpaSettings {
 }
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct WlanOpenSettings {
-    use_owe: bool,
+    pub use_owe: bool,
 }
 impl Device {
     pub fn name(&self) -> &str {

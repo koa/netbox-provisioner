@@ -58,24 +58,26 @@ verwendet, nicht mehrere kombiniert — eine frühere Version erzeugte redundant
 
 ## VXLAN-Namen (`generate_vxlan_name`)
 
-- Gehört das VXLAN zu **genau einer** WLAN-Gruppe (alle seine VLAN-Terminierungen mit WLANs führen
-  zur selben Gruppe): `vxlan-wlan-{gruppenname-kebab}`.
-- Sonst Fallback auf `KeepNameGenerator`-Verhalten: NetBox-eigener VXLAN-Name, oder falls keiner
-  gesetzt ist, `vxlan-{numerische-vxlan-id}`.
+- `vxlan-{l2vpn-name-kebab}`, z.B. `vxlan-client-berg` für das L2VPN `client-berg` — so heißen die
+  VXLAN-Interfaces auch in den echten Exporten (`examples/05`, `08`, `09`).
+- Hat das L2VPN keinen Namen: `vxlan-{numerische-vxlan-id}`.
+- Namen sind gerätelokal; für die Interoperabilität zählt nur die VNI.
 
 ## Bridge-Namen (`generate_main_bridge`)
 
-- Gibt es ein eindeutiges Root-Device für die Bridge (meist: das physische Gerät, dessen Ports
-  gebridged werden): `bridge-{geraetename-kebab}`.
-- Sonst (kein Root-Device, z.B. eine rein virtuelle/VXLAN-only-Domäne): schlicht `bridge`.
+- Gibt es ein eindeutiges Root-Device für die Bridge (die in NetBox modellierte Bridge, deren
+  Mitglieder die Ports sind): `bridge-{bridgename-kebab}`.
+- Sonst (die Standard-Bridge des Geräts, siehe
+  [l2-generation.md](l2-generation.md#standard-bridge)): schlicht `bridge`.
 
 ## Sonderfall: `CAPS_BRIDGE_NAME`
 
-`device/ros/mod.rs` definiert eine feste Konstante `b"bridge-caps"` für die Bridge, an die
-WLAN-VXLAN-Interfaces gehängt werden (`setup_vxlan`, siehe
-[vxlan-generation.md](vxlan-generation.md)) — das ist **kein** über `NameGenerator` erzeugter Name,
-sondern bewusst fest codiert, da diese Bridge eine CAPsMan-spezifische Infrastruktur-Bridge ist, kein
-von der Topologie abgeleitetes L2-Domänen-Konzept.
+Auf einem WLAN-Access-Point heißt die Standard-Bridge nicht `bridge`, sondern fest `bridge-caps`
+(Konstante `CAPS_BRIDGE_NAME` in `device/ros/mod.rs`). Auf diese Bridge zeigt der CAP-Datapath
+(`/interface/wifi/datapath bridge=bridge-caps`, siehe `examples/08-wlan-ap-wifi-new`). Weil die
+WLAN-Clients, das VXLAN und lokale LAN-Ports desselben Haushalts-VLANs im selben L2 liegen müssen,
+ist das genau die Standard-Bridge und keine zusätzliche zweite Bridge. Der Name wird deshalb nicht
+über `NameGenerator` erzeugt.
 
 ## Toter Code, nicht zu verwechseln
 

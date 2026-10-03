@@ -1,6 +1,6 @@
 # VXLAN-Generierung
 
-Code: `backend/src/device/ros/mod.rs` (`setup_wlan_ap`, `setup_vxlan`, `setup_l2`),
+Code: `backend/src/device/ros/mod.rs` (`setup_l2`),
 `backend/src/device/ros/l2/mod.rs` (`L2Setup::new`), `backend/src/topology/access/vxlan.rs`
 (`VxlanAccess`), `backend/src/topology/access/interface.rs` (`vxlan_terminations`).
 
@@ -17,41 +17,29 @@ kann zwei Arten von Terminierungen haben, und beide werden ausgewertet:
 - **Interface-Terminierung**: "dieser Port nimmt an diesem VXLAN teil". Das ist die explizite
   Zuweisung von Switch-Ports (siehe unten).
 
-Es gibt zwei Codepfade, die VXLAN-Config erzeugen: den WLAN-AP-Pfad und den Port-Gruppen-Pfad.
+Beide Fälle laufen durch denselben Mechanismus: `L2Setup::new` plant ein `L2Port::VxLan` pro
+VLAN, und `setup_l2` realisiert es (siehe unten). Unterschiedlich ist nur, **wie** ein Gerät zu
+einem VXLAN kommt: als WLAN-Access-Point oder über eine Interface-Terminierung.
 
-## Pfad 1: WLAN-AP (`setup_wlan_ap`)
+## Pfad 1: WLAN-AP
 
-Wird nur aktiv, wenn `device.wlan_ap_of()` etwas liefert (das Gerät ist als Access Point einer
-`WlanGroupAccess` eingetragen) **und** das Gerät eine primäre IPv4-Adresse hat (die als eigene
-VTEP-Adresse dient). Dann:
+Ist das Gerät Access Point einer WLAN-Gruppe (`device.wlan_ap_of()`), nimmt es an jedem VXLAN teil,
+auf dem die Management-VLAN der Gruppe oder die VLAN eines ihrer WLANs liegt (`vlan.vxlan()`). Eine
+VLAN ohne VXLAN-Zuordnung bleibt rein lokal.
 
-1. Sammelt alle relevanten VLANs: die Management-VLAN der WLAN-Gruppe (`wlan_group.mgmt_vlan()`)
-   plus die VLAN jedes einzelnen WLANs der Gruppe (`wlan.vlan()`), die eines haben.
-2. Filtert daraus die VLANs, die überhaupt ein VXLAN zugeordnet haben (`vlan.vxlan()`) — eine VLAN
-   ohne VXLAN-Zuordnung in NetBox bleibt rein lokal, bekommt keinen VXLAN-Transport.
-3. Ruft `setup_vxlan` für jedes so gefundene, eindeutige VXLAN auf.
+Für jedes so gefundene VXLAN kommt in **jede** seiner VLAN-Terminierungen ein `L2Port::VxLan` auf
+die root-lose Ebene, also auf die [Standard-Bridge](l2-generation.md#standard-bridge). Auf einem AP
+heißt die `bridge-caps`, dieselbe Bridge, die der CAP-Datapath verwendet. Das VXLAN ist damit
+getaggtes Mitglied jeder transportierten VLAN, wie im Referenz-Export
+`examples/08-wlan-ap-wifi-new` (`tagged=vxlan-client-berg vlan-ids=1-20,99`).
 
-## `setup_vxlan`: was pro VXLAN generiert wird
+Ein LAN-Port des APs, der die Haushalts-VLAN ungetaggt trägt und keine Bridge nennt (z.B.
+`ap-mimi-buero` `ether2`–`ether5`), landet auf derselben Standard-Bridge. Er liegt damit ohne
+weitere Modellierung im selben L2 wie das WLAN und das VXLAN.
 
-Vorbedingung: Das VXLAN braucht sowohl einen **Namen** (aus `generate_vxlan_name`, siehe
-[interface-naming.md](interface-naming.md)) als auch eine **VNI** (`vxlan.vni()`) — fehlt eines von
-beiden, wird für dieses VXLAN nichts generiert (stiller Skip, kein Fehler).
-
-Dann:
-
-- Ein `/interface/vxlan`-Interface mit der gegebenen `vni`.
-- Ein `/interface/bridge/port`-Eintrag, der dieses VXLAN-Interface an die feste
-  Infrastruktur-Bridge `bridge-caps` hängt (siehe `CAPS_BRIDGE_NAME` in
-  [interface-naming.md](interface-naming.md) — bewusst kein über `NameGenerator` erzeugter Name).
-- Ein `/interface/bridge/vlan`-Eintrag auf `bridge-caps`, der das VXLAN-Interface als **getaggtes**
-  Mitglied über den **gesamten** VLAN-Bereich `1..4094` einträgt — nicht nur die eine VLAN, die den
-  Trigger auslöste. Grund: ein einzelnes VXLAN-Interface ist der gemeinsame Transport für
-  potenziell mehrere VLANs derselben WLAN-Gruppe (Management- und mehrere Client-VLANs können
-  dasselbe VXLAN teilen, siehe `generate_vxlan_name`s "genau eine WLAN-Gruppe"-Fall), daher muss es
-  grundsätzlich alle VLAN-Tags durchlassen.
-- VTEP-Einträge (`/interface/vxlan/vteps`) für jede **andere** IP aus `vxlan.vteps()` — die eigene
-  IP wird herausgefiltert (`filter(|ip| ip != my_ip)`), ein Gerät trägt sich nicht selbst als sein
-  eigenes Remote-VTEP ein.
+Das VXLAN wird bewusst pro VLAN eingetragen und nicht pauschal als Bereich `1-4094`: RouterOS lehnt
+neben einem solchen Bereich jeden weiteren Bridge-VLAN-Eintrag derselben VLAN-ID ab (`vlan already
+added`, geprüft gegen CHR 7.24.5). Lokale Access-Ports in einer Haushalts-VLAN wären dann unmöglich.
 
 ## Pfad 2: Port-Gruppen auf Switches (Interface-Terminierung)
 
@@ -89,11 +77,10 @@ zugleich.
   - `/interface/vxlan/vteps` für jede Adresse aus `vxlan.vteps()` außer der eigenen.
   - Das VXLAN-Interface wird **getaggtes** Mitglied der VLAN (`/interface/bridge/vlan
     tagged=<vxlan> untagged=<ports>`), und sein Bridge-Port bekommt `frame-types =
-    admit-only-vlan-tagged`. Das passt zur AP-/Controller-Seite, wo dasselbe VXLAN getaggt für
-    `1-4094` auf `bridge-caps` hängt.
-- Der Name kommt aus `NameGenerator::generate_vxlan_name` (produktiv: `vxlan-wlan-{gruppe}`, wenn
-  alle WLANs des VXLAN zu einer WLAN-Gruppe gehören). Namen sind gerätelokal, für die
-  Interoperabilität zählt nur die VNI.
+    admit-only-vlan-tagged`. Das passt zur AP-/Controller-Seite, wo dasselbe VXLAN ebenfalls
+    getaggt in den Haushalts-VLANs hängt.
+- Der Name kommt aus `NameGenerator::generate_vxlan_name` (produktiv: `vxlan-{l2vpn-name}`, z.B.
+  `vxlan-client-berg`). Namen sind gerätelokal, für die Interoperabilität zählt nur die VNI.
 
 Beispiel (Test `test_scenario_switch_vxlan_port_group`, `KeepNameGenerator`):
 
@@ -109,13 +96,8 @@ add interface=client-berg bridge=bridge frame-types=admit-only-vlan-tagged ingre
 add interface=ether2 bridge=bridge frame-types=admit-only-untagged-and-priority-tagged pvid=1 ...
 ```
 
-**Abgrenzung zum AP-Pfad**: Hat `setup_wlan_ap` auf diesem Gerät für dieselbe VNI schon ein VXLAN
-an `bridge-caps` gehängt, überspringt `setup_l2` dieses VXLAN, weil ein Interface nur Mitglied einer
-Bridge sein kann. **Bekannte Lücke**: Ein AP, der zusätzlich einen eigenen LAN-Port für die Wohnung
-an dasselbe VXLAN hängen will (z.B. `ether2` an einem cAP), wird dadurch nicht korrekt abgebildet.
-Der Port landet ohne VXLAN in seiner Bridge. Das lässt sich erst sauber lösen, wenn die
-WLAN-Generierung (siehe [wlan-generation.md](wlan-generation.md)) fertig ist und klar ist, ob
-`bridge-caps` und die Haushalts-Bridge zusammengelegt werden.
+Auf einem AP braucht es für LAN-Ports keine Interface-Terminierung: Pfad 1 hängt das VXLAN bereits
+an alle WLAN-VLANs der Standard-Bridge, es reicht die VLAN am Port.
 
 ## Wo die VTEP-Adressliste herkommt (`VxlanAccess::vteps`)
 
