@@ -26,7 +26,9 @@ alone do not need this and can be checked/tested independently.
 The full architecture, current gaps, and the phased completion plan (NetBox data model, BGP/OSPF
 design, apply/diff/review pipeline, etc.) are tracked outside this repo in the project plan; see
 the `examples/` directory here for reference RouterOS configurations the generator must remain
-capable of producing the functionality of (not byte-for-byte).
+capable of producing the functionality of (not byte-for-byte). `docs/` describes how the
+NetBox-to-RouterOS config generation itself works (interface naming, L2/bridge/VLAN generation,
+OSPF, VXLAN, WLAN/CAPsMAN) - read it before changing anything under `device/ros/`.
 
 `backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR
 instances under QEMU (software emulation, no KVM needed) and proves actual distributed network
