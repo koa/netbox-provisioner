@@ -4150,7 +4150,9 @@
       {
         "id": "89",
         "name": "faesigrund-dachboden-2",
-        "primary_ip4": null,
+        "primary_ip4": {
+          "id": "531"
+        },
         "primary_ip6": {
           "id": "422"
         },
