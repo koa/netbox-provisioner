@@ -188,12 +188,6 @@ VLAN-Interface). Die Generierung bricht dann mit `AmbiguousVlanIds` ab.
 - Gateway und DNS-Server des DHCP-Netzes sind immer die eigene Adresse des Routers auf diesem
   Interface.
 
-> **Bekannter Fehler (Stand dieser Doku):** `fetch.rs` ordnet IP-Ranges ihrem Prefix über die
-> *nicht abgeschnittene* Startadresse zu (`prefix_idx.get(&start_addr)` statt `start_net`). Eine
-> Range, die nicht exakt an der Netzadresse beginnt, wird dadurch keinem Prefix zugeordnet. In der
-> Praxis heißt das: explizite `dhcp`-Ranges werden derzeit ignoriert, und es greift immer die
-> automatische Berechnung, die andere Ranges dann ebenfalls nicht ausspart.
-
 ## Rezept: Router
 
 Beispiel: Core-Router mit Uplink, OSPF zu zwei Nachbarn und einem Kunden-Port.

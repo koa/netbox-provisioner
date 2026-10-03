@@ -665,7 +665,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             let start_net = start_addr.trunc();
             let end_net = end_addr.trunc();
             if start_net == end_net {
-                let prefix = prefix_idx.get(&start_addr).copied();
+                let prefix = prefix_idx.get(&start_net).copied();
                 if let Some(prefix_id) = prefix {
                     ranges_of_prefix
                         .entry(prefix_id)
