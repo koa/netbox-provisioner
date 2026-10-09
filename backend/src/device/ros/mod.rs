@@ -17,12 +17,11 @@ use mikrotik_model::{
     mikrotik_model,
     model::{
         InterfaceBridgeProtocolMode, InterfaceEthernetByDefaultName, InterfaceEthernetCfg,
-        InterfaceEthernetPoeOut,
-        InterfaceVlanByName, InterfaceVlanCfg, InterfaceVxlanByName, InterfaceVxlanCfg,
-        InterfaceWifiProvisioningAction, IpAddressByAddress, IpAddressCfg, IpDhcpClientCfg,
-        Ipv6AddressByAddress, Ipv6AddressCfg, RoutingOspfInstanceByName, RoutingOspfInstanceCfg,
-        RoutingOspfInstanceVersion, RoutingRedistribute, VlanFrameTypes, WifiChannelBand,
-        WifiManagement, YesNo,
+        InterfaceEthernetPoeOut, InterfaceVlanByName, InterfaceVlanCfg, InterfaceVxlanByName,
+        InterfaceVxlanCfg, InterfaceWifiProvisioningAction, IpAddressByAddress, IpAddressCfg,
+        IpDhcpClientCfg, Ipv6AddressByAddress, Ipv6AddressCfg, RoutingOspfInstanceByName,
+        RoutingOspfInstanceCfg, RoutingOspfInstanceVersion, RoutingRedistribute, VlanFrameTypes,
+        WifiChannelBand, WifiManagement, YesNo,
     },
     value,
     value::HasNone,
@@ -102,11 +101,29 @@ pub enum SetupError {
     MissingApMgmtIf,
     #[error("Ambigous VLAN IDs on single plane: {0:?}")]
     AmbiguousVlanIds(HashMap<u16, Vec<BTreeSet<L2Port>>>),
-    #[error("Interface {0} is terminated on a VXLAN but carries no VLAN to select inside it")]
-    VxlanTerminationWithoutVlan(AsciiString),
+    #[error(
+        "VLAN {vlan} is tunneled over VXLAN and also cabled from {interface} to {far_end}, which would loop"
+    )]
+    VlanOnCableAndTunnel {
+        vlan: Box<str>,
+        interface: Box<str>,
+        far_end: String,
+    },
+    #[error("VLAN {vlan} would join several IP networks in one L2 domain: {}", networks.join("; "))]
+    MultipleNetworksOnVlan {
+        vlan: Box<str>,
+        networks: Vec<String>,
+    },
+    #[error("VLAN {vlan} would have several DHCP servers in one L2 domain: {}", servers.join(", "))]
+    MultipleDhcpServersOnVlan {
+        vlan: Box<str>,
+        servers: Vec<String>,
+    },
     #[error("Device has ports on VXLAN {0} but no primary IPv4 address to use as VTEP")]
     MissingVtepAddress(AsciiString),
-    #[error("Port {0} would be a member of more than one bridge (its VLANs are split across bridges)")]
+    #[error(
+        "Port {0} would be a member of more than one bridge (its VLANs are split across bridges)"
+    )]
     PortInMultipleBridges(AsciiString),
 }
 
@@ -230,8 +247,16 @@ impl BaseDeviceDataTarget {
                             if let Some(ethernet_port) = self.get_ethernet_port(*port_id)? {
                                 ethernet_port.name = name.clone();
                             }
-                            tags_of_port.entry(name.clone()).or_default().1.push(vlan_id);
-                            ports_of_vlan.entry(vlan_id).or_default().1.push(name.clone());
+                            tags_of_port
+                                .entry(name.clone())
+                                .or_default()
+                                .1
+                                .push(vlan_id);
+                            ports_of_vlan
+                                .entry(vlan_id)
+                                .or_default()
+                                .1
+                                .push(name.clone());
                         }
                         L2Port::UntaggedEthernet {
                             name,
@@ -242,7 +267,11 @@ impl BaseDeviceDataTarget {
                                 ethernet_port.name = name.clone();
                             }
                             tags_of_port.entry(name.clone()).or_default().0 = Some(vlan_id);
-                            ports_of_vlan.entry(vlan_id).or_default().0.push(name.clone());
+                            ports_of_vlan
+                                .entry(vlan_id)
+                                .or_default()
+                                .0
+                                .push(name.clone());
                         }
                         L2Port::VxLan { name, vxlan } => {
                             let Some(vni) = vxlan.vni() else { continue };
@@ -258,12 +287,18 @@ impl BaseDeviceDataTarget {
                                 })
                             });
                             for remote in vxlan.vteps().into_iter().filter(|ip| *ip != my_ip) {
-                                self.vxlan_vteps
-                                    .entry((name.clone(), remote))
-                                    .or_default();
+                                self.vxlan_vteps.entry((name.clone(), remote)).or_default();
                             }
-                            tags_of_port.entry(name.clone()).or_default().1.push(vlan_id);
-                            ports_of_vlan.entry(vlan_id).or_default().1.push(name.clone());
+                            tags_of_port
+                                .entry(name.clone())
+                                .or_default()
+                                .1
+                                .push(vlan_id);
+                            ports_of_vlan
+                                .entry(vlan_id)
+                                .or_default()
+                                .1
+                                .push(name.clone());
                         }
                         L2Port::CapsMan { .. }
                         | L2Port::Cap { .. }
@@ -701,7 +736,9 @@ impl WifiDeviceDataTarget {
         _l2: &L2Setup<N>,
     ) -> Result<(), SetupError> {
         if let Some(_ap) = device.wlan_ap_of() {
-            todo!("generate CAPsMan/wifi config for the mgmt VLAN - not part of L2Setup completion");
+            todo!(
+                "generate CAPsMan/wifi config for the mgmt VLAN - not part of L2Setup completion"
+            );
             /*let mgmt_if = l2.ap_mgmt_if.as_ref().ok_or(SetupError::MissingApMgmtIf)?;
             let datapath = &mut self.datapath.entry(b"dp-caps".into()).or_default().0;
             let configuration = &mut self.configuration.entry(b"capsman".into()).or_default().0;

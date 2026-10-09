@@ -6,7 +6,6 @@ use crate::topology::{
         device::DeviceAccess,
         ip_addresses::IpAddressAccess,
         vlan::VlanAccess,
-        vxlan::VxlanAccess,
     },
 };
 use async_graphql::Object;
@@ -150,15 +149,26 @@ impl InterfaceAccess {
             .into_iter()
             .flat_map(|data| data.tagged_vlans.iter().copied().map(self.create_access()))
     }
-    /// VXLANs this interface is directly terminated on (NetBox L2VPN interface
-    /// termination), as opposed to reaching a VXLAN only via a VLAN termination.
-    pub fn vxlan_terminations(&self) -> Box<[VxlanAccess]> {
-        self.topology
-            .vxlans
-            .iter()
-            .filter(|(_, data)| data.interface_terminations.contains(&self.id))
-            .map(|(id, _)| self.create_access()(*id))
-            .collect()
+    /// VLANs this interface carries on its own (untagged and tagged), or else the
+    /// ones of the bridge it is a member of - what ends up on the cable.
+    pub fn carried_vlans(&self) -> Box<[VlanAccess]> {
+        let own = self
+            .untagged_vlan()
+            .into_iter()
+            .chain(self.tagged_vlans())
+            .collect::<Box<[_]>>();
+        if !own.is_empty() {
+            return own;
+        }
+        self.bridge()
+            .map(|bridge| {
+                bridge
+                    .untagged_vlan()
+                    .into_iter()
+                    .chain(bridge.tagged_vlans())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
     pub fn bridge(&self) -> Option<InterfaceAccess> {
         self.data().and_then(|d| d.bridge).map(self.create_access())

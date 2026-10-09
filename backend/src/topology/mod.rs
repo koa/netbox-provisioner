@@ -110,7 +110,6 @@ pub struct Device {
     pub serial: Option<Box<str>>,
     pub wlan_controller_of: Option<WlanGroupId>,
     pub wlan_ap_of: Option<WlanGroupId>,
-    pub vlans: Box<[VlanId]>,
     pub role: Option<DeviceRole>,
 }
 
@@ -137,11 +136,13 @@ impl DeviceRole {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// The VXLAN of a VLAN group with a `vxlan_vni`: a VLAN trunk carrying, tagged,
+/// every VLAN of the group that is used on more than one device (see
+/// `VlanAccess::tunnel`). Its id is the group's id.
 pub struct VxlanData {
     pub name: Box<str>,
     pub vni: u32,
-    pub interface_terminations: Box<[InterfaceId]>,
-    pub vlan_terminations: Box<[VlanId]>,
+    pub vlans: Box<[VlanId]>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VlanData {

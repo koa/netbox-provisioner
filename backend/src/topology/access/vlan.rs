@@ -1,9 +1,10 @@
 use crate::topology::{
     Topology, VlanData, VlanId,
-    access::{AccessTopology, vxlan::VxlanAccess, wlan::WlanAccess},
+    access::{AccessTopology, device::DeviceAccess, vxlan::VxlanAccess, wlan::WlanAccess},
 };
 use async_graphql::Object;
 use std::{
+    collections::BTreeSet,
     fmt::{Debug, Formatter},
     hash::{Hash, Hasher},
     sync::Arc,
@@ -43,8 +44,40 @@ impl VlanAccess {
     pub fn vlan_id(&self) -> Option<u16> {
         self.data().map(|v| v.vlan_id)
     }
+    /// The VXLAN of this VLAN's group, if the group has a VNI - whether or not
+    /// this VLAN actually needs it, see `tunnel`.
     pub fn vxlan(&self) -> Option<VxlanAccess> {
         self.data().and_then(|v| v.vxlan).map(self.create_access())
+    }
+    /// The VXLAN this VLAN is tunneled over: its group has a VNI and the VLAN is
+    /// used on more than one device. A VLAN used on a single device stays local.
+    pub fn tunnel(&self) -> Option<VxlanAccess> {
+        self.vxlan().filter(|_| self.devices().len() > 1)
+    }
+    /// Every device this VLAN is used on: carried by one of its interfaces, or a
+    /// WLAN or management VLAN of the WLAN group it is an AP or the controller of.
+    pub fn devices(&self) -> Box<[DeviceAccess]> {
+        let topology = &self.topology;
+        let mut devices = topology
+            .interfaces
+            .values()
+            .filter(|i| i.vlan == Some(self.id) || i.tagged_vlans.contains(&self.id))
+            .map(|i| i.device)
+            .collect::<BTreeSet<_>>();
+        for group in topology.wlan_groups.values() {
+            let in_group = group.mgmt_vlan == Some(self.id)
+                || group.wlans.iter().any(|wlan| {
+                    topology
+                        .wlans
+                        .get(wlan)
+                        .is_some_and(|wlan| wlan.vlan == Some(self.id))
+                });
+            if in_group {
+                devices.insert(group.controller);
+                devices.extend(group.aps.iter().copied());
+            }
+        }
+        devices.into_iter().map(self.create_access()).collect()
     }
     pub fn wlan<'s>(&'s self) -> impl Iterator<Item = WlanAccess> + use<'s> {
         self.data()

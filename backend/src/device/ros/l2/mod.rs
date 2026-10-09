@@ -9,6 +9,7 @@ use crate::topology::{
         cable::CablePortAccess, device::DeviceAccess, interface::InterfaceAccess, vlan::VlanAccess,
     },
 };
+use ipnet::IpNet;
 use mikrotik_model::ascii::AsciiString;
 use std::{
     borrow::Cow,
@@ -354,62 +355,17 @@ impl<G: NameGenerator> L2Setup<G> {
                         owner: interface.clone(),
                     });
             }
-            // A port (or VLAN interface) terminated directly on a VXLAN joins that
-            // VXLAN on whichever VLAN(s) it carries, under its own root - so the
-            // VXLAN lands on the same plane as the port itself, not on a root-less
-            // one. The VXLAN is a VLAN trunk (one VXLAN carries every household VLAN
-            // of a WLAN group, tagged), so the port's VLAN is what selects the
-            // household inside it; without one there is nothing to select.
-            for vxlan in interface.vxlan_terminations() {
-                let carried_vlans = interface
-                    .untagged_vlan()
-                    .into_iter()
-                    .chain(interface.tagged_vlans())
-                    .collect::<Vec<_>>();
-                if carried_vlans.is_empty() {
-                    return Err(SetupError::VxlanTerminationWithoutVlan(
-                        interface.name().into(),
-                    ));
-                }
-                let name = AsciiString::from(name_generator.generate_vxlan_name(&vxlan).as_ref());
-                for vlan in carried_vlans {
-                    planes
-                        .entry((bridge_id, Some(vlan.id)))
-                        .or_default()
-                        .insert(L2Port::VxLan {
-                            name: name.clone(),
-                            vxlan: vxlan.clone(),
-                        });
-                    vlans.insert(vlan.id, vlan);
-                }
-            }
         }
-        let mut vxlans = device.vxlan();
         if let Some(wlan) = device.wlan_ap_of() {
             if let Some(vlan) = wlan.mgmt_vlan() {
                 plane_of_vlan(&mut planes, vlan.id).insert(L2Port::CapMgmt);
-                vxlans.extend(vlan.vxlan());
                 vlans.insert(vlan.id, vlan);
             }
             for wlan in wlan.wlan() {
                 if let Some(vlan) = wlan.vlan() {
                     plane_of_vlan(&mut planes, vlan.id).insert(L2Port::Cap { wlan });
-                    // An AP reaches its WLAN VLANs only through their VXLAN; it
-                    // joins each of those VLANs tagged on the same (default) bridge
-                    // the CAP datapath and any local access ports use.
-                    vxlans.extend(vlan.vxlan());
                     vlans.insert(vlan.id, vlan);
                 }
-            }
-        }
-        for vxlan in vxlans {
-            let name = AsciiString::from(name_generator.generate_vxlan_name(&vxlan).as_ref());
-            for vlan in vxlan.vlan_terminations() {
-                plane_of_vlan(&mut planes, vlan.id).insert(L2Port::VxLan {
-                    name: name.clone(),
-                    vxlan: vxlan.clone(),
-                });
-                vlans.insert(vlan.id, vlan);
             }
         }
         if let Some(wlan) = device.wlan_controller_of() {
@@ -422,6 +378,18 @@ impl<G: NameGenerator> L2Setup<G> {
                     plane_of_vlan(&mut planes, vlan.id).insert(L2Port::CapsMan { wlan });
                     vlans.insert(vlan.id, vlan);
                 }
+            }
+        }
+        // Every VLAN used here that is also used on another device, in a VLAN group
+        // with a VNI, reaches those devices through the group's VXLAN: a VLAN trunk,
+        // so the VXLAN joins each such VLAN tagged. It goes root-less and so lands
+        // wherever that VLAN is (an explicit bridge carrying it, or the default
+        // bridge), like the CAP/CAPsMAN entries.
+        for vlan in vlans.values() {
+            check_l2_domain(device, vlan)?;
+            if let Some(vxlan) = vlan.tunnel() {
+                let name = AsciiString::from(name_generator.generate_vxlan_name(&vxlan).as_ref());
+                plane_of_vlan(&mut planes, vlan.id).insert(L2Port::VxLan { name, vxlan });
             }
         }
         // Regroup by root device: each root ends up with its own map of
@@ -472,7 +440,10 @@ impl<G: NameGenerator> L2Setup<G> {
                 }
             }
         }
-        let used_real_vlan_ids = planes_by_real_vlan_id.keys().copied().collect::<HashSet<_>>();
+        let used_real_vlan_ids = planes_by_real_vlan_id
+            .keys()
+            .copied()
+            .collect::<HashSet<_>>();
         planes_by_real_vlan_id.retain(|_, planes| planes.len() > 1);
         if !planes_by_real_vlan_id.is_empty() {
             return Err(SetupError::AmbiguousVlanIds(planes_by_real_vlan_id));
@@ -481,13 +452,16 @@ impl<G: NameGenerator> L2Setup<G> {
         // Merging is per VLAN, so a bridge-less trunk port could end up split
         // across an explicit bridge and the default one - but a port can only be a
         // member of one bridge.
-        let mut root_of_port = HashMap::<PhysicalPortId, Option<InterfaceId>>::new();
+        // The same goes for the VXLAN, which joins every tunneled VLAN: two of them
+        // on different bridges would make it a member of both.
+        let mut root_of_port = HashMap::<&AsciiString, Option<InterfaceId>>::new();
         for (root, sub) in &by_root {
             for port in sub.values().flatten() {
-                if let L2Port::TaggedEthernet { name, port, .. }
-                | L2Port::UntaggedEthernet { name, port, .. } = port
+                if let L2Port::TaggedEthernet { name, .. }
+                | L2Port::UntaggedEthernet { name, .. }
+                | L2Port::VxLan { name, .. } = port
                 {
-                    if *root_of_port.entry(*port).or_insert(*root) != *root {
+                    if *root_of_port.entry(name).or_insert(*root) != *root {
                         return Err(SetupError::PortInMultipleBridges(name.clone()));
                     }
                 }
@@ -525,9 +499,7 @@ impl<G: NameGenerator> L2Setup<G> {
                 let untagged = ports
                     .iter()
                     .filter_map(|p| match p {
-                        L2Port::UntaggedEthernet { name, port, root } => {
-                            Some((name, *port, root))
-                        }
+                        L2Port::UntaggedEthernet { name, port, root } => Some((name, *port, root)),
                         _ => None,
                     })
                     .collect::<Vec<_>>();
@@ -682,9 +654,8 @@ impl<G: NameGenerator> L2Setup<G> {
                     .ports
                     .iter()
                     .filter_map(|p| match p {
-                        L2Port::TaggedEthernet { root, .. } | L2Port::UntaggedEthernet { root, .. } => {
-                            Some(root)
-                        }
+                        L2Port::TaggedEthernet { root, .. }
+                        | L2Port::UntaggedEthernet { root, .. } => Some(root),
                         L2Port::Ip { owner, .. } => Some(owner),
                         _ => None,
                     })
@@ -744,11 +715,85 @@ fn name_part(raw: &str) -> String {
     result
 }
 
+/// Rejects a VLAN whose L2 domain - every device it is tunneled to, or just this
+/// device for a local VLAN - would be broken: a loop through a cable next to the
+/// tunnel, more than one IP network, or more than one DHCP server. Each of these
+/// would only show up as an outage after provisioning, so nothing gets generated.
+fn check_l2_domain(device: &DeviceAccess, vlan: &VlanAccess) -> Result<(), SetupError> {
+    let vlan_name = || vlan.name().unwrap_or_default().into();
+    let carries =
+        |interface: &InterfaceAccess| interface.carried_vlans().iter().any(|v| v.id == vlan.id);
+    let tunneled = vlan.tunnel().is_some();
+    let domain = if tunneled {
+        vlan.devices()
+    } else {
+        Box::new([device.clone()])
+    };
+    if tunneled {
+        for interface in device.interfaces().iter().filter(|i| carries(i)) {
+            for far in interface.connected_interfaces() {
+                let far_device = far.device();
+                let on_other_device = far_device.as_ref().is_some_and(|d| d.id() != device.id());
+                if on_other_device && carries(&far) {
+                    return Err(SetupError::VlanOnCableAndTunnel {
+                        vlan: vlan_name(),
+                        interface: interface.name().into(),
+                        far_end: describe(&far),
+                    });
+                }
+            }
+        }
+    }
+    let mut networks = BTreeMap::<IpNet, Vec<String>>::new();
+    let mut dhcp_servers = Vec::new();
+    for member in domain.iter() {
+        for interface in member.interfaces().iter() {
+            if interface.untagged_vlan().is_none_or(|v| v.id != vlan.id) {
+                continue;
+            }
+            for net in interface.ips().iter().filter_map(IpAddressAccess::net) {
+                networks
+                    .entry(net.trunc())
+                    .or_default()
+                    .push(describe(interface));
+            }
+            if interface.is_enable_dhcp_server() {
+                dhcp_servers.push(describe(interface));
+            }
+        }
+    }
+    for family_is_v4 in [true, false] {
+        let family = networks
+            .iter()
+            .filter(|(net, _)| matches!(net, IpNet::V4(_)) == family_is_v4)
+            .map(|(net, owners)| format!("{net} ({})", owners.join(", ")))
+            .collect::<Vec<_>>();
+        if family.len() > 1 {
+            return Err(SetupError::MultipleNetworksOnVlan {
+                vlan: vlan_name(),
+                networks: family,
+            });
+        }
+    }
+    if dhcp_servers.len() > 1 {
+        return Err(SetupError::MultipleDhcpServersOnVlan {
+            vlan: vlan_name(),
+            servers: dhcp_servers,
+        });
+    }
+    Ok(())
+}
+
+/// `device:interface`, for error messages.
+fn describe(interface: &InterfaceAccess) -> String {
+    let device = interface.device();
+    let device_name = device.as_ref().map(|d| d.name()).unwrap_or_default();
+    format!("{device_name}:{}", interface.name())
+}
+
 fn plane_of_vlan(
     planes: &mut BTreeMap<(Option<InterfaceId>, Option<VlanId>), BTreeSet<L2Port>>,
     vlan: VlanId,
 ) -> &mut BTreeSet<L2Port> {
-    planes
-        .entry((None, Some(vlan)))
-        .or_default()
+    planes.entry((None, Some(vlan))).or_default()
 }

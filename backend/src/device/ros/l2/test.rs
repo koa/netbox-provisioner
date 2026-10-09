@@ -1,18 +1,15 @@
 use crate::{
     device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, test::empty_current},
     topology::{
-        Device, Interface, IpAddressData, IpAddressId, IpPrefixData, IpRangeData, PhysicalPortId,
-        TopologyHolder, VlanData, VlanGroupData, VxlanData, WlanAuth, WlanData, WlanGroupData,
-        WlanOpenSettings, access::device::DeviceAccess,
-        test::TopologyBuilder,
+        Cable, CablePort, Device, DeviceId, Interface, InterfaceId, IpAddressData, IpAddressId,
+        IpPrefixData, IpRangeData, PhysicalPortId, TopologyHolder, VlanData, VlanGroupData,
+        VlanGroupId, VlanId, VxlanData, WlanAuth, WlanData, WlanGroupData, WlanOpenSettings,
+        access::device::DeviceAccess, test::TopologyBuilder,
     },
 };
 use ipnet::IpNet;
 use mikrotik_model::{
-    ascii::AsciiString,
-    generator::Generator,
-    model::ReferenceType,
-    resource::ResourceMutation,
+    ascii::AsciiString, generator::Generator, model::ReferenceType, resource::ResourceMutation,
 };
 use std::{
     collections::HashMap,
@@ -102,7 +99,11 @@ async fn test_l2_untagged_switch() {
 
     let bridge = &setup.tagged_bridges[0];
     assert_eq!(bridge.ports.len(), 5);
-    let total_ethernet: usize = bridge.ports.values().map(|e| count_ethernet(&e.ports)).sum();
+    let total_ethernet: usize = bridge
+        .ports
+        .values()
+        .map(|e| count_ethernet(&e.ports))
+        .sum();
     assert_eq!(total_ethernet, 24);
 }
 
@@ -467,29 +468,31 @@ async fn test_scenario_dhcp_household() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Builds a switch whose household access ports `ether2`/`ether3` are terminated
-/// directly on the household VXLAN (NetBox L2VPN interface termination), plus a
-/// second VXLAN participant (`ap-wohnung`) so the switch has a remote VTEP.
-async fn create_vxlan_port_group_switch(ports_carry_vlan: bool) -> DeviceAccess {
+/// Ids of the two-device topology built by `build_tunnel_topology`.
+#[derive(Clone, Copy)]
+struct TunnelIds {
+    switch: DeviceId,
+    ap: DeviceId,
+    vlan: VlanId,
+    vlan_group: VlanGroupId,
+    switch_port: InterfaceId,
+    ap_port: InterfaceId,
+}
+
+/// A switch `switch-haus` whose household ports `ether2`/`ether3` (on `bridge-sw`)
+/// and a second device `ap-wohnung` whose `ether2` both carry the household VLAN
+/// `wohnung-koa` (VLAN 1) of a VLAN group with VNI 1 - so the VLAN is used on two
+/// devices and gets tunneled. `customize` adjusts the topology before it's built.
+async fn build_tunnel_topology(
+    customize: impl FnOnce(&mut TopologyBuilder, TunnelIds),
+) -> (DeviceAccess, DeviceAccess) {
     let mut builder = TopologyBuilder::default();
     let switch = builder.devices.next_id();
     let ap = builder.devices.next_id();
     let vxlan_id = builder.vxlans.next_id();
 
-    let primary_ip = |builder: &mut TopologyBuilder, last_octet: u8| {
-        let ip_id = builder.ip_addresses.next_id();
-        builder.ip_addresses.insert(
-            ip_id,
-            IpAddressData {
-                ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(172, 16, 1, last_octet)), 32).unwrap(),
-                interface: None,
-                prefix: None,
-            },
-        );
-        ip_id
-    };
-    let switch_ip = primary_ip(&mut builder, 70);
-    let ap_ip = primary_ip(&mut builder, 61);
+    let switch_ip = add_ip(&mut builder, [172, 16, 1, 70], 32);
+    let ap_ip = add_ip(&mut builder, [172, 16, 1, 61], 32);
 
     let vlan_group = builder.vlan_groups.next_id();
     let vlan = builder.vlans.next_id();
@@ -504,7 +507,20 @@ async fn create_vxlan_port_group_switch(ports_carry_vlan: bool) -> DeviceAccess 
             wlans: Box::new([]),
         },
     );
-    builder.vlan_groups.insert(vlan_group, VlanGroupData { vlans: Box::new([vlan]) });
+    builder.vlan_groups.insert(
+        vlan_group,
+        VlanGroupData {
+            vlans: Box::new([vlan]),
+        },
+    );
+    builder.vxlans.insert(
+        vxlan_id,
+        VxlanData {
+            name: "client-berg".into(),
+            vni: 1,
+            vlans: Box::new([vlan]),
+        },
+    );
 
     let bridge = builder.interfaces.next_id();
     builder.interfaces.insert(
@@ -526,9 +542,10 @@ async fn create_vxlan_port_group_switch(ports_carry_vlan: bool) -> DeviceAccess 
             ..Default::default()
         },
     );
-    let mut terminations = Vec::new();
+    let mut switch_port = None;
     for idx in [2u16, 3] {
         let port = builder.interfaces.next_id();
+        switch_port.get_or_insert(port);
         builder.interfaces.insert(
             port,
             Interface {
@@ -536,11 +553,10 @@ async fn create_vxlan_port_group_switch(ports_carry_vlan: bool) -> DeviceAccess 
                 device: switch,
                 external: Some(PhysicalPortId::Ethernet(idx)),
                 bridge: Some(bridge),
-                vlan: ports_carry_vlan.then_some(vlan),
+                vlan: Some(vlan),
                 ..Default::default()
             },
         );
-        terminations.push(port);
     }
     let ap_port = builder.interfaces.next_id();
     builder.interfaces.insert(
@@ -551,17 +567,6 @@ async fn create_vxlan_port_group_switch(ports_carry_vlan: bool) -> DeviceAccess 
             external: Some(PhysicalPortId::Ethernet(2)),
             vlan: Some(vlan),
             ..Default::default()
-        },
-    );
-    terminations.push(ap_port);
-
-    builder.vxlans.insert(
-        vxlan_id,
-        VxlanData {
-            name: "client-berg".into(),
-            vni: 1,
-            interface_terminations: terminations.into_boxed_slice(),
-            vlan_terminations: Box::new([vlan]),
         },
     );
     builder.devices.insert(
@@ -580,24 +585,86 @@ async fn create_vxlan_port_group_switch(ports_carry_vlan: bool) -> DeviceAccess 
             ..Default::default()
         },
     );
+    customize(
+        &mut builder,
+        TunnelIds {
+            switch,
+            ap,
+            vlan,
+            vlan_group,
+            switch_port: switch_port.unwrap(),
+            ap_port,
+        },
+    );
 
-    Into::<TopologyHolder>::into(builder)
-        .devices_by_id(switch)
-        .await
-        .expect("device not found")
+    let holder = Into::<TopologyHolder>::into(builder);
+    (
+        holder.devices_by_id(switch).await.expect("switch"),
+        holder.devices_by_id(ap).await.expect("ap"),
+    )
+}
+
+fn add_ip(builder: &mut TopologyBuilder, address: [u8; 4], prefix_len: u8) -> IpAddressId {
+    let ip_id = builder.ip_addresses.next_id();
+    builder.ip_addresses.insert(
+        ip_id,
+        IpAddressData {
+            ip: IpNet::new(IpAddr::V4(Ipv4Addr::from(address)), prefix_len).unwrap(),
+            interface: None,
+            prefix: None,
+        },
+    );
+    ip_id
+}
+
+/// A virtual interface `name` on `device` holding `address` in `vlan`.
+fn add_vlan_interface(
+    builder: &mut TopologyBuilder,
+    device: DeviceId,
+    vlan: VlanId,
+    name: &str,
+    address: [u8; 4],
+    dhcp_server: bool,
+) {
+    let ip = add_ip(builder, address, 24);
+    let interface = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        interface,
+        Interface {
+            name: name.into(),
+            device,
+            vlan: Some(vlan),
+            ips: Box::new([ip]),
+            enable_dhcp_server: dhcp_server,
+            ..Default::default()
+        },
+    );
+}
+
+fn has_vxlan(setup: &L2Setup<KeepNameGenerator>) -> bool {
+    setup
+        .tagged_bridges
+        .iter()
+        .flat_map(|b| b.ports.values())
+        .flat_map(|entry| entry.ports.iter())
+        .any(|p| matches!(p, L2Port::VxLan { .. }))
 }
 
 /// Szenario "Port-Gruppe im VXLAN": ein Drucker an `ether2`/`ether3` einer Wohnung
-/// soll im selben L2 wie das WLAN der Wohnung landen, das per VXLAN transportiert
-/// wird. Die Ports bleiben untagged im Wohnungs-VLAN, das VXLAN-Interface wird
-/// getaggtes Mitglied dieses VLANs (das VXLAN ist ein VLAN-Trunk, wie auf der
-/// AP-/Controller-Seite, siehe `examples/08-wlan-ap-wifi-new`).
+/// soll im selben L2 wie ein Port eines anderen Geräts landen. Beide Seiten tragen
+/// nur das VLAN; weil es auf zwei Geräten vorkommt und seine VLAN-Gruppe eine VNI
+/// hat, wird es getunnelt. Die Ports bleiben untagged im VLAN, das VXLAN-Interface
+/// wird getaggtes Mitglied (das VXLAN ist ein VLAN-Trunk der Gruppe).
 #[tokio::test]
 async fn test_scenario_switch_vxlan_port_group() -> Result<(), Box<dyn Error>> {
-    let device = create_vxlan_port_group_switch(true).await;
+    let (device, _) = build_tunnel_topology(|_, _| {}).await;
 
     let setup = L2Setup::new(&device, KeepNameGenerator)?;
-    assert_eq!(setup.single_ports.len(), 1, "uplink stays a standalone port");
+    assert_eq!(
+        setup.single_ports.len(),
+        1,
+        "uplink stays a standalone port"
+    );
     assert_eq!(setup.tagged_bridges.len(), 1);
     let entry = &setup.tagged_bridges[0].ports[&1];
     assert_eq!(count_ethernet(&entry.ports), 2);
@@ -614,13 +681,26 @@ async fn test_scenario_switch_vxlan_port_group() -> Result<(), Box<dyn Error>> {
     let vxlan = &target_data.vxlan[&vxlan_name].0;
     assert_eq!(vxlan.vni, 1);
     assert_eq!(vxlan.local_address, Some(own_ip));
-    assert!(target_data.vxlan_vteps.contains_key(&(vxlan_name.clone(), remote_ip)));
-    assert!(!target_data.vxlan_vteps.contains_key(&(vxlan_name.clone(), own_ip)));
-    assert!(target_data.bridge_vlan.keys().any(|(_, tagged, untagged, _)| {
-        tagged.contains(&vxlan_name)
-            && untagged.contains(&AsciiString::from("ether2"))
-            && untagged.contains(&AsciiString::from("ether3"))
-    }));
+    assert!(
+        target_data
+            .vxlan_vteps
+            .contains_key(&(vxlan_name.clone(), remote_ip))
+    );
+    assert!(
+        !target_data
+            .vxlan_vteps
+            .contains_key(&(vxlan_name.clone(), own_ip))
+    );
+    assert!(
+        target_data
+            .bridge_vlan
+            .keys()
+            .any(|(_, tagged, untagged, _)| {
+                tagged.contains(&vxlan_name)
+                    && untagged.contains(&AsciiString::from("ether2"))
+                    && untagged.contains(&AsciiString::from("ether3"))
+            })
+    );
 
     println!("--- Szenario: Switch-Port-Gruppe einer Wohnung im Haushalts-VXLAN ---");
     dump_mutations(&target_data, &empty_current)?;
@@ -628,12 +708,147 @@ async fn test_scenario_switch_vxlan_port_group() -> Result<(), Box<dyn Error>> {
 }
 
 #[tokio::test]
-async fn test_vxlan_port_group_requires_vlan() {
-    let device = create_vxlan_port_group_switch(false).await;
+async fn test_vlan_on_a_single_device_stays_local() -> Result<(), Box<dyn Error>> {
+    let (device, _) = build_tunnel_topology(|builder, ids| {
+        builder.interfaces.get_mut(&ids.ap_port).unwrap().vlan = None;
+    })
+    .await;
+    assert!(!has_vxlan(&L2Setup::new(&device, KeepNameGenerator)?));
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_vlan_group_without_vni_stays_local() -> Result<(), Box<dyn Error>> {
+    let (device, _) = build_tunnel_topology(|builder, ids| {
+        builder.vlans.get_mut(&ids.vlan).unwrap().vxlan = None;
+    })
+    .await;
+    assert!(!has_vxlan(&L2Setup::new(&device, KeepNameGenerator)?));
+    Ok(())
+}
+
+/// A VLAN cabled between the two devices in addition to the tunnel would loop.
+#[tokio::test]
+async fn test_vlan_on_cable_and_tunnel_is_rejected() {
+    let (device, ap) = build_tunnel_topology(|builder, ids| {
+        let cable = builder.cables.next_id();
+        builder.cables.insert(
+            cable,
+            Cable {
+                port_a: Box::new([CablePort::Interface(ids.switch_port)]),
+                port_b: Box::new([CablePort::Interface(ids.ap_port)]),
+            },
+        );
+    })
+    .await;
+    for device in [device, ap] {
+        assert!(matches!(
+            L2Setup::new(&device, KeepNameGenerator),
+            Err(SetupError::VlanOnCableAndTunnel { .. })
+        ));
+    }
+}
+
+/// Like `1og-sw1`'s `switch-lan` next to the controller's network of the same
+/// VLAN: two networks would end up in one L2 domain.
+#[tokio::test]
+async fn test_two_networks_in_one_l2_domain_are_rejected() {
+    let (device, ap) = build_tunnel_topology(|builder, ids| {
+        add_vlan_interface(builder, ids.switch, ids.vlan, "lan", [10, 192, 3, 1], false);
+        add_vlan_interface(builder, ids.ap, ids.vlan, "lan", [10, 192, 2, 1], false);
+    })
+    .await;
+    for device in [device, ap] {
+        let result = L2Setup::new(&device, KeepNameGenerator);
+        let Err(SetupError::MultipleNetworksOnVlan { networks, .. }) = result else {
+            panic!("expected MultipleNetworksOnVlan, got {result:?}");
+        };
+        assert_eq!(
+            networks,
+            [
+                "10.192.2.0/24 (ap-wohnung:lan)",
+                "10.192.3.0/24 (switch-haus:lan)"
+            ]
+        );
+    }
+}
+
+/// Two addresses of the same network on both ends (gateway plus a switch's own
+/// address) are one network, not two.
+#[tokio::test]
+async fn test_same_network_on_two_devices_is_fine() -> Result<(), Box<dyn Error>> {
+    let (device, _) = build_tunnel_topology(|builder, ids| {
+        add_vlan_interface(builder, ids.switch, ids.vlan, "lan", [10, 192, 3, 2], false);
+        add_vlan_interface(builder, ids.ap, ids.vlan, "lan", [10, 192, 3, 1], true);
+    })
+    .await;
+    assert!(has_vxlan(&L2Setup::new(&device, KeepNameGenerator)?));
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_two_dhcp_servers_in_one_l2_domain_are_rejected() {
+    let (device, _) = build_tunnel_topology(|builder, ids| {
+        add_vlan_interface(builder, ids.switch, ids.vlan, "lan", [10, 192, 3, 2], true);
+        add_vlan_interface(builder, ids.ap, ids.vlan, "lan", [10, 192, 3, 1], true);
+    })
+    .await;
     assert!(matches!(
         L2Setup::new(&device, KeepNameGenerator),
-        Err(SetupError::VxlanTerminationWithoutVlan(_))
+        Err(SetupError::MultipleDhcpServersOnVlan { servers, .. })
+            if servers.len() == 2
     ));
+}
+
+/// Two tunneled VLANs of the same group on two different bridges would make the
+/// group's VXLAN a member of both bridges, which RouterOS refuses.
+#[tokio::test]
+async fn test_vxlan_on_two_bridges_is_rejected() {
+    let (device, _) = build_tunnel_topology(|builder, ids| {
+        let second_vlan = builder.vlans.next_id();
+        builder.vlans.insert(
+            second_vlan,
+            VlanData {
+                name: "wohnung-gast".into(),
+                vlan_id: 2,
+                group: ids.vlan_group,
+                terminations: Box::new([]),
+                vxlan: builder.vlans.get(&ids.vlan).unwrap().vxlan,
+                wlans: Box::new([]),
+            },
+        );
+        let vxlan = builder.vlans.get(&ids.vlan).unwrap().vxlan.unwrap();
+        builder.vxlans.get_mut(&vxlan).unwrap().vlans = Box::new([ids.vlan, second_vlan]);
+        let bridge = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            bridge,
+            Interface {
+                name: "bridge-gast".into(),
+                device: ids.switch,
+                ..Default::default()
+            },
+        );
+        for (device, idx, bridge) in [(ids.switch, 4, Some(bridge)), (ids.ap, 3, None)] {
+            let port = builder.interfaces.next_id();
+            builder.interfaces.insert(
+                port,
+                Interface {
+                    name: format!("ether{idx}").into_boxed_str(),
+                    device,
+                    external: Some(PhysicalPortId::Ethernet(idx)),
+                    bridge,
+                    vlan: Some(second_vlan),
+                    ..Default::default()
+                },
+            );
+        }
+    })
+    .await;
+    let result = L2Setup::new(&device, KeepNameGenerator);
+    assert!(
+        matches!(&result, Err(SetupError::PortInMultipleBridges(name)) if name == &AsciiString::from("client-berg")),
+        "{result:?}"
+    );
 }
 
 /// Builds a WLAN AP whose `ether2`/`ether3` carry the VXLAN-transported household
@@ -702,7 +917,12 @@ async fn create_default_bridge_device(explicit_bridge: bool) -> DeviceAccess {
             wlans: Box::new([wlan]),
         },
     );
-    builder.vlan_groups.insert(vlan_group, VlanGroupData { vlans: Box::new([vlan]) });
+    builder.vlan_groups.insert(
+        vlan_group,
+        VlanGroupData {
+            vlans: Box::new([vlan]),
+        },
+    );
     builder.wlans.insert(
         wlan,
         WlanData {
@@ -727,8 +947,7 @@ async fn create_default_bridge_device(explicit_bridge: bool) -> DeviceAccess {
         VxlanData {
             name: "client-berg".into(),
             vni: 1,
-            interface_terminations: Box::new([]),
-            vlan_terminations: Box::new([vlan]),
+            vlans: Box::new([vlan]),
         },
     );
 
@@ -824,44 +1043,78 @@ async fn test_scenario_default_bridge_without_netbox_bridge() -> Result<(), Box<
     let entry = &bridge.ports[&4];
     assert_eq!(count_ethernet(&entry.ports), 2);
     assert_eq!(count_ips(&entry.ports), 1);
-    assert!(entry.ports.iter().any(|p| matches!(p, L2Port::VxLan { .. })));
+    assert!(
+        entry
+            .ports
+            .iter()
+            .any(|p| matches!(p, L2Port::VxLan { .. }))
+    );
     let logical = setup
         .logical_interfaces()
         .find(|l| l.if_name == &entry.if_name)
         .expect("vlan entry is a logical interface");
-    assert!(logical.enable_dhcp_server, "dhcp tag of the VLAN interface applies");
+    assert!(
+        logical.enable_dhcp_server,
+        "dhcp tag of the VLAN interface applies"
+    );
 
     let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
     target_data.generate_from(&device, KeepNameGenerator)?;
     let vxlan_name = AsciiString::from("client-berg");
     let caps_bridge = AsciiString::from("bridge-caps");
-    assert_eq!(target_data.bridge.len(), 1, "only bridge-caps, no second bridge");
+    assert_eq!(
+        target_data.bridge.len(),
+        1,
+        "only bridge-caps, no second bridge"
+    );
     assert!(target_data.bridge.contains_key(&caps_bridge));
-    assert!(target_data.vxlan_vteps.contains_key(&(
-        vxlan_name.clone(),
-        IpAddr::V4(Ipv4Addr::new(172, 16, 1, 1))
-    )));
-    assert!(target_data.bridge_vlan.keys().all(|(bridge, ..)| bridge == &caps_bridge));
-    assert!(target_data.bridge_vlan.keys().any(|(_, tagged, untagged, _)| {
-        tagged.contains(&vxlan_name)
-            && untagged.contains(&AsciiString::from("ether2"))
-            && untagged.contains(&AsciiString::from("ether3"))
-    }));
-    assert!(target_data.dhcp_v_4_server.values().any(|s| s.0.interface == AsciiString::from("vlan-4")));
+    assert!(
+        target_data
+            .vxlan_vteps
+            .contains_key(&(vxlan_name.clone(), IpAddr::V4(Ipv4Addr::new(172, 16, 1, 1))))
+    );
+    assert!(
+        target_data
+            .bridge_vlan
+            .keys()
+            .all(|(bridge, ..)| bridge == &caps_bridge)
+    );
+    assert!(
+        target_data
+            .bridge_vlan
+            .keys()
+            .any(|(_, tagged, untagged, _)| {
+                tagged.contains(&vxlan_name)
+                    && untagged.contains(&AsciiString::from("ether2"))
+                    && untagged.contains(&AsciiString::from("ether3"))
+            })
+    );
+    assert!(
+        target_data
+            .dhcp_v_4_server
+            .values()
+            .any(|s| s.0.interface == AsciiString::from("vlan-4"))
+    );
     println!("--- Szenario: AP-Ports ohne NetBox-Bridge auf der Standard-Bridge (bridge-caps) ---");
     dump_mutations(&target_data, &empty_current)?;
     Ok(())
 }
 
 #[tokio::test]
-async fn test_default_bridge_merges_into_explicit_bridge_of_same_vlan() -> Result<(), Box<dyn Error>> {
+async fn test_default_bridge_merges_into_explicit_bridge_of_same_vlan() -> Result<(), Box<dyn Error>>
+{
     let device = create_default_bridge_device(true).await;
 
     let setup = L2Setup::new(&device, KeepNameGenerator)?;
     assert_eq!(setup.tagged_bridges.len(), 1, "no separate default bridge");
     let entry = &setup.tagged_bridges[0].ports[&4];
     assert_eq!(count_ethernet(&entry.ports), 3);
-    assert!(entry.ports.iter().any(|p| matches!(p, L2Port::VxLan { .. })));
+    assert!(
+        entry
+            .ports
+            .iter()
+            .any(|p| matches!(p, L2Port::VxLan { .. }))
+    );
     Ok(())
 }
 
@@ -878,7 +1131,10 @@ fn count_ethernet(ports: &std::collections::BTreeSet<L2Port>) -> usize {
 }
 
 fn count_ips(ports: &std::collections::BTreeSet<L2Port>) -> usize {
-    ports.iter().filter(|p| matches!(p, L2Port::Ip { .. })).count()
+    ports
+        .iter()
+        .filter(|p| matches!(p, L2Port::Ip { .. }))
+        .count()
 }
 
 fn dump_mutations(
@@ -1191,9 +1447,27 @@ fn name_parts_are_ascii_kebab() {
 #[tokio::test]
 async fn test_non_ether_ports_keep_their_address() -> Result<(), Box<dyn Error>> {
     for (model, port_name, port, address, expected_name) in [
-        (b"CCR1009-7G-1C-1S+".as_slice(), "combo1", PhysicalPortId::Combo(1), [172, 17, 1, 13], "c01-keller"),
-        (b"RB962UiGS-5HacT2HnT", "sfp1", PhysicalPortId::Sfp(1), [10, 200, 1, 6], "s01-keller"),
-        (b"CRS354-48G-4S+2Q+", "qsfpplus1-2", PhysicalPortId::QsfpPlus(1, 2), [172, 17, 1, 34], "q01-2-keller"),
+        (
+            b"CCR1009-7G-1C-1S+".as_slice(),
+            "combo1",
+            PhysicalPortId::Combo(1),
+            [172, 17, 1, 13],
+            "c01-keller",
+        ),
+        (
+            b"RB962UiGS-5HacT2HnT",
+            "sfp1",
+            PhysicalPortId::Sfp(1),
+            [10, 200, 1, 6],
+            "s01-keller",
+        ),
+        (
+            b"CRS354-48G-4S+2Q+",
+            "qsfpplus1-2",
+            PhysicalPortId::QsfpPlus(1, 2),
+            [172, 17, 1, 34],
+            "q01-2-keller",
+        ),
     ] {
         let mut builder = TopologyBuilder::default();
         let d1 = builder.devices.next_id();

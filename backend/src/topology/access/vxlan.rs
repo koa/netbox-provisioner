@@ -1,6 +1,6 @@
 use crate::topology::{
     Topology, VxlanData, VxlanId,
-    access::{AccessTopology, interface::InterfaceAccess, vlan::VlanAccess},
+    access::{AccessTopology, vlan::VlanAccess},
 };
 use async_graphql::Object;
 use std::cmp::Ordering;
@@ -50,41 +50,21 @@ impl VxlanAccess {
     pub fn vni(&self) -> Option<u32> {
         self.data().map(|d| d.vni)
     }
-    pub fn interface_terminations(&self) -> Box<[InterfaceAccess]> {
+    /// All VLANs of the VLAN group, tunneled or not.
+    pub fn vlans(&self) -> Box<[VlanAccess]> {
         self.data()
-            .map(|d| {
-                d.interface_terminations
-                    .iter()
-                    .copied()
-                    .map(self.create_access())
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-    pub fn vlan_terminations(&self) -> Box<[VlanAccess]> {
-        self.data()
-            .map(|d| {
-                d.vlan_terminations
-                    .iter()
-                    .copied()
-                    .map(self.create_access())
-                    .collect()
-            })
+            .map(|d| d.vlans.iter().copied().map(self.create_access()).collect())
             .unwrap_or_default()
     }
 
+    /// Addresses of every device using one of the VLANs actually tunneled over this
+    /// VXLAN (see `VlanAccess::tunnel`) - the head-end replication list.
     pub fn vteps(&self) -> Box<[IpAddr]> {
         Box::from_iter(
-            self.interface_terminations()
+            self.vlans()
                 .iter()
-                .filter_map(InterfaceAccess::device)
-                .chain(
-                    self.vlan_terminations()
-                        .iter()
-                        .flat_map(|vl| vl.wlan())
-                        .filter_map(|wlan| wlan.wlan_group())
-                        .flat_map(|group| group.aps().into_iter().chain(group.controller())),
-                )
+                .filter(|vlan| vlan.tunnel().is_some())
+                .flat_map(|vlan| vlan.devices())
                 .filter_map(|dev| dev.primary_ip_v4().and_then(|ip| ip.addr()))
                 .collect::<BTreeSet<IpAddr>>(),
         )
@@ -132,12 +112,8 @@ impl VxlanAccess {
     async fn api_vni(&self) -> Option<u32> {
         self.vni()
     }
-    #[graphql(name = "interfaceTerminations")]
-    async fn api_interface_terminations(&self) -> Box<[InterfaceAccess]> {
-        self.interface_terminations()
-    }
-    #[graphql(name = "vlanTerminations")]
-    async fn api_vlan_terminations(&self) -> Box<[VlanAccess]> {
-        self.vlan_terminations()
+    #[graphql(name = "vlans")]
+    async fn api_vlans(&self) -> Box<[VlanAccess]> {
+        self.vlans()
     }
 }

@@ -4,14 +4,13 @@ use crate::{
         CablePort, Device, DeviceId, DeviceRole, Topology,
         access::{
             AccessTopology, AdhocCredentials, interface::InterfaceAccess,
-            ip_addresses::IpAddressAccess, vlan::VlanAccess, vxlan::VxlanAccess,
-            wlan_group::WlanGroupAccess,
+            ip_addresses::IpAddressAccess, wlan_group::WlanGroupAccess,
         },
     },
 };
 use async_graphql::Object;
 use log::error;
-use std::{collections::HashSet, net::IpAddr, sync::Arc};
+use std::{net::IpAddr, sync::Arc};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct DeviceAccess {
@@ -108,17 +107,6 @@ impl DeviceAccess {
         self.data()
             .and_then(|d| d.wlan_ap_of)
             .map(self.create_access())
-    }
-
-    pub fn vlans(&self) -> impl Iterator<Item = VlanAccess> {
-        self.data()
-            .into_iter()
-            .flat_map(|d| d.vlans.iter().cloned())
-            .map(self.create_access())
-    }
-
-    pub fn vxlan(&self) -> HashSet<VxlanAccess> {
-        self.vlans().filter_map(|vl| vl.vxlan()).collect()
     }
 
     pub fn role(&self) -> Option<DeviceRole> {

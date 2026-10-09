@@ -20,6 +20,9 @@ pub struct JSON {
     pub wlan_group: Option<u32>,
     pub wlan_mgmt: Option<u32>,
     pub controller: Option<u32>,
+    /// On a VLAN group: VNI of the VXLAN its VLANs are tunneled over between
+    /// devices (see `topology::VxlanData`).
+    pub vxlan_vni: Option<u32>,
 }
 
 #[derive(Debug, SimpleObject)]

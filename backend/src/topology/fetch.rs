@@ -4,7 +4,7 @@ use crate::{
         fetch_topology::{
             CableConnectionTermination, CableConnectionTerminationOnFrontPortType,
             CableConnectionTerminationOnInterfaceType, CableConnectionTerminationOnRearPortType,
-            FetchTopologyL2vpnListTerminationsAssignedObject, ResponseData,
+            ResponseData,
         },
     },
     topology::{
@@ -484,15 +484,11 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             let serial = Some(device.serial.into_boxed_str()).filter(|s| !s.is_empty());
             let wlan_controller_of = controllers.get(&device_id).cloned();
             let wlan_ap_of = device.custom_field_data.wlan_group.map(WlanGroupId);
-            let mut vlans = HashSet::new();
             if let Some(wlan_group) = wlan_ap_of {
                 wlan_member_devices
                     .entry(wlan_group)
                     .or_default()
                     .push(device_id);
-                if let Some(mgmt_vlan) = wlan_groups.get(&wlan_group).and_then(|d| d.mgmt_vlan) {
-                    vlans.insert(mgmt_vlan);
-                }
             }
             devices.insert(
                 device_id,
@@ -508,7 +504,6 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     serial,
                     wlan_controller_of,
                     wlan_ap_of,
-                    vlans: vlans.into_iter().collect(),
                     role,
                 },
             );
@@ -519,49 +514,14 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             group.aps = devices.into_boxed_slice();
         }
     }
-    let mut vxlan_of_vlan = HashMap::new();
-    for l2vpn_entry in data.l2vpn_list {
-        if l2vpn_entry.type_.as_str() == "vxlan" {
-            if let (Some(vxlan_id), Some(vni)) = (
-                l2vpn_entry.id.parse().ok().map(VxlanId),
-                l2vpn_entry.identifier.map(|id| id as u32),
-            ) {
-                let mut interface_terminations = BTreeSet::new();
-                let mut vlan_terminations = BTreeSet::new();
-                for termination in l2vpn_entry.terminations.into_iter() {
-                    match termination.assigned_object {
-                        FetchTopologyL2vpnListTerminationsAssignedObject::InterfaceType(
-                            if_type,
-                        ) => {
-                            if let Some(if_id) = if_type.id.parse().ok().map(InterfaceId) {
-                                interface_terminations.insert(if_id);
-                            }
-                        }
-                        FetchTopologyL2vpnListTerminationsAssignedObject::VLANType(vlan_type) => {
-                            if let Some(vlan_id) = vlan_type.id.parse().ok().map(VlanId) {
-                                vlan_terminations.insert(vlan_id);
-                                vxlan_of_vlan.insert(vlan_id, vxlan_id);
-                            }
-                        }
-                        FetchTopologyL2vpnListTerminationsAssignedObject::VMInterfaceType => {}
-                    }
-                }
-                vxlans.insert(
-                    vxlan_id,
-                    VxlanData {
-                        name: l2vpn_entry.name.into_boxed_str(),
-                        vni,
-                        interface_terminations: Box::from_iter(interface_terminations),
-                        vlan_terminations: Box::from_iter(vlan_terminations),
-                    },
-                );
-            }
-        }
-    }
     let mut vlan_groups = HashMap::new();
     let mut vlans = HashMap::new();
     for vlan_group in data.vlan_group_list {
         if let Some(vlan_group_id) = vlan_group.id.parse().ok().map(VlanGroupId) {
+            let vxlan = vlan_group.custom_field_data.vxlan_vni.map(|vni| {
+                let vxlan_id = VxlanId(vlan_group_id.0);
+                (vxlan_id, vni)
+            });
             let mut vlan_ids = BTreeSet::new();
             for vlan in vlan_group.vlans {
                 if let Some(vlan_id) = vlan.id.parse().ok().map(VlanId) {
@@ -575,13 +535,23 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             terminations: Box::from_iter(
                                 interfaces_of_vlan.remove(&vlan_id).unwrap_or_default(),
                             ),
-                            vxlan: vxlan_of_vlan.get(&vlan_id).copied(),
+                            vxlan: vxlan.map(|(vxlan_id, _)| vxlan_id),
                             wlans: Box::from_iter(
                                 wlans_of_vlan.remove(&vlan_id).unwrap_or_default(),
                             ),
                         },
                     );
                 }
+            }
+            if let Some((vxlan_id, vni)) = vxlan {
+                vxlans.insert(
+                    vxlan_id,
+                    VxlanData {
+                        name: vlan_group.name.clone().into_boxed_str(),
+                        vni,
+                        vlans: Box::from_iter(vlan_ids.iter().copied()),
+                    },
+                );
             }
             vlan_groups.insert(
                 vlan_group_id,

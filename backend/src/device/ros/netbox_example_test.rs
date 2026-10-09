@@ -40,11 +40,6 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
     ("schopf-hegglin", "sort: MissingDependencies"),
     ("schopf-walter", "sort: MissingDependencies"),
     ("walter-schopf", "sort: MissingDependencies"),
-    // vxlan1 is terminated directly on the controller without a VLAN inside it
-    (
-        "srv-router-berg",
-        "generate_from: VxlanTerminationWithoutVlan",
-    ),
 ];
 
 #[tokio::test]
@@ -54,8 +49,22 @@ async fn generate_all_devices_of_netbox_example() {
         "/../docs/netbox-response-example.json"
     ))
     .expect("example response");
+    let mut raw: serde_json::Value = serde_json::from_str(&raw).expect("example response json");
+    // Exports from before VLAN groups were queried with their custom fields lack
+    // the field; treat those groups as having none (no VNI, nothing tunneled).
+    for group in raw["data"]["vlan_group_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        if let Some(group) = group.as_object_mut() {
+            group
+                .entry("custom_field_data")
+                .or_insert_with(|| serde_json::json!({}));
+        }
+    }
     let response: graphql_client::Response<ResponseData> =
-        serde_json::from_str(&raw).expect("parse example response");
+        serde_json::from_value(raw).expect("parse example response");
     let topology = Arc::new(build_topology_from(
         response.data.expect("response without data"),
         Instant::now(),

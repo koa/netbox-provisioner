@@ -50,12 +50,8 @@ nicht pauschal auf die "kein VLAN"-Ebene. Das ist, was eine rein virtuelle "VLAN
 NetBox (ein Interface ohne externen Port, nur mit `vlan` + `ips`) erlaubt, ihre L3-Adresse korrekt
 auf dieser VLAN-Ebene zu tragen.
 
-Ist ein Interface direkt an einem VXLAN terminiert (Port-Gruppe, siehe
-[vxlan-generation.md](vxlan-generation.md#pfad-2-port-gruppen-auf-switches-interface-terminierung)),
-kommt für jede VLAN, die es trägt, ein `L2Port::VxLan` auf **seine eigene** Ebene `(root, vlan)`.
-
-VXLAN- und WLAN-Anbindungen aus dem WLAN-Kontext haben dagegen **kein** physisches Root-Device und
-werden daher auf root-losen Ebenen `(None, Some(vlan))` einsortiert (`L2Port::VxLan`,
+VXLAN- und WLAN-Anbindungen haben **kein** physisches Root-Device und werden daher auf root-losen
+Ebenen `(None, Some(vlan))` einsortiert (`L2Port::VxLan`,
 `L2Port::CapsMan`, `L2Port::Cap`, `L2Port::CapsManMgmt`, `L2Port::CapMgmt` — siehe
 [vxlan-generation.md](vxlan-generation.md) und [wlan-generation.md](wlan-generation.md)).
 
@@ -81,6 +77,10 @@ Bridge plus der CAP-Eintrag derselben VLAN fälschlich als Konflikt gelten):
 - **Port in mehreren Bridges**: Weil pro VLAN zusammengeführt wird, könnte ein bridge-loser
   Trunk-Port mit einer VLAN in einer modellierten Bridge und einer anderen in der Standard-Bridge
   landen. Ein Port kann aber nur Mitglied einer Bridge sein, daher `SetupError::PortInMultipleBridges`.
+  Dasselbe gilt für das VXLAN einer VLAN-Gruppe, das jedem getunnelten VLAN beitritt.
+- **L2-Domäne**: Schon in Schritt 1 prüft `check_l2_domain` jedes VLAN über alle Geräte, auf die es
+  getunnelt wird: Kabel parallel zum Tunnel, mehrere IP-Netze, mehrere DHCP-Server (siehe
+  [vxlan-generation.md](vxlan-generation.md#was-abgelehnt-wird)).
 
 ## Schritt 4: Klassifizierung pro Root — welche der drei L2-Domänen-Arten?
 

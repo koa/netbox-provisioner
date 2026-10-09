@@ -79,19 +79,6 @@ query FetchTopology{
             ...CableConnectionTermination
         }
     }
-    l2vpn_list {
-        id
-        name
-        type
-        identifier
-        terminations{
-            assigned_object{
-                __typename
-                ...ConnectedInterface
-                ...ConnectedVlan
-            }
-        }
-    }
     wireless_lan_group_list {
         id
         custom_fields
@@ -109,6 +96,7 @@ query FetchTopology{
     vlan_group_list{
         id
         name
+        custom_field_data
         vlans{
             id
             name
@@ -139,9 +127,6 @@ fragment CableConnectionTermination on CableTerminationTerminationType{
     ...ConnectedRearPort
 }
 fragment ConnectedInterface on InterfaceType{
-    id
-}
-fragment ConnectedVlan on VLANType{
     id
 }
 fragment ConnectedFrontPort on FrontPortType{

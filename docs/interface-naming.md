@@ -69,9 +69,9 @@ Bewusst **keine** Worttrennung an Groß-/Kleinschreibung oder Ziffern: `1og-sw2`
 
 ## VXLAN-Namen (`generate_vxlan_name`)
 
-- `vxlan-{l2vpn-name-kebab}`, z.B. `vxlan-client-berg` für das L2VPN `client-berg` — so heißen die
-  VXLAN-Interfaces auch in den echten Exporten (`examples/05`, `08`, `09`).
-- Hat das L2VPN keinen Namen: `vxlan-{numerische-vxlan-id}`.
+- `vxlan-{vlan-gruppen-name}`, z.B. `vxlan-berg-wlan` für die VLAN-Gruppe `Berg-WLAN`. Die echten
+  Exporte (`examples/05`, `08`, `09`) heißen noch `vxlan-client-berg` nach dem früheren L2VPN.
+- Ohne Gruppennamen: `vxlan-{numerische-vxlan-id}`.
 - Namen sind gerätelokal; für die Interoperabilität zählt nur die VNI.
 
 ## Bridge-Namen (`generate_main_bridge`)

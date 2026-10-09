@@ -243,45 +243,60 @@ Struktur auf der Standard-Bridge `bridge`; das Tag `ospf` kommt dann an das VLAN
 
 ## VXLAN
 
-Ein VXLAN ist ein **L2VPN** mit Typ **VXLAN**:
+Ein VXLAN gehört zu einer **VLAN-Gruppe**:
 
-- **Identifier** = VNI (Pflicht; ohne Identifier wird das L2VPN ignoriert).
-- **Name** = Basis für den Interface-Namen.
-- **Terminierungen**:
-  - **VLAN-Terminierung**: dieses VLAN wird über das VXLAN transportiert. Ein VXLAN kann mehrere
-    VLANs tragen; die Frames laufen darin getaggt.
-  - **Interface-Terminierung**: dieser Port bzw. dieses VLAN-Interface nimmt am VXLAN teil, und das
-    Gerät wird VTEP.
+1. Custom Field **`vxlan_vni`** (Integer) auf VLAN-Gruppen anlegen und bei der Gruppe die VNI
+   eintragen, z.B. `Berg-WLAN` = `1`.
+2. Den Ports, Bridges und VLAN-Interfaces, die im Netz sein sollen, das VLAN zuweisen.
+
+Kommt ein VLAN einer solchen Gruppe auf mehr als einem Gerät vor, wird es zwischen diesen Geräten
+getunnelt. Ein WLAN-VLAN kommt dabei auf jedem AP und dem Controller der WLAN-Gruppe vor. Jedes
+beteiligte Gerät braucht eine **Primary IPv4**, sie ist seine VTEP-Adresse.
+
+- Ein VXLAN pro Gruppe, mit allen getunnelten VLANs der Gruppe getaggt darin. Name auf dem Gerät:
+  `vxlan-{gruppenname}`.
+- VLANs aus Gruppen ohne `vxlan_vni` bleiben lokal, auch auf mehreren Geräten.
+- Ein **L2VPN** wird nicht mehr gelesen und kann gelöscht werden; ebenso VXLAN-Interfaces und
+  `bridge-caps`, die als Interface modelliert sind.
+
+Statt zu generieren meldet der Provisioner einen Fehler, wenn in einem VLAN über alle beteiligten
+Geräte
+
+- Adressen aus **mehr als einem Netz** liegen (z.B. `10.192.2.1/24` am Controller und
+  `10.192.5.1/24` an einem Switch),
+- **mehr als ein** Interface das Tag `dhcp` hat,
+- ein getunneltes VLAN **zusätzlich über ein Kabel** zu einem anderen Gerät läuft, das es ebenfalls
+  trägt (Schleife), oder
+- zwei getunnelte VLANs derselben Gruppe auf einem Gerät in **verschiedenen Bridges** liegen.
+
+Details: [vxlan-generation.md](vxlan-generation.md).
+
+### Rezept: Netze am Controller
+
+Jedes Netz, das der Controller für die WLANs bereitstellt, ist ein **virtuelles Interface** mit
+Untagged VLAN = WLAN-VLAN, IP-Adresse und gegebenenfalls Tag `dhcp`. Keine Bridge pro Netz: das
+VXLAN kann nur in einer Bridge sein, und alle Netze liegen auf der Standard-Bridge.
 
 ### Rezept: LAN-Ports eines Access Points im Haushalts-WLAN
 
 Ziel: An einem AP (z.B. `ap-mimi-buero`) sollen `ether2`–`ether5` im selben Netz wie das WLAN
 `wlan-mimi` sein.
 
-1. Der AP ist Mitglied der WLAN-Gruppe (Custom Field `wlan_group`), das Haushalts-VLAN ist per
-   **VLAN-Terminierung** am WLAN-VXLAN.
-2. Die Ports bekommen **Untagged VLAN** = `wlan-mimi`. **Keine** Bridge, **keine**
-   Interface-Terminierung.
+1. Der AP ist Mitglied der WLAN-Gruppe (Custom Field `wlan_group`).
+2. Die Ports bekommen **Untagged VLAN** = `wlan-mimi`. **Keine** Bridge.
 
 Die Ports landen auf `bridge-caps`, zusammen mit dem VXLAN und dem CAP-Datapath.
 
-### Rezept: Wohnungs-Ports eines Switches an das WLAN-VXLAN hängen
+### Rezept: Wohnungs-Ports eines Switches im Netz eines WLANs
 
 Ziel: Ein Drucker an der LAN-Dose einer Wohnung soll im selben Netz wie das WLAN der Wohnung sein.
 
-1. Das Haushalts-VLAN (z.B. `wohnung-koa`, VID 1) ist bereits per **VLAN-Terminierung** am
-   WLAN-VXLAN (z.B. `client-berg`, VNI 1).
-2. Die Ports der Wohnung auf dem Switch bekommen **Untagged VLAN** = `wohnung-koa` (wie jeder
+1. Die Ports der Wohnung auf dem Switch bekommen **Untagged VLAN** = das VLAN des WLANs (wie jeder
    Access-Port).
-3. Dieselben Ports zusätzlich als **Interface-Terminierung** an das L2VPN `client-berg` hängen.
-4. Der Switch braucht eine **Primary IPv4**; sie ist seine VTEP-Adresse.
+2. Der Switch braucht eine **Primary IPv4**.
 
-Alle anderen Teilnehmer (APs, andere Switches) tragen den Switch dann automatisch als
-Remote-VTEP ein. Details: [vxlan-generation.md](vxlan-generation.md).
-
-Nur Ports terminieren, an denen tatsächlich Wohnungs-Geräte hängen. Ein Switch, der das VLAN nur
-weiterreicht, darf **keine** Terminierung bekommen, sonst läuft das VLAN doppelt (VXLAN und
-Kabel), und es entsteht eine Schleife.
+Alle anderen Teilnehmer tragen den Switch dann automatisch als Remote-VTEP ein. Der Switch darf
+keine eigene IP oder keinen DHCP-Server in einem anderen Netz desselben VLANs haben.
 
 ## WLAN
 
@@ -295,8 +310,10 @@ Kabel), und es entsteht eine Schleife.
 2. **Wireless LANs** in der Gruppe anlegen: SSID, VLAN und Authentifizierung. Ausgewertet werden
    nur **WPA Personal** (mit PSK) und **Open** (wird als OWE umgesetzt). WLANs mit anderer
    Authentifizierung werden übersprungen.
-3. Jeden **Access Point**: Custom Field `wlan_group` = die Gruppe.
-4. VLANs der WLANs und das Management-VLAN per **VLAN-Terminierung** an das WLAN-VXLAN hängen.
+3. Jeden **Access Point**: Custom Field `wlan_group` = die Gruppe. Nur echte APs: ein Gerät mit
+   `wlan_group` bekommt die CAP-Konfiguration. Ein Switch, der nur Ports im WLAN-Netz hat, braucht
+   das Feld nicht, ihm reicht das VLAN an den Ports.
+4. Die VLAN-Gruppe der WLAN-VLANs bekommt eine `vxlan_vni` (siehe [VXLAN](#vxlan)).
 
 ## Was nicht ausgewertet wird
 
@@ -311,4 +328,5 @@ reicht also nicht, sie zu setzen:
 - **802.1Q Mode**: siehe oben; nur die VLAN-Zuweisungen zählen.
 - **Tags an Bridge-Ports**: bei Bridges zählen die Tags des Bridge-Interfaces und des
   VLAN-Interfaces, das die IP trägt, nicht die der Mitgliedsports.
-- **VLANs ohne VLAN-Gruppe**, **L2VPNs ohne Identifier**, **WLAN-Gruppen ohne Controller**.
+- **VLANs ohne VLAN-Gruppe**, **WLAN-Gruppen ohne Controller**.
+- **L2VPNs**: werden nicht gelesen, VXLANs kommen aus der VLAN-Gruppe.
