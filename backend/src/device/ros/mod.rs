@@ -375,7 +375,10 @@ impl BaseDeviceDataTarget {
                     .or_insert(Ipv6AddressByAddress(Ipv6AddressCfg {
                         address: Default::default(),
                         advertise: false,
-                        auto_link_local: false,
+                        // RouterOS only accepts `auto-link-local=no` on a link-local
+                        // address (it then replaces the generated one) and rejects it
+                        // on any other with "selected address is not link local".
+                        auto_link_local: !v6_net.addr().is_unicast_link_local(),
                         comment: None,
                         disabled: false,
                         eui_64: false,
