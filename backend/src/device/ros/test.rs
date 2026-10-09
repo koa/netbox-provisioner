@@ -1,5 +1,6 @@
-use crate::device::ros::GapFinder;
+use crate::device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, GapFinder};
 use ipnet::Ipv4Net;
+use mikrotik_model::model::{InterfaceEthernetByDefaultName, InterfaceEthernetCfg};
 use std::{net::Ipv4Addr, str::FromStr};
 
 #[test]
@@ -88,4 +89,42 @@ pub fn test_gap_subnet() {
             "172.16.4.0".parse().unwrap().."172.31.255.254".parse().unwrap()
         ]
     );
+}
+
+/// The state of a freshly reset device with the same ports as `target`: every
+/// port under its default name, nothing else configured.
+pub(crate) fn empty_current(target: &BaseDeviceDataTarget) -> BaseDeviceDataCurrent {
+    BaseDeviceDataCurrent {
+        ospf_interface: Box::new([]),
+        interface_list: Box::new([]),
+        identity: Default::default(),
+        bridge: Box::new([]),
+        bridge_port: Box::new([]),
+        ethernet: target
+            .ethernet
+            .iter()
+            .map(|(default_name, e)| InterfaceEthernetByDefaultName {
+                default_name: default_name.clone(),
+                data: InterfaceEthernetCfg {
+                    name: default_name.clone(),
+                    ..e.clone()
+                },
+            })
+            .collect(),
+        ipv_6_address: Box::new([]),
+        ospf_instance: Box::new([]),
+        vxlan: Box::new([]),
+        ospf_area: Box::new([]),
+        vxlan_vteps: Box::new([]),
+        interface_list_member: Box::new([]),
+        bridge_vlan: Box::new([]),
+        ipv_6_firewall_address_list: Box::new([]),
+        ipv_4_address: Box::new([]),
+        vlan: Box::new([]),
+        dhcp_v_4_client: Box::new([]),
+        ipv_6_firewall_filter: Box::new([]),
+        dhcp_v_4_server: Box::new([]),
+        dhcp_v_4_server_network: Box::new([]),
+        ipv_4_pool: Box::new([]),
+    }
 }

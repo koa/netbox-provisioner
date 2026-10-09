@@ -1,5 +1,5 @@
 use crate::{
-    device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError},
+    device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, test::empty_current},
     topology::{
         Device, Interface, IpAddressData, IpAddressId, IpPrefixData, IpRangeData, PhysicalPortId,
         TopologyHolder, VlanData, VlanGroupData, VxlanData, WlanAuth, WlanData, WlanGroupData,
@@ -11,7 +11,7 @@ use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
     generator::Generator,
-    model::{InterfaceEthernetByDefaultName, InterfaceEthernetCfg, ReferenceType},
+    model::ReferenceType,
     resource::ResourceMutation,
 };
 use std::{
@@ -910,39 +910,7 @@ fn setup_testdata(
     model: &[u8],
 ) -> Result<(BaseDeviceDataTarget, BaseDeviceDataCurrent), Box<dyn Error>> {
     let target_data = BaseDeviceDataTarget::new(model)?;
-    let empty_current = BaseDeviceDataCurrent {
-        ospf_interface: Box::new([]),
-        interface_list: Box::new([]),
-        identity: Default::default(),
-        bridge: Box::new([]),
-        bridge_port: Box::new([]),
-        ethernet: target_data
-            .ethernet
-            .iter()
-            .map(|(default_name, e)| InterfaceEthernetByDefaultName {
-                default_name: default_name.clone(),
-                data: InterfaceEthernetCfg {
-                    name: default_name.clone(),
-                    ..e.clone()
-                },
-            })
-            .collect(),
-        ipv_6_address: Box::new([]),
-        ospf_instance: Box::new([]),
-        vxlan: Box::new([]),
-        ospf_area: Box::new([]),
-        vxlan_vteps: Box::new([]),
-        interface_list_member: Box::new([]),
-        bridge_vlan: Box::new([]),
-        ipv_6_firewall_address_list: Box::new([]),
-        ipv_4_address: Box::new([]),
-        vlan: Box::new([]),
-        dhcp_v_4_client: Box::new([]),
-        ipv_6_firewall_filter: Box::new([]),
-        dhcp_v_4_server: Box::new([]),
-        dhcp_v_4_server_network: Box::new([]),
-        ipv_4_pool: Box::new([]),
-    };
+    let empty_current = empty_current(&target_data);
     Ok((target_data, empty_current))
 }
 

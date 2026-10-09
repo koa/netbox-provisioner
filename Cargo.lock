@@ -668,6 +668,7 @@ dependencies = [
  "regex",
  "reqwest 0.12.23",
  "serde",
+ "serde_json",
  "sha2",
  "surge-ping",
  "thiserror 2.0.16",

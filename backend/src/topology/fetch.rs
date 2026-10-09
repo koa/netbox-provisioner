@@ -4,7 +4,7 @@ use crate::{
         fetch_topology::{
             CableConnectionTermination, CableConnectionTerminationOnFrontPortType,
             CableConnectionTerminationOnInterfaceType, CableConnectionTerminationOnRearPortType,
-            FetchTopologyL2vpnListTerminationsAssignedObject,
+            FetchTopologyL2vpnListTerminationsAssignedObject, ResponseData,
         },
     },
     topology::{
@@ -162,6 +162,13 @@ impl InternalDeviceConnection {
 pub async fn build_topology() -> Result<Topology, NetboxError> {
     let fetch_time = Instant::now();
     let data = fetch_topology().await?;
+    Ok(build_topology_from(data, fetch_time))
+}
+
+/// Builds the in-memory topology from an already fetched NetBox response - split
+/// from `build_topology` so a stored response (`docs/netbox-response-example.json`)
+/// can be turned into a topology offline.
+pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> Topology {
     //let mut internal_connections = HashMap::<_, HashSet<_>>::new();
     let mut cable_chains = Vec::<CableChain>::new();
     /*    for (cable, internal_connections_of_cable) in data.cable_list.into_iter().filter_map(|cable| {
@@ -742,7 +749,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             .unwrap_or_default();
     }
 
-    Ok(Topology {
+    Topology {
         fetch_time,
         devices,
         interfaces,
@@ -761,7 +768,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
             .into_iter()
             .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
             .collect(),
-    })
+    }
 }
 
 fn termination_2_cable_port(termination: CableConnectionTermination) -> Option<CablePort> {

@@ -33,6 +33,15 @@ OSPF, VXLAN, WLAN/CAPsMAN) - read it before changing anything under `device/ros/
 (tags, custom fields, interface names, VLAN groups, L2VPNs); update it whenever `fetch.rs` or
 `fetch_topology.graphql` changes what is read.
 
+`device/ros/netbox_example_test.rs` runs every RouterOS device of the stored production
+response `docs/netbox-response-example.json` (maintained by the user from the live NetBox; never
+edit or commit it yourself) through the whole generator, with each device given exactly the ports
+it declares in NetBox since the response carries no board model. Devices that don't generate yet
+are listed in `KNOWN_FAILURES` with the expected error; the test also fails when a listed device
+starts working, so fixing a generator gap means dropping its entry. Scripts land in
+`target/netbox-example/` for review. An empty bridge with an address is legitimate there (CAPsMAN
+or OpenVPN add their ports at runtime), so don't treat it as a generator error.
+
 `backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR
 instances under QEMU (software emulation, no KVM needed) and proves actual distributed network
 behavior, not just that the generator's output parses. `--ignored` by default (`cargo test -p

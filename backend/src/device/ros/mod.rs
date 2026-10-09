@@ -16,7 +16,8 @@ use mikrotik_model::{
     ascii::{self, AsciiString},
     mikrotik_model,
     model::{
-        InterfaceBridgeProtocolMode, InterfaceEthernetCfg, InterfaceEthernetPoeOut,
+        InterfaceBridgeProtocolMode, InterfaceEthernetByDefaultName, InterfaceEthernetCfg,
+        InterfaceEthernetPoeOut,
         InterfaceVlanByName, InterfaceVlanCfg, InterfaceVxlanByName, InterfaceVxlanCfg,
         InterfaceWifiProvisioningAction, IpAddressByAddress, IpAddressCfg, IpDhcpClientCfg,
         Ipv6AddressByAddress, Ipv6AddressCfg, RoutingOspfInstanceByName, RoutingOspfInstanceCfg,
@@ -36,6 +37,8 @@ pub mod graphql;
 pub(crate) mod hw_facts;
 
 pub mod l2;
+#[cfg(test)]
+mod netbox_example_test;
 #[cfg(test)]
 mod test;
 
@@ -113,7 +116,14 @@ impl BaseDeviceDataTarget {
         if ethernet_ports.is_empty() {
             return Err(SetupError::NoPortsFound(AsciiString::from(model)));
         }
-        Ok(Self {
+        Ok(Self::with_ethernet_ports(ethernet_ports))
+    }
+    /// An empty target for a device with exactly these ethernet ports, independent
+    /// of any known board model.
+    fn with_ethernet_ports(
+        ethernet_ports: impl IntoIterator<Item = InterfaceEthernetByDefaultName>,
+    ) -> Self {
+        Self {
             ethernet: ethernet_ports
                 .into_iter()
                 .map(|e| (e.default_name, e.data))
@@ -138,7 +148,7 @@ impl BaseDeviceDataTarget {
             dhcp_v_4_server: Default::default(),
             dhcp_v_4_server_network: Default::default(),
             ipv_4_pool: Default::default(),
-        })
+        }
     }
     fn set_identity(&mut self, name: impl Into<AsciiString>) {
         self.identity.name = name.into();
