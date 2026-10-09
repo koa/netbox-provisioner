@@ -475,6 +475,7 @@ struct TunnelIds {
     ap: DeviceId,
     vlan: VlanId,
     vlan_group: VlanGroupId,
+    switch_bridge: InterfaceId,
     switch_port: InterfaceId,
     ap_port: InterfaceId,
 }
@@ -592,6 +593,7 @@ async fn build_tunnel_topology(
             ap,
             vlan,
             vlan_group,
+            switch_bridge: bridge,
             switch_port: switch_port.unwrap(),
             ap_port,
         },
@@ -704,6 +706,29 @@ async fn test_scenario_switch_vxlan_port_group() -> Result<(), Box<dyn Error>> {
 
     println!("--- Szenario: Switch-Port-Gruppe einer Wohnung im Haushalts-VXLAN ---");
     dump_mutations(&target_data, &empty_current)?;
+    Ok(())
+}
+
+/// The household VLAN set on the bridge `bridge-sw` instead of its ports: the
+/// ports without a VLAN of their own are in the bridge's VLAN, so the VXLAN joins
+/// them in that bridge rather than landing alone on the default bridge.
+#[tokio::test]
+async fn test_vlan_on_bridge_applies_to_its_ports() -> Result<(), Box<dyn Error>> {
+    let (device, _) = build_tunnel_topology(|builder, ids| {
+        for interface in builder.interfaces.values_mut() {
+            if interface.device == ids.switch && interface.bridge == Some(ids.switch_bridge) {
+                interface.vlan = None;
+            }
+        }
+        builder.interfaces.get_mut(&ids.switch_bridge).unwrap().vlan = Some(ids.vlan);
+    })
+    .await;
+
+    let setup = L2Setup::new(&device, KeepNameGenerator)?;
+    assert_eq!(setup.tagged_bridges.len(), 1, "no separate default bridge");
+    let entry = &setup.tagged_bridges[0].ports[&1];
+    assert_eq!(count_ethernet(&entry.ports), 2);
+    assert!(entry.ports.iter().any(|p| matches!(p, L2Port::VxLan { .. })));
     Ok(())
 }
 

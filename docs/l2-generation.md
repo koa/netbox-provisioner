@@ -41,8 +41,11 @@ Pro physischem Interface mit externem Port:
   Ebene `(root, Some(vlan))`.
 - Eine **ungetaggte VLAN** (`untagged_vlan()`) erzeugt einen `L2Port::UntaggedEthernet`-Eintrag,
   ebenso auf `(root, Some(vlan))`.
-- Hat das Interface **weder** getaggte noch ungetaggte VLAN, landet es als
-  `L2Port::UntaggedEthernet` auf der "kein VLAN"-Ebene `(root, None)`.
+- Hat das Interface **weder** getaggte noch ungetaggte VLAN, erbt ein Bridge-Mitglied die
+  ungetaggte VLAN seiner Bridge: `L2Port::UntaggedEthernet` auf `(root, Some(vlan der bridge))`.
+  Eine Bridge mit Untagged VLAN ist also eine flache Port-Gruppe in diesem VLAN (z.B. ein
+  Switch-LAN in einem Haushalts-VLAN), und ein VXLAN oder Gateway dieses VLANs erreicht ihre Ports.
+- Sonst landet es als `L2Port::UntaggedEthernet` auf der "kein VLAN"-Ebene `(root, None)`.
 
 Eigene IP-Adressen eines Interfaces (`interface.ips()`) werden als `L2Port::Ip { ip, owner }` auf **derselben
 VLAN-Ebene** eingeordnet, zu der das Interface selbst über seine eigene `untagged_vlan()` gehört —

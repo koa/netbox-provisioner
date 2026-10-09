@@ -162,6 +162,8 @@ eingetragen.
 - Führt eine modellierte Bridge eine VLAN, kommen bridge-lose Ports und VLAN-Interfaces mit
   derselben VLAN in diese Bridge statt in die Standard-Bridge. Ein bridge-loser Trunk-Port darf
   dadurch nicht auf zwei Bridges verteilt werden (`PortInMultipleBridges`).
+- Hat die Bridge ein **Untagged VLAN**, sind alle ihre Ports ohne eigenes VLAN in diesem VLAN. So
+  lässt sich ein ganzes Switch-LAN in ein VLAN legen, ohne jeden Port einzeln zu setzen.
 - **Tags an der Bridge gelten für alle VLANs dieser Bridge.** Die Tags `ospf`/`dhcp`/`dhcp-client`
   werden bei Bridges vom Bridge-Interface gelesen, nicht von den Bridge-Ports. `dhcp` an der Bridge
   aktiviert also einen DHCP-Server auf **jeder** VLAN der Bridge, die eine IP hat. Zusätzlich
@@ -292,7 +294,7 @@ Die Ports landen auf `bridge-caps`, zusammen mit dem VXLAN und dem CAP-Datapath.
 Ziel: Ein Drucker an der LAN-Dose einer Wohnung soll im selben Netz wie das WLAN der Wohnung sein.
 
 1. Die Ports der Wohnung auf dem Switch bekommen **Untagged VLAN** = das VLAN des WLANs (wie jeder
-   Access-Port).
+   Access-Port). Hängen sie an einer Bridge, reicht das VLAN an der Bridge.
 2. Der Switch braucht eine **Primary IPv4**.
 
 Alle anderen Teilnehmer tragen den Switch dann automatisch als Remote-VTEP ein. Der Switch darf

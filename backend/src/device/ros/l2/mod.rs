@@ -325,6 +325,23 @@ impl<G: NameGenerator> L2Setup<G> {
                         .insert(port);
                     vlans.insert(vlan.id, vlan);
                 }
+                // A member port without a VLAN of its own is in its bridge's untagged
+                // VLAN, if the bridge has one: a bridge in NetBox with an untagged VLAN
+                // is a flat port group in that VLAN (e.g. a switch LAN in a household
+                // VLAN), so a tunnel or gateway of that VLAN must reach these ports.
+                let bridge_vlan = interface.bridge().and_then(|bridge| bridge.untagged_vlan());
+                if !vlan_added && let Some(vlan) = bridge_vlan {
+                    vlan_added = true;
+                    planes
+                        .entry((bridge_id, Some(vlan.id)))
+                        .or_default()
+                        .insert(L2Port::UntaggedEthernet {
+                            name: name.to_string().into(),
+                            port,
+                            root: root_device.clone(),
+                        });
+                    vlans.insert(vlan.id, vlan);
+                }
                 if !vlan_added {
                     planes
                         .entry((bridge_id, None))
