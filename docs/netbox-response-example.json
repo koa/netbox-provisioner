@@ -17828,7 +17828,6 @@
         ]
       }
     ],
-    "l2vpn_list": [],
     "wireless_lan_group_list": [
       {
         "id": "1",
@@ -17899,14 +17898,15 @@
       {
         "id": "1",
         "name": "Berg 1654 VLAN",
-        "vlans": [],
-        "custom_fields": {
-          "vxlan_vni": null
-        }
+        "custom_field_data": {},
+        "vlans": []
       },
       {
         "id": "3",
         "name": "Berg-WLAN",
+        "custom_field_data": {
+          "vxlan_vni": 1
+        },
         "vlans": [
           {
             "id": "13",
@@ -17943,18 +17943,13 @@
             "name": "wlan-mgmt",
             "vid": 99
           }
-        ],
-        "custom_fields": {
-          "vxlan_vni": 1
-        }
+        ]
       },
       {
         "id": "2",
         "name": "Teamkoenig LKW",
-        "vlans": [],
-        "custom_fields": {
-          "vxlan_vni": null
-        }
+        "custom_field_data": {},
+        "vlans": []
       }
     ],
     "ip_address_list": [
