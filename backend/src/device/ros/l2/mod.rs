@@ -1,4 +1,4 @@
-use crate::device::ros::{CAPS_BRIDGE_NAME, SetupError, cleanup_name};
+use crate::device::ros::{CAPS_BRIDGE_NAME, SetupError};
 use crate::topology::access::AccessTopology;
 use crate::topology::access::ip_addresses::IpAddressAccess;
 use crate::topology::access::vxlan::VxlanAccess;
@@ -173,7 +173,7 @@ impl NameGenerator for EndpointNameGenerator {
         // NetBox-modeled devices, which are typically left unlabeled) when no label
         // was given.
         if let Some(label) = interface.label() {
-            parts.push(label.to_case(Case::Kebab));
+            parts.push(name_part(label));
         } else {
             enum WalkResult {
                 None,
@@ -197,32 +197,32 @@ impl NameGenerator for EndpointNameGenerator {
                 }),
             );
             if let WalkResult::Single(access) = walk_result {
-                // Exactly one descriptor for the far end, most specific first - not
-                // "device name, plus also whatever else we can find", which used to
-                // produce redundant three-part names like `e02-hegglin-ether1`
-                // instead of the intended `e02-hegglin`.
-                let mut far_descriptor_added = false;
-                if let CablePortAccess::Interface(ifa) = &access {
-                    if let Some(p) = ifa.external_port() {
-                        parts.push(p.short_name().to_string());
-                        far_descriptor_added = true;
-                    }
-                }
-                if !far_descriptor_added {
-                    if let Some(device) = access.device() {
-                        parts.push(device.name().to_case(Case::Kebab));
-                        far_descriptor_added = true;
-                    }
-                }
-                if !far_descriptor_added {
-                    if let Some(p_name) = access.name().map(|s| s.to_case(Case::Kebab)) {
-                        parts.push(p_name);
-                    }
-                }
+                // Exactly one descriptor for the far end: the far device's name
+                // (`e02-hegglin`, as in the reference exports), falling back to the far
+                // port's short name and then its raw name only for an unnamed device -
+                // not several combined, which used to produce redundant names like
+                // `e02-hegglin-ether1`, and not the far port first, which produced
+                // `e14-e01` for every link between two RouterOS devices.
+                let far_descriptor = [
+                    access.device().map(|device| device.name().to_string()),
+                    match &access {
+                        CablePortAccess::Interface(ifa) => {
+                            ifa.external_port().map(|p| p.short_name().to_string())
+                        }
+                        _ => None,
+                    },
+                    access.name().map(str::to_string),
+                ]
+                .into_iter()
+                .flatten()
+                .map(|descriptor| name_part(&descriptor))
+                .find(|descriptor| !descriptor.is_empty());
+                parts.extend(far_descriptor);
             }
         }
+        parts.retain(|part| !part.is_empty());
         if parts.is_empty() {
-            parts.push(interface.name().to_case(Case::Kebab));
+            parts.push(name_part(interface.name()));
         }
         parts.join("-").into()
     }
@@ -231,7 +231,9 @@ impl NameGenerator for EndpointNameGenerator {
     fn generate_vxlan_name<'s>(&mut self, vxlan: &'s VxlanAccess) -> Cow<'s, str> {
         vxlan
             .name()
-            .map(|name| format!("vxlan-{}", cleanup_name(name)).to_case(Case::Kebab).into())
+            .map(name_part)
+            .filter(|name| !name.is_empty())
+            .map(|name| format!("vxlan-{name}").into())
             .unwrap_or_else(|| KeepNameGenerator.generate_vxlan_name(vxlan))
     }
 
@@ -241,7 +243,9 @@ impl NameGenerator for EndpointNameGenerator {
         vlan_id: u16,
     ) -> Cow<'s, str> {
         vlan.and_then(|vlan| vlan.name())
-            .map(|name| format!("vlan-{}-{vlan_id}", name.to_case(Case::Kebab)))
+            .map(name_part)
+            .filter(|name| !name.is_empty())
+            .map(|name| format!("vlan-{name}-{vlan_id}"))
             .unwrap_or_else(|| format!("vlan-{vlan_id}"))
             .into()
     }
@@ -251,7 +255,9 @@ impl NameGenerator for EndpointNameGenerator {
         root_device: Option<&'s InterfaceAccess>,
     ) -> Cow<'s, str> {
         root_device
-            .map(|d| format!("bridge-{}", d.name().to_case(Case::Kebab)).into())
+            .map(|d| name_part(d.name()))
+            .filter(|name| !name.is_empty())
+            .map(|name| format!("bridge-{name}").into())
             .unwrap_or_else(|| "bridge".into())
     }
 }
@@ -707,11 +713,43 @@ pub struct LogicalInterface<'a> {
     pub enable_dhcp_server: bool,
 }
 
+/// Turns free text from NetBox (labels, device and VLAN names) into one part of a
+/// RouterOS interface name: lowercase, German umlauts transliterated (`Büro` ->
+/// `buero`), every run of other characters outside `[a-z0-9]` (spaces, `/`, `.`,
+/// accents...) a single `-`, no leading/trailing `-`. Interface names have to stay
+/// ASCII, and a `/` would even be misread as a menu path in a RouterOS script.
+/// Deliberately no case-based word splitting (`to_case`), which would also split
+/// at digits and turn `1og-sw2` into `1-og-sw-2`.
+fn name_part(raw: &str) -> String {
+    let mut result = String::with_capacity(raw.len());
+    let mut pending_separator = false;
+    let mut buf = [0u8; 4];
+    for c in raw.chars().flat_map(char::to_lowercase) {
+        let piece = match c {
+            'ä' => "ae",
+            'ö' => "oe",
+            'ü' => "ue",
+            'ß' => "ss",
+            c if c.is_ascii_alphanumeric() => c.encode_utf8(&mut buf),
+            _ => {
+                pending_separator = true;
+                continue;
+            }
+        };
+        if pending_separator && !result.is_empty() {
+            result.push('-');
+        }
+        pending_separator = false;
+        result.push_str(piece);
+    }
+    result
+}
+
 fn plane_of_vlan(
     planes: &mut BTreeMap<(Option<InterfaceId>, Option<VlanId>), BTreeSet<L2Port>>,
     vlan: VlanId,
 ) -> &mut BTreeSet<L2Port> {
     planes
         .entry((None, Some(vlan)))
-        .or_insert_with(|| BTreeSet::new())
+        .or_default()
 }

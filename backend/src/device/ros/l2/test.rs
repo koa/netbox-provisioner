@@ -1121,11 +1121,9 @@ async fn test_endpoint_name_generator_uses_own_label() {
     assert_eq!(name.as_ref(), "e01-ap-keller");
 }
 
-/// A cabled infrastructure link (router-to-router/switch, typically left unlabeled
-/// in NetBox since the cable topology already documents it) must keep deriving its
-/// name from the far device, exactly as before the label fix above.
-#[tokio::test]
-async fn test_endpoint_name_generator_falls_back_to_cable_when_unlabeled() {
+/// Name `EndpointNameGenerator` gives an unlabeled `ether2` cabled to `ether1` of a
+/// second device named `far_device`.
+async fn name_towards(far_device: &str) -> String {
     use super::{EndpointNameGenerator, NameGenerator};
     use crate::topology::{Cable, CablePort};
 
@@ -1148,6 +1146,7 @@ async fn test_endpoint_name_generator_falls_back_to_cable_when_unlabeled() {
         Interface {
             name: "ether1".into(),
             device: d2,
+            external: Some(PhysicalPortId::Ethernet(1)),
             ..Default::default()
         },
     );
@@ -1169,7 +1168,7 @@ async fn test_endpoint_name_generator_falls_back_to_cable_when_unlabeled() {
     builder.devices.insert(
         d2,
         Device {
-            name: "Hegglin".into(),
+            name: far_device.into(),
             ..Default::default()
         },
     );
@@ -1182,8 +1181,40 @@ async fn test_endpoint_name_generator_falls_back_to_cable_when_unlabeled() {
         .into_iter()
         .find(|i| i.id() == near_if)
         .unwrap();
-    let name = EndpointNameGenerator.generate_interface_name(&interface);
-    assert_eq!(name.as_ref(), "e02-hegglin");
+    EndpointNameGenerator
+        .generate_interface_name(&interface)
+        .into_owned()
+}
+
+/// A cabled infrastructure link (router-to-router/switch, typically left unlabeled
+/// in NetBox since the cable topology already documents it) is named after the far
+/// device, even though the far end is a physical port itself (used to give
+/// `e02-e01`).
+#[tokio::test]
+async fn test_endpoint_name_generator_falls_back_to_cable_when_unlabeled() {
+    assert_eq!(name_towards("Hegglin").await, "e02-hegglin");
+    assert_eq!(name_towards("Büro / Küche").await, "e02-buero-kueche");
+}
+
+/// An unnamed far device (e.g. a patch panel without a name) falls back to the far
+/// port instead of leaving a dangling `e02-`.
+#[tokio::test]
+async fn test_endpoint_name_generator_unnamed_far_device() {
+    assert_eq!(name_towards("").await, "e02-e01");
+}
+
+#[test]
+fn name_parts_are_ascii_kebab() {
+    for (raw, expected) in [
+        ("AP Keller", "ap-keller"),
+        ("Büro / Küche E.5.1", "buero-kueche-e-5-1"),
+        ("Größe", "groesse"),
+        ("hegglin-LHG60G", "hegglin-lhg60g"),
+        ("1og-sw2", "1og-sw2"),
+        (" / ", ""),
+    ] {
+        assert_eq!(super::name_part(raw), expected, "{raw}");
+    }
 }
 
 /// Transfer links on `combo1`/`sfp1`/QSFP+ breakout lanes are ports like any other:

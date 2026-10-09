@@ -713,6 +713,3 @@ impl WifiDeviceDataTarget {
         Ok(())
     }
 }
-pub(crate) fn cleanup_name(name: &str) -> String {
-    name.replace(['.', '/', '+', ':'], "_")
-}
