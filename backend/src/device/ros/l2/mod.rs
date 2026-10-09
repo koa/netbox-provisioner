@@ -9,7 +9,6 @@ use crate::topology::{
         cable::CablePortAccess, device::DeviceAccess, interface::InterfaceAccess, vlan::VlanAccess,
     },
 };
-use convert_case::{Case, Casing};
 use mikrotik_model::ascii::AsciiString;
 use std::{
     borrow::Cow,
