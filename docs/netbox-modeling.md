@@ -93,6 +93,9 @@ Der Provisioner erkennt ein Interface nur am **Namen** als physischen Port (`Phy
 |-----------------------|---------------------------------------------------|
 | `ether<N>`            | Ethernet-Port N (`/interface ethernet`, `ether<N>`) |
 | `sfp-sfpplus<N>`      | SFP+-Port N                                       |
+| `sfp<N>`              | SFP-Port N (z.B. `RB962…`, `CRS109…`)             |
+| `combo<N>`            | Combo-Port N (z.B. `CCR1009…`)                    |
+| `qsfpplus<N>-<L>`     | Lane L des QSFP+-Ports N (z.B. `CRS354…`)         |
 | `wifi<N>`, `wlan<N>`  | WLAN-Interface (wird derzeit nicht konfiguriert)  |
 | `lo`                  | Loopback                                          |
 | alles andere          | **virtuelles** Interface (Bridge, VLAN-Interface …) |
@@ -102,13 +105,14 @@ Die NetBox-Namen bleiben also immer `ether1`, `ether2` usw. Den sprechenden Name
 [interface-naming.md](interface-naming.md)). Der menschenlesbare Teil gehört deshalb ins Feld
 **Label**, nicht in den Namen.
 
-Achtung:
-- Der Namensabgleich ist nicht verankert: ein virtuelles Interface namens `uplink-ether3` würde
-  als Port `ether3` erkannt. Virtuelle Interfaces deshalb nie mit `ether…`/`sfp-sfpplus…` im Namen
-  benennen.
-- `sfp<N>`, `combo<N>` und `qsfpplus…` werden **nicht** erkannt, obwohl einige unterstützte Boards
-  solche Ports haben (`RB962…`/`CRS109…` haben `sfp1`, `CCR1009…` hat `combo1`, `CRS354…` hat
-  QSFP+). Solche Ports lassen sich aus NetBox heraus derzeit nicht konfigurieren.
+Der Name muss **exakt** passen: `uplink-ether3` oder `ether3-alt` sind virtuelle Interfaces, kein
+Port.
+
+QSFP+-Ports heißen in RouterOS immer pro Lane, auch ohne Breakout-Kabel: `qsfpplus1-1` ist dann
+der ganze 40G-Port. Bei einem Breakout-Kabel (ein QSFP+-Port auf vier SFP+-Gegenstellen) pro
+genutzter Lane ein Interface `qsfpplus1-1`, `qsfpplus1-2`… anlegen, mit eigenem Kabel und eigener
+IP. Ein NetBox-Interface `qsfpplus1` ohne Lane ist kein Port und wird ignoriert; es kann entfernt
+werden.
 
 ### Felder pro Interface
 

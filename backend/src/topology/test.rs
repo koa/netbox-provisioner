@@ -255,3 +255,59 @@ impl From<TopologyBuilder> for TopologyHolder {
         }
     }
 }
+
+#[cfg(test)]
+mod physical_port_names {
+    use crate::{device::ros::hw_facts::build_ethernet_ports, topology::PhysicalPortId};
+    use std::str::FromStr;
+
+    /// Every ethernet port of every supported board must be recognized from its
+    /// RouterOS default name and map back to exactly that name - otherwise a NetBox
+    /// interface named like the port silently isn't treated as a port at all and its
+    /// addresses end up on an empty bridge.
+    #[test]
+    fn every_board_port_round_trips() {
+        for model in [
+            b"RB962UiGS-5HacT2HnT".as_slice(),
+            b"RB750Gr3",
+            b"CRS326-24G-2S+",
+            b"CRS318-16P-2S+",
+            b"C52iG-5HaxD2HaxD",
+            b"cAPGi-5HaxD2HaxD",
+            b"CCR1009-7G-1C-1S+",
+            b"CRS354-48G-4S+2Q+",
+            b"CRS109-8G-1S-2HnD",
+        ] {
+            for port in build_ethernet_ports(model) {
+                let name = port.default_name.to_string();
+                let id = PhysicalPortId::from_str(&name)
+                    .unwrap_or_else(|_| panic!("{name} of {model:?} not recognized"));
+                assert_eq!(id.default_name().map(|n| n.to_string()), Some(name.clone()));
+                assert!(id.is_ethernet(), "{name}");
+            }
+        }
+    }
+
+    #[test]
+    fn port_names_and_short_names() {
+        for (name, id, short) in [
+            ("ether7", PhysicalPortId::Ethernet(7), "e07"),
+            ("sfp-sfpplus2", PhysicalPortId::SfpSfpPlus(2), "s02"),
+            ("sfp1", PhysicalPortId::Sfp(1), "s01"),
+            ("combo1", PhysicalPortId::Combo(1), "c01"),
+            ("qsfpplus1-2", PhysicalPortId::QsfpPlus(1, 2), "q01-2"),
+        ] {
+            assert_eq!(PhysicalPortId::from_str(name), Ok(id), "{name}");
+            assert_eq!(id.short_name().to_string(), short);
+        }
+    }
+
+    /// Names that merely contain a port name are virtual interfaces in NetBox (a
+    /// VLAN interface, the 40G parent of a QSFP+ breakout), not that port.
+    #[test]
+    fn only_exact_port_names_are_ports() {
+        for name in ["qsfpplus1", "vlan5-ether1", "ether1-uplink", "xsfp1", "bridge"] {
+            assert_eq!(PhysicalPortId::from_str(name), Err(()), "{name}");
+        }
+    }
+}

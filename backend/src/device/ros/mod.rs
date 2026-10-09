@@ -33,7 +33,7 @@ use std::{
 };
 
 pub mod graphql;
-mod hw_facts;
+pub(crate) mod hw_facts;
 
 pub mod l2;
 #[cfg(test)]

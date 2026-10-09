@@ -25,7 +25,7 @@ Baut den Namen aus bis zu zwei Teilen, durch `-` verbunden:
 
 1. **Port-Kurzname** (`InterfaceAccess::external_port().short_name()`), z.B. `e03` für den dritten
    Ethernet-Port (`EthernetNamePattern::short_name`: `e{idx:02}` für Ether, `s{idx:02}` für
-   SFP/SFP+, `c{idx:02}` für Combo, `q{idx:02}-{n}` für QSFP+-Breakout). Fehlt, wenn das Interface
+   SFP/SFP+, `c{idx:02}` für Combo, `q{port:02}-{lane}` für QSFP+-Lanes). Fehlt, wenn das Interface
    kein physischer Port ist (z.B. eine reine VLAN-Schnittstelle ohne eigenen Port).
 2. **Kontext-Teil**, mit klarer Priorität:
    - Ist auf dem NetBox-Interface ein **Label** gesetzt (z.B. "AP Keller", "Bachmann Dachboden"),

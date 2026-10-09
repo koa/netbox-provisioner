@@ -242,10 +242,19 @@ pub enum PortType {
     Bridge,
 }
 
+/// A physical port, identified by its RouterOS default name (the NetBox interface
+/// name must match it exactly, see `docs/netbox-modeling.md`). The numbering and
+/// short names mirror `mikrotik_model::hwconfig::EthernetNamePattern`, which builds
+/// the per-board port list these are looked up in.
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub enum PhysicalPortId {
     Ethernet(u16),
     SfpSfpPlus(u16),
+    Sfp(u16),
+    Combo(u16),
+    /// `qsfpplus{port}-{lane}`: RouterOS always names QSFP+ ports per lane, even
+    /// without a breakout cable (`qsfpplus1-1` is then the whole 40G port).
+    QsfpPlus(u16, u16),
     Wifi(u16),
     Wlan(u16),
     Loopback,
@@ -270,46 +279,44 @@ pub struct Cable {
     pub port_b: Box<[CablePort]>,
 }
 lazy_static! {
-    static ref ETHER_PORT_PATTERN: Regex = Regex::new("ether([0-9]+)").unwrap();
-    static ref SFP_PLUS_PORT_PATTERN: Regex = Regex::new("sfp-sfpplus([0-9]+)").unwrap();
-    static ref WIFI_PORT_PATTERN: Regex = Regex::new("wifi([0-9]+)").unwrap();
-    static ref WLAN_PORT_PATTERN: Regex = Regex::new("wlan([0-9]+)").unwrap();
+    static ref ETHER_PORT_PATTERN: Regex = Regex::new("^ether([0-9]+)$").unwrap();
+    static ref SFP_PLUS_PORT_PATTERN: Regex = Regex::new("^sfp-sfpplus([0-9]+)$").unwrap();
+    static ref SFP_PORT_PATTERN: Regex = Regex::new("^sfp([0-9]+)$").unwrap();
+    static ref COMBO_PORT_PATTERN: Regex = Regex::new("^combo([0-9]+)$").unwrap();
+    static ref QSFP_PLUS_PORT_PATTERN: Regex = Regex::new("^qsfpplus([0-9]+)-([0-9]+)$").unwrap();
+    static ref WIFI_PORT_PATTERN: Regex = Regex::new("^wifi([0-9]+)$").unwrap();
+    static ref WLAN_PORT_PATTERN: Regex = Regex::new("^wlan([0-9]+)$").unwrap();
 }
 impl PhysicalPortId {
     pub fn short_name(&self) -> AsciiString {
         AsciiString::from(match self {
-            PhysicalPortId::Ethernet(id) => {
-                format!("e{id:02}")
-            }
-            PhysicalPortId::SfpSfpPlus(id) => {
-                format!("s{id:02}")
-            }
-            PhysicalPortId::Wifi(id) => {
-                format!("w{id:02}")
-            }
-            PhysicalPortId::Wlan(id) => {
-                format!("w{id:02}")
-            }
+            PhysicalPortId::Ethernet(id) => format!("e{id:02}"),
+            PhysicalPortId::SfpSfpPlus(id) | PhysicalPortId::Sfp(id) => format!("s{id:02}"),
+            PhysicalPortId::Combo(id) => format!("c{id:02}"),
+            PhysicalPortId::QsfpPlus(port, lane) => format!("q{port:02}-{lane}"),
+            PhysicalPortId::Wifi(id) | PhysicalPortId::Wlan(id) => format!("w{id:02}"),
             PhysicalPortId::Loopback => "lo".to_string(),
         })
     }
     pub fn default_name(&self) -> Option<AsciiString> {
         match self {
-            PhysicalPortId::Ethernet(id) => Some(format!("ether{id}")),
-            PhysicalPortId::SfpSfpPlus(id) => Some(format!("sfp-sfpplus{id}")),
-            PhysicalPortId::Wifi(_) => None,
-            PhysicalPortId::Wlan(_) => None,
-            PhysicalPortId::Loopback => None,
+            PhysicalPortId::Ethernet(_)
+            | PhysicalPortId::SfpSfpPlus(_)
+            | PhysicalPortId::Sfp(_)
+            | PhysicalPortId::Combo(_)
+            | PhysicalPortId::QsfpPlus(_, _) => Some(self.to_string()),
+            PhysicalPortId::Wifi(_) | PhysicalPortId::Wlan(_) | PhysicalPortId::Loopback => None,
         }
         .map(AsciiString::from)
     }
     pub fn is_ethernet(&self) -> bool {
         match self {
-            PhysicalPortId::Ethernet(_) => true,
-            PhysicalPortId::SfpSfpPlus(_) => true,
-            PhysicalPortId::Wifi(_) => false,
-            PhysicalPortId::Wlan(_) => false,
-            PhysicalPortId::Loopback => false,
+            PhysicalPortId::Ethernet(_)
+            | PhysicalPortId::SfpSfpPlus(_)
+            | PhysicalPortId::Sfp(_)
+            | PhysicalPortId::Combo(_)
+            | PhysicalPortId::QsfpPlus(_, _) => true,
+            PhysicalPortId::Wifi(_) | PhysicalPortId::Wlan(_) | PhysicalPortId::Loopback => false,
         }
     }
 }
@@ -317,28 +324,30 @@ impl FromStr for PhysicalPortId {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let number = |pattern: &Regex, group: usize| {
+            pattern
+                .captures(s)
+                .and_then(|c| c.get(group).and_then(|c| u16::from_str(c.as_str()).ok()))
+        };
         if s == "lo" {
             Ok(PhysicalPortId::Loopback)
-        } else if let Some(c) = ETHER_PORT_PATTERN
-            .captures(s)
-            .and_then(|c| c.get(1).and_then(|c| u16::from_str(c.as_str()).ok()))
-        {
-            Ok(PhysicalPortId::Ethernet(c))
-        } else if let Some(c) = SFP_PLUS_PORT_PATTERN
-            .captures(s)
-            .and_then(|c| c.get(1).and_then(|c| u16::from_str(c.as_str()).ok()))
-        {
-            Ok(PhysicalPortId::SfpSfpPlus(c))
-        } else if let Some(c) = WIFI_PORT_PATTERN
-            .captures(s)
-            .and_then(|c| c.get(1).and_then(|c| u16::from_str(c.as_str()).ok()))
-        {
-            Ok(PhysicalPortId::Wifi(c))
-        } else if let Some(c) = WLAN_PORT_PATTERN
-            .captures(s)
-            .and_then(|c| c.get(1).and_then(|c| u16::from_str(c.as_str()).ok()))
-        {
-            Ok(PhysicalPortId::Wlan(c))
+        } else if let Some(id) = number(&ETHER_PORT_PATTERN, 1) {
+            Ok(PhysicalPortId::Ethernet(id))
+        } else if let Some(id) = number(&SFP_PLUS_PORT_PATTERN, 1) {
+            Ok(PhysicalPortId::SfpSfpPlus(id))
+        } else if let Some(id) = number(&SFP_PORT_PATTERN, 1) {
+            Ok(PhysicalPortId::Sfp(id))
+        } else if let Some(id) = number(&COMBO_PORT_PATTERN, 1) {
+            Ok(PhysicalPortId::Combo(id))
+        } else if let (Some(port), Some(lane)) = (
+            number(&QSFP_PLUS_PORT_PATTERN, 1),
+            number(&QSFP_PLUS_PORT_PATTERN, 2),
+        ) {
+            Ok(PhysicalPortId::QsfpPlus(port, lane))
+        } else if let Some(id) = number(&WIFI_PORT_PATTERN, 1) {
+            Ok(PhysicalPortId::Wifi(id))
+        } else if let Some(id) = number(&WLAN_PORT_PATTERN, 1) {
+            Ok(PhysicalPortId::Wlan(id))
         } else {
             Err(())
         }
@@ -348,18 +357,13 @@ impl FromStr for PhysicalPortId {
 impl Display for PhysicalPortId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            PhysicalPortId::Ethernet(id) => {
-                write!(f, "ether{}", id)
-            }
-            PhysicalPortId::SfpSfpPlus(id) => {
-                write!(f, "sfp-sfpplus{}", id)
-            }
-            PhysicalPortId::Wifi(id) => {
-                write!(f, "wifi{}", id)
-            }
-            PhysicalPortId::Wlan(id) => {
-                write!(f, "wlan{}", id)
-            }
+            PhysicalPortId::Ethernet(id) => write!(f, "ether{id}"),
+            PhysicalPortId::SfpSfpPlus(id) => write!(f, "sfp-sfpplus{id}"),
+            PhysicalPortId::Sfp(id) => write!(f, "sfp{id}"),
+            PhysicalPortId::Combo(id) => write!(f, "combo{id}"),
+            PhysicalPortId::QsfpPlus(port, lane) => write!(f, "qsfpplus{port}-{lane}"),
+            PhysicalPortId::Wifi(id) => write!(f, "wifi{id}"),
+            PhysicalPortId::Wlan(id) => write!(f, "wlan{id}"),
             PhysicalPortId::Loopback => f.write_str("lo"),
         }
     }

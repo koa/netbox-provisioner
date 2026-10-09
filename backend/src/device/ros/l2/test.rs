@@ -1185,3 +1185,65 @@ async fn test_endpoint_name_generator_falls_back_to_cable_when_unlabeled() {
     let name = EndpointNameGenerator.generate_interface_name(&interface);
     assert_eq!(name.as_ref(), "e02-hegglin");
 }
+
+/// Transfer links on `combo1`/`sfp1`/QSFP+ breakout lanes are ports like any other:
+/// the address stays on the (renamed) port. These names used to be unrecognized,
+/// which moved the address onto an empty `bridge-combo1` and cut the link.
+#[tokio::test]
+async fn test_non_ether_ports_keep_their_address() -> Result<(), Box<dyn Error>> {
+    for (model, port_name, port, address, expected_name) in [
+        (b"CCR1009-7G-1C-1S+".as_slice(), "combo1", PhysicalPortId::Combo(1), [172, 17, 1, 13], "c01-keller"),
+        (b"RB962UiGS-5HacT2HnT", "sfp1", PhysicalPortId::Sfp(1), [10, 200, 1, 6], "s01-keller"),
+        (b"CRS354-48G-4S+2Q+", "qsfpplus1-2", PhysicalPortId::QsfpPlus(1, 2), [172, 17, 1, 34], "q01-2-keller"),
+    ] {
+        let mut builder = TopologyBuilder::default();
+        let d1 = builder.devices.next_id();
+        let ip_id = builder.ip_addresses.next_id();
+        let ip = IpNet::new(IpAddr::V4(Ipv4Addr::from(address)), 30).unwrap();
+        builder.ip_addresses.insert(
+            ip_id,
+            IpAddressData {
+                ip,
+                interface: None,
+                prefix: None,
+            },
+        );
+        let if_id = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            if_id,
+            Interface {
+                name: port_name.into(),
+                label: "Keller".into(),
+                device: d1,
+                external: port_name.parse().ok(),
+                ips: Box::new([ip_id]),
+                use_ospf: true,
+                ..Default::default()
+            },
+        );
+        builder.devices.insert(
+            d1,
+            Device {
+                name: "router".into(),
+                ..Default::default()
+            },
+        );
+        let device = Into::<TopologyHolder>::into(builder)
+            .devices_by_id(d1)
+            .await
+            .expect("device not found");
+        assert_eq!(device.interfaces()[0].external_port(), Some(port));
+
+        let (mut target_data, _) = setup_testdata(model)?;
+        target_data.generate_from(&device, EndpointNameGenerator)?;
+        let expected_name = AsciiString::from(expected_name);
+        assert!(target_data.bridge.is_empty(), "{port_name}: no bridge");
+        assert_eq!(
+            target_data.ethernet[&AsciiString::from(port_name)].name,
+            expected_name
+        );
+        let IpNet::V4(v4) = ip else { unreachable!() };
+        assert_eq!(target_data.ipv_4_address[&v4].0.interface, expected_name);
+    }
+    Ok(())
+}
