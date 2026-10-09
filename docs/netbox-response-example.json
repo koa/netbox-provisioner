@@ -443,14 +443,7 @@
             "id": "632",
             "name": "switch-lan",
             "label": "",
-            "ip_addresses": [
-              {
-                "id": "190"
-              },
-              {
-                "id": "191"
-              }
-            ],
+            "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
             "bridge": null,
@@ -949,19 +942,14 @@
             "id": "415",
             "name": "switch-clients",
             "label": "",
-            "ip_addresses": [
-              {
-                "id": "152"
-              },
-              {
-                "id": "192"
-              }
-            ],
+            "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
             "bridge": null,
             "tags": [],
-            "untagged_vlan": null,
+            "untagged_vlan": {
+              "id": "13"
+            },
             "tagged_vlans": [],
             "poe_mode": null
           },
@@ -1566,22 +1554,11 @@
             "id": "356",
             "name": "ether2",
             "label": "tv",
-            "ip_addresses": [
-              {
-                "id": "377"
-              },
-              {
-                "id": "376"
-              }
-            ],
+            "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
             "bridge": null,
-            "tags": [
-              {
-                "slug": "dhcp"
-              }
-            ],
+            "tags": [],
             "untagged_vlan": {
               "id": "16"
             },
@@ -6319,19 +6296,6 @@
             "poe_mode": null
           },
           {
-            "id": "187",
-            "name": "qsfpplus1",
-            "label": "",
-            "ip_addresses": [],
-            "enabled": true,
-            "type": "40gbase-x-qsfpp",
-            "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
-            "tagged_vlans": [],
-            "poe_mode": null
-          },
-          {
             "id": "711",
             "name": "qsfpplus1-1",
             "label": "",
@@ -6369,19 +6333,6 @@
                 "slug": "ospf"
               }
             ],
-            "untagged_vlan": null,
-            "tagged_vlans": [],
-            "poe_mode": null
-          },
-          {
-            "id": "188",
-            "name": "qsfpplus2",
-            "label": "",
-            "ip_addresses": [],
-            "enabled": true,
-            "type": "40gbase-x-qsfpp",
-            "bridge": null,
-            "tags": [],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null
@@ -6840,11 +6791,7 @@
             "enabled": true,
             "type": "1000base-t",
             "bridge": null,
-            "tags": [
-              {
-                "slug": "ospf"
-              }
-            ],
+            "tags": [],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null
@@ -11674,10 +11621,16 @@
               }
             ],
             "enabled": true,
-            "type": "bridge",
+            "type": "virtual",
             "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
+            "tags": [
+              {
+                "slug": "dhcp"
+              }
+            ],
+            "untagged_vlan": {
+              "id": "12"
+            },
             "tagged_vlans": [],
             "poe_mode": null
           },
@@ -11694,10 +11647,16 @@
               }
             ],
             "enabled": true,
-            "type": "bridge",
+            "type": "virtual",
             "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
+            "tags": [
+              {
+                "slug": "dhcp"
+              }
+            ],
+            "untagged_vlan": {
+              "id": "18"
+            },
             "tagged_vlans": [],
             "poe_mode": null
           },
@@ -11714,10 +11673,16 @@
               }
             ],
             "enabled": true,
-            "type": "bridge",
+            "type": "virtual",
             "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
+            "tags": [
+              {
+                "slug": "dhcp"
+              }
+            ],
+            "untagged_vlan": {
+              "id": "15"
+            },
             "tagged_vlans": [],
             "poe_mode": null
           },
@@ -11734,10 +11699,42 @@
               }
             ],
             "enabled": true,
-            "type": "bridge",
+            "type": "virtual",
             "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
+            "tags": [
+              {
+                "slug": "dhcp"
+              }
+            ],
+            "untagged_vlan": {
+              "id": "13"
+            },
+            "tagged_vlans": [],
+            "poe_mode": null
+          },
+          {
+            "id": "371",
+            "name": "berg-wlan-mimi",
+            "label": "",
+            "ip_addresses": [
+              {
+                "id": "75"
+              },
+              {
+                "id": "374"
+              }
+            ],
+            "enabled": true,
+            "type": "virtual",
+            "bridge": null,
+            "tags": [
+              {
+                "slug": "dhcp"
+              }
+            ],
+            "untagged_vlan": {
+              "id": "16"
+            },
             "tagged_vlans": [],
             "poe_mode": null
           },
@@ -11754,25 +11751,16 @@
               }
             ],
             "enabled": true,
-            "type": "bridge",
+            "type": "virtual",
             "bridge": null,
-            "tags": [],
+            "tags": [
+              {
+                "slug": "dhcp"
+              }
+            ],
             "untagged_vlan": {
               "id": "14"
             },
-            "tagged_vlans": [],
-            "poe_mode": null
-          },
-          {
-            "id": "485",
-            "name": "bridge-caps",
-            "label": "",
-            "ip_addresses": [],
-            "enabled": true,
-            "type": "bridge",
-            "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null
           },
@@ -11894,16 +11882,12 @@
           {
             "id": "8",
             "name": "ether7",
-            "label": "e07-hegglin",
+            "label": "e07",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
             "bridge": null,
-            "tags": [
-              {
-                "slug": "ospf"
-              }
-            ],
+            "tags": [],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null
@@ -11957,88 +11941,6 @@
                 "slug": "ospf"
               }
             ],
-            "untagged_vlan": null,
-            "tagged_vlans": [],
-            "poe_mode": null
-          },
-          {
-            "id": "11",
-            "name": "vlan1-lan",
-            "label": "",
-            "ip_addresses": [
-              {
-                "id": "2"
-              }
-            ],
-            "enabled": true,
-            "type": "virtual",
-            "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
-            "tagged_vlans": [],
-            "poe_mode": null
-          },
-          {
-            "id": "79",
-            "name": "vlan5",
-            "label": "",
-            "ip_addresses": [
-              {
-                "id": "6"
-              }
-            ],
-            "enabled": true,
-            "type": "virtual",
-            "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
-            "tagged_vlans": [],
-            "poe_mode": null
-          },
-          {
-            "id": "399",
-            "name": "vlan6-dsk-koa",
-            "label": "",
-            "ip_addresses": [],
-            "enabled": true,
-            "type": "virtual",
-            "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
-            "tagged_vlans": [],
-            "poe_mode": null
-          },
-          {
-            "id": "484",
-            "name": "vxlan1",
-            "label": "",
-            "ip_addresses": [],
-            "enabled": true,
-            "type": "virtual",
-            "bridge": {
-              "id": "485"
-            },
-            "tags": [],
-            "untagged_vlan": null,
-            "tagged_vlans": [],
-            "poe_mode": null
-          },
-          {
-            "id": "371",
-            "name": "wlan-mimi",
-            "label": "",
-            "ip_addresses": [
-              {
-                "id": "75"
-              },
-              {
-                "id": "374"
-              }
-            ],
-            "enabled": true,
-            "type": "bridge",
-            "bridge": null,
-            "tags": [],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null
@@ -14365,9 +14267,6 @@
             "name": "sfp-sfpplus1",
             "label": "",
             "ip_addresses": [
-              {
-                "id": "21"
-              },
               {
                 "id": "112"
               }
@@ -17929,64 +17828,7 @@
         ]
       }
     ],
-    "l2vpn_list": [
-      {
-        "id": "1",
-        "name": "Client Berg",
-        "type": "vxlan",
-        "identifier": 1,
-        "terminations": [
-          {
-            "assigned_object": {
-              "__typename": "InterfaceType",
-              "id": "484"
-            }
-          },
-          {
-            "assigned_object": {
-              "__typename": "VLANType",
-              "id": "13"
-            }
-          },
-          {
-            "assigned_object": {
-              "__typename": "VLANType",
-              "id": "14"
-            }
-          },
-          {
-            "assigned_object": {
-              "__typename": "VLANType",
-              "id": "15"
-            }
-          },
-          {
-            "assigned_object": {
-              "__typename": "VLANType",
-              "id": "16"
-            }
-          },
-          {
-            "assigned_object": {
-              "__typename": "VLANType",
-              "id": "12"
-            }
-          },
-          {
-            "assigned_object": {
-              "__typename": "VLANType",
-              "id": "18"
-            }
-          },
-          {
-            "assigned_object": {
-              "__typename": "VLANType",
-              "id": "17"
-            }
-          }
-        ]
-      }
-    ],
+    "l2vpn_list": [],
     "wireless_lan_group_list": [
       {
         "id": "1",
@@ -18057,7 +17899,10 @@
       {
         "id": "1",
         "name": "Berg 1654 VLAN",
-        "vlans": []
+        "vlans": [],
+        "custom_fields": {
+          "vxlan_vni": null
+        }
       },
       {
         "id": "3",
@@ -18075,7 +17920,7 @@
           },
           {
             "id": "15",
-            "name": "wlan-kiefner",
+            "name": "wlan-gerhard",
             "vid": 3
           },
           {
@@ -18098,19 +17943,21 @@
             "name": "wlan-mgmt",
             "vid": 99
           }
-        ]
+        ],
+        "custom_fields": {
+          "vxlan_vni": 1
+        }
       },
       {
         "id": "2",
         "name": "Teamkoenig LKW",
-        "vlans": []
+        "vlans": [],
+        "custom_fields": {
+          "vxlan_vni": null
+        }
       }
     ],
     "ip_address_list": [
-      {
-        "id": "2",
-        "address": "10.14.10.1/16"
-      },
       {
         "id": "229",
         "address": "10.172.12.1/24"
@@ -18130,14 +17977,6 @@
       {
         "id": "75",
         "address": "10.192.3.1/24"
-      },
-      {
-        "id": "152",
-        "address": "10.192.4.1/24"
-      },
-      {
-        "id": "190",
-        "address": "10.192.5.1/24"
       },
       {
         "id": "145",
@@ -18170,14 +18009,6 @@
       {
         "id": "189",
         "address": "10.192.64.1/24"
-      },
-      {
-        "id": "6",
-        "address": "10.192.65.1/24"
-      },
-      {
-        "id": "21",
-        "address": "10.192.65.16/24"
       },
       {
         "id": "131",
@@ -18214,10 +18045,6 @@
       {
         "id": "28",
         "address": "10.195.252.1/22"
-      },
-      {
-        "id": "377",
-        "address": "10.197.1.1/24"
       },
       {
         "id": "63",
@@ -18712,20 +18539,12 @@
         "address": "2a02:16a:fe00:107::1/64"
       },
       {
-        "id": "191",
-        "address": "2a02:16a:fe00:110::1/64"
-      },
-      {
         "id": "364",
         "address": "2a02:16a:fe00:111::1/64"
       },
       {
         "id": "153",
         "address": "2a02:16a:fe00:112::1/64"
-      },
-      {
-        "id": "192",
-        "address": "2a02:16a:fe00:113::1/64"
       },
       {
         "id": "370",
@@ -18774,10 +18593,6 @@
       {
         "id": "35",
         "address": "2a02:16a:fe00:700:6e3b:6bff:fe77:e80/64"
-      },
-      {
-        "id": "376",
-        "address": "2a02:16a:fe00:800:6e3b:6bff:fe19:acc9/64"
       },
       {
         "id": "379",
