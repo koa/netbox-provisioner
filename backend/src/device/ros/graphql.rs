@@ -5,8 +5,9 @@ use crate::{
     device::{
         AccessibleDevice, GraphqlSystemRouterboard, PingResult,
         ros::{
-            BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, WirelessDeviceDataCurrent,
-            WirelessDeviceDataTarget,
+            BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent,
+            W60GDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
+            hw_facts::build_w60g_ports,
         },
     },
     topology::access::device::DeviceAccess,
@@ -51,6 +52,8 @@ pub struct DeviceCfg {
     wireless_target: Option<WirelessDeviceDataTarget>,
     wifi_current: Option<WifiDeviceDataCurrent>,
     wifi_target: Option<WifiDeviceDataTarget>,
+    w60g_current: Option<W60GDeviceDataCurrent>,
+    w60g_target: Option<W60GDeviceDataTarget>,
 }
 
 impl DeviceCfg {
@@ -66,7 +69,10 @@ impl DeviceCfg {
         self.base_target.setup_ip_addresses(&l2)?;
         self.base_target.setup_ospf(device, &l2);
         if let Some(wireless_target) = self.wireless_target.as_mut() {
-            wireless_target.generate_from(device, &l2);
+            wireless_target.generate_from(device, &l2)?;
+        }
+        if let Some(w60g_target) = self.w60g_target.as_mut() {
+            w60g_target.generate_from(device, &l2)?;
         }
         if let Some(wifi_target) = self.wifi_target.as_mut() {
             wifi_target.generate_from(device, &l2)?;
@@ -89,6 +95,14 @@ impl DeviceCfg {
         {
             let wireless_mutations = wifi_target.generate_mutations(wifi_current)?;
             mutations.into_iter().chain(wireless_mutations).collect()
+        } else {
+            mutations
+        };
+        let mutations = if let (Some(w60g_target), Some(w60g_current)) =
+            (&self.w60g_target, &self.w60g_current)
+        {
+            let w60g_mutations = w60g_target.generate_mutations(w60g_current)?;
+            mutations.into_iter().chain(w60g_mutations).collect()
         } else {
             mutations
         };
@@ -158,6 +172,16 @@ impl DeviceCfg {
         } else {
             (None, None)
         };
+        // The board, not a package, decides: the 60 GHz radios have their own menu
+        // that only exists on 60 GHz hardware.
+        let (w60g_current, w60g_target) = if build_w60g_ports(model).is_empty() {
+            (None, None)
+        } else {
+            (
+                Some(W60GDeviceDataCurrent::fetch(client).await?),
+                Some(W60GDeviceDataTarget::detect_device(client).await?),
+            )
+        };
         Ok(DeviceCfg {
             base_current: current,
             base_target: target,
@@ -165,6 +189,8 @@ impl DeviceCfg {
             wireless_target,
             wifi_current,
             wifi_target,
+            w60g_current,
+            w60g_target,
         })
     }
 }

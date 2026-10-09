@@ -33,6 +33,14 @@ query FetchTopology{
                 id
             }
             poe_mode
+            rf_role
+            rf_channel_frequency
+            rf_channel_width
+            wireless_link {
+                ssid
+                auth_type
+                auth_psk
+            }
         }
         frontports{
             id

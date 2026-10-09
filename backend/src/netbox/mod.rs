@@ -25,6 +25,26 @@ pub struct JSON {
     pub vxlan_vni: Option<u32>,
 }
 
+/// NetBox's `Decimal` scalar (e.g. an interface's RF channel frequency in MHz),
+/// sent as a string, but also accepted as a plain number.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Decimal(pub f64);
+
+impl<'de> Deserialize<'de> for Decimal {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Number(f64),
+            Text(String),
+        }
+        match Raw::deserialize(deserializer)? {
+            Raw::Number(value) => Ok(Decimal(value)),
+            Raw::Text(text) => text.parse().map(Decimal).map_err(serde::de::Error::custom),
+        }
+    }
+}
+
 #[derive(Debug, SimpleObject)]
 #[graphql(complex)]
 pub struct Device {

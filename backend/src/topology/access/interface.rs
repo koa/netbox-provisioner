@@ -1,5 +1,5 @@
 use crate::topology::{
-    Interface, InterfaceId, PhysicalPortId, PortType, Topology,
+    Interface, InterfaceId, PhysicalPortId, PortType, Radio, Topology,
     access::{
         AccessTopology,
         cable::{CableAccess, CablePortAccess},
@@ -85,6 +85,10 @@ impl InterfaceAccess {
     }
     pub fn external_port(&self) -> Option<PhysicalPortId> {
         self.data().and_then(|d| d.external)
+    }
+    /// RF role, channel and wireless link of a radio port, if NetBox has an RF role.
+    pub fn radio(&self) -> Option<&Radio> {
+        self.data().and_then(|d| d.radio.as_ref())
     }
     pub fn is_ethernet_port(&self) -> bool {
         self.external_port()

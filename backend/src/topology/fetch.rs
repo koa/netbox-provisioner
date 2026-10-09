@@ -12,7 +12,7 @@ use crate::{
         InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
         PhysicalPortId, PortType, RearPort, RearPortId, Topology, VlanData, VlanGroupData,
         VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId,
-        WlanId, WlanOpenSettings, WlanWpaSettings,
+        WlanId, WlanOpenSettings, WlanWpaSettings, Radio, RadioLink, RadioRole,
     },
 };
 use ipnet::IpNet;
@@ -416,6 +416,27 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                         .and_then(|b| b.id.parse().ok())
                         .map(InterfaceId);
                     let enable_poe = interface.poe_mode.map(|v| v == "pse").unwrap_or(false);
+                    let radio = interface
+                        .rf_role
+                        .as_deref()
+                        .and_then(|role| match role {
+                            "ap" => Some(RadioRole::Ap),
+                            "station" => Some(RadioRole::Station),
+                            _ => None,
+                        })
+                        .map(|role| Radio {
+                            role,
+                            frequency: interface.rf_channel_frequency.map(|f| f.0.round() as u32),
+                            channel_width: interface
+                                .rf_channel_width
+                                .map(|w| w.0.round() as u32),
+                            link: interface.wireless_link.map(|link| RadioLink {
+                                ssid: link.ssid.into_boxed_str(),
+                                psk: Some(link.auth_psk)
+                                    .filter(|psk| !psk.is_empty())
+                                    .map(String::into_boxed_str),
+                            }),
+                        });
                     interfaces.insert(
                         id,
                         Interface {
@@ -433,6 +454,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             bridge,
                             cable: None,
                             enable_poe,
+                            radio,
                         },
                     );
                     if let Some(vlan_id) = vlan {

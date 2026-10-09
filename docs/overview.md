@@ -29,6 +29,8 @@ steht in [netbox-modeling.md](netbox-modeling.md).
      und müssen daher selbst nicht wissen, ob eine logische Schnittstelle ein Einzelport, eine
      flache Bridge oder ein VLAN auf einer getaggten Bridge ist. Siehe
      [ospf-generation.md](ospf-generation.md).
+   - Funk-Ports von Funkbrücken (`WirelessDeviceDataTarget`/`W60GDeviceDataTarget`), siehe
+     [radio-bridge-generation.md](radio-bridge-generation.md).
    - `setup_l2` — realisiert den bereits berechneten `L2Setup` als tatsächliche
      Bridge-/Bridge-Port-/Bridge-VLAN-/Interface-VLAN-Einträge und benennt dabei jeden physischen
      Ethernet-Port auf seinen generierten Namen um. Legt außerdem die geplanten VXLAN-Interfaces

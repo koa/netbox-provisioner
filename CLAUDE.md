@@ -28,7 +28,8 @@ design, apply/diff/review pipeline, etc.) are tracked outside this repo in the p
 the `examples/` directory here for reference RouterOS configurations the generator must remain
 capable of producing the functionality of (not byte-for-byte). `docs/` describes how the
 NetBox-to-RouterOS config generation itself works (interface naming, L2/bridge/VLAN generation,
-OSPF, VXLAN, WLAN/CAPsMAN) - read it before changing anything under `device/ros/`.
+OSPF, VXLAN, WLAN/CAPsMAN, point-to-point radio bridges) - read it before changing anything under
+`device/ros/`.
 `docs/netbox-modeling.md` is the user-facing contract for how devices must be modeled in NetBox
 (tags, custom fields, interface names, VLAN groups and their VXLAN VNI); update it whenever `fetch.rs` or
 `fetch_topology.graphql` changes what is read.

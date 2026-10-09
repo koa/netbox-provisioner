@@ -5,20 +5,26 @@
 //! transfer links or bridge-less VLAN interfaces on APs.
 //!
 //! NetBox doesn't tell the generator the board model, so each device gets exactly
-//! the ports it declares in NetBox. That checks the config logic, not whether a
-//! board actually has those ports.
+//! the ports - ethernet and radio - it declares in NetBox. That checks the config
+//! logic, not whether a board actually has those ports.
 //!
 //! The generated scripts land in `target/netbox-example/<device>.rsc` for review.
 
 use crate::{
-    device::ros::{BaseDeviceDataTarget, l2::EndpointNameGenerator, test::empty_current},
+    device::ros::{
+        BaseDeviceDataTarget, W60GDeviceDataCurrent, W60GDeviceDataTarget,
+        WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
+        hw_facts::{w60g_port, wireless_port},
+        l2::{EndpointNameGenerator, L2Setup},
+        test::empty_current,
+    },
     netbox::fetch_topology::ResponseData,
     topology::{PhysicalPortId, access::device::DeviceAccess, fetch::build_topology_from},
 };
 use mikrotik_model::{
     generator::Generator,
     hwconfig::{ADVERTISE_1G, EthernetNamePattern, generate_ethernet},
-    model::ReferenceType,
+    model::{InterfaceW60GByDefaultName, InterfaceWirelessByDefaultName, ReferenceType},
     resource::ResourceMutation,
 };
 use std::{collections::BTreeMap, path::Path, sync::Arc};
@@ -27,20 +33,7 @@ use tokio::time::Instant;
 /// Devices known not to generate yet, with the start of the expected error. Remove
 /// an entry once it's fixed - the test fails on entries that start working, so the
 /// list can't silently go stale.
-const KNOWN_FAILURES: &[(&str, &str)] = &[
-    // radio bridges: the wireless port `wlan1`/`w01` is not created by the
-    // generator, so the bridge port referencing it can't be resolved
-    ("bachmann-hegglin-2", "sort: MissingDependencies"),
-    ("burri-schopf", "sort: MissingDependencies"),
-    ("hegglin-bachmann", "sort: MissingDependencies"),
-    ("hegglin-koenig", "sort: MissingDependencies"),
-    ("hegglin-schopf", "sort: MissingDependencies"),
-    ("koenig-hegglin", "sort: MissingDependencies"),
-    ("schopf-burri", "sort: MissingDependencies"),
-    ("schopf-hegglin", "sort: MissingDependencies"),
-    ("schopf-walter", "sort: MissingDependencies"),
-    ("walter-schopf", "sort: MissingDependencies"),
-];
+const KNOWN_FAILURES: &[(&str, &str)] = &[];
 
 #[tokio::test]
 async fn generate_all_devices_of_netbox_example() {
@@ -106,12 +99,70 @@ async fn generate_all_devices_of_netbox_example() {
 fn generate(device: &DeviceAccess) -> Result<String, String> {
     let mut target = BaseDeviceDataTarget::with_ethernet_ports(declared_ports(device));
     let current = empty_current(&target);
+    let interfaces = device.interfaces();
+    let radio_ports = interfaces.iter().filter_map(|i| i.external_port());
+    let mut wireless = WirelessDeviceDataTarget {
+        wireless_cap: Default::default(),
+        wireless: radio_ports
+            .clone()
+            .filter_map(|port| match port {
+                PhysicalPortId::Wlan(idx) => Some(wireless_port(idx.into())),
+                _ => None,
+            })
+            .map(|port| (port.default_name, port.data))
+            .collect(),
+    };
+    let mut w60g = W60GDeviceDataTarget {
+        radio: radio_ports
+            .filter_map(|port| match port {
+                PhysicalPortId::W60g(idx) => Some(w60g_port(idx.into())),
+                _ => None,
+            })
+            .map(|port| (port.default_name, port.data))
+            .collect(),
+    };
+    // A reset device: the radios under their default names, as the board builds them.
+    let wireless_current = WirelessDeviceDataCurrent {
+        wireless_cap: Default::default(),
+        wireless: wireless
+            .wireless
+            .iter()
+            .map(|(default_name, data)| InterfaceWirelessByDefaultName {
+                default_name: default_name.clone(),
+                data: data.clone(),
+            })
+            .collect(),
+    };
+    let w60g_current = W60GDeviceDataCurrent {
+        radio: w60g
+            .radio
+            .iter()
+            .map(|(default_name, data)| InterfaceW60GByDefaultName {
+                default_name: default_name.clone(),
+                data: data.clone(),
+            })
+            .collect(),
+    };
     target
         .generate_from(device, EndpointNameGenerator)
         .map_err(|e| format!("generate_from: {e:?}"))?;
-    let mutations = target
-        .generate_mutations(&current)
-        .map_err(|e| format!("mutations: {e:?}"))?;
+    let l2 = L2Setup::new(device, EndpointNameGenerator).map_err(|e| format!("l2: {e:?}"))?;
+    wireless
+        .generate_from(device, &l2)
+        .map_err(|e| format!("wireless: {e:?}"))?;
+    w60g.generate_from(device, &l2)
+        .map_err(|e| format!("w60g: {e:?}"))?;
+    let mutations = [
+        target.generate_mutations(&current),
+        wireless.generate_mutations(&wireless_current),
+        w60g.generate_mutations(&w60g_current),
+    ]
+    .into_iter()
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("mutations: {e:?}"))?
+    .into_iter()
+    .flat_map(Vec::from)
+    .collect::<Vec<_>>();
     let mutations = ResourceMutation::sort_mutations_with_provided_dependencies(
         mutations.as_ref(),
         [

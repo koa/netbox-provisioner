@@ -732,6 +732,49 @@ fn name_part(raw: &str) -> String {
     result
 }
 
+impl<G: NameGenerator> L2Setup<G> {
+    /// Where a physical port ended up: its generated interface name, and the bridge
+    /// it is a member of (`None` for a standalone port).
+    pub fn placement_of_port(
+        &self,
+        port: PhysicalPortId,
+    ) -> Option<(&AsciiString, Option<&AsciiString>)> {
+        let standalone = self
+            .single_ports
+            .iter()
+            .find(|entry| entry.port == port)
+            .map(|entry| (&entry.name, None));
+        let in_simple_bridge = || {
+            self.simple_bridges.iter().find_map(|bridge| {
+                bridge.ports.iter().find_map(|member| match member {
+                    SimpleBridgePort::Ethernet { name, port: p, .. } if *p == port => {
+                        Some((name, Some(&bridge.name)))
+                    }
+                    _ => None,
+                })
+            })
+        };
+        let in_tagged_bridge = || {
+            self.tagged_bridges.iter().find_map(|bridge| {
+                bridge
+                    .ports
+                    .values()
+                    .flat_map(|entry| &entry.ports)
+                    .find_map(|member| match member {
+                        L2Port::TaggedEthernet { name, port: p, .. }
+                        | L2Port::UntaggedEthernet { name, port: p, .. }
+                            if *p == port =>
+                        {
+                            Some((name, Some(&bridge.name)))
+                        }
+                        _ => None,
+                    })
+            })
+        };
+        standalone.or_else(in_simple_bridge).or_else(in_tagged_bridge)
+    }
+}
+
 /// Rejects a VLAN whose L2 domain - every device it is tunneled to, or just this
 /// device for a local VLAN - would be broken: a loop through a cable next to the
 /// tunnel, more than one IP network, or more than one DHCP server. Each of these

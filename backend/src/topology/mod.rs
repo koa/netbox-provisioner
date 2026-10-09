@@ -233,6 +233,36 @@ pub struct Interface {
     pub bridge: Option<InterfaceId>,
     pub cable: Option<CableId>,
     pub enable_poe: bool,
+    /// Set on a radio port with an RF role in NetBox (a point-to-point bridge end).
+    pub radio: Option<Radio>,
+}
+
+/// A radio port's settings from NetBox: its RF role, channel and wireless link.
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct Radio {
+    pub role: RadioRole,
+    /// Center frequency in MHz; `None` lets the radio pick (`frequency=auto`).
+    pub frequency: Option<u32>,
+    /// Channel width in MHz.
+    pub channel_width: Option<u32>,
+    pub link: Option<RadioLink>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub enum RadioRole {
+    /// NetBox RF role `ap`: the side the station connects to (`mode=bridge`).
+    Ap,
+    /// NetBox RF role `station` (`mode=station-bridge`).
+    Station,
+}
+
+/// The NetBox wireless link a radio port is an end of.
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct RadioLink {
+    pub ssid: Box<str>,
+    /// Pre-shared key; `None` for an open link or when NetBox returns none (e.g. an
+    /// export without secrets).
+    pub psk: Option<Box<str>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Copy)]
@@ -258,6 +288,8 @@ pub enum PhysicalPortId {
     QsfpPlus(u16, u16),
     Wifi(u16),
     Wlan(u16),
+    /// `wlan60-{id}`: a 60 GHz radio (`/interface/w60g`)
+    W60g(u16),
     Loopback,
 }
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
@@ -287,6 +319,7 @@ lazy_static! {
     static ref QSFP_PLUS_PORT_PATTERN: Regex = Regex::new("^qsfpplus([0-9]+)-([0-9]+)$").unwrap();
     static ref WIFI_PORT_PATTERN: Regex = Regex::new("^wifi([0-9]+)$").unwrap();
     static ref WLAN_PORT_PATTERN: Regex = Regex::new("^wlan([0-9]+)$").unwrap();
+    static ref W60G_PORT_PATTERN: Regex = Regex::new("^wlan60-([0-9]+)$").unwrap();
 }
 impl PhysicalPortId {
     pub fn short_name(&self) -> AsciiString {
@@ -295,7 +328,9 @@ impl PhysicalPortId {
             PhysicalPortId::SfpSfpPlus(id) | PhysicalPortId::Sfp(id) => format!("s{id:02}"),
             PhysicalPortId::Combo(id) => format!("c{id:02}"),
             PhysicalPortId::QsfpPlus(port, lane) => format!("q{port:02}-{lane}"),
-            PhysicalPortId::Wifi(id) | PhysicalPortId::Wlan(id) => format!("w{id:02}"),
+            PhysicalPortId::Wifi(id) | PhysicalPortId::Wlan(id) | PhysicalPortId::W60g(id) => {
+                format!("w{id:02}")
+            }
             PhysicalPortId::Loopback => "lo".to_string(),
         })
     }
@@ -306,7 +341,10 @@ impl PhysicalPortId {
             | PhysicalPortId::Sfp(_)
             | PhysicalPortId::Combo(_)
             | PhysicalPortId::QsfpPlus(_, _) => Some(self.to_string()),
-            PhysicalPortId::Wifi(_) | PhysicalPortId::Wlan(_) | PhysicalPortId::Loopback => None,
+            PhysicalPortId::Wifi(_)
+            | PhysicalPortId::Wlan(_)
+            | PhysicalPortId::W60g(_)
+            | PhysicalPortId::Loopback => None,
         }
         .map(AsciiString::from)
     }
@@ -317,7 +355,10 @@ impl PhysicalPortId {
             | PhysicalPortId::Sfp(_)
             | PhysicalPortId::Combo(_)
             | PhysicalPortId::QsfpPlus(_, _) => true,
-            PhysicalPortId::Wifi(_) | PhysicalPortId::Wlan(_) | PhysicalPortId::Loopback => false,
+            PhysicalPortId::Wifi(_)
+            | PhysicalPortId::Wlan(_)
+            | PhysicalPortId::W60g(_)
+            | PhysicalPortId::Loopback => false,
         }
     }
 }
@@ -349,6 +390,8 @@ impl FromStr for PhysicalPortId {
             Ok(PhysicalPortId::Wifi(id))
         } else if let Some(id) = number(&WLAN_PORT_PATTERN, 1) {
             Ok(PhysicalPortId::Wlan(id))
+        } else if let Some(id) = number(&W60G_PORT_PATTERN, 1) {
+            Ok(PhysicalPortId::W60g(id))
         } else {
             Err(())
         }
@@ -365,6 +408,7 @@ impl Display for PhysicalPortId {
             PhysicalPortId::QsfpPlus(port, lane) => write!(f, "qsfpplus{port}-{lane}"),
             PhysicalPortId::Wifi(id) => write!(f, "wifi{id}"),
             PhysicalPortId::Wlan(id) => write!(f, "wlan{id}"),
+            PhysicalPortId::W60g(id) => write!(f, "wlan60-{id}"),
             PhysicalPortId::Loopback => f.write_str("lo"),
         }
     }

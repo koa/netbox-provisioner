@@ -3,8 +3,10 @@ use mikrotik_model::{
         ADVERTISE_1G, ADVERTISE_1G_FULL, ADVERTISE_1G_SFP, ADVERTISE_10G, ADVERTISE_10G_FULL,
         ADVERTISE_100M, EthernetNamePattern, generate_ethernet, generate_wifi, generate_wlan,
     },
+    ascii::AsciiString,
     model::{
-        InterfaceEthernetByDefaultName, InterfaceWifiByDefaultName, InterfaceWirelessByDefaultName,
+        InterfaceEthernetByDefaultName, InterfaceW60GByDefaultName, InterfaceW60GCfg,
+        InterfaceWifiByDefaultName, InterfaceWirelessByDefaultName,
     },
 };
 use std::iter::repeat_n;
@@ -159,6 +161,14 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         )
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
+        // point-to-point radio bridges: one ethernet port next to the radio
+        b"RBDynaDishG-5HacDr3" | b"RBwAPG-60ad-A" => repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
+            1,
+        )
+        .enumerate()
+        .map(|(idx, generator)| generator(idx + 1))
+        .collect(),
         _ => Box::default(),
     }
 }
@@ -183,6 +193,52 @@ pub fn build_wireless_ports(model: &[u8]) -> Box<[InterfaceWirelessByDefaultName
             .enumerate()
             .map(|(idx, generator)| generator(idx + 1))
             .collect(),
+        b"RBDynaDishG-5HacDr3" => [wireless_port(1)].into(),
         &_ => Box::default(),
+    }
+}
+
+/// A legacy wireless radio `wlan{idx}` (`/interface/wireless`) left as it is: only
+/// the generator's explicit settings (`WirelessDeviceDataTarget::generate_from`)
+/// change it, every other field is keep-if-none in the model.
+pub fn wireless_port(idx: usize) -> InterfaceWirelessByDefaultName {
+    let mut port = generate_wlan(1600)(idx);
+    port.data.name = format!("wlan{idx}").into();
+    port.data.l_2_mtu = None;
+    port
+}
+
+pub fn build_w60g_ports(model: &[u8]) -> Box<[InterfaceW60GByDefaultName]> {
+    match model {
+        b"RBwAPG-60ad-A" => [w60g_port(1)].into(),
+        &_ => Box::default(),
+    }
+}
+
+/// A 60 GHz radio `wlan60-{idx}` (`/interface/w60g`), untouched apart from what
+/// `W60gDeviceDataTarget::generate_from` sets.
+pub fn w60g_port(idx: usize) -> InterfaceW60GByDefaultName {
+    let name: AsciiString = format!("wlan60-{idx}").into();
+    InterfaceW60GByDefaultName {
+        default_name: name.clone(),
+        data: InterfaceW60GCfg {
+            name,
+            comment: None,
+            disabled: false,
+            mode: None,
+            ssid: None,
+            password: None,
+            frequency: None,
+            region: None,
+            put_stations_in_bridge: None,
+            isolate_stations: None,
+            tx_sector: None,
+            default_scan_list: None,
+            scan_list: None,
+            arp: None,
+            arp_timeout: None,
+            mtu: None,
+            l_2_mtu: None,
+        },
     }
 }

@@ -2,11 +2,11 @@ use crate::device::ros::l2::NameGenerator;
 use crate::{
     Error,
     device::ros::{
-        hw_facts::build_ethernet_ports,
+        hw_facts::{build_ethernet_ports, build_w60g_ports, build_wireless_ports},
         l2::{L2Port, L2Setup, SimpleBridgePort},
     },
     topology::{
-        IpPrefixId, PhysicalPortId,
+        IpPrefixId, PhysicalPortId, RadioRole,
         access::{AccessTopology, device::DeviceAccess},
     },
 };
@@ -16,7 +16,9 @@ use mikrotik_model::{
     ascii::{self, AsciiString},
     mikrotik_model,
     model::{
-        InterfaceBridgeProtocolMode, InterfaceEthernetByDefaultName, InterfaceEthernetCfg,
+        EnabledDisabled, InterfaceBridgeProtocolMode, InterfaceEthernetByDefaultName,
+        InterfaceW60GMode, InterfaceWirelessChannelWidth, InterfaceWirelessMode,
+        InterfaceWirelessWirelessProtocol::{Nv2, Nv2Nstreme80211}, InterfaceEthernetCfg,
         InterfaceEthernetPoeOut, InterfaceVlanByName, InterfaceVlanCfg, InterfaceVxlanByName,
         InterfaceVxlanCfg, InterfaceWifiProvisioningAction, IpAddressByAddress, IpAddressCfg,
         IpDhcpClientCfg, Ipv6AddressByAddress, Ipv6AddressCfg, RoutingOspfInstanceByName,
@@ -24,7 +26,7 @@ use mikrotik_model::{
         WifiChannelBand, WifiManagement, YesNo,
     },
     value,
-    value::HasNone,
+    value::{Auto, HasNone},
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, btree_map::Iter},
@@ -38,6 +40,8 @@ pub(crate) mod hw_facts;
 pub mod l2;
 #[cfg(test)]
 mod netbox_example_test;
+#[cfg(test)]
+mod radio_test;
 #[cfg(test)]
 mod test;
 
@@ -125,6 +129,8 @@ pub enum SetupError {
         "Port {0} would be a member of more than one bridge (its VLANs are split across bridges)"
     )]
     PortInMultipleBridges(AsciiString),
+    #[error("Unsupported RF channel width {0} MHz for a wireless radio")]
+    UnsupportedChannelWidth(u32),
 }
 
 impl BaseDeviceDataTarget {
@@ -692,16 +698,152 @@ impl<'a, V: Ord + Copy> Iterator for GapIterator<'a, V> {
 mikrotik_model!(
     name = WirelessDeviceData,
     detect = new,
-    fields(wireless_cap(single = "interface/wireless/cap"),),
+    fields(
+        wireless_cap(single = "interface/wireless/cap"),
+        wireless(by_key(path = "interface/wireless", key = defaultName)),
+    ),
 );
 
 impl WirelessDeviceDataTarget {
     fn new(model: &[u8]) -> Self {
         Self {
             wireless_cap: Default::default(),
+            wireless: build_wireless_ports(model)
+                .into_iter()
+                .map(|port| (port.default_name, port.data))
+                .collect(),
         }
     }
-    fn generate_from<N: NameGenerator>(&mut self, _device: &DeviceAccess, _l2: &L2Setup<N>) {}
+    /// Names every legacy wireless radio the L2 setup uses after its interface, and
+    /// configures one with an RF role as an end of a point-to-point bridge: the AP
+    /// side runs plain Nv2, the station side also falls back to Nstreme/802.11 (as
+    /// the production links do), and the wireless link's PSK becomes the Nv2 key.
+    /// Fields not set here are keep-if-none in the model, so the rest of the
+    /// radio's configuration (band, country, scan list, ...) stays as it is.
+    fn generate_from<N: NameGenerator>(
+        &mut self,
+        device: &DeviceAccess,
+        l2: &L2Setup<N>,
+    ) -> Result<(), SetupError> {
+        for interface in device.interfaces() {
+            let Some(port @ PhysicalPortId::Wlan(_)) = interface.external_port() else {
+                continue;
+            };
+            let Some((name, _)) = l2.placement_of_port(port) else {
+                continue;
+            };
+            let wlan = self
+                .wireless
+                .get_mut(&Some(AsciiString::from(port.to_string())))
+                .ok_or(SetupError::PortNotFound(port))?;
+            wlan.name = name.clone();
+            let Some(radio) = interface.radio() else {
+                continue;
+            };
+            wlan.disabled = false;
+            let (mode, protocol) = match radio.role {
+                RadioRole::Ap => (InterfaceWirelessMode::Bridge, Nv2),
+                RadioRole::Station => (InterfaceWirelessMode::StationBridge, Nv2Nstreme80211),
+            };
+            wlan.mode = Some(mode);
+            wlan.wireless_protocol = Some(protocol);
+            if radio.role == RadioRole::Ap {
+                wlan.frequency = Some(radio.frequency.map_or(Auto::Auto, Auto::Value));
+            }
+            if let Some(width) = radio.channel_width {
+                wlan.channel_width = Some(wireless_channel_width(width, radio.role)?);
+            }
+            if let Some(link) = &radio.link {
+                wlan.ssid = Some(link.ssid.as_ref().into());
+                if let Some(psk) = &link.psk {
+                    wlan.nv_2_security = Some(EnabledDisabled::Enabled);
+                    wlan.nv_2_preshared_key = Some(psk.as_ref().into());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The channel width for `width` MHz with the control channel first, as on the AP
+/// side; a station follows the AP's layout (`X`), whatever it is.
+fn wireless_channel_width(
+    width: u32,
+    role: RadioRole,
+) -> Result<InterfaceWirelessChannelWidth, SetupError> {
+    use InterfaceWirelessChannelWidth::*;
+    Ok(match (width, role) {
+        (5, _) => _5Mhz,
+        (10, _) => _10Mhz,
+        (20, _) => _20Mhz,
+        (40, RadioRole::Ap) => _2040MhzCe,
+        (40, RadioRole::Station) => _2040MhzXx,
+        (80, RadioRole::Ap) => _204080MhzCeee,
+        (80, RadioRole::Station) => _204080MhzXxxx,
+        (160, RadioRole::Ap) => _204080160MhzCeeeeeee,
+        (160, RadioRole::Station) => _204080160MhzXxxxxxxx,
+        _ => return Err(SetupError::UnsupportedChannelWidth(width)),
+    })
+}
+
+mikrotik_model!(
+    name = W60GDeviceData,
+    detect = new,
+    fields(radio(by_key(path = "interface/w60g", key = defaultName)),),
+);
+
+impl W60GDeviceDataTarget {
+    fn new(model: &[u8]) -> Self {
+        Self {
+            radio: build_w60g_ports(model)
+                .into_iter()
+                .map(|port| (port.default_name, port.data))
+                .collect(),
+        }
+    }
+    /// Like the legacy wireless radios: names every 60 GHz radio the L2 setup uses,
+    /// and configures one with an RF role as a bridge end. Its stations - the far
+    /// ends, as dynamic `/interface/w60g/station` interfaces on the AP side - join
+    /// the bridge the radio is in (`put-stations-in-bridge`); the wireless link's
+    /// PSK is the link password.
+    fn generate_from<N: NameGenerator>(
+        &mut self,
+        device: &DeviceAccess,
+        l2: &L2Setup<N>,
+    ) -> Result<(), SetupError> {
+        for interface in device.interfaces() {
+            let Some(port @ PhysicalPortId::W60g(_)) = interface.external_port() else {
+                continue;
+            };
+            let Some((name, bridge)) = l2.placement_of_port(port) else {
+                continue;
+            };
+            let radio_port = self
+                .radio
+                .get_mut(&AsciiString::from(port.to_string()))
+                .ok_or(SetupError::PortNotFound(port))?;
+            radio_port.name = name.clone();
+            let Some(radio) = interface.radio() else {
+                continue;
+            };
+            radio_port.disabled = false;
+            radio_port.mode = Some(match radio.role {
+                RadioRole::Ap => InterfaceW60GMode::Bridge,
+                RadioRole::Station => InterfaceW60GMode::StationBridge,
+            });
+            if radio.role == RadioRole::Ap {
+                radio_port.frequency = Some(radio.frequency.map_or(Auto::Auto, Auto::Value));
+            }
+            radio_port.put_stations_in_bridge = bridge.cloned();
+            if let Some(link) = &radio.link {
+                radio_port.ssid = Some(link.ssid.as_ref().into());
+                if let Some(psk) = &link.psk {
+                    radio_port.password = Some(psk.as_ref().into());
+                }
+            }
+        }
+        Ok(())
+    }
 }
 mikrotik_model!(
     name = WifiDeviceData,

@@ -96,7 +96,9 @@ Der Provisioner erkennt ein Interface nur am **Namen** als physischen Port (`Phy
 | `sfp<N>`              | SFP-Port N (z.B. `RB962…`, `CRS109…`)             |
 | `combo<N>`            | Combo-Port N (z.B. `CCR1009…`)                    |
 | `qsfpplus<N>-<L>`     | Lane L des QSFP+-Ports N (z.B. `CRS354…`)         |
-| `wifi<N>`, `wlan<N>`  | WLAN-Interface (wird derzeit nicht konfiguriert)  |
+| `wlan<N>`             | 5-GHz-Funk-Port (`/interface/wireless`, siehe [Funkbrücke](#funkbrücke)) |
+| `wlan60-<N>`          | 60-GHz-Funk-Port (`/interface/w60g`, siehe [Funkbrücke](#funkbrücke)) |
+| `wifi<N>`             | WLAN-Interface (wird derzeit nicht konfiguriert)  |
 | `lo`                  | Loopback                                          |
 | alles andere          | **virtuelles** Interface (Bridge, VLAN-Interface …) |
 
@@ -127,6 +129,8 @@ werden.
 | IP Addresses         | IP-Adressen auf dem Interface                                              |
 | Tags                 | `ospf`, `dhcp`, `dhcp-client` (siehe oben)                                 |
 | PoE Mode             | `PSE` → PoE-Ausgang `auto-on`, sonst `off` (nur auf PoE-fähigen Boards)    |
+| RF Role, RF Channel Frequency/Width | Funk-Port einer [Funkbrücke](#funkbrücke)        |
+| Wireless Link        | SSID und PSK einer [Funkbrücke](#funkbrücke)                               |
 | Cable                | nur für die Namensgenerierung, wenn kein Label gesetzt ist                 |
 
 Der 802.1Q-Mode selbst (Access/Tagged) wird nicht ausgewertet. NetBox verlangt ihn aber, damit
@@ -299,6 +303,29 @@ Ziel: Ein Drucker an der LAN-Dose einer Wohnung soll im selben Netz wie das WLAN
 
 Alle anderen Teilnehmer tragen den Switch dann automatisch als Remote-VTEP ein. Der Switch darf
 keine eigene IP oder keinen DHCP-Server in einem anderen Netz desselben VLANs haben.
+
+## Funkbrücke
+
+Eine Punkt-zu-Punkt-Funkstrecke (z.B. `hegglin-schopf` ↔ `schopf-hegglin`), die das L2 transparent
+weiterreicht. Pro Seite:
+
+1. Ein Gerät mit Platform `routeros`. Unterstützt sind die Boards `RBDynaDishG-5HacDr3` (5 GHz)
+   und `RBwAPG-60ad-A` (60 GHz); weitere müssen erst im Provisioner eingetragen werden.
+2. Interfaces mit den RouterOS-Namen: `ether1` und der Funk-Port, **`wlan1`** bei 5 GHz,
+   **`wlan60-1`** bei 60 GHz.
+3. Eine Bridge (virtuelles Interface), bei `ether1` und dem Funk-Port als **Bridge** eingetragen.
+4. Management: die Bridge bekommt das Tag **`dhcp-client`** (oder eine feste IP). Ohne das
+   entfernt der Provisioner einen vorhandenen DHCP-Client, und das Gerät ist nicht mehr erreichbar.
+5. Am Funk-Port die **RF Role**: `AP` auf der einen, `Station` auf der anderen Seite.
+   **RF Channel Frequency** (MHz) und **RF Channel Width** sind optional; die Frequenz gilt nur
+   am AP, ohne sie wählt er selbst (`auto`).
+
+Dazu einmal pro Strecke ein **Wireless Link** zwischen den beiden Funk-Ports: **SSID**,
+Authentication **WPA Personal** und der **PSK**. Er ist der gemeinsame Schlüssel beider Seiten
+(Nv2-Schlüssel bei 5 GHz, Passwort bei 60 GHz).
+
+Was daraus generiert wird und worauf beim Ausrollen zu achten ist:
+[radio-bridge-generation.md](radio-bridge-generation.md).
 
 ## WLAN
 
