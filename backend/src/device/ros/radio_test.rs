@@ -3,7 +3,7 @@
 
 use crate::{
     device::ros::{
-        W60GDeviceDataCurrent, W60GDeviceDataTarget, WirelessDeviceDataCurrent,
+        BaseDeviceDataTarget, W60GDeviceDataCurrent, W60GDeviceDataTarget, WirelessDeviceDataCurrent,
         WirelessDeviceDataTarget,
         l2::{EndpointNameGenerator, L2Setup},
     },
@@ -200,4 +200,33 @@ async fn test_radio_without_rf_role_is_only_renamed() {
     assert_eq!(wlan.name, AsciiString::from("w01"));
     assert_eq!(wlan.mode, None);
     assert_eq!(wlan.ssid, None);
+}
+
+#[tokio::test]
+async fn test_radio_bridge_without_addresses_gets_a_dhcp_client() {
+    let device = radio_bridge(PhysicalPortId::W60g(1), None).await;
+    let l2 = L2Setup::new(&device, EndpointNameGenerator).unwrap();
+    let (_, bridge) = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
+    let mut target = BaseDeviceDataTarget::new(b"RBwAPG-60ad").unwrap();
+    target.generate_from(&device, EndpointNameGenerator).unwrap();
+    assert_eq!(
+        target.dhcp_v_4_client.keys().collect::<Vec<_>>(),
+        [&(bridge.unwrap().clone(),)]
+    );
+}
+
+#[tokio::test]
+async fn test_known_radio_boards_have_their_ports() {
+    for (model, wireless, w60g) in [
+        (b"RBDynaDishG-5HacDr3".as_ref(), 1, 0),
+        (b"SXT G-5HPacD", 1, 0),
+        (b"RBwAPG-60ad", 0, 1),
+        (b"RBwAPG-60ad-A", 0, 1),
+        (b"RBLHGG-60ad", 0, 1),
+    ] {
+        let name = String::from_utf8_lossy(model);
+        assert!(BaseDeviceDataTarget::new(model).is_ok(), "{name}: ethernet");
+        assert_eq!(WirelessDeviceDataTarget::new(model).wireless.len(), wireless, "{name}");
+        assert_eq!(W60GDeviceDataTarget::new(model).radio.len(), w60g, "{name}");
+    }
 }

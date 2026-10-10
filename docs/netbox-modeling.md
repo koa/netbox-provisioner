@@ -198,6 +198,10 @@ tragen.
 
 ## IP-Adressen, Prefixe und DHCP
 
+- **Reines L2-Gerät:** Hat ein Gerät in NetBox keine einzige IP-Adresse und nirgends das Tag
+  `dhcp-client` (z.B. eine Funkbrücke), bekommt jede seiner flachen Bridges einen DHCP-Client.
+  Sonst wäre es nach dem Provisionieren nicht mehr erreichbar. Der Client hängt am generierten
+  Bridge-Namen und zieht bei einer Umbenennung mit.
 - Zu jeder IP-Adresse muss ein **Prefix** mit genau derselben Länge existieren (Adresse
   `192.168.50.1/24` braucht Prefix `192.168.50.0/24`). Für DHCP-Server ist das zwingend,
   sonst `MissingPrefixOnIpAddress`.
@@ -309,13 +313,16 @@ keine eigene IP oder keinen DHCP-Server in einem anderen Netz desselben VLANs ha
 Eine Punkt-zu-Punkt-Funkstrecke (z.B. `hegglin-schopf` ↔ `schopf-hegglin`), die das L2 transparent
 weiterreicht. Pro Seite:
 
-1. Ein Gerät mit Platform `routeros`. Unterstützt sind die Boards `RBDynaDishG-5HacDr3` (5 GHz)
-   und `RBwAPG-60ad-A` (60 GHz); weitere müssen erst im Provisioner eingetragen werden.
+1. Ein Gerät mit Platform `routeros`. Unterstützt sind die Boards `RBDynaDishG-5HacDr3` und
+   `SXT G-5HPacD` (5 GHz) sowie `RBwAPG-60ad`, `RBwAPG-60ad-A` und `RBLHGG-60ad` (60 GHz); weitere
+   müssen erst im Provisioner eingetragen werden.
 2. Interfaces mit den RouterOS-Namen: `ether1` und der Funk-Port, **`wlan1`** bei 5 GHz,
    **`wlan60-1`** bei 60 GHz.
 3. Eine Bridge (virtuelles Interface), bei `ether1` und dem Funk-Port als **Bridge** eingetragen.
-4. Management: die Bridge bekommt das Tag **`dhcp-client`** (oder eine feste IP). Ohne das
-   entfernt der Provisioner einen vorhandenen DHCP-Client, und das Gerät ist nicht mehr erreichbar.
+4. Management: nichts zu tun. Ein Gerät ohne jede IP-Adresse und ohne Tag `dhcp-client` bekommt
+   auf seiner Bridge automatisch einen DHCP-Client (siehe
+   [IP-Adressen, Prefixe und DHCP](#ip-adressen-prefixe-und-dhcp)). Wer eine feste Adresse will,
+   trägt sie an der Bridge ein.
 5. Am Funk-Port die **RF Role**: `AP` auf der einen, `Station` auf der anderen Seite.
    **RF Channel Frequency** (MHz) und **RF Channel Width** sind optional; die Frequenz gilt nur
    am AP, ohne sie wählt er selbst (`auto`).

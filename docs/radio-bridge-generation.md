@@ -13,12 +13,15 @@ auf beiden Seiten. Das L2 dafür entsteht wie überall aus dem NetBox-Modell (si
 [l2-generation.md](l2-generation.md)). Der Funk-Port wird dabei wie ein Ethernet-Port behandelt und
 bekommt einen eigenen Namen (`w01`).
 
+Erreichbar ist eine Brücke über DHCP: ohne IP-Adresse in NetBox bekommt ihre Bridge automatisch
+einen DHCP-Client (`setup_ip_addresses`, reines L2-Gerät).
+
 Zwei RouterOS-Funktypen kommen vor, je nach Hardware:
 
 | NetBox-Port | RouterOS                                    | Board (bekannt)       |
 |-------------|---------------------------------------------|-----------------------|
-| `wlan<N>`   | `/interface/wireless` (5 GHz, Nv2)          | `RBDynaDishG-5HacDr3` |
-| `wlan60-<N>`| `/interface/w60g` (60 GHz)                  | `RBwAPG-60ad-A`       |
+| `wlan<N>`   | `/interface/wireless` (5 GHz, Nv2)          | `RBDynaDishG-5HacDr3`, `SXT G-5HPacD` |
+| `wlan60-<N>`| `/interface/w60g` (60 GHz)                  | `RBwAPG-60ad`, `RBwAPG-60ad-A`, `RBLHGG-60ad` |
 
 Weitere Boards brauchen einen Eintrag in `hw_facts.rs` (Ethernet-Ports und Funk-Ports), sonst
 findet der Provisioner keine Ports.

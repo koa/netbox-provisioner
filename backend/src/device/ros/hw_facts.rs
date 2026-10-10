@@ -162,7 +162,11 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
         // point-to-point radio bridges: one ethernet port next to the radio
-        b"RBDynaDishG-5HacDr3" | b"RBwAPG-60ad-A" => repeat_n(
+        b"RBDynaDishG-5HacDr3"
+        | b"SXT G-5HPacD"
+        | b"RBwAPG-60ad"
+        | b"RBwAPG-60ad-A"
+        | b"RBLHGG-60ad" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
             1,
         )
@@ -193,7 +197,7 @@ pub fn build_wireless_ports(model: &[u8]) -> Box<[InterfaceWirelessByDefaultName
             .enumerate()
             .map(|(idx, generator)| generator(idx + 1))
             .collect(),
-        b"RBDynaDishG-5HacDr3" => [wireless_port(1)].into(),
+        b"RBDynaDishG-5HacDr3" | b"SXT G-5HPacD" => [wireless_port(1)].into(),
         &_ => Box::default(),
     }
 }
@@ -210,7 +214,7 @@ pub fn wireless_port(idx: usize) -> InterfaceWirelessByDefaultName {
 
 pub fn build_w60g_ports(model: &[u8]) -> Box<[InterfaceW60GByDefaultName]> {
     match model {
-        b"RBwAPG-60ad-A" => [w60g_port(1)].into(),
+        b"RBwAPG-60ad" | b"RBwAPG-60ad-A" | b"RBLHGG-60ad" => [w60g_port(1)].into(),
         &_ => Box::default(),
     }
 }

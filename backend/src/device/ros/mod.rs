@@ -524,6 +524,17 @@ impl BaseDeviceDataTarget {
     }
 
     fn setup_ip_addresses<N: NameGenerator>(&mut self, l2: &L2Setup<N>) -> Result<(), SetupError> {
+        // A device NetBox gives no address at all and no `dhcp-client` tag is pure L2
+        // (a radio bridge): it is only reachable through an address from DHCP, so its
+        // bridges get a client - under whatever name the bridge is generated with.
+        let pure_l2 = l2
+            .logical_interfaces()
+            .all(|logical| logical.addresses.is_empty() && !logical.enable_dhcp_client);
+        if pure_l2 {
+            for bridge in &l2.simple_bridges {
+                self.enable_dhcp_client(bridge.name.clone());
+            }
+        }
         for logical in l2.logical_interfaces() {
             let if_name = logical.if_name.clone();
             let ips = logical
