@@ -112,6 +112,10 @@ impl DeviceAccess {
     pub fn role(&self) -> Option<DeviceRole> {
         self.data().and_then(|d| d.role)
     }
+    /// ISO 3166 code of the country the device's site is in (its topmost region).
+    pub fn country(&self) -> Option<&str> {
+        self.data().and_then(|d| d.country.as_deref())
+    }
 }
 
 #[Object]

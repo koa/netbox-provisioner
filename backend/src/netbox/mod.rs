@@ -23,6 +23,11 @@ pub struct JSON {
     /// On a VLAN group: VNI of the VXLAN its VLANs are tunneled over between
     /// devices (see `topology::VxlanData`).
     pub vxlan_vni: Option<u32>,
+    /// On a wireless link: RouterOS `country` (5 GHz) or `region` (60 GHz) of both
+    /// ends, overriding the one derived from the site's region.
+    pub rf_country: Option<Box<str>>,
+    /// On a wireless link: RouterOS `frequency-mode` of both ends (5 GHz).
+    pub rf_frequency_mode: Option<Box<str>>,
 }
 
 /// NetBox's `Decimal` scalar (e.g. an interface's RF channel frequency in MHz),

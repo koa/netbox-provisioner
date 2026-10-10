@@ -36,10 +36,12 @@ query FetchTopology{
             rf_role
             rf_channel_frequency
             rf_channel_width
+            tx_power
             wireless_link {
                 ssid
                 auth_type
                 auth_psk
+                custom_field_data
             }
         }
         frontports{
@@ -69,6 +71,9 @@ query FetchTopology{
         site{
             tenant{
                 id
+            }
+            region{
+                ...RegionAncestry
             }
         }
         serial
@@ -142,4 +147,23 @@ fragment ConnectedFrontPort on FrontPortType{
 }
 fragment ConnectedRearPort on RearPortType{
     id
+}
+# Up to six levels of a site's region hierarchy: the topmost one is the country.
+fragment RegionAncestry on RegionType {
+    slug
+    parent {
+        slug
+        parent {
+            slug
+            parent {
+                slug
+                parent {
+                    slug
+                    parent {
+                        slug
+                    }
+                }
+            }
+        }
+    }
 }

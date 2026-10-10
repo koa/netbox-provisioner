@@ -6,7 +6,7 @@ use crate::{
         l2::{L2Port, L2Setup, SimpleBridgePort},
     },
     topology::{
-        IpPrefixId, PhysicalPortId, RadioRole,
+        IpPrefixId, PhysicalPortId, Radio, RadioLink, RadioRole,
         access::{AccessTopology, device::DeviceAccess},
     },
 };
@@ -17,7 +17,9 @@ use mikrotik_model::{
     mikrotik_model,
     model::{
         EnabledDisabled, InterfaceBridgeProtocolMode, InterfaceEthernetByDefaultName,
-        InterfaceW60GMode, InterfaceWirelessChannelWidth, InterfaceWirelessMode,
+        InterfaceW60GMode, InterfaceW60GRegion, InterfaceWirelessCfg,
+        InterfaceWirelessChannelWidth, InterfaceWirelessFrequencyMode, InterfaceWirelessMode,
+        InterfaceWirelessTxPowerMode,
         InterfaceWirelessWirelessProtocol::{Nv2, Nv2Nstreme80211}, InterfaceEthernetCfg,
         InterfaceEthernetPoeOut, InterfaceVlanByName, InterfaceVlanCfg, InterfaceVxlanByName,
         InterfaceVxlanCfg, InterfaceWifiProvisioningAction, IpAddressByAddress, IpAddressCfg,
@@ -26,7 +28,7 @@ use mikrotik_model::{
         WifiChannelBand, WifiManagement, YesNo,
     },
     value,
-    value::{Auto, HasNone},
+    value::{Auto, HasNone, ParseRosValueResult, RosValue},
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, btree_map::Iter},
@@ -131,6 +133,18 @@ pub enum SetupError {
     PortInMultipleBridges(AsciiString),
     #[error("Unsupported RF channel width {0} MHz for a wireless radio")]
     UnsupportedChannelWidth(u32),
+    #[error("Radio {0} has an RF role, but the board has no point-to-point radio profile")]
+    NoRadioProfile(PhysicalPortId),
+    #[error("Radio {0} has an RF role, but is not an end of a wireless link")]
+    MissingWirelessLink(PhysicalPortId),
+    #[error("Wireless link {0} is encrypted, but NetBox returned no pre-shared key")]
+    MissingPsk(Box<str>),
+    #[error("Device {0} has a radio, but its site has no region (country) and its link no rf_country")]
+    MissingCountry(Box<str>),
+    #[error("No RouterOS country known for region {0}, set rf_country on the wireless link")]
+    UnknownCountry(Box<str>),
+    #[error("Unknown rf_frequency_mode {0}")]
+    InvalidFrequencyMode(Box<str>),
 }
 
 impl BaseDeviceDataTarget {
@@ -728,55 +742,125 @@ impl WirelessDeviceDataTarget {
                 .collect(),
         }
     }
-    /// Names every legacy wireless radio the L2 setup uses after its interface, and
-    /// configures one with an RF role as an end of a point-to-point bridge: the AP
-    /// side runs plain Nv2, the station side also falls back to Nstreme/802.11 (as
-    /// the production links do), and the wireless link's PSK becomes the Nv2 key.
-    /// Fields not set here are keep-if-none in the model, so the rest of the
-    /// radio's configuration (band, country, scan list, ...) stays as it is.
+    /// Configures every legacy wireless radio as NetBox describes it. One with an RF
+    /// role is an end of a point-to-point bridge: it gets the board's whole radio
+    /// profile (`hw_facts::wireless_bridge_port`), the AP side running plain Nv2, the
+    /// station side also falling back to Nstreme/802.11 (as the production links
+    /// do), with the wireless link's SSID, key and regulatory settings. One without
+    /// is not managed as a radio and keeps its `current` configuration (e.g. a CAP
+    /// of CAPsMAN), only named after its interface if the L2 setup uses it.
     fn generate_from<N: NameGenerator>(
         &mut self,
         device: &DeviceAccess,
         l2: &L2Setup<N>,
+        current: Option<&WirelessDeviceDataCurrent>,
     ) -> Result<(), SetupError> {
+        let profiles = self.wireless.clone();
+        for port in current.iter().flat_map(|current| current.wireless.iter()) {
+            if let Some(target) = self.wireless.get_mut(&port.default_name) {
+                *target = port.data.clone();
+            }
+        }
         for interface in device.interfaces() {
             let Some(port @ PhysicalPortId::Wlan(_)) = interface.external_port() else {
                 continue;
             };
-            let Some((name, _)) = l2.placement_of_port(port) else {
-                continue;
-            };
+            let key = Some(AsciiString::from(port.to_string()));
             let wlan = self
                 .wireless
-                .get_mut(&Some(AsciiString::from(port.to_string())))
+                .get_mut(&key)
                 .ok_or(SetupError::PortNotFound(port))?;
-            wlan.name = name.clone();
-            let Some(radio) = interface.radio() else {
-                continue;
-            };
-            wlan.disabled = false;
-            let (mode, protocol) = match radio.role {
-                RadioRole::Ap => (InterfaceWirelessMode::Bridge, Nv2),
-                RadioRole::Station => (InterfaceWirelessMode::StationBridge, Nv2Nstreme80211),
-            };
-            wlan.mode = Some(mode);
-            wlan.wireless_protocol = Some(protocol);
-            if radio.role == RadioRole::Ap {
-                wlan.frequency = Some(radio.frequency.map_or(Auto::Auto, Auto::Value));
+            if let Some(radio) = interface.radio() {
+                let profile = profiles
+                    .get(&key)
+                    .filter(|profile| profile.antenna_gain.is_some())
+                    .ok_or(SetupError::NoRadioProfile(port))?;
+                *wlan = profile.clone();
+                configure_bridge_radio(wlan, device, port, radio)?;
             }
-            if let Some(width) = radio.channel_width {
-                wlan.channel_width = Some(wireless_channel_width(width, radio.role)?);
-            }
-            if let Some(link) = &radio.link {
-                wlan.ssid = Some(link.ssid.as_ref().into());
-                if let Some(psk) = &link.psk {
-                    wlan.nv_2_security = Some(EnabledDisabled::Enabled);
-                    wlan.nv_2_preshared_key = Some(psk.as_ref().into());
-                }
+            if let Some((name, _)) = l2.placement_of_port(port) {
+                wlan.name = name.clone();
             }
         }
         Ok(())
     }
+}
+
+/// Sets `wlan`, a 5 GHz bridge radio profile, up as the `radio` end of its link.
+fn configure_bridge_radio(
+    wlan: &mut InterfaceWirelessCfg,
+    device: &DeviceAccess,
+    port: PhysicalPortId,
+    radio: &Radio,
+) -> Result<(), SetupError> {
+    let link = radio
+        .link
+        .as_ref()
+        .ok_or(SetupError::MissingWirelessLink(port))?;
+    let (mode, protocol) = match radio.role {
+        RadioRole::Ap => (InterfaceWirelessMode::Bridge, Nv2),
+        RadioRole::Station => (InterfaceWirelessMode::StationBridge, Nv2Nstreme80211),
+    };
+    wlan.mode = Some(mode);
+    wlan.wireless_protocol = Some(protocol);
+    // a station scans for its AP
+    if radio.role == RadioRole::Ap {
+        wlan.frequency = Some(radio.frequency.map_or(Auto::Auto, Auto::Value));
+    }
+    if let Some(width) = radio.channel_width {
+        wlan.channel_width = Some(wireless_channel_width(width, radio.role)?);
+    }
+    wlan.ssid = Some(link.ssid.as_ref().into());
+    if let Some(key) = link_key(link)? {
+        wlan.nv_2_security = Some(EnabledDisabled::Enabled);
+        wlan.nv_2_preshared_key = Some(key.into());
+    }
+    wlan.country = Some(match &link.country {
+        Some(country) => country.as_ref().into(),
+        None => country_settings(device)?.0.into(),
+    });
+    if let Some(mode) = &link.frequency_mode {
+        wlan.frequency_mode = Some(
+            match InterfaceWirelessFrequencyMode::parse_ros(mode.as_bytes()) {
+                ParseRosValueResult::Value(mode) => mode,
+                _ => return Err(SetupError::InvalidFrequencyMode(mode.clone())),
+            },
+        );
+    }
+    if let Some(power) = radio.tx_power {
+        wlan.tx_power_mode = Some(InterfaceWirelessTxPowerMode::AllRatesFixed);
+        wlan.tx_power = Some(power);
+    }
+    Ok(())
+}
+
+/// The key of an encrypted link, `None` for an open one.
+fn link_key(link: &RadioLink) -> Result<Option<&str>, SetupError> {
+    if !link.encrypted {
+        return Ok(None);
+    }
+    link.psk
+        .as_deref()
+        .map(Some)
+        .ok_or_else(|| SetupError::MissingPsk(link.ssid.clone()))
+}
+
+/// RouterOS's `/interface/wireless` country and `/interface/w60g` region for the
+/// country of the device's site (the ISO 3166 code of its topmost region).
+fn country_settings(device: &DeviceAccess) -> Result<(&'static str, InterfaceW60GRegion), SetupError> {
+    use InterfaceW60GRegion::Eu;
+    let code = device
+        .country()
+        .ok_or_else(|| SetupError::MissingCountry(device.name().into()))?;
+    Ok(match code.to_ascii_lowercase().as_str() {
+        "ch" => ("switzerland", Eu),
+        "li" => ("liechtenstein", Eu),
+        "de" => ("germany", Eu),
+        "at" => ("austria", Eu),
+        "fr" => ("france", Eu),
+        "it" => ("italy", Eu),
+        _ => return Err(SetupError::UnknownCountry(code.into())),
+    })
 }
 
 /// The channel width for `width` MHz with the control channel first, as on the AP
@@ -815,45 +899,61 @@ impl W60GDeviceDataTarget {
                 .collect(),
         }
     }
-    /// Like the legacy wireless radios: names every 60 GHz radio the L2 setup uses,
-    /// and configures one with an RF role as a bridge end. Its stations - the far
-    /// ends, as dynamic `/interface/w60g/station` interfaces on the AP side - join
-    /// the bridge the radio is in (`put-stations-in-bridge`); the wireless link's
-    /// PSK is the link password.
+    /// Like the legacy wireless radios: one with an RF role is a bridge end and gets
+    /// the whole 60 GHz profile (`hw_facts::w60g_port`); its stations - the far ends,
+    /// as dynamic `/interface/w60g/station` interfaces on the AP side - join the
+    /// bridge the radio is in (`put-stations-in-bridge`), the wireless link's PSK is
+    /// the password. One without keeps its `current` configuration.
     fn generate_from<N: NameGenerator>(
         &mut self,
         device: &DeviceAccess,
         l2: &L2Setup<N>,
+        current: Option<&W60GDeviceDataCurrent>,
     ) -> Result<(), SetupError> {
+        let profiles = self.radio.clone();
+        for port in current.iter().flat_map(|current| current.radio.iter()) {
+            if let Some(target) = self.radio.get_mut(&port.default_name) {
+                *target = port.data.clone();
+            }
+        }
         for interface in device.interfaces() {
             let Some(port @ PhysicalPortId::W60g(_)) = interface.external_port() else {
                 continue;
             };
-            let Some((name, bridge)) = l2.placement_of_port(port) else {
-                continue;
-            };
+            let key = AsciiString::from(port.to_string());
             let radio_port = self
                 .radio
-                .get_mut(&AsciiString::from(port.to_string()))
+                .get_mut(&key)
                 .ok_or(SetupError::PortNotFound(port))?;
-            radio_port.name = name.clone();
-            let Some(radio) = interface.radio() else {
-                continue;
-            };
-            radio_port.disabled = false;
-            radio_port.mode = Some(match radio.role {
-                RadioRole::Ap => InterfaceW60GMode::Bridge,
-                RadioRole::Station => InterfaceW60GMode::StationBridge,
-            });
-            if radio.role == RadioRole::Ap {
-                radio_port.frequency = Some(radio.frequency.map_or(Auto::Auto, Auto::Value));
-            }
-            radio_port.put_stations_in_bridge = bridge.cloned();
-            if let Some(link) = &radio.link {
-                radio_port.ssid = Some(link.ssid.as_ref().into());
-                if let Some(psk) = &link.psk {
-                    radio_port.password = Some(psk.as_ref().into());
+            let placement = l2.placement_of_port(port);
+            if let Some(radio) = interface.radio() {
+                let link = radio
+                    .link
+                    .as_ref()
+                    .ok_or(SetupError::MissingWirelessLink(port))?;
+                *radio_port = profiles[&key].clone();
+                radio_port.mode = Some(match radio.role {
+                    RadioRole::Ap => InterfaceW60GMode::Bridge,
+                    RadioRole::Station => InterfaceW60GMode::StationBridge,
+                });
+                if radio.role == RadioRole::Ap {
+                    radio_port.frequency = Some(radio.frequency.map_or(Auto::Auto, Auto::Value));
+                    radio_port.isolate_stations = Some(true);
                 }
+                radio_port.put_stations_in_bridge =
+                    placement.and_then(|(_, bridge)| bridge.cloned());
+                radio_port.ssid = Some(link.ssid.as_ref().into());
+                radio_port.password = link_key(link)?.map(Into::into);
+                radio_port.region = Some(match &link.country {
+                    Some(region) => match InterfaceW60GRegion::parse_ros(region.as_bytes()) {
+                        ParseRosValueResult::Value(region) => region,
+                        _ => return Err(SetupError::UnknownCountry(region.clone())),
+                    },
+                    None => country_settings(device)?.1,
+                });
+            }
+            if let Some((name, _)) = placement {
+                radio_port.name = name.clone();
             }
         }
         Ok(())

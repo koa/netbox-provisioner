@@ -111,6 +111,8 @@ pub struct Device {
     pub wlan_controller_of: Option<WlanGroupId>,
     pub wlan_ap_of: Option<WlanGroupId>,
     pub role: Option<DeviceRole>,
+    /// Slug of the topmost region of the device's site: the country's ISO 3166 code.
+    pub country: Option<Box<str>>,
 }
 
 /// Device-role slugs relevant to config generation. Other NetBox roles (anything not
@@ -245,6 +247,8 @@ pub struct Radio {
     pub frequency: Option<u32>,
     /// Channel width in MHz.
     pub channel_width: Option<u32>,
+    /// Fixed transmit power in dBm; `None` leaves it to the radio's defaults.
+    pub tx_power: Option<i8>,
     pub link: Option<RadioLink>,
 }
 
@@ -260,9 +264,16 @@ pub enum RadioRole {
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct RadioLink {
     pub ssid: Box<str>,
+    /// Whether the link has an authentication type other than open.
+    pub encrypted: bool,
     /// Pre-shared key; `None` for an open link or when NetBox returns none (e.g. an
     /// export without secrets).
     pub psk: Option<Box<str>>,
+    /// RouterOS `country` (5 GHz) or `region` (60 GHz) of both ends, overriding the
+    /// one derived from the site's region (`rf_country`).
+    pub country: Option<Box<str>>,
+    /// RouterOS `frequency-mode` of both ends (`rf_frequency_mode`).
+    pub frequency_mode: Option<Box<str>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Copy)]

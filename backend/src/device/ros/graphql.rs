@@ -69,10 +69,10 @@ impl DeviceCfg {
         self.base_target.setup_ip_addresses(&l2)?;
         self.base_target.setup_ospf(device, &l2);
         if let Some(wireless_target) = self.wireless_target.as_mut() {
-            wireless_target.generate_from(device, &l2)?;
+            wireless_target.generate_from(device, &l2, self.wireless_current.as_ref())?;
         }
         if let Some(w60g_target) = self.w60g_target.as_mut() {
-            w60g_target.generate_from(device, &l2)?;
+            w60g_target.generate_from(device, &l2, self.w60g_current.as_ref())?;
         }
         if let Some(wifi_target) = self.wifi_target.as_mut() {
             wifi_target.generate_from(device, &l2)?;

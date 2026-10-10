@@ -31,6 +31,8 @@ Die Slugs müssen exakt so heißen:
 | Device              | `wlan_group`           | Objekt → Wireless LAN Group  | Gerät ist Access Point dieser WLAN-Gruppe     |
 | Wireless LAN Group  | `controller`           | Objekt → Device              | CAPsMAN-Controller der Gruppe                 |
 | Wireless LAN Group  | `wlan_mgmt`            | Objekt → VLAN                | Management-VLAN der Gruppe                    |
+| Wireless Link       | `rf_country`           | Text                         | Land beider Enden übersteuern, siehe [Funkbrücke](#funkbrücke) |
+| Wireless Link       | `rf_frequency_mode`    | Auswahl `regulatory-domain`, `manual-txpower`, `superchannel` | Frequency Mode beider Enden übersteuern |
 
 Die Namen müssen exakt stimmen; der Provisioner liest sie über `custom_field_data` per Namen aus
 (`JSON`-Struct in `backend/src/netbox/mod.rs`).
@@ -41,6 +43,10 @@ Die Namen müssen exakt stimmen; der Provisioner liest sie über `custom_field_d
   Frontend filtert darauf (`has_routeros`).
 - **IP-Range-Rolle** mit Slug `dhcp`: markiert eine IP-Range als DHCP-Pool.
 - **VLAN-Gruppe(n)**: jedes VLAN muss in einer VLAN-Gruppe liegen (siehe [VLANs](#vlans)).
+- **Regionen**: Die oberste Region einer Site ist das Land, mit dem ISO-3166-Code als Slug (z.B.
+  Region „Schweiz“, Slug `ch`). Darunter dürfen beliebige weitere Regionen hängen; ausgewertet
+  werden bis zu sechs Ebenen. Gebraucht wird das Land für die Funkregeln einer
+  [Funkbrücke](#funkbrücke).
 
 ## Zugangsdaten
 
@@ -129,8 +135,8 @@ werden.
 | IP Addresses         | IP-Adressen auf dem Interface                                              |
 | Tags                 | `ospf`, `dhcp`, `dhcp-client` (siehe oben)                                 |
 | PoE Mode             | `PSE` → PoE-Ausgang `auto-on`, sonst `off` (nur auf PoE-fähigen Boards)    |
-| RF Role, RF Channel Frequency/Width | Funk-Port einer [Funkbrücke](#funkbrücke)        |
-| Wireless Link        | SSID und PSK einer [Funkbrücke](#funkbrücke)                               |
+| RF Role, RF Channel Frequency/Width, TX Power | Funk-Port einer [Funkbrücke](#funkbrücke) |
+| Wireless Link        | SSID, PSK und Funkregeln einer [Funkbrücke](#funkbrücke)                   |
 | Cable                | nur für die Namensgenerierung, wenn kein Label gesetzt ist                 |
 
 Der 802.1Q-Mode selbst (Access/Tagged) wird nicht ausgewertet. NetBox verlangt ihn aber, damit
@@ -325,11 +331,32 @@ weiterreicht. Pro Seite:
    trägt sie an der Bridge ein.
 5. Am Funk-Port die **RF Role**: `AP` auf der einen, `Station` auf der anderen Seite.
    **RF Channel Frequency** (MHz) und **RF Channel Width** sind optional; die Frequenz gilt nur
-   am AP, ohne sie wählt er selbst (`auto`).
+   am AP, ohne sie wählt er selbst (`auto`). **TX Power** (dBm, nur 5 GHz) ist ebenfalls
+   optional: gesetzt sendet die Seite fest mit dieser Leistung, sonst mit der Standardleistung.
+6. Die Site liegt in einer Region mit dem Land (siehe [Weitere Stammdaten](#weitere-stammdaten)).
 
 Dazu einmal pro Strecke ein **Wireless Link** zwischen den beiden Funk-Ports: **SSID**,
 Authentication **WPA Personal** und der **PSK**. Er ist der gemeinsame Schlüssel beider Seiten
-(Nv2-Schlüssel bei 5 GHz, Passwort bei 60 GHz).
+(Nv2-Schlüssel bei 5 GHz, Passwort bei 60 GHz). Mit Authentication **Open** läuft die Strecke
+unverschlüsselt. Bei WPA Personal ohne PSK bricht die Generierung ab.
+
+Ein Funk-Port ohne RF Role wird nicht als Funk verwaltet: seine Konfiguration bleibt, wie sie
+auf dem Gerät ist. Mit RF Role legt der Provisioner dagegen **alle** Einstellungen des Funk-Ports
+fest; was von Hand gesetzt war, geht verloren.
+
+**Land und Funkregeln.** Normalerweise gelten die Regeln des Landes der Site
+(`frequency-mode=regulatory-domain`, `country` aus der Region). Beide Seiten müssen in derselben
+Regelung laufen; jede Seite nimmt aber das Land ihrer eigenen Site. Liegt eine Strecke über eine
+Landesgrenze, muss `rf_country` gesetzt sein. Das wird nicht geprüft. Abweichend davon lässt sich
+am Wireless Link übersteuern:
+
+- `rf_country`: der RouterOS-Wert direkt, bei 5 GHz für `country` (z.B. `etsi 5.5-5.7 outdoor`),
+  bei 60 GHz für `region` (z.B. `eu`, `no-region-set`). Er wird nicht geprüft; ein Tippfehler
+  fällt erst beim Anwenden auf.
+- `rf_frequency_mode`: `regulatory-domain`, `manual-txpower` oder `superchannel` (nur 5 GHz).
+
+Ein Übersteuern verlässt in der Regel die zulässigen Grenzen. Es ist für Ausnahmen gedacht, nicht
+für den Normalfall.
 
 Was daraus generiert wird und worauf beim Ausrollen zu achten ist:
 [radio-bridge-generation.md](radio-bridge-generation.md).

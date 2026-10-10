@@ -341,6 +341,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
     for device in data.device_list {
         if let Some(device_id) = device.id.parse().ok().map(DeviceId) {
             let role = DeviceRole::from_slug(device.role.slug.as_str());
+            let country = device.site.region.as_ref().map(country_of_region);
             let credentials = device
                 .tenant
                 .and_then(|tenant| credentials_by_tenants.get(tenant.id.as_str()))
@@ -430,11 +431,26 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             channel_width: interface
                                 .rf_channel_width
                                 .map(|w| w.0.round() as u32),
+                            tx_power: interface
+                                .tx_power
+                                .and_then(|power| i8::try_from(power).ok()),
                             link: interface.wireless_link.map(|link| RadioLink {
                                 ssid: link.ssid.into_boxed_str(),
+                                encrypted: link
+                                    .auth_type
+                                    .as_deref()
+                                    .is_some_and(|auth| !auth.is_empty() && auth != "open"),
                                 psk: Some(link.auth_psk)
                                     .filter(|psk| !psk.is_empty())
                                     .map(String::into_boxed_str),
+                                country: link
+                                    .custom_field_data
+                                    .rf_country
+                                    .filter(|country| !country.is_empty()),
+                                frequency_mode: link
+                                    .custom_field_data
+                                    .rf_frequency_mode
+                                    .filter(|mode| !mode.is_empty()),
                             }),
                         });
                     interfaces.insert(
@@ -527,6 +543,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     wlan_controller_of,
                     wlan_ap_of,
                     role,
+                    country,
                 },
             );
         }
@@ -831,3 +848,25 @@ fn termination_2_cable_port(termination: CableConnectionTermination) -> Option<C
     }
 }
 */
+
+/// The slug of the topmost region above (or being) `region`, as far as the query
+/// reaches (`RegionAncestry`): the country.
+fn country_of_region(region: &fetch_topology::RegionAncestry) -> Box<str> {
+    let mut slug = &region.slug;
+    if let Some(parent) = &region.parent {
+        slug = &parent.slug;
+        if let Some(parent) = &parent.parent {
+            slug = &parent.slug;
+            if let Some(parent) = &parent.parent {
+                slug = &parent.slug;
+                if let Some(parent) = &parent.parent {
+                    slug = &parent.slug;
+                    if let Some(parent) = &parent.parent {
+                        slug = &parent.slug;
+                    }
+                }
+            }
+        }
+    }
+    slug.as_str().into()
+}

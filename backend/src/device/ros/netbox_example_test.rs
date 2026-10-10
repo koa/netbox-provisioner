@@ -14,7 +14,7 @@ use crate::{
     device::ros::{
         BaseDeviceDataTarget, W60GDeviceDataCurrent, W60GDeviceDataTarget,
         WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
-        hw_facts::{w60g_port, wireless_port},
+        hw_facts::{w60g_port, wireless_bridge_port},
         l2::{EndpointNameGenerator, L2Setup},
         test::empty_current,
     },
@@ -106,7 +106,7 @@ fn generate(device: &DeviceAccess) -> Result<String, String> {
         wireless: radio_ports
             .clone()
             .filter_map(|port| match port {
-                PhysicalPortId::Wlan(idx) => Some(wireless_port(idx.into())),
+                PhysicalPortId::Wlan(idx) => Some(wireless_bridge_port(idx.into(), 0)),
                 _ => None,
             })
             .map(|port| (port.default_name, port.data))
@@ -148,9 +148,9 @@ fn generate(device: &DeviceAccess) -> Result<String, String> {
         .map_err(|e| format!("generate_from: {e:?}"))?;
     let l2 = L2Setup::new(device, EndpointNameGenerator).map_err(|e| format!("l2: {e:?}"))?;
     wireless
-        .generate_from(device, &l2)
+        .generate_from(device, &l2, Some(&wireless_current))
         .map_err(|e| format!("wireless: {e:?}"))?;
-    w60g.generate_from(device, &l2)
+    w60g.generate_from(device, &l2, Some(&w60g_current))
         .map_err(|e| format!("w60g: {e:?}"))?;
     let mutations = [
         target.generate_mutations(&current),

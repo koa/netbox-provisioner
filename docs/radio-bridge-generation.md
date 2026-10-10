@@ -28,49 +28,80 @@ findet der Provisioner keine Ports.
 
 ## Was generiert wird
 
-Jeder Funk-Port, den das L2 benutzt, wird umbenannt (`set [find default-name=wlan1] name=w01`). Hat
-er in NetBox eine **RF Role**, kommen die Funk-Einstellungen dazu. Alle anderen Felder des Funk-
-Interfaces sind im Modell keep-if-none (`k`): Band, Land, Scan-Liste, Region, Sektor usw. bleiben
-wie auf dem Gerät. Der Provisioner kennt die Standardwerte der Funk-Hardware nicht und überschreibt
-sie deshalb nicht.
+Jeder Funk-Port, den das L2 benutzt, wird umbenannt (`set [find default-name=wlan1] name=w01`).
+
+**Ohne RF Role** wird der Funk-Port nicht als Funk verwaltet: der Generator übernimmt seine
+aktuelle Konfiguration unverändert als Soll (z.B. das CAPsMAN-Radio eines `CRS109`).
+
+**Mit RF Role** legt der Generator jedes Feld fest, das der Funk-Port meldet. Grundlage ist ein
+Profil pro Board (`hw_facts.rs`: `wireless_bridge_port`, `w60g_port`), darauf kommen Rolle, Kanal,
+Wireless Link und Funkregeln. Reste früherer Versuche auf dem Gerät gehen dabei verloren. Nur was
+von der Hardware kommt (`mac-address`, `l2mtu`, `radio-name`), bleibt, wie es ist (`k` im Modell).
+Ein Board ohne Profil (`CRS109`) ergibt mit RF Role `NoRadioProfile`.
 
 ### 5 GHz (`/interface/wireless`)
+
+Das Profil sind die Werkseinstellungen, wie sie `link-5-ap` zeigt, mit diesen Abweichungen für
+eine Strecke mit genau einer Gegenstelle: `wps-mode=disabled`, `wds-mode=disabled` (Nv2 mit
+`station-bridge` braucht kein WDS), `station-roaming=disabled`, `tdma-period-size=auto`. Dazu pro
+Board die eingebaute Antenne (`antenna-gain`: DynaDish 25, SXT 14 dBi) und
+`installation=outdoor`.
 
 | Feld                | AP (`RF Role = AP`)            | Station (`RF Role = Station`)        |
 |---------------------|--------------------------------|--------------------------------------|
 | `mode`              | `bridge`                       | `station-bridge`                     |
 | `wireless-protocol` | `nv2`                          | `nv2-nstreme-802.11`                 |
-| `frequency`         | RF Channel Frequency, sonst `auto` | unverändert (folgt dem AP)       |
+| `frequency`         | RF Channel Frequency, sonst `auto` | `auto` (sucht den AP)            |
 | `channel-width`     | `20/40/80mhz-Ceee` usw.        | `20/40/80mhz-XXXX` usw.              |
 | `ssid`              | SSID des Wireless Links        | SSID des Wireless Links              |
 | `nv2-security`, `nv2-preshared-key` | `enabled`, PSK des Links | `enabled`, PSK des Links |
+| `country`, `frequency-mode` | Land der Site, `regulatory-domain` | wie AP                    |
+| `tx-power-mode`, `tx-power` | TX Power: `all-rates-fixed`, sonst `default` | wie AP          |
 
 Die Protokolle entsprechen den produktiven Strecken (`hegglin-bachmann`/`bachmann-hegglin-2`). Der
 AP spricht nur Nv2, deshalb verschlüsselt Nv2 die Strecke (`nv2-security`), nicht das
-WPA-Sicherheitsprofil. Das Profil wird nicht verwaltet: das Standardprofil `default` lässt sich nicht
-löschen, und für eine Nv2-Strecke spielt es keine Rolle.
+WPA-Sicherheitsprofil. Das Profil bleibt `default`: es lässt sich nicht löschen, und für eine
+Nv2-Strecke spielt es keine Rolle.
 
-Die Kanalbreite wird nur gesetzt, wenn NetBox eine hat (5, 10, 20, 40, 80 oder 160 MHz; sonst
-`UnsupportedChannelWidth`). Der AP setzt den Steuerkanal an den Anfang (`C`), die Station folgt mit
-`X` dem Layout des APs.
+Ohne Kanalbreite in NetBox gilt `20/40/80mhz-XXXX` (beide Seiten wählen selbst). Mit Kanalbreite
+(5, 10, 20, 40, 80 oder 160 MHz; sonst `UnsupportedChannelWidth`) setzt der AP den Steuerkanal an
+den Anfang (`C`), die Station folgt mit `X` dem Layout des APs.
 
 ### 60 GHz (`/interface/w60g`)
 
 | Feld                     | AP                       | Station                  |
 |--------------------------|--------------------------|--------------------------|
 | `mode`                   | `bridge`                 | `station-bridge`         |
-| `frequency`              | RF Channel Frequency, sonst `auto` | unverändert    |
+| `frequency`              | RF Channel Frequency, sonst `auto` | `auto`         |
 | `ssid`, `password`       | SSID und PSK des Links   | SSID und PSK des Links   |
+| `region`                 | aus dem Land der Site (`ch` → `eu`) | wie AP        |
 | `put-stations-in-bridge` | die Bridge des Funk-Ports | die Bridge des Funk-Ports |
+| `isolate-stations`       | `yes`                    | `no`                     |
 
-Auf der AP-Seite erscheint jede Gegenstelle als eigenes, dynamisches Interface
-(`/interface/w60g/station`, z.B. `wlan60-station-2`). Diese werden nicht modelliert: über
-`put-stations-in-bridge` kommen sie selbst in die Bridge.
+`tx-sector`, `arp-timeout` sind `auto`, `mtu` 1500. Auf der AP-Seite erscheint jede Gegenstelle als
+eigenes, dynamisches Interface (`/interface/w60g/station`, z.B. `wlan60-station-2`). Diese werden
+nicht modelliert: über `put-stations-in-bridge` kommen sie selbst in die Bridge.
 
-### Ohne PSK
+### Land und Funkregeln
 
-Hat der Wireless Link keinen PSK (oder liefert NetBox keinen, wie im gespeicherten Export ohne
-Geheimnisse), bleiben Schlüssel, Passwort und `nv2-security` unverändert.
+Das Land ist die oberste Region der Site, als ISO-Code (`DeviceAccess::country`). Eine Tabelle
+(`country_settings`) übersetzt es in den RouterOS-Wert für 5 GHz (`ch` → `switzerland`) und die
+Region für 60 GHz (`eu`). Ein Land, das nicht in der Tabelle steht, ergibt `UnknownCountry`; eine
+Site ohne Region `MissingCountry`.
+
+Am Wireless Link übersteuern `rf_country` (RouterOS-Wert direkt) und `rf_frequency_mode` beides.
+So läuft z.B. `hegglin-bachmann` mit `country=etsi 5.5-5.7 outdoor` und
+`frequency-mode=manual-txpower`.
+
+### Schlüssel
+
+Ein Wireless Link mit Authentication Open ergibt eine unverschlüsselte Strecke
+(`nv2-security=disabled`, kein 60-GHz-Passwort). Ist er verschlüsselt, NetBox liefert aber keinen
+PSK (z.B. weil dem API-Token die Rechte fehlen), bricht die Generierung mit `MissingPsk` ab, statt
+die Strecke unverschlüsselt zu betreiben.
+
+Das 60-GHz-Passwort zeigt der AP mit `print` nicht an. Liefert ihn auch die API nicht, erscheint er
+bei jedem Abgleich wieder als Änderung. Das Setzen ist harmlos, weil der Wert gleich bleibt.
 
 ## Erkennung beim Abruf
 
@@ -82,8 +113,11 @@ Ein Funk-Port, den NetBox nennt, das Board aber nicht hat, ergibt `PortNotFound`
 
 CHR hat weder `/interface/wireless` noch `/interface/w60g`. Die Modelle sind deshalb mit
 statischen Decode-Tests aus echten Geräte-Ausgaben geprüft (`mikrotik-model`
-`src/model/wireless_tests.rs`), die Generierung mit `device/ros/radio_test.rs` und dem
-Produktions-Export (`netbox_example_test.rs`).
+`src/model/wireless_tests.rs`, darunter die vollständige `print advanced detail` zweier Strecken),
+die Generierung mit `device/ros/radio_test.rs` und dem Produktions-Export
+(`netbox_example_test.rs`). Ob RouterOS jede generierte Zeile annimmt, zeigt erst ein echtes
+Gerät. Die Werte des Profils stammen aus der CLI-Ausgabe; die API kann einzelne Werte anders
+schreiben, das zeigt sich dann als wiederkehrende Änderung.
 
 ## Ausrollen
 
