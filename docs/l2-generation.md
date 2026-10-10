@@ -129,7 +129,10 @@ Erst **nachdem** `L2Setup::new` die komplette Klassifizierung oben berechnet hat
 - `simple_bridges`: legt eine Bridge mit `vlan_filtering = false`, `ingress_filtering = false`,
   `protocol_mode = Rstp` an; jeder Mitgliedsport bekommt
   `frame_types = AdmitOnlyUntaggedAndPriorityTagged`.
-- `tagged_bridges`: legt eine Bridge mit `vlan_filtering = true`, `protocol_mode = Mstp` an. Für
+  `mvrp` bleibt leer: RouterOS meldet das Feld ohne VLAN-Filtering gar nicht.
+- `tagged_bridges`: legt eine Bridge mit `vlan_filtering = true`, `mvrp = false`,
+  `protocol_mode = Mstp` an. Wird eine solche Bridge später flach, will der Diff `mvrp` leeren,
+  und RouterOS lehnt ein leeres `mvrp=` ab. Dieser Übergang ist nicht abgedeckt. Für
   jeden physischen Port wird aus der Menge seiner getaggten/ungetaggten VLAN-Zugehörigkeiten (über
   alle VLAN-Ebenen dieser Bridge hinweg gesammelt) die passende `frame_types`/`pvid`/
   `ingress_filtering`-Kombination abgeleitet:

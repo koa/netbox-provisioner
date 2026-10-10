@@ -194,6 +194,8 @@ impl BaseDeviceDataTarget {
         for bridge in setup.simple_bridges.iter() {
             let bridge_cfg = self.bridge.entry(bridge.name.clone()).or_default();
             bridge_cfg.0.vlan_filtering = false;
+            // RouterOS neither reports nor needs mvrp without vlan filtering
+            bridge_cfg.0.mvrp = None;
             bridge_cfg.0.ingress_filtering = Some(false);
             bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Rstp;
             for port in &bridge.ports {
@@ -216,6 +218,7 @@ impl BaseDeviceDataTarget {
         for bridge in setup.tagged_bridges.iter() {
             let bridge_cfg = self.bridge.entry(bridge.name.clone()).or_default();
             bridge_cfg.0.vlan_filtering = true;
+            bridge_cfg.0.mvrp = Some(false);
             bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
             let mut tags_of_port = HashMap::<AsciiString, (Option<u16>, Vec<u16>)>::new();
             let mut ports_of_vlan = HashMap::<u16, (Vec<AsciiString>, Vec<AsciiString>)>::new();

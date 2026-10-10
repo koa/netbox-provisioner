@@ -215,7 +215,9 @@ async fn bootstrap_node_directly(
     // RB750Gr3 accepts it. Known CHR emulation gap (alongside the
     // already-documented lack of PoE/combo/SFP+ emulation), not a generator
     // bug: strip the field for this CHR-only bootstrap rather than for the
-    // product's real apply path.
+    // product's real apply path. `disable-running-check` is the opposite
+    // case: it only exists on x86/CHR, so a real board's target leaves it
+    // empty and the diff would clear it here, which RouterOS rejects.
     let sorted: Vec<_> = sorted
         .into_iter()
         .filter(|m| m.resource != b"ip/dhcp-client".as_slice())
@@ -224,7 +226,10 @@ async fn bootstrap_node_directly(
                 let fields = m
                     .fields
                     .iter()
-                    .filter(|f| f.key != b"bandwidth".as_slice())
+                    .filter(|f| {
+                        f.key != b"bandwidth".as_slice()
+                            && f.key != b"disable-running-check".as_slice()
+                    })
                     .cloned()
                     .collect::<Vec<_>>()
                     .into_boxed_slice();
