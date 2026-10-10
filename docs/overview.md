@@ -6,7 +6,8 @@ Rust-Typen selbst — die sind im Code (`device/ros/mod.rs`, `device/ros/l2/mod.
 benannt, dass eine zusätzliche Typ-Referenz hier nur veralten würde.
 
 Wie Router und Switches in NetBox gepflegt werden müssen, damit die Generierung funktioniert,
-steht in [netbox-modeling.md](netbox-modeling.md).
+steht in [netbox-modeling.md](netbox-modeling.md); die dafür nötigen Custom Fields in
+[custom-fields.md](custom-fields.md).
 
 ## Die Pipeline (`device/ros/graphql.rs::DeviceCfg`)
 

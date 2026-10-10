@@ -32,7 +32,8 @@ OSPF, VXLAN, WLAN/CAPsMAN, point-to-point radio bridges) - read it before changi
 `device/ros/`.
 `docs/netbox-modeling.md` is the user-facing contract for how devices must be modeled in NetBox
 (tags, custom fields, interface names, VLAN groups and their VXLAN VNI); update it whenever `fetch.rs` or
-`fetch_topology.graphql` changes what is read.
+`fetch_topology.graphql` changes what is read. Every custom field read (the `JSON` struct in
+`netbox/mod.rs`) is also described in `docs/custom-fields.md`, with how to create it in NetBox.
 
 `device/ros/netbox_example_test.rs` runs every RouterOS device of the stored production
 response `docs/netbox-response-example.json` (maintained by the user from the live NetBox; never

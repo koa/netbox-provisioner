@@ -31,11 +31,12 @@ Die Slugs müssen exakt so heißen:
 | Device              | `wlan_group`           | Objekt → Wireless LAN Group  | Gerät ist Access Point dieser WLAN-Gruppe     |
 | Wireless LAN Group  | `controller`           | Objekt → Device              | CAPsMAN-Controller der Gruppe                 |
 | Wireless LAN Group  | `wlan_mgmt`            | Objekt → VLAN                | Management-VLAN der Gruppe                    |
-| Wireless Link       | `rf_country`           | Text                         | Land beider Enden übersteuern, siehe [Funkbrücke](#funkbrücke) |
-| Wireless Link       | `rf_frequency_mode`    | Auswahl `regulatory-domain`, `manual-txpower`, `superchannel` | Frequency Mode beider Enden übersteuern |
+| VLAN Group          | `vxlan_vni`            | Integer                      | VLANs der Gruppe über VXLAN verbinden         |
+| Wireless Link       | `rf_country`           | Text                         | Land beider Enden einer Funkbrücke übersteuern |
+| Wireless Link       | `rf_frequency_mode`    | Selection                    | Frequency Mode beider Enden übersteuern       |
 
-Die Namen müssen exakt stimmen; der Provisioner liest sie über `custom_field_data` per Namen aus
-(`JSON`-Struct in `backend/src/netbox/mod.rs`).
+Die Namen müssen exakt stimmen. Anlegen, Werte und Wirkung im Einzelnen:
+[custom-fields.md](custom-fields.md).
 
 ### Weitere Stammdaten
 

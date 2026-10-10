@@ -1,0 +1,59 @@
+# NetBox: Customization > Custom Fields > Import, Format YAML.
+# Import 1-custom-field-choice-sets.yaml first. A field that already exists makes
+# the whole import fail: remove its document here before importing.
+# See ../custom-fields.md.
+---
+name: mikrotik_credentials
+label: MikroTik credentials
+type: text
+object_types: [tenancy.tenant]
+description: Name of a credentials entry in the provisioner's config.yaml
+required: false
+---
+name: wlan_group
+label: WLAN group
+type: object
+object_types: [dcim.device]
+related_object_type: wireless.wirelesslangroup
+description: The device is an access point of this WLAN group
+required: false
+---
+name: controller
+label: CAPsMAN controller
+type: object
+object_types: [wireless.wirelesslangroup]
+related_object_type: dcim.device
+description: CAPsMAN controller of the group; a group without one is ignored
+required: false
+---
+name: wlan_mgmt
+label: WLAN management VLAN
+type: object
+object_types: [wireless.wirelesslangroup]
+related_object_type: ipam.vlan
+description: VLAN the access points of the group reach their controller over
+required: false
+---
+name: vxlan_vni
+label: VXLAN VNI
+type: integer
+object_types: [ipam.vlangroup]
+description: VNI of the VXLAN the VLANs of the group are tunneled over
+required: false
+validation_minimum: 1
+validation_maximum: 16777215
+---
+name: rf_country
+label: RF country
+type: text
+object_types: [wireless.wirelesslink]
+description: RouterOS country (5 GHz) or region (60 GHz) of both ends, overriding the site's region
+required: false
+---
+name: rf_frequency_mode
+label: RF frequency mode
+type: select
+object_types: [wireless.wirelesslink]
+choice_set: rf_frequency_mode
+description: RouterOS frequency-mode of both ends (5 GHz); empty means regulatory-domain
+required: false

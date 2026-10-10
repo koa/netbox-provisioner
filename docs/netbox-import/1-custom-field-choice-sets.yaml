@@ -1,0 +1,7 @@
+# NetBox: Customization > Custom Field Choice Sets > Import, Format YAML.
+# Import before 2-custom-fields.yaml, which refers to this set by name.
+# See ../custom-fields.md.
+---
+name: rf_frequency_mode
+description: RouterOS frequency-mode of a 5 GHz radio bridge
+extra_choices: "regulatory-domain:regulatory-domain,manual-txpower:manual-txpower,superchannel:superchannel"
