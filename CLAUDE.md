@@ -205,10 +205,11 @@ VLAN example; no 802.11ax device in the lab to try it); a `wifi-qcom-ac` CAP is 
 it runs `wireless` instead with `wlan<N>` in NetBox (`hw_facts::runs_wireless`, the wAP ac).
 Moving to `wireless` leaves the `/interface/wifi` radios inactive under their names, so without a
 wifi package they get their default names back, and `/interface/wifi` mutations come before
-`/interface/wireless` ones (the sort keeps the order within a round). A device that is no
-controller or CAP anymore still gets `WifiDeviceData` read while CAPsMAN/CAP are on or the
-certificates CAPsMAN generated (named in `/interface/wifi/capsman generated-*`, not recognizable
-by trust store) are left, and these are
+`/interface/wireless` ones (the sort keeps the order within a round). "Pakete anpassen" next to the
+channel brings the packages in line without changing the version (`updateRouteros` without
+`channel`). A device that is no controller or CAP anymore still
+gets `WifiDeviceData` read while CAPsMAN/CAP are on or the certificates CAPsMAN generated (named in
+`/interface/wifi/capsman generated-*`, not recognizable by trust store) are left, and these are
 removed. A VLAN interface on a tagged bridge only exists where the device has L3 in that VLAN.
 
 A device that powers another one over PoE (NetBox `poe_mode=pse` on the port cabled to it) must

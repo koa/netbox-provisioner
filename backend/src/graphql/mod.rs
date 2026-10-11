@@ -4,7 +4,7 @@ use crate::{
     device::{
         bootstrap::{self, BootstrapResult},
         power::PowerChain,
-        update::{self, UpdateResult},
+        update::{self, DeviceLink, UpdateResult},
         ros::graphql::ApplyResult,
     },
     topology::{DeviceId, TopologyHolder, access::AdhocCredentials},
@@ -69,12 +69,13 @@ impl MutationAuthenticated {
         Ok(bootstrap::bootstrap(&device, &plan).await)
     }
     /// Updates RouterOS (and the RouterBOARD firmware) to the newest release of `channel`, with
-    /// the packages the device needs (`allow_apply` must be set). Target and credentials as for
-    /// `DeviceAccess.access`.
+    /// the packages the device needs (`allow_apply` must be set); without `channel` it only
+    /// brings the packages in line, at the version the device runs. Target and credentials as
+    /// for `DeviceAccess.access`.
     async fn update_routeros(
         &self,
         id: u32,
-        channel: update::Channel,
+        channel: Option<update::Channel>,
         target: Option<String>,
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
@@ -82,7 +83,6 @@ impl MutationAuthenticated {
         if !CONFIG.allow_apply {
             return Err(Error::ApplyNotAllowed);
         }
-        let version = update::newest(7, channel).await?;
         let device = self
             .topology
             .devices_by_id(DeviceId(id))
@@ -94,6 +94,10 @@ impl MutationAuthenticated {
             .await?
             .ok_or(Error::MissingCredentials)?;
         let wanted = device.wanted_packages().await?;
+        let version = match channel {
+            Some(channel) => update::newest(7, channel).await?,
+            None => update::read_state(&device.api().await?).await?.version,
+        };
         Ok(update::update(&device, &power, &version, &wanted).await)
     }
     /// Applies the generated config to a device (`allow_apply` must be set). Target and

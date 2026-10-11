@@ -163,13 +163,13 @@ werden (er sich neu verbindet); das löst die Generierung nicht aus.
 ### Vom wAP ac auf `wifi-qcom-ac` zu `wireless`
 
 Ein wAP ac läuft auch mit `wireless` (`hw_facts::runs_wireless`): Hat er in NetBox `wlan<N>`-Ports,
-will `needed_radio_package` `wireless`, und ein RouterOS-Update tauscht die Pakete (in einem Kanal
-mit der installierten Version auch ohne neue Version). `wireless` installiert seine Radios
-ausgeschaltet; der Legacy-CAP schaltet sie ein. Die Radios von `/interface/wifi` bleiben ohne Paket
-inaktiv stehen (das Menü gehört zu `routeros`) und behalten ihre Namen (`w01`); ohne Paket von
-`/interface/wifi` bekommen sie ihren Standardnamen zurück (`wifi1`), und
-`DeviceCfg::generate_mutations` stellt `/interface/wifi` vor `/interface/wireless`, damit der Name
-frei ist, bevor `wlan1` ihn bekommt. Umgekehrt verschwindet `/interface/wireless` mit seinem Paket.
+will `needed_radio_package` `wireless`, und „Pakete anpassen“ tauscht die Pakete bei gleicher
+Version. `wireless` installiert seine Radios ausgeschaltet; der Legacy-CAP schaltet sie ein. Die
+Radios von `/interface/wifi` bleiben ohne Paket inaktiv stehen (das Menü gehört zu `routeros`) und
+behalten ihre Namen (`w01`); ohne Paket von `/interface/wifi` bekommen sie ihren Standardnamen
+zurück (`wifi1`), und `DeviceCfg::generate_mutations` stellt `/interface/wifi` vor
+`/interface/wireless`, damit der Name frei ist, bevor `wlan1` ihn bekommt. Umgekehrt verschwindet
+`/interface/wireless` mit seinem Paket.
 
 Ein AP, dessen Radios NetBox nicht kennt, behält seine CAP-Konfiguration (ein CAP eines CAPsMAN,
 den NetBox nicht kennt). Andere Geräte haben den CAP aus. Radios mit RF-Rolle sind Enden von

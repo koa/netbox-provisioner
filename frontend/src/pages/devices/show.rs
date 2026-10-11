@@ -93,6 +93,8 @@ pub enum ShowDeviceMessage {
     /// the label of a channel entry (`channel_label`)
     SelectChannel(Box<str>),
     Update,
+    /// bring the packages in line at the running version
+    AdjustPackages,
     Updated(Result<update_routeros::UpdateRouterosUpdateRouteros, FrontendError>),
 }
 
@@ -164,7 +166,12 @@ impl Component for ShowDevice {
                     return false;
                 };
                 self.update = UpdateState::Running;
-                update(ctx.link().clone(), self.id, channel, self.alternate_target.clone());
+                update(ctx.link().clone(), self.id, Some(channel), self.alternate_target.clone());
+                true
+            }
+            ShowDeviceMessage::AdjustPackages => {
+                self.update = UpdateState::Running;
+                update(ctx.link().clone(), self.id, None, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::Updated(result) => {
@@ -241,6 +248,10 @@ impl Component for ShowDevice {
                         "Pakete anpassen".to_string()
                     }
                 });
+                // without changing the version, whatever the channel; unless that is what the
+                // channel's update does anyway
+                let adjust_packages = routeros.adjust_packages
+                    && !selected.is_some_and(|c| c.update && !c.upgrade);
                 html! {<>
                 <dt>{"RouterOS"}</dt><dd>
                     { routeros.version.clone() }
@@ -259,8 +270,17 @@ impl Component for ShowDevice {
                                 disabled={update_running || running}
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::Update)}
                             />
-                        } else {
+                        } else if !adjust_packages {
                             {" aktuell"}
+                        }
+                        if adjust_packages {
+                            {" "}
+                            <Button
+                                variant={ButtonVariant::Secondary}
+                                label="Pakete anpassen"
+                                disabled={update_running || running}
+                                onclick={ctx.link().callback(|_| ShowDeviceMessage::AdjustPackages)}
+                            />
                         }
                         if update_running { <Spinner size={SpinnerSize::Md}/>{" wird aktualisiert, das Gerät startet neu …"} }
                     </div>
@@ -568,7 +588,13 @@ fn channel_label(
     format!("{name}: {}", channel.newest).into()
 }
 
-fn update(scope: Scope<ShowDevice>, id: u32, channel: device_overview::Channel, target: SelectedTarget) {
+/// Updates to the newest release of `channel`, or without one only adjusts the packages.
+fn update(
+    scope: Scope<ShowDevice>,
+    id: u32,
+    channel: Option<device_overview::Channel>,
+    target: SelectedTarget,
+) {
     spawn_local(async move {
         let (credential_name, adhoc_credentials) = match target.credentials {
             SelectedCredentials::Default => (None, None),
@@ -585,13 +611,13 @@ fn update(scope: Scope<ShowDevice>, id: u32, channel: device_overview::Channel, 
             scope.clone(),
             update_routeros::Variables {
                 id: id as i64,
-                channel: match channel {
+                channel: channel.map(|channel| match channel {
                     device_overview::Channel::LONG_TERM => update_routeros::Channel::LONG_TERM,
                     device_overview::Channel::STABLE => update_routeros::Channel::STABLE,
                     device_overview::Channel::TESTING => update_routeros::Channel::TESTING,
                     device_overview::Channel::DEVELOPMENT => update_routeros::Channel::DEVELOPMENT,
                     device_overview::Channel::Other(other) => update_routeros::Channel::Other(other),
-                },
+                }),
                 target: target.address.map(|a| a.to_string()),
                 credential_name,
                 adhoc_credentials,

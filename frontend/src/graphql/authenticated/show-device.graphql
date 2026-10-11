@@ -26,6 +26,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                     packages
                     wanted
                     defaultChannel
+                    adjustPackages
                     channels {
                         channel
                         newest
@@ -65,7 +66,7 @@ mutation BootstrapDevice($id: Int!, $mac: String!){
         transcript
     }
 }
-mutation UpdateRouteros($id: Int!, $channel: Channel!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+mutation UpdateRouteros($id: Int!, $channel: Channel, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
     updateRouteros(id: $id, channel: $channel, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
         from
         to

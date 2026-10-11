@@ -524,7 +524,11 @@ impl AccessibleDevice {
                     update: step.is_some(),
                 });
             }
+            // RouterOS 6 goes to 7 for its packages (`next_step`)
+            let adjust_packages = state.version.major() >= 7
+                && update::next_step(&state, &state.version, &state.version, &wanted).is_some();
             Ok::<_, Error>(RouterOsVersions {
+                adjust_packages,
                 version: state.version.to_string(),
                 packages: state.packages,
                 wanted: ["routeros".to_string()].into_iter().chain(wanted).collect(),
@@ -560,6 +564,9 @@ pub struct RouterOsVersions {
     /// the channel preselected for updates (`routeros_channel` of the config)
     default_channel: update::Channel,
     channels: Vec<ChannelUpdate>,
+    /// whether the packages differ from `wanted`, which an update without channel fixes at
+    /// the running version
+    adjust_packages: bool,
 }
 
 #[derive(SimpleObject)]
