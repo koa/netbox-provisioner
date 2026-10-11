@@ -24,6 +24,11 @@ use std::net::{IpAddr, Ipv4Addr};
 /// `[controller, ax CAP, wAP ac on wifi-qcom-ac, wAP ac on wireless]`, with a WLAN per VLAN
 /// id given (SSID `wlan<vid>`), all in one VLAN group with a VXLAN.
 async fn wlan_group(vlan_ids: &[u16]) -> [DeviceAccess; 4] {
+    wlan_group_with(vlan_ids, false).await
+}
+
+/// Like `wlan_group`, with the controller also an AP of its group if `controller_is_ap`.
+async fn wlan_group_with(vlan_ids: &[u16], controller_is_ap: bool) -> [DeviceAccess; 4] {
     let mut builder = TopologyBuilder::default();
     let devices = [(); 4].map(|_| builder.devices.next_id());
     let wlan_group = builder.wlan_groups.next_id();
@@ -77,7 +82,7 @@ async fn wlan_group(vlan_ids: &[u16]) -> [DeviceAccess; 4] {
             name: "Berg".into(),
             mgmt_vlan: None,
             controller: devices[0],
-            aps: devices[1..].into(),
+            aps: if controller_is_ap { devices.into() } else { devices[1..].into() },
             wlans: wlans.into(),
         },
     );
@@ -129,7 +134,7 @@ async fn wlan_group(vlan_ids: &[u16]) -> [DeviceAccess; 4] {
                 primary_ip_v4: Some(loopback),
                 loopback_ip: Some(loopback),
                 wlan_controller_of: (idx == 0).then_some(wlan_group),
-                wlan_ap_of: (idx != 0).then_some(wlan_group),
+                wlan_ap_of: (idx != 0 || controller_is_ap).then_some(wlan_group),
                 country: Some("ch".into()),
                 ..Default::default()
             },
@@ -211,6 +216,21 @@ async fn ac_cap_without_tagging_is_refused() {
         Err(SetupError::WlanVlansNotTagged(name)) => assert_eq!(&*name, "ap-ac"),
         other => panic!("{:?}", other.map(|_| ())),
     }
+}
+
+/// A controller also marked as AP of its group, but without radios in NetBox, has nothing
+/// to tag: it runs `wireless` for the legacy CAPsMAN, which isn't refused.
+#[tokio::test]
+async fn controller_without_radios_as_ap_is_not_refused() {
+    let [controller, ..] = wlan_group_with(&[104, 105], true).await;
+    assert!(controller.wifi_cap_of().is_some());
+    let package = needed_radio_package(&controller, b"CCR2004-1G-12S+2XS");
+    assert_eq!(package, Some(RadioPackage::Wireless));
+    let setup = L2Setup::new(&controller, KeepNameGenerator).unwrap();
+    let mut target = WifiDeviceDataTarget::new(b"CCR2004-1G-12S+2XS");
+    target
+        .generate_from(&controller, &setup, None, &[], package)
+        .unwrap();
 }
 
 /// A wAP ac with `wlan1` in NetBox runs `wireless`, as a CAP of the legacy CAPsMAN, which

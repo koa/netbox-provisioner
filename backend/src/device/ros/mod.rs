@@ -1489,7 +1489,12 @@ impl WifiDeviceDataTarget {
             let wlan_vlans = wlan_vlans(&group);
             let wlan_bridge = group.wlan().find_map(|wlan| l2.bridge_of_wlan(&wlan));
             let tags = radio_package.is_some_and(RadioPackage::tags_vlans);
-            if wlan_vlans == WlanVlans::PerWlan && !tags {
+            // an AP without radios in NetBox (a controller also marked as AP) has none to tag
+            let has_radios = device
+                .interfaces()
+                .iter()
+                .any(|interface| matches!(interface.external_port(), Some(PhysicalPortId::Wifi(_))));
+            if wlan_vlans == WlanVlans::PerWlan && !tags && has_radios {
                 return Err(SetupError::WlanVlansNotTagged(device.name().into()));
             }
             for interface in device.interfaces() {
