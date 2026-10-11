@@ -1,6 +1,6 @@
 # Custom Fields in NetBox
 
-Der Provisioner liest sieben Custom Fields. Alle sind optional: Ein Feld, das in NetBox fehlt oder
+Der Provisioner liest acht Custom Fields. Alle sind optional: Ein Feld, das in NetBox fehlt oder
 leer ist, schaltet nur die jeweilige Funktion ab, die Generierung bricht deswegen nicht ab. Wo ein
 leeres Feld trotzdem zu einem Fehler führt, steht es unten beim Feld.
 
@@ -14,6 +14,7 @@ werden, beschreibt [netbox-modeling.md](netbox-modeling.md).
 |------------------------|--------------------|---------------------------------|---------------------------------------------|
 | `mikrotik_credentials` | Tenant             | Text                            | Zugangsdaten für die Geräte des Tenants     |
 | `wlan_group`           | Device             | Object → Wireless LAN Group     | Gerät ist Access Point dieser WLAN-Gruppe   |
+| `propagate_default_route` | Device          | Boolean                         | OSPF gibt die Default-Route des Geräts weiter |
 | `controller`           | Wireless LAN Group | Object → Device                 | CAPsMAN-Controller der Gruppe               |
 | `wlan_mgmt`            | Wireless LAN Group | Object → VLAN                   | Management-VLAN der Gruppe                  |
 | `vxlan_vni`            | VLAN Group         | Integer                         | VLANs der Gruppe über VXLAN verbinden       |
@@ -70,6 +71,19 @@ Zugangsdaten von Hand eingeben.
 Nur bei Access Points: die WLAN-Gruppe, deren WLANs das Gerät ausstrahlt. Ein Gerät mit
 `wlan_group` bekommt die CAP-Konfiguration, auch wenn es kein AP ist. Ein Switch, der nur Ports im
 WLAN-Netz hat, braucht das Feld deshalb nicht; ihm reicht das VLAN an den Ports.
+
+### `propagate_default_route` (Device, Boolean)
+
+Nur am Router mit dem Uplink ins Internet (in der Regel der mit `nat`): Sein OSPF gibt die
+Default-Route weiter, die er selbst hat (vom DHCP-Client des Uplinks oder eine statische), sobald
+sie installiert ist (`originate-default=if-installed`). Alle anderen Geräte, auch bei leerem Feld,
+bekommen `originate-default=never`: Hat ein Gerät einen Uplink in ein anderes Netz (z.B. ein Lab
+mit Uplink ins produktive Netz), ginge dessen Default-Route sonst über OSPF in dieses Netz zurück
+und zöge dort den Verkehr an. Andere statische Routen verteilt OSPF weiterhin
+(`redistribute=connected,static`).
+
+Achtung beim Umstellen: Ein Router, der bisher eine Default-Route verteilt hat, hört damit beim
+nächsten Anwenden auf, solange das Feld nicht gesetzt ist.
 
 ### `controller` (Wireless LAN Group, Object → Device)
 

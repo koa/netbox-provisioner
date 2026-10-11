@@ -9,7 +9,8 @@ use crate::{
 };
 use ipnet::IpNet;
 use mikrotik_model::{
-    ascii::AsciiString, generator::Generator, model::ReferenceType, resource::ResourceMutation,
+    ascii::AsciiString, generator::Generator, model::{ReferenceType, RoutingOriginateDefault},
+    resource::ResourceMutation,
 };
 use std::{
     collections::HashMap,
@@ -224,6 +225,54 @@ async fn test_scenario_core_router() -> Result<(), Box<dyn Error>> {
         "--- Szenario: Kernrouter nach examples/01-core-router-ospf (gelabelte Kundenlinks, OSPF, Loopback) ---"
     );
     dump_mutations(&target_data, &empty_current)?;
+    Ok(())
+}
+
+/// Ein Router mit OSPF gibt eine Default-Route nur weiter, wenn NetBox es ihm erlaubt
+/// (`propagate_default_route`); sonst ginge eine vom Uplink über OSPF in das Netz dahinter.
+#[tokio::test]
+async fn test_ospf_originates_default_only_with_flag() -> Result<(), Box<dyn Error>> {
+    for (propagate, expected) in [
+        (false, RoutingOriginateDefault::Never),
+        (true, RoutingOriginateDefault::IfInstalled),
+    ] {
+        let mut builder = TopologyBuilder::default();
+        let d1 = builder.devices.next_id();
+        let loopback_id = add_ip(&mut builder, [192, 168, 255, 1], 32);
+        let ip_id = add_ip(&mut builder, [172, 17, 0, 49], 29);
+        let if_id = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            if_id,
+            Interface {
+                name: "ether2".into(),
+                device: d1,
+                external: Some(PhysicalPortId::Ethernet(2)),
+                ips: Box::new([ip_id]),
+                use_ospf: true,
+                ..Default::default()
+            },
+        );
+        builder.devices.insert(
+            d1,
+            Device {
+                name: "router".into(),
+                primary_ip_v4: Some(loopback_id),
+                loopback_ip: Some(loopback_id),
+                propagate_default_route: propagate,
+                ..Default::default()
+            },
+        );
+        let device = Into::<TopologyHolder>::into(builder)
+            .devices_by_id(d1)
+            .await
+            .expect("device not found");
+        let (mut target_data, _) = setup_testdata(b"CCR1009-7G-1C-1S+")?;
+        target_data.generate_from(&device, KeepNameGenerator)?;
+        for instance in ["default-v2", "default-v3"] {
+            let cfg = &target_data.ospf_instance[&AsciiString::from(instance.as_bytes())].0;
+            assert_eq!(cfg.originate_default, Some(expected), "{instance}");
+        }
+    }
     Ok(())
 }
 

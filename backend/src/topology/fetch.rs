@@ -547,6 +547,10 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     role,
                     country,
                     dns_servers: device.config_context.dns_servers.unwrap_or_default(),
+                    propagate_default_route: device
+                        .custom_field_data
+                        .propagate_default_route
+                        .unwrap_or(false),
                 },
             );
         }

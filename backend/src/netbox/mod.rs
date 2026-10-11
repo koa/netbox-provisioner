@@ -31,6 +31,9 @@ pub struct JSON {
     /// In a device's config context: the DNS servers its client networks get, the first
     /// asked first; the device doesn't resolve for them then.
     pub dns_servers: Option<Box<[IpAddr]>>,
+    /// On a device: its OSPF announces the default route it has (from DHCP or static);
+    /// without, none leaves it.
+    pub propagate_default_route: Option<bool>,
 }
 
 /// NetBox's `Decimal` scalar (e.g. an interface's RF channel frequency in MHz),

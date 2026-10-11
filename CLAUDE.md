@@ -205,7 +205,11 @@ other too. PoE out (`setup_poe`) was only in the latter, so the real path never 
 
 A `dhcp-client` on an `ospf` interface takes no default route (`add-default-route=no`; RouterOS
 then doesn't report `default-route-distance`): the default comes over OSPF, and one from DHCP
-would be redistributed although it only works from that device. A client network's (`dhcp`)
+would be redistributed although it only works from that device. OSPF originates a default only
+on a device with the custom field `propagate_default_route` (`originate-default=if-installed`,
+RouterOS' own default), every other one gets `never`: an apply of the lab's uplink router, whose
+DHCP default from the production network was still installed, once announced it back into
+production. A client network's (`dhcp`)
 IPv6 /64 is advertised for SLAAC.
 
 DNS servers come from the device's NetBox config context (`dns_servers`, in priority order):

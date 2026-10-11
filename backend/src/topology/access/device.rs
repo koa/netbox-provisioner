@@ -213,6 +213,10 @@ impl DeviceAccess {
     pub fn country(&self) -> Option<&str> {
         self.data().and_then(|d| d.country.as_deref())
     }
+    /// Whether its OSPF announces its default route (custom field `propagate_default_route`).
+    pub fn propagates_default_route(&self) -> bool {
+        self.data().is_some_and(|d| d.propagate_default_route)
+    }
     /// The DNS servers of the device's client networks (config context `dns_servers`).
     pub fn dns_servers(&self) -> &[IpAddr] {
         self.data().map(|d| &*d.dns_servers).unwrap_or_default()

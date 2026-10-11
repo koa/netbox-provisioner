@@ -24,6 +24,16 @@ search_weight: 1000
 filter_logic: loose
 weight: 100
 ---
+name: propagate_default_route
+label: Propagate default route
+type: boolean
+object_types: dcim.device
+description: OSPF announces the device's default route (only routers with the uplink)
+required: false
+search_weight: 1000
+filter_logic: loose
+weight: 100
+---
 name: controller
 label: CAPsMAN controller
 type: object

@@ -36,7 +36,7 @@ use mikrotik_model::{
         Ipv6NdAdvertiseDns, Ipv6NdByInterface, Ipv6NdCfg,
         IpSocksAuthMethod, IpSocksUsersByName, IpSshCfg, IpSshForwardingEnabled, IpSocksUsersCfg, Ipv6AddressByAddress,
         Ipv6AddressCfg, RoutingOspfInstanceByName, RoutingOspfInstanceCfg,
-        RoutingOspfInstanceVersion, RoutingRedistribute, VlanFrameTypes, WifiChannelBand,
+        RoutingOriginateDefault, RoutingOspfInstanceVersion, RoutingRedistribute, VlanFrameTypes, WifiChannelBand,
         WifiAuthenticationTypes, WifiCountry, WifiManagement, YesNo,
     },
     value,
@@ -726,6 +726,13 @@ impl BaseDeviceDataTarget {
                 .map(|p| p.if_name.clone())
                 .collect::<BTreeSet<_>>();
             if !ports.is_empty() {
+                // only where NetBox says so: a default route a device has from an uplink to
+                // another network would otherwise go out into that network too
+                let originate_default = Some(if device.propagates_default_route() {
+                    RoutingOriginateDefault::IfInstalled
+                } else {
+                    RoutingOriginateDefault::Never
+                });
                 let v2_instance = self
                     .ospf_instance
                     .entry(b"default-v2".into())
@@ -735,6 +742,7 @@ impl BaseDeviceDataTarget {
                         .into_iter()
                         .collect();
                 v2_instance.0.router_id = Some(router_id.to_string().into());
+                v2_instance.0.originate_default = originate_default;
                 v2_instance.0.version = RoutingOspfInstanceVersion::_2;
                 let v3_instance = self
                     .ospf_instance
@@ -745,6 +753,7 @@ impl BaseDeviceDataTarget {
                         .into_iter()
                         .collect();
                 v3_instance.0.router_id = Some(router_id.to_string().into());
+                v3_instance.0.originate_default = originate_default;
                 v3_instance.0.version = RoutingOspfInstanceVersion::_3;
                 let v2_area = self.ospf_area.entry(b"backbone-v2".into()).or_default();
                 v2_area.0.instance = b"default-v2".into();

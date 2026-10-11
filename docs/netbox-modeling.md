@@ -47,6 +47,7 @@ nur auf Geräten mit Client-Netz. Jedes Gerät fragt die Server auch selbst
 |---------------------|------------------------|------------------------------|-----------------------------------------------|
 | Tenant              | `mikrotik_credentials` | Text                         | Name eines Zugangsdaten-Eintrags im Provisioner |
 | Device              | `wlan_group`           | Objekt → Wireless LAN Group  | Gerät ist Access Point dieser WLAN-Gruppe     |
+| Device              | `propagate_default_route` | Boolean                   | OSPF gibt die Default-Route des Geräts weiter |
 | Wireless LAN Group  | `controller`           | Objekt → Device              | CAPsMAN-Controller der Gruppe                 |
 | Wireless LAN Group  | `wlan_mgmt`            | Objekt → VLAN                | Management-VLAN der Gruppe                    |
 | VLAN Group          | `vxlan_vni`            | Integer                      | VLANs der Gruppe über VXLAN verbinden         |
@@ -97,6 +98,7 @@ Gerät nicht erreichbar. Im Frontend kann man dann noch Ad-hoc-Zugangsdaten eing
 | Primary IPv6 / Primary IPv4  | **Management-Adresse**: der Provisioner verbindet sich zur primären IPv6, falls gesetzt, sonst zur primären IPv4 |
 | Primary IPv4                 | **OSPF-Router-ID** und **VXLAN-VTEP-Adresse**. Ohne primäre IPv4 wird **kein OSPF** generiert |
 | Custom Field `wlan_group`    | nur für Access Points, siehe [WLAN](#wlan)                              |
+| Custom Field `propagate_default_route` | nur am Router mit dem Internet-Uplink: OSPF gibt seine Default-Route weiter; sonst keine (`originate-default=never`) |
 
 Das **Board-Modell** kommt nicht aus NetBox (der Device Type wird nicht gelesen), sondern wird
 live vom Gerät gelesen (`/system/routerboard`). Unterstützt sind nur die Modelle in
@@ -303,7 +305,10 @@ Beispiel: Core-Router mit Uplink, OSPF zu zwei Nachbarn und einem Kunden-Port.
 5. **Kunden-/Haushalts-Port** mit DHCP: `ether5` mit Label `Bachmann Dachboden`, IP
    `192.168.30.1/24`, Tags `dhcp`. Prefix `192.168.30.0/24` muss existieren.
 6. **Uplink ohne feste IP**: `ether8` mit Tag `dhcp-client` und ohne IP, dazu `nat`, wenn das Netz
-   dahinter die eigenen Netze nicht kennt (keine Route zurück).
+   dahinter die eigenen Netze nicht kennt (keine Route zurück). Ist das der Uplink ins Internet,
+   am Gerät `propagate_default_route` setzen, damit OSPF die Default-Route an die anderen Router
+   weitergibt. Bei einem Uplink in ein Netz, das selbst eine Default-Route hat (z.B. ein Lab am
+   produktiven Netz), nicht: die Default-Route ginge sonst in jenes Netz zurück.
 
 ## Rezept: Switch mit Haushalts-VLANs
 

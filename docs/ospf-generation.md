@@ -53,7 +53,11 @@ gar kein OSPF generiert.
    - `default-v3` (`RoutingOspfInstanceVersion::_3`) mit Area `backbone-v3`.
    Beide Instanzen bekommen `router_id` = die eigene primäre IPv4-Adresse (auch die v3/OSPFv3-
    Instanz — RouterOS verlangt für OSPFv3 ebenfalls eine IPv4-formatierte Router-ID) und
-   `redistribute = {Connected, Static}`.
+   `redistribute = {Connected, Static}`. `originate_default` ist `IfInstalled` nur an Geräten
+   mit dem Custom Field `propagate_default_route`, sonst `Never` (auch die Default-Route vom
+   DHCP-Client eines Uplinks oder eine statische geht dann nicht hinaus; andere statische Routen
+   schon). RouterOS' eigener Standard wäre `if-installed`: ein Lab mit Uplink ins produktive Netz
+   hat so dessen Default-Route wieder dorthin exportiert.
 4. Beide Areas bekommen ein `routing/ospf/interface-template`, das **dieselbe** Menge von
    Schnittstellen auf beiden Instanzen aktiviert (`use_bfd = false` auf beiden). Es gibt keine
    Unterscheidung, welche Schnittstellen tatsächlich IPv6-fähig sind — `default-v3` wird also auch
