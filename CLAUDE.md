@@ -121,7 +121,9 @@ first connection); the proxy's own device is reached at the proxy's address
 Nothing is written without `allow_apply`; `apply` runs the diff as a script on
 the device (`apply_mutations_via_script`), so it completes even when it changes the path the
 connection takes, then diffs again: a script stops at its first error, so whatever is left is
-what failed. Before the script the device saves a backup and schedules loading it after
+what failed. That error comes back from `/system/script/run` (`ApplyRunning.error`) with the lines
+before it applied, so it is no reason to take the fallback away early (it once was, on lab-core).
+Before the script the device saves a backup and schedules loading it after
 `apply_fallback_seconds` (180; `device::ros::fallback`); reaching the device again, even with a
 part left, takes both away, otherwise it reboots into the config from before (CHR test
 `fallback_is_stopped_or_restores`). A diff that never gets empty after an apply usually means a field RouterOS accepts

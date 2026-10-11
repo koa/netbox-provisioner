@@ -295,11 +295,12 @@ pub struct FallbackArmed {
     pub delay: ScalarDuration,
 }
 
-/// The script runs on the device; the apply waits up to `timeout` for the device to be in
-/// line.
+/// The script runs on the device, or stopped at the line of `error`; the apply waits up to
+/// `timeout` for the device to be in line.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct ApplyRunning {
     pub timeout: ScalarDuration,
+    pub error: Option<Box<str>>,
 }
 
 /// What the device still lacks after the apply (empty when everything was applied), or why it
@@ -434,16 +435,15 @@ impl AccessibleDevice {
         log.emit(FallbackArmed {
             delay: delay.into(),
         });
-        if let Err(error) = apply_mutations_via_script(&raw, &mutations, APPLY_SCRIPT).await {
-            // the script didn't start, the device is as it was
-            if let Err(disarm) = fallback::disarm(&raw).await {
-                info!("{}: fallback not stopped: {disarm}", self.device_config.name());
-            }
-            return Err(error.into());
-        }
+        // an error is mostly the script's own: it stopped at a line, the ones before are
+        // applied, so the fallback stays until the device is reached again, as without
+        let error = apply_mutations_via_script(&raw, &mutations, APPLY_SCRIPT)
+            .await
+            .err();
         drop(raw);
         log.emit(ApplyRunning {
             timeout: APPLY_TIMEOUT.into(),
+            error: error.map(|error| error.to_string().into()),
         });
         // cancelled from here on, the fallback stays
         let wait = async |time| {

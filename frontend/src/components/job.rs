@@ -177,6 +177,7 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
             return ("Nichts anzuwenden, das Gerät entspricht NetBox".into(), AlertType::Success);
         }
         let incomplete = events().any(|e| match e {
+            Event::ApplyRunning(running) => running.error.is_some(),
             Event::ApplyChecked(checked) => checked.error.is_some() || !checked.remaining.trim().is_empty(),
             Event::FallbackLeft(_) => true,
             _ => false,
@@ -277,10 +278,16 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             "Backup gespeichert: das Gerät lädt es in {} s, wenn der Provisioner es danach nicht erreicht",
             seconds(armed.delay)
         ),
-        Event::ApplyRunning(running) => format!(
-            "Das Skript läuft auf dem Gerät; wartet bis zu {} s, bis es NetBox entspricht",
-            seconds(running.timeout)
-        ),
+        Event::ApplyRunning(running) => match &running.error {
+            Some(error) => format!(
+                "Das Skript hat angehalten ({error}), die Zeilen davor sind angewendet; wartet bis zu {} s auf das Gerät",
+                seconds(running.timeout)
+            ),
+            None => format!(
+                "Das Skript läuft auf dem Gerät; wartet bis zu {} s, bis es NetBox entspricht",
+                seconds(running.timeout)
+            ),
+        },
         Event::ApplyChecked(checked) => match &checked.error {
             Some(error) => format!("Das Gerät lässt sich nicht prüfen: {error}"),
             None if checked.remaining.trim().is_empty() => "Das Gerät entspricht NetBox".into(),

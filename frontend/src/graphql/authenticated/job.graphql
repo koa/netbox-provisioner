@@ -23,7 +23,7 @@ query JobEvents($id: Int!, $after: Int){
                 ... on UpdateDone { from to }
                 ... on ApplyPlanned { script }
                 ... on FallbackArmed { delay }
-                ... on ApplyRunning { timeout }
+                ... on ApplyRunning { timeout error }
                 ... on ApplyChecked { remaining error }
                 ... on FallbackStopped { after }
                 ... on FallbackLeft { firesIn error }
