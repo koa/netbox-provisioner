@@ -8,14 +8,37 @@
 //! waits to start while one of the devices powering it reboots. Both are checked and taken
 //! under one lock, so the two can't cross. The leases live in the provisioner process: updates
 //! started elsewhere (or before a restart) aren't seen.
-use crate::topology::access::device::DeviceAccess;
-use log::info;
+use crate::{job::Log, topology::access::device::DeviceAccess};
+use async_graphql::{Enum, SimpleObject};
 use std::{
     collections::{BTreeSet, HashSet},
-    fmt::Write,
     sync::{LazyLock, Mutex},
 };
 use tokio::sync::Notify;
+
+/// The devices up and down the PoE chains of the device that updates.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct PoeChain {
+    /// the devices powering it, directly or further up
+    pub suppliers: Box<[Box<str>]>,
+    /// the devices it powers, directly or further down
+    pub consumers: Box<[Box<str>]>,
+}
+
+/// The update waits for `device`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, SimpleObject)]
+pub struct WaitingForPower {
+    pub device: Box<str>,
+    pub reason: PowerWait,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
+pub enum PowerWait {
+    /// a device powering this one reboots; the update starts when it is back
+    SupplierRebooting,
+    /// a device this one powers updates; this one reboots when that is done
+    ConsumerUpdating,
+}
 
 /// The devices running an update and the devices rebooting for one, by name.
 #[derive(Default)]
@@ -76,15 +99,12 @@ impl PowerChain {
         }
     }
     /// Waits until no supplier reboots, then marks the device as updating.
-    pub async fn updating(&self, log: &mut String) -> UpdateLease {
-        let names = |devices: &BTreeSet<Box<str>>| {
-            devices.iter().map(|d| &**d).collect::<Vec<_>>().join(", ")
-        };
-        if !self.suppliers.is_empty() {
-            let _ = writeln!(log, "powered by {}", names(&self.suppliers));
-        }
-        if !self.consumers.is_empty() {
-            let _ = writeln!(log, "powers {}", names(&self.consumers));
+    pub async fn updating(&self, log: &Log) -> UpdateLease {
+        if !self.suppliers.is_empty() || !self.consumers.is_empty() {
+            log.emit(PoeChain {
+                suppliers: self.suppliers.iter().cloned().collect(),
+                consumers: self.consumers.iter().cloned().collect(),
+            });
         }
         let device = self.device.clone();
         acquire(log, |leases| {
@@ -93,12 +113,10 @@ impl PowerChain {
                 leases.updating.push(device.clone());
             }
             blocking
-                .iter()
-                .map(|supplier| {
-                    format!(
-                        "{supplier} (powers {}) to come back from its reboot",
-                        self.device
-                    )
+                .into_iter()
+                .map(|device| WaitingForPower {
+                    device,
+                    reason: PowerWait::SupplierRebooting,
                 })
                 .collect()
         })
@@ -106,7 +124,7 @@ impl PowerChain {
         UpdateLease(self.device.clone())
     }
     /// Waits until no consumer updates, then marks the device as rebooting.
-    pub async fn rebooting(&self, log: &mut String) -> RebootLease {
+    pub async fn rebooting(&self, log: &Log) -> RebootLease {
         let device = self.device.clone();
         acquire(log, |leases| {
             let blocking = blocking(&leases.updating, &self.consumers);
@@ -114,12 +132,10 @@ impl PowerChain {
                 leases.rebooting.push(device.clone());
             }
             blocking
-                .iter()
-                .map(|consumer| {
-                    format!(
-                        "{consumer} (powered by {}) to finish its update",
-                        self.device
-                    )
+                .into_iter()
+                .map(|device| WaitingForPower {
+                    device,
+                    reason: PowerWait::ConsumerUpdating,
                 })
                 .collect()
         })
@@ -158,7 +174,7 @@ fn blocking(leased: &[Box<str>], related: &BTreeSet<Box<str>>) -> BTreeSet<Box<s
 
 /// Runs `try_take` under the lock until it takes the lease (returns nothing to wait for),
 /// logging each thing it waits for once.
-async fn acquire(log: &mut String, mut try_take: impl FnMut(&mut Leases) -> Vec<String>) {
+async fn acquire(log: &Log, mut try_take: impl FnMut(&mut Leases) -> Vec<WaitingForPower>) {
     let (leases, changed) = &*LEASES;
     let mut logged = HashSet::new();
     loop {
@@ -171,10 +187,8 @@ async fn acquire(log: &mut String, mut try_take: impl FnMut(&mut Leases) -> Vec<
             return;
         }
         for reason in blocking {
-            if !logged.contains(&reason) {
-                info!("waiting for {reason}");
-                let _ = writeln!(log, "waiting for {reason}");
-                logged.insert(reason);
+            if logged.insert(reason.clone()) {
+                log.emit(reason);
             }
         }
         notified.await;
@@ -213,7 +227,8 @@ impl Drop for RebootLease {
 
 #[cfg(test)]
 mod tests {
-    use super::PowerChain;
+    use super::{PowerChain, PowerWait, WaitingForPower};
+    use crate::job::{Event, Log};
     use std::time::Duration;
     use tokio::time::timeout;
 
@@ -223,11 +238,11 @@ mod tests {
     async fn a_supplier_reboots_after_its_consumers_updates() {
         let supplier = PowerChain::new("t1-switch", &[], &["t1-ap", "t1-behind-ap"]);
         let consumer = PowerChain::new("t1-behind-ap", &["t1-ap", "t1-switch"], &[]);
-        let mut log = String::new();
-        let update = consumer.updating(&mut log).await;
-        let mut supplier_log = String::new();
+        let log = Log::new("t1");
+        let update = consumer.updating(&log).await;
+        let supplier_log = Log::new("t1");
         {
-            let reboot = supplier.rebooting(&mut supplier_log);
+            let reboot = supplier.rebooting(&supplier_log);
             tokio::pin!(reboot);
             assert!(
                 timeout(Duration::from_millis(100), reboot.as_mut())
@@ -240,8 +255,11 @@ mod tests {
                 .expect("reboot after the update");
         }
         assert_eq!(
-            supplier_log,
-            "waiting for t1-behind-ap (powered by t1-switch) to finish its update\n"
+            supplier_log.events(),
+            [Event::WaitingForPower(WaitingForPower {
+                device: "t1-behind-ap".into(),
+                reason: PowerWait::ConsumerUpdating,
+            })]
         );
     }
 
@@ -249,10 +267,10 @@ mod tests {
     async fn an_update_waits_for_its_suppliers_reboot() {
         let supplier = PowerChain::new("t2-switch", &[], &["t2-ap"]);
         let consumer = PowerChain::new("t2-ap", &["t2-switch"], &[]);
-        let mut log = String::new();
-        let reboot = supplier.rebooting(&mut log).await;
-        let mut consumer_log = String::new();
-        let update = consumer.updating(&mut consumer_log);
+        let log = Log::new("t2");
+        let reboot = supplier.rebooting(&log).await;
+        let consumer_log = Log::new("t2");
+        let update = consumer.updating(&consumer_log);
         tokio::pin!(update);
         assert!(
             timeout(Duration::from_millis(100), update.as_mut())
@@ -269,13 +287,17 @@ mod tests {
     async fn unrelated_devices_and_the_device_itself_dont_wait() {
         let switch = PowerChain::new("t3-switch", &[], &["t3-ap"]);
         let other = PowerChain::new("t3-other", &[], &[]);
-        let mut log = String::new();
-        let _other_update = other.updating(&mut log).await;
+        let log = Log::new("t3");
+        let _other_update = other.updating(&log).await;
         // a device reboots within its own update
-        let _update = switch.updating(&mut log).await;
-        let _reboot = timeout(Duration::from_secs(1), switch.rebooting(&mut log))
+        let _update = switch.updating(&log).await;
+        let _reboot = timeout(Duration::from_secs(1), switch.rebooting(&log))
             .await
             .expect("no wait");
-        assert!(!log.contains("waiting"), "{log}");
+        let events = log.events();
+        assert!(
+            !events.iter().any(|e| matches!(e, Event::WaitingForPower(_))),
+            "{events:?}"
+        );
     }
 }

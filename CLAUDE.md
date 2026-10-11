@@ -173,6 +173,17 @@ russh's defaults and lowers the group minimum to 2048. A user with SSH keys can'
 with a password while `/ip ssh always-allow-password-login=no` (7.24:
 `password-authentication=yes-if-no-key`), so the update switches it for the upload only.
 
+An update runs as a job (`backend::job`): `updateRouteros` returns the `Job` at once, the work
+goes on in the background and reports typed events (`job::Event`, a GraphQL union; the
+frontend words them in German, `components/job.rs`). The frontend asks `job(id) { events(after)
+}` every second: the API is plain POST with the bearer token, a subscription would need the
+token over a websocket. A device runs one job at a time, the device page picks up a running one
+(`jobs(deviceId)`); jobs are kept in the process only. `cancelJob` sets a flag the work checks
+between steps (`Log::check`) and while it waits (`Log::unless_cancelled`), so a step that must
+not stop halfway (the upload with `/ip ssh` switched) completes first. The update downloads all
+packages of a step before the first upload, and removes the uploaded ones when it stops before
+the reboot: a part of them must not install at some later boot.
+
 NetBox's interface `mtu` is the L3 MTU of an Ethernet port or `wlan` radio (`setup_mtu`, and the
 wireless target); `l2mtu` is raised to carry it with a VLAN tag, other interface types refuse
 one. Both ends of a cable need the same (`port_mtu`): RouterOS 7's OSPF stays in ExStart/Exchange

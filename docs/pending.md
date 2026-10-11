@@ -9,14 +9,19 @@ Server-Log
 
 Struktur
 --------
-**Status: offen**
+**Status: in Arbeit.** Das Update meldet Ereignisse (`job::Event`, eine GraphQL-Union: was es
+herunterlädt, kopiert, worauf es wartet, welche Version läuft), das Frontend formuliert sie auf
+Deutsch. Apply und Ersteinrichtung liefern noch Text.
 
 Aktuell ist das Server-Log nur ein String. Es sollte als Stream von Events formuliert werden. Ein Event ist z.B. ein Text der von der API zurückgeliefert wird. Ein anderer Event ist, dass der Server auf etwas wartet.
 So kann der eigentliche Text für den Benutzer im Frontend gerendert werden, wo auch Übersetzungen möglich sind. Andererseits bleibt der semantische Inhalt erhalten und er kann im UI genutzt werden (z.B. ein Button für eine weitere Nutzeraktion statt nur einem Text).
 
 Handling
 --------
-**Status: offen**
+**Status: in Arbeit.** Das Update läuft als Job im Hintergrund: die Seite zeigt seine Ereignisse,
+sobald sie da sind (sie fragt jede Sekunde nach), auch nach dem Neuladen, und hat einen Knopf
+zum Abbrechen. Abgebrochen wird dort, wo es sicher ist (zwischen den Schritten und beim Warten);
+hochgeladene Pakete werden dann wieder entfernt. Apply und Ersteinrichtung kommen noch.
 
 Wenn eine Aktion länger dauert, sollen die Logs nicht im Server gesammelt werden bis alles vorbei ist. Das UI soll live darstellen was passiert, immer mit der Möglichkeit die Aktion abzubrechen, wenn etwas schief läuft.
 

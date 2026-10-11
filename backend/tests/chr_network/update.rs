@@ -11,7 +11,8 @@ use backend::Error;
 use backend::device::bootstrap::{MacTelnetSetup, set_up};
 use backend::device::power::PowerChain;
 use backend::device::terminal::{Terminal, Tunnel, upload};
-use backend::device::update::{DeviceLink, Version, read_state, update};
+use backend::device::update::{DeviceLink, UpdateDone, Version, read_state, update};
+use backend::job::{Event, Log};
 use encoding_rs::mem::encode_latin1_lossy;
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
@@ -123,11 +124,42 @@ async fn update_older_chr_to_current() {
     assert_eq!(before.version, Version::parse(CHR_OLDER.version).unwrap());
 
     let target = Version::parse(CHR.version).unwrap();
-    let result = update(&link, &PowerChain::unpowered("chr"), &target, &[]).await;
-    eprintln!("--- update log ---\n{}", result.log);
-    assert_eq!(result.error, None);
-    assert_eq!(&*result.from, CHR_OLDER.version);
-    assert_eq!(&*result.to, CHR.version);
+
+    // cancelled once the package is downloaded: it is uploaded, then removed again
+    let log = Log::new("chr");
+    let cancel = async {
+        while !log.events().iter().any(|e| matches!(e, Event::PackageDownloaded(_))) {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        log.cancel();
+    };
+    let power = PowerChain::unpowered("chr");
+    let (result, ()) = tokio::join!(update(&link, &power, &target, &[], &log), cancel);
+    eprintln!("--- cancelled update log ---\n{:#?}", log.events());
+    assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
+    assert!(log.events().iter().any(|e| matches!(e, Event::PackageUploaded(_))));
+    let api = link.api().await.unwrap();
+    let mut files = api.send_simple_command(b"/file/print".as_slice(), ()).await;
+    while let Some(row) = files.next().await {
+        if let SimpleResult::Sentence(row) = row {
+            let name = row.get("name").cloned().flatten().unwrap_or_default();
+            assert!(!name.ends_with(".npk"), "{name} left on the device");
+        }
+    }
+    drop(api);
+    assert_eq!(read_state(&link.api().await.unwrap()).await.unwrap().version, before.version);
+
+    let log = Log::new("chr");
+    let result = update(&link, &power, &target, &[], &log).await;
+    eprintln!("--- update log ---\n{:#?}", log.events());
+    result.expect("update");
+    assert_eq!(
+        log.events().last(),
+        Some(&Event::UpdateDone(UpdateDone {
+            from: CHR_OLDER.version.into(),
+            to: CHR.version.into(),
+        }))
+    );
     let after = read_state(&link.api().await.unwrap()).await.unwrap();
     assert_eq!(after.version, target);
 }

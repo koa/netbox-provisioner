@@ -1,0 +1,38 @@
+query JobEvents($id: Int!, $after: Int){
+    job(id: $id){
+        id
+        kind
+        state
+        error
+        took
+        events(after: $after){
+            index
+            at
+            event {
+                __typename
+                ... on PoeChain { suppliers consumers }
+                ... on WaitingForPower { device reason }
+                ... on UpdateStart { version architecture packages }
+                ... on UpdateStepPlanned { version files uninstall }
+                ... on SshPasswordLogin { setting value restored }
+                ... on PackageDownloaded { file bytes }
+                ... on PackageUploaded { file }
+                ... on Reboot { reason timeout }
+                ... on RouterOsRunning { version }
+                ... on FirmwareUpgrade { current upgrade running }
+                ... on UpdateDone { from to }
+            }
+        }
+    }
+}
+query DeviceJobs($deviceId: Int!){
+    jobs(deviceId: $deviceId){
+        id
+        state
+    }
+}
+mutation CancelJob($id: Int!){
+    cancelJob(id: $id){
+        id
+    }
+}

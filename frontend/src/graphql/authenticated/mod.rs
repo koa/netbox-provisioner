@@ -75,3 +75,27 @@ pub struct UpdateRouteros;
     response_derives = "Debug,Clone,PartialEq"
 )]
 pub struct BootstrapCandidates;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/job.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct JobEvents;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/job.graphql",
+    response_derives = "Debug"
+)]
+pub struct DeviceJobs;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/job.graphql",
+    response_derives = "Debug"
+)]
+pub struct CancelJob;

@@ -70,9 +70,6 @@ mutation BootstrapDevice($id: Int!, $mac: ScalarMac!){
 }
 mutation UpdateRouteros($id: Int!, $channel: Channel, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
     updateRouteros(id: $id, channel: $channel, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
-        from
-        to
-        error
-        log
+        id
     }
 }

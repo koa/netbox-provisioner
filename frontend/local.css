@@ -78,3 +78,16 @@ div.bootstrap-manual {
     max-width: 40em;
     margin: 0.5em 0;
 }
+
+ul.job-events {
+    margin: 0.5em 0;
+    list-style: none;
+    padding: 0;
+
+    & span.job-time {
+        display: inline-block;
+        min-width: 3.5em;
+        color: var(--pf-t--global--text--color--subtle, #6a6e73);
+        font-variant-numeric: tabular-nums;
+    }
+}

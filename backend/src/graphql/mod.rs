@@ -4,12 +4,14 @@ use crate::{
     device::{
         bootstrap::{self, BootstrapResult},
         power::PowerChain,
-        update::{self, DeviceLink, UpdateResult},
+        update::{self, DeviceLink},
         ros::graphql::ApplyResult,
     },
     graphql::scalars::ScalarMac,
+    job::{self, Job, JobKind},
     topology::{DeviceId, TopologyHolder, access::AdhocCredentials},
 };
+use std::sync::Arc;
 use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
 pub mod scalars;
 pub type AuthenticatedGraphqlSchema =
@@ -50,6 +52,14 @@ impl QueryAuthenticated {
             .map(Box::as_ref)
             .collect()
     }
+    async fn job(&self, id: u32) -> Option<Arc<Job>> {
+        job::get(id)
+    }
+    /// The jobs of a device (of all devices without `device_id`), newest first; those still
+    /// running and the last finished ones.
+    async fn jobs(&self, device_id: Option<u32>) -> Vec<Arc<Job>> {
+        job::list(device_id.map(DeviceId))
+    }
 }
 #[Object]
 impl MutationAuthenticated {
@@ -67,10 +77,10 @@ impl MutationAuthenticated {
         plan.setup.macs = [mac.0].into();
         Ok(bootstrap::bootstrap(&device, &plan).await)
     }
-    /// Updates RouterOS (and the RouterBOARD firmware) to the newest release of `channel`, with
-    /// the packages the device needs (`allow_apply` must be set); without `channel` it only
-    /// brings the packages in line, at the version the device runs. Target and credentials as
-    /// for `DeviceAccess.access`.
+    /// Starts updating RouterOS (and the RouterBOARD firmware) to the newest release of
+    /// `channel`, with the packages the device needs (`allow_apply` must be set); without
+    /// `channel` it only brings the packages in line, at the version the device runs. Target
+    /// and credentials as for `DeviceAccess.access`. The job's events tell how far it got.
     async fn update_routeros(
         &self,
         id: u32,
@@ -78,7 +88,7 @@ impl MutationAuthenticated {
         target: Option<String>,
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
-    ) -> Result<UpdateResult, Error> {
+    ) -> Result<Arc<Job>, Error> {
         if !CONFIG.allow_apply {
             return Err(Error::ApplyNotAllowed);
         }
@@ -88,16 +98,24 @@ impl MutationAuthenticated {
             .await
             .ok_or(Error::UnknownDevice(id))?;
         let power = PowerChain::of(&device);
-        let device = device
-            .connect(target, credential_name, adhoc_credentials)
-            .await?
-            .ok_or(Error::MissingCredentials)?;
-        let wanted = device.wanted_packages().await?;
-        let version = match channel {
-            Some(channel) => update::newest(7, channel).await?,
-            None => update::read_state(&device.api().await?).await?.version,
-        };
-        Ok(update::update(&device, &power, &version, &wanted).await)
+        job::start(&device.clone(), JobKind::Update, |log| async move {
+            let device = log
+                .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
+                .await??
+                .ok_or(Error::MissingCredentials)?;
+            let wanted = device.wanted_packages().await?;
+            let version = match channel {
+                Some(channel) => update::newest(7, channel).await?,
+                None => update::read_state(&device.api().await?).await?.version,
+            };
+            update::update(&device, &power, &version, &wanted, &log).await
+        })
+    }
+    /// Stops a job (`Query.job`) at the next point where that is safe: an update between its
+    /// steps or while it waits, removing the packages it uploaded unless the device reboots
+    /// with them already.
+    async fn cancel_job(&self, id: u32) -> Result<Arc<Job>, Error> {
+        job::cancel(id).ok_or(Error::UnknownJob(id))
     }
     /// Applies the generated config to a device (`allow_apply` must be set). Target and
     /// credentials as for `DeviceAccess.access`.

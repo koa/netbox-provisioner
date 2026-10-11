@@ -6,13 +6,18 @@
 //! (`device::ros::needed_radio_package`); other packages are uninstalled. After the system the
 //! RouterBOARD firmware follows (`/system/routerboard/upgrade`, one more reboot). A device that
 //! powers others over PoE reboots only while none of them updates ([`power`](super::power)).
-use crate::{Error, device::power::PowerChain};
+use crate::{
+    Error,
+    device::power::{PowerChain, RebootLease},
+    graphql::scalars::ScalarDuration,
+    job::Log,
+};
 use async_graphql::{Enum, SimpleObject};
+use log::warn;
 use serde::Deserialize;
-use log::info;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::value::{ParseRosValueResult, RosValue};
-use std::{cmp::Ordering, collections::HashMap, fmt::Write, time::Duration};
+use std::{cmp::Ordering, collections::HashMap, time::Duration};
 use tokio::time::{Instant, sleep, timeout};
 use async_graphql::futures_util::StreamExt;
 
@@ -33,14 +38,79 @@ pub trait DeviceLink {
     async fn upload(&self, name: &str, data: &[u8]) -> Result<(), Error>;
 }
 
-#[derive(Debug, SimpleObject)]
-pub struct UpdateResult {
-    /// RouterOS version before
+/// What the device runs before the update.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct UpdateStart {
+    pub version: Box<str>,
+    pub architecture: Box<str>,
+    pub packages: Box<[Box<str>]>,
+}
+
+/// One update with a reboot ([`UpdateStep`]).
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct UpdateStepPlanned {
+    pub version: Box<str>,
+    pub files: Box<[Box<str>]>,
+    pub uninstall: Box<[Box<str>]>,
+}
+
+/// `/ip ssh` switched for the upload (the user has SSH keys, see [`allow_password_login`]), or
+/// back afterwards (`restored`).
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct SshPasswordLogin {
+    pub setting: Box<str>,
+    pub value: Box<str>,
+    pub restored: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct PackageDownloaded {
+    pub file: Box<str>,
+    pub bytes: u64,
+}
+
+/// The package is on the device, in full.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct PackageUploaded {
+    pub file: Box<str>,
+}
+
+/// The device reboots; the update waits until it is back (up to [`REBOOT_TIMEOUT`]).
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct Reboot {
+    pub reason: RebootReason,
+    /// how long the update waits for it
+    pub timeout: ScalarDuration,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
+pub enum RebootReason {
+    /// to install the uploaded packages
+    Packages,
+    /// to load the upgraded RouterBOARD firmware
+    Firmware,
+}
+
+/// The device is back with this RouterOS.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct RouterOsRunning {
+    pub version: Box<str>,
+}
+
+/// The RouterBOARD firmware is upgraded from `current` to `upgrade`, or runs `upgrade` after
+/// the reboot (`running`).
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct FirmwareUpgrade {
+    pub current: Box<str>,
+    pub upgrade: Box<str>,
+    pub running: bool,
+}
+
+/// The device is up to date.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct UpdateDone {
     pub from: Box<str>,
-    /// RouterOS version after, as far as it got
     pub to: Box<str>,
-    pub error: Option<Box<str>>,
-    pub log: String,
 }
 
 /// A RouterOS version like `7.20.8` or a pre-release like `7.25rc1`, `7.26beta1`; a channel
@@ -279,7 +349,7 @@ pub(crate) fn field<'r>(row: &'r HashMap<Box<str>, Option<Box<str>>>, name: &str
 /// Returns the setting and the value to put back afterwards.
 async fn allow_password_login(
     device: &RawDevice<SimpleResult>,
-    log: &mut String,
+    log: &Log,
 ) -> Result<Option<(&'static str, &'static str)>, Error> {
     let ssh = rows(device, b"/ip/ssh/print").await?;
     let Some(ssh) = ssh.first() else {
@@ -296,7 +366,11 @@ async fn allow_password_login(
         return Ok(None);
     }
     set_ssh(device, setting, on).await?;
-    let _ = writeln!(log, "ssh {setting}={on} for the upload (the user has ssh keys)");
+    log.emit(SshPasswordLogin {
+        setting: setting.into(),
+        value: on.into(),
+        restored: false,
+    });
     Ok(Some((setting, off)))
 }
 
@@ -313,6 +387,35 @@ async fn set_ssh(device: &RawDevice<SimpleResult>, setting: &str, value: &str) -
             SimpleResult::Sentence(_) => {}
             SimpleResult::Error(error) => return Err(error.into()),
             SimpleResult::Trap { message, .. } => return Err(Error::Update(message)),
+        }
+    }
+    Ok(())
+}
+
+/// Removes `files` from the device's root directory, where they are.
+async fn remove_files(device: &RawDevice<SimpleResult>, files: &[Box<str>]) -> Result<(), Error> {
+    for row in rows(device, b"/file/print").await? {
+        let (Some(name), Some(id)) = (field(&row, "name"), field(&row, ".id")) else {
+            continue;
+        };
+        if !files.iter().any(|file| file.as_ref() == name) {
+            continue;
+        }
+        let mut stream = device
+            .send_command(
+                b"/file/remove".as_slice(),
+                |cmd| cmd.attribute(b".id".as_slice(), id.as_bytes()),
+                (),
+            )
+            .await;
+        while let Some(result) = stream.next().await {
+            match result {
+                SimpleResult::Sentence(_) => {}
+                SimpleResult::Error(error) => return Err(error.into()),
+                SimpleResult::Trap { message, .. } => {
+                    return Err(Error::Update(format!("remove {name}: {message}").into()));
+                }
+            }
         }
     }
     Ok(())
@@ -401,18 +504,18 @@ async fn download(version: &Version, file: &str) -> Result<Vec<u8>, Error> {
         .to_vec())
 }
 
-/// Reboots and waits until the device answers with `expect` (a version, a firmware).
+/// Reboots and waits until the device answers with `expect` (a version, a firmware); the
+/// lease is held until the device is back.
 async fn reboot_and_wait<T, F>(
     link: &impl DeviceLink,
-    power: &PowerChain,
-    log: &mut String,
+    _rebooting: RebootLease,
+    log: &Log,
+    reason: RebootReason,
     check: F,
 ) -> Result<T, Error>
 where
     F: Fn(&DeviceState) -> Option<T>,
 {
-    // held until the device is back
-    let _rebooting = power.rebooting(log).await;
     let device = link.api().await?;
     let before = read_state(&device).await?.uptime;
     let sent = Instant::now();
@@ -420,12 +523,15 @@ where
     // the answer, or the connection breaking with the reboot
     let _ = timeout(Duration::from_secs(10), answer.next()).await;
     drop(device);
-    let _ = writeln!(log, "reboot");
+    log.emit(Reboot {
+        reason,
+        timeout: REBOOT_TIMEOUT.into(),
+    });
     // A connection while the device boots may just wait for it (it does through QEMU's port
     // forwarding), so the reboot shows in the uptime, not in a failing connection.
     let deadline = Instant::now() + REBOOT_TIMEOUT;
     loop {
-        sleep(Duration::from_secs(5)).await;
+        log.unless_cancelled(sleep(Duration::from_secs(5))).await?;
         let state = match timeout(Duration::from_secs(30), link.api()).await {
             Ok(Ok(device)) => read_state(&device).await.ok(),
             _ => None,
@@ -450,69 +556,53 @@ where
     }
 }
 
-/// Updates the device to `target`, step by step; the result carries the log also on failure.
-/// Writes to the device without asking for `allow_apply`, that is up to the caller.
-/// Updates to `target` with `routeros` and the `wanted` packages (see [`next_step`]); `power`
-/// says which devices' updates and reboots it has to wait for.
+/// Updates the device to `target` with `routeros` and the `wanted` packages, step by step (see
+/// [`next_step`]), telling `log` how far it got. Writes to the device without asking for
+/// `allow_apply`, that is up to the caller. `power` says which devices' updates and reboots it
+/// has to wait for.
 pub async fn update(
     link: &impl DeviceLink,
     power: &PowerChain,
     target: &Version,
     wanted: &[Box<str>],
-) -> UpdateResult {
-    let mut log = String::new();
-    let mut from = String::new();
-    let mut to = String::new();
-    let result = run(link, power, target, wanted, &mut log, &mut from, &mut to).await;
-    UpdateResult {
-        from: from.into(),
-        to: to.into(),
-        error: result.err().map(|e| {
-            let _ = writeln!(log, "failed: {e}");
-            e.to_string().into()
-        }),
-        log,
-    }
-}
-
-async fn run(
-    link: &impl DeviceLink,
-    power: &PowerChain,
-    target: &Version,
-    wanted: &[Box<str>],
-    log: &mut String,
-    from: &mut String,
-    to: &mut String,
+    log: &Log,
 ) -> Result<(), Error> {
     let mut state = read_state(&link.api().await?).await?;
-    *from = state.version.to_string();
-    *to = from.clone();
-    let _ = writeln!(
-        log,
-        "RouterOS {} ({}), packages {}",
-        state.version,
-        state.architecture,
-        state.packages.join(", ")
-    );
+    let from: Box<str> = state.version.to_string().into();
+    log.emit(UpdateStart {
+        version: from.clone(),
+        architecture: state.architecture.clone(),
+        packages: state.packages.clone(),
+    });
     let newest_v6 = if state.version.major() < 7 {
         Some(newest(6, Channel::LongTerm).await?)
     } else {
         None
     };
     // from the upload on a power loss can brick the device: it installs at the next boot
-    let _updating = power.updating(log).await;
+    let _updating = log.unless_cancelled(power.updating(log)).await?;
     while let Some(step) = next_step(&state, target, newest_v6.as_ref().unwrap_or(target), wanted) {
-        let _ = writeln!(log, "update to {}: {}", step.version, step.files.join(", "));
-        info!("update to {}: {}", step.version, step.files.join(", "));
-        if !step.uninstall.is_empty() {
-            let _ = writeln!(log, "uninstall {}", step.uninstall.join(", "));
+        log.check()?;
+        log.emit(UpdateStepPlanned {
+            version: step.version.to_string().into(),
+            files: step.files.clone(),
+            uninstall: step.uninstall.clone(),
+        });
+        // all before the first upload: a part of the packages must not install
+        let mut packages = Vec::new();
+        for file in &step.files {
+            let data = log.unless_cancelled(download(&step.version, file)).await??;
+            log.emit(PackageDownloaded {
+                file: file.clone(),
+                bytes: data.len() as u64,
+            });
+            packages.push((file, data));
         }
+        log.check()?;
         let relaxed = allow_password_login(&link.api().await?, log).await?;
         let uploaded = async {
-            for file in &step.files {
-                let data = download(&step.version, file).await?;
-                let _ = writeln!(log, "{file}: {} bytes downloaded", data.len());
-                link.upload(file, &data).await?;
+            for &(file, ref data) in &packages {
+                link.upload(file, data).await?;
                 // the size shows up while the file is still being written out (on 16 MB devices the
                 // root directory is in RAM, there it settles within seconds)
                 let device = link.api().await?;
@@ -534,42 +624,70 @@ async fn run(
                     }
                     sleep(Duration::from_secs(2)).await;
                 }
-                let _ = writeln!(log, "{file}: copied to the device");
+                log.emit(PackageUploaded { file: file.clone() });
             }
             Ok::<_, Error>(())
         }
         .await;
         if let Some((setting, value)) = relaxed {
             set_ssh(&link.api().await?, setting, value).await?;
-            let _ = writeln!(log, "ssh {setting}={value} again");
+            log.emit(SshPasswordLogin {
+                setting: setting.into(),
+                value: value.into(),
+                restored: true,
+            });
         }
-        uploaded?;
+        // what is uploaded installs at the next boot, also when the update stops before it
+        let rebooting = match uploaded {
+            Ok(()) => log.unless_cancelled(power.rebooting(log)).await,
+            Err(error) => Err(error),
+        };
+        let rebooting = match rebooting {
+            Ok(rebooting) => rebooting,
+            Err(error) => {
+                if let Err(remove) = remove_files(&link.api().await?, &step.files).await {
+                    warn!("uploaded packages not removed: {remove}");
+                }
+                return Err(error);
+            }
+        };
         uninstall(&link.api().await?, &step.uninstall).await?;
         let expected = step.version.clone();
-        state = reboot_and_wait(link, power, log, |state| {
+        state = reboot_and_wait(link, rebooting, log, RebootReason::Packages, |state| {
             (state.version == expected).then(|| state.clone())
         })
         .await?;
-        *to = state.version.to_string();
-        let _ = writeln!(log, "RouterOS {} running", state.version);
+        log.emit(RouterOsRunning {
+            version: state.version.to_string().into(),
+        });
     }
     if let Some((current, upgrade)) = &state.firmware
         && current != upgrade
     {
-        let _ = writeln!(log, "firmware {current} -> {upgrade}");
+        let upgrade_event = |running| FirmwareUpgrade {
+            current: current.clone(),
+            upgrade: upgrade.clone(),
+            running,
+        };
+        log.check()?;
+        log.emit(upgrade_event(false));
+        // the firmware loads at the next boot, whenever that is
         rows(&link.api().await?, b"/system/routerboard/upgrade").await?;
-        let upgrade = upgrade.clone();
-        reboot_and_wait(link, power, log, |state| {
+        let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
+        reboot_and_wait(link, rebooting, log, RebootReason::Firmware, |state| {
             state
                 .firmware
                 .as_ref()
-                .is_some_and(|(current, _)| *current == upgrade)
+                .is_some_and(|(running, _)| running == upgrade)
                 .then_some(())
         })
         .await?;
-        let _ = writeln!(log, "firmware {upgrade} running");
+        log.emit(upgrade_event(true));
     }
-    let _ = writeln!(log, "done");
+    log.emit(UpdateDone {
+        from,
+        to: state.version.to_string().into(),
+    });
     Ok(())
 }
 

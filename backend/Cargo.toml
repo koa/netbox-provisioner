@@ -11,7 +11,7 @@ serde = "1.0.219"
 config = "0.15.11"
 reqwest = "0.12.15"
 thiserror = "2.0.12"
-tokio = { version = "1.44.1", features = ["sync"] }
+tokio = { version = "1.44.1", features = ["sync", "rt", "time", "macros"] }
 log = "0.4.26"
 ipnet = "2.11.0"
 regex = "1.11.1"

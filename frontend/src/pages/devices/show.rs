@@ -1,11 +1,14 @@
 use crate::{
-    components::adjust_target::{AdjustTarget, SelectedCredentials, SelectedTarget},
+    components::{
+        adjust_target::{AdjustTarget, SelectedCredentials, SelectedTarget},
+        job::JobView,
+    },
     error::FrontendError,
     graphql::{
         authenticated::{
-            ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, DeviceOverview, UpdateRouteros,
-            apply_device_cfg, bootstrap_candidates, bootstrap_device, device_overview,
-            update_routeros,
+            ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, DeviceJobs, DeviceOverview,
+            UpdateRouteros, apply_device_cfg, bootstrap_candidates, bootstrap_device,
+            device_jobs, device_overview, update_routeros,
         },
         query_authenticated, query_authenticated_response,
     },
@@ -23,7 +26,9 @@ pub struct ShowDevice {
     alternate_target: SelectedTarget,
     apply: ApplyState,
     bootstrap: BootstrapState,
-    update: UpdateState,
+    /// the job shown (an update), started here or running when the page was opened
+    job: Option<i64>,
+    job_running: bool,
     /// what the bootstrap neighbor sees on its port; `None` while it is asked
     candidates: Option<Result<Vec<Candidate>, String>>,
     /// a MAC typed in instead of picking a candidate
@@ -33,13 +38,6 @@ pub struct ShowDevice {
 }
 type Candidate =
     bootstrap_candidates::BootstrapCandidatesTopologyDeviceByIdBootstrapPlanDiscovered;
-#[derive(Debug, Default)]
-enum UpdateState {
-    #[default]
-    Idle,
-    Running,
-    Done(update_routeros::UpdateRouterosUpdateRouteros),
-}
 #[derive(Debug, Default)]
 enum BootstrapState {
     #[default]
@@ -95,7 +93,8 @@ pub enum ShowDeviceMessage {
     Update,
     /// bring the packages in line at the running version
     AdjustPackages,
-    Updated(Result<update_routeros::UpdateRouterosUpdateRouteros, FrontendError>),
+    JobStarted(Result<i64, FrontendError>),
+    JobFinished,
 }
 
 impl Component for ShowDevice {
@@ -110,7 +109,8 @@ impl Component for ShowDevice {
             alternate_target: Default::default(),
             apply: Default::default(),
             bootstrap: Default::default(),
-            update: Default::default(),
+            job: None,
+            job_running: false,
             candidates: None,
             manual_mac: String::new(),
             channel: None,
@@ -165,23 +165,30 @@ impl Component for ShowDevice {
                 let Some(channel) = self.channel.clone() else {
                     return false;
                 };
-                self.update = UpdateState::Running;
+                self.job_running = true;
                 update(ctx.link().clone(), self.id, Some(channel), self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::AdjustPackages => {
-                self.update = UpdateState::Running;
+                self.job_running = true;
                 update(ctx.link().clone(), self.id, None, self.alternate_target.clone());
                 true
             }
-            ShowDeviceMessage::Updated(result) => {
+            ShowDeviceMessage::JobStarted(result) => {
                 match result {
-                    Ok(result) => self.update = UpdateState::Done(result),
+                    Ok(id) => {
+                        self.job = Some(id);
+                        self.job_running = true;
+                    }
                     Err(error) => {
-                        self.update = UpdateState::Idle;
+                        self.job_running = false;
                         self.error = Some(error);
                     }
                 }
+                true
+            }
+            ShowDeviceMessage::JobFinished => {
+                self.job_running = false;
                 fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
                 true
             }
@@ -234,7 +241,7 @@ impl Component for ShowDevice {
             let warnings = cfg_update.map(|cfg| cfg.warnings.as_slice()).unwrap_or_default();
             let cfg_update = cfg_update.map(|cfg| cfg.script.as_ref()).unwrap_or_default();
             let nothing_to_do = cfg_update.trim().is_empty();
-            let update_running = matches!(self.update, UpdateState::Running);
+            let update_running = self.job_running;
             let routeros = data.routeros.as_ref().map(|routeros| {
                 let selected = routeros
                     .channels
@@ -282,7 +289,6 @@ impl Component for ShowDevice {
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::AdjustPackages)}
                             />
                         }
-                        if update_running { <Spinner size={SpinnerSize::Md}/>{" wird aktualisiert, das Gerät startet neu …"} }
                     </div>
                 </dd>
             </>}
@@ -411,22 +417,9 @@ impl Component for ShowDevice {
             }),
             _ => None,
         };
-        let updated = match &self.update {
-            UpdateState::Done(result) => Some(match &result.error {
-                None => html! {
-                    <Alert inline=true title={format!("Aktualisiert: RouterOS {} → {}", result.from, result.to)} r#type={AlertType::Success}>
-                        <CodeBlock><CodeBlockCode>{ result.log.clone() }</CodeBlockCode></CodeBlock>
-                    </Alert>
-                },
-                Some(error) => html! {
-                    <Alert inline=true title={format!("Aktualisierung fehlgeschlagen (RouterOS {} → {})", result.from, result.to)} r#type={AlertType::Danger}>
-                        <p>{ error.clone() }</p>
-                        <CodeBlock><CodeBlockCode>{ result.log.clone() }</CodeBlockCode></CodeBlock>
-                    </Alert>
-                },
-            }),
-            _ => None,
-        };
+        let job = self.job.map(|id| html! {
+            <JobView key={id} id={id} on_finished={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}/>
+        });
         let bootstrapped = match &self.bootstrap {
             BootstrapState::Done(result) => Some(match (&result.address, &result.error) {
                 (Some(address), _) => html! {
@@ -449,7 +442,7 @@ impl Component for ShowDevice {
                 <AdjustTarget onchange={ctx.link().callback(ShowDeviceMessage::AdjustTarget)} value={self.alternate_target.clone()} />
             </ExpandableSection>
             {error}
-            {updated}
+            {job}
             {bootstrapped}
             {applied}
             {data}
@@ -460,6 +453,7 @@ impl Component for ShowDevice {
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
             fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
+            running_job(ctx.link().clone(), self.id);
         }
     }
 }
@@ -639,7 +633,28 @@ fn update(
             },
         )
         .await
-        .map(|data| data.update_routeros);
-        scope.send_message(ShowDeviceMessage::Updated(result));
+        .map(|data| data.update_routeros.id);
+        scope.send_message(ShowDeviceMessage::JobStarted(result));
+    });
+}
+
+/// Shows the job the device runs, should one have been started before the page was opened.
+fn running_job(scope: Scope<ShowDevice>, id: u32) {
+    spawn_local(async move {
+        let Ok(data) = query_authenticated::<DeviceJobs, _>(
+            scope.clone(),
+            device_jobs::Variables { device_id: id as i64 },
+        )
+        .await
+        else {
+            return;
+        };
+        if let Some(job) = data
+            .jobs
+            .into_iter()
+            .find(|job| matches!(job.state, device_jobs::JobState::RUNNING))
+        {
+            scope.send_message(ShowDeviceMessage::JobStarted(Ok(job.id)));
+        }
     });
 }

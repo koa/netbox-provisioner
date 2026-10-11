@@ -8,6 +8,7 @@ pub mod config;
 pub mod context;
 pub mod device;
 pub mod graphql;
+pub mod job;
 pub mod netbox;
 pub mod topology;
 
@@ -49,6 +50,12 @@ pub enum Error {
     Refused(Box<str>),
     #[error("Update: {0}")]
     Update(Box<str>),
+    #[error("{0} runs a job already")]
+    Busy(Box<str>),
+    #[error("No job {0}")]
+    UnknownJob(u32),
+    #[error("Cancelled")]
+    Cancelled,
 }
 
 impl From<MissingDependenciesError<'_, '_>> for Error {
