@@ -207,6 +207,9 @@ get no DHCP), so they are static access ports of that bridge instead
 carry each WLAN's `datapath.vlan-id` and the CAP's datapath only the bridge (MikroTik's CAPsMAN
 VLAN example; no 802.11ax device in the lab to try it); a `wifi-qcom-ac` CAP is refused then,
 it runs `wireless` instead with `wlan<N>` in NetBox (`hw_facts::runs_wireless`, the wAP ac).
+A radio CAPsMAN manages is flagged dynamic (mikrotik-model still reads it, its key being
+`default-name`) and reports `configuration=capsman`, which RouterOS provides
+(`provided_by_routeros`, the sort's seeds besides `lo`, `main` and the firewall chains).
 Moving to `wireless` leaves the `/interface/wifi` radios inactive under their names, so without a
 wifi package they get their default names back, and `/interface/wifi` mutations come before
 `/interface/wireless` ones (the sort keeps the order within a round). "Pakete anpassen" next to the

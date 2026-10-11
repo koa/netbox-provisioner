@@ -6,7 +6,7 @@ use crate::{
         CapsManDeviceDataCurrent, CapsManDeviceDataTarget, SetupError, WifiDeviceDataCurrent,
         WifiDeviceDataTarget,
         WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
-        graphql::reprovisioned_menus,
+        graphql::{provided_by_routeros, reprovisioned_menus},
         hw_facts::{RadioPackage, build_wifi_ports, build_wireless_ports},
         l2::{KeepNameGenerator, L2Setup},
         needed_radio_package,
@@ -359,6 +359,46 @@ async fn provisioning_with_two_slaves_sorts() {
     ResourceMutation::sort_mutations_with_provided_dependencies(
         &mutations,
         [(ReferenceType::Interface, b"lo".into())],
+    )
+    .unwrap();
+}
+
+/// The radios of a CAP that CAPsMAN manages report `configuration=capsman` (a cAP ax,
+/// 7.23.7), which no `/interface/wifi/configuration` provides: RouterOS does
+/// (`provided_by_routeros`), so the radios' mutations still sort.
+#[tokio::test]
+async fn cap_radios_managed_by_capsman_sort() {
+    let [_, ap_ax, ..] = wlan_group(&[104, 105]).await;
+    let setup = L2Setup::new(&ap_ax, KeepNameGenerator).unwrap();
+    let mut radios = build_wifi_ports(b"C52iG-5HaxD2HaxD");
+    for radio in radios.iter_mut() {
+        radio.data.configuration = Some("capsman".into());
+    }
+    let current = WifiDeviceDataCurrent {
+        provisioning: Box::new([]),
+        datapath: Box::new([]),
+        cap: Default::default(),
+        capsman: Default::default(),
+        wifi: radios,
+        configuration: Box::new([]),
+        certificate: Box::new([]),
+    };
+    let mut target = WifiDeviceDataTarget::new(b"C52iG-5HaxD2HaxD");
+    target
+        .generate_from(&ap_ax, &setup, Some(&current), &[], Some(RadioPackage::WifiQcom))
+        .unwrap();
+    let mutations = target.generate_mutations(&current).unwrap();
+    assert!(
+        mutations
+            .iter()
+            .any(|mutation| mutation.resource == b"interface/wifi"),
+        "{mutations:?}"
+    );
+    // the bridge comes with the base config
+    let bridge = (ReferenceType::Interface, b"bridge-caps".into());
+    ResourceMutation::sort_mutations_with_provided_dependencies(
+        &mutations,
+        provided_by_routeros().into_iter().chain([bridge]),
     )
     .unwrap();
 }

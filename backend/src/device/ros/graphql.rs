@@ -176,13 +176,7 @@ impl DeviceCfg {
         }
         let sorted = ResourceMutation::sort_mutations_with_provided_dependencies(
             mutations.as_ref(),
-            [
-                (ReferenceType::Interface, b"lo".into()),
-                (ReferenceType::RoutingTable, b"main".into()),
-                (ReferenceType::FirewallChain, b"input".into()),
-                (ReferenceType::FirewallChain, b"output".into()),
-                (ReferenceType::FirewallChain, b"forward".into()),
-            ],
+            provided_by_routeros(),
         )?;
         Ok(sorted.iter().map(|m| (*m).clone()).collect())
     }
@@ -213,6 +207,20 @@ impl DeviceCfg {
         });
         self.base_target.poe_warnings(&self.base_current, &powered)
     }
+}
+
+/// What RouterOS has without anyone adding it, which mutations may refer to: a radio that
+/// CAPsMAN manages reports `configuration=capsman`, the configuration CAPsMAN gave it
+/// (`/interface/wifi`, 7.23.7), which is no `/interface/wifi/configuration` entry.
+pub(super) fn provided_by_routeros() -> [(ReferenceType, std::borrow::Cow<'static, [u8]>); 6] {
+    [
+        (ReferenceType::Interface, b"lo".into()),
+        (ReferenceType::RoutingTable, b"main".into()),
+        (ReferenceType::FirewallChain, b"input".into()),
+        (ReferenceType::FirewallChain, b"output".into()),
+        (ReferenceType::FirewallChain, b"forward".into()),
+        (ReferenceType::WifiConfiguration, b"capsman".into()),
+    ]
 }
 
 fn render_script(mutations: &[ResourceMutation]) -> Result<Box<str>, Error> {
