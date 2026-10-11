@@ -176,9 +176,12 @@ impl Job {
         self.outcome.lock().expect("job outcome").0
     }
     fn finish(&self, state: JobState, error: Option<Box<str>>) {
-        *self.outcome.lock().expect("job outcome") = (state, error);
         *self.took.lock().expect("job time") = Some(self.log.started.elapsed());
-        info!("{}: job {} {state:?}", self.device_name, self.id);
+        match &error {
+            Some(error) => info!("{}: job {} {state:?}: {error}", self.device_name, self.id),
+            None => info!("{}: job {} {state:?}", self.device_name, self.id),
+        }
+        *self.outcome.lock().expect("job outcome") = (state, error);
     }
 }
 
