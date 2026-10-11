@@ -97,6 +97,23 @@ pub struct Topology {
     ip_range_idx: HashMap<IpNet, Box<[IpRangeId]>>,
 }
 
+impl Topology {
+    /// Whether `device` is an AP of a Wireless LAN Group whose radios NetBox has as `wlanN`
+    /// (`/interface/wireless`): such a radio can only be a CAP of the legacy CAPsMAN
+    /// (`/caps-man`), which forwards the clients' traffic to the controller, so the AP needs
+    /// neither the WLANs' VLANs nor their VXLAN. A CAP with `wifiN` radios, or without
+    /// radios in NetBox, is one of the `/interface/wifi` CAPsMAN.
+    pub fn is_legacy_cap(&self, device: DeviceId) -> bool {
+        self.devices
+            .get(&device)
+            .is_some_and(|data| data.wlan_ap_of.is_some())
+            && self.interfaces.values().any(|interface| {
+                interface.device == device
+                    && matches!(interface.external, Some(PhysicalPortId::Wlan(_)))
+            })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Device {
     pub name: Box<str>,
@@ -208,6 +225,9 @@ pub struct WlanWpaSettings {
     key: Box<str>,
 }
 impl WlanWpaSettings {
+    pub fn new(key: impl Into<Box<str>>) -> Self {
+        WlanWpaSettings { key: key.into() }
+    }
     pub fn psk(&self) -> &str {
         &self.key
     }

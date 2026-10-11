@@ -7,8 +7,9 @@ Code: `backend/src/device/ros/mod.rs` (`WirelessDeviceData`/`WifiDeviceData`-Mod
 Generiert wird der neuere WiFi-Stack (`/interface/wifi`) mit CAPsMAN und lokalem Forwarding auf
 dem CAP, im Lab erprobt mit einem wAP ac (`RBwAPG-5HacD2HnD`, `wifi-qcom-ac`) als CAP, erst mit
 dem WLAN lokal auf dem wAP (Controller lab-np2), dann mit dem WLAN per VXLAN auf dem Controller
-lab-core (CCR2004). Nicht generiert wird der klassische CAPsMAN-Stack (`/caps-man`,
-`/interface/wireless/cap`).
+lab-core (CCR2004). Alte APs mit dem `wireless`-Paket (im Lab ein SXT ac und ein RB912) werden
+CAPs des klassischen CAPsMAN (`/caps-man`) auf demselben Controller, siehe
+[Klassischer CAPsMAN-Stack](#klassischer-capsman-stack).
 
 ## Zwei RouterOS-Pakete, zwei getrennte Modelle
 
@@ -119,6 +120,30 @@ CAPsMAN-WLAN ist kein physischer Ethernet-Port, der gebridged werden könnte).
 
 ## Klassischer CAPsMAN-Stack
 
-`WirelessDeviceDataTarget::generate_from` konfiguriert nur die Enden von Punkt-zu-Punkt-Funkstrecken
-(siehe [netbox-modeling.md](netbox-modeling.md)). Ein CAP oder Controller des klassischen
-`/caps-man` wird nicht generiert; Radios ohne RF-Rolle behalten ihre Konfiguration.
+Code: `CapsManDeviceDataTarget` und `WirelessDeviceDataTarget::setup_legacy_cap`
+(`device/ros/mod.rs`), `Topology::is_legacy_cap`.
+
+Ein AP einer Wireless LAN Group, der in NetBox `wlan<N>`-Ports hat (Radios des `wireless`-Pakets),
+ist ein **Legacy-CAP**. RouterOS 7 hat für diese Radios nur den alten CAPsMAN, nicht den von
+`/interface/wifi`; der Controller einer Gruppe mit Legacy-CAPs betreibt deshalb beide.
+
+- **Legacy-CAP**: `/interface/wireless/cap enabled=yes` mit der Loopback des Controllers und den
+  Radios aus NetBox (nach L2 benannt, `w01`). Kein `bridge`: CAPsMAN leitet den Verkehr der Clients
+  zum Controller (`local-forwarding=no`). Der CAP bekommt deshalb weder die WLAN-VLAN noch das
+  VXLAN, und er ist kein VTEP (`VlanAccess::devices` lässt ihn aus). Ein Radio, das nicht vom Board
+  kommt (5-GHz-Karte im miniPCIe-Slot eines RB912, `wlan2`), übernimmt die Generierung vom Gerät.
+- **Controller**: braucht das Paket `wireless` (`needed_radio_package` gibt es auch einem Board
+  ohne eigene Radios). `/caps-man/manager enabled=yes`; pro WLAN eine `/caps-man/security`
+  (`wpa2-psk`, `aes-ccm`), ein `/caps-man/datapath` (`bridge` = die Bridge der WLAN-VLAN,
+  `vlan-mode=use-tag`, `vlan-id`, `local-forwarding=no`) und eine `/caps-man/configuration` (SSID,
+  `country` wie bei `/interface/wifi`, `mode=ap`), alle nach der SSID benannt. Eine
+  Provisioning-Regel gibt jedem Radio das erste WLAN als Master und die übrigen als Slaves.
+
+RouterOS legt die Radios als dynamische Interfaces `capN` an und macht sie zu Bridge-Ports mit
+`pvid` = WLAN-VLAN. Untagged-Mitglied der VLAN (dynamischer Eintrag „added by pvid“) wird ein Port
+erst, wenn er läuft, und ein Legacy-Radio läuft erst mit einem Client.
+
+Ein AP, dessen Radios NetBox nicht kennt, behält seine CAP-Konfiguration (ein CAP eines CAPsMAN,
+den NetBox nicht kennt). Andere Geräte haben den CAP aus. Radios mit RF-Rolle sind Enden von
+Punkt-zu-Punkt-Funkstrecken (siehe [netbox-modeling.md](netbox-modeling.md)), Radios ohne RF-Rolle
+behalten ihre Konfiguration.

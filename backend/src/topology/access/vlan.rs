@@ -74,7 +74,13 @@ impl VlanAccess {
                 });
             if in_group {
                 devices.insert(group.controller);
-                devices.extend(group.aps.iter().copied());
+                devices.extend(
+                    group
+                        .aps
+                        .iter()
+                        .copied()
+                        .filter(|ap| !topology.is_legacy_cap(*ap)),
+                );
             }
         }
         devices.into_iter().map(self.create_access()).collect()

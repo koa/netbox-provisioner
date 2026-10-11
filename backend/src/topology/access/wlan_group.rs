@@ -46,6 +46,12 @@ impl WlanGroupAccess {
             .map(self.create_access())
             .collect()
     }
+    /// Whether an AP is a CAP of the legacy CAPsMAN (`Topology::is_legacy_cap`): then the
+    /// controller runs that one too.
+    pub fn has_legacy_caps(&self) -> bool {
+        self.data()
+            .is_some_and(|d| d.aps.iter().any(|ap| self.topology.is_legacy_cap(*ap)))
+    }
     pub fn mgmt_vlan(&self) -> Option<VlanAccess> {
         self.data()
             .and_then(|d| d.mgmt_vlan)

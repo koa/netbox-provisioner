@@ -397,7 +397,8 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     let port_type = match interface.type_.as_str() {
                         "10gbase-x-sfpp" | "1000base-x-sfp" | "1000base-t" | "100base-tx"
                         | "40gbase-x-qsfpp" => Some(PortType::Ethernet),
-                        "ieee802.11n" | "ieee802.11ac" | "ieee802.11ad" => Some(PortType::Wireless),
+                        "ieee802.11a" | "ieee802.11g" | "ieee802.11n" | "ieee802.11ac"
+                        | "ieee802.11ad" | "ieee802.11ax" => Some(PortType::Wireless),
                         "bridge" => Some(PortType::Bridge),
                         "virtual" => Some(PortType::Loopback),
                         &_ => {

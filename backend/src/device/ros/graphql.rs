@@ -1,5 +1,8 @@
 use crate::device::ros::l2::{EndpointNameGenerator, L2Setup, NameGenerator};
-use crate::device::ros::{WifiDeviceDataCurrent, WifiDeviceDataTarget};
+use crate::device::ros::{
+    CapsManDeviceDataCurrent, CapsManDeviceDataTarget, WifiDeviceDataCurrent,
+    WifiDeviceDataTarget,
+};
 use crate::{
     Error,
     config::CONFIG,
@@ -69,6 +72,9 @@ pub struct DeviceCfg {
     radio_package: Option<RadioPackage>,
     w60g_current: Option<W60GDeviceDataCurrent>,
     w60g_target: Option<W60GDeviceDataTarget>,
+    /// the legacy CAPsMAN, on a controller with CAPs of it
+    capsman_current: Option<CapsManDeviceDataCurrent>,
+    capsman_target: Option<CapsManDeviceDataTarget>,
 }
 
 impl DeviceCfg {
@@ -98,6 +104,9 @@ impl DeviceCfg {
                 &self.capsman_certificates,
                 self.radio_package,
             )?;
+        }
+        if let Some(capsman_target) = self.capsman_target.as_mut() {
+            capsman_target.generate_from(device, &l2)?;
         }
         self.base_target.setup_l2(device, &l2, self.radio_package)?;
         Ok(())
@@ -139,6 +148,14 @@ impl DeviceCfg {
         {
             let w60g_mutations = w60g_target.generate_mutations(w60g_current)?;
             mutations.into_iter().chain(w60g_mutations).collect()
+        } else {
+            mutations
+        };
+        let mutations = if let (Some(capsman_target), Some(capsman_current)) =
+            (&self.capsman_target, &self.capsman_current)
+        {
+            let capsman_mutations = capsman_target.generate_mutations(capsman_current)?;
+            mutations.into_iter().chain(capsman_mutations).collect()
         } else {
             mutations
         };
@@ -372,6 +389,22 @@ impl DeviceCfg {
         } else {
             (None, None)
         };
+        // the legacy CAPsMAN only where NetBox has CAPs of it: a controller may run one that
+        // NetBox doesn't know of (CAPs without their radios in NetBox), which stays as it is
+        let (capsman_current, capsman_target) = if device
+            .wlan_controller_of()
+            .is_some_and(|group| group.has_legacy_caps())
+        {
+            if !installed_packages.contains(RadioPackage::Wireless.name().as_bytes()) {
+                return Err(SetupError::MissingPackage(RadioPackage::Wireless.name()));
+            }
+            (
+                Some(CapsManDeviceDataCurrent::fetch(client).await?),
+                Some(CapsManDeviceDataTarget::detect_device(client).await?),
+            )
+        } else {
+            (None, None)
+        };
         Ok(DeviceCfg {
             base_current: current,
             base_target: target,
@@ -383,6 +416,8 @@ impl DeviceCfg {
             radio_package: needed,
             w60g_current,
             w60g_target,
+            capsman_current,
+            capsman_target,
         })
     }
 }

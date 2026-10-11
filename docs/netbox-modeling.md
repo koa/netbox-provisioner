@@ -121,7 +121,7 @@ Der Provisioner erkennt ein Interface nur am **Namen** als physischen Port (`Phy
 | `sfp<N>`              | SFP-Port N (z.B. `RB962…`, `CRS109…`)             |
 | `combo<N>`            | Combo-Port N (z.B. `CCR1009…`)                    |
 | `qsfpplus<N>-<L>`     | Lane L des QSFP+-Ports N (z.B. `CRS354…`)         |
-| `wlan<N>`             | 5-GHz-Funk-Port (`/interface/wireless`, siehe [Funkbrücke](#funkbrücke)) |
+| `wlan<N>`             | Radio des `wireless`-Pakets (`/interface/wireless`): Funkbrücke (siehe [Funkbrücke](#funkbrücke)) oder, auf einem AP, Radio des klassischen CAPsMAN |
 | `wlan60-<N>`          | 60-GHz-Funk-Port (`/interface/w60g`, siehe [Funkbrücke](#funkbrücke)) |
 | `wifi<N>`             | WLAN-Interface (wird derzeit nicht konfiguriert)  |
 | `lo`                  | Loopback                                          |
@@ -432,7 +432,11 @@ gibt es zwei Varianten:
    Authentifizierung werden übersprungen.
 3. Jeden **Access Point**: Custom Field `wlan_group` = die Gruppe. Nur echte APs: ein Gerät mit
    `wlan_group` bekommt die CAP-Konfiguration. Ein Switch, der nur Ports im WLAN-Netz hat, braucht
-   das Feld nicht, ihm reicht das VLAN an den Ports.
+   das Feld nicht, ihm reicht das VLAN an den Ports. Ein alter AP mit dem `wireless`-Paket (z.B.
+   SXT, RB912) bekommt seine Radios als `wlan<N>`-Interfaces (Typ IEEE 802.11a/g/n/ac). Er wird
+   dann CAP des klassischen CAPsMAN auf dem Controller; das WLAN braucht dafür eine VLAN, die auf
+   dem Controller endet (Variante auf dem Controller). Ohne `wlan<N>`-Interfaces in NetBox
+   behält ein solcher AP seine CAP-Konfiguration, wie sie ist.
 4. Für die Variante auf dem Controller: Die VLAN-Gruppe der WLAN-VLANs bekommt eine `vxlan_vni`
    (siehe [VXLAN](#vxlan)). Der AP bringt die Clients jedes WLANs in dessen VLAN.
 5. Das `country` der WLANs kommt aus der Region des Standorts des Controllers.

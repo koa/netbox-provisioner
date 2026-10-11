@@ -22,7 +22,10 @@ use mikrotik_model::{
         EnabledDisabled, InterfaceBridgeProtocolMode, InterfaceEthernetByDefaultName,
         InterfaceEthernetCfg, InterfaceEthernetPoeOut, InterfaceVlanByName, InterfaceVlanCfg,
         InterfaceVxlanByName, InterfaceVxlanCfg, InterfaceW60GMode, InterfaceW60GRegion,
-        InterfaceWifiCapsmanUpgradePolicy, InterfaceWifiProvisioningAction, InterfaceWirelessCfg, InterfaceWirelessChannelWidth,
+        CapsAuthenticationTypes, CapsEncryption, CapsManConfigurationMode,
+        CapsManDatapathVlanMode, CapsManProvisioningAction, CapsManProvisioningCfg,
+        CapsManProvisioningHwSupportedModes,
+        WifiCountryLower as CapsManWifiCountry, InterfaceWifiCapsmanUpgradePolicy, InterfaceWifiProvisioningAction, InterfaceWirelessCfg, InterfaceWirelessChannelWidth,
         InterfaceWirelessFrequencyMode, InterfaceWirelessMode, InterfaceWirelessTxPowerMode,
         InterfaceWirelessWirelessProtocol::{Nv2, Nv2Nstreme80211},
         IpAddressByAddress, IpAddressCfg, IpDhcpClientCfg, IpDhcpClientDhcpOptions,
@@ -45,6 +48,8 @@ use std::{
 pub mod graphql;
 pub(crate) mod hw_facts;
 
+#[cfg(test)]
+mod capsman_test;
 pub mod l2;
 #[cfg(test)]
 mod netbox_example_test;
@@ -256,7 +261,7 @@ impl BaseDeviceDataTarget {
         setup: &L2Setup<N>,
         radio_package: Option<RadioPackage>,
     ) -> Result<(), SetupError> {
-        let radio_access_ports = if device.wlan_ap_of().is_some()
+        let radio_access_ports = if device.wifi_cap_of().is_some()
             && radio_package.is_some_and(|package| package.is_wifi() && !package.tags_vlans())
         {
             device
@@ -304,7 +309,7 @@ impl BaseDeviceDataTarget {
                     }
                     // the radio of a CAP joins the bridge through its datapath
                     // (`WifiDeviceDataTarget::generate_from`)
-                    if matches!(port_id, PhysicalPortId::Wifi(_)) && device.wlan_ap_of().is_some()
+                    if matches!(port_id, PhysicalPortId::Wifi(_)) && device.wifi_cap_of().is_some()
                     {
                         continue;
                     }
@@ -1010,10 +1015,10 @@ impl WirelessDeviceDataTarget {
         current: Option<&WirelessDeviceDataCurrent>,
     ) -> Result<(), SetupError> {
         let profiles = self.wireless.clone();
+        // a radio the board doesn't have is a card in its miniPCIe slot (`wlan2` of an RB912)
         for port in current.iter().flat_map(|current| current.wireless.iter()) {
-            if let Some(target) = self.wireless.get_mut(&port.default_name) {
-                *target = port.data.clone();
-            }
+            self.wireless
+                .insert(port.default_name.clone(), port.data.clone());
         }
         for interface in device.interfaces() {
             let Some(port @ PhysicalPortId::Wlan(_)) = interface.external_port() else {
@@ -1035,6 +1040,45 @@ impl WirelessDeviceDataTarget {
             if let Some((name, _)) = l2.placement_of_port(port) {
                 wlan.name = name.clone();
             }
+        }
+        self.setup_legacy_cap(device, l2, current)
+    }
+    /// A CAP of the legacy CAPsMAN (`Topology::is_legacy_cap`) with every radio NetBox has,
+    /// finding the controller at its loopback like a CAP of `/interface/wifi`. CAPsMAN
+    /// forwards the clients' traffic (no `bridge` here): they join the controller's bridge
+    /// (`CapsManDeviceDataTarget`). An AP whose radios NetBox doesn't have keeps its CAP as
+    /// it is (one of a CAPsMAN NetBox doesn't know of), any other device has it off.
+    fn setup_legacy_cap<N: NameGenerator>(
+        &mut self,
+        device: &DeviceAccess,
+        l2: &L2Setup<N>,
+        current: Option<&WirelessDeviceDataCurrent>,
+    ) -> Result<(), SetupError> {
+        let Some(group) = device.legacy_cap_of() else {
+            self.wireless_cap = match (device.wlan_ap_of(), current) {
+                (Some(_), Some(current)) => current.wireless_cap.clone(),
+                _ => Default::default(),
+            };
+            return Ok(());
+        };
+        let controller = group
+            .controller()
+            .and_then(|controller| controller.loopback_ip())
+            .and_then(|ip| ip.addr())
+            .ok_or_else(|| SetupError::MissingController(device.name().into()))?;
+        let cap = &mut self.wireless_cap;
+        *cap = Default::default();
+        cap.enabled = true;
+        cap.caps_man_addresses = [controller].into();
+        for interface in device.interfaces() {
+            let Some(port @ PhysicalPortId::Wlan(_)) = interface.external_port() else {
+                continue;
+            };
+            let name = match l2.placement_of_port(port) {
+                Some((name, _)) => name.clone(),
+                None => AsciiString::from(port.to_string()),
+            };
+            cap.interfaces.insert(name);
         }
         Ok(())
     }
@@ -1278,14 +1322,14 @@ impl WifiDeviceDataTarget {
             self.wifi
                 .insert(port.default_name.clone(), port.data.clone());
         }
-        let in_wlan = device.wlan_ap_of().is_some() || device.wlan_controller_of().is_some();
+        let in_wlan = device.wifi_cap_of().is_some() || device.wlan_controller_of().is_some();
         for certificate in current.iter().flat_map(|current| current.certificate.iter()) {
             if in_wlan || !capsman_certificates.contains(&certificate.0.name) {
                 self.certificate
                     .insert(certificate.0.name.clone(), certificate.clone());
             }
         }
-        if let Some(group) = device.wlan_ap_of() {
+        if let Some(group) = device.wifi_cap_of() {
             let controller = group
                 .controller()
                 .and_then(|controller| controller.loopback_ip())
@@ -1347,11 +1391,7 @@ impl WifiDeviceDataTarget {
             let mut names = Vec::new();
             for wlan in group.wlan() {
                 let ssid = wlan.ssid().unwrap_or_default();
-                let name: AsciiString = ssid
-                    .chars()
-                    .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' })
-                    .collect::<String>()
-                    .into();
+                let name = wlan_configuration_name(ssid);
                 let configuration = &mut self.configuration.entry(name.clone()).or_default().0;
                 configuration.name = name.clone();
                 configuration.disabled = false;
@@ -1385,6 +1425,113 @@ impl WifiDeviceDataTarget {
     }
 }
 
+mikrotik_model!(
+    name = CapsManDeviceData,
+    detect = new,
+    fields(
+        manager(single = "caps-man/manager"),
+        security(by_key(path = "caps-man/security", key = name)),
+        datapath(by_key(path = "caps-man/datapath", key = name)),
+        configuration(by_key(path = "caps-man/configuration", key = name)),
+        provisioning(by_id(
+            path = "caps-man/provisioning",
+            keys(
+                radio_mac,
+                identity_regexp,
+                common_name_regexp,
+                ip_address_ranges,
+                hw_supported_modes
+            )
+        )),
+    ),
+);
+
+impl CapsManDeviceDataTarget {
+    fn new(_model: &[u8]) -> Self {
+        Self {
+            manager: Default::default(),
+            security: Default::default(),
+            datapath: Default::default(),
+            configuration: Default::default(),
+            provisioning: Default::default(),
+        }
+    }
+    /// The legacy CAPsMAN (`/caps-man`, in `wireless`) of a controller whose Wireless LAN
+    /// Group has CAPs of it (`Topology::is_legacy_cap`), next to the `/interface/wifi` one:
+    /// a configuration per WLAN (named like that one's, SSID, country, WPA2 PSK), the first
+    /// WLAN the master of every radio, the others virtual ones. CAPsMAN forwards the clients'
+    /// traffic here, into the bridge carrying the WLAN's VLAN, tagged with it; a WLAN without
+    /// VLAN has no bridge. Only read where NetBox asks for it (`DeviceCfg::fetch`).
+    fn generate_from<N: NameGenerator>(
+        &mut self,
+        device: &DeviceAccess,
+        l2: &L2Setup<N>,
+    ) -> Result<(), SetupError> {
+        let Some(group) = device
+            .wlan_controller_of()
+            .filter(WlanGroupAccess::has_legacy_caps)
+        else {
+            return Ok(());
+        };
+        self.manager.enabled = true;
+        let country = match CapsManWifiCountry::parse_ros(country_settings(device)?.0.as_bytes()) {
+            ParseRosValueResult::Value(country) => country,
+            _ => return Err(SetupError::UnknownCountry(country_settings(device)?.0.into())),
+        };
+        let mut names = Vec::new();
+        for wlan in group.wlan() {
+            let ssid = wlan.ssid().unwrap_or_default();
+            let name = wlan_configuration_name(ssid);
+            let configuration = &mut self.configuration.entry(name.clone()).or_default().0;
+            configuration.name = name.clone();
+            configuration.mode = Some(CapsManConfigurationMode::Ap);
+            configuration.ssid = Some(ssid.into());
+            configuration.country = Some(country);
+            configuration.datapath = Some(name.clone());
+            if let Some(WlanAuth::Wpa(settings)) = wlan.auth() {
+                let security = &mut self.security.entry(name.clone()).or_default().0;
+                security.name = name.clone();
+                security.authentication_types = [CapsAuthenticationTypes::Wpa2Psk].into();
+                security.encryption = [CapsEncryption::AesCcm].into();
+                security.passphrase = Some(settings.psk().into());
+                configuration.security = Some(name.clone());
+            }
+            let datapath = &mut self.datapath.entry(name.clone()).or_default().0;
+            datapath.name = name.clone();
+            datapath.local_forwarding = Some(false);
+            datapath.client_to_client_forwarding = Some(true);
+            if let (Some(bridge), Some(vlan)) = (
+                l2.bridge_of_wlan(&wlan),
+                wlan.vlan().and_then(|vlan| vlan.vlan_id()),
+            ) {
+                datapath.bridge = Some(bridge.clone());
+                datapath.vlan_mode = Some(CapsManDatapathVlanMode::UseTag);
+                datapath.vlan_id = Some(vlan);
+            }
+            names.push(name);
+        }
+        if let Some((master, slaves)) = names.split_first() {
+            let provisioning = CapsManProvisioningCfg {
+                action: HasNone::Value(CapsManProvisioningAction::CreateDynamicEnabled),
+                master_configuration: master.clone(),
+                slave_configurations: slaves.iter().cloned().collect(),
+                ..Default::default()
+            };
+            self.provisioning.insert(
+                (
+                    provisioning.radio_mac.clone(),
+                    provisioning.identity_regexp.clone(),
+                    provisioning.common_name_regexp.clone(),
+                    provisioning.ip_address_ranges.clone(),
+                    provisioning.hw_supported_modes.clone(),
+                ),
+                provisioning,
+            );
+        }
+        Ok(())
+    }
+}
+
 /// The one VLAN the WLANs of a group put their clients in, if any: a CAP's radio has one.
 fn wlan_vlan_id(group: &WlanGroupAccess) -> Result<Option<u16>, SetupError> {
     let vlans = group
@@ -1399,11 +1546,27 @@ fn wlan_vlan_id(group: &WlanGroupAccess) -> Result<Option<u16>, SetupError> {
     }
 }
 
+/// The name of a WLAN's configuration (`/interface/wifi` and `/caps-man`): its SSID with
+/// every character but ASCII letters, digits and `-` as `_`.
+fn wlan_configuration_name(ssid: &str) -> AsciiString {
+    ssid.chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' })
+        .collect::<String>()
+        .into()
+}
+
 /// The package for the board's radios (`hw_facts::radio_package`) if NetBox uses them: a
 /// radio with an RF role, in a bridge, with a VLAN or an address, or the device is an AP of a
-/// Wireless LAN Group. A RouterOS update installs just that besides `routeros`.
+/// Wireless LAN Group. A controller without radios of a group with CAPs of the legacy
+/// CAPsMAN needs `wireless` for running it (`CapsManDeviceDataTarget`). A RouterOS update
+/// installs just that besides `routeros`.
 pub fn needed_radio_package(device: &DeviceAccess, model: &[u8]) -> Option<RadioPackage> {
-    let package = radio_package(model)?;
+    let Some(package) = radio_package(model) else {
+        return device
+            .wlan_controller_of()
+            .is_some_and(|group| group.has_legacy_caps())
+            .then_some(RadioPackage::Wireless);
+    };
     let uses_radio = device.interfaces().iter().any(|interface| {
         matches!(
             interface.external_port(),

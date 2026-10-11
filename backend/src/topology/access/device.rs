@@ -182,6 +182,18 @@ impl DeviceAccess {
             .and_then(|d| d.wlan_ap_of)
             .map(self.create_access())
     }
+    /// The group this device is a CAP of with `/interface/wifi` (`Topology::is_legacy_cap`).
+    pub fn wifi_cap_of(&self) -> Option<WlanGroupAccess> {
+        self.wlan_ap_of().filter(|_| !self.is_legacy_cap())
+    }
+    /// The group this device is a CAP of with `/interface/wireless`
+    /// (`Topology::is_legacy_cap`).
+    pub fn legacy_cap_of(&self) -> Option<WlanGroupAccess> {
+        self.wlan_ap_of().filter(|_| self.is_legacy_cap())
+    }
+    fn is_legacy_cap(&self) -> bool {
+        self.topology.is_legacy_cap(self.id)
+    }
 
     pub fn role(&self) -> Option<DeviceRole> {
         self.data().and_then(|d| d.role)

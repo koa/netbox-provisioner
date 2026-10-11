@@ -388,7 +388,7 @@ impl<G: NameGenerator> L2Setup<G> {
                     });
             }
         }
-        if let Some(wlan) = device.wlan_ap_of() {
+        if let Some(wlan) = device.wifi_cap_of() {
             if let Some(vlan) = wlan.mgmt_vlan() {
                 plane_of_vlan(&mut planes, vlan.id).insert(L2Port::CapMgmt);
                 vlans.insert(vlan.id, vlan);
@@ -578,7 +578,7 @@ impl<G: NameGenerator> L2Setup<G> {
                 // On a WLAN AP the default bridge is the one the CAP datapath
                 // references, so WLAN clients, the VXLAN and local access ports of
                 // the same VLAN share one L2 domain.
-                let name = if root.is_none() && device.wlan_ap_of().is_some() {
+                let name = if root.is_none() && device.wifi_cap_of().is_some() {
                     AsciiString::from(CAPS_BRIDGE_NAME.as_slice())
                 } else {
                     AsciiString::from(
@@ -752,18 +752,19 @@ fn name_part(raw: &str) -> String {
 }
 
 impl<G: NameGenerator> L2Setup<G> {
-    /// The bridge a WLAN of this AP is in: the one carrying its VLAN, where its clients
-    /// join through the CAP datapath. `None` for a WLAN without VLAN.
+    /// The bridge a WLAN of this AP or controller is in: the one carrying its VLAN, where
+    /// its clients join through the CAP's datapath (or, with the legacy CAPsMAN, the
+    /// controller's). `None` for a WLAN without VLAN.
     pub fn bridge_of_wlan(&self, wlan: &WlanAccess) -> Option<&AsciiString> {
         self.tagged_bridges.iter().find_map(|bridge| {
             bridge
                 .ports
                 .values()
                 .any(|entry| {
-                    entry
-                        .ports
-                        .iter()
-                        .any(|port| matches!(port, L2Port::Cap { wlan: w } if w == wlan))
+                    entry.ports.iter().any(|port| {
+                        matches!(port, L2Port::Cap { wlan: w } | L2Port::CapsMan { wlan: w }
+                            if w == wlan)
+                    })
                 })
                 .then_some(&bridge.name)
         })
