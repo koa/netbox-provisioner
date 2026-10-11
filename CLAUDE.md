@@ -109,7 +109,8 @@ on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 ## Device access, setup and updates
 
 The UI logs in over OIDC (`yew-oauth2` in the frontend, structure taken from the cable-editor);
-the backend checks the JWT against `auth_issuer` and lets only `auth_users` in. Devices are
+the backend checks the JWT against `auth_issuer` and lets only `auth_users` in (`docs/login.md`:
+the `auth_*` settings and how to set up Pocket-ID; keep it in line with them). Devices are
 reached directly, or, with `management_proxy` set, all through one device's `/ip socks` (SOCKS5
 with password; `device::proxied_stream` retries the sporadic "General SOCKS server failure" of a
 first connection). Nothing is written without `allow_apply`; `apply` runs the diff as a script on
