@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Models the lab (CCR2004 + 2 netPower + 2 SXT + wAP) in the local NetBox.
+"""Models the lab (CCR2004 + 2 netPower + 2 SXT + wAP + 2 old APs) in the local NetBox.
 
 Idempotent: every object is looked up by its natural key and created or updated to the values
 below, so the script can be rerun after a change. Needs a running local NetBox
@@ -100,6 +100,8 @@ DEVICES = {
                          "tags": ["ospf"]},
         "ether1": {"label": "SXT A", "ip": ["192.168.101.9/29", V6.format("8012::1/64")],
                    "tags": ["ospf"], "poe_mode": "pse"},
+        "ether2": {"label": "AP1", "ip": ["192.168.101.21/30", V6.format("8014::1/64")],
+                   "tags": ["ospf"], "poe_mode": "pse"},
     }),
     "lab-np2": ("CRS318-16P-2S+", 3, {
         "sfp-sfpplus1": {"label": "Core", "ip": ["192.168.101.6/30", V6.format("8011::2/64")],
@@ -110,7 +112,9 @@ DEVICES = {
                 "tags": ["dhcp"]},
         "ether2": {"label": "wAP", "ip": ["192.168.101.17/30", V6.format("8013::1/64")],
                    "tags": ["ospf"], "poe_mode": "pse"},
-        "ether3": {"label": "Kunde", "bridge": "lan", "poe_mode": "pse"},
+        "ether3": {"label": "AP2", "ip": ["192.168.101.25/30", V6.format("8015::1/64")],
+                   "tags": ["ospf"], "poe_mode": "pse"},
+        "ether4": {"label": "Kunde", "bridge": "lan", "poe_mode": "pse"},
     }),
     "lab-sxt-a": ("RBSXTG-5HPacD", 4, {
         "link": {"type": "bridge", "ip": ["192.168.101.11/29", V6.format("8012::11/64")],
@@ -133,13 +137,27 @@ DEVICES = {
         "wifi1": {"type": "ieee802.11n"},
         "wifi2": {"type": "ieee802.11ac"},
     }),
+    # older APs of the WLAN (RouterOS `wireless` package, no CAP of the WiFi CAPsMAN): they
+    # send its WLAN themselves, its VLAN goes to lab-core over VXLAN like the wAP's
+    "lab-ap1": ("RBSXTG-5HPacD", 7, {
+        "ether1": {"label": "NP1", "ip": ["192.168.101.22/30", V6.format("8014::2/64")],
+                   "tags": ["ospf"]},
+        "wlan1": {"type": "ieee802.11ac"},
+    }),
+    "lab-ap2": ("RB912UAG-2HPnD", 8, {
+        "ether1": {"label": "NP2", "ip": ["192.168.101.26/30", V6.format("8015::2/64")],
+                   "tags": ["ospf"]},
+        "wlan1": {"type": "ieee802.11n"},
+        # 5 GHz card in the miniPCIe slot
+        "wlan2": {"type": "ieee802.11a"},
+    }),
 }
 # interfaces of an earlier lab layout, deleted
 REMOVED_INTERFACES = [("lab-wap", "lan")]
 # VLAN groups (with their VXLAN VNI) and their VLANs: name -> vid
 VLAN_GROUPS = {"lab-wlan": {"vni": 1, "vlans": {"lab-wlan": 104}}}
 # Wireless LAN Group: controller, its APs (device custom field wlan_group) and WLANs
-WLAN_GROUP = {"name": "lab-wlan", "controller": "lab-core", "aps": ["lab-wap"],
+WLAN_GROUP = {"name": "lab-wlan", "controller": "lab-core", "aps": ["lab-wap", "lab-ap1", "lab-ap2"],
               "wlans": [{"ssid": "lab-wlan", "psk": "lab-wlan-preshared-key", "vlan": "lab-wlan"}]}
 CABLES = [
     (("lab-core", "sfp-sfpplus1"), ("lab-np1", "sfp-sfpplus1")),
@@ -147,11 +165,14 @@ CABLES = [
     (("lab-np1", "ether1"), ("lab-sxt-a", "ether1")),
     (("lab-np2", "ether1"), ("lab-sxt-b", "ether1")),
     (("lab-np2", "ether2"), ("lab-wap", "ether1")),
+    (("lab-np1", "ether2"), ("lab-ap1", "ether1")),
+    (("lab-np2", "ether3"), ("lab-ap2", "ether1")),
 ]
 PREFIXES = [
     "192.168.100.0/26", "192.168.101.0/30", "192.168.101.4/30", "192.168.101.8/29",
-    "192.168.103.0/24", "192.168.101.16/30", "192.168.104.0/24", V6.format("8000::/64"),
-    V6.format("8010::/64"), V6.format("8011::/64"), V6.format("8012::/64"), V6.format("8013::/64"),
+    "192.168.103.0/24", "192.168.101.16/30", "192.168.101.20/30", "192.168.101.24/30",
+    "192.168.104.0/24", V6.format("8000::/64"), V6.format("8010::/64"), V6.format("8011::/64"),
+    V6.format("8012::/64"), V6.format("8013::/64"), V6.format("8014::/64"), V6.format("8015::/64"),
     V6.format("9000::/64"), V6.format("9001::/64"),
 ]
 
