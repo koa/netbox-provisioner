@@ -123,7 +123,7 @@ Der Provisioner erkennt ein Interface nur am **Namen** als physischen Port (`Phy
 | `qsfpplus<N>-<L>`     | Lane L des QSFP+-Ports N (z.B. `CRS354…`)         |
 | `wlan<N>`             | Radio des `wireless`-Pakets (`/interface/wireless`): Funkbrücke (siehe [Funkbrücke](#funkbrücke)) oder, auf einem AP, Radio des klassischen CAPsMAN |
 | `wlan60-<N>`          | 60-GHz-Funk-Port (`/interface/w60g`, siehe [Funkbrücke](#funkbrücke)) |
-| `wifi<N>`             | WLAN-Interface (wird derzeit nicht konfiguriert)  |
+| `wifi<N>`             | Radio von `/interface/wifi` (`wifi-qcom`, `wifi-qcom-ac`): auf einem AP Radio eines CAP (siehe [WLAN](#wlan)) |
 | `lo`                  | Loopback                                          |
 | alles andere          | **virtuelles** Interface (Bridge, VLAN-Interface …) |
 
