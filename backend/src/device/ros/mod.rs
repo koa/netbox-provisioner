@@ -784,8 +784,9 @@ impl BaseDeviceDataTarget {
                 interface: Default::default(),
                 add_default_route: if use_ospf { YesNo::No } else { YesNo::Yes },
                 comment: None,
-                // RouterOS reports the distance only with a default route
-                default_route_distance: if use_ospf { None } else { Some(10) },
+                // RouterOS reports the distance only with a default route, can't clear it and
+                // reads the hidden one as its default 1 (mikrotik-model `default=1`)
+                default_route_distance: if use_ospf { 1 } else { 10 },
                 // RouterOS's default: without the client ID the DHCP server may see a new
                 // client and hand out a different address, cutting off the management path
                 dhcp_options: [

@@ -206,7 +206,8 @@ restarts a `wlan` radio; on a DFS weather radar channel (5600-5650 MHz) it liste
 other too. PoE out (`setup_poe`) was only in the latter, so the real path never set it before.
 
 A `dhcp-client` on an `ospf` interface takes no default route (`add-default-route=no`; RouterOS
-then doesn't report `default-route-distance`): the default comes over OSPF, and one from DHCP
+then hides `default-route-distance` and can't clear it, so it gets RouterOS' default 1, which
+mikrotik-model reads for the hidden field): the default comes over OSPF, and one from DHCP
 would be redistributed although it only works from that device. OSPF originates a default only
 on a device with the custom field `propagate_default_route` (`originate-default=if-installed`,
 RouterOS' own default), every other one gets `never`: an apply of the lab's uplink router, whose
