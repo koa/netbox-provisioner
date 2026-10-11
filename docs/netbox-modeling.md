@@ -22,6 +22,7 @@ Die Slugs müssen exakt so heißen:
 | `ospf`        | OSPF (v2 und v3) auf diesem Interface aktivieren              |
 | `dhcp`        | DHCP-**Server** auf diesem Interface (nur IPv4)               |
 | `dhcp-client` | DHCP-**Client** auf diesem Interface, falls es keine IP hat   |
+|               | (mit `ospf` ohne Default-Route: die kommt dann über OSPF)     |
 | `nat`         | Uplink, dessen Netz nicht zurückroutet: ausgehend maskieren   |
 
 `nat` erzeugt `srcnat action=masquerade out-interface=<Uplink>`. Beantwortet der Router selbst
@@ -254,6 +255,8 @@ tragen.
   müssen im selben Prefix liegen.
 - **DHCP-Pool automatisch:** ohne `dhcp`-Range nimmt der Provisioner den gesamten freien Rest des
   Prefixes, abzüglich aller dort vergebenen IP-Adressen, Kind-Prefixe und anderen Ranges.
+- Ein IPv6-/64 an einem Interface mit `dhcp` wird per Router Advertisement angekündigt
+  (`advertise=yes`, SLAAC). Andere IPv6-Adressen nicht.
 - Gateway des DHCP-Netzes ist die eigene Adresse des Routers auf diesem Interface. DNS-Server
   sind die aus dem Config Context `dns_servers`. Ohne diesen ist es ebenfalls die eigene Adresse,
   und der Router beantwortet DNS-Anfragen (`allow-remote-requests=yes`). Hat er selbst keinen

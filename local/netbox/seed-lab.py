@@ -86,7 +86,7 @@ def same(current, wanted):
 # its neighbor discovers.
 DEVICES = {
     "lab-core": ("CCR2004-1G-12S+2XS", 1, {
-        "ether1": {"label": "Uplink", "tags": ["dhcp-client", "nat"]},
+        "ether1": {"label": "Uplink", "tags": ["dhcp-client", "ospf"]},
         "sfp-sfpplus1": {"label": "NP1", "ip": ["192.168.101.1/30", V6.format("8010::1/64")],
                          "tags": ["ospf"]},
         "sfp-sfpplus2": {"label": "NP2", "ip": ["192.168.101.5/30", V6.format("8011::1/64")],

@@ -152,6 +152,11 @@ russh's defaults and lowers the group minimum to 2048. A user with SSH keys can'
 with a password while `/ip ssh always-allow-password-login=no` (7.24:
 `password-authentication=yes-if-no-key`), so the update switches it for the upload only.
 
+A `dhcp-client` on an `ospf` interface takes no default route (`add-default-route=no`; RouterOS
+then doesn't report `default-route-distance`): the default comes over OSPF, and one from DHCP
+would be redistributed although it only works from that device. A client network's (`dhcp`)
+IPv6 /64 is advertised for SLAAC.
+
 DNS servers come from the device's NetBox config context (`dns_servers`, in priority order):
 client networks get them by DHCP (v4) and RDNSS (v6, only on devices with client networks),
 every device asks them itself, and none resolves for others. Without the context, a router with

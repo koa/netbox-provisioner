@@ -631,14 +631,17 @@ impl BaseDeviceDataTarget {
         }
     }
 
-    fn enable_dhcp_client(&mut self, if_name: AsciiString) {
+    /// `use_ospf`: the default route comes over OSPF then; one from DHCP would be
+    /// redistributed to the whole network, although it only works from this device.
+    fn enable_dhcp_client(&mut self, if_name: AsciiString, use_ospf: bool) {
         self.dhcp_v_4_client
             .entry((if_name,))
             .or_insert(IpDhcpClientCfg {
                 interface: Default::default(),
-                add_default_route: YesNo::Yes,
+                add_default_route: if use_ospf { YesNo::No } else { YesNo::Yes },
                 comment: None,
-                default_route_distance: Some(10),
+                // RouterOS reports the distance only with a default route
+                default_route_distance: if use_ospf { None } else { Some(10) },
                 // RouterOS's default: without the client ID the DHCP server may see a new
                 // client and hand out a different address, cutting off the management path
                 dhcp_options: [
@@ -661,7 +664,7 @@ impl BaseDeviceDataTarget {
             .all(|logical| logical.addresses.is_empty() && !logical.enable_dhcp_client);
         if pure_l2 {
             for bridge in &l2.simple_bridges {
-                self.enable_dhcp_client(bridge.name.clone());
+                self.enable_dhcp_client(bridge.name.clone(), false);
             }
         }
         for logical in l2.logical_interfaces() {
@@ -676,12 +679,19 @@ impl BaseDeviceDataTarget {
             }
             if ips.is_empty() {
                 if logical.enable_dhcp_client {
-                    self.enable_dhcp_client(if_name);
+                    self.enable_dhcp_client(if_name, logical.use_ospf);
                 }
             } else {
                 let dhcp_server = logical.enable_dhcp_server;
                 for (ip_idx, (ip, ip_address)) in ips.iter().enumerate() {
                     self.set_ip_address(*ip, if_name.clone());
+                    // a client network (`dhcp`) gets its IPv6 /64 announced for SLAAC
+                    if let (true, IpNet::V6(v6_net)) = (dhcp_server, ip)
+                        && v6_net.prefix_len() == 64
+                        && let Some(address) = self.ipv_6_address.get_mut(v6_net)
+                    {
+                        address.0.advertise = true;
+                    }
                     if dhcp_server {
                         let prefix = ip_address
                             .prefix()

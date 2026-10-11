@@ -27,7 +27,7 @@ settings:
   # the lab's entry point: everything behind lab-core is reached through its /ip socks
   management_proxy:
     device: lab-core
-    address: 10.192.5.102:1080
+    address: 172.17.1.82:1080
     user: provisioner
     password: "$socks_password"
   # the lab devices only carry what NetBox says, so the full reconciliation is wanted
