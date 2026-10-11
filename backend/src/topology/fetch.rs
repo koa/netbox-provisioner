@@ -392,6 +392,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     let use_ospf = interface.tags.iter().any(|t| t.slug == "ospf");
                     let enable_dhcp_client = interface.tags.iter().any(|t| t.slug == "dhcp-client");
                     let enable_dhcp_server = interface.tags.iter().any(|t| t.slug == "dhcp");
+                    let nat = interface.tags.iter().any(|t| t.slug == "nat");
                     let external = PhysicalPortId::from_str(&interface.name).ok();
                     let port_type = match interface.type_.as_str() {
                         "10gbase-x-sfpp" | "1000base-x-sfp" | "1000base-t" | "100base-tx"
@@ -465,6 +466,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             use_ospf,
                             enable_dhcp_client,
                             enable_dhcp_server,
+                            nat,
                             bridge,
                             cable: None,
                             enable_poe,
@@ -542,6 +544,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     wlan_ap_of,
                     role,
                     country,
+                    dns_servers: device.config_context.dns_servers.unwrap_or_default(),
                 },
             );
         }

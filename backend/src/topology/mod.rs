@@ -113,6 +113,8 @@ pub struct Device {
     pub role: Option<DeviceRole>,
     /// Slug of the topmost region of the device's site: the country's ISO 3166 code.
     pub country: Option<Box<str>>,
+    /// From the config context (`dns_servers`): the DNS servers of its client networks.
+    pub dns_servers: Box<[IpAddr]>,
 }
 
 /// Device-role slugs relevant to config generation. Other NetBox roles (anything not
@@ -237,6 +239,9 @@ pub struct Interface {
     pub use_ospf: bool,
     pub enable_dhcp_client: bool,
     pub enable_dhcp_server: bool,
+    /// NetBox tag `nat`: the uplink whose network doesn't route back to the device's ones;
+    /// what leaves through it is masqueraded
+    pub nat: bool,
     pub bridge: Option<InterfaceId>,
     pub cable: Option<CableId>,
     pub enable_poe: bool,

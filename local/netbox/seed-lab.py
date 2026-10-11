@@ -86,7 +86,7 @@ def same(current, wanted):
 # its neighbor discovers.
 DEVICES = {
     "lab-core": ("CCR2004-1G-12S+2XS", 1, {
-        "ether1": {"label": "Uplink", "tags": ["dhcp-client"]},
+        "ether1": {"label": "Uplink", "tags": ["dhcp-client", "nat"]},
         "sfp-sfpplus1": {"label": "NP1", "ip": ["192.168.101.1/30", V6.format("8010::1/64")],
                          "tags": ["ospf"]},
         "sfp-sfpplus2": {"label": "NP2", "ip": ["192.168.101.5/30", V6.format("8011::1/64")],
@@ -177,12 +177,17 @@ def main():
     nb = NetBox(args.url, pathlib.Path(args.token_file).read_text().strip())
 
     tags = {slug: nb.ensure("extras/tags", {"slug": slug}, {"name": slug})["id"]
-            for slug in ["ospf", "dhcp", "dhcp-client"]}
+            for slug in ["ospf", "dhcp", "dhcp-client", "nat"]}
     nb.ensure("ipam/roles", {"slug": "dhcp"}, {"name": "dhcp"})
     platform = nb.ensure("dcim/platforms", {"slug": "routeros"}, {"name": "routeros"})["id"]
     region = nb.ensure("dcim/regions", {"slug": "ch"}, {"name": "Schweiz"})["id"]
     tenant = nb.ensure("tenancy/tenants", {"slug": "lab"},
                        {"name": "Lab", "custom_fields": {"mikrotik_credentials": "lab"}})["id"]
+    # the DNS servers of the lab's client networks: the gateway router (Blocky,
+    # 172.31.88.2/2a02:16a:fe00:1a0::10:5, isn't reachable from the lab for now)
+    nb.ensure("extras/config-contexts", {"name": "lab-dns"},
+              {"weight": 1000, "tenants": [tenant],
+               "data": {"dns_servers": ["172.16.1.4", "fd7e:907d:34ab::4"]}})
     site = nb.ensure("dcim/sites", {"slug": "lab"},
                      {"name": "Lab", "region": region, "tenant": tenant, "status": "active"})["id"]
     manufacturer = nb.ensure("dcim/manufacturers", {"slug": "mikrotik"}, {"name": "MikroTik"})["id"]

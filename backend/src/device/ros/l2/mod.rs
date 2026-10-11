@@ -642,6 +642,7 @@ impl<G: NameGenerator> L2Setup<G> {
             use_ospf: s.root.use_ospf(),
             enable_dhcp_client: s.root.is_enable_dhcp_client(),
             enable_dhcp_server: s.root.is_enable_dhcp_server(),
+            nat: s.root.is_nat(),
         });
         let simple = self.simple_bridges.iter().map(|b| {
             let addresses = b
@@ -666,6 +667,7 @@ impl<G: NameGenerator> L2Setup<G> {
                 use_ospf: roots.iter().any(|r| r.use_ospf()),
                 enable_dhcp_client: roots.iter().any(|r| r.is_enable_dhcp_client()),
                 enable_dhcp_server: roots.iter().any(|r| r.is_enable_dhcp_server()),
+                nat: roots.iter().any(|r| r.is_nat()),
             }
         });
         let tagged = self.tagged_bridges.iter().flat_map(|b| {
@@ -698,6 +700,7 @@ impl<G: NameGenerator> L2Setup<G> {
                     use_ospf: roots.iter().any(|r| r.use_ospf()),
                     enable_dhcp_client: roots.iter().any(|r| r.is_enable_dhcp_client()),
                     enable_dhcp_server: roots.iter().any(|r| r.is_enable_dhcp_server()),
+                    nat: roots.iter().any(|r| r.is_nat()),
                 }
             })
         });
@@ -713,6 +716,7 @@ pub struct LogicalInterface<'a> {
     pub use_ospf: bool,
     pub enable_dhcp_client: bool,
     pub enable_dhcp_server: bool,
+    pub nat: bool,
 }
 
 /// Turns free text from NetBox (labels, device and VLAN names) into one part of a

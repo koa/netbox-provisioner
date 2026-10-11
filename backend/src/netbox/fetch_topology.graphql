@@ -78,6 +78,7 @@ query FetchTopology{
         }
         serial
         custom_field_data
+        config_context
     }
     tenant_list{
         id

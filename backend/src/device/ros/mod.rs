@@ -26,6 +26,8 @@ use mikrotik_model::{
         InterfaceWirelessFrequencyMode, InterfaceWirelessMode, InterfaceWirelessTxPowerMode,
         InterfaceWirelessWirelessProtocol::{Nv2, Nv2Nstreme80211},
         IpAddressByAddress, IpAddressCfg, IpDhcpClientCfg, IpDhcpClientDhcpOptions,
+        IpFirewallFilterAction, IpFirewallFilterCfg, IpFirewallNatAction, IpFirewallNatCfg,
+        Ipv6NdAdvertiseDns, Ipv6NdByInterface, Ipv6NdCfg,
         IpSocksAuthMethod, IpSocksUsersByName, IpSshCfg, IpSshForwardingEnabled, IpSocksUsersCfg, Ipv6AddressByAddress,
         Ipv6AddressCfg, RoutingOspfInstanceByName, RoutingOspfInstanceCfg,
         RoutingOspfInstanceVersion, RoutingRedistribute, VlanFrameTypes, WifiChannelBand,
@@ -85,6 +87,13 @@ mikrotik_model!(
             keys(address, list)
         )),
         ipv6_firewall_filter(by_id(path = "ipv6/firewall/filter", keys())),
+        ip_firewall_filter(by_id(
+            path = "ip/firewall/filter",
+            keys(chain, in_interface, protocol, dst_port)
+        )),
+        ip_firewall_nat(by_id(path = "ip/firewall/nat", keys(chain, out_interface))),
+        dns(single = "ip/dns"),
+        ipv6_nd(by_key(path = "ipv6/nd", key = interface)),
         dhcp_v4_server(by_key(path = "ip/dhcp-server", key = name)),
         dhcp_v4_server_network(by_key(path = "ip/dhcp-server/network", key = address)),
         ipv4_pool(by_key(path = "ip/pool", key = name)),
@@ -197,6 +206,10 @@ impl BaseDeviceDataTarget {
             dhcp_v_4_client: Default::default(),
             ipv_6_firewall_address_list: Default::default(),
             ipv_6_firewall_filter: Default::default(),
+            ip_firewall_filter: Default::default(),
+            ip_firewall_nat: Default::default(),
+            dns: Default::default(),
+            ipv_6_nd: Default::default(),
             dhcp_v_4_server: Default::default(),
             dhcp_v_4_server_network: Default::default(),
             ipv_4_pool: Default::default(),
@@ -515,6 +528,7 @@ impl BaseDeviceDataTarget {
 
         let l2 = L2Setup::new(device, name_generator)?;
         self.setup_ip_addresses(&l2)?;
+        self.setup_dns(device);
         self.setup_ospf(device, &l2);
         self.setup_l2(device, &l2, None)?;
         for port in device.interfaces() {
@@ -657,6 +671,9 @@ impl BaseDeviceDataTarget {
                 .iter()
                 .filter_map(|ip| ip.net().map(|a| (a, ip.clone())))
                 .collect::<Vec<_>>();
+            if logical.nat {
+                self.masquerade(&if_name);
+            }
             if ips.is_empty() {
                 if logical.enable_dhcp_client {
                     self.enable_dhcp_client(if_name);
@@ -720,7 +737,14 @@ impl BaseDeviceDataTarget {
                                 let network =
                                     &mut self.dhcp_v_4_server_network.entry(net).or_default().0;
                                 network.gateway.insert(ip.addr());
-                                network.dns_server.insert(ip.addr());
+                                if !network.dns_server.contains(&ip.addr()) {
+                                    network.dns_server = network
+                                        .dns_server
+                                        .iter()
+                                        .copied()
+                                        .chain([ip.addr()])
+                                        .collect();
+                                }
                                 self.ipv_4_pool.entry(server_name).or_default().0.ranges =
                                     dhcp_ranges
                                         .iter()
@@ -734,7 +758,128 @@ impl BaseDeviceDataTarget {
         }
         Ok(())
     }
-
+    /// DNS of the client networks. With DNS servers from the config context they get these:
+    /// the IPv4 ones by DHCP, the IPv6 ones by router advertisement (RDNSS), in their
+    /// order; the device asks them too and resolves for nobody. Without, the DHCP networks
+    /// name the device itself, so it answers them (not from a `nat` uplink); one without a
+    /// DHCP client learns no DNS server and asks the NAT routers (NetBox tag `nat`).
+    fn setup_dns(&mut self, device: &DeviceAccess) {
+        let servers = device.dns_servers();
+        let nd = &mut self
+            .ipv_6_nd
+            .entry(b"all".into())
+            .or_insert_with(|| Ipv6NdByInterface(Ipv6NdCfg::new(b"all".into())))
+            .0;
+        if !servers.is_empty() {
+            let v4 = servers
+                .iter()
+                .filter_map(|ip| match ip {
+                    IpAddr::V4(ip) => Some(*ip),
+                    IpAddr::V6(_) => None,
+                })
+                .collect::<Box<[_]>>();
+            let v6 = servers
+                .iter()
+                .filter_map(|ip| match ip {
+                    IpAddr::V6(ip) => Some(*ip),
+                    IpAddr::V4(_) => None,
+                })
+                .collect::<Box<[_]>>();
+            // only where there are client networks to announce them to
+            let client_networks = !self.dhcp_v_4_server_network.is_empty()
+                || self.ipv_6_address.values().any(|address| address.0.advertise);
+            if client_networks && !v6.is_empty() {
+                nd.dns = Some(v6);
+                nd.advertise_dns = Some(Ipv6NdAdvertiseDns::Yes);
+            }
+            for network in self.dhcp_v_4_server_network.values_mut() {
+                network.0.dns_server = v4.clone();
+            }
+            self.dns.allow_remote_requests = false;
+            self.dns.servers = servers.into();
+            return;
+        }
+        self.dns.allow_remote_requests = !self.dhcp_v_4_server_network.is_empty();
+        if !self.dns.allow_remote_requests {
+            return;
+        }
+        // the resolver answers the device's own networks, not the uplink's
+        let uplinks = self
+            .ip_firewall_nat
+            .values()
+            .filter_map(|nat| nat.out_interface.clone())
+            .collect::<Vec<_>>();
+        for uplink in uplinks {
+            self.close_dns(&uplink);
+        }
+        let has_uplink = device
+            .interfaces()
+            .iter()
+            .any(|interface| interface.is_enable_dhcp_client());
+        if !has_uplink {
+            self.dns.servers = device
+                .topology()
+                .list_devices()
+                .filter(|other| other.id() != device.id())
+                .filter(|other| other.interfaces().iter().any(|i| i.is_nat()))
+                .filter_map(|other| other.loopback_ip().and_then(|ip| ip.addr()))
+                .collect();
+        }
+    }
+    /// Masquerades what leaves through the uplink `if_name` (NetBox tag `nat`).
+    fn masquerade(&mut self, if_name: &AsciiString) {
+        self.ip_firewall_nat.insert(
+            (b"srcnat".into(), Some(if_name.clone())),
+            IpFirewallNatCfg {
+                action: IpFirewallNatAction::Masquerade,
+                chain: b"srcnat".into(),
+                comment: None,
+                disabled: false,
+                dst_address: None,
+                dst_port: None,
+                in_interface: None,
+                in_interface_list: None,
+                jump_target: None,
+                out_interface: Some(if_name.clone()),
+                out_interface_list: None,
+                protocol: None,
+                src_address: None,
+                to_addresses: None,
+                to_ports: None,
+            },
+        );
+    }
+    /// Keeps the DNS resolver closed to the uplink `if_name`.
+    fn close_dns(&mut self, if_name: &AsciiString) {
+        for protocol in [b"udp", b"tcp"] {
+            let protocol = AsciiString::from(protocol.as_slice());
+            let port = AsciiString::from(b"53".as_slice());
+            self.ip_firewall_filter.insert(
+                (
+                    b"input".into(),
+                    Some(if_name.clone()),
+                    Some(protocol.clone()),
+                    Some(port.clone()),
+                ),
+                IpFirewallFilterCfg {
+                    action: IpFirewallFilterAction::Drop,
+                    chain: b"input".into(),
+                    comment: None,
+                    connection_state: None,
+                    disabled: false,
+                    dst_address: None,
+                    dst_port: Some(port),
+                    in_interface: Some(if_name.clone()),
+                    in_interface_list: None,
+                    jump_target: None,
+                    out_interface: None,
+                    out_interface_list: None,
+                    protocol: Some(protocol),
+                    src_address: None,
+                },
+            );
+        }
+    }
 }
 
 struct GapFinder<V: Ord + Copy> {

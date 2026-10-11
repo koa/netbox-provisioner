@@ -56,6 +56,19 @@ async fn generate_all_devices_of_netbox_example() {
                 .or_insert_with(|| serde_json::json!({}));
         }
     }
+    // Exports from before the config context was queried lack it; treat those devices as
+    // having none (no DNS servers configured).
+    for device in raw["data"]["device_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        if let Some(device) = device.as_object_mut() {
+            device
+                .entry("config_context")
+                .or_insert_with(|| serde_json::json!({}));
+        }
+    }
     let response: graphql_client::Response<ResponseData> =
         serde_json::from_value(raw).expect("parse example response");
     let topology = Arc::new(build_topology_from(

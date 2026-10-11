@@ -152,6 +152,16 @@ russh's defaults and lowers the group minimum to 2048. A user with SSH keys can'
 with a password while `/ip ssh always-allow-password-login=no` (7.24:
 `password-authentication=yes-if-no-key`), so the update switches it for the upload only.
 
+DNS servers come from the device's NetBox config context (`dns_servers`, in priority order):
+client networks get them by DHCP (v4) and RDNSS (v6, only on devices with client networks),
+every device asks them itself, and none resolves for others. Without the context, a router with
+a DHCP server answers DNS (its networks get its own address, DNS dropped on `input` from a `nat`
+uplink), and one without a `dhcp-client` forwards to the loopbacks of the `nat` routers.
+`mu; ordered` makes a list field a `Box<[V]>` whose order counts (`dns-server`, `servers`).
+An uplink tagged `nat` gets a masquerade rule. The provisioner owns
+`/ip/firewall/filter` and `nat` completely (rules it doesn't generate are removed) and doesn't
+reorder rules yet.
+
 A WLAN with a VLAN ends where NetBox puts its network (e.g. the controller, over the VLAN
 group's VXLAN). The CAP sets the VLAN, so a group's WLANs share one: with `wifi-qcom` its radios
 get a datapath with `vlan-id` into the bridge carrying that VLAN; `wifi-qcom-ac` radios can't tag

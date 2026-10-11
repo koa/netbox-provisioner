@@ -28,6 +28,9 @@ pub struct JSON {
     pub rf_country: Option<Box<str>>,
     /// On a wireless link: RouterOS `frequency-mode` of both ends (5 GHz).
     pub rf_frequency_mode: Option<Box<str>>,
+    /// In a device's config context: the DNS servers its client networks get, the first
+    /// asked first; the device doesn't resolve for them then.
+    pub dns_servers: Option<Box<[IpAddr]>>,
 }
 
 /// NetBox's `Decimal` scalar (e.g. an interface's RF channel frequency in MHz),

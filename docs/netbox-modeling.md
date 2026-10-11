@@ -22,6 +22,23 @@ Die Slugs müssen exakt so heißen:
 | `ospf`        | OSPF (v2 und v3) auf diesem Interface aktivieren              |
 | `dhcp`        | DHCP-**Server** auf diesem Interface (nur IPv4)               |
 | `dhcp-client` | DHCP-**Client** auf diesem Interface, falls es keine IP hat   |
+| `nat`         | Uplink, dessen Netz nicht zurückroutet: ausgehend maskieren   |
+
+`nat` erzeugt `srcnat action=masquerade out-interface=<Uplink>`. Beantwortet der Router selbst
+DNS (kein Config Context `dns_servers`, siehe unten), sperrt es zudem DNS (TCP/UDP 53) vom Uplink
+her im `input`.
+
+### Config Context `dns_servers`
+
+```json
+{"dns_servers": ["172.31.88.2", "2a02:16a:fe00:1a0::10:5", "172.16.1.4", "fd7e:907d:34ab::4"]}
+```
+
+Die DNS-Server der Client-Netze, der erste wird zuerst gefragt (z.B. Blocky mit Adfilter, dann
+ein Fallback). Zuweisen wie jeder Config Context, z.B. pro Tenant oder Site. Der Provisioner
+verteilt die IPv4-Server per DHCP und die IPv6-Server per Router Advertisement (RDNSS), letzteres
+nur auf Geräten mit Client-Netz. Jedes Gerät fragt die Server auch selbst
+(`/ip dns servers`), beantwortet aber keine DNS-Anfragen (`allow-remote-requests=no`).
 
 ### Custom Fields
 
@@ -134,7 +151,7 @@ werden.
 | 802.1Q: Untagged VLAN | Access-VLAN des Ports bzw. VLAN eines VLAN-Interfaces                     |
 | 802.1Q: Tagged VLANs | getaggte VLANs (Trunk)                                                     |
 | IP Addresses         | IP-Adressen auf dem Interface                                              |
-| Tags                 | `ospf`, `dhcp`, `dhcp-client` (siehe oben)                                 |
+| Tags                 | `ospf`, `dhcp`, `dhcp-client`, `nat` (siehe oben)                          |
 | PoE Mode             | `PSE` → PoE-Ausgang `auto-on`, sonst `off` (nur auf PoE-fähigen Boards); das Gerät am anderen Kabelende gilt als von diesem Port gespeist. Ein Update startet das speisende Gerät erst neu, wenn kein gespeistes (auch weiter unten in der Kette) mehr ein Update macht |
 | RF Role, RF Channel Frequency/Width, TX Power | Funk-Port einer [Funkbrücke](#funkbrücke) |
 | Wireless Link        | SSID, PSK und Funkregeln einer [Funkbrücke](#funkbrücke)                   |
@@ -237,8 +254,10 @@ tragen.
   müssen im selben Prefix liegen.
 - **DHCP-Pool automatisch:** ohne `dhcp`-Range nimmt der Provisioner den gesamten freien Rest des
   Prefixes, abzüglich aller dort vergebenen IP-Adressen, Kind-Prefixe und anderen Ranges.
-- Gateway und DNS-Server des DHCP-Netzes sind immer die eigene Adresse des Routers auf diesem
-  Interface.
+- Gateway des DHCP-Netzes ist die eigene Adresse des Routers auf diesem Interface. DNS-Server
+  sind die aus dem Config Context `dns_servers`. Ohne diesen ist es ebenfalls die eigene Adresse,
+  und der Router beantwortet DNS-Anfragen (`allow-remote-requests=yes`). Hat er selbst keinen
+  `dhcp-client`, lernt er keinen DNS-Server und fragt die Loopbacks der Router mit `nat`-Uplink.
 
 ## Rezept: Router
 
@@ -254,7 +273,8 @@ Beispiel: Core-Router mit Uplink, OSPF zu zwei Nachbarn und einem Kunden-Port.
    aber bei der Namensgebung, falls kein Label gesetzt ist.
 5. **Kunden-/Haushalts-Port** mit DHCP: `ether5` mit Label `Bachmann Dachboden`, IP
    `192.168.30.1/24`, Tags `dhcp`. Prefix `192.168.30.0/24` muss existieren.
-6. **Uplink ohne feste IP**: `ether8` mit Tag `dhcp-client` und ohne IP.
+6. **Uplink ohne feste IP**: `ether8` mit Tag `dhcp-client` und ohne IP, dazu `nat`, wenn das Netz
+   dahinter die eigenen Netze nicht kennt (keine Route zurück).
 
 ## Rezept: Switch mit Haushalts-VLANs
 

@@ -83,6 +83,9 @@ impl InterfaceAccess {
     pub fn is_enable_dhcp_server(&self) -> bool {
         self.data().map(|d| d.enable_dhcp_server).unwrap_or(false)
     }
+    pub fn is_nat(&self) -> bool {
+        self.data().map(|d| d.nat).unwrap_or(false)
+    }
     pub fn external_port(&self) -> Option<PhysicalPortId> {
         self.data().and_then(|d| d.external)
     }
