@@ -119,7 +119,10 @@ with password; `device::proxied_stream` retries the sporadic "General SOCKS serv
 first connection). Nothing is written without `allow_apply`; `apply` runs the diff as a script on
 the device (`apply_mutations_via_script`), so it completes even when it changes the path the
 connection takes, then diffs again: a script stops at its first error, so whatever is left is
-what failed. A diff that never gets empty after an apply usually means a field RouterOS accepts
+what failed. Before the script the device saves a backup and schedules loading it after
+`apply_fallback_seconds` (180; `device::ros::fallback`); reaching the device again, even with a
+part left, takes both away, otherwise it reboots into the config from before (CHR test
+`fallback_is_stopped_or_restores`). A diff that never gets empty after an apply usually means a field RouterOS accepts
 but doesn't report in that state (see the `k`/`o` notes in mikrotik-model's CLAUDE.md); compare
 with the device's own `print` (`examples/print_device.rs`, read-only) and on a CHR before
 changing defaults.

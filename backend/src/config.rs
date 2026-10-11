@@ -33,6 +33,9 @@ pub struct Settings {
     /// The RouterOS channel preselected for updates (`long-term` (default), `stable`,
     /// `testing`, `development`).
     pub routeros_channel: Option<crate::device::update::Channel>,
+    /// Seconds after which a device loads the backup from before an apply, unless the
+    /// provisioner reached it again with the new config (default 180).
+    apply_fallback_seconds: Option<u64>,
 }
 
 /// A RouterOS device acting as SOCKS5 proxy (`/ip socks`) for the provisioner. Its own
@@ -66,6 +69,9 @@ impl MikrotikCredentials {
 }
 
 impl Settings {
+    pub fn apply_fallback(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.apply_fallback_seconds.unwrap_or(180))
+    }
     pub fn auth_client_id(&self) -> &str {
         &self.auth_client_id
     }

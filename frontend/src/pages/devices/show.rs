@@ -385,11 +385,18 @@ impl Component for ShowDevice {
                 let reprovisioned = html! {
                     for line in result.reprovisioned.iter() { <p>{ line.clone() }</p> }
                 };
+                // whether the backup from before the apply is taken away or loaded
+                let notes = html! {
+                    <>
+                        {reprovisioned}
+                        if !result.fallback.is_empty() { <p>{ result.fallback.clone() }</p> }
+                    </>
+                };
                 if result.remaining.is_empty() {
                     html! {
                         <Alert inline=true title="Angewendet, das Gerät entspricht jetzt NetBox" r#type={AlertType::Success}>
                             <CodeBlock><CodeBlockCode>{ result.applied.clone() }</CodeBlockCode></CodeBlock>
-                            {reprovisioned}
+                            {notes}
                         </Alert>
                     }
                 } else {
@@ -397,7 +404,7 @@ impl Component for ShowDevice {
                         <Alert inline=true title="Nicht alles wurde angewendet" r#type={AlertType::Warning}>
                             <p>{"Noch offen:"}</p>
                             <CodeBlock><CodeBlockCode>{ result.remaining.clone() }</CodeBlockCode></CodeBlock>
-                            {reprovisioned}
+                            {notes}
                         </Alert>
                     }
                 }

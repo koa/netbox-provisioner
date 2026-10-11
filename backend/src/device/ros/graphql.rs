@@ -9,6 +9,7 @@ use crate::{
     device::{
         AccessibleDevice, GraphqlSystemRouterboard, PingResult,
         ros::{
+            fallback,
             BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent,
             W60GDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
             hw_facts::{RadioPackage, build_w60g_ports},
@@ -291,6 +292,9 @@ pub struct ApplyResult {
     /// what the device still lacks afterwards (empty when everything was applied), or why it
     /// couldn't be checked
     remaining: String,
+    /// what became of the fallback (`fallback`), for the UI (German); empty if nothing was
+    /// applied
+    fallback: String,
 }
 
 /// The `radio` menus of the CAPsMANs whose WLANs `mutations` change: a CAP only takes a new
@@ -357,14 +361,19 @@ async fn provision_radios(
 
 /// The name of the `/system/script` entry the config is applied with.
 const APPLY_SCRIPT: &str = "netbox-provisioner-apply";
-/// How long the device may take to run the script and be reachable again.
+/// How long the device may take to run the script; reachable but not in line after that, the
+/// script stopped at an error.
 const APPLY_TIMEOUT: Duration = Duration::from_secs(90);
+/// Before the fallback fires, the provisioner stops trying to reach the device: taking the
+/// fallback away just as it loads the backup would leave it half done.
+const FALLBACK_MARGIN: Duration = Duration::from_secs(30);
 
 impl AccessibleDevice {
     /// Applies the generated config: the diff runs as a script on the device itself, so it
     /// completes even when it changes the path this connection takes. Then the diff is built
     /// again over a new connection; whatever is left wasn't applied (RouterOS stops a script
-    /// at its first error).
+    /// at its first error). Before, the device saves a backup it loads unless the provisioner
+    /// reaches it again (`fallback`): reachable, even with a part left, it stays as it is.
     pub async fn apply(&self) -> Result<ApplyResult, Error> {
         if !CONFIG.allow_apply {
             return Err(Error::ApplyNotAllowed);
@@ -378,21 +387,45 @@ impl AccessibleDevice {
                 applied: String::new(),
                 reprovisioned: Vec::new(),
                 remaining: String::new(),
+                fallback: String::new(),
             });
         }
         let raw = self.connect_again::<SimpleResult>().await?;
-        apply_mutations_via_script(&raw, &mutations, APPLY_SCRIPT).await?;
+        let delay = CONFIG.apply_fallback();
+        fallback::arm(&raw, delay).await?;
+        let fires = Instant::now() + delay;
+        if let Err(error) = apply_mutations_via_script(&raw, &mutations, APPLY_SCRIPT).await {
+            // the script didn't start, the device is as it was
+            if let Err(disarm) = fallback::disarm(&raw).await {
+                info!("{}: fallback not stopped: {disarm}", self.device_config.name());
+            }
+            return Err(error.into());
+        }
         drop(raw);
 
-        let deadline = Instant::now() + APPLY_TIMEOUT;
+        let settled = Instant::now() + APPLY_TIMEOUT;
+        let give_up = fires.checked_sub(FALLBACK_MARGIN).unwrap_or(fires);
         let remaining = loop {
             tokio::time::sleep(Duration::from_secs(3)).await;
             let remaining = self.remaining().await;
             match &remaining {
                 Ok(script) if script.is_empty() => break remaining,
-                _ if Instant::now() >= deadline => break remaining,
+                Ok(_) if Instant::now() >= settled => break remaining,
+                _ if Instant::now() >= give_up => break remaining,
                 _ => info!("{}: not done yet", self.device_config.name()),
             }
+        };
+        let fallback = match &remaining {
+            Ok(_) => self.disarm_fallback(give_up).await,
+            Err(_) => Err(None),
+        };
+        let fallback = match fallback {
+            Ok(()) => "Fallback gestoppt: das Gerät ist mit der neuen Konfiguration erreichbar".into(),
+            Err(error) => format!(
+                "Gerät nicht erreichbar{}: es lädt in etwa {} s das Backup von vor dem Anwenden und startet neu",
+                error.map(|error| format!(" ({error})")).unwrap_or_default(),
+                fires.saturating_duration_since(Instant::now()).as_secs()
+            ),
         };
         let reprovisioned = if self.device_config.wlan_controller_of().is_some() {
             self.reprovision(reprovisioned_menus(&mutations)).await
@@ -406,7 +439,23 @@ impl AccessibleDevice {
                 Ok(script) => script.into(),
                 Err(error) => format!("cannot check the device: {error}"),
             },
+            fallback,
         })
+    }
+    /// Takes the fallback away, trying again until `give_up`.
+    async fn disarm_fallback(&self, give_up: Instant) -> Result<(), Option<Error>> {
+        loop {
+            let disarmed = match self.connect_again::<SimpleResult>().await {
+                Ok(raw) => fallback::disarm(&raw).await,
+                Err(error) => Err(error),
+            };
+            match disarmed {
+                Ok(()) => return Ok(()),
+                Err(error) if Instant::now() >= give_up => return Err(Some(error)),
+                Err(error) => info!("{}: fallback not stopped yet: {error}", self.device_config.name()),
+            }
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        }
     }
     /// Provisions the radios of `menus` (`reprovisioned_menus`) again, which reconnects the
     /// CAPs' clients; what it did or why it couldn't, for the UI.

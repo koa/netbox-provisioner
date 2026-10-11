@@ -726,6 +726,7 @@ dependencies = [
  "log",
  "mikrotik-api",
  "mikrotik-model",
+ "rand 0.9.0",
  "regex",
  "reqwest 0.12.23",
  "russh",

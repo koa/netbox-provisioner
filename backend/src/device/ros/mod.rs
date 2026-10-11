@@ -48,6 +48,7 @@ use std::{
     ops::Range,
 };
 
+pub mod fallback;
 pub mod graphql;
 pub(crate) mod hw_facts;
 

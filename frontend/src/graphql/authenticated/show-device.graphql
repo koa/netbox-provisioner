@@ -43,6 +43,7 @@ mutation ApplyDeviceCfg($id: Int!, $target: String, $credentialName: String, $ad
         applied
         reprovisioned
         remaining
+        fallback
     }
 }
 query BootstrapCandidates($id: Int!){
