@@ -62,6 +62,9 @@ pub fn radio_package(model: &[u8]) -> Option<RadioPackage> {
         b"CRS109-8G-1S-2HnD"
         | b"RB962UiGS-5HacT2HnT"
         | b"RBDynaDishG-5HacDr3"
+        // RouterOS 6 reports the RB912 without `RB`
+        | b"RB912UAG-2HPnD"
+        | b"912UAG-2HPnD"
         | b"SXT G-5HPacD"
         | b"SXT G-5HPacD r2"
         | b"RBwAPG-60ad"
@@ -265,6 +268,8 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
         b"RBDynaDishG-5HacDr3"
+        | b"RB912UAG-2HPnD"
+        | b"912UAG-2HPnD"
         | b"SXT G-5HPacD"
         | b"RBwAPG-60ad"
         | b"RBwAPG-60ad-A"
@@ -289,10 +294,12 @@ pub fn build_wifi_ports(model: &[u8]) -> Box<[InterfaceWifiByDefaultName]> {
 }
 pub fn build_wireless_ports(model: &[u8]) -> Box<[InterfaceWirelessByDefaultName]> {
     match model {
-        b"CRS109-8G-1S-2HnD" => repeat_n(generate_wlan(1600), 1)
-            .enumerate()
-            .map(|(idx, generator)| generator(idx + 1))
-            .collect(),
+        b"CRS109-8G-1S-2HnD" | b"RB912UAG-2HPnD" | b"912UAG-2HPnD" => {
+            repeat_n(generate_wlan(1600), 1)
+                .enumerate()
+                .map(|(idx, generator)| generator(idx + 1))
+                .collect()
+        }
         // integrated antenna gain as the boards report it
         b"RBDynaDishG-5HacDr3" => [wireless_bridge_port(1, 25)].into(),
         b"SXT G-5HPacD" | b"SXT G-5HPacD r2" => [wireless_bridge_port(1, 14)].into(),

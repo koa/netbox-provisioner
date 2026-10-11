@@ -146,7 +146,11 @@ in line. Then the RouterBOARD firmware: `.npk`
 from download.mikrotik.com, SCP upload (`terminal::upload`), size check (the size settles after
 the copy; on 16 MB devices the root directory is in RAM, so a 12 MB package fits), reboot,
 version check. A reboot is detected by the uptime going down, not by the connection failing:
-connections may just wait while the device boots. RouterOS 6 SSH offers only `hmac-sha1`/`-md5`,
+connections may just wait while the device boots. RouterOS before 6.43 needs the API's MD5
+challenge login (in mikrotik-api), and v6 reports some boards without `RB` (`912UAG-2HPnD`), so
+`hw_facts.rs` lists both spellings. Entries added without a field may not report it (a firewall
+rule without `disabled`, the OSPF instance an update from v6 brings without `vrf`); that is
+`default=` in mikrotik-model. RouterOS 6 SSH offers only `hmac-sha1`/`-md5`,
 `diffie-hellman-group14-sha1` and a 2048 bit group exchange, so `terminal` appends those to
 russh's defaults and lowers the group minimum to 2048. A user with SSH keys can't log in over SSH
 with a password while `/ip ssh always-allow-password-login=no` (7.24:
