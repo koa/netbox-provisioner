@@ -45,7 +45,13 @@ Wo immer ein Wert Immutable ist, eine Immutable Darstellung verfügbar ist und e
 
 Fallback
 ========
-**Status: in Arbeit.** Gemeint ist das Anwenden einer Konfigurationsänderung; Frist 3 Minuten.
+**Status: erledigt**, statt mit einem berechneten Inversen mit einem Backup: vor dem Anwenden
+speichert das Gerät ein Backup und plant, es nach `apply_fallback_seconds` (180) zu laden
+(`/system/scheduler`). Erreicht der Provisioner das Gerät danach wieder, nimmt er beides weg,
+sonst startet es mit der Konfiguration von vorher neu. Das Backup bringt alles zurück, auch was
+das Modell nicht kennt, und braucht kein Inverses (hinzugefügte Einträge haben vorher keine
+`.id`, die Reihenfolge der Firewall müsste wiederhergestellt werden); der Preis ist der
+Neustart, nur wenn der Fallback auslöst. Gemeint ist das Anwenden einer Konfigurationsänderung.
 
 Es braucht noch einen Fallback Mechanismus für Updates.
 D.h.: Befor ein Update angewendet wird, wird das Inverse Update berechnet (D.h. wie kann man dieses Update rückgängig machen). Dieses Update muss zu Begin des Updates auf das Gerät geschrieben und für die Automatische Ausführung geplant werden, für den Fall dass das Update schief geht.
