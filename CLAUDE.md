@@ -135,9 +135,9 @@ address when the primary IP doesn't answer yet, through an SSH tunnel to the nei
 (`terminal::Tunnel`, `direct-tcpip`; `device::Path::Neighbor`): API, re-diff and SCP all go
 from the neighbor's address on the cable, so the device needs no route back before its first
 apply brings OSPF. It tries every neighbor of `bootstrap::plans` in turn, the management
-proxy's device first: another neighbor may be cut off itself. Every generated config has `/ip ssh forwarding-enabled=local` for that;
-without it RouterOS never answers the forward (no refusal), hence the timeout in
-`Tunnel::open`. Don't go back to static return routes on the device: with
+proxy's device first: another neighbor may be cut off itself. Every generated config has `/ip
+ssh forwarding-enabled=local` for that; without it RouterOS never answers the forward (no
+refusal), hence the timeout in `Tunnel::open`. Don't go back to static return routes on the device: with
 `redistribute=static` they go out as /32s that beat the neighbors' connected networks. When the
 mac-telnet session ends early, the following lines land on the neighbor's own console (this
 once left setup routes on lab-np1), so every setup command is wrapped to do nothing where the
@@ -175,7 +175,7 @@ restarts a `wlan` radio; on a DFS weather radar channel (5600-5650 MHz) it liste
 10 minutes (ETSI) before it sends again. The lab runs 2000 on every link between its devices.
 `DeviceCfg::generate_from` (the real path) calls the target's steps itself, not
 `BaseDeviceDataTarget::generate_from` (which only tests use): a step added to one must be in the
-other too.
+other too. PoE out (`setup_poe`) was only in the latter, so the real path never set it before.
 
 A `dhcp-client` on an `ospf` interface takes no default route (`add-default-route=no`; RouterOS
 then doesn't report `default-route-distance`): the default comes over OSPF, and one from DHCP
@@ -208,6 +208,10 @@ then has bricked devices. `device::power::PowerChain::of` collects the devices u
 PoE chains; the update holds an update lease from before the upload to the end and a reboot
 lease per reboot, and a reboot waits while a consumer holds an update lease, an update waits to
 start while a supplier reboots (both under one lock). The leases are in-process only.
+A modeled port of a PoE board without `pse` gets `poe-out=off`, which cuts what it feeds and
+which the script alone doesn't make obvious, so `generateCfg` returns `warnings` next to the
+script (`BaseDeviceDataTarget::poe_warnings`: on at the device, off in the target), and the
+device page shows them above the changes.
 
 `local/` runs the lab: `netbox/` (NetBox + `seed-lab.py`), `keycloak/` (realm `lab` on
 `localhost:8180`, admin/admin), `lab/make-config.sh` (the lab devices' password comes from the

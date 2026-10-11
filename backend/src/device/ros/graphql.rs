@@ -27,7 +27,8 @@ use mikrotik_model::{
     generator::Generator,
     hwconfig::DeviceType,
     model::{
-        CertificateCfg, InterfaceWifiCapCfg, InterfaceWifiCapsmanCfg, InterfaceWifiCapsmanState,
+        CertificateCfg, InterfaceWifiCapCfg, InterfaceWifiCapsmanCfg,
+        InterfaceWifiCapsmanState,
         ReferenceType, SystemIdentityCfg, SystemPackageState, SystemRouterboardState, YesNo,
     },
     resource::{ResourceMutation, SingleResource, apply_mutations_via_script, collect_resource},
@@ -110,6 +111,7 @@ impl DeviceCfg {
         }
         self.base_target.setup_l2(device, &l2, self.radio_package)?;
         self.base_target.setup_mtu(device)?;
+        self.base_target.setup_poe(device)?;
         Ok(())
     }
     /// [`Self::generate_from`] with the provisioner's own needs on top: the device the
@@ -186,6 +188,10 @@ impl DeviceCfg {
     pub fn script(&self) -> Result<Box<str>, Error> {
         render_script(&self.sorted_mutations()?)
     }
+    /// What the operator should know before applying (`BaseDeviceDataTarget::poe_warnings`).
+    pub fn warnings(&self) -> Vec<String> {
+        self.base_target.poe_warnings(&self.base_current)
+    }
 }
 
 fn render_script(mutations: &[ResourceMutation]) -> Result<Box<str>, Error> {
@@ -195,6 +201,15 @@ fn render_script(mutations: &[ResourceMutation]) -> Result<Box<str>, Error> {
         generator.append_mutation(mutation)?;
     }
     Ok(cfg.into_boxed_str())
+}
+
+/// The script that would bring a device in line with NetBox.
+#[derive(SimpleObject)]
+pub struct GeneratedCfg {
+    /// empty if the device is in line already
+    script: Box<str>,
+    /// what applying it would do that the operator should know before (German, for the UI)
+    warnings: Vec<String>,
 }
 
 /// What applying the config to a device did.
@@ -466,16 +481,19 @@ impl AccessibleDevice {
     async fn config(&self) -> Result<DeviceCfg, Error> {
         Ok(DeviceCfg::fetch(&self.client, &self.device_config).await?)
     }
-    /// The script that would bring the device in line with NetBox; `null` with the error in
-    /// the response's errors when that fails, so a device the generator fails on still shows
-    /// the rest (an update may be what it needs).
-    async fn generate_cfg(&self, ctx: &Context<'_>) -> Option<Box<str>> {
-        let script = async {
+    /// The script that would bring the device in line with NetBox, and what to know before
+    /// applying it; `null` with the error in the response's errors when that fails, so a
+    /// device the generator fails on still shows the rest (an update may be what it needs).
+    async fn generate_cfg(&self, ctx: &Context<'_>) -> Option<GeneratedCfg> {
+        let generated = async {
             let mut device_cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
             device_cfg.generate_for(&self.device_config)?;
-            device_cfg.script()
+            Ok(GeneratedCfg {
+                script: device_cfg.script()?,
+                warnings: device_cfg.warnings(),
+            })
         };
-        nullable(ctx, script.await)
+        nullable(ctx, generated.await)
     }
     /// The running RouterOS and its packages, and what an update in each channel would do.
     async fn routeros(&self, ctx: &Context<'_>) -> Option<RouterOsVersions> {

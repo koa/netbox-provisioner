@@ -1,0 +1,62 @@
+//! Applying a config can switch PoE out off, which NetBox doesn't show as a change.
+use crate::{
+    device::ros::{BaseDeviceDataTarget, l2::KeepNameGenerator, test::empty_current},
+    topology::{Device, Interface, PhysicalPortId, TopologyHolder, test::TopologyBuilder},
+};
+use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetPoeOut};
+
+/// A PoE switch with `ether1` feeding (`poe_mode=pse`), `ether2` in NetBox without PoE and
+/// `ether3` not in NetBox, all three with PoE out on at the device as given.
+async fn warnings(current_poe_out: InterfaceEthernetPoeOut) -> Vec<String> {
+    let mut builder = TopologyBuilder::default();
+    let device = builder.devices.next_id();
+    builder.devices.insert(
+        device,
+        Device {
+            name: "np".into(),
+            ..Default::default()
+        },
+    );
+    for (port, enable_poe) in [(1, true), (2, false)] {
+        let id = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            id,
+            Interface {
+                name: format!("ether{port}").into(),
+                device,
+                external: Some(PhysicalPortId::Ethernet(port)),
+                enable_poe,
+                ..Default::default()
+            },
+        );
+    }
+    let topology: TopologyHolder = builder.into();
+    let device = topology.devices_by_id(device).await.unwrap();
+    let mut target = BaseDeviceDataTarget::new(b"CRS318-16P-2S+").unwrap();
+    target.generate_from(&device, KeepNameGenerator).unwrap();
+    let mut current = empty_current(&target);
+    for port in &mut current.ethernet {
+        if port.data.poe_out.is_some() {
+            port.data.poe_out = Some(current_poe_out);
+        }
+    }
+    assert_eq!(
+        target.ethernet[&AsciiString::from("ether2")].poe_out,
+        Some(InterfaceEthernetPoeOut::Off)
+    );
+    target.poe_warnings(&current)
+}
+
+/// Only the port NetBox doesn't give PoE to and that has it on loses it; a port NetBox doesn't
+/// know keeps the board's default.
+#[tokio::test]
+async fn warns_where_poe_is_switched_off() {
+    let warnings = warnings(InterfaceEthernetPoeOut::AutoOn).await;
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0], "Soll der Strom an ether2 wirklich abgeschaltet werden?");
+}
+
+#[tokio::test]
+async fn no_warning_where_poe_is_already_off() {
+    assert!(warnings(InterfaceEthernetPoeOut::Off).await.is_empty());
+}

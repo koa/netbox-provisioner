@@ -54,12 +54,18 @@ enum ApplyState {
     Running,
     Done(apply_device_cfg::ApplyDeviceCfgApplyCfg),
 }
+/// the planned changes and what applying them would do that NetBox can't show (PoE switched off)
+#[derive(Debug)]
+struct GeneratedCfg {
+    script: Box<str>,
+    warnings: Vec<String>,
+}
 #[derive(Debug, Default)]
 pub struct ShowDeviceData {
     configured_name: Box<str>,
     /// board and planned changes (`None`: the generator failed); `None` if the device couldn't
     /// be reached
-    access: Option<(Box<str>, Option<Box<str>>)>,
+    access: Option<(Box<str>, Option<GeneratedCfg>)>,
     routeros: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessRouteros>,
     bootstrap_plan: Option<device_overview::DeviceOverviewTopologyDeviceByIdBootstrapPlan>,
     bootstrap_problem: Option<String>,
@@ -215,10 +221,11 @@ impl Component for ShowDevice {
             let (board, cfg_update) = data
                 .access
                 .as_ref()
-                .map(|(board, cfg)| (board.as_ref(), cfg.as_deref()))
+                .map(|(board, cfg)| (board.as_ref(), cfg.as_ref()))
                 .unwrap_or_default();
             let generated = cfg_update.is_some();
-            let cfg_update = cfg_update.unwrap_or_default();
+            let warnings = cfg_update.map(|cfg| cfg.warnings.as_slice()).unwrap_or_default();
+            let cfg_update = cfg_update.map(|cfg| cfg.script.as_ref()).unwrap_or_default();
             let nothing_to_do = cfg_update.trim().is_empty();
             let update_running = matches!(self.update, UpdateState::Running);
             let routeros = data.routeros.as_ref().map(|routeros| {
@@ -329,7 +336,12 @@ impl Component for ShowDevice {
             } else if nothing_to_do {
                 html!(<Alert inline=true title="Gerät entspricht NetBox" r#type={AlertType::Success}/>)
             } else {
-                html!(<CodeBlock><CodeBlockCode>{ cfg_update }</CodeBlockCode></CodeBlock>)
+                html! {<>
+                    { for warnings.iter().map(|warning| html!(
+                        <Alert inline=true title={warning.clone()} r#type={AlertType::Warning}/>
+                    ))}
+                    <CodeBlock><CodeBlockCode>{ cfg_update }</CodeBlockCode></CodeBlock>
+                </>}
             };
             html! {<dl class="device-overview">
             <dt>{"Name"}</dt><dd>{ data.configured_name.as_ref() }</dd>
@@ -455,7 +467,10 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                             access: d.access.map(|a| {
                                 (
                                     a.device_stats.routerboard.device_type.into_boxed_str(),
-                                    a.generate_cfg.map(String::into_boxed_str),
+                                    a.generate_cfg.map(|cfg| GeneratedCfg {
+                                        script: cfg.script.into_boxed_str(),
+                                        warnings: cfg.warnings,
+                                    }),
                                 )
                             }),
                             bootstrap_plan: d.bootstrap_plan,

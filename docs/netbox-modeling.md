@@ -153,7 +153,7 @@ werden.
 | 802.1Q: Tagged VLANs | getaggte VLANs (Trunk)                                                     |
 | IP Addresses         | IP-Adressen auf dem Interface                                              |
 | Tags                 | `ospf`, `dhcp`, `dhcp-client`, `nat` (siehe oben)                          |
-| PoE Mode             | `PSE` → PoE-Ausgang `auto-on`, sonst `off` (nur auf PoE-fähigen Boards); das Gerät am anderen Kabelende gilt als von diesem Port gespeist. Ein Update startet das speisende Gerät erst neu, wenn kein gespeistes (auch weiter unten in der Kette) mehr ein Update macht |
+| PoE Mode             | `PSE` → PoE-Ausgang `auto-on`, sonst `off` (nur auf PoE-fähigen Boards); das Gerät am anderen Kabelende gilt als von diesem Port gespeist. Ein Update startet das speisende Gerät erst neu, wenn kein gespeistes (auch weiter unten in der Kette) mehr ein Update macht. Würde Anwenden an einem Port mit eingeschaltetem PoE-Ausgang diesen ausschalten, warnt die Geräteseite davor |
 | MTU                  | L3-MTU eines Ethernet-Ports oder `wlan`-Radios, siehe [MTU](#mtu) |
 | RF Role, RF Channel Frequency/Width, TX Power | Funk-Port einer [Funkbrücke](#funkbrücke) |
 | Wireless Link        | SSID, PSK und Funkregeln einer [Funkbrücke](#funkbrücke)                   |

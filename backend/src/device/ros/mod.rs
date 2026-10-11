@@ -59,6 +59,8 @@ mod mtu_test;
 #[cfg(test)]
 mod netbox_example_test;
 #[cfg(test)]
+mod poe_test;
+#[cfg(test)]
 mod radio_test;
 #[cfg(test)]
 mod test;
@@ -589,6 +591,12 @@ impl BaseDeviceDataTarget {
         self.setup_ospf(device, &l2);
         self.setup_l2(device, &l2, None)?;
         self.setup_mtu(device)?;
+        self.setup_poe(device)?;
+        Ok(l2)
+    }
+
+    /// PoE out of every port NetBox has: `auto-on` with `poe_mode=pse`, else `off`.
+    fn setup_poe(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
         for port in device.interfaces() {
             if let Some(port_id) = port.external_port() {
                 if let Some(ethernet_port) = self.get_ethernet_port(port_id)? {
@@ -608,7 +616,31 @@ impl BaseDeviceDataTarget {
                 }
             }
         }
-        Ok(l2)
+        Ok(())
+    }
+
+    /// Every port whose PoE out is on and that this target switches off (NetBox has no
+    /// `poe_mode=pse` there): applying it cuts the power of what the port feeds.
+    pub fn poe_warnings(&self, current: &BaseDeviceDataCurrent) -> Vec<String> {
+        let mut warnings = Vec::new();
+        for (default_name, target) in &self.ethernet {
+            let current = current
+                .ethernet
+                .iter()
+                .find(|current| current.default_name == *default_name)
+                .and_then(|current| current.data.poe_out);
+            if target.poe_out == Some(InterfaceEthernetPoeOut::Off)
+                && current.is_some_and(|current| current != InterfaceEthernetPoeOut::Off)
+            {
+                let port = if target.name == *default_name {
+                    target.name.to_string()
+                } else {
+                    format!("{} ({default_name})", target.name)
+                };
+                warnings.push(format!("Soll der Strom an {port} wirklich abgeschaltet werden?"));
+            }
+        }
+        warnings
     }
 
     /// The L3 MTU NetBox gives an Ethernet port, with its L2 MTU raised to carry it (a
