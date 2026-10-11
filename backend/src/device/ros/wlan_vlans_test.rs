@@ -18,7 +18,12 @@ use crate::{
     },
 };
 use ipnet::IpNet;
-use mikrotik_model::{ascii::AsciiString, model::CapsManDatapathVlanMode, value::HasNone};
+use mikrotik_model::{
+    ascii::AsciiString,
+    model::{CapsManDatapathVlanMode, ReferenceType},
+    resource::ResourceMutation,
+    value::HasNone,
+};
 use std::net::{IpAddr, Ipv4Addr};
 
 /// `[controller, ax CAP, wAP ac on wifi-qcom-ac, wAP ac on wireless]`, with a WLAN per VLAN
@@ -333,4 +338,27 @@ async fn new_wlan_reprovisions_the_caps() {
         .collect::<Vec<_>>();
     assert!(!cap_only.is_empty());
     assert!(reprovisioned_menus(&cap_only).is_empty());
+}
+
+/// With three WLANs the provisioning has two slaves; the sort finds each configuration
+/// (it once waited for one named after the whole list).
+#[tokio::test]
+async fn provisioning_with_two_slaves_sorts() {
+    let [controller, ..] = wlan_group(&[104, 105, 106]).await;
+    let wifi = wifi(&controller, b"CCR2004-1G-12S+2XS", RadioPackage::WifiQcom).unwrap();
+    let current = WifiDeviceDataCurrent {
+        provisioning: Box::new([]),
+        datapath: Box::new([]),
+        cap: Default::default(),
+        capsman: Default::default(),
+        wifi: build_wifi_ports(b"C52iG-5HaxD2HaxD"),
+        configuration: Box::new([]),
+        certificate: Box::new([]),
+    };
+    let mutations = wifi.generate_mutations(&current).unwrap();
+    ResourceMutation::sort_mutations_with_provided_dependencies(
+        &mutations,
+        [(ReferenceType::Interface, b"lo".into())],
+    )
+    .unwrap();
 }
