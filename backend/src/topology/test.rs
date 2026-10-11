@@ -306,7 +306,13 @@ mod physical_port_names {
     /// VLAN interface, the 40G parent of a QSFP+ breakout), not that port.
     #[test]
     fn only_exact_port_names_are_ports() {
-        for name in ["qsfpplus1", "vlan5-ether1", "ether1-uplink", "xsfp1", "bridge"] {
+        for name in [
+            "qsfpplus1",
+            "vlan5-ether1",
+            "ether1-uplink",
+            "xsfp1",
+            "bridge",
+        ] {
             assert_eq!(PhysicalPortId::from_str(name), Err(()), "{name}");
         }
     }

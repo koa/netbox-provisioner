@@ -11,10 +11,12 @@
 mod chr_network {
     pub mod apply;
     pub mod golden_image;
+    pub mod mac_telnet;
     pub mod ospf_chain;
     pub mod qemu;
     pub mod scenario;
     pub mod serial;
+    pub mod update;
     pub mod vm;
     pub mod wait;
 }
@@ -24,7 +26,7 @@ use backend::topology::{Device, Interface, PhysicalPortId};
 use chr_network::golden_image::ensure_golden_image;
 use chr_network::qemu::{free_tcp_port, nix_unavailable};
 use chr_network::scenario::boot_scenario;
-use chr_network::vm::{boot_node, PortWiring};
+use chr_network::vm::{PortWiring, boot_node};
 use mikrotik_model::hwconfig::DeviceType;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -195,7 +197,10 @@ async fn two_nodes_directly_cabled_can_ping() {
             saw_reply = true;
         }
     }
-    assert!(saw_reply, "node a never got a ping reply from node b over the cabled NIC");
+    assert!(
+        saw_reply,
+        "node a never got a ping reply from node b over the cabled NIC"
+    );
 }
 
 /// Validates `scenario::boot_scenario`'s TopologyBuilder -> VM-wiring
@@ -268,8 +273,14 @@ async fn scenario_derived_wiring_can_ping() {
         .await
         .expect("scenario boot failed");
 
-    let device_a = nodes[&dev_a].connect_api(TEST_PASSWORD).await.expect("a api");
-    let device_b = nodes[&dev_b].connect_api(TEST_PASSWORD).await.expect("b api");
+    let device_a = nodes[&dev_a]
+        .connect_api(TEST_PASSWORD)
+        .await
+        .expect("a api");
+    let device_b = nodes[&dev_b]
+        .connect_api(TEST_PASSWORD)
+        .await
+        .expect("b api");
 
     run_to_done(
         &device_a,
@@ -332,15 +343,25 @@ async fn entry_socks_proxy_speaks_socks5() {
         .await
         .expect("entry boot failed");
     let entry_device = entry.connect_api(TEST_PASSWORD).await.expect("entry api");
-    enable_socks(&entry_device).await.expect("enable socks failed");
+    enable_socks(&entry_device)
+        .await
+        .expect("enable socks failed");
 
     let mut conn = tokio::net::TcpStream::connect(("127.0.0.1", entry.socks_port))
         .await
         .expect("tcp connect to socks port failed");
-    conn.write_all(&[0x05, 0x01, 0x00]).await.expect("write socks5 greeting");
+    conn.write_all(&[0x05, 0x01, 0x00])
+        .await
+        .expect("write socks5 greeting");
     let mut buf = [0u8; 2];
-    conn.read_exact(&mut buf).await.expect("read socks5 greeting reply");
-    assert_eq!(buf, [0x05, 0x00], "proxy did not accept a SOCKS5 no-auth greeting");
+    conn.read_exact(&mut buf)
+        .await
+        .expect("read socks5 greeting reply");
+    assert_eq!(
+        buf,
+        [0x05, 0x00],
+        "proxy did not accept a SOCKS5 no-auth greeting"
+    );
 }
 
 /// Validates the realistic-path apply helper in isolation (SOCKS proxying +
@@ -386,7 +407,10 @@ async fn apply_via_entry_socks_proxy() {
     .expect("target boot failed");
 
     let entry_device = entry.connect_api(TEST_PASSWORD).await.expect("entry api");
-    let target_device = target.connect_api(TEST_PASSWORD).await.expect("target api (direct, setup-only)");
+    let target_device = target
+        .connect_api(TEST_PASSWORD)
+        .await
+        .expect("target api (direct, setup-only)");
 
     // Direct setup on both ends is allowed: giving the target an address to
     // be reachable at, and turning on the entry's SOCKS proxy.
@@ -402,7 +426,9 @@ async fn apply_via_entry_socks_proxy() {
         &[(b"address", b"10.30.30.1/24"), (b"interface", b"ether2")],
     )
     .await;
-    enable_socks(&entry_device).await.expect("enable socks failed");
+    enable_socks(&entry_device)
+        .await
+        .expect("enable socks failed");
 
     // Warm up ARP/neighbor resolution for the target before asking the
     // SOCKS proxy to dial it - without this, the very first connection
@@ -465,7 +491,10 @@ async fn apply_via_entry_socks_proxy() {
             found = true;
         }
     }
-    assert!(found, "bridge applied via entry's SOCKS proxy was not found on the target");
+    assert!(
+        found,
+        "bridge applied via entry's SOCKS proxy was not found on the target"
+    );
 }
 
 async fn run_to_done(

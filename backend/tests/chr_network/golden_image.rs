@@ -15,13 +15,28 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio_stream::StreamExt;
 
-const CHR_VERSION: &str = "7.24.5";
-const CHR_IMAGE_URL: &str = "https://download.mikrotik.com/routeros/7.24.5/chr-7.24.5.img.zip";
-/// Pinned from the zip at CHR_IMAGE_URL as downloaded and verified while
-/// writing this module - MikroTik does not publish an official checksum for
-/// CHR releases. Bump together with CHR_VERSION/CHR_IMAGE_URL, and re-verify
-/// the whole first-boot dance by hand, if this ever needs to change.
-const CHR_IMAGE_SHA256: &str = "16f07222a3213352c9c4fbea4f4dec6a8ffb78fdc0fa5e398c23103ed357c6eb";
+/// A CHR release image, `https://download.mikrotik.com/routeros/<version>/chr-<version>.img.zip`.
+pub struct ChrRelease {
+    pub version: &'static str,
+    /// Pinned from the zip as downloaded and verified while writing this
+    /// module - MikroTik does not publish an official checksum for CHR
+    /// releases.
+    sha256: &'static str,
+}
+
+/// The release every node runs. Bump together with its checksum, and
+/// re-verify the whole first-boot dance by hand, if this ever needs to change.
+pub const CHR: ChrRelease = ChrRelease {
+    version: "7.24.5",
+    sha256: "16f07222a3213352c9c4fbea4f4dec6a8ffb78fdc0fa5e398c23103ed357c6eb",
+};
+/// An older release (the long-term one when the current was the newest
+/// stable), for a node to update from to [`CHR`].
+pub const CHR_OLDER: ChrRelease = ChrRelease {
+    version: "7.23.8",
+    sha256: "ac01ec7c092f4cab8136212e8ebfd613e0a37844c406317fa228d1ad446ce62c",
+};
+const CHR_VERSION: &str = CHR.version;
 
 pub struct GoldenImage {
     pub path: PathBuf,
@@ -45,10 +60,10 @@ pub async fn ensure_golden_image(cache_dir: &Path, password: &str) -> anyhow::Re
     }
 
     let zip_path = cache_dir.join(format!("chr-{CHR_VERSION}.img.zip"));
-    download_and_verify(&zip_path).await?;
+    download_and_verify(&zip_path, &CHR).await?;
 
     let building_path = cache_dir.join(format!("chr-{CHR_VERSION}-building.img"));
-    extract_image(&zip_path, &building_path).await?;
+    extract_image(&zip_path, &building_path, &CHR).await?;
 
     boot_set_password_and_shutdown(&building_path, password).await?;
 
@@ -56,20 +71,48 @@ pub async fn ensure_golden_image(cache_dir: &Path, password: &str) -> anyhow::Re
     Ok(GoldenImage { path: golden_path })
 }
 
-async fn download_and_verify(zip_path: &Path) -> anyhow::Result<()> {
-    if zip_path.is_file() && sha256_file(zip_path).await? == CHR_IMAGE_SHA256 {
+/// Returns the cached, untouched CHR image of `release` at `cache_dir`
+/// (factory settings: `admin` without password, license not accepted yet),
+/// extracting it first if missing. Boot it with
+/// [`crate::chr_network::vm::start_node`].
+pub async fn ensure_factory_image(
+    cache_dir: &Path,
+    release: &ChrRelease,
+) -> anyhow::Result<GoldenImage> {
+    let version = release.version;
+    let factory_path = cache_dir.join(format!("chr-{version}-factory.img"));
+    if factory_path.is_file() {
+        return Ok(GoldenImage { path: factory_path });
+    }
+    tokio::fs::create_dir_all(cache_dir).await?;
+    let _lock = BuildLock::acquire(cache_dir).await?;
+    if factory_path.is_file() {
+        return Ok(GoldenImage { path: factory_path });
+    }
+    let zip_path = cache_dir.join(format!("chr-{version}.img.zip"));
+    download_and_verify(&zip_path, release).await?;
+    let extracting_path = cache_dir.join(format!("chr-{version}-factory-extracting.img"));
+    extract_image(&zip_path, &extracting_path, release).await?;
+    tokio::fs::rename(&extracting_path, &factory_path).await?;
+    Ok(GoldenImage { path: factory_path })
+}
+
+async fn download_and_verify(zip_path: &Path, release: &ChrRelease) -> anyhow::Result<()> {
+    let ChrRelease { version, sha256 } = release;
+    if zip_path.is_file() && sha256_file(zip_path).await? == *sha256 {
         return Ok(());
     }
-    let bytes = reqwest::get(CHR_IMAGE_URL)
+    let url = format!("https://download.mikrotik.com/routeros/{version}/chr-{version}.img.zip");
+    let bytes = reqwest::get(url)
         .await?
         .error_for_status()?
         .bytes()
         .await?;
     let digest = format!("{:x}", Sha256::digest(&bytes));
     anyhow::ensure!(
-        digest == CHR_IMAGE_SHA256,
-        "downloaded CHR image checksum mismatch: expected {CHR_IMAGE_SHA256}, got {digest} - \
-         MikroTik may have replaced the {CHR_VERSION} artifact; re-verify the whole first-boot \
+        digest == *sha256,
+        "downloaded CHR image checksum mismatch: expected {sha256}, got {digest} - \
+         MikroTik may have replaced the {version} artifact; re-verify the whole first-boot \
          dance by hand before updating this pin"
     );
     tokio::fs::write(zip_path, &bytes).await?;
@@ -81,7 +124,7 @@ async fn sha256_file(path: &Path) -> anyhow::Result<String> {
     Ok(format!("{:x}", Sha256::digest(&bytes)))
 }
 
-async fn extract_image(zip_path: &Path, dest: &Path) -> anyhow::Result<()> {
+async fn extract_image(zip_path: &Path, dest: &Path, release: &ChrRelease) -> anyhow::Result<()> {
     let extract_dir = dest.with_extension("extract");
     tokio::fs::create_dir_all(&extract_dir).await?;
     let status = tokio::process::Command::new("nix")
@@ -100,7 +143,7 @@ async fn extract_image(zip_path: &Path, dest: &Path) -> anyhow::Result<()> {
         .status()
         .await?;
     anyhow::ensure!(status.success(), "unzip failed with {status}");
-    let extracted = extract_dir.join(format!("chr-{CHR_VERSION}.img"));
+    let extracted = extract_dir.join(format!("chr-{}.img", release.version));
     tokio::fs::rename(&extracted, dest).await?;
     tokio::fs::remove_dir_all(&extract_dir).await?;
     Ok(())
@@ -111,11 +154,25 @@ async fn boot_set_password_and_shutdown(image_path: &Path, password: &str) -> an
     let api_port = free_tcp_port()?;
 
     let mut child = qemu_command()
-        .args(["-machine", "pc,accel=tcg", "-cpu", "max", "-m", "512", "-smp", "2"])
+        .args([
+            "-machine",
+            "pc,accel=tcg",
+            "-cpu",
+            "max",
+            "-m",
+            "512",
+            "-smp",
+            "2",
+        ])
         .arg("-drive")
-        .arg(format!("file={},format=raw,if=virtio", image_path.display()))
+        .arg(format!(
+            "file={},format=raw,if=virtio",
+            image_path.display()
+        ))
         .arg("-netdev")
-        .arg(format!("user,id=net0,hostfwd=tcp:127.0.0.1:{api_port}-:8728"))
+        .arg(format!(
+            "user,id=net0,hostfwd=tcp:127.0.0.1:{api_port}-:8728"
+        ))
         .args(["-device", "virtio-net-pci,netdev=net0"])
         .arg("-serial")
         .arg(format!("tcp:127.0.0.1:{serial_port},server,nowait"))
@@ -149,7 +206,9 @@ async fn boot_set_password_and_shutdown(image_path: &Path, password: &str) -> an
 
     tokio::time::timeout(Duration::from_secs(30), child.wait())
         .await
-        .map_err(|_| anyhow::anyhow!("CHR did not shut down within 30s after /system/shutdown"))??;
+        .map_err(|_| {
+            anyhow::anyhow!("CHR did not shut down within 30s after /system/shutdown")
+        })??;
     Ok(())
 }
 

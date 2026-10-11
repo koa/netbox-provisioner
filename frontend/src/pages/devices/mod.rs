@@ -8,7 +8,7 @@ use crate::{
 };
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
 use std::{net::IpAddr, str::FromStr};
-use yew::{Component, Context, Html, Properties, ToHtml, html, platform::spawn_local};
+use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
 use yew_nested_router::components::Link;
 pub mod show;
 pub struct Devices {
@@ -69,7 +69,7 @@ impl Component for Devices {
                     }
                 });
                 html! {
-                    for cards
+                    for card in cards { {card} }
                 }
             }
         };
@@ -204,12 +204,12 @@ impl Component for DeviceEntryCard {
                 device_type,
                 serial,
             } => (
-                format!("{:.2}ms", ping_result.duration as f32 / 1000.0 / 1000.0).into_html(),
-                device_type.into_html(),
+                html!({format!("{:.2}ms", ping_result.duration as f32 / 1000.0 / 1000.0)}),
+                html!({device_type.as_ref()}),
                 Some(html!(<div class="device-detected-serial">{serial.as_ref()}</div>)),
             ),
 
-            PingResult::Failed(e) => (e.into_html(), Html::default(), None),
+            PingResult::Failed(e) => (e.to_html(), Html::default(), None),
             PingResult::None => Default::default(),
         };
         let to = AppRoute::Devices(RouteDevices::Device {

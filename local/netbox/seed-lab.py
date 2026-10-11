@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+"""Models the lab (CCR2004 + 2 netPower + 2 SXT + wAP) in the local NetBox.
+
+Idempotent: every object is looked up by its natural key and created or updated to the values
+below, so the script can be rerun after a change. Needs a running local NetBox
+(local/netbox/run-netbox.sh) and the custom fields from docs/netbox-import/.
+
+    local/netbox/seed-lab.py [--url http://127.0.0.1:8001] [--token-file .lab-netbox/api-token]
+"""
+import argparse
+import json
+import pathlib
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+V4_LOOPBACK = "192.168.100.{}/32"
+V6 = "2a02:16a:fe00:{}"
+
+
+class NetBox:
+    def __init__(self, url, token):
+        self.url = url.rstrip("/")
+        self.token = token
+
+    def call(self, method, path, body=None, query=None):
+        url = f"{self.url}/api/{path}/"
+        if query:
+            url += "?" + urllib.parse.urlencode(query)
+        request = urllib.request.Request(
+            url,
+            method=method,
+            data=None if body is None else json.dumps(body).encode(),
+            headers={
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request) as response:
+                return json.load(response) if response.status != 204 else None
+        except urllib.error.HTTPError as error:
+            sys.exit(f"{method} {url} {json.dumps(body)}: {error.code} {error.read().decode()}")
+
+    def ensure(self, path, key, values=None):
+        """The object at `path` matching the filter `key`, created or updated to `key | values`.
+
+        A key ending in `_id` is a filter on a related object; it is sent without the suffix.
+        """
+        values = {**{k.removesuffix("_id"): v for k, v in key.items()}, **(values or {})}
+        found = self.call("GET", path, query=key)["results"]
+        if len(found) > 1:
+            sys.exit(f"{path} {key}: {len(found)} matches")
+        if not found:
+            return self.call("POST", path, values)
+        current = found[0]
+        changes = {k: v for k, v in values.items() if not same(current.get(k), v)}
+        return self.call("PATCH", f"{path}/{current['id']}", changes) if changes else current
+
+
+def same(current, wanted):
+    """Compares a value as NetBox returns it with the value we would send."""
+    if isinstance(current, dict):
+        if "id" in current and isinstance(wanted, int):
+            return current["id"] == wanted
+        if "value" in current:
+            return current["value"] == wanted
+        if isinstance(wanted, dict):
+            return all(same(current.get(k), v) for k, v in wanted.items())
+    if isinstance(current, list) and isinstance(wanted, list):
+        ids = [c["id"] if isinstance(c, dict) and "id" in c else c for c in current]
+        names = [c.get("slug", c.get("name")) if isinstance(c, dict) else c for c in current]
+        wanted_ids = [w["id"] if isinstance(w, dict) and "id" in w else w for w in wanted]
+        wanted_names = [w.get("slug", w.get("name")) if isinstance(w, dict) else w for w in wanted]
+        return sorted(map(str, ids)) == sorted(map(str, wanted_ids)) or sorted(
+            map(str, names)
+        ) == sorted(map(str, wanted_names))
+    return current == wanted
+
+
+# Devices: name -> (device type, loopback index, interfaces). Interface: name -> fields, where
+# "ip" are addresses, "tags" tag slugs, "bridge" the name of a bridge interface on the same
+# device. MAC addresses are not kept in NetBox: at the first setup the device is picked from what
+# its neighbor discovers.
+DEVICES = {
+    "lab-core": ("CCR2004-1G-12S+2XS", 1, {
+        "ether1": {"label": "Uplink", "tags": ["dhcp-client"]},
+        "sfp-sfpplus1": {"label": "NP1", "ip": ["192.168.101.1/30", V6.format("8010::1/64")],
+                         "tags": ["ospf"]},
+        "sfp-sfpplus2": {"label": "NP2", "ip": ["192.168.101.5/30", V6.format("8011::1/64")],
+                         "tags": ["ospf"]},
+    }),
+    "lab-np1": ("CRS318-16P-2S+", 2, {
+        "sfp-sfpplus1": {"label": "Core", "ip": ["192.168.101.2/30", V6.format("8010::2/64")],
+                         "tags": ["ospf"]},
+        "ether1": {"label": "SXT A", "ip": ["192.168.101.9/29", V6.format("8012::1/64")],
+                   "tags": ["ospf"], "poe_mode": "pse"},
+    }),
+    "lab-np2": ("CRS318-16P-2S+", 3, {
+        "sfp-sfpplus1": {"label": "Core", "ip": ["192.168.101.6/30", V6.format("8011::2/64")],
+                         "tags": ["ospf"]},
+        "ether1": {"label": "SXT B", "ip": ["192.168.101.10/29", V6.format("8012::2/64")],
+                   "tags": ["ospf"], "poe_mode": "pse"},
+        "lan": {"type": "bridge", "ip": ["192.168.103.1/24", V6.format("9000::1/64")],
+                "tags": ["dhcp"]},
+        "ether2": {"label": "wAP", "ip": ["192.168.101.17/30", V6.format("8013::1/64")],
+                   "tags": ["ospf"], "poe_mode": "pse"},
+        "ether3": {"label": "Kunde", "bridge": "lan", "poe_mode": "pse"},
+    }),
+    "lab-sxt-a": ("RBSXTG-5HPacD", 4, {
+        "link": {"type": "bridge", "ip": ["192.168.101.11/29", V6.format("8012::11/64")],
+                 "tags": ["ospf"]},
+        "ether1": {"bridge": "link"},
+        "wlan1": {"type": "ieee802.11ac", "bridge": "link", "rf_role": "ap"},
+    }),
+    "lab-sxt-b": ("RBSXTG-5HPacD", 5, {
+        "link": {"type": "bridge", "ip": ["192.168.101.12/29", V6.format("8012::12/64")],
+                 "tags": ["ospf"]},
+        "ether1": {"bridge": "link"},
+        "wlan1": {"type": "ieee802.11ac", "bridge": "link", "rf_role": "station"},
+    }),
+    # a CAP of lab-np2's CAPsMAN (WLAN_GROUP), routed like every other device: its WLAN is a
+    # customer network of its own, forwarded locally into "lan"
+    "lab-wap": ("RBwAPG-5HacD2HnD", 6, {
+        "ether1": {"label": "NP2", "ip": ["192.168.101.18/30", V6.format("8013::2/64")],
+                   "tags": ["ospf"]},
+        "lan": {"type": "bridge", "ip": ["192.168.104.1/24", V6.format("9001::1/64")],
+                "tags": ["dhcp"]},
+        "ether2": {"label": "Kunde", "bridge": "lan"},
+        "wifi1": {"type": "ieee802.11n", "bridge": "lan"},
+        "wifi2": {"type": "ieee802.11ac", "bridge": "lan"},
+    }),
+}
+# Wireless LAN Group: controller, its APs (device custom field wlan_group) and WLANs
+WLAN_GROUP = {"name": "lab-wlan", "controller": "lab-np2", "aps": ["lab-wap"],
+              "wlans": [{"ssid": "lab-wlan", "psk": "lab-wlan-preshared-key"}]}
+CABLES = [
+    (("lab-core", "sfp-sfpplus1"), ("lab-np1", "sfp-sfpplus1")),
+    (("lab-core", "sfp-sfpplus2"), ("lab-np2", "sfp-sfpplus1")),
+    (("lab-np1", "ether1"), ("lab-sxt-a", "ether1")),
+    (("lab-np2", "ether1"), ("lab-sxt-b", "ether1")),
+    (("lab-np2", "ether2"), ("lab-wap", "ether1")),
+]
+PREFIXES = [
+    "192.168.100.0/26", "192.168.101.0/30", "192.168.101.4/30", "192.168.101.8/29",
+    "192.168.103.0/24", "192.168.101.16/30", "192.168.104.0/24", V6.format("8000::/64"),
+    V6.format("8010::/64"), V6.format("8011::/64"), V6.format("8012::/64"), V6.format("8013::/64"),
+    V6.format("9000::/64"), V6.format("9001::/64"),
+]
+
+
+def interface_type(name, fields):
+    if "type" in fields:
+        return fields["type"]
+    if name == "lo":
+        return "virtual"
+    if name.startswith("sfp28-"):
+        return "25gbase-x-sfp28"
+    if name.startswith("sfp-sfpplus"):
+        return "10gbase-x-sfpp"
+    return "1000base-t"
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--url", default="http://127.0.0.1:8001")
+    here = pathlib.Path(__file__).resolve().parent
+    parser.add_argument("--token-file", default=here.parent.parent / ".lab-netbox" / "api-token")
+    args = parser.parse_args()
+    nb = NetBox(args.url, pathlib.Path(args.token_file).read_text().strip())
+
+    tags = {slug: nb.ensure("extras/tags", {"slug": slug}, {"name": slug})["id"]
+            for slug in ["ospf", "dhcp", "dhcp-client"]}
+    nb.ensure("ipam/roles", {"slug": "dhcp"}, {"name": "dhcp"})
+    platform = nb.ensure("dcim/platforms", {"slug": "routeros"}, {"name": "routeros"})["id"]
+    region = nb.ensure("dcim/regions", {"slug": "ch"}, {"name": "Schweiz"})["id"]
+    tenant = nb.ensure("tenancy/tenants", {"slug": "lab"},
+                       {"name": "Lab", "custom_fields": {"mikrotik_credentials": "lab"}})["id"]
+    site = nb.ensure("dcim/sites", {"slug": "lab"},
+                     {"name": "Lab", "region": region, "tenant": tenant, "status": "active"})["id"]
+    manufacturer = nb.ensure("dcim/manufacturers", {"slug": "mikrotik"}, {"name": "MikroTik"})["id"]
+    role = nb.ensure("dcim/device-roles", {"slug": "router"}, {"name": "Router", "color": "2196f3"})["id"]
+    for prefix in PREFIXES:
+        nb.ensure("ipam/prefixes", {"prefix": prefix}, {"tenant": tenant, "status": "active"})
+
+    interfaces = {}
+    for device_name, (model, loopback, ports) in DEVICES.items():
+        device_type = nb.ensure("dcim/device-types", {"slug": model.lower().replace("+", "-plus")},
+                                {"model": model, "manufacturer": manufacturer})["id"]
+        device = nb.ensure("dcim/devices", {"name": device_name},
+                           {"device_type": device_type, "role": role, "site": site,
+                            "tenant": tenant, "platform": platform, "status": "active"})["id"]
+        ports = {"lo": {"ip": [V4_LOOPBACK.format(loopback), V6.format(f"8000::{loopback}/128")]},
+                 **ports}
+        # bridges first, so that their members can refer to them
+        for name, fields in sorted(ports.items(), key=lambda p: p[1].get("type") != "bridge"):
+            values = {"type": interface_type(name, fields), "label": fields.get("label", ""),
+                      "tags": [tags[t] for t in fields.get("tags", [])]}
+            # also clears a bridge the interface is no longer in
+            values["bridge"] = (interfaces[(device_name, fields["bridge"])]
+                                if "bridge" in fields else None)
+            for key in ["poe_mode", "rf_role"]:
+                if key in fields:
+                    values[key] = fields[key]
+            interface = nb.ensure("dcim/interfaces", {"device_id": device, "name": name}, values)
+            interfaces[(device_name, name)] = interface["id"]
+            for address in fields.get("ip", []):
+                ip = nb.ensure("ipam/ip-addresses", {"address": address},
+                               {"tenant": tenant, "status": "active",
+                                "assigned_object_type": "dcim.interface",
+                                "assigned_object_id": interface["id"]})
+                if name == "lo":
+                    family = "primary_ip4" if ip["family"]["value"] == 4 else "primary_ip6"
+                    nb.ensure("dcim/devices", {"name": device_name}, {family: ip["id"]})
+
+    for (a_device, a_port), (b_device, b_port) in CABLES:
+        a = interfaces[(a_device, a_port)]
+        b = interfaces[(b_device, b_port)]
+        existing = nb.call("GET", "dcim/cables", query={"interface_id": a})["results"]
+        if not existing:
+            nb.call("POST", "dcim/cables", {
+                "a_terminations": [{"object_type": "dcim.interface", "object_id": a}],
+                "b_terminations": [{"object_type": "dcim.interface", "object_id": b}],
+                "status": "connected",
+            })
+
+    psk = "lab-link-preshared-key"
+    link = nb.call("GET", "wireless/wireless-links",
+                   query={"interface_a_id": interfaces[("lab-sxt-a", "wlan1")]})["results"]
+    values = {"interface_a": interfaces[("lab-sxt-a", "wlan1")],
+              "interface_b": interfaces[("lab-sxt-b", "wlan1")], "ssid": "lab-link",
+              "status": "connected", "auth_type": "wpa-personal", "auth_psk": psk,
+              "tenant": tenant}
+    if link:
+        nb.call("PATCH", f"wireless/wireless-links/{link[0]['id']}", values)
+    else:
+        nb.call("POST", "wireless/wireless-links", values)
+    devices = {d["name"]: d["id"] for d in nb.call("GET", "dcim/devices",
+                                                   query={"limit": 1000})["results"]}
+    group = nb.ensure("wireless/wireless-lan-groups", {"slug": WLAN_GROUP["name"]},
+                      {"name": WLAN_GROUP["name"],
+                       "custom_fields": {"controller": devices[WLAN_GROUP["controller"]]}})
+    for ap in WLAN_GROUP["aps"]:
+        nb.ensure("dcim/devices", {"name": ap}, {"custom_fields": {"wlan_group": group["id"]}})
+    for wlan in WLAN_GROUP["wlans"]:
+        nb.ensure("wireless/wireless-lans", {"ssid": wlan["ssid"]},
+                  {"group": group["id"], "status": "active", "tenant": tenant,
+                   "auth_type": "wpa-personal", "auth_psk": wlan["psk"]})
+    print("lab modeled:", ", ".join(DEVICES))
+
+
+if __name__ == "__main__":
+    main()

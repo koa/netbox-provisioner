@@ -1,12 +1,13 @@
-# WLAN/CAPsMAN-Generierung (Stand: größtenteils nicht implementiert)
+# WLAN/CAPsMAN-Generierung
 
 Code: `backend/src/device/ros/mod.rs` (`WirelessDeviceData`/`WifiDeviceData`-Modelle,
 `WifiDeviceDataTarget::generate_from`), `backend/src/device/ros/l2/mod.rs` (`L2Port::CapsMan`/`Cap`/
-`CapsManMgmt`/`CapMgmt`), `mikrotik-model/src/hwconfig.rs` (`generate_wifi`/`generate_wlan`,
-`find_wlan_method`).
+`CapsManMgmt`/`CapMgmt`), `mikrotik-model/src/hwconfig.rs` (`generate_wifi`/`generate_wlan`).
 
-Diese Datei ist bewusst ehrlich darüber, was **tatsächlich** generiert wird, statt den Eindruck zu
-erwecken, WLAN-Provisionierung sei fertig — das ist sie nicht.
+Generiert wird der neuere WiFi-Stack (`/interface/wifi`) mit CAPsMAN und lokalem Forwarding auf
+dem CAP, im Lab erprobt mit einem wAP ac (`RBwAPG-5HacD2HnD`, `wifi-qcom-ac`) als CAP von lab-np2.
+Nicht generiert werden der klassische CAPsMAN-Stack (`/caps-man`, `/interface/wireless/cap`) und
+WLANs mit VLAN (siehe unten).
 
 ## Zwei RouterOS-Pakete, zwei getrennte Modelle
 
@@ -17,14 +18,47 @@ RouterOS hat zwei unabhängige, sich gegenseitig ausschließende WLAN-Stacks, da
   (Paket `wireless`), für Geräte wie `CRS109-8G-1S-2HnD` (siehe `hw_facts.rs::build_wireless_ports`,
   nutzt `generate_wlan`).
 - **`WifiDeviceData`** (`interface/wifi/{cap,capsman,datapath,configuration,provisioning}`) — der
-  neuere WiFiWave2-Stack (Paket `wifi-qcom`), für Geräte wie `C52iG-5HaxD2HaxD`
-  (`hw_facts.rs::build_wifi_ports`, nutzt `generate_wifi`). `find_wlan_method` entscheidet pro
-  Board-Modell, welcher der beiden (falls überhaupt einer) zutrifft.
+  neuere WiFiWave2-Stack (Paket `wifi-qcom` bzw. `wifi-qcom-ac`), für Geräte wie
+  `C52iG-5HaxD2HaxD` oder den wAP ac. Die Radios übernimmt die Generierung vom Gerät
+  (`hw_facts.rs::build_wifi_ports` ist noch ungenutzt).
 
-`DeviceCfg::fetch_with_board_model` liest zur Laufzeit nach, welches der beiden Pakete tatsächlich
-installiert ist (`installed_packages.contains(b"wireless")` bzw. `b"wifi-qcom"`), und befüllt nur
-den entsprechenden `*_current`/`*_target`-Zweig — ein Gerät ohne eines der beiden Pakete bekommt
-schlicht `None` für beide, kein Fehler.
+Welches Paket die Radios eines Boards brauchen, steht in `hw_facts.rs::radio_package` (dort gehört
+alles Modellspezifische hin). `needed_radio_package` (`device/ros/mod.rs`) gibt es nur zurück,
+wenn NetBox die Radios nutzt: ein Radio mit RF-Rolle, in einer Bridge, mit VLAN oder Adresse, oder
+das Gerät ist AP einer Wireless LAN Group. Nur dann liest `DeviceCfg::fetch_with_board_model` das
+passende Modell (`WirelessDeviceData` und `W60GDeviceData` für `wireless`, `WifiDeviceData` für
+`wifi-qcom*`), und das Paket muss installiert sein, sonst schlägt die Generierung mit dem Hinweis
+auf das Update fehl. Das RouterOS-Update installiert genau `routeros` und dieses Paket und
+deinstalliert alle anderen. Ein Controller liest `WifiDeviceData` auch ohne Radios: CAP und
+CAPsMAN von `/interface/wifi` sind ab RouterOS 7.13 im Basispaket.
+
+## WiFi: Controller und CAP
+
+Das Modell ist geroutet: Der CAP findet den Controller an dessen Loopback
+(`caps-man-addresses`), ein L2-Pfad oder eine Management-VLAN zum Controller ist nicht nötig. Der
+CAP bridged den Verkehr lokal.
+
+- **Controller** (`device.wlan_controller_of()`): `/interface/wifi/capsman enabled=yes`, pro WLAN
+  eine `/interface/wifi/configuration` (Name aus der SSID, `country` aus der Region des Standorts
+  des Controllers, wie bei den Funkstrecken; WPA Personal als `wpa2-psk,wpa3-psk` mit
+  `security.passphrase`, Open als `owe`). Eine `/interface/wifi/provisioning`-Regel
+  (`create-dynamic-enabled`) gibt jedem Radio das erste WLAN als Master, die übrigen als virtuelle
+  Interfaces (`slave-configurations`).
+- **CAP** (`device.wlan_ap_of()`): `/interface/wifi/cap enabled=yes` mit der Loopback des Controllers.
+  Jedes Radio, das NetBox in eine Bridge legt, bekommt `configuration.manager=capsman` und einen
+  `/interface/wifi/datapath` mit dem Namen und der `bridge` dieser Bridge; über `slaves-datapath`
+  gilt der auch für die virtuellen Interfaces. RouterOS legt die Radios damit selbst als dynamische
+  Bridge-Ports an, `setup_l2` lässt ihren statischen Bridge-Port deshalb weg. Die Radios werden wie
+  Ethernet-Ports nach L2 benannt (`w01`, `w02`). Alle übrigen Felder eines Radios bleiben, wie das
+  Gerät sie hat, ebenso alle Radios eines Geräts, das kein CAP ist.
+- `/interface/wifi/capsman` meldet `interfaces`, `upgrade-policy` usw. erst, nachdem sie einmal
+  gesetzt wurden (auch auf ihren Standardwert). Sie sind deshalb `k`: Wo CAPsMAN aus ist, bleiben
+  sie dem Gerät, der Controller bekommt `interfaces=all`, `upgrade-policy=suggest-same-version`
+  und `require-peer-certificate=no` explizit.
+
+Nicht umgesetzt: die VLAN eines WLANs (das WLAN landet ungetaggt in der Bridge des Radios; dafür
+bräuchte es `datapath.vlan-id` und eine Bridge mit VLAN-Filtering auf dem CAP) und die
+Management-VLAN der Gruppe (`wlan_mgmt`), die das geroutete Modell nicht braucht.
 
 ## Was tatsächlich generiert wird: nur die L2-Seite
 
@@ -46,22 +80,8 @@ CapsManMgmt | CapMgmt | Ip(_) => {}` in `setup_l2`s VLAN-Schleife) — sie trage
 VLAN-Zusammensetzung bei, erzeugen selbst aber keinen Bridge-Mitgliedsport (naheliegend: ein
 CAPsMAN-WLAN ist kein physischer Ethernet-Port, der gebridged werden könnte).
 
-## Was fehlt: die eigentliche CAPsMAN-/WiFi-Konfiguration
+## Klassischer CAPsMAN-Stack
 
-`WifiDeviceDataTarget::generate_from` ist ein `todo!("generate CAPsMan/wifi config for the mgmt
-VLAN - not part of L2Setup completion")`. Der bereits vorhandene, aber auskommentierte Entwurf zeigt
-die beabsichtigte Richtung:
-
-- `/interface/wifi/datapath` (`dp-caps`) gebunden an die Management-Bridge.
-- `/interface/wifi/configuration` (`capsman`) mit `manager = Capsman`.
-- `/interface/wifi/cap` mit `discovery-interfaces` = die Management-Schnittstelle, `enabled = yes`.
-- `/interface/wifi/provisioning` mit `action = CreateDynamicEnabled`.
-
-Das ist **nicht aktiv** — der `todo!()` panict, sobald ein Gerät sowohl `wifi-qcom` installiert hat
-als auch `wlan_ap_of()` etwas liefert. `WirelessDeviceDataTarget::generate_from` (der ältere
-CAPsMAN-Stack) ist sogar noch leerer — ein reiner No-Op ohne jeden Entwurf.
-
-**Praktische Konsequenz**: Ein Szenario, das einen echten Access Point mit aktivem WLAN durchgängig
-End-to-End provisionieren will, scheitert heute spätestens an dieser Stelle. Die VXLAN-Transport-
-und L2-Vorarbeit ist vollständig nutzbar, sobald dieser `todo!()` durch eine echte Implementierung
-ersetzt wird.
+`WirelessDeviceDataTarget::generate_from` konfiguriert nur die Enden von Punkt-zu-Punkt-Funkstrecken
+(siehe [netbox-modeling.md](netbox-modeling.md)). Ein CAP oder Controller des klassischen
+`/caps-man` wird nicht generiert; Radios ohne RF-Rolle behalten ihre Konfiguration.

@@ -1,12 +1,11 @@
-use crate::data::UserSessionData;
 use crate::error::FrontendError;
-use google_signin_client::prompt_async;
 use graphql_client::reqwest::post_graphql;
 use graphql_client::{GraphQLQuery, Response};
 use lazy_static::lazy_static;
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use yew::Component;
 use yew::html::Scope;
+use yew_oauth2::prelude::{Authentication, OAuth2Context};
 
 pub mod anonymous;
 pub mod authenticated;
@@ -41,14 +40,10 @@ pub async fn query_authenticated_response<Q: GraphQLQuery, S: Component>(
     request: Q::Variables,
 ) -> Result<Response<<Q as GraphQLQuery>::ResponseData>, FrontendError> {
     let mut headers = HeaderMap::new();
-    if let Some((session_data, _)) = scope.context::<UserSessionData>(Default::default()) {
-        if !session_data.is_token_valid() {
-            //info!("Invalid session token");
-            prompt_async().await;
-        }
-        if let Some(access_token) = session_data.jwt() {
-            headers.insert(AUTHORIZATION, format!("Bearer {access_token}").parse()?);
-        }
+    if let Some((OAuth2Context::Authenticated(Authentication { access_token, .. }), _)) =
+        scope.context::<OAuth2Context>(Default::default())
+    {
+        headers.insert(AUTHORIZATION, format!("Bearer {access_token}").parse()?);
     }
     let client = reqwest::Client::builder()
         .default_headers(headers)

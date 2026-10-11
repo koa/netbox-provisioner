@@ -1,6 +1,6 @@
 use actix_4_jwt_auth::{
     DecodedInfo, OIDCValidationError, Oidc, OidcBiscuitValidator, OidcConfig,
-    biscuit::{Validation, ValidationOptions},
+    biscuit::{ClaimPresenceOptions, Presence, Validation, ValidationOptions},
 };
 use actix_web::{
     App, HttpServer, get,
@@ -194,9 +194,15 @@ async fn main() -> Result<(), BackendError> {
     //info!("Issuer: {issuer}");
     let oidc = Oidc::new(OidcConfig::Issuer(issuer.clone().into())).await?;
 
+    // The audience must name this app, else tokens the issuer made for other apps would pass
     let biscuit_validator = OidcBiscuitValidator {
         options: ValidationOptions {
+            claim_presence_options: ClaimPresenceOptions {
+                audience: Presence::Required,
+                ..ClaimPresenceOptions::default()
+            },
             issuer: Validation::Validate(issuer),
+            audience: Validation::Validate(CONFIG.auth_client_id().to_string()),
             ..ValidationOptions::default()
         },
     };

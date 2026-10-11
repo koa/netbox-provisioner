@@ -728,7 +728,12 @@ async fn test_vlan_on_bridge_applies_to_its_ports() -> Result<(), Box<dyn Error>
     assert_eq!(setup.tagged_bridges.len(), 1, "no separate default bridge");
     let entry = &setup.tagged_bridges[0].ports[&1];
     assert_eq!(count_ethernet(&entry.ports), 2);
-    assert!(entry.ports.iter().any(|p| matches!(p, L2Port::VxLan { .. })));
+    assert!(
+        entry
+            .ports
+            .iter()
+            .any(|p| matches!(p, L2Port::VxLan { .. }))
+    );
     Ok(())
 }
 

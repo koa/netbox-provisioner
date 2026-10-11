@@ -7,3 +7,7 @@
 /.env.local
 /frontend/src/graphql/authenticated/schema.graphql
 /.chr-test-cache/
+/.lab-netbox/
+/local/screenshots/node_modules/
+/local/screenshots/screenshots/
+__pycache__/

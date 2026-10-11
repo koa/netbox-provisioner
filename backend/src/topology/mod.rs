@@ -205,6 +205,11 @@ pub enum WlanAuth {
 pub struct WlanWpaSettings {
     key: Box<str>,
 }
+impl WlanWpaSettings {
+    pub fn psk(&self) -> &str {
+        &self.key
+    }
+}
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct WlanOpenSettings {
     pub use_owe: bool,
@@ -292,6 +297,8 @@ pub enum PortType {
 pub enum PhysicalPortId {
     Ethernet(u16),
     SfpSfpPlus(u16),
+    /// `sfp28-{id}`: a 25G SFP28 cage
+    Sfp28(u16),
     Sfp(u16),
     Combo(u16),
     /// `qsfpplus{port}-{lane}`: RouterOS always names QSFP+ ports per lane, even
@@ -325,6 +332,7 @@ pub struct Cable {
 lazy_static! {
     static ref ETHER_PORT_PATTERN: Regex = Regex::new("^ether([0-9]+)$").unwrap();
     static ref SFP_PLUS_PORT_PATTERN: Regex = Regex::new("^sfp-sfpplus([0-9]+)$").unwrap();
+    static ref SFP28_PORT_PATTERN: Regex = Regex::new("^sfp28-([0-9]+)$").unwrap();
     static ref SFP_PORT_PATTERN: Regex = Regex::new("^sfp([0-9]+)$").unwrap();
     static ref COMBO_PORT_PATTERN: Regex = Regex::new("^combo([0-9]+)$").unwrap();
     static ref QSFP_PLUS_PORT_PATTERN: Regex = Regex::new("^qsfpplus([0-9]+)-([0-9]+)$").unwrap();
@@ -337,6 +345,7 @@ impl PhysicalPortId {
         AsciiString::from(match self {
             PhysicalPortId::Ethernet(id) => format!("e{id:02}"),
             PhysicalPortId::SfpSfpPlus(id) | PhysicalPortId::Sfp(id) => format!("s{id:02}"),
+            PhysicalPortId::Sfp28(id) => format!("x{id:02}"),
             PhysicalPortId::Combo(id) => format!("c{id:02}"),
             PhysicalPortId::QsfpPlus(port, lane) => format!("q{port:02}-{lane}"),
             PhysicalPortId::Wifi(id) | PhysicalPortId::Wlan(id) | PhysicalPortId::W60g(id) => {
@@ -349,6 +358,7 @@ impl PhysicalPortId {
         match self {
             PhysicalPortId::Ethernet(_)
             | PhysicalPortId::SfpSfpPlus(_)
+            | PhysicalPortId::Sfp28(_)
             | PhysicalPortId::Sfp(_)
             | PhysicalPortId::Combo(_)
             | PhysicalPortId::QsfpPlus(_, _) => Some(self.to_string()),
@@ -363,6 +373,7 @@ impl PhysicalPortId {
         match self {
             PhysicalPortId::Ethernet(_)
             | PhysicalPortId::SfpSfpPlus(_)
+            | PhysicalPortId::Sfp28(_)
             | PhysicalPortId::Sfp(_)
             | PhysicalPortId::Combo(_)
             | PhysicalPortId::QsfpPlus(_, _) => true,
@@ -388,6 +399,8 @@ impl FromStr for PhysicalPortId {
             Ok(PhysicalPortId::Ethernet(id))
         } else if let Some(id) = number(&SFP_PLUS_PORT_PATTERN, 1) {
             Ok(PhysicalPortId::SfpSfpPlus(id))
+        } else if let Some(id) = number(&SFP28_PORT_PATTERN, 1) {
+            Ok(PhysicalPortId::Sfp28(id))
         } else if let Some(id) = number(&SFP_PORT_PATTERN, 1) {
             Ok(PhysicalPortId::Sfp(id))
         } else if let Some(id) = number(&COMBO_PORT_PATTERN, 1) {
@@ -414,6 +427,7 @@ impl Display for PhysicalPortId {
         match self {
             PhysicalPortId::Ethernet(id) => write!(f, "ether{id}"),
             PhysicalPortId::SfpSfpPlus(id) => write!(f, "sfp-sfpplus{id}"),
+            PhysicalPortId::Sfp28(id) => write!(f, "sfp28-{id}"),
             PhysicalPortId::Sfp(id) => write!(f, "sfp{id}"),
             PhysicalPortId::Combo(id) => write!(f, "combo{id}"),
             PhysicalPortId::QsfpPlus(port, lane) => write!(f, "qsfpplus{port}-{lane}"),

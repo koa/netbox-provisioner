@@ -12,7 +12,7 @@
 
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
-use mikrotik_model::resource::{apply_mutation, ResourceMutation};
+use mikrotik_model::resource::{ResourceMutation, apply_mutation};
 use std::net::{IpAddr, SocketAddr};
 use tokio_socks::tcp::Socks5Stream;
 use tokio_stream::StreamExt;

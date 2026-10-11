@@ -4,7 +4,7 @@
 
 use crate::chr_network::golden_image::GoldenImage;
 use crate::chr_network::qemu::free_tcp_port;
-use crate::chr_network::vm::{boot_node, PortWiring, RunningNode};
+use crate::chr_network::vm::{PortWiring, RunningNode, boot_node};
 use backend::topology::test::TopologyBuilder;
 use backend::topology::{CablePort, DeviceId, PhysicalPortId};
 use mikrotik_model::hwconfig::DeviceType;
@@ -56,9 +56,23 @@ pub async fn boot_scenario(
             "cable uses ether1, which is reserved for the management NIC on every node"
         );
         let port = free_tcp_port()?;
-        let (listener, connector) = if a.device.0 < b.device.0 { (a, b) } else { (b, a) };
-        set_slot(&mut wirings, listener.device, listener.slot, PortWiring::Listen(port));
-        set_slot(&mut wirings, connector.device, connector.slot, PortWiring::Connect(port));
+        let (listener, connector) = if a.device.0 < b.device.0 {
+            (a, b)
+        } else {
+            (b, a)
+        };
+        set_slot(
+            &mut wirings,
+            listener.device,
+            listener.slot,
+            PortWiring::Listen(port),
+        );
+        set_slot(
+            &mut wirings,
+            connector.device,
+            connector.slot,
+            PortWiring::Connect(port),
+        );
     }
 
     let mut nodes = HashMap::new();

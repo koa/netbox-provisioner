@@ -181,7 +181,7 @@ async fn bootstrap_node_directly(
     // CHR has no /system/routerboard at all (it's not a physical
     // RouterBOARD), so the board model has to be supplied explicitly rather
     // than detected live - it's the same board this node was booted with.
-    let mut cfg = DeviceCfg::fetch_with_board_model(&typed_client, b"RB750Gr3").await?;
+    let mut cfg = DeviceCfg::fetch_with_board_model(&typed_client, b"RB750Gr3", &device_access).await?;
     eprintln!("  [{}] generating target config...", node.name);
     cfg.generate_from(&device_access, KeepNameGenerator)?;
     eprintln!("  [{}] generating mutations...", node.name);

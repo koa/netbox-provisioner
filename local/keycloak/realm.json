@@ -1,0 +1,51 @@
+{
+  "realm": "lab",
+  "enabled": true,
+  "users": [
+    {
+      "username": "admin",
+      "id": "lab-admin",
+      "enabled": true,
+      "email": "admin@lab.local",
+      "emailVerified": true,
+      "realmRoles": ["default-roles-lab"],
+      "firstName": "Lab",
+      "lastName": "Admin",
+      "credentials": [{ "type": "password", "value": "admin", "temporary": false }]
+    },
+    {
+      "username": "reader",
+      "id": "lab-reader",
+      "enabled": true,
+      "email": "reader@lab.local",
+      "emailVerified": true,
+      "realmRoles": ["default-roles-lab"],
+      "firstName": "Lab",
+      "lastName": "Reader",
+      "credentials": [{ "type": "password", "value": "reader", "temporary": false }]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "netbox-provisioner",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://127.0.0.1:8082/*", "http://localhost:8082/*"],
+      "webOrigins": ["+"],
+      "attributes": { "pkce.code.challenge.method": "S256" },
+      "protocolMappers": [
+        {
+          "name": "audience-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "netbox-provisioner",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ]
+}

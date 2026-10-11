@@ -197,6 +197,7 @@ fn declared_ports(
             let (pattern, idx) = match port {
                 PhysicalPortId::Ethernet(n) => (EthernetNamePattern::Ether, n),
                 PhysicalPortId::SfpSfpPlus(n) => (EthernetNamePattern::SfpSfpPlus, n),
+                PhysicalPortId::Sfp28(n) => (EthernetNamePattern::Sfp28, n),
                 PhysicalPortId::Sfp(n) => (EthernetNamePattern::Sfp, n),
                 PhysicalPortId::Combo(n) => (EthernetNamePattern::Combo, n),
                 PhysicalPortId::QsfpPlus(port, lane) => {

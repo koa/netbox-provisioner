@@ -1,5 +1,5 @@
 use crate::topology::{
-    Topology, WlanData, WlanId,
+    Topology, WlanAuth, WlanData, WlanId,
     access::{AccessTopology, vlan::VlanAccess, wlan_group::WlanGroupAccess},
 };
 use async_graphql::Object;
@@ -39,8 +39,11 @@ impl WlanAccess {
     pub fn wlan_group(&self) -> Option<WlanGroupAccess> {
         self.data().map(|d| d.wlan_group).map(self.create_access())
     }
-    fn ssid(&self) -> Option<&str> {
+    pub fn ssid(&self) -> Option<&str> {
         self.data().map(|d| d.ssid.as_ref())
+    }
+    pub fn auth(&self) -> Option<&WlanAuth> {
+        self.data().map(|d| &d.wlan_auth)
     }
 }
 impl Debug for WlanAccess {

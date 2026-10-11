@@ -30,7 +30,7 @@ pub struct DetectDeviceType;
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/show-device.graphql",
-    response_derives = "Debug"
+    response_derives = "Debug, Clone, PartialEq"
 )]
 pub struct DeviceOverview;
 
@@ -41,3 +41,35 @@ pub struct DeviceOverview;
     response_derives = "Debug"
 )]
 pub struct AdjustTargetListCredentials;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/show-device.graphql",
+    response_derives = "Debug"
+)]
+pub struct ApplyDeviceCfg;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/show-device.graphql",
+    response_derives = "Debug"
+)]
+pub struct BootstrapDevice;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/show-device.graphql",
+    response_derives = "Debug"
+)]
+pub struct UpdateRouteros;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/show-device.graphql",
+    response_derives = "Debug,Clone,PartialEq"
+)]
+pub struct BootstrapCandidates;

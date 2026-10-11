@@ -771,7 +771,9 @@ impl<G: NameGenerator> L2Setup<G> {
                     })
             })
         };
-        standalone.or_else(in_simple_bridge).or_else(in_tagged_bridge)
+        standalone
+            .or_else(in_simple_bridge)
+            .or_else(in_tagged_bridge)
     }
 }
 

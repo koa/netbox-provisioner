@@ -100,10 +100,31 @@ fn netbox_url() -> &'static str {
     CONFIG.netbox_url.as_str()
 }
 
+/// The `Authorization` header for a NetBox API token: a v2 token (NetBox 4.5+,
+/// `nbt_<key>.<secret>`) goes as `Bearer`, a legacy v1 token (40 hex chars) as `Token`.
+fn authorization_header(token: &str) -> String {
+    if token.starts_with("nbt_") {
+        format!("Bearer {token}")
+    } else {
+        format!("Token {token}")
+    }
+}
+
+#[test]
+fn test_authorization_header_by_token_version() {
+    assert_eq!(authorization_header("nbt_abc.def"), "Bearer nbt_abc.def");
+    assert_eq!(
+        authorization_header("0123456789abcdef0123456789abcdef01234567"),
+        "Token 0123456789abcdef0123456789abcdef01234567"
+    );
+}
+
 fn netbox_client() -> Result<reqwest::Client, NetboxError> {
     let mut headers = HeaderMap::new();
-    let access_token = CONFIG.netbox_token.as_str();
-    headers.insert(AUTHORIZATION, format!("Token {access_token}").parse()?);
+    headers.insert(
+        AUTHORIZATION,
+        authorization_header(CONFIG.netbox_token.as_str()).parse()?,
+    );
 
     Ok(reqwest::Client::builder()
         .default_headers(headers)

@@ -35,6 +35,14 @@ OSPF, VXLAN, WLAN/CAPsMAN, point-to-point radio bridges) - read it before changi
 `fetch_topology.graphql` changes what is read. Every custom field read (the `JSON` struct in
 `netbox/mod.rs`) is also described in `docs/custom-fields.md`, with how to create it in NetBox.
 
+WLAN is the `/interface/wifi` stack only (`docs/wlan-generation.md`): CAPsMAN on the Wireless
+LAN Group's controller, CAPs routed (they reach the controller at its loopback) with local
+forwarding into the bridge NetBox puts their radios in. Anything model specific (ports, radio
+profiles, which package a board's radios need: `wireless`, `wifi-qcom`, `wifi-qcom-ac`) belongs
+in `hw_facts.rs`. A radio stack is only read, and its package only installed, where NetBox needs
+it (`needed_radio_package`); a controller reads `WifiDeviceData` without radios, CAPsMAN being in
+the base package since 7.13.
+
 `device/ros/netbox_example_test.rs` runs every RouterOS device of the stored production
 response `docs/netbox-response-example.json` (maintained by the user from the live NetBox; never
 edit or commit it yourself) through the whole generator, with each device given exactly the ports
@@ -90,6 +98,70 @@ virtual router and silently breaks guest networking. OSPF neighbor state reachin
 mean the route is in the FIB yet under this harness's software-emulated (TCG, no KVM) CHRs - the
 realistic-path apply retries "General SOCKS server failure" against a deadline rather than failing
 on the first attempt, same as the isolated two-node apply test's ARP warm-up.
+
+## Device access, setup and updates
+
+The UI logs in over OIDC (`yew-oauth2` in the frontend, structure taken from the cable-editor);
+the backend checks the JWT against `auth_issuer` and lets only `auth_users` in. Devices are
+reached directly, or, with `management_proxy` set, all through one device's `/ip socks` (SOCKS5
+with password; `device::proxied_stream` retries the sporadic "General SOCKS server failure" of a
+first connection). Nothing is written without `allow_apply`; `apply` runs the diff as a script on
+the device (`apply_mutations_via_script`), so it completes even when it changes the path the
+connection takes, then diffs again: a script stops at its first error, so whatever is left is
+what failed. A diff that never gets empty after an apply usually means a field RouterOS accepts
+but doesn't report in that state (see the `k`/`o` notes in mikrotik-model's CLAUDE.md); compare
+with the device's own `print` (`examples/print_device.rs`, read-only) and on a CHR before
+changing defaults.
+
+A device that doesn't answer gets its initial setup over `/tool mac-telnet` from a neighbor that
+does (`device::bootstrap`, on the device page): `plan` picks a cabled port with an IPv4 (on the
+port or its bridge) whose other end is reachable. MAC addresses are not kept in NetBox: the
+operator picks the physical device from what the neighbor's `/ip/neighbor` shows on that port
+(`BootstrapPlan.discovered`) or types its MAC; don't make anything depend on NetBox MACs.
+`set_up` drives the neighbor's console over SSH
+(`device::terminal`, russh; login flags `+ct400w` so long echoes don't wrap) through the factory
+prompts (license, default-config notice, new password - each answered once, some versions print
+`new password>` twice), sets password, address, API and a firewall accept, and takes the port out
+of the factory bridge in the background. Factory bridges answer MAC-telnet only on the bridge's
+MAC, which is also the one they announce. `connect` falls back to that bootstrap
+address when the primary IP doesn't answer yet, through an SSH tunnel to the neighbor
+(`terminal::Tunnel`, `direct-tcpip`; `device::Path::Neighbor`): API, re-diff and SCP all go
+from the neighbor's address on the cable, so the device needs no route back before its first
+apply brings OSPF. Every generated config has `/ip ssh forwarding-enabled=local` for that;
+without it RouterOS never answers the forward (no refusal), hence the timeout in
+`Tunnel::open`. Don't go back to static return routes on the device: with
+`redistribute=static` they go out as /32s that beat the neighbors' connected networks. When the
+mac-telnet session ends early, the following lines land on the neighbor's own console (this
+once left setup routes on lab-np1), so every setup command is wrapped to do nothing where the
+global `netboxProvisionerNeighbor` is set, which `set_up` sets on the neighbor only.
+
+`device::update` brings RouterOS to the newest release of the channel picked in the UI
+(long-term, stable, testing, development; `routeros_channel` preselects it), from
+`upgrade.mikrotik.com/routeros/NEWESTa7.<channel>` (`NEWEST7.*` stopped at 7.12.1; testing and
+development are pre-releases like `7.25rc1`, which `Version` keeps for the file names and orders
+before the release). v6 goes to the newest v6 first, v7 gets `routeros` plus the
+`needed_radio_package`; every other package is uninstalled (`/system/package/uninstall
+numbers=<.id>`, at the same reboot), and a device at or above the target only gets its packages
+in line. Then the RouterBOARD firmware: `.npk`
+from download.mikrotik.com, SCP upload (`terminal::upload`), size check (the size settles after
+the copy; on 16 MB devices the root directory is in RAM, so a 12 MB package fits), reboot,
+version check. A reboot is detected by the uptime going down, not by the connection failing:
+connections may just wait while the device boots. RouterOS 6 SSH offers only `hmac-sha1`/`-md5`,
+`diffie-hellman-group14-sha1` and a 2048 bit group exchange, so `terminal` appends those to
+russh's defaults and lowers the group minimum to 2048. A user with SSH keys can't log in over SSH
+with a password while `/ip ssh always-allow-password-login=no` (7.24:
+`password-authentication=yes-if-no-key`), so the update switches it for the upload only.
+
+`local/` runs the lab: `netbox/` (NetBox + `seed-lab.py`), `keycloak/` (realm `lab` on
+`localhost:8180`, admin/admin), `lab/make-config.sh` (the lab devices' password comes from the
+ignored `.lab-netbox/device-password`, never put it in the repo) + `lab/run-provisioner.sh`
+(builds frontend and binary, serves on :8082), `screenshots/` (Playwright, `run.sh STEP...`; a page reload asks
+for the Keycloak login again, so navigate with `click:` instead of `goto:`). The harness's
+`mac_telnet.rs` and `update.rs` cover setup and update against CHRs, reaching the new node
+through a tunnel to the entry like the provisioner: `ensure_factory_image` gives
+an untouched image of a `ChrRelease` (`CHR`, or `CHR_OLDER` to update from), `start_node` boots
+it without waiting for the API, and `mac_of(node, slot)` is the MAC of a cabled NIC (slot 0 keeps
+QEMU's, the golden image's dhcp-client is bound to it).
 
 ## Commits
 

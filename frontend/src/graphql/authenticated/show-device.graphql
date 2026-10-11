@@ -2,6 +2,13 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
     topology{
         deviceById(id: $id){
             name
+            bootstrapPlan {
+                neighbor
+                neighborPort
+                port
+                address
+            }
+            bootstrapProblem
             access(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
                 deviceStats{
                     routerboard {
@@ -11,7 +18,55 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                     }
                 }
                 generateCfg
+                routeros {
+                    version
+                    packages
+                    wanted
+                    defaultChannel
+                    channels {
+                        channel
+                        newest
+                        upgrade
+                        update
+                    }
+                }
             }
         }
+    }
+}
+mutation ApplyDeviceCfg($id: Int!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+    applyCfg(id: $id, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
+        applied
+        remaining
+    }
+}
+query BootstrapCandidates($id: Int!){
+    topology{
+        deviceById(id: $id){
+            bootstrapPlan {
+                discovered {
+                    mac
+                    identity
+                    board
+                    version
+                    interface
+                }
+            }
+        }
+    }
+}
+mutation BootstrapDevice($id: Int!, $mac: String!){
+    bootstrap(id: $id, mac: $mac){
+        address
+        error
+        transcript
+    }
+}
+mutation UpdateRouteros($id: Int!, $channel: Channel!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+    updateRouteros(id: $id, channel: $channel, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
+        from
+        to
+        error
+        log
     }
 }

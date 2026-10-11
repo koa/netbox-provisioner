@@ -138,5 +138,8 @@ pub(crate) fn empty_current(target: &BaseDeviceDataTarget) -> BaseDeviceDataCurr
         dhcp_v_4_server: Box::new([]),
         dhcp_v_4_server_network: Box::new([]),
         ipv_4_pool: Box::new([]),
+        socks: Default::default(),
+        socks_users: Box::new([]),
+        ssh: Default::default(),
     }
 }

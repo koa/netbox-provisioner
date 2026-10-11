@@ -10,6 +10,7 @@ use encoding_rs::mem::encode_latin1_lossy;
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 use tokio::process::Child;
 use tokio::time::Instant;
@@ -46,6 +47,12 @@ pub struct RunningNode {
     /// is meant to be reached. Forwarded unconditionally on every node since
     /// it costs nothing when unused.
     pub socks_port: u16,
+    /// Host-reachable port forwarded to this node's SSH (guest port 22).
+    pub ssh_port: u16,
+    /// Number of this node in the run; its NIC in slot `i` > 0 has the MAC
+    /// [`mac_of`]`(index, i)`, so cabled nodes never share one (QEMU's
+    /// default would give every node the same).
+    pub index: u8,
     child: Child,
     overlay_path: PathBuf,
 }
@@ -103,6 +110,13 @@ async fn connect_api_with_retry(
     }
 }
 
+/// The MAC of NIC `slot` (1 = `ether2`) of node number `node`.
+pub fn mac_of(node: u8, slot: usize) -> String {
+    format!("52:54:00:{node:02X}:00:{slot:02X}")
+}
+
+static NEXT_NODE: AtomicU8 = AtomicU8::new(1);
+
 /// Boots one disposable node. `wiring[i]` describes NIC slot `i + 1`
 /// (slot 0 is always the management NIC); `wiring.len()` should equal
 /// `board.build_ethernet_ports().len() - 1` for the node's board so every
@@ -114,6 +128,21 @@ pub async fn boot_node(
     wiring: &[PortWiring],
     password: &str,
 ) -> anyhow::Result<RunningNode> {
+    let node = start_node(golden, work_dir, name, wiring).await?;
+    node.connect_api(password).await?;
+    Ok(node)
+}
+
+/// Boots one disposable node without waiting for it to answer - for a
+/// factory image, whose `admin` has no password yet (RouterOS asks for one
+/// at the first console login).
+pub async fn start_node(
+    golden: &GoldenImage,
+    work_dir: &Path,
+    name: &str,
+    wiring: &[PortWiring],
+) -> anyhow::Result<RunningNode> {
+    let index = NEXT_NODE.fetch_add(1, Ordering::Relaxed);
     tokio::fs::create_dir_all(work_dir).await?;
     let overlay_path = work_dir.join(format!("{name}.qcow2"));
 
@@ -124,18 +153,24 @@ pub async fn boot_node(
         .arg(&overlay_path)
         .status()
         .await?;
-    anyhow::ensure!(status.success(), "qemu-img create for node {name:?} failed with {status}");
+    anyhow::ensure!(
+        status.success(),
+        "qemu-img create for node {name:?} failed with {status}"
+    );
 
     let api_port = free_tcp_port()?;
     let socks_port = free_tcp_port()?;
+    let ssh_port = free_tcp_port()?;
     let mut cmd = qemu_command();
     cmd.args(["-machine", "pc,accel=tcg", "-cpu", "max", "-m", "512", "-smp", "2"])
         .arg("-drive")
         .arg(format!("file={},format=qcow2", overlay_path.display()))
         .arg("-netdev")
         .arg(format!(
-            "user,id=net0,hostfwd=tcp:127.0.0.1:{api_port}-:8728,hostfwd=tcp:127.0.0.1:{socks_port}-:1080"
+            "user,id=net0,hostfwd=tcp:127.0.0.1:{api_port}-:8728,hostfwd=tcp:127.0.0.1:{socks_port}-:1080,hostfwd=tcp:127.0.0.1:{ssh_port}-:22"
         ))
+        // QEMU's default MAC, the one the golden image was set up with: RouterOS takes a new
+        // MAC for a new interface, which would leave the image's DHCP client without its port
         .args(["-device", "virtio-net-pci,netdev=net0"])
         .args(["-display", "none", "-monitor", "none"]);
 
@@ -154,7 +189,10 @@ pub async fn boot_node(
                     .arg(format!("socket,id={id},connect=127.0.0.1:{port}"));
             }
         }
-        cmd.args(["-device", &format!("virtio-net-pci,netdev={id}")]);
+        cmd.args([
+            "-device",
+            &format!("virtio-net-pci,netdev={id},mac={}", mac_of(index, i + 1)),
+        ]);
     }
 
     let child = cmd.kill_on_drop(true).spawn()?;
@@ -163,9 +201,10 @@ pub async fn boot_node(
         name: name.to_string(),
         api_port,
         socks_port,
+        ssh_port,
+        index,
         child,
         overlay_path,
     };
-    node.connect_api(password).await?;
     Ok(node)
 }

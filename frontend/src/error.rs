@@ -6,7 +6,7 @@ use patternfly_yew::prelude::{Alert, AlertGroup, AlertType};
 use reqwest::header::InvalidHeaderValue;
 use thiserror::Error;
 use wasm_bindgen::JsValue;
-use yew::{Html, ToHtml, html};
+use yew::{Html, html};
 
 pub struct JavascriptError {
     original_value: JsValue,
@@ -59,20 +59,20 @@ pub enum FrontendError {
     MissingData,
 }
 
-impl ToHtml for FrontendError {
-    fn to_html(&self) -> Html {
+impl FrontendError {
+    pub fn to_html(&self) -> Html {
         match self {
             FrontendError::JS(js_error) => {
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title="Javascript Error" r#type={AlertType::Danger}>{js_error.to_string()}</Alert>
+                        <Alert inline=true title="Javascript Error" r#type={AlertType::Danger}><p>{js_error.to_string()}</p></Alert>
                     </AlertGroup>
                 }
             }
             FrontendError::Serde(serde_error) => {
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title="Serialization Error" r#type={AlertType::Danger}>{serde_error.to_string()}</Alert>
+                        <Alert inline=true title="Serialization Error" r#type={AlertType::Danger}><p>{serde_error.to_string()}</p></Alert>
                     </AlertGroup>
                 }
             }
@@ -108,14 +108,14 @@ impl ToHtml for FrontendError {
             FrontendError::Reqwest(reqwest_error) => {
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title="Cannot call Server" r#type={AlertType::Danger}>{reqwest_error.to_string()}</Alert>
+                        <Alert inline=true title="Cannot call Server" r#type={AlertType::Danger}><p>{reqwest_error.to_string()}</p></Alert>
                     </AlertGroup>
                 }
             }
             FrontendError::InvalidHeader(header_error) => {
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title="Header Error" r#type={AlertType::Danger}>{header_error.to_string()}</Alert>
+                        <Alert inline=true title="Header Error" r#type={AlertType::Danger}><p>{header_error.to_string()}</p></Alert>
                     </AlertGroup>
                 }
             }

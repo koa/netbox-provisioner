@@ -43,8 +43,11 @@ async fn wait_for(stream: &mut TcpStream, needle: &str, timeout: Duration) -> an
             "timed out waiting for {needle:?}, accumulated output so far: {acc:?}"
         );
         let mut chunk = [0u8; 4096];
-        match tokio::time::timeout(remaining.min(Duration::from_secs(1)), stream.read(&mut chunk))
-            .await
+        match tokio::time::timeout(
+            remaining.min(Duration::from_secs(1)),
+            stream.read(&mut chunk),
+        )
+        .await
         {
             Ok(Ok(0)) => anyhow::bail!("connection closed while waiting for {needle:?}"),
             Ok(Ok(n)) => {

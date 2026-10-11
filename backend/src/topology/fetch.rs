@@ -10,9 +10,9 @@ use crate::{
     topology::{
         Cable, CableId, CablePort, Device, DeviceId, DeviceRole, FrontPort, FrontPortId, Interface,
         InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
-        PhysicalPortId, PortType, RearPort, RearPortId, Topology, VlanData, VlanGroupData,
-        VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData, WlanGroupData, WlanGroupId,
-        WlanId, WlanOpenSettings, WlanWpaSettings, Radio, RadioLink, RadioRole,
+        PhysicalPortId, PortType, Radio, RadioLink, RadioRole, RearPort, RearPortId, Topology,
+        VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData,
+        WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
     },
 };
 use ipnet::IpNet;
@@ -428,9 +428,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                         .map(|role| Radio {
                             role,
                             frequency: interface.rf_channel_frequency.map(|f| f.0.round() as u32),
-                            channel_width: interface
-                                .rf_channel_width
-                                .map(|w| w.0.round() as u32),
+                            channel_width: interface.rf_channel_width.map(|w| w.0.round() as u32),
                             tx_power: interface
                                 .tx_power
                                 .and_then(|power| i8::try_from(power).ok()),

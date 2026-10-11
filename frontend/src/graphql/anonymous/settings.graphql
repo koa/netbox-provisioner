@@ -1,5 +1,7 @@
 query Settings{
     authentication {
         clientId
+        issuerUrl
+        scopes
     }
 }

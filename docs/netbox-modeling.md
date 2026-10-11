@@ -138,10 +138,31 @@ werden.
 | PoE Mode             | `PSE` → PoE-Ausgang `auto-on`, sonst `off` (nur auf PoE-fähigen Boards)    |
 | RF Role, RF Channel Frequency/Width, TX Power | Funk-Port einer [Funkbrücke](#funkbrücke) |
 | Wireless Link        | SSID, PSK und Funkregeln einer [Funkbrücke](#funkbrücke)                   |
-| Cable                | nur für die Namensgenerierung, wenn kein Label gesetzt ist                 |
+| Cable                | Namensgenerierung, wenn kein Label gesetzt ist; Weg für die Ersteinrichtung |
 
 Der 802.1Q-Mode selbst (Access/Tagged) wird nicht ausgewertet. NetBox verlangt ihn aber, damit
 man VLANs zuweisen kann.
+
+### Ersteinrichtung über MAC-Telnet
+
+Ein neues Gerät (Werkseinstellung oder ohne Adresse) richtet der Provisioner per Knopf auf der
+Geräteseite über einen erreichbaren Nachbarn ein: Der Nachbar öffnet an seinem Port MAC-Telnet
+zum neuen Gerät und setzt dort Passwort, Adresse und API. Dafür braucht das neue Gerät in NetBox
+einen Port mit:
+
+- einer **IPv4-Adresse** (auf dem Port selbst oder auf der Bridge, zu der er gehört), und
+- einem **Kabel** zu einem Port des Nachbarn, der eine IPv4-Adresse im selben Netz hat.
+
+MAC-Adressen werden in NetBox nicht gepflegt. Welches physische Gerät die Konfiguration bekommt,
+wählt man auf der Geräteseite aus: Dort steht, was der Nachbar an seinem Port per Neighbor
+Discovery sieht (Identity, Board, Version, MAC), oder man gibt die MAC von Hand ein. Hinter einer
+Funkbrücke sieht der Nachbar auch Geräte, die weiter weg sind.
+
+Bis zum ersten Anwenden (das OSPF bringt) erreicht der Provisioner das neue Gerät über einen
+SSH-Tunnel zum Nachbarn: Die Verbindungen kommen von der Adresse des Nachbarn auf dem Kabel, das
+neue Gerät braucht also keine Route zurück. Dafür setzt die generierte Konfiguration auf jedem
+Gerät `/ip ssh forwarding-enabled=local`; ein Nachbar muss also selbst schon einmal angewendet
+worden sein.
 
 ### Loopback
 
@@ -364,9 +385,11 @@ Was daraus generiert wird und worauf beim Ausrollen zu achten ist:
 
 ## WLAN
 
-> Die eigentliche CAPsMAN-/WiFi-Konfiguration ist noch nicht implementiert (siehe
-> [wlan-generation.md](wlan-generation.md)). Was hier steht, wird bereits gelesen und für L2 und
-> VXLAN verwendet.
+Generiert wird der WiFi-Stack (`/interface/wifi`, RouterOS 7) mit CAPsMAN auf dem Controller und
+lokalem Forwarding auf den APs (siehe [wlan-generation.md](wlan-generation.md)). Der AP ist wie
+jedes Gerät geroutet angebunden (Loopback, eigenes Transfernetz mit `ospf`), sein WLAN ist ein
+Kundennetz auf dem AP: eine Bridge mit IP und `dhcp`-Tag, in der die WiFi-Interfaces (`wifi1`,
+`wifi2`) und allenfalls Kundenports Mitglied sind.
 
 1. **Wireless LAN Group** anlegen, Custom Field `controller` = Controller-Gerät (Pflicht; eine
    Gruppe ohne Controller wird komplett ignoriert), `wlan_mgmt` = Management-VLAN. Pro Controller
@@ -378,6 +401,9 @@ Was daraus generiert wird und worauf beim Ausrollen zu achten ist:
    `wlan_group` bekommt die CAP-Konfiguration. Ein Switch, der nur Ports im WLAN-Netz hat, braucht
    das Feld nicht, ihm reicht das VLAN an den Ports.
 4. Die VLAN-Gruppe der WLAN-VLANs bekommt eine `vxlan_vni` (siehe [VXLAN](#vxlan)).
+   Die VLAN eines WLANs wird bisher nur für L2 und VXLAN ausgewertet; auf dem AP landet jedes WLAN
+   ungetaggt in der Bridge der Radios.
+5. Das `country` der WLANs kommt aus der Region des Standorts des Controllers.
 
 ## Was nicht ausgewertet wird
 

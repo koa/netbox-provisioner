@@ -29,6 +29,24 @@ pub enum Error {
     ErrorGeneratingString(#[from] std::fmt::Error),
     #[error("Cannot build setup {0}")]
     SetupError(#[from] SetupError),
+    #[error("Cannot connect through the management proxy {0}: {1}")]
+    Proxy(std::net::SocketAddr, tokio_socks::Error),
+    #[error("Writing to devices is disabled (allow_apply)")]
+    ApplyNotAllowed,
+    #[error("No device {0}")]
+    UnknownDevice(u32),
+    #[error("No answer from {0}")]
+    Timeout(std::net::IpAddr),
+    #[error("{0} has no address in NetBox")]
+    NoAddress(Box<str>),
+    #[error("Console: {0}")]
+    Terminal(#[from] device::terminal::TerminalError),
+    #[error("No way known to set up {0}: {1}")]
+    NoBootstrapPath(Box<str>, &'static str),
+    #[error("Setup of {0} failed: {1}")]
+    Bootstrap(Box<str>, Box<str>),
+    #[error("Update: {0}")]
+    Update(Box<str>),
 }
 
 impl From<MissingDependenciesError<'_, '_>> for Error {

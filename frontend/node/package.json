@@ -6,6 +6,6 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@patternfly/patternfly": "^5.4.0"
+    "@patternfly/patternfly": "^6.6.1"
   }
 }

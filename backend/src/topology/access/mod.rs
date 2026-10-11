@@ -66,7 +66,7 @@ impl Topology {
 }
 
 #[derive(InputObject)]
-struct AdhocCredentials {
+pub struct AdhocCredentials {
     username: Option<Box<str>>,
     #[graphql(secret)]
     password: Option<Box<str>>,

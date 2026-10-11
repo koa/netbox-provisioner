@@ -3,7 +3,8 @@ use mikrotik_model::{
     ascii::AsciiString,
     hwconfig::{
         ADVERTISE_1G, ADVERTISE_1G_FULL, ADVERTISE_1G_SFP, ADVERTISE_10G, ADVERTISE_10G_FULL,
-        ADVERTISE_100M, EthernetNamePattern, generate_ethernet, generate_wifi, generate_wlan,
+        ADVERTISE_25G, ADVERTISE_100M, EthernetNamePattern, generate_ethernet, generate_wifi,
+        generate_wlan,
     },
     model::{
         EnabledDisabled, InterfaceEthernetByDefaultName, InterfaceW60GArp,
@@ -17,16 +18,62 @@ use mikrotik_model::{
         InterfaceWirelessRateSet, InterfaceWirelessSupportedRatesAG, InterfaceWirelessTxPowerMode,
         InterfaceWirelessVlanMode, InterfaceWirelessWdsMode, InterfaceWirelessWpsMode,
     },
-    value::{Auto, PossibleRangeDash},
+    value::{Auto, HasNone, PossibleRangeDash},
 };
 use std::{collections::BTreeSet, iter::repeat_n, time::Duration};
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Default)]
-pub enum WLanMethod {
-    #[default]
-    None,
-    Capsman,
-    Wifi,
+/// The RouterOS 7 package a board's radios need: `wireless` for the 802.11 radios of the old
+/// stack (`/interface/wireless`) and the 60 GHz ones (`/interface/w60g`), `wifi-qcom` or
+/// `wifi-qcom-ac` for the newer `/interface/wifi` stack. A wAP ac could also run `wireless`;
+/// `wifi-qcom-ac` is what it is used with here (as a CAP of `/interface/wifi` CAPsMAN).
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum RadioPackage {
+    Wireless,
+    WifiQcom,
+    WifiQcomAc,
+}
+
+impl RadioPackage {
+    pub fn name(self) -> &'static str {
+        match self {
+            RadioPackage::Wireless => "wireless",
+            RadioPackage::WifiQcom => "wifi-qcom",
+            RadioPackage::WifiQcomAc => "wifi-qcom-ac",
+        }
+    }
+    /// Whether it brings the radios of `/interface/wifi`.
+    pub fn is_wifi(self) -> bool {
+        matches!(self, RadioPackage::WifiQcom | RadioPackage::WifiQcomAc)
+    }
+}
+
+/// The package for the board's radios; `None` for a board without any.
+pub fn radio_package(model: &[u8]) -> Option<RadioPackage> {
+    match model {
+        b"cAPGi-5HaxD2HaxD" | b"C52iG-5HaxD2HaxD" => Some(RadioPackage::WifiQcom),
+        b"RBwAPG-5HacD2HnD" => Some(RadioPackage::WifiQcomAc),
+        b"CRS109-8G-1S-2HnD"
+        | b"RB962UiGS-5HacT2HnT"
+        | b"RBDynaDishG-5HacDr3"
+        | b"SXT G-5HPacD"
+        | b"SXT G-5HPacD r2"
+        | b"RBwAPG-60ad"
+        | b"RBwAPG-60ad-A"
+        | b"RBLHGG-60ad" => Some(RadioPackage::Wireless),
+        _ => None,
+    }
+}
+
+/// The factory values of the PoE-out settings that not every PoE board has (the voltage
+/// selection and the power cycling of a hung PD), as a CRS318-16P-2S+ reports them (RouterOS
+/// 7.19). Without them the diff would clear them.
+fn with_poe_power_control(
+    mut port: InterfaceEthernetByDefaultName,
+) -> InterfaceEthernetByDefaultName {
+    port.data.poe_voltage = Some(Auto::Auto);
+    port.data.power_cycle_interval = Some(HasNone::NoneValue);
+    port.data.power_cycle_ping_enabled = Some(false);
+    port
 }
 
 pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName]> {
@@ -47,6 +94,14 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
             )
             .enumerate(),
         )
+        .map(|(idx, generator)| generator(idx + 1))
+        .collect(),
+        // wAP ac: ether1 is PoE-in only
+        b"RBwAPG-5HacD2HnD" => repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
+            2,
+        )
+        .enumerate()
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
         b"RB750Gr3" => repeat_n(
@@ -75,14 +130,15 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
             16,
         )
         .enumerate()
+        .map(|(idx, generator)| with_poe_power_control(generator(idx + 1)))
         .chain(
             repeat_n(
                 generate_ethernet(EthernetNamePattern::SfpSfpPlus, &ADVERTISE_10G, 1592, false),
                 2,
             )
-            .enumerate(),
+            .enumerate()
+            .map(|(idx, generator)| generator(idx + 1)),
         )
-        .map(|(idx, generator)| generator(idx + 1))
         .collect(),
         b"C52iG-5HaxD2HaxD" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, true),
@@ -132,6 +188,27 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         )
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
+        b"CCR2004-1G-12S+2XS" => repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1600, false),
+            1,
+        )
+        .enumerate()
+        .chain(
+            repeat_n(
+                generate_ethernet(EthernetNamePattern::SfpSfpPlus, &ADVERTISE_10G, 1592, false),
+                12,
+            )
+            .enumerate(),
+        )
+        .chain(
+            repeat_n(
+                generate_ethernet(EthernetNamePattern::Sfp28, &ADVERTISE_25G, 1592, false),
+                2,
+            )
+            .enumerate(),
+        )
+        .map(|(idx, generator)| generator(idx + 1))
+        .collect(),
         b"CRS354-48G-4S+2Q+" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1592, false),
             48,
@@ -172,6 +249,14 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
         // point-to-point radio bridges: one ethernet port next to the radio
+        // `SXT G-5HPacD r2` as RouterOS 7.20.8 reports it, with this l2mtu (read from lab-sxt-a)
+        b"SXT G-5HPacD r2" => repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1600, false),
+            1,
+        )
+        .enumerate()
+        .map(|(idx, generator)| generator(idx + 1))
+        .collect(),
         b"RBDynaDishG-5HacDr3"
         | b"SXT G-5HPacD"
         | b"RBwAPG-60ad"
@@ -184,12 +269,6 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
         _ => Box::default(),
-    }
-}
-pub fn find_wlan_method(model: &[u8]) -> WLanMethod {
-    match model {
-        b"cAPGi-5HaxD2HaxD" => WLanMethod::Wifi,
-        _ => WLanMethod::default(),
     }
 }
 pub fn build_wifi_ports(model: &[u8]) -> Box<[InterfaceWifiByDefaultName]> {
@@ -209,7 +288,7 @@ pub fn build_wireless_ports(model: &[u8]) -> Box<[InterfaceWirelessByDefaultName
             .collect(),
         // integrated antenna gain as the boards report it
         b"RBDynaDishG-5HacDr3" => [wireless_bridge_port(1, 25)].into(),
-        b"SXT G-5HPacD" => [wireless_bridge_port(1, 14)].into(),
+        b"SXT G-5HPacD" | b"SXT G-5HPacD r2" => [wireless_bridge_port(1, 14)].into(),
         &_ => Box::default(),
     }
 }
@@ -241,7 +320,7 @@ pub fn wireless_bridge_port(idx: usize, antenna_gain: u32) -> InterfaceWirelessB
             antenna_mode: None,
             area: None,
             arp: Some(InterfaceWirelessArp::Enabled),
-            arp_timeout: None,
+            arp_timeout: Some(Auto::Auto),
             band: Some(InterfaceWirelessBand::_5GhzOnlyac),
             basic_rates_a_g: Some([InterfaceWirelessBasicRatesAG::_6Mbps].into()),
             basic_rates_b: None,
@@ -272,7 +351,7 @@ pub fn wireless_bridge_port(idx: usize, antenna_gain: u32) -> InterfaceWirelessB
             hw_protection_threshold: Some(0),
             hw_retries: Some(7),
             installation: Some(InterfaceWirelessInstallation::Outdoor),
-            interworking_profile: None,
+            interworking_profile: Some(EnabledDisabled::Disabled),
             keepalive_frames: Some(EnabledDisabled::Enabled),
             l_2_mtu: None,
             mac_address: None,
@@ -373,5 +452,22 @@ pub fn w60g_port(idx: usize) -> InterfaceW60GByDefaultName {
             mtu: Some(1500),
             l_2_mtu: None,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_ethernet_ports;
+    use mikrotik_model::value::{Auto, HasNone};
+
+    #[test]
+    fn crs318_poe_ports_have_their_power_settings() {
+        let ports = build_ethernet_ports(b"CRS318-16P-2S+");
+        let ether1 = &ports[0].data;
+        assert_eq!(ether1.poe_voltage, Some(Auto::Auto));
+        assert_eq!(ether1.power_cycle_interval, Some(HasNone::NoneValue));
+        assert_eq!(ether1.power_cycle_ping_enabled, Some(false));
+        let sfp1 = &ports[16].data;
+        assert_eq!(sfp1.poe_voltage, None);
     }
 }

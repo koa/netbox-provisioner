@@ -1,5 +1,9 @@
 use crate::{
-    device::{AccessibleDevice, Credentials},
+    Error,
+    device::{
+        AccessibleDevice, Credentials, Path,
+        bootstrap::{self, BootstrapPlan},
+    },
     topology::{
         CablePort, Device, DeviceId, DeviceRole, Topology,
         access::{
@@ -9,8 +13,13 @@ use crate::{
     },
 };
 use async_graphql::Object;
-use log::error;
-use std::{net::IpAddr, sync::Arc};
+use log::{error, info};
+use std::{net::IpAddr, sync::Arc, time::Duration};
+use tokio::time::timeout;
+
+/// Includes the login; through the management proxy a missing route fails at once, a host that
+/// is down only after the TCP timeout.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct DeviceAccess {
@@ -64,6 +73,71 @@ impl DeviceAccess {
         self.data()
             .and_then(|d| d.primary_ip_v6)
             .map(self.create_access())
+    }
+    /// Logs in to the device: at `target` or else its primary IP, with the named or the ad-hoc
+    /// credentials or else those of its tenant. `None` without address or credentials.
+    ///
+    /// Without `target`, a device that doesn't answer at its primary IP is tried at the address
+    /// its [initial setup](bootstrap) gives it, through a tunnel to the neighbor it was set up
+    /// from: before its first apply that is all it has, and no route back.
+    pub async fn connect(
+        &self,
+        target: Option<String>,
+        credential_name: Option<Box<str>>,
+        adhoc_credentials: Option<AdhocCredentials>,
+    ) -> Result<Option<AccessibleDevice>, Error> {
+        let fallback = if target.is_none() {
+            bootstrap::plan(self)
+                .ok()
+                .filter(|plan| Some(plan.port_address()) != self.primary_ip())
+        } else {
+            None
+        };
+        let addr = target.and_then(|ip| ip.parse().ok()).or(self.primary_ip());
+        let credentials = if let Some(credential_name) = credential_name {
+            Some(Credentials::Named(credential_name))
+        } else if let Some(AdhocCredentials { username, password }) = adhoc_credentials {
+            Some(Credentials::Adhoc { username, password })
+        } else {
+            self.credentials()
+                .map(|cred| Credentials::Named(cred.to_string().into()))
+        };
+        let Some(credentials) = credentials else {
+            return Ok(None);
+        };
+        let first = match addr {
+            Some(address) => timeout(
+                CONNECT_TIMEOUT,
+                AccessibleDevice::create_client(
+                    self.clone(),
+                    address,
+                    Path::Routed,
+                    credentials.clone(),
+                ),
+            )
+            .await
+            .unwrap_or(Err(Error::Timeout(address))),
+            None => Err(Error::NoAddress(self.name().into())),
+        };
+        Ok(Some(match (first, fallback) {
+            (Ok(device), _) => device,
+            (Err(error), Some(plan)) => {
+                let address = plan.port_address();
+                info!(
+                    "{} not reachable ({error}), trying {address} through {}",
+                    self.name(),
+                    plan.neighbor
+                );
+                timeout(CONNECT_TIMEOUT, async {
+                    let path = Path::Neighbor(bootstrap::tunnel(&plan).await?.into());
+                    AccessibleDevice::create_client(self.clone(), address, path, credentials).await
+                })
+                .await
+                .unwrap_or(Err(Error::Timeout(address)))?
+            }
+            (Err(Error::NoAddress(_)), None) => return Ok(None),
+            (Err(error), None) => return Err(error),
+        }))
     }
 
     pub fn loopback_ip(&self) -> Option<IpAddressAccess> {
@@ -143,27 +217,25 @@ impl DeviceAccess {
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
     ) -> Option<AccessibleDevice> {
-        let addr = target.and_then(|ip| ip.parse().ok()).or(self.primary_ip());
-        let credentials = if let Some(credential_name) = credential_name {
-            Some(Credentials::Named(credential_name))
-        } else if let Some(AdhocCredentials { username, password }) = adhoc_credentials {
-            Some(Credentials::Adhoc { username, password })
-        } else {
-            self.credentials()
-                .map(|cred| Credentials::Named(cred.to_string().into()))
-        };
-        if let (Some(address), Some(credentials)) = (addr, credentials) {
-            let client = AccessibleDevice::create_client(self.clone(), address, credentials).await;
-            match client {
-                Ok(c) => Some(c),
-                Err(error) => {
-                    error!("Cannot access device {}: {}", self.name(), error);
-                    None
-                }
+        match self
+            .connect(target, credential_name, adhoc_credentials)
+            .await
+        {
+            Ok(c) => c,
+            Err(error) => {
+                error!("Cannot access device {}: {}", self.name(), error);
+                None
             }
-        } else {
-            None
         }
+    }
+    /// How the device would be set up over mac-telnet, see [`MutationAuthenticated::bootstrap`].
+    #[graphql(name = "bootstrapPlan")]
+    async fn api_bootstrap_plan(&self) -> Option<BootstrapPlan> {
+        bootstrap::plan(self).ok()
+    }
+    /// Why there is no `bootstrapPlan`.
+    async fn bootstrap_problem(&self) -> Option<String> {
+        bootstrap::plan(self).err().map(|e| e.to_string())
     }
     #[graphql(name = "wlanControllerOf")]
     async fn api_is_wlan_controller_of(&self) -> Option<WlanGroupAccess> {
