@@ -140,16 +140,17 @@ async fn wlan_group() -> (DeviceAccess, DeviceAccess, DeviceAccess) {
     )
 }
 
-/// The legacy CAP has no VXLAN or VLAN of the WLAN (CAPsMAN forwards its clients), and is
-/// no VTEP of the controller's VXLAN, unlike the CAP of `/interface/wifi`.
+/// The legacy CAP forwards its clients itself: like the CAP of `/interface/wifi`, it has the
+/// WLAN's VLAN in its bridge and is a VTEP of the VXLAN carrying it to the controller.
 #[tokio::test]
-async fn legacy_cap_has_no_wlan_vlan() {
+async fn legacy_cap_has_the_wlan_vlan() {
     let (controller, legacy_cap, wifi_cap) = wlan_group().await;
     assert!(legacy_cap.legacy_cap_of().is_some() && legacy_cap.wifi_cap_of().is_none());
     assert!(wifi_cap.wifi_cap_of().is_some());
 
     let setup = L2Setup::new(&legacy_cap, KeepNameGenerator).unwrap();
-    assert!(setup.tagged_bridges.is_empty(), "no bridge for the WLAN's VLAN");
+    assert_eq!(setup.tagged_bridges.len(), 1, "a bridge for the WLAN's VLAN");
+    assert_eq!(setup.tagged_bridges[0].name, AsciiString::from("bridge-caps"));
 
     let controller_setup = L2Setup::new(&controller, KeepNameGenerator).unwrap();
     let vteps = controller_setup
@@ -166,12 +167,14 @@ async fn legacy_cap_has_no_wlan_vlan() {
         &*vteps,
         [
             IpAddr::V4(Ipv4Addr::new(192, 168, 100, 1)),
-            IpAddr::V4(Ipv4Addr::new(192, 168, 100, 6))
+            IpAddr::V4(Ipv4Addr::new(192, 168, 100, 6)),
+            IpAddr::V4(Ipv4Addr::new(192, 168, 100, 7)),
         ]
     );
 }
 
-/// The legacy CAP's radios join the controller's CAPsMAN at its loopback.
+/// The legacy CAP's radios join the controller's CAPsMAN at its loopback, their clients the
+/// CAP's bridge.
 #[tokio::test]
 async fn legacy_cap_joins_the_controller() {
     let (_, legacy_cap, _) = wlan_group().await;
@@ -195,11 +198,11 @@ async fn legacy_cap_joins_the_controller() {
         [IpAddr::V4(Ipv4Addr::new(192, 168, 100, 1))].into()
     );
     assert_eq!(cap.interfaces, [AsciiString::from("wlan1")].into());
-    assert_eq!(cap.bridge, HasNone::NoneValue, "CAPsMAN forwards the clients");
+    assert_eq!(cap.bridge, HasNone::Value("bridge-caps".into()));
 }
 
-/// The controller runs the legacy CAPsMAN (and needs `wireless` for it), its WLAN going
-/// into the bridge of the WLAN's VLAN.
+/// The controller runs the legacy CAPsMAN (and needs `wireless` for it); the CAPs forward
+/// the WLAN's clients themselves, tagged with its VLAN.
 #[tokio::test]
 async fn controller_runs_the_legacy_capsman() {
     let (controller, _, _) = wlan_group().await;
@@ -207,10 +210,8 @@ async fn controller_runs_the_legacy_capsman() {
         needed_radio_package(&controller, b"CCR2004-1G-12S+2XS"),
         Some(RadioPackage::Wireless)
     );
-    let setup = L2Setup::new(&controller, KeepNameGenerator).unwrap();
-    let bridge = setup.tagged_bridges[0].name.clone();
     let mut target = CapsManDeviceDataTarget::new(b"CCR2004-1G-12S+2XS");
-    target.generate_from(&controller, &setup).unwrap();
+    target.generate_from(&controller).unwrap();
 
     assert!(target.manager.enabled);
     let name = AsciiString::from("lab_wlan");
@@ -225,10 +226,10 @@ async fn controller_runs_the_legacy_capsman() {
     );
     assert_eq!(security.passphrase, Some("lab-wlan-preshared-key".into()));
     let datapath = &target.datapath[&name].0;
-    assert_eq!(datapath.bridge, Some(bridge));
+    assert_eq!(datapath.bridge, None);
     assert_eq!(datapath.vlan_mode, Some(CapsManDatapathVlanMode::UseTag));
     assert_eq!(datapath.vlan_id, Some(104));
-    assert_eq!(datapath.local_forwarding, Some(false));
+    assert_eq!(datapath.local_forwarding, Some(true));
     let provisioning = target.provisioning.values().next().unwrap();
     assert_eq!(provisioning.master_configuration, name);
 }

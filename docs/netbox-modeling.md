@@ -460,9 +460,10 @@ gibt es zwei Varianten:
    `wlan_group` bekommt die CAP-Konfiguration. Ein Switch, der nur Ports im WLAN-Netz hat, braucht
    das Feld nicht, ihm reicht das VLAN an den Ports. Ein alter AP mit dem `wireless`-Paket (z.B.
    SXT, RB912) bekommt seine Radios als `wlan<N>`-Interfaces (Typ IEEE 802.11a/g/n/ac). Er wird
-   dann CAP des klassischen CAPsMAN auf dem Controller; das WLAN braucht dafür eine VLAN, die auf
-   dem Controller endet (Variante auf dem Controller). Ohne `wlan<N>`-Interfaces in NetBox
-   behält ein solcher AP seine CAP-Konfiguration, wie sie ist.
+   dann CAP des klassischen CAPsMAN auf dem Controller und bringt die Clients selbst in die VLAN
+   ihres WLANs, wie ein CAP von `/interface/wifi` (Variante auf dem Controller, das VXLAN trägt sie
+   dorthin). Ohne `wlan<N>`-Interfaces in NetBox behält ein solcher AP seine CAP-Konfiguration,
+   wie sie ist.
 4. Für die Variante auf dem Controller: Die VLAN-Gruppe der WLAN-VLANs bekommt eine `vxlan_vni`
    (siehe [VXLAN](#vxlan)). Der AP bringt die Clients jedes WLANs in dessen VLAN.
 5. Das `country` der WLANs kommt aus der Region des Standorts des Controllers.

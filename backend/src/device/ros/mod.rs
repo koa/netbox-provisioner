@@ -1152,10 +1152,11 @@ impl WirelessDeviceDataTarget {
         self.setup_legacy_cap(device, l2, current)
     }
     /// A CAP of the legacy CAPsMAN (`Topology::is_legacy_cap`) with every radio NetBox has,
-    /// finding the controller at its loopback like a CAP of `/interface/wifi`. CAPsMAN
-    /// forwards the clients' traffic (no `bridge` here): they join the controller's bridge
-    /// (`CapsManDeviceDataTarget`). An AP whose radios NetBox doesn't have keeps its CAP as
-    /// it is (one of a CAPsMAN NetBox doesn't know of), any other device has it off.
+    /// finding the controller at its loopback like a CAP of `/interface/wifi`. The CAP
+    /// forwards the clients' traffic itself (`local-forwarding`, `CapsManDeviceDataTarget`)
+    /// into `bridge`, the one carrying the WLANs' VLANs and their VXLAN, like a CAP of
+    /// `/interface/wifi`. An AP whose radios NetBox doesn't have keeps its CAP as it is (one
+    /// of a CAPsMAN NetBox doesn't know of), any other device has it off.
     fn setup_legacy_cap<N: NameGenerator>(
         &mut self,
         device: &DeviceAccess,
@@ -1178,6 +1179,10 @@ impl WirelessDeviceDataTarget {
         *cap = Default::default();
         cap.enabled = true;
         cap.caps_man_addresses = [controller].into();
+        cap.bridge = group
+            .wlan()
+            .find_map(|wlan| l2.bridge_of_wlan(&wlan))
+            .map_or(HasNone::NoneValue, |bridge| HasNone::Value(bridge.clone()));
         for interface in device.interfaces() {
             let Some(port @ PhysicalPortId::Wlan(_)) = interface.external_port() else {
                 continue;
@@ -1567,14 +1572,11 @@ impl CapsManDeviceDataTarget {
     /// The legacy CAPsMAN (`/caps-man`, in `wireless`) of a controller whose Wireless LAN
     /// Group has CAPs of it (`Topology::is_legacy_cap`), next to the `/interface/wifi` one:
     /// a configuration per WLAN (named like that one's, SSID, country, WPA2 PSK), the first
-    /// WLAN the master of every radio, the others virtual ones. CAPsMAN forwards the clients'
-    /// traffic here, into the bridge carrying the WLAN's VLAN, tagged with it; a WLAN without
-    /// VLAN has no bridge. Only read where NetBox asks for it (`DeviceCfg::fetch`).
-    fn generate_from<N: NameGenerator>(
-        &mut self,
-        device: &DeviceAccess,
-        l2: &L2Setup<N>,
-    ) -> Result<(), SetupError> {
+    /// WLAN the master of every radio, the others virtual ones. The CAPs forward the clients'
+    /// traffic themselves, into their bridge (`WirelessDeviceDataTarget::setup_legacy_cap`)
+    /// in the WLAN's VLAN, from where the VXLAN carries it on. Only read where NetBox asks
+    /// for it (`DeviceCfg::fetch`).
+    fn generate_from(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
         let Some(group) = device
             .wlan_controller_of()
             .filter(WlanGroupAccess::has_legacy_caps)
@@ -1606,13 +1608,9 @@ impl CapsManDeviceDataTarget {
             }
             let datapath = &mut self.datapath.entry(name.clone()).or_default().0;
             datapath.name = name.clone();
-            datapath.local_forwarding = Some(false);
+            datapath.local_forwarding = Some(true);
             datapath.client_to_client_forwarding = Some(true);
-            if let (Some(bridge), Some(vlan)) = (
-                l2.bridge_of_wlan(&wlan),
-                wlan.vlan().and_then(|vlan| vlan.vlan_id()),
-            ) {
-                datapath.bridge = Some(bridge.clone());
+            if let Some(vlan) = wlan.vlan().and_then(|vlan| vlan.vlan_id()) {
                 datapath.vlan_mode = Some(CapsManDatapathVlanMode::UseTag);
                 datapath.vlan_id = Some(vlan);
             }

@@ -39,11 +39,12 @@ WLAN is mainly the `/interface/wifi` stack (`docs/wlan-generation.md`): CAPsMAN 
 LAN Group's controller, CAPs routed (they reach the controller at its loopback) with local
 forwarding into the bridge NetBox puts their radios in. An AP with `wlan<N>` ports in NetBox
 (`wireless` package, `Topology::is_legacy_cap`) is a CAP of the old `/caps-man` on the same
-controller instead (`CapsManDeviceDataTarget`, the controller then needs `wireless` too): CAPsMAN
-forwards its clients into the bridge of the WLAN's VLAN on the controller, so it gets no WLAN VLAN
-or VXLAN and is no VTEP. RouterOS makes the dynamic `capN` interfaces bridge ports with that
-`pvid`; they only become untagged members of the VLAN while running, i.e. with a client. An AP
-without radios in NetBox keeps its `/interface/wireless/cap` as it is. A wireless radio the board
+controller instead (`CapsManDeviceDataTarget`, the controller then needs `wireless` too). It
+forwards its clients itself (`local-forwarding=yes`, the CAP's `bridge`), into the WLANs' VLANs
+and their VXLAN like a CAP of `/interface/wifi`, so it is a VTEP; RouterOS hangs master and
+virtual radios into that bridge with the `pvid` of their WLAN (tagged members of a dynamic bridge
+VLAN entry). A CAP only gets a new WLAN when its radios are provisioned again (it reconnects). An
+AP without radios in NetBox keeps its `/interface/wireless/cap` as it is. A wireless radio the board
 doesn't have (a miniPCIe card, `wlan2` of an RB912) is taken from the device. Anything model
 specific (ports, radio profiles, which package a board's radios need: `wireless`, `wifi-qcom`,
 `wifi-qcom-ac`) belongs in `hw_facts.rs`. A radio stack is only read, and its package only

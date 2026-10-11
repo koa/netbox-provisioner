@@ -107,7 +107,7 @@ impl DeviceCfg {
             )?;
         }
         if let Some(capsman_target) = self.capsman_target.as_mut() {
-            capsman_target.generate_from(device, &l2)?;
+            capsman_target.generate_from(device)?;
         }
         self.base_target.setup_l2(device, &l2, self.radio_package)?;
         self.base_target.setup_mtu(device)?;
