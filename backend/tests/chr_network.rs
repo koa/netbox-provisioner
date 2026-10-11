@@ -10,6 +10,7 @@
 
 mod chr_network {
     pub mod apply;
+    pub mod fallback;
     pub mod golden_image;
     pub mod mac_telnet;
     pub mod ospf_chain;
