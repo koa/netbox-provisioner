@@ -21,6 +21,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -41,6 +42,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -61,6 +63,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -81,6 +84,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -101,6 +105,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -121,6 +126,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -141,6 +147,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -161,6 +168,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -181,6 +189,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -201,6 +210,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -221,6 +231,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -241,6 +252,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "633"
             },
@@ -261,6 +273,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -281,6 +294,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -301,6 +315,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -321,6 +336,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -341,6 +357,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -361,6 +378,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -381,6 +399,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -401,6 +420,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -421,6 +441,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -441,6 +462,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -461,6 +483,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -481,6 +504,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "632"
             },
@@ -511,6 +535,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -533,6 +558,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -559,6 +585,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -581,6 +608,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": {
@@ -608,6 +636,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -643,7 +672,8 @@
         "serial": "945509C5976A",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "3",
@@ -665,6 +695,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -685,6 +716,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -705,6 +737,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -725,6 +758,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -745,6 +779,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -765,6 +800,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -785,6 +821,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -805,6 +842,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -825,6 +863,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -845,6 +884,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -865,6 +905,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -885,6 +926,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -905,6 +947,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -925,6 +968,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -945,6 +989,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -965,6 +1010,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -985,6 +1031,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "415"
             },
@@ -1005,6 +1052,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "450"
             },
@@ -1025,6 +1073,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "450"
             },
@@ -1045,6 +1094,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "450"
             },
@@ -1065,6 +1115,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "450"
             },
@@ -1085,6 +1136,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "450"
             },
@@ -1109,6 +1161,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -1131,6 +1184,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1159,6 +1213,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1181,6 +1236,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -1207,6 +1263,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -1229,6 +1286,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": {
@@ -1256,6 +1314,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1291,7 +1350,8 @@
         "serial": "94550BD08A7E",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "244",
@@ -1317,6 +1377,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -1339,6 +1400,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1357,6 +1419,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1375,6 +1438,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1393,6 +1457,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1418,6 +1483,45 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "725",
+            "name": "wifi1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "726",
+            "name": "wifi2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1453,7 +1557,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": 1
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "141",
@@ -1479,6 +1584,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -1501,6 +1607,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "407"
             },
@@ -1521,6 +1628,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "407"
             },
@@ -1541,6 +1649,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1559,6 +1668,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1587,6 +1697,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1605,6 +1716,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-x-sfp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1630,12 +1742,51 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
                 "slug": "dhcp"
               }
             ],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "719",
+            "name": "wlan1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ac",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "720",
+            "name": "wlan2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ac",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null,
@@ -1669,7 +1820,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": 1
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "246",
@@ -1695,6 +1847,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -1717,6 +1870,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": {
@@ -1737,6 +1891,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": {
@@ -1757,6 +1912,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": {
@@ -1777,6 +1933,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": {
@@ -1804,6 +1961,45 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "727",
+            "name": "wifi1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "728",
+            "name": "wifi2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1837,7 +2033,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": 1
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "247",
@@ -1863,6 +2060,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -1885,6 +2083,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1910,6 +2109,45 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "713",
+            "name": "wifi1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "714",
+            "name": "wifi2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -1943,7 +2181,8 @@
         "serial": "HGQ09J3AHAZ",
         "custom_field_data": {
           "wlan_group": 1
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "108",
@@ -1969,6 +2208,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -1991,6 +2231,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": {
@@ -2015,6 +2256,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -2037,6 +2279,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -2059,6 +2302,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -2094,6 +2338,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -2116,6 +2361,7 @@
             ],
             "enabled": true,
             "type": "1000base-x-sfp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -2138,6 +2384,45 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "721",
+            "name": "wlan1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ac",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "722",
+            "name": "wlan2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ac",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -2171,7 +2456,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": 1
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "250",
@@ -2197,6 +2483,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -2219,6 +2506,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -2244,6 +2532,45 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "715",
+            "name": "wifi1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "716",
+            "name": "wifi2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -2277,7 +2604,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": 1
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "62",
@@ -2341,7 +2669,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "61",
@@ -2405,7 +2734,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "65",
@@ -2464,7 +2794,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "90",
@@ -2482,6 +2813,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -2500,6 +2832,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "268"
             },
@@ -2520,6 +2853,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ac",
+            "mtu": null,
             "bridge": {
               "id": "268"
             },
@@ -2562,7 +2896,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "88",
@@ -2580,11 +2915,50 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": "pd",
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "731",
+            "name": "wlan1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ac",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "732",
+            "name": "wlan2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ac",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
             "rf_role": null,
             "rf_channel_frequency": null,
             "rf_channel_width": null,
@@ -2615,7 +2989,8 @@
         "serial": "71A2061F8002",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "46",
@@ -2679,7 +3054,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "18",
@@ -2743,7 +3119,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "94",
@@ -2761,6 +3138,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -2779,6 +3157,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "285"
             },
@@ -2799,6 +3178,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ad",
+            "mtu": null,
             "bridge": {
               "id": "285"
             },
@@ -2839,7 +3219,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "104",
@@ -2865,6 +3246,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -2891,6 +3273,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -2913,6 +3296,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "351"
             },
@@ -2933,6 +3317,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "351"
             },
@@ -2953,6 +3338,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "351"
             },
@@ -2980,6 +3366,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -3012,6 +3399,45 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "729",
+            "name": "wifi1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "730",
+            "name": "wifi2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -3045,7 +3471,8 @@
         "serial": "HEE08Z7RPNT",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "19",
@@ -3109,7 +3536,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "20",
@@ -3173,7 +3601,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "21",
@@ -3237,7 +3666,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "4",
@@ -3301,7 +3731,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "49",
@@ -3365,7 +3796,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "50",
@@ -3429,7 +3861,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "103",
@@ -3447,6 +3880,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -3465,6 +3899,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "342"
             },
@@ -3485,6 +3920,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ad",
+            "mtu": null,
             "bridge": {
               "id": "342"
             },
@@ -3525,7 +3961,8 @@
         "serial": "HDD0828WJ0X",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "251",
@@ -3551,6 +3988,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -3573,6 +4011,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -3598,6 +4037,45 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "717",
+            "name": "wifi1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "718",
+            "name": "wifi2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ax",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -3631,7 +4109,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": 1
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "242",
@@ -3649,6 +4128,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -3671,6 +4151,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -3689,6 +4170,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -3707,6 +4189,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -3725,6 +4208,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -3747,6 +4231,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -3778,7 +4263,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "66",
@@ -3837,7 +4323,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "69",
@@ -3881,7 +4368,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "67",
@@ -3940,7 +4428,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "68",
@@ -3984,7 +4473,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "71",
@@ -4002,6 +4492,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -4030,7 +4521,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "245",
@@ -4048,6 +4540,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "639"
             },
@@ -4068,6 +4561,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "639"
             },
@@ -4088,6 +4582,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "639"
             },
@@ -4108,6 +4603,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "639"
             },
@@ -4128,6 +4624,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "639"
             },
@@ -4148,6 +4645,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -4187,7 +4685,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "10",
@@ -4205,6 +4704,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "77"
             },
@@ -4225,6 +4725,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "77"
             },
@@ -4245,6 +4746,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "77"
             },
@@ -4265,6 +4767,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "77"
             },
@@ -4285,6 +4788,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "77"
             },
@@ -4305,6 +4809,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "77"
             },
@@ -4325,6 +4830,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "77"
             },
@@ -4345,6 +4851,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "77"
             },
@@ -4365,6 +4872,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-x-sfp",
+            "mtu": null,
             "bridge": {
               "id": "77"
             },
@@ -4385,6 +4893,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -4424,7 +4933,8 @@
         "serial": "5A880548AEB8",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "7",
@@ -4442,6 +4952,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -4475,7 +4986,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "44",
@@ -4539,7 +5051,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "12",
@@ -4603,7 +5116,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "78",
@@ -4635,7 +5149,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "24",
@@ -4699,7 +5214,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "25",
@@ -4763,7 +5279,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "60",
@@ -4827,7 +5344,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "59",
@@ -4891,7 +5409,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "93",
@@ -4909,6 +5428,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -4927,6 +5447,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "282"
             },
@@ -4947,6 +5468,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ad",
+            "mtu": null,
             "bridge": {
               "id": "282"
             },
@@ -4987,7 +5509,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "89",
@@ -5016,6 +5539,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -5042,6 +5566,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -5068,6 +5593,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -5090,6 +5616,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -5112,6 +5639,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -5144,6 +5672,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -5162,6 +5691,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -5197,7 +5727,8 @@
         "serial": "78D20725D85B",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "11",
@@ -5215,6 +5746,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -5233,6 +5765,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -5266,7 +5799,8 @@
         "serial": "000413A621D5",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "286",
@@ -5330,7 +5864,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "92",
@@ -5348,6 +5883,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -5366,6 +5902,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "279"
             },
@@ -5386,6 +5923,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ac",
+            "mtu": null,
             "bridge": {
               "id": "279"
             },
@@ -5428,7 +5966,8 @@
         "serial": "6B2D05FEB74D",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "95",
@@ -5446,6 +5985,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -5464,6 +6004,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "288"
             },
@@ -5484,6 +6025,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ad",
+            "mtu": null,
             "bridge": {
               "id": "288"
             },
@@ -5526,7 +6068,8 @@
         "serial": "8B93072767CC",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "96",
@@ -5544,6 +6087,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -5562,6 +6106,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "291"
             },
@@ -5582,6 +6127,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ad",
+            "mtu": null,
             "bridge": {
               "id": "291"
             },
@@ -5624,7 +6170,8 @@
         "serial": "D6880CA571E3",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "82",
@@ -6018,7 +6565,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "83",
@@ -6412,7 +6960,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "243",
@@ -6432,6 +6981,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -6450,6 +7000,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -6468,6 +7019,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -6486,6 +7038,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -6508,6 +7061,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -6530,6 +7084,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -6559,7 +7114,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "84",
@@ -6581,6 +7137,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6601,6 +7158,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6621,6 +7179,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6641,6 +7200,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6661,6 +7221,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6681,6 +7242,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6701,6 +7263,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6721,6 +7284,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6741,6 +7305,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6761,6 +7326,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6781,6 +7347,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6801,6 +7368,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6821,6 +7389,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6841,6 +7410,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6861,6 +7431,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6881,6 +7452,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6901,6 +7473,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6921,6 +7494,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6941,6 +7515,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6961,6 +7536,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -6981,6 +7557,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -7001,6 +7578,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "416"
             },
@@ -7021,6 +7599,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7039,6 +7618,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7057,6 +7637,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7075,6 +7656,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7093,6 +7675,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7111,6 +7694,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7129,6 +7713,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7147,6 +7732,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7165,6 +7751,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7183,6 +7770,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7201,6 +7789,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7219,6 +7808,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7237,6 +7827,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7255,6 +7846,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7273,6 +7865,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "652"
             },
@@ -7293,6 +7886,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "652"
             },
@@ -7313,6 +7907,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "652"
             },
@@ -7333,6 +7928,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "652"
             },
@@ -7353,6 +7949,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "652"
             },
@@ -7373,6 +7970,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7391,6 +7989,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7409,6 +8008,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7427,6 +8027,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7445,6 +8046,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7463,6 +8065,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7485,6 +8088,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -7514,6 +8118,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -7543,6 +8148,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -7575,6 +8181,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7597,6 +8204,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -7623,6 +8231,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -7645,6 +8254,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7667,6 +8277,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -7689,6 +8300,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7707,6 +8319,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -7742,7 +8355,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "85",
@@ -7764,6 +8378,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -7784,6 +8399,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -7804,6 +8420,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -7824,6 +8441,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -7844,6 +8462,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -7864,6 +8483,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -7884,6 +8504,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -7904,6 +8525,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -7924,6 +8546,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -7944,6 +8567,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -7964,6 +8588,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -7984,6 +8609,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -8004,6 +8630,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -8024,6 +8651,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -8044,6 +8672,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -8064,6 +8693,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -8084,6 +8714,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -8104,6 +8735,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -8124,6 +8756,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -8144,6 +8777,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -8164,6 +8798,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -8188,6 +8823,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -8210,6 +8846,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "408"
             },
@@ -8230,6 +8867,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -8258,6 +8896,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -8280,6 +8919,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -8306,6 +8946,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -8335,6 +8976,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -8374,7 +9016,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "175",
@@ -8396,6 +9039,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -8421,6 +9065,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -8439,6 +9084,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": {
               "id": "650"
             },
@@ -8459,6 +9105,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": {
               "id": "650"
             },
@@ -8479,6 +9126,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": {
               "id": "650"
             },
@@ -8503,6 +9151,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -8525,6 +9174,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -8543,6 +9193,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -8565,6 +9216,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -8591,6 +9243,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -8620,6 +9273,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -8659,7 +9313,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "105",
@@ -8677,6 +9332,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -8695,6 +9351,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "352"
             },
@@ -8715,6 +9372,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ad",
+            "mtu": null,
             "bridge": {
               "id": "352"
             },
@@ -8757,7 +9415,8 @@
         "serial": "8B93078625D1",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "47",
@@ -8821,7 +9480,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "45",
@@ -8885,7 +9545,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "48",
@@ -8949,7 +9610,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "77",
@@ -8981,7 +9643,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "248",
@@ -9003,6 +9666,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9031,7 +9695,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "63",
@@ -9055,6 +9720,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -9081,6 +9747,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -9103,6 +9770,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "108"
             },
@@ -9123,6 +9791,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "108"
             },
@@ -9143,6 +9812,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "108"
             },
@@ -9163,6 +9833,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "108"
             },
@@ -9187,6 +9858,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9205,6 +9877,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "108"
             },
@@ -9229,6 +9902,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9247,6 +9921,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9265,6 +9940,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9283,6 +9959,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9305,6 +9982,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9330,6 +10008,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9352,6 +10031,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9374,6 +10054,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9396,6 +10077,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9414,6 +10096,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9432,6 +10115,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9457,6 +10141,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9487,7 +10172,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "70",
@@ -9507,6 +10193,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "648"
             },
@@ -9527,6 +10214,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "648"
             },
@@ -9547,6 +10235,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9565,6 +10254,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9587,6 +10277,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9609,6 +10300,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9627,6 +10319,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "lte",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9652,6 +10345,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9670,6 +10364,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11n",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9688,6 +10383,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ac",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9718,7 +10414,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "284",
@@ -9740,6 +10437,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9758,6 +10456,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9776,6 +10475,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9794,6 +10494,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9812,6 +10513,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "2.5gbase-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9830,6 +10532,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "lte",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9848,6 +10551,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ax",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9866,6 +10570,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ax",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9896,7 +10601,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "73",
@@ -9918,6 +10624,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9946,7 +10653,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "74",
@@ -9968,6 +10676,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -9996,7 +10705,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "5",
@@ -10750,7 +11460,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "64",
@@ -10959,7 +11670,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "107",
@@ -10991,7 +11703,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "9",
@@ -11205,7 +11918,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "75",
@@ -11419,7 +12133,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "87",
@@ -11441,6 +12156,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "259"
             },
@@ -11461,6 +12177,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11479,6 +12196,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11497,6 +12215,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11519,6 +12238,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -11541,6 +12261,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11559,6 +12280,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11577,6 +12299,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11599,6 +12322,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -11640,6 +12364,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11662,6 +12387,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11680,6 +12406,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11698,6 +12425,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-x-sfp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11723,6 +12451,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11758,7 +12487,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "91",
@@ -11780,6 +12510,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "278"
             },
@@ -11807,6 +12538,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -11836,6 +12568,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -11865,6 +12598,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -11894,6 +12628,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -11923,6 +12658,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -11955,6 +12691,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -11973,6 +12710,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-x-sfp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12008,7 +12746,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "98",
@@ -12030,6 +12769,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12055,6 +12795,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -12084,6 +12825,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -12113,6 +12855,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -12139,6 +12882,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -12171,6 +12915,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12189,6 +12934,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-x-sfp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12224,7 +12970,8 @@
         "serial": "7253067EB887",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "209",
@@ -12250,6 +12997,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12268,6 +13016,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12286,6 +13035,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12304,6 +13054,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12322,6 +13073,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12347,6 +13099,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12369,6 +13122,7 @@
             ],
             "enabled": true,
             "type": "1000base-x-sfp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -12408,7 +13162,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "249",
@@ -12430,6 +13185,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "662"
             },
@@ -12450,6 +13206,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "662"
             },
@@ -12470,6 +13227,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "662"
             },
@@ -12490,6 +13248,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "662"
             },
@@ -12514,6 +13273,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -12543,6 +13303,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12568,6 +13329,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12586,6 +13348,45 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-x-sfp",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "723",
+            "name": "wlan1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ac",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "724",
+            "name": "wlan2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ac",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -12619,7 +13420,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "101",
@@ -12645,6 +13447,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -12667,6 +13470,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "341"
             },
@@ -12687,6 +13491,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12707,6 +13512,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12727,6 +13533,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12747,6 +13554,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12767,6 +13575,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12787,6 +13596,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12807,6 +13617,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12827,6 +13638,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12847,6 +13659,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12867,6 +13680,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12887,6 +13701,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12907,6 +13722,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12927,6 +13743,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12947,6 +13764,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12967,6 +13785,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -12987,6 +13806,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -13007,6 +13827,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -13027,6 +13848,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -13047,6 +13869,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -13067,6 +13890,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -13087,6 +13911,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -13107,6 +13932,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "340"
             },
@@ -13137,6 +13963,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13155,6 +13982,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13177,6 +14005,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -13206,6 +14035,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13231,6 +14061,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13266,7 +14097,8 @@
         "serial": "DA720D6DD1DA",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "51",
@@ -13330,7 +14162,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "99",
@@ -13348,6 +14181,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13366,6 +14200,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "304"
             },
@@ -13386,6 +14221,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ad",
+            "mtu": null,
             "bridge": {
               "id": "304"
             },
@@ -13428,7 +14264,8 @@
         "serial": "D6880CC017A0",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "97",
@@ -13446,6 +14283,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13464,6 +14302,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "294"
             },
@@ -13484,6 +14323,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ad",
+            "mtu": null,
             "bridge": {
               "id": "294"
             },
@@ -13526,7 +14366,8 @@
         "serial": "HDD087PFBQV",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "100",
@@ -13544,6 +14385,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13562,6 +14404,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "307"
             },
@@ -13582,6 +14425,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ad",
+            "mtu": null,
             "bridge": {
               "id": "307"
             },
@@ -13624,7 +14468,8 @@
         "serial": "873B0947ACCF",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "176",
@@ -13648,6 +14493,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13670,6 +14516,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13703,7 +14550,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "177",
@@ -13725,6 +14573,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13747,6 +14596,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13780,7 +14630,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "81",
@@ -13802,6 +14653,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -13835,7 +14687,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "79",
@@ -13867,7 +14720,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "80",
@@ -13899,7 +14753,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "1",
@@ -13928,6 +14783,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -13959,6 +14815,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -13990,6 +14847,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14021,6 +14879,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14052,6 +14911,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14083,6 +14943,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14111,6 +14972,7 @@
             ],
             "enabled": true,
             "type": "1000base-x-sfp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14137,6 +14999,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14159,6 +15022,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14177,6 +15041,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14195,6 +15060,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14217,6 +15083,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14235,12 +15102,24 @@
           {
             "id": "7",
             "name": "ether6",
-            "label": "",
-            "ip_addresses": [],
+            "label": "lab",
+            "ip_addresses": [
+              {
+                "id": "532"
+              }
+            ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
-            "tags": [],
+            "tags": [
+              {
+                "slug": "dhcp"
+              },
+              {
+                "slug": "ospf"
+              }
+            ],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null,
@@ -14257,6 +15136,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14294,6 +15174,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14316,6 +15197,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14355,7 +15237,8 @@
         "serial": "6E130447C663",
         "custom_field_data": {
           "wlan_group": 1
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "8",
@@ -14373,6 +15256,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "100base-tx",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14406,7 +15290,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "142",
@@ -14432,6 +15317,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14454,6 +15340,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "505"
             },
@@ -14478,6 +15365,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14504,6 +15392,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14530,6 +15419,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14556,6 +15446,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14578,6 +15469,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14596,6 +15488,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14614,6 +15507,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14632,6 +15526,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14650,6 +15545,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14668,6 +15564,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14686,6 +15583,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14704,6 +15602,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14722,6 +15621,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14740,6 +15640,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14758,6 +15659,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14783,6 +15685,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14805,6 +15708,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -14827,6 +15731,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14860,7 +15765,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "72",
@@ -14878,6 +15784,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -14906,7 +15813,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "17",
@@ -14970,7 +15878,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "54",
@@ -15034,7 +15943,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "13",
@@ -15098,7 +16008,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "102",
@@ -15116,6 +16027,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -15134,6 +16046,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "336"
             },
@@ -15154,6 +16067,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "ieee802.11ad",
+            "mtu": null,
             "bridge": {
               "id": "336"
             },
@@ -15196,7 +16110,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "106",
@@ -15590,7 +16505,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "285",
@@ -15984,7 +16900,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "86",
@@ -16006,6 +16923,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16026,6 +16944,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16046,6 +16965,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16066,6 +16986,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16086,6 +17007,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16106,6 +17028,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16126,6 +17049,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16146,6 +17070,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16166,6 +17091,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16186,6 +17112,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16206,6 +17133,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16226,6 +17154,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16246,6 +17175,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16266,6 +17196,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16286,6 +17217,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16306,6 +17238,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16330,6 +17263,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -16352,6 +17286,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16372,6 +17307,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16392,6 +17328,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16412,6 +17349,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16432,6 +17370,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16452,6 +17391,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "655"
             },
@@ -16476,6 +17416,7 @@
             ],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -16505,6 +17446,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16523,6 +17465,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16541,6 +17484,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16566,6 +17510,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -16603,7 +17548,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "76",
@@ -16625,6 +17571,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "138"
             },
@@ -16645,6 +17592,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "138"
             },
@@ -16665,6 +17613,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": {
               "id": "138"
             },
@@ -16685,6 +17634,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16703,6 +17653,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16721,6 +17672,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16739,6 +17691,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16757,6 +17710,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16775,6 +17729,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16793,6 +17748,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16811,6 +17767,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16829,6 +17786,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16847,6 +17805,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16865,6 +17824,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16883,6 +17843,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16901,6 +17862,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16919,6 +17881,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16937,6 +17900,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16955,6 +17919,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16973,6 +17938,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -16991,6 +17957,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -17009,6 +17976,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -17027,6 +17995,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -17045,6 +18014,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -17073,6 +18043,7 @@
             ],
             "enabled": true,
             "type": "virtual",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -17095,6 +18066,7 @@
             ],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [
               {
@@ -17117,6 +18089,7 @@
             "ip_addresses": [],
             "enabled": true,
             "type": "10gbase-x-sfpp",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -17142,6 +18115,7 @@
             ],
             "enabled": true,
             "type": "bridge",
+            "mtu": null,
             "bridge": null,
             "tags": [],
             "untagged_vlan": null,
@@ -17177,7 +18151,8 @@
         "serial": "DA720E47BC6D",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "23",
@@ -17241,7 +18216,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "53",
@@ -17305,7 +18281,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "52",
@@ -17369,7 +18346,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "22",
@@ -17433,7 +18411,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "56",
@@ -17497,7 +18476,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "55",
@@ -17561,7 +18541,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "57",
@@ -17625,7 +18606,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       },
       {
         "id": "58",
@@ -17689,7 +18671,8 @@
         "serial": "",
         "custom_field_data": {
           "wlan_group": null
-        }
+        },
+        "config_context": {}
       }
     ],
     "tenant_list": [
@@ -21359,6 +22342,10 @@
         "address": "172.17.1.78/30"
       },
       {
+        "id": "532",
+        "address": "172.17.1.81/30"
+      },
+      {
         "id": "70",
         "address": "172.31.0.1/24"
       },
@@ -22223,6 +23210,10 @@
       {
         "id": "675",
         "prefix": "172.17.1.76/30"
+      },
+      {
+        "id": "676",
+        "prefix": "172.17.1.80/30"
       },
       {
         "id": "10",
