@@ -45,6 +45,8 @@ pub enum Error {
     NoBootstrapPath(Box<str>, &'static str),
     #[error("Setup of {0} failed: {1}")]
     Bootstrap(Box<str>, Box<str>),
+    #[error("The device refused: {0}")]
+    Refused(Box<str>),
     #[error("Update: {0}")]
     Update(Box<str>),
 }

@@ -244,7 +244,7 @@ fn v7_step(wanted: &[String], arch: &str, version: &Version, uninstall: Vec<Stri
     }
 }
 
-async fn rows(device: &RawDevice<SimpleResult>, command: &[u8]) -> Result<Vec<HashMap<Box<str>, Option<Box<str>>>>, Error> {
+pub(crate) async fn rows(device: &RawDevice<SimpleResult>, command: &[u8]) -> Result<Vec<HashMap<Box<str>, Option<Box<str>>>>, Error> {
     let mut stream = device.send_simple_command(command, ()).await;
     let mut rows = Vec::new();
     while let Some(result) = stream.next().await {
@@ -261,7 +261,7 @@ async fn rows(device: &RawDevice<SimpleResult>, command: &[u8]) -> Result<Vec<Ha
     Ok(rows)
 }
 
-fn field<'r>(row: &'r HashMap<Box<str>, Option<Box<str>>>, name: &str) -> Option<&'r str> {
+pub(crate) fn field<'r>(row: &'r HashMap<Box<str>, Option<Box<str>>>, name: &str) -> Option<&'r str> {
     row.get(name).and_then(|v| v.as_deref())
 }
 

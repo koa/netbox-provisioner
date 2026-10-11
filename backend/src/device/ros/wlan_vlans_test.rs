@@ -3,8 +3,10 @@
 //! (`wifi-qcom-ac`) can't, a wAP ac runs them as `wlan<N>` of the legacy CAPsMAN instead.
 use crate::{
     device::ros::{
-        CapsManDeviceDataTarget, SetupError, WifiDeviceDataCurrent, WifiDeviceDataTarget,
+        CapsManDeviceDataCurrent, CapsManDeviceDataTarget, SetupError, WifiDeviceDataCurrent,
+        WifiDeviceDataTarget,
         WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
+        graphql::reprovisioned_menus,
         hw_facts::{RadioPackage, build_wifi_ports, build_wireless_ports},
         l2::{KeepNameGenerator, L2Setup},
         needed_radio_package,
@@ -269,4 +271,46 @@ async fn ac_cap_moving_to_wireless_frees_the_names() {
         .generate_from(&ap_legacy, &setup, Some(&current))
         .unwrap();
     assert!(!wireless.wireless[&Some(AsciiString::from("wlan1"))].disabled);
+}
+
+/// A new WLAN on the controller reprovisions the radios of both CAPsMANs; a change to the
+/// CAP's own settings doesn't.
+#[tokio::test]
+async fn new_wlan_reprovisions_the_caps() {
+    let [controller, ..] = wlan_group(&[104, 105]).await;
+    let wifi = wifi(&controller, b"CCR2004-1G-12S+2XS", RadioPackage::WifiQcom).unwrap();
+    let wifi_current = WifiDeviceDataCurrent {
+        provisioning: Box::new([]),
+        datapath: Box::new([]),
+        cap: Default::default(),
+        capsman: Default::default(),
+        wifi: build_wifi_ports(b"C52iG-5HaxD2HaxD"),
+        configuration: Box::new([]),
+        certificate: Box::new([]),
+    };
+    let mut capsman = CapsManDeviceDataTarget::new(b"CCR2004-1G-12S+2XS");
+    capsman.generate_from(&controller).unwrap();
+    let capsman_current = CapsManDeviceDataCurrent {
+        manager: Default::default(),
+        security: Box::new([]),
+        datapath: Box::new([]),
+        configuration: Box::new([]),
+        provisioning: Box::new([]),
+    };
+    let mutations = [
+        wifi.generate_mutations(&wifi_current).unwrap(),
+        capsman.generate_mutations(&capsman_current).unwrap(),
+    ]
+    .concat();
+    assert_eq!(
+        reprovisioned_menus(&mutations),
+        ["/interface/wifi/radio", "/caps-man/radio"]
+    );
+    let cap_only = mutations
+        .iter()
+        .filter(|mutation| mutation.resource == b"interface/wifi/cap")
+        .cloned()
+        .collect::<Vec<_>>();
+    assert!(!cap_only.is_empty());
+    assert!(reprovisioned_menus(&cap_only).is_empty());
 }

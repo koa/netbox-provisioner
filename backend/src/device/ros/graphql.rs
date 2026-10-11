@@ -18,7 +18,7 @@ use crate::{
     },
     topology::access::device::DeviceAccess,
 };
-use async_graphql::{Context, Object, SimpleObject};
+use async_graphql::{Context, Object, SimpleObject, futures_util::StreamExt};
 use log::info;
 use mikrotik_api::simple::SimpleResult;
 use mikrotik_model::{
@@ -219,9 +219,74 @@ pub struct GeneratedCfg {
 pub struct ApplyResult {
     /// the script that was run on the device; empty if there was nothing to do
     applied: String,
+    /// the CAPs' radios a controller provisioned again, since the WLANs changed (German, for
+    /// the UI)
+    reprovisioned: Vec<String>,
     /// what the device still lacks afterwards (empty when everything was applied), or why it
     /// couldn't be checked
     remaining: String,
+}
+
+/// The `radio` menus of the CAPsMANs whose WLANs `mutations` change: a CAP only takes a new
+/// WLAN (a slave configuration) when its radios are provisioned again.
+pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<&'static str> {
+    let touches = |menu: &str| {
+        mutations.iter().any(|mutation| {
+            let path = mutation.resource.strip_prefix(b"/").unwrap_or(mutation.resource);
+            ["configuration", "provisioning", "datapath", "security"]
+                .iter()
+                .any(|entry| path == format!("{menu}/{entry}").as_bytes())
+        })
+    };
+    [
+        ("interface/wifi", "/interface/wifi/radio"),
+        ("caps-man", "/caps-man/radio"),
+    ]
+    .into_iter()
+    .filter(|(menu, _)| touches(menu))
+    .map(|(_, radios)| radios)
+    .collect()
+}
+
+/// Provisions the CAPs' radios of `menu` again (not the controller's own); how many there are.
+async fn provision_radios(
+    raw: &mikrotik_api::prelude::MikrotikDevice<SimpleResult>,
+    menu: &str,
+) -> Result<usize, Error> {
+    let rows = update::rows(raw, format!("{menu}/print").as_bytes()).await?;
+    let ids = rows
+        .iter()
+        .filter(|row| {
+            // `/caps-man/radio` names the CAP in `remote-cap-identity`, `/interface/wifi/radio`
+            // in `cap`
+            update::field(row, "local") != Some("true")
+                && ["remote-cap-identity", "cap"]
+                    .iter()
+                    .any(|name| update::field(row, name).is_some_and(|cap| !cap.is_empty()))
+        })
+        .filter_map(|row| update::field(row, ".id"))
+        .collect::<Vec<_>>();
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let command = format!("{menu}/provision");
+    let mut stream = raw
+        .send_command(
+            command.as_bytes(),
+            |cmd| cmd.attribute(b"numbers".as_slice(), ids.join(",").as_bytes()),
+            (),
+        )
+        .await;
+    while let Some(result) = stream.next().await {
+        match result {
+            SimpleResult::Sentence(_) => {}
+            SimpleResult::Error(error) => return Err(error.into()),
+            SimpleResult::Trap { message, .. } => {
+                return Err(Error::Refused(message));
+            }
+        }
+    }
+    Ok(ids.len())
 }
 
 /// The name of the `/system/script` entry the config is applied with.
@@ -245,6 +310,7 @@ impl AccessibleDevice {
         if applied.is_empty() {
             return Ok(ApplyResult {
                 applied: String::new(),
+                reprovisioned: Vec::new(),
                 remaining: String::new(),
             });
         }
@@ -262,13 +328,39 @@ impl AccessibleDevice {
                 _ => info!("{}: not done yet", self.device_config.name()),
             }
         };
+        let reprovisioned = if self.device_config.wlan_controller_of().is_some() {
+            self.reprovision(reprovisioned_menus(&mutations)).await
+        } else {
+            Vec::new()
+        };
         Ok(ApplyResult {
             applied: applied.into(),
+            reprovisioned,
             remaining: match remaining {
                 Ok(script) => script.into(),
                 Err(error) => format!("cannot check the device: {error}"),
             },
         })
+    }
+    /// Provisions the radios of `menus` (`reprovisioned_menus`) again, which reconnects the
+    /// CAPs' clients; what it did or why it couldn't, for the UI.
+    async fn reprovision(&self, menus: Vec<&'static str>) -> Vec<String> {
+        if menus.is_empty() {
+            return Vec::new();
+        }
+        let raw = match self.connect_again::<SimpleResult>().await {
+            Ok(raw) => raw,
+            Err(error) => return vec![format!("Radios nicht neu provisioniert: {error}")],
+        };
+        let mut report = Vec::new();
+        for menu in menus {
+            match provision_radios(&raw, menu).await {
+                Ok(0) => {}
+                Ok(count) => report.push(format!("{count} Radios neu provisioniert ({menu})")),
+                Err(error) => report.push(format!("{menu} nicht neu provisioniert: {error}")),
+            }
+        }
+        report
     }
     /// The packages besides `routeros` the device needs (`needed_radio_package`); none on a
     /// CHR, which has no RouterBOARD.

@@ -158,7 +158,13 @@ mikrotik-model): `bridge=""` lässt RouterOS ohne Fehler stehen, `vlan-id=""` le
 7.24.5).
 
 Neue WLANs (Slave-Configurations) bekommt ein CAP erst, wenn seine Radios neu provisioniert
-werden (er sich neu verbindet); das löst die Generierung nicht aus.
+werden. Ändert das Anwenden auf dem Controller Configurations, Provisioning, Datapaths oder
+Security eines CAPsMAN (`reprovisioned_menus`), provisioniert der Provisioner danach die Radios
+der CAPs dieses CAPsMAN neu (`/caps-man/radio provision`, `/interface/wifi/radio provision`;
+nicht die eigenen des Controllers). Ihre Clients verbinden sich dabei neu, ein Radio auf einem
+DFS-Kanal sendet erst nach der Radarprüfung wieder. Das UI zeigt, wie viele Radios es waren.
+Im Lab geprüft mit dem klassischen CAPsMAN; das Feld `cap`, an dem `/interface/wifi/radio` die
+Radios eines CAP erkennen lässt, ist mangels 802.11ax-Gerät ungeprüft.
 
 ### Vom wAP ac auf `wifi-qcom-ac` zu `wireless`
 

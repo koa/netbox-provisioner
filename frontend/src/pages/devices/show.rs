@@ -380,18 +380,26 @@ impl Component for ShowDevice {
             </dl>}
         });
         let applied = match &self.apply {
-            ApplyState::Done(result) => Some(if result.remaining.is_empty() {
-                html! {
-                    <Alert inline=true title="Angewendet, das Gerät entspricht jetzt NetBox" r#type={AlertType::Success}>
-                        <CodeBlock><CodeBlockCode>{ result.applied.clone() }</CodeBlockCode></CodeBlock>
-                    </Alert>
-                }
-            } else {
-                html! {
-                    <Alert inline=true title="Nicht alles wurde angewendet" r#type={AlertType::Warning}>
-                        <p>{"Noch offen:"}</p>
-                        <CodeBlock><CodeBlockCode>{ result.remaining.clone() }</CodeBlockCode></CodeBlock>
-                    </Alert>
+            ApplyState::Done(result) => Some({
+                // the CAPs' radios a controller provisioned again (their clients reconnect)
+                let reprovisioned = html! {
+                    for line in result.reprovisioned.iter() { <p>{ line.clone() }</p> }
+                };
+                if result.remaining.is_empty() {
+                    html! {
+                        <Alert inline=true title="Angewendet, das Gerät entspricht jetzt NetBox" r#type={AlertType::Success}>
+                            <CodeBlock><CodeBlockCode>{ result.applied.clone() }</CodeBlockCode></CodeBlock>
+                            {reprovisioned}
+                        </Alert>
+                    }
+                } else {
+                    html! {
+                        <Alert inline=true title="Nicht alles wurde angewendet" r#type={AlertType::Warning}>
+                            <p>{"Noch offen:"}</p>
+                            <CodeBlock><CodeBlockCode>{ result.remaining.clone() }</CodeBlockCode></CodeBlock>
+                            {reprovisioned}
+                        </Alert>
+                    }
                 }
             }),
             _ => None,
