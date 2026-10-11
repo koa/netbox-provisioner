@@ -119,8 +119,16 @@ impl BootstrapPlan {
 /// proxy or a device with a primary IP) and has an address in the same subnet. The address goes
 /// on the port itself for the setup; the apply moves it where NetBox has it.
 pub fn plan(device: &DeviceAccess) -> Result<BootstrapPlan, Error> {
+    Ok(plans(device)?.swap_remove(0))
+}
+
+/// Every [`plan`] of `device`, the one from the management proxy's device first: that one is
+/// reachable whatever the network does, while another neighbor may be cut off itself (an MTU
+/// change breaks OSPF until both ends of a link have it).
+pub fn plans(device: &DeviceAccess) -> Result<Vec<BootstrapPlan>, Error> {
     let no_path = |reason| Error::NoBootstrapPath(device.name().into(), reason);
     let mut reason = "no port with an IPv4 address in NetBox";
+    let mut plans = Vec::new();
     for port in device.interfaces() {
         let (port_address, on_bridge) = match ipv4(&port) {
             Some(address) => (address, false),
@@ -144,7 +152,7 @@ pub fn plan(device: &DeviceAccess) -> Result<BootstrapPlan, Error> {
             let Some(factory_name) = port.external_port() else {
                 continue;
             };
-            return Ok(BootstrapPlan {
+            plans.push(BootstrapPlan {
                 neighbor: neighbor.name().into(),
                 neighbor_port: far.name().into(),
                 setup: MacTelnetSetup {
@@ -159,7 +167,12 @@ pub fn plan(device: &DeviceAccess) -> Result<BootstrapPlan, Error> {
             });
         }
     }
-    Err(no_path(reason))
+    if plans.is_empty() {
+        return Err(no_path(reason));
+    }
+    let proxy = CONFIG.management_proxy.as_ref().map(|proxy| proxy.device.as_ref());
+    plans.sort_by_key(|plan| proxy != Some(plan.neighbor.as_str()));
+    Ok(plans)
 }
 
 /// The first IPv4 address NetBox has on `port`.

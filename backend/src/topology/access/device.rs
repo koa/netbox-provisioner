@@ -78,20 +78,23 @@ impl DeviceAccess {
     /// credentials or else those of its tenant. `None` without address or credentials.
     ///
     /// Without `target`, a device that doesn't answer at its primary IP is tried at the address
-    /// its [initial setup](bootstrap) gives it, through a tunnel to the neighbor it was set up
-    /// from: before its first apply that is all it has, and no route back.
+    /// its [initial setup](bootstrap) gives it, through a tunnel to a neighbor on the cable
+    /// (every one of [`bootstrap::plans`] in turn): before its first apply that is all it has,
+    /// and no route back, and a device whose OSPF is cut off is still reached like that.
     pub async fn connect(
         &self,
         target: Option<String>,
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
     ) -> Result<Option<AccessibleDevice>, Error> {
-        let fallback = if target.is_none() {
-            bootstrap::plan(self)
-                .ok()
+        let fallbacks = if target.is_none() {
+            bootstrap::plans(self)
+                .unwrap_or_default()
+                .into_iter()
                 .filter(|plan| Some(plan.port_address()) != self.primary_ip())
+                .collect()
         } else {
-            None
+            Vec::new()
         };
         let addr = target.and_then(|ip| ip.parse().ok()).or(self.primary_ip());
         let credentials = if let Some(credential_name) = credential_name {
@@ -119,25 +122,31 @@ impl DeviceAccess {
             .unwrap_or(Err(Error::Timeout(address))),
             None => Err(Error::NoAddress(self.name().into())),
         };
-        Ok(Some(match (first, fallback) {
-            (Ok(device), _) => device,
-            (Err(error), Some(plan)) => {
-                let address = plan.port_address();
-                info!(
-                    "{} not reachable ({error}), trying {address} through {}",
-                    self.name(),
-                    plan.neighbor
-                );
-                timeout(CONNECT_TIMEOUT, async {
-                    let path = Path::Neighbor(bootstrap::tunnel(&plan).await?.into());
-                    AccessibleDevice::create_client(self.clone(), address, path, credentials).await
-                })
-                .await
-                .unwrap_or(Err(Error::Timeout(address)))?
+        let mut error = match first {
+            Ok(device) => return Ok(Some(device)),
+            Err(Error::NoAddress(_)) if fallbacks.is_empty() => return Ok(None),
+            Err(error) => error,
+        };
+        for plan in fallbacks {
+            let address = plan.port_address();
+            info!(
+                "{} not reachable ({error}), trying {address} through {}",
+                self.name(),
+                plan.neighbor
+            );
+            let credentials = credentials.clone();
+            match timeout(CONNECT_TIMEOUT, async {
+                let path = Path::Neighbor(bootstrap::tunnel(&plan).await?.into());
+                AccessibleDevice::create_client(self.clone(), address, path, credentials).await
+            })
+            .await
+            .unwrap_or(Err(Error::Timeout(address)))
+            {
+                Ok(device) => return Ok(Some(device)),
+                Err(e) => error = e,
             }
-            (Err(Error::NoAddress(_)), None) => return Ok(None),
-            (Err(error), None) => return Err(error),
-        }))
+        }
+        Err(error)
     }
 
     pub fn loopback_ip(&self) -> Option<IpAddressAccess> {

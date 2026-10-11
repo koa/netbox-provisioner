@@ -134,7 +134,8 @@ MAC, which is also the one they announce. `connect` falls back to that bootstrap
 address when the primary IP doesn't answer yet, through an SSH tunnel to the neighbor
 (`terminal::Tunnel`, `direct-tcpip`; `device::Path::Neighbor`): API, re-diff and SCP all go
 from the neighbor's address on the cable, so the device needs no route back before its first
-apply brings OSPF. Every generated config has `/ip ssh forwarding-enabled=local` for that;
+apply brings OSPF. It tries every neighbor of `bootstrap::plans` in turn, the management
+proxy's device first: another neighbor may be cut off itself. Every generated config has `/ip ssh forwarding-enabled=local` for that;
 without it RouterOS never answers the forward (no refusal), hence the timeout in
 `Tunnel::open`. Don't go back to static return routes on the device: with
 `redistribute=static` they go out as /32s that beat the neighbors' connected networks. When the
