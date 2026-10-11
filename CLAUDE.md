@@ -199,7 +199,11 @@ group's VXLAN). The CAP sets the VLAN, so a group's WLANs share one: with `wifi-
 get a datapath with `vlan-id` into the bridge carrying that VLAN; `wifi-qcom-ac` radios can't tag
 (MikroTik: "802.11ac chipsets do not support this type of VLAN tagging"; clients associate but
 get no DHCP), so they are static access ports of that bridge instead
-(`RadioPackage::tags_vlans`). A device that is no controller or CAP anymore still
+(`RadioPackage::tags_vlans`). A wAP ac also runs `wireless` (`hw_facts::runs_wireless`), as a
+CAP of the legacy CAPsMAN when NetBox has `wlan<N>` ports for it. Moving to `wireless` leaves the
+`/interface/wifi` radios inactive under their names, so without a wifi package they get their
+default names back, and `/interface/wifi` mutations come before `/interface/wireless` ones (the
+sort keeps the order within a round). A device that is no controller or CAP anymore still
 gets `WifiDeviceData` read while CAPsMAN/CAP are on or the certificates CAPsMAN generated (named in
 `/interface/wifi/capsman generated-*`, not recognizable by trust store) are left, and these are
 removed. A VLAN interface on a tagged bridge only exists where the device has L3 in that VLAN.

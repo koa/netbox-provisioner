@@ -463,7 +463,9 @@ gibt es zwei Varianten:
    dann CAP des klassischen CAPsMAN auf dem Controller und bringt die Clients selbst in die VLAN
    ihres WLANs, wie ein CAP von `/interface/wifi` (Variante auf dem Controller, das VXLAN trägt sie
    dorthin). Ohne `wlan<N>`-Interfaces in NetBox behält ein solcher AP seine CAP-Konfiguration,
-   wie sie ist.
+   wie sie ist. Ein **wAP ac** läuft mit `wifi1`/`wifi2` auf `wifi-qcom-ac`, mit `wlan1`/`wlan2`
+   (2,4 und 5 GHz) auf `wireless` als CAP des klassischen CAPsMAN. Nach dem Wechsel in NetBox
+   tauscht ein RouterOS-Update die Pakete, danach bringt Anwenden die Konfiguration.
 4. Für die Variante auf dem Controller: Die VLAN-Gruppe der WLAN-VLANs bekommt eine `vxlan_vni`
    (siehe [VXLAN](#vxlan)). Der AP bringt die Clients jedes WLANs in dessen VLAN.
 5. Das `country` der WLANs kommt aus der Region des Standorts des Controllers.

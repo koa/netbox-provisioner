@@ -128,11 +128,12 @@ ist ein **Legacy-CAP**. RouterOS 7 hat für diese Radios nur den alten CAPsMAN, 
 `/interface/wifi`; der Controller einer Gruppe mit Legacy-CAPs betreibt deshalb beide.
 
 - **Legacy-CAP**: `/interface/wireless/cap enabled=yes` mit der Loopback des Controllers, den
-  Radios aus NetBox (nach L2 benannt, `w01`) und `bridge` = der Bridge der
+  Radios aus NetBox (nach L2 benannt, `w01`, eingeschaltet) und `bridge` = der Bridge der
   WLAN-VLANs (auf einem AP `bridge-caps`). Der CAP leitet den Verkehr der Clients selbst weiter
   (`local-forwarding=yes`), wie ein CAP von `/interface/wifi`: Er hat die WLAN-VLANs und das VXLAN,
   das sie zum Controller trägt, und ist VTEP. Ein Radio, das nicht vom Board kommt (5-GHz-Karte im
-  miniPCIe-Slot eines RB912, `wlan2`), übernimmt die Generierung vom Gerät.
+  miniPCIe-Slot eines RB912, `wlan2`; alle Radios eines wAP ac), übernimmt die Generierung vom
+  Gerät.
 - **Controller**: braucht das Paket `wireless` (`needed_radio_package` gibt es auch einem Board
   ohne eigene Radios). `/caps-man/manager enabled=yes`; pro WLAN eine `/caps-man/security`
   (`wpa2-psk`, `aes-ccm`), ein `/caps-man/datapath` (`local-forwarding=yes`, mit VLAN
@@ -142,8 +143,9 @@ ist ein **Legacy-CAP**. RouterOS 7 hat für diese Radios nur den alten CAPsMAN, 
 
 Jedes WLAN hat so seine eigene VLAN, auch auf einem Radio: Der CAP hängt Master und virtuelle
 Slaves selbst in seine Bridge, mit `pvid` = VLAN ihres WLANs und als getaggte Mitglieder eines
-dynamischen `/interface/bridge/vlan`-Eintrags (im Lab auf dem RB912, 7.23.8: `w01`/`w02` mit
-104). Ein Radio auf einem DFS-Kanal kommt erst nach der Radarprüfung dazu.
+dynamischen `/interface/bridge/vlan`-Eintrags (im Lab auf dem wAP ac, 7.23.8: `w01`/`w02` mit
+104, ihre Slaves `wlan1`/`wlan2` mit 105). Ein Radio auf einem DFS-Kanal kommt erst nach der
+Radarprüfung dazu.
 
 `datapath` `bridge`, `vlan-id` und `vlan-mode` lassen sich nur mit `!feld` löschen (`unset` in
 mikrotik-model): `bridge=""` lässt RouterOS ohne Fehler stehen, `vlan-id=""` lehnt es ab (CHR
@@ -151,6 +153,17 @@ mikrotik-model): `bridge=""` lässt RouterOS ohne Fehler stehen, `vlan-id=""` le
 
 Neue WLANs (Slave-Configurations) bekommt ein CAP erst, wenn seine Radios neu provisioniert
 werden (er sich neu verbindet); das löst die Generierung nicht aus.
+
+### Vom wAP ac auf `wifi-qcom-ac` zu `wireless`
+
+Ein wAP ac läuft auch mit `wireless` (`hw_facts::runs_wireless`): Hat er in NetBox `wlan<N>`-Ports,
+will `needed_radio_package` `wireless`, und ein RouterOS-Update tauscht die Pakete (in einem Kanal
+mit der installierten Version auch ohne neue Version). `wireless` installiert seine Radios
+ausgeschaltet; der Legacy-CAP schaltet sie ein. Die Radios von `/interface/wifi` bleiben ohne Paket
+inaktiv stehen (das Menü gehört zu `routeros`) und behalten ihre Namen (`w01`); ohne Paket von
+`/interface/wifi` bekommen sie ihren Standardnamen zurück (`wifi1`), und
+`DeviceCfg::generate_mutations` stellt `/interface/wifi` vor `/interface/wireless`, damit der Name
+frei ist, bevor `wlan1` ihn bekommt. Umgekehrt verschwindet `/interface/wireless` mit seinem Paket.
 
 Ein AP, dessen Radios NetBox nicht kennt, behält seine CAP-Konfiguration (ein CAP eines CAPsMAN,
 den NetBox nicht kennt). Andere Geräte haben den CAP aus. Radios mit RF-Rolle sind Enden von

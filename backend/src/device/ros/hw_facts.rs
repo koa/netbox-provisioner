@@ -24,8 +24,8 @@ use std::{collections::BTreeSet, iter::repeat_n, time::Duration};
 
 /// The RouterOS 7 package a board's radios need: `wireless` for the 802.11 radios of the old
 /// stack (`/interface/wireless`) and the 60 GHz ones (`/interface/w60g`), `wifi-qcom` or
-/// `wifi-qcom-ac` for the newer `/interface/wifi` stack. A wAP ac could also run `wireless`;
-/// `wifi-qcom-ac` is what it is used with here (as a CAP of `/interface/wifi` CAPsMAN).
+/// `wifi-qcom-ac` for the newer `/interface/wifi` stack. A wAP ac also runs `wireless`
+/// (`runs_wireless`), as a CAP of the legacy CAPsMAN.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum RadioPackage {
     Wireless,
@@ -72,6 +72,13 @@ pub fn radio_package(model: &[u8]) -> Option<RadioPackage> {
         | b"RBLHGG-60ad" => Some(RadioPackage::Wireless),
         _ => None,
     }
+}
+
+/// Whether the board's `wifi` radios also run with `wireless` (as `wlan<N>`), which NetBox
+/// asks for with `wlan<N>` ports (`needed_radio_package`): a wAP ac can then be a CAP of the
+/// legacy CAPsMAN, whose CAPs tag VLANs (its `wifi-qcom-ac` radios can't).
+pub fn runs_wireless(model: &[u8]) -> bool {
+    matches!(model, b"RBwAPG-5HacD2HnD")
 }
 
 /// The factory values of the PoE-out settings that not every PoE board has (the voltage

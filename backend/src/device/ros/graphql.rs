@@ -130,18 +130,20 @@ impl DeviceCfg {
     }
     pub fn generate_mutations(&self) -> Result<Box<[ResourceMutation]>, Error> {
         let mutations = self.base_target.generate_mutations(&self.base_current)?;
+        // `/interface/wifi` before `/interface/wireless`: radios a removed `wifi-qcom-ac` left
+        // give their names back to the `wlan<N>` taking them (the sort keeps this order)
+        let mutations = if let (Some(wifi_target), Some(wifi_current)) =
+            (&self.wifi_target, &self.wifi_current)
+        {
+            let wifi_mutations = wifi_target.generate_mutations(wifi_current)?;
+            mutations.into_iter().chain(wifi_mutations).collect()
+        } else {
+            mutations
+        };
         let mutations = if let (Some(wireless_target), Some(wireless_current)) =
             (&self.wireless_target, &self.wireless_current)
         {
             let wireless_mutations = wireless_target.generate_mutations(wireless_current)?;
-            mutations.into_iter().chain(wireless_mutations).collect()
-        } else {
-            mutations
-        };
-        let mutations = if let (Some(wifi_target), Some(wifi_current)) =
-            (&self.wifi_target, &self.wifi_current)
-        {
-            let wireless_mutations = wifi_target.generate_mutations(wifi_current)?;
             mutations.into_iter().chain(wireless_mutations).collect()
         } else {
             mutations

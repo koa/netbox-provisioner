@@ -4,7 +4,7 @@ use crate::{
     device::ros::{
         hw_facts::{
             RadioPackage, build_ethernet_ports, build_w60g_ports, build_wireless_ports,
-            radio_package,
+            radio_package, runs_wireless,
         },
         l2::{L2Port, L2Setup, SimpleBridgePort},
     },
@@ -64,6 +64,8 @@ mod poe_test;
 mod radio_test;
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod wlan_vlans_test;
 
 mikrotik_model!(
     name = BaseDeviceData,
@@ -1192,6 +1194,10 @@ impl WirelessDeviceDataTarget {
                 None => AsciiString::from(port.to_string()),
             };
             cap.interfaces.insert(name);
+            // `wireless` installs its radios disabled (a wAP ac coming from `wifi-qcom-ac`)
+            if let Some(wlan) = self.wireless.get_mut(&Some(AsciiString::from(port.to_string()))) {
+                wlan.disabled = false;
+            }
         }
         Ok(())
     }
@@ -1431,9 +1437,15 @@ impl WifiDeviceDataTarget {
         capsman_certificates: &[AsciiString],
         radio_package: Option<RadioPackage>,
     ) -> Result<(), SetupError> {
+        // without a package of `/interface/wifi`, its radios are what one left (a wAP ac on
+        // `wireless` now): inactive, but keeping their names, which the `wlan<N>` need
+        let drivers = radio_package.is_some_and(RadioPackage::is_wifi);
         for port in current.iter().flat_map(|current| current.wifi.iter()) {
-            self.wifi
-                .insert(port.default_name.clone(), port.data.clone());
+            let mut data = port.data.clone();
+            if let (false, Some(default_name)) = (drivers, &port.default_name) {
+                data.name = default_name.clone();
+            }
+            self.wifi.insert(port.default_name.clone(), data);
         }
         let in_wlan = device.wifi_cap_of().is_some() || device.wlan_controller_of().is_some();
         for certificate in current.iter().flat_map(|current| current.certificate.iter()) {
@@ -1664,15 +1676,24 @@ fn wlan_configuration_name(ssid: &str) -> AsciiString {
 /// The package for the board's radios (`hw_facts::radio_package`) if NetBox uses them: a
 /// radio with an RF role, in a bridge, with a VLAN or an address, or the device is an AP of a
 /// Wireless LAN Group. A controller without radios of a group with CAPs of the legacy
-/// CAPsMAN needs `wireless` for running it (`CapsManDeviceDataTarget`). A RouterOS update
-/// installs just that besides `routeros`.
+/// CAPsMAN needs `wireless` for running it (`CapsManDeviceDataTarget`), and so does a board
+/// whose radios also run with it (`hw_facts::runs_wireless`) where NetBox has `wlan<N>` ports.
+/// A RouterOS update installs just that besides `routeros`.
 pub fn needed_radio_package(device: &DeviceAccess, model: &[u8]) -> Option<RadioPackage> {
-    let Some(package) = radio_package(model) else {
+    let Some(mut package) = radio_package(model) else {
         return device
             .wlan_controller_of()
             .is_some_and(|group| group.has_legacy_caps())
             .then_some(RadioPackage::Wireless);
     };
+    if runs_wireless(model)
+        && device
+            .interfaces()
+            .iter()
+            .any(|interface| matches!(interface.external_port(), Some(PhysicalPortId::Wlan(_))))
+    {
+        package = RadioPackage::Wireless;
+    }
     let uses_radio = device.interfaces().iter().any(|interface| {
         matches!(
             interface.external_port(),
