@@ -11,6 +11,7 @@ use async_graphql::{Enum, SimpleObject};
 use serde::Deserialize;
 use log::info;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use mikrotik_model::value::{ParseRosValueResult, RosValue};
 use std::{cmp::Ordering, collections::HashMap, fmt::Write, time::Duration};
 use tokio::time::{Instant, sleep, timeout};
 use async_graphql::futures_util::StreamExt;
@@ -351,7 +352,10 @@ pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState,
         .unwrap_or_default()
         .to_string();
     let uptime = field(resource, "uptime")
-        .and_then(parse_uptime)
+        .and_then(|uptime| match Duration::parse_ros(uptime.as_bytes()) {
+            ParseRosValueResult::Value(uptime) => Some(uptime),
+            _ => None,
+        })
         .ok_or_else(|| Error::Update("no uptime".into()))?;
     let packages = rows(device, b"/system/package/print")
         .await?
@@ -439,31 +443,6 @@ where
             return Err(Error::Update("not back after the reboot".into()));
         }
     }
-}
-
-/// A RouterOS duration like `4d13h54m28s` (also `1w2d`, `500ms`).
-fn parse_uptime(text: &str) -> Option<Duration> {
-    let mut total = Duration::ZERO;
-    let mut number = String::new();
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c.is_ascii_digit() {
-            number.push(c);
-            continue;
-        }
-        let n: u64 = number.parse().ok()?;
-        number.clear();
-        total += match c {
-            'w' => Duration::from_secs(n * 7 * 86400),
-            'd' => Duration::from_secs(n * 86400),
-            'h' => Duration::from_secs(n * 3600),
-            'm' if chars.next_if_eq(&'s').is_some() => Duration::from_millis(n),
-            'm' => Duration::from_secs(n * 60),
-            's' => Duration::from_secs(n),
-            _ => return None,
-        };
-    }
-    number.is_empty().then_some(total)
 }
 
 /// Updates the device to `target`, step by step; the result carries the log also on failure.
@@ -591,17 +570,8 @@ async fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::{DeviceState, UpdateStep, Version, next_step, parse_uptime};
+    use super::{DeviceState, UpdateStep, Version, next_step};
     use std::time::Duration;
-
-    #[test]
-    fn parses_uptimes() {
-        assert_eq!(parse_uptime("4d13h54m28s"), Some(Duration::from_secs(((4 * 24 + 13) * 60 + 54) * 60 + 28)));
-        assert_eq!(parse_uptime("1w2d"), Some(Duration::from_secs(9 * 86400)));
-        assert_eq!(parse_uptime("18s"), Some(Duration::from_secs(18)));
-        assert_eq!(parse_uptime("1s500ms"), Some(Duration::from_millis(1500)));
-        assert_eq!(parse_uptime("12"), None);
-    }
 
     fn v(text: &str) -> Version {
         Version::parse(text).unwrap()
