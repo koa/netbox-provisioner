@@ -152,7 +152,9 @@ global `netboxProvisionerNeighbor` is set, which `set_up` sets on the neighbor o
 `upgrade.mikrotik.com/routeros/NEWESTa7.<channel>` (`NEWEST7.*` stopped at 7.12.1; testing and
 development are pre-releases like `7.25rc1`, which `Version` keeps for the file names and orders
 before the release). v6 goes to the newest v6 first, v7 gets `routeros` plus the
-`needed_radio_package`; every other package is uninstalled (`/system/package/uninstall
+`needed_radio_package` (or `wireless` where a legacy CAPsMAN NetBox doesn't know of runs,
+`/caps-man/manager enabled=yes`: the config leaves it alone, so the update must too); every
+other package is uninstalled (`/system/package/uninstall
 numbers=<.id>`, at the same reboot), and a device at or above the target only gets its packages
 in line. Then the RouterBOARD firmware: `.npk`
 from download.mikrotik.com, SCP upload (`terminal::upload`), size check (the size settles after

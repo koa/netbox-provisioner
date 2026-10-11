@@ -27,7 +27,7 @@ use mikrotik_model::{
     generator::Generator,
     hwconfig::DeviceType,
     model::{
-        CertificateCfg, InterfaceWifiCapCfg, InterfaceWifiCapsmanCfg,
+        CapsManManagerCfg, CertificateCfg, InterfaceWifiCapCfg, InterfaceWifiCapsmanCfg,
         InterfaceWifiCapsmanState,
         ReferenceType, SystemIdentityCfg, SystemPackageState, SystemRouterboardState, YesNo,
     },
@@ -428,11 +428,25 @@ impl AccessibleDevice {
             .ok()
             .flatten()
             .map(|routerboard| routerboard.model.0);
-        Ok(model
-            .and_then(|model| needed_radio_package(&self.device_config, &model))
+        let needed = model.and_then(|model| needed_radio_package(&self.device_config, &model));
+        // a legacy CAPsMAN NetBox doesn't know of (its CAPs' radios aren't in NetBox) stays
+        // as it is (`DeviceCfg::fetch`), so does the package it runs in
+        let needed = match needed {
+            None if self.runs_legacy_capsman().await => Some(RadioPackage::Wireless),
+            needed => needed,
+        };
+        Ok(needed
             .map(|package| package.name().to_string())
             .into_iter()
             .collect())
+    }
+    /// Whether `/caps-man/manager` is on (it fails without `wireless`).
+    async fn runs_legacy_capsman(&self) -> bool {
+        <CapsManManagerCfg as SingleResource>::fetch(&self.client)
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|manager| manager.enabled)
     }
     /// The diff of a fresh look at the device.
     async fn remaining(&self) -> Result<Box<str>, Error> {
