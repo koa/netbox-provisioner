@@ -148,7 +148,7 @@ once left setup routes on lab-np1), so every setup command is wrapped to do noth
 global `netboxProvisionerNeighbor` is set, which `set_up` sets on the neighbor only.
 
 `device::update` brings RouterOS to the newest release of the channel picked in the UI
-(long-term, stable, testing, development; `routeros_channel` preselects it), from
+(long-term, stable, testing, development; `routeros_channel` preselects it, long-term if unset), from
 `upgrade.mikrotik.com/routeros/NEWESTa7.<channel>` (`NEWEST7.*` stopped at 7.12.1; testing and
 development are pre-releases like `7.25rc1`, which `Version` keeps for the file names and orders
 before the release). v6 goes to the newest v6 first, v7 gets `routeros` plus the

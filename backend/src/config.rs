@@ -30,7 +30,7 @@ pub struct Settings {
     /// would remove everything NetBox doesn't know of (no managed-marker scheme yet).
     #[serde(default)]
     pub allow_apply: bool,
-    /// The RouterOS channel preselected for updates (`long-term`, `stable` (default),
+    /// The RouterOS channel preselected for updates (`long-term` (default), `stable`,
     /// `testing`, `development`).
     pub routeros_channel: Option<crate::device::update::Channel>,
 }

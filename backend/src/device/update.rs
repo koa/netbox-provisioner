@@ -139,8 +139,9 @@ pub struct DeviceState {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum Channel {
-    LongTerm,
+    /// the default: an update fleet-wide should take the releases that had longest to settle
     #[default]
+    LongTerm,
     Stable,
     Testing,
     Development,
