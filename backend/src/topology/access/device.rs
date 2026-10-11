@@ -96,7 +96,9 @@ impl DeviceAccess {
         } else {
             Vec::new()
         };
-        let addr = target.and_then(|ip| ip.parse().ok()).or(self.primary_ip());
+        let addr = target
+            .and_then(|ip| ip.parse().ok())
+            .or(bootstrap::reachable_address(self));
         let credentials = if let Some(credential_name) = credential_name {
             Some(Credentials::Named(credential_name))
         } else if let Some(AdhocCredentials { username, password }) = adhoc_credentials {

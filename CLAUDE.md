@@ -116,7 +116,9 @@ the backend checks the JWT against `auth_issuer` and lets only `auth_users` in (
 the `auth_*` settings and how to set up Pocket-ID; keep it in line with them). Devices are
 reached directly, or, with `management_proxy` set, all through one device's `/ip socks` (SOCKS5
 with password; `device::proxied_stream` retries the sporadic "General SOCKS server failure" of a
-first connection). Nothing is written without `allow_apply`; `apply` runs the diff as a script on
+first connection); the proxy's own device is reached at the proxy's address
+(`bootstrap::reachable_address`), its primary IP may only exist once its config is applied.
+Nothing is written without `allow_apply`; `apply` runs the diff as a script on
 the device (`apply_mutations_via_script`), so it completes even when it changes the path the
 connection takes, then diffs again: a script stops at its first error, so whatever is left is
 what failed. Before the script the device saves a backup and schedules loading it after

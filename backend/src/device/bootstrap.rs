@@ -203,7 +203,9 @@ fn ipv4(port: &InterfaceAccess) -> Option<IpNet> {
         .find(|net| net.addr().is_ipv4())
 }
 
-fn reachable_address(device: &DeviceAccess) -> Option<IpAddr> {
+/// Where `device` is reached: the management proxy's device directly at the proxy's address
+/// (its primary IP may only be reachable through its own proxy), any other at its primary IP.
+pub fn reachable_address(device: &DeviceAccess) -> Option<IpAddr> {
     match &CONFIG.management_proxy {
         Some(proxy) if proxy.device.as_ref() == device.name() => Some(proxy.address.ip()),
         _ => device.primary_ip(),
