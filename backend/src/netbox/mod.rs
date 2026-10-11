@@ -78,18 +78,35 @@ pub enum NetboxError {
     InvalidHeaderValue(#[from] reqwest::header::InvalidHeaderValue),
     #[error("no data from netbox")]
     EmptyResult,
+    #[error("unexpected answer from netbox, HTTP {status} {error}: {body}")]
+    UnexpectedResponse {
+        status: reqwest::StatusCode,
+        error: Box<str>,
+        body: Box<str>,
+    },
 }
 
 pub async fn fetch_topology() -> Result<fetch_topology::ResponseData, NetboxError> {
     let request_body = FetchTopology::build_query(fetch_topology::Variables {});
     let client = netbox_client()?;
-    let response_body: Response<fetch_topology::ResponseData> = client
+    let response = client
         .post(netbox_url())
         .json(&request_body)
         .send()
-        .await?
-        .json()
         .await?;
+    let status = response.status();
+    let body = response.text().await?;
+    // a proxy in front of NetBox may answer with text; show what came instead of JSON
+    let unexpected = |error: Option<serde_json::Error>| NetboxError::UnexpectedResponse {
+        status,
+        error: error.map(|error| error.to_string()).unwrap_or_default().into(),
+        body: body.chars().take(300).collect::<String>().into(),
+    };
+    if !status.is_success() {
+        return Err(unexpected(None));
+    }
+    let response_body: Response<fetch_topology::ResponseData> =
+        serde_json::from_str(&body).map_err(|error| unexpected(Some(error)))?;
     if let Some(errors) = response_body.errors.filter(|data| !data.is_empty()) {
         Err(NetboxError::Graphql(errors.into()))
     } else if let Some(data) = response_body.data {
