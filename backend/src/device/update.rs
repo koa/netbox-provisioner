@@ -36,10 +36,10 @@ pub trait DeviceLink {
 #[derive(Debug, SimpleObject)]
 pub struct UpdateResult {
     /// RouterOS version before
-    pub from: String,
+    pub from: Box<str>,
     /// RouterOS version after, as far as it got
-    pub to: String,
-    pub error: Option<String>,
+    pub to: Box<str>,
+    pub error: Option<Box<str>>,
     pub log: String,
 }
 
@@ -47,9 +47,9 @@ pub struct UpdateResult {
 /// suffix like ` (stable)` is ignored. A pre-release comes before its release, beta before rc.
 #[derive(Debug, Clone)]
 pub struct Version {
-    numbers: Vec<u32>,
+    numbers: Box<[u32]>,
     /// `("beta", 1)`, `("rc", 1)`; `None` for a release
-    pre: Option<(String, u32)>,
+    pre: Option<(Box<str>, u32)>,
 }
 
 impl Version {
@@ -60,14 +60,14 @@ impl Version {
                 let (release, tag) = text.split_at(at);
                 let digits = tag.find(|c: char| c.is_ascii_digit()).unwrap_or(tag.len());
                 let (kind, number) = tag.split_at(digits);
-                (release, Some((kind.to_string(), number.parse().unwrap_or(0))))
+                (release, Some((kind.into(), number.parse().unwrap_or(0))))
             }
             None => (text, None),
         };
         let numbers = release
             .split('.')
             .map(|part| part.parse().ok())
-            .collect::<Option<Vec<u32>>>()?;
+            .collect::<Option<Box<[u32]>>>()?;
         Some(Version { numbers, pre })
     }
     pub fn major(&self) -> u32 {
@@ -95,7 +95,7 @@ impl Ord for Version {
         // alpha < beta < rc < release
         let pre = |v: &Version| {
             v.pre.as_ref().map_or((u8::MAX, 0), |(kind, number)| {
-                let rank = match kind.as_str() {
+                let rank = match kind.as_ref() {
                     "alpha" => 0,
                     "beta" => 1,
                     "rc" => 2,
@@ -127,11 +127,11 @@ impl std::fmt::Display for Version {
 pub struct DeviceState {
     pub version: Version,
     /// `/system/resource architecture-name`, e.g. `arm`, `mipsbe`, `x86_64`
-    pub architecture: String,
+    pub architecture: Box<str>,
     /// names of the installed packages that aren't disabled
-    pub packages: Vec<String>,
+    pub packages: Box<[Box<str>]>,
     /// `(current, upgrade)` RouterBOARD firmware; `None` without RouterBOARD (CHR)
-    pub firmware: Option<(String, String)>,
+    pub firmware: Option<(Box<str>, Box<str>)>,
     pub uptime: Duration,
 }
 
@@ -179,8 +179,8 @@ pub async fn newest(major: u32, channel: Channel) -> Result<Version, Error> {
 #[derive(Debug, PartialEq, Eq)]
 pub struct UpdateStep {
     pub version: Version,
-    pub files: Vec<String>,
-    pub uninstall: Vec<String>,
+    pub files: Box<[Box<str>]>,
+    pub uninstall: Box<[Box<str>]>,
 }
 
 /// The next step from `state` towards `target` with `routeros` and the `wanted` packages;
@@ -190,32 +190,32 @@ pub fn next_step(
     state: &DeviceState,
     target: &Version,
     newest_v6: &Version,
-    wanted: &[String],
+    wanted: &[Box<str>],
 ) -> Option<UpdateStep> {
-    let arch = state.architecture.as_str();
+    let arch = state.architecture.as_ref();
     if state.version.major() < 7 {
         if state.version < *newest_v6 {
             // the bundle contains every RouterOS 6 package
             let arch = if arch.starts_with("x86") { "x86" } else { arch };
             return Some(UpdateStep {
                 version: newest_v6.clone(),
-                files: vec![format!("routeros-{arch}-{newest_v6}.npk")],
-                uninstall: Vec::new(),
+                files: [format!("routeros-{arch}-{newest_v6}.npk").into()].into(),
+                uninstall: [].into(),
             });
         }
         // RouterOS 7 replaces the whole RouterOS 6 package set
-        return Some(v7_step(wanted, arch, target, Vec::new()));
+        return Some(v7_step(wanted, arch, target, [].into()));
     }
-    let unwanted: Vec<String> = state
+    let unwanted: Box<[Box<str>]> = state
         .packages
         .iter()
-        .filter(|p| *p != "routeros" && !wanted.contains(p))
+        .filter(|p| p.as_ref() != "routeros" && !wanted.contains(p))
         .cloned()
         .collect();
     if state.version < *target {
         return Some(v7_step(wanted, arch, target, unwanted));
     }
-    let missing: Vec<String> = wanted
+    let missing: Box<[Box<str>]> = wanted
         .iter()
         .filter(|p| !state.packages.contains(p))
         .cloned()
@@ -223,12 +223,18 @@ pub fn next_step(
     if missing.is_empty() && unwanted.is_empty() {
         return None;
     }
-    let mut step = v7_step(&missing, arch, &state.version, unwanted);
-    step.files.retain(|file| !file.starts_with("routeros-"));
-    Some(step)
+    let step = v7_step(&missing, arch, &state.version, unwanted);
+    Some(UpdateStep {
+        files: step
+            .files
+            .into_iter()
+            .filter(|file| !file.starts_with("routeros-"))
+            .collect(),
+        ..step
+    })
 }
 
-fn v7_step(wanted: &[String], arch: &str, version: &Version, uninstall: Vec<String>) -> UpdateStep {
+fn v7_step(wanted: &[Box<str>], arch: &str, version: &Version, uninstall: Box<[Box<str>]>) -> UpdateStep {
     // x86 packages carry no architecture
     let suffix = if arch.starts_with("x86") {
         String::new()
@@ -237,10 +243,10 @@ fn v7_step(wanted: &[String], arch: &str, version: &Version, uninstall: Vec<Stri
     };
     UpdateStep {
         version: version.clone(),
-        files: ["routeros".to_string()]
-            .iter()
-            .chain(wanted)
-            .map(|p| format!("{p}-{version}{suffix}.npk"))
+        files: ["routeros"]
+            .into_iter()
+            .chain(wanted.iter().map(AsRef::as_ref))
+            .map(|p| format!("{p}-{version}{suffix}.npk").into())
             .collect(),
         uninstall,
     }
@@ -313,12 +319,12 @@ async fn set_ssh(device: &RawDevice<SimpleResult>, setting: &str, value: &str) -
 }
 
 /// Marks the packages for removal at the next reboot.
-async fn uninstall(device: &RawDevice<SimpleResult>, packages: &[String]) -> Result<(), Error> {
+async fn uninstall(device: &RawDevice<SimpleResult>, packages: &[Box<str>]) -> Result<(), Error> {
     for row in rows(device, b"/system/package/print").await? {
         let (Some(name), Some(id)) = (field(&row, "name"), field(&row, ".id")) else {
             continue;
         };
-        if !packages.iter().any(|p| p == name) {
+        if !packages.iter().any(|p| p.as_ref() == name) {
             continue;
         }
         let mut stream = device
@@ -349,9 +355,7 @@ pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState,
     let version = field(resource, "version")
         .and_then(Version::parse)
         .ok_or_else(|| Error::Update("no RouterOS version".into()))?;
-    let architecture = field(resource, "architecture-name")
-        .unwrap_or_default()
-        .to_string();
+    let architecture = field(resource, "architecture-name").unwrap_or_default().into();
     let uptime = field(resource, "uptime")
         .and_then(|uptime| match Duration::parse_ros(uptime.as_bytes()) {
             ParseRosValueResult::Value(uptime) => Some(uptime),
@@ -362,7 +366,7 @@ pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState,
         .await?
         .iter()
         .filter(|row| field(row, "disabled") != Some("true"))
-        .filter_map(|row| field(row, "name").map(String::from))
+        .filter_map(|row| field(row, "name").map(Box::from))
         .collect();
     // CHR has no RouterBOARD; the command fails there
     let firmware = rows(device, b"/system/routerboard/print")
@@ -371,8 +375,8 @@ pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState,
         .and_then(|rows| rows.into_iter().next())
         .and_then(|row| {
             Some((
-                field(&row, "current-firmware")?.to_string(),
-                field(&row, "upgrade-firmware")?.to_string(),
+                field(&row, "current-firmware")?.into(),
+                field(&row, "upgrade-firmware")?.into(),
             ))
         });
     Ok(DeviceState {
@@ -454,18 +458,18 @@ pub async fn update(
     link: &impl DeviceLink,
     power: &PowerChain,
     target: &Version,
-    wanted: &[String],
+    wanted: &[Box<str>],
 ) -> UpdateResult {
     let mut log = String::new();
     let mut from = String::new();
     let mut to = String::new();
     let result = run(link, power, target, wanted, &mut log, &mut from, &mut to).await;
     UpdateResult {
-        from,
-        to,
+        from: from.into(),
+        to: to.into(),
         error: result.err().map(|e| {
             let _ = writeln!(log, "failed: {e}");
-            e.to_string()
+            e.to_string().into()
         }),
         log,
     }
@@ -475,7 +479,7 @@ async fn run(
     link: &impl DeviceLink,
     power: &PowerChain,
     target: &Version,
-    wanted: &[String],
+    wanted: &[Box<str>],
     log: &mut String,
     from: &mut String,
     to: &mut String,
@@ -581,10 +585,14 @@ mod tests {
         DeviceState {
             version: v(version),
             architecture: arch.into(),
-            packages: packages.iter().map(|p| p.to_string()).collect(),
+            packages: names(packages),
             firmware: None,
             uptime: Duration::ZERO,
         }
+    }
+
+    fn names(names: &[&str]) -> Box<[Box<str>]> {
+        names.iter().map(|&name| name.into()).collect()
     }
 
     #[test]
@@ -605,20 +613,20 @@ mod tests {
     fn plans_the_steps() {
         let target = v("7.20.8");
         let v6 = v("6.49.19");
-        let wireless = ["wireless".to_string()];
+        let wireless = names(&["wireless"]);
         assert_eq!(
             next_step(&state("7.15.3", "arm", &["routeros", "wireless"]), &target, &v6, &wireless),
             Some(UpdateStep {
                 version: target.clone(),
-                files: vec!["routeros-7.20.8-arm.npk".into(), "wireless-7.20.8-arm.npk".into()],
-                uninstall: vec![],
+                files: names(&["routeros-7.20.8-arm.npk", "wireless-7.20.8-arm.npk"]),
+                uninstall: names(&[]),
             })
         );
         assert_eq!(
             next_step(&state("7.24.5", "x86_64", &["routeros"]), &v("7.25"), &v6, &[])
                 .unwrap()
                 .files,
-            vec!["routeros-7.25.npk".to_string()]
+            names(&["routeros-7.25.npk"])
         );
         assert_eq!(next_step(&state("7.20.8", "arm", &["routeros"]), &target, &v6, &[]), None);
         // newer than the channel: no downgrade
@@ -628,16 +636,16 @@ mod tests {
             next_step(&state("6.45.1", "mipsbe", &sxt), &target, &v6, &wireless)
                 .unwrap()
                 .files,
-            vec!["routeros-mipsbe-6.49.19.npk".to_string()]
+            names(&["routeros-mipsbe-6.49.19.npk"])
         );
         assert_eq!(
             next_step(&state("6.49.19", "mipsbe", &sxt), &target, &v6, &wireless)
                 .unwrap()
                 .files,
-            vec![
-                "routeros-7.20.8-mipsbe.npk".to_string(),
-                "wireless-7.20.8-mipsbe.npk".to_string()
-            ]
+            names(&[
+                "routeros-7.20.8-mipsbe.npk",
+                "wireless-7.20.8-mipsbe.npk"
+            ])
         );
     }
 
@@ -645,14 +653,14 @@ mod tests {
     fn brings_the_packages_in_line() {
         let target = v("7.20.8");
         let v6 = v("6.49.19");
-        let wifi = ["wifi-qcom-ac".to_string()];
+        let wifi = names(&["wifi-qcom-ac"]);
         // an unused radio package goes with the update
         assert_eq!(
             next_step(&state("7.18.2", "arm", &["routeros", "wifi-qcom-ac"]), &target, &v6, &[]),
             Some(UpdateStep {
                 version: target.clone(),
-                files: vec!["routeros-7.20.8-arm.npk".into()],
-                uninstall: vec!["wifi-qcom-ac".into()],
+                files: names(&["routeros-7.20.8-arm.npk"]),
+                uninstall: names(&["wifi-qcom-ac"]),
             })
         );
         // at the version already: only the missing package, and what isn't needed goes
@@ -660,8 +668,8 @@ mod tests {
             next_step(&state("7.20.8", "arm", &["routeros", "wireless"]), &target, &v6, &wifi),
             Some(UpdateStep {
                 version: target.clone(),
-                files: vec!["wifi-qcom-ac-7.20.8-arm.npk".into()],
-                uninstall: vec!["wireless".into()],
+                files: names(&["wifi-qcom-ac-7.20.8-arm.npk"]),
+                uninstall: names(&["wireless"]),
             })
         );
         assert_eq!(

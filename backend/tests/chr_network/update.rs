@@ -99,7 +99,7 @@ async fn update_older_chr_to_current() {
     .await
     .expect("ssh to entry");
     let setup = MacTelnetSetup {
-        macs: vec![mac_of(old.index, 1)],
+        macs: [mac_of(old.index, 1)].into(),
         port: "ether2".into(),
         address: "192.168.78.2/30".parse().unwrap(),
         on_bridge: false,
@@ -126,8 +126,8 @@ async fn update_older_chr_to_current() {
     let result = update(&link, &PowerChain::unpowered("chr"), &target, &[]).await;
     eprintln!("--- update log ---\n{}", result.log);
     assert_eq!(result.error, None);
-    assert_eq!(result.from, CHR_OLDER.version);
-    assert_eq!(result.to, CHR.version);
+    assert_eq!(&*result.from, CHR_OLDER.version);
+    assert_eq!(&*result.to, CHR.version);
     let after = read_state(&link.api().await.unwrap()).await.unwrap();
     assert_eq!(after.version, target);
 }

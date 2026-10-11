@@ -430,7 +430,7 @@ impl AccessibleDevice {
     }
     /// The packages besides `routeros` the device needs (`needed_radio_package`); none on a
     /// CHR, which has no RouterBOARD.
-    pub async fn wanted_packages(&self) -> Result<Vec<String>, Error> {
+    pub async fn wanted_packages(&self) -> Result<Box<[Box<str>]>, Error> {
         let model = <SystemRouterboardState as SingleResource>::fetch(&self.client)
             .await
             .ok()
@@ -444,7 +444,7 @@ impl AccessibleDevice {
             needed => needed,
         };
         Ok(needed
-            .map(|package| package.name().to_string())
+            .map(|package| package.name().into())
             .into_iter()
             .collect())
     }
@@ -693,7 +693,7 @@ impl AccessibleDevice {
                     update::next_step(&state, &newest, newest_v6.as_ref().unwrap_or(&newest), &wanted);
                 channels.push(ChannelUpdate {
                     channel,
-                    newest: newest.to_string(),
+                    newest: newest.to_string().into(),
                     upgrade: newest > state.version,
                     update: step.is_some(),
                 });
@@ -703,9 +703,9 @@ impl AccessibleDevice {
                 && update::next_step(&state, &state.version, &state.version, &wanted).is_some();
             Ok::<_, Error>(RouterOsVersions {
                 adjust_packages,
-                version: state.version.to_string(),
+                version: state.version.to_string().into(),
                 packages: state.packages,
-                wanted: ["routeros".to_string()].into_iter().chain(wanted).collect(),
+                wanted: ["routeros".into()].into_iter().chain(wanted).collect(),
                 default_channel: CONFIG.routeros_channel.unwrap_or_default(),
                 channels,
             })
@@ -730,11 +730,11 @@ fn nullable<T>(ctx: &Context<'_>, result: Result<T, Error>) -> Option<T> {
 
 #[derive(SimpleObject)]
 pub struct RouterOsVersions {
-    version: String,
+    version: Box<str>,
     /// installed packages
-    packages: Vec<String>,
+    packages: Box<[Box<str>]>,
     /// the packages an update leaves installed
-    wanted: Vec<String>,
+    wanted: Box<[Box<str>]>,
     /// the channel preselected for updates (`routeros_channel` of the config)
     default_channel: update::Channel,
     channels: Vec<ChannelUpdate>,
@@ -747,7 +747,7 @@ pub struct RouterOsVersions {
 pub struct ChannelUpdate {
     channel: update::Channel,
     /// the newest RouterOS 7 of the channel
-    newest: String,
+    newest: Box<str>,
     /// whether the device runs an older version
     upgrade: bool,
     /// whether an update changes anything (version or packages)
