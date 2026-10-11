@@ -5,7 +5,6 @@ use crate::{
         bootstrap::{self, BootstrapResult},
         power::PowerChain,
         update::{self, DeviceLink},
-        ros::graphql::ApplyResult,
     },
     graphql::scalars::ScalarMac,
     job::{self, Job, JobKind},
@@ -113,30 +112,35 @@ impl MutationAuthenticated {
     }
     /// Stops a job (`Query.job`) at the next point where that is safe: an update between its
     /// steps or while it waits, removing the packages it uploaded unless the device reboots
-    /// with them already.
+    /// with them already; an apply before its script runs, or after, leaving the fallback
+    /// that brings back the config from before.
     async fn cancel_job(&self, id: u32) -> Result<Arc<Job>, Error> {
         job::cancel(id).ok_or(Error::UnknownJob(id))
     }
-    /// Applies the generated config to a device (`allow_apply` must be set). Target and
-    /// credentials as for `DeviceAccess.access`.
+    /// Starts applying the generated config to a device (`allow_apply` must be set). Target
+    /// and credentials as for `DeviceAccess.access`.
     async fn apply_cfg(
         &self,
         id: u32,
         target: Option<String>,
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
-    ) -> Result<ApplyResult, Error> {
+    ) -> Result<Arc<Job>, Error> {
+        if !CONFIG.allow_apply {
+            return Err(Error::ApplyNotAllowed);
+        }
         let device = self
             .topology
             .devices_by_id(DeviceId(id))
             .await
             .ok_or(Error::UnknownDevice(id))?;
-        device
-            .connect(target, credential_name, adhoc_credentials)
-            .await?
-            .ok_or(Error::MissingCredentials)?
-            .apply()
-            .await
+        job::start(&device.clone(), JobKind::Apply, |log| async move {
+            log.unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
+                .await??
+                .ok_or(Error::MissingCredentials)?
+                .apply(&log)
+                .await
+        })
     }
 }
 #[Object]

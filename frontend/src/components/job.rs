@@ -1,4 +1,4 @@
-//! A job of the backend (an update): its events while it runs, asked for every second, worded
+//! A job of the backend (an update, an apply): its events while it runs, asked for every second, worded
 //! here; with a button to cancel it.
 use crate::{
     error::FrontendError,
@@ -13,7 +13,9 @@ use crate::{
         query_authenticated,
     },
 };
-use patternfly_yew::prelude::{Alert, AlertType, Button, ButtonVariant, Spinner, SpinnerSize};
+use patternfly_yew::prelude::{
+    Alert, AlertType, Button, ButtonVariant, CodeBlock, CodeBlockCode, Spinner, SpinnerSize,
+};
 use std::{cell::Cell, rc::Rc, time::Duration};
 use yew::{
     Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local,
@@ -168,8 +170,26 @@ fn poll(scope: Scope<JobView>, id: i64, alive: Rc<Cell<bool>>) {
 fn title(job: &JobEventsJob) -> (String, AlertType) {
     let what = match &job.kind {
         JobKind::UPDATE => "RouterOS-Update",
+        JobKind::APPLY => "Anwenden",
         JobKind::Other(other) => other,
     };
+    let events = || job.events.iter().map(|event| &event.event);
+    if job.state == JobState::DONE {
+        if events().any(|e| matches!(e, Event::ApplyPlanned(planned) if planned.script.trim().is_empty())) {
+            return ("Nichts anzuwenden, das Gerät entspricht NetBox".into(), AlertType::Success);
+        }
+        let incomplete = events().any(|e| match e {
+            Event::ApplyChecked(checked) => checked.error.is_some() || !checked.remaining.trim().is_empty(),
+            Event::FallbackLeft(_) => true,
+            _ => false,
+        });
+        if incomplete {
+            return ("Nicht alles wurde angewendet".into(), AlertType::Warning);
+        }
+        if events().any(|e| matches!(e, Event::ApplyChecked(_))) {
+            return ("Angewendet, das Gerät entspricht jetzt NetBox".into(), AlertType::Success);
+        }
+    }
     match &job.state {
         JobState::RUNNING => (format!("{what} läuft"), AlertType::Info),
         JobState::DONE => {
@@ -199,8 +219,52 @@ fn list(items: &[String]) -> String {
     }
 }
 
+/// whole seconds
+fn seconds(nanos: u64) -> u64 {
+    nanos / 1_000_000_000
+}
+
+fn script(title: &str, script: &str) -> Html {
+    html! {<>
+        { title.to_string() }
+        <CodeBlock><CodeBlockCode>{ script.to_string() }</CodeBlockCode></CodeBlock>
+    </>}
+}
+
 fn describe(event: &JobEventsJobEvents) -> Html {
     let text = match &event.event {
+        Event::ApplyPlanned(planned) if planned.script.trim().is_empty() => {
+            "Nichts zu tun: das Gerät entspricht NetBox".to_string()
+        }
+        Event::ApplyPlanned(planned) => return script("Skript:", &planned.script),
+        Event::FallbackArmed(armed) => format!(
+            "Backup gespeichert: das Gerät lädt es in {} s, wenn der Provisioner es danach nicht erreicht",
+            seconds(armed.delay)
+        ),
+        Event::ApplyRunning(running) => format!(
+            "Das Skript läuft auf dem Gerät; wartet bis zu {} s, bis es NetBox entspricht",
+            seconds(running.timeout)
+        ),
+        Event::ApplyChecked(checked) => match &checked.error {
+            Some(error) => format!("Das Gerät lässt sich nicht prüfen: {error}"),
+            None if checked.remaining.trim().is_empty() => "Das Gerät entspricht NetBox".into(),
+            None => return script("Noch offen:", &checked.remaining),
+        },
+        Event::FallbackStopped(_) => {
+            "Fallback gestoppt: das Gerät ist mit der neuen Konfiguration erreichbar".into()
+        }
+        Event::FallbackLeft(left) => format!(
+            "{}: das Gerät lädt in etwa {} s das Backup von vor dem Anwenden und startet neu",
+            match &left.error {
+                Some(error) => format!("Gerät nicht erreichbar ({error})"),
+                None => "Abgebrochen, der Fallback bleibt".into(),
+            },
+            seconds(left.fires_in)
+        ),
+        Event::RadiosReprovisioned(radios) => match &radios.error {
+            None => format!("{} Radios neu provisioniert ({})", radios.count, radios.menu),
+            Some(error) => format!("{} nicht neu provisioniert: {error}", radios.menu),
+        },
         Event::PoeChain(chain) => {
             let mut parts = Vec::new();
             if !chain.suppliers.is_empty() {

@@ -45,7 +45,7 @@ and their VXLAN like a CAP of `/interface/wifi`, so it is a VTEP; RouterOS hangs
 virtual radios into that bridge with the `pvid` of their WLAN (tagged members of a dynamic bridge
 VLAN entry). A CAP only gets a new WLAN when its radios are provisioned again, so an apply on a
 controller that changes a CAPsMAN's WLAN definitions provisions its CAPs' radios again after
-it (`reprovisioned_menus`, shown in `ApplyResult.reprovisioned`; their clients reconnect). An
+it (`reprovisioned_menus`, the job event `RadiosReprovisioned`; their clients reconnect). An
 AP without radios in NetBox keeps its `/interface/wireless/cap` as it is. A wireless radio the board
 doesn't have (a miniPCIe card, `wlan2` of an RB912) is taken from the device. Anything model
 specific (ports, radio profiles, which package a board's radios need: `wireless`, `wifi-qcom`,
@@ -173,7 +173,8 @@ russh's defaults and lowers the group minimum to 2048. A user with SSH keys can'
 with a password while `/ip ssh always-allow-password-login=no` (7.24:
 `password-authentication=yes-if-no-key`), so the update switches it for the upload only.
 
-An update runs as a job (`backend::job`): `updateRouteros` returns the `Job` at once, the work
+An update and an apply run as jobs (`backend::job`): `updateRouteros` and `applyCfg` return
+the `Job` at once, the work
 goes on in the background and reports typed events (`job::Event`, a GraphQL union; the
 frontend words them in German, `components/job.rs`). The frontend asks `job(id) { events(after)
 }` every second: the API is plain POST with the bearer token, a subscription would need the
@@ -182,7 +183,9 @@ token over a websocket. A device runs one job at a time, the device page picks u
 between steps (`Log::check`) and while it waits (`Log::unless_cancelled`), so a step that must
 not stop halfway (the upload with `/ip ssh` switched) completes first. The update downloads all
 packages of a step before the first upload, and removes the uploaded ones when it stops before
-the reboot: a part of them must not install at some later boot.
+the reboot: a part of them must not install at some later boot. An apply stops before its
+script, or after it while it waits, leaving the fallback, which brings the config from before
+back.
 
 NetBox's interface `mtu` is the L3 MTU of an Ethernet port or `wlan` radio (`setup_mtu`, and the
 wireless target); `l2mtu` is raised to carry it with a VLAN tag, other interface types refuse

@@ -24,9 +24,8 @@ pub struct ShowDevice {
     error: Option<FrontendError>,
     data: Option<ShowDeviceData>,
     alternate_target: SelectedTarget,
-    apply: ApplyState,
     bootstrap: BootstrapState,
-    /// the job shown (an update), started here or running when the page was opened
+    /// the job shown (an update, an apply), started here or running when the page was opened
     job: Option<i64>,
     job_running: bool,
     /// what the bootstrap neighbor sees on its port; `None` while it is asked
@@ -44,13 +43,6 @@ enum BootstrapState {
     Idle,
     Running,
     Done(bootstrap_device::BootstrapDeviceBootstrap),
-}
-#[derive(Debug, Default)]
-enum ApplyState {
-    #[default]
-    Idle,
-    Running,
-    Done(apply_device_cfg::ApplyDeviceCfgApplyCfg),
 }
 /// the planned changes and what applying them would do that NetBox can't show (PoE switched off)
 #[derive(Debug)]
@@ -82,7 +74,6 @@ pub enum ShowDeviceMessage {
     },
     AdjustTarget(SelectedTarget),
     Apply,
-    Applied(Result<apply_device_cfg::ApplyDeviceCfgApplyCfg, FrontendError>),
     Candidates(Result<Vec<Candidate>, String>),
     ManualMac(String),
     /// set up the device with this MAC
@@ -107,7 +98,6 @@ impl Component for ShowDevice {
             error: None,
             data: None,
             alternate_target: Default::default(),
-            apply: Default::default(),
             bootstrap: Default::default(),
             job: None,
             job_running: false,
@@ -145,20 +135,8 @@ impl Component for ShowDevice {
                 true
             }
             ShowDeviceMessage::Apply => {
-                self.apply = ApplyState::Running;
+                self.job_running = true;
                 apply(ctx.link().clone(), self.id, self.alternate_target.clone());
-                true
-            }
-            ShowDeviceMessage::Applied(result) => {
-                match result {
-                    Ok(result) => self.apply = ApplyState::Done(result),
-                    Err(error) => {
-                        self.apply = ApplyState::Idle;
-                        self.error = Some(error);
-                    }
-                }
-                // the device changed: show what is left now
-                fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::Update => {
@@ -189,6 +167,7 @@ impl Component for ShowDevice {
             }
             ShowDeviceMessage::JobFinished => {
                 self.job_running = false;
+                // the device changed: show what is left now
                 fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
                 true
             }
@@ -230,7 +209,7 @@ impl Component for ShowDevice {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let error = self.error.as_ref().map(|e| e.to_html());
-        let running = matches!(self.apply, ApplyState::Running);
+        let running = self.job_running;
         let data = self.data.as_ref().map(|data| {
             let (board, cfg_update) = data
                 .access
@@ -381,42 +360,9 @@ impl Component for ShowDevice {
                     disabled={nothing_to_do || running || update_running}
                     onclick={ctx.link().callback(|_| ShowDeviceMessage::Apply)}
                 />
-                if running { <Spinner size={SpinnerSize::Md}/>{" wird angewendet …"} }
             </dd>
             </dl>}
         });
-        let applied = match &self.apply {
-            ApplyState::Done(result) => Some({
-                // the CAPs' radios a controller provisioned again (their clients reconnect)
-                let reprovisioned = html! {
-                    for line in result.reprovisioned.iter() { <p>{ line.clone() }</p> }
-                };
-                // whether the backup from before the apply is taken away or loaded
-                let notes = html! {
-                    <>
-                        {reprovisioned}
-                        if !result.fallback.is_empty() { <p>{ result.fallback.clone() }</p> }
-                    </>
-                };
-                if result.remaining.is_empty() {
-                    html! {
-                        <Alert inline=true title="Angewendet, das Gerät entspricht jetzt NetBox" r#type={AlertType::Success}>
-                            <CodeBlock><CodeBlockCode>{ result.applied.clone() }</CodeBlockCode></CodeBlock>
-                            {notes}
-                        </Alert>
-                    }
-                } else {
-                    html! {
-                        <Alert inline=true title="Nicht alles wurde angewendet" r#type={AlertType::Warning}>
-                            <p>{"Noch offen:"}</p>
-                            <CodeBlock><CodeBlockCode>{ result.remaining.clone() }</CodeBlockCode></CodeBlock>
-                            {notes}
-                        </Alert>
-                    }
-                }
-            }),
-            _ => None,
-        };
         let job = self.job.map(|id| html! {
             <JobView key={id} id={id} on_finished={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}/>
         });
@@ -444,7 +390,6 @@ impl Component for ShowDevice {
             {error}
             {job}
             {bootstrapped}
-            {applied}
             {data}
             </>
         }
@@ -547,8 +492,8 @@ fn apply(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
             },
         )
         .await
-        .map(|data| data.apply_cfg);
-        scope.send_message(ShowDeviceMessage::Applied(result));
+        .map(|data| data.apply_cfg.id);
+        scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }
 

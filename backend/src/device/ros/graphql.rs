@@ -19,6 +19,7 @@ use crate::{
     },
     topology::access::device::DeviceAccess,
 };
+use crate::{graphql::scalars::ScalarDuration, job::Log};
 use async_graphql::{Context, Object, SimpleObject, futures_util::StreamExt};
 use log::info;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
@@ -281,20 +282,55 @@ pub struct GeneratedCfg {
     warnings: Vec<String>,
 }
 
-/// What applying the config to a device did.
-#[derive(SimpleObject)]
-pub struct ApplyResult {
-    /// the script that was run on the device; empty if there was nothing to do
-    applied: String,
-    /// the CAPs' radios a controller provisioned again, since the WLANs changed (German, for
-    /// the UI)
-    reprovisioned: Vec<String>,
-    /// what the device still lacks afterwards (empty when everything was applied), or why it
-    /// couldn't be checked
-    remaining: String,
-    /// what became of the fallback (`fallback`), for the UI (German); empty if nothing was
-    /// applied
-    fallback: String,
+/// The script the apply runs on the device; empty if there is nothing to do.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct ApplyPlanned {
+    pub script: Box<str>,
+}
+
+/// The device saved a backup it loads after `delay`, unless the provisioner reaches it again
+/// (`fallback`).
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct FallbackArmed {
+    pub delay: ScalarDuration,
+}
+
+/// The script runs on the device; the apply waits up to `timeout` for the device to be in
+/// line.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct ApplyRunning {
+    pub timeout: ScalarDuration,
+}
+
+/// What the device still lacks after the apply (empty when everything was applied), or why it
+/// couldn't be checked.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct ApplyChecked {
+    pub remaining: Box<str>,
+    pub error: Option<Box<str>>,
+}
+
+/// The fallback is taken away: the device is reachable with the new config.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct FallbackStopped {
+    pub after: ScalarDuration,
+}
+
+/// The fallback stays: the device loads the backup from before the apply in about `fires_in`
+/// and reboots. Either it couldn't be reached (`error`), or the apply was cancelled.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct FallbackLeft {
+    pub fires_in: ScalarDuration,
+    pub error: Option<Box<str>>,
+}
+
+/// A controller provisioned `count` CAP radios of `menu` again, since the WLANs changed (their
+/// clients reconnect); or couldn't (`error`).
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct RadiosReprovisioned {
+    pub menu: Box<str>,
+    pub count: u32,
+    pub error: Option<Box<str>>,
 }
 
 /// The `radio` menus of the CAPsMANs whose WLANs `mutations` change: a CAP only takes a new
@@ -374,7 +410,9 @@ impl AccessibleDevice {
     /// again over a new connection; whatever is left wasn't applied (RouterOS stops a script
     /// at its first error). Before, the device saves a backup it loads unless the provisioner
     /// reaches it again (`fallback`): reachable, even with a part left, it stays as it is.
-    pub async fn apply(&self) -> Result<ApplyResult, Error> {
+    /// Cancelled once the script runs, the apply leaves the fallback, which brings back the
+    /// config from before.
+    pub async fn apply(&self, log: &Log) -> Result<(), Error> {
         if !CONFIG.allow_apply {
             return Err(Error::ApplyNotAllowed);
         }
@@ -382,18 +420,20 @@ impl AccessibleDevice {
         cfg.generate_for(&self.device_config)?;
         let mutations = cfg.sorted_mutations()?;
         let applied = render_script(&mutations)?;
+        log.emit(ApplyPlanned {
+            script: applied.clone(),
+        });
         if applied.is_empty() {
-            return Ok(ApplyResult {
-                applied: String::new(),
-                reprovisioned: Vec::new(),
-                remaining: String::new(),
-                fallback: String::new(),
-            });
+            return Ok(());
         }
+        log.check()?;
         let raw = self.connect_again::<SimpleResult>().await?;
         let delay = CONFIG.apply_fallback();
         fallback::arm(&raw, delay).await?;
         let fires = Instant::now() + delay;
+        log.emit(FallbackArmed {
+            delay: delay.into(),
+        });
         if let Err(error) = apply_mutations_via_script(&raw, &mutations, APPLY_SCRIPT).await {
             // the script didn't start, the device is as it was
             if let Err(disarm) = fallback::disarm(&raw).await {
@@ -402,11 +442,25 @@ impl AccessibleDevice {
             return Err(error.into());
         }
         drop(raw);
+        log.emit(ApplyRunning {
+            timeout: APPLY_TIMEOUT.into(),
+        });
+        // cancelled from here on, the fallback stays
+        let wait = async |time| {
+            let waited = log.unless_cancelled(tokio::time::sleep(time)).await;
+            if waited.is_err() {
+                log.emit(FallbackLeft {
+                    fires_in: fires.saturating_duration_since(Instant::now()).into(),
+                    error: None,
+                });
+            }
+            waited
+        };
 
         let settled = Instant::now() + APPLY_TIMEOUT;
         let give_up = fires.checked_sub(FALLBACK_MARGIN).unwrap_or(fires);
         let remaining = loop {
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            wait(Duration::from_secs(3)).await?;
             let remaining = self.remaining().await;
             match &remaining {
                 Ok(script) if script.is_empty() => break remaining,
@@ -415,67 +469,81 @@ impl AccessibleDevice {
                 _ => info!("{}: not done yet", self.device_config.name()),
             }
         };
-        let fallback = match &remaining {
-            Ok(_) => self.disarm_fallback(give_up).await,
-            Err(_) => Err(None),
-        };
-        let fallback = match fallback {
-            Ok(()) => "Fallback gestoppt: das Gerät ist mit der neuen Konfiguration erreichbar".into(),
-            Err(error) => format!(
-                "Gerät nicht erreichbar{}: es lädt in etwa {} s das Backup von vor dem Anwenden und startet neu",
-                error.map(|error| format!(" ({error})")).unwrap_or_default(),
-                fires.saturating_duration_since(Instant::now()).as_secs()
-            ),
-        };
-        let reprovisioned = if self.device_config.wlan_controller_of().is_some() {
-            self.reprovision(reprovisioned_menus(&mutations)).await
-        } else {
-            Vec::new()
-        };
-        Ok(ApplyResult {
-            applied: applied.into(),
-            reprovisioned,
-            remaining: match remaining {
-                Ok(script) => script.into(),
-                Err(error) => format!("cannot check the device: {error}"),
+        log.emit(match &remaining {
+            Ok(script) => ApplyChecked {
+                remaining: script.clone(),
+                error: None,
             },
-            fallback,
-        })
-    }
-    /// Takes the fallback away, trying again until `give_up`.
-    async fn disarm_fallback(&self, give_up: Instant) -> Result<(), Option<Error>> {
-        loop {
+            Err(error) => ApplyChecked {
+                remaining: "".into(),
+                error: Some(error.to_string().into()),
+            },
+        });
+        let reachable = remaining.is_ok();
+        // taken away, trying again until `give_up`
+        let disarmed = loop {
+            if !reachable {
+                break Err(None);
+            }
             let disarmed = match self.connect_again::<SimpleResult>().await {
                 Ok(raw) => fallback::disarm(&raw).await,
                 Err(error) => Err(error),
             };
             match disarmed {
-                Ok(()) => return Ok(()),
-                Err(error) if Instant::now() >= give_up => return Err(Some(error)),
+                Ok(()) => break Ok(()),
+                Err(error) if Instant::now() >= give_up => break Err(Some(error)),
                 Err(error) => info!("{}: fallback not stopped yet: {error}", self.device_config.name()),
             }
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            wait(Duration::from_secs(3)).await?;
+        };
+        match disarmed {
+            Ok(()) => log.emit(FallbackStopped {
+                after: delay
+                    .saturating_sub(fires.saturating_duration_since(Instant::now()))
+                    .into(),
+            }),
+            Err(error) => log.emit(FallbackLeft {
+                fires_in: fires.saturating_duration_since(Instant::now()).into(),
+                error: Some(
+                    error
+                        .map(|error| error.to_string())
+                        .unwrap_or_else(|| "not reachable".into())
+                        .into(),
+                ),
+            }),
         }
+        if self.device_config.wlan_controller_of().is_some() {
+            log.check()?;
+            self.reprovision(reprovisioned_menus(&mutations), log).await;
+        }
+        Ok(())
     }
     /// Provisions the radios of `menus` (`reprovisioned_menus`) again, which reconnects the
-    /// CAPs' clients; what it did or why it couldn't, for the UI.
-    async fn reprovision(&self, menus: Vec<&'static str>) -> Vec<String> {
+    /// CAPs' clients.
+    async fn reprovision(&self, menus: Vec<&'static str>, log: &Log) {
         if menus.is_empty() {
-            return Vec::new();
+            return;
         }
+        let failed = |menu: &str, error: Error| RadiosReprovisioned {
+            menu: menu.into(),
+            count: 0,
+            error: Some(error.to_string().into()),
+        };
         let raw = match self.connect_again::<SimpleResult>().await {
             Ok(raw) => raw,
-            Err(error) => return vec![format!("Radios nicht neu provisioniert: {error}")],
+            Err(error) => return log.emit(failed(menus[0], error)),
         };
-        let mut report = Vec::new();
         for menu in menus {
             match provision_radios(&raw, menu).await {
                 Ok(0) => {}
-                Ok(count) => report.push(format!("{count} Radios neu provisioniert ({menu})")),
-                Err(error) => report.push(format!("{menu} nicht neu provisioniert: {error}")),
+                Ok(count) => log.emit(RadiosReprovisioned {
+                    menu: menu.into(),
+                    count: count as u32,
+                    error: None,
+                }),
+                Err(error) => log.emit(failed(menu, error)),
             }
         }
-        report
     }
     /// The packages besides `routeros` the device needs (`needed_radio_package`); none on a
     /// CHR, which has no RouterBOARD.
