@@ -360,8 +360,10 @@ Details: [vxlan-generation.md](vxlan-generation.md).
 
 ### Rezept: Netze am Controller
 
-Alle WLANs einer WLAN-Gruppe mit VLAN müssen **dieselbe VLAN** haben: Der AP setzt sie pro Radio,
-und auf einem wAP ac (`wifi-qcom-ac`) geht das nur als Access-Port der Bridge.
+Die WLANs einer WLAN-Gruppe können **verschiedene VLANs** haben, jedes WLAN seine eigene. Ein AP
+mit 802.11ac-Radios (wAP ac) kann dann nicht mit `wifi-qcom-ac` CAP sein, diese Chips taggen
+keine VLANs: Er bekommt seine Radios als `wlan<N>` (siehe [WLAN](#wlan)). Mit einer einzigen VLAN
+in der Gruppe geht auch `wifi-qcom-ac`.
 
 Jedes Netz, das der Controller für die WLANs bereitstellt, ist ein **virtuelles Interface** mit
 Untagged VLAN = WLAN-VLAN, IP-Adresse und gegebenenfalls Tag `dhcp`. Keine Bridge pro Netz: das
@@ -464,8 +466,9 @@ gibt es zwei Varianten:
    ihres WLANs, wie ein CAP von `/interface/wifi` (Variante auf dem Controller, das VXLAN trägt sie
    dorthin). Ohne `wlan<N>`-Interfaces in NetBox behält ein solcher AP seine CAP-Konfiguration,
    wie sie ist. Ein **wAP ac** läuft mit `wifi1`/`wifi2` auf `wifi-qcom-ac`, mit `wlan1`/`wlan2`
-   (2,4 und 5 GHz) auf `wireless` als CAP des klassischen CAPsMAN. Nach dem Wechsel in NetBox
-   tauscht ein RouterOS-Update die Pakete, danach bringt Anwenden die Konfiguration.
+   (2,4 und 5 GHz) auf `wireless` als CAP des klassischen CAPsMAN; das braucht er für eine Gruppe
+   mit mehreren VLANs. Nach dem Wechsel in NetBox tauscht ein RouterOS-Update die Pakete,
+   danach bringt Anwenden die Konfiguration.
 4. Für die Variante auf dem Controller: Die VLAN-Gruppe der WLAN-VLANs bekommt eine `vxlan_vni`
    (siehe [VXLAN](#vxlan)). Der AP bringt die Clients jedes WLANs in dessen VLAN.
 5. Das `country` der WLANs kommt aus der Region des Standorts des Controllers.

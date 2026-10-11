@@ -1,8 +1,9 @@
-//! A Wireless LAN Group whose WLANs have different VLANs: 802.11ac radios (`wifi-qcom-ac`)
-//! can't tag them, a wAP ac runs them as `wlan<N>` of the legacy CAPsMAN instead.
+//! A Wireless LAN Group whose WLANs have different VLANs: the controller of `/interface/wifi`
+//! sets each WLAN's VLAN, the CAPs' radios tag it (`wifi-qcom`); 802.11ac radios
+//! (`wifi-qcom-ac`) can't, a wAP ac runs them as `wlan<N>` of the legacy CAPsMAN instead.
 use crate::{
     device::ros::{
-        CapsManDeviceDataTarget, WifiDeviceDataCurrent, WifiDeviceDataTarget,
+        CapsManDeviceDataTarget, SetupError, WifiDeviceDataCurrent, WifiDeviceDataTarget,
         WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
         hw_facts::{RadioPackage, build_wifi_ports, build_wireless_ports},
         l2::{KeepNameGenerator, L2Setup},
@@ -15,7 +16,7 @@ use crate::{
     },
 };
 use ipnet::IpNet;
-use mikrotik_model::{ascii::AsciiString, model::CapsManDatapathVlanMode};
+use mikrotik_model::{ascii::AsciiString, model::CapsManDatapathVlanMode, value::HasNone};
 use std::net::{IpAddr, Ipv4Addr};
 
 /// `[controller, ax CAP, wAP ac on wifi-qcom-ac, wAP ac on wireless]`, with a WLAN per VLAN
@@ -138,6 +139,76 @@ async fn wlan_group(vlan_ids: &[u16]) -> [DeviceAccess; 4] {
         result.push(topology.devices_by_id(device).await.unwrap());
     }
     result.try_into().unwrap_or_else(|_| unreachable!())
+}
+
+fn wifi(
+    device: &DeviceAccess,
+    model: &[u8],
+    package: RadioPackage,
+) -> Result<WifiDeviceDataTarget, SetupError> {
+    let setup = L2Setup::new(device, KeepNameGenerator)?;
+    let current = WifiDeviceDataCurrent {
+        provisioning: Box::new([]),
+        datapath: Box::new([]),
+        cap: Default::default(),
+        capsman: Default::default(),
+        wifi: build_wifi_ports(b"C52iG-5HaxD2HaxD"),
+        configuration: Box::new([]),
+        certificate: Box::new([]),
+    };
+    let mut target = WifiDeviceDataTarget::new(model);
+    target.generate_from(device, &setup, Some(&current), &[], Some(package))?;
+    Ok(target)
+}
+
+/// The controller sets each WLAN's VLAN in its configuration.
+#[tokio::test]
+async fn controller_sets_the_vlan_of_each_wlan() {
+    let [controller, ..] = wlan_group(&[104, 105]).await;
+    let target = wifi(&controller, b"CCR2004-1G-12S+2XS", RadioPackage::WifiQcom).unwrap();
+    for vid in [104, 105] {
+        let configuration = &target.configuration[&AsciiString::from(format!("wlan{vid}"))].0;
+        assert_eq!(configuration.datapath_vlan_id, Some(HasNone::Value(vid)));
+    }
+}
+
+/// With one VLAN, the CAP sets it on its radios, and the controller none.
+#[tokio::test]
+async fn one_vlan_stays_on_the_cap() {
+    let [controller, ap_ax, ..] = wlan_group(&[104]).await;
+    let target = wifi(&controller, b"CCR2004-1G-12S+2XS", RadioPackage::WifiQcom).unwrap();
+    let configuration = &target.configuration[&AsciiString::from("wlan104")].0;
+    assert_eq!(configuration.datapath_vlan_id, None);
+    let target = wifi(&ap_ax, b"C52iG-5HaxD2HaxD", RadioPackage::WifiQcom).unwrap();
+    let datapath = &target.datapath.values().next().unwrap().0;
+    assert_eq!(datapath.vlan_id, Some(HasNone::Value(104)));
+}
+
+/// The ax CAP's datapath gives the bridge only: the VLAN comes with each configuration.
+#[tokio::test]
+async fn ax_cap_tags_the_vlans_of_the_controller() {
+    let [_, ap_ax, ..] = wlan_group(&[104, 105]).await;
+    let target = wifi(&ap_ax, b"C52iG-5HaxD2HaxD", RadioPackage::WifiQcom).unwrap();
+    let datapath = &target.datapath.values().next().unwrap().0;
+    assert_eq!(datapath.bridge, Some(HasNone::Value("bridge-caps".into())));
+    assert_eq!(datapath.vlan_id, None);
+    let radio = &target.wifi[&Some(AsciiString::from("wifi1"))];
+    assert_eq!(radio.datapath_vlan_id, None);
+    assert_eq!(radio.datapath, Some("bridge-caps".into()));
+}
+
+/// A wAP ac on `wifi-qcom-ac` can't tag the VLANs, so it can't be in the group.
+#[tokio::test]
+async fn ac_cap_without_tagging_is_refused() {
+    let [_, _, ap_ac, _] = wlan_group(&[104, 105]).await;
+    assert_eq!(
+        needed_radio_package(&ap_ac, b"RBwAPG-5HacD2HnD"),
+        Some(RadioPackage::WifiQcomAc)
+    );
+    match wifi(&ap_ac, b"RBwAPG-5HacD2HnD", RadioPackage::WifiQcomAc) {
+        Err(SetupError::WlanVlansNotTagged(name)) => assert_eq!(&*name, "ap-ac"),
+        other => panic!("{:?}", other.map(|_| ())),
+    }
 }
 
 /// A wAP ac with `wlan1` in NetBox runs `wireless`, as a CAP of the legacy CAPsMAN, which

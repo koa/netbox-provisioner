@@ -195,17 +195,20 @@ An uplink tagged `nat` gets a masquerade rule. The provisioner owns
 reorder rules yet.
 
 A WLAN with a VLAN ends where NetBox puts its network (e.g. the controller, over the VLAN
-group's VXLAN). The CAP sets the VLAN, so a group's WLANs share one: with `wifi-qcom` its radios
-get a datapath with `vlan-id` into the bridge carrying that VLAN; `wifi-qcom-ac` radios can't tag
+group's VXLAN). With one VLAN in the group the CAP sets it: with `wifi-qcom` its radios get a
+datapath with `vlan-id` into the bridge carrying that VLAN; `wifi-qcom-ac` radios can't tag
 (MikroTik: "802.11ac chipsets do not support this type of VLAN tagging"; clients associate but
 get no DHCP), so they are static access ports of that bridge instead
-(`RadioPackage::tags_vlans`). A wAP ac also runs `wireless` (`hw_facts::runs_wireless`), as a
-CAP of the legacy CAPsMAN when NetBox has `wlan<N>` ports for it. Moving to `wireless` leaves the
-`/interface/wifi` radios inactive under their names, so without a wifi package they get their
-default names back, and `/interface/wifi` mutations come before `/interface/wireless` ones (the
-sort keeps the order within a round). A device that is no controller or CAP anymore still
-gets `WifiDeviceData` read while CAPsMAN/CAP are on or the certificates CAPsMAN generated (named in
-`/interface/wifi/capsman generated-*`, not recognizable by trust store) are left, and these are
+(`RadioPackage::tags_vlans`). With several (`WlanVlans::PerWlan`) the controller's configurations
+carry each WLAN's `datapath.vlan-id` and the CAP's datapath only the bridge (MikroTik's CAPsMAN
+VLAN example; no 802.11ax device in the lab to try it); a `wifi-qcom-ac` CAP is refused then,
+it runs `wireless` instead with `wlan<N>` in NetBox (`hw_facts::runs_wireless`, the wAP ac).
+Moving to `wireless` leaves the `/interface/wifi` radios inactive under their names, so without a
+wifi package they get their default names back, and `/interface/wifi` mutations come before
+`/interface/wireless` ones (the sort keeps the order within a round). A device that is no
+controller or CAP anymore still gets `WifiDeviceData` read while CAPsMAN/CAP are on or the
+certificates CAPsMAN generated (named in `/interface/wifi/capsman generated-*`, not recognizable
+by trust store) are left, and these are
 removed. A VLAN interface on a tagged bridge only exists where the device has L3 in that VLAN.
 
 A device that powers another one over PoE (NetBox `poe_mode=pse` on the port cabled to it) must

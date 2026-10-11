@@ -181,8 +181,12 @@ pub enum SetupError {
     MissingPackage(&'static str),
     #[error("{0} is an AP of a Wireless LAN Group whose controller has no loopback address")]
     MissingController(Box<str>),
-    #[error("the WLANs of Wireless LAN Group {0} have different VLANs, a CAP's radio has one")]
-    MultipleWlanVlans(Box<str>),
+    #[error(
+        "the WLANs of {0}'s Wireless LAN Group have different VLANs, which its 802.11ac radios \
+         (wifi-qcom-ac) can't tag: give it the radios of the legacy CAPsMAN in NetBox (wlan1, \
+         wlan2 instead of wifi1, wifi2)"
+    )]
+    WlanVlansNotTagged(Box<str>),
     #[error(
         "{port} has MTU {mtu}, but the other end of its cable, {far_end}, {far_mtu}: OSPF needs both equal"
     )]
@@ -1463,9 +1467,12 @@ impl WifiDeviceDataTarget {
             let cap = &mut self.cap;
             cap.enabled = YesNo::Yes;
             cap.caps_man_addresses = [controller].into();
-            let wlan_vlan = wlan_vlan_id(&group)?;
+            let wlan_vlans = wlan_vlans(&group);
             let wlan_bridge = group.wlan().find_map(|wlan| l2.bridge_of_wlan(&wlan));
             let tags = radio_package.is_some_and(RadioPackage::tags_vlans);
+            if wlan_vlans == WlanVlans::PerWlan && !tags {
+                return Err(SetupError::WlanVlansNotTagged(device.name().into()));
+            }
             for interface in device.interfaces() {
                 let Some(port @ PhysicalPortId::Wifi(_)) = interface.external_port() else {
                     continue;
@@ -1479,8 +1486,9 @@ impl WifiDeviceDataTarget {
                     continue;
                 };
                 radio.name = name.clone();
-                let vlan = match (bridge, wlan_bridge, wlan_vlan) {
-                    (None, Some(_), Some(vlan)) if tags => Some(vlan),
+                // with a VLAN per WLAN, the controller's configurations have them
+                let vlan = match (bridge, wlan_bridge, wlan_vlans) {
+                    (None, Some(_), WlanVlans::One(Some(vlan))) if tags => Some(vlan),
                     _ => None,
                 };
                 radio.datapath_vlan_id = vlan.map(HasNone::Value);
@@ -1513,6 +1521,7 @@ impl WifiDeviceDataTarget {
             capsman.upgrade_policy = Some(InterfaceWifiCapsmanUpgradePolicy::SuggestSameVersion);
             capsman.require_peer_certificate = Some(false);
             let country = wifi_country(device)?;
+            let per_wlan = wlan_vlans(&group) == WlanVlans::PerWlan;
             let mut names = Vec::new();
             for wlan in group.wlan() {
                 let ssid = wlan.ssid().unwrap_or_default();
@@ -1522,6 +1531,12 @@ impl WifiDeviceDataTarget {
                 configuration.disabled = false;
                 configuration.ssid = Some(ssid.into());
                 configuration.country = Some(country);
+                // the CAP's datapath gives the bridge, this the VLAN in it
+                configuration.datapath_vlan_id = wlan
+                    .vlan()
+                    .and_then(|vlan| vlan.vlan_id())
+                    .filter(|_| per_wlan)
+                    .map(HasNone::Value);
                 match wlan.auth() {
                     Some(WlanAuth::Wpa(settings)) => {
                         configuration.security_authentication_types =
@@ -1650,17 +1665,23 @@ impl CapsManDeviceDataTarget {
     }
 }
 
-/// The one VLAN the WLANs of a group put their clients in, if any: a CAP's radio has one.
-fn wlan_vlan_id(group: &WlanGroupAccess) -> Result<Option<u16>, SetupError> {
+/// The VLANs the WLANs of a group put their clients in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WlanVlans {
+    /// one at most: the CAP sets it on its radios (or makes them access ports, `wifi-qcom-ac`)
+    One(Option<u16>),
+    /// several: the controller sets each WLAN's in its configuration, a CAP's radios tag them
+    PerWlan,
+}
+
+fn wlan_vlans(group: &WlanGroupAccess) -> WlanVlans {
     let vlans = group
         .wlan()
         .filter_map(|wlan| wlan.vlan().and_then(|vlan| vlan.vlan_id()))
         .collect::<BTreeSet<_>>();
     match vlans.len() {
-        0 | 1 => Ok(vlans.first().copied()),
-        _ => Err(SetupError::MultipleWlanVlans(
-            group.name().unwrap_or_default().into(),
-        )),
+        0 | 1 => WlanVlans::One(vlans.first().copied()),
+        _ => WlanVlans::PerWlan,
     }
 }
 

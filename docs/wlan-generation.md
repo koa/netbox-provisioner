@@ -55,10 +55,9 @@ CAP bridged den Verkehr lokal.
   statischen Bridge-Port deshalb weg. Die Radios werden wie Ethernet-Ports nach L2 benannt (`w01`,
   `w02`). Alle übrigen Felder eines Radios bleiben, wie das Gerät sie hat, ebenso alle Radios eines
   Geräts, das kein CAP ist.
-- **WLAN mit VLAN**: Der CAP setzt die VLAN, nicht der Controller (der kennt die Boards seiner
-  CAPs nicht). Ein Radio hat deshalb eine VLAN: WLANs einer Gruppe mit verschiedenen VLANs werden
-  abgelehnt (`SetupError::MultipleWlanVlans`). Wie, hängt vom Radio-Paket ab
-  (`RadioPackage::tags_vlans` in `hw_facts.rs`):
+- **WLAN mit VLAN** (`WlanVlans`): Haben die WLANs der Gruppe höchstens eine VLAN, setzt der CAP
+  sie (`WlanVlans::One`, der Controller kennt die Boards seiner CAPs nicht). Wie, hängt vom
+  Radio-Paket ab (`RadioPackage::tags_vlans` in `hw_facts.rs`):
   - `wifi-qcom` (802.11ax): Der lokale Datapath bekommt `vlan-id`, RouterOS macht die Radios zu
     getaggten Mitgliedern der VLAN (dynamischer Eintrag in `/interface/bridge/vlan`, das Radio
     taggt selbst).
@@ -67,8 +66,15 @@ CAP bridged den Verkehr lokal.
     zwar, aber ihr Verkehr kommt nicht in die Bridge (im Lab: keine DHCP-Lease, `tx-drop` der
     Radios steigt). Die Radios bekommen deshalb keinen Datapath, sondern sind statische
     Access-Ports der Bridge (`pvid` = WLAN-VLAN, untagged in `/interface/bridge/vlan`), die
-    `setup_l2` anlegt. Virtuelle Interfaces (weitere WLANs) erben das nicht; deshalb wäre auch dort
+    `setup_l2` anlegt. Virtuelle Interfaces (weitere WLANs) erben das nicht; deshalb ist dort
     nur eine VLAN möglich.
+
+  Haben die WLANs verschiedene VLANs (`WlanVlans::PerWlan`), bekommt jede Configuration des
+  Controllers `datapath.vlan-id` = die VLAN ihres WLANs, und der Datapath des CAP gibt nur noch
+  die Bridge (ohne `vlan-id`, ein lokaler Wert ginge vor). So steht es in MikroTiks Beispiel für
+  CAPsMAN mit VLANs; mangels 802.11ax-Gerät im Lab nicht live geprüft. Ein CAP auf
+  `wifi-qcom-ac` kann das nicht und wird abgelehnt (`SetupError::WlanVlansNotTagged`, mit dem
+  Hinweis auf `wlan<N>`): Ein wAP ac wird dafür CAP des klassischen CAPsMAN, siehe unten.
 
   Liegt die
   VLAN in einer VLAN-Gruppe mit VNI, trägt das VXLAN sie zum Controller (siehe
