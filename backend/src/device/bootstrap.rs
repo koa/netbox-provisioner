@@ -19,7 +19,8 @@ use crate::{
         proxied_stream,
         terminal::{LOGIN_FLAGS, Terminal, TerminalError, Tunnel},
     },
-    graphql::scalars::ScalarMac,
+    graphql::scalars::{ScalarDuration, ScalarMac},
+    job::Log,
     topology::access::{device::DeviceAccess, interface::InterfaceAccess},
 };
 use async_graphql::{ComplexObject, SimpleObject};
@@ -101,14 +102,31 @@ pub struct MacTelnetSetup {
     pub neighbor_address: IpAddr,
 }
 
-#[derive(Debug, SimpleObject)]
-pub struct BootstrapResult {
-    /// where the device answers the API now; `None` if the setup failed
-    pub address: Option<String>,
-    pub error: Option<String>,
-    /// the console session on the neighbor, passwords replaced by `***`
-    pub transcript: String,
+/// The setup logs in on `neighbor`'s console and opens MAC-telnet on `neighbor_port` to the
+/// device with one of `macs`.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct SetupStarted {
+    pub neighbor: Box<str>,
+    pub neighbor_port: Box<str>,
+    pub macs: Box<[Box<str>]>,
 }
+
+/// The console session is over; the setup waits up to `timeout` for the device's API at
+/// `address`.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct WaitingForApi {
+    pub address: Box<str>,
+    pub timeout: ScalarDuration,
+}
+
+/// The device answers the API at `address`.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct SetupDone {
+    pub address: Box<str>,
+}
+
+/// How long the device may take to answer the API after the setup.
+const API_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl BootstrapPlan {
     pub fn port_address(&self) -> IpAddr {
@@ -273,33 +291,10 @@ fn credentials_of(device: &DeviceAccess) -> Result<&'static MikrotikCredentials,
         .ok_or(Error::MissingCredentials)
 }
 
-/// Sets `device` up along `plan`; the result carries the console transcript also on failure.
-/// `plan.setup.macs` is the device chosen by the operator.
-pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan) -> BootstrapResult {
-    let mut transcript = String::new();
-    let result = run(device, plan, &mut transcript).await;
-    match result {
-        Ok(()) => BootstrapResult {
-            address: Some(plan.port_address().to_string()),
-            error: None,
-            transcript,
-        },
-        Err(error) => {
-            warn!("setup of {} failed: {error}", device.name());
-            BootstrapResult {
-                address: None,
-                error: Some(error.to_string()),
-                transcript,
-            }
-        }
-    }
-}
-
-async fn run(
-    device: &DeviceAccess,
-    plan: &BootstrapPlan,
-    transcript: &mut String,
-) -> Result<(), Error> {
+/// Sets `device` up along `plan`, the console session going to `log` as it comes (passwords
+/// replaced by `***`). `plan.setup.macs` is the device chosen by the operator. Cancelled, it
+/// stops before the console session or while it waits for the API, not within the session.
+pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -> Result<(), Error> {
     if !CONFIG.allow_apply {
         return Err(Error::ApplyNotAllowed);
     }
@@ -314,6 +309,12 @@ async fn run(
         plan.neighbor_port,
         macs(&plan.setup.macs)
     );
+    log.check()?;
+    log.emit(SetupStarted {
+        neighbor: plan.neighbor.as_str().into(),
+        neighbor_port: plan.neighbor_port.as_str().into(),
+        macs: plan.setup.macs.iter().map(|mac| mac.to_string().into()).collect(),
+    });
     let mut terminal = match proxied_stream(plan.neighbor_address, 22).await? {
         Some(stream) => {
             Terminal::connect_with_stream(stream, neighbor.user(), neighbor.password()).await?
@@ -328,11 +329,24 @@ async fn run(
         }
     };
     terminal.hide(password);
+    terminal.stream_to(log);
     let result = set_up(&mut terminal, &plan.setup, user, password).await;
-    transcript.push_str(&terminal.transcript());
     terminal.close().await;
+    if let Err(error) = &result {
+        warn!("setup of {} failed: {error}", device.name());
+    }
     result?;
-    wait_for_api(device, plan.port_address(), &Path::Neighbor(tunnel(plan).await?.into())).await
+    let address = plan.port_address();
+    log.emit(WaitingForApi {
+        address: address.to_string().into(),
+        timeout: API_TIMEOUT.into(),
+    });
+    let path = Path::Neighbor(tunnel(plan).await?.into());
+    log.unless_cancelled(wait_for_api(device, address, &path)).await??;
+    log.emit(SetupDone {
+        address: address.to_string().into(),
+    });
+    Ok(())
 }
 
 /// An SSH tunnel to `plan`'s neighbor, which makes the connections to the device it sets up:
@@ -591,7 +605,7 @@ async fn wait_for_api(device: &DeviceAccess, address: IpAddr, path: &Path) -> Re
             .ok_or(Error::MissingCredentials)?
             .into(),
     );
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + API_TIMEOUT;
     loop {
         match connect::<SimpleResult>(address, path, &credentials).await {
             Ok(_) => return Ok(()),

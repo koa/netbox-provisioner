@@ -1,6 +1,8 @@
 //! An interactive RouterOS console over SSH, for what the API can't do: a `/tool mac-telnet`
 //! session to a device that has no IP address yet. Logs in with the [`LOGIN_FLAGS`], so the
 //! output is plain text the prompts can be matched in.
+use crate::job::Log;
+use async_graphql::SimpleObject;
 use log::debug;
 use russh::{
     ChannelMsg, ChannelStream, Disconnect,
@@ -258,6 +260,17 @@ pub struct Terminal {
     /// everything that happened, for the operator; secrets replaced by `***`
     transcript: String,
     secrets: Vec<Box<str>>,
+    /// where the transcript goes line by line as it comes ([`Terminal::stream_to`]), and the
+    /// start of a line not complete yet
+    stream: Option<(Log, String)>,
+    /// blank lines just streamed
+    blank: usize,
+}
+
+/// Output of a console session, a few lines at a time; secrets replaced by `***`.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct ConsoleOutput {
+    pub text: Box<str>,
 }
 
 impl Terminal {
@@ -294,6 +307,8 @@ impl Terminal {
             buffer: String::new(),
             consumed: String::new(),
             transcript: String::new(),
+            stream: None,
+            blank: 0,
             secrets: password
                 .filter(|p| !p.is_empty())
                 .map(Box::from)
@@ -304,6 +319,36 @@ impl Terminal {
         // RouterOS redraws the prompt after the login banner
         terminal.settle(Duration::from_millis(800)).await?;
         Ok(terminal)
+    }
+
+    /// Sends the transcript from now on to `log` too, a line as soon as it is complete.
+    pub fn stream_to(&mut self, log: &Log) {
+        self.stream = Some((log.clone(), String::new()));
+    }
+
+    /// Streams the complete lines of `shown`, without runs of blank lines (like
+    /// [`Terminal::transcript`]); with `all` also an incomplete last one.
+    fn stream(&mut self, shown: &str, all: bool) {
+        let Some((log, pending)) = &mut self.stream else {
+            return;
+        };
+        pending.push_str(shown);
+        let end = if all {
+            pending.len()
+        } else {
+            pending.rfind('\n').map_or(0, |at| at + 1)
+        };
+        let mut text = String::new();
+        for line in pending[..end].split_inclusive('\n') {
+            self.blank = if line.trim().is_empty() { self.blank + 1 } else { 0 };
+            if self.blank < 2 {
+                text.push_str(line);
+            }
+        }
+        pending.drain(..end);
+        if !text.is_empty() {
+            log.emit(ConsoleOutput { text: text.into() });
+        }
     }
 
     /// Replaces `secret` by `***` in the transcript from now on.
@@ -402,6 +447,7 @@ impl Terminal {
                         shown = shown.replace(secret.as_ref(), "***");
                     }
                     self.transcript.push_str(&shown);
+                    self.stream(&shown, false);
                     return Ok(true);
                 }
                 Some(ChannelMsg::Eof | ChannelMsg::Close) | None => {
@@ -420,7 +466,8 @@ impl Terminal {
         self.transcript[start..].into()
     }
 
-    pub async fn close(self) {
+    pub async fn close(mut self) {
+        self.stream("", true);
         let _ = self.channel.eof().await;
         let _ = self
             .session

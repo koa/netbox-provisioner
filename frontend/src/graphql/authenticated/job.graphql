@@ -28,6 +28,10 @@ query JobEvents($id: Int!, $after: Int){
                 ... on FallbackStopped { after }
                 ... on FallbackLeft { firesIn error }
                 ... on RadiosReprovisioned { menu count error }
+                ... on SetupStarted { neighbor neighborPort macs }
+                ... on ConsoleOutput { text }
+                ... on WaitingForApi { address timeout }
+                ... on SetupDone { address }
             }
         }
     }

@@ -9,21 +9,21 @@ Server-Log
 
 Struktur
 --------
-**Status: in Arbeit.** Update und Apply melden Ereignisse (`job::Event`, eine GraphQL-Union: was
-heruntergeladen, kopiert, angewendet wird, worauf gewartet wird, was vom Fallback wurde), das
-Frontend formuliert sie auf Deutsch. Die Ersteinrichtung liefert noch Text.
+**Status: erledigt.** Update, Apply und Ersteinrichtung melden Ereignisse (`job::Event`, eine
+GraphQL-Union: was heruntergeladen, kopiert, angewendet wird, worauf gewartet wird, was vom
+Fallback wurde, die Ausgabe der Konsole), das Frontend formuliert sie auf Deutsch.
 
 Aktuell ist das Server-Log nur ein String. Es sollte als Stream von Events formuliert werden. Ein Event ist z.B. ein Text der von der API zurückgeliefert wird. Ein anderer Event ist, dass der Server auf etwas wartet.
 So kann der eigentliche Text für den Benutzer im Frontend gerendert werden, wo auch Übersetzungen möglich sind. Andererseits bleibt der semantische Inhalt erhalten und er kann im UI genutzt werden (z.B. ein Button für eine weitere Nutzeraktion statt nur einem Text).
 
 Handling
 --------
-**Status: in Arbeit.** Update und Apply laufen als Job im Hintergrund: die Seite zeigt die
-Ereignisse, sobald sie da sind (sie fragt jede Sekunde nach), auch nach dem Neuladen, und hat
-einen Knopf zum Abbrechen. Abgebrochen wird dort, wo es sicher ist (zwischen den Schritten und
-beim Warten): ein Update entfernt dann hochgeladene Pakete wieder, ein Apply lässt nach dem
-Skript den Fallback stehen (das Gerät lädt die Konfiguration von vorher). Die Ersteinrichtung
-kommt noch.
+**Status: erledigt.** Update, Apply und Ersteinrichtung laufen als Job im Hintergrund: die Seite
+zeigt die Ereignisse, sobald sie da sind (sie fragt jede Sekunde nach), auch nach dem Neuladen,
+und hat einen Knopf zum Abbrechen. Abgebrochen wird dort, wo es sicher ist (zwischen den
+Schritten und beim Warten): ein Update entfernt dann hochgeladene Pakete wieder, ein Apply
+lässt nach dem Skript den Fallback stehen (das Gerät lädt die Konfiguration von vorher), die
+Ersteinrichtung bricht nicht mitten in der Konsolensitzung ab.
 
 Wenn eine Aktion länger dauert, sollen die Logs nicht im Server gesammelt werden bis alles vorbei ist. Das UI soll live darstellen was passiert, immer mit der Möglichkeit die Aktion abzubrechen, wenn etwas schief läuft.
 

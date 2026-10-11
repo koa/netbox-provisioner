@@ -10,6 +10,7 @@ use crate::chr_network::vm::{PortWiring, RunningNode, boot_node, mac_of, start_n
 use crate::chr_network::wait::wait_until;
 use backend::device::bootstrap::{MacTelnetSetup, set_up};
 use backend::device::terminal::{Terminal, Tunnel};
+use backend::job::{Event, Log};
 use encoding_rs::mem::encode_latin1_lossy;
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
@@ -97,6 +98,8 @@ async fn mac_telnet_setup_from_entry() {
         .await
         .expect("ssh to entry");
         terminal.hide(password);
+        let log = Log::new(&node.name);
+        terminal.stream_to(&log);
         let setup = MacTelnetSetup {
             macs: [mac_of(node.index, slot)].into(),
             port: format!("ether{}", slot + 1),
@@ -113,6 +116,17 @@ async fn mac_telnet_setup_from_entry() {
             !transcript.contains(password),
             "the password must not be in the transcript"
         );
+        // the same streamed, line by line
+        let streamed = log
+            .events()
+            .into_iter()
+            .map(|event| match event {
+                Event::ConsoleOutput(output) => output.text.to_string(),
+                other => panic!("{other:?}"),
+            })
+            .collect::<String>();
+        assert!(streamed.contains("Welcome back!"), "{streamed}");
+        assert!(!streamed.contains(password), "the password must not be streamed");
 
         // reachable from the entry over the cable, with the password
         let target = address.split('/').next().unwrap().to_string();

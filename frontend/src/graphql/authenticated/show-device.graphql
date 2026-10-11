@@ -60,9 +60,7 @@ query BootstrapCandidates($id: Int!){
 }
 mutation BootstrapDevice($id: Int!, $mac: ScalarMac!){
     bootstrap(id: $id, mac: $mac){
-        address
-        error
-        transcript
+        id
     }
 }
 mutation UpdateRouteros($id: Int!, $channel: Channel, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){

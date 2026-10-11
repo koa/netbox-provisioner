@@ -89,5 +89,13 @@ ul.job-events {
         min-width: 3.5em;
         color: var(--pf-t--global--text--color--subtle, #6a6e73);
         font-variant-numeric: tabular-nums;
+        vertical-align: top;
+    }
+    & pre.job-console {
+        display: inline-block;
+        margin: 0;
+        white-space: pre-wrap;
+        max-height: 30em;
+        overflow-y: auto;
     }
 }

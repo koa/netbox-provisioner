@@ -24,8 +24,7 @@ pub struct ShowDevice {
     error: Option<FrontendError>,
     data: Option<ShowDeviceData>,
     alternate_target: SelectedTarget,
-    bootstrap: BootstrapState,
-    /// the job shown (an update, an apply), started here or running when the page was opened
+    /// the job shown (an update, an apply, a setup), started here or running when the page was opened
     job: Option<i64>,
     job_running: bool,
     /// what the bootstrap neighbor sees on its port; `None` while it is asked
@@ -37,13 +36,6 @@ pub struct ShowDevice {
 }
 type Candidate =
     bootstrap_candidates::BootstrapCandidatesTopologyDeviceByIdBootstrapPlanDiscovered;
-#[derive(Debug, Default)]
-enum BootstrapState {
-    #[default]
-    Idle,
-    Running,
-    Done(bootstrap_device::BootstrapDeviceBootstrap),
-}
 /// the planned changes and what applying them would do that NetBox can't show (PoE switched off)
 #[derive(Debug)]
 struct GeneratedCfg {
@@ -78,7 +70,6 @@ pub enum ShowDeviceMessage {
     ManualMac(String),
     /// set up the device with this MAC
     Bootstrap(String),
-    Bootstrapped(Result<bootstrap_device::BootstrapDeviceBootstrap, FrontendError>),
     /// the label of a channel entry (`channel_label`)
     SelectChannel(Box<str>),
     Update,
@@ -98,7 +89,6 @@ impl Component for ShowDevice {
             error: None,
             data: None,
             alternate_target: Default::default(),
-            bootstrap: Default::default(),
             job: None,
             job_running: false,
             candidates: None,
@@ -180,19 +170,8 @@ impl Component for ShowDevice {
                 true
             }
             ShowDeviceMessage::Bootstrap(mac) => {
-                self.bootstrap = BootstrapState::Running;
+                self.job_running = true;
                 bootstrap(ctx.link().clone(), self.id, mac);
-                true
-            }
-            ShowDeviceMessage::Bootstrapped(result) => {
-                match result {
-                    Ok(result) => self.bootstrap = BootstrapState::Done(result),
-                    Err(error) => {
-                        self.bootstrap = BootstrapState::Idle;
-                        self.error = Some(error);
-                    }
-                }
-                fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::AdjustTarget(t) => {
@@ -272,7 +251,7 @@ impl Component for ShowDevice {
                 </dd>
             </>}
             });
-            let bootstrap_running = matches!(self.bootstrap, BootstrapState::Running);
+            let bootstrap_running = self.job_running;
             let update = if data.access.is_none() {
                 let setup = match (&data.bootstrap_plan, &data.bootstrap_problem) {
                     (Some(plan), _) => {
@@ -324,7 +303,6 @@ impl Component for ShowDevice {
                                     onclick={ctx.link().callback(move |_| ShowDeviceMessage::Bootstrap(manual.clone()))}
                                 />
                             </div>
-                            if bootstrap_running { <p><Spinner size={SpinnerSize::Md}/>{" Ersteinrichtung läuft …"}</p> }
                         </>}
                     }
                     (None, Some(problem)) => html!(<p>{format!("Keine Ersteinrichtung möglich: {problem}")}</p>),
@@ -366,22 +344,6 @@ impl Component for ShowDevice {
         let job = self.job.map(|id| html! {
             <JobView key={id} id={id} on_finished={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}/>
         });
-        let bootstrapped = match &self.bootstrap {
-            BootstrapState::Done(result) => Some(match (&result.address, &result.error) {
-                (Some(address), _) => html! {
-                    <Alert inline=true title={format!("Ersteinrichtung abgeschlossen, das Gerät antwortet an {address}")} r#type={AlertType::Success}>
-                        <CodeBlock><CodeBlockCode>{ result.transcript.clone() }</CodeBlockCode></CodeBlock>
-                    </Alert>
-                },
-                (None, error) => html! {
-                    <Alert inline=true title="Ersteinrichtung fehlgeschlagen" r#type={AlertType::Danger}>
-                        <p>{ error.clone().unwrap_or_default() }</p>
-                        <CodeBlock><CodeBlockCode>{ result.transcript.clone() }</CodeBlockCode></CodeBlock>
-                    </Alert>
-                },
-            }),
-            _ => None,
-        };
         html! {
             <>
             <ExpandableSection toggle_text_hidden="Change Target" toggle_text_expanded="Hide Target Selection">
@@ -389,7 +351,6 @@ impl Component for ShowDevice {
             </ExpandableSection>
             {error}
             {job}
-            {bootstrapped}
             {data}
             </>
         }
@@ -523,8 +484,8 @@ fn bootstrap(scope: Scope<ShowDevice>, id: u32, mac: String) {
             bootstrap_device::Variables { id: id as i64, mac },
         )
         .await
-        .map(|data| data.bootstrap);
-        scope.send_message(ShowDeviceMessage::Bootstrapped(result));
+        .map(|data| data.bootstrap.id);
+        scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }
 

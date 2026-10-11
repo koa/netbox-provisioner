@@ -1,4 +1,4 @@
-//! A job of the backend (an update, an apply): its events while it runs, asked for every second, worded
+//! A job of the backend (an update, an apply, a setup): its events while it runs, asked for every second, worded
 //! here; with a button to cancel it.
 use crate::{
     error::FrontendError,
@@ -106,10 +106,7 @@ impl Component for JobView {
                 {error}
                 if let Some(error) = &job.error { <p>{ error.clone() }</p> }
                 <ul class="job-events">
-                    { for job.events.iter().map(|event| html!(<li>
-                        <span class="job-time">{ elapsed(event.at) }</span>
-                        { describe(event) }
-                    </li>)) }
+                    { for items(&job.events) }
                 </ul>
                 if running {
                     <p>
@@ -171,6 +168,7 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
     let what = match &job.kind {
         JobKind::UPDATE => "RouterOS-Update",
         JobKind::APPLY => "Anwenden",
+        JobKind::BOOTSTRAP => "Ersteinrichtung",
         JobKind::Other(other) => other,
     };
     let events = || job.events.iter().map(|event| &event.event);
@@ -188,6 +186,15 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         }
         if events().any(|e| matches!(e, Event::ApplyChecked(_))) {
             return ("Angewendet, das Gerät entspricht jetzt NetBox".into(), AlertType::Success);
+        }
+        if let Some(address) = events().find_map(|e| match e {
+            Event::SetupDone(done) => Some(&done.address),
+            _ => None,
+        }) {
+            return (
+                format!("Ersteinrichtung abgeschlossen, das Gerät antwortet an {address}"),
+                AlertType::Success,
+            );
         }
     }
     match &job.state {
@@ -231,6 +238,35 @@ fn script(title: &str, script: &str) -> Html {
     </>}
 }
 
+/// One entry per event, consecutive console output in one.
+fn items(events: &[JobEventsJobEvents]) -> Vec<Html> {
+    let mut items = Vec::new();
+    let mut at = 0;
+    while at < events.len() {
+        let event = &events[at];
+        let content = if let Event::ConsoleOutput(_) = event.event {
+            let mut text = String::new();
+            while let Some(Event::ConsoleOutput(output)) = events.get(at).map(|e| &e.event) {
+                text.push_str(&output.text);
+                at += 1;
+            }
+            console(&text)
+        } else {
+            at += 1;
+            describe(event)
+        };
+        items.push(html!(<li>
+            <span class="job-time">{ elapsed(event.at) }</span>
+            { content }
+        </li>));
+    }
+    items
+}
+
+fn console(text: &str) -> Html {
+    html!(<pre class="job-console">{ text.to_string() }</pre>)
+}
+
 fn describe(event: &JobEventsJobEvents) -> Html {
     let text = match &event.event {
         Event::ApplyPlanned(planned) if planned.script.trim().is_empty() => {
@@ -261,6 +297,19 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             },
             seconds(left.fires_in)
         ),
+        Event::SetupStarted(setup) => format!(
+            "Konsole auf {}, MAC-Telnet an {} zu {}",
+            setup.neighbor,
+            setup.neighbor_port,
+            setup.macs.join(", ")
+        ),
+        Event::ConsoleOutput(output) => return console(&output.text),
+        Event::WaitingForApi(wait) => format!(
+            "Wartet bis zu {} s, bis das Gerät an {} die API öffnet",
+            seconds(wait.timeout),
+            wait.address
+        ),
+        Event::SetupDone(done) => format!("Das Gerät antwortet an {}", done.address),
         Event::RadiosReprovisioned(radios) => match &radios.error {
             None => format!("{} Radios neu provisioniert ({})", radios.count, radios.menu),
             Some(error) => format!("{} nicht neu provisioniert: {error}", radios.menu),

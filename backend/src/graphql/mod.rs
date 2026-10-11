@@ -2,7 +2,7 @@ use crate::{
     Error,
     config::CONFIG,
     device::{
-        bootstrap::{self, BootstrapResult},
+        bootstrap,
         power::PowerChain,
         update::{self, DeviceLink},
     },
@@ -62,11 +62,14 @@ impl QueryAuthenticated {
 }
 #[Object]
 impl MutationAuthenticated {
-    /// Initial setup over mac-telnet from a neighbor along `DeviceAccess.bootstrapPlan`, for a
-    /// device that can't be reached over IP yet (`allow_apply` must be set). `mac` is the
-    /// physical device that gets this NetBox device's config, usually one of
-    /// `bootstrapPlan.discovered`.
-    async fn bootstrap(&self, id: u32, mac: ScalarMac) -> Result<BootstrapResult, Error> {
+    /// Starts the initial setup over mac-telnet from a neighbor along
+    /// `DeviceAccess.bootstrapPlan`, for a device that can't be reached over IP yet
+    /// (`allow_apply` must be set). `mac` is the physical device that gets this NetBox
+    /// device's config, usually one of `bootstrapPlan.discovered`.
+    async fn bootstrap(&self, id: u32, mac: ScalarMac) -> Result<Arc<Job>, Error> {
+        if !CONFIG.allow_apply {
+            return Err(Error::ApplyNotAllowed);
+        }
         let device = self
             .topology
             .devices_by_id(DeviceId(id))
@@ -74,7 +77,9 @@ impl MutationAuthenticated {
             .ok_or(Error::UnknownDevice(id))?;
         let mut plan = bootstrap::plan(&device)?;
         plan.setup.macs = [mac.0].into();
-        Ok(bootstrap::bootstrap(&device, &plan).await)
+        job::start(&device.clone(), JobKind::Bootstrap, |log| async move {
+            bootstrap::bootstrap(&device, &plan, &log).await
+        })
     }
     /// Starts updating RouterOS (and the RouterBOARD firmware) to the newest release of
     /// `channel`, with the packages the device needs (`allow_apply` must be set); without
@@ -113,7 +118,7 @@ impl MutationAuthenticated {
     /// Stops a job (`Query.job`) at the next point where that is safe: an update between its
     /// steps or while it waits, removing the packages it uploaded unless the device reboots
     /// with them already; an apply before its script runs, or after, leaving the fallback
-    /// that brings back the config from before.
+    /// that brings back the config from before; a setup before or after its console session.
     async fn cancel_job(&self, id: u32) -> Result<Arc<Job>, Error> {
         job::cancel(id).ok_or(Error::UnknownJob(id))
     }

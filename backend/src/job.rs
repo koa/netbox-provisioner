@@ -1,4 +1,4 @@
-//! Long running work on a device (an update, an apply, later the setup) runs as a job in the
+//! Long running work on a device (an update, an apply, the initial setup) runs as a job in the
 //! background: the request that starts it returns at once, the UI asks for the job's events as
 //! they come and can cancel it. Events carry what happened, not text: the UI words them (in
 //! German) and can offer actions on them.
@@ -11,7 +11,7 @@
 //! are kept.
 use crate::{
     Error,
-    device::{power, ros::graphql as apply, update},
+    device::{bootstrap, power, ros::graphql as apply, terminal, update},
     graphql::scalars::ScalarDuration,
     topology::{DeviceId, access::device::DeviceAccess},
 };
@@ -50,6 +50,10 @@ pub enum Event {
     FallbackStopped(apply::FallbackStopped),
     FallbackLeft(apply::FallbackLeft),
     RadiosReprovisioned(apply::RadiosReprovisioned),
+    SetupStarted(bootstrap::SetupStarted),
+    ConsoleOutput(terminal::ConsoleOutput),
+    WaitingForApi(bootstrap::WaitingForApi),
+    SetupDone(bootstrap::SetupDone),
 }
 
 /// An event and when it happened, counted from the start of the job.
@@ -136,6 +140,8 @@ pub enum JobKind {
     Update,
     /// the generated config (`applyCfg`)
     Apply,
+    /// initial setup over mac-telnet (`bootstrap`)
+    Bootstrap,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
