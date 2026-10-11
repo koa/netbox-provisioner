@@ -45,6 +45,13 @@ impl RadioPackage {
     pub fn is_wifi(self) -> bool {
         matches!(self, RadioPackage::WifiQcom | RadioPackage::WifiQcomAc)
     }
+    /// Whether its radios tag the clients' traffic themselves (`datapath.vlan-id`). The
+    /// 802.11ac chips of `wifi-qcom-ac` don't ("802.11ac chipsets do not support this type of
+    /// VLAN tagging", MikroTik's WiFi manual); a radio with `vlan-id` there drops all traffic
+    /// (seen on a wAP ac, 7.23.8), it has to be an access port of the bridge instead.
+    pub fn tags_vlans(self) -> bool {
+        matches!(self, RadioPackage::WifiQcom)
+    }
 }
 
 /// The package for the board's radios; `None` for a board without any.

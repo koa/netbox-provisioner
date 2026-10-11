@@ -128,7 +128,7 @@ async fn test_l2_multi_untagged_switch() -> Result<(), Box<dyn Error>> {
     assert_eq!(total_ethernet, 24);
 
     let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
-    target_data.setup_l2(&device, &setup)?;
+    target_data.setup_l2(&device, &setup, None)?;
     dump_mutations(&target_data, &empty_current)?;
     Ok(())
 }

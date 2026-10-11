@@ -152,6 +152,16 @@ russh's defaults and lowers the group minimum to 2048. A user with SSH keys can'
 with a password while `/ip ssh always-allow-password-login=no` (7.24:
 `password-authentication=yes-if-no-key`), so the update switches it for the upload only.
 
+A WLAN with a VLAN ends where NetBox puts its network (e.g. the controller, over the VLAN
+group's VXLAN). The CAP sets the VLAN, so a group's WLANs share one: with `wifi-qcom` its radios
+get a datapath with `vlan-id` into the bridge carrying that VLAN; `wifi-qcom-ac` radios can't tag
+(MikroTik: "802.11ac chipsets do not support this type of VLAN tagging"; clients associate but
+get no DHCP), so they are static access ports of that bridge instead
+(`RadioPackage::tags_vlans`). A device that is no controller or CAP anymore still
+gets `WifiDeviceData` read while CAPsMAN/CAP are on or the certificates CAPsMAN generated (named in
+`/interface/wifi/capsman generated-*`, not recognizable by trust store) are left, and these are
+removed. A VLAN interface on a tagged bridge only exists where the device has L3 in that VLAN.
+
 A device that powers another one over PoE (NetBox `poe_mode=pse` on the port cabled to it) must
 not reboot while that one updates: uploaded packages install at the next boot, and losing power
 then has bricked devices. `device::power::PowerChain::of` collects the devices up and down the

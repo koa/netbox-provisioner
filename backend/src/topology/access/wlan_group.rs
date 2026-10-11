@@ -33,6 +33,9 @@ impl AccessTopology for WlanGroupAccess {
 }
 
 impl WlanGroupAccess {
+    pub fn name(&self) -> Option<&str> {
+        self.data().map(|d| &*d.name)
+    }
     pub fn controller(&self) -> Option<DeviceAccess> {
         self.data().map(|d| d.controller).map(self.create_access())
     }

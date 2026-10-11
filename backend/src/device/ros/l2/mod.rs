@@ -104,6 +104,21 @@ pub struct TaggedBridgeEntry {
     pub if_name: AsciiString,
 }
 
+impl TaggedBridgeEntry {
+    /// Whether the device itself is in this VLAN: an address on it, or a DHCP client from
+    /// a tag of a member port's bridge. Otherwise it only switches the VLAN (an AP between
+    /// its WLAN and the VXLAN) and needs no VLAN interface.
+    pub fn has_l3(&self) -> bool {
+        self.ports.iter().any(|port| match port {
+            L2Port::Ip { .. } => true,
+            L2Port::TaggedEthernet { root, .. } | L2Port::UntaggedEthernet { root, .. } => {
+                root.is_enable_dhcp_client()
+            }
+            _ => false,
+        })
+    }
+}
+
 /// A VLAN-filtering RouterOS bridge, keyed by numeric VLAN ID. A key's VLAN ID is
 /// either the real NetBox-assigned one, or - for a VLAN entry with no numeric ID yet,
 /// or the "untagged, no VLAN" default entry - a synthetic one assigned by
@@ -733,6 +748,23 @@ fn name_part(raw: &str) -> String {
 }
 
 impl<G: NameGenerator> L2Setup<G> {
+    /// The bridge a WLAN of this AP is in: the one carrying its VLAN, where its clients
+    /// join through the CAP datapath. `None` for a WLAN without VLAN.
+    pub fn bridge_of_wlan(&self, wlan: &WlanAccess) -> Option<&AsciiString> {
+        self.tagged_bridges.iter().find_map(|bridge| {
+            bridge
+                .ports
+                .values()
+                .any(|entry| {
+                    entry
+                        .ports
+                        .iter()
+                        .any(|port| matches!(port, L2Port::Cap { wlan: w } if w == wlan))
+                })
+                .then_some(&bridge.name)
+        })
+    }
+
     /// Where a physical port ended up: its generated interface name, and the bridge
     /// it is a member of (`None` for a standalone port).
     pub fn placement_of_port(

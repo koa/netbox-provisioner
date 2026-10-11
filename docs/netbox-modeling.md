@@ -311,6 +311,9 @@ Details: [vxlan-generation.md](vxlan-generation.md).
 
 ### Rezept: Netze am Controller
 
+Alle WLANs einer WLAN-Gruppe mit VLAN müssen **dieselbe VLAN** haben: Der AP setzt sie pro Radio,
+und auf einem wAP ac (`wifi-qcom-ac`) geht das nur als Access-Port der Bridge.
+
 Jedes Netz, das der Controller für die WLANs bereitstellt, ist ein **virtuelles Interface** mit
 Untagged VLAN = WLAN-VLAN, IP-Adresse und gegebenenfalls Tag `dhcp`. Keine Bridge pro Netz: das
 VXLAN kann nur in einer Bridge sein, und alle Netze liegen auf der Standard-Bridge.
@@ -387,9 +390,16 @@ Was daraus generiert wird und worauf beim Ausrollen zu achten ist:
 
 Generiert wird der WiFi-Stack (`/interface/wifi`, RouterOS 7) mit CAPsMAN auf dem Controller und
 lokalem Forwarding auf den APs (siehe [wlan-generation.md](wlan-generation.md)). Der AP ist wie
-jedes Gerät geroutet angebunden (Loopback, eigenes Transfernetz mit `ospf`), sein WLAN ist ein
-Kundennetz auf dem AP: eine Bridge mit IP und `dhcp`-Tag, in der die WiFi-Interfaces (`wifi1`,
-`wifi2`) und allenfalls Kundenports Mitglied sind.
+jedes Gerät geroutet angebunden (Loopback, eigenes Transfernetz mit `ospf`). Für das Netz des WLANs
+gibt es zwei Varianten:
+
+- **Lokal auf dem AP**: eine Bridge mit IP und `dhcp`-Tag auf dem AP, in der die WiFi-Interfaces
+  (`wifi1`, `wifi2`) und allenfalls Kundenports Mitglied sind. Das WLAN hat keine VLAN.
+- **Auf dem Controller** (oder einem anderen Gerät): Das WLAN hat eine VLAN aus einer VLAN-Gruppe
+  mit `vxlan_vni`, das Netz ist dort ein virtuelles Interface mit dieser VLAN, IP und `dhcp` (siehe
+  [Rezept: Netze am Controller](#rezept-netze-am-controller)). Die WiFi-Interfaces des AP bekommen
+  keine Bridge; Kundenports des AP bekommen die VLAN als Untagged VLAN (siehe
+  [Rezept](#rezept-lan-ports-eines-access-points-im-haushalts-wlan)).
 
 1. **Wireless LAN Group** anlegen, Custom Field `controller` = Controller-Gerät (Pflicht; eine
    Gruppe ohne Controller wird komplett ignoriert), `wlan_mgmt` = Management-VLAN. Pro Controller
@@ -400,9 +410,8 @@ Kundennetz auf dem AP: eine Bridge mit IP und `dhcp`-Tag, in der die WiFi-Interf
 3. Jeden **Access Point**: Custom Field `wlan_group` = die Gruppe. Nur echte APs: ein Gerät mit
    `wlan_group` bekommt die CAP-Konfiguration. Ein Switch, der nur Ports im WLAN-Netz hat, braucht
    das Feld nicht, ihm reicht das VLAN an den Ports.
-4. Die VLAN-Gruppe der WLAN-VLANs bekommt eine `vxlan_vni` (siehe [VXLAN](#vxlan)).
-   Die VLAN eines WLANs wird bisher nur für L2 und VXLAN ausgewertet; auf dem AP landet jedes WLAN
-   ungetaggt in der Bridge der Radios.
+4. Für die Variante auf dem Controller: Die VLAN-Gruppe der WLAN-VLANs bekommt eine `vxlan_vni`
+   (siehe [VXLAN](#vxlan)). Der AP bringt die Clients jedes WLANs in dessen VLAN.
 5. Das `country` der WLANs kommt aus der Region des Standorts des Controllers.
 
 ## Was nicht ausgewertet wird

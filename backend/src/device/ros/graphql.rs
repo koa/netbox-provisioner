@@ -20,9 +20,13 @@ use log::info;
 use mikrotik_api::simple::SimpleResult;
 use mikrotik_model::{
     MikrotikDevice,
+    ascii::AsciiString,
     generator::Generator,
     hwconfig::DeviceType,
-    model::{ReferenceType, SystemIdentityCfg, SystemPackageState, SystemRouterboardState},
+    model::{
+        CertificateCfg, InterfaceWifiCapCfg, InterfaceWifiCapsmanCfg, InterfaceWifiCapsmanState,
+        ReferenceType, SystemIdentityCfg, SystemPackageState, SystemRouterboardState, YesNo,
+    },
     resource::{ResourceMutation, SingleResource, apply_mutations_via_script, collect_resource},
 };
 use std::{
@@ -59,6 +63,10 @@ pub struct DeviceCfg {
     wireless_target: Option<WirelessDeviceDataTarget>,
     wifi_current: Option<WifiDeviceDataCurrent>,
     wifi_target: Option<WifiDeviceDataTarget>,
+    /// the certificates CAPsMAN generated for itself (`/interface/wifi/capsman`)
+    capsman_certificates: Box<[AsciiString]>,
+    /// the package of the radios, if NetBox uses them (`needed_radio_package`)
+    radio_package: Option<RadioPackage>,
     w60g_current: Option<W60GDeviceDataCurrent>,
     w60g_target: Option<W60GDeviceDataTarget>,
 }
@@ -82,9 +90,15 @@ impl DeviceCfg {
             w60g_target.generate_from(device, &l2, self.w60g_current.as_ref())?;
         }
         if let Some(wifi_target) = self.wifi_target.as_mut() {
-            wifi_target.generate_from(device, &l2, self.wifi_current.as_ref())?;
+            wifi_target.generate_from(
+                device,
+                &l2,
+                self.wifi_current.as_ref(),
+                &self.capsman_certificates,
+                self.radio_package,
+            )?;
         }
-        self.base_target.setup_l2(device, &l2)?;
+        self.base_target.setup_l2(device, &l2, self.radio_package)?;
         Ok(())
     }
     /// [`Self::generate_from`] with the provisioner's own needs on top: the device the
@@ -309,9 +323,36 @@ impl DeviceCfg {
             (None, None)
         };
         // a controller has no radios: CAP and CAPsMAN of `/interface/wifi` are in the base
-        // package since RouterOS 7.13
-        let (wifi_current, wifi_target) =
-            if needed.is_some_and(RadioPackage::is_wifi) || device.wlan_controller_of().is_some() {
+        // package since RouterOS 7.13 (they fail before, then there is nothing to clean up)
+        let capsman_certificates: Box<[AsciiString]> =
+            InterfaceWifiCapsmanState::fetch(client)
+                .await
+                .ok()
+                .flatten()
+                .map(|state| {
+                    [state.generated_ca_certificate, state.generated_certificate]
+                        .into_iter()
+                        .flatten()
+                        .filter(|name| !name.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
+        // where CAP or CAPsMAN are still on without NetBox asking for them, or CAPsMAN's
+        // certificates are left (a former controller or CAP), they are read to be cleaned up
+        let wifi_left_on = || async {
+            let capsman = InterfaceWifiCapsmanCfg::fetch(client).await.ok().flatten();
+            let cap = InterfaceWifiCapCfg::fetch(client).await.ok().flatten();
+            let certificates = collect_resource::<CertificateCfg>(client).await.unwrap_or_default();
+            capsman.is_some_and(|capsman| capsman.enabled == YesNo::Yes)
+                || cap.is_some_and(|cap| cap.enabled == YesNo::Yes)
+                || certificates
+                    .iter()
+                    .any(|certificate| capsman_certificates.contains(&certificate.name))
+        };
+        let (wifi_current, wifi_target) = if needed.is_some_and(RadioPackage::is_wifi)
+            || device.wlan_controller_of().is_some()
+            || wifi_left_on().await
+        {
                 (
                     Some(WifiDeviceDataCurrent::fetch(client).await?),
                     Some(WifiDeviceDataTarget::detect_device(client).await?),
@@ -337,6 +378,8 @@ impl DeviceCfg {
             wireless_target,
             wifi_current,
             wifi_target,
+            capsman_certificates,
+            radio_package: needed,
             w60g_current,
             w60g_target,
         })

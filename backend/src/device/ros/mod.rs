@@ -10,7 +10,7 @@ use crate::{
     },
     topology::{
         IpPrefixId, PhysicalPortId, Radio, RadioLink, RadioRole, WlanAuth,
-        access::{AccessTopology, device::DeviceAccess},
+        access::{AccessTopology, device::DeviceAccess, wlan_group::WlanGroupAccess},
     },
 };
 use ipnet::{IpAdd, IpNet, IpSub, Ipv4Net, Ipv6Net};
@@ -158,6 +158,8 @@ pub enum SetupError {
     MissingPackage(&'static str),
     #[error("{0} is an AP of a Wireless LAN Group whose controller has no loopback address")]
     MissingController(Box<str>),
+    #[error("the WLANs of Wireless LAN Group {0} have different VLANs, a CAP's radio has one")]
+    MultipleWlanVlans(Box<str>),
 }
 
 impl BaseDeviceDataTarget {
@@ -232,11 +234,32 @@ impl BaseDeviceDataTarget {
     /// to its generated name. IP/DHCP/OSPF config is handled separately via
     /// `L2Setup::logical_interfaces` (see `setup_ip_addresses`/`setup_ospf`), since
     /// none of that needs to know which of the three L2 domain kinds it came from.
+    /// `radio_package` is the one of the device's radios, if NetBox uses them: on a CAP whose
+    /// radios don't tag VLANs, a radio without a bridge of its own is an access port of the
+    /// WLANs' VLAN (`WifiDeviceDataTarget::generate_from`).
     fn setup_l2<N: NameGenerator>(
         &mut self,
         device: &DeviceAccess,
         setup: &L2Setup<N>,
+        radio_package: Option<RadioPackage>,
     ) -> Result<(), SetupError> {
+        let radio_access_ports = if device.wlan_ap_of().is_some()
+            && radio_package.is_some_and(|package| package.is_wifi() && !package.tags_vlans())
+        {
+            device
+                .interfaces()
+                .iter()
+                .filter_map(|interface| match interface.external_port() {
+                    Some(port @ PhysicalPortId::Wifi(_)) => match setup.placement_of_port(port) {
+                        Some((name, None)) => Some(name.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         for single in setup.single_ports.iter() {
             if let Some(ethernet_port) = self.get_ethernet_port(single.port)? {
                 ethernet_port.name = single.name.clone();
@@ -300,7 +323,7 @@ impl BaseDeviceDataTarget {
                             if *name == entry.if_name
                     )
                 });
-                if !is_physical_name {
+                if !is_physical_name && entry.has_l3() {
                     self.vlan.entry(entry.if_name.clone()).or_insert_with(|| {
                         InterfaceVlanByName(InterfaceVlanCfg {
                             interface: bridge.name.clone(),
@@ -379,8 +402,16 @@ impl BaseDeviceDataTarget {
                                 .1
                                 .push(name.clone());
                         }
+                        L2Port::Cap { .. } => {
+                            for name in &radio_access_ports {
+                                let untagged = &mut ports_of_vlan.entry(vlan_id).or_default().0;
+                                if !untagged.contains(name) {
+                                    untagged.push(name.clone());
+                                }
+                                tags_of_port.entry(name.clone()).or_default().0 = Some(vlan_id);
+                            }
+                        }
                         L2Port::CapsMan { .. }
-                        | L2Port::Cap { .. }
                         | L2Port::CapsManMgmt
                         | L2Port::CapMgmt
                         | L2Port::Ip { .. } => {}
@@ -388,11 +419,16 @@ impl BaseDeviceDataTarget {
                 }
             }
             for (port_name, (untagged, tagged)) in tags_of_port {
+                let is_radio = radio_access_ports.contains(&port_name);
                 let bridge_port = self
                     .bridge_port
                     .entry((bridge.name.clone(), port_name))
                     .or_default();
                 bridge_port.ingress_filtering = true;
+                // a radio has no hardware offloading, RouterOS doesn't report `hw` for it
+                if is_radio {
+                    bridge_port.hw = None;
+                }
                 bridge_port.frame_types = if let Some(untagged_id) = untagged {
                     bridge_port.pvid = untagged_id;
                     if tagged.is_empty() {
@@ -480,7 +516,7 @@ impl BaseDeviceDataTarget {
         let l2 = L2Setup::new(device, name_generator)?;
         self.setup_ip_addresses(&l2)?;
         self.setup_ospf(device, &l2);
-        self.setup_l2(device, &l2)?;
+        self.setup_l2(device, &l2, None)?;
         for port in device.interfaces() {
             if let Some(port_id) = port.external_port() {
                 if let Some(ethernet_port) = self.get_ethernet_port(port_id)? {
@@ -698,6 +734,7 @@ impl BaseDeviceDataTarget {
         }
         Ok(())
     }
+
 }
 
 struct GapFinder<V: Ord + Copy> {
@@ -1032,6 +1069,7 @@ mikrotik_model!(
         wifi(by_key(path = "interface/wifi", key = defaultName)),
         datapath(by_key(path = "interface/wifi/datapath", key = name)),
         configuration(by_key(path = "interface/wifi/configuration", key = name)),
+        certificate(by_key(path = "certificate", key = name)),
         provisioning(by_id(
             path = "interface/wifi/provisioning",
             keys(
@@ -1054,6 +1092,7 @@ impl WifiDeviceDataTarget {
             capsman: Default::default(),
             wifi: Default::default(),
             configuration: Default::default(),
+            certificate: Default::default(),
         }
     }
     /// The native WiFi stack (`/interface/wifi`) as a Wireless LAN Group in NetBox describes
@@ -1063,16 +1102,33 @@ impl WifiDeviceDataTarget {
     /// controller at its loopback (routed, no L2 to the controller needed) and forwards
     /// locally: a radio NetBox puts into a bridge gets a datapath to that bridge, which
     /// RouterOS adds the radio and its virtual interfaces to (so `setup_l2` leaves out its
-    /// bridge port). Radios of a device that is no CAP keep their current configuration.
+    /// bridge port). A radio without a bridge of its own goes into the VLAN of the group's
+    /// WLANs, on the bridge carrying it (`bridge-caps`, with the VXLAN to the controller):
+    /// through a datapath with that `vlan-id` where the radio package tags
+    /// (`RadioPackage::tags_vlans`), else as an access port of the bridge (`setup_l2`). The
+    /// CAP sets the VLAN, not the controller, which doesn't know its CAPs' boards; so a radio
+    /// has one VLAN, and WLANs of a group with different VLANs are refused. Radios of a
+    /// device that is no CAP keep their current configuration. Certificates stay, except
+    /// the ones CAPsMAN generated (`capsman_certificates`) on a device that is neither
+    /// controller nor CAP anymore.
     fn generate_from<N: NameGenerator>(
         &mut self,
         device: &DeviceAccess,
         l2: &L2Setup<N>,
         current: Option<&WifiDeviceDataCurrent>,
+        capsman_certificates: &[AsciiString],
+        radio_package: Option<RadioPackage>,
     ) -> Result<(), SetupError> {
         for port in current.iter().flat_map(|current| current.wifi.iter()) {
             self.wifi
                 .insert(port.default_name.clone(), port.data.clone());
+        }
+        let in_wlan = device.wlan_ap_of().is_some() || device.wlan_controller_of().is_some();
+        for certificate in current.iter().flat_map(|current| current.certificate.iter()) {
+            if in_wlan || !capsman_certificates.contains(&certificate.0.name) {
+                self.certificate
+                    .insert(certificate.0.name.clone(), certificate.clone());
+            }
         }
         if let Some(group) = device.wlan_ap_of() {
             let controller = group
@@ -1083,6 +1139,9 @@ impl WifiDeviceDataTarget {
             let cap = &mut self.cap;
             cap.enabled = YesNo::Yes;
             cap.caps_man_addresses = [controller].into();
+            let wlan_vlan = wlan_vlan_id(&group)?;
+            let wlan_bridge = group.wlan().find_map(|wlan| l2.bridge_of_wlan(&wlan));
+            let tags = radio_package.is_some_and(RadioPackage::tags_vlans);
             for interface in device.interfaces() {
                 let Some(port @ PhysicalPortId::Wifi(_)) = interface.external_port() else {
                     continue;
@@ -1096,6 +1155,17 @@ impl WifiDeviceDataTarget {
                     continue;
                 };
                 radio.name = name.clone();
+                let vlan = match (bridge, wlan_bridge, wlan_vlan) {
+                    (None, Some(_), Some(vlan)) if tags => Some(vlan),
+                    _ => None,
+                };
+                radio.datapath_vlan_id = vlan.map(HasNone::Value);
+                let bridge = match bridge {
+                    Some(bridge) => Some(bridge),
+                    // an access port of the bridge, which `setup_l2` adds
+                    None if !tags => None,
+                    None => wlan_bridge,
+                };
                 radio.datapath = bridge.cloned();
                 // reported with the datapath's bridge (the factory CAP configuration's
                 // `bridgeLocal`), which is set to the same
@@ -1104,6 +1174,7 @@ impl WifiDeviceDataTarget {
                     let datapath = &mut self.datapath.entry(bridge.clone()).or_default().0;
                     datapath.name = bridge.clone();
                     datapath.bridge = Some(HasNone::Value(bridge.clone()));
+                    datapath.vlan_id = vlan.map(HasNone::Value);
                     datapath.disabled = false;
                     // virtual interfaces of the CAP use the one of the first radio
                     self.cap.slaves_datapath.get_or_insert_with(|| bridge.clone());
@@ -1156,6 +1227,20 @@ impl WifiDeviceDataTarget {
             }
         }
         Ok(())
+    }
+}
+
+/// The one VLAN the WLANs of a group put their clients in, if any: a CAP's radio has one.
+fn wlan_vlan_id(group: &WlanGroupAccess) -> Result<Option<u16>, SetupError> {
+    let vlans = group
+        .wlan()
+        .filter_map(|wlan| wlan.vlan().and_then(|vlan| vlan.vlan_id()))
+        .collect::<BTreeSet<_>>();
+    match vlans.len() {
+        0 | 1 => Ok(vlans.first().copied()),
+        _ => Err(SetupError::MultipleWlanVlans(
+            group.name().unwrap_or_default().into(),
+        )),
     }
 }
 

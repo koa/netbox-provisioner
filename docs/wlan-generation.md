@@ -5,9 +5,10 @@ Code: `backend/src/device/ros/mod.rs` (`WirelessDeviceData`/`WifiDeviceData`-Mod
 `CapsManMgmt`/`CapMgmt`), `mikrotik-model/src/hwconfig.rs` (`generate_wifi`/`generate_wlan`).
 
 Generiert wird der neuere WiFi-Stack (`/interface/wifi`) mit CAPsMAN und lokalem Forwarding auf
-dem CAP, im Lab erprobt mit einem wAP ac (`RBwAPG-5HacD2HnD`, `wifi-qcom-ac`) als CAP von lab-np2.
-Nicht generiert werden der klassische CAPsMAN-Stack (`/caps-man`, `/interface/wireless/cap`) und
-WLANs mit VLAN (siehe unten).
+dem CAP, im Lab erprobt mit einem wAP ac (`RBwAPG-5HacD2HnD`, `wifi-qcom-ac`) als CAP, erst mit
+dem WLAN lokal auf dem wAP (Controller lab-np2), dann mit dem WLAN per VXLAN auf dem Controller
+lab-core (CCR2004). Nicht generiert wird der klassische CAPsMAN-Stack (`/caps-man`,
+`/interface/wireless/cap`).
 
 ## Zwei RouterOS-Pakete, zwei getrennte Modelle
 
@@ -45,20 +46,56 @@ CAP bridged den Verkehr lokal.
   (`create-dynamic-enabled`) gibt jedem Radio das erste WLAN als Master, die übrigen als virtuelle
   Interfaces (`slave-configurations`).
 - **CAP** (`device.wlan_ap_of()`): `/interface/wifi/cap enabled=yes` mit der Loopback des Controllers.
-  Jedes Radio, das NetBox in eine Bridge legt, bekommt `configuration.manager=capsman` und einen
-  `/interface/wifi/datapath` mit dem Namen und der `bridge` dieser Bridge; über `slaves-datapath`
-  gilt der auch für die virtuellen Interfaces. RouterOS legt die Radios damit selbst als dynamische
-  Bridge-Ports an, `setup_l2` lässt ihren statischen Bridge-Port deshalb weg. Die Radios werden wie
-  Ethernet-Ports nach L2 benannt (`w01`, `w02`). Alle übrigen Felder eines Radios bleiben, wie das
-  Gerät sie hat, ebenso alle Radios eines Geräts, das kein CAP ist.
+  Jedes Radio bekommt `configuration.manager=capsman` und einen `/interface/wifi/datapath` mit dem
+  Namen und der `bridge` seiner Bridge; über `slaves-datapath` gilt der auch für die virtuellen
+  Interfaces. Seine Bridge ist die, in die NetBox es legt, sonst die Bridge mit der VLAN des ersten
+  WLANs, das eine hat (`L2Setup::bridge_of_wlan`, auf einem AP die Standard-Bridge `bridge-caps`).
+  RouterOS legt die Radios damit selbst als dynamische Bridge-Ports an, `setup_l2` lässt ihren
+  statischen Bridge-Port deshalb weg. Die Radios werden wie Ethernet-Ports nach L2 benannt (`w01`,
+  `w02`). Alle übrigen Felder eines Radios bleiben, wie das Gerät sie hat, ebenso alle Radios eines
+  Geräts, das kein CAP ist.
+- **WLAN mit VLAN**: Der CAP setzt die VLAN, nicht der Controller (der kennt die Boards seiner
+  CAPs nicht). Ein Radio hat deshalb eine VLAN: WLANs einer Gruppe mit verschiedenen VLANs werden
+  abgelehnt (`SetupError::MultipleWlanVlans`). Wie, hängt vom Radio-Paket ab
+  (`RadioPackage::tags_vlans` in `hw_facts.rs`):
+  - `wifi-qcom` (802.11ax): Der lokale Datapath bekommt `vlan-id`, RouterOS macht die Radios zu
+    getaggten Mitgliedern der VLAN (dynamischer Eintrag in `/interface/bridge/vlan`, das Radio
+    taggt selbst).
+  - `wifi-qcom-ac` (802.11ac, z.B. wAP ac): Diese Chips können das nicht („802.11ac chipsets do not
+    support this type of VLAN tagging“, MikroTik-WiFi-Handbuch). Mit `vlan-id` assoziieren Clients
+    zwar, aber ihr Verkehr kommt nicht in die Bridge (im Lab: keine DHCP-Lease, `tx-drop` der
+    Radios steigt). Die Radios bekommen deshalb keinen Datapath, sondern sind statische
+    Access-Ports der Bridge (`pvid` = WLAN-VLAN, untagged in `/interface/bridge/vlan`), die
+    `setup_l2` anlegt. Virtuelle Interfaces (weitere WLANs) erben das nicht; deshalb wäre auch dort
+    nur eine VLAN möglich.
+
+  Liegt die
+  VLAN in einer VLAN-Gruppe mit VNI, trägt das VXLAN sie zum Controller (siehe
+  [vxlan-generation.md](vxlan-generation.md)), und das Netz endet dort auf einem virtuellen
+  Interface mit IP und `dhcp`. Der AP selbst bekommt in dieser VLAN kein VLAN-Interface: das gibt es
+  nur, wo das Gerät eine Adresse oder einen DHCP-Client in der VLAN hat
+  (`TaggedBridgeEntry::has_l3`).
 - `/interface/wifi/capsman` meldet `interfaces`, `upgrade-policy` usw. erst, nachdem sie einmal
   gesetzt wurden (auch auf ihren Standardwert). Sie sind deshalb `k`: Wo CAPsMAN aus ist, bleiben
   sie dem Gerät, der Controller bekommt `interfaces=all`, `upgrade-policy=suggest-same-version`
   und `require-peer-certificate=no` explizit.
 
-Nicht umgesetzt: die VLAN eines WLANs (das WLAN landet ungetaggt in der Bridge des Radios; dafür
-bräuchte es `datapath.vlan-id` und eine Bridge mit VLAN-Filtering auf dem CAP) und die
-Management-VLAN der Gruppe (`wlan_mgmt`), die das geroutete Modell nicht braucht.
+Ist ein Gerät nicht mehr Controller oder CAP, wird `WifiDeviceData` trotzdem gelesen, solange
+CAPsMAN oder CAP noch an sind oder die Zertifikate noch da sind, die CAPsMAN für sich generiert hat
+(`/interface/wifi/capsman` nennt sie in `generated-ca-certificate`/`generated-certificate`, auch
+ausgeschaltet). Die Generierung schaltet dann beides aus, entfernt Configurations, Provisioning und
+Datapaths und diese beiden Zertifikate. Verweise auf einen Datapath (`datapath`,
+`datapath.bridge`, `slaves-datapath`) und `datapath.vlan-id` löscht das Modell mit `!feld`
+(Flag `unset`): `datapath=""` ignoriert RouterOS ohne Fehler, `datapath.bridge=""` lehnt es als
+mehrdeutig ab. Das Entfernen eines Datapath sortiert `sort_mutations` nach den Updates, die die
+Verweise darauf lösen (`ResourceMutation::releases`). Andere Zertifikate bleiben unangetastet. Der Trust Store
+taugt nicht als Merkmal: Unter 7.20 generierte CAPsMAN-Zertifikate stehen in `all`, unter 7.24 in
+`capsman`. Nach dem Entfernen zeigt `/interface/wifi/capsman` die alten IDs (`*1`) weiter an; das ist
+RouterOS-Zustand ohne Wirkung.
+
+Nicht umgesetzt: die Management-VLAN der Gruppe (`wlan_mgmt`), die das geroutete Modell nicht
+braucht, und WLANs, deren VLANs auf einem AP in verschiedenen Bridges liegen (ein Radio hat nur
+einen Datapath).
 
 ## Was tatsächlich generiert wird: nur die L2-Seite
 

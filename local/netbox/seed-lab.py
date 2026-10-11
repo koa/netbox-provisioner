@@ -91,6 +91,9 @@ DEVICES = {
                          "tags": ["ospf"]},
         "sfp-sfpplus2": {"label": "NP2", "ip": ["192.168.101.5/30", V6.format("8011::1/64")],
                          "tags": ["ospf"]},
+        # the network of the WLAN, which the CAPs tunnel here (VXLAN of the VLAN group)
+        "wlan": {"type": "virtual", "vlan": "lab-wlan",
+                 "ip": ["192.168.104.1/24", V6.format("9001::1/64")], "tags": ["dhcp"]},
     }),
     "lab-np1": ("CRS318-16P-2S+", 2, {
         "sfp-sfpplus1": {"label": "Core", "ip": ["192.168.101.2/30", V6.format("8010::2/64")],
@@ -121,21 +124,23 @@ DEVICES = {
         "ether1": {"bridge": "link"},
         "wlan1": {"type": "ieee802.11ac", "bridge": "link", "rf_role": "station"},
     }),
-    # a CAP of lab-np2's CAPsMAN (WLAN_GROUP), routed like every other device: its WLAN is a
-    # customer network of its own, forwarded locally into "lan"
+    # a CAP of lab-core's CAPsMAN (WLAN_GROUP), routed like every other device; its WLAN and
+    # the customer port are in the WLAN's VLAN, which goes to lab-core over VXLAN
     "lab-wap": ("RBwAPG-5HacD2HnD", 6, {
         "ether1": {"label": "NP2", "ip": ["192.168.101.18/30", V6.format("8013::2/64")],
                    "tags": ["ospf"]},
-        "lan": {"type": "bridge", "ip": ["192.168.104.1/24", V6.format("9001::1/64")],
-                "tags": ["dhcp"]},
-        "ether2": {"label": "Kunde", "bridge": "lan"},
-        "wifi1": {"type": "ieee802.11n", "bridge": "lan"},
-        "wifi2": {"type": "ieee802.11ac", "bridge": "lan"},
+        "ether2": {"label": "Kunde", "vlan": "lab-wlan"},
+        "wifi1": {"type": "ieee802.11n"},
+        "wifi2": {"type": "ieee802.11ac"},
     }),
 }
+# interfaces of an earlier lab layout, deleted
+REMOVED_INTERFACES = [("lab-wap", "lan")]
+# VLAN groups (with their VXLAN VNI) and their VLANs: name -> vid
+VLAN_GROUPS = {"lab-wlan": {"vni": 1, "vlans": {"lab-wlan": 104}}}
 # Wireless LAN Group: controller, its APs (device custom field wlan_group) and WLANs
-WLAN_GROUP = {"name": "lab-wlan", "controller": "lab-np2", "aps": ["lab-wap"],
-              "wlans": [{"ssid": "lab-wlan", "psk": "lab-wlan-preshared-key"}]}
+WLAN_GROUP = {"name": "lab-wlan", "controller": "lab-core", "aps": ["lab-wap"],
+              "wlans": [{"ssid": "lab-wlan", "psk": "lab-wlan-preshared-key", "vlan": "lab-wlan"}]}
 CABLES = [
     (("lab-core", "sfp-sfpplus1"), ("lab-np1", "sfp-sfpplus1")),
     (("lab-core", "sfp-sfpplus2"), ("lab-np2", "sfp-sfpplus1")),
@@ -185,6 +190,20 @@ def main():
     for prefix in PREFIXES:
         nb.ensure("ipam/prefixes", {"prefix": prefix}, {"tenant": tenant, "status": "active"})
 
+    vlans = {}
+    for group_name, group in VLAN_GROUPS.items():
+        vlan_group = nb.ensure("ipam/vlan-groups", {"slug": group_name},
+                               {"name": group_name, "custom_fields": {"vxlan_vni": group["vni"]}})
+        for vlan_name, vid in group["vlans"].items():
+            vlans[vlan_name] = nb.ensure("ipam/vlans", {"group_id": vlan_group["id"], "vid": vid},
+                                         {"name": vlan_name, "tenant": tenant,
+                                          "status": "active"})["id"]
+
+    for device_name, name in REMOVED_INTERFACES:
+        found = nb.call("GET", "dcim/interfaces", query={"device": device_name, "name": name})
+        for interface in found["results"]:
+            nb.call("DELETE", f"dcim/interfaces/{interface['id']}")
+
     interfaces = {}
     for device_name, (model, loopback, ports) in DEVICES.items():
         device_type = nb.ensure("dcim/device-types", {"slug": model.lower().replace("+", "-plus")},
@@ -201,6 +220,9 @@ def main():
             # also clears a bridge the interface is no longer in
             values["bridge"] = (interfaces[(device_name, fields["bridge"])]
                                 if "bridge" in fields else None)
+            # also clears a VLAN the interface is no longer in
+            values["mode"] = "access" if "vlan" in fields else None
+            values["untagged_vlan"] = vlans[fields["vlan"]] if "vlan" in fields else None
             for key in ["poe_mode", "rf_role"]:
                 if key in fields:
                     values[key] = fields[key]
@@ -247,7 +269,8 @@ def main():
     for wlan in WLAN_GROUP["wlans"]:
         nb.ensure("wireless/wireless-lans", {"ssid": wlan["ssid"]},
                   {"group": group["id"], "status": "active", "tenant": tenant,
-                   "auth_type": "wpa-personal", "auth_psk": wlan["psk"]})
+                   "auth_type": "wpa-personal", "auth_psk": wlan["psk"],
+                   "vlan": vlans[wlan["vlan"]] if "vlan" in wlan else None})
     print("lab modeled:", ", ".join(DEVICES))
 
 
