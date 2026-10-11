@@ -265,6 +265,8 @@ pub struct Interface {
     pub bridge: Option<InterfaceId>,
     pub cable: Option<CableId>,
     pub enable_poe: bool,
+    /// NetBox `mtu`: the L3 MTU of a physical port, for both ends of its cable
+    pub mtu: Option<u16>,
     /// Set on a radio port with an RF role in NetBox (a point-to-point bridge end).
     pub radio: Option<Radio>,
 }

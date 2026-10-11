@@ -154,12 +154,38 @@ werden.
 | IP Addresses         | IP-Adressen auf dem Interface                                              |
 | Tags                 | `ospf`, `dhcp`, `dhcp-client`, `nat` (siehe oben)                          |
 | PoE Mode             | `PSE` → PoE-Ausgang `auto-on`, sonst `off` (nur auf PoE-fähigen Boards); das Gerät am anderen Kabelende gilt als von diesem Port gespeist. Ein Update startet das speisende Gerät erst neu, wenn kein gespeistes (auch weiter unten in der Kette) mehr ein Update macht |
+| MTU                  | L3-MTU eines Ethernet-Ports oder `wlan`-Radios, siehe [MTU](#mtu) |
 | RF Role, RF Channel Frequency/Width, TX Power | Funk-Port einer [Funkbrücke](#funkbrücke) |
 | Wireless Link        | SSID, PSK und Funkregeln einer [Funkbrücke](#funkbrücke)                   |
 | Cable                | Namensgenerierung, wenn kein Label gesetzt ist; Weg für die Ersteinrichtung |
 
 Der 802.1Q-Mode selbst (Access/Tagged) wird nicht ausgewertet. NetBox verlangt ihn aber, damit
 man VLANs zuweisen kann.
+
+### MTU
+
+Ohne MTU in NetBox behält ein Port die 1500 von RouterOS. Mit MTU bekommt ein Ethernet-Port oder
+ein `wlan`-Radio diese L3-MTU (`mtu`) und eine L2-MTU (`l2mtu`), die sie samt VLAN-Tag trägt: die
+des Boards, mindestens MTU + 4. Auf anderen Interfaces (Bridge, VLAN, `wifi`, `wlan60`) lehnt die
+Generierung eine MTU ab; eine Bridge nimmt die kleinste MTU ihrer Ports.
+
+- **Beide Enden eines Kabels brauchen dieselbe MTU** (ohne Angabe 1500), sonst schlägt die
+  Generierung fehl: OSPF bildet nur zwischen gleichen MTUs eine Nachbarschaft, und RouterOS 7 hat
+  kein `mtu-ignore`. Das gilt für die ganze Strecke: über eine Funkbrücke tragen auch die Ports
+  und Radios der Brückengeräte die MTU.
+- **Wofür:** VXLAN braucht für einen vollen, getaggten Client-Frame (1518 Byte) außen 1554 Byte
+  (über IPv4) bzw. 1574 (über IPv6). Mit MTU 1500 auf den Transportstrecken wird er fragmentiert.
+  Im Lab haben alle Strecken zwischen den Geräten **2000**: Das liegt unter dem kleinsten Maximum
+  der Boards dort (2290 der `wireless`-Radios; ein hEX liegt vermutlich bei etwa 2026), Jumbo
+  Frames gehen deshalb nicht. Clients bleiben bei 1500.
+- **Umstellen:** Bis beide Enden einer Strecke umgestellt sind, ist sie für OSPF unterbrochen.
+  Deshalb vom Einstieg des Provisioners nach außen anwenden: Jedes weitere Gerät erreicht der
+  Provisioner dann über den Nachbarn am Kabel ([Ersteinrichtung](#ersteinrichtung-über-mac-telnet),
+  den Weg über das Gerät des Management-Proxys zuerst), und sein Apply stellt die Strecke zum
+  schon umgestellten Nachbarn wieder her.
+- **Funk:** Eine neue MTU startet ein `wlan`-Radio neu. Auf einem DFS-Kanal hört es danach erst
+  auf Radar, bevor es sendet; im Wetterradar-Bereich (5600–5650 MHz) dauert das nach ETSI
+  10 Minuten (im Lab gemessen). So lange ist die Funkbrücke weg.
 
 ### Ersteinrichtung über MAC-Telnet
 

@@ -471,6 +471,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             bridge,
                             cable: None,
                             enable_poe,
+                            mtu: interface.mtu.and_then(|mtu| u16::try_from(mtu).ok()),
                             radio,
                         },
                     );

@@ -109,6 +109,7 @@ impl DeviceCfg {
             capsman_target.generate_from(device, &l2)?;
         }
         self.base_target.setup_l2(device, &l2, self.radio_package)?;
+        self.base_target.setup_mtu(device)?;
         Ok(())
     }
     /// [`Self::generate_from`] with the provisioner's own needs on top: the device the

@@ -65,3 +65,10 @@ OSPF-Nachbarschaft explizit auf die `default-v2`-Instanz warten, nicht auf "irge
 `default-v3`-Nachbarschaft kann unter bestimmten Umständen (z.B. IPv6-Link-Local-Timing in
 virtualisierten Testumgebungen) in `Init` hängen bleiben, ohne dass das etwas mit dem eigentlichen
 IPv4-Szenario zu tun hat.
+
+### MTU
+
+RouterOS 7 bildet eine Nachbarschaft nur zwischen gleichen Interface-MTUs (bei 1500 gegen 2000
+bleibt sie in ExStart/Exchange, auf einer CHR 7.24.5 nachgestellt) und kennt kein `mtu-ignore`.
+Die Generierung verlangt deshalb an beiden Enden eines Kabels dieselbe MTU aus NetBox
+(`port_mtu`, `SetupError::MtuMismatch`), siehe [netbox-modeling.md](netbox-modeling.md#mtu).

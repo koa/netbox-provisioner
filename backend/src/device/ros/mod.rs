@@ -10,7 +10,10 @@ use crate::{
     },
     topology::{
         IpPrefixId, PhysicalPortId, Radio, RadioLink, RadioRole, WlanAuth,
-        access::{AccessTopology, device::DeviceAccess, wlan_group::WlanGroupAccess},
+        access::{
+            AccessTopology, device::DeviceAccess, interface::InterfaceAccess,
+            wlan_group::WlanGroupAccess,
+        },
     },
 };
 use ipnet::{IpAdd, IpNet, IpSub, Ipv4Net, Ipv6Net};
@@ -51,6 +54,8 @@ pub(crate) mod hw_facts;
 #[cfg(test)]
 mod capsman_test;
 pub mod l2;
+#[cfg(test)]
+mod mtu_test;
 #[cfg(test)]
 mod netbox_example_test;
 #[cfg(test)]
@@ -174,6 +179,53 @@ pub enum SetupError {
     MissingController(Box<str>),
     #[error("the WLANs of Wireless LAN Group {0} have different VLANs, a CAP's radio has one")]
     MultipleWlanVlans(Box<str>),
+    #[error(
+        "{port} has MTU {mtu}, but the other end of its cable, {far_end}, {far_mtu}: OSPF needs both equal"
+    )]
+    MtuMismatch {
+        port: Box<str>,
+        mtu: u16,
+        far_end: String,
+        far_mtu: u16,
+    },
+    #[error("{0} has an MTU in NetBox, which is only set on Ethernet ports and wlan radios")]
+    MtuNotSupported(Box<str>),
+}
+
+/// RouterOS's L3 MTU of a port NetBox gives none.
+const DEFAULT_MTU: u16 = 1500;
+/// What the L2 MTU leaves on top of the L3 MTU, for a VLAN tag.
+const VLAN_TAG_SIZE: u16 = 4;
+
+/// The L3 MTU NetBox gives `port`, the same as the far ends of its cable have: OSPF only
+/// forms an adjacency between equal MTUs, and RouterOS 7 has no `mtu-ignore`.
+fn port_mtu(port: &InterfaceAccess) -> Result<Option<u16>, SetupError> {
+    let mtu = port.mtu();
+    for far_end in port.connected_interfaces() {
+        let far_mtu = far_end.mtu().unwrap_or(DEFAULT_MTU);
+        if far_mtu != mtu.unwrap_or(DEFAULT_MTU) {
+            return Err(SetupError::MtuMismatch {
+                port: port.name().into(),
+                mtu: mtu.unwrap_or(DEFAULT_MTU),
+                far_end: format!(
+                    "{} {}",
+                    far_end.device().map(|d| d.name().to_string()).unwrap_or_default(),
+                    far_end.name()
+                ),
+                far_mtu,
+            });
+        }
+    }
+    Ok(mtu)
+}
+
+/// The L2 MTU of a port with the L3 MTU `mtu`: the board's (`l2mtu`), raised to carry `mtu`
+/// with a VLAN tag.
+fn l2mtu_for(l2mtu: Option<u16>, mtu: Option<u16>) -> Option<u16> {
+    match mtu {
+        Some(mtu) => Some(l2mtu.unwrap_or_default().max(mtu + VLAN_TAG_SIZE)),
+        None => l2mtu,
+    }
 }
 
 impl BaseDeviceDataTarget {
@@ -536,6 +588,7 @@ impl BaseDeviceDataTarget {
         self.setup_dns(device);
         self.setup_ospf(device, &l2);
         self.setup_l2(device, &l2, None)?;
+        self.setup_mtu(device)?;
         for port in device.interfaces() {
             if let Some(port_id) = port.external_port() {
                 if let Some(ethernet_port) = self.get_ethernet_port(port_id)? {
@@ -556,6 +609,25 @@ impl BaseDeviceDataTarget {
             }
         }
         Ok(l2)
+    }
+
+    /// The L3 MTU NetBox gives an Ethernet port, with its L2 MTU raised to carry it (a
+    /// `wlan` radio gets it in `WirelessDeviceDataTarget`).
+    fn setup_mtu(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
+        for port in device.interfaces() {
+            match (port.external_port(), port_mtu(&port)?) {
+                (_, None) | (Some(PhysicalPortId::Wlan(_)), _) => {}
+                (Some(port_id), Some(mtu)) => {
+                    let ethernet_port = self
+                        .get_ethernet_port(port_id)?
+                        .ok_or_else(|| SetupError::MtuNotSupported(port.name().into()))?;
+                    ethernet_port.mtu = mtu;
+                    ethernet_port.l_2_mtu = l2mtu_for(ethernet_port.l_2_mtu, Some(mtu));
+                }
+                (None, Some(_)) => return Err(SetupError::MtuNotSupported(port.name().into())),
+            }
+        }
+        Ok(())
     }
 
     fn set_name_and_loopback(&mut self, device: &DeviceAccess) {
@@ -1040,6 +1112,10 @@ impl WirelessDeviceDataTarget {
             if let Some((name, _)) = l2.placement_of_port(port) {
                 wlan.name = name.clone();
             }
+            let mtu = port_mtu(&interface)?;
+            let l2mtu = profiles.get(&key).and_then(|p| p.l_2_mtu).or(wlan.l_2_mtu);
+            wlan.mtu = Some(mtu.unwrap_or(DEFAULT_MTU));
+            wlan.l_2_mtu = l2mtu_for(l2mtu, mtu);
         }
         self.setup_legacy_cap(device, l2, current)
     }

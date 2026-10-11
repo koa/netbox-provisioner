@@ -186,6 +186,10 @@ impl InterfaceAccess {
         self.data()
             .is_some_and(|d| d.port_type == Some(PortType::Bridge))
     }
+    /// The L3 MTU NetBox gives the port, `None` for RouterOS's 1500.
+    pub fn mtu(&self) -> Option<u16> {
+        self.data().and_then(|d| d.mtu)
+    }
     pub fn enable_poe(&self) -> bool {
         self.data().map(|d| d.enable_poe).unwrap_or(false)
     }
