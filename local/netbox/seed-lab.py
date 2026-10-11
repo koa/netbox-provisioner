@@ -94,9 +94,11 @@ DEVICES = {
                          "tags": ["ospf"], "mtu": TRANSPORT_MTU},
         "sfp-sfpplus2": {"label": "NP2", "ip": ["192.168.101.5/30", V6.format("8011::1/64")],
                          "tags": ["ospf"], "mtu": TRANSPORT_MTU},
-        # the network of the WLAN, which the CAPs tunnel here (VXLAN of the VLAN group)
+        # the networks of the WLANs, which the CAPs tunnel here (VXLAN of the VLAN group)
         "wlan": {"type": "virtual", "vlan": "lab-wlan",
                  "ip": ["192.168.104.1/24", V6.format("9001::1/64")], "tags": ["dhcp"]},
+        "gast": {"type": "virtual", "vlan": "lab-gast",
+                 "ip": ["192.168.105.1/24", V6.format("9002::1/64")], "tags": ["dhcp"]},
     }),
     "lab-np1": ("CRS318-16P-2S+", 2, {
         "sfp-sfpplus1": {"label": "Core", "ip": ["192.168.101.2/30", V6.format("8010::2/64")],
@@ -133,17 +135,19 @@ DEVICES = {
         "wlan1": {"type": "ieee802.11ac", "bridge": "link", "rf_role": "station",
                   "mtu": TRANSPORT_MTU},
     }),
-    # a CAP of lab-core's CAPsMAN (WLAN_GROUP), routed like every other device; its WLAN and
-    # the customer port are in the WLAN's VLAN, which goes to lab-core over VXLAN
+    # a CAP of lab-core's CAPsMAN (WLAN_GROUP), routed like every other device; the customer
+    # port is in the first WLAN's VLAN, which goes to lab-core over VXLAN like the WLANs. Its
+    # 802.11ac radios can't tag the WLANs' VLANs with wifi-qcom-ac, so they run `wireless`
+    # (`wlan<N>`), as a CAP of the legacy CAPsMAN
     "lab-wap": ("RBwAPG-5HacD2HnD", 6, {
         "ether1": {"label": "NP2", "ip": ["192.168.101.18/30", V6.format("8013::2/64")],
                    "tags": ["ospf"], "mtu": TRANSPORT_MTU},
         "ether2": {"label": "Kunde", "vlan": "lab-wlan"},
-        "wifi1": {"type": "ieee802.11n"},
-        "wifi2": {"type": "ieee802.11ac"},
+        "wlan1": {"type": "ieee802.11n"},
+        "wlan2": {"type": "ieee802.11ac"},
     }),
     # older APs of the WLAN (RouterOS `wireless` package): CAPs of the legacy CAPsMAN on
-    # lab-core, which forwards their clients into the WLAN's VLAN there
+    # lab-core; they forward their clients themselves, into the VXLAN to lab-core
     "lab-ap1": ("RBSXTG-5HPacD", 7, {
         "ether1": {"label": "NP1", "ip": ["192.168.101.22/30", V6.format("8014::2/64")],
                    "tags": ["ospf"], "mtu": TRANSPORT_MTU},
@@ -158,12 +162,13 @@ DEVICES = {
     }),
 }
 # interfaces of an earlier lab layout, deleted
-REMOVED_INTERFACES = [("lab-wap", "lan")]
+REMOVED_INTERFACES = [("lab-wap", "lan"), ("lab-wap", "wifi1"), ("lab-wap", "wifi2")]
 # VLAN groups (with their VXLAN VNI) and their VLANs: name -> vid
-VLAN_GROUPS = {"lab-wlan": {"vni": 1, "vlans": {"lab-wlan": 104}}}
+VLAN_GROUPS = {"lab-wlan": {"vni": 1, "vlans": {"lab-wlan": 104, "lab-gast": 105}}}
 # Wireless LAN Group: controller, its APs (device custom field wlan_group) and WLANs
 WLAN_GROUP = {"name": "lab-wlan", "controller": "lab-core", "aps": ["lab-wap", "lab-ap1", "lab-ap2"],
-              "wlans": [{"ssid": "lab-wlan", "psk": "lab-wlan-preshared-key", "vlan": "lab-wlan"}]}
+              "wlans": [{"ssid": "lab-wlan", "psk": "lab-wlan-preshared-key", "vlan": "lab-wlan"},
+                        {"ssid": "lab-gast", "psk": "lab-gast-preshared-key", "vlan": "lab-gast"}]}
 CABLES = [
     (("lab-core", "sfp-sfpplus1"), ("lab-np1", "sfp-sfpplus1")),
     (("lab-core", "sfp-sfpplus2"), ("lab-np2", "sfp-sfpplus1")),
@@ -176,9 +181,9 @@ CABLES = [
 PREFIXES = [
     "192.168.100.0/26", "192.168.101.0/30", "192.168.101.4/30", "192.168.101.8/29",
     "192.168.103.0/24", "192.168.101.16/30", "192.168.101.20/30", "192.168.101.24/30",
-    "192.168.104.0/24", V6.format("8000::/64"), V6.format("8010::/64"), V6.format("8011::/64"),
+    "192.168.104.0/24", "192.168.105.0/24", V6.format("8000::/64"), V6.format("8010::/64"), V6.format("8011::/64"),
     V6.format("8012::/64"), V6.format("8013::/64"), V6.format("8014::/64"), V6.format("8015::/64"),
-    V6.format("9000::/64"), V6.format("9001::/64"),
+    V6.format("9000::/64"), V6.format("9001::/64"), V6.format("9002::/64"),
 ]
 
 
