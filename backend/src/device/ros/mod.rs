@@ -43,7 +43,7 @@ use mikrotik_model::{
     value::{Auto, HasNone, ParseRosValueResult, RosValue},
 };
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, btree_map::Iter},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, btree_map::Iter},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::Range,
 };
@@ -626,27 +626,46 @@ impl BaseDeviceDataTarget {
     }
 
     /// Every port whose PoE out is on and that this target switches off (NetBox has no
-    /// `poe_mode=pse` there): applying it cuts the power of what the port feeds.
-    pub fn poe_warnings(&self, current: &BaseDeviceDataCurrent) -> Vec<String> {
-        let mut warnings = Vec::new();
+    /// `poe_mode=pse` there), by its name at the device and the name the warning gives it.
+    pub fn poe_switched_off(&self, current: &BaseDeviceDataCurrent) -> Vec<(AsciiString, String)> {
+        let mut ports = Vec::new();
         for (default_name, target) in &self.ethernet {
-            let current = current
+            let Some(current) = current
                 .ethernet
                 .iter()
                 .find(|current| current.default_name == *default_name)
-                .and_then(|current| current.data.poe_out);
+            else {
+                continue;
+            };
             if target.poe_out == Some(InterfaceEthernetPoeOut::Off)
-                && current.is_some_and(|current| current != InterfaceEthernetPoeOut::Off)
+                && current
+                    .data
+                    .poe_out
+                    .is_some_and(|poe_out| poe_out != InterfaceEthernetPoeOut::Off)
             {
                 let port = if target.name == *default_name {
                     target.name.to_string()
                 } else {
                     format!("{} ({default_name})", target.name)
                 };
-                warnings.push(format!("Soll der Strom an {port} wirklich abgeschaltet werden?"));
+                ports.push((current.data.name.clone(), port));
             }
         }
-        warnings
+        ports
+    }
+
+    /// The ports of `poe_switched_off` that power something now (`powered`, by name at the
+    /// device): applying the target cuts its power.
+    pub fn poe_warnings(
+        &self,
+        current: &BaseDeviceDataCurrent,
+        powered: &HashSet<AsciiString>,
+    ) -> Vec<String> {
+        self.poe_switched_off(current)
+            .into_iter()
+            .filter(|(name, _)| powered.contains(name))
+            .map(|(_, port)| format!("Soll der Strom an {port} wirklich abgeschaltet werden?"))
+            .collect()
     }
 
     /// The L3 MTU NetBox gives an Ethernet port, with its L2 MTU raised to carry it (a

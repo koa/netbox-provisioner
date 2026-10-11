@@ -20,7 +20,7 @@ use crate::{
 };
 use async_graphql::{Context, Object, SimpleObject, futures_util::StreamExt};
 use log::info;
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::{
     MikrotikDevice,
     ascii::AsciiString,
@@ -191,8 +191,27 @@ impl DeviceCfg {
         render_script(&self.sorted_mutations()?)
     }
     /// What the operator should know before applying (`BaseDeviceDataTarget::poe_warnings`).
-    pub fn warnings(&self) -> Vec<String> {
-        self.base_target.poe_warnings(&self.base_current)
+    /// Whether a port losing PoE out powers something is asked at the device, over `raw`,
+    /// only where a port loses it.
+    pub async fn warnings(
+        &self,
+        raw: impl AsyncFnOnce() -> Result<RawDevice<SimpleResult>, Error>,
+    ) -> Vec<String> {
+        let ports = self.base_target.poe_switched_off(&self.base_current);
+        if ports.is_empty() {
+            return Vec::new();
+        }
+        let names = ports.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>();
+        let powered = match raw().await {
+            Ok(raw) => powered_ports(&raw, &names).await,
+            Err(error) => Err(error),
+        };
+        let powered = powered.unwrap_or_else(|error| {
+            // better a warning too many than power cut unasked
+            info!("cannot read the PoE status: {error}");
+            names.into_iter().collect()
+        });
+        self.base_target.poe_warnings(&self.base_current, &powered)
     }
 }
 
@@ -203,6 +222,45 @@ fn render_script(mutations: &[ResourceMutation]) -> Result<Box<str>, Error> {
         generator.append_mutation(mutation)?;
     }
     Ok(cfg.into_boxed_str())
+}
+
+/// The ports of `names` whose PoE out powers something (`poe-out-status=powered-on`), not
+/// only waits for a load.
+async fn powered_ports(
+    raw: &RawDevice<SimpleResult>,
+    names: &[AsciiString],
+) -> Result<HashSet<AsciiString>, Error> {
+    let numbers = names
+        .iter()
+        .map(|name| name.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut stream = raw
+        .send_command(
+            b"/interface/ethernet/poe/monitor".as_slice(),
+            |cmd| {
+                cmd.attribute(b"numbers".as_slice(), numbers.as_bytes())
+                    .attribute(b"once".as_slice(), b"".as_slice())
+            },
+            (),
+        )
+        .await;
+    let mut powered = HashSet::new();
+    while let Some(result) = stream.next().await {
+        match result {
+            SimpleResult::Sentence(row) => {
+                if let (Some(name), Some("powered-on")) = (
+                    update::field(&row, "name"),
+                    update::field(&row, "poe-out-status"),
+                ) {
+                    powered.insert(AsciiString::from(name));
+                }
+            }
+            SimpleResult::Error(error) => return Err(error.into()),
+            SimpleResult::Trap { message, .. } => return Err(Error::Refused(message)),
+        }
+    }
+    Ok(powered)
 }
 
 /// The script that would bring a device in line with NetBox.
@@ -250,7 +308,7 @@ pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<&'stati
 
 /// Provisions the CAPs' radios of `menu` again (not the controller's own); how many there are.
 async fn provision_radios(
-    raw: &mikrotik_api::prelude::MikrotikDevice<SimpleResult>,
+    raw: &RawDevice<SimpleResult>,
     menu: &str,
 ) -> Result<usize, Error> {
     let rows = update::rows(raw, format!("{menu}/print").as_bytes()).await?;
@@ -584,7 +642,9 @@ impl AccessibleDevice {
             device_cfg.generate_for(&self.device_config)?;
             Ok(GeneratedCfg {
                 script: device_cfg.script()?,
-                warnings: device_cfg.warnings(),
+                warnings: device_cfg
+                    .warnings(async || self.connect_again::<SimpleResult>().await)
+                    .await,
             })
         };
         nullable(ctx, generated.await)

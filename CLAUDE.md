@@ -222,8 +222,10 @@ lease per reboot, and a reboot waits while a consumer holds an update lease, an 
 start while a supplier reboots (both under one lock). The leases are in-process only.
 A modeled port of a PoE board without `pse` gets `poe-out=off`, which cuts what it feeds and
 which the script alone doesn't make obvious, so `generateCfg` returns `warnings` next to the
-script (`BaseDeviceDataTarget::poe_warnings`: on at the device, off in the target), and the
-device page shows them above the changes.
+script (`BaseDeviceDataTarget::poe_warnings`: on at the device, off in the target, and
+powering something: `/interface/ethernet/poe/monitor` reports `poe-out-status=powered-on`, not
+`waiting-for-load`; read only where a port would lose PoE, and when it can't be read every such
+port warns), and the device page shows them above the changes.
 
 `local/` runs the lab: `netbox/` (NetBox + `seed-lab.py`), `keycloak/` (realm `lab` on
 `localhost:8180`, admin/admin), `lab/make-config.sh` (the lab devices' password comes from the

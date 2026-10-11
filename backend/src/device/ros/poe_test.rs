@@ -6,8 +6,9 @@ use crate::{
 use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetPoeOut};
 
 /// A PoE switch with `ether1` feeding (`poe_mode=pse`), `ether2` in NetBox without PoE and
-/// `ether3` not in NetBox, all three with PoE out on at the device as given.
-async fn warnings(current_poe_out: InterfaceEthernetPoeOut) -> Vec<String> {
+/// `ether3` not in NetBox, all three with PoE out on at the device as given, and `powered`
+/// the ports powering something.
+async fn warnings(current_poe_out: InterfaceEthernetPoeOut, powered: &[&str]) -> Vec<String> {
     let mut builder = TopologyBuilder::default();
     let device = builder.devices.next_id();
     builder.devices.insert(
@@ -44,19 +45,26 @@ async fn warnings(current_poe_out: InterfaceEthernetPoeOut) -> Vec<String> {
         target.ethernet[&AsciiString::from("ether2")].poe_out,
         Some(InterfaceEthernetPoeOut::Off)
     );
-    target.poe_warnings(&current)
+    let powered = powered.iter().map(|name| AsciiString::from(*name)).collect();
+    target.poe_warnings(&current, &powered)
 }
 
 /// Only the port NetBox doesn't give PoE to and that has it on loses it; a port NetBox doesn't
 /// know keeps the board's default.
 #[tokio::test]
 async fn warns_where_poe_is_switched_off() {
-    let warnings = warnings(InterfaceEthernetPoeOut::AutoOn).await;
+    let warnings = warnings(InterfaceEthernetPoeOut::AutoOn, &["ether1", "ether2", "ether3"]).await;
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert_eq!(warnings[0], "Soll der Strom an ether2 wirklich abgeschaltet werden?");
 }
 
 #[tokio::test]
 async fn no_warning_where_poe_is_already_off() {
-    assert!(warnings(InterfaceEthernetPoeOut::Off).await.is_empty());
+    assert!(warnings(InterfaceEthernetPoeOut::Off, &[]).await.is_empty());
+}
+
+/// PoE out on, but nothing to power (`waiting-for-load`): switching it off cuts nothing.
+#[tokio::test]
+async fn no_warning_where_poe_powers_nothing() {
+    assert!(warnings(InterfaceEthernetPoeOut::AutoOn, &["ether1"]).await.is_empty());
 }
