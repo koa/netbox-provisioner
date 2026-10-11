@@ -1,6 +1,8 @@
 use graphql_client::GraphQLQuery;
 
 type ScalarDuration = u64;
+/// `D4:01:C3:29:67:64`; the backend checks it
+type ScalarMac = String;
 
 #[derive(GraphQLQuery)]
 #[graphql(

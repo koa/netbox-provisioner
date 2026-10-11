@@ -19,13 +19,15 @@ use crate::{
         proxied_stream,
         terminal::{LOGIN_FLAGS, Terminal, TerminalError, Tunnel},
     },
+    graphql::scalars::ScalarMac,
     topology::access::{device::DeviceAccess, interface::InterfaceAccess},
 };
 use async_graphql::{ComplexObject, SimpleObject};
 use ipnet::IpNet;
 use log::{info, warn};
 use mikrotik_api::simple::SimpleResult;
-use std::{net::IpAddr, time::Duration};
+use mikrotik_model::MacAddress;
+use std::{net::IpAddr, str::FromStr, time::Duration};
 use tokio::time::{Instant, sleep};
 
 /// Marks what the setup added besides the address, so it can be told apart on the device.
@@ -71,7 +73,7 @@ impl BootstrapPlan {
 /// A device the neighbor sees on its port.
 #[derive(Clone, Debug, SimpleObject)]
 pub struct Discovered {
-    pub mac: String,
+    pub mac: ScalarMac,
     pub identity: String,
     pub board: String,
     pub version: String,
@@ -83,7 +85,7 @@ pub struct Discovered {
 #[derive(Clone, Debug)]
 pub struct MacTelnetSetup {
     /// tried in this order, at least one; empty in a [`plan`] until the operator picks the device
-    pub macs: Vec<String>,
+    pub macs: Box<[MacAddress]>,
     /// factory name of the port the MAC belongs to
     pub port: String,
     /// address the port gets
@@ -156,7 +158,7 @@ pub fn plans(device: &DeviceAccess) -> Result<Vec<BootstrapPlan>, Error> {
                 neighbor: neighbor.name().into(),
                 neighbor_port: far.name().into(),
                 setup: MacTelnetSetup {
-                    macs: Vec::new(),
+                    macs: Box::new([]),
                     port: factory_name.to_string(),
                     address: port_address,
                     on_bridge,
@@ -211,7 +213,8 @@ async fn discover(plan: &BootstrapPlan) -> Result<Vec<Discovered>, Error> {
     let mut found = Vec::new();
     for row in rows(&neighbor, b"/ip/neighbor/print").await? {
         let interface = field(&row, "interface").unwrap_or_default();
-        let Some(mac) = field(&row, "mac-address") else {
+        let Some(mac) = field(&row, "mac-address").and_then(|mac| MacAddress::from_str(mac).ok())
+        else {
             continue;
         };
         if !interface.split(',').any(|i| names.iter().any(|n| n == i)) {
@@ -255,13 +258,12 @@ fn field<'r>(row: &'r Row, name: &str) -> Option<&'r str> {
 }
 
 /// `AA:BB:CC:DD:EE:FF` (also with `-` or lower case), upper case with colons.
-pub fn parse_mac(text: &str) -> Option<String> {
-    let parts = text.trim().split([':', '-']).collect::<Vec<_>>();
-    (parts.len() == 6
-        && parts
-            .iter()
-            .all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_hexdigit())))
-    .then(|| parts.join(":").to_ascii_uppercase())
+/// The MACs to try, for messages.
+fn macs(macs: &[MacAddress]) -> String {
+    macs.iter()
+        .map(MacAddress::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn credentials_of(device: &DeviceAccess) -> Result<&'static MikrotikCredentials, Error> {
@@ -310,7 +312,7 @@ async fn run(
         device.name(),
         plan.neighbor,
         plan.neighbor_port,
-        plan.setup.macs.join(", ")
+        macs(&plan.setup.macs)
     );
     let mut terminal = match proxied_stream(plan.neighbor_address, 22).await? {
         Some(stream) => {
@@ -414,14 +416,14 @@ async fn set_up_marked(
     'attempts: for (login_user, login_password) in attempts {
         for mac in &setup.macs {
             if let Some(how) = login(terminal, mac, login_user, login_password, password).await? {
-                logged_in = Some((login_user, how, mac.as_str()));
+                logged_in = Some((login_user, how, mac));
                 break 'attempts;
             }
         }
     }
     let Some((login_user, how, mac)) = logged_in else {
         return Err(Error::Bootstrap(
-            setup.macs.join(", ").into(),
+            macs(&setup.macs).into(),
             "login refused or no answer over mac-telnet".into(),
         ));
     };
@@ -494,7 +496,7 @@ async fn set_up_marked(
 /// prompt is back then).
 async fn login(
     terminal: &mut Terminal,
-    mac: &str,
+    mac: &MacAddress,
     user: &str,
     password: &str,
     new_password: &str,
@@ -601,15 +603,7 @@ async fn wait_for_api(device: &DeviceAccess, address: IpAddr, path: &Path) -> Re
 
 #[cfg(test)]
 mod tests {
-    use super::{console_error, parse_mac, quote};
-
-    #[test]
-    fn parses_macs() {
-        assert_eq!(parse_mac(" d4:01:c3:29:67:64 ").as_deref(), Some("D4:01:C3:29:67:64"));
-        assert_eq!(parse_mac("D4-01-C3-29-67-64").as_deref(), Some("D4:01:C3:29:67:64"));
-        assert_eq!(parse_mac("D4:01:C3:29:67"), None);
-        assert_eq!(parse_mac("D4:01:C3:29:67:6G"), None);
-    }
+    use super::{console_error, quote};
 
     #[test]
     fn recognizes_console_errors() {

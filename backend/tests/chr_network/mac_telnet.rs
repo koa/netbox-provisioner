@@ -98,7 +98,7 @@ async fn mac_telnet_setup_from_entry() {
         .expect("ssh to entry");
         terminal.hide(password);
         let setup = MacTelnetSetup {
-            macs: vec![mac_of(node.index, slot)],
+            macs: [mac_of(node.index, slot)].into(),
             port: format!("ether{}", slot + 1),
             address: address.parse().unwrap(),
             on_bridge: false,

@@ -111,8 +111,8 @@ async fn connect_api_with_retry(
 }
 
 /// The MAC of NIC `slot` (1 = `ether2`) of node number `node`.
-pub fn mac_of(node: u8, slot: usize) -> String {
-    format!("52:54:00:{node:02X}:00:{slot:02X}")
+pub fn mac_of(node: u8, slot: usize) -> mikrotik_model::MacAddress {
+    mikrotik_model::MacAddress::new([0x52, 0x54, 0x00, node, 0x00, slot as u8])
 }
 
 static NEXT_NODE: AtomicU8 = AtomicU8::new(1);

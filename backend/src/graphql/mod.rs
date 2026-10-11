@@ -7,6 +7,7 @@ use crate::{
         update::{self, DeviceLink, UpdateResult},
         ros::graphql::ApplyResult,
     },
+    graphql::scalars::ScalarMac,
     topology::{DeviceId, TopologyHolder, access::AdhocCredentials},
 };
 use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
@@ -56,16 +57,14 @@ impl MutationAuthenticated {
     /// device that can't be reached over IP yet (`allow_apply` must be set). `mac` is the
     /// physical device that gets this NetBox device's config, usually one of
     /// `bootstrapPlan.discovered`.
-    async fn bootstrap(&self, id: u32, mac: String) -> Result<BootstrapResult, Error> {
+    async fn bootstrap(&self, id: u32, mac: ScalarMac) -> Result<BootstrapResult, Error> {
         let device = self
             .topology
             .devices_by_id(DeviceId(id))
             .await
             .ok_or(Error::UnknownDevice(id))?;
         let mut plan = bootstrap::plan(&device)?;
-        let mac = bootstrap::parse_mac(&mac)
-            .ok_or_else(|| Error::Bootstrap(device.name().into(), format!("not a MAC address: {mac}").into()))?;
-        plan.setup.macs = vec![mac];
+        plan.setup.macs = [mac.0].into();
         Ok(bootstrap::bootstrap(&device, &plan).await)
     }
     /// Updates RouterOS (and the RouterBOARD firmware) to the newest release of `channel`, with

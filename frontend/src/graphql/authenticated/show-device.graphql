@@ -60,7 +60,7 @@ query BootstrapCandidates($id: Int!){
         }
     }
 }
-mutation BootstrapDevice($id: Int!, $mac: String!){
+mutation BootstrapDevice($id: Int!, $mac: ScalarMac!){
     bootstrap(id: $id, mac: $mac){
         address
         error
