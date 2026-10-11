@@ -9,6 +9,7 @@ use crate::chr_network::qemu::{free_tcp_port, nix_unavailable};
 use crate::chr_network::vm::{PortWiring, boot_node, mac_of, start_node};
 use backend::Error;
 use backend::device::bootstrap::{MacTelnetSetup, set_up};
+use backend::device::power::PowerChain;
 use backend::device::terminal::{Terminal, Tunnel, upload};
 use backend::device::update::{DeviceLink, Version, read_state, update};
 use encoding_rs::mem::encode_latin1_lossy;
@@ -122,7 +123,7 @@ async fn update_older_chr_to_current() {
     assert_eq!(before.version, Version::parse(CHR_OLDER.version).unwrap());
 
     let target = Version::parse(CHR.version).unwrap();
-    let result = update(&link, &target, &[]).await;
+    let result = update(&link, &PowerChain::unpowered("chr"), &target, &[]).await;
     eprintln!("--- update log ---\n{}", result.log);
     assert_eq!(result.error, None);
     assert_eq!(result.from, CHR_OLDER.version);

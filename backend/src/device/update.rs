@@ -4,8 +4,9 @@
 //! development). RouterOS 6 goes to the last 6.49 first (the bundle package), from there to
 //! the target RouterOS 7. RouterOS 7 gets `routeros` and the packages the device needs
 //! (`device::ros::needed_radio_package`); other packages are uninstalled. After the system the
-//! RouterBOARD firmware follows (`/system/routerboard/upgrade`, one more reboot).
-use crate::Error;
+//! RouterBOARD firmware follows (`/system/routerboard/upgrade`, one more reboot). A device that
+//! powers others over PoE reboots only while none of them updates ([`power`](super::power)).
+use crate::{Error, device::power::PowerChain};
 use async_graphql::{Enum, SimpleObject};
 use serde::Deserialize;
 use log::info;
@@ -392,10 +393,17 @@ async fn download(version: &Version, file: &str) -> Result<Vec<u8>, Error> {
 }
 
 /// Reboots and waits until the device answers with `expect` (a version, a firmware).
-async fn reboot_and_wait<T, F>(link: &impl DeviceLink, log: &mut String, check: F) -> Result<T, Error>
+async fn reboot_and_wait<T, F>(
+    link: &impl DeviceLink,
+    power: &PowerChain,
+    log: &mut String,
+    check: F,
+) -> Result<T, Error>
 where
     F: Fn(&DeviceState) -> Option<T>,
 {
+    // held until the device is back
+    let _rebooting = power.rebooting(log).await;
     let device = link.api().await?;
     let before = read_state(&device).await?.uptime;
     let sent = Instant::now();
@@ -460,12 +468,18 @@ fn parse_uptime(text: &str) -> Option<Duration> {
 
 /// Updates the device to `target`, step by step; the result carries the log also on failure.
 /// Writes to the device without asking for `allow_apply`, that is up to the caller.
-/// Updates to `target` with `routeros` and the `wanted` packages (see [`next_step`]).
-pub async fn update(link: &impl DeviceLink, target: &Version, wanted: &[String]) -> UpdateResult {
+/// Updates to `target` with `routeros` and the `wanted` packages (see [`next_step`]); `power`
+/// says which devices' updates and reboots it has to wait for.
+pub async fn update(
+    link: &impl DeviceLink,
+    power: &PowerChain,
+    target: &Version,
+    wanted: &[String],
+) -> UpdateResult {
     let mut log = String::new();
     let mut from = String::new();
     let mut to = String::new();
-    let result = run(link, target, wanted, &mut log, &mut from, &mut to).await;
+    let result = run(link, power, target, wanted, &mut log, &mut from, &mut to).await;
     UpdateResult {
         from,
         to,
@@ -479,6 +493,7 @@ pub async fn update(link: &impl DeviceLink, target: &Version, wanted: &[String])
 
 async fn run(
     link: &impl DeviceLink,
+    power: &PowerChain,
     target: &Version,
     wanted: &[String],
     log: &mut String,
@@ -500,6 +515,8 @@ async fn run(
     } else {
         None
     };
+    // from the upload on a power loss can brick the device: it installs at the next boot
+    let _updating = power.updating(log).await;
     while let Some(step) = next_step(&state, target, newest_v6.as_ref().unwrap_or(target), wanted) {
         let _ = writeln!(log, "update to {}: {}", step.version, step.files.join(", "));
         info!("update to {}: {}", step.version, step.files.join(", "));
@@ -545,7 +562,7 @@ async fn run(
         uploaded?;
         uninstall(&link.api().await?, &step.uninstall).await?;
         let expected = step.version.clone();
-        state = reboot_and_wait(link, log, |state| {
+        state = reboot_and_wait(link, power, log, |state| {
             (state.version == expected).then(|| state.clone())
         })
         .await?;
@@ -558,7 +575,7 @@ async fn run(
         let _ = writeln!(log, "firmware {current} -> {upgrade}");
         rows(&link.api().await?, b"/system/routerboard/upgrade").await?;
         let upgrade = upgrade.clone();
-        reboot_and_wait(link, log, |state| {
+        reboot_and_wait(link, power, log, |state| {
             state
                 .firmware
                 .as_ref()

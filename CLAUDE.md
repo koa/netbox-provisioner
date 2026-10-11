@@ -152,6 +152,13 @@ russh's defaults and lowers the group minimum to 2048. A user with SSH keys can'
 with a password while `/ip ssh always-allow-password-login=no` (7.24:
 `password-authentication=yes-if-no-key`), so the update switches it for the upload only.
 
+A device that powers another one over PoE (NetBox `poe_mode=pse` on the port cabled to it) must
+not reboot while that one updates: uploaded packages install at the next boot, and losing power
+then has bricked devices. `device::power::PowerChain::of` collects the devices up and down the
+PoE chains; the update holds an update lease from before the upload to the end and a reboot
+lease per reboot, and a reboot waits while a consumer holds an update lease, an update waits to
+start while a supplier reboots (both under one lock). The leases are in-process only.
+
 `local/` runs the lab: `netbox/` (NetBox + `seed-lab.py`), `keycloak/` (realm `lab` on
 `localhost:8180`, admin/admin), `lab/make-config.sh` (the lab devices' password comes from the
 ignored `.lab-netbox/device-password`, never put it in the repo) + `lab/run-provisioner.sh`

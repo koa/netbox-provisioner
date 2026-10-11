@@ -3,6 +3,7 @@ use crate::{
     config::CONFIG,
     device::{
         bootstrap::{self, BootstrapResult},
+        power::PowerChain,
         update::{self, UpdateResult},
         ros::graphql::ApplyResult,
     },
@@ -87,12 +88,13 @@ impl MutationAuthenticated {
             .devices_by_id(DeviceId(id))
             .await
             .ok_or(Error::UnknownDevice(id))?;
+        let power = PowerChain::of(&device);
         let device = device
             .connect(target, credential_name, adhoc_credentials)
             .await?
             .ok_or(Error::MissingCredentials)?;
         let wanted = device.wanted_packages().await?;
-        Ok(update::update(&device, &version, &wanted).await)
+        Ok(update::update(&device, &power, &version, &wanted).await)
     }
     /// Applies the generated config to a device (`allow_apply` must be set). Target and
     /// credentials as for `DeviceAccess.access`.
