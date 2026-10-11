@@ -82,71 +82,76 @@ def same(current, wanted):
 
 # Devices: name -> (device type, loopback index, interfaces). Interface: name -> fields, where
 # "ip" are addresses, "tags" tag slugs, "bridge" the name of a bridge interface on the same
-# device. MAC addresses are not kept in NetBox: at the first setup the device is picked from what
-# its neighbor discovers.
+# device, "mtu" the L3 MTU (TRANSPORT_MTU on every link between the devices, both ends of a cable
+# equal; the clients stay at 1500). MAC addresses are not kept in NetBox: at the first setup the
+# device is picked from what its neighbor discovers.
+# room for VXLAN over IPv4 or IPv6 (1574 for a full tagged frame), below the 2290 of the old radios
+TRANSPORT_MTU = 2000
 DEVICES = {
     "lab-core": ("CCR2004-1G-12S+2XS", 1, {
         "ether1": {"label": "Uplink", "tags": ["dhcp-client", "ospf"]},
         "sfp-sfpplus1": {"label": "NP1", "ip": ["192.168.101.1/30", V6.format("8010::1/64")],
-                         "tags": ["ospf"]},
+                         "tags": ["ospf"], "mtu": TRANSPORT_MTU},
         "sfp-sfpplus2": {"label": "NP2", "ip": ["192.168.101.5/30", V6.format("8011::1/64")],
-                         "tags": ["ospf"]},
+                         "tags": ["ospf"], "mtu": TRANSPORT_MTU},
         # the network of the WLAN, which the CAPs tunnel here (VXLAN of the VLAN group)
         "wlan": {"type": "virtual", "vlan": "lab-wlan",
                  "ip": ["192.168.104.1/24", V6.format("9001::1/64")], "tags": ["dhcp"]},
     }),
     "lab-np1": ("CRS318-16P-2S+", 2, {
         "sfp-sfpplus1": {"label": "Core", "ip": ["192.168.101.2/30", V6.format("8010::2/64")],
-                         "tags": ["ospf"]},
+                         "tags": ["ospf"], "mtu": TRANSPORT_MTU},
         "ether1": {"label": "SXT A", "ip": ["192.168.101.9/29", V6.format("8012::1/64")],
-                   "tags": ["ospf"], "poe_mode": "pse"},
+                   "tags": ["ospf"], "poe_mode": "pse", "mtu": TRANSPORT_MTU},
         "ether2": {"label": "AP1", "ip": ["192.168.101.21/30", V6.format("8014::1/64")],
-                   "tags": ["ospf"], "poe_mode": "pse"},
+                   "tags": ["ospf"], "poe_mode": "pse", "mtu": TRANSPORT_MTU},
     }),
     "lab-np2": ("CRS318-16P-2S+", 3, {
         "sfp-sfpplus1": {"label": "Core", "ip": ["192.168.101.6/30", V6.format("8011::2/64")],
-                         "tags": ["ospf"]},
+                         "tags": ["ospf"], "mtu": TRANSPORT_MTU},
         "ether1": {"label": "SXT B", "ip": ["192.168.101.10/29", V6.format("8012::2/64")],
-                   "tags": ["ospf"], "poe_mode": "pse"},
+                   "tags": ["ospf"], "poe_mode": "pse", "mtu": TRANSPORT_MTU},
         "lan": {"type": "bridge", "ip": ["192.168.103.1/24", V6.format("9000::1/64")],
                 "tags": ["dhcp"]},
         "ether2": {"label": "wAP", "ip": ["192.168.101.17/30", V6.format("8013::1/64")],
-                   "tags": ["ospf"], "poe_mode": "pse"},
+                   "tags": ["ospf"], "poe_mode": "pse", "mtu": TRANSPORT_MTU},
         "ether3": {"label": "AP2", "ip": ["192.168.101.25/30", V6.format("8015::1/64")],
-                   "tags": ["ospf"], "poe_mode": "pse"},
+                   "tags": ["ospf"], "poe_mode": "pse", "mtu": TRANSPORT_MTU},
         "ether4": {"label": "Kunde", "bridge": "lan", "poe_mode": "pse"},
     }),
     "lab-sxt-a": ("RBSXTG-5HPacD", 4, {
         "link": {"type": "bridge", "ip": ["192.168.101.11/29", V6.format("8012::11/64")],
                  "tags": ["ospf"]},
-        "ether1": {"bridge": "link"},
-        "wlan1": {"type": "ieee802.11ac", "bridge": "link", "rf_role": "ap"},
+        "ether1": {"bridge": "link", "mtu": TRANSPORT_MTU},
+        "wlan1": {"type": "ieee802.11ac", "bridge": "link", "rf_role": "ap",
+                  "mtu": TRANSPORT_MTU},
     }),
     "lab-sxt-b": ("RBSXTG-5HPacD", 5, {
         "link": {"type": "bridge", "ip": ["192.168.101.12/29", V6.format("8012::12/64")],
                  "tags": ["ospf"]},
-        "ether1": {"bridge": "link"},
-        "wlan1": {"type": "ieee802.11ac", "bridge": "link", "rf_role": "station"},
+        "ether1": {"bridge": "link", "mtu": TRANSPORT_MTU},
+        "wlan1": {"type": "ieee802.11ac", "bridge": "link", "rf_role": "station",
+                  "mtu": TRANSPORT_MTU},
     }),
     # a CAP of lab-core's CAPsMAN (WLAN_GROUP), routed like every other device; its WLAN and
     # the customer port are in the WLAN's VLAN, which goes to lab-core over VXLAN
     "lab-wap": ("RBwAPG-5HacD2HnD", 6, {
         "ether1": {"label": "NP2", "ip": ["192.168.101.18/30", V6.format("8013::2/64")],
-                   "tags": ["ospf"]},
+                   "tags": ["ospf"], "mtu": TRANSPORT_MTU},
         "ether2": {"label": "Kunde", "vlan": "lab-wlan"},
         "wifi1": {"type": "ieee802.11n"},
         "wifi2": {"type": "ieee802.11ac"},
     }),
-    # older APs of the WLAN (RouterOS `wireless` package, no CAP of the WiFi CAPsMAN): they
-    # send its WLAN themselves, its VLAN goes to lab-core over VXLAN like the wAP's
+    # older APs of the WLAN (RouterOS `wireless` package): CAPs of the legacy CAPsMAN on
+    # lab-core, which forwards their clients into the WLAN's VLAN there
     "lab-ap1": ("RBSXTG-5HPacD", 7, {
         "ether1": {"label": "NP1", "ip": ["192.168.101.22/30", V6.format("8014::2/64")],
-                   "tags": ["ospf"]},
+                   "tags": ["ospf"], "mtu": TRANSPORT_MTU},
         "wlan1": {"type": "ieee802.11ac"},
     }),
     "lab-ap2": ("RB912UAG-2HPnD", 8, {
         "ether1": {"label": "NP2", "ip": ["192.168.101.26/30", V6.format("8015::2/64")],
-                   "tags": ["ospf"]},
+                   "tags": ["ospf"], "mtu": TRANSPORT_MTU},
         "wlan1": {"type": "ieee802.11n"},
         # 5 GHz card in the miniPCIe slot
         "wlan2": {"type": "ieee802.11a"},
@@ -248,6 +253,7 @@ def main():
                                 if "bridge" in fields else None)
             # also clears a VLAN the interface is no longer in
             values["mode"] = "access" if "vlan" in fields else None
+            values["mtu"] = fields.get("mtu")
             values["untagged_vlan"] = vlans[fields["vlan"]] if "vlan" in fields else None
             for key in ["poe_mode", "rf_role"]:
                 if key in fields:
