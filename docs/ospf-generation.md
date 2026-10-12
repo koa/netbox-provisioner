@@ -62,6 +62,9 @@ gar kein OSPF generiert.
    Schnittstellen auf beiden Instanzen aktiviert (`use_bfd = false` auf beiden). Es gibt keine
    Unterscheidung, welche Schnittstellen tatsächlich IPv6-fähig sind — `default-v3` wird also auch
    auf rein-IPv4-Netzen mit aktiviert.
+5. IPv6 ist auf jedem Gerät eingeschaltet (`/ipv6/settings disable-ipv6=no`, der Werkszustand).
+   Mit abgeschaltetem IPv6 sind die IPv6-Adressen `invalid` und `default-v3` findet keinen
+   Nachbarn, obwohl Adressen und Instanz angewendet aussehen (so auf lab-ap1).
 
 **Praktische Konsequenz** (aus der Multi-CHR-Testharness-Erfahrung, siehe
 `backend/tests/chr_network/wait.rs`): Ein reines IPv4-Testszenario muss beim Prüfen auf

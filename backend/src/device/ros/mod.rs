@@ -115,6 +115,7 @@ mikrotik_model!(
         socks(single = "ip/socks"),
         socks_users(by_key(path = "ip/socks/users", key = name)),
         ssh(single = "ip/ssh"),
+        ipv6_settings(single = "ipv6/settings"),
     ),
 );
 
@@ -287,6 +288,9 @@ impl BaseDeviceDataTarget {
                 forwarding_enabled: IpSshForwardingEnabled::Local,
                 ..Default::default()
             },
+            // every device gets OSPFv3 and its IPv6 addresses from NetBox; with IPv6 off they
+            // are invalid and OSPFv3 never comes up, while the diff of them looks applied
+            ipv_6_settings: Default::default(),
         }
     }
     /// Makes this device the provisioner's way into the network: `/ip socks` as SOCKS5, only

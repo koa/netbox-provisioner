@@ -213,7 +213,8 @@ on a device with the custom field `propagate_default_route` (`originate-default=
 RouterOS' own default), every other one gets `never`: an apply of the lab's uplink router, whose
 DHCP default from the production network was still installed, once announced it back into
 production. A client network's (`dhcp`)
-IPv6 /64 is advertised for SLAAC.
+IPv6 /64 is advertised for SLAAC. IPv6 is on everywhere (`/ipv6/settings disable-ipv6=no`):
+with it off the addresses are `invalid` and OSPFv3 never comes up, while the diff looks applied.
 
 DNS servers come from the device's NetBox config context (`dns_servers`, in priority order):
 client networks get them by DHCP (v4) and RDNSS (v6, only on devices with client networks),

@@ -228,6 +228,40 @@ async fn test_scenario_core_router() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Ein Router mit einem OSPF-Port; `propagate` ist sein Custom Field `propagate_default_route`.
+async fn ospf_router(propagate: bool) -> DeviceAccess {
+    let mut builder = TopologyBuilder::default();
+    let d1 = builder.devices.next_id();
+    let loopback_id = add_ip(&mut builder, [192, 168, 255, 1], 32);
+    let ip_id = add_ip(&mut builder, [172, 17, 0, 49], 29);
+    let if_id = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        if_id,
+        Interface {
+            name: "ether2".into(),
+            device: d1,
+            external: Some(PhysicalPortId::Ethernet(2)),
+            ips: Box::new([ip_id]),
+            use_ospf: true,
+            ..Default::default()
+        },
+    );
+    builder.devices.insert(
+        d1,
+        Device {
+            name: "router".into(),
+            primary_ip_v4: Some(loopback_id),
+            loopback_ip: Some(loopback_id),
+            propagate_default_route: propagate,
+            ..Default::default()
+        },
+    );
+    Into::<TopologyHolder>::into(builder)
+        .devices_by_id(d1)
+        .await
+        .expect("device not found")
+}
+
 /// Ein Router mit OSPF gibt eine Default-Route nur weiter, wenn NetBox es ihm erlaubt
 /// (`propagate_default_route`); sonst ginge eine vom Uplink über OSPF in das Netz dahinter.
 #[tokio::test]
@@ -236,36 +270,7 @@ async fn test_ospf_originates_default_only_with_flag() -> Result<(), Box<dyn Err
         (false, RoutingOriginateDefault::Never),
         (true, RoutingOriginateDefault::IfInstalled),
     ] {
-        let mut builder = TopologyBuilder::default();
-        let d1 = builder.devices.next_id();
-        let loopback_id = add_ip(&mut builder, [192, 168, 255, 1], 32);
-        let ip_id = add_ip(&mut builder, [172, 17, 0, 49], 29);
-        let if_id = builder.interfaces.next_id();
-        builder.interfaces.insert(
-            if_id,
-            Interface {
-                name: "ether2".into(),
-                device: d1,
-                external: Some(PhysicalPortId::Ethernet(2)),
-                ips: Box::new([ip_id]),
-                use_ospf: true,
-                ..Default::default()
-            },
-        );
-        builder.devices.insert(
-            d1,
-            Device {
-                name: "router".into(),
-                primary_ip_v4: Some(loopback_id),
-                loopback_ip: Some(loopback_id),
-                propagate_default_route: propagate,
-                ..Default::default()
-            },
-        );
-        let device = Into::<TopologyHolder>::into(builder)
-            .devices_by_id(d1)
-            .await
-            .expect("device not found");
+        let device = ospf_router(propagate).await;
         let (mut target_data, _) = setup_testdata(b"CCR1009-7G-1C-1S+")?;
         target_data.generate_from(&device, KeepNameGenerator)?;
         for instance in ["default-v2", "default-v3"] {
@@ -273,6 +278,24 @@ async fn test_ospf_originates_default_only_with_flag() -> Result<(), Box<dyn Err
             assert_eq!(cfg.originate_default, Some(expected), "{instance}");
         }
     }
+    Ok(())
+}
+
+/// Mit abgeschaltetem IPv6 sind die IPv6-Adressen ungültig und OSPFv3 kommt nie hoch, obwohl
+/// beide angewendet aussehen: der Generator schaltet es ein.
+#[tokio::test]
+async fn test_ipv6_is_turned_on() -> Result<(), Box<dyn Error>> {
+    let device = ospf_router(false).await;
+    let (mut target_data, mut current) = setup_testdata(b"CCR1009-7G-1C-1S+")?;
+    target_data.generate_from(&device, KeepNameGenerator)?;
+    current.ipv_6_settings.disable_ipv_6 = true;
+    let mutations = target_data.generate_mutations(&current)?;
+    let mut script = String::new();
+    let mut generator = Generator::new(&mut script);
+    for mutation in mutations.iter().filter(|m| m.resource == b"ipv6/settings") {
+        generator.append_mutation(mutation)?;
+    }
+    assert_eq!(script.trim(), "/ipv6/settings\nset disable-ipv6=no");
     Ok(())
 }
 
