@@ -75,11 +75,11 @@ pub struct PackageUploaded {
     pub file: Box<str>,
 }
 
-/// The device reboots; the update waits until it is back (up to [`REBOOT_TIMEOUT`]).
+/// The device reboots; the job waits until it is back (up to [`REBOOT_TIMEOUT`]).
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct Reboot {
     pub reason: RebootReason,
-    /// how long the update waits for it
+    /// how long the job waits for it
     pub timeout: ScalarDuration,
 }
 
@@ -89,6 +89,8 @@ pub enum RebootReason {
     Packages,
     /// to load the upgraded RouterBOARD firmware
     Firmware,
+    /// asked for (`reboot`)
+    Requested,
 }
 
 /// The device is back with this RouterOS.
@@ -554,6 +556,20 @@ where
             return Err(Error::Update("not back after the reboot".into()));
         }
     }
+}
+
+/// Reboots the device and waits until it is back, as an update does (`power` as for
+/// [`update`]: not while a device it powers updates).
+pub async fn reboot(link: &impl DeviceLink, power: &PowerChain, log: &Log) -> Result<(), Error> {
+    let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
+    let state = reboot_and_wait(link, rebooting, log, RebootReason::Requested, |state| {
+        Some(state.clone())
+    })
+    .await?;
+    log.emit(RouterOsRunning {
+        version: state.version.to_string().into(),
+    });
+    Ok(())
 }
 
 /// Updates the device to `target` with `routeros` and the `wanted` packages, step by step (see

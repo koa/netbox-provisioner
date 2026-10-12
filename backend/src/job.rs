@@ -142,6 +142,8 @@ pub enum JobKind {
     Apply,
     /// initial setup over mac-telnet (`bootstrap`)
     Bootstrap,
+    /// a reboot asked for on the device page (`rebootDevice`)
+    Reboot,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]

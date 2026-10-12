@@ -177,8 +177,8 @@ russh's defaults and lowers the group minimum to 2048. A user with SSH keys can'
 with a password while `/ip ssh always-allow-password-login=no` (7.24:
 `password-authentication=yes-if-no-key`), so the update switches it for the upload only.
 
-An update, an apply and an initial setup run as jobs (`backend::job`): `updateRouteros`,
-`applyCfg` and `bootstrap` return the `Job` at once, the work
+An update, an apply, an initial setup and a reboot run as jobs (`backend::job`):
+`updateRouteros`, `applyCfg`, `bootstrap` and `rebootDevice` return the `Job` at once, the work
 goes on in the background and reports typed events (`job::Event`, a GraphQL union; the
 frontend words them in German, `components/job.rs`). The frontend asks `job(id) { events(after)
 }` every second: the API is plain POST with the bearer token, a subscription would need the
@@ -190,7 +190,8 @@ packages of a step before the first upload, and removes the uploaded ones when i
 the reboot: a part of them must not install at some later boot. An apply stops before its
 script, or after it while it waits, leaving the fallback, which brings the config from before
 back. A setup stops before or after its console session (whose output streams as
-`ConsoleOutput`, `Terminal::stream_to`), not within it.
+`ConsoleOutput`, `Terminal::stream_to`), not within it. A reboot (`update::reboot`, "Neu starten" on the
+device page, asked to confirm) takes the reboot lease like an update's and waits the same way.
 
 NetBox's interface `mtu` is the L3 MTU of an Ethernet port or `wlan` radio (`setup_mtu`, and the
 wireless target); `l2mtu` is raised to carry it with a VLAN tag, other interface types refuse

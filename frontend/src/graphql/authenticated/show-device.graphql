@@ -63,6 +63,11 @@ mutation BootstrapDevice($id: Int!, $mac: ScalarMac!){
         id
     }
 }
+mutation RebootDevice($id: Int!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+    rebootDevice(id: $id, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
+        id
+    }
+}
 mutation UpdateRouteros($id: Int!, $channel: Channel, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
     updateRouteros(id: $id, channel: $channel, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
         id

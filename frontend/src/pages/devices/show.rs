@@ -7,7 +7,7 @@ use crate::{
     graphql::{
         authenticated::{
             ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, DeviceJobs, DeviceOverview,
-            UpdateRouteros, apply_device_cfg, bootstrap_candidates, bootstrap_device,
+            RebootDevice, UpdateRouteros, apply_device_cfg, reboot_device, bootstrap_candidates, bootstrap_device,
             device_jobs, device_overview, update_routeros,
         },
         query_authenticated, query_authenticated_response,
@@ -33,6 +33,8 @@ pub struct ShowDevice {
     manual_mac: String,
     /// the RouterOS channel to update in; `None` until the device's default is known
     channel: Option<device_overview::Channel>,
+    /// "Neu starten" was clicked, waiting for the confirmation
+    confirm_reboot: bool,
 }
 type Candidate =
     bootstrap_candidates::BootstrapCandidatesTopologyDeviceByIdBootstrapPlanDiscovered;
@@ -75,6 +77,9 @@ pub enum ShowDeviceMessage {
     Update,
     /// bring the packages in line at the running version
     AdjustPackages,
+    /// ask before rebooting (`true`), or not anymore
+    ConfirmReboot(bool),
+    Reboot,
     JobStarted(Result<i64, FrontendError>),
     JobFinished,
 }
@@ -94,6 +99,7 @@ impl Component for ShowDevice {
             candidates: None,
             manual_mac: String::new(),
             channel: None,
+            confirm_reboot: false,
         }
     }
 
@@ -140,6 +146,16 @@ impl Component for ShowDevice {
             ShowDeviceMessage::AdjustPackages => {
                 self.job_running = true;
                 update(ctx.link().clone(), self.id, None, self.alternate_target.clone());
+                true
+            }
+            ShowDeviceMessage::ConfirmReboot(confirm) => {
+                self.confirm_reboot = confirm;
+                true
+            }
+            ShowDeviceMessage::Reboot => {
+                self.confirm_reboot = false;
+                self.job_running = true;
+                reboot(ctx.link().clone(), self.id, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::JobStarted(result) => {
@@ -245,6 +261,30 @@ impl Component for ShowDevice {
                                 label="Pakete anpassen"
                                 disabled={update_running || running}
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::AdjustPackages)}
+                            />
+                        }
+                    </div>
+                    <div class="device-reboot">
+                        if self.confirm_reboot {
+                            {"Das Gerät und was es über PoE versorgt, ist während des Neustarts weg. "}
+                            <Button
+                                variant={ButtonVariant::Danger}
+                                label="Jetzt neu starten"
+                                disabled={running}
+                                onclick={ctx.link().callback(|_| ShowDeviceMessage::Reboot)}
+                            />
+                            {" "}
+                            <Button
+                                variant={ButtonVariant::Link}
+                                label="Abbrechen"
+                                onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmReboot(false))}
+                            />
+                        } else {
+                            <Button
+                                variant={ButtonVariant::Secondary}
+                                label="Neu starten"
+                                disabled={running}
+                                onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmReboot(true))}
                             />
                         }
                     </div>
@@ -540,6 +580,35 @@ fn update(
         )
         .await
         .map(|data| data.update_routeros.id);
+        scope.send_message(ShowDeviceMessage::JobStarted(result));
+    });
+}
+
+/// Reboots the device and waits until it is back.
+fn reboot(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
+    spawn_local(async move {
+        let (credential_name, adhoc_credentials) = match target.credentials {
+            SelectedCredentials::Default => (None, None),
+            SelectedCredentials::Named(name) => (Some(name.into_string()), None),
+            SelectedCredentials::Adhoc { username, password } => (
+                None,
+                Some(reboot_device::AdhocCredentials {
+                    username: Some(username.to_string()),
+                    password: Some(password.to_string()),
+                }),
+            ),
+        };
+        let result = query_authenticated::<RebootDevice, _>(
+            scope.clone(),
+            reboot_device::Variables {
+                id: id as i64,
+                target: target.address.map(|a| a.to_string()),
+                credential_name,
+                adhoc_credentials,
+            },
+        )
+        .await
+        .map(|data| data.reboot_device.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }

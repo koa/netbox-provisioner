@@ -72,6 +72,14 @@ pub struct UpdateRouteros;
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/show-device.graphql",
+    response_derives = "Debug"
+)]
+pub struct RebootDevice;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/show-device.graphql",
     response_derives = "Debug,Clone,PartialEq"
 )]
 pub struct BootstrapCandidates;

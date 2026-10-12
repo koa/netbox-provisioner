@@ -115,10 +115,37 @@ impl MutationAuthenticated {
             update::update(&device, &power, &version, &wanted, &log).await
         })
     }
+    /// Starts a reboot of a device (`allow_apply` must be set) and waits until it is back.
+    /// Target and credentials as for `DeviceAccess.access`.
+    async fn reboot_device(
+        &self,
+        id: u32,
+        target: Option<String>,
+        credential_name: Option<Box<str>>,
+        adhoc_credentials: Option<AdhocCredentials>,
+    ) -> Result<Arc<Job>, Error> {
+        if !CONFIG.allow_apply {
+            return Err(Error::ApplyNotAllowed);
+        }
+        let device = self
+            .topology
+            .devices_by_id(DeviceId(id))
+            .await
+            .ok_or(Error::UnknownDevice(id))?;
+        let power = PowerChain::of(&device);
+        job::start(&device.clone(), JobKind::Reboot, |log| async move {
+            let device = log
+                .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
+                .await??
+                .ok_or(Error::MissingCredentials)?;
+            update::reboot(&device, &power, &log).await
+        })
+    }
     /// Stops a job (`Query.job`) at the next point where that is safe: an update between its
     /// steps or while it waits, removing the packages it uploaded unless the device reboots
     /// with them already; an apply before its script runs, or after, leaving the fallback
-    /// that brings back the config from before; a setup before or after its console session.
+    /// that brings back the config from before; a setup before or after its console session; a
+    /// reboot before it is sent, or while it is waited for.
     async fn cancel_job(&self, id: u32) -> Result<Arc<Job>, Error> {
         job::cancel(id).ok_or(Error::UnknownJob(id))
     }

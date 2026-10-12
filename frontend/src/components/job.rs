@@ -169,6 +169,7 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         JobKind::UPDATE => "RouterOS-Update",
         JobKind::APPLY => "Anwenden",
         JobKind::BOOTSTRAP => "Ersteinrichtung",
+        JobKind::REBOOT => "Neustart",
         JobKind::Other(other) => other,
     };
     let events = || job.events.iter().map(|event| &event.event);
@@ -373,6 +374,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             match &reboot.reason {
                 RebootReason::PACKAGES => "zum Installieren der Pakete",
                 RebootReason::FIRMWARE => "für die neue Firmware",
+                RebootReason::REQUESTED => "auf Anfrage",
                 RebootReason::Other(other) => other,
             },
             reboot.timeout / 60_000_000_000
