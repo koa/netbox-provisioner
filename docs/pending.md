@@ -76,3 +76,20 @@ Konzept für Updates im ganzen Netz
 **Status: offen** (baut auf dem Server-Log auf).
 
 Konzept für Updates im ganzen Netz fehlt
+
+
+Visualisierung Netz-Zustand
+===========================
+
+Es braucht eine einfache Übersicht über alle Verbindungen.
+
+Daten
+-----
+Baue einen Graph wahlweise basierend auf den OSPF2 oder OSPF3 LSA um den Ist-Zustand aller Strecken zu sehen (Soll-Zustand kommt von Netbox). So kann man vielleicht den aktuellen Netz-Zustand mit hoher Frequenz (ca. alle 5s) von nur einem OSPF-Router pollen. Alternative Idee: Einen Aggregator der Log-Meldungen zu OSPF Link Zuständen von allen Routern empfängt und damit das Netz live aktualisiert.
+
+Visualisierung
+--------------
+SVG Darstellung von einem Netz. Kanten sind Verbindungen, Knoten sind Router/Endpunkte. Ähnlich die die Darstellung von Neo4J.
+Knoten haben Icon nach Typ des Routers/Endpunkt, Farbe nach Zustand (Grün: alles ok, Rot: unerreichbar, Orange: Erreichbar mit Problemen). Text: Name des Knoten.
+Kanten haben Farben nach Zustand (Grün: alles ok, Rot: tot, Orange: dazwischen).
+Interaktiv: Benutzer kann Knoten verschieben, Knotenpositionen werden gespeichert
