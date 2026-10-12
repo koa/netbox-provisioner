@@ -204,6 +204,13 @@ wählt man auf der Geräteseite aus: Dort steht, was der Nachbar an seinem Port 
 Discovery sieht (Identity, Board, Version, MAC), oder man gibt die MAC von Hand ein. Hinter einer
 Funkbrücke sieht der Nachbar auch Geräte, die weiter weg sind.
 
+Ein Heim-AP (z.B. wAP ac) hat im Werkszustand ether1 als WAN: Firewall, und weder MAC-Telnet
+noch Neighbor Discovery auf diesem Port. Der Nachbar sieht ihn dann nicht. So einen AP mit dem
+Reset-Knopf in den **CAPs-Modus** zurücksetzen (halten, bis die LED blinkt, dann noch etwa 5 s,
+bis sie dauerhaft leuchtet, und loslassen): ether1 ist dann ein normaler Management-Port. Den
+CAP, den dieser Modus einschaltet, schaltet die Ersteinrichtung wieder aus (sonst lehnt RouterOS
+das Umbenennen der Funkmodule ab); das Anwenden setzt ihn danach so, wie NetBox es vorgibt.
+
 Bis zum ersten Anwenden (das OSPF bringt) erreicht der Provisioner das neue Gerät über einen
 SSH-Tunnel zum Nachbarn: Die Verbindungen kommen von der Adresse des Nachbarn auf dem Kabel, das
 neue Gerät braucht also keine Route zurück. Dafür setzt die generierte Konfiguration auf jedem

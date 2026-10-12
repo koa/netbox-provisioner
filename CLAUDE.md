@@ -152,7 +152,11 @@ refusal), hence the timeout in `Tunnel::open`. Don't go back to static return ro
 `redistribute=static` they go out as /32s that beat the neighbors' connected networks. When the
 mac-telnet session ends early, the following lines land on the neighbor's own console (this
 once left setup routes on lab-np1), so every setup command is wrapped to do nothing where the
-global `netboxProvisionerNeighbor` is set, which `set_up` sets on the neighbor only.
+global `netboxProvisionerNeighbor` is set, which `set_up` sets on the neighbor only. A home AP's
+factory ether1 is WAN (firewall, no MAC server or discovery there), so it is set up after a reset
+to CAPs mode (`docs/netbox-modeling.md`); `set_up` turns the CAP that mode enables off again
+(`:parse`, the menus depend on the packages), since CAPsMAN refuses the first apply renaming the
+radios.
 
 `device::update` brings RouterOS to the newest release of the channel picked in the UI
 (long-term, stable, testing, development; `routeros_channel` preselects it, long-term if unset), from

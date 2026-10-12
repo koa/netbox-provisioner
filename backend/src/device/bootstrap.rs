@@ -479,6 +479,13 @@ async fn set_up_marked(
         ":if (([:len [/ip firewall filter find]] > 0) && ([:len [/ip firewall filter find src-address={source} comment=\"{COMMENT}\"]] = 0)) do={{/ip firewall filter add chain=input src-address={source} action=accept comment=\"{COMMENT}\" place-before=[:pick [/ip firewall filter find] 0]}}"
     ));
     commands.push("/ip service set api disabled=no".into());
+    // A device reset to CAPs mode manages its radios by CAPsMAN, which refuses the first apply
+    // to rename them; the apply turns the CAP on again where NetBox wants one. `:parse`, since
+    // a menu is missing without its package.
+    commands.push(
+        ":foreach m in=(\"/interface wireless cap set enabled=no\",\"/interface wifi cap set enabled=no\") do={:do {:local f [:parse $m]; $f} on-error={}}"
+            .into(),
+    );
     if !setup.on_bridge {
         // A factory bridge takes the port's traffic before the address sees it. Taking the port
         // out may cut this session, so it happens in the background once it is closed.
