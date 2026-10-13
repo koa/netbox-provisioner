@@ -465,7 +465,7 @@ async fn apply_via_entry_socks_proxy() {
         }]),
         depends: Box::new([]),
         provides: Box::new([]),
-        releases: Box::new([]),
+        ordering: Default::default(),
     }];
     apply_mutations_via_entry(
         entry.socks_port,

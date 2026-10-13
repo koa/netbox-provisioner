@@ -9,8 +9,15 @@ use crate::{
 };
 use ipnet::IpNet;
 use mikrotik_model::{
-    ascii::AsciiString, generator::Generator, model::{ReferenceType, RoutingOriginateDefault},
-    resource::ResourceMutation,
+    ascii::AsciiString,
+    generator::Generator,
+    model::{
+        InterfaceBridgePortById, InterfaceBridgePortCfg, InterfaceBridgeVlanById,
+        InterfaceBridgeVlanCfg, InterfaceVxlanVtepsById,
+        InterfaceVxlanVtepsCfg, ReferenceType, RoutingOriginateDefault,
+    },
+    resource::{ResourceMutation, ResourceMutationOperation},
+    value::Id,
 };
 use std::{
     collections::HashMap,
@@ -778,6 +785,172 @@ async fn test_scenario_switch_vxlan_port_group() -> Result<(), Box<dyn Error>> {
 
     println!("--- Szenario: Switch-Port-Gruppe einer Wohnung im Haushalts-VXLAN ---");
     dump_mutations(&target_data, &empty_current)?;
+    Ok(())
+}
+
+/// The VXLAN of the household renamed in NetBox while it keeps its VNI: RouterOS holds a VNI
+/// once per device, so the old VXLAN goes before the new one comes, its vteps (removed with it)
+/// before it, and the port and VLAN follow onto the new one.
+#[tokio::test]
+async fn test_renamed_vxlan_frees_its_vni_first() -> Result<(), Box<dyn Error>> {
+    let (device, _) = build_tunnel_topology(|_, _| {}).await;
+    let (mut target_data, mut current) = setup_testdata(b"CRS326-24G-2S+")?;
+    target_data.generate_from(&device, KeepNameGenerator)?;
+
+    let new_name = AsciiString::from("client-berg");
+    let old_name = AsciiString::from("client-old");
+    let rename = |name: &AsciiString| {
+        if name == &new_name {
+            old_name.clone()
+        } else {
+            name.clone()
+        }
+    };
+    let mut ids = 0x100..;
+    let mut next_id = || Id(ids.next().unwrap());
+    // the target holds the keys in the maps' keys only
+    current.vxlan = target_data
+        .vxlan
+        .iter()
+        .map(|(name, vxlan)| {
+            let mut vxlan = vxlan.clone();
+            vxlan.0.name = rename(name);
+            vxlan
+        })
+        .collect();
+    current.vxlan_vteps = target_data
+        .vxlan_vteps
+        .iter()
+        .map(|((interface, remote_ip), vtep)| InterfaceVxlanVtepsById {
+            id: next_id(),
+            data: InterfaceVxlanVtepsCfg {
+                interface: rename(interface),
+                remote_ip: *remote_ip,
+                ..vtep.clone()
+            },
+        })
+        .collect();
+    current.bridge_port = target_data
+        .bridge_port
+        .iter()
+        .map(|((bridge, interface), port)| InterfaceBridgePortById {
+            id: next_id(),
+            data: InterfaceBridgePortCfg {
+                bridge: bridge.clone(),
+                interface: rename(interface),
+                ..port.clone()
+            },
+        })
+        .collect();
+    current.bridge_vlan = target_data
+        .bridge_vlan
+        .iter()
+        .map(|((bridge, tagged, untagged, vlan_ids), vlan)| InterfaceBridgeVlanById {
+            id: next_id(),
+            data: InterfaceBridgeVlanCfg {
+                bridge: bridge.clone(),
+                tagged: tagged.iter().map(rename).collect(),
+                untagged: untagged.clone(),
+                vlan_ids: vlan_ids.clone(),
+                ..vlan.clone()
+            },
+        })
+        .collect();
+
+    let mutations = target_data.generate_mutations(&current)?;
+    let sorted = ResourceMutation::sort_mutations_with_provided_dependencies(
+        mutations.as_ref(),
+        [
+            (ReferenceType::Interface, b"lo".into()),
+            (ReferenceType::RoutingTable, b"main".into()),
+        ],
+    )
+    .unwrap();
+    let position = |what: &str, found: &dyn Fn(&ResourceMutation) -> bool| {
+        sorted
+            .iter()
+            .position(|m| found(m))
+            .unwrap_or_else(|| panic!("no {what} in {sorted:?}"))
+    };
+    let names = |m: &ResourceMutation, name: &AsciiString| {
+        m.fields
+            .iter()
+            .any(|field| field.key == b"interface" && field.value.as_ref() == name.0.as_ref())
+    };
+    let vtep_removal = position("vtep removal", &|m| {
+        m.resource == b"interface/vxlan/vteps"
+            && matches!(m.operation, ResourceMutationOperation::RemoveByKey(_))
+    });
+    let vxlan_removal = position("vxlan removal", &|m| {
+        m.resource == b"interface/vxlan"
+            && matches!(&m.operation, ResourceMutationOperation::RemoveByKey(key) if key.value.as_ref() == old_name.0.as_ref())
+    });
+    let vxlan_add = position("vxlan add", &|m| {
+        m.resource == b"interface/vxlan" && m.operation == ResourceMutationOperation::Add
+    });
+    let vtep_add = position("vtep add", &|m| {
+        m.resource == b"interface/vxlan/vteps"
+            && m.operation == ResourceMutationOperation::Add
+            && names(m, &new_name)
+    });
+    // a port left dangling by the removal is set onto the new one (`set *id interface=`)
+    let port_add = position("port onto the new vxlan", &|m| {
+        m.resource == b"interface/bridge/port" && names(m, &new_name)
+    });
+    let vlan_set = position("vlan onto the new vxlan", &|m| {
+        m.resource == b"interface/bridge/vlan"
+            && matches!(m.operation, ResourceMutationOperation::UpdateByKey(_))
+    });
+    assert!(vtep_removal < vxlan_removal, "{sorted:?}");
+    assert!(vxlan_removal < vxlan_add, "{sorted:?}");
+    assert!(
+        vxlan_add < vtep_add && vxlan_add < port_add && vxlan_add < vlan_set,
+        "{sorted:?}"
+    );
+
+    println!("--- Szenario: VXLAN umbenannt, VNI bleibt ---");
+    let mut cfg = String::new();
+    let mut generator = Generator::new(&mut cfg);
+    for mutation in sorted {
+        generator.append_mutation(mutation)?;
+    }
+    println!("{cfg}");
+    Ok(())
+}
+
+/// A new VNI under the same name is set in place: what refers to the VXLAN stays.
+#[tokio::test]
+async fn test_vxlan_with_new_vni_is_set_in_place() -> Result<(), Box<dyn Error>> {
+    let (device, _) = build_tunnel_topology(|_, _| {}).await;
+    let (mut target_data, mut current) = setup_testdata(b"CRS326-24G-2S+")?;
+    target_data.generate_from(&device, KeepNameGenerator)?;
+    current.vxlan = target_data
+        .vxlan
+        .iter()
+        .map(|(name, vxlan)| {
+            let mut vxlan = vxlan.clone();
+            vxlan.0.name = name.clone();
+            vxlan.0.vni = 7;
+            vxlan
+        })
+        .collect();
+
+    let mutations = target_data.generate_mutations(&current)?;
+    let vxlan = mutations
+        .iter()
+        .filter(|m| m.resource == b"interface/vxlan")
+        .collect::<Vec<_>>();
+    assert_eq!(vxlan.len(), 1, "{vxlan:?}");
+    assert!(matches!(
+        vxlan[0].operation,
+        ResourceMutationOperation::UpdateByKey(_)
+    ));
+    assert!(
+        vxlan[0]
+            .fields
+            .iter()
+            .any(|field| field.key == b"vni" && field.value.as_ref() == b"1")
+    );
     Ok(())
 }
 

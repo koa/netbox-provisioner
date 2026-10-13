@@ -402,3 +402,41 @@ async fn cap_radios_managed_by_capsman_sort() {
     )
     .unwrap();
 }
+
+/// A radio leaving its datapath: the radio's `datapath` is marked `blocks-removal`, so the
+/// datapath is removed after the radio drops it (RouterOS refuses while a radio uses it).
+#[test]
+fn datapath_is_removed_after_the_radio_drops_it() {
+    use mikrotik_model::{
+        model::InterfaceWifiDatapathByName,
+        resource::{Updatable, generate_add_update_remove_by_key},
+    };
+    let target_radios = build_wifi_ports(b"C52iG-5HaxD2HaxD");
+    let mut current_radios = target_radios.clone();
+    for radio in current_radios.iter_mut() {
+        radio.data.datapath = Some("bridge-caps".into());
+    }
+    let mut datapath = InterfaceWifiDatapathByName::default();
+    datapath.0.name = "bridge-caps".into();
+    let current_datapaths = [datapath];
+    let mutations = generate_add_update_remove_by_key(
+        &current_datapaths,
+        std::iter::empty::<std::borrow::Cow<InterfaceWifiDatapathByName>>(),
+    )
+    .chain(
+        target_radios
+            .iter()
+            .zip(&current_radios)
+            .map(|(target, current)| target.calculate_update(current)),
+    )
+    .collect::<Vec<_>>();
+    let sorted = ResourceMutation::sort_mutations(&mutations).unwrap();
+    assert_eq!(
+        sorted.iter().map(|m| m.resource).collect::<Vec<_>>(),
+        [
+            b"interface/wifi".as_slice(),
+            b"interface/wifi",
+            b"interface/wifi/datapath"
+        ]
+    );
+}

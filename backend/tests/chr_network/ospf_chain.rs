@@ -366,7 +366,7 @@ async fn three_node_ospf_chain_apply_via_entry() {
         }]),
         depends: Box::new([]),
         provides: Box::new([]),
-        releases: Box::new([]),
+        ordering: Default::default(),
     }];
     let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
     let mut attempt = 0;
