@@ -53,6 +53,8 @@ pub struct ShowDeviceData {
     routeros: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessRouteros>,
     bootstrap_plan: Option<device_overview::DeviceOverviewTopologyDeviceByIdBootstrapPlan>,
     bootstrap_problem: Option<String>,
+    /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
+    allow_apply: bool,
 }
 #[derive(Debug, Properties, Clone, PartialEq)]
 pub struct ShowDeviceProps {
@@ -204,8 +206,14 @@ impl Component for ShowDevice {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let error = self.error.as_ref().map(|e| e.to_html());
-        let running = self.job_running;
         let data = self.data.as_ref().map(|data| {
+            // a job runs, or writing is locked
+            let running = self.job_running || !data.allow_apply;
+            let locked = (!data.allow_apply).then(|| html! {
+                <Alert inline=true title="Schreiben auf Geräte ist gesperrt" r#type={AlertType::Info}>
+                    <p>{"Anwenden, Ersteinrichtung, Update und Neustart gibt erst "}<code>{"allow_apply: true"}</code>{" in der config.yaml des Provisioners frei."}</p>
+                </Alert>
+            });
             let (board, cfg_update) = data
                 .access
                 .as_ref()
@@ -215,7 +223,7 @@ impl Component for ShowDevice {
             let warnings = cfg_update.map(|cfg| cfg.warnings.as_slice()).unwrap_or_default();
             let cfg_update = cfg_update.map(|cfg| cfg.script.as_ref()).unwrap_or_default();
             let nothing_to_do = cfg_update.trim().is_empty();
-            let update_running = self.job_running;
+            let update_running = running;
             let routeros = data.routeros.as_ref().map(|routeros| {
                 let selected = routeros
                     .channels
@@ -291,7 +299,7 @@ impl Component for ShowDevice {
                 </dd>
             </>}
             });
-            let bootstrap_running = self.job_running;
+            let bootstrap_running = running;
             let update = if data.access.is_none() {
                 let setup = match (&data.bootstrap_plan, &data.bootstrap_problem) {
                     (Some(plan), _) => {
@@ -366,7 +374,9 @@ impl Component for ShowDevice {
                     <CodeBlock><CodeBlockCode>{ cfg_update }</CodeBlockCode></CodeBlock>
                 </>}
             };
-            html! {<dl class="device-overview">
+            html! {<>
+            {locked}
+            <dl class="device-overview">
             <dt>{"Name"}</dt><dd>{ data.configured_name.as_ref() }</dd>
             <dt>{"Board"}</dt><dd>{ board }</dd>
             {routeros}
@@ -379,7 +389,8 @@ impl Component for ShowDevice {
                     onclick={ctx.link().callback(|_| ShowDeviceMessage::Apply)}
                 />
             </dd>
-            </dl>}
+            </dl>
+            </>}
         });
         let job = self.job.map(|id| html! {
             <JobView key={id} id={id} on_finished={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}/>
@@ -450,6 +461,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                             }),
                             bootstrap_plan: d.bootstrap_plan,
                             bootstrap_problem: d.bootstrap_problem,
+                            allow_apply: data.allow_apply,
                         })
                         .unwrap_or_default();
 

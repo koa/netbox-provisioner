@@ -51,6 +51,11 @@ impl QueryAuthenticated {
             .map(Box::as_ref)
             .collect()
     }
+    /// Whether writing to devices is allowed (`allow_apply`): apply, setup, update and reboot;
+    /// without it the UI offers them disabled instead of failing on the click.
+    async fn allow_apply(&self) -> bool {
+        CONFIG.allow_apply
+    }
     async fn job(&self, id: u32) -> Option<Arc<Job>> {
         job::get(id)
     }

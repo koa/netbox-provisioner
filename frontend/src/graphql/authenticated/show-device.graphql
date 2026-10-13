@@ -1,4 +1,5 @@
 query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+    allowApply
     topology{
         deviceById(id: $id){
             name

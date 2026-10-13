@@ -121,7 +121,8 @@ reached directly, or, with `management_proxy` set, all through one device's `/ip
 with password; `device::proxied_stream` retries the sporadic "General SOCKS server failure" of a
 first connection); the proxy's own device is reached at the proxy's address
 (`bootstrap::reachable_address`), its primary IP may only exist once its config is applied.
-Nothing is written without `allow_apply`; `apply` runs the diff as a script on
+Nothing is written without `allow_apply` (the UI asks `allowApply` and disables apply, setup,
+update and reboot with a hint instead of failing on the click); `apply` runs the diff as a script on
 the device (`apply_mutations_via_script`), so it completes even when it changes the path the
 connection takes, then diffs again: a script stops at its first error, so whatever is left is
 what failed. That error comes back from `/system/script/run` (`ApplyRunning.error`) with the lines
