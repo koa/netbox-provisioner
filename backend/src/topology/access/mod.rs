@@ -15,6 +15,7 @@ pub mod ip_addresses;
 pub mod ip_prefix;
 pub mod ip_ranges;
 pub mod rear_port;
+pub mod site;
 pub mod vlan;
 pub mod vxlan;
 pub mod wlan;

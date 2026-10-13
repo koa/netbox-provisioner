@@ -1,8 +1,101 @@
-div.pf-c-page {
-    grid-template-columns: max-content 1fr;
-    grid-template-areas:
-        "header header"
-        "nav main";
+/* Page layout and breadcrumb taken from cable-editor (pages/routes.rs, components/menu/).
+   PatternFly's page layout without Page's inner scrolling: the page grows with its content and
+   the document scrolls. */
+body {
+    background-color: var(--pf-t--global--background--color--secondary--default);
+}
+
+.app-page {
+    height: auto;
+    min-height: 100dvh;
+    max-height: none;
+
+    & > .pf-v6-c-page__main-container {
+        max-height: none;
+        overflow: visible;
+    }
+
+    & .pf-v6-c-page__main {
+        overflow: visible;
+    }
+}
+
+@media screen and (min-width: 48rem) {
+    .app-page > .pf-v6-c-page__main-container {
+        margin-block: var(--pf-v6-c-page--inset);
+    }
+}
+
+.breadcrumb-bar {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--pf-t--global--spacer--md);
+
+    & > .pf-v6-c-breadcrumb {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    /* Breadcrumb items don't wrap, so a long name set the page's least width and widened it on
+       phones: names wrap instead. */
+    & .pf-v6-c-breadcrumb__item {
+        font-size: var(--pf-t--global--font--size--body--default);
+        white-space: normal;
+        min-width: 0;
+    }
+
+    & .popup-menu,
+    & .pf-v6-c-menu-toggle {
+        max-width: 100%;
+    }
+
+    & .pf-v6-c-menu-toggle__text {
+        white-space: normal;
+        text-align: start;
+        overflow-wrap: anywhere;
+    }
+}
+
+.menu-error {
+    color: var(--pf-t--global--text--color--status--danger--default);
+}
+
+/* Dropdown menu (components/menu/popup.rs); always opens downwards, so no popper */
+.popup-menu {
+    position: relative;
+    display: inline-block;
+
+    & > .pf-v6-c-menu {
+        position: absolute;
+        inset-block-start: 100%;
+        inset-inline-start: 0;
+        z-index: var(--pf-t--global--z-index--sm);
+        min-width: max-content;
+        margin-block-start: var(--pf-t--global--spacer--xs);
+    }
+}
+
+/* On phones a menu as wide as its content would often reach past the screen edge. There it keeps
+   its place below the toggle but takes the width of the page section around it. */
+@media screen and (max-width: calc(48rem - 1px)) {
+    .app-page .pf-v6-c-page__main-breadcrumb,
+    .app-page .pf-v6-c-page__main-section {
+        position: relative;
+    }
+
+    .popup-menu {
+        position: static;
+
+        & > .pf-v6-c-menu {
+            inset-block-start: auto;
+            inset-inline: var(--pf-t--global--spacer--md);
+            min-width: 0;
+        }
+    }
+}
+
+div.site-list > div.pf-v6-c-card {
+    margin: 0.5em;
 }
 
 div.device-list {

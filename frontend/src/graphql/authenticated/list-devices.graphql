@@ -1,14 +1,28 @@
-query ListDevices{
+query ListSites{
     topology{
-        allDevices(filter:{hasRouteros: true}){
+        allSites{
             id
             name
-            managementAddress{
-                address {
-                    ip
-                }
+            devices{
+                id
+                name
             }
-            serial
+        }
+    }
+}
+query SiteDevices($site: Int!){
+    topology{
+        siteById(id: $site){
+            devices{
+                id
+                name
+                managementAddress{
+                    address {
+                        ip
+                    }
+                }
+                serial
+            }
         }
     }
 }

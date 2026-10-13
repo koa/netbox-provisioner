@@ -6,13 +6,12 @@ use crate::{
     },
 };
 use patternfly_yew::prelude::{
-    Alert, AlertType, BackdropViewer, Bullseye, Button, ButtonVariant, Page, PageSidebar, Spinner,
-    ToastViewer,
+    Alert, AlertType, BackdropViewer, Bullseye, Button, ButtonVariant, Spinner, ToastViewer,
 };
-use routes::{AppRoute, Sidebar};
+use routes::AppRoute;
 use yew::{
-    Callback, Component, Context, ContextHandle, Html, Properties, function_component,
-    html, html_nested, platform::spawn_local,
+    Callback, Component, Context, ContextHandle, Html, Properties, function_component, html,
+    platform::spawn_local,
 };
 use yew_nested_router::{Router, prelude::Switch as RouterSwitch};
 use yew_oauth2::{
@@ -25,6 +24,7 @@ use yew_oauth2::{
 
 pub mod devices;
 pub mod routes;
+pub mod sites;
 
 /// Where the provider for the login is, from the backend (`authentication`).
 #[derive(Debug, Clone, PartialEq)]
@@ -197,11 +197,7 @@ fn main_page() -> Html {
     html! {
         <BackdropViewer>
             <ToastViewer>
-                    <Page sidebar={html_nested! {<PageSidebar><Sidebar/></PageSidebar>}}>
-                        <RouterSwitch<AppRoute>
-                            render = { AppRoute::content}
-                        />
-                    </Page>
+                    <RouterSwitch<AppRoute> render={AppRoute::content}/>
             </ToastViewer>
         </BackdropViewer>
     }

@@ -1,16 +1,21 @@
 use crate::{
     error::FrontendError,
     graphql::{
-        authenticated::{ListDevices, PingDevice, list_devices, ping_device},
+        authenticated::{PingDevice, SiteDevices, ping_device, site_devices},
         query_authenticated, query_authenticated_response,
     },
-    pages::routes::{AppRoute, DeviceView, RouteDevices},
+    pages::routes::AppRoute,
 };
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
 use std::{net::IpAddr, str::FromStr};
 use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
 use yew_nested_router::components::Link;
 pub mod show;
+#[derive(Debug, Clone, PartialEq, Properties)]
+pub struct DevicesProps {
+    pub site: u32,
+}
+/// The devices of a site
 pub struct Devices {
     state: DeviceState,
     error_state: Option<FrontendError>,
@@ -21,6 +26,7 @@ enum DeviceState {
 }
 #[derive(Debug, Clone, PartialEq)]
 struct DeviceRow {
+    site: u32,
     id: u32,
     name: Box<str>,
     address: Option<IpAddr>,
@@ -33,7 +39,7 @@ pub enum DevicesMsg {
 }
 impl Component for Devices {
     type Message = DevicesMsg;
-    type Properties = ();
+    type Properties = DevicesProps;
 
     fn create(ctx: &Context<Self>) -> Self {
         Self {
@@ -84,19 +90,23 @@ impl Component for Devices {
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
             let scope = ctx.link().clone();
+            let site = ctx.props().site;
             spawn_local(async move {
-                match query_authenticated::<ListDevices, _>(
+                match query_authenticated::<SiteDevices, _>(
                     scope.clone(),
-                    list_devices::Variables {},
+                    site_devices::Variables { site: site as i64 },
                 )
                 .await
                 {
                     Ok(data) => {
                         scope.send_message(DevicesMsg::Data(
                             data.topology
-                                .all_devices
+                                .site_by_id
+                                .map(|site| site.devices)
+                                .unwrap_or_default()
                                 .into_iter()
                                 .map(|device| DeviceRow {
+                                    site,
                                     id: device.id as u32,
                                     name: device.name.into_boxed_str(),
                                     address: device
@@ -212,10 +222,7 @@ impl Component for DeviceEntryCard {
             PingResult::Failed(e) => (e.to_html(), Html::default(), None),
             PingResult::None => Default::default(),
         };
-        let to = AppRoute::Devices(RouteDevices::Device {
-            id: device.id,
-            view: DeviceView::Show,
-        });
+        let to = AppRoute::device(device.site, device.id);
         let serial = device
             .serial
             .as_deref()

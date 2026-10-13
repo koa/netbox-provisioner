@@ -10,7 +10,8 @@ use crate::{
     topology::{
         Cable, CableId, CablePort, Device, DeviceId, DeviceRole, FrontPort, FrontPortId, Interface,
         InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
-        PhysicalPortId, PortType, Radio, RadioLink, RadioRole, RearPort, RearPortId, Topology,
+        PhysicalPortId, PortType, Radio, RadioLink, RadioRole, RearPort, RearPortId, SiteData, SiteId,
+        Topology,
         VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData,
         WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
     },
@@ -338,9 +339,18 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
     }
 
     let mut interface_of_address = HashMap::new();
+    let mut sites = HashMap::<SiteId, (Box<str>, Vec<DeviceId>)>::new();
     for device in data.device_list {
         if let Some(device_id) = device.id.parse().ok().map(DeviceId) {
             let role = DeviceRole::from_slug(device.role.slug.as_str());
+            let site = device.site.id.parse().ok().map(SiteId);
+            if let Some(site) = site {
+                sites
+                    .entry(site)
+                    .or_insert_with(|| (device.site.name.as_str().into(), Vec::new()))
+                    .1
+                    .push(device_id);
+            }
             let country = device.site.region.as_ref().map(country_of_region);
             let credentials = device
                 .tenant
@@ -534,6 +544,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                 device_id,
                 Device {
                     name: device.name.map(String::into_boxed_str).unwrap_or_default(),
+                    site,
                     ports,
                     primary_ip,
                     primary_ip_v4,
@@ -768,6 +779,13 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
     Topology {
         fetch_time,
         devices,
+        sites: sites
+            .into_iter()
+            .map(|(id, (name, devices))| {
+                let devices = devices.into_boxed_slice();
+                (id, SiteData { name, devices })
+            })
+            .collect(),
         interfaces,
         front_ports,
         rear_ports,

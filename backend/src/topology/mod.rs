@@ -81,6 +81,7 @@ impl TopologyHolder {
 pub struct Topology {
     fetch_time: Instant,
     devices: HashMap<DeviceId, Device>,
+    sites: HashMap<SiteId, SiteData>,
     interfaces: HashMap<InterfaceId, Interface>,
     front_ports: HashMap<FrontPortId, FrontPort>,
     rear_ports: HashMap<RearPortId, RearPort>,
@@ -117,6 +118,7 @@ impl Topology {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Device {
     pub name: Box<str>,
+    pub site: Option<SiteId>,
     pub ports: HashSet<CablePort>,
     pub primary_ip: Option<IpAddressId>,
     pub primary_ip_v4: Option<IpAddressId>,
@@ -156,6 +158,13 @@ impl DeviceRole {
             _ => None,
         }
     }
+}
+
+/// A NetBox site: the UI chooses one before its devices.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SiteData {
+    pub name: Box<str>,
+    pub devices: Box<[DeviceId]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -473,6 +482,8 @@ pub struct InterfaceId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
 pub struct DeviceId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct SiteId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct VxlanId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct VlanId(pub u32);
@@ -505,6 +516,11 @@ pub enum CablePort {
 impl From<u32> for DeviceId {
     fn from(value: u32) -> Self {
         DeviceId(value)
+    }
+}
+impl From<u32> for SiteId {
+    fn from(value: u32) -> Self {
+        SiteId(value)
     }
 }
 impl From<u32> for VxlanId {

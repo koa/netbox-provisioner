@@ -8,9 +8,17 @@ type ScalarMac = String;
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/list-devices.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct ListSites;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/list-devices.graphql",
     response_derives = "Debug"
 )]
-pub struct ListDevices;
+pub struct SiteDevices;
 
 #[derive(GraphQLQuery)]
 #[graphql(

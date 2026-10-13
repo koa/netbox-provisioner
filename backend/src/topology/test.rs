@@ -1,7 +1,7 @@
 use crate::topology::{
     Cable, CableId, CablePort, Device, DeviceId, FrontPort, FrontPortId, Interface, InterfaceId,
     IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId, RearPort,
-    RearPortId, Topology, TopologyHolder, VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData,
+    RearPortId, SiteData, SiteId, Topology, TopologyHolder, VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData,
     VxlanId, WlanData, WlanGroupData, WlanGroupId, WlanId,
 };
 use std::{
@@ -15,6 +15,7 @@ use tokio::{sync::Mutex, time::Instant};
 #[derive(Default, Clone)]
 pub struct TopologyBuilder {
     pub devices: MapBuilder<DeviceId, Device>,
+    pub sites: MapBuilder<SiteId, SiteData>,
     pub interfaces: MapBuilder<InterfaceId, Interface>,
     pub vxlans: MapBuilder<VxlanId, VxlanData>,
     pub wlan_groups: MapBuilder<WlanGroupId, WlanGroupData>,
@@ -229,6 +230,7 @@ impl TopologyBuilder {
         Topology {
             fetch_time: Instant::now(),
             devices: self.devices.into(),
+            sites: self.sites.into(),
             interfaces: self.interfaces.into(),
             front_ports: self.front_ports.into(),
             rear_ports: self.rear_ports.into(),

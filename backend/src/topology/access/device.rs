@@ -8,7 +8,7 @@ use crate::{
         CablePort, Device, DeviceId, DeviceRole, Topology,
         access::{
             AccessTopology, AdhocCredentials, interface::InterfaceAccess,
-            ip_addresses::IpAddressAccess, wlan_group::WlanGroupAccess,
+            ip_addresses::IpAddressAccess, site::SiteAccess, wlan_group::WlanGroupAccess,
         },
     },
 };
@@ -183,6 +183,9 @@ impl DeviceAccess {
             })
             .unwrap_or_default()
     }
+    pub fn site(&self) -> Option<SiteAccess> {
+        self.data().and_then(|d| d.site).map(self.create_access())
+    }
     pub fn wlan_controller_of(&self) -> Option<WlanGroupAccess> {
         self.data()
             .and_then(|d| d.wlan_controller_of)
@@ -232,6 +235,10 @@ impl DeviceAccess {
     #[graphql(name = "name")]
     async fn api_name(&self) -> &str {
         self.name()
+    }
+    #[graphql(name = "site")]
+    async fn api_site(&self) -> Option<SiteAccess> {
+        self.site()
     }
     async fn management_address(&self) -> Option<IpAddressAccess> {
         self.data()

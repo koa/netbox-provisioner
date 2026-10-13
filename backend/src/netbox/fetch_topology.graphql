@@ -70,6 +70,8 @@ query FetchTopology{
             }
         }
         site{
+            id
+            name
             tenant{
                 id
             }

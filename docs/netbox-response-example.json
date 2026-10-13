@@ -661,6 +661,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -1339,6 +1341,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -1546,6 +1550,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -1809,6 +1815,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -2022,6 +2030,8 @@
         },
         "location": null,
         "site": {
+          "id": "9",
+          "name": "Berg 925",
           "tenant": {
             "id": "1"
           },
@@ -2170,6 +2180,8 @@
         },
         "location": null,
         "site": {
+          "id": "9",
+          "name": "Berg 925",
           "tenant": {
             "id": "1"
           },
@@ -2445,6 +2457,8 @@
         },
         "location": null,
         "site": {
+          "id": "9",
+          "name": "Berg 925",
           "tenant": {
             "id": "1"
           },
@@ -2593,6 +2607,8 @@
         },
         "location": null,
         "site": {
+          "id": "7",
+          "name": "Berg 931.1",
           "tenant": {
             "id": "1"
           },
@@ -2658,6 +2674,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -2723,6 +2741,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -2786,6 +2806,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -2885,6 +2907,8 @@
           "tenant": null
         },
         "site": {
+          "id": "3",
+          "name": "Fäsigrund 1199",
           "tenant": {
             "id": "1"
           },
@@ -2978,6 +3002,8 @@
           "tenant": null
         },
         "site": {
+          "id": "3",
+          "name": "Fäsigrund 1199",
           "tenant": {
             "id": "1"
           },
@@ -3043,6 +3069,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -3108,6 +3136,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -3208,6 +3238,8 @@
           "tenant": null
         },
         "site": {
+          "id": "5",
+          "name": "Berg 954",
           "tenant": {
             "id": "1"
           },
@@ -3460,6 +3492,8 @@
         },
         "location": null,
         "site": {
+          "id": "10",
+          "name": "Berghof 1061",
           "tenant": {
             "id": "1"
           },
@@ -3525,6 +3559,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -3590,6 +3626,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -3655,6 +3693,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -3720,6 +3760,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -3785,6 +3827,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -3850,6 +3894,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -3950,6 +3996,8 @@
         },
         "location": null,
         "site": {
+          "id": "10",
+          "name": "Berghof 1061",
           "tenant": {
             "id": "1"
           },
@@ -4098,6 +4146,8 @@
         },
         "location": null,
         "site": {
+          "id": "8",
+          "name": "Berg 926",
           "tenant": {
             "id": "1"
           },
@@ -4254,6 +4304,8 @@
           "tenant": null
         },
         "site": {
+          "id": "76",
+          "name": "Styghalde",
           "tenant": null,
           "region": {
             "slug": "ch",
@@ -4315,6 +4367,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -4360,6 +4414,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -4420,6 +4476,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -4465,6 +4523,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -4513,6 +4573,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -4674,6 +4736,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -4922,6 +4986,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -4975,6 +5041,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -5040,6 +5108,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -5105,6 +5175,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -5138,6 +5210,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -5203,6 +5277,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -5268,6 +5344,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -5333,6 +5411,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -5398,6 +5478,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -5498,6 +5580,8 @@
           "tenant": null
         },
         "site": {
+          "id": "3",
+          "name": "Fäsigrund 1199",
           "tenant": {
             "id": "1"
           },
@@ -5716,6 +5800,8 @@
           "tenant": null
         },
         "site": {
+          "id": "3",
+          "name": "Fäsigrund 1199",
           "tenant": {
             "id": "1"
           },
@@ -5788,6 +5874,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -5853,6 +5941,8 @@
           "tenant": null
         },
         "site": {
+          "id": "9",
+          "name": "Berg 925",
           "tenant": {
             "id": "1"
           },
@@ -5955,6 +6045,8 @@
           "tenant": null
         },
         "site": {
+          "id": "5",
+          "name": "Berg 954",
           "tenant": {
             "id": "1"
           },
@@ -6057,6 +6149,8 @@
           "tenant": null
         },
         "site": {
+          "id": "5",
+          "name": "Berg 954",
           "tenant": {
             "id": "1"
           },
@@ -6159,6 +6253,8 @@
           "tenant": null
         },
         "site": {
+          "id": "5",
+          "name": "Berg 954",
           "tenant": {
             "id": "1"
           },
@@ -6554,6 +6650,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -6949,6 +7047,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -7105,6 +7205,8 @@
           "tenant": null
         },
         "site": {
+          "id": "76",
+          "name": "Styghalde",
           "tenant": null,
           "region": {
             "slug": "ch",
@@ -8344,6 +8446,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -9005,6 +9109,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -9302,6 +9408,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -9404,6 +9512,8 @@
           "tenant": null
         },
         "site": {
+          "id": "8",
+          "name": "Berg 926",
           "tenant": {
             "id": "1"
           },
@@ -9469,6 +9579,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -9534,6 +9646,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -9599,6 +9713,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -9632,6 +9748,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -9687,6 +9805,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -10164,6 +10284,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -10406,6 +10528,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -10593,6 +10717,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -10645,6 +10771,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -10697,6 +10825,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -11449,6 +11579,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -11662,6 +11794,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -11692,6 +11826,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -11907,6 +12043,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -12122,6 +12260,8 @@
           "tenant": null
         },
         "site": {
+          "id": "4",
+          "name": "Berg 929.1",
           "tenant": {
             "id": "1"
           },
@@ -12476,6 +12616,8 @@
           "tenant": null
         },
         "site": {
+          "id": "3",
+          "name": "Fäsigrund 1199",
           "tenant": {
             "id": "1"
           },
@@ -12735,6 +12877,8 @@
           "tenant": null
         },
         "site": {
+          "id": "5",
+          "name": "Berg 954",
           "tenant": {
             "id": "1"
           },
@@ -12959,6 +13103,8 @@
           "tenant": null
         },
         "site": {
+          "id": "7",
+          "name": "Berg 931.1",
           "tenant": {
             "id": "1"
           },
@@ -13151,6 +13297,8 @@
           "tenant": null
         },
         "site": {
+          "id": "43",
+          "name": "Oberspitzwies 1599",
           "tenant": {
             "id": "1"
           },
@@ -13409,6 +13557,8 @@
         },
         "location": null,
         "site": {
+          "id": "10",
+          "name": "Berghof 1061",
           "tenant": {
             "id": "1"
           },
@@ -14086,6 +14236,8 @@
           "tenant": null
         },
         "site": {
+          "id": "11",
+          "name": "Oberspitzwies 681",
           "tenant": {
             "id": "1"
           },
@@ -14151,6 +14303,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -14253,6 +14407,8 @@
           "tenant": null
         },
         "site": {
+          "id": "7",
+          "name": "Berg 931.1",
           "tenant": {
             "id": "1"
           },
@@ -14355,6 +14511,8 @@
           "tenant": null
         },
         "site": {
+          "id": "7",
+          "name": "Berg 931.1",
           "tenant": {
             "id": "1"
           },
@@ -14457,6 +14615,8 @@
           "tenant": null
         },
         "site": {
+          "id": "7",
+          "name": "Berg 931.1",
           "tenant": {
             "id": "1"
           },
@@ -14539,6 +14699,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -14619,6 +14781,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -14676,6 +14840,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -14709,6 +14875,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -14742,6 +14910,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -15226,6 +15396,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -15236,7 +15408,7 @@
         },
         "serial": "6E130447C663",
         "custom_field_data": {
-          "wlan_group": 1
+          "wlan_group": null
         },
         "config_context": {}
       },
@@ -15279,6 +15451,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -15754,6 +15928,8 @@
         },
         "location": null,
         "site": {
+          "id": "9",
+          "name": "Berg 925",
           "tenant": {
             "id": "1"
           },
@@ -15805,6 +15981,8 @@
         },
         "location": null,
         "site": {
+          "id": "2",
+          "name": "Teamkoenig LKW",
           "tenant": {
             "id": "34"
           },
@@ -15867,6 +16045,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -15932,6 +16112,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -15997,6 +16179,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -16099,6 +16283,8 @@
           "tenant": null
         },
         "site": {
+          "id": "11",
+          "name": "Oberspitzwies 681",
           "tenant": {
             "id": "1"
           },
@@ -16494,6 +16680,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -16889,6 +17077,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -17537,6 +17727,8 @@
         },
         "location": null,
         "site": {
+          "id": "8",
+          "name": "Berg 926",
           "tenant": {
             "id": "1"
           },
@@ -18140,6 +18332,8 @@
           "tenant": null
         },
         "site": {
+          "id": "4",
+          "name": "Berg 929.1",
           "tenant": {
             "id": "1"
           },
@@ -18205,6 +18399,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -18270,6 +18466,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -18335,6 +18533,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -18400,6 +18600,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -18465,6 +18667,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -18530,6 +18734,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -18595,6 +18801,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -18660,6 +18868,8 @@
           "tenant": null
         },
         "site": {
+          "id": "1",
+          "name": "Berg 1654",
           "tenant": {
             "id": "1"
           },
@@ -21721,21 +21931,21 @@
             }
           },
           {
+            "id": "5",
+            "ssid": "gerhard",
+            "auth_type": "wpa-personal",
+            "auth_psk": "",
+            "vlan": {
+              "id": "15"
+            }
+          },
+          {
             "id": "1",
             "ssid": "koa",
             "auth_type": "wpa-personal",
             "auth_psk": "",
             "vlan": {
               "id": "13"
-            }
-          },
-          {
-            "id": "5",
-            "ssid": "louise",
-            "auth_type": "wpa-personal",
-            "auth_psk": "",
-            "vlan": {
-              "id": "15"
             }
           },
           {
