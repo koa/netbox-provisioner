@@ -81,15 +81,22 @@ pub fn runs_wireless(model: &[u8]) -> bool {
     matches!(model, b"RBwAPG-5HacD2HnD")
 }
 
-/// The factory values of the PoE-out settings that not every PoE board has (the voltage
-/// selection and the power cycling of a hung PD), as a CRS318-16P-2S+ reports them (RouterOS
-/// 7.19). Without them the diff would clear them.
-fn with_poe_power_control(
+/// The factory values of the power cycling of a hung PD, which not every PoE board has, as a
+/// CRS318-16P-2S+ (RouterOS 7.19) and a hAP ax² (7.23.8) report them. Without them the diff
+/// would clear them, which RouterOS refuses for `power-cycle-ping-enabled` (must be yes or no).
+fn with_poe_power_cycle(
     mut port: InterfaceEthernetByDefaultName,
 ) -> InterfaceEthernetByDefaultName {
-    port.data.poe_voltage = Some(Auto::Auto);
     port.data.power_cycle_interval = Some(HasNone::NoneValue);
     port.data.power_cycle_ping_enabled = Some(false);
+    port
+}
+
+/// The power cycling and the voltage selection, as a CRS318-16P-2S+ reports them; a hAP ax²
+/// has no `poe-voltage`.
+fn with_poe_power_control(port: InterfaceEthernetByDefaultName) -> InterfaceEthernetByDefaultName {
+    let mut port = with_poe_power_cycle(port);
+    port.data.poe_voltage = Some(Auto::Auto);
     port
 }
 
@@ -157,16 +164,21 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
             .map(|(idx, generator)| generator(idx + 1)),
         )
         .collect(),
+        // hAP ax²: PoE-out on ether1
         b"C52iG-5HaxD2HaxD" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, true),
             1,
         )
-        .chain(repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, false),
-            4,
-        ))
         .enumerate()
-        .map(|(idx, generator)| generator(idx + 1))
+        .map(|(idx, generator)| with_poe_power_cycle(generator(idx + 1)))
+        .chain(
+            repeat_n(
+                generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, false),
+                4,
+            )
+            .enumerate()
+            .map(|(idx, generator)| generator(idx + 2)),
+        )
         .collect(),
         b"cAPGi-5HaxD2HaxD" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, false),
@@ -490,5 +502,19 @@ mod tests {
         assert_eq!(ether1.power_cycle_ping_enabled, Some(false));
         let sfp1 = &ports[16].data;
         assert_eq!(sfp1.poe_voltage, None);
+    }
+
+    #[test]
+    fn hap_ax2_poe_port_has_its_power_cycle_settings() {
+        let ports = build_ethernet_ports(b"C52iG-5HaxD2HaxD");
+        assert_eq!(ports.len(), 5);
+        let ether1 = &ports[0];
+        assert_eq!(&*ether1.default_name, b"ether1");
+        assert_eq!(ether1.data.power_cycle_interval, Some(HasNone::NoneValue));
+        assert_eq!(ether1.data.power_cycle_ping_enabled, Some(false));
+        assert_eq!(ether1.data.poe_voltage, None);
+        let ether2 = &ports[1];
+        assert_eq!(&*ether2.default_name, b"ether2");
+        assert_eq!(ether2.data.power_cycle_ping_enabled, None);
     }
 }
