@@ -87,7 +87,7 @@ async fn graphql(
     {
         return Response::from_errors(vec![ServerError::new("User not allowed", None)]).into();
     }
-    let found_user = if let Some(DecodedInfo { jwt: _jwt, payload }) = user {
+    let found_user = if let Some(DecodedInfo { jwt: _jwt, payload }) = &user {
         match serde_json::from_value::<UserInfo>(payload.private.clone()) {
             Ok(user) => Some(user),
             Err(error) => {
@@ -106,7 +106,8 @@ async fn graphql(
             request.operation_name.as_deref().unwrap_or_default(),
             found_user
                 .as_ref()
-                .map(|u| u.name.as_str())
+                .and_then(|u| u.name.as_deref())
+                .or(subject)
                 .unwrap_or_default(),
         ])
         .start_timer();

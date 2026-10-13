@@ -1,7 +1,10 @@
 # Login (OIDC)
 
 Das UI meldet sich über OpenID Connect an (Authorization Code mit PKCE, im Browser, ohne Client
-Secret) und schickt das Access-Token als `Bearer` an `/graphql`. Das Backend prüft das Token gegen
+Secret) und schickt das ID-Token als `Bearer` an `/graphql`: Nur darin steht bei Pocket-ID der
+Name des Benutzers, das Access-Token trägt nur `sub`, `client_id` und `scope`. Liefert ein Refresh
+kein neues ID-Token, geht das Access-Token mit (der Name fehlt dann, in den Metriken steht `sub`).
+Das Backend prüft das Token gegen
 den Issuer und lässt nur die Benutzer aus `auth_users` herein. Jeder OIDC-Provider, der das kann,
 funktioniert; das Lab verwendet Keycloak (`local/keycloak/`, Realm `lab`), produktiv ist Pocket-ID
 vorgesehen.
@@ -25,7 +28,7 @@ settings:
   dann erreichbar sein, sonst startet es nicht) und verlangt, dass `iss` im Token genau so lautet;
   schon ein `/` am Ende zu viel lässt jede Prüfung scheitern.
 - **`auth_client_id`**: Das Frontend meldet sich mit dieser Client ID an, und das Backend
-  verlangt sie in `aud` des Access-Tokens. So kommen Tokens, die der Provider für andere Apps
+  verlangt sie in `aud` des Tokens (beim ID-Token immer so). So kommen Tokens, die der Provider für andere Apps
   ausstellt, nicht durch.
 - **`auth_users`**: Verglichen wird `sub`, nicht der Benutzername. Wer angemeldet ist, aber nicht in
   der Liste steht, bekommt bei jeder Abfrage „User not allowed“.
@@ -45,9 +48,9 @@ Unter *OIDC Clients* einen Client anlegen:
 - `sub` ist die UUID des Benutzers (in der Admin-Oberfläche unter *Users*, oder im Payload eines
   Tokens); diese kommt in `auth_users`.
 
-Nicht gegen eine Pocket-ID-Instanz getestet sind: dass deren Access-Token die Client ID in `aud`
-trägt, und ob sie `offline_access` annimmt (darum oben `auth_scopes` ohne ihn). Scheitert die
-Token-Prüfung im Backend, ist `aud` das Erste, was zu prüfen ist.
+Mit Pocket-ID getestet: Das Access-Token trägt die Client ID in `aud` und kommt durch die Prüfung,
+aber ohne `name`. Nicht getestet ist, ob Pocket-ID `offline_access` annimmt (darum oben
+`auth_scopes` ohne ihn).
 
 ## Keycloak (Lab)
 

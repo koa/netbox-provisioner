@@ -40,10 +40,19 @@ pub async fn query_authenticated_response<Q: GraphQLQuery, S: Component>(
     request: Q::Variables,
 ) -> Result<Response<<Q as GraphQLQuery>::ResponseData>, FrontendError> {
     let mut headers = HeaderMap::new();
-    if let Some((OAuth2Context::Authenticated(Authentication { access_token, .. }), _)) =
-        scope.context::<OAuth2Context>(Default::default())
+    if let Some((
+        OAuth2Context::Authenticated(Authentication {
+            access_token,
+            id_token,
+            ..
+        }),
+        _,
+    )) = scope.context::<OAuth2Context>(Default::default())
     {
-        headers.insert(AUTHORIZATION, format!("Bearer {access_token}").parse()?);
+        // The ID token carries the user's name, Pocket-ID's access token only `sub`; a refresh
+        // may come without a new ID token
+        let token = id_token.unwrap_or(access_token);
+        headers.insert(AUTHORIZATION, format!("Bearer {token}").parse()?);
     }
     let client = reqwest::Client::builder()
         .default_headers(headers)
