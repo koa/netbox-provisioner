@@ -238,7 +238,7 @@ impl Channel {
 pub async fn newest(major: u32, channel: Channel) -> Result<Version, Error> {
     let prefix = if major >= 7 { "a" } else { "" };
     let url = format!("{NEWEST_URL}{prefix}{major}.{}", channel.name());
-    let failed = |e: reqwest::Error| Error::Update(format!("{url}: {e}").into());
+    let failed = |e: reqwest::Error| Error::Download(url.as_str().into(), e);
     let text = reqwest::get(&url)
         .await
         .and_then(|r| r.error_for_status())
@@ -246,7 +246,7 @@ pub async fn newest(major: u32, channel: Channel) -> Result<Version, Error> {
         .text()
         .await
         .map_err(failed)?;
-    Version::parse(&text).ok_or_else(|| Error::Update(format!("{url}: {text}").into()))
+    Version::parse(&text).ok_or_else(|| Error::UnknownRelease(url.into(), text.into()))
 }
 
 /// One update with a reboot: the version, the package files to install and the packages to
@@ -395,17 +395,17 @@ pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState,
     let resource = rows(device, "/system/resource/print").await?;
     let resource = resource
         .first()
-        .ok_or_else(|| Error::Update("no /system/resource".into()))?;
+        .ok_or(Error::MissingDeviceState("/system/resource"))?;
     let version = field(resource, "version")
         .and_then(Version::parse)
-        .ok_or_else(|| Error::Update("no RouterOS version".into()))?;
+        .ok_or(Error::MissingDeviceState("version"))?;
     let architecture = field(resource, "architecture-name").unwrap_or_default().into();
     let uptime = field(resource, "uptime")
         .and_then(|uptime| match Duration::parse_ros(uptime.as_bytes()) {
             ParseRosValueResult::Value(uptime) => Some(uptime),
             _ => None,
         })
-        .ok_or_else(|| Error::Update("no uptime".into()))?;
+        .ok_or(Error::MissingDeviceState("uptime"))?;
     let packages = rows(device, "/system/package/print")
         .await?
         .iter()
@@ -434,7 +434,7 @@ pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState,
 
 async fn download(version: &Version, file: &str) -> Result<Vec<u8>, Error> {
     let url = format!("{DOWNLOAD_URL}/{version}/{file}");
-    let failed = |e: reqwest::Error| Error::Update(format!("{url}: {e}").into());
+    let failed = |e: reqwest::Error| Error::Download(url.as_str().into(), e);
     Ok(reqwest::get(&url)
         .await
         .and_then(|r| r.error_for_status())
@@ -483,16 +483,13 @@ where
             if let Some(result) = check(&state) {
                 return Ok(result);
             }
-            return Err(Error::Update(
-                format!(
-                    "back after the reboot with RouterOS {}, firmware {:?}",
-                    state.version, state.firmware
-                )
-                .into(),
-            ));
+            return Err(Error::UnexpectedAfterReboot {
+                version: state.version.to_string().into(),
+                firmware: state.firmware.map(|(running, _)| running),
+            });
         }
         if Instant::now() > deadline {
-            return Err(Error::Update("not back after the reboot".into()));
+            return Err(Error::NotBackAfterReboot);
         }
     }
 }
@@ -573,9 +570,14 @@ pub async fn update(
                         break;
                     }
                     if Instant::now() > deadline {
-                        return Err(Error::Update(
-                            format!("{file} on the device has {size:?} bytes, not {expected}").into(),
-                        ));
+                        return Err(match size {
+                            Some(size) => Error::UploadIncomplete {
+                                file: file.clone(),
+                                size: size.into(),
+                                expected: data.len(),
+                            },
+                            None => Error::UploadMissing(file.clone()),
+                        });
                     }
                     sleep(Duration::from_secs(2)).await;
                 }

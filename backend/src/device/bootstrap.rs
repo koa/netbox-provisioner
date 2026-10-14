@@ -412,10 +412,7 @@ async fn set_up_marked(
         }
     }
     let Some((login_user, how, mac)) = logged_in else {
-        return Err(Error::Bootstrap(
-            macs(&setup.macs).into(),
-            "login refused or no answer over mac-telnet".into(),
-        ));
+        return Err(Error::ConsoleLogin(macs(&setup.macs).into()));
     };
     let port = &setup.port;
     let mut commands = Vec::new();
@@ -472,13 +469,10 @@ async fn set_up_marked(
             .run(&off_the_neighbor(&command), COMMAND_TIMEOUT)
             .await?;
         if let Some(error) = console_error(&output) {
-            return Err(Error::Bootstrap(command.into(), error.into()));
+            return Err(Error::SetupCommand(hidden(&command, password), error.into()));
         }
         if output.contains("skipped on the neighbor") {
-            return Err(Error::Bootstrap(
-                command.into(),
-                "the mac-telnet session ended before this".into(),
-            ));
+            return Err(Error::ConsoleSessionEnded(hidden(&command, password)));
         }
     }
     terminal.send_line("/quit").await?;
@@ -572,6 +566,14 @@ fn console_error(output: &str) -> Option<&str> {
     })
 }
 
+/// `command` for a message, which the log and the UI show: `password` replaced by `***`.
+fn hidden(command: &str, password: &str) -> Box<str> {
+    match password {
+        "" => command.into(),
+        password => command.replace(&quote(password), "***").into(),
+    }
+}
+
 /// Escapes a value for a double quoted RouterOS console string.
 fn quote(value: &str) -> String {
     value
@@ -600,7 +602,7 @@ async fn wait_for_api(device: &DeviceAccess, address: IpAddr, path: &Path) -> Re
 
 #[cfg(test)]
 mod tests {
-    use super::{console_error, quote};
+    use super::{console_error, hidden, quote};
 
     #[test]
     fn recognizes_console_errors() {
@@ -616,5 +618,17 @@ mod tests {
     #[test]
     fn quotes_console_strings() {
         assert_eq!(quote(r#"a"b\c$d"#), r#"a\"b\\c\$d"#);
+    }
+
+    /// a failing setup command goes into the error, which the log and the UI show
+    #[test]
+    fn hides_the_password_in_commands() {
+        let command = format!("/user set [find name=\"admin\"] password=\"{}\"", quote("p\"w$"));
+        assert_eq!(
+            hidden(&command, "p\"w$").as_ref(),
+            "/user set [find name=\"admin\"] password=\"***\""
+        );
+        let command = "/ip service set api disabled=no";
+        assert_eq!(hidden(command, "").as_ref(), command);
     }
 }

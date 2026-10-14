@@ -304,10 +304,11 @@ QEMU's, the golden image's dhcp-client is bound to it).
   resolver that can fail returns `Result<_, ApiError>` (it puts code and params into the
   GraphQL error's extensions; a plain `Error` would lose them), a job or event field holds an
   `ErrorInfo`, never `error.to_string()`. A new case is a variant of `Error` or `SetupError`
-  with the values as fields and its code in `error_info.rs` (the match is exhaustive), not
-  another free-text variant like `Update(Box<str>)` or `Bootstrap(.., Box<str>)`, of which a
-  few remain to be split. The frontend words a code in `i18n::error::server` and falls back
-  to `message` for one it doesn't know yet.
+  with the values as fields and its code in `error_info.rs` (the match is exhaustive), never
+  a sentence in a `Box<str>`: a string field holds a value (a URL, a file, what the device
+  or a library answered). A command or anything else that may hold a password goes in with
+  it replaced by `***` (`bootstrap::hidden`). The frontend words a code in
+  `i18n::error::server` and falls back to `message` for one it doesn't know yet.
 - Every text the UI shows is in `frontend/src/i18n.rs` (German), a module per page or
   component, a `const` or a `fn` taking the values; components write none inline, so a second
   language replaces that one file. Names RouterOS and NetBox use themselves (`RouterOS`,

@@ -76,12 +76,47 @@ impl From<&Error> for ErrorInfo {
                     ("obstacle", obstacle.code().into()),
                 ],
             ),
-            Error::Bootstrap(step, error) => (
-                "SETUP_FAILED",
-                vec![("step", step.to_string()), ("cause", error.to_string())],
+            Error::ConsoleLogin(macs) => ("CONSOLE_LOGIN", vec![("macs", macs.to_string())]),
+            Error::SetupCommand(command, error) => (
+                "SETUP_COMMAND",
+                vec![("command", command.to_string()), ("cause", error.to_string())],
             ),
+            Error::ConsoleSessionEnded(command) => {
+                ("CONSOLE_SESSION_ENDED", vec![("command", command.to_string())])
+            }
             Error::Refused(error) => ("REFUSED", cause(error)),
-            Error::Update(error) => ("UPDATE", cause(error)),
+            Error::Download(url, error) => (
+                "DOWNLOAD",
+                vec![("url", url.to_string()), ("cause", error.to_string())],
+            ),
+            Error::UnknownRelease(url, answer) => (
+                "UNKNOWN_RELEASE",
+                vec![("url", url.to_string()), ("answer", answer.to_string())],
+            ),
+            Error::MissingDeviceState(field) => {
+                ("MISSING_DEVICE_STATE", vec![("field", field.to_string())])
+            }
+            Error::UploadMissing(file) => ("UPLOAD_MISSING", vec![("file", file.to_string())]),
+            Error::UploadIncomplete {
+                file,
+                size,
+                expected,
+            } => (
+                "UPLOAD_INCOMPLETE",
+                vec![
+                    ("file", file.to_string()),
+                    ("size", size.to_string()),
+                    ("expected", expected.to_string()),
+                ],
+            ),
+            Error::UnexpectedAfterReboot { version, firmware } => (
+                "UNEXPECTED_AFTER_REBOOT",
+                [("version", version.to_string())]
+                    .into_iter()
+                    .chain(firmware.iter().map(|firmware| ("firmware", firmware.to_string())))
+                    .collect(),
+            ),
+            Error::NotBackAfterReboot => ("NOT_BACK_AFTER_REBOOT", vec![]),
             Error::Busy(device) => ("BUSY", vec![("device", device.to_string())]),
             Error::UnknownJob(id) => ("UNKNOWN_JOB", vec![("id", id.to_string())]),
             Error::Cancelled => ("CANCELLED", vec![]),

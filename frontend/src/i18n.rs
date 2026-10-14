@@ -59,9 +59,45 @@ pub mod error {
                       im selben Netz"
                     .into(),
             },
-            "SETUP_FAILED" => {
-                format!("Ersteinrichtung fehlgeschlagen bei {}: {}", p("step"), p("cause"))
-            }
+            "CONSOLE_LOGIN" => format!(
+                "Anmeldung über mac-telnet an {} abgelehnt oder unbeantwortet",
+                p("macs")
+            ),
+            "SETUP_COMMAND" => format!(
+                "Ersteinrichtung fehlgeschlagen bei {}: {}",
+                p("command"),
+                p("cause")
+            ),
+            "CONSOLE_SESSION_ENDED" => format!(
+                "Die mac-telnet-Sitzung endete vor {}",
+                p("command")
+            ),
+            "DOWNLOAD" => format!("{} nicht geladen: {}", p("url"), p("cause")),
+            "UNKNOWN_RELEASE" => format!(
+                "{} nennt keine RouterOS-Version: {}",
+                p("url"),
+                p("answer")
+            ),
+            "MISSING_DEVICE_STATE" => format!("Das Gerät meldet {} nicht", p("field")),
+            "UPLOAD_MISSING" => format!("{} fehlt nach dem Hochladen auf dem Gerät", p("file")),
+            "UPLOAD_INCOMPLETE" => format!(
+                "{} hat auf dem Gerät {} Bytes statt {}",
+                p("file"),
+                p("size"),
+                p("expected")
+            ),
+            "UNEXPECTED_AFTER_REBOOT" => match p("firmware") {
+                "" => format!(
+                    "Nach dem Neustart läuft RouterOS {}, nicht was das Update erwartet",
+                    p("version")
+                ),
+                firmware => format!(
+                    "Nach dem Neustart läuft RouterOS {} mit Firmware {firmware}, nicht was das \
+                     Update erwartet",
+                    p("version")
+                ),
+            },
+            "NOT_BACK_AFTER_REBOOT" => "Das Gerät ist nach dem Neustart nicht zurück".into(),
             "REFUSED" => format!("Das Gerät lehnt ab: {}", p("cause")),
             "MISSING_DEPENDENCIES" => format!(
                 "Änderungen warten aufeinander oder verweisen auf Fehlendes: {}",
