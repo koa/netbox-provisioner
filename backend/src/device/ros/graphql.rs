@@ -15,12 +15,12 @@ use crate::{
             hw_facts::{RadioPackage, build_w60g_ports},
             needed_radio_package,
         },
-        update,
+        raw, update,
     },
     topology::access::device::DeviceAccess,
 };
 use crate::{graphql::scalars::ScalarDuration, job::Log};
-use async_graphql::{Context, Object, SimpleObject, futures_util::StreamExt};
+use async_graphql::{Context, Object, SimpleObject};
 use log::info;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::{
@@ -137,43 +137,22 @@ impl DeviceCfg {
         Ok(())
     }
     pub fn generate_mutations(&self) -> Result<Box<[ResourceMutation]>, Error> {
-        let mutations = self.base_target.generate_mutations(&self.base_current)?;
+        let mut mutations = self.base_target.generate_mutations(&self.base_current)?.into_vec();
         // `/interface/wifi` before `/interface/wireless`: radios a removed `wifi-qcom-ac` left
         // give their names back to the `wlan<N>` taking them (the sort keeps this order)
-        let mutations = if let (Some(wifi_target), Some(wifi_current)) =
-            (&self.wifi_target, &self.wifi_current)
-        {
-            let wifi_mutations = wifi_target.generate_mutations(wifi_current)?;
-            mutations.into_iter().chain(wifi_mutations).collect()
-        } else {
-            mutations
-        };
-        let mutations = if let (Some(wireless_target), Some(wireless_current)) =
-            (&self.wireless_target, &self.wireless_current)
-        {
-            let wireless_mutations = wireless_target.generate_mutations(wireless_current)?;
-            mutations.into_iter().chain(wireless_mutations).collect()
-        } else {
-            mutations
-        };
-        let mutations = if let (Some(w60g_target), Some(w60g_current)) =
-            (&self.w60g_target, &self.w60g_current)
-        {
-            let w60g_mutations = w60g_target.generate_mutations(w60g_current)?;
-            mutations.into_iter().chain(w60g_mutations).collect()
-        } else {
-            mutations
-        };
-        let mutations = if let (Some(capsman_target), Some(capsman_current)) =
-            (&self.capsman_target, &self.capsman_current)
-        {
-            let capsman_mutations = capsman_target.generate_mutations(capsman_current)?;
-            mutations.into_iter().chain(capsman_mutations).collect()
-        } else {
-            mutations
-        };
-
-        Ok(mutations)
+        if let (Some(target), Some(current)) = (&self.wifi_target, &self.wifi_current) {
+            mutations.extend(target.generate_mutations(current)?);
+        }
+        if let (Some(target), Some(current)) = (&self.wireless_target, &self.wireless_current) {
+            mutations.extend(target.generate_mutations(current)?);
+        }
+        if let (Some(target), Some(current)) = (&self.w60g_target, &self.w60g_current) {
+            mutations.extend(target.generate_mutations(current)?);
+        }
+        if let (Some(target), Some(current)) = (&self.capsman_target, &self.capsman_current) {
+            mutations.extend(target.generate_mutations(current)?);
+        }
+        Ok(mutations.into())
     }
     /// The diff from [`Self::generate_mutations`] in an order where everything a command
     /// refers to exists before it.
@@ -253,29 +232,18 @@ async fn powered_ports(
         .map(|name| name.to_string())
         .collect::<Vec<_>>()
         .join(",");
-    let mut stream = raw
-        .send_command(
-            b"/interface/ethernet/poe/monitor".as_slice(),
-            |cmd| {
-                cmd.attribute(b"numbers".as_slice(), numbers.as_bytes())
-                    .attribute(b"once".as_slice(), b"".as_slice())
-            },
-            (),
-        )
-        .await;
     let mut powered = HashSet::new();
-    while let Some(result) = stream.next().await {
-        match result {
-            SimpleResult::Sentence(row) => {
-                if let (Some(name), Some("powered-on")) = (
-                    update::field(&row, "name"),
-                    update::field(&row, "poe-out-status"),
-                ) {
-                    powered.insert(AsciiString::from(name));
-                }
-            }
-            SimpleResult::Error(error) => return Err(error.into()),
-            SimpleResult::Trap { message, .. } => return Err(Error::Refused(message)),
+    let rows = raw::command(
+        raw,
+        "/interface/ethernet/poe/monitor",
+        &[("numbers", &numbers), ("once", "")],
+    )
+    .await?;
+    for row in rows {
+        if let (Some(name), Some("powered-on")) =
+            (raw::field(&row, "name"), raw::field(&row, "poe-out-status"))
+        {
+            powered.insert(AsciiString::from(name));
         }
     }
     Ok(powered)
@@ -368,39 +336,24 @@ async fn provision_radios(
     raw: &RawDevice<SimpleResult>,
     menu: &str,
 ) -> Result<usize, Error> {
-    let rows = update::rows(raw, format!("{menu}/print").as_bytes()).await?;
+    let rows = raw::rows(raw, &format!("{menu}/print")).await?;
     let ids = rows
         .iter()
         .filter(|row| {
             // `/caps-man/radio` names the CAP in `remote-cap-identity`, `/interface/wifi/radio`
             // in `cap`
-            update::field(row, "local") != Some("true")
+            raw::field(row, "local") != Some("true")
                 && ["remote-cap-identity", "cap"]
                     .iter()
-                    .any(|name| update::field(row, name).is_some_and(|cap| !cap.is_empty()))
+                    .any(|name| raw::field(row, name).is_some_and(|cap| !cap.is_empty()))
         })
-        .filter_map(|row| update::field(row, ".id"))
+        .filter_map(|row| raw::field(row, ".id"))
         .collect::<Vec<_>>();
     if ids.is_empty() {
         return Ok(0);
     }
-    let command = format!("{menu}/provision");
-    let mut stream = raw
-        .send_command(
-            command.as_bytes(),
-            |cmd| cmd.attribute(b"numbers".as_slice(), ids.join(",").as_bytes()),
-            (),
-        )
-        .await;
-    while let Some(result) = stream.next().await {
-        match result {
-            SimpleResult::Sentence(_) => {}
-            SimpleResult::Error(error) => return Err(error.into()),
-            SimpleResult::Trap { message, .. } => {
-                return Err(Error::Refused(message));
-            }
-        }
-    }
+    let numbers = ids.join(",");
+    raw::command(raw, &format!("{menu}/provision"), &[("numbers", &numbers)]).await?;
     Ok(ids.len())
 }
 
@@ -602,14 +555,8 @@ impl DeviceCfg {
 }
 
 impl DeviceCfg {
-    /// Fetches a device's current config over an already-connected client.
-    /// A free function rather than a method on `AccessibleDevice` (which has
-    /// no public constructor outside this crate) since it never actually
-    /// used `AccessibleDevice`'s own state - any reachable `MikrotikDevice`
-    /// connection works, which is what the multi-CHR test harness
-    /// (`netbox-provisioner/backend/tests/chr_network/`) needs: its nodes
-    /// are reached via dynamic hostfwd ports, not `AccessibleDevice::
-    /// create_client`'s hardcoded port 8728.
+    /// Reads a device's current config over `client`, any connection to it (the CHR harness
+    /// reaches its nodes over their own forwarded ports).
     pub async fn fetch(
         client: &MikrotikDevice,
         device: &DeviceAccess,
@@ -620,11 +567,8 @@ impl DeviceCfg {
         Self::fetch_with_board_model(client, &routerboard.model.0, device).await
     }
 
-    /// Like [`Self::fetch`], but takes the board model name directly instead
-    /// of reading it from `/system/routerboard` - CHR has no routerboard at
-    /// all (it isn't a physical RouterBOARD), so the multi-CHR test harness
-    /// (`netbox-provisioner/backend/tests/chr_network/`) needs to supply the
-    /// board it's emulating itself rather than have it detected live.
+    /// [`Self::fetch`] for the board `model`, which a CHR (no `/system/routerboard`) can't
+    /// report itself.
     pub async fn fetch_with_board_model(
         client: &MikrotikDevice,
         model: &[u8],
@@ -687,20 +631,20 @@ impl DeviceCfg {
             || device.wlan_controller_of().is_some()
             || wifi_left_on().await
         {
-                let bound_radios = collect_resource::<InterfaceWifiState>(client)
-                    .await?
-                    .into_iter()
-                    .filter(|radio| radio.dynamic == Some(true))
-                    .filter_map(|radio| radio.default_name)
-                    .collect();
-                (
-                    Some(WifiDeviceDataCurrent::fetch(client).await?),
-                    Some(WifiDeviceDataTarget::detect_device(client).await?),
-                    bound_radios,
-                )
-            } else {
-                (None, None, Box::default())
-            };
+            let bound_radios = collect_resource::<InterfaceWifiState>(client)
+                .await?
+                .into_iter()
+                .filter(|radio| radio.dynamic == Some(true))
+                .filter_map(|radio| radio.default_name)
+                .collect();
+            (
+                Some(WifiDeviceDataCurrent::fetch(client).await?),
+                Some(WifiDeviceDataTarget::detect_device(client).await?),
+                bound_radios,
+            )
+        } else {
+            (None, None, Box::default())
+        };
         // the 60 GHz radios have their own menu (in `wireless` too)
         let (w60g_current, w60g_target) = if needed == Some(RadioPackage::Wireless)
             && !build_w60g_ports(model).is_empty()
@@ -755,9 +699,10 @@ impl DeviceStats {
     pub async fn fetch(client: &MikrotikDevice) -> Result<DeviceStats, Error> {
         Ok(Self {
             routerboard: GraphqlSystemRouterboard(
-                SystemRouterboardState::fetch(&client)
+                SystemRouterboardState::fetch(client)
                     .await?
-                    .expect("system/routerboard not found"),
+                    // a CHR has none
+                    .ok_or(SetupError::RouterboardNotDefined)?,
             ),
         })
     }

@@ -17,6 +17,7 @@ use crate::{
     device::{
         Credentials, Path, connect,
         proxied_stream,
+        raw::{field, rows},
         terminal::{LOGIN_FLAGS, Terminal, TerminalError, Tunnel},
     },
     graphql::scalars::{ScalarDuration, ScalarMac},
@@ -223,7 +224,7 @@ async fn discover(plan: &BootstrapPlan) -> Result<Vec<Discovered>, Error> {
         connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await?;
     // NetBox has the factory name, `/ip/neighbor` the one the provisioner gave the port
     let mut names = vec![plan.neighbor_port.clone()];
-    for row in rows(&neighbor, b"/interface/ethernet/print").await? {
+    for row in rows(&neighbor, "/interface/ethernet/print").await? {
         if field(&row, "default-name") == Some(plan.neighbor_port.as_str())
             && let Some(name) = field(&row, "name")
         {
@@ -231,7 +232,7 @@ async fn discover(plan: &BootstrapPlan) -> Result<Vec<Discovered>, Error> {
         }
     }
     let mut found = Vec::new();
-    for row in rows(&neighbor, b"/ip/neighbor/print").await? {
+    for row in rows(&neighbor, "/ip/neighbor/print").await? {
         let interface = field(&row, "interface").unwrap_or_default();
         let Some(mac) = field(&row, "mac-address").and_then(|mac| MacAddress::from_str(mac).ok())
         else {
@@ -252,32 +253,6 @@ async fn discover(plan: &BootstrapPlan) -> Result<Vec<Discovered>, Error> {
     Ok(found)
 }
 
-type Row = std::collections::HashMap<Box<str>, Option<Box<str>>>;
-
-async fn rows(
-    device: &mikrotik_api::prelude::MikrotikDevice<SimpleResult>,
-    command: &[u8],
-) -> Result<Vec<Row>, Error> {
-    use async_graphql::futures_util::StreamExt;
-    let mut stream = device.send_simple_command(command, ()).await;
-    let mut rows = Vec::new();
-    while let Some(result) = stream.next().await {
-        match result {
-            SimpleResult::Sentence(row) => rows.push(row),
-            SimpleResult::Error(error) => return Err(error.into()),
-            SimpleResult::Trap { message, .. } => {
-                return Err(Error::Bootstrap("neighbor".into(), message));
-            }
-        }
-    }
-    Ok(rows)
-}
-
-fn field<'r>(row: &'r Row, name: &str) -> Option<&'r str> {
-    row.get(name).and_then(|v| v.as_deref())
-}
-
-/// `AA:BB:CC:DD:EE:FF` (also with `-` or lower case), upper case with colons.
 /// The MACs to try, for messages.
 fn macs(macs: &[MacAddress]) -> String {
     macs.iter()

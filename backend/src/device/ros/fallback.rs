@@ -9,8 +9,10 @@
 //! order would have to be restored). The price is the reboot, only when the fallback fires.
 //! Checked on a CHR (7.24.5): `/system backup load` from a scheduler asks nothing.
 
-use crate::{Error, device::update};
-use async_graphql::futures_util::StreamExt;
+use crate::{
+    Error,
+    device::raw::{command, field, rows},
+};
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use rand::{Rng, distr::Alphanumeric};
 use std::time::Duration;
@@ -40,10 +42,10 @@ pub async fn arm(raw: &RawDevice<SimpleResult>, delay: Duration) -> Result<(), E
     )
     .await?;
     let file = backup_file();
-    let saved = update::rows(raw, b"/file/print")
+    let saved = rows(raw, "/file/print")
         .await?
         .iter()
-        .any(|row| update::field(row, "name") == Some(file.as_str()));
+        .any(|row| field(row, "name") == Some(file.as_str()));
     if !saved {
         return Err(Error::Refused(format!("no {file} after saving it").into()));
     }
@@ -63,18 +65,19 @@ pub async fn arm(raw: &RawDevice<SimpleResult>, delay: Duration) -> Result<(), E
             ("comment", "loads the config from before the apply, unless the provisioner stops it"),
         ],
     )
-    .await
+    .await?;
+    Ok(())
 }
 
 /// Takes the fallback away: the device is reachable with the new config.
 pub async fn disarm(raw: &RawDevice<SimpleResult>) -> Result<(), Error> {
     remove_scheduler(raw).await?;
     let file = backup_file();
-    let ids = update::rows(raw, b"/file/print")
+    let ids = rows(raw, "/file/print")
         .await?
         .iter()
-        .filter(|row| update::field(row, "name") == Some(file.as_str()))
-        .filter_map(|row| update::field(row, ".id").map(String::from))
+        .filter(|row| field(row, "name") == Some(file.as_str()))
+        .filter_map(|row| field(row, ".id").map(String::from))
         .collect::<Vec<_>>();
     for id in ids {
         command(raw, "/file/remove", &[(".id", &id)]).await?;
@@ -83,42 +86,14 @@ pub async fn disarm(raw: &RawDevice<SimpleResult>) -> Result<(), Error> {
 }
 
 async fn remove_scheduler(raw: &RawDevice<SimpleResult>) -> Result<(), Error> {
-    let ids = update::rows(raw, b"/system/scheduler/print")
+    let ids = rows(raw, "/system/scheduler/print")
         .await?
         .iter()
-        .filter(|row| update::field(row, "name") == Some(NAME))
-        .filter_map(|row| update::field(row, ".id").map(String::from))
+        .filter(|row| field(row, "name") == Some(NAME))
+        .filter_map(|row| field(row, ".id").map(String::from))
         .collect::<Vec<_>>();
     for id in ids {
         command(raw, "/system/scheduler/remove", &[(".id", &id)]).await?;
-    }
-    Ok(())
-}
-
-async fn command(
-    raw: &RawDevice<SimpleResult>,
-    path: &str,
-    attributes: &[(&str, &str)],
-) -> Result<(), Error> {
-    let mut stream = raw
-        .send_command(
-            path.as_bytes(),
-            |cmd| {
-                attributes
-                    .iter()
-                    .fold(cmd, |cmd, (key, value)| cmd.attribute(key.as_bytes(), value.as_bytes()))
-            },
-            (),
-        )
-        .await;
-    while let Some(result) = stream.next().await {
-        match result {
-            SimpleResult::Sentence(_) => {}
-            SimpleResult::Error(error) => return Err(error.into()),
-            SimpleResult::Trap { message, .. } => {
-                return Err(Error::Refused(format!("{path}: {message}").into()));
-            }
-        }
     }
     Ok(())
 }

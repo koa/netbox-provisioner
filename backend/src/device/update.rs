@@ -8,7 +8,10 @@
 //! powers others over PoE reboots only while none of them updates ([`power`](super::power)).
 use crate::{
     Error,
-    device::power::{PowerChain, RebootLease},
+    device::{
+        power::{PowerChain, RebootLease},
+        raw::{command, field, rows},
+    },
     graphql::scalars::ScalarDuration,
     job::Log,
 };
@@ -17,7 +20,7 @@ use log::warn;
 use serde::Deserialize;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::value::{ParseRosValueResult, RosValue};
-use std::{cmp::Ordering, collections::HashMap, time::Duration};
+use std::{cmp::Ordering, time::Duration};
 use tokio::time::{Instant, sleep, timeout};
 use async_graphql::futures_util::StreamExt;
 
@@ -324,27 +327,6 @@ fn v7_step(wanted: &[Box<str>], arch: &str, version: &Version, uninstall: Box<[B
     }
 }
 
-pub(crate) async fn rows(device: &RawDevice<SimpleResult>, command: &[u8]) -> Result<Vec<HashMap<Box<str>, Option<Box<str>>>>, Error> {
-    let mut stream = device.send_simple_command(command, ()).await;
-    let mut rows = Vec::new();
-    while let Some(result) = stream.next().await {
-        match result {
-            SimpleResult::Sentence(row) => rows.push(row),
-            SimpleResult::Error(error) => return Err(error.into()),
-            SimpleResult::Trap { message, .. } => {
-                return Err(Error::Update(
-                    format!("{}: {message}", String::from_utf8_lossy(command)).into(),
-                ));
-            }
-        }
-    }
-    Ok(rows)
-}
-
-pub(crate) fn field<'r>(row: &'r HashMap<Box<str>, Option<Box<str>>>, name: &str) -> Option<&'r str> {
-    row.get(name).and_then(|v| v.as_deref())
-}
-
 /// SCP logs in with the password, which RouterOS refuses over SSH for a user with SSH keys
 /// unless `always-allow-password-login` is on (up to 7.20) or `password-authentication` is
 /// `yes` rather than `yes-if-no-key` (7.24): switched for the upload when keys are there.
@@ -353,7 +335,7 @@ async fn allow_password_login(
     device: &RawDevice<SimpleResult>,
     log: &Log,
 ) -> Result<Option<(&'static str, &'static str)>, Error> {
-    let ssh = rows(device, b"/ip/ssh/print").await?;
+    let ssh = rows(device, "/ip/ssh/print").await?;
     let Some(ssh) = ssh.first() else {
         return Ok(None);
     };
@@ -364,7 +346,7 @@ async fn allow_password_login(
     } else {
         return Ok(None);
     };
-    if rows(device, b"/user/ssh-keys/print").await?.is_empty() {
+    if rows(device, "/user/ssh-keys/print").await?.is_empty() {
         return Ok(None);
     }
     set_ssh(device, setting, on).await?;
@@ -377,83 +359,40 @@ async fn allow_password_login(
 }
 
 async fn set_ssh(device: &RawDevice<SimpleResult>, setting: &str, value: &str) -> Result<(), Error> {
-    let mut stream = device
-        .send_command(
-            b"/ip/ssh/set".as_slice(),
-            |cmd| cmd.attribute(setting.as_bytes(), value.as_bytes()),
-            (),
-        )
-        .await;
-    while let Some(result) = stream.next().await {
-        match result {
-            SimpleResult::Sentence(_) => {}
-            SimpleResult::Error(error) => return Err(error.into()),
-            SimpleResult::Trap { message, .. } => return Err(Error::Update(message)),
-        }
-    }
+    command(device, "/ip/ssh/set", &[(setting, value)]).await?;
     Ok(())
 }
 
 /// Removes `files` from the device's root directory, where they are.
 async fn remove_files(device: &RawDevice<SimpleResult>, files: &[Box<str>]) -> Result<(), Error> {
-    for row in rows(device, b"/file/print").await? {
+    for row in rows(device, "/file/print").await? {
         let (Some(name), Some(id)) = (field(&row, "name"), field(&row, ".id")) else {
             continue;
         };
         if !files.iter().any(|file| file.as_ref() == name) {
             continue;
         }
-        let mut stream = device
-            .send_command(
-                b"/file/remove".as_slice(),
-                |cmd| cmd.attribute(b".id".as_slice(), id.as_bytes()),
-                (),
-            )
-            .await;
-        while let Some(result) = stream.next().await {
-            match result {
-                SimpleResult::Sentence(_) => {}
-                SimpleResult::Error(error) => return Err(error.into()),
-                SimpleResult::Trap { message, .. } => {
-                    return Err(Error::Update(format!("remove {name}: {message}").into()));
-                }
-            }
-        }
+        command(device, "/file/remove", &[(".id", id)]).await?;
     }
     Ok(())
 }
 
 /// Marks the packages for removal at the next reboot.
 async fn uninstall(device: &RawDevice<SimpleResult>, packages: &[Box<str>]) -> Result<(), Error> {
-    for row in rows(device, b"/system/package/print").await? {
+    for row in rows(device, "/system/package/print").await? {
         let (Some(name), Some(id)) = (field(&row, "name"), field(&row, ".id")) else {
             continue;
         };
         if !packages.iter().any(|p| p.as_ref() == name) {
             continue;
         }
-        let mut stream = device
-            .send_command(
-                b"/system/package/uninstall".as_slice(),
-                |cmd| cmd.attribute(b"numbers".as_slice(), id.as_bytes()),
-                (),
-            )
-            .await;
-        while let Some(result) = stream.next().await {
-            match result {
-                SimpleResult::Sentence(_) => {}
-                SimpleResult::Error(error) => return Err(error.into()),
-                SimpleResult::Trap { message, .. } => {
-                    return Err(Error::Update(format!("uninstall {name}: {message}").into()));
-                }
-            }
-        }
+        command(device, "/system/package/uninstall", &[("numbers", id)]).await?;
     }
     Ok(())
 }
 
 pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState, Error> {
-    let resource = rows(device, b"/system/resource/print").await?;
+    let resource = rows(device, "/system/resource/print").await?;
     let resource = resource
         .first()
         .ok_or_else(|| Error::Update("no /system/resource".into()))?;
@@ -467,14 +406,14 @@ pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState,
             _ => None,
         })
         .ok_or_else(|| Error::Update("no uptime".into()))?;
-    let packages = rows(device, b"/system/package/print")
+    let packages = rows(device, "/system/package/print")
         .await?
         .iter()
         .filter(|row| field(row, "disabled") != Some("true"))
         .filter_map(|row| field(row, "name").map(Box::from))
         .collect();
     // CHR has no RouterBOARD; the command fails there
-    let firmware = rows(device, b"/system/routerboard/print")
+    let firmware = rows(device, "/system/routerboard/print")
         .await
         .ok()
         .and_then(|rows| rows.into_iter().next())
@@ -625,7 +564,7 @@ pub async fn update(
                 let expected = data.len().to_string();
                 let deadline = Instant::now() + Duration::from_secs(60);
                 loop {
-                    let size = rows(&device, b"/file/print")
+                    let size = rows(&device, "/file/print")
                         .await?
                         .iter()
                         .find(|row| field(row, "name") == Some(file))
@@ -688,7 +627,7 @@ pub async fn update(
         log.check()?;
         log.emit(upgrade_event(false));
         // the firmware loads at the next boot, whenever that is
-        rows(&link.api().await?, b"/system/routerboard/upgrade").await?;
+        rows(&link.api().await?, "/system/routerboard/upgrade").await?;
         let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
         reboot_and_wait(link, rebooting, log, RebootReason::Firmware, |state| {
             state

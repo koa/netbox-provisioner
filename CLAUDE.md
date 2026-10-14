@@ -287,6 +287,14 @@ an untouched image of a `ChrRelease` (`CHR`, or `CHR_OLDER` to update from), `st
 it without waiting for the API, and `mac_of(node, slot)` is the MAC of a cabled NIC (slot 0 keeps
 QEMU's, the golden image's dhcp-client is bound to it).
 
+## Code conventions
+
+- A RouterOS command no mikrotik-model type covers (actions, monitors, a menu read for one
+  field) goes through `device::raw` (`command`, `rows`, `field`), which turns a `!trap` into
+  `Error::Refused` naming the command; don't write another loop over `SimpleResult`.
+- Before adding a helper, look whether one exists (`grep` the crate); one used from several
+  modules belongs in a module of its own, not in the first one that needed it.
+
 ## Commits
 
 - One focused commit per logical change; split unrelated work (e.g. a refactor and the feature

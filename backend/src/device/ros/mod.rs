@@ -1573,7 +1573,7 @@ impl WifiDeviceDataTarget {
                 };
                 // A radio CAPsMAN has bound is dynamic and RouterOS refuses any change to it
                 // (7.23.8, also with the CAP off): it stays as it is, a different configuration
-                // is reported (`WifiDeviceDataTarget::bound_radio_warnings`).
+                // is a warning.
                 if bound_radios.contains(&default_name) {
                     if radio.configuration.as_ref() != Some(&configuration_name) {
                         warnings.push(format!(
