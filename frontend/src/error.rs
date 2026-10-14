@@ -53,6 +53,8 @@ pub enum FrontendError {
     Graphql(Vec<graphql_client::Error>),
     #[error("Error on http request")]
     Reqwest(#[from] reqwest::Error),
+    #[error("Server answered {status}: {text}")]
+    Server { status: u16, text: String },
     #[error("Invalid http header")]
     InvalidHeader(#[from] InvalidHeaderValue),
     #[error("No data received")]
@@ -109,6 +111,13 @@ impl FrontendError {
                 html! {
                     <AlertGroup>
                         <Alert inline=true title="Cannot call Server" r#type={AlertType::Danger}><p>{reqwest_error.to_string()}</p></Alert>
+                    </AlertGroup>
+                }
+            }
+            FrontendError::Server { status, text } => {
+                html! {
+                    <AlertGroup>
+                        <Alert inline=true title={format!("Server antwortet {status}")} r#type={AlertType::Danger}><p>{text}</p></Alert>
                     </AlertGroup>
                 }
             }

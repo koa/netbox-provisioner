@@ -1,5 +1,4 @@
 use crate::error::FrontendError;
-use graphql_client::reqwest::post_graphql;
 use graphql_client::{GraphQLQuery, Response};
 use lazy_static::lazy_static;
 use reqwest::header::{AUTHORIZATION, HeaderMap};
@@ -57,14 +56,30 @@ pub async fn query_authenticated_response<Q: GraphQLQuery, S: Component>(
     let client = reqwest::Client::builder()
         .default_headers(headers)
         .build()?;
-    Ok(post_graphql::<Q, _>(&client, GRAPHQL_AUTHENTICATED_URL.as_str(), request).await?)
+    post_graphql::<Q>(&client, GRAPHQL_AUTHENTICATED_URL.as_str(), request).await
+}
+
+/// `graphql_client`'s `post_graphql`, but a response without success (a token the server
+/// refuses: `401` or `500` with a text) is that text, not a failure to decode it as JSON.
+async fn post_graphql<Q: GraphQLQuery>(
+    client: &reqwest::Client,
+    url: &str,
+    variables: Q::Variables,
+) -> Result<Response<Q::ResponseData>, FrontendError> {
+    let response = client.post(url).json(&Q::build_query(variables)).send().await?;
+    let status = response.status();
+    if !status.is_success() {
+        let text = response.text().await.unwrap_or_default();
+        return Err(FrontendError::Server { status: status.as_u16(), text });
+    }
+    Ok(response.json().await?)
 }
 
 pub async fn query_anonymous<Q: GraphQLQuery>(
     request: Q::Variables,
 ) -> Result<Q::ResponseData, FrontendError> {
     let client = reqwest::Client::builder().build()?;
-    let response = post_graphql::<Q, _>(&client, GRAPHQL_ANONYMOUS_URL.as_str(), request).await?;
+    let response = post_graphql::<Q>(&client, GRAPHQL_ANONYMOUS_URL.as_str(), request).await?;
     if let Some(data) = response.data {
         Ok(data)
     } else {
