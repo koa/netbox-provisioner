@@ -1,11 +1,14 @@
 use actix_4_jwt_auth::{
     DecodedInfo, OIDCValidationError, Oidc, OidcBiscuitValidator, OidcConfig,
-    biscuit::{ClaimPresenceOptions, Presence, Validation, ValidationOptions},
+    biscuit::{ClaimPresenceOptions, Presence, TemporalOptions, Validation, ValidationOptions},
 };
 use actix_web::{
     App, HttpServer, get,
+    body::MessageBody,
+    dev::{ServiceRequest, ServiceResponse},
     guard::Post,
-    middleware::Logger,
+    http::StatusCode,
+    middleware::{Logger, Next, from_fn},
     web::{Data, resource},
 };
 use actix_web_prometheus::PrometheusMetricsBuilder;
@@ -14,7 +17,7 @@ use async_graphql::{Response, ServerError, futures_util::future::join_all};
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use env_logger::Env;
 use include_dir::{Dir, include_dir};
-use log::{error, info, trace};
+use log::{error, info, trace, warn};
 use mime_db::lookup;
 use prometheus::{HistogramVec, histogram_opts};
 use std::{collections::HashMap, ffi::OsStr};
@@ -193,19 +196,10 @@ async fn main() -> Result<(), BackendError> {
 
     let issuer = CONFIG.auth_issuer().to_string();
     //info!("Issuer: {issuer}");
-    let oidc = Oidc::new(OidcConfig::Issuer(issuer.clone().into())).await?;
+    let oidc = Oidc::new(OidcConfig::Issuer(issuer.into())).await?;
 
-    // The audience must name this app, else tokens the issuer made for other apps would pass
     let biscuit_validator = OidcBiscuitValidator {
-        options: ValidationOptions {
-            claim_presence_options: ClaimPresenceOptions {
-                audience: Presence::Required,
-                ..ClaimPresenceOptions::default()
-            },
-            issuer: Validation::Validate(issuer),
-            audience: Validation::Validate(CONFIG.auth_client_id().to_string()),
-            ..ValidationOptions::default()
-        },
+        options: validation_options(),
     };
 
     let data = Data::new(ApplicationContext {
@@ -226,6 +220,7 @@ async fn main() -> Result<(), BackendError> {
                 resource("/graphql")
                     .guard(Post())
                     .wrap(biscuit_validator.clone())
+                    .wrap(from_fn(log_refused_token))
                     .to(graphql),
             )
             .service(
@@ -238,6 +233,7 @@ async fn main() -> Result<(), BackendError> {
                 resource("/graphql/")
                     .guard(Post())
                     .wrap(biscuit_validator.clone())
+                    .wrap(from_fn(log_refused_token))
                     .to(graphql),
             )
             .service(
@@ -271,4 +267,57 @@ async fn main() -> Result<(), BackendError> {
         return Err(e.into());
     }
     Ok(())
+}
+
+/// What a token has to meet besides its signature. The audience must name this app, else
+/// tokens the issuer made for other apps would pass. The times allow for clocks a little
+/// apart: without, a token was refused as not yet valid by a server one second behind the
+/// issuer (Pocket-ID).
+fn validation_options() -> ValidationOptions {
+    ValidationOptions {
+        claim_presence_options: ClaimPresenceOptions {
+            audience: Presence::Required,
+            ..ClaimPresenceOptions::default()
+        },
+        issuer: Validation::Validate(CONFIG.auth_issuer().to_string()),
+        audience: Validation::Validate(CONFIG.auth_client_id().to_string()),
+        temporal_options: TemporalOptions {
+            epsilon: chrono::Duration::seconds(60),
+            now: None,
+        },
+        ..ValidationOptions::default()
+    }
+}
+
+/// Logs why `OidcBiscuitValidator` refused a token with a valid signature, which it answers
+/// only with `403` "Token does not have sufficient rights": the claims and the failed check
+/// (`biscuit::ValidationError`, e.g. a token not yet valid by this server's clock).
+async fn log_refused_token(
+    mut req: ServiceRequest,
+    next: Next<impl MessageBody>,
+) -> Result<ServiceResponse<impl MessageBody>, actix_web::Error> {
+    let claims = req
+        .extract::<DecodedInfo>()
+        .await
+        .ok()
+        .map(|info| info.payload.registered);
+    let response = next.call(req).await?;
+    if response.status() == StatusCode::FORBIDDEN
+        && let Some(claims) = claims
+        && let Err(error) = claims.validate(validation_options())
+    {
+        warn!(
+            "token refused: {error} (iss {:?}, aud {:?}, iat {:?}, nbf {:?}, exp {:?}, now {})",
+            claims.issuer,
+            claims.audience,
+            claims.issued_at.map(|t| t.timestamp()),
+            claims.not_before.map(|t| t.timestamp()),
+            claims.expiry.map(|t| t.timestamp()),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|now| now.as_secs())
+                .unwrap_or_default(),
+        );
+    }
+    Ok(response)
 }
