@@ -271,10 +271,8 @@ fn credentials_of(device: &DeviceAccess) -> Result<&'static MikrotikCredentials,
 /// Sets `device` up along `plan`, the console session going to `log` as it comes (passwords
 /// replaced by `***`). `plan.setup.macs` is the device chosen by the operator. Cancelled, it
 /// stops before the console session or while it waits for the API, not within the session.
+/// Writes without asking for `allow_apply`, that is up to the caller (`WritesAllowed`).
 pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -> Result<(), Error> {
-    if !CONFIG.allow_apply {
-        return Err(Error::ApplyNotAllowed);
-    }
     let target = credentials_of(device)?;
     let neighbor = credentials_of(&plan.neighbor_device)?;
     let user = target.user();

@@ -3,9 +3,9 @@ use actix_4_jwt_auth::{
     biscuit::{ClaimPresenceOptions, Presence, TemporalOptions, Validation, ValidationOptions},
 };
 use actix_web::{
-    App, HttpServer, get,
-    body::MessageBody,
-    dev::{ServiceRequest, ServiceResponse},
+    App, HttpResponse, HttpServer, get,
+    body::{BoxBody, MessageBody},
+    dev::{HttpServiceFactory, ServiceRequest, ServiceResponse},
     guard::Post,
     http::StatusCode,
     middleware::{Logger, Next, from_fn},
@@ -13,11 +13,11 @@ use actix_web::{
 };
 use actix_web_prometheus::PrometheusMetricsBuilder;
 use actix_web_static_files::{ResourceFiles, deps::static_files::Resource};
-use async_graphql::{Response, ServerError, futures_util::future::join_all};
+use async_graphql::futures_util::future::join_all;
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use env_logger::Env;
 use include_dir::{Dir, include_dir};
-use log::{error, info, trace, warn};
+use log::{error, trace, warn};
 use mime_db::lookup;
 use prometheus::{HistogramVec, histogram_opts};
 use std::{collections::HashMap, ffi::OsStr};
@@ -72,7 +72,6 @@ async fn graphql(
     user: Option<DecodedInfo>,
     request: GraphQLRequest,
 ) -> GraphQLResponse {
-    //let user: Option<AuthenticatedUser<UserInfo>> = Some(user);
     trace!("Execute Authenticated: {user:#?}");
     let schema = &context.schema;
     let histogram = context.graphql_request_histogram.clone();
@@ -81,15 +80,8 @@ async fn graphql(
         user.payload
             .registered
             .subject
-            .as_ref()
-            .map(|subj| subj.as_str())
+            .as_deref()
     });
-    if !subject
-        .map(|sub| CONFIG.auth_users.iter().any(|id| *sub == **id))
-        .unwrap_or(false)
-    {
-        return Response::from_errors(vec![ServerError::new("User not allowed", None)]).into();
-    }
     let found_user = if let Some(DecodedInfo { jwt: _jwt, payload }) = &user {
         match serde_json::from_value::<UserInfo>(payload.private.clone()) {
             Ok(user) => Some(user),
@@ -101,9 +93,6 @@ async fn graphql(
     } else {
         None
     };
-    let hd = found_user
-        .as_ref()
-        .and_then(|user| user.hd.as_ref().map(|hd| hd.as_str()));
     let timer = histogram
         .with_label_values(&[
             request.operation_name.as_deref().unwrap_or_default(),
@@ -216,31 +205,11 @@ async fn main() -> Result<(), BackendError> {
             .wrap(Logger::default())
             .app_data(data.clone())
             .app_data(oidc.clone())
-            .service(
-                resource("/graphql")
-                    .guard(Post())
-                    .wrap(biscuit_validator.clone())
-                    .wrap(from_fn(log_refused_token))
-                    .to(graphql),
-            )
-            .service(
-                resource("/graphql_anonymous")
-                    .guard(Post())
-                    .to(graphql_anonymous),
-            )
-            // workaround for proxy troubles
-            .service(
-                resource("/graphql/")
-                    .guard(Post())
-                    .wrap(biscuit_validator.clone())
-                    .wrap(from_fn(log_refused_token))
-                    .to(graphql),
-            )
-            .service(
-                resource("/graphql_anonymous/")
-                    .guard(Post())
-                    .to(graphql_anonymous),
-            )
+            // `/…/`: workaround for proxy troubles
+            .service(authenticated_graphql("/graphql", biscuit_validator.clone()))
+            .service(authenticated_graphql("/graphql/", biscuit_validator.clone()))
+            .service(anonymous_graphql("/graphql_anonymous"))
+            .service(anonymous_graphql("/graphql_anonymous/"))
             .service(ResourceFiles::new("/", resources).resolve_not_found_to_root())
     })
     .bind((bind_addr, api_port))?
@@ -267,6 +236,44 @@ async fn main() -> Result<(), BackendError> {
         return Err(e.into());
     }
     Ok(())
+}
+
+/// The authenticated API: a valid token (`biscuit_validator`, why one is refused is logged by
+/// `log_refused_token`) of a user in `auth_users` (`require_allowed_user`), otherwise `403`.
+fn authenticated_graphql(
+    path: &'static str,
+    biscuit_validator: OidcBiscuitValidator,
+) -> impl HttpServiceFactory {
+    resource(path)
+        .guard(Post())
+        .wrap(from_fn(require_allowed_user))
+        .wrap(biscuit_validator)
+        .wrap(from_fn(log_refused_token))
+        .to(graphql)
+}
+
+fn anonymous_graphql(path: &'static str) -> impl HttpServiceFactory {
+    resource(path).guard(Post()).to(graphql_anonymous)
+}
+
+/// Lets only the users of `auth_users` (their `sub`) in, after the token is checked.
+async fn require_allowed_user(
+    mut req: ServiceRequest,
+    next: Next<impl MessageBody + 'static>,
+) -> Result<ServiceResponse<BoxBody>, actix_web::Error> {
+    let subject = req
+        .extract::<DecodedInfo>()
+        .await
+        .ok()
+        .and_then(|info| info.payload.registered.subject);
+    if !subject
+        .as_deref()
+        .is_some_and(|subject| CONFIG.auth_users.iter().any(|id| **id == *subject))
+    {
+        warn!("user refused, not in auth_users: {subject:?}");
+        return Ok(req.into_response(HttpResponse::Forbidden().body("user not in auth_users")));
+    }
+    Ok(next.call(req).await?.map_into_boxed_body())
 }
 
 /// What a token has to meet besides its signature. The audience must name this app, else

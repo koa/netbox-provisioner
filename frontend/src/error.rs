@@ -117,7 +117,7 @@ impl FrontendError {
             FrontendError::Server { status, text } => {
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title={format!("Server antwortet {status}")} r#type={AlertType::Danger}><p>{text}</p></Alert>
+                        <Alert inline=true title={server_refused(*status)} r#type={AlertType::Danger}><p>{text}</p></Alert>
                     </AlertGroup>
                 }
             }
@@ -136,5 +136,16 @@ impl FrontendError {
                 }
             }
         }
+    }
+}
+
+/// What a status the server answers instead of a result means for the user: `401` and `403`
+/// come from the token check (`binary`: the token, or the user not in `auth_users`; the server
+/// log has the reason).
+fn server_refused(status: u16) -> String {
+    match status {
+        401 => "Nicht angemeldet: bitte neu anmelden".into(),
+        403 => "Kein Zugriff: Anmeldung abgelehnt oder Benutzer nicht freigegeben".into(),
+        status => format!("Server antwortet {status}"),
     }
 }

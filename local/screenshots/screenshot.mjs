@@ -1,5 +1,6 @@
 // Screenshots of the provisioner UI against the lab (local/lab/), logged in through the local
-// Keycloak (local/keycloak/run-keycloak.sh) as admin/admin.
+// Keycloak (local/keycloak/run-keycloak.sh) as admin/admin, or as LOGIN_USER (its password is
+// the same, `reader` is the user not in auth_users).
 //
 //   local/screenshots/run.sh [--out DIR] STEP...
 //
@@ -37,8 +38,9 @@ const capture = async (name) => {
 await page.goto(origin);
 await page.waitForSelector('#username', { timeout: 30000 });
 await capture('login');
-await page.fill('#username', 'admin');
-await page.fill('#password', 'admin');
+const user = process.env.LOGIN_USER ?? 'admin';
+await page.fill('#username', user);
+await page.fill('#password', user);
 await page.click('#kc-login');
 await page.waitForURL((url) => url.origin === origin, { timeout: 30000 });
 await page.waitForTimeout(3000);

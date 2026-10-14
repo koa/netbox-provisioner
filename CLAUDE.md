@@ -112,7 +112,9 @@ on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 ## Device access, setup and updates
 
 The UI logs in over OIDC (`yew-oauth2` in the frontend, structure taken from the cable-editor);
-the backend checks the JWT against `auth_issuer` and lets only `auth_users` in (`docs/login.md`:
+the backend checks the JWT against `auth_issuer` and lets only `auth_users` in, both as
+middleware of `/graphql` in `binary` (`authenticated_graphql`: `403` otherwise, and the server
+log says why; the frontend words the status, `error.rs`) (`docs/login.md`:
 the `auth_*` settings and how to set up Pocket-ID; keep it in line with them). The UI picks a
 NetBox site first, then one of its devices (`/sites`, `/site/<id>`, `/site/<id>/device/<id>/show`,
 `pages/routes.rs`): no sidebar, a breadcrumb of dropdowns to the sibling sites and devices
@@ -121,8 +123,9 @@ reached directly, or, with `management_proxy` set, all through one device's `/ip
 with password; `device::proxied_stream` retries the sporadic "General SOCKS server failure" of a
 first connection); the proxy's own device is reached at the proxy's address
 (`bootstrap::reachable_address`), its primary IP may only exist once its config is applied.
-Nothing is written without `allow_apply` (the UI asks `allowApply` and disables apply, setup,
-update and reboot with a hint instead of failing on the click); `apply` runs the diff as a script on
+Nothing is written without `allow_apply`, checked by the `WritesAllowed` guard of every
+mutation that writes (the UI asks `allowApply` and disables apply, setup, update and reboot
+with a hint instead of failing on the click); `apply` runs the diff as a script on
 the device (`apply_mutations_via_script`), so it completes even when it changes the path the
 connection takes, then diffs again: a script stops at its first error, so whatever is left is
 what failed. That error comes back from `/system/script/run` (`ApplyRunning.error`) with the lines
@@ -292,6 +295,10 @@ QEMU's, the golden image's dhcp-client is bound to it).
 - A RouterOS command no mikrotik-model type covers (actions, monitors, a menu read for one
   field) goes through `device::raw` (`command`, `rows`, `field`), which turns a `!trap` into
   `Error::Refused` naming the command; don't write another loop over `SimpleResult`.
+- Who may call what is decided at the boundary, once: the token and `auth_users` in `binary`'s
+  middleware, `allow_apply` by `#[graphql(guard = "WritesAllowed")]` on each writing mutation
+  (a new one needs it too). The work below (`apply`, `bootstrap`, `update`) doesn't ask again,
+  and the frontend only hides or disables what the backend refuses anyway.
 - Before adding a helper, look whether one exists (`grep` the crate); one used from several
   modules belongs in a module of its own, not in the first one that needed it.
 

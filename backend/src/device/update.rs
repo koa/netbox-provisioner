@@ -513,7 +513,7 @@ pub async fn reboot(link: &impl DeviceLink, power: &PowerChain, log: &Log) -> Re
 
 /// Updates the device to `target` with `routeros` and the `wanted` packages, step by step (see
 /// [`next_step`]), telling `log` how far it got. Writes to the device without asking for
-/// `allow_apply`, that is up to the caller. `power` says which devices' updates and reboots it
+/// `allow_apply`, that is up to the caller (`WritesAllowed`). `power` says which devices' updates and reboots it
 /// has to wait for.
 pub async fn update(
     link: &impl DeviceLink,

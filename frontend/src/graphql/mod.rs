@@ -60,7 +60,7 @@ pub async fn query_authenticated_response<Q: GraphQLQuery, S: Component>(
 }
 
 /// `graphql_client`'s `post_graphql`, but a response without success (a token the server
-/// refuses: `401` or `500` with a text) is that text, not a failure to decode it as JSON.
+/// refuses: `401` or `403` with a text) is that text, not a failure to decode it as JSON.
 async fn post_graphql<Q: GraphQLQuery>(
     client: &reqwest::Client,
     url: &str,

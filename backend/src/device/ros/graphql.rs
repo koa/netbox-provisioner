@@ -373,11 +373,9 @@ impl AccessibleDevice {
     /// at its first error). Before, the device saves a backup it loads unless the provisioner
     /// reaches it again (`fallback`): reachable, even with a part left, it stays as it is.
     /// Cancelled once the script runs, the apply leaves the fallback, which brings back the
-    /// config from before.
+    /// config from before. Writes without asking for `allow_apply`, that is up to the caller
+    /// (`WritesAllowed`).
     pub async fn apply(&self, log: &Log) -> Result<(), Error> {
-        if !CONFIG.allow_apply {
-            return Err(Error::ApplyNotAllowed);
-        }
         let mut cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
         cfg.generate_for(&self.device_config)?;
         let mutations = cfg.sorted_mutations()?;

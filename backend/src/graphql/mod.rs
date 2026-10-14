@@ -8,10 +8,15 @@ use crate::{
     },
     graphql::scalars::ScalarMac,
     job::{self, Job, JobKind},
-    topology::{DeviceId, TopologyHolder, access::AdhocCredentials},
+    topology::{
+        DeviceId, TopologyHolder,
+        access::{AdhocCredentials, device::DeviceAccess},
+    },
 };
 use std::sync::Arc;
-use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
+use async_graphql::{
+    Context, EmptyMutation, EmptySubscription, Guard, Object, Schema, SimpleObject,
+};
 pub mod scalars;
 pub type AuthenticatedGraphqlSchema =
     Schema<QueryAuthenticated, MutationAuthenticated, EmptySubscription>;
@@ -65,21 +70,37 @@ impl QueryAuthenticated {
         job::list(device_id.map(DeviceId))
     }
 }
+impl MutationAuthenticated {
+    async fn device(&self, id: u32) -> Result<DeviceAccess, Error> {
+        self.topology
+            .devices_by_id(DeviceId(id))
+            .await
+            .ok_or(Error::UnknownDevice(id))
+    }
+}
+
+/// Lets a mutation that writes to devices through only with `allow_apply`; every such
+/// mutation carries it, the work below doesn't ask again.
+struct WritesAllowed;
+impl Guard for WritesAllowed {
+    async fn check(&self, _ctx: &Context<'_>) -> async_graphql::Result<()> {
+        if CONFIG.allow_apply {
+            Ok(())
+        } else {
+            Err(Error::ApplyNotAllowed.into())
+        }
+    }
+}
+
 #[Object]
 impl MutationAuthenticated {
     /// Starts the initial setup over mac-telnet from a neighbor along
     /// `DeviceAccess.bootstrapPlan`, for a device that can't be reached over IP yet
     /// (`allow_apply` must be set). `mac` is the physical device that gets this NetBox
     /// device's config, usually one of `bootstrapPlan.discovered`.
+    #[graphql(guard = "WritesAllowed")]
     async fn bootstrap(&self, id: u32, mac: ScalarMac) -> Result<Arc<Job>, Error> {
-        if !CONFIG.allow_apply {
-            return Err(Error::ApplyNotAllowed);
-        }
-        let device = self
-            .topology
-            .devices_by_id(DeviceId(id))
-            .await
-            .ok_or(Error::UnknownDevice(id))?;
+        let device = self.device(id).await?;
         let mut plan = bootstrap::plan(&device)?;
         plan.setup.macs = [mac.0].into();
         job::start(&device.clone(), JobKind::Bootstrap, |log| async move {
@@ -90,6 +111,7 @@ impl MutationAuthenticated {
     /// `channel`, with the packages the device needs (`allow_apply` must be set); without
     /// `channel` it only brings the packages in line, at the version the device runs. Target
     /// and credentials as for `DeviceAccess.access`. The job's events tell how far it got.
+    #[graphql(guard = "WritesAllowed")]
     async fn update_routeros(
         &self,
         id: u32,
@@ -98,14 +120,7 @@ impl MutationAuthenticated {
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
     ) -> Result<Arc<Job>, Error> {
-        if !CONFIG.allow_apply {
-            return Err(Error::ApplyNotAllowed);
-        }
-        let device = self
-            .topology
-            .devices_by_id(DeviceId(id))
-            .await
-            .ok_or(Error::UnknownDevice(id))?;
+        let device = self.device(id).await?;
         let power = PowerChain::of(&device);
         job::start(&device.clone(), JobKind::Update, |log| async move {
             let device = log
@@ -122,6 +137,7 @@ impl MutationAuthenticated {
     }
     /// Starts a reboot of a device (`allow_apply` must be set) and waits until it is back.
     /// Target and credentials as for `DeviceAccess.access`.
+    #[graphql(guard = "WritesAllowed")]
     async fn reboot_device(
         &self,
         id: u32,
@@ -129,14 +145,7 @@ impl MutationAuthenticated {
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
     ) -> Result<Arc<Job>, Error> {
-        if !CONFIG.allow_apply {
-            return Err(Error::ApplyNotAllowed);
-        }
-        let device = self
-            .topology
-            .devices_by_id(DeviceId(id))
-            .await
-            .ok_or(Error::UnknownDevice(id))?;
+        let device = self.device(id).await?;
         let power = PowerChain::of(&device);
         job::start(&device.clone(), JobKind::Reboot, |log| async move {
             let device = log
@@ -156,6 +165,7 @@ impl MutationAuthenticated {
     }
     /// Starts applying the generated config to a device (`allow_apply` must be set). Target
     /// and credentials as for `DeviceAccess.access`.
+    #[graphql(guard = "WritesAllowed")]
     async fn apply_cfg(
         &self,
         id: u32,
@@ -163,14 +173,7 @@ impl MutationAuthenticated {
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
     ) -> Result<Arc<Job>, Error> {
-        if !CONFIG.allow_apply {
-            return Err(Error::ApplyNotAllowed);
-        }
-        let device = self
-            .topology
-            .devices_by_id(DeviceId(id))
-            .await
-            .ok_or(Error::UnknownDevice(id))?;
+        let device = self.device(id).await?;
         job::start(&device.clone(), JobKind::Apply, |log| async move {
             log.unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
                 .await??

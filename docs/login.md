@@ -35,7 +35,8 @@ settings:
   verlangt sie in `aud` des Tokens (beim ID-Token immer so). So kommen Tokens, die der Provider für andere Apps
   ausstellt, nicht durch.
 - **`auth_users`**: Verglichen wird `sub`, nicht der Benutzername. Wer angemeldet ist, aber nicht in
-  der Liste steht, bekommt bei jeder Abfrage „User not allowed“.
+  der Liste steht, bekommt bei jeder Abfrage `403` („Kein Zugriff“ im UI); das Serverlog nennt
+  das `sub` (`user refused, not in auth_users`).
 - **`auth_scopes`**: `offline_access` (Refresh-Token) kennt nicht jeder Provider; dann die Scopes
   ohne ihn angeben.
 
