@@ -22,6 +22,24 @@ pub enum SelectedCredentials {
     },
 }
 
+impl SelectedCredentials {
+    /// As the variables of a query take them: `credentialName`, and `adhocCredentials` built by
+    /// `adhoc` (each query has its own type of it).
+    pub fn variables<A>(
+        self,
+        adhoc: impl FnOnce(Option<String>, Option<String>) -> A,
+    ) -> (Option<String>, Option<A>) {
+        match self {
+            SelectedCredentials::Default => (None, None),
+            SelectedCredentials::Named(name) => (Some(name.into_string()), None),
+            SelectedCredentials::Adhoc { username, password } => (
+                None,
+                Some(adhoc(Some(username.into_string()), Some(password.into_string()))),
+            ),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialOrd, PartialEq, Default)]
 pub struct SelectedTarget {
     pub address: Option<IpAddr>,

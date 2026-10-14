@@ -1,6 +1,6 @@
 use crate::{
     components::{
-        adjust_target::{AdjustTarget, SelectedCredentials, SelectedTarget},
+        adjust_target::{AdjustTarget, SelectedTarget},
         job::JobView,
     },
     error::FrontendError,
@@ -418,17 +418,11 @@ impl Component for ShowDevice {
 
 fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
     spawn_local(async move {
-        let (credential_name, adhoc_credentials) = match target.credentials {
-            SelectedCredentials::Default => (None, None),
-            SelectedCredentials::Named(name) => (Some(name.into_string()), None),
-            SelectedCredentials::Adhoc { username, password } => (
-                None,
-                Some(device_overview::AdhocCredentials {
-                    username: Some(username.to_string()),
-                    password: Some(password.to_string()),
-                }),
-            ),
-        };
+        let (credential_name, adhoc_credentials) =
+            target.credentials.variables(|username, password| device_overview::AdhocCredentials {
+                username,
+                password,
+            });
         match query_authenticated_response::<DeviceOverview, _>(
             scope.clone(),
             device_overview::Variables {
@@ -485,17 +479,11 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
 
 fn apply(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
     spawn_local(async move {
-        let (credential_name, adhoc_credentials) = match target.credentials {
-            SelectedCredentials::Default => (None, None),
-            SelectedCredentials::Named(name) => (Some(name.into_string()), None),
-            SelectedCredentials::Adhoc { username, password } => (
-                None,
-                Some(apply_device_cfg::AdhocCredentials {
-                    username: Some(username.to_string()),
-                    password: Some(password.to_string()),
-                }),
-            ),
-        };
+        let (credential_name, adhoc_credentials) =
+            target.credentials.variables(|username, password| apply_device_cfg::AdhocCredentials {
+                username,
+                password,
+            });
         let result = query_authenticated::<ApplyDeviceCfg, _>(
             scope.clone(),
             apply_device_cfg::Variables {
@@ -564,17 +552,11 @@ fn update(
     target: SelectedTarget,
 ) {
     spawn_local(async move {
-        let (credential_name, adhoc_credentials) = match target.credentials {
-            SelectedCredentials::Default => (None, None),
-            SelectedCredentials::Named(name) => (Some(name.into_string()), None),
-            SelectedCredentials::Adhoc { username, password } => (
-                None,
-                Some(update_routeros::AdhocCredentials {
-                    username: Some(username.to_string()),
-                    password: Some(password.to_string()),
-                }),
-            ),
-        };
+        let (credential_name, adhoc_credentials) =
+            target.credentials.variables(|username, password| update_routeros::AdhocCredentials {
+                username,
+                password,
+            });
         let result = query_authenticated::<UpdateRouteros, _>(
             scope.clone(),
             update_routeros::Variables {
@@ -600,17 +582,11 @@ fn update(
 /// Reboots the device and waits until it is back.
 fn reboot(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
     spawn_local(async move {
-        let (credential_name, adhoc_credentials) = match target.credentials {
-            SelectedCredentials::Default => (None, None),
-            SelectedCredentials::Named(name) => (Some(name.into_string()), None),
-            SelectedCredentials::Adhoc { username, password } => (
-                None,
-                Some(reboot_device::AdhocCredentials {
-                    username: Some(username.to_string()),
-                    password: Some(password.to_string()),
-                }),
-            ),
-        };
+        let (credential_name, adhoc_credentials) =
+            target.credentials.variables(|username, password| reboot_device::AdhocCredentials {
+                username,
+                password,
+            });
         let result = query_authenticated::<RebootDevice, _>(
             scope.clone(),
             reboot_device::Variables {
