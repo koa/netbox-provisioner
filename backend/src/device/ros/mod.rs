@@ -1474,7 +1474,9 @@ impl WifiDeviceDataTarget {
         current: Option<&WifiDeviceDataCurrent>,
         capsman_certificates: &[AsciiString],
         radio_package: Option<RadioPackage>,
-    ) -> Result<(), SetupError> {
+        bound_radios: &[AsciiString],
+    ) -> Result<Vec<String>, SetupError> {
+        let mut warnings = Vec::new();
         // without a package of `/interface/wifi`, its radios are what one left (a wAP ac on
         // `wireless` now): inactive, but keeping their names, which the `wlan<N>` need
         let drivers = radio_package.is_some_and(RadioPackage::is_wifi);
@@ -1512,35 +1514,30 @@ impl WifiDeviceDataTarget {
             if wlan_vlans == WlanVlans::PerWlan && !tags && has_radios {
                 return Err(SetupError::WlanVlansNotTagged(device.name().into()));
             }
+            // a configuration per datapath (`None`: none, an access port), the first `capsman`
+            let mut cap_configurations: Vec<(Option<AsciiString>, AsciiString)> = Vec::new();
             for interface in device.interfaces() {
                 let Some(port @ PhysicalPortId::Wifi(_)) = interface.external_port() else {
                     continue;
                 };
+                let default_name = AsciiString::from(port.to_string());
                 let radio = self
                     .wifi
-                    .get_mut(&Some(AsciiString::from(port.to_string())))
+                    .get_mut(&Some(default_name.clone()))
                     .ok_or(SetupError::PortNotFound(port))?;
-                radio.configuration_manager = Some(WifiManagement::Capsman);
-                let Some((name, bridge)) = l2.placement_of_port(port) else {
-                    continue;
-                };
-                radio.name = name.clone();
+                let placement = l2.placement_of_port(port);
                 // with a VLAN per WLAN, the controller's configurations have them
-                let vlan = match (bridge, wlan_bridge, wlan_vlans) {
+                let vlan = match (placement.and_then(|(_, bridge)| bridge), wlan_bridge, wlan_vlans) {
                     (None, Some(_), WlanVlans::One(Some(vlan))) if tags => Some(vlan),
                     _ => None,
                 };
-                radio.datapath_vlan_id = vlan.map(HasNone::Value);
-                let bridge = match bridge {
-                    Some(bridge) => Some(bridge),
+                let bridge = match placement {
+                    None => None,
+                    Some((_, Some(bridge))) => Some(bridge),
                     // an access port of the bridge, which `setup_l2` adds
-                    None if !tags => None,
-                    None => wlan_bridge,
+                    Some((_, None)) if !tags => None,
+                    Some((_, None)) => wlan_bridge,
                 };
-                radio.datapath = bridge.cloned();
-                // reported with the datapath's bridge (the factory CAP configuration's
-                // `bridgeLocal`), which is set to the same
-                radio.datapath_bridge = bridge.cloned();
                 if let Some(bridge) = bridge {
                     let datapath = &mut self.datapath.entry(bridge.clone()).or_default().0;
                     datapath.name = bridge.clone();
@@ -1550,6 +1547,79 @@ impl WifiDeviceDataTarget {
                     // virtual interfaces of the CAP use the one of the first radio
                     self.cap.slaves_datapath.get_or_insert_with(|| bridge.clone());
                 }
+                let configuration_name = match cap_configurations
+                    .iter()
+                    .find(|(datapath, _)| datapath.as_ref() == bridge)
+                {
+                    Some((_, name)) => name.clone(),
+                    None => {
+                        let name = match (cap_configurations.is_empty(), bridge) {
+                            (true, _) => AsciiString::from("capsman"),
+                            (false, Some(bridge)) => format!("capsman-{bridge}").as_str().into(),
+                            (false, None) => AsciiString::from("capsman-local"),
+                        };
+                        cap_configurations.push((bridge.cloned(), name.clone()));
+                        let configuration =
+                            &mut self.configuration.entry(name.clone()).or_default().0;
+                        configuration.name = name.clone();
+                        configuration.disabled = false;
+                        configuration.manager = Some(WifiManagement::Capsman);
+                        configuration.datapath = bridge.cloned();
+                        // reported with the datapath's values, which are set to the same
+                        configuration.datapath_bridge = bridge.cloned();
+                        configuration.datapath_vlan_id = vlan.map(HasNone::Value);
+                        name
+                    }
+                };
+                // A radio CAPsMAN has bound is dynamic and RouterOS refuses any change to it
+                // (7.23.8, also with the CAP off): it stays as it is, a different configuration
+                // is reported (`WifiDeviceDataTarget::bound_radio_warnings`).
+                if bound_radios.contains(&default_name) {
+                    if radio.configuration.as_ref() != Some(&configuration_name) {
+                        warnings.push(format!(
+                            "{default_name} ist an CAPsMAN gebunden und lässt sich nicht ändern: es verwendet die Konfiguration {} statt {configuration_name}",
+                            radio.configuration.as_ref().map(AsciiString::to_string).unwrap_or_else(|| "-".into()),
+                        ));
+                    }
+                    continue;
+                }
+                // under the name L2 gives it; the configuration has it all, which the radio
+                // reports as its own
+                radio.name = default_name;
+                radio.configuration = Some(configuration_name);
+                radio.configuration_manager = Some(WifiManagement::Capsman);
+                radio.datapath = None;
+                radio.datapath_bridge = bridge.cloned();
+                radio.datapath_vlan_id = vlan.map(HasNone::Value);
+            }
+        }
+        // what a bound radio uses stays, and with it its datapath
+        for radio in current.iter().flat_map(|current| current.wifi.iter()) {
+            let bound = radio
+                .default_name
+                .as_ref()
+                .is_some_and(|name| bound_radios.contains(name));
+            let Some(name) = radio.data.configuration.as_ref().filter(|_| bound) else {
+                continue;
+            };
+            let Some(used) = current
+                .iter()
+                .flat_map(|current| current.configuration.iter())
+                .find(|configuration| &configuration.0.name == name)
+            else {
+                continue;
+            };
+            let configuration = self
+                .configuration
+                .entry(name.clone())
+                .or_insert_with(|| used.clone());
+            if let Some(datapath) = configuration.0.datapath.clone()
+                && let Some(used) = current
+                    .iter()
+                    .flat_map(|current| current.datapath.iter())
+                    .find(|used| used.0.name == datapath)
+            {
+                self.datapath.entry(datapath).or_insert_with(|| used.clone());
             }
         }
         if let Some(group) = device.wlan_controller_of() {
@@ -1600,7 +1670,7 @@ impl WifiDeviceDataTarget {
                     (!slaves.is_empty()).then(|| slaves.iter().cloned().collect());
             }
         }
-        Ok(())
+        Ok(warnings)
     }
 }
 

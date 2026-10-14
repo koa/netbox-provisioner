@@ -244,8 +244,15 @@ get no DHCP), so they are static access ports of that bridge instead
 carry each WLAN's `datapath.vlan-id` and the CAP's datapath only the bridge (MikroTik's CAPsMAN
 VLAN example; no 802.11ax device in the lab to try it); a `wifi-qcom-ac` CAP is refused then,
 it runs `wireless` instead with `wlan<N>` in NetBox (`hw_facts::runs_wireless`, the wAP ac).
-A radio CAPsMAN manages is flagged dynamic (mikrotik-model still reads it, its key being
-`default-name`) and reports `configuration=capsman`, which RouterOS provides
+A CAP's radio refers to a local `/interface/wifi/configuration` (`manager=capsman`, the
+datapath; `capsman` for the first datapath, `capsman-<bridge>` for others) and keeps its
+default name (`wifi1`; L2 names it so too): CAPsMAN binds it through that configuration. A
+bound radio is flagged dynamic and RouterOS refuses any change to it, also with the CAP off
+(hAP ax², 7.23.8: `can not change dynamic interface`), so it stays as read (`bound_radios`,
+from `InterfaceWifiState::dynamic`), the configuration and datapath it uses stay, and a
+different configuration than NetBox's is a warning before applying. What changes is the
+configuration it uses (`datapath=`), a plain entry. A bound radio reports
+`configuration=capsman` also where no such entry is (cAP ax, 7.23.7), which RouterOS provides
 (`provided_by_routeros`, the sort's seeds besides `lo`, `main` and the firewall chains).
 Moving to `wireless` leaves the `/interface/wifi` radios inactive under their names, so without a
 wifi package they get their default names back, and `/interface/wifi` mutations come before

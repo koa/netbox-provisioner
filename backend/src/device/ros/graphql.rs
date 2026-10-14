@@ -29,7 +29,7 @@ use mikrotik_model::{
     generator::Generator,
     hwconfig::DeviceType,
     model::{
-        CapsManManagerCfg, CertificateCfg, InterfaceWifiCapCfg, InterfaceWifiCapsmanCfg,
+        CapsManManagerCfg, CertificateCfg, InterfaceWifiCapCfg, InterfaceWifiCapsmanCfg, InterfaceWifiState,
         InterfaceWifiCapsmanState,
         ReferenceType, SystemIdentityCfg, SystemPackageState, SystemRouterboardState, YesNo,
     },
@@ -78,6 +78,11 @@ pub struct DeviceCfg {
     /// the legacy CAPsMAN, on a controller with CAPs of it
     capsman_current: Option<CapsManDeviceDataCurrent>,
     capsman_target: Option<CapsManDeviceDataTarget>,
+    /// the radios (default names) CAPsMAN has bound, which RouterOS flags dynamic and
+    /// refuses to change
+    bound_radios: Box<[AsciiString]>,
+    /// what `generate_from` couldn't bring in line (a bound radio)
+    wifi_warnings: Vec<String>,
 }
 
 impl DeviceCfg {
@@ -100,12 +105,13 @@ impl DeviceCfg {
             w60g_target.generate_from(device, &l2, self.w60g_current.as_ref())?;
         }
         if let Some(wifi_target) = self.wifi_target.as_mut() {
-            wifi_target.generate_from(
+            self.wifi_warnings = wifi_target.generate_from(
                 device,
                 &l2,
                 self.wifi_current.as_ref(),
                 &self.capsman_certificates,
                 self.radio_package,
+                &self.bound_radios,
             )?;
         }
         if let Some(capsman_target) = self.capsman_target.as_mut() {
@@ -195,7 +201,7 @@ impl DeviceCfg {
     ) -> Vec<String> {
         let ports = self.base_target.poe_switched_off(&self.base_current);
         if ports.is_empty() {
-            return Vec::new();
+            return self.wifi_warnings.clone();
         }
         let names = ports.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>();
         let powered = match raw().await {
@@ -207,7 +213,9 @@ impl DeviceCfg {
             info!("cannot read the PoE status: {error}");
             names.into_iter().collect()
         });
-        self.base_target.poe_warnings(&self.base_current, &powered)
+        let mut warnings = self.wifi_warnings.clone();
+        warnings.extend(self.base_target.poe_warnings(&self.base_current, &powered));
+        warnings
     }
 }
 
@@ -507,7 +515,8 @@ impl AccessibleDevice {
                 error: Some(
                     error
                         .map(|error| error.to_string())
-                        .unwrap_or_else(|| "not reachable".into())
+                        // `ApplyChecked` above has the reason
+                        .unwrap_or_else(|| "not checked".into())
                         .into(),
                 ),
             }),
@@ -674,16 +683,23 @@ impl DeviceCfg {
                     .iter()
                     .any(|certificate| capsman_certificates.contains(&certificate.name))
         };
-        let (wifi_current, wifi_target) = if needed.is_some_and(RadioPackage::is_wifi)
+        let (wifi_current, wifi_target, bound_radios) = if needed.is_some_and(RadioPackage::is_wifi)
             || device.wlan_controller_of().is_some()
             || wifi_left_on().await
         {
+                let bound_radios = collect_resource::<InterfaceWifiState>(client)
+                    .await?
+                    .into_iter()
+                    .filter(|radio| radio.dynamic == Some(true))
+                    .filter_map(|radio| radio.default_name)
+                    .collect();
                 (
                     Some(WifiDeviceDataCurrent::fetch(client).await?),
                     Some(WifiDeviceDataTarget::detect_device(client).await?),
+                    bound_radios,
                 )
             } else {
-                (None, None)
+                (None, None, Box::default())
             };
         // the 60 GHz radios have their own menu (in `wireless` too)
         let (w60g_current, w60g_target) = if needed == Some(RadioPackage::Wireless)
@@ -725,6 +741,8 @@ impl DeviceCfg {
             w60g_target,
             capsman_current,
             capsman_target,
+            bound_radios,
+            wifi_warnings: Vec::new(),
         })
     }
 }

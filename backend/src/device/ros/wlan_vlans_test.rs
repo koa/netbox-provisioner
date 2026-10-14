@@ -20,8 +20,11 @@ use crate::{
 use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
-    model::{CapsManDatapathVlanMode, ReferenceType},
-    resource::ResourceMutation,
+    model::{
+        CapsManDatapathVlanMode, InterfaceWifiConfigurationByName, InterfaceWifiDatapathByName,
+        ReferenceType, WifiManagement,
+    },
+    resource::{ResourceMutation, ResourceMutationOperation},
     value::HasNone,
 };
 use std::net::{IpAddr, Ipv4Addr};
@@ -169,7 +172,7 @@ fn wifi(
         certificate: Box::new([]),
     };
     let mut target = WifiDeviceDataTarget::new(model);
-    target.generate_from(device, &setup, Some(&current), &[], Some(package))?;
+    target.generate_from(device, &setup, Some(&current), &[], Some(package), &[])?;
     Ok(target)
 }
 
@@ -204,9 +207,101 @@ async fn ax_cap_tags_the_vlans_of_the_controller() {
     let datapath = &target.datapath.values().next().unwrap().0;
     assert_eq!(datapath.bridge, Some(HasNone::Value("bridge-caps".into())));
     assert_eq!(datapath.vlan_id, None);
+    // the radio refers to the local configuration, which CAPsMAN binds it through
+    let configuration = &target.configuration[&AsciiString::from("capsman")].0;
+    assert_eq!(configuration.manager, Some(WifiManagement::Capsman));
+    assert_eq!(configuration.datapath, Some("bridge-caps".into()));
     let radio = &target.wifi[&Some(AsciiString::from("wifi1"))];
+    assert_eq!(radio.name, AsciiString::from("wifi1"));
+    assert_eq!(radio.configuration, Some("capsman".into()));
+    assert_eq!(radio.datapath, None);
     assert_eq!(radio.datapath_vlan_id, None);
-    assert_eq!(radio.datapath, Some("bridge-caps".into()));
+}
+
+/// A radio CAPsMAN has bound can't be changed (7.23.8, also with the CAP off): it stays as it
+/// is, with the configuration and datapath it uses, and a different configuration is a
+/// warning. The configuration it uses is changed instead.
+#[tokio::test]
+async fn bound_radio_stays_and_its_configuration_is_changed() {
+    let [_, ap_ax, ..] = wlan_group(&[104, 105]).await;
+    let setup = L2Setup::new(&ap_ax, KeepNameGenerator).unwrap();
+    let mut radios = build_wifi_ports(b"C52iG-5HaxD2HaxD");
+    // wifi1 is the radio NetBox has, wifi2 is unknown to it
+    radios[0].data.configuration = Some("own".into());
+    radios[1].data.configuration = Some("capsman".into());
+    // reported from the configuration's datapath; `switch` is no bridge of NetBox's
+    for radio in radios.iter_mut() {
+        radio.data.datapath_bridge = Some("switch".into());
+    }
+    let configuration = |name: &str, datapath: &str| {
+        let mut configuration = InterfaceWifiConfigurationByName::default();
+        configuration.0.name = name.into();
+        configuration.0.manager = Some(WifiManagement::Capsman);
+        configuration.0.datapath = Some(datapath.into());
+        configuration
+    };
+    let datapath = |name: &str| {
+        let mut datapath = InterfaceWifiDatapathByName::default();
+        datapath.0.name = name.into();
+        datapath.0.bridge = Some(HasNone::Value("switch".into()));
+        datapath
+    };
+    let current = WifiDeviceDataCurrent {
+        provisioning: Box::new([]),
+        datapath: Box::new([datapath("dp-caps"), datapath("dp-own")]),
+        cap: Default::default(),
+        capsman: Default::default(),
+        wifi: radios.clone(),
+        configuration: Box::new([configuration("capsman", "dp-caps"), configuration("own", "dp-own")]),
+        certificate: Box::new([]),
+    };
+    let bound = [AsciiString::from("wifi1"), AsciiString::from("wifi2")];
+    let mut target = WifiDeviceDataTarget::new(b"C52iG-5HaxD2HaxD");
+    let warnings = target
+        .generate_from(&ap_ax, &setup, Some(&current), &[], Some(RadioPackage::WifiQcom), &bound)
+        .unwrap();
+    assert_eq!(target.wifi[&Some(AsciiString::from("wifi1"))], radios[0].data);
+    assert_eq!(target.wifi[&Some(AsciiString::from("wifi2"))], radios[1].data);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].starts_with("wifi1"), "{warnings:?}");
+    // `capsman` gets the datapath NetBox wants, `own` stays with its datapath
+    let capsman = &target.configuration[&AsciiString::from("capsman")].0;
+    assert_eq!(capsman.datapath, Some("bridge-caps".into()));
+    assert_eq!(target.configuration[&AsciiString::from("own")].0.datapath, Some("dp-own".into()));
+    assert!(target.datapath.contains_key(&AsciiString::from("dp-own")));
+    assert!(!target.datapath.contains_key(&AsciiString::from("dp-caps")));
+
+    // the old datapath goes only after the configuration left it
+    let mutations = target.generate_mutations(&current).unwrap();
+    let sorted = ResourceMutation::sort_mutations_with_provided_dependencies(
+        &mutations,
+        provided_by_routeros()
+            .into_iter()
+            .chain([(ReferenceType::Interface, b"bridge-caps".into())]),
+    )
+    .unwrap();
+    let position = |found: &dyn Fn(&ResourceMutation) -> bool| sorted.iter().position(|m| found(m)).unwrap();
+    let configuration_set = position(&|m| {
+        m.resource == b"interface/wifi/configuration" && m.fields.iter().any(|f| f.key == b"datapath")
+    });
+    let datapath_removal = position(&|m| {
+        m.resource == b"interface/wifi/datapath"
+            && matches!(&m.operation, ResourceMutationOperation::RemoveByKey(key) if key.value.as_ref() == b"dp-caps")
+    });
+    assert!(configuration_set < datapath_removal, "{sorted:?}");
+    let mut script = String::new();
+    let mut generator = mikrotik_model::generator::Generator::new(&mut script);
+    for mutation in sorted.iter() {
+        generator.append_mutation(mutation).unwrap();
+    }
+    println!("--- Szenario: gebundene Radios, ihre Konfiguration bekommt den Datapath ---\n{script}");
+    // nothing set on the bound radios
+    assert!(
+        !sorted
+            .iter()
+            .any(|m| m.resource == b"interface/wifi" && !m.fields.is_empty()),
+        "{sorted:?}"
+    );
 }
 
 /// A wAP ac on `wifi-qcom-ac` can't tag the VLANs, so it can't be in the group.
@@ -234,7 +329,7 @@ async fn controller_without_radios_as_ap_is_not_refused() {
     let setup = L2Setup::new(&controller, KeepNameGenerator).unwrap();
     let mut target = WifiDeviceDataTarget::new(b"CCR2004-1G-12S+2XS");
     target
-        .generate_from(&controller, &setup, None, &[], package)
+        .generate_from(&controller, &setup, None, &[], package, &[])
         .unwrap();
 }
 
@@ -279,7 +374,7 @@ async fn ac_cap_moving_to_wireless_frees_the_names() {
         certificate: Box::new([]),
     };
     let mut wifi = WifiDeviceDataTarget::new(b"RBwAPG-5HacD2HnD");
-    wifi.generate_from(&ap_legacy, &setup, Some(&current), &[], Some(RadioPackage::Wireless))
+    wifi.generate_from(&ap_legacy, &setup, Some(&current), &[], Some(RadioPackage::Wireless), &[])
         .unwrap();
     for name in ["wifi1", "wifi2"] {
         assert_eq!(wifi.wifi[&Some(AsciiString::from(name))].name, AsciiString::from(name));
@@ -385,7 +480,7 @@ async fn cap_radios_managed_by_capsman_sort() {
     };
     let mut target = WifiDeviceDataTarget::new(b"C52iG-5HaxD2HaxD");
     target
-        .generate_from(&ap_ax, &setup, Some(&current), &[], Some(RadioPackage::WifiQcom))
+        .generate_from(&ap_ax, &setup, Some(&current), &[], Some(RadioPackage::WifiQcom), &[])
         .unwrap();
     let mutations = target.generate_mutations(&current).unwrap();
     assert!(
@@ -407,10 +502,7 @@ async fn cap_radios_managed_by_capsman_sort() {
 /// datapath is removed after the radio drops it (RouterOS refuses while a radio uses it).
 #[test]
 fn datapath_is_removed_after_the_radio_drops_it() {
-    use mikrotik_model::{
-        model::InterfaceWifiDatapathByName,
-        resource::{Updatable, generate_add_update_remove_by_key},
-    };
+    use mikrotik_model::resource::{Updatable, generate_add_update_remove_by_key};
     let target_radios = build_wifi_ports(b"C52iG-5HaxD2HaxD");
     let mut current_radios = target_radios.clone();
     for radio in current_radios.iter_mut() {

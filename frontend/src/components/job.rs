@@ -300,7 +300,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::FallbackLeft(left) => format!(
             "{}: das Gerät lädt in etwa {} s das Backup von vor dem Anwenden und startet neu",
             match &left.error {
-                Some(error) => format!("Gerät nicht erreichbar ({error})"),
+                Some(error) => format!("Fallback bleibt ({error})"),
                 None => "Abgebrochen, der Fallback bleibt".into(),
             },
             seconds(left.fires_in)

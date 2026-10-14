@@ -309,7 +309,13 @@ impl<G: NameGenerator> L2Setup<G> {
             }
             let mut vlan_added = false;
             if let Some(port) = interface.external_port() {
-                let name = name_generator.generate_interface_name(&interface);
+                // a CAP's radio keeps its name: CAPsMAN binds it, and RouterOS refuses to
+                // rename a bound radio
+                let name = if matches!(port, PhysicalPortId::Wifi(_)) && device.wifi_cap_of().is_some() {
+                    Cow::Owned(port.to_string())
+                } else {
+                    name_generator.generate_interface_name(&interface)
+                };
                 for (vlan, port) in interface
                     .tagged_vlans()
                     .map(|vlan| {
