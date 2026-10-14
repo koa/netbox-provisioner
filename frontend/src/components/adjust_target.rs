@@ -1,4 +1,5 @@
 use crate::error::FrontendError;
+use crate::i18n::target as t;
 use crate::graphql::authenticated::{AdjustTargetListCredentials, adjust_target_list_credentials};
 use crate::graphql::query_authenticated_response;
 use log::{error, info};
@@ -230,7 +231,7 @@ impl Component for AdjustTarget {
                             message: None,
                             state: InputState::Success,
                         },
-                        Err(e) => ValidationResult::error(format!("{}", e)),
+                        Err(_) => ValidationResult::error(t::INVALID_ADDRESS),
                     }
                 }
             })
@@ -251,22 +252,22 @@ impl Component for AdjustTarget {
         html! {
             <Form>
                 <FormGroupValidated<TextInput>
-                    label="IP Address"
+                    label={t::ADDRESS}
                     required=true
                     validator={ip_validator}>
                     <TextInput
                         value={ip_address}
                         onchange={ip_change}
-                        placeholder="Alternate IP Address"
+                        placeholder={t::ADDRESS_PLACEHOLDER}
                     />
                 </FormGroupValidated<TextInput>>
-                <FormGroup label="Defined Credentials">
+                <FormGroup label={t::CREDENTIALS}>
                     <SimpleSelect<Box<str>> selected={selected_credential} entries={defined_credentials} onselect={on_change_credential}/>
                 </FormGroup>
-                <FormGroup label="Adhoc Username">
+                <FormGroup label={t::USERNAME}>
                     <TextInput disabled={!enable_adhoc} onchange={on_change_username} value={username} />
                 </FormGroup>
-                <FormGroup label="Adhoc Password">
+                <FormGroup label={t::PASSWORD}>
                     <TextInput disabled={!enable_adhoc} onchange={on_change_password} value={password} />
                 </FormGroup>
             </Form>

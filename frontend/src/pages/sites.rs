@@ -1,4 +1,5 @@
 use crate::{
+    i18n,
     error::FrontendError,
     graphql::{
         authenticated::{ListSites, list_sites},
@@ -45,10 +46,7 @@ impl Component for Sites {
                         id: site.id as u32,
                         view: SiteView::Devices,
                     };
-                    let count = match site.devices.len() {
-                        1 => "1 Gerät".to_string(),
-                        n => format!("{n} Geräte"),
-                    };
+                    let count = i18n::pages::device_count(site.devices.len());
                     html! {
                         <Card key={site.id}>
                             <CardHeader><CardTitle>

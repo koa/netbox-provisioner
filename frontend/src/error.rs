@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 
-use log::error;
+use crate::i18n::error as t;
 use patternfly_yew::prelude::{Alert, AlertGroup, AlertType};
 use reqwest::header::InvalidHeaderValue;
 use thiserror::Error;
@@ -62,19 +62,36 @@ pub enum FrontendError {
 }
 
 impl FrontendError {
+    /// One line for the user, where there is no room for [`Self::to_html`] (`Display` is for
+    /// the log).
+    pub fn message(&self) -> String {
+        match self {
+            FrontendError::JS(error) => format!("{}: {error}", t::BROWSER),
+            FrontendError::Serde(error) => format!("{}: {error}", t::UNREADABLE),
+            FrontendError::Graphql(errors) => format!(
+                "{}: {}",
+                t::SERVER,
+                errors.iter().map(|error| error.message.as_str()).collect::<Vec<_>>().join("; ")
+            ),
+            FrontendError::Reqwest(error) => format!("{}: {error}", t::UNREACHABLE),
+            FrontendError::Server { status, text } => format!("{}: {text}", t::refused(*status)),
+            FrontendError::InvalidHeader(error) => format!("{}: {error}", t::HEADER),
+            FrontendError::MissingData => t::MISSING_DATA_TEXT.into(),
+        }
+    }
     pub fn to_html(&self) -> Html {
         match self {
             FrontendError::JS(js_error) => {
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title="Javascript Error" r#type={AlertType::Danger}><p>{js_error.to_string()}</p></Alert>
+                        <Alert inline=true title={t::BROWSER} r#type={AlertType::Danger}><p>{js_error.to_string()}</p></Alert>
                     </AlertGroup>
                 }
             }
             FrontendError::Serde(serde_error) => {
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title="Serialization Error" r#type={AlertType::Danger}><p>{serde_error.to_string()}</p></Alert>
+                        <Alert inline=true title={t::UNREADABLE} r#type={AlertType::Danger}><p>{serde_error.to_string()}</p></Alert>
                     </AlertGroup>
                 }
             }
@@ -82,7 +99,7 @@ impl FrontendError {
                 let graphql_error = graphql_error.clone();
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title="Error from Server" r#type={AlertType::Danger}>
+                        <Alert inline=true title={t::SERVER} r#type={AlertType::Danger}>
                             <ul>
                         {
                           graphql_error.iter().map(|error| {
@@ -96,7 +113,7 @@ impl FrontendError {
                                             .join("/")
                                     )
                                 {
-                                    html!{<li>{message}{" at "}{path}</li>}
+                                    html!{<li>{t::at(message, &path)}</li>}
                                 }else{
                                     html!{<li>{message}</li>}
                                 }
@@ -110,28 +127,28 @@ impl FrontendError {
             FrontendError::Reqwest(reqwest_error) => {
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title="Cannot call Server" r#type={AlertType::Danger}><p>{reqwest_error.to_string()}</p></Alert>
+                        <Alert inline=true title={t::UNREACHABLE} r#type={AlertType::Danger}><p>{reqwest_error.to_string()}</p></Alert>
                     </AlertGroup>
                 }
             }
             FrontendError::Server { status, text } => {
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title={server_refused(*status)} r#type={AlertType::Danger}><p>{text}</p></Alert>
+                        <Alert inline=true title={t::refused(*status)} r#type={AlertType::Danger}><p>{text}</p></Alert>
                     </AlertGroup>
                 }
             }
             FrontendError::InvalidHeader(header_error) => {
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title="Header Error" r#type={AlertType::Danger}><p>{header_error.to_string()}</p></Alert>
+                        <Alert inline=true title={t::HEADER} r#type={AlertType::Danger}><p>{header_error.to_string()}</p></Alert>
                     </AlertGroup>
                 }
             }
             FrontendError::MissingData => {
                 html! {
                     <AlertGroup>
-                        <Alert inline=true title="Missing Data" r#type={AlertType::Danger}>{"No data received from server"}</Alert>
+                        <Alert inline=true title={t::MISSING_DATA} r#type={AlertType::Danger}><p>{t::MISSING_DATA_TEXT}</p></Alert>
                     </AlertGroup>
                 }
             }
@@ -139,13 +156,3 @@ impl FrontendError {
     }
 }
 
-/// What a status the server answers instead of a result means for the user: `401` and `403`
-/// come from the token check (`binary`: the token, or the user not in `auth_users`; the server
-/// log has the reason).
-fn server_refused(status: u16) -> String {
-    match status {
-        401 => "Nicht angemeldet: bitte neu anmelden".into(),
-        403 => "Kein Zugriff: Anmeldung abgelehnt oder Benutzer nicht freigegeben".into(),
-        status => format!("Server antwortet {status}"),
-    }
-}

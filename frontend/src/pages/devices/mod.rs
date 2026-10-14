@@ -1,4 +1,5 @@
 use crate::{
+    i18n,
     error::FrontendError,
     graphql::{
         authenticated::{PingDevice, SiteDevices, ping_device, site_devices},
@@ -214,7 +215,7 @@ impl Component for DeviceEntryCard {
                 device_type,
                 serial,
             } => (
-                html!({format!("{:.2}ms", ping_result.duration as f32 / 1000.0 / 1000.0)}),
+                html!({i18n::pages::ping(ping_result.duration)}),
                 html!({device_type.as_ref()}),
                 Some(html!(<div class="device-detected-serial">{serial.as_ref()}</div>)),
             ),

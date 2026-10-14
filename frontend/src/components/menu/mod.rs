@@ -1,6 +1,7 @@
 //! The breadcrumb, after cable-editor: every item a dropdown leading to its siblings (another
 //! site, another device of the site).
 use crate::{
+    i18n,
     error::FrontendError,
     graphql::{
         authenticated::{ListSites, list_sites},
@@ -107,8 +108,8 @@ impl Component for Navigation {
             None => html!(<BreadcrumbItem><Spinner/></BreadcrumbItem>),
             Some(Err(error)) => html! {
                 <BreadcrumbItem>
-                    <span class="menu-error" title={error.to_string()}>
-                        {Icon::ExclamationCircle}{" Nicht geladen"}
+                    <span class="menu-error" title={error.message()}>
+                        {Icon::ExclamationCircle}{" "}{i18n::menu::NOT_LOADED}
                     </span>
                 </BreadcrumbItem>
             },
@@ -142,7 +143,7 @@ impl Navigation {
             .and_then(|id| sites.iter().find(|site| site.id as u32 == id));
         let overview = MenuEntry {
             selected: false,
-            text: "Übersicht".into(),
+            text: i18n::menu::OVERVIEW.into(),
             target: AppRoute::Sites,
         };
         let site_entries = Some(overview)
@@ -156,11 +157,7 @@ impl Navigation {
                 },
             }))
             .collect::<Box<[_]>>();
-        let site_title = match (props.site, site) {
-            (_, Some(site)) => format!("Site: {}", site.name),
-            (Some(_), None) => "Site: unbekannt".to_string(),
-            (None, None) => "Site: -".to_string(),
-        };
+        let site_title = i18n::menu::site(site.map(|site| site.name.as_str()), props.site.is_some());
         let site_menu = html! {
             <BreadcrumbItem>
                 <MenuDropdown title={site_title} entries={site_entries}/>
@@ -174,7 +171,7 @@ impl Navigation {
             .and_then(|id| site.devices.iter().find(|device| device.id as u32 == id));
         let device_entries = Some(MenuEntry {
             selected: false,
-            text: "Alle Geräte".into(),
+            text: i18n::menu::ALL_DEVICES.into(),
             target: AppRoute::Site {
                 id: site.id as u32,
                 view: SiteView::Devices,
@@ -187,11 +184,8 @@ impl Navigation {
             target: AppRoute::device(site.id as u32, entry.id as u32),
         }))
         .collect::<Box<[_]>>();
-        let device_title = match (props.device, device) {
-            (_, Some(device)) => format!("Gerät: {}", device.name),
-            (Some(_), None) => "Gerät: unbekannt".to_string(),
-            (None, None) => "Gerät: -".to_string(),
-        };
+        let device_title =
+            i18n::menu::device(device.map(|device| device.name.as_str()), props.device.is_some());
         html! {
             <>
                 {site_menu}

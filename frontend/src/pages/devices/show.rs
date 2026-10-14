@@ -4,6 +4,11 @@ use crate::{
         job::JobView,
     },
     error::FrontendError,
+    i18n::{
+        common::CANCEL,
+        device::{self as t, setup},
+        target,
+    },
     graphql::{
         authenticated::{
             ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, DeviceJobs, DeviceOverview,
@@ -211,8 +216,8 @@ impl Component for ShowDevice {
             // a job runs, or writing is locked
             let running = self.job_running || !data.allow_apply;
             let locked = (!data.allow_apply).then(|| html! {
-                <Alert inline=true title="Schreiben auf Geräte ist gesperrt" r#type={AlertType::Info}>
-                    <p>{"Anwenden, Ersteinrichtung, Update und Neustart gibt erst "}<code>{"allow_apply: true"}</code>{" in der config.yaml des Provisioners frei."}</p>
+                <Alert inline=true title={t::LOCKED} r#type={AlertType::Info}>
+                    <p>{t::LOCKED_BEFORE}<code>{"allow_apply: true"}</code>{t::LOCKED_AFTER}</p>
                 </Alert>
             });
             let (board, cfg_update) = data
@@ -233,9 +238,9 @@ impl Component for ShowDevice {
                 let entries: Vec<Box<str>> = routeros.channels.iter().map(channel_label).collect();
                 let action = selected.filter(|c| c.update).map(|c| {
                     if c.upgrade {
-                        format!("Auf {} aktualisieren", c.newest)
+                        t::update_to(&c.newest)
                     } else {
-                        "Pakete anpassen".to_string()
+                        t::ADJUST_PACKAGES.to_string()
                     }
                 });
                 // without changing the version, whatever the channel; unless that is what the
@@ -243,9 +248,9 @@ impl Component for ShowDevice {
                 let adjust_packages = routeros.adjust_packages
                     && !selected.is_some_and(|c| c.update && !c.upgrade);
                 html! {<>
-                <dt>{"RouterOS"}</dt><dd>
+                <dt>{t::ROUTEROS}</dt><dd>
                     { routeros.version.clone() }
-                    {format!(" (Pakete: {}; nach dem Update: {})", routeros.packages.join(", "), routeros.wanted.join(", "))}
+                    {t::packages(&routeros.packages, &routeros.wanted)}
                     <div class="routeros-update">
                         <SimpleSelect<Box<str>>
                             selected={selected.map(channel_label)}
@@ -261,13 +266,13 @@ impl Component for ShowDevice {
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::Update)}
                             />
                         } else if !adjust_packages {
-                            {" aktuell"}
+                            {t::UP_TO_DATE}
                         }
                         if adjust_packages {
                             {" "}
                             <Button
                                 variant={ButtonVariant::Secondary}
-                                label="Pakete anpassen"
+                                label={t::ADJUST_PACKAGES}
                                 disabled={update_running || running}
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::AdjustPackages)}
                             />
@@ -275,23 +280,23 @@ impl Component for ShowDevice {
                     </div>
                     <div class="device-reboot">
                         if self.confirm_reboot {
-                            {"Das Gerät und was es über PoE versorgt, ist während des Neustarts weg. "}
+                            {t::REBOOT_CONFIRM}
                             <Button
                                 variant={ButtonVariant::Danger}
-                                label="Jetzt neu starten"
+                                label={t::REBOOT_NOW}
                                 disabled={running}
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::Reboot)}
                             />
                             {" "}
                             <Button
                                 variant={ButtonVariant::Link}
-                                label="Abbrechen"
+                                label={CANCEL}
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmReboot(false))}
                             />
                         } else {
                             <Button
                                 variant={ButtonVariant::Secondary}
-                                label="Neu starten"
+                                label={t::REBOOT}
                                 disabled={running}
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmReboot(true))}
                             />
@@ -306,13 +311,13 @@ impl Component for ShowDevice {
                     (Some(plan), _) => {
                         let name = data.configured_name.clone();
                         let candidates = match &self.candidates {
-                            None => html!(<p><Spinner size={SpinnerSize::Md}/>{format!(" {} sucht Geräte an {} …", plan.neighbor, plan.neighbor_port)}</p>),
-                            Some(Err(error)) => html!(<p>{format!("{} kann nicht nach Geräten suchen: {error}", plan.neighbor)}</p>),
-                            Some(Ok(found)) if found.is_empty() => html!(<p>{format!("{} sieht an {} kein Gerät.", plan.neighbor, plan.neighbor_port)}</p>),
+                            None => html!(<p><Spinner size={SpinnerSize::Md}/>{setup::searching(&plan.neighbor, &plan.neighbor_port)}</p>),
+                            Some(Err(error)) => html!(<p>{setup::search_failed(&plan.neighbor, error)}</p>),
+                            Some(Ok(found)) if found.is_empty() => html!(<p>{setup::nothing_found(&plan.neighbor, &plan.neighbor_port)}</p>),
                             Some(Ok(found)) => html! {
                                 <table class="bootstrap-candidates">
                                     <thead><tr>
-                                        <th>{"Identity"}</th><th>{"Board"}</th><th>{"RouterOS"}</th><th>{"MAC"}</th><th>{"Port"}</th><th/>
+                                        <th>{setup::IDENTITY}</th><th>{setup::BOARD}</th><th>{setup::ROUTEROS}</th><th>{setup::MAC}</th><th>{setup::PORT}</th><th/>
                                     </tr></thead>
                                     <tbody>
                                     { for found.iter().map(|c| {
@@ -322,7 +327,7 @@ impl Component for ShowDevice {
                                             <td><code>{&c.mac}</code></td><td>{&c.interface}</td>
                                             <td><Button
                                                 variant={ButtonVariant::Secondary}
-                                                label={format!("Als {name} einrichten")}
+                                                label={setup::set_up_as(&name)}
                                                 disabled={bootstrap_running}
                                                 onclick={ctx.link().callback(move |_| ShowDeviceMessage::Bootstrap(mac.clone()))}
                                             /></td>
@@ -334,39 +339,36 @@ impl Component for ShowDevice {
                         };
                         let manual = self.manual_mac.clone();
                         html! {<>
-                            <p>{format!(
-                                "Ersteinrichtung: {} öffnet an {} MAC-Telnet zum gewählten Gerät, meldet sich an, setzt das Passwort und gibt dessen {} die Adresse {}.",
-                                plan.neighbor, plan.neighbor_port, plan.port, plan.address
-                            )}</p>
+                            <p>{setup::plan(&plan.neighbor, &plan.neighbor_port, &plan.port, &plan.address)}</p>
                             {candidates}
                             <div class="bootstrap-manual">
                                 <TextInput
                                     value={self.manual_mac.clone()}
-                                    placeholder="MAC-Adresse"
+                                    placeholder={setup::MAC_PLACEHOLDER}
                                     onchange={ctx.link().callback(ShowDeviceMessage::ManualMac)}
                                 />
                                 <Button
                                     variant={ButtonVariant::Secondary}
-                                    label="Mit dieser MAC einrichten"
+                                    label={setup::WITH_MAC}
                                     disabled={bootstrap_running || manual.trim().is_empty()}
                                     onclick={ctx.link().callback(move |_| ShowDeviceMessage::Bootstrap(manual.clone()))}
                                 />
                             </div>
                         </>}
                     }
-                    (None, Some(problem)) => html!(<p>{format!("Keine Ersteinrichtung möglich: {problem}")}</p>),
+                    (None, Some(problem)) => html!(<p>{setup::impossible(problem)}</p>),
                     (None, None) => html!(),
                 };
-                html!(<Alert inline=true title="Gerät nicht erreichbar" r#type={AlertType::Warning}>
-                    <p>{"Unter „Change Target“ eine andere Adresse oder andere Zugangsdaten wählen."}</p>
+                html!(<Alert inline=true title={t::UNREACHABLE} r#type={AlertType::Warning}>
+                    <p>{t::UNREACHABLE_HINT}</p>
                     {setup}
                 </Alert>)
             } else if !generated {
-                html!(<Alert inline=true title="Keine Konfiguration erzeugt" r#type={AlertType::Warning}>
-                    <p>{"Der Fehler steht oben; ältere RouterOS-Versionen melden Felder, die das Modell nicht kennt."}</p>
+                html!(<Alert inline=true title={t::NOT_GENERATED} r#type={AlertType::Warning}>
+                    <p>{t::NOT_GENERATED_HINT}</p>
                 </Alert>)
             } else if nothing_to_do {
-                html!(<Alert inline=true title="Gerät entspricht NetBox" r#type={AlertType::Success}/>)
+                html!(<Alert inline=true title={t::IN_LINE} r#type={AlertType::Success}/>)
             } else {
                 html! {<>
                     { for warnings.iter().map(|warning| html!(
@@ -378,14 +380,14 @@ impl Component for ShowDevice {
             html! {<>
             {locked}
             <dl class="device-overview">
-            <dt>{"Name"}</dt><dd>{ data.configured_name.as_ref() }</dd>
-            <dt>{"Board"}</dt><dd>{ board }</dd>
+            <dt>{t::NAME}</dt><dd>{ data.configured_name.as_ref() }</dd>
+            <dt>{t::BOARD}</dt><dd>{ board }</dd>
             {routeros}
-            <dt>{"Änderungen"}</dt><dd>
+            <dt>{t::CHANGES}</dt><dd>
                 {update}
                 <Button
                     variant={ButtonVariant::Primary}
-                    label="Anwenden"
+                    label={t::APPLY}
                     disabled={nothing_to_do || running || update_running}
                     onclick={ctx.link().callback(|_| ShowDeviceMessage::Apply)}
                 />
@@ -398,7 +400,7 @@ impl Component for ShowDevice {
         });
         html! {
             <>
-            <ExpandableSection toggle_text_hidden="Change Target" toggle_text_expanded="Hide Target Selection">
+            <ExpandableSection toggle_text_hidden={target::SHOW} toggle_text_expanded={target::HIDE}>
                 <AdjustTarget onchange={ctx.link().callback(ShowDeviceMessage::AdjustTarget)} value={self.alternate_target.clone()} />
             </ExpandableSection>
             {error}
@@ -506,7 +508,7 @@ fn fetch_candidates(scope: Scope<ShowDevice>, id: u32) {
             bootstrap_candidates::Variables { id: id as i64 },
         )
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.message())
         .map(|data| {
             data.topology
                 .device_by_id
@@ -541,7 +543,7 @@ fn channel_label(
         device_overview::Channel::DEVELOPMENT => "development",
         device_overview::Channel::Other(other) => other,
     };
-    format!("{name}: {}", channel.newest).into()
+    t::channel(name, &channel.newest).into()
 }
 
 /// Updates to the newest release of `channel`, or without one only adjusts the packages.
@@ -626,19 +628,9 @@ fn running_job(scope: Scope<ShowDevice>, id: u32) {
 /// A warning of `generateCfg`, as the operator reads it before applying.
 fn describe_warning(warning: &Warning) -> String {
     match warning {
-        Warning::PoeCut(cut) => {
-            let port = if cut.port == cut.default_name {
-                cut.port.clone()
-            } else {
-                format!("{} ({})", cut.port, cut.default_name)
-            };
-            format!("Soll der Strom an {port} wirklich abgeschaltet werden?")
+        Warning::PoeCut(cut) => t::warning::poe_cut(&cut.port, &cut.default_name),
+        Warning::RadioBound(bound) => {
+            t::warning::radio_bound(&bound.radio, bound.configuration.as_deref(), &bound.expected)
         }
-        Warning::RadioBound(bound) => format!(
-            "{} ist an CAPsMAN gebunden und lässt sich nicht ändern: es verwendet die Konfiguration {} statt {}",
-            bound.radio,
-            bound.configuration.as_deref().unwrap_or("-"),
-            bound.expected
-        ),
     }
 }

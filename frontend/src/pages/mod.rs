@@ -1,4 +1,5 @@
 use crate::{
+    i18n,
     error::FrontendError,
     graphql::{
         anonymous::{Settings, settings},
@@ -172,10 +173,10 @@ impl Component for Login {
         };
         html! {
             <Bullseye>
-                <Alert inline=true title={format!("Anmeldung fehlgeschlagen: {failure}")} r#type={AlertType::Danger}>
+                <Alert inline=true title={i18n::login::failed(&failure)} r#type={AlertType::Danger}>
                     <Button
                         variant={ButtonVariant::Secondary}
-                        label="Erneut anmelden"
+                        label={i18n::login::AGAIN}
                         onclick={ctx.link().callback(|_| LoginMsg::Start)}
                     />
                 </Alert>

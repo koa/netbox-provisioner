@@ -1,7 +1,8 @@
 //! A job of the backend (an update, an apply, a setup): its events while it runs, asked for every second, worded
-//! here; with a button to cancel it.
+//! by `i18n::job`; with a button to cancel it.
 use crate::{
     error::FrontendError,
+    i18n::{common::CANCEL, job as t},
     graphql::{
         authenticated::{
             CancelJob, JobEvents, cancel_job,
@@ -113,7 +114,7 @@ impl Component for JobView {
                         <Spinner size={SpinnerSize::Md}/>{" "}
                         <Button
                             variant={ButtonVariant::Secondary}
-                            label={if self.cancelling { "Wird abgebrochen …" } else { "Abbrechen" }}
+                            label={if self.cancelling { t::CANCELLING } else { CANCEL }}
                             disabled={self.cancelling}
                             onclick={ctx.link().callback(|_| JobMessage::Cancel)}
                         />
@@ -166,16 +167,16 @@ fn poll(scope: Scope<JobView>, id: i64, alive: Rc<Cell<bool>>) {
 
 fn title(job: &JobEventsJob) -> (String, AlertType) {
     let what = match &job.kind {
-        JobKind::UPDATE => "RouterOS-Update",
-        JobKind::APPLY => "Anwenden",
-        JobKind::BOOTSTRAP => "Ersteinrichtung",
-        JobKind::REBOOT => "Neustart",
+        JobKind::UPDATE => t::UPDATE,
+        JobKind::APPLY => t::APPLY,
+        JobKind::BOOTSTRAP => t::BOOTSTRAP,
+        JobKind::REBOOT => t::REBOOT,
         JobKind::Other(other) => other,
     };
     let events = || job.events.iter().map(|event| &event.event);
     if job.state == JobState::DONE {
         if events().any(|e| matches!(e, Event::ApplyPlanned(planned) if planned.script.trim().is_empty())) {
-            return ("Nichts anzuwenden, das Gerät entspricht NetBox".into(), AlertType::Success);
+            return (t::NOTHING_TO_APPLY.into(), AlertType::Success);
         }
         let incomplete = events().any(|e| match e {
             Event::ApplyRunning(running) => running.error.is_some(),
@@ -184,33 +185,30 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
             _ => false,
         });
         if incomplete {
-            return ("Nicht alles wurde angewendet".into(), AlertType::Warning);
+            return (t::NOT_ALL_APPLIED.into(), AlertType::Warning);
         }
         if events().any(|e| matches!(e, Event::ApplyChecked(_))) {
-            return ("Angewendet, das Gerät entspricht jetzt NetBox".into(), AlertType::Success);
+            return (t::APPLIED.into(), AlertType::Success);
         }
         if let Some(address) = events().find_map(|e| match e {
             Event::SetupDone(done) => Some(&done.address),
             _ => None,
         }) {
-            return (
-                format!("Ersteinrichtung abgeschlossen, das Gerät antwortet an {address}"),
-                AlertType::Success,
-            );
+            return (t::set_up(address), AlertType::Success);
         }
     }
     match &job.state {
-        JobState::RUNNING => (format!("{what} läuft"), AlertType::Info),
+        JobState::RUNNING => (t::running(what), AlertType::Info),
         JobState::DONE => {
-            let done = job.events.iter().find_map(|event| match &event.event {
-                Event::UpdateDone(done) => Some(format!(": RouterOS {} → {}", done.from, done.to)),
+            let update = events().find_map(|event| match event {
+                Event::UpdateDone(done) => Some((done.from.as_str(), done.to.as_str())),
                 _ => None,
             });
-            (format!("{what} abgeschlossen{}", done.unwrap_or_default()), AlertType::Success)
+            (t::done(what, update), AlertType::Success)
         }
-        JobState::FAILED => (format!("{what} fehlgeschlagen"), AlertType::Danger),
-        JobState::CANCELLED => (format!("{what} abgebrochen"), AlertType::Warning),
-        JobState::Other(other) => (format!("{what}: {other}"), AlertType::Warning),
+        JobState::FAILED => (t::failed(what), AlertType::Danger),
+        JobState::CANCELLED => (t::cancelled(what), AlertType::Warning),
+        JobState::Other(other) => (t::other_state(what, other), AlertType::Warning),
     }
 }
 
@@ -218,14 +216,6 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
 fn elapsed(nanos: u64) -> String {
     let seconds = nanos / 1_000_000_000;
     format!("{}:{:02}", seconds / 60, seconds % 60)
-}
-
-fn list(items: &[String]) -> String {
-    if items.is_empty() {
-        "keine".into()
-    } else {
-        items.join(", ")
-    }
 }
 
 /// whole seconds
@@ -270,128 +260,63 @@ fn console(text: &str) -> Html {
 }
 
 fn describe(event: &JobEventsJobEvents) -> Html {
+    use t::event as e;
     let text = match &event.event {
-        Event::ApplyPlanned(planned) if planned.script.trim().is_empty() => {
-            "Nichts zu tun: das Gerät entspricht NetBox".to_string()
-        }
-        Event::ApplyPlanned(planned) => return script("Skript:", &planned.script),
-        Event::FallbackArmed(armed) => format!(
-            "Backup gespeichert: das Gerät lädt es in {} s, wenn der Provisioner es danach nicht erreicht",
-            seconds(armed.delay)
-        ),
+        Event::ApplyPlanned(planned) if planned.script.trim().is_empty() => e::NOTHING_TO_DO.into(),
+        Event::ApplyPlanned(planned) => return script(t::SCRIPT, &planned.script),
+        Event::FallbackArmed(armed) => e::fallback_armed(seconds(armed.delay)),
         Event::ApplyRunning(running) => match &running.error {
-            Some(error) => format!(
-                "Das Skript hat angehalten ({error}), die Zeilen davor sind angewendet; wartet bis zu {} s auf das Gerät",
-                seconds(running.timeout)
-            ),
-            None => format!(
-                "Das Skript läuft auf dem Gerät; wartet bis zu {} s, bis es NetBox entspricht",
-                seconds(running.timeout)
-            ),
+            Some(error) => e::script_stopped(error, seconds(running.timeout)),
+            None => e::script_running(seconds(running.timeout)),
         },
         Event::ApplyChecked(checked) => match &checked.error {
-            Some(error) => format!("Das Gerät lässt sich nicht prüfen: {error}"),
-            None if checked.remaining.trim().is_empty() => "Das Gerät entspricht NetBox".into(),
-            None => return script("Noch offen:", &checked.remaining),
+            Some(error) => e::not_checked(error),
+            None if checked.remaining.trim().is_empty() => e::IN_LINE.into(),
+            None => return script(t::REMAINING, &checked.remaining),
         },
-        Event::FallbackStopped(_) => {
-            "Fallback gestoppt: das Gerät ist mit der neuen Konfiguration erreichbar".into()
-        }
-        Event::FallbackLeft(left) => format!(
-            "{}: das Gerät lädt in etwa {} s das Backup von vor dem Anwenden und startet neu",
-            match (&left.reason, &left.error) {
-                (FallbackLeftReason::CANCELLED, _) => "Abgebrochen, der Fallback bleibt".into(),
-                (FallbackLeftReason::NOT_REACHED, _) => "Gerät nicht erreicht, der Fallback bleibt".into(),
-                (FallbackLeftReason::NOT_STOPPED, Some(error)) => {
-                    format!("Fallback lässt sich nicht stoppen ({error})")
-                }
-                (FallbackLeftReason::NOT_STOPPED, None) => "Fallback lässt sich nicht stoppen".into(),
-                (FallbackLeftReason::Other(other), _) => format!("Fallback bleibt ({other})"),
+        Event::FallbackStopped(_) => e::FALLBACK_STOPPED.into(),
+        Event::FallbackLeft(left) => e::fallback_left(
+            match &left.reason {
+                FallbackLeftReason::CANCELLED => e::FallbackLeft::Cancelled,
+                FallbackLeftReason::NOT_REACHED => e::FallbackLeft::NotReached,
+                FallbackLeftReason::NOT_STOPPED => e::FallbackLeft::NotStopped(left.error.as_deref()),
+                FallbackLeftReason::Other(other) => e::FallbackLeft::Other(other),
             },
-            seconds(left.fires_in)
+            seconds(left.fires_in),
         ),
-        Event::SetupStarted(setup) => format!(
-            "Konsole auf {}, MAC-Telnet an {} zu {}",
-            setup.neighbor,
-            setup.neighbor_port,
-            setup.macs.join(", ")
-        ),
+        Event::SetupStarted(setup) => e::setup_started(&setup.neighbor, &setup.neighbor_port, &setup.macs),
         Event::ConsoleOutput(output) => return console(&output.text),
-        Event::WaitingForApi(wait) => format!(
-            "Wartet bis zu {} s, bis das Gerät an {} die API öffnet",
-            seconds(wait.timeout),
-            wait.address
-        ),
-        Event::SetupDone(done) => format!("Das Gerät antwortet an {}", done.address),
+        Event::WaitingForApi(wait) => e::waiting_for_api(seconds(wait.timeout), &wait.address),
+        Event::SetupDone(done) => e::setup_done(&done.address),
         Event::RadiosReprovisioned(radios) => match &radios.error {
-            None => format!("{} Radios neu provisioniert ({})", radios.count, radios.menu),
-            Some(error) => format!("{} nicht neu provisioniert: {error}", radios.menu),
+            None => e::radios_reprovisioned(radios.count, &radios.menu),
+            Some(error) => e::radios_not_reprovisioned(&radios.menu, error),
         },
-        Event::PoeChain(chain) => {
-            let mut parts = Vec::new();
-            if !chain.suppliers.is_empty() {
-                parts.push(format!("über PoE versorgt von {}", chain.suppliers.join(", ")));
-            }
-            if !chain.consumers.is_empty() {
-                parts.push(format!("versorgt über PoE {}", chain.consumers.join(", ")));
-            }
-            format!("Das Gerät wird {}", parts.join(" und "))
-        }
+        Event::PoeChain(chain) => e::poe_chain(&chain.suppliers, &chain.consumers),
         Event::WaitingForPower(wait) => match &wait.reason {
-            PowerWait::SUPPLIER_REBOOTING => format!(
-                "Wartet, bis {} (versorgt das Gerät über PoE) nach seinem Neustart zurück ist",
-                wait.device
-            ),
-            PowerWait::CONSUMER_UPDATING => format!(
-                "Wartet mit dem Neustart, bis {} (über PoE versorgt) sein Update abgeschlossen hat",
-                wait.device
-            ),
-            PowerWait::Other(other) => format!("Wartet auf {} ({other})", wait.device),
+            PowerWait::SUPPLIER_REBOOTING => e::waiting_for_supplier(&wait.device),
+            PowerWait::CONSUMER_UPDATING => e::waiting_for_consumer(&wait.device),
+            PowerWait::Other(other) => e::waiting_for(&wait.device, other),
         },
-        Event::UpdateStart(start) => format!(
-            "RouterOS {} ({}), Pakete: {}",
-            start.version,
-            start.architecture,
-            list(&start.packages)
-        ),
-        Event::UpdateStepPlanned(step) => {
-            let mut text = format!("Update auf {}: {}", step.version, list(&step.files));
-            if !step.uninstall.is_empty() {
-                text.push_str(&format!("; entfernt {}", step.uninstall.join(", ")));
-            }
-            text
-        }
-        Event::SshPasswordLogin(ssh) if ssh.restored => {
-            format!("SSH: {}={} wieder gesetzt", ssh.setting, ssh.value)
-        }
-        Event::SshPasswordLogin(ssh) => format!(
-            "SSH: {}={} für den Upload (der Benutzer hat SSH-Schlüssel)",
-            ssh.setting, ssh.value
-        ),
-        Event::PackageDownloaded(package) => format!(
-            "{}: {:.1} MB heruntergeladen",
-            package.file,
-            package.bytes as f64 / 1_000_000.0
-        ),
-        Event::PackageUploaded(package) => format!("{}: auf das Gerät kopiert", package.file),
-        Event::Reboot(reboot) => format!(
-            "Neustart {}, wartet bis zu {} min, bis das Gerät zurück ist",
+        Event::UpdateStart(start) => e::update_start(&start.version, &start.architecture, &start.packages),
+        Event::UpdateStepPlanned(step) => e::update_step(&step.version, &step.files, &step.uninstall),
+        Event::SshPasswordLogin(ssh) if ssh.restored => e::ssh_restored(&ssh.setting, &ssh.value),
+        Event::SshPasswordLogin(ssh) => e::ssh_for_upload(&ssh.setting, &ssh.value),
+        Event::PackageDownloaded(package) => e::downloaded(&package.file, package.bytes),
+        Event::PackageUploaded(package) => e::uploaded(&package.file),
+        Event::Reboot(reboot) => e::reboot(
             match &reboot.reason {
-                RebootReason::PACKAGES => "zum Installieren der Pakete",
-                RebootReason::FIRMWARE => "für die neue Firmware",
-                RebootReason::REQUESTED => "auf Anfrage",
-                RebootReason::Other(other) => other,
+                RebootReason::PACKAGES => e::Reboot::Packages,
+                RebootReason::FIRMWARE => e::Reboot::Firmware,
+                RebootReason::REQUESTED => e::Reboot::Requested,
+                RebootReason::Other(other) => e::Reboot::Other(other),
             },
-            reboot.timeout / 60_000_000_000
+            reboot.timeout / 60_000_000_000,
         ),
-        Event::RouterOsRunning(running) => format!("RouterOS {} läuft", running.version),
-        Event::FirmwareUpgrade(firmware) if firmware.running => {
-            format!("Firmware {} läuft", firmware.upgrade)
-        }
-        Event::FirmwareUpgrade(firmware) => {
-            format!("Firmware {} → {}", firmware.current, firmware.upgrade)
-        }
-        Event::UpdateDone(done) => format!("Fertig: RouterOS {} → {}", done.from, done.to),
+        Event::RouterOsRunning(running) => e::routeros_running(&running.version),
+        Event::FirmwareUpgrade(firmware) if firmware.running => e::firmware_running(&firmware.upgrade),
+        Event::FirmwareUpgrade(firmware) => e::firmware_upgrade(&firmware.current, &firmware.upgrade),
+        Event::UpdateDone(done) => e::update_done(&done.from, &done.to),
     };
     html!({ text })
 }

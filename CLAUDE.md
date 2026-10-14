@@ -114,7 +114,7 @@ on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 The UI logs in over OIDC (`yew-oauth2` in the frontend, structure taken from the cable-editor);
 the backend checks the JWT against `auth_issuer` and lets only `auth_users` in, both as
 middleware of `/graphql` in `binary` (`authenticated_graphql`: `403` otherwise, and the server
-log says why; the frontend words the status, `error.rs`) (`docs/login.md`:
+log says why; the frontend words the status, `i18n::error::refused`) (`docs/login.md`:
 the `auth_*` settings and how to set up Pocket-ID; keep it in line with them). The UI picks a
 NetBox site first, then one of its devices (`/sites`, `/site/<id>`, `/site/<id>/device/<id>/show`,
 `pages/routes.rs`): no sidebar, a breadcrumb of dropdowns to the sibling sites and devices
@@ -191,7 +191,7 @@ with a password while `/ip ssh always-allow-password-login=no` (7.24:
 An update, an apply, an initial setup and a reboot run as jobs (`backend::job`):
 `updateRouteros`, `applyCfg`, `bootstrap` and `rebootDevice` return the `Job` at once, the work
 goes on in the background and reports typed events (`job::Event`, a GraphQL union; the
-frontend words them in German, `components/job.rs`). The frontend asks `job(id) { events(after)
+frontend words them in German, `i18n::job`, shown by `components/job.rs`). The frontend asks `job(id) { events(after)
 }` every second: the API is plain POST with the bearer token, a subscription would need the
 token over a websocket. A device runs one job at a time, the device page picks up a running one
 (`jobs(deviceId)`); jobs are kept in the process only. `cancelJob` sets a flag the work checks
@@ -274,7 +274,7 @@ lease per reboot, and a reboot waits while a consumer holds an update lease, an 
 start while a supplier reboots (both under one lock). The leases are in-process only.
 A modeled port of a PoE board without `pse` gets `poe-out=off`, which cuts what it feeds and
 which the script alone doesn't make obvious, so `generateCfg` returns `warnings` next to the
-script (`device::ros::warning::ApplyWarning`, a union the device page words; `PoeCut` from
+script (`device::ros::warning::ApplyWarning`, a union `i18n::device::warning` words; `PoeCut` from
 `BaseDeviceDataTarget::poe_warnings`: on at the device, off in the target, and
 powering something: `/interface/ethernet/poe/monitor` reports `poe-out-status=powered-on`, not
 `waiting-for-load`; read only where a port would lose PoE, and when it can't be read every such
@@ -300,6 +300,11 @@ QEMU's, the golden image's dhcp-client is bound to it).
   backend (no German there at all). What the UI shows is a typed GraphQL object or union with
   the values the text needs (`job::Event`, `ApplyWarning`), an enum for a case to tell apart
   (`FallbackLeftReason`), never a placeholder string or an `Option` whose `None` means a case.
+- Every text the UI shows is in `frontend/src/i18n.rs` (German), a module per page or
+  component, a `const` or a `fn` taking the values; components write none inline, so a second
+  language replaces that one file. Names RouterOS and NetBox use themselves (`RouterOS`,
+  `long-term`) stay as they are. `FrontendError::message` is the one-line text for the user,
+  its `Display` is for the log.
 - Who may call what is decided at the boundary, once: the token and `auth_users` in `binary`'s
   middleware, `allow_apply` by `#[graphql(guard = "WritesAllowed")]` on each writing mutation
   (a new one needs it too). The work below (`apply`, `bootstrap`, `update`) doesn't ask again,

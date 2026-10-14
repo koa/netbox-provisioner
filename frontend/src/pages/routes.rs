@@ -1,4 +1,5 @@
 use crate::components::menu::Navigation;
+use crate::i18n;
 use crate::pages::devices::Devices;
 use crate::pages::devices::show::ShowDevice;
 use crate::pages::sites::Sites;
@@ -63,7 +64,7 @@ impl AppRoute {
         let content = match self {
             AppRoute::Sites => html! {<Sites/>},
             AppRoute::Site { id, view } => view.content(id),
-            AppRoute::NotFound => html! {<h1>{"Not Found"}</h1>},
+            AppRoute::NotFound => html! {<h1>{i18n::pages::NOT_FOUND}</h1>},
         };
         html! {
             <div class="pf-v6-c-page pf-m-no-sidebar app-page">

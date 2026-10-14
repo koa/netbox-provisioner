@@ -3,6 +3,7 @@ use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 pub mod components;
 mod error;
 mod graphql;
+mod i18n;
 pub mod pages;
 
 #[wasm_bindgen]
