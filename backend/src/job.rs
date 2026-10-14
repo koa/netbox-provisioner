@@ -10,6 +10,7 @@
 //! the next boot). Jobs live in the provisioner process only, the last [`KEEP`] finished ones
 //! are kept.
 use crate::{
+    error_info::ErrorInfo,
     Error,
     device::{bootstrap, power, ros::graphql as apply, terminal, update},
     graphql::scalars::ScalarDuration,
@@ -160,7 +161,7 @@ pub struct Job {
     device_name: Box<str>,
     kind: JobKind,
     log: Log,
-    outcome: Mutex<(JobState, Option<Box<str>>)>,
+    outcome: Mutex<(JobState, Option<ErrorInfo>)>,
     took: Mutex<Option<Duration>>,
 }
 
@@ -177,10 +178,10 @@ impl Job {
     fn state(&self) -> JobState {
         self.outcome.lock().expect("job outcome").0
     }
-    fn finish(&self, state: JobState, error: Option<Box<str>>) {
+    fn finish(&self, state: JobState, error: Option<ErrorInfo>) {
         *self.took.lock().expect("job time") = Some(self.log.started.elapsed());
         match &error {
-            Some(error) => info!("{}: job {} {state:?}: {error}", self.device_name, self.id),
+            Some(error) => info!("{}: job {} {state:?}: {}", self.device_name, self.id, error.message),
             None => info!("{}: job {} {state:?}", self.device_name, self.id),
         }
         *self.outcome.lock().expect("job outcome") = (state, error);
@@ -232,7 +233,7 @@ where
         match work.await {
             Ok(()) => running.finish(JobState::Done, None),
             Err(Error::Cancelled) => running.finish(JobState::Cancelled, None),
-            Err(error) => running.finish(JobState::Failed, Some(error.to_string().into())),
+            Err(error) => running.finish(JobState::Failed, Some(ErrorInfo::from(&error))),
         }
     });
     Ok(job)
@@ -285,7 +286,7 @@ impl Job {
         self.state()
     }
     /// why it failed
-    async fn error(&self) -> Option<Box<str>> {
+    async fn error(&self) -> Option<ErrorInfo> {
         self.outcome.lock().expect("job outcome").1.clone()
     }
     /// how long it ran; `None` while it runs

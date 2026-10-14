@@ -3,7 +3,7 @@ query JobEvents($id: Int!, $after: Int){
         id
         kind
         state
-        error
+        error { ...Problem }
         took
         events(after: $after){
             index
@@ -23,11 +23,11 @@ query JobEvents($id: Int!, $after: Int){
                 ... on UpdateDone { from to }
                 ... on ApplyPlanned { script }
                 ... on FallbackArmed { delay }
-                ... on ApplyRunning { timeout error }
-                ... on ApplyChecked { remaining error }
+                ... on ApplyRunning { timeout error { ...Problem } }
+                ... on ApplyChecked { remaining error { ...Problem } }
                 ... on FallbackStopped { after }
-                ... on FallbackLeft { firesIn reason error }
-                ... on RadiosReprovisioned { menu count error }
+                ... on FallbackLeft { firesIn reason error { ...Problem } }
+                ... on RadiosReprovisioned { menu count error { ...Problem } }
                 ... on SetupStarted { neighbor neighborPort macs }
                 ... on ConsoleOutput { text }
                 ... on WaitingForApi { address timeout }
@@ -46,4 +46,9 @@ mutation CancelJob($id: Int!){
     cancelJob(id: $id){
         id
     }
+}
+fragment Problem on ErrorInfo {
+    code
+    message
+    params { name value }
 }

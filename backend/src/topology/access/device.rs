@@ -1,3 +1,4 @@
+use crate::error_info::ErrorInfo;
 use crate::{
     Error,
     device::{
@@ -272,8 +273,8 @@ impl DeviceAccess {
         bootstrap::plan(self).ok()
     }
     /// Why there is no `bootstrapPlan`.
-    async fn bootstrap_problem(&self) -> Option<String> {
-        bootstrap::plan(self).err().map(|e| e.to_string())
+    async fn bootstrap_problem(&self) -> Option<ErrorInfo> {
+        bootstrap::plan(self).err().map(|error| ErrorInfo::from(&error))
     }
     #[graphql(name = "wlanControllerOf")]
     async fn api_is_wlan_controller_of(&self) -> Option<WlanGroupAccess> {

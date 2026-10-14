@@ -6,6 +6,7 @@ use crate::device::ros::{
 use crate::{
     Error,
     config::CONFIG,
+    error_info::{ApiError, ErrorInfo},
     device::{
         AccessibleDevice, GraphqlSystemRouterboard, PingResult,
         ros::{
@@ -40,7 +41,6 @@ use std::{
     collections::HashSet,
     time::{Duration, Instant},
 };
-use surge_ping::SurgeError;
 
 pub struct GraphqlDeviceType(DeviceType);
 impl From<DeviceType> for GraphqlDeviceType {
@@ -277,7 +277,7 @@ pub struct FallbackArmed {
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct ApplyRunning {
     pub timeout: ScalarDuration,
-    pub error: Option<Box<str>>,
+    pub error: Option<ErrorInfo>,
 }
 
 /// What the device still lacks after the apply (empty when everything was applied), or why it
@@ -285,7 +285,7 @@ pub struct ApplyRunning {
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct ApplyChecked {
     pub remaining: Box<str>,
-    pub error: Option<Box<str>>,
+    pub error: Option<ErrorInfo>,
 }
 
 /// The fallback is taken away: the device is reachable with the new config.
@@ -301,7 +301,7 @@ pub struct FallbackLeft {
     pub fires_in: ScalarDuration,
     pub reason: FallbackLeftReason,
     /// why taking it away failed (`NotStopped`)
-    pub error: Option<Box<str>>,
+    pub error: Option<ErrorInfo>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
@@ -320,7 +320,7 @@ pub enum FallbackLeftReason {
 pub struct RadiosReprovisioned {
     pub menu: Box<str>,
     pub count: u32,
-    pub error: Option<Box<str>>,
+    pub error: Option<ErrorInfo>,
 }
 
 /// The `radio` menus of the CAPsMANs whose WLANs `mutations` change: a CAP only takes a new
@@ -415,7 +415,7 @@ impl AccessibleDevice {
         drop(raw);
         log.emit(ApplyRunning {
             timeout: APPLY_TIMEOUT.into(),
-            error: error.map(|error| error.to_string().into()),
+            error: error.map(|error| ErrorInfo::from(&Error::from(error))),
         });
         // cancelled from here on, the fallback stays
         let wait = async |time| {
@@ -449,7 +449,7 @@ impl AccessibleDevice {
             },
             Err(error) => ApplyChecked {
                 remaining: "".into(),
-                error: Some(error.to_string().into()),
+                error: Some(ErrorInfo::from(error)),
             },
         });
         let reachable = remaining.is_ok();
@@ -481,7 +481,7 @@ impl AccessibleDevice {
                     None => FallbackLeftReason::NotReached,
                     Some(_) => FallbackLeftReason::NotStopped,
                 },
-                error: error.map(|error| error.to_string().into()),
+                error: error.map(|error| ErrorInfo::from(&error)),
             }),
         }
         if self.device_config.wlan_controller_of().is_some() {
@@ -499,7 +499,7 @@ impl AccessibleDevice {
         let failed = |menu: &str, error: Error| RadiosReprovisioned {
             menu: menu.into(),
             count: 0,
-            error: Some(error.to_string().into()),
+            error: Some(ErrorInfo::from(&error)),
         };
         let raw = match self.connect_again::<SimpleResult>().await {
             Ok(raw) => raw,
@@ -734,15 +734,15 @@ impl BaseDeviceDataTarget {
 
 #[Object]
 impl AccessibleDevice {
-    async fn ping(&self, count: Option<u8>) -> Result<Box<[PingResult]>, SurgeError> {
-        self.simple_ping(count.unwrap_or(1)).await
+    async fn ping(&self, count: Option<u8>) -> Result<Box<[PingResult]>, ApiError> {
+        Ok(self.simple_ping(count.unwrap_or(1)).await.map_err(Error::from)?)
     }
 
-    async fn device_stats(&self) -> Result<DeviceStats, Error> {
-        DeviceStats::fetch(&self.client).await
+    async fn device_stats(&self) -> Result<DeviceStats, ApiError> {
+        Ok(DeviceStats::fetch(&self.client).await?)
     }
 
-    async fn config(&self) -> Result<DeviceCfg, Error> {
+    async fn config(&self) -> Result<DeviceCfg, ApiError> {
         Ok(DeviceCfg::fetch(&self.client, &self.device_config).await?)
     }
     /// The script that would bring the device in line with NetBox, and what to know before
@@ -811,7 +811,7 @@ fn nullable<T>(ctx: &Context<'_>, result: Result<T, Error>) -> Option<T> {
         Ok(value) => Some(value),
         Err(error) => {
             ctx.add_error(
-                ctx.set_error_path(async_graphql::Error::from(error).into_server_error(ctx.item.pos)),
+                ctx.set_error_path(async_graphql::Error::from(ApiError(error)).into_server_error(ctx.item.pos)),
             );
             None
         }

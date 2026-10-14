@@ -1,7 +1,7 @@
 //! A job of the backend (an update, an apply, a setup): its events while it runs, asked for every second, worded
 //! by `i18n::job`; with a button to cancel it.
 use crate::{
-    error::FrontendError,
+    error::{FrontendError, ServerProblem},
     i18n::{common::CANCEL, job as t},
     graphql::{
         authenticated::{
@@ -105,7 +105,7 @@ impl Component for JobView {
         html! {
             <Alert inline=true title={title} r#type={kind}>
                 {error}
-                if let Some(error) = &job.error { <p>{ error.clone() }</p> }
+                if let Some(error) = &job.error { <p>{ problem(error) }</p> }
                 <ul class="job-events">
                     { for items(&job.events) }
                 </ul>
@@ -218,6 +218,11 @@ fn elapsed(nanos: u64) -> String {
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
+/// An error the job or one of its events reports.
+fn problem(problem: &job_events::Problem) -> String {
+    ServerProblem::from(problem).text()
+}
+
 /// whole seconds
 fn seconds(nanos: u64) -> u64 {
     nanos / 1_000_000_000
@@ -266,11 +271,11 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::ApplyPlanned(planned) => return script(t::SCRIPT, &planned.script),
         Event::FallbackArmed(armed) => e::fallback_armed(seconds(armed.delay)),
         Event::ApplyRunning(running) => match &running.error {
-            Some(error) => e::script_stopped(error, seconds(running.timeout)),
+            Some(error) => e::script_stopped(&problem(error), seconds(running.timeout)),
             None => e::script_running(seconds(running.timeout)),
         },
         Event::ApplyChecked(checked) => match &checked.error {
-            Some(error) => e::not_checked(error),
+            Some(error) => e::not_checked(&problem(error)),
             None if checked.remaining.trim().is_empty() => e::IN_LINE.into(),
             None => return script(t::REMAINING, &checked.remaining),
         },
@@ -279,7 +284,9 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             match &left.reason {
                 FallbackLeftReason::CANCELLED => e::FallbackLeft::Cancelled,
                 FallbackLeftReason::NOT_REACHED => e::FallbackLeft::NotReached,
-                FallbackLeftReason::NOT_STOPPED => e::FallbackLeft::NotStopped(left.error.as_deref()),
+                FallbackLeftReason::NOT_STOPPED => {
+                    e::FallbackLeft::NotStopped(left.error.as_ref().map(problem))
+                }
                 FallbackLeftReason::Other(other) => e::FallbackLeft::Other(other),
             },
             seconds(left.fires_in),
@@ -290,7 +297,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::SetupDone(done) => e::setup_done(&done.address),
         Event::RadiosReprovisioned(radios) => match &radios.error {
             None => e::radios_reprovisioned(radios.count, &radios.menu),
-            Some(error) => e::radios_not_reprovisioned(&radios.menu, error),
+            Some(error) => e::radios_not_reprovisioned(&radios.menu, &problem(error)),
         },
         Event::PoeChain(chain) => e::poe_chain(&chain.suppliers, &chain.consumers),
         Event::WaitingForPower(wait) => match &wait.reason {

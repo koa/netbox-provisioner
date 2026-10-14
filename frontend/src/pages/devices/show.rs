@@ -3,7 +3,7 @@ use crate::{
         adjust_target::{AdjustTarget, SelectedTarget},
         job::JobView,
     },
-    error::FrontendError,
+    error::{FrontendError, ServerProblem},
     i18n::{
         common::CANCEL,
         device::{self as t, setup},
@@ -58,7 +58,7 @@ pub struct ShowDeviceData {
     access: Option<(Box<str>, Option<GeneratedCfg>)>,
     routeros: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessRouteros>,
     bootstrap_plan: Option<device_overview::DeviceOverviewTopologyDeviceByIdBootstrapPlan>,
-    bootstrap_problem: Option<String>,
+    bootstrap_problem: Option<device_overview::Problem>,
     /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
     allow_apply: bool,
 }
@@ -356,7 +356,7 @@ impl Component for ShowDevice {
                             </div>
                         </>}
                     }
-                    (None, Some(problem)) => html!(<p>{setup::impossible(problem)}</p>),
+                    (None, Some(problem)) => html!(<p>{setup::impossible(&ServerProblem::from(problem).text())}</p>),
                     (None, None) => html!(),
                 };
                 html!(<Alert inline=true title={t::UNREACHABLE} r#type={AlertType::Warning}>

@@ -1,6 +1,7 @@
 use crate::{
     Error,
     config::CONFIG,
+    error_info::ApiError,
     device::{
         bootstrap,
         power::PowerChain,
@@ -87,7 +88,7 @@ impl Guard for WritesAllowed {
         if CONFIG.allow_apply {
             Ok(())
         } else {
-            Err(Error::ApplyNotAllowed.into())
+            Err(ApiError(Error::ApplyNotAllowed).into())
         }
     }
 }
@@ -99,13 +100,13 @@ impl MutationAuthenticated {
     /// (`allow_apply` must be set). `mac` is the physical device that gets this NetBox
     /// device's config, usually one of `bootstrapPlan.discovered`.
     #[graphql(guard = "WritesAllowed")]
-    async fn bootstrap(&self, id: u32, mac: ScalarMac) -> Result<Arc<Job>, Error> {
+    async fn bootstrap(&self, id: u32, mac: ScalarMac) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let mut plan = bootstrap::plan(&device)?;
         plan.setup.macs = [mac.0].into();
-        job::start(&device.clone(), JobKind::Bootstrap, |log| async move {
+        Ok(job::start(&device.clone(), JobKind::Bootstrap, |log| async move {
             bootstrap::bootstrap(&device, &plan, &log).await
-        })
+        })?)
     }
     /// Starts updating RouterOS (and the RouterBOARD firmware) to the newest release of
     /// `channel`, with the packages the device needs (`allow_apply` must be set); without
@@ -119,10 +120,10 @@ impl MutationAuthenticated {
         target: Option<String>,
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
-    ) -> Result<Arc<Job>, Error> {
+    ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
-        job::start(&device.clone(), JobKind::Update, |log| async move {
+        Ok(job::start(&device.clone(), JobKind::Update, |log| async move {
             let device = log
                 .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
                 .await??
@@ -133,7 +134,7 @@ impl MutationAuthenticated {
                 None => update::read_state(&device.api().await?).await?.version,
             };
             update::update(&device, &power, &version, &wanted, &log).await
-        })
+        })?)
     }
     /// Starts a reboot of a device (`allow_apply` must be set) and waits until it is back.
     /// Target and credentials as for `DeviceAccess.access`.
@@ -144,24 +145,24 @@ impl MutationAuthenticated {
         target: Option<String>,
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
-    ) -> Result<Arc<Job>, Error> {
+    ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
-        job::start(&device.clone(), JobKind::Reboot, |log| async move {
+        Ok(job::start(&device.clone(), JobKind::Reboot, |log| async move {
             let device = log
                 .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
                 .await??
                 .ok_or(Error::MissingCredentials)?;
             update::reboot(&device, &power, &log).await
-        })
+        })?)
     }
     /// Stops a job (`Query.job`) at the next point where that is safe: an update between its
     /// steps or while it waits, removing the packages it uploaded unless the device reboots
     /// with them already; an apply before its script runs, or after, leaving the fallback
     /// that brings back the config from before; a setup before or after its console session; a
     /// reboot before it is sent, or while it is waited for.
-    async fn cancel_job(&self, id: u32) -> Result<Arc<Job>, Error> {
-        job::cancel(id).ok_or(Error::UnknownJob(id))
+    async fn cancel_job(&self, id: u32) -> Result<Arc<Job>, ApiError> {
+        Ok(job::cancel(id).ok_or(Error::UnknownJob(id))?)
     }
     /// Starts applying the generated config to a device (`allow_apply` must be set). Target
     /// and credentials as for `DeviceAccess.access`.
@@ -172,15 +173,15 @@ impl MutationAuthenticated {
         target: Option<String>,
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
-    ) -> Result<Arc<Job>, Error> {
+    ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
-        job::start(&device.clone(), JobKind::Apply, |log| async move {
+        Ok(job::start(&device.clone(), JobKind::Apply, |log| async move {
             log.unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
                 .await??
                 .ok_or(Error::MissingCredentials)?
                 .apply(&log)
                 .await
-        })
+        })?)
     }
 }
 #[Object]

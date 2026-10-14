@@ -9,7 +9,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                 port
                 address
             }
-            bootstrapProblem
+            bootstrapProblem { ...Problem }
             access(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
                 deviceStats{
                     routerboard {
@@ -77,4 +77,9 @@ mutation UpdateRouteros($id: Int!, $channel: Channel, $target: String, $credenti
     updateRouteros(id: $id, channel: $channel, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
         id
     }
+}
+fragment Problem on ErrorInfo {
+    code
+    message
+    params { name value }
 }

@@ -7,6 +7,7 @@ use thiserror::Error;
 pub mod config;
 pub mod context;
 pub mod device;
+pub mod error_info;
 pub mod graphql;
 pub mod job;
 pub mod netbox;
@@ -26,7 +27,7 @@ pub enum Error {
     ResourceMutation(#[from] ResourceMutationError),
     #[error("{0}")]
     MissingDependenciesError(Box<str>),
-    #[error("Missing required dependencies: {0}")]
+    #[error("Cannot write the script: {0}")]
     ErrorGeneratingString(#[from] std::fmt::Error),
     #[error("Cannot build setup {0}")]
     SetupError(#[from] SetupError),
@@ -43,7 +44,7 @@ pub enum Error {
     #[error("Console: {0}")]
     Terminal(#[from] device::terminal::TerminalError),
     #[error("No way known to set up {0}: {1}")]
-    NoBootstrapPath(Box<str>, &'static str),
+    NoBootstrapPath(Box<str>, error_info::BootstrapObstacle),
     #[error("Setup of {0} failed: {1}")]
     Bootstrap(Box<str>, Box<str>),
     #[error("The device refused: {0}")]
@@ -56,6 +57,8 @@ pub enum Error {
     UnknownJob(u32),
     #[error("Cancelled")]
     Cancelled,
+    #[error("Ping: {0}")]
+    Ping(#[from] surge_ping::SurgeError),
 }
 
 impl From<MissingDependenciesError<'_, '_>> for Error {

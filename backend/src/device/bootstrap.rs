@@ -14,6 +14,7 @@
 use crate::{
     Error,
     config::{CONFIG, MikrotikCredentials},
+    error_info::{ApiError, BootstrapObstacle},
     device::{
         Credentials, Path, connect,
         proxied_stream,
@@ -67,8 +68,8 @@ impl BootstrapPlan {
     }
     /// What the neighbor discovers on its port (`/ip/neighbor`), the candidates to set up. Over
     /// a bridge (a radio link) that includes devices further away.
-    async fn discovered(&self) -> Result<Vec<Discovered>, Error> {
-        discover(self).await
+    async fn discovered(&self) -> Result<Vec<Discovered>, ApiError> {
+        Ok(discover(self).await?)
     }
 }
 
@@ -148,7 +149,7 @@ pub fn plan(device: &DeviceAccess) -> Result<BootstrapPlan, Error> {
 /// change breaks OSPF until both ends of a link have it).
 pub fn plans(device: &DeviceAccess) -> Result<Vec<BootstrapPlan>, Error> {
     let no_path = |reason| Error::NoBootstrapPath(device.name().into(), reason);
-    let mut reason = "no port with an IPv4 address in NetBox";
+    let mut reason = BootstrapObstacle::NoIpv4Port;
     let mut plans = Vec::new();
     for port in device.interfaces() {
         let (port_address, on_bridge) = match ipv4(&port) {
@@ -158,7 +159,7 @@ pub fn plans(device: &DeviceAccess) -> Result<Vec<BootstrapPlan>, Error> {
                 None => continue,
             },
         };
-        reason = "no cable from a port with IPv4 address to a reachable device";
+        reason = BootstrapObstacle::NoReachableNeighbor;
         for far in port.connected_interfaces() {
             let Some(neighbor) = far.device() else { continue };
             let Some(neighbor_address) = reachable_address(&neighbor) else {

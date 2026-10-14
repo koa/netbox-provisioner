@@ -22,6 +22,8 @@ pub mod common {
 
 /// `crate::error::FrontendError` as the user reads it.
 pub mod error {
+    use crate::error::ServerProblem;
+
     pub const BROWSER: &str = "Fehler im Browser";
     pub const UNREADABLE: &str = "Antwort des Servers nicht lesbar";
     pub const SERVER: &str = "Fehler vom Server";
@@ -33,6 +35,65 @@ pub mod error {
     /// where in the response a GraphQL error is (`path`)
     pub fn at(message: &str, path: &str) -> String {
         format!("{message} bei {path}")
+    }
+
+    /// An error the backend reports, by its `code` (`backend::error_info`); a code not worded
+    /// here yet shows the backend's English `message`.
+    pub fn server(problem: &ServerProblem) -> String {
+        let p = |name| problem.param(name);
+        match problem.code.as_str() {
+            "DEVICE_API" => format!("Zugriff auf das Gerät fehlgeschlagen: {}", p("cause")),
+            "MISSING_CREDENTIALS" => "Keine Zugangsdaten für das Gerät".into(),
+            "APPLY_NOT_ALLOWED" => "Schreiben auf Geräte ist gesperrt (allow_apply)".into(),
+            "UNKNOWN_DEVICE" => format!("Gerät {} gibt es in NetBox nicht", p("id")),
+            "TIMEOUT" => format!("Keine Antwort von {}", p("address")),
+            "NO_ADDRESS" => format!("{} hat in NetBox keine Adresse", p("device")),
+            "PROXY" => format!(
+                "Keine Verbindung über den Management-Proxy {}: {}",
+                p("address"),
+                p("cause")
+            ),
+            "NO_BOOTSTRAP_PATH" => match p("obstacle") {
+                "NO_IPV4_PORT" => format!("{} hat in NetBox keinen Port mit IPv4-Adresse", p("device")),
+                _ => "Von keinem Port mit IPv4-Adresse führt ein Kabel zu einem erreichbaren Gerät \
+                      im selben Netz"
+                    .into(),
+            },
+            "SETUP_FAILED" => {
+                format!("Ersteinrichtung fehlgeschlagen bei {}: {}", p("step"), p("cause"))
+            }
+            "REFUSED" => format!("Das Gerät lehnt ab: {}", p("cause")),
+            "MISSING_DEPENDENCIES" => format!(
+                "Änderungen warten aufeinander oder verweisen auf Fehlendes: {}",
+                p("cause")
+            ),
+            "BUSY" => format!("Auf {} läuft schon ein Auftrag", p("device")),
+            "UNKNOWN_JOB" => format!("Auftrag {} gibt es nicht (mehr)", p("id")),
+            "CANCELLED" => "Abgebrochen".into(),
+            "PING" => format!("Ping fehlgeschlagen: {}", p("cause")),
+            "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
+            "PORT_NOT_FOUND" => format!("Port {} aus NetBox gibt es auf dem Gerät nicht", p("port")),
+            "MISSING_PACKAGE" => format!(
+                "RouterOS-Paket {} fehlt (ein RouterOS-Update installiert es)",
+                p("package")
+            ),
+            "NO_CONTROLLER" => format!(
+                "{} ist AP einer Wireless LAN Group, deren Controller keine Loopback-Adresse hat",
+                p("device")
+            ),
+            "MTU_MISMATCH" => format!(
+                "{} hat MTU {}, das andere Ende des Kabels, {}, {}: OSPF braucht auf beiden dieselbe",
+                p("port"),
+                p("mtu"),
+                p("farEnd"),
+                p("farMtu")
+            ),
+            "MTU_NOT_SUPPORTED" => format!(
+                "{} hat in NetBox eine MTU, die nur Ethernet-Ports und wlan-Radios bekommen",
+                p("port")
+            ),
+            _ => problem.message.clone(),
+        }
     }
 
     /// What a status the server answers instead of a result means: `401` and `403` come from
@@ -266,7 +327,7 @@ pub mod job {
         pub enum FallbackLeft<'a> {
             Cancelled,
             NotReached,
-            NotStopped(Option<&'a str>),
+            NotStopped(Option<String>),
             Other(&'a str),
         }
         pub fn fallback_left(reason: FallbackLeft, seconds: u64) -> String {
