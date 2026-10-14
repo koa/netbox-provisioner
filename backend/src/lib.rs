@@ -24,7 +24,8 @@ pub enum Error {
     #[error("Cannot parse ip address {0}")]
     AddressParse(#[from] std::net::AddrParseError),
     #[error("Cannot generate mutations: {0}")]
-    ResourceMutation(#[from] ResourceMutationError),
+    /// boxed: it is large (over 2 KB), and every `Result<_, Error>` would be as large
+    ResourceMutation(Box<ResourceMutationError>),
     #[error("{0}")]
     MissingDependenciesError(Box<str>),
     #[error("Cannot write the script: {0}")]
@@ -88,6 +89,12 @@ pub enum Error {
     Cancelled,
     #[error("Ping: {0}")]
     Ping(#[from] surge_ping::SurgeError),
+}
+
+impl From<ResourceMutationError> for Error {
+    fn from(value: ResourceMutationError) -> Self {
+        Error::ResourceMutation(Box::new(value))
+    }
 }
 
 impl From<MissingDependenciesError<'_, '_>> for Error {
