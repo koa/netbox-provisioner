@@ -10,6 +10,7 @@ use crate::{
         hw_facts::{RadioPackage, build_wifi_ports, build_wireless_ports},
         l2::{KeepNameGenerator, L2Setup},
         needed_radio_package,
+        warning::{ApplyWarning, RadioBound},
     },
     topology::{
         Device, Interface, IpAddressData, PhysicalPortId, TopologyHolder, VlanData,
@@ -263,7 +264,14 @@ async fn bound_radio_stays_and_its_configuration_is_changed() {
     assert_eq!(target.wifi[&Some(AsciiString::from("wifi1"))], radios[0].data);
     assert_eq!(target.wifi[&Some(AsciiString::from("wifi2"))], radios[1].data);
     assert_eq!(warnings.len(), 1, "{warnings:?}");
-    assert!(warnings[0].starts_with("wifi1"), "{warnings:?}");
+    assert_eq!(
+        warnings[0],
+        ApplyWarning::RadioBound(RadioBound {
+            radio: "wifi1".into(),
+            configuration: Some("own".into()),
+            expected: "capsman".into(),
+        })
+    );
     // `capsman` gets the datapath NetBox wants, `own` stays with its datapath
     let capsman = &target.configuration[&AsciiString::from("capsman")].0;
     assert_eq!(capsman.datapath, Some("bridge-caps".into()));

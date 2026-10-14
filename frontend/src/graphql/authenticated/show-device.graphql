@@ -20,7 +20,11 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                 }
                 generateCfg {
                     script
-                    warnings
+                    warnings {
+                        __typename
+                        ... on PoeCut { port defaultName }
+                        ... on RadioBound { radio configuration expected }
+                    }
                 }
                 routeros {
                     version

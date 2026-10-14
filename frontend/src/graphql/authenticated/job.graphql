@@ -26,7 +26,7 @@ query JobEvents($id: Int!, $after: Int){
                 ... on ApplyRunning { timeout error }
                 ... on ApplyChecked { remaining error }
                 ... on FallbackStopped { after }
-                ... on FallbackLeft { firesIn error }
+                ... on FallbackLeft { firesIn reason error }
                 ... on RadiosReprovisioned { menu count error }
                 ... on SetupStarted { neighbor neighborPort macs }
                 ... on ConsoleOutput { text }

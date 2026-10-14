@@ -6,8 +6,8 @@ use crate::{
         authenticated::{
             CancelJob, JobEvents, cancel_job,
             job_events::{
-                self, JobEventsJob, JobEventsJobEvents, JobEventsJobEventsEvent as Event, JobKind,
-                JobState, PowerWait, RebootReason,
+                self, FallbackLeftReason, JobEventsJob, JobEventsJobEvents,
+                JobEventsJobEventsEvent as Event, JobKind, JobState, PowerWait, RebootReason,
             },
         },
         query_authenticated,
@@ -299,9 +299,14 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         }
         Event::FallbackLeft(left) => format!(
             "{}: das Gerät lädt in etwa {} s das Backup von vor dem Anwenden und startet neu",
-            match &left.error {
-                Some(error) => format!("Fallback bleibt ({error})"),
-                None => "Abgebrochen, der Fallback bleibt".into(),
+            match (&left.reason, &left.error) {
+                (FallbackLeftReason::CANCELLED, _) => "Abgebrochen, der Fallback bleibt".into(),
+                (FallbackLeftReason::NOT_REACHED, _) => "Gerät nicht erreicht, der Fallback bleibt".into(),
+                (FallbackLeftReason::NOT_STOPPED, Some(error)) => {
+                    format!("Fallback lässt sich nicht stoppen ({error})")
+                }
+                (FallbackLeftReason::NOT_STOPPED, None) => "Fallback lässt sich nicht stoppen".into(),
+                (FallbackLeftReason::Other(other), _) => format!("Fallback bleibt ({other})"),
             },
             seconds(left.fires_in)
         ),

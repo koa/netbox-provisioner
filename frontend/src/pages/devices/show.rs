@@ -42,8 +42,9 @@ type Candidate =
 #[derive(Debug)]
 struct GeneratedCfg {
     script: Box<str>,
-    warnings: Vec<String>,
+    warnings: Vec<Warning>,
 }
+type Warning = device_overview::DeviceOverviewTopologyDeviceByIdAccessGenerateCfgWarnings;
 #[derive(Debug, Default)]
 pub struct ShowDeviceData {
     configured_name: Box<str>,
@@ -369,7 +370,7 @@ impl Component for ShowDevice {
             } else {
                 html! {<>
                     { for warnings.iter().map(|warning| html!(
-                        <Alert inline=true title={warning.clone()} r#type={AlertType::Warning}/>
+                        <Alert inline=true title={describe_warning(warning)} r#type={AlertType::Warning}/>
                     ))}
                     <CodeBlock><CodeBlockCode>{ cfg_update }</CodeBlockCode></CodeBlock>
                 </>}
@@ -644,4 +645,24 @@ fn running_job(scope: Scope<ShowDevice>, id: u32) {
             scope.send_message(ShowDeviceMessage::JobStarted(Ok(job.id)));
         }
     });
+}
+
+/// A warning of `generateCfg`, as the operator reads it before applying.
+fn describe_warning(warning: &Warning) -> String {
+    match warning {
+        Warning::PoeCut(cut) => {
+            let port = if cut.port == cut.default_name {
+                cut.port.clone()
+            } else {
+                format!("{} ({})", cut.port, cut.default_name)
+            };
+            format!("Soll der Strom an {port} wirklich abgeschaltet werden?")
+        }
+        Warning::RadioBound(bound) => format!(
+            "{} ist an CAPsMAN gebunden und lässt sich nicht ändern: es verwendet die Konfiguration {} statt {}",
+            bound.radio,
+            bound.configuration.as_deref().unwrap_or("-"),
+            bound.expected
+        ),
+    }
 }

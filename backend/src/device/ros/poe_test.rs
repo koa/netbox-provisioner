@@ -1,6 +1,11 @@
 //! Applying a config can switch PoE out off, which NetBox doesn't show as a change.
 use crate::{
-    device::ros::{BaseDeviceDataTarget, l2::KeepNameGenerator, test::empty_current},
+    device::ros::{
+        BaseDeviceDataTarget,
+        l2::KeepNameGenerator,
+        test::empty_current,
+        warning::{ApplyWarning, PoeCut},
+    },
     topology::{Device, Interface, PhysicalPortId, TopologyHolder, test::TopologyBuilder},
 };
 use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetPoeOut};
@@ -8,7 +13,7 @@ use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetPoeOut};
 /// A PoE switch with `ether1` feeding (`poe_mode=pse`), `ether2` in NetBox without PoE and
 /// `ether3` not in NetBox, all three with PoE out on at the device as given, and `powered`
 /// the ports powering something.
-async fn warnings(current_poe_out: InterfaceEthernetPoeOut, powered: &[&str]) -> Vec<String> {
+async fn warnings(current_poe_out: InterfaceEthernetPoeOut, powered: &[&str]) -> Vec<ApplyWarning> {
     let mut builder = TopologyBuilder::default();
     let device = builder.devices.next_id();
     builder.devices.insert(
@@ -55,7 +60,13 @@ async fn warnings(current_poe_out: InterfaceEthernetPoeOut, powered: &[&str]) ->
 async fn warns_where_poe_is_switched_off() {
     let warnings = warnings(InterfaceEthernetPoeOut::AutoOn, &["ether1", "ether2", "ether3"]).await;
     assert_eq!(warnings.len(), 1, "{warnings:?}");
-    assert_eq!(warnings[0], "Soll der Strom an ether2 wirklich abgeschaltet werden?");
+    assert_eq!(
+        warnings[0],
+        ApplyWarning::PoeCut(PoeCut {
+            port: "ether2".into(),
+            default_name: "ether2".into(),
+        })
+    );
 }
 
 #[tokio::test]

@@ -253,7 +253,7 @@ default name (`wifi1`; L2 names it so too): CAPsMAN binds it through that config
 bound radio is flagged dynamic and RouterOS refuses any change to it, also with the CAP off
 (hAP ax², 7.23.8: `can not change dynamic interface`), so it stays as read (`bound_radios`,
 from `InterfaceWifiState::dynamic`), the configuration and datapath it uses stay, and a
-different configuration than NetBox's is a warning before applying. What changes is the
+different configuration than NetBox's is a warning before applying (`RadioBound`). What changes is the
 configuration it uses (`datapath=`), a plain entry. A bound radio reports
 `configuration=capsman` also where no such entry is (cAP ax, 7.23.7), which RouterOS provides
 (`provided_by_routeros`, the sort's seeds besides `lo`, `main` and the firewall chains).
@@ -274,7 +274,8 @@ lease per reboot, and a reboot waits while a consumer holds an update lease, an 
 start while a supplier reboots (both under one lock). The leases are in-process only.
 A modeled port of a PoE board without `pse` gets `poe-out=off`, which cuts what it feeds and
 which the script alone doesn't make obvious, so `generateCfg` returns `warnings` next to the
-script (`BaseDeviceDataTarget::poe_warnings`: on at the device, off in the target, and
+script (`device::ros::warning::ApplyWarning`, a union the device page words; `PoeCut` from
+`BaseDeviceDataTarget::poe_warnings`: on at the device, off in the target, and
 powering something: `/interface/ethernet/poe/monitor` reports `poe-out-status=powered-on`, not
 `waiting-for-load`; read only where a port would lose PoE, and when it can't be read every such
 port warns), and the device page shows them above the changes.
@@ -295,6 +296,10 @@ QEMU's, the golden image's dhcp-client is bound to it).
 - A RouterOS command no mikrotik-model type covers (actions, monitors, a menu read for one
   field) goes through `device::raw` (`command`, `rows`, `field`), which turns a `!trap` into
   `Error::Refused` naming the command; don't write another loop over `SimpleResult`.
+- The backend sends data, the frontend words it: no sentence for the user is built in the
+  backend (no German there at all). What the UI shows is a typed GraphQL object or union with
+  the values the text needs (`job::Event`, `ApplyWarning`), an enum for a case to tell apart
+  (`FallbackLeftReason`), never a placeholder string or an `Option` whose `None` means a case.
 - Who may call what is decided at the boundary, once: the token and `auth_users` in `binary`'s
   middleware, `allow_apply` by `#[graphql(guard = "WritesAllowed")]` on each writing mutation
   (a new one needs it too). The work below (`apply`, `bootstrap`, `update`) doesn't ask again,

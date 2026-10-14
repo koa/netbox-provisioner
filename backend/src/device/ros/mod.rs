@@ -1,4 +1,5 @@
 use crate::device::ros::l2::NameGenerator;
+use crate::device::ros::warning::{ApplyWarning, PoeCut, RadioBound};
 use crate::{
     Error,
     device::ros::{
@@ -51,6 +52,7 @@ use std::{
 pub mod fallback;
 pub mod graphql;
 pub(crate) mod hw_facts;
+pub mod warning;
 
 #[cfg(test)]
 mod capsman_test;
@@ -631,8 +633,8 @@ impl BaseDeviceDataTarget {
     }
 
     /// Every port whose PoE out is on and that this target switches off (NetBox has no
-    /// `poe_mode=pse` there), by its name at the device and the name the warning gives it.
-    pub fn poe_switched_off(&self, current: &BaseDeviceDataCurrent) -> Vec<(AsciiString, String)> {
+    /// `poe_mode=pse` there), by its name at the device.
+    pub fn poe_switched_off(&self, current: &BaseDeviceDataCurrent) -> Vec<(AsciiString, PoeCut)> {
         let mut ports = Vec::new();
         for (default_name, target) in &self.ethernet {
             let Some(current) = current
@@ -648,12 +650,11 @@ impl BaseDeviceDataTarget {
                     .poe_out
                     .is_some_and(|poe_out| poe_out != InterfaceEthernetPoeOut::Off)
             {
-                let port = if target.name == *default_name {
-                    target.name.to_string()
-                } else {
-                    format!("{} ({default_name})", target.name)
+                let cut = PoeCut {
+                    port: target.name.to_string().into(),
+                    default_name: default_name.to_string().into(),
                 };
-                ports.push((current.data.name.clone(), port));
+                ports.push((current.data.name.clone(), cut));
             }
         }
         ports
@@ -665,11 +666,11 @@ impl BaseDeviceDataTarget {
         &self,
         current: &BaseDeviceDataCurrent,
         powered: &HashSet<AsciiString>,
-    ) -> Vec<String> {
+    ) -> Vec<ApplyWarning> {
         self.poe_switched_off(current)
             .into_iter()
             .filter(|(name, _)| powered.contains(name))
-            .map(|(_, port)| format!("Soll der Strom an {port} wirklich abgeschaltet werden?"))
+            .map(|(_, cut)| ApplyWarning::PoeCut(cut))
             .collect()
     }
 
@@ -1475,7 +1476,7 @@ impl WifiDeviceDataTarget {
         capsman_certificates: &[AsciiString],
         radio_package: Option<RadioPackage>,
         bound_radios: &[AsciiString],
-    ) -> Result<Vec<String>, SetupError> {
+    ) -> Result<Vec<ApplyWarning>, SetupError> {
         let mut warnings = Vec::new();
         // without a package of `/interface/wifi`, its radios are what one left (a wAP ac on
         // `wireless` now): inactive, but keeping their names, which the `wlan<N>` need
@@ -1576,10 +1577,11 @@ impl WifiDeviceDataTarget {
                 // is a warning.
                 if bound_radios.contains(&default_name) {
                     if radio.configuration.as_ref() != Some(&configuration_name) {
-                        warnings.push(format!(
-                            "{default_name} ist an CAPsMAN gebunden und lässt sich nicht ändern: es verwendet die Konfiguration {} statt {configuration_name}",
-                            radio.configuration.as_ref().map(AsciiString::to_string).unwrap_or_else(|| "-".into()),
-                        ));
+                        warnings.push(ApplyWarning::RadioBound(RadioBound {
+                            radio: default_name.to_string().into(),
+                            configuration: radio.configuration.as_ref().map(|c| c.to_string().into()),
+                            expected: configuration_name.to_string().into(),
+                        }));
                     }
                     continue;
                 }

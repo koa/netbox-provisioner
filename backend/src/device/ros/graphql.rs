@@ -14,13 +14,14 @@ use crate::{
             W60GDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
             hw_facts::{RadioPackage, build_w60g_ports},
             needed_radio_package,
+            warning::ApplyWarning,
         },
         raw, update,
     },
     topology::access::device::DeviceAccess,
 };
 use crate::{graphql::scalars::ScalarDuration, job::Log};
-use async_graphql::{Context, Object, SimpleObject};
+use async_graphql::{Context, Enum, Object, SimpleObject};
 use log::info;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::{
@@ -82,7 +83,7 @@ pub struct DeviceCfg {
     /// refuses to change
     bound_radios: Box<[AsciiString]>,
     /// what `generate_from` couldn't bring in line (a bound radio)
-    wifi_warnings: Vec<String>,
+    wifi_warnings: Vec<ApplyWarning>,
 }
 
 impl DeviceCfg {
@@ -177,7 +178,7 @@ impl DeviceCfg {
     pub async fn warnings(
         &self,
         raw: impl AsyncFnOnce() -> Result<RawDevice<SimpleResult>, Error>,
-    ) -> Vec<String> {
+    ) -> Vec<ApplyWarning> {
         let ports = self.base_target.poe_switched_off(&self.base_current);
         if ports.is_empty() {
             return self.wifi_warnings.clone();
@@ -254,8 +255,8 @@ async fn powered_ports(
 pub struct GeneratedCfg {
     /// empty if the device is in line already
     script: Box<str>,
-    /// what applying it would do that the operator should know before (German, for the UI)
-    warnings: Vec<String>,
+    /// what applying it would do that the operator should know before
+    warnings: Vec<ApplyWarning>,
 }
 
 /// The script the apply runs on the device; empty if there is nothing to do.
@@ -294,11 +295,23 @@ pub struct FallbackStopped {
 }
 
 /// The fallback stays: the device loads the backup from before the apply in about `fires_in`
-/// and reboots. Either it couldn't be reached (`error`), or the apply was cancelled.
+/// and reboots.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct FallbackLeft {
     pub fires_in: ScalarDuration,
+    pub reason: FallbackLeftReason,
+    /// why taking it away failed (`NotStopped`)
     pub error: Option<Box<str>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum FallbackLeftReason {
+    /// the apply was cancelled
+    Cancelled,
+    /// the check after the apply didn't reach the device (`ApplyChecked.error` says why)
+    NotReached,
+    /// reached, but taking the fallback away failed until shortly before it fires
+    NotStopped,
 }
 
 /// A controller provisioned `count` CAP radios of `menu` again, since the WLANs changed (their
@@ -410,6 +423,7 @@ impl AccessibleDevice {
             if waited.is_err() {
                 log.emit(FallbackLeft {
                     fires_in: fires.saturating_duration_since(Instant::now()).into(),
+                    reason: FallbackLeftReason::Cancelled,
                     error: None,
                 });
             }
@@ -463,13 +477,11 @@ impl AccessibleDevice {
             }),
             Err(error) => log.emit(FallbackLeft {
                 fires_in: fires.saturating_duration_since(Instant::now()).into(),
-                error: Some(
-                    error
-                        .map(|error| error.to_string())
-                        // `ApplyChecked` above has the reason
-                        .unwrap_or_else(|| "not checked".into())
-                        .into(),
-                ),
+                reason: match error {
+                    None => FallbackLeftReason::NotReached,
+                    Some(_) => FallbackLeftReason::NotStopped,
+                },
+                error: error.map(|error| error.to_string().into()),
             }),
         }
         if self.device_config.wlan_controller_of().is_some() {
