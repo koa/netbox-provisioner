@@ -32,6 +32,8 @@ query JobEvents($id: Int!, $after: Int){
                 ... on ConsoleOutput { text }
                 ... on WaitingForApi { address timeout }
                 ... on SetupDone { address }
+                ... on DeviceModeConfirm { changes { feature reason } timeout }
+                ... on DeviceModeChanged { changes { feature reason } }
             }
         }
     }

@@ -88,6 +88,10 @@ impl From<&Error> for ErrorInfo {
                 ("CONSOLE_SESSION_ENDED", vec![("command", command.to_string())])
             }
             Error::Refused(error) => ("REFUSED", cause(error)),
+            Error::DeviceModeNotConfirmed => ("DEVICE_MODE_NOT_CONFIRMED", vec![]),
+            Error::DeviceModeUnchanged(features) => {
+                ("DEVICE_MODE_UNCHANGED", vec![("features", features.to_string())])
+            }
             Error::Download(url, error) => (
                 "DOWNLOAD",
                 vec![("url", url.to_string()), ("cause", error.to_string())],

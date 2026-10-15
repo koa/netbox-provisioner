@@ -5,15 +5,16 @@ use crate::{
     },
     error::{FrontendError, ServerProblem},
     i18n::{
-        common::CANCEL,
+        common::{CANCEL, DeviceModeNeed, device_mode_feature},
         device::{self as t, setup},
         target,
     },
     graphql::{
         authenticated::{
-            ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, DeviceJobs, DeviceOverview,
-            RebootDevice, UpdateRouteros, apply_device_cfg, reboot_device, bootstrap_candidates, bootstrap_device,
-            device_jobs, device_overview, update_routeros,
+            ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, ChangeDeviceMode, DeviceJobs,
+            DeviceOverview, RebootDevice, UpdateRouteros, apply_device_cfg, reboot_device,
+            bootstrap_candidates, bootstrap_device, change_device_mode, device_jobs, device_overview,
+            update_routeros,
         },
         query_authenticated, query_authenticated_response,
     },
@@ -40,6 +41,8 @@ pub struct ShowDevice {
     channel: Option<device_overview::Channel>,
     /// "Neu starten" was clicked, waiting for the confirmation
     confirm_reboot: bool,
+    /// "Device-Mode anpassen" was clicked, waiting for the confirmation
+    confirm_device_mode: bool,
 }
 type Candidate =
     bootstrap_candidates::BootstrapCandidatesTopologyDeviceByIdBootstrapPlanDiscovered;
@@ -57,6 +60,8 @@ pub struct ShowDeviceData {
     /// be reached
     access: Option<(Box<str>, Option<GeneratedCfg>)>,
     routeros: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessRouteros>,
+    /// `None` before RouterOS 7.17, or when it couldn't be read
+    device_mode: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessDeviceMode>,
     bootstrap_plan: Option<device_overview::DeviceOverviewTopologyDeviceByIdBootstrapPlan>,
     bootstrap_problem: Option<device_overview::Problem>,
     /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
@@ -88,6 +93,9 @@ pub enum ShowDeviceMessage {
     /// ask before rebooting (`true`), or not anymore
     ConfirmReboot(bool),
     Reboot,
+    /// ask before changing the device mode (`true`), or not anymore
+    ConfirmDeviceMode(bool),
+    ChangeDeviceMode,
     JobStarted(Result<i64, FrontendError>),
     JobFinished,
 }
@@ -108,6 +116,7 @@ impl Component for ShowDevice {
             manual_mac: String::new(),
             channel: None,
             confirm_reboot: false,
+            confirm_device_mode: false,
         }
     }
 
@@ -164,6 +173,16 @@ impl Component for ShowDevice {
                 self.confirm_reboot = false;
                 self.job_running = true;
                 reboot(ctx.link().clone(), self.id, self.alternate_target.clone());
+                true
+            }
+            ShowDeviceMessage::ConfirmDeviceMode(confirm) => {
+                self.confirm_device_mode = confirm;
+                true
+            }
+            ShowDeviceMessage::ChangeDeviceMode => {
+                self.confirm_device_mode = false;
+                self.job_running = true;
+                change_mode(ctx.link().clone(), self.id, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::JobStarted(result) => {
@@ -305,6 +324,56 @@ impl Component for ShowDevice {
                 </dd>
             </>}
             });
+            let device_mode = data.device_mode.as_ref().map(|mode| {
+                let missing: Vec<String> = mode
+                    .changes
+                    .iter()
+                    .map(|change| {
+                        use device_overview::DeviceModeReason as R;
+                        device_mode_feature(
+                            &change.feature,
+                            match &change.reason {
+                                R::APPLY_FALLBACK => DeviceModeNeed::ApplyFallback,
+                                R::MANAGEMENT_PROXY => DeviceModeNeed::ManagementProxy,
+                                R::UPDATE_FALLBACK => DeviceModeNeed::UpdateFallback,
+                                R::Other(other) => DeviceModeNeed::Other(other),
+                            },
+                        )
+                    })
+                    .collect();
+                html! {<>
+                <dt>{t::DEVICE_MODE}</dt><dd>
+                    { mode.mode.clone() }
+                    if !missing.is_empty() {
+                        { t::device_mode_missing(&missing) }
+                        <div class="device-mode">
+                            if self.confirm_device_mode {
+                                {t::DEVICE_MODE_CONFIRM}
+                                <Button
+                                    variant={ButtonVariant::Danger}
+                                    label={t::DEVICE_MODE_NOW}
+                                    disabled={running}
+                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ChangeDeviceMode)}
+                                />
+                                {" "}
+                                <Button
+                                    variant={ButtonVariant::Link}
+                                    label={CANCEL}
+                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmDeviceMode(false))}
+                                />
+                            } else {
+                                <Button
+                                    variant={ButtonVariant::Secondary}
+                                    label={t::DEVICE_MODE_ADJUST}
+                                    disabled={running}
+                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmDeviceMode(true))}
+                                />
+                            }
+                        </div>
+                    }
+                </dd>
+            </>}
+            });
             let bootstrap_running = running;
             let update = if data.access.is_none() {
                 let setup = match (&data.bootstrap_plan, &data.bootstrap_problem) {
@@ -383,6 +452,7 @@ impl Component for ShowDevice {
             <dt>{t::NAME}</dt><dd>{ data.configured_name.as_ref() }</dd>
             <dt>{t::BOARD}</dt><dd>{ board }</dd>
             {routeros}
+            {device_mode}
             <dt>{t::CHANGES}</dt><dd>
                 {update}
                 <Button
@@ -447,6 +517,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                         .map(|mut d| ShowDeviceData {
                             configured_name: d.name.into_boxed_str(),
                             routeros: d.access.as_mut().and_then(|a| a.routeros.take()),
+                            device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
                             access: d.access.map(|a| {
                                 (
                                     a.device_stats.routerboard.device_type.into_boxed_str(),
@@ -600,6 +671,30 @@ fn reboot(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
         )
         .await
         .map(|data| data.reboot_device.id);
+        scope.send_message(ShowDeviceMessage::JobStarted(result));
+    });
+}
+
+/// Turns on the features of the device mode the provisioner needs; the device then waits for
+/// the confirmation at the device.
+fn change_mode(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
+    spawn_local(async move {
+        let (credential_name, adhoc_credentials) =
+            target.credentials.variables(|username, password| change_device_mode::AdhocCredentials {
+                username,
+                password,
+            });
+        let result = query_authenticated::<ChangeDeviceMode, _>(
+            scope.clone(),
+            change_device_mode::Variables {
+                id: id as i64,
+                target: target.address.map(|a| a.to_string()),
+                credential_name,
+                adhoc_credentials,
+            },
+        )
+        .await
+        .map(|data| data.change_device_mode.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }

@@ -59,6 +59,11 @@ pub enum Error {
     ConsoleSessionEnded(Box<str>),
     #[error("The device refused: {0}")]
     Refused(Box<str>),
+    #[error("The device-mode change was not confirmed at the device in time")]
+    DeviceModeNotConfirmed,
+    /// the features still off
+    #[error("The device runs without {0} in its device mode")]
+    DeviceModeUnchanged(Box<str>),
     #[error("Cannot fetch {0}: {1}")]
     Download(Box<str>, reqwest::Error),
     /// what MikroTik answers at this address instead of a version

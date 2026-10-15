@@ -55,6 +55,7 @@ pub struct RunningNode {
     pub index: u8,
     child: Child,
     overlay_path: PathBuf,
+    wiring: Vec<PortWiring>,
 }
 
 impl RunningNode {
@@ -73,6 +74,20 @@ impl RunningNode {
     /// uses a real `/system/shutdown` instead (see `golden_image.rs`).
     pub async fn kill(&mut self) -> anyhow::Result<()> {
         self.child.kill().await?;
+        Ok(())
+    }
+
+    /// Cuts the power and switches it on again: QEMU killed and started anew on the same
+    /// overlay, with the same ports. The device boots cold, as after unplugging it (what
+    /// confirms a `/system/device-mode/update`).
+    pub async fn power_cycle(&mut self) -> anyhow::Result<()> {
+        self.child.kill().await?;
+        self.child = spawn_qemu(
+            &self.overlay_path,
+            [self.api_port, self.socks_port, self.ssh_port],
+            self.index,
+            &self.wiring,
+        )?;
         Ok(())
     }
 
@@ -199,10 +214,32 @@ pub async fn start_node(
     let api_port = free_tcp_port()?;
     let socks_port = free_tcp_port()?;
     let ssh_port = free_tcp_port()?;
+    let child = spawn_qemu(&overlay_path, [api_port, socks_port, ssh_port], index, wiring)?;
+
+    let node = RunningNode {
+        name: name.to_string(),
+        api_port,
+        socks_port,
+        ssh_port,
+        index,
+        child,
+        overlay_path,
+        wiring: wiring.to_vec(),
+    };
+    Ok(node)
+}
+
+/// Starts QEMU on `overlay`, forwarding the API, SOCKS and SSH ports from `ports`.
+fn spawn_qemu(
+    overlay: &Path,
+    [api_port, socks_port, ssh_port]: [u16; 3],
+    index: u8,
+    wiring: &[PortWiring],
+) -> anyhow::Result<Child> {
     let mut cmd = qemu_command();
     cmd.args(["-machine", "pc,accel=tcg", "-cpu", "max", "-m", "512", "-smp", "2"])
         .arg("-drive")
-        .arg(format!("file={},format=qcow2", overlay_path.display()))
+        .arg(format!("file={},format=qcow2", overlay.display()))
         .arg("-netdev")
         .arg(format!(
             "user,id=net0,hostfwd=tcp:127.0.0.1:{api_port}-:8728,hostfwd=tcp:127.0.0.1:{socks_port}-:1080,hostfwd=tcp:127.0.0.1:{ssh_port}-:22"
@@ -233,16 +270,5 @@ pub async fn start_node(
         ]);
     }
 
-    let child = cmd.kill_on_drop(true).spawn()?;
-
-    let node = RunningNode {
-        name: name.to_string(),
-        api_port,
-        socks_port,
-        ssh_port,
-        index,
-        child,
-        overlay_path,
-    };
-    Ok(node)
+    Ok(cmd.kill_on_drop(true).spawn()?)
 }

@@ -28,7 +28,7 @@ const DOWNLOAD_URL: &str = "https://download.mikrotik.com/routeros";
 /// The newest release of a channel, as `<version> <timestamp>`.
 const NEWEST_URL: &str = "https://upgrade.mikrotik.com/routeros/NEWEST";
 /// Booting a package update takes a few minutes on small devices.
-const REBOOT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+pub const REBOOT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 /// What the update needs of a device; implemented by
 /// [`AccessibleDevice`](crate::device::AccessibleDevice) (through the management proxy) and by
@@ -94,6 +94,8 @@ pub enum RebootReason {
     Firmware,
     /// asked for (`reboot`)
     Requested,
+    /// a cold boot (power cut or button) confirming a device-mode change
+    DeviceMode,
 }
 
 /// The device is back with this RouterOS.
@@ -468,6 +470,21 @@ where
         reason,
         timeout: REBOOT_TIMEOUT.into(),
     });
+    wait_until_back(link, log, before, sent, check).await
+}
+
+/// Waits (up to [`REBOOT_TIMEOUT`]) until the device answers again after a boot that came
+/// after `sent`, when it had been up for `before`, and checks it with `check`.
+pub(crate) async fn wait_until_back<T, F>(
+    link: &impl DeviceLink,
+    log: &Log,
+    before: Duration,
+    sent: Instant,
+    check: F,
+) -> Result<T, Error>
+where
+    F: Fn(&DeviceState) -> Option<T>,
+{
     // A connection while the device boots may just wait for it (it does through QEMU's port
     // forwarding), so the reboot shows in the uptime, not in a failing connection.
     let deadline = Instant::now() + REBOOT_TIMEOUT;

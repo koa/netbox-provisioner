@@ -17,7 +17,7 @@ use crate::{
             needed_radio_package,
             warning::ApplyWarning,
         },
-        raw, update,
+        device_mode, raw, update,
     },
     topology::access::device::DeviceAccess,
 };
@@ -760,6 +760,12 @@ impl AccessibleDevice {
             })
         };
         nullable(ctx, generated.await)
+    }
+    /// The device mode and the features the provisioner needs that are off in it; `null`
+    /// before RouterOS 7.17, which has no device mode.
+    async fn device_mode(&self, ctx: &Context<'_>) -> Option<device_mode::DeviceMode> {
+        let mode = async { device_mode::read(&self.connect_again().await?, &self.device_config).await };
+        nullable(ctx, mode.await).flatten()
     }
     /// The running RouterOS and its packages, and what an update in each channel would do.
     async fn routeros(&self, ctx: &Context<'_>) -> Option<RouterOsVersions> {

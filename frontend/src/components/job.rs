@@ -171,6 +171,7 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         JobKind::APPLY => t::APPLY,
         JobKind::BOOTSTRAP => t::BOOTSTRAP,
         JobKind::REBOOT => t::REBOOT,
+        JobKind::DEVICE_MODE => t::DEVICE_MODE,
         JobKind::Other(other) => other,
     };
     let events = || job.events.iter().map(|event| &event.event);
@@ -316,6 +317,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
                 RebootReason::PACKAGES => e::Reboot::Packages,
                 RebootReason::FIRMWARE => e::Reboot::Firmware,
                 RebootReason::REQUESTED => e::Reboot::Requested,
+                RebootReason::DEVICE_MODE => e::Reboot::DeviceMode,
                 RebootReason::Other(other) => e::Reboot::Other(other),
             },
             reboot.timeout / 60_000_000_000,
@@ -324,6 +326,31 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::FirmwareUpgrade(firmware) if firmware.running => e::firmware_running(&firmware.upgrade),
         Event::FirmwareUpgrade(firmware) => e::firmware_upgrade(&firmware.current, &firmware.upgrade),
         Event::UpdateDone(done) => e::update_done(&done.from, &done.to),
+        Event::DeviceModeConfirm(confirm) => e::device_mode_confirm(
+            &features(confirm.changes.iter().map(|c| (c.feature.as_str(), &c.reason))),
+            confirm.timeout / 60_000_000_000,
+        ),
+        Event::DeviceModeChanged(changed) => e::device_mode_changed(&features(
+            changed.changes.iter().map(|c| (c.feature.as_str(), &c.reason)),
+        )),
     };
     html!({ text })
+}
+
+/// The features of a device-mode change, each with why it is needed.
+fn features<'a>(changes: impl Iterator<Item = (&'a str, &'a job_events::DeviceModeReason)>) -> Vec<String> {
+    use crate::i18n::common::{DeviceModeNeed, device_mode_feature};
+    changes
+        .map(|(feature, reason)| {
+            device_mode_feature(
+                feature,
+                match reason {
+                    job_events::DeviceModeReason::APPLY_FALLBACK => DeviceModeNeed::ApplyFallback,
+                    job_events::DeviceModeReason::MANAGEMENT_PROXY => DeviceModeNeed::ManagementProxy,
+                    job_events::DeviceModeReason::UPDATE_FALLBACK => DeviceModeNeed::UpdateFallback,
+                    job_events::DeviceModeReason::Other(other) => DeviceModeNeed::Other(other),
+                },
+            )
+        })
+        .collect()
 }

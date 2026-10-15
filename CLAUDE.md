@@ -290,6 +290,16 @@ powering something: `/interface/ethernet/poe/monitor` reports `poe-out-status=po
 `waiting-for-load`; read only where a port would lose PoE, and when it can't be read every such
 port warns), and the device page shows them above the changes.
 
+The device mode (`/system/device-mode`, RouterOS 7.17+) locks features the provisioner needs
+(`device::device_mode::wanted`: `scheduler` for the apply fallback, `socks` on the management
+proxy's device, `partitions` where `/partitions` reports 128 MiB or more for the planned update
+fallback, `docs/concepts/update-fallback.md`). A change needs a confirmation at the device
+(button, or a cold boot) while `/system/device-mode/update` counts down; closing its connection
+cancels it and a warm reboot doesn't confirm (CHR 7.24.5), so the `DeviceMode` job holds the
+connection until the device goes down, sends only features that are off (an update changing
+nothing counts down too), and is done when the device mode reads back with them on
+(`device_mode_change_confirmed_by_a_cold_boot`, `RunningNode::power_cycle`).
+
 `local/` runs the lab: `netbox/` (NetBox + `seed-lab.py`), `keycloak/` (realm `lab` on
 `localhost:8180`, admin/admin), `lab/make-config.sh` (the lab devices' password comes from the
 ignored `.lab-netbox/device-password`, never put it in the repo) + `lab/run-provisioner.sh`

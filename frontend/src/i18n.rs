@@ -6,6 +6,25 @@
 
 /// Texts used in several places.
 pub mod common {
+    /// Why the provisioner needs a feature of the device mode (`DeviceModeReason`).
+    pub enum DeviceModeNeed<'a> {
+        ApplyFallback,
+        ManagementProxy,
+        UpdateFallback,
+        Other(&'a str),
+    }
+
+    /// a feature of the device mode and why it is needed, e.g. `partitions (für …)`
+    pub fn device_mode_feature(feature: &str, need: DeviceModeNeed) -> String {
+        let need = match need {
+            DeviceModeNeed::ApplyFallback => "für den Fallback beim Anwenden",
+            DeviceModeNeed::ManagementProxy => "für den Management-Proxy",
+            DeviceModeNeed::UpdateFallback => "für den Fallback bei Updates: zwei Partitionen",
+            DeviceModeNeed::Other(other) => other,
+        };
+        format!("{feature} ({need})")
+    }
+
     pub const CANCEL: &str = "Abbrechen";
     /// a list without entries
     pub const NONE: &str = "keine";
@@ -104,6 +123,13 @@ pub mod error {
             },
             "NOT_BACK_AFTER_REBOOT" => "Das Gerät ist nach dem Neustart nicht zurück".into(),
             "REFUSED" => format!("Das Gerät lehnt ab: {}", p("cause")),
+            "DEVICE_MODE_NOT_CONFIRMED" => {
+                "Die Änderung des Device-Mode wurde am Gerät nicht rechtzeitig bestätigt".into()
+            }
+            "DEVICE_MODE_UNCHANGED" => format!(
+                "Das Gerät läuft weiter ohne {} im Device-Mode",
+                p("features")
+            ),
             "MISSING_DEPENDENCIES" => format!(
                 "Änderungen warten aufeinander oder verweisen auf Fehlendes: {}",
                 p("cause")
@@ -220,6 +246,18 @@ pub mod device {
     pub const REBOOT_CONFIRM: &str =
         "Das Gerät und was es über PoE versorgt, ist während des Neustarts weg. ";
 
+    pub const DEVICE_MODE: &str = "Device-Mode";
+    pub const DEVICE_MODE_ADJUST: &str = "Device-Mode anpassen";
+    pub const DEVICE_MODE_NOW: &str = "Jetzt anpassen";
+    pub const DEVICE_MODE_CONFIRM: &str = "Danach verlangt das Gerät eine Bestätigung vor Ort: den Knopf \
+        am Gerät drücken oder den Strom kurz unterbrechen. Das Gerät und was es über PoE versorgt, \
+        startet dabei neu. ";
+
+    /// the features the provisioner needs that are off
+    pub fn device_mode_missing(features: &[String]) -> String {
+        format!("; fehlt: {}", features.join(", "))
+    }
+
     pub const UNREACHABLE: &str = "Gerät nicht erreichbar";
     pub const UNREACHABLE_HINT: &str =
         "Unter „Ziel ändern“ eine andere Adresse oder andere Zugangsdaten wählen.";
@@ -309,6 +347,7 @@ pub mod job {
     pub const APPLY: &str = "Anwenden";
     pub const BOOTSTRAP: &str = "Ersteinrichtung";
     pub const REBOOT: &str = "Neustart";
+    pub const DEVICE_MODE: &str = "Device-Mode-Änderung";
 
     pub const NOTHING_TO_APPLY: &str = "Nichts anzuwenden, das Gerät entspricht NetBox";
     pub const NOT_ALL_APPLIED: &str = "Nicht alles wurde angewendet";
@@ -450,6 +489,7 @@ pub mod job {
             Packages,
             Firmware,
             Requested,
+            DeviceMode,
             Other(&'a str),
         }
         pub fn reboot(reason: Reboot, minutes: u64) -> String {
@@ -457,6 +497,7 @@ pub mod job {
                 Reboot::Packages => "zum Installieren der Pakete",
                 Reboot::Firmware => "für die neue Firmware",
                 Reboot::Requested => "auf Anfrage",
+                Reboot::DeviceMode => "nach der Bestätigung",
                 Reboot::Other(other) => other,
             };
             format!("Neustart {reason}, wartet bis zu {minutes} min, bis das Gerät zurück ist")
@@ -472,6 +513,20 @@ pub mod job {
         }
         pub fn update_done(from: &str, to: &str) -> String {
             format!("Fertig: RouterOS {from} → {to}")
+        }
+
+        pub fn device_mode_confirm(features: &[String], minutes: u64) -> String {
+            format!(
+                "Jetzt am Gerät bestätigen: den Knopf (Reset oder Mode) drücken oder den Strom kurz unterbrechen, innerhalb von {minutes} min. Schaltet ein: {}",
+                features.join(", ")
+            )
+        }
+        pub fn device_mode_changed(features: &[String]) -> String {
+            if features.is_empty() {
+                "Der Device-Mode hat schon alles, was der Provisioner braucht".into()
+            } else {
+                format!("Device-Mode geändert, eingeschaltet: {}", features.join(", "))
+            }
         }
     }
 }

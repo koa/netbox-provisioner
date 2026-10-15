@@ -1,0 +1,152 @@
+# Konzept: Fallback für RouterOS-Updates
+
+Status: Konzept. Umgesetzt ist bisher nur die Voraussetzung für Stufe 1, das Anpassen des
+Device-Mode (siehe unten). Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
+noch einen Fallback Mechanismus für Updates“).
+
+## Ausgangslage
+
+Das Anwenden einer Konfiguration hat einen Fallback (`device/ros/fallback.rs`): Backup speichern,
+Scheduler lädt es nach `apply_fallback_seconds`, der Provisioner nimmt beides weg, sobald er das
+Gerät wieder erreicht. Ein Update (`device/update.rs`) hat nichts Vergleichbares. Es erkennt nur,
+*dass* etwas schiefging (`NotBackAfterReboot`, `UnexpectedAfterReboot`); danach muss heute
+jemand vor Ort hin.
+
+## Was ein Update kaputt machen kann
+
+1. **Das Gerät bootet nicht oder nicht fertig.** Kein Script auf dem Gerät läuft mehr, nur
+   RouterBOOT kann noch etwas tun.
+2. **Das Gerät bootet, ist aber nicht erreichbar.** Die Konfiguration wird beim Start migriert und
+   verhält sich anders: Paket ersetzt, Interface umbenannt, OSPF kommt nicht hoch, eine
+   Firewall-Regel greift neu. Das ist der häufige Fall.
+3. **Das Gerät ist erreichbar, aber das Netz dahinter nicht** (eine OSPF-Nachbarschaft fehlt).
+   Prüft der Provisioner nur das Gerät, sieht das wie ein Erfolg aus.
+4. **Firmware-Upgrade:** Dafür gibt es keinen Weg zurück aus RouterOS. Der Backup-Booter von
+   RouterBOOT (Reset beim Einschalten) bleibt der Weg vor Ort.
+
+**Erfolg** heisst deshalb für alle Stufen: Das Gerät ist mit der erwarteten Version erreichbar,
+*und* die OSPF-Nachbarn, die vor dem Update `Full` waren, sind es wieder (`/routing/ospf/neighbor`
+vor dem Update gelesen). Erst dann gilt das Update als gelungen.
+
+## Stufe 1: zwei Partitionen
+
+Auf Geräten mit genug NAND-Flash hält eine zweite Partition das alte RouterOS samt
+Konfiguration. Geprüft nur lesend im Lab und in der MikroTik-Doku
+([Partitions](https://help.mikrotik.com/docs/spaces/ROS/pages/328103/Partitions),
+[Device-mode](https://help.mikrotik.com/docs/spaces/ROS/pages/93749258/Device-mode)):
+
+- Partitionen gibt es auf RouterBOARDs mit NAND (ARM, ARM64, MIPS, …), seit 7.20 ab 128 MiB
+  Flash, mindestens 60 MiB pro Partition, also genau zwei auf 128 MiB.
+- Im Lab: lab-core, lab-sxt-a/b, lab-ap1, lab-ap2 haben 128 MiB und eine Partition `part0` mit
+  `fallback-to=next`. lab-np1, lab-np2 und lab-wap haben 16 MiB, `/partitions` ist dort leer.
+- `copy-to` klont das laufende RouterOS samt Konfiguration auf die andere Partition. `activate`
+  wechselt die Partition, von der gebootet wird. Startet die aktive nicht, bootet RouterBOOT von
+  selbst die nächste (`fallback-to=next`).
+- Seit 7.17 muss der Device-Mode Partitionen erlauben (`partitions=yes`). Das braucht eine
+  Bestätigung am Gerät. Im Lab steht überall `partitions=false`.
+
+### Einrichtung (einmal pro Gerät)
+
+1. **Device-Mode anpassen.** *Umgesetzt*, siehe unten: Die Geräteseite zeigt, was fehlt, der Job
+   wartet auf die Bestätigung am Gerät.
+2. **Neu partitionieren** (`/partitions repartition partitions=2`). Laut Doku startet das Gerät neu,
+   formatiert das NAND und behält nur die aktive Partition. Noch zu prüfen, auf einem Lab-Gerät und
+   über den Provisioner: Bleiben Konfiguration und Dateien der aktiven Partition erhalten? Auf
+   einer CHR geht das nicht, sie hat keine `/partitions`.
+
+### Ablauf eines Updates
+
+1. `copy-to` auf die nicht aktive Partition: Sie hält danach die Version und die Konfiguration
+   von vorher.
+2. Einen Scheduler `netbox-provisioner-update-fallback` anlegen (`start-time=startup`, Frist
+   `update_fallback_seconds`, Vorschlag 15 min). Sein Script ist nur
+   `/partitions activate <alte>` und `/system reboot`, ohne Dateien. Er wird *nach* `copy-to`
+   angelegt, damit die alte Partition ihn nicht mitbekommt.
+3. Das Update wie heute auf der aktiven Partition.
+4. **Erfolg:** Der Provisioner entfernt den Scheduler. Die alte Partition bleibt bis zum nächsten
+   Update als Rückweg liegen; das nächste Update überschreibt sie.
+5. **Kein Erfolg:**
+   - Bootet das Gerät nicht (Fall 1), startet RouterBOOT von selbst die alte Partition.
+   - Bootet es, ist aber nicht erreichbar (Fall 2), schaltet nach Ablauf der Frist der Scheduler
+     zurück.
+   - Ist es erreichbar, aber ohne seine Nachbarn (Fall 3), zeigt der Provisioner, was fehlt, und
+     bietet „Zurück auf die alte Partition“ an (`activate` und Neustart). Er löst das nicht selbst
+     aus.
+
+   In jedem Fall wartet der Provisioner, bis das Gerät mit der alten Version zurück ist, und
+   meldet „Update zurückgenommen“ mit dem Grund. Er versucht es nicht noch einmal von selbst.
+
+Die Frist des Schedulers muss länger sein als die Wartezeit des Provisioners (`REBOOT_TIMEOUT`,
+10 min), sonst nimmt das Gerät ein langsames, aber gutes Update zurück.
+
+## Stufe 2: Rettung über den Nachbarn
+
+Für Geräte ohne Partitionen (16 MiB) und als Werkzeug, wenn Stufe 1 nicht von selbst greift: Der
+Provisioner erreicht das Gerät nicht mehr über das geroutete Netz, aber über einen Nachbarn auf
+demselben Kabel.
+
+- **Über den Tunnel:** Kommt nur OSPF nicht hoch, haben die Ports meist noch ihre Adressen aus
+  NetBox. Der Provisioner erreicht das Gerät dann über den SSH-Tunnel zum Nachbarn
+  (`bootstrap::tunnel`), wie vor dem ersten Apply.
+- **Über mac-telnet**, wenn auch die Adressen weg sind: Vom Nachbarn aus eine Adresse auf das Kabel
+  setzen (wie bei der Ersteinrichtung), danach weiter über den Tunnel.
+- **Dann:** lesen und zeigen, was los ist (Log, OSPF-Nachbarn, Interfaces). Auf Knopfdruck die
+  Pakete der alten Version hochladen und `/system package downgrade` aufrufen (16-MiB-Geräte),
+  bzw. `activate` auf die alte Partition (Stufe 1). Die alten Pakete müssen dafür nicht vorher auf
+  dem Gerät liegen; der Upload geht so wie beim Update selbst.
+
+Grenzen: Das hilft nicht, wenn der Provisioner gar keinen Nachbarn erreicht (beim Gerät des
+Management-Proxys selbst) und nicht, wenn das Kabel zum Nachbarn das Problem ist. Für diese Fälle
+bleibt der Scheduler aus Stufe 1, und für 16-MiB-Geräte ohne erreichbaren Nachbarn gibt es keinen
+Fallback. Das UI zeigt das vor dem Update an und verlangt eine Bestätigung.
+
+### Voraussetzung: MAC-Server
+
+Gelesen auf vier konfigurierten Lab-Geräten:
+
+| Gerät | `/tool mac-server allowed-interface-list` |
+|---|---|
+| lab-np1, lab-ap2 | `all` |
+| lab-sxt-a, lab-ap1 | `*2000011`, ein Verweis auf eine gelöschte Liste (vermutlich die Werks-Liste `LAN`, die das Anwenden entfernt hat) |
+
+Dort kommt mac-telnet heute vermutlich nicht durch. Die generierte Konfiguration setzt den
+MAC-Server bisher nicht. Sie soll ihn ausdrücklich auf eine eigene Interface-Liste setzen: die
+Ports mit Kabel zu eigenen Geräten aus NetBox, nicht `all`, damit Kunden-Ports kein mac-telnet
+bekommen. Das braucht auch die Ersteinrichtung hinter so einem Gerät nach einem Zurücksetzen.
+
+## Umgesetzt: Device-Mode anpassen
+
+`backend/src/device/device_mode.rs`, geprüft auf einer CHR (7.24.5, Test
+`device_mode_change_confirmed_by_a_cold_boot`):
+
+- **Was der Provisioner braucht** (`device_mode::wanted`):
+  - `scheduler` überall (Fallback beim Anwenden; im Mode `home` aus);
+  - `socks` auf dem Gerät des Management-Proxys;
+  - `partitions`, wo `/partitions` mindestens 128 MiB meldet.
+- **Geräteseite:** Zeile „Device-Mode“ mit dem Mode und dem, was fehlt, samt Grund. Der Knopf
+  „Device-Mode anpassen“ fragt zuerst nach, denn danach verlangt das Gerät eine Bestätigung vor
+  Ort und startet neu, mit allem, was es über PoE versorgt.
+- **Job `DeviceMode`** (`changeDeviceMode`):
+  - Er sendet `/system/device-mode/update` nur mit den fehlenden Features
+    (`activation-timeout=10m`) und meldet `DeviceModeConfirm`: am Gerät den Knopf drücken oder
+    den Strom unterbrechen.
+  - Er hält die Verbindung bis dahin offen, denn RouterOS bricht die Änderung ab, wenn sie
+    schliesst.
+  - Danach wartet er, bis das Gerät mit den Features läuft, und prüft dabei das Ergebnis, nicht
+    den Neustart.
+  - Abbrechen schliesst die Verbindung und lässt den Device-Mode, wie er war.
+  - Läuft die Frist ab, endet der Job mit `DEVICE_MODE_NOT_CONFIRMED`.
+- **Im Lab geprüft** (lab-core, 2026-10-15): Ein kurzer Druck auf den Reset-Knopf bestätigt.
+  Das Gerät startet neu (Verbindung weg nach etwa 50 s), ist nach rund 70 s mit
+  `partitions=true` zurück, und die Konfiguration und alle OSPF-Nachbarn sind wieder da. Auf der
+  CHR geht nur der Kaltstart.
+
+## Zu entscheiden
+
+- Für PoE-gespeiste Geräte (SXT, ap1, ap2) könnte der Provisioner den Kaltstart selbst auslösen:
+  den PoE-Ausgang am speisenden Switch kurz aus- und wieder einschalten (`PowerChain` kennt ihn).
+  Dann braucht es dort niemanden vor Ort.
+- Updates ohne jeden Fallback (16 MiB, kein erreichbarer Nachbar) nur mit Bestätigung erlauben?
+  Vorschlag: ja, mit Bestätigung.
+- Zählt „gleiche OSPF-Nachbarn `Full`“ als Erfolgsbedingung auch dann, wenn schon vorher einer
+  fehlte? Vorschlag: nur die Nachbarn, die vorher `Full` waren.

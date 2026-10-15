@@ -16,6 +16,7 @@ use tokio::{
 use tokio_socks::tcp::Socks5Stream;
 
 pub mod bootstrap;
+pub mod device_mode;
 pub mod power;
 pub(crate) mod raw;
 pub mod ros;

@@ -12,7 +12,7 @@
 use crate::{
     error_info::ErrorInfo,
     Error,
-    device::{bootstrap, power, ros::graphql as apply, terminal, update},
+    device::{bootstrap, device_mode, power, ros::graphql as apply, terminal, update},
     graphql::scalars::ScalarDuration,
     topology::{DeviceId, access::device::DeviceAccess},
 };
@@ -55,6 +55,8 @@ pub enum Event {
     ConsoleOutput(terminal::ConsoleOutput),
     WaitingForApi(bootstrap::WaitingForApi),
     SetupDone(bootstrap::SetupDone),
+    DeviceModeConfirm(device_mode::DeviceModeConfirm),
+    DeviceModeChanged(device_mode::DeviceModeChanged),
 }
 
 /// An event and when it happened, counted from the start of the job.
@@ -145,6 +147,8 @@ pub enum JobKind {
     Bootstrap,
     /// a reboot asked for on the device page (`rebootDevice`)
     Reboot,
+    /// features turned on in the device mode (`changeDeviceMode`)
+    DeviceMode,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
