@@ -93,3 +93,13 @@ SVG Darstellung von einem Netz. Kanten sind Verbindungen, Knoten sind Router/End
 Knoten haben Icon nach Typ des Routers/Endpunkt, Farbe nach Zustand (Grün: alles ok, Rot: unerreichbar, Orange: Erreichbar mit Problemen). Text: Name des Knoten.
 Kanten haben Farben nach Zustand (Grün: alles ok, Rot: tot, Orange: dazwischen).
 Interaktiv: Benutzer kann Knoten verschieben, Knotenpositionen werden gespeichert
+Information über Health zugänglich (Spannung, Strom, Temperatur, ...)
+Visualisierung der PoE Versorgungen (Check Netbox-Doku, Anzeige Stromfluss)
+
+
+
+Device-Darstellung
+==================
+
+Die Darstellung ist recht chaotisch. Das sollte besser angeordnet werden. Wenn möglich auch für Mobile passend.
+Gibt es noch einen validen Anwendungsfall für "Ziel ändern". Wenn nicht, weg damit.
