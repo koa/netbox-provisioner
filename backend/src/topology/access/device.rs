@@ -164,7 +164,7 @@ impl DeviceAccess {
     pub fn credentials(&self) -> Option<&str> {
         self.data().and_then(|d| Device::credentials(d))
     }
-    pub fn interfaces<'a>(&'a self) -> Box<[InterfaceAccess]> {
+    pub fn interfaces(&self) -> Box<[InterfaceAccess]> {
         self.topology
             .devices
             .get(&self.id)

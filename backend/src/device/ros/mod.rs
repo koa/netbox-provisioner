@@ -45,7 +45,7 @@ use mikrotik_model::{
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, btree_map::Iter},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr},
     ops::Range,
 };
 
@@ -591,6 +591,8 @@ impl BaseDeviceDataTarget {
             }
         }
     }
+    /// the base config with a fresh [`L2Setup`] (tests; the service shares one with the radios)
+    #[cfg(test)]
     pub fn generate_from<N: NameGenerator>(
         &mut self,
         device: &DeviceAccess,
@@ -611,21 +613,21 @@ impl BaseDeviceDataTarget {
     /// PoE out of every port NetBox has: `auto-on` with `poe_mode=pse`, else `off`.
     fn setup_poe(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
         for port in device.interfaces() {
-            if let Some(port_id) = port.external_port() {
-                if let Some(ethernet_port) = self.get_ethernet_port(port_id)? {
-                    // `generate_ethernet()` already leaves `poe_out` at `None` for
-                    // boards without PoE-out hardware (e.g. CHR, several switch
-                    // models); only override it here if the baseline already
-                    // established PoE capability, otherwise RouterOS rejects the
-                    // whole `/interface/ethernet/set` call with "bad parameter
-                    // poe-out" - breaking the rename bundled into the same call.
-                    if ethernet_port.poe_out.is_some() {
-                        ethernet_port.poe_out = Some(if port.enable_poe() {
-                            InterfaceEthernetPoeOut::AutoOn
-                        } else {
-                            InterfaceEthernetPoeOut::Off
-                        });
-                    }
+            if let Some(port_id) = port.external_port()
+                && let Some(ethernet_port) = self.get_ethernet_port(port_id)?
+            {
+                // `generate_ethernet()` already leaves `poe_out` at `None` for
+                // boards without PoE-out hardware (e.g. CHR, several switch
+                // models); only override it here if the baseline already
+                // established PoE capability, otherwise RouterOS rejects the
+                // whole `/interface/ethernet/set` call with "bad parameter
+                // poe-out" - breaking the rename bundled into the same call.
+                if ethernet_port.poe_out.is_some() {
+                    ethernet_port.poe_out = Some(if port.enable_poe() {
+                        InterfaceEthernetPoeOut::AutoOn
+                    } else {
+                        InterfaceEthernetPoeOut::Off
+                    });
                 }
             }
         }
@@ -1056,7 +1058,7 @@ impl<V: Ord + Copy> GapFinder<V> {
         *self.reserved_chunks.entry(chunk.start).or_insert(0) += 1;
         *self.reserved_chunks.entry(chunk.end).or_insert(0) -= 1;
     }
-    pub fn gaps(&self, Range { start, end }: Range<V>) -> GapIterator<V> {
+    pub fn gaps(&self, Range { start, end }: Range<V>) -> GapIterator<'_, V> {
         GapIterator {
             current_value: 0,
             last_key: start,
@@ -1077,21 +1079,8 @@ impl GapFinder<Ipv4Addr> {
     pub fn reserve_ipv4_net(&mut self, ip: Ipv4Net) {
         self.reserve_ipv4_range(ip.network()..ip.broadcast());
     }
-    pub fn find_gaps_ipv4(&self, net: Ipv4Net) -> GapIterator<Ipv4Addr> {
+    pub fn find_gaps_ipv4(&self, net: Ipv4Net) -> GapIterator<'_, Ipv4Addr> {
         self.gaps(net.network().saturating_add(1)..net.broadcast().saturating_sub(1))
-    }
-}
-impl GapFinder<Ipv6Addr> {
-    pub fn reserve_ipv6(&mut self, ip: Ipv6Addr) {
-        self.reserve(ip.saturating_sub(1)..ip.saturating_add(1))
-    }
-}
-impl GapFinder<IpAddr> {
-    pub fn reserve_ip(&mut self, ip: IpAddr) {
-        self.reserve(match ip {
-            IpAddr::V4(ip) => IpAddr::V4(ip.saturating_sub(1))..IpAddr::V4(ip.saturating_add(1)),
-            IpAddr::V6(ip) => IpAddr::V6(ip.saturating_sub(1))..IpAddr::V6(ip.saturating_add(1)),
-        });
     }
 }
 struct GapIterator<'a, V: Ord + Copy> {

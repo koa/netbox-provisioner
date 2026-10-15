@@ -99,7 +99,7 @@ impl TopologyBuilder {
                 match cable_port {
                     CablePort::Interface(if_id) => {
                         self.interfaces
-                            .get_mut(&if_id)
+                            .get_mut(if_id)
                             .expect("interface not found")
                             .cable = Some(*id);
                     }

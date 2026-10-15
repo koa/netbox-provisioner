@@ -41,7 +41,7 @@ impl TopologyHolder {
             Err(err) => Err(err),
         }
     }
-    pub async fn topo_lock(&self) -> MutexGuard<Option<Arc<Topology>>> {
+    pub async fn topo_lock(&self) -> MutexGuard<'_, Option<Arc<Topology>>> {
         let outdated = {
             let guard = self.data.lock().await;
             if let Some(data) = &*guard {
@@ -86,7 +86,6 @@ pub struct Topology {
     front_ports: HashMap<FrontPortId, FrontPort>,
     rear_ports: HashMap<RearPortId, RearPort>,
     cables: HashMap<CableId, Cable>,
-    //cable_path_endpoints: HashMap<CablePort, HashSet<CablePort>>,
     vxlans: HashMap<VxlanId, VxlanData>,
     wlan_groups: HashMap<WlanGroupId, WlanGroupData>,
     wlans: HashMap<WlanId, WlanData>,

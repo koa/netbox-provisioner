@@ -137,7 +137,7 @@ impl DeviceCfg {
         }
         Ok(())
     }
-    pub fn generate_mutations(&self) -> Result<Box<[ResourceMutation]>, Error> {
+    pub fn generate_mutations(&self) -> Result<Box<[ResourceMutation<'_>]>, Error> {
         let mut mutations = self.base_target.generate_mutations(&self.base_current)?.into_vec();
         // `/interface/wifi` before `/interface/wireless`: radios a removed `wifi-qcom-ac` left
         // give their names back to the `wlan<N>` taking them (the sort keeps this order)
@@ -720,14 +720,14 @@ impl DeviceStats {
 
 #[Object]
 impl BaseDeviceDataCurrent {
-    async fn identity(&self) -> GraphqlSystemIdentity {
+    async fn identity(&self) -> GraphqlSystemIdentity<'_> {
         GraphqlSystemIdentity(&self.identity)
     }
 }
 
 #[Object]
 impl BaseDeviceDataTarget {
-    async fn identity(&self) -> GraphqlSystemIdentity {
+    async fn identity(&self) -> GraphqlSystemIdentity<'_> {
         GraphqlSystemIdentity(&self.identity)
     }
 }

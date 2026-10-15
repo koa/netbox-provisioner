@@ -77,7 +77,7 @@ impl Hash for IpAddressAccess {
 
 impl PartialOrd for IpAddressAccess {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        AccessTopology::partial_cmp(self, other)
+        Some(Ord::cmp(self, other))
     }
 }
 

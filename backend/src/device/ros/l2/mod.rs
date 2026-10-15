@@ -158,7 +158,7 @@ impl NameGenerator for KeepNameGenerator {
 
     fn generate_vlan_name<'s>(
         &mut self,
-        vlan: Option<&'s VlanAccess>,
+        _vlan: Option<&'s VlanAccess>,
         vlan_id: u16,
     ) -> Cow<'s, str> {
         format!("vlan-{}", vlan_id).into()
@@ -166,7 +166,7 @@ impl NameGenerator for KeepNameGenerator {
 
     fn generate_main_bridge<'s>(
         &mut self,
-        root_device: Option<&'s InterfaceAccess>,
+        _root_device: Option<&'s InterfaceAccess>,
     ) -> Cow<'s, str> {
         "bridge".into()
     }
@@ -498,10 +498,9 @@ impl<G: NameGenerator> L2Setup<G> {
                 if let L2Port::TaggedEthernet { name, .. }
                 | L2Port::UntaggedEthernet { name, .. }
                 | L2Port::VxLan { name, .. } = port
+                    && *root_of_port.entry(name).or_insert(*root) != *root
                 {
-                    if *root_of_port.entry(name).or_insert(*root) != *root {
-                        return Err(SetupError::PortInMultipleBridges(name.clone()));
-                    }
+                    return Err(SetupError::PortInMultipleBridges(name.clone()));
                 }
             }
         }

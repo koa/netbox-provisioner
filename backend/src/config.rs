@@ -60,11 +60,11 @@ impl MikrotikCredentials {
     pub fn user(&self) -> &str {
         self.user
             .as_ref()
-            .map(|u| Box::as_ref(u))
+            .map(Box::as_ref)
             .unwrap_or("admin")
     }
     pub fn password(&self) -> Option<&str> {
-        self.password.as_ref().map(|p| Box::as_ref(p))
+        self.password.as_ref().map(Box::as_ref)
     }
 }
 

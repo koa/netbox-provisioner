@@ -26,7 +26,7 @@ enum DeviceState {
     Data(Box<[DeviceRow]>),
 }
 #[derive(Debug, Clone, PartialEq)]
-struct DeviceRow {
+pub struct DeviceRow {
     site: u32,
     id: u32,
     name: Box<str>,
@@ -42,14 +42,14 @@ impl Component for Devices {
     type Message = DevicesMsg;
     type Properties = DevicesProps;
 
-    fn create(ctx: &Context<Self>) -> Self {
+    fn create(_ctx: &Context<Self>) -> Self {
         Self {
             state: DeviceState::Loading,
             error_state: None,
         }
     }
 
-    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             DevicesMsg::Data(data) => {
                 self.state = DeviceState::Data(data);
@@ -63,8 +63,8 @@ impl Component for Devices {
         }
     }
 
-    fn view(&self, ctx: &Context<Self>) -> Html {
-        let error_msg = self.error_state.as_ref().map(|e| FrontendError::to_html(e));
+    fn view(&self, _ctx: &Context<Self>) -> Html {
+        let error_msg = self.error_state.as_ref().map(FrontendError::to_html);
         let data = match &self.state {
             DeviceState::Loading => {
                 html! {<Spinner/>}
@@ -149,7 +149,6 @@ struct DeviceEntryCardProps {
     device: DeviceRow,
 }
 enum DeviceEntryCardMsg {
-    Data,
     PingResult {
         ping_result: ping_device::PingDeviceTopologyDeviceByIdAccessPing,
         device_type: Box<str>,
@@ -170,9 +169,8 @@ impl Component for DeviceEntryCard {
         }
     }
 
-    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            DeviceEntryCardMsg::Data => false,
             DeviceEntryCardMsg::PingResult {
                 ping_result,
                 device_type,
@@ -196,7 +194,7 @@ impl Component for DeviceEntryCard {
         }
     }
 
-    fn view(&self, ctx: &Context<Self>) -> Html {
+    fn view(&self, _ctx: &Context<Self>) -> Html {
         let device = &self.device;
         let title = device.name.as_ref();
         let address = device

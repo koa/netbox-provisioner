@@ -8,9 +8,10 @@ use yew::{Html, html};
 use yew_nested_router::Target;
 
 /// `/sites`, `/site/<site>` (its devices), `/site/<site>/device/<device>/show`
-#[derive(Debug, Clone, PartialEq, Eq, Target)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Target)]
 pub enum AppRoute {
     NotFound,
+    #[default]
     Sites,
     Site {
         id: u32,
@@ -19,11 +20,6 @@ pub enum AppRoute {
     },
 }
 
-impl Default for AppRoute {
-    fn default() -> Self {
-        Self::Sites
-    }
-}
 #[derive(Clone, Debug, PartialEq, Eq, Target)]
 pub enum SiteView {
     #[target(index)]

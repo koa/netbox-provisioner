@@ -24,142 +24,6 @@ use std::{
 };
 use tokio::time::Instant;
 
-#[derive(Debug, Default)]
-struct CableChain {
-    left_ports: HashSet<CablePort>,
-    right_ports: HashSet<CablePort>,
-    cables: Vec<CablePathEntry>,
-}
-
-impl CableChain {
-    fn try_merge(
-        &mut self,
-        other: CableChain,
-        internal_connections: &HashMap<CablePort, HashSet<CablePort>>,
-    ) -> CableChainMergeResult {
-        if self
-            .left_ports
-            .iter()
-            .flat_map(|p| internal_connections.get(p).into_iter().flatten())
-            .any(|p| other.left_ports.contains(p))
-        {
-            self.append_left(other.swap(), internal_connections);
-            CableChainMergeResult::Merged
-        } else if self
-            .left_ports
-            .iter()
-            .flat_map(|p| internal_connections.get(p).into_iter().flatten())
-            .any(|p| other.right_ports.contains(p))
-        {
-            self.append_left(other, internal_connections);
-            CableChainMergeResult::Merged
-        } else if self
-            .right_ports
-            .iter()
-            .flat_map(|p| internal_connections.get(p).into_iter().flatten())
-            .any(|p| other.left_ports.contains(p))
-        {
-            self.append_right(other, internal_connections);
-            CableChainMergeResult::Merged
-        } else if self
-            .right_ports
-            .iter()
-            .flat_map(|p| internal_connections.get(p).into_iter().flatten())
-            .any(|p| other.right_ports.contains(p))
-        {
-            self.append_right(other.swap(), internal_connections);
-            CableChainMergeResult::Merged
-        } else {
-            CableChainMergeResult::NotMerged(other)
-        }
-    }
-    fn append_left(
-        &mut self,
-        other: CableChain,
-        internal_connections: &HashMap<CablePort, HashSet<CablePort>>,
-    ) {
-        for replace_port in other
-            .right_ports
-            .iter()
-            .flat_map(|p| internal_connections.get(p).into_iter().flatten())
-        {
-            self.left_ports.remove(replace_port);
-        }
-        for new_port in other.left_ports {
-            self.left_ports.insert(new_port);
-        }
-        self.cables.extend(other.cables.into_iter());
-    }
-    fn append_right(
-        &mut self,
-        other: CableChain,
-        internal_connections: &HashMap<CablePort, HashSet<CablePort>>,
-    ) {
-        for replace_port in other
-            .left_ports
-            .iter()
-            .flat_map(|p| internal_connections.get(p).into_iter().flatten())
-        {
-            self.right_ports.remove(replace_port);
-        }
-        for new_port in other.right_ports {
-            self.right_ports.insert(new_port);
-        }
-        self.cables.extend(other.cables.into_iter());
-    }
-    fn swap(self) -> Self {
-        Self {
-            left_ports: self.right_ports,
-            right_ports: self.left_ports,
-            cables: self
-                .cables
-                .into_iter()
-                .map(|c| CablePathEntry::swap(c))
-                .collect(),
-        }
-    }
-}
-enum CableChainMergeResult {
-    Merged,
-    NotMerged(CableChain),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct CablePathEntry {
-    id: u32,
-    left_port: CablePort,
-    right_port: CablePort,
-}
-impl CablePathEntry {
-    fn swap(self) -> Self {
-        Self {
-            id: self.id,
-            left_port: self.right_port,
-            right_port: self.left_port,
-        }
-    }
-}
-struct InternalDeviceConnection {
-    left: CablePort,
-    right: CablePort,
-}
-
-impl InternalDeviceConnection {
-    fn new(p0: CablePort, p1: CablePort) -> InternalDeviceConnection {
-        if p0 < p1 {
-            Self {
-                left: p0,
-                right: p1,
-            }
-        } else {
-            Self {
-                left: p1,
-                right: p0,
-            }
-        }
-    }
-}
-
 pub async fn build_topology() -> Result<Topology, NetboxError> {
     let fetch_time = Instant::now();
     let data = fetch_topology().await?;
@@ -170,107 +34,6 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
 /// from `build_topology` so a stored response (`docs/netbox-response-example.json`)
 /// can be turned into a topology offline.
 pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> Topology {
-    //let mut internal_connections = HashMap::<_, HashSet<_>>::new();
-    let mut cable_chains = Vec::<CableChain>::new();
-    /*    for (cable, internal_connections_of_cable) in data.cable_list.into_iter().filter_map(|cable| {
-            if let Some(id) = cable.id.parse().ok() {
-                let mut internal_connections = Vec::with_capacity(2);
-                let mut left_ports = Vec::with_capacity(1);
-                let mut right_ports = Vec::with_capacity(1);
-                for (port, other_ports) in cable
-                    .a_terminations
-                    .into_iter()
-                    .filter_map(|termination| parse_termination(termination))
-                {
-                    for other_port in other_ports {
-                        internal_connections.push(InternalDeviceConnection::new(port, other_port));
-                    }
-                    left_ports.push(port);
-                }
-                for (port, other_ports) in cable
-                    .b_terminations
-                    .into_iter()
-                    .filter_map(|termination| parse_termination(termination))
-                {
-                    for other_port in other_ports {
-                        internal_connections.push(InternalDeviceConnection::new(port, other_port));
-                    }
-                    right_ports.push(port);
-                }
-                Some((
-                    left_ports
-                        .iter()
-                        .flat_map(|left| {
-                            right_ports.iter().map(|right| CablePathEntry {
-                                id,
-                                left_port: *left,
-                                right_port: *right,
-                            })
-                        })
-                        .collect::<Box<[_]>>(),
-                    internal_connections,
-                ))
-            } else {
-                None
-            }
-        }) {
-            for ic in internal_connections_of_cable {
-                internal_connections
-                    .entry(ic.left)
-                    .or_default()
-                    .insert(ic.right);
-                internal_connections
-                    .entry(ic.right)
-                    .or_default()
-                    .insert(ic.left);
-            }
-            for cable_path in cable {
-                let mut current_fragment = CableChain {
-                    left_ports: HashSet::from([cable_path.right_port]),
-                    right_ports: HashSet::from([cable_path.left_port]),
-                    cables: vec![cable_path],
-                };
-                let mut merged = true;
-                while merged {
-                    merged = false;
-                    let mut new_chains = Vec::with_capacity(cable_chains.len() + 1);
-                    for mut existing_chain in cable_chains {
-                        match existing_chain.try_merge(current_fragment, &internal_connections) {
-                            CableChainMergeResult::Merged => {
-                                merged = true;
-                                current_fragment = existing_chain;
-                            }
-                            CableChainMergeResult::NotMerged(f) => {
-                                new_chains.push(existing_chain);
-                                current_fragment = f;
-                            }
-                        }
-                    }
-                    cable_chains = new_chains;
-                }
-                cable_chains.push(current_fragment);
-            }
-        }
-    */
-    let mut cable_path_endpoints: HashMap<CablePort, HashSet<CablePort>> = HashMap::new();
-    for chain in cable_chains.iter() {
-        for left_port in chain.left_ports.iter() {
-            cable_path_endpoints
-                .entry(*left_port)
-                .or_default()
-                .extend(chain.right_ports.clone());
-        }
-        for right_port in chain.right_ports.iter() {
-            cable_path_endpoints
-                .entry(*right_port)
-                .or_default()
-                .extend(chain.left_ports.clone());
-        }
-        /*if chain.cables.len() > 1 {
-            let cables = chain.cables.iter().map(|c| c.id).collect::<Box<[_]>>();
-            info!("Cable chain: {cables:?}");
-        }*/
-    }
     let mut credentials_by_tenants = HashMap::<&str, &str>::new();
     for tenant in &data.tenant_list {
         if let Some(cred) = tenant.custom_field_data.mikrotik_credentials.as_ref() {
@@ -379,16 +142,16 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             let mut ports = HashSet::new();
             let mut loopback_ip = None;
             for interface in device.interfaces {
-                if interface.name.as_str() == "lo" && interface.type_.as_str() == "virtual" {
-                    if let Some(ip) = interface
+                if interface.name.as_str() == "lo"
+                    && interface.type_.as_str() == "virtual"
+                    && let Some(ip) = interface
                         .ip_addresses
                         .iter()
                         .filter_map(|address| address.id.parse().map(IpAddressId).ok())
                         .next()
-                    {
-                        loopback_ip = Some(ip);
-                    }
-                };
+                {
+                    loopback_ip = Some(ip);
+                }
                 if let Some(id) = interface.id.parse().ok().map(InterfaceId) {
                     ports.insert(CablePort::Interface(id));
                     let ips = interface
@@ -824,55 +587,6 @@ fn termination_2_cable_port(termination: CableConnectionTermination) -> Option<C
         }) => id.parse().ok().map(RearPortId).map(CablePort::RearPort),
     }
 }
-
-/*fn parse_termination(
-    termination: CableConnectionTermination,
-) -> Option<(CablePort, Box<[CablePort]>)> {
-    match termination {
-        CableConnectionTermination::FrontPortType(fp) => {
-            let port_id = fp.id.parse().ok().map(FrontPortId);
-            let rear_id = fp.rear_port.id.parse().ok().map(RearPortId);
-            if let (Some(front_id), Some(rear_id)) = (port_id, rear_id) {
-                Some((
-                    CablePort::FrontPort(front_id),
-                    Box::from([CablePort::RearPort(rear_id)]),
-                ))
-            } else {
-                None
-            }
-        }
-        CableConnectionTermination::RearPortType(rp) => {
-            let rear_port_id = rp
-                .id
-                .parse()
-                .ok()
-                .map(|id| RearPortId(id))
-                .map(CablePort::RearPort);
-            if let Some(rear_port_id) = rear_port_id {
-                let front_ports = rp
-                    .frontports
-                    .into_iter()
-                    .filter_map(|p| p.id.parse().ok().map(FrontPortId).map(CablePort::FrontPort))
-                    .collect();
-                Some((rear_port_id, front_ports))
-            } else {
-                None
-            }
-        }
-        CableConnectionTermination::InterfaceType(ip) => ip
-            .id
-            .parse()
-            .ok()
-            .map(|id| (CablePort::Interface(InterfaceId(id)), Box::default())),
-        CableConnectionTermination::CircuitTerminationType => None,
-        CableConnectionTermination::ConsolePortType => None,
-        CableConnectionTermination::ConsoleServerPortType => None,
-        CableConnectionTermination::PowerFeedType => None,
-        CableConnectionTermination::PowerOutletType => None,
-        CableConnectionTermination::PowerPortType => None,
-    }
-}
-*/
 
 /// The slug of the topmost region above (or being) `region`, as far as the query
 /// reaches (`RegionAncestry`): the country.

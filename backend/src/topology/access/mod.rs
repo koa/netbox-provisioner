@@ -2,7 +2,6 @@ use crate::topology::{DeviceId, Topology};
 use async_graphql::InputObject;
 use device::DeviceAccess;
 use std::cmp::Ordering;
-use std::ptr;
 use std::sync::Arc;
 
 pub mod cable;
@@ -38,14 +37,6 @@ pub trait AccessTopology {
 
     fn cmp(&self, other: &Self) -> Ordering {
         self.id().cmp(&other.id())
-    }
-
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if ptr::eq(self.topology().as_ref(), other.topology().as_ref()) {
-            Some(self.cmp(other))
-        } else {
-            None
-        }
     }
 }
 

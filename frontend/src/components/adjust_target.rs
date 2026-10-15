@@ -2,7 +2,7 @@ use crate::error::FrontendError;
 use crate::i18n::target as t;
 use crate::graphql::authenticated::{AdjustTargetListCredentials, adjust_target_list_credentials};
 use crate::graphql::query_authenticated_response;
-use log::{error, info};
+use log::error;
 use patternfly_yew::prelude::{
     Form, FormGroup, FormGroupValidated, InputState, SimpleSelect, TextInput, ValidationContext,
     ValidationResult, Validator,
@@ -151,7 +151,7 @@ impl Component for AdjustTarget {
         }
     }
 
-    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             AdjustTargetMsg::UpdateAddress(address) => {
                 self.current_ip_address = address;

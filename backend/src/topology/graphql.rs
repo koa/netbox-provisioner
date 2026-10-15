@@ -21,10 +21,10 @@ impl TopologyHolder {
                         filter
                             .as_ref()
                             .map(|filter| {
-                                if let Some(flag) = filter.has_routeros {
-                                    if d.has_routeros() != flag {
-                                        return false;
-                                    }
+                                if let Some(flag) = filter.has_routeros
+                                    && d.has_routeros() != flag
+                                {
+                                    return false;
                                 }
                                 true
                             })

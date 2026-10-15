@@ -13,7 +13,6 @@ use mikrotik_model::ascii::AsciiString;
 use std::cmp::Ordering;
 use std::{
     fmt::{Debug, Formatter},
-    ptr,
     sync::Arc,
 };
 
@@ -24,11 +23,7 @@ pub struct InterfaceAccess {
 }
 impl PartialOrd for InterfaceAccess {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if ptr::eq(self.topology.as_ref(), other.topology.as_ref()) {
-            Some(Ord::cmp(&self, &other))
-        } else {
-            None
-        }
+        Some(Ord::cmp(self, other))
     }
 }
 impl Ord for InterfaceAccess {

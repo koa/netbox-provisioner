@@ -43,17 +43,3 @@ query PingDevice($id: Int!){
         }
     }
 }
-query DetectDeviceType($id: Int!){
-    topology{
-        deviceById(id: $id){
-            access{
-
-                deviceStats{
-                    routerboard {
-                        deviceType
-                    }
-                }
-            }
-        }
-    }
-}

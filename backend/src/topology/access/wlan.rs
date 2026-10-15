@@ -59,7 +59,7 @@ impl Debug for WlanAccess {
 
 impl PartialOrd for WlanAccess {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        AccessTopology::partial_cmp(self, other)
+        Some(Ord::cmp(self, other))
     }
 }
 

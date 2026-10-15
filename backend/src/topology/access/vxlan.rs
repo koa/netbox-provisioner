@@ -9,7 +9,6 @@ use std::{
     fmt::{Debug, Formatter},
     hash::{Hash, Hasher},
     net::IpAddr,
-    ptr,
     sync::Arc,
 };
 
@@ -89,11 +88,7 @@ impl Hash for VxlanAccess {
 }
 impl PartialOrd for VxlanAccess {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if ptr::eq(self.topology.as_ref(), other.topology.as_ref()) {
-            Some(self.id.cmp(&other.id))
-        } else {
-            None
-        }
+        Some(Ord::cmp(self, other))
     }
 }
 impl Ord for VxlanAccess {

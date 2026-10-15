@@ -3,12 +3,11 @@ use mikrotik_model::{
     ascii::AsciiString,
     hwconfig::{
         ADVERTISE_1G, ADVERTISE_1G_FULL, ADVERTISE_1G_SFP, ADVERTISE_10G, ADVERTISE_10G_FULL,
-        ADVERTISE_25G, ADVERTISE_100M, EthernetNamePattern, generate_ethernet, generate_wifi,
-        generate_wlan,
+        ADVERTISE_25G, ADVERTISE_100M, EthernetNamePattern, generate_ethernet, generate_wlan,
     },
     model::{
         EnabledDisabled, InterfaceEthernetByDefaultName, InterfaceW60GArp,
-        InterfaceW60GByDefaultName, InterfaceW60GCfg, InterfaceWifiByDefaultName,
+        InterfaceW60GByDefaultName, InterfaceW60GCfg,
         InterfaceWirelessAdaptiveNoiseImmunity, InterfaceWirelessArp, InterfaceWirelessBand,
         InterfaceWirelessBasicRatesAG, InterfaceWirelessByDefaultName, InterfaceWirelessCfg,
         InterfaceWirelessChannelWidth, InterfaceWirelessFrequencyMode,
@@ -302,7 +301,10 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         _ => Box::default(),
     }
 }
-pub fn build_wifi_ports(model: &[u8]) -> Box<[InterfaceWifiByDefaultName]> {
+/// The `/interface/wifi` radios a board comes with (tests; the service reads them off the device).
+#[cfg(test)]
+pub fn build_wifi_ports(model: &[u8]) -> Box<[mikrotik_model::model::InterfaceWifiByDefaultName]> {
+    use mikrotik_model::hwconfig::generate_wifi;
     match model {
         b"C52iG-5HaxD2HaxD" => repeat_n(generate_wifi(), 2)
             .enumerate()
