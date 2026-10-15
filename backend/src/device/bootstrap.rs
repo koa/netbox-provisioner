@@ -30,14 +30,20 @@ use ipnet::IpNet;
 use log::{info, warn};
 use mikrotik_api::simple::SimpleResult;
 use mikrotik_model::MacAddress;
-use std::{net::IpAddr, str::FromStr, time::Duration};
+use std::{collections::HashSet, net::IpAddr, str::FromStr, time::Duration};
 use tokio::time::{Instant, sleep};
 
 /// Marks what the setup added besides the address, so it can be told apart on the device.
 const COMMENT: &str = "netbox-provisioner setup";
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(20);
-/// `/tool mac-telnet` gives up on a silent MAC after about 10 s
-const LOGIN_TIMEOUT: Duration = Duration::from_secs(60);
+/// For the whole login and setup over mac-telnet, sessions that end early tried again.
+const LOGIN_TIMEOUT: Duration = Duration::from_secs(120);
+/// For the next prompt of a login: RouterOS answers within seconds, or the client hangs.
+const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(20);
+/// For a command in a mac-telnet session. A session that hangs ends by itself (`/tool
+/// mac-telnet` prints [`SESSION_ENDED`] after about 20 s on CHR), so this only notices one
+/// that never ends.
+const SESSION_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// How [`bootstrap`] would reach a device.
 #[derive(Clone, SimpleObject)]
@@ -344,6 +350,15 @@ pub async fn tunnel(plan: &BootstrapPlan) -> Result<Tunnel, Error> {
     })
 }
 
+/// How a [`login`] ended.
+enum Login {
+    Done(LoggedIn),
+    /// RouterOS said the credentials are wrong (also when the device answered too late)
+    Refused,
+    /// the session ended without an answer to the login
+    Undecided,
+}
+
 /// What the device is logged in with after [`login`].
 enum LoggedIn {
     /// the password from the credentials (set at RouterOS' request, or already in place)
@@ -396,24 +411,77 @@ async fn set_up_marked(
     user: &str,
     password: &str,
 ) -> Result<(), Error> {
-    // factory settings first: `admin` without password; then the device's own credentials, for
-    // a device that has them already but no address yet
+    // A session can end at any point, when the device answers late (busy, just booted:
+    // `/tool mac-telnet` gives up then). The commands are safe to run again, so after a login
+    // that is up they run from the start, until all of them are through in one session.
+    let deadline = Instant::now() + LOGIN_TIMEOUT;
+    loop {
+        let (login_user, how, mac) = log_in(terminal, setup, user, password, deadline).await?;
+        let commands = setup_commands(setup, user, password, login_user, how, mac);
+        match run_in_session(terminal, &commands, password).await? {
+            None => return Ok(()),
+            Some(ended_before) if Instant::now() > deadline => {
+                return Err(Error::ConsoleSessionEnded(ended_before));
+            }
+            Some(ended_before) => {
+                info!("mac-telnet session to {mac} ended before {ended_before}, again");
+            }
+        }
+    }
+}
+
+/// Logs in to one of `setup.macs`: with the factory settings (`admin` without password), or
+/// else as `user` with `password`, for a device that has them already but no address yet.
+/// Only a session that is up decides: RouterOS also says "incorrect username or password"
+/// when the device answered too late, so every pair of credentials and MAC is tried again
+/// until `deadline`, and counts as refused only if its last try was.
+async fn log_in<'a>(
+    terminal: &mut Terminal,
+    setup: &'a MacTelnetSetup,
+    user: &'a str,
+    password: &str,
+    deadline: Instant,
+) -> Result<(&'a str, LoggedIn, &'a MacAddress), Error> {
     let mut attempts = vec![("admin", "")];
     if !password.is_empty() || user != "admin" {
         attempts.push((user, password));
     }
-    let mut logged_in = None;
-    'attempts: for (login_user, login_password) in attempts {
-        for mac in &setup.macs {
-            if let Some(how) = login(terminal, mac, login_user, login_password, password).await? {
-                logged_in = Some((login_user, how, mac));
-                break 'attempts;
+    let mut refused = HashSet::new();
+    loop {
+        for (attempt, &(login_user, login_password)) in attempts.iter().enumerate() {
+            for (index, mac) in setup.macs.iter().enumerate() {
+                match login(terminal, mac, login_user, login_password, password).await? {
+                    Login::Done(how) => return Ok((login_user, how, mac)),
+                    Login::Refused => {
+                        refused.insert((attempt, index));
+                    }
+                    Login::Undecided => {
+                        refused.remove(&(attempt, index));
+                    }
+                }
             }
         }
+        if Instant::now() > deadline {
+            return Err(if refused.len() == attempts.len() * setup.macs.len() {
+                Error::ConsoleLoginRefused(macs(&setup.macs).into())
+            } else {
+                Error::ConsoleNoAnswer(macs(&setup.macs).into())
+            });
+        }
     }
-    let Some((login_user, how, mac)) = logged_in else {
-        return Err(Error::ConsoleLogin(macs(&setup.macs).into()));
-    };
+}
+
+/// What the device needs, logged in as `login_user` at `mac`: `user` with `password`, the
+/// address on the port and the API open to the neighbor. Each command does nothing where it
+/// is done already.
+fn setup_commands(
+    setup: &MacTelnetSetup,
+    user: &str,
+    password: &str,
+    login_user: &str,
+    how: LoggedIn,
+    mac: &MacAddress,
+) -> Vec<String> {
     let port = &setup.port;
     let mut commands = Vec::new();
     if let LoggedIn::WithoutPassword = how {
@@ -459,39 +527,61 @@ async fn set_up_marked(
     );
     if !setup.on_bridge {
         // A factory bridge takes the port's traffic before the address sees it. Taking the port
-        // out may cut this session, so it happens in the background once it is closed.
+        // out may cut this session, so it happens in the background once no mac-telnet session
+        // is left (this one ends with `/quit` below, or else when its client gives up).
         commands.push(format!(
-            ":execute {{:delay 2s; /interface bridge port remove [find interface={port}]}}"
+            ":execute {{:while ([:len [/user active find via=mac-telnet]] > 0) do={{:delay 1s}}; \
+             /interface bridge port remove [find interface={port}]}}"
         ));
     }
-    for command in commands {
-        let output = terminal
-            .run(&off_the_neighbor(&command), COMMAND_TIMEOUT)
-            .await?;
-        if let Some(error) = console_error(&output) {
-            return Err(Error::SetupCommand(hidden(&command, password), error.into()));
-        }
-        if output.contains("skipped on the neighbor") {
-            return Err(Error::ConsoleSessionEnded(hidden(&command, password)));
-        }
-    }
-    terminal.send_line("/quit").await?;
-    terminal
-        .expect(&["Welcome back!"], COMMAND_TIMEOUT)
-        .await?;
-    terminal.expect(&["] > "], COMMAND_TIMEOUT).await?;
-    Ok(())
+    commands.push("/quit".into());
+    commands
 }
 
-/// One `/tool mac-telnet` login; `None` if it was refused or nobody answered (the neighbor's own
-/// prompt is back then).
+/// What `/tool mac-telnet` prints when its session is over, back on the neighbor.
+const SESSION_ENDED: &str = "Welcome back!";
+
+/// Runs `commands` in the mac-telnet session, each once the one before is through, the last
+/// (`/quit`) ending it. `Some(command)` if the session ended before `command` was through;
+/// what was typed after its end landed on the neighbor and did nothing there.
+async fn run_in_session(
+    terminal: &mut Terminal,
+    commands: &[String],
+    password: &str,
+) -> Result<Option<Box<str>>, Error> {
+    let Some((quit, commands)) = commands.split_last() else {
+        return Ok(None);
+    };
+    for command in commands {
+        terminal.send_line(&off_the_neighbor(command)).await?;
+        let output = match terminal.sync_unless(&[SESSION_ENDED], SESSION_TIMEOUT).await? {
+            Ok(output) => output,
+            Err(_) => {
+                // the rest went to the neighbor, wait until it is through there
+                terminal.sync(COMMAND_TIMEOUT).await?;
+                return Ok(Some(hidden(command, password)));
+            }
+        };
+        if let Some(error) = console_error(&output) {
+            return Err(Error::SetupCommand(hidden(command, password), error.into()));
+        }
+    }
+    terminal.send_line(&off_the_neighbor(quit)).await?;
+    terminal.expect(&[SESSION_ENDED], SESSION_TIMEOUT).await?;
+    // back on the neighbor
+    terminal.sync(COMMAND_TIMEOUT).await?;
+    Ok(None)
+}
+
+/// One `/tool mac-telnet` login, logged in at the device's prompt when [`Login::Done`], else
+/// back at the neighbor's.
 async fn login(
     terminal: &mut Terminal,
     mac: &MacAddress,
     user: &str,
     password: &str,
     new_password: &str,
-) -> Result<Option<LoggedIn>, TerminalError> {
+) -> Result<Login, TerminalError> {
     terminal
         .send_line(&format!("/tool mac-telnet {mac}"))
         .await?;
@@ -506,12 +596,13 @@ async fn login(
     };
     // RouterOS may print a password prompt twice; each is answered once
     let (mut new_answered, mut repeat_answered) = (false, false);
-    let deadline = Instant::now() + LOGIN_TIMEOUT;
+    let mut refused = false;
     loop {
-        let within = deadline.saturating_duration_since(Instant::now());
         // "repeat new password>" before "new password>", it ends at the same place
-        const PROMPTS: [&str; 7] = [
-            "Welcome back!",
+        const PROMPTS: [&str; 8] = [
+            SESSION_ENDED,
+            // "Login failed, incorrect username or password", then the session ends
+            "incorrect username or password",
             "[Y/n]",
             // the notice about the default configuration of a factory device: keep it, the
             // apply reconciles it with NetBox later
@@ -521,11 +612,24 @@ async fn login(
             "Login: ",
             "] > ",
         ];
-        match PROMPTS[terminal.expect(&PROMPTS, within).await?] {
-            "Welcome back!" => {
-                terminal.expect(&["] > "], COMMAND_TIMEOUT).await?;
-                return Ok(None);
+        let prompt = match terminal.expect(&PROMPTS, ATTEMPT_TIMEOUT).await {
+            Ok(prompt) => PROMPTS[prompt],
+            Err(TerminalError::Timeout { .. }) => {
+                // The client can wait for good on a device that answered too late; it leaves
+                // the session on Ctrl-C.
+                terminal.send("\x03").await?;
+                terminal.expect(&[SESSION_ENDED], COMMAND_TIMEOUT).await?;
+                terminal.sync(COMMAND_TIMEOUT).await?;
+                return Ok(Login::Undecided);
             }
+            Err(error) => return Err(error),
+        };
+        match prompt {
+            SESSION_ENDED => {
+                terminal.expect(&["] > "], COMMAND_TIMEOUT).await?;
+                return Ok(if refused { Login::Refused } else { Login::Undecided });
+            }
+            "incorrect username or password" => refused = true,
             "[Y/n]" => terminal.send("n").await?,
             // a space, in case the key isn't taken: leading blanks don't matter on the prompt
             "or hit any other key to continue" => terminal.send(" ").await?,
@@ -543,12 +647,17 @@ async fn login(
                 // refused: leave the session, back to the neighbor's prompt
                 terminal.send("\x03").await?;
                 terminal.expect(&["] > "], COMMAND_TIMEOUT).await?;
-                return Ok(None);
+                return Ok(Login::Refused);
             }
             _ => {
-                // RouterOS redraws the prompt once more after the login
-                terminal.settle(Duration::from_millis(800)).await?;
-                return Ok(Some(how));
+                // through the prompts RouterOS redraws after the login
+                return Ok(match terminal.sync_unless(&[SESSION_ENDED], SESSION_TIMEOUT).await? {
+                    Ok(_) => Login::Done(how),
+                    Err(_) => {
+                        terminal.sync(COMMAND_TIMEOUT).await?;
+                        Login::Undecided
+                    }
+                });
             }
         }
     }

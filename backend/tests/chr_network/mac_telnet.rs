@@ -199,3 +199,72 @@ pub async fn ping(device: &MikrotikDevice<SimpleResult>, address: &str) -> bool 
     }
     received
 }
+
+/// The setup goes through when the device stops answering for a while (the VM stopped for
+/// 10 s) at any point of it: then `/tool mac-telnet` hangs, gives up after `Connected`, says
+/// "incorrect username or password" for the right password, or the session ends between two
+/// commands. The points are offsets from the start of the setup, which takes about 4 s here:
+/// before the connection, in the login, in the commands.
+#[tokio::test]
+#[ignore]
+async fn mac_telnet_setup_survives_a_stalled_device() {
+    if nix_unavailable() {
+        eprintln!("skipping: `nix` is not available in this environment");
+        return;
+    }
+    let golden = ensure_golden_image(&crate::cache_dir(), crate::TEST_PASSWORD)
+        .await
+        .expect("golden image build failed");
+    let work_dir = std::env::temp_dir().join("chr-network-mac-telnet-stall-test");
+    let link = free_tcp_port().unwrap();
+    let entry = boot_node(&golden, &work_dir, "entry", &[PortWiring::Listen(link)], crate::TEST_PASSWORD)
+        .await
+        .expect("entry boot failed");
+    let target = boot_node(&golden, &work_dir, "target", &[PortWiring::Connect(link)], crate::TEST_PASSWORD)
+        .await
+        .expect("target boot failed");
+    let setup = MacTelnetSetup {
+        macs: [mac_of(target.index, 1)].into(),
+        port: "ether2".into(),
+        address: "192.168.77.2/30".parse().unwrap(),
+        on_bridge: false,
+        neighbor_address: "192.168.77.1".parse().unwrap(),
+    };
+    for offset in [0, 500, 1500, 2500, 3200] {
+        let mut terminal = Terminal::connect(
+            ([127, 0, 0, 1], entry.ssh_port).into(),
+            "admin",
+            Some(crate::TEST_PASSWORD),
+        )
+        .await
+        .expect("ssh to entry");
+        terminal.hide(crate::TEST_PASSWORD);
+        let stall = async {
+            tokio::time::sleep(Duration::from_millis(offset)).await;
+            target.stall(Duration::from_secs(10)).await
+        };
+        let (result, stalled) =
+            tokio::join!(set_up(&mut terminal, &setup, "admin", crate::TEST_PASSWORD), stall);
+        stalled.expect("stall the target");
+        if let Err(error) = result {
+            panic!(
+                "setup with the target stalled after {offset} ms failed: {error}\n{}",
+                terminal.transcript()
+            );
+        }
+        terminal.close().await;
+    }
+    let api = target.connect_api(crate::TEST_PASSWORD).await.expect("target api");
+    let mut addresses = api
+        .send_simple_command(b"/ip/address/print".as_slice(), ())
+        .await;
+    let mut found = false;
+    while let Some(row) = addresses.next().await {
+        if let SimpleResult::Sentence(row) = &row
+            && row.get("address").and_then(|v| v.as_deref()) == Some("192.168.77.2/30")
+        {
+            found = true;
+        }
+    }
+    assert!(found, "no 192.168.77.2/30 on the target");
+}

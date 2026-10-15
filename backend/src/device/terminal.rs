@@ -49,7 +49,7 @@ pub enum TerminalError {
     LoginRefused(Box<str>),
     #[error("waited {waited:?} for {expected:?}, got: {tail}")]
     Timeout {
-        expected: Box<[&'static str]>,
+        expected: Box<[Box<str>]>,
         waited: Duration,
         tail: Box<str>,
     },
@@ -265,6 +265,8 @@ pub struct Terminal {
     stream: Option<(Log, String)>,
     /// blank lines just streamed
     blank: usize,
+    /// [`Terminal::sync`]s so far, which tells their output apart
+    syncs: u32,
 }
 
 /// Output of a console session, a few lines at a time; secrets replaced by `***`.
@@ -309,6 +311,7 @@ impl Terminal {
             transcript: String::new(),
             stream: None,
             blank: 0,
+            syncs: 0,
             secrets: password
                 .filter(|p| !p.is_empty())
                 .map(Box::from)
@@ -317,7 +320,7 @@ impl Terminal {
         };
         terminal.expect(&["] > "], Duration::from_secs(30)).await?;
         // RouterOS redraws the prompt after the login banner
-        terminal.settle(Duration::from_millis(800)).await?;
+        terminal.sync(Duration::from_secs(30)).await?;
         Ok(terminal)
     }
 
@@ -372,21 +375,53 @@ impl Terminal {
         result
     }
 
-    /// Runs a console command, waits for the prompt after it and returns what it printed.
+    /// Runs a console command, waits until it is done ([`Terminal::sync`]) and returns its echo
+    /// and what it printed. (A prompt is no sign of the end: one shows up in the echo of
+    /// `[:len [find]] > 0` too.)
     pub async fn run(&mut self, command: &str, within: Duration) -> Result<String, TerminalError> {
         self.send_line(command).await?;
-        self.expect(&["\n"], within).await?;
-        self.expect(&["] > "], within).await?;
-        // drop the start of the prompt (`[admin@name`) from the last line
-        let output = self.consumed.rsplit_once('\n').map(|(o, _)| o).unwrap_or_default();
+        let output = self.sync(within).await?;
+        // without the last line, the prompt with the echo of the sync
+        let output = output
+            .trim_end_matches(['\r', '\n'])
+            .rsplit_once('\n')
+            .map(|(o, _)| o)
+            .unwrap_or_default();
         Ok(output.replace('\r', ""))
     }
 
-    /// Reads until the device has been quiet for `quiet`, and forgets what it said.
-    pub async fn settle(&mut self, quiet: Duration) -> Result<(), TerminalError> {
-        while self.receive(Instant::now() + quiet).await? {}
-        self.buffer.clear();
-        Ok(())
+    /// Waits until the console has run everything typed before, and returns what it printed
+    /// meanwhile. The console runs lines one after the other, so `insync<n>`, which only the
+    /// command after them prints (its echo has `"in" . "sync" . <n>`), comes after everything
+    /// they printed, the prompts RouterOS redraws included; then the prompt follows. `<n>`
+    /// counts the syncs, so the output of an earlier one is never taken for this one's.
+    pub async fn sync(&mut self, within: Duration) -> Result<String, TerminalError> {
+        match self.sync_unless(&[], within).await? {
+            Ok(output) => Ok(output),
+            Err(_) => unreachable!("no other pattern"),
+        }
+    }
+
+    /// [`Terminal::sync`], unless one of `ends` shows up before (the client of a session in
+    /// this console printing that the session is over): `Err` with its index then.
+    pub async fn sync_unless(
+        &mut self,
+        ends: &[&str],
+        within: Duration,
+    ) -> Result<Result<String, usize>, TerminalError> {
+        self.syncs += 1;
+        let n = self.syncs;
+        self.send_line(&format!(r#":put ("in" . "sync" . {n})"#)).await?;
+        let done = format!("insync{n}");
+        let patterns = [&[done.as_str()], ends].concat();
+        match self.expect(&patterns, within).await? {
+            0 => {
+                let output = std::mem::take(&mut self.consumed);
+                self.expect(&["] > "], within).await?;
+                Ok(Ok(output))
+            }
+            end => Ok(Err(end - 1)),
+        }
     }
 
     /// Types a line, as if followed by Enter.
@@ -405,7 +440,7 @@ impl Terminal {
     /// `consumed`.
     pub async fn expect(
         &mut self,
-        patterns: &[&'static str],
+        patterns: &[&str],
         within: Duration,
     ) -> Result<usize, TerminalError> {
         let deadline = Instant::now() + within;
@@ -423,7 +458,7 @@ impl Terminal {
             }
             if !self.receive(deadline).await? {
                 return Err(TerminalError::Timeout {
-                    expected: patterns.into(),
+                    expected: patterns.iter().map(|p| Box::from(*p)).collect(),
                     waited: within,
                     tail: self.tail(),
                 });

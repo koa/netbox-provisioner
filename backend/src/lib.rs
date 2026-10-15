@@ -46,9 +46,12 @@ pub enum Error {
     Terminal(#[from] device::terminal::TerminalError),
     #[error("No way known to set up {0}: {1}")]
     NoBootstrapPath(Box<str>, error_info::BootstrapObstacle),
-    /// over mac-telnet to these MACs
-    #[error("Login over mac-telnet to {0} refused or not answered")]
-    ConsoleLogin(Box<str>),
+    /// over mac-telnet to these MACs, with every credentials tried
+    #[error("Login over mac-telnet to {0} refused")]
+    ConsoleLoginRefused(Box<str>),
+    /// over mac-telnet to these MACs, within the login timeout
+    #[error("No answer to the login over mac-telnet to {0}")]
+    ConsoleNoAnswer(Box<str>),
     /// a setup command (passwords replaced by `***`) and the error the console printed
     #[error("Setup command failed: {0}: {1}")]
     SetupCommand(Box<str>, Box<str>),

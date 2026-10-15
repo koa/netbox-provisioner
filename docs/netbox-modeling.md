@@ -211,6 +211,13 @@ bis sie dauerhaft leuchtet, und loslassen): ether1 ist dann ein normaler Managem
 CAP, den dieser Modus einschaltet, schaltet die Ersteinrichtung wieder aus (sonst lehnt RouterOS
 das Umbenennen der Funkmodule ab); das Anwenden setzt ihn danach so, wie NetBox es vorgibt.
 
+Antwortet das Gerät zwischendurch nicht (es bootet noch oder ist ausgelastet), bricht MAC-Telnet
+die Sitzung ab oder meldet sogar ein falsches Passwort. Die Ersteinrichtung versucht es darum
+bis zu zwei Minuten lang wieder; erst dann meldet sie „abgelehnt“ oder „keine Antwort“. Falsche
+Zugangsdaten zeigen sich also erst nach dieser Zeit. Den Port aus der Werks-Bridge nimmt das
+Gerät erst, wenn keine MAC-Telnet-Sitzung mehr offen ist: Eine eigene Sitzung zum neuen Gerät
+während der Einrichtung schliessen.
+
 Bis zum ersten Anwenden (das OSPF bringt) erreicht der Provisioner das neue Gerät über einen
 SSH-Tunnel zum Nachbarn: Die Verbindungen kommen von der Adresse des Nachbarn auf dem Kabel, das
 neue Gerät braucht also keine Route zurück. Dafür setzt die generierte Konfiguration auf jedem

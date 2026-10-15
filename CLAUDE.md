@@ -159,7 +159,17 @@ refusal), hence the timeout in `Tunnel::open`. Don't go back to static return ro
 `redistribute=static` they go out as /32s that beat the neighbors' connected networks. When the
 mac-telnet session ends early, the following lines land on the neighbor's own console (this
 once left setup routes on lab-np1), so every setup command is wrapped to do nothing where the
-global `netboxProvisionerNeighbor` is set, which `set_up` sets on the neighbor only. A home AP's
+global `netboxProvisionerNeighbor` is set, which `set_up` sets on the neighbor only. Nothing
+in a console session waits a fixed time or takes a prompt for the end of a command (one is in
+the echo of `[find]] > 0`): `Terminal::sync` types a numbered `:put ("in" . "sync" . n)` and
+waits for `insyncn`, which comes after everything typed before. A device answering late (busy,
+just booted; on a CHR stopped with `RunningNode::stall`) makes `/tool mac-telnet` give up
+after `Connected` (only `Welcome back!`), hang until Ctrl-C, say "incorrect username or
+password" for the right password, or end the session between commands, so only a session that
+is up decides a login, every pair of credentials and MAC is tried again until
+`LOGIN_TIMEOUT`, and after a session ending early all commands run again (each does nothing
+where it is done; `mac_telnet_setup_survives_a_stalled_device`). The port leaves the factory
+bridge once `/user active` has no mac-telnet session left, not after a delay. A home AP's
 factory ether1 is WAN (firewall, no MAC server or discovery there), so it is set up after a reset
 to CAPs mode (`docs/netbox-modeling.md`); `set_up` turns the CAP that mode enables off again
 (`:parse`, the menus depend on the packages), since CAPsMAN refuses the first apply renaming the

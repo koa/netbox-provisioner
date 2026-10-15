@@ -59,8 +59,13 @@ pub mod error {
                       im selben Netz"
                     .into(),
             },
-            "CONSOLE_LOGIN" => format!(
-                "Anmeldung über mac-telnet an {} abgelehnt oder unbeantwortet",
+            "CONSOLE_LOGIN_REFUSED" => format!(
+                "Anmeldung über mac-telnet an {} abgelehnt (Werkseinstellung und hinterlegte \
+                 Zugangsdaten)",
+                p("macs")
+            ),
+            "CONSOLE_NO_ANSWER" => format!(
+                "Keine Antwort auf die Anmeldung über mac-telnet an {}",
                 p("macs")
             ),
             "SETUP_COMMAND" => format!(

@@ -76,7 +76,10 @@ impl From<&Error> for ErrorInfo {
                     ("obstacle", obstacle.code().into()),
                 ],
             ),
-            Error::ConsoleLogin(macs) => ("CONSOLE_LOGIN", vec![("macs", macs.to_string())]),
+            Error::ConsoleLoginRefused(macs) => {
+                ("CONSOLE_LOGIN_REFUSED", vec![("macs", macs.to_string())])
+            }
+            Error::ConsoleNoAnswer(macs) => ("CONSOLE_NO_ANSWER", vec![("macs", macs.to_string())]),
             Error::SetupCommand(command, error) => (
                 "SETUP_COMMAND",
                 vec![("command", command.to_string()), ("cause", error.to_string())],

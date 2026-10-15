@@ -75,6 +75,44 @@ impl RunningNode {
         self.child.kill().await?;
         Ok(())
     }
+
+    /// Stops the VM for `duration` (SIGSTOP, then SIGCONT): a device that answers nothing
+    /// meanwhile, as a busy one does, and then goes on where it was.
+    pub async fn stall(&self, duration: Duration) -> anyhow::Result<()> {
+        let pid = self.qemu_pid()?;
+        signal(pid, "-STOP")?;
+        tokio::time::sleep(duration).await;
+        signal(pid, "-CONT")
+    }
+
+    /// The QEMU process: the one whose command line names this node's overlay (`nix shell`
+    /// may run it as a child of its own).
+    fn qemu_pid(&self) -> anyhow::Result<u32> {
+        let overlay = self.overlay_path.to_string_lossy();
+        for entry in std::fs::read_dir("/proc")?.flatten() {
+            let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
+                continue;
+            };
+            let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+                continue;
+            };
+            let cmdline = String::from_utf8_lossy(&cmdline);
+            let program = cmdline.split('\0').next().unwrap_or_default();
+            if program.ends_with("qemu-system-x86_64") && cmdline.contains(overlay.as_ref()) {
+                return Ok(pid);
+            }
+        }
+        anyhow::bail!("no QEMU process for {overlay}")
+    }
+}
+
+fn signal(pid: u32, signal: &str) -> anyhow::Result<()> {
+    let status = std::process::Command::new("kill")
+        .arg(signal)
+        .arg(pid.to_string())
+        .status()?;
+    anyhow::ensure!(status.success(), "kill {signal} {pid}: {status}");
+    Ok(())
 }
 
 impl Drop for RunningNode {
