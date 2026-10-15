@@ -96,6 +96,8 @@ pub enum RebootReason {
     Requested,
     /// a cold boot (power cut or button) confirming a device-mode change
     DeviceMode,
+    /// the flash is reformatted in partitions
+    Repartition,
 }
 
 /// The device is back with this RouterOS.

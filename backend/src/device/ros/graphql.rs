@@ -17,7 +17,7 @@ use crate::{
             needed_radio_package,
             warning::ApplyWarning,
         },
-        device_mode, raw, update,
+        device_mode, partitions, raw, update,
     },
     topology::access::device::DeviceAccess,
 };
@@ -766,6 +766,11 @@ impl AccessibleDevice {
     async fn device_mode(&self, ctx: &Context<'_>) -> Option<device_mode::DeviceMode> {
         let mode = async { device_mode::read(&self.connect_again().await?, &self.device_config).await };
         nullable(ctx, mode.await).flatten()
+    }
+    /// The partitions of the flash; `null` on a device without (16 MiB of flash, a CHR).
+    async fn partitions(&self, ctx: &Context<'_>) -> Option<partitions::Partitions> {
+        let read = async { partitions::read(&self.connect_again().await?).await };
+        nullable(ctx, read.await).flatten()
     }
     /// The running RouterOS and its packages, and what an update in each channel would do.
     async fn routeros(&self, ctx: &Context<'_>) -> Option<RouterOsVersions> {

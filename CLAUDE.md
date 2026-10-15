@@ -300,6 +300,12 @@ connection until the device goes down, sends only features that are off (an upda
 nothing counts down too), and is done when the device mode reads back with them on
 (`device_mode_change_confirmed_by_a_cold_boot`, `RunningNode::power_cycle`).
 
+With `partitions` on, the `Repartition` job (`device::partitions::repartition`) splits a single
+partition of 128 MiB or more in two (`/partitions repartition partitions=2`: reboot, reformat).
+It compares identity, files and the partition count after the reboot and reports missing files.
+On lab-core (CCR2004, 7.23.8) it took about 80 s and kept the configuration, all files and the
+OSPF neighbors; part1 is empty afterwards. A CHR has no `/partitions`, so there is no CHR test.
+
 `local/` runs the lab: `netbox/` (NetBox + `seed-lab.py`), `keycloak/` (realm `lab` on
 `localhost:8180`, admin/admin), `lab/make-config.sh` (the lab devices' password comes from the
 ignored `.lab-netbox/device-password`, never put it in the repo) + `lab/run-provisioner.sh`

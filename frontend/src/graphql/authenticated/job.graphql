@@ -34,6 +34,8 @@ query JobEvents($id: Int!, $after: Int){
                 ... on SetupDone { address }
                 ... on DeviceModeConfirm { changes { feature reason } timeout }
                 ... on DeviceModeChanged { changes { feature reason } }
+                ... on RepartitionStarted { count files }
+                ... on Repartitioned { partitions { name version sizeMib running } missingFiles }
             }
         }
     }

@@ -123,6 +123,10 @@ pub mod error {
             },
             "NOT_BACK_AFTER_REBOOT" => "Das Gerät ist nach dem Neustart nicht zurück".into(),
             "REFUSED" => format!("Das Gerät lehnt ab: {}", p("cause")),
+            "CANNOT_REPARTITION" => format!(
+                "Der Flash lässt sich nicht aufteilen: {} Partitionen, oder der Device-Mode erlaubt keine",
+                p("count")
+            ),
             "DEVICE_MODE_NOT_CONFIRMED" => {
                 "Die Änderung des Device-Mode wurde am Gerät nicht rechtzeitig bestätigt".into()
             }
@@ -247,6 +251,26 @@ pub mod device {
         "Das Gerät und was es über PoE versorgt, ist während des Neustarts weg. ";
 
     pub const DEVICE_MODE: &str = "Device-Mode";
+    pub const PARTITIONS: &str = "Partitionen";
+    pub const PARTITIONS_SPLIT: &str = "In zwei Partitionen aufteilen";
+    pub const PARTITIONS_NOW: &str = "Jetzt aufteilen";
+    pub const PARTITIONS_CONFIRM: &str = "Das Gerät formatiert den Flash neu und startet neu; laut \
+        MikroTik bleibt nur die laufende Partition erhalten. Das Gerät und was es über PoE versorgt, \
+        ist währenddessen weg. ";
+
+    /// one partition, e.g. `part0: RouterOS v7.23.8 …, 128 MiB, läuft`
+    pub fn partition(name: &str, version: &str, size_mib: i64, active: bool, running: bool) -> String {
+        let mut text = format!(
+            "{name}: {}, {size_mib} MiB",
+            if version.is_empty() { "leer" } else { version }
+        );
+        if running {
+            text.push_str(", läuft");
+        } else if active {
+            text.push_str(", startet beim nächsten Neustart");
+        }
+        text
+    }
     pub const DEVICE_MODE_ADJUST: &str = "Device-Mode anpassen";
     pub const DEVICE_MODE_NOW: &str = "Jetzt anpassen";
     pub const DEVICE_MODE_CONFIRM: &str = "Danach verlangt das Gerät eine Bestätigung vor Ort: den Knopf \
@@ -348,6 +372,7 @@ pub mod job {
     pub const BOOTSTRAP: &str = "Ersteinrichtung";
     pub const REBOOT: &str = "Neustart";
     pub const DEVICE_MODE: &str = "Device-Mode-Änderung";
+    pub const REPARTITION: &str = "Aufteilen des Flash";
 
     pub const NOTHING_TO_APPLY: &str = "Nichts anzuwenden, das Gerät entspricht NetBox";
     pub const NOT_ALL_APPLIED: &str = "Nicht alles wurde angewendet";
@@ -490,6 +515,7 @@ pub mod job {
             Firmware,
             Requested,
             DeviceMode,
+            Repartition,
             Other(&'a str),
         }
         pub fn reboot(reason: Reboot, minutes: u64) -> String {
@@ -498,6 +524,7 @@ pub mod job {
                 Reboot::Firmware => "für die neue Firmware",
                 Reboot::Requested => "auf Anfrage",
                 Reboot::DeviceMode => "nach der Bestätigung",
+                Reboot::Repartition => "zum Aufteilen des Flash",
                 Reboot::Other(other) => other,
             };
             format!("Neustart {reason}, wartet bis zu {minutes} min, bis das Gerät zurück ist")
@@ -520,6 +547,16 @@ pub mod job {
                 "Jetzt am Gerät bestätigen: den Knopf (Reset oder Mode) drücken oder den Strom kurz unterbrechen, innerhalb von {minutes} min. Schaltet ein: {}",
                 features.join(", ")
             )
+        }
+        pub fn repartition_started(count: i64, files: i64) -> String {
+            format!("Teilt den Flash in {count} Partitionen auf ({files} Dateien vorher)")
+        }
+        pub fn repartitioned(partitions: &[String], missing_files: &[String]) -> String {
+            let mut text = format!("Aufgeteilt: {}", partitions.join("; "));
+            if !missing_files.is_empty() {
+                text.push_str(&format!(". Nicht mehr da: {}", missing_files.join(", ")));
+            }
+            text
         }
         pub fn device_mode_changed(features: &[String]) -> String {
             if features.is_empty() {

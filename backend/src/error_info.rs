@@ -88,6 +88,9 @@ impl From<&Error> for ErrorInfo {
                 ("CONSOLE_SESSION_ENDED", vec![("command", command.to_string())])
             }
             Error::Refused(error) => ("REFUSED", cause(error)),
+            Error::CannotRepartition(count) => {
+                ("CANNOT_REPARTITION", vec![("count", count.to_string())])
+            }
             Error::DeviceModeNotConfirmed => ("DEVICE_MODE_NOT_CONFIRMED", vec![]),
             Error::DeviceModeUnchanged(features) => {
                 ("DEVICE_MODE_UNCHANGED", vec![("features", features.to_string())])

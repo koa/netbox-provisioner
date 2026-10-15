@@ -1,7 +1,7 @@
 # Konzept: Fallback für RouterOS-Updates
 
-Status: Konzept. Umgesetzt ist bisher nur die Voraussetzung für Stufe 1, das Anpassen des
-Device-Mode (siehe unten). Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
+Status: Konzept. Umgesetzt ist bisher nur die Einrichtung für Stufe 1: das Anpassen des
+Device-Mode (siehe unten) und das Aufteilen in zwei Partitionen. Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
 noch einen Fallback Mechanismus für Updates“).
 
 ## Ausgangslage
@@ -43,16 +43,19 @@ Konfiguration. Geprüft nur lesend im Lab und in der MikroTik-Doku
   wechselt die Partition, von der gebootet wird. Startet die aktive nicht, bootet RouterBOOT von
   selbst die nächste (`fallback-to=next`).
 - Seit 7.17 muss der Device-Mode Partitionen erlauben (`partitions=yes`). Das braucht eine
-  Bestätigung am Gerät. Im Lab steht überall `partitions=false`.
+  Bestätigung am Gerät. Im Lab stand überall `partitions=false`; auf lab-core ist es jetzt an.
 
 ### Einrichtung (einmal pro Gerät)
 
 1. **Device-Mode anpassen.** *Umgesetzt*, siehe unten: Die Geräteseite zeigt, was fehlt, der Job
    wartet auf die Bestätigung am Gerät.
-2. **Neu partitionieren** (`/partitions repartition partitions=2`). Laut Doku startet das Gerät neu,
-   formatiert das NAND und behält nur die aktive Partition. Noch zu prüfen, auf einem Lab-Gerät und
-   über den Provisioner: Bleiben Konfiguration und Dateien der aktiven Partition erhalten? Auf
-   einer CHR geht das nicht, sie hat keine `/partitions`.
+2. **Neu partitionieren** (`/partitions repartition partitions=2`). *Umgesetzt*
+   (`backend/src/device/partitions.rs`): Die Geräteseite zeigt die Partitionen, „In zwei
+   Partitionen aufteilen“ fragt nach, der Job `Repartition` vergleicht danach Identität, Dateien
+   und die Zahl der Partitionen. Im Lab geprüft (lab-core, 2026-10-15): Nach rund 80 s war das
+   Gerät mit `part0` (laufend, 64 MiB) und einer leeren `part1` (64 MiB) zurück. Konfiguration,
+   alle Dateien und die OSPF-Nachbarn sind erhalten geblieben. Auf einer CHR geht das nicht, sie
+   hat keine `/partitions`.
 
 ### Ablauf eines Updates
 

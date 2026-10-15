@@ -12,9 +12,9 @@ use crate::{
     graphql::{
         authenticated::{
             ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, ChangeDeviceMode, DeviceJobs,
-            DeviceOverview, RebootDevice, UpdateRouteros, apply_device_cfg, reboot_device,
-            bootstrap_candidates, bootstrap_device, change_device_mode, device_jobs, device_overview,
-            update_routeros,
+            DeviceOverview, RebootDevice, RepartitionDevice, UpdateRouteros, apply_device_cfg,
+            reboot_device, bootstrap_candidates, bootstrap_device, change_device_mode, device_jobs,
+            device_overview, repartition_device, update_routeros,
         },
         query_authenticated, query_authenticated_response,
     },
@@ -43,6 +43,8 @@ pub struct ShowDevice {
     confirm_reboot: bool,
     /// "Device-Mode anpassen" was clicked, waiting for the confirmation
     confirm_device_mode: bool,
+    /// "In zwei Partitionen aufteilen" was clicked, waiting for the confirmation
+    confirm_repartition: bool,
 }
 type Candidate =
     bootstrap_candidates::BootstrapCandidatesTopologyDeviceByIdBootstrapPlanDiscovered;
@@ -62,6 +64,8 @@ pub struct ShowDeviceData {
     routeros: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessRouteros>,
     /// `None` before RouterOS 7.17, or when it couldn't be read
     device_mode: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessDeviceMode>,
+    /// `None` without partitions (16 MiB of flash), or when they couldn't be read
+    partitions: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessPartitions>,
     bootstrap_plan: Option<device_overview::DeviceOverviewTopologyDeviceByIdBootstrapPlan>,
     bootstrap_problem: Option<device_overview::Problem>,
     /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
@@ -76,7 +80,7 @@ pub struct ShowDeviceProps {
 pub enum ShowDeviceMessage {
     Error(FrontendError),
     Data {
-        data: ShowDeviceData,
+        data: Box<ShowDeviceData>,
         error: Option<FrontendError>,
     },
     AdjustTarget(SelectedTarget),
@@ -96,6 +100,9 @@ pub enum ShowDeviceMessage {
     /// ask before changing the device mode (`true`), or not anymore
     ConfirmDeviceMode(bool),
     ChangeDeviceMode,
+    /// ask before splitting the flash (`true`), or not anymore
+    ConfirmRepartition(bool),
+    Repartition,
     JobStarted(Result<i64, FrontendError>),
     JobFinished,
 }
@@ -117,6 +124,7 @@ impl Component for ShowDevice {
             channel: None,
             confirm_reboot: false,
             confirm_device_mode: false,
+            confirm_repartition: false,
         }
     }
 
@@ -134,7 +142,7 @@ impl Component for ShowDevice {
                 if self.channel.is_none() {
                     self.channel = data.routeros.as_ref().map(|r| r.default_channel.clone());
                 }
-                self.data = Some(data);
+                self.data = Some(*data);
                 self.error = error;
                 true
             }
@@ -183,6 +191,16 @@ impl Component for ShowDevice {
                 self.confirm_device_mode = false;
                 self.job_running = true;
                 change_mode(ctx.link().clone(), self.id, self.alternate_target.clone());
+                true
+            }
+            ShowDeviceMessage::ConfirmRepartition(confirm) => {
+                self.confirm_repartition = confirm;
+                true
+            }
+            ShowDeviceMessage::Repartition => {
+                self.confirm_repartition = false;
+                self.job_running = true;
+                repartition(ctx.link().clone(), self.id, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::JobStarted(result) => {
@@ -374,6 +392,41 @@ impl Component for ShowDevice {
                 </dd>
             </>}
             });
+            let partitions = data.partitions.as_ref().map(|partitions| {
+                html! {<>
+                <dt>{t::PARTITIONS}</dt><dd>
+                    { for partitions.partitions.iter().map(|p| html!(
+                        <div>{ t::partition(&p.name, &p.version, p.size_mib, p.active, p.running) }</div>
+                    ))}
+                    if partitions.can_split {
+                        <div class="partitions-split">
+                            if self.confirm_repartition {
+                                {t::PARTITIONS_CONFIRM}
+                                <Button
+                                    variant={ButtonVariant::Danger}
+                                    label={t::PARTITIONS_NOW}
+                                    disabled={running}
+                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::Repartition)}
+                                />
+                                {" "}
+                                <Button
+                                    variant={ButtonVariant::Link}
+                                    label={CANCEL}
+                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmRepartition(false))}
+                                />
+                            } else {
+                                <Button
+                                    variant={ButtonVariant::Secondary}
+                                    label={t::PARTITIONS_SPLIT}
+                                    disabled={running}
+                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmRepartition(true))}
+                                />
+                            }
+                        </div>
+                    }
+                </dd>
+            </>}
+            });
             let bootstrap_running = running;
             let update = if data.access.is_none() {
                 let setup = match (&data.bootstrap_plan, &data.bootstrap_problem) {
@@ -453,6 +506,7 @@ impl Component for ShowDevice {
             <dt>{t::BOARD}</dt><dd>{ board }</dd>
             {routeros}
             {device_mode}
+            {partitions}
             <dt>{t::CHANGES}</dt><dd>
                 {update}
                 <Button
@@ -518,6 +572,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                             configured_name: d.name.into_boxed_str(),
                             routeros: d.access.as_mut().and_then(|a| a.routeros.take()),
                             device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
+                            partitions: d.access.as_mut().and_then(|a| a.partitions.take()),
                             access: d.access.map(|a| {
                                 (
                                     a.device_stats.routerboard.device_type.into_boxed_str(),
@@ -534,7 +589,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                         .unwrap_or_default();
 
                     scope.send_message(ShowDeviceMessage::Data {
-                        data,
+                        data: Box::new(data),
                         error,
                     });
                 } else if let Some(errors) = response.errors {
@@ -695,6 +750,29 @@ fn change_mode(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
         )
         .await
         .map(|data| data.change_device_mode.id);
+        scope.send_message(ShowDeviceMessage::JobStarted(result));
+    });
+}
+
+/// Splits the flash in two partitions; the device reformats it and reboots.
+fn repartition(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
+    spawn_local(async move {
+        let (credential_name, adhoc_credentials) =
+            target.credentials.variables(|username, password| repartition_device::AdhocCredentials {
+                username,
+                password,
+            });
+        let result = query_authenticated::<RepartitionDevice, _>(
+            scope.clone(),
+            repartition_device::Variables {
+                id: id as i64,
+                target: target.address.map(|a| a.to_string()),
+                credential_name,
+                adhoc_credentials,
+            },
+        )
+        .await
+        .map(|data| data.repartition_device.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }

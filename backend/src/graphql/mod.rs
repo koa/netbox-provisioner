@@ -3,7 +3,7 @@ use crate::{
     config::CONFIG,
     error_info::ApiError,
     device::{
-        bootstrap, device_mode,
+        bootstrap, device_mode, partitions,
         power::PowerChain,
         update::{self, DeviceLink},
     },
@@ -176,6 +176,27 @@ impl MutationAuthenticated {
                 .await??
                 .ok_or(Error::MissingCredentials)?;
             device_mode::change(&link, &device, &power, &log).await
+        })?)
+    }
+    /// Starts splitting the flash in two partitions (`DeviceAccess.access.partitions.canSplit`;
+    /// `allow_apply` must be set): the device reformats its flash and reboots. Target and
+    /// credentials as for `DeviceAccess.access`.
+    #[graphql(guard = "WritesAllowed")]
+    async fn repartition_device(
+        &self,
+        id: u32,
+        target: Option<String>,
+        credential_name: Option<Box<str>>,
+        adhoc_credentials: Option<AdhocCredentials>,
+    ) -> Result<Arc<Job>, ApiError> {
+        let device = self.device(id).await?;
+        let power = PowerChain::of(&device);
+        Ok(job::start(&device.clone(), JobKind::Repartition, |log| async move {
+            let link = log
+                .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
+                .await??
+                .ok_or(Error::MissingCredentials)?;
+            partitions::repartition(&link, &power, &log).await
         })?)
     }
     /// Stops a job (`Query.job`) at the next point where that is safe: an update between its

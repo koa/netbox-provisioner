@@ -59,6 +59,9 @@ pub enum Error {
     ConsoleSessionEnded(Box<str>),
     #[error("The device refused: {0}")]
     Refused(Box<str>),
+    /// the partitions the device has (one is needed, with the device mode allowing more)
+    #[error("Cannot split the flash: {0} partitions, or the device mode doesn't allow partitions")]
+    CannotRepartition(u32),
     #[error("The device-mode change was not confirmed at the device in time")]
     DeviceModeNotConfirmed,
     /// the features still off

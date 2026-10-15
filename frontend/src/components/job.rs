@@ -172,6 +172,7 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         JobKind::BOOTSTRAP => t::BOOTSTRAP,
         JobKind::REBOOT => t::REBOOT,
         JobKind::DEVICE_MODE => t::DEVICE_MODE,
+        JobKind::REPARTITION => t::REPARTITION,
         JobKind::Other(other) => other,
     };
     let events = || job.events.iter().map(|event| &event.event);
@@ -318,6 +319,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
                 RebootReason::FIRMWARE => e::Reboot::Firmware,
                 RebootReason::REQUESTED => e::Reboot::Requested,
                 RebootReason::DEVICE_MODE => e::Reboot::DeviceMode,
+                RebootReason::REPARTITION => e::Reboot::Repartition,
                 RebootReason::Other(other) => e::Reboot::Other(other),
             },
             reboot.timeout / 60_000_000_000,
@@ -329,6 +331,15 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::DeviceModeConfirm(confirm) => e::device_mode_confirm(
             &features(confirm.changes.iter().map(|c| (c.feature.as_str(), &c.reason))),
             confirm.timeout / 60_000_000_000,
+        ),
+        Event::RepartitionStarted(started) => e::repartition_started(started.count, started.files),
+        Event::Repartitioned(done) => e::repartitioned(
+            &done
+                .partitions
+                .iter()
+                .map(|p| crate::i18n::device::partition(&p.name, &p.version, p.size_mib, false, p.running))
+                .collect::<Vec<_>>(),
+            &done.missing_files,
         ),
         Event::DeviceModeChanged(changed) => e::device_mode_changed(&features(
             changed.changes.iter().map(|c| (c.feature.as_str(), &c.reason)),
