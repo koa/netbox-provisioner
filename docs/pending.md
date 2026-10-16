@@ -103,3 +103,8 @@ Device-Darstellung
 
 Die Darstellung ist recht chaotisch. Das sollte besser angeordnet werden. Wenn möglich auch für Mobile passend.
 Gibt es noch einen validen Anwendungsfall für "Ziel ändern". Wenn nicht, weg damit.
+
+
+Polling verbessern
+==================
+ Ein einzelner Fehler beim Polling führt dazu, dass der Client den ganzen Vorgang abbricht. Das sollte so nicht sein (Der Fehler soll angezeigt werden und der Nutzer soll die Möglichkeit haben den Vorgang abzubrechen, aber es muss auch weiter gehen können)
