@@ -101,23 +101,28 @@ fn with_poe_power_control(port: InterfaceEthernetByDefaultName) -> InterfaceEthe
 
 pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName]> {
     match model {
+        // hAP ac: PoE-out on ether5, with the power cycling of a hung PD (ap-klr-solar, 7.23.7)
         b"RB962UiGS-5HacT2HnT" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
             4,
         )
-        .chain(repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, true),
-            1,
-        ))
         .enumerate()
+        .map(|(idx, generator)| generator(idx + 1))
+        .chain(
+            repeat_n(
+                generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, true),
+                1,
+            )
+            .map(|generator| with_poe_power_cycle(generator(5))),
+        )
         .chain(
             repeat_n(
                 generate_ethernet(EthernetNamePattern::Sfp, &ADVERTISE_1G_SFP, 1600, false),
                 1,
             )
-            .enumerate(),
+            .enumerate()
+            .map(|(idx, generator)| generator(idx + 1)),
         )
-        .map(|(idx, generator)| generator(idx + 1))
         .collect(),
         // hEX PoE: ether1 is PoE-in only, PoE-out on ether2-5, a 1G SFP cage (l2mtu as
         // router-schopf reports them, 7.23.8)
@@ -562,5 +567,24 @@ mod tests {
         let ether2 = &ports[1];
         assert_eq!(&*ether2.default_name, b"ether2");
         assert_eq!(ether2.data.power_cycle_ping_enabled, None);
+    }
+
+    #[test]
+    fn hap_ac_poe_port_has_its_power_cycle_settings() {
+        let ports = build_ethernet_ports(b"RB962UiGS-5HacT2HnT");
+        let names: Vec<_> = ports
+            .iter()
+            .map(|port| String::from_utf8_lossy(&port.default_name).into_owned())
+            .collect();
+        assert_eq!(names, ["ether1", "ether2", "ether3", "ether4", "ether5", "sfp1"]);
+        for port in &ports[..4] {
+            assert_eq!(port.data.poe_out, None);
+            assert_eq!(port.data.power_cycle_ping_enabled, None);
+        }
+        let ether5 = &ports[4].data;
+        assert!(ether5.poe_out.is_some());
+        assert_eq!(ether5.power_cycle_interval, Some(HasNone::NoneValue));
+        assert_eq!(ether5.power_cycle_ping_enabled, Some(false));
+        assert_eq!(ports[5].data.power_cycle_ping_enabled, None);
     }
 }
