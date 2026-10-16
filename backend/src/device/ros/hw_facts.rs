@@ -119,6 +119,31 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         )
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
+        // hEX PoE: ether1 is PoE-in only, PoE-out on ether2-5, a 1G SFP cage (l2mtu as
+        // router-schopf reports them, 7.23.8)
+        b"RB960PGS" => repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
+            1,
+        )
+        .enumerate()
+        .map(|(idx, generator)| generator(idx + 1))
+        .chain(
+            repeat_n(
+                generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, true),
+                4,
+            )
+            .enumerate()
+            .map(|(idx, generator)| with_poe_power_cycle(generator(idx + 2))),
+        )
+        .chain(
+            repeat_n(
+                generate_ethernet(EthernetNamePattern::Sfp, &ADVERTISE_1G_SFP, 1600, false),
+                1,
+            )
+            .enumerate()
+            .map(|(idx, generator)| generator(idx + 1)),
+        )
+        .collect(),
         // wAP ac: ether1 is PoE-in only
         b"RBwAPG-5HacD2HnD" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
@@ -504,6 +529,25 @@ mod tests {
         assert_eq!(ether1.power_cycle_ping_enabled, Some(false));
         let sfp1 = &ports[16].data;
         assert_eq!(sfp1.poe_voltage, None);
+    }
+
+    #[test]
+    fn hex_poe_has_poe_out_on_ether2_to_5() {
+        let ports = build_ethernet_ports(b"RB960PGS");
+        let names: Vec<_> = ports
+            .iter()
+            .map(|port| String::from_utf8_lossy(&port.default_name).into_owned())
+            .collect();
+        assert_eq!(names, ["ether1", "ether2", "ether3", "ether4", "ether5", "sfp1"]);
+        assert_eq!(ports[0].data.poe_out, None);
+        for port in &ports[1..5] {
+            assert!(port.data.poe_out.is_some());
+            assert_eq!(port.data.power_cycle_interval, Some(HasNone::NoneValue));
+            assert_eq!(port.data.power_cycle_ping_enabled, Some(false));
+            assert_eq!(port.data.poe_voltage, None);
+        }
+        assert_eq!(ports[5].data.l_2_mtu, Some(1600));
+        assert_eq!(ports[5].data.poe_out, None);
     }
 
     #[test]
