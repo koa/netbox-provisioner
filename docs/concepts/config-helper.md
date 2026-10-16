@@ -2,7 +2,8 @@
 
 Status: Schritt 1 (Befund „NetBox in sich“) umgesetzt (`topology/findings.rs`, Befunde oben auf der
 Site-Seite, Netz-Befunde auf der Site-Übersicht, Anzahl an den Karten), ohne die PoE-Prüfung, WLAN-Gruppen,
-Regionen und die gesammelten Generatorfehler. Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
+Regionen und die gesammelten Generatorfehler. Von Schritt 2 („NetBox gegen Gerät“) die Nachbarn
+→ Kabel (`device/neighbors.rs`, „Nachbarn lesen“ auf der Site-Seite). Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
 [pending.md](../pending.md).
 
 ## Ausgangslage
@@ -113,6 +114,25 @@ oder „Gerät anpassen“ (Anwenden).
 
 Das Lesen kostet pro Gerät ein paar Sekunden über den Management-Proxy. Der Befund einer Site
 läuft deshalb als Job (Events pro Gerät), nicht als einzelne Abfrage.
+
+Umgesetzt ist es zunächst ohne Job: „Nachbarn lesen“ auf der Site-Seite fragt jedes Gerät mit
+einer eigenen Abfrage (`access.neighborFindings`), alle gleichzeitig, und zeigt jedes, sobald es
+antwortet, wie heute schon den Ping der Gerätekarten. Das gibt dieselbe Rückmeldung pro Gerät
+ohne Jobs, die zu einer Site statt einem Gerät gehören. Ein Job lohnt sich, sobald der Befund
+Geräte nacheinander lesen oder Ergebnisse aufheben muss.
+
+Was dabei gelernt wurde:
+
+- Auf dem Gerät heissen die Ports wie die generierte Config sie nennt (`s01-core`), auch die,
+  die ein Nachbar meldet. Zugeordnet wird über den NetBox-Namen (Default-Name) oder das Kürzel
+  vor dem ersten `-` (`s01` ist `sfp-sfpplus1`).
+- Über eine Funkbrücke sieht ein Router den Router der Gegenseite, nicht das Brückengerät. Ein
+  Kabel zu einem Brückengerät (Rolle `wlan-bridge` oder ein Port mit RF-Rolle) gilt deshalb als
+  erfüllt, solange das Gerät dort nur bekannte Geräte sieht, die NetBox anderswo hat.
+- Im Lab hatten `lab-ap1`, `lab-sxt-a` und `lab-sxt-b` `discover-interface-list=*2000011`: Die
+  Discovery verweist auf eine Interface-Liste, die ein Apply entfernt hat (die Factory-Liste
+  `LAN`), und ist damit aus. Das meldet der Befund als eigenen Fehler statt lauter „sieht
+  niemanden“. Der Generator setzt `/ip/neighbor/discovery-settings` noch nicht.
 
 ## 2. Helfer
 

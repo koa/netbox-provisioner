@@ -298,3 +298,16 @@ ul.finding-list {
         flex: none;
     }
 }
+dl.neighbor-results {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.5em 1em;
+    margin-top: 1em;
+
+    & > dt {
+        font-weight: var(--pf-t--global--font--weight--body--bold, bold);
+    }
+    @media (width < 36rem) {
+        grid-template-columns: 1fr;
+    }
+}

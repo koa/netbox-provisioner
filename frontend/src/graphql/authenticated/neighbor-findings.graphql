@@ -1,0 +1,25 @@
+query NeighborFindings($id: Int!){
+    netboxUrl
+    topology{
+        deviceById(id: $id){
+            access{
+                neighborFindings{
+                    severity
+                    kind{
+                        __typename
+                        ... on CableMissing{ port{ ...Port } seen{ ...Seen } }
+                        ... on CableElsewhere{ port{ ...Port } farEnd{ ...Interface } seen{ ...Seen } }
+                        ... on OtherFarPort{ port{ ...Port } farEnd{ ...Interface } seen{ ...Seen } }
+                        ... on NeighborNotSeen{ port{ ...Port } farEnd{ ...Interface } }
+                        ... on NeighborsNotInNetbox{ port{ ...Port } seen{ ...Seen } }
+                        ... on DiscoveryOff{ list }
+                    }
+                }
+            }
+        }
+    }
+}
+fragment Device on DeviceRef{ id name }
+fragment Interface on InterfaceRef{ id name device{ ...Device } }
+fragment Port on PortRef{ name interface{ ...Interface } }
+fragment Seen on SeenNeighbor{ identity interfaceName board device{ ...Device } interface{ ...Interface } }

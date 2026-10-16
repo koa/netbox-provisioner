@@ -139,3 +139,11 @@ pub struct CancelJob;
     response_derives = "Debug, Clone, PartialEq"
 )]
 pub struct Findings;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/neighbor-findings.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct NeighborFindings;

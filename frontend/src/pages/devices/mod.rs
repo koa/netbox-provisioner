@@ -1,6 +1,9 @@
 use crate::{
     i18n,
-    components::findings::{self, FindingsList},
+    components::{
+        findings::{self, FindingsList},
+        neighbor_check::NeighborCheck,
+    },
     error::FrontendError,
     graphql::{
         authenticated::{PingDevice, SiteDevices, ping_device, site_devices},
@@ -68,6 +71,13 @@ impl Component for Devices {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let site = ctx.props().site;
+        let check = match &self.state {
+            DeviceState::Data(rows) if !rows.is_empty() => {
+                let devices = rows.iter().map(|row| (row.id, row.name.clone())).collect::<Vec<_>>();
+                html!(<NeighborCheck {devices}/>)
+            }
+            _ => Html::default(),
+        };
         let error_msg = self.error_state.as_ref().map(FrontendError::to_html);
         let data = match &self.state {
             DeviceState::Loading => {
@@ -87,6 +97,7 @@ impl Component for Devices {
         html! {
             <>
                 <FindingsList site={Some(site)}/>
+                {check}
                 <div class="device-list">
                     {error_msg}
                     {data}

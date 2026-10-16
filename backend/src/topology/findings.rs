@@ -455,14 +455,14 @@ fn host_count(net: &IpNet) -> u128 {
         .unwrap_or(u128::MAX)
 }
 
-fn device_ref(device: &DeviceAccess) -> DeviceRef {
+pub(crate) fn device_ref(device: &DeviceAccess) -> DeviceRef {
     DeviceRef {
         id: device.id().0,
         name: device.name().into(),
     }
 }
 
-fn interface_ref(interface: &InterfaceAccess) -> InterfaceRef {
+pub(crate) fn interface_ref(interface: &InterfaceAccess) -> InterfaceRef {
     InterfaceRef {
         id: interface.id().0,
         name: interface.name().into(),

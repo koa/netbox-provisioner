@@ -8,7 +8,7 @@ use crate::{
     config::CONFIG,
     error_info::{ApiError, ErrorInfo},
     device::{
-        AccessibleDevice, GraphqlSystemRouterboard, PingResult,
+        AccessibleDevice, GraphqlSystemRouterboard, PingResult, neighbors,
         ros::{
             fallback,
             BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent,
@@ -767,6 +767,10 @@ impl AccessibleDevice {
     async fn device_mode(&self, ctx: &Context<'_>) -> Option<device_mode::DeviceMode> {
         let mode = async { device_mode::read(&self.connect_again().await?, &self.device_config).await };
         nullable(ctx, mode.await).flatten()
+    }
+    /// What the device sees at its ports against NetBox's cables there, the worst first.
+    async fn neighbor_findings(&self) -> Result<Vec<neighbors::NeighborFinding>, ApiError> {
+        Ok(neighbors::check(&self.connect_again().await?, &self.device_config).await?)
     }
     /// The partitions of the flash; `null` on a device without (16 MiB of flash, a CHR).
     async fn partitions(&self, ctx: &Context<'_>) -> Option<partitions::Partitions> {

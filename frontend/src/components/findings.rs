@@ -100,12 +100,33 @@ impl Component for FindingsList {
 }
 
 fn severity(severity: &Severity) -> Html {
-    let (label, color) = match severity {
-        Severity::ERROR => (t::ERROR, Color::Red),
-        Severity::WARNING => (t::WARNING, Color::Orange),
-        Severity::HINT | Severity::Other(_) => (t::HINT, Color::Blue),
+    level_label(match severity {
+        Severity::ERROR => Level::Error,
+        Severity::WARNING => Level::Warning,
+        Severity::HINT | Severity::Other(_) => Level::Hint,
+    })
+}
+
+/// How bad a finding is; each query has its own `Severity`.
+pub enum Level {
+    Error,
+    Warning,
+    Hint,
+}
+
+pub fn level_label(level: Level) -> Html {
+    let (label, color) = match level {
+        Level::Error => (t::ERROR, Color::Red),
+        Level::Warning => (t::WARNING, Color::Orange),
+        Level::Hint => (t::HINT, Color::Blue),
     };
     html!(<Label compact=true {color} label={label}/>)
+}
+
+/// A link to `path` in NetBox' web UI at `netbox` (ending in `/`).
+pub fn netbox_link(netbox: &str, path: &str, text: &str) -> Html {
+    let href = format!("{netbox}{path}");
+    html!(<a {href} target="_blank" rel="noopener">{text.to_string()}</a>)
 }
 
 /// Links to the objects of a finding in NetBox' web UI.
@@ -116,8 +137,7 @@ struct Links<'a> {
 
 impl Links<'_> {
     fn link(&self, path: &str, text: &str) -> Html {
-        let href = format!("{}{path}", self.netbox);
-        html!(<a {href} target="_blank" rel="noopener">{text.to_string()}</a>)
+        netbox_link(self.netbox, path, text)
     }
     fn device(&self, device: &findings::Device) -> Html {
         self.link(&format!("dcim/devices/{}/", device.id), &device.name)

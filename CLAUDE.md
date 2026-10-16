@@ -73,6 +73,15 @@ both ends have IPv4: a radio bridge device's end is L2 only. `findings_of_netbox
 what the stored export has to `target/netbox-example/findings.txt`. The prefix tags
 `loopback`/`transfer` (`IpPrefixData::pool`) are only used here so far.
 
+`device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's
+cables (`AccessibleDevice.neighborFindings`, read-only; the site page asks every device at once,
+`components::neighbor_check`). Ports on the device and the ports neighbors report carry the names
+the generated config gives them: match by NetBox's (default) name or the short name before the
+first `-` (`s01-core` is `sfp-sfpplus1`), never by MAC. A cable to a radio bridge device can't be
+seen (the router on the other side shows up instead). A `discover-interface-list` naming a list
+that doesn't exist (`*2000011`, the factory `LAN` an apply removed) means discovery is off; the
+generator doesn't set `/ip/neighbor/discovery-settings` yet.
+
 `backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR
 instances under QEMU (software emulation, no KVM needed) and proves actual distributed network
 behavior, not just that the generator's output parses. `--ignored` by default (`cargo test -p
