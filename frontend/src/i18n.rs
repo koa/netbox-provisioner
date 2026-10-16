@@ -155,6 +155,10 @@ pub mod error {
             "CANCELLED" => "Abgebrochen".into(),
             "PING" => format!("Ping fehlgeschlagen: {}", p("cause")),
             "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
+            "NO_PORTS" => format!(
+                "Das Board {} ist im Provisioner nicht beschrieben (hw_facts.rs): seine Ports sind unbekannt",
+                p("model")
+            ),
             "PORT_NOT_FOUND" => format!("Port {} aus NetBox gibt es auf dem Gerät nicht", p("port")),
             "MISSING_PACKAGE" => format!(
                 "RouterOS-Paket {} fehlt (ein RouterOS-Update installiert es)",
@@ -306,7 +310,7 @@ pub mod device {
         "Unter „Ziel ändern“ eine andere Adresse oder andere Zugangsdaten wählen.";
     pub const NOT_GENERATED: &str = "Keine Konfiguration erzeugt";
     pub const NOT_GENERATED_HINT: &str =
-        "Der Fehler steht oben; ältere RouterOS-Versionen melden Felder, die das Modell nicht kennt.";
+        "Der Fehler steht oben.";
     pub const IN_LINE: &str = "Gerät entspricht NetBox";
 
     pub fn update_to(version: &str) -> String {
