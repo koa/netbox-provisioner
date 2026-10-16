@@ -25682,7 +25682,11 @@
         "id": "588",
         "prefix": "2a02:16a:fe00:ffff:ffff:ffff:ffff:ff00/120",
         "description": "Loopback IPs",
-        "tags": [],
+        "tags": [
+          {
+            "slug": "loopback"
+          }
+        ],
         "scope": null
       },
       {

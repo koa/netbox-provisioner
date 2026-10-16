@@ -115,20 +115,20 @@ prüft der Helfer nur die Namen) und `lo` (Typ Virtual). Dann direkt weiter zu �
 
 ### Loopback
 
-Nächste freie `/32` aus dem Loopback-Prefix (siehe [Prefixe](#prefixe)), auf `lo`, als
-Primary IPv4, dazu eine `/128` aus dem IPv6-Loopback-Prefix als Primary IPv6. NetBox vergibt
+Nächste freie `/32` aus dem Loopback-Pool (siehe [Pools](#pools)), auf `lo`, als
+Primary IPv4, dazu eine `/128` aus dem IPv6-Loopback-Pool als Primary IPv6. NetBox vergibt
 freie Adressen selbst und atomar (`POST /api/ipam/prefixes/{id}/available-ips/`), zwei
 gleichzeitige Helfer bekommen also nicht dieselbe.
 
 ### Verbindung
 
-Zwei Varianten, beide mit dem nächsten freien Netz aus dem Transfer-Prefix (`POST
+Zwei Varianten, beide mit dem nächsten freien Netz aus dem Transfer-Pool (`POST
 …/available-prefixes/`), `ospf` an beiden Enden, gleicher MTU an beiden Enden (Vorgabe übernehmen
 oder eingeben) und als Label je dem Namen der Gegenseite:
 
 - **Direkt:** Zwei Ports wählen (oder ein Kabel aus dem Befund übernehmen). Plan: Kabel, falls es
   fehlt; ein `/31`, je eine Adresse an beide Enden. Ein `/31` hat genau zwei Adressen, ohne
-  Netz- und Broadcast-Adresse (RFC 3021); der Transfer-Prefix reicht so doppelt so weit wie mit
+  Netz- und Broadcast-Adresse (RFC 3021); der Transfer-Pool reicht so doppelt so weit wie mit
   `/30`. Die vorhandenen `/30` bleiben gültig, der Helfer vergibt nur neue als `/31`.
 - **Über eine Bridge:** Die beiden Router hängen an den Enden einer [Funkbrücke](#funkbrücke).
   Plan: ein `/29` mit festen Adressen für die beiden Router und die beiden Brückengeräte, siehe
@@ -181,7 +181,7 @@ zur Fehlersuche braucht.
 
 Der Helfer legt die Brückengeräte deshalb wie Router an, nur ohne Routing der Nutzdaten:
 
-- **Loopback** `/32` und `/128` aus den Loopback-Prefixen als Primary IPv4 (Router-ID) und
+- **Loopback** `/32` und `/128` aus den Loopback-Pools als Primary IPv4 (Router-ID) und
   Primary IPv6 (Management-Adresse).
 - **Feste Adresse im `/29`** auf der Bridge des Brückengeräts, Tag `ospf` an der Bridge.
 - **OSPF-Priorität 0** auf dem Brückengerät: Es wird nie DR oder BDR, die Rolle bleibt bei den
@@ -219,12 +219,36 @@ die Strecke getrennt (Loopback von jeder Seite erreichbar) und wieder verbunden.
 Transfernetze bekommen keine IPv6-Adressen: OSPFv3 und der IPv6-Verkehr laufen dort über die
 Link-Local-Adressen der Ports.
 
-Loopback und Transfer vergibt der Helfer automatisch aus dem Prefix dafür. Heute sind die
-Prefixe nur über einen Kommentar gekennzeichnet. Künftig tragen sie die **Tags** `loopback`
-(das IPv4- und das IPv6-Prefix) bzw. `transfer` (wie `ospf`/`dhcp` an Interfaces). Die Abfrage
-liest dafür neu Tags und Scope der Prefixe. Fehlt das Tag oder tragen es mehrere Prefixe
-derselben IP-Version, meldet das der Befund, und der Helfer vergibt nichts. Kunden-Netze brauchen kein Tag: Angeboten werden die Prefixe mit Scope der
-Site des Geräts.
+Loopback und Transfer vergibt der Helfer automatisch. Die Prefixe dafür tragen die **Tags**
+`loopback` (für IPv4 und IPv6) bzw. `transfer` (wie `ospf`/`dhcp` an Interfaces, Import:
+[3-tags.yaml](../netbox-import/3-tags.yaml)). Die Abfrage liest Tags und Scope der Prefixe.
+Kunden-Netze brauchen kein Tag: Angeboten werden die Prefixe mit Scope der Site des Geräts.
+
+### Pools
+
+Alle Prefixe mit demselben Tag und derselben IP-Version bilden einen **Pool**. Heute sind das
+für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `loopback`
+`172.16.1.0/24` und `2a02:16a:fe00:ffff:ffff:ffff:ffff:ff00/120`.
+
+- **Gemischte Längen.** Direkt- (`/31`) und Bridge-Verbindungen (`/29`) kommen aus demselben Pool.
+  NetBox vergibt per First-Fit und richtet jedes Netz an seiner Grösse aus: Ein `/29` beginnt auf
+  einer Achtergrenze, die `/31` davor füllen die Lücke. Lücken entstehen nur durch Löschen, und
+  kleinere Netze füllen sie wieder. Die beiden heutigen `/24` reichen zusammen für 256 `/31` oder
+  64 `/29`. Die Art der Verbindung ist am Netz selbst nicht mehr abzulesen; sie steht im Kabel
+  bzw. im Wireless Link.
+- **Reihenfolge im Pool.** Die Prefixe werden nacheinander gefüllt (aufsteigend nach Adresse).
+  Ist eines voll, kommt das nächste dran. Ein neues Prefix mit dem Tag erweitert den Pool, ohne
+  dass sich am Provisioner etwas ändert.
+- **Pro Standort oder Mandant (später).** Ein Prefix mit dem Tag kann einen Scope (Location,
+  Site, Region) haben. Für ein Gerät gilt dann der Pool mit dem nächstgelegenen Scope: zuerst
+  Prefixe seiner Location, dann seiner Site, dann seiner Regionen nach oben, zuletzt die ohne
+  Scope. Ebenso später der Tenant des Prefixes. Für eine Verbindung zwischen zwei Standorten
+  gilt der Pool, der für beide Geräte am nächsten liegt (gemeinsame Region, sonst ohne Scope).
+  Umgesetzt wird zuerst nur „ohne Scope“. Die Reihenfolge ist aber so gewählt, dass sie mit den
+  heutigen netzweiten Prefixen übereinstimmt.
+- **Befund.** Gibt es für eine IP-Version keinen Pool oder ist
+  ein Pool fast voll (Vorschlag: unter 10 % frei), meldet das der Befund. Der Helfer vergibt dann
+  nur, was noch geht.
 
 ## Technik
 
