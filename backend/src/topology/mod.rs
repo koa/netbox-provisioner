@@ -65,6 +65,10 @@ impl TopologyHolder {
         self.data.lock().await
     }
 
+    /// The topology as fetched last (again if it is old), `None` when NetBox couldn't be read.
+    pub async fn current(&self) -> Option<Arc<Topology>> {
+        self.topo_lock().await.as_ref().cloned()
+    }
     pub async fn devices(&self) -> Box<[DeviceAccess]> {
         if let Some(device) = self.topo_lock().await.as_ref().cloned() {
             device.list_devices().collect()

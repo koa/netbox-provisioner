@@ -1,14 +1,17 @@
-query NetboxPlan($id: Int!, $helper: Helper!){
+query NetboxPlan($helper: Helper!){
     allowNetboxWrite
-    netboxPlan(id: $id, helper: $helper){
+    netboxPlan(helper: $helper){
         fingerprint
         checkedWith
         undocumented{ address route gateway router }
         steps{
             __typename
             ... on CreateInterface{ name kind }
-            ... on CreateAddress{ address interface prefix }
+            ... on CreateAddress{ address device{ name } interface prefix }
             ... on SetPrimaryIp{ version address before }
+            ... on CreateCable{ a{ name device{ name } } b{ name device{ name } } }
+            ... on CreatePrefix{ prefix pool description }
+            ... on UpdateInterface{ interface{ name device{ name } } label labelBefore mtu mtuBefore ospf }
         }
     }
 }
@@ -18,7 +21,7 @@ query NetboxPlanPreview($id: Int!, $helper: Helper!, $target: String, $credentia
             findings{ kind{ __typename } }
         }
     }
-    netboxPlan(id: $id, helper: $helper){
+    netboxPlan(helper: $helper){
         fingerprint
         preview{
             findings{ kind{ __typename } }
@@ -28,12 +31,29 @@ query NetboxPlanPreview($id: Int!, $helper: Helper!, $target: String, $credentia
         }
     }
 }
-mutation WriteNetboxPlan($id: Int!, $helper: Helper!, $fingerprint: String!){
-    writeNetboxPlan(id: $id, helper: $helper, fingerprint: $fingerprint){ id }
+mutation WriteNetboxPlan($helper: Helper!, $fingerprint: String!){
+    writeNetboxPlan(helper: $helper, fingerprint: $fingerprint){ id }
 }
 mutation UndoNetboxWrite($jobId: Int!){
     undoNetboxWrite(jobId: $jobId){ id }
 }
 query HelperJobs($deviceId: Int!){
     jobs(deviceId: $deviceId){ id kind state }
+}
+query LinkPorts($id: Int!){
+    topology{
+        deviceById(id: $id){
+            linkPorts{ ...LinkPortFields }
+        }
+        allDevices(filter: { hasRouteros: true }){
+            id
+            name
+            site{ name }
+            linkPorts{ ...LinkPortFields }
+        }
+    }
+}
+fragment LinkPortFields on LinkPort{
+    id name label mtu ospf ipv4 bridge cabled
+    connected{ id name device{ id name } }
 }

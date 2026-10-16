@@ -4,7 +4,8 @@ Status: Schritt 1 (Befund „NetBox in sich“) umgesetzt (`topology/findings.rs
 Site-Seite, Netz-Befunde auf der Site-Übersicht, Anzahl an den Karten), ohne die PoE-Prüfung, WLAN-Gruppen,
 Regionen und die gesammelten Generatorfehler. Von Schritt 2 („NetBox gegen Gerät“) die Nachbarn
 → Kabel (`device/neighbors.rs`, „Nachbarn lesen“ auf der Site-Seite). Schritt 3 mit dem Helfer
-„Loopback“ (`backend/src/helper/`, Karte „NetBox ergänzen“ auf der Geräteseite). Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
+„Loopback“ (`backend/src/helper/`, Karte „NetBox ergänzen“ auf der Geräteseite), von Schritt 4
+die Verbindung „Direkt“ (`/31`); „Kabel aus Befund übernehmen“ fehlt noch. Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
 [pending.md](../pending.md).
 
 ## Ausgangslage
@@ -196,6 +197,18 @@ generierten `type=broadcast` auf beiden Hops `Full`, Anwenden über den Nachbarn
 `mac_telnet_setup_over_31` (Ersteinrichtung und Tunnel über den Nachbarn im `/31`). Der
 Generator vergleicht bei der Ersteinrichtung nur Netze, der DHCP-Pool betrifft nur `dhcp`-Netze.
 
+Umgesetzt ist „Direkt“ (`helper/connection.rs`): Auf der Geräteseite in „NetBox ergänzen“
+„Verbindung“ wählen, dann den eigenen Port, Gegenseite und deren Port (`linkPorts`; ein Port mit
+Kabel zu einem Router bringt die Gegenseite mit) und optional die MTU (sonst die grössere der
+beiden Ports). Was schon da ist, bleibt: ein Kabel zwischen den beiden, Adressen in einem
+gemeinsamen Netz. Abgelehnt wird ein Port mit Kabel woandershin, in einer Bridge oder mit einer
+IPv4 ausserhalb des Netzes der Gegenseite. Das `/31` ist das erste aus `available-prefixes` des
+Pools, in dem NetBox auch keine Adresse hat (ältere Verbindungen haben oft Adressen ohne Prefix)
+und das kein Router routet (wie bei Loopback). Das neue Prefix bekommt kein Tag, als
+Beschreibung die beiden Geräte. Im Lab geprüft: Plan, Vorschau, Schreiben und Rückgängig mit zwei
+vorübergehenden Ports `sfp-sfpplus2` an lab-np1 und lab-np2 (danach gelöscht); das Lab-NetBox hat
+dafür den Transfer-Pool `192.168.101.0/24`.
+
 ### Kunden-Netz
 
 Ein Port oder ein VLAN wählen, dann das **Parent-Prefix**: Der Helfer bietet die Prefixe der Site
@@ -352,7 +365,9 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
   Bisher: Die Vorschau prüft ein Test auf dem gespeicherten Export
   (`helper::test::preview_has_what_the_plan_creates`). Der Loopback-Helfer ist im Lab von Hand
   geprüft, mit einem Testgerät ohne `lo`: Schreiben und Rückgängig über die Oberfläche, dann
-  das Gerät gelöscht. Ein automatischer Lab-Test fehlt noch.
+  das Gerät gelöscht; die Verbindung ebenso (siehe dort). Den Plan der Verbindung prüfen Tests
+  auf dem Export (`helper::connection::test`), ihre Vorschau
+  `helper::test::preview_has_the_new_link`. Ein automatischer Lab-Test fehlt noch.
 
 ## Reihenfolge
 

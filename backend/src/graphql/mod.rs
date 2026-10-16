@@ -74,14 +74,10 @@ impl QueryAuthenticated {
     async fn allow_netbox_write(&self) -> bool {
         CONFIG.allow_netbox_write && CONFIG.netbox_write_token.is_some()
     }
-    /// What `helper` would write to NetBox for device `id`, with its preview.
-    async fn netbox_plan(&self, id: u32, helper: Helper) -> Result<NetboxPlan, ApiError> {
-        let device = self
-            .topology
-            .devices_by_id(DeviceId(id))
-            .await
-            .ok_or(Error::UnknownDevice(id))?;
-        Ok(helper.plan(&device).await?)
+    /// What `helper` would write to NetBox, with its preview.
+    async fn netbox_plan(&self, helper: Helper) -> Result<NetboxPlan, ApiError> {
+        let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
+        Ok(helper.plan(&topology).await?)
     }
     async fn job(&self, id: u32) -> Option<Arc<Job>> {
         job::get(id)
@@ -145,22 +141,22 @@ fn user_label(ctx: &Context<'_>) -> Box<str> {
 
 #[Object]
 impl MutationAuthenticated {
-    /// Writes `helper`'s plan for device `id` to NetBox, if it is still the one shown
+    /// Writes `helper`'s plan to NetBox, if it is still the one shown
     /// (`NetboxPlan.fingerprint`). The job's `NetboxWritten` events tell what it wrote;
     /// `undoNetboxWrite` takes that back. The topology is fetched again afterwards.
     #[graphql(guard = "NetboxWritesAllowed")]
     async fn write_netbox_plan(
         &self,
         ctx: &Context<'_>,
-        id: u32,
         helper: Helper,
         fingerprint: String,
     ) -> Result<Arc<Job>, ApiError> {
-        let device = self.device(id).await?;
+        let current = self.topology.current().await.ok_or(Error::NoTopology)?;
+        let device = helper.device(&current)?;
         let user = user_label(ctx);
         let topology = self.topology.clone();
-        Ok(job::start(&device.clone(), JobKind::NetboxWrite, |log| async move {
-            let result = helper::write(helper, &device, &fingerprint, &user, &log).await;
+        Ok(job::start(&device, JobKind::NetboxWrite, |log| async move {
+            let result = helper::write(&helper, &current, &fingerprint, &user, &log).await;
             refetch(&topology).await;
             result
         })?)

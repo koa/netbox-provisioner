@@ -41,7 +41,7 @@ query JobEvents($id: Int!, $after: Int){
                 ... on UpdateFallbackDisarmed { partition }
                 ... on UpdateWithoutFallback { partitions }
                 ... on OspfNeighborsBack { neighbors }
-                ... on NetboxWritten { path display change { field value previous } }
+                ... on NetboxWritten { path display changes { field value previous } }
                 ... on NetboxUndone { path display deleted }
             }
         }

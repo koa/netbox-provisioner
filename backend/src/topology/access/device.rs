@@ -297,4 +297,8 @@ impl DeviceAccess {
     async fn api_is_wlan_ap_of(&self) -> Option<WlanGroupAccess> {
         self.wlan_ap_of()
     }
+    /// Its physical ports, for choosing the ends of a link (helper „Verbindung“).
+    async fn link_ports(&self) -> Vec<crate::helper::connection::LinkPort> {
+        crate::helper::connection::link_ports(self)
+    }
 }

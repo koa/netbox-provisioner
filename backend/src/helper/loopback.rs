@@ -63,6 +63,7 @@ pub async fn plan(device: &DeviceAccess) -> Result<NetboxPlan, Error> {
                     .to_string();
                 plan.steps.push(PlanStep::CreateAddress(CreateAddress {
                     address: address.clone().into(),
+                    device: device_ref(device),
                     interface: "lo".into(),
                     prefix: prefix.to_string().into(),
                     on,

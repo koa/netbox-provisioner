@@ -39,6 +39,10 @@ pub enum Error {
     ApplyNotAllowed,
     #[error("No device {0}")]
     UnknownDevice(u32),
+    #[error("No interface {0}")]
+    UnknownInterface(u32),
+    #[error("No topology: NetBox couldn't be read")]
+    NoTopology,
     #[error("No answer from {0}")]
     Timeout(std::net::IpAddr),
     #[error("{0} has no address in NetBox")]
@@ -133,6 +137,21 @@ pub enum Error {
     NoRouteCheck(Box<str>),
     #[error("Job {0} wrote nothing to NetBox to take back")]
     NothingToUndo(u32),
+    /// both ends of a link on this device
+    #[error("Both ends are on {0}")]
+    SameDevice(Box<str>),
+    #[error("{0} doesn't run RouterOS")]
+    NoRouterOs(Box<str>),
+    /// a port (`device port`) cabled elsewhere, to `far` if the cable reaches an interface
+    #[error("{port} has a cable to {far:?} already")]
+    PortCabled { port: Box<str>, far: Option<Box<str>> },
+    #[error("{port} is a port of bridge {bridge}")]
+    PortInBridge { port: Box<str>, bridge: Box<str> },
+    /// a port with an IPv4 address not in a network with the other end
+    #[error("{port} has {address} already")]
+    PortAddressed { port: Box<str>, address: Box<str> },
+    #[error("NetBox has no tag {0}")]
+    TagMissing(Box<str>),
 }
 
 impl From<ResourceMutationError> for Error {

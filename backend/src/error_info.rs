@@ -66,6 +66,8 @@ impl From<&Error> for ErrorInfo {
             ),
             Error::ApplyNotAllowed => ("APPLY_NOT_ALLOWED", vec![]),
             Error::UnknownDevice(id) => ("UNKNOWN_DEVICE", vec![("id", id.to_string())]),
+            Error::UnknownInterface(id) => ("UNKNOWN_INTERFACE", vec![("id", id.to_string())]),
+            Error::NoTopology => ("NO_TOPOLOGY", vec![]),
             Error::Timeout(address) => ("TIMEOUT", vec![("address", address.to_string())]),
             Error::NoAddress(device) => ("NO_ADDRESS", vec![("device", device.to_string())]),
             Error::Terminal(error) => ("CONSOLE", cause(error)),
@@ -153,6 +155,22 @@ impl From<&Error> for ErrorInfo {
             ),
             Error::NoRouteCheck(reason) => ("NO_ROUTE_CHECK", vec![("reason", reason.to_string())]),
             Error::NothingToUndo(job) => ("NOTHING_TO_UNDO", vec![("job", job.to_string())]),
+            Error::SameDevice(device) => ("SAME_DEVICE", vec![("device", device.to_string())]),
+            Error::NoRouterOs(device) => ("NO_ROUTEROS", vec![("device", device.to_string())]),
+            Error::PortCabled { port, far } => {
+                let mut params = vec![("port", port.to_string())];
+                params.extend(far.as_ref().map(|far| ("far", far.to_string())));
+                ("PORT_CABLED", params)
+            }
+            Error::PortInBridge { port, bridge } => (
+                "PORT_IN_BRIDGE",
+                vec![("port", port.to_string()), ("bridge", bridge.to_string())],
+            ),
+            Error::PortAddressed { port, address } => (
+                "PORT_ADDRESSED",
+                vec![("port", port.to_string()), ("address", address.to_string())],
+            ),
+            Error::TagMissing(tag) => ("TAG_MISSING", vec![("tag", tag.to_string())]),
         };
         info(code, params, error)
     }

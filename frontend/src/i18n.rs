@@ -65,6 +65,8 @@ pub mod error {
             "MISSING_CREDENTIALS" => "Keine Zugangsdaten für das Gerät".into(),
             "APPLY_NOT_ALLOWED" => "Schreiben auf Geräte ist gesperrt (allow_apply)".into(),
             "UNKNOWN_DEVICE" => format!("Gerät {} gibt es in NetBox nicht", p("id")),
+            "UNKNOWN_INTERFACE" => format!("Interface {} gibt es in NetBox nicht", p("id")),
+            "NO_TOPOLOGY" => "NetBox liess sich nicht lesen".into(),
             "TIMEOUT" => format!("Keine Antwort von {}", p("address")),
             "NO_ADDRESS" => format!("{} hat in NetBox keine Adresse", p("device")),
             "PROXY" => format!(
@@ -179,6 +181,23 @@ pub mod error {
                 p("reason")
             ),
             "NOTHING_TO_UNDO" => format!("Auftrag {} hat nichts in NetBox geschrieben", p("job")),
+            "SAME_DEVICE" => format!("Beide Enden sind auf {}", p("device")),
+            "NO_ROUTEROS" => format!("Auf {} läuft laut NetBox kein RouterOS", p("device")),
+            "PORT_CABLED" => match p("far") {
+                "" => format!("{} hat schon ein Kabel", p("port")),
+                far => format!("{} hat schon ein Kabel zu {far}", p("port")),
+            },
+            "PORT_IN_BRIDGE" => format!(
+                "{} ist Port der Bridge {}: eine Verbindung braucht den Port für sich",
+                p("port"),
+                p("bridge")
+            ),
+            "PORT_ADDRESSED" => format!(
+                "{} hat schon die Adresse {}, nicht im Netz der Gegenseite",
+                p("port"),
+                p("address")
+            ),
+            "TAG_MISSING" => format!("Den Tag {} gibt es in NetBox nicht", p("tag")),
             "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
             "NO_PORTS" => format!(
                 "Das Board {} ist im Provisioner nicht beschrieben (hw_facts.rs): seine Ports sind unbekannt",
@@ -793,17 +812,22 @@ pub mod job {
         pub fn netbox_created(display: &str, path: &str) -> String {
             format!("In NetBox angelegt: {display} ({path})")
         }
-        pub fn netbox_changed(
+        /// the fields changed: name, value and the one before
+        pub fn netbox_changed<'a>(
             display: &str,
-            field: &str,
-            value: Option<&str>,
-            previous: Option<&str>,
+            changes: impl Iterator<Item = (&'a str, Option<&'a str>, Option<&'a str>)>,
         ) -> String {
-            format!(
-                "In NetBox geändert: {display}, {field} {} (vorher {})",
-                value.unwrap_or("leer"),
-                previous.unwrap_or("leer")
-            )
+            let changes: Vec<String> = changes
+                .map(|(field, value, previous)| match field {
+                    "tags" => format!("Tag {} dazu", value.unwrap_or_default()),
+                    _ => format!(
+                        "{field} {} (vorher {})",
+                        value.unwrap_or("leer"),
+                        previous.unwrap_or("leer")
+                    ),
+                })
+                .collect();
+            format!("In NetBox geändert: {display}, {}", changes.join(", "))
         }
         pub fn netbox_deleted(display: &str) -> String {
             format!("In NetBox gelöscht: {display}")
@@ -838,6 +862,20 @@ pub mod job {
 pub mod helper {
     pub const TITLE: &str = "NetBox ergänzen";
     pub const LOOPBACK: &str = "Loopback";
+    pub const CONNECTION: &str = "Verbindung";
+    pub const CONNECTION_HINT: &str = "Verbindet zwei Router direkt: Kabel, falls es fehlt, ein /31 \
+        aus dem Transfer-Pool mit je einer Adresse an beiden Enden, ospf, dieselbe MTU und als \
+        Label den Namen der Gegenseite.";
+    pub const CHOOSE_PORTS: &str = "Beide Ports wählen.";
+    pub const COMPLETE: &str = "NetBox hat schon alles dafür.";
+    pub const PORT: &str = "Port";
+    pub const PEER_DEVICE: &str = "Gegenseite";
+    pub const PEER_PORT: &str = "Port der Gegenseite";
+    pub const MTU: &str = "MTU";
+    pub const CHOOSE_PORT: &str = "Port wählen";
+    pub const CHOOSE_DEVICE: &str = "Gerät wählen";
+    pub const CHOOSE_PEER_PORT: &str = "Port der Gegenseite wählen";
+    pub const MTU_PLACEHOLDER: &str = "wie an den Ports (die grössere)";
     pub const LOOPBACK_HINT: &str = "Legt lo mit je einer Adresse aus den Loopback-Pools an und \
         macht sie zur Primary IP (Router-ID und Verwaltungsadresse).";
     pub const PREVIEW: &str = "Vorschau";
@@ -886,8 +924,71 @@ pub mod helper {
     pub fn create_interface(name: &str, kind: &str) -> String {
         format!("Interface {name} ({kind}) anlegen")
     }
-    pub fn create_address(address: &str, interface: &str, prefix: &str) -> String {
-        format!("Adresse {address} auf {interface} anlegen (aus {prefix})")
+    pub fn create_address(address: &str, device: &str, interface: &str, prefix: &str) -> String {
+        format!("Adresse {address} auf {device} {interface} anlegen (aus {prefix})")
+    }
+    pub fn create_cable(a: (&str, &str), b: (&str, &str)) -> String {
+        format!("Kabel {} {} – {} {} anlegen", a.0, a.1, b.0, b.1)
+    }
+    pub fn create_prefix(prefix: &str, pool: &str, description: &str) -> String {
+        format!("Prefix {prefix} „{description}“ anlegen (aus {pool})")
+    }
+    /// the new label and MTU, each with the one before, and whether `ospf` is added
+    pub fn update_interface(
+        port: (&str, &str),
+        label: Option<(&str, Option<&str>)>,
+        mtu: Option<(i64, Option<i64>)>,
+        ospf: bool,
+    ) -> String {
+        let mut changes = Vec::new();
+        if let Some((label, before)) = label {
+            changes.push(match before {
+                Some(before) => format!("Label {label} (vorher {before})"),
+                None => format!("Label {label}"),
+            });
+        }
+        if let Some((mtu, before)) = mtu {
+            changes.push(match before {
+                Some(before) => format!("MTU {mtu} (vorher {before})"),
+                None => format!("MTU {mtu} (vorher 1500)"),
+            });
+        }
+        if ospf {
+            changes.push("Tag ospf".into());
+        }
+        format!("{} {}: {}", port.0, port.1, changes.join(", "))
+    }
+    /// a port in the choice of a link's ends: where its cable goes, what it has
+    pub fn link_port(
+        name: &str,
+        label: Option<&str>,
+        connected: Option<(&str, &str)>,
+        cabled: bool,
+        ipv4: Option<&str>,
+        bridge: Option<&str>,
+    ) -> String {
+        let mut text = match label {
+            Some(label) => format!("{name} ({label})"),
+            None => name.to_string(),
+        };
+        match connected {
+            Some((device, port)) => text.push_str(&format!(" – Kabel zu {device} {port}")),
+            None if cabled => text.push_str(" – Kabel"),
+            None => {}
+        }
+        if let Some(ipv4) = ipv4 {
+            text.push_str(&format!(", {ipv4}"));
+        }
+        if let Some(bridge) = bridge {
+            text.push_str(&format!(", in {bridge}"));
+        }
+        text
+    }
+    pub fn link_device(name: &str, site: Option<&str>) -> String {
+        match site {
+            Some(site) => format!("{name} ({site})"),
+            None => name.to_string(),
+        }
     }
     pub fn set_primary(version: &str, address: &str, before: Option<&str>) -> String {
         match before {

@@ -152,7 +152,8 @@ pub struct NeighborFindings;
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
+    response_derives = "Debug, Clone, PartialEq",
+    skip_serializing_none
 )]
 pub struct NetboxPlan;
 
@@ -160,7 +161,8 @@ pub struct NetboxPlan;
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
+    response_derives = "Debug, Clone, PartialEq",
+    skip_serializing_none
 )]
 pub struct NetboxPlanPreview;
 
@@ -168,7 +170,8 @@ pub struct NetboxPlanPreview;
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug"
+    response_derives = "Debug",
+    skip_serializing_none
 )]
 pub struct WriteNetboxPlan;
 
@@ -187,3 +190,11 @@ pub struct UndoNetboxWrite;
     response_derives = "Debug"
 )]
 pub struct HelperJobs;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/netbox-helper.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct LinkPorts;

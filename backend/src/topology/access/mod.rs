@@ -1,6 +1,7 @@
-use crate::topology::{DeviceId, Topology};
+use crate::topology::{DeviceId, InterfaceId, Topology};
 use async_graphql::InputObject;
 use device::DeviceAccess;
+use interface::InterfaceAccess;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
@@ -55,6 +56,11 @@ impl Topology {
         } else {
             None
         }
+    }
+    pub fn get_interface_by_id(self: &Arc<Self>, id: InterfaceId) -> Option<InterfaceAccess> {
+        self.interfaces
+            .contains_key(&id)
+            .then(|| InterfaceAccess::create(self.clone(), id))
     }
 }
 

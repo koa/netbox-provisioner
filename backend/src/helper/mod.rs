@@ -7,6 +7,7 @@
 //! (`fingerprint`), and each step checks that NetBox is still as the plan found it, so a
 //! change made in between stops it instead of being overwritten. Every write is an event of
 //! the job (`NetboxWritten`), which is what `undo` takes back.
+pub mod connection;
 pub mod loopback;
 pub mod routes;
 
@@ -16,29 +17,44 @@ use crate::{
     job::{Event, Log},
     netbox::rest::NetboxRest,
     topology::{
-        Topology,
+        DeviceId, Topology,
         access::{AdhocCredentials, device::DeviceAccess},
-        findings::{DeviceRef, IpVersion},
+        findings::{DeviceRef, InterfaceRef, IpVersion},
     },
 };
-use async_graphql::{ComplexObject, Enum, SimpleObject, Union};
+use async_graphql::{ComplexObject, OneofObject, SimpleObject, Union};
 use serde_json::{Value, json};
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
     sync::Arc,
 };
 
-/// Which helper computes a plan, for computing it again when it is written.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
+/// Which helper computes a plan, and for what: computed again when it is written.
+#[derive(Debug, Clone, PartialEq, Eq, OneofObject)]
 pub enum Helper {
-    /// `loopback`: `lo` with an address of each loopback pool, as primary IPs
-    Loopback,
+    /// `lo` with an address of each loopback pool, as primary IPs, for the device of this id
+    Loopback(u32),
+    /// a direct link between two routers, for the device of `interface`
+    Connection(connection::ConnectionInput),
 }
 
 impl Helper {
-    pub async fn plan(self, device: &DeviceAccess) -> Result<NetboxPlan, Error> {
+    pub async fn plan(&self, topology: &Arc<Topology>) -> Result<NetboxPlan, Error> {
         match self {
-            Helper::Loopback => loopback::plan(device).await,
+            Helper::Loopback(_) => loopback::plan(&self.device(topology)?).await,
+            Helper::Connection(input) => connection::plan(topology, input).await,
+        }
+    }
+    /// The device the plan is for, whose job writes it.
+    pub fn device(&self, topology: &Arc<Topology>) -> Result<DeviceAccess, Error> {
+        match self {
+            Helper::Loopback(id) => topology
+                .get_device_by_id(&DeviceId(*id))
+                .ok_or(Error::UnknownDevice(*id)),
+            Helper::Connection(input) => topology
+                .get_interface_by_id(crate::topology::InterfaceId(input.interface))
+                .and_then(|interface| interface.device())
+                .ok_or(Error::UnknownInterface(input.interface)),
         }
     }
 }
@@ -126,19 +142,31 @@ impl NetboxPlan {
     /// from the top of the range, which NetBox doesn't hand out.
     fn apply_to(&self, json: &mut Value) {
         let created_id = |step: usize| (u32::MAX - step as u32).to_string();
-        let device_id = self.device.id().0.to_string();
-        for (index, step) in self.steps.iter().enumerate() {
-            let devices = json["device_list"].as_array_mut();
-            let Some(device) = devices
-                .into_iter()
+        let target_id = |target: Target| match target {
+            Target::Existing(id) => id.to_string(),
+            Target::Step(step) => created_id(step),
+        };
+        fn device(json: &mut Value, id: u32) -> Option<&mut Value> {
+            let id = id.to_string();
+            json["device_list"]
+                .as_array_mut()?
+                .iter_mut()
+                .find(|device| device["id"] == id.as_str())
+        }
+        fn interface<'j>(json: &'j mut Value, id: &str) -> Option<&'j mut Value> {
+            json["device_list"]
+                .as_array_mut()?
+                .iter_mut()
+                .filter_map(|device| device["interfaces"].as_array_mut())
                 .flatten()
-                .find(|device| device["id"] == device_id.as_str())
-            else {
-                continue;
-            };
+                .find(|interface| interface["id"] == id)
+        }
+        for (index, step) in self.steps.iter().enumerate() {
             match step {
                 PlanStep::CreateInterface(create) => {
-                    if let Some(interfaces) = device["interfaces"].as_array_mut() {
+                    if let Some(interfaces) = device(json, create.device.id)
+                        .and_then(|device| device["interfaces"].as_array_mut())
+                    {
                         interfaces.push(json!({
                             "id": created_id(index),
                             "name": create.name,
@@ -161,16 +189,8 @@ impl NetboxPlan {
                     }
                 }
                 PlanStep::CreateAddress(create) => {
-                    let interface_id = match create.on {
-                        Target::Existing(id) => id.to_string(),
-                        Target::Step(step) => created_id(step),
-                    };
-                    if let Some(interface) = device["interfaces"]
-                        .as_array_mut()
-                        .into_iter()
-                        .flatten()
-                        .find(|interface| interface["id"] == interface_id.as_str())
-                        && let Some(addresses) = interface["ip_addresses"].as_array_mut()
+                    if let Some(addresses) = interface(json, &target_id(create.on))
+                        .and_then(|interface| interface["ip_addresses"].as_array_mut())
                     {
                         addresses.push(json!({ "id": created_id(index) }));
                     }
@@ -182,15 +202,51 @@ impl NetboxPlan {
                     }
                 }
                 PlanStep::SetPrimaryIp(set) => {
-                    let address_id = match set.address_id {
-                        Target::Existing(id) => id.to_string(),
-                        Target::Step(step) => created_id(step),
-                    };
                     let field = match set.version {
                         IpVersion::V4 => "primary_ip4",
                         IpVersion::V6 => "primary_ip6",
                     };
-                    device[field] = json!({ "id": address_id });
+                    if let Some(device) = device(json, set.device.id) {
+                        device[field] = json!({ "id": target_id(set.address_id) });
+                    }
+                }
+                PlanStep::CreateCable(create) => {
+                    let end = |interface: &InterfaceRef| {
+                        json!([{ "__typename": "InterfaceType", "id": interface.id.to_string() }])
+                    };
+                    if let Some(cables) = json["cable_list"].as_array_mut() {
+                        cables.push(json!({
+                            "id": created_id(index),
+                            "a_terminations": end(&create.a),
+                            "b_terminations": end(&create.b),
+                        }));
+                    }
+                }
+                PlanStep::CreatePrefix(create) => {
+                    if let Some(prefixes) = json["prefix_list"].as_array_mut() {
+                        prefixes.push(json!({
+                            "id": created_id(index),
+                            "prefix": create.prefix,
+                            "description": create.description,
+                            "tags": [],
+                            "scope": null,
+                        }));
+                    }
+                }
+                PlanStep::UpdateInterface(update) => {
+                    if let Some(interface) = interface(json, &update.interface.id.to_string()) {
+                        if let Some(label) = &update.label {
+                            interface["label"] = json!(label);
+                        }
+                        if let Some(mtu) = update.mtu {
+                            interface["mtu"] = json!(mtu);
+                        }
+                        if update.ospf
+                            && let Some(tags) = interface["tags"].as_array_mut()
+                        {
+                            tags.push(json!({ "slug": "ospf" }));
+                        }
+                    }
                 }
             }
         }
@@ -203,6 +259,9 @@ pub enum PlanStep {
     CreateInterface(CreateInterface),
     CreateAddress(CreateAddress),
     SetPrimaryIp(SetPrimaryIp),
+    CreateCable(CreateCable),
+    CreatePrefix(CreatePrefix),
+    UpdateInterface(UpdateInterface),
 }
 
 /// An object of NetBox or one an earlier step of the plan creates.
@@ -227,8 +286,9 @@ pub struct CreateInterface {
 pub struct CreateAddress {
     /// with its length, `192.168.100.9/32`
     pub address: Box<str>,
+    pub device: DeviceRef,
     pub interface: Box<str>,
-    /// the pool prefix it is taken from
+    /// the prefix it is taken from: the pool's, or the one the plan creates
     pub prefix: Box<str>,
     #[graphql(skip)]
     pub on: Target,
@@ -247,6 +307,35 @@ pub struct SetPrimaryIp {
     pub before_id: Option<u32>,
 }
 
+/// A new cable between two interfaces.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct CreateCable {
+    pub a: InterfaceRef,
+    pub b: InterfaceRef,
+}
+
+/// A new prefix, the next free one of the pool prefix `pool` when the plan was computed (as for
+/// `CreateAddress`). It carries no tag: a pool's prefixes have one.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct CreatePrefix {
+    /// `172.17.1.28/31`
+    pub prefix: Box<str>,
+    pub pool: Box<str>,
+    pub description: Box<str>,
+}
+
+/// Changes of an interface: a new label, a new MTU (each none to keep it) and the tag `ospf`
+/// added.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct UpdateInterface {
+    pub interface: InterfaceRef,
+    pub label: Option<Box<str>>,
+    pub label_before: Option<Box<str>>,
+    pub mtu: Option<u16>,
+    pub mtu_before: Option<u16>,
+    pub ospf: bool,
+}
+
 /// An object a helper wrote: created (`before` is none) or changed from `before` (the JSON
 /// of the fields it changed). `undo` takes it back from this.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -258,8 +347,8 @@ pub struct NetboxWritten {
     /// the JSON `undo` sets back
     #[graphql(skip)]
     pub before: Option<Box<str>>,
-    /// what changed, for reading; none for a created object
-    pub change: Option<FieldChange>,
+    /// what changed, for reading; empty for a created object
+    pub changes: Vec<FieldChange>,
 }
 
 /// A field a helper changed, as NetBox shows its values.
@@ -281,13 +370,13 @@ pub struct NetboxUndone {
 /// Writes `plan`, after computing it again from NetBox as it is now: it must still have
 /// `fingerprint`. Each step checks NetBox once more right before writing.
 pub async fn write(
-    helper: Helper,
-    device: &DeviceAccess,
+    helper: &Helper,
+    topology: &Arc<Topology>,
     fingerprint: &str,
     user: &str,
     log: &Log,
 ) -> Result<(), Error> {
-    let plan = helper.plan(device).await?;
+    let plan = helper.plan(topology).await?;
     if plan.fingerprint_value() != fingerprint {
         return Err(Error::PlanOutdated);
     }
@@ -365,12 +454,63 @@ pub async fn write(
                     path: path.into(),
                     display: display(&object),
                     before: Some(before.to_string().into()),
-                    change: Some(FieldChange {
+                    changes: vec![FieldChange {
                         field: field.into(),
                         value: shown(&object),
                         previous: shown(&current),
-                    }),
+                    }],
                 }));
+                None
+            }
+            PlanStep::CreateCable(create) => {
+                for end in [&create.a, &create.b] {
+                    let current = rest.get(&format!("dcim/interfaces/{}/", end.id)).await?;
+                    if !current["cable"].is_null() {
+                        return Err(Error::NetboxChanged(
+                            format!("{} {} has a cable", end.device.name, end.name).into(),
+                        ));
+                    }
+                }
+                let end = |interface: &InterfaceRef| {
+                    json!([{ "object_type": "dcim.interface", "object_id": interface.id }])
+                };
+                let object = rest
+                    .create(
+                        "dcim/cables/",
+                        json!({
+                            "a_terminations": end(&create.a),
+                            "b_terminations": end(&create.b),
+                            "status": "connected",
+                        }),
+                    )
+                    .await?;
+                Some(logged_create(log, "dcim/cables", &object)?)
+            }
+            PlanStep::CreatePrefix(create) => {
+                let prefixes = rest.get(&format!("ipam/prefixes/?prefix={}", create.prefix)).await?;
+                let addresses = rest
+                    .get(&format!("ipam/ip-addresses/?parent={}&limit=1", create.prefix))
+                    .await?;
+                if prefixes["count"].as_u64() != Some(0) || addresses["count"].as_u64() != Some(0)
+                {
+                    return Err(Error::NetboxChanged(
+                        format!("{} is taken", create.prefix).into(),
+                    ));
+                }
+                let object = rest
+                    .create(
+                        "ipam/prefixes/",
+                        json!({
+                            "prefix": create.prefix,
+                            "status": "active",
+                            "description": create.description,
+                        }),
+                    )
+                    .await?;
+                Some(logged_create(log, "ipam/prefixes", &object)?)
+            }
+            PlanStep::UpdateInterface(update) => {
+                update_interface(&rest, update, log).await?;
                 None
             }
         };
@@ -407,6 +547,75 @@ pub async fn undo(
     Ok(())
 }
 
+/// Writes `update` once the interface is still as the plan found it.
+async fn update_interface(
+    rest: &NetboxRest,
+    update: &UpdateInterface,
+    log: &Log,
+) -> Result<(), Error> {
+    let name = &update.interface;
+    let path = format!("dcim/interfaces/{}/", name.id);
+    let current = rest.get(&path).await?;
+    let label = current["label"].as_str().filter(|l| !l.is_empty());
+    let mtu = current["mtu"].as_u64().map(|mtu| mtu as u16);
+    let tags = current["tags"].as_array().cloned().unwrap_or_default();
+    let has_ospf = tags.iter().any(|tag| tag["slug"] == "ospf");
+    if label != update.label_before.as_deref()
+        || mtu != update.mtu_before
+        || (update.ospf && has_ospf)
+    {
+        return Err(Error::NetboxChanged(
+            format!("{} {}", name.device.name, name.name).into(),
+        ));
+    }
+    let tag_ids = tags.iter().map(|tag| tag["id"].clone()).collect::<Vec<_>>();
+    let mut change = serde_json::Map::new();
+    let mut before = serde_json::Map::new();
+    let mut changes = Vec::new();
+    if let Some(new) = &update.label {
+        change.insert("label".into(), json!(new));
+        before.insert("label".into(), json!(label.unwrap_or_default()));
+        changes.push(FieldChange {
+            field: "label".into(),
+            value: Some(new.clone()),
+            previous: label.map(Box::from),
+        });
+    }
+    if let Some(new) = update.mtu {
+        change.insert("mtu".into(), json!(new));
+        before.insert("mtu".into(), json!(mtu));
+        changes.push(FieldChange {
+            field: "mtu".into(),
+            value: Some(new.to_string().into()),
+            previous: mtu.map(|mtu| mtu.to_string().into()),
+        });
+    }
+    if update.ospf {
+        let found = rest.get("extras/tags/?slug=ospf").await?;
+        let ospf = found["results"][0]["id"].clone();
+        if ospf.is_null() {
+            return Err(Error::TagMissing("ospf".into()));
+        }
+        let mut with_ospf = tag_ids.clone();
+        with_ospf.push(ospf);
+        change.insert("tags".into(), Value::Array(with_ospf));
+        before.insert("tags".into(), Value::Array(tag_ids));
+        changes.push(FieldChange {
+            field: "tags".into(),
+            value: Some("ospf".into()),
+            previous: None,
+        });
+    }
+    let object = rest.update(&path, Value::Object(change)).await?;
+    log.emit(Event::NetboxWritten(NetboxWritten {
+        path: path.into(),
+        display: display(&object),
+        before: Some(Value::Object(before).to_string().into()),
+        changes,
+    }));
+    Ok(())
+}
+
 fn display(object: &Value) -> Box<str> {
     object["display"].as_str().unwrap_or_default().into()
 }
@@ -420,7 +629,7 @@ fn logged_create(log: &Log, path: &str, object: &Value) -> Result<u32, Error> {
         path: format!("{path}/{id}/").into(),
         display: display(object),
         before: None,
-        change: None,
+        changes: Vec::new(),
     }));
     Ok(id)
 }
@@ -435,7 +644,10 @@ mod test {
     use super::*;
     use crate::{
         device::ros::netbox_example_test::example_topology,
-        topology::access::AccessTopology,
+        topology::{
+            access::{AccessTopology, interface::InterfaceAccess},
+            findings::interface_ref,
+        },
     };
 
     /// The preview is NetBox after the plan: a created interface with its new address, which
@@ -456,6 +668,7 @@ mod test {
             }),
             PlanStep::CreateAddress(CreateAddress {
                 address: "192.0.2.1/32".into(),
+                device: device_ref(&device),
                 interface: "lo-test".into(),
                 prefix: "192.0.2.0/24".into(),
                 on: Target::Step(0),
@@ -480,5 +693,78 @@ mod test {
         let primary = after.primary_ip_v4().and_then(|ip| ip.net()).map(|n| n.to_string());
         assert_eq!(primary.as_deref(), Some("192.0.2.1/32"));
         assert!(!device.interfaces().iter().any(|i| i.name() == "lo-test"));
+    }
+
+    /// A link's steps in the preview: the cable joins the two ports, both have their address
+    /// in the new prefix, label, MTU and `ospf`.
+    #[test]
+    fn preview_has_the_new_link() {
+        let topology = example_topology();
+        let free_port = |not: Option<DeviceId>| {
+            topology
+                .list_devices()
+                .filter(|d| d.has_routeros() && Some(d.id()) != not)
+                .flat_map(|d| d.interfaces().into_vec())
+                .find(|i| {
+                    i.is_ethernet_port()
+                        && i.cable().is_none()
+                        && i.ips().is_empty()
+                        && i.bridge().is_none()
+                        && !i.use_ospf()
+                })
+                .expect("a free port")
+        };
+        let a = free_port(None);
+        let b = free_port(a.device().map(|d| d.id()));
+        let (a_device, b_device) = (a.device().unwrap(), b.device().unwrap());
+        let mut plan = NetboxPlan::new(&a_device, "test");
+        let update = |end: &InterfaceAccess, far: &DeviceAccess| {
+            PlanStep::UpdateInterface(UpdateInterface {
+                interface: interface_ref(end),
+                label: Some(far.name().into()),
+                label_before: end.label().map(Box::from),
+                mtu: Some(2000),
+                mtu_before: end.mtu(),
+                ospf: true,
+            })
+        };
+        let address = |end: &InterfaceAccess, address: &str| {
+            PlanStep::CreateAddress(CreateAddress {
+                address: address.into(),
+                device: device_ref(&end.device().unwrap()),
+                interface: end.name().into(),
+                prefix: "192.0.2.0/31".into(),
+                on: Target::Existing(end.id().0),
+            })
+        };
+        plan.steps = vec![
+            PlanStep::CreateCable(CreateCable {
+                a: interface_ref(&a),
+                b: interface_ref(&b),
+            }),
+            PlanStep::CreatePrefix(CreatePrefix {
+                prefix: "192.0.2.0/31".into(),
+                pool: "192.0.2.0/24".into(),
+                description: "test".into(),
+            }),
+            address(&a, "192.0.2.0/31"),
+            address(&b, "192.0.2.1/31"),
+            update(&a, &b_device),
+            update(&b, &a_device),
+        ];
+        let after = plan.preview_topology().expect("preview");
+        let a_after = after.get_interface_by_id(a.id()).unwrap();
+        let connected = a_after.connected_interfaces();
+        assert_eq!(connected.iter().map(|i| i.id()).collect::<Vec<_>>(), [b.id()]);
+        for (end, address, far) in [(&a, "192.0.2.0/31", &b_device), (&b, "192.0.2.1/31", &a_device)] {
+            let end = after.get_interface_by_id(end.id()).unwrap();
+            let net = end.ips().first().and_then(|ip| ip.net()).map(|n| n.to_string());
+            assert_eq!(net.as_deref(), Some(address));
+            let prefix = end.ips().first().and_then(|ip| ip.prefix()).and_then(|p| p.prefix());
+            assert_eq!(prefix.map(|p| p.to_string()).as_deref(), Some("192.0.2.0/31"));
+            assert_eq!(end.label(), Some(far.name()));
+            assert_eq!(end.mtu(), Some(2000));
+            assert!(end.use_ospf());
+        }
     }
 }
