@@ -22,6 +22,27 @@ const NEW_PASSWORD: &str = "Provisioned-1";
 #[tokio::test]
 #[ignore]
 async fn mac_telnet_setup_from_entry() {
+    mac_telnet_setup(30, "chr-network-mac-telnet-test").await;
+}
+
+/// The same with the cables as `/31` (`.0` the entry, `.1` the new device), the transfer
+/// networks the helper „Verbindung“ hands out.
+#[tokio::test]
+#[ignore]
+async fn mac_telnet_setup_over_31() {
+    mac_telnet_setup(31, "chr-network-mac-telnet-31-test").await;
+}
+
+/// The entry's address and the new device's on cable `n` (0, 1) as `/len` (30 or 31).
+fn cable_addresses(n: u8, len: u8) -> (String, String) {
+    let base = n * 4 + if len == 31 { 0 } else { 1 };
+    (
+        format!("192.168.77.{base}/{len}"),
+        format!("192.168.77.{}/{len}", base + 1),
+    )
+}
+
+async fn mac_telnet_setup(len: u8, work_dir: &str) {
     if nix_unavailable() {
         eprintln!("skipping: `nix` is not available in this environment");
         return;
@@ -32,7 +53,7 @@ async fn mac_telnet_setup_from_entry() {
     let factory = ensure_factory_image(&crate::cache_dir(), &CHR)
         .await
         .expect("factory image failed");
-    let work_dir = std::env::temp_dir().join("chr-network-mac-telnet-test");
+    let work_dir = std::env::temp_dir().join(work_dir);
     let (to_factory, to_configured) = (free_tcp_port().unwrap(), free_tcp_port().unwrap());
     let entry = boot_node(
         &golden,
@@ -57,8 +78,8 @@ async fn mac_telnet_setup_from_entry() {
     .expect("configured node boot failed");
 
     let entry_api = entry.connect_api(crate::TEST_PASSWORD).await.expect("entry api");
-    for address in ["192.168.77.1/30", "192.168.77.5/30"] {
-        let interface = if address.ends_with(".1/30") { "ether2" } else { "ether3" };
+    for (n, interface) in [(0, "ether2"), (1, "ether3")] {
+        let address = cable_addresses(n, len).0;
         let mut s = entry_api
             .send_command(
                 b"/ip/address/add".as_slice(),
@@ -85,11 +106,14 @@ async fn mac_telnet_setup_from_entry() {
     }
     wait_for_boot(&fresh).await;
 
-    for (node, slot, address, neighbor, password) in [
-        (&fresh, 1, "192.168.77.2/30", "192.168.77.1", NEW_PASSWORD),
+    for (node, slot, password) in [
+        (&fresh, 1, NEW_PASSWORD),
         // has a password already: the factory login is refused, the second one works
-        (&configured, 2, "192.168.77.6/30", "192.168.77.5", crate::TEST_PASSWORD),
+        (&configured, 2, crate::TEST_PASSWORD),
     ] {
+        let (neighbor, address) = cable_addresses(slot as u8 - 1, len);
+        let neighbor = neighbor.split('/').next().unwrap();
+        let address = address.as_str();
         let mut terminal = Terminal::connect(
             ([127, 0, 0, 1], entry.ssh_port).into(),
             "admin",

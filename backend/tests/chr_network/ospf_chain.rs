@@ -41,7 +41,9 @@ struct ChainTopology {
     target_loopback: IpAddr,
 }
 
-fn build_chain() -> ChainTopology {
+/// The chain with its two links as `/link_len` networks: `/24` (`.1`, `.2`) or `/31` (`.0`,
+/// `.1`, the transfer networks the helper „Verbindung“ hands out).
+fn build_chain(link_len: u8) -> ChainTopology {
     let mut builder = TopologyBuilder::default();
     let entry = builder.devices.next_id();
     let a = builder.devices.next_id();
@@ -65,12 +67,13 @@ fn build_chain() -> ChainTopology {
     let target_loopback = IpAddr::V4(Ipv4Addr::new(192, 168, 255, 3));
 
     let link_interface =
-        |builder: &mut TopologyBuilder, device: DeviceId, ether: u16, octet4: u8, net3: u8| {
+        |builder: &mut TopologyBuilder, device: DeviceId, ether: u16, end: u8, net3: u8| {
+            let octet4 = if link_len == 31 { end - 1 } else { end };
             let ip_id = builder.ip_addresses.next_id();
             builder.ip_addresses.insert(
                 ip_id,
                 IpAddressData {
-                    ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(10, 0, net3, octet4)), 24).unwrap(),
+                    ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(10, 0, net3, octet4)), link_len).unwrap(),
                     interface: None,
                     prefix: None,
                 },
@@ -96,10 +99,10 @@ fn build_chain() -> ChainTopology {
     // 10.0.2.15), so an interface address landing in that same /24 collides
     // with the slirp virtual router and silently breaks guest networking,
     // including the API connection the test itself depends on.
-    let entry_if = link_interface(&mut builder, entry, 2, 1, 21); // 10.0.21.1/24
-    let a_if1 = link_interface(&mut builder, a, 2, 2, 21); // 10.0.21.2/24
-    let a_if2 = link_interface(&mut builder, a, 3, 1, 22); // 10.0.22.1/24
-    let target_if = link_interface(&mut builder, target, 2, 2, 22); // 10.0.22.2/24
+    let entry_if = link_interface(&mut builder, entry, 2, 1, 21); // 10.0.21.1/24 or .0/31
+    let a_if1 = link_interface(&mut builder, a, 2, 2, 21); // 10.0.21.2/24 or .1/31
+    let a_if2 = link_interface(&mut builder, a, 3, 1, 22); // 10.0.22.1/24 or .0/31
+    let target_if = link_interface(&mut builder, target, 2, 2, 22); // 10.0.22.2/24 or .1/31
 
     builder.devices.insert(
         entry,
@@ -290,6 +293,18 @@ async fn mac_telnet_login(from: &RunningNode, mac: &str) -> bool {
 #[tokio::test]
 #[ignore]
 async fn three_node_ospf_chain_apply_via_entry() {
+    ospf_chain_apply_via_entry(24, "chr-network-ospf-chain-test").await;
+}
+
+/// The same over `/31` links: addresses, OSPF (`type=broadcast` as generated) and the routed
+/// apply work on a network with no broadcast address.
+#[tokio::test]
+#[ignore]
+async fn three_node_ospf_chain_over_31() {
+    ospf_chain_apply_via_entry(31, "chr-network-ospf-chain-31-test").await;
+}
+
+async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
     if crate::chr_network::qemu::nix_unavailable() {
         eprintln!("skipping: `nix` is not available in this environment");
         return;
@@ -307,14 +322,14 @@ async fn three_node_ospf_chain_apply_via_entry() {
         a,
         target,
         target_loopback,
-    } = build_chain();
+    } = build_chain(link_len);
 
     let boards = HashMap::from([
         (entry, DeviceType::RB750Gr3),
         (a, DeviceType::RB750Gr3),
         (target, DeviceType::RB750Gr3),
     ]);
-    let work_dir = Path::new("/tmp").join("chr-network-ospf-chain-test");
+    let work_dir = Path::new("/tmp").join(work_dir);
     let nodes = boot_scenario(&golden, &builder, &boards, &work_dir, crate::TEST_PASSWORD)
         .await
         .expect("scenario boot failed");

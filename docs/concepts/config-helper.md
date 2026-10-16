@@ -191,6 +191,10 @@ Bevor der Helfer `/31` vergibt, ist auf einer CHR zu prüfen, dass RouterOS dami
 Adresse, OSPF-Nachbarschaft und Ersteinrichtung über einen Nachbarn im `/31`. Ebenso, dass der
 Generator damit umgehen kann (Ersteinrichtung sucht den Nachbarn „im selben Netz“, der DHCP-Pool
 rechnet freie Adressen).
+Geprüft (CHR 7.24.5): `three_node_ospf_chain_over_31` (Kette über zwei `/31`, OSPF mit dem
+generierten `type=broadcast` auf beiden Hops `Full`, Anwenden über den Nachbarn) und
+`mac_telnet_setup_over_31` (Ersteinrichtung und Tunnel über den Nachbarn im `/31`). Der
+Generator vergleicht bei der Ersteinrichtung nur Netze, der DHCP-Pool betrifft nur `dhcp`-Netze.
 
 ### Kunden-Netz
 
