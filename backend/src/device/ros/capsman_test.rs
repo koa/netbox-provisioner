@@ -2,7 +2,7 @@
 //! the controller, which has the WLAN's VLAN (VXLAN of its group) with an address.
 use crate::{
     device::ros::{
-        CapsManDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
+        BaseDeviceDataTarget, CapsManDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
         hw_facts::RadioPackage,
         l2::{EndpointNameGenerator, KeepNameGenerator, KeptNames, L2Port, L2Setup, NameGenerator},
         needed_radio_package,
@@ -17,7 +17,10 @@ use crate::{
 use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
-    model::{CapsAuthenticationTypes, CapsManDatapathVlanMode, InterfaceWirelessByDefaultName},
+    model::{
+        CapsAuthenticationTypes, CapsManDatapathVlanMode, InterfaceBridgeProtocolMode,
+        InterfaceWirelessByDefaultName,
+    },
     value::HasNone,
 };
 use std::{
@@ -291,4 +294,19 @@ async fn managed_legacy_radio_keeps_its_name() {
             expected: netbox_name,
         })]
     );
+}
+
+/// ap-buero-1og: a CAP's `bridge-caps` reaches other bridges only through the WLAN group's
+/// VXLAN, a segment shared with all of them, where STP blocked its port; it runs no STP.
+#[tokio::test]
+async fn caps_bridge_runs_no_stp() {
+    let (_, legacy_cap, wifi_cap) = wlan_group().await;
+    for (device, model) in [(&legacy_cap, b"SXT G-5HPacD".as_slice()), (&wifi_cap, b"C52iG-5HaxD2HaxD")] {
+        let mut target = BaseDeviceDataTarget::new(model).unwrap();
+        target.generate_from(device, KeepNameGenerator).unwrap();
+        let bridge = &target.bridge[&AsciiString::from("bridge-caps")].0;
+        assert_eq!(bridge.protocol_mode, InterfaceBridgeProtocolMode::None, "{}", device.name());
+        assert_eq!(bridge.priority, None);
+        assert_eq!(bridge.forward_reserved_addresses, Some(false));
+    }
 }

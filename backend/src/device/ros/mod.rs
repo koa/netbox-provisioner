@@ -426,6 +426,38 @@ impl BaseDeviceDataTarget {
             bridge_cfg.0.vlan_filtering = true;
             bridge_cfg.0.mvrp = Some(false);
             bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
+            // A bridge whose only way to other bridges is one VXLAN (a CAP's `bridge-caps`;
+            // its radios are clients) closes no loop, and STP over the VXLAN, a segment it
+            // shares with every bridge of the WLAN group, blocked its port (ap-buero-1og,
+            // 7.23.7: no client got an address until STP was off). Without STP RouterOS
+            // doesn't report the STP settings, but `forward-reserved-addresses` (7.24.5).
+            let uplinks = bridge
+                .ports
+                .values()
+                .flat_map(|entry| &entry.ports)
+                .filter_map(|port| match port {
+                    L2Port::TaggedEthernet { name, port, .. }
+                    | L2Port::UntaggedEthernet { name, port, .. }
+                        if !matches!(port, PhysicalPortId::Wlan(_) | PhysicalPortId::Wifi(_)) =>
+                    {
+                        Some((name, false))
+                    }
+                    L2Port::VxLan { name, .. } => Some((name, true)),
+                    _ => None,
+                })
+                .collect::<HashSet<_>>();
+            if uplinks.len() == 1 && uplinks.iter().all(|(_, vxlan)| *vxlan) {
+                let bridge_cfg = &mut bridge_cfg.0;
+                bridge_cfg.protocol_mode = InterfaceBridgeProtocolMode::None;
+                bridge_cfg.priority = None;
+                bridge_cfg.max_message_age = None;
+                bridge_cfg.forward_delay = None;
+                bridge_cfg.transmit_hold_count = None;
+                bridge_cfg.region_name = None;
+                bridge_cfg.region_revision = None;
+                bridge_cfg.max_hops = None;
+                bridge_cfg.forward_reserved_addresses = Some(false);
+            }
             let mut tags_of_port = HashMap::<AsciiString, (Option<u16>, Vec<u16>)>::new();
             let mut ports_of_vlan = HashMap::<u16, (Vec<AsciiString>, Vec<AsciiString>)>::new();
             for (&vlan_id, entry) in &bridge.ports {

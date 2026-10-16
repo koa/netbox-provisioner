@@ -275,7 +275,11 @@ An uplink tagged `nat` gets a masquerade rule. The provisioner owns
 reorder rules yet.
 
 A WLAN with a VLAN ends where NetBox puts its network (e.g. the controller, over the VLAN
-group's VXLAN). With one VLAN in the group the CAP sets it: with `wifi-qcom` its radios get a
+group's VXLAN). A tagged bridge whose only way to other bridges is one VXLAN (a CAP's
+`bridge-caps`; radios don't count) runs no STP: it closes no loop, and MSTP over the VXLAN,
+a segment shared with every bridge of the group, blocked its port (ap-buero-1og, 7.23.7:
+clients associated but got no DHCP). Without STP RouterOS reports none of the bridge's STP
+settings but `forward-reserved-addresses=no` (7.24.5), so the target clears them. With one VLAN in the group the CAP sets it: with `wifi-qcom` its radios get a
 datapath with `vlan-id` into the bridge carrying that VLAN; `wifi-qcom-ac` radios can't tag
 (MikroTik: "802.11ac chipsets do not support this type of VLAN tagging"; clients associate but
 get no DHCP), so they are static access ports of that bridge instead
