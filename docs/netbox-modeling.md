@@ -25,6 +25,18 @@ Die Slugs müssen exakt so heißen:
 |               | (mit `ospf` ohne Default-Route: die kommt dann über OSPF)     |
 | `nat`         | Uplink, dessen Netz nicht zurückroutet: ausgehend maskieren   |
 
+An Prefixen markieren zwei Tags, woraus der Config-Helper Adressen vergeben soll
+([Konzept](concepts/config-helper.md#prefixe)). Sie werden gelesen, aber noch nicht
+ausgewertet:
+
+| Tag-Slug   | Bedeutung, wenn am Prefix gesetzt                                   |
+|------------|---------------------------------------------------------------------|
+| `loopback` | daraus kommen die Loopback-Adressen (je ein Prefix für IPv4 und IPv6) |
+| `transfer` | daraus kommen die Transfernetze zwischen Routern (nur IPv4)          |
+
+Alle sechs Tags lassen sich mit [netbox-import/3-tags.yaml](netbox-import/3-tags.yaml) anlegen
+(Customization > Tags > Import, YAML).
+
 `nat` erzeugt `srcnat action=masquerade out-interface=<Uplink>`. Beantwortet der Router selbst
 DNS (kein Config Context `dns_servers`, siehe unten), sperrt es zudem DNS (TCP/UDP 53) vom Uplink
 her im `input`.
@@ -100,7 +112,7 @@ Gerät nicht erreichbar. Im Frontend kann man dann noch Ad-hoc-Zugangsdaten eing
 | Custom Field `wlan_group`    | nur für Access Points, siehe [WLAN](#wlan)                              |
 | Custom Field `propagate_default_route` | nur am Router mit dem Internet-Uplink: OSPF gibt seine Default-Route weiter; sonst keine (`originate-default=never`) |
 
-Das **Board-Modell** kommt nicht aus NetBox (der Device Type wird nicht gelesen), sondern wird
+Das **Board-Modell** kommt nicht aus NetBox (der Device Type wird nicht ausgewertet), sondern wird
 live vom Gerät gelesen (`/system/routerboard`). Unterstützt sind nur die Modelle in
 `backend/src/device/ros/hw_facts.rs`: `RB750Gr3`, `RB960PGS`, `RB962UiGS-5HacT2HnT`,
 `RBwAPG-5HacD2HnD`, `C52iG-5HaxD2HaxD`, `cAPGi-5HaxD2HaxD`, `CRS109-8G-1S-2HnD`, `CRS318-16P-2S+`,
@@ -502,7 +514,8 @@ reicht also nicht, sie zu setzen:
   wird trotzdem konfiguriert.
 - **Device Role** (`router`, `switch`, `wlan-bridge`): wird gelesen, aber nirgends verwendet.
   Router und Switch unterscheiden sich nur durch ihre Interfaces.
-- **Device Type**: wird nicht gelesen, das Board kommt live vom Gerät.
+- **Device Type**: wird gelesen (für den Config-Helper), das Board kommt aber live vom Gerät.
+- **Prefixe**: Beschreibung, Tags und Scope (Site) werden gelesen, aber noch nicht ausgewertet.
 - **802.1Q Mode**: siehe oben; nur die VLAN-Zuweisungen zählen.
 - **Tags an Bridge-Ports**: bei Bridges zählen die Tags des Bridge-Interfaces und des
   VLAN-Interfaces, das die IP trägt, nicht die der Mitgliedsports.

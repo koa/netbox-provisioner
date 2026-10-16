@@ -13,6 +13,12 @@
         "role": {
           "slug": "router"
         },
+        "device_type": {
+          "model": "CRS326-24G-2S+RM",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "38",
@@ -688,6 +694,12 @@
         },
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "CRS326-24G-2S+RM",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -1369,6 +1381,12 @@
         "role": {
           "slug": "access-point"
         },
+        "device_type": {
+          "model": "hAP ax²",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "626",
@@ -1567,6 +1585,124 @@
         "config_context": {}
       },
       {
+        "id": "287",
+        "name": "ap-eg-vorraum",
+        "primary_ip4": null,
+        "primary_ip6": null,
+        "role": {
+          "slug": "access-point"
+        },
+        "device_type": {
+          "model": "wAP ac",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
+        "interfaces": [
+          {
+            "id": "733",
+            "name": "ether1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "1000base-t",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": "pd",
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "736",
+            "name": "lo",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "virtual",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "734",
+            "name": "wlan1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11n",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "735",
+            "name": "wlan2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ac",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          }
+        ],
+        "frontports": [],
+        "rearports": [],
+        "platform": {
+          "name": "routeros"
+        },
+        "tenant": null,
+        "location": {
+          "tenant": null
+        },
+        "site": {
+          "id": "1",
+          "name": "Berg 1654",
+          "tenant": {
+            "id": "1"
+          },
+          "region": {
+            "slug": "ch",
+            "parent": null
+          }
+        },
+        "serial": "",
+        "custom_field_data": {
+          "wlan_group": null
+        },
+        "config_context": {}
+      },
+      {
         "id": "141",
         "name": "ap-klr-solar",
         "primary_ip4": {
@@ -1577,6 +1713,12 @@
         },
         "role": {
           "slug": "access-point"
+        },
+        "device_type": {
+          "model": "hAP ac",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -1843,6 +1985,12 @@
         "role": {
           "slug": "access-point"
         },
+        "device_type": {
+          "model": "hAP ax²",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "640",
@@ -2058,6 +2206,12 @@
         "role": {
           "slug": "access-point"
         },
+        "device_type": {
+          "model": "cAP ax",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "645",
@@ -2207,6 +2361,12 @@
         },
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "hAP ac",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -2485,6 +2645,12 @@
         "role": {
           "slug": "access-point"
         },
+        "device_type": {
+          "model": "cAP ax",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "664",
@@ -2631,6 +2797,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -2697,6 +2869,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -2765,6 +2943,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Keystone Gehäuse mit 2x RJ45",
+          "manufacturer": {
+            "slug": "delock"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -2826,6 +3010,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wireless-bridge"
+        },
+        "device_type": {
+          "model": "DynaDish 5",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -2931,6 +3121,12 @@
         "role": {
           "slug": "access-point"
         },
+        "device_type": {
+          "model": "wAP ac",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "260",
@@ -3026,6 +3222,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -3093,6 +3295,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -3159,6 +3367,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wireless-bridge"
+        },
+        "device_type": {
+          "model": "airFiber 60",
+          "manufacturer": {
+            "slug": "ubiquiti"
+          }
         },
         "interfaces": [
           {
@@ -3265,6 +3479,12 @@
         },
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "hAP ax²",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -3516,6 +3736,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -3582,6 +3808,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -3650,6 +3882,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -3716,6 +3954,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -3784,6 +4028,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -3851,6 +4101,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -3917,6 +4173,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wireless-bridge"
+        },
+        "device_type": {
+          "model": "Wireless Wire",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -4023,6 +4285,12 @@
         },
         "role": {
           "slug": "access-point"
+        },
+        "device_type": {
+          "model": "cAP ax",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -4169,6 +4437,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "S53UG+5HaxD2HaxD&FG621-EA",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -4326,6 +4600,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -4388,6 +4668,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Keystone Gehäuse mit 1x RJ45",
+          "manufacturer": {
+            "slug": "delock"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -4434,6 +4720,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -4497,6 +4789,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Keystone Gehäuse mit 1x RJ45",
+          "manufacturer": {
+            "slug": "delock"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -4543,6 +4841,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "user-device"
+        },
+        "device_type": {
+          "model": "HL-L2370DN",
+          "manufacturer": {
+            "slug": "brother"
+          }
         },
         "interfaces": [
           {
@@ -4593,6 +4897,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "l2-switch"
+        },
+        "device_type": {
+          "model": "RB750GL",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -4759,6 +5069,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "l2-switch"
+        },
+        "device_type": {
+          "model": "CRS109-8G-1S-2HnD",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -5010,6 +5326,12 @@
         "role": {
           "slug": "user-device"
         },
+        "device_type": {
+          "model": "PC",
+          "manufacturer": {
+            "slug": "generic"
+          }
+        },
         "interfaces": [
           {
             "id": "64",
@@ -5064,6 +5386,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -5132,6 +5460,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -5199,6 +5533,12 @@
         "role": {
           "slug": "server"
         },
+        "device_type": {
+          "model": "SC846",
+          "manufacturer": {
+            "slug": "supermicro"
+          }
+        },
         "interfaces": [],
         "frontports": [],
         "rearports": [],
@@ -5233,6 +5573,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -5301,6 +5647,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -5367,6 +5719,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -5435,6 +5793,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -5501,6 +5865,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wireless-bridge"
+        },
+        "device_type": {
+          "model": "airFiber 60",
+          "manufacturer": {
+            "slug": "ubiquiti"
+          }
         },
         "interfaces": [
           {
@@ -5607,6 +5977,12 @@
         },
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "CRS318-16P-2S+",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -5824,6 +6200,12 @@
         "role": {
           "slug": "user-device"
         },
+        "device_type": {
+          "model": "D717",
+          "manufacturer": {
+            "slug": "snom"
+          }
+        },
         "interfaces": [
           {
             "id": "75",
@@ -5898,6 +6280,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "12 Port Splice and Connector Enclosure",
+          "manufacturer": {
+            "slug": "generic"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -5964,6 +6352,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wireless-bridge"
+        },
+        "device_type": {
+          "model": "DynaDish 5",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -6069,6 +6463,12 @@
         "role": {
           "slug": "wireless-bridge"
         },
+        "device_type": {
+          "model": "Wireless Wire",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "288",
@@ -6173,6 +6573,12 @@
         "role": {
           "slug": "wireless-bridge"
         },
+        "device_type": {
+          "model": "Wireless Wire",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "291",
@@ -6276,6 +6682,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "patch-panel-copper"
+        },
+        "device_type": {
+          "model": "24 Port Patch Panel",
+          "manufacturer": {
+            "slug": "equip"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -6673,6 +7085,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "patch-panel-copper"
+        },
+        "device_type": {
+          "model": "24 Port Patch Panel",
+          "manufacturer": {
+            "slug": "equip"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -7073,6 +7491,12 @@
         "role": {
           "slug": "l2-switch"
         },
+        "device_type": {
+          "model": "RB750GL",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "620",
@@ -7231,11 +7655,17 @@
         "role": {
           "slug": "router"
         },
+        "device_type": {
+          "model": "CRS354-48G-4S+2Q+RM",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "139",
             "name": "ether1",
-            "label": "",
+            "label": "E.1.1.a",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7256,7 +7686,7 @@
           {
             "id": "140",
             "name": "ether2",
-            "label": "",
+            "label": "E.1.1.b",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7277,7 +7707,7 @@
           {
             "id": "141",
             "name": "ether3",
-            "label": "",
+            "label": "E.2.3.a",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7298,7 +7728,7 @@
           {
             "id": "142",
             "name": "ether4",
-            "label": "",
+            "label": "E.2.3.b",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7319,7 +7749,7 @@
           {
             "id": "143",
             "name": "ether5",
-            "label": "",
+            "label": "E.3.7.a",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7340,7 +7770,7 @@
           {
             "id": "144",
             "name": "ether6",
-            "label": "",
+            "label": "E.3.7.b",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7361,7 +7791,7 @@
           {
             "id": "145",
             "name": "ether7",
-            "label": "",
+            "label": "E.4.1.a",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7382,7 +7812,7 @@
           {
             "id": "146",
             "name": "ether8",
-            "label": "",
+            "label": "E.4.1.b",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7403,7 +7833,7 @@
           {
             "id": "147",
             "name": "ether9",
-            "label": "",
+            "label": "E.5.1.a",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7424,7 +7854,7 @@
           {
             "id": "148",
             "name": "ether10",
-            "label": "",
+            "label": "E.5.1.b",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7445,7 +7875,7 @@
           {
             "id": "149",
             "name": "ether11",
-            "label": "",
+            "label": "E.5.2.a",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7466,7 +7896,7 @@
           {
             "id": "150",
             "name": "ether12",
-            "label": "",
+            "label": "E.5.2.b",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7487,7 +7917,7 @@
           {
             "id": "151",
             "name": "ether13",
-            "label": "",
+            "label": "E.5.3.a",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7508,7 +7938,7 @@
           {
             "id": "152",
             "name": "ether14",
-            "label": "",
+            "label": "E.5.2.b",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7529,7 +7959,7 @@
           {
             "id": "153",
             "name": "ether15",
-            "label": "",
+            "label": "E.6.3.a",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7550,7 +7980,7 @@
           {
             "id": "154",
             "name": "ether16",
-            "label": "",
+            "label": "E.6.3.b",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7571,7 +8001,7 @@
           {
             "id": "155",
             "name": "ether17",
-            "label": "",
+            "label": "E.7.4.a",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7592,7 +8022,7 @@
           {
             "id": "156",
             "name": "ether18",
-            "label": "",
+            "label": "E.7.4.b",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7613,7 +8043,7 @@
           {
             "id": "157",
             "name": "ether19",
-            "label": "",
+            "label": "E.8.1.a",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7634,7 +8064,7 @@
           {
             "id": "158",
             "name": "ether20",
-            "label": "",
+            "label": "E.8.1.b",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7655,7 +8085,7 @@
           {
             "id": "159",
             "name": "ether21",
-            "label": "",
+            "label": "E.8.5.a",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -7676,7 +8106,7 @@
           {
             "id": "160",
             "name": "ether22",
-            "label": "",
+            "label": "E.8.5.b",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -8474,6 +8904,12 @@
         "role": {
           "slug": "router"
         },
+        "device_type": {
+          "model": "CRS326-24G-2S+RM",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "193",
@@ -9137,6 +9573,12 @@
         "role": {
           "slug": "router"
         },
+        "device_type": {
+          "model": "CRS309-1G-8S+",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "538",
@@ -9432,6 +9874,12 @@
         "role": {
           "slug": "wireless-bridge"
         },
+        "device_type": {
+          "model": "Wireless Wire",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "352",
@@ -9536,6 +9984,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -9602,6 +10056,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -9670,6 +10130,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -9737,6 +10203,12 @@
         "role": {
           "slug": "kvm-switch"
         },
+        "device_type": {
+          "model": "F1DP108G",
+          "manufacturer": {
+            "slug": "belkin"
+          }
+        },
         "interfaces": [],
         "frontports": [],
         "rearports": [],
@@ -9771,6 +10243,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "server"
+        },
+        "device_type": {
+          "model": "CloudKey",
+          "manufacturer": {
+            "slug": "ubiquiti"
+          }
         },
         "interfaces": [
           {
@@ -9827,6 +10305,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "CRS318-16P-2S+",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -10307,6 +10791,12 @@
         "role": {
           "slug": "router"
         },
+        "device_type": {
+          "model": "D53G-5HacD2HnD",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "98",
@@ -10549,6 +11039,12 @@
         "role": {
           "slug": "router"
         },
+        "device_type": {
+          "model": "S53UG+5HaxD2HaxD-TC&RG650E-EU",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "702",
@@ -10738,6 +11234,12 @@
         "role": {
           "slug": "user-device"
         },
+        "device_type": {
+          "model": "PC",
+          "manufacturer": {
+            "slug": "generic"
+          }
+        },
         "interfaces": [
           {
             "id": "109",
@@ -10792,6 +11294,12 @@
         "role": {
           "slug": "user-device"
         },
+        "device_type": {
+          "model": "PC",
+          "manufacturer": {
+            "slug": "generic"
+          }
+        },
         "interfaces": [
           {
             "id": "110",
@@ -10845,6 +11353,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "patch-panel-copper"
+        },
+        "device_type": {
+          "model": "48-Port Patch Panel",
+          "manufacturer": {
+            "slug": "equip"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -11603,6 +12117,12 @@
         "role": {
           "slug": "patch-panel-copper"
         },
+        "device_type": {
+          "model": "12-Port Patch-Panel 10\"",
+          "manufacturer": {
+            "slug": "equip"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -11815,6 +12335,12 @@
         "role": {
           "slug": "patch-panel-keystone"
         },
+        "device_type": {
+          "model": "24 Slot Keystone Panel",
+          "manufacturer": {
+            "slug": "delock"
+          }
+        },
         "interfaces": [],
         "frontports": [],
         "rearports": [],
@@ -11849,6 +12375,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "patch-panel-fiber"
+        },
+        "device_type": {
+          "model": "12 Port LC Duplex",
+          "manufacturer": {
+            "slug": "generic"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -12066,6 +12598,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "patch-panel-fiber"
+        },
+        "device_type": {
+          "model": "FHD High Density 1U Rack Mount Enclosure",
+          "manufacturer": {
+            "slug": "fs"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -12287,6 +12825,12 @@
         },
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "CCR1009-8G-1S-1S+",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -12644,6 +13188,12 @@
         "role": {
           "slug": "router"
         },
+        "device_type": {
+          "model": "PowerBox Pro",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "271",
@@ -12905,6 +13455,12 @@
         "role": {
           "slug": "router"
         },
+        "device_type": {
+          "model": "hEX PoE",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "297",
@@ -13131,6 +13687,12 @@
         "role": {
           "slug": "router"
         },
+        "device_type": {
+          "model": "hEX PoE",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "581",
@@ -13324,6 +13886,12 @@
         },
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "hAP ac",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -13584,6 +14152,12 @@
         },
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "CRS326-24G-2S+RM",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -14260,6 +14834,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -14326,6 +14906,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wireless-bridge"
+        },
+        "device_type": {
+          "model": "Wireless Wire",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -14431,6 +15017,12 @@
         "role": {
           "slug": "wireless-bridge"
         },
+        "device_type": {
+          "model": "Wireless Wire",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "294",
@@ -14534,6 +15126,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wireless-bridge"
+        },
+        "device_type": {
+          "model": "Wireless Wire Dish",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -14641,6 +15239,12 @@
         "role": {
           "slug": "server"
         },
+        "device_type": {
+          "model": "2U 2404L S-ATA",
+          "manufacturer": {
+            "slug": "intertech"
+          }
+        },
         "interfaces": [
           {
             "id": "548",
@@ -14722,6 +15326,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "server"
+        },
+        "device_type": {
+          "model": "2U 2404L S-ATA",
+          "manufacturer": {
+            "slug": "intertech"
+          }
         },
         "interfaces": [
           {
@@ -14805,6 +15415,12 @@
         "role": {
           "slug": "server"
         },
+        "device_type": {
+          "model": "SC823T",
+          "manufacturer": {
+            "slug": "supermicro"
+          }
+        },
         "interfaces": [
           {
             "id": "550",
@@ -14864,6 +15480,12 @@
         "role": {
           "slug": "server"
         },
+        "device_type": {
+          "model": "SC813TQ",
+          "manufacturer": {
+            "slug": "supermicro"
+          }
+        },
         "interfaces": [],
         "frontports": [],
         "rearports": [],
@@ -14898,6 +15520,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "server"
+        },
+        "device_type": {
+          "model": "SC813TQ",
+          "manufacturer": {
+            "slug": "supermicro"
+          }
         },
         "interfaces": [],
         "frontports": [],
@@ -14937,6 +15565,12 @@
         },
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "CCR1009-7G-1C-1S+PC",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -15324,9 +15958,6 @@
             "label": "",
             "ip_addresses": [
               {
-                "id": "1"
-              },
-              {
                 "id": "113"
               },
               {
@@ -15420,6 +16051,12 @@
         "role": {
           "slug": "user-device"
         },
+        "device_type": {
+          "model": "Ethernet Master Extension",
+          "manufacturer": {
+            "slug": "tinkerforge"
+          }
+        },
         "interfaces": [
           {
             "id": "65",
@@ -15478,6 +16115,12 @@
         },
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "CRS318-16P-2S+",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -15952,6 +16595,12 @@
         "role": {
           "slug": "user-device"
         },
+        "device_type": {
+          "model": "43BL5EA",
+          "manufacturer": {
+            "slug": "sharp"
+          }
+        },
         "interfaces": [
           {
             "id": "107",
@@ -16001,6 +16650,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -16069,6 +16724,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -16136,6 +16797,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -16202,6 +16869,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wireless-bridge"
+        },
+        "device_type": {
+          "model": "Wireless Wire Dish",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -16306,6 +16979,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "FHD Wall Mount",
+          "manufacturer": {
+            "slug": "fs"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -16703,6 +17382,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "FHD Wall Mount",
+          "manufacturer": {
+            "slug": "fs"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -17104,6 +17789,12 @@
         },
         "role": {
           "slug": "router"
+        },
+        "device_type": {
+          "model": "CRS326-24G-2S+RM",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
         },
         "interfaces": [
           {
@@ -17755,6 +18446,12 @@
         "role": {
           "slug": "router"
         },
+        "device_type": {
+          "model": "CRS326-24G-2S+RM",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
         "interfaces": [
           {
             "id": "111",
@@ -18356,6 +19053,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -18422,6 +19125,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -18490,6 +19199,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -18556,6 +19271,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -18624,6 +19345,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -18690,6 +19417,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -18758,6 +19491,12 @@
         "role": {
           "slug": "wall-connector"
         },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
+        },
         "interfaces": [],
         "frontports": [
           {
@@ -18824,6 +19563,12 @@
         "primary_ip6": null,
         "role": {
           "slug": "wall-connector"
+        },
+        "device_type": {
+          "model": "Dual RJ 45 Connector Feller",
+          "manufacturer": {
+            "slug": "feller"
+          }
         },
         "interfaces": [],
         "frontports": [
@@ -21892,6 +22637,21 @@
             "id": "712"
           }
         ]
+      },
+      {
+        "id": "408",
+        "a_terminations": [
+          {
+            "__typename": "InterfaceType",
+            "id": "733"
+          }
+        ],
+        "b_terminations": [
+          {
+            "__typename": "InterfaceType",
+            "id": "141"
+          }
+        ]
       }
     ],
     "wireless_lan_group_list": [
@@ -22226,10 +22986,6 @@
       {
         "id": "525",
         "address": "10.220.16.65/29"
-      },
-      {
-        "id": "1",
-        "address": "172.16.0.1/32"
       },
       {
         "id": "44",
@@ -22875,995 +23631,2087 @@
     "prefix_list": [
       {
         "id": "2",
-        "prefix": "10.0.0.0/8"
+        "prefix": "10.0.0.0/8",
+        "description": "LAN IPs",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "165",
-        "prefix": "10.14.0.0/16"
+        "prefix": "10.14.0.0/16",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "166",
-        "prefix": "10.20.215.0/30"
+        "prefix": "10.20.215.0/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "424",
-        "prefix": "10.172.12.0/24"
+        "prefix": "10.172.12.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "242",
-        "prefix": "10.172.64.0/24"
+        "prefix": "10.172.64.0/24",
+        "description": "Tinkerforge OG",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "3",
-        "prefix": "10.192.0.0/12"
+        "prefix": "10.192.0.0/12",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "4",
-        "prefix": "10.192.0.0/16"
+        "prefix": "10.192.0.0/16",
+        "description": "",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "420",
-        "prefix": "10.192.0.0/24"
+        "prefix": "10.192.0.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "7",
-        "prefix": "10.192.1.0/24"
+        "prefix": "10.192.1.0/24",
+        "description": "Berg WLAN free",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "6",
-        "prefix": "10.192.2.0/24"
+        "prefix": "10.192.2.0/24",
+        "description": "Berg WLAN koa",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "8",
-        "prefix": "10.192.3.0/24"
+        "prefix": "10.192.3.0/24",
+        "description": "Berg WLAN mimi",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "129",
-        "prefix": "10.192.4.0/24"
+        "prefix": "10.192.4.0/24",
+        "description": "clients-1og-sw2",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "130",
-        "prefix": "10.192.5.0/24"
+        "prefix": "10.192.5.0/24",
+        "description": "clients-1og-sw1",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "9",
-        "prefix": "10.192.6.0/24"
+        "prefix": "10.192.6.0/24",
+        "description": "Berg LAN Work",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "127",
-        "prefix": "10.192.7.0/24"
+        "prefix": "10.192.7.0/24",
+        "description": "Berg LAN EG",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "128",
-        "prefix": "10.192.8.0/24"
+        "prefix": "10.192.8.0/24",
+        "description": "Berg WLAN Bucher",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "164",
-        "prefix": "10.192.9.0/24"
+        "prefix": "10.192.9.0/24",
+        "description": "Berg LAN Bucher",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "241",
-        "prefix": "10.192.11.0/24"
+        "prefix": "10.192.11.0/24",
+        "description": "Srv Mgmt",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "317",
-        "prefix": "10.192.12.0/24"
+        "prefix": "10.192.12.0/24",
+        "description": "LAN mimi",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "12",
-        "prefix": "10.192.64.0/24"
+        "prefix": "10.192.64.0/24",
+        "description": "Berg Tinkerforge",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "13",
-        "prefix": "10.192.65.0/24"
+        "prefix": "10.192.65.0/24",
+        "description": "Berg LAN Management",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "126",
-        "prefix": "10.192.66.0/24"
+        "prefix": "10.192.66.0/24",
+        "description": "Tinkerforge Keller",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "78",
-        "prefix": "10.192.67.0/24"
+        "prefix": "10.192.67.0/24",
+        "description": "Smartmeter und Solaranlage",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "125",
-        "prefix": "10.192.68.0/24"
+        "prefix": "10.192.68.0/24",
+        "description": "Solar LAN",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "243",
-        "prefix": "10.192.69.0/30"
+        "prefix": "10.192.69.0/30",
+        "description": "link-ap-buero",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "41",
-        "prefix": "10.193.0.0/16"
+        "prefix": "10.193.0.0/16",
+        "description": "Hegglin",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "5"
+        }
       },
       {
         "id": "167",
-        "prefix": "10.193.1.0/24"
+        "prefix": "10.193.1.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "42",
-        "prefix": "10.194.0.0/16"
+        "prefix": "10.194.0.0/16",
+        "description": "Werkstatt",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "4"
+        }
       },
       {
         "id": "43",
-        "prefix": "10.194.0.0/24"
+        "prefix": "10.194.0.0/24",
+        "description": "LAN Werkstatt",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "4"
+        }
       },
       {
         "id": "79",
-        "prefix": "10.195.0.0/16"
+        "prefix": "10.195.0.0/16",
+        "description": "",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "3"
+        }
       },
       {
         "id": "168",
-        "prefix": "10.195.0.0/24"
+        "prefix": "10.195.0.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "169",
-        "prefix": "10.195.16.0/24"
+        "prefix": "10.195.16.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "170",
-        "prefix": "10.195.251.0/24"
+        "prefix": "10.195.251.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "171",
-        "prefix": "10.195.252.0/22"
+        "prefix": "10.195.252.0/22",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "82",
-        "prefix": "10.197.0.0/16"
+        "prefix": "10.197.0.0/16",
+        "description": "",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "9"
+        }
       },
       {
         "id": "83",
-        "prefix": "10.197.0.0/16"
+        "prefix": "10.197.0.0/16",
+        "description": "",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "9"
+        }
       },
       {
         "id": "172",
-        "prefix": "10.197.1.0/24"
+        "prefix": "10.197.1.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "173",
-        "prefix": "10.197.2.0/24"
+        "prefix": "10.197.2.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "174",
-        "prefix": "10.197.3.0/24"
+        "prefix": "10.197.3.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "175",
-        "prefix": "10.197.5.0/24"
+        "prefix": "10.197.5.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "176",
-        "prefix": "10.197.252.0/22"
+        "prefix": "10.197.252.0/22",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "81",
-        "prefix": "10.198.0.0/16"
+        "prefix": "10.198.0.0/16",
+        "description": "",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "10"
+        }
       },
       {
         "id": "177",
-        "prefix": "10.198.0.0/24"
+        "prefix": "10.198.0.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "547",
-        "prefix": "10.198.1.0/29"
+        "prefix": "10.198.1.0/29",
+        "description": "Verbindung Stall",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "548",
-        "prefix": "10.198.2.0/24"
+        "prefix": "10.198.2.0/24",
+        "description": "Stall",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "80",
-        "prefix": "10.200.0.0/16"
+        "prefix": "10.200.0.0/16",
+        "description": "",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "11"
+        }
       },
       {
         "id": "178",
-        "prefix": "10.200.0.0/24"
+        "prefix": "10.200.0.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "179",
-        "prefix": "10.200.1.0/24"
+        "prefix": "10.200.1.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "386",
-        "prefix": "10.200.1.4/30"
+        "prefix": "10.200.1.4/30",
+        "description": "Haus - Stall",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "387",
-        "prefix": "10.200.1.8/30"
+        "prefix": "10.200.1.8/30",
+        "description": "Solar Stall",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "15",
-        "prefix": "10.216.0.0/16"
+        "prefix": "10.216.0.0/16",
+        "description": "Styghalde",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "76"
+        }
       },
       {
         "id": "276",
-        "prefix": "10.216.0.0/24"
+        "prefix": "10.216.0.0/24",
+        "description": "WLAN Styghalde",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "277",
-        "prefix": "10.216.1.0/24"
+        "prefix": "10.216.1.0/24",
+        "description": "WLAN Swissteam Styghalde",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "278",
-        "prefix": "10.216.24.0/24"
+        "prefix": "10.216.24.0/24",
+        "description": "router-stall-e01",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "279",
-        "prefix": "10.216.25.0/24"
+        "prefix": "10.216.25.0/24",
+        "description": "router-stall-e02",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "280",
-        "prefix": "10.216.26.0/24"
+        "prefix": "10.216.26.0/24",
+        "description": "router-stall-e03",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "281",
-        "prefix": "10.216.27.0/24"
+        "prefix": "10.216.27.0/24",
+        "description": "router-stall-e04",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "282",
-        "prefix": "10.216.28.0/24"
+        "prefix": "10.216.28.0/24",
+        "description": "router-stall-e05",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "283",
-        "prefix": "10.216.29.0/24"
+        "prefix": "10.216.29.0/24",
+        "description": "router-stall-s01",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "284",
-        "prefix": "10.216.30.0/24"
+        "prefix": "10.216.30.0/24",
+        "description": "router-schopf-e02-solar",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "16",
-        "prefix": "10.220.0.0/14"
+        "prefix": "10.220.0.0/14",
+        "description": "Teamkoenig",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "17",
-        "prefix": "10.220.0.0/20"
+        "prefix": "10.220.0.0/20",
+        "description": "LKW Fix",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "18",
-        "prefix": "10.220.0.0/24"
+        "prefix": "10.220.0.0/24",
+        "description": "LAN",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "20",
-        "prefix": "10.220.1.0/24"
+        "prefix": "10.220.1.0/24",
+        "description": "WLAN",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "21",
-        "prefix": "10.220.2.0/30"
+        "prefix": "10.220.2.0/30",
+        "description": "nuc01",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "22",
-        "prefix": "10.220.2.4/30"
+        "prefix": "10.220.2.4/30",
+        "description": "nuc02",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "24",
-        "prefix": "10.220.2.8/29"
+        "prefix": "10.220.2.8/29",
+        "description": "TV Innen",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "25",
-        "prefix": "10.220.2.16/30"
+        "prefix": "10.220.2.16/30",
+        "description": "Router - Switch",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "40",
-        "prefix": "10.220.2.20/30"
+        "prefix": "10.220.2.20/30",
+        "description": "Cloud Key",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "431",
-        "prefix": "10.220.2.24/30"
+        "prefix": "10.220.2.24/30",
+        "description": "Cerbo GX",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "23",
-        "prefix": "10.220.2.32/27"
+        "prefix": "10.220.2.32/27",
+        "description": "Aussensteckdose Links",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "26",
-        "prefix": "10.220.2.64/26"
+        "prefix": "10.220.2.64/26",
+        "description": "Calico Services",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "52",
-        "prefix": "10.220.2.128/25"
+        "prefix": "10.220.2.128/25",
+        "description": "Anhänger",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "53",
-        "prefix": "10.220.2.128/29"
+        "prefix": "10.220.2.128/29",
+        "description": "e01",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "54",
-        "prefix": "10.220.2.136/29"
+        "prefix": "10.220.2.136/29",
+        "description": "e02",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "55",
-        "prefix": "10.220.2.144/29"
+        "prefix": "10.220.2.144/29",
+        "description": "e03",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "56",
-        "prefix": "10.220.2.152/29"
+        "prefix": "10.220.2.152/29",
+        "description": "e04",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "57",
-        "prefix": "10.220.2.160/29"
+        "prefix": "10.220.2.160/29",
+        "description": "e05",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "58",
-        "prefix": "10.220.2.168/29"
+        "prefix": "10.220.2.168/29",
+        "description": "WLAN",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "74",
-        "prefix": "10.220.3.0/24"
+        "prefix": "10.220.3.0/24",
+        "description": "Calico Pods",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "429",
-        "prefix": "10.220.4.0/27"
+        "prefix": "10.220.4.0/27",
+        "description": "Aussensteckdose Rechts",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "430",
-        "prefix": "10.220.4.32/27"
+        "prefix": "10.220.4.32/27",
+        "description": "Hintere Box Rechts",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "669",
-        "prefix": "10.220.16.0/26"
+        "prefix": "10.220.16.0/26",
+        "description": "WLAN lte-16",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "670",
-        "prefix": "10.220.16.64/29"
+        "prefix": "10.220.16.64/29",
+        "description": "lte17 e01",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "671",
-        "prefix": "10.220.16.72/29"
+        "prefix": "10.220.16.72/29",
+        "description": "lte17 e02",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "672",
-        "prefix": "10.220.16.80/29"
+        "prefix": "10.220.16.80/29",
+        "description": "lte17 e03",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "673",
-        "prefix": "10.220.16.88/29"
+        "prefix": "10.220.16.88/29",
+        "description": "lte17 e04",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "674",
-        "prefix": "10.220.16.96/29"
+        "prefix": "10.220.16.96/29",
+        "description": "lte15 e05",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "583",
-        "prefix": "10.224.0.0/16"
+        "prefix": "10.224.0.0/16",
+        "description": "Netzwerk Michaud",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "584",
-        "prefix": "10.224.0.0/24"
+        "prefix": "10.224.0.0/24",
+        "description": "Management",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "585",
-        "prefix": "10.224.1.0/24"
+        "prefix": "10.224.1.0/24",
+        "description": "Home",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "586",
-        "prefix": "10.224.3.0/24"
+        "prefix": "10.224.3.0/24",
+        "description": "Guest",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "1",
-        "prefix": "172.16.0.0/24"
+        "prefix": "172.16.0.0/24",
+        "description": "Teamkoenig Loopback",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "119",
-        "prefix": "172.16.1.0/24"
+        "prefix": "172.16.1.0/24",
+        "description": "Pirg Loopbacks",
+        "tags": [
+          {
+            "slug": "loopback"
+          }
+        ],
+        "scope": null
       },
       {
         "id": "60",
-        "prefix": "172.16.32.0/19"
+        "prefix": "172.16.32.0/19",
+        "description": "BHM Netze",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "67",
-        "prefix": "172.16.32.0/20"
+        "prefix": "172.16.32.0/20",
+        "description": "BHM Physical Networks",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "61",
-        "prefix": "172.16.32.0/24"
+        "prefix": "172.16.32.0/24",
+        "description": "BHM Office",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "62",
-        "prefix": "172.16.33.0/24"
+        "prefix": "172.16.33.0/24",
+        "description": "BHM Production",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "63",
-        "prefix": "172.16.34.0/24"
+        "prefix": "172.16.34.0/24",
+        "description": "BHM WLAN",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "64",
-        "prefix": "172.16.35.0/24"
+        "prefix": "172.16.35.0/24",
+        "description": "BHM Guest",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "65",
-        "prefix": "172.16.36.0/24"
+        "prefix": "172.16.36.0/24",
+        "description": "BHM Management",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "66",
-        "prefix": "172.16.37.0/24"
+        "prefix": "172.16.37.0/24",
+        "description": "BHM Voip",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "68",
-        "prefix": "172.16.48.0/20"
+        "prefix": "172.16.48.0/20",
+        "description": "BHM Virtual Networks",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "69",
-        "prefix": "172.16.48.0/24"
+        "prefix": "172.16.48.0/24",
+        "description": "BHM Pods",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "70",
-        "prefix": "172.16.49.0/24"
+        "prefix": "172.16.49.0/24",
+        "description": "BHM Internal Services",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "71",
-        "prefix": "172.16.50.0/24"
+        "prefix": "172.16.50.0/24",
+        "description": "BHM External Services",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "6"
+        }
       },
       {
         "id": "59",
-        "prefix": "172.17.0.0/16"
+        "prefix": "172.17.0.0/16",
+        "description": "Router Links",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "116",
-        "prefix": "172.17.0.0/24"
+        "prefix": "172.17.0.0/24",
+        "description": "Richtfunk Verbindungen",
+        "tags": [
+          {
+            "slug": "transfer"
+          }
+        ],
+        "scope": null
       },
       {
         "id": "180",
-        "prefix": "172.17.0.0/29"
+        "prefix": "172.17.0.0/29",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "181",
-        "prefix": "172.17.0.8/29"
+        "prefix": "172.17.0.8/29",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "182",
-        "prefix": "172.17.0.16/29"
+        "prefix": "172.17.0.16/29",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "183",
-        "prefix": "172.17.0.24/29"
+        "prefix": "172.17.0.24/29",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "184",
-        "prefix": "172.17.0.32/29"
+        "prefix": "172.17.0.32/29",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "185",
-        "prefix": "172.17.0.40/29"
+        "prefix": "172.17.0.40/29",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "186",
-        "prefix": "172.17.0.48/29"
+        "prefix": "172.17.0.48/29",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "187",
-        "prefix": "172.17.0.56/29"
+        "prefix": "172.17.0.56/29",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "117",
-        "prefix": "172.17.1.0/24"
+        "prefix": "172.17.1.0/24",
+        "description": "Direktverbindungen (/30)",
+        "tags": [
+          {
+            "slug": "transfer"
+          }
+        ],
+        "scope": null
       },
       {
         "id": "188",
-        "prefix": "172.17.1.0/30"
+        "prefix": "172.17.1.0/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "189",
-        "prefix": "172.17.1.4/30"
+        "prefix": "172.17.1.4/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "190",
-        "prefix": "172.17.1.8/30"
+        "prefix": "172.17.1.8/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "191",
-        "prefix": "172.17.1.12/30"
+        "prefix": "172.17.1.12/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "192",
-        "prefix": "172.17.1.16/30"
+        "prefix": "172.17.1.16/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "193",
-        "prefix": "172.17.1.20/30"
+        "prefix": "172.17.1.20/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "194",
-        "prefix": "172.17.1.24/30"
+        "prefix": "172.17.1.24/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "195",
-        "prefix": "172.17.1.28/30"
+        "prefix": "172.17.1.28/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "350",
-        "prefix": "172.17.1.32/30"
+        "prefix": "172.17.1.32/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "421",
-        "prefix": "172.17.1.36/30"
+        "prefix": "172.17.1.36/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "422",
-        "prefix": "172.17.1.40/30"
+        "prefix": "172.17.1.40/30",
+        "description": "koenig-wurm",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "423",
-        "prefix": "172.17.1.44/30"
+        "prefix": "172.17.1.44/30",
+        "description": "switch-schlafzimmer",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "426",
-        "prefix": "172.17.1.48/30"
+        "prefix": "172.17.1.48/30",
+        "description": "mimi-switch-aussen",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "427",
-        "prefix": "172.17.1.52/30"
+        "prefix": "172.17.1.52/30",
+        "description": "mimi-switch-dg",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "582",
-        "prefix": "172.17.1.56/30"
+        "prefix": "172.17.1.56/30",
+        "description": "gre-backup-link",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "589",
-        "prefix": "172.17.1.60/30"
+        "prefix": "172.17.1.60/30",
+        "description": "ipipv6-faesigrund-loch",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "632",
-        "prefix": "172.17.1.64/30"
+        "prefix": "172.17.1.64/30",
+        "description": "schopf ap",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "7"
+        }
       },
       {
         "id": "633",
-        "prefix": "172.17.1.68/30"
+        "prefix": "172.17.1.68/30",
+        "description": "ap mimi büro",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "634",
-        "prefix": "172.17.1.72/30"
+        "prefix": "172.17.1.72/30",
+        "description": "ap-wng-926",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "675",
-        "prefix": "172.17.1.76/30"
+        "prefix": "172.17.1.76/30",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "676",
-        "prefix": "172.17.1.80/30"
+        "prefix": "172.17.1.80/30",
+        "description": "lab",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "10",
-        "prefix": "172.31.0.0/24"
+        "prefix": "172.31.0.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "196",
-        "prefix": "172.31.1.0/24"
+        "prefix": "172.31.1.0/24",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "14",
-        "prefix": "172.31.88.0/21"
+        "prefix": "172.31.88.0/21",
+        "description": "Main Cluster Service IPs",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "541",
-        "prefix": "172.31.88.0/23"
+        "prefix": "172.31.88.0/23",
+        "description": "statische lb adressen",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "545",
-        "prefix": "172.31.90.0/23"
+        "prefix": "172.31.90.0/23",
+        "description": "metallb lb adressen",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "546",
-        "prefix": "172.31.92.0/23"
+        "prefix": "172.31.92.0/23",
+        "description": "calico lb addressen",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "77",
-        "prefix": "172.31.120.0/22"
+        "prefix": "172.31.120.0/22",
+        "description": "Service IPs sr06",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "27",
-        "prefix": "2a02:168:e000::/48"
+        "prefix": "2a02:168:e000::/48",
+        "description": "Crossover7 Pool",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "33",
-        "prefix": "2a02:168:e000::/56"
+        "prefix": "2a02:168:e000::/56",
+        "description": "Static Pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "385",
-        "prefix": "2a02:168:e000:100::/56"
+        "prefix": "2a02:168:e000:100::/56",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "131",
-        "prefix": "2a02:168:e000:100::/64"
+        "prefix": "2a02:168:e000:100::/64",
+        "description": "servers",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "197",
-        "prefix": "2a02:168:e000:102::/64"
+        "prefix": "2a02:168:e000:102::/64",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "198",
-        "prefix": "2a02:168:e000:103::/64"
+        "prefix": "2a02:168:e000:103::/64",
+        "description": "koa WLAN",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "199",
-        "prefix": "2a02:168:e000:104::/64"
+        "prefix": "2a02:168:e000:104::/64",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "383",
-        "prefix": "2a02:168:e000:106::/64"
+        "prefix": "2a02:168:e000:106::/64",
+        "description": "Berg WLAN",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "201",
-        "prefix": "2a02:168:e000:110::/60"
+        "prefix": "2a02:168:e000:110::/60",
+        "description": "Client LANs",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "204",
-        "prefix": "2a02:168:e000:110::/64"
+        "prefix": "2a02:168:e000:110::/64",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "205",
-        "prefix": "2a02:168:e000:111::/64"
+        "prefix": "2a02:168:e000:111::/64",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "206",
-        "prefix": "2a02:168:e000:112::/64"
+        "prefix": "2a02:168:e000:112::/64",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "207",
-        "prefix": "2a02:168:e000:120::/60"
+        "prefix": "2a02:168:e000:120::/60",
+        "description": "IOT Ranges",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "208",
-        "prefix": "2a02:168:e000:120::/64"
+        "prefix": "2a02:168:e000:120::/64",
+        "description": "Tinkerforge 1OG",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "209",
-        "prefix": "2a02:168:e000:121::/64"
+        "prefix": "2a02:168:e000:121::/64",
+        "description": "Tinkerforge Keller",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "425",
-        "prefix": "2a02:168:e000:122::/64"
+        "prefix": "2a02:168:e000:122::/64",
+        "description": "Solar Range",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "8"
+        }
       },
       {
         "id": "37",
-        "prefix": "2a02:168:e000:1a0::/108"
+        "prefix": "2a02:168:e000:1a0::/108",
+        "description": "Main Cluster Service Subnet",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "35",
-        "prefix": "2a02:168:e000:1a0::10:0/108"
+        "prefix": "2a02:168:e000:1a0::10:0/108",
+        "description": "Kubernetes external Services",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "34",
-        "prefix": "2a02:168:e000:1b0::/60"
+        "prefix": "2a02:168:e000:1b0::/60",
+        "description": "Calico ipv6 pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "31",
-        "prefix": "2a02:168:e000:200::/57"
+        "prefix": "2a02:168:e000:200::/57",
+        "description": "Hegglin Pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "3"
+        }
       },
       {
         "id": "30",
-        "prefix": "2a02:168:e000:500::/56"
+        "prefix": "2a02:168:e000:500::/56",
+        "description": "Fäsigrund Dachboden",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "3"
+        }
       },
       {
         "id": "28",
-        "prefix": "2a02:168:e000:501::/64"
+        "prefix": "2a02:168:e000:501::/64",
+        "description": "LAN Fäsigrund",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "44",
-        "prefix": "2a02:168:e000:600::/56"
+        "prefix": "2a02:168:e000:600::/56",
+        "description": "LKW Pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "46",
-        "prefix": "2a02:168:e000:600::/64"
+        "prefix": "2a02:168:e000:600::/64",
+        "description": "Static Addresses",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "45",
-        "prefix": "2a02:168:e000:601::/64"
+        "prefix": "2a02:168:e000:601::/64",
+        "description": "LKW WLAN",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "47",
-        "prefix": "2a02:168:e000:602::/64"
+        "prefix": "2a02:168:e000:602::/64",
+        "description": "nuc02",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "48",
-        "prefix": "2a02:168:e000:603::/108"
+        "prefix": "2a02:168:e000:603::/108",
+        "description": "Kubernetes Cluster Subnet",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "49",
-        "prefix": "2a02:168:e000:603::10:0/108"
+        "prefix": "2a02:168:e000:603::10:0/108",
+        "description": "Kubernetes external Services",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "75",
-        "prefix": "2a02:168:e000:603::40:0/108"
+        "prefix": "2a02:168:e000:603::40:0/108",
+        "description": "Calico ipv6 Service pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "51",
-        "prefix": "2a02:168:e000:604::/64"
+        "prefix": "2a02:168:e000:604::/64",
+        "description": "LKW LAN",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "76",
-        "prefix": "2a02:168:e000:605::/64"
+        "prefix": "2a02:168:e000:605::/64",
+        "description": "Calico ipv6 Pod pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "72",
-        "prefix": "2a02:168:e000:700::/56"
+        "prefix": "2a02:168:e000:700::/56",
+        "description": "Fäsigrund Keller",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "73",
-        "prefix": "2a02:168:e000:700::/64"
+        "prefix": "2a02:168:e000:700::/64",
+        "description": "Fäsigrund WLAN",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "122",
-        "prefix": "2a02:168:e000:800::/56"
+        "prefix": "2a02:168:e000:800::/56",
+        "description": "Wurm",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "9"
+        }
       },
       {
         "id": "123",
-        "prefix": "2a02:168:e000:900::/56"
+        "prefix": "2a02:168:e000:900::/56",
+        "description": "Berghof Burri",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "10"
+        }
       },
       {
         "id": "124",
-        "prefix": "2a02:168:e000:a00::/56"
+        "prefix": "2a02:168:e000:a00::/56",
+        "description": "Walter Public",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "11"
+        }
       },
       {
         "id": "464",
-        "prefix": "2a02:16a:fe00::/48"
+        "prefix": "2a02:16a:fe00::/48",
+        "description": "Fiber7 Pool",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "465",
-        "prefix": "2a02:16a:fe00::/56"
+        "prefix": "2a02:16a:fe00::/56",
+        "description": "Static Pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "466",
-        "prefix": "2a02:16a:fe00:100::/56"
+        "prefix": "2a02:16a:fe00:100::/56",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "467",
-        "prefix": "2a02:16a:fe00:100::/64"
+        "prefix": "2a02:16a:fe00:100::/64",
+        "description": "servers",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "536",
-        "prefix": "2a02:16a:fe00:101::/64"
+        "prefix": "2a02:16a:fe00:101::/64",
+        "description": "mimi WLAN",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "468",
-        "prefix": "2a02:16a:fe00:102::/64"
+        "prefix": "2a02:16a:fe00:102::/64",
+        "description": "Work",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "469",
-        "prefix": "2a02:16a:fe00:103::/64"
+        "prefix": "2a02:16a:fe00:103::/64",
+        "description": "koa WLAN",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "470",
-        "prefix": "2a02:16a:fe00:104::/64"
+        "prefix": "2a02:16a:fe00:104::/64",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "535",
-        "prefix": "2a02:16a:fe00:105::/64"
+        "prefix": "2a02:16a:fe00:105::/64",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "471",
-        "prefix": "2a02:16a:fe00:106::/64"
+        "prefix": "2a02:16a:fe00:106::/64",
+        "description": "Berg WLAN",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "537",
-        "prefix": "2a02:16a:fe00:107::/64"
+        "prefix": "2a02:16a:fe00:107::/64",
+        "description": "Hegglin LAN",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "5"
+        }
       },
       {
         "id": "472",
-        "prefix": "2a02:16a:fe00:110::/60"
+        "prefix": "2a02:16a:fe00:110::/60",
+        "description": "Client LANs",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "473",
-        "prefix": "2a02:16a:fe00:110::/64"
+        "prefix": "2a02:16a:fe00:110::/64",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "474",
-        "prefix": "2a02:16a:fe00:111::/64"
+        "prefix": "2a02:16a:fe00:111::/64",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "475",
-        "prefix": "2a02:16a:fe00:112::/64"
+        "prefix": "2a02:16a:fe00:112::/64",
+        "description": "",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "533",
-        "prefix": "2a02:16a:fe00:113::/64"
+        "prefix": "2a02:16a:fe00:113::/64",
+        "description": "1og-sw2-lan",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "534",
-        "prefix": "2a02:16a:fe00:114::/64"
+        "prefix": "2a02:16a:fe00:114::/64",
+        "description": "LAN Mietwohnung",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "476",
-        "prefix": "2a02:16a:fe00:120::/60"
+        "prefix": "2a02:16a:fe00:120::/60",
+        "description": "IOT Ranges",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "477",
-        "prefix": "2a02:16a:fe00:120::/64"
+        "prefix": "2a02:16a:fe00:120::/64",
+        "description": "Tinkerforge 1OG",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "478",
-        "prefix": "2a02:16a:fe00:121::/64"
+        "prefix": "2a02:16a:fe00:121::/64",
+        "description": "Tinkerforge Keller",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "479",
-        "prefix": "2a02:16a:fe00:122::/64"
+        "prefix": "2a02:16a:fe00:122::/64",
+        "description": "Solar Range",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "480",
-        "prefix": "2a02:16a:fe00:1a0::/108"
+        "prefix": "2a02:16a:fe00:1a0::/108",
+        "description": "Main Cluster Service Subnet",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "481",
-        "prefix": "2a02:16a:fe00:1a0::10:0/108"
+        "prefix": "2a02:16a:fe00:1a0::10:0/108",
+        "description": "Kubernetes external Services",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "542",
-        "prefix": "2a02:16a:fe00:1a0::10:0/109"
+        "prefix": "2a02:16a:fe00:1a0::10:0/109",
+        "description": "statische lb adressen",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "543",
-        "prefix": "2a02:16a:fe00:1a0::18:0/110"
+        "prefix": "2a02:16a:fe00:1a0::18:0/110",
+        "description": "metallb lb adressen",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "544",
-        "prefix": "2a02:16a:fe00:1a0::1c:0/110"
+        "prefix": "2a02:16a:fe00:1a0::1c:0/110",
+        "description": "calico lb adressen",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "482",
-        "prefix": "2a02:16a:fe00:1b0::/60"
+        "prefix": "2a02:16a:fe00:1b0::/60",
+        "description": "Cilium ipv6 pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "1"
+        }
       },
       {
         "id": "635",
-        "prefix": "2a02:16a:fe00:1c0::/60"
+        "prefix": "2a02:16a:fe00:1c0::/60",
+        "description": "Cilium ipv6 pool upc",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "531",
-        "prefix": "2a02:16a:fe00:1c0::/64"
+        "prefix": "2a02:16a:fe00:1c0::/64",
+        "description": "Werkstatt LAN",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "532",
-        "prefix": "2a02:16a:fe00:1c1::/64"
+        "prefix": "2a02:16a:fe00:1c1::/64",
+        "description": "Solar LAN",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "483",
-        "prefix": "2a02:16a:fe00:200::/57"
+        "prefix": "2a02:16a:fe00:200::/57",
+        "description": "Hegglin Pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "3"
+        }
       },
       {
         "id": "484",
-        "prefix": "2a02:16a:fe00:500::/56"
+        "prefix": "2a02:16a:fe00:500::/56",
+        "description": "Fäsigrund Dachboden",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "3"
+        }
       },
       {
         "id": "485",
-        "prefix": "2a02:16a:fe00:501::/64"
+        "prefix": "2a02:16a:fe00:501::/64",
+        "description": "LAN Fäsigrund",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "486",
-        "prefix": "2a02:16a:fe00:600::/56"
+        "prefix": "2a02:16a:fe00:600::/56",
+        "description": "LKW Pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "487",
-        "prefix": "2a02:16a:fe00:600::/64"
+        "prefix": "2a02:16a:fe00:600::/64",
+        "description": "Static Addresses",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "488",
-        "prefix": "2a02:16a:fe00:601::/64"
+        "prefix": "2a02:16a:fe00:601::/64",
+        "description": "LKW WLAN",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "489",
-        "prefix": "2a02:16a:fe00:602::/64"
+        "prefix": "2a02:16a:fe00:602::/64",
+        "description": "nuc02",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "490",
-        "prefix": "2a02:16a:fe00:603::/108"
+        "prefix": "2a02:16a:fe00:603::/108",
+        "description": "Kubernetes Cluster Subnet",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "491",
-        "prefix": "2a02:16a:fe00:603::10:0/108"
+        "prefix": "2a02:16a:fe00:603::10:0/108",
+        "description": "Kubernetes external Services",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "492",
-        "prefix": "2a02:16a:fe00:603::40:0/108"
+        "prefix": "2a02:16a:fe00:603::40:0/108",
+        "description": "Calico ipv6 Service pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "493",
-        "prefix": "2a02:16a:fe00:604::/64"
+        "prefix": "2a02:16a:fe00:604::/64",
+        "description": "LKW LAN",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "494",
-        "prefix": "2a02:16a:fe00:605::/64"
+        "prefix": "2a02:16a:fe00:605::/64",
+        "description": "Calico ipv6 Pod pool",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "2"
+        }
       },
       {
         "id": "495",
-        "prefix": "2a02:16a:fe00:700::/56"
+        "prefix": "2a02:16a:fe00:700::/56",
+        "description": "Fäsigrund Keller",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "496",
-        "prefix": "2a02:16a:fe00:700::/64"
+        "prefix": "2a02:16a:fe00:700::/64",
+        "description": "Fäsigrund WLAN",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "497",
-        "prefix": "2a02:16a:fe00:800::/56"
+        "prefix": "2a02:16a:fe00:800::/56",
+        "description": "Wurm",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "8"
+        }
       },
       {
         "id": "538",
-        "prefix": "2a02:16a:fe00:800::/64"
+        "prefix": "2a02:16a:fe00:800::/64",
+        "description": "mimi TV",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "498",
-        "prefix": "2a02:16a:fe00:900::/56"
+        "prefix": "2a02:16a:fe00:900::/56",
+        "description": "Berghof Burri",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "10"
+        }
       },
       {
         "id": "540",
-        "prefix": "2a02:16a:fe00:900::/64"
+        "prefix": "2a02:16a:fe00:900::/64",
+        "description": "Berghof LAN",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "549",
-        "prefix": "2a02:16a:fe00:901::/64"
+        "prefix": "2a02:16a:fe00:901::/64",
+        "description": "Berghof Stall LAN",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "499",
-        "prefix": "2a02:16a:fe00:a00::/56"
+        "prefix": "2a02:16a:fe00:a00::/56",
+        "description": "Walter Public",
+        "tags": [],
+        "scope": {
+          "__typename": "SiteType",
+          "id": "11"
+        }
       },
       {
         "id": "539",
-        "prefix": "2a02:16a:fe00:a00::/64"
+        "prefix": "2a02:16a:fe00:a00::/64",
+        "description": "LAN Walter",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "631",
-        "prefix": "2a02:16a:fe00:a01::/64"
+        "prefix": "2a02:16a:fe00:a01::/64",
+        "description": "LAN Walter mgmt",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "590",
-        "prefix": "2a02:16a:fe00:ff80::/58"
+        "prefix": "2a02:16a:fe00:ff80::/58",
+        "description": "Wifi Links",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "591",
-        "prefix": "2a02:16a:fe00:ff80::/64"
+        "prefix": "2a02:16a:fe00:ff80::/64",
+        "description": "Hegglin-Bachmann-5",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "592",
-        "prefix": "2a02:16a:fe00:ff81::/64"
+        "prefix": "2a02:16a:fe00:ff81::/64",
+        "description": "Hegglin-Bachmann-60",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "593",
-        "prefix": "2a02:16a:fe00:ff82::/64"
+        "prefix": "2a02:16a:fe00:ff82::/64",
+        "description": "Hegglin-Schopf",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "594",
-        "prefix": "2a02:16a:fe00:ff83::/64"
+        "prefix": "2a02:16a:fe00:ff83::/64",
+        "description": "Hegglin-König",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "595",
-        "prefix": "2a02:16a:fe00:ff84::/64"
+        "prefix": "2a02:16a:fe00:ff84::/64",
+        "description": "Schopf-Hegglin",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "596",
-        "prefix": "2a02:16a:fe00:ff85::/64"
+        "prefix": "2a02:16a:fe00:ff85::/64",
+        "description": "Schopf-Walter",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "597",
-        "prefix": "2a02:16a:fe00:ff86::/64"
+        "prefix": "2a02:16a:fe00:ff86::/64",
+        "description": "Schopf-Burri",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "598",
-        "prefix": "2a02:16a:fe00:ff87::/64"
+        "prefix": "2a02:16a:fe00:ff87::/64",
+        "description": "Burri-Schopf",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "599",
-        "prefix": "2a02:16a:fe00:ff88::/64"
+        "prefix": "2a02:16a:fe00:ff88::/64",
+        "description": "Burri-Stall",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "588",
-        "prefix": "2a02:16a:fe00:ffff:ffff:ffff:ffff:ff00/120"
+        "prefix": "2a02:16a:fe00:ffff:ffff:ffff:ffff:ff00/120",
+        "description": "Loopback IPs",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "29",
-        "prefix": "fd7e:907d:34ab::/48"
+        "prefix": "fd7e:907d:34ab::/48",
+        "description": "Internal Addresses",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "38",
-        "prefix": "fd7e:907d:34ab::/102"
+        "prefix": "fd7e:907d:34ab::/102",
+        "description": "Loopbacks",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "39",
-        "prefix": "fd7e:907d:34ab::400:0/127"
+        "prefix": "fd7e:907d:34ab::400:0/127",
+        "description": "lkw-faesigrund",
+        "tags": [],
+        "scope": null
       },
       {
         "id": "121",
-        "prefix": "fd7e:907d:34ab::800:0/102"
+        "prefix": "fd7e:907d:34ab::800:0/102",
+        "description": "Pirg Loopbacks",
+        "tags": [],
+        "scope": null
       }
     ],
     "ip_range_list": [

@@ -69,6 +69,29 @@ async fn generate_all_devices_of_netbox_example() {
                 .or_insert_with(|| serde_json::json!({}));
         }
     }
+    // Exports from before prefixes were queried with tags, scope and description, and devices
+    // with their device type, lack them; treat those as empty.
+    for prefix in raw["data"]["prefix_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        if let Some(prefix) = prefix.as_object_mut() {
+            prefix.entry("tags").or_insert_with(|| serde_json::json!([]));
+            prefix.entry("description").or_insert_with(|| serde_json::json!(""));
+        }
+    }
+    for device in raw["data"]["device_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        if let Some(device) = device.as_object_mut() {
+            device.entry("device_type").or_insert_with(
+                || serde_json::json!({"model": "", "manufacturer": {"slug": ""}}),
+            );
+        }
+    }
     let response: graphql_client::Response<ResponseData> =
         serde_json::from_value(raw).expect("parse example response");
     let topology = Arc::new(build_topology_from(

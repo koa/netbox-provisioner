@@ -11,6 +11,12 @@ query FetchTopology{
         role {
             slug
         }
+        device_type {
+            model
+            manufacturer {
+                slug
+            }
+        }
         interfaces{
             id
             name
@@ -127,6 +133,16 @@ query FetchTopology{
     prefix_list{
         id
         prefix
+        description
+        tags{
+            slug
+        }
+        scope{
+            __typename
+            ... on SiteType{
+                id
+            }
+        }
     }
     ip_range_list{
         id

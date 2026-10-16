@@ -1,0 +1,45 @@
+# NetBox: Customization > Tags > Import, Format YAML.
+# A tag that already exists makes the whole import fail: remove its document here before
+# importing. See ../netbox-modeling.md (Tags).
+---
+name: ospf
+slug: ospf
+color: 4caf50
+description: OSPF (v2 and v3) on this interface
+weight: 1000
+object_types: dcim.interface
+---
+name: dhcp
+slug: dhcp
+color: 2196f3
+description: DHCP server on this interface (IPv4), router advertisements for its /64
+weight: 1000
+object_types: dcim.interface
+---
+name: dhcp-client
+slug: dhcp-client
+color: 00bcd4
+description: DHCP client on this interface, if it has no address
+weight: 1000
+object_types: dcim.interface
+---
+name: nat
+slug: nat
+color: ff9800
+description: Uplink whose network doesn't route back - masquerade outgoing traffic
+weight: 1000
+object_types: dcim.interface
+---
+name: loopback
+slug: loopback
+color: 9c27b0
+description: The prefix the loopback addresses of the devices are taken from (one per IP version)
+weight: 1000
+object_types: ipam.prefix
+---
+name: transfer
+slug: transfer
+color: 673ab7
+description: The prefix the transfer networks between routers are taken from (/31, /29 across a bridge)
+weight: 1000
+object_types: ipam.prefix
