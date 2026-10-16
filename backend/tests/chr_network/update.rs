@@ -105,6 +105,7 @@ async fn update_older_chr_to_current() {
         port: "ether2".into(),
         address: "192.168.78.2/30".parse().unwrap(),
         on_bridge: false,
+        neighbor_port: Some("ether2".into()),
         neighbor_address: "192.168.78.1".parse().unwrap(),
     };
     set_up(&mut terminal, &setup, "admin", PASSWORD)

@@ -28,7 +28,7 @@ use crate::{
 use async_graphql::{ComplexObject, SimpleObject};
 use ipnet::IpNet;
 use log::{info, warn};
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::MacAddress;
 use std::{collections::HashSet, net::IpAddr, str::FromStr, time::Duration};
 use tokio::time::{Instant, sleep};
@@ -108,6 +108,9 @@ pub struct MacTelnetSetup {
     /// come from there (through an SSH tunnel to the neighbor, see [`tunnel`]), so a factory
     /// firewall lets it through and the device needs no route
     pub neighbor_address: IpAddr,
+    /// the neighbor's port to the device as the neighbor names it, set by [`bootstrap`]:
+    /// `/tool mac-telnet` is tried with it as `interface` and without (see [`log_in`])
+    pub neighbor_port: Option<String>,
 }
 
 /// The setup logs in on `neighbor`'s console and opens MAC-telnet on `neighbor_port` to the
@@ -189,6 +192,7 @@ pub fn plans(device: &DeviceAccess) -> Result<Vec<BootstrapPlan>, Error> {
                     address: port_address,
                     on_bridge,
                     neighbor_address: neighbor_port_address,
+                    neighbor_port: None,
                 },
                 neighbor_device: neighbor,
                 neighbor_address,
@@ -231,13 +235,7 @@ async fn discover(plan: &BootstrapPlan) -> Result<Vec<Discovered>, Error> {
         connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await?;
     // NetBox has the factory name, `/ip/neighbor` the one the provisioner gave the port
     let mut names = vec![plan.neighbor_port.clone()];
-    for row in rows(&neighbor, "/interface/ethernet/print").await? {
-        if field(&row, "default-name") == Some(plan.neighbor_port.as_str())
-            && let Some(name) = field(&row, "name")
-        {
-            names.push(name.into());
-        }
-    }
+    names.extend(port_name(&neighbor, &plan.neighbor_port).await?);
     let mut found = Vec::new();
     for row in rows(&neighbor, "/ip/neighbor/print").await? {
         let interface = field(&row, "interface").unwrap_or_default();
@@ -258,6 +256,43 @@ async fn discover(plan: &BootstrapPlan) -> Result<Vec<Discovered>, Error> {
         });
     }
     Ok(found)
+}
+
+/// What the neighbor calls its port to the device; NetBox' name when it can't be read.
+async fn neighbor_port_name(plan: &BootstrapPlan) -> String {
+    let name = async {
+        let credentials = Credentials::Named(
+            plan.neighbor_device
+                .credentials()
+                .ok_or(Error::MissingCredentials)?
+                .into(),
+        );
+        let neighbor =
+            connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await?;
+        port_name(&neighbor, &plan.neighbor_port).await
+    };
+    match name.await {
+        Ok(Some(name)) => name,
+        Ok(None) => plan.neighbor_port.clone(),
+        Err(error) => {
+            warn!("cannot read the port names of {}: {error}", plan.neighbor);
+            plan.neighbor_port.clone()
+        }
+    }
+}
+
+/// The name the neighbor gives its Ethernet port with the factory name `factory_name`, if it
+/// has one.
+async fn port_name(
+    neighbor: &RawDevice<SimpleResult>,
+    factory_name: &str,
+) -> Result<Option<String>, Error> {
+    Ok(rows(neighbor, "/interface/ethernet/print")
+        .await?
+        .iter()
+        .find(|row| field(row, "default-name") == Some(factory_name))
+        .and_then(|row| field(row, "name"))
+        .map(String::from))
 }
 
 /// The MACs to try, for messages.
@@ -312,7 +347,9 @@ pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -
     };
     terminal.hide(password);
     terminal.stream_to(log);
-    let result = set_up(&mut terminal, &plan.setup, user, password).await;
+    let mut setup = plan.setup.clone();
+    setup.neighbor_port = Some(neighbor_port_name(plan).await);
+    let result = set_up(&mut terminal, &setup, user, password).await;
     terminal.close().await;
     if let Err(error) = &result {
         warn!("setup of {} failed: {error}", device.name());
@@ -446,17 +483,34 @@ async fn log_in<'a>(
     if !password.is_empty() || user != "admin" {
         attempts.push((user, password));
     }
+    // Some RouterOS versions only answer with the neighbor's port as `interface` (seen on a
+    // CRS), others only without (CHR 7.24.5); the one that got a login prompt stays
+    let mut interfaces = vec![None];
+    if let Some(port) = &setup.neighbor_port {
+        interfaces.insert(0, Some(port.as_str()));
+    }
+    let mut answered: Vec<Option<Option<&str>>> = vec![None; setup.macs.len()];
     let mut refused = HashSet::new();
     loop {
         for (attempt, &(login_user, login_password)) in attempts.iter().enumerate() {
             for (index, mac) in setup.macs.iter().enumerate() {
-                match login(terminal, mac, login_user, login_password, password).await? {
-                    Login::Done(how) => return Ok((login_user, how, mac)),
-                    Login::Refused => {
-                        refused.insert((attempt, index));
-                    }
-                    Login::Undecided => {
-                        refused.remove(&(attempt, index));
+                let tried = match answered[index] {
+                    Some(interface) => vec![interface],
+                    None => interfaces.clone(),
+                };
+                for interface in tried {
+                    match login(terminal, mac, interface, login_user, login_password, password)
+                        .await?
+                    {
+                        Login::Done(how) => return Ok((login_user, how, mac)),
+                        Login::Refused => {
+                            refused.insert((attempt, index));
+                            answered[index] = Some(interface);
+                            break;
+                        }
+                        Login::Undecided => {
+                            refused.remove(&(attempt, index));
+                        }
                     }
                 }
             }
@@ -578,14 +632,26 @@ async fn run_in_session(
 async fn login(
     terminal: &mut Terminal,
     mac: &MacAddress,
+    interface: Option<&str>,
     user: &str,
     password: &str,
     new_password: &str,
 ) -> Result<Login, TerminalError> {
-    terminal
-        .send_line(&format!("/tool mac-telnet {mac}"))
-        .await?;
-    terminal.expect(&["Login: "], COMMAND_TIMEOUT).await?;
+    let command = match interface {
+        Some(interface) => format!("/tool mac-telnet {mac} interface=\"{}\"", quote(interface)),
+        None => format!("/tool mac-telnet {mac}"),
+    };
+    terminal.send_line(&command).await?;
+    match terminal.expect(&["Login: "], COMMAND_TIMEOUT).await {
+        Ok(_) => {}
+        Err(TerminalError::Timeout { .. }) => {
+            // no answer on this way to the device, the client gives up on Ctrl-C
+            terminal.send("\x03").await?;
+            terminal.sync(COMMAND_TIMEOUT).await?;
+            return Ok(Login::Undecided);
+        }
+        Err(error) => return Err(error),
+    }
     terminal.send_line(&format!("{user}{LOGIN_FLAGS}")).await?;
     terminal.expect(&["Password: "], COMMAND_TIMEOUT).await?;
     terminal.send_line(password).await?;

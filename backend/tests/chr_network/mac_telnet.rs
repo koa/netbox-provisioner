@@ -129,6 +129,7 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
             port: format!("ether{}", slot + 1),
             address: address.parse().unwrap(),
             on_bridge: false,
+            neighbor_port: None,
             neighbor_address: neighbor.parse().unwrap(),
         };
         let result = set_up(&mut terminal, &setup, "admin", password).await;
@@ -252,6 +253,7 @@ async fn mac_telnet_setup_survives_a_stalled_device() {
         port: "ether2".into(),
         address: "192.168.77.2/30".parse().unwrap(),
         on_bridge: false,
+        neighbor_port: Some("ether2".into()),
         neighbor_address: "192.168.77.1".parse().unwrap(),
     };
     for offset in [0, 500, 1500, 2500, 3200] {

@@ -204,7 +204,10 @@ operator picks the physical device from what the neighbor's `/ip/neighbor` shows
 prompts (license, default-config notice, new password - each answered once, some versions print
 `new password>` twice), sets password, address, API and a firewall accept, and takes the port out
 of the factory bridge in the background. Factory bridges answer MAC-telnet only on the bridge's
-MAC, which is also the one they announce. `connect` falls back to that bootstrap
+MAC, which is also the one they announce. `/tool mac-telnet` is tried with `interface=` the
+neighbor's port (its name read over the API, `MacTelnetSetup.neighbor_port`) and without: a
+CRS (klr-sw-1) only answered with it, CHR 7.24.5 only without; the variant that got a login
+prompt stays for that MAC. `connect` falls back to that bootstrap
 address when the primary IP doesn't answer yet, through an SSH tunnel to the neighbor
 (`terminal::Tunnel`, `direct-tcpip`; `device::Path::Neighbor`): API, re-diff and SCP all go
 from the neighbor's address on the cable, so the device needs no route back before its first
