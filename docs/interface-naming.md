@@ -34,7 +34,8 @@ Baut den Namen aus bis zu zwei Teilen, durch `-` verbunden:
      Signalquelle: die meisten Kunden-/Haushalts-Links sind in der Praxis so dokumentiert, NetBox
      modelliert für sie selten ein eigenes Fernende-Gerät.
    - Sonst wird das **Kabel-Fernende** über `cable_port().walk_cable(...)` verfolgt (läuft auch
-     durch Patch-Panel-Ketten, `FrontPort`/`RearPort`). Gibt es **genau ein** eindeutiges Fernende,
+     durch Patch-Panel-Ketten, `FrontPort`/`RearPort`, und über Circuits zu deren anderem Ende,
+     `CircuitTermination`). Gibt es **genau ein** eindeutiges Fernende,
      wird daraus (in dieser Reihenfolge) der erste nicht leere Teil genommen:
      1. der Gerätename des Fernende-Devices (`e02-hegglin`, wie in den Referenz-Exporten),
      2. sonst (Gerät ohne Namen) der Port-Kurzname des Fernendes, falls es ein externer Port ist,

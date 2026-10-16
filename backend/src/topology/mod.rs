@@ -86,6 +86,7 @@ pub struct Topology {
     interfaces: HashMap<InterfaceId, Interface>,
     front_ports: HashMap<FrontPortId, FrontPort>,
     rear_ports: HashMap<RearPortId, RearPort>,
+    circuit_terminations: HashMap<CircuitTerminationId, CircuitTermination>,
     cables: HashMap<CableId, Cable>,
     vxlans: HashMap<VxlanId, VxlanData>,
     wlan_groups: HashMap<WlanGroupId, WlanGroupData>,
@@ -375,6 +376,16 @@ pub struct RearPort {
     pub front_port: Option<FrontPortId>,
     pub cable: Option<CableId>,
 }
+/// An end of a circuit (a leased line, a fiber between buildings): a cable path goes on at the
+/// circuit's other end, `peer`, as NetBox' trace does.
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
+pub struct CircuitTermination {
+    /// the circuit's `cid`
+    pub circuit: Box<str>,
+    /// none where the circuit has another number of ends than two (one to a provider network)
+    pub peer: Option<CircuitTerminationId>,
+    pub cable: Option<CableId>,
+}
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
 pub struct Cable {
     pub port_a: Box<[CablePort]>,
@@ -511,6 +522,8 @@ pub struct FrontPortId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct RearPortId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct CircuitTerminationId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct CableId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct IpRangeId(pub u32);
@@ -524,6 +537,7 @@ pub enum CablePort {
     Interface(InterfaceId),
     FrontPort(FrontPortId),
     RearPort(RearPortId),
+    CircuitTermination(CircuitTerminationId),
 }
 
 impl From<u32> for DeviceId {
@@ -569,6 +583,11 @@ impl From<u32> for FrontPortId {
 impl From<u32> for RearPortId {
     fn from(value: u32) -> Self {
         RearPortId(value)
+    }
+}
+impl From<u32> for CircuitTerminationId {
+    fn from(value: u32) -> Self {
+        CircuitTerminationId(value)
     }
 }
 impl From<u32> for CableId {

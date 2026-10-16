@@ -62,6 +62,13 @@ starts working, so fixing a generator gap means dropping its entry. Scripts land
 `target/netbox-example/` for review. An empty bridge with an address is legitimate there (CAPsMAN
 or OpenVPN add their ports at runtime), so don't treat it as a generator error.
 
+A cable path (`CablePortAccess::walk_cable`, `InterfaceAccess::connected_interfaces`) goes
+through patch panels (front port to rear port) and through circuits: a cable ending at a
+`CircuitTermination` goes on at the circuit's other end (`peer`, only with exactly two ends), as
+NetBox' trace does, so a fiber between buildings connects the devices at both ends. Older
+exports lack `circuit_list` and the ids of the circuit ends; `example_topology` drops those
+ends, so their cables end there as before.
+
 `topology/findings.rs` computes the findings about NetBox itself (config-helper concept, Befund
 „NetBox in sich“) once per built topology (`Topology::with_findings`, called by
 `build_topology_from` and `TopologyBuilder::build`; a test changing the topology after `build`

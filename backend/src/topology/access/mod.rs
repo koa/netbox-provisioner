@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 
 pub mod cable;
+pub mod circuit_termination;
 pub mod connections;
 pub mod device;
 pub mod front_port;

@@ -70,6 +70,7 @@ Siehe [interface-naming.md](interface-naming.md).
   ist ein `todo!()`. Nur die VXLAN-Transport-Seite (siehe [vxlan-generation.md](vxlan-generation.md))
   und die L2-Klassifizierung der WLAN-VLANs (`L2Port::CapsMan`/`Cap`/`CapsManMgmt`/`CapMgmt`) sind
   bereits fertig. Siehe [wlan-generation.md](wlan-generation.md) für den genauen Stand.
-- Patch-Panel-Ketten (`FrontPort`/`RearPort`) werden von `InterfaceAccess::connected_interfaces`
-  (cable walk) zwar generisch aufgelöst, aber der Multi-CHR-Testharness verkabelt bisher nur direkte
+- Patch-Panel-Ketten (`FrontPort`/`RearPort`) und Circuits (eine Leitung, z.B. Glasfaser zwischen
+  Gebäuden: der Pfad geht am anderen Ende des Circuits weiter, wie NetBox' Trace) werden von
+  `InterfaceAccess::connected_interfaces` (cable walk) zwar generisch aufgelöst, aber der Multi-CHR-Testharness verkabelt bisher nur direkte
   Interface-zu-Interface-Kabel.

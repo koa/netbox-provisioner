@@ -1,5 +1,5 @@
 use crate::topology::{
-    Cable, CableId, CablePort, Device, DeviceId, FrontPort, FrontPortId, Interface, InterfaceId,
+    Cable, CableId, CablePort, CircuitTermination, CircuitTerminationId, Device, DeviceId, FrontPort, FrontPortId, Interface, InterfaceId,
     IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId, RearPort,
     RearPortId, SiteData, SiteId, Topology, TopologyHolder, VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData,
     VxlanId, WlanData, WlanGroupData, WlanGroupId, WlanId,
@@ -24,6 +24,7 @@ pub struct TopologyBuilder {
     pub vlans: MapBuilder<VlanId, VlanData>,
     pub front_ports: MapBuilder<FrontPortId, FrontPort>,
     pub rear_ports: MapBuilder<RearPortId, RearPort>,
+    pub circuit_terminations: MapBuilder<CircuitTerminationId, CircuitTermination>,
     pub cables: MapBuilder<CableId, Cable>,
     pub ip_addresses: MapBuilder<IpAddressId, IpAddressData>,
     pub ip_prefixes: MapBuilder<IpPrefixId, IpPrefixData>,
@@ -113,6 +114,12 @@ impl TopologyBuilder {
                         self.rear_ports
                             .get_mut(rp_id)
                             .expect("rear_port not found")
+                            .cable = Some(*id);
+                    }
+                    CablePort::CircuitTermination(ct_id) => {
+                        self.circuit_terminations
+                            .get_mut(ct_id)
+                            .expect("circuit termination not found")
                             .cable = Some(*id);
                     }
                 }
@@ -237,6 +244,7 @@ impl TopologyBuilder {
             interfaces: self.interfaces.into(),
             front_ports: self.front_ports.into(),
             rear_ports: self.rear_ports.into(),
+            circuit_terminations: self.circuit_terminations.into(),
             cables: self.cables.into(),
             vxlans: self.vxlans.into(),
             wlan_groups: self.wlan_groups.into(),

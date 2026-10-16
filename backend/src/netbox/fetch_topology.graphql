@@ -102,6 +102,14 @@ query FetchTopology{
             ...CableConnectionTermination
         }
     }
+    # a cable path goes on from one end of a circuit (a leased line, a fiber between
+    # buildings) at its other end
+    circuit_list {
+        cid
+        terminations {
+            id
+        }
+    }
     wireless_lan_group_list {
         id
         custom_fields
@@ -158,6 +166,7 @@ fragment CableConnectionTermination on CableTerminationTerminationType{
     ...ConnectedInterface
     ...ConnectedFrontPort
     ...ConnectedRearPort
+    ...ConnectedCircuitTermination
 }
 fragment ConnectedInterface on InterfaceType{
     id
@@ -166,6 +175,9 @@ fragment ConnectedFrontPort on FrontPortType{
     id
 }
 fragment ConnectedRearPort on RearPortType{
+    id
+}
+fragment ConnectedCircuitTermination on CircuitTerminationType{
     id
 }
 # Up to six levels of a site's region hierarchy: the topmost one is the country.

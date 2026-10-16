@@ -2,7 +2,8 @@ use crate::{
     netbox::{
         NetboxError, fetch_topology,
         fetch_topology::{
-            CableConnectionTermination, CableConnectionTerminationOnFrontPortType,
+            CableConnectionTermination, CableConnectionTerminationOnCircuitTerminationType,
+            CableConnectionTerminationOnFrontPortType,
             CableConnectionTerminationOnInterfaceType, CableConnectionTerminationOnRearPortType,
             ResponseData,
         },
@@ -10,7 +11,7 @@ use crate::{
     topology::{
         Cable, CableId, CablePort, Device, DeviceId, DeviceRole, FrontPort, FrontPortId, Interface,
         InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
-        PhysicalPortId, PortType, PrefixPool, Radio, RadioLink, RadioRole, RearPort, RearPortId, SiteData, SiteId,
+        PhysicalPortId, PortType, PrefixPool, Radio, RadioLink, RadioRole, RearPort, RearPortId, CircuitTermination, CircuitTerminationId, SiteData, SiteId,
         Topology,
         VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData,
         WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
@@ -381,6 +382,28 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             );
         }
     }
+    let mut circuit_terminations = HashMap::new();
+    for circuit in data.circuit_list {
+        let ends = circuit
+            .terminations
+            .iter()
+            .filter_map(|end| end.id.parse().ok().map(CircuitTerminationId))
+            .collect::<Vec<_>>();
+        for (index, id) in ends.iter().enumerate() {
+            let peer = match ends.as_slice() {
+                [a, z] => Some(if index == 0 { *z } else { *a }),
+                _ => None,
+            };
+            circuit_terminations.insert(
+                *id,
+                CircuitTermination {
+                    circuit: circuit.cid.as_str().into(),
+                    peer,
+                    cable: None,
+                },
+            );
+        }
+    }
     for cable in data.cable_list {
         if let Ok(cable_id) = cable.id.parse().map(CableId) {
             let port_a: Box<[CablePort]> = cable
@@ -408,6 +431,11 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     CablePort::RearPort(rp_id) => {
                         if let Some(rp) = rear_ports.get_mut(rp_id) {
                             rp.cable = Some(cable_id);
+                        }
+                    }
+                    CablePort::CircuitTermination(ct_id) => {
+                        if let Some(ct) = circuit_terminations.get_mut(ct_id) {
+                            ct.cable = Some(cable_id);
                         }
                     }
                 }
@@ -558,6 +586,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
         interfaces,
         front_ports,
         rear_ports,
+        circuit_terminations,
         cables,
         vxlans,
         wlan_groups,
@@ -578,7 +607,13 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
 
 fn termination_2_cable_port(termination: CableConnectionTermination) -> Option<CablePort> {
     match termination {
-        CableConnectionTermination::CircuitTerminationType => None,
+        CableConnectionTermination::CircuitTerminationType(
+            CableConnectionTerminationOnCircuitTerminationType { id },
+        ) => id
+            .parse()
+            .ok()
+            .map(CircuitTerminationId)
+            .map(CablePort::CircuitTermination),
         CableConnectionTermination::ConsolePortType => None,
         CableConnectionTermination::ConsoleServerPortType => None,
         CableConnectionTermination::FrontPortType(CableConnectionTerminationOnFrontPortType {

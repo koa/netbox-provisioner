@@ -59,6 +59,24 @@ pub(crate) fn example_topology() -> Arc<Topology> {
                 .or_insert_with(|| serde_json::json!({}));
         }
     }
+    // Exports from before circuits were queried lack them, and the ends of the circuits on
+    // the cables their id: those cables end there, as they did then.
+    if let Some(data) = raw["data"].as_object_mut() {
+        data.entry("circuit_list").or_insert_with(|| serde_json::json!([]));
+    }
+    for cable in raw["data"]["cable_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        for side in ["a_terminations", "b_terminations"] {
+            if let Some(ends) = cable[side].as_array_mut() {
+                ends.retain(|end| {
+                    end["__typename"] != "CircuitTerminationType" || end.get("id").is_some()
+                });
+            }
+        }
+    }
     // Exports from before the config context was queried lack it; treat those devices as
     // having none (no DNS servers configured).
     for device in raw["data"]["device_list"]

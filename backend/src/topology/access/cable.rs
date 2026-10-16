@@ -1,7 +1,8 @@
 use crate::topology::{
     Cable, CableId, CablePort, Topology,
     access::{
-        AccessTopology, connections::CableConnection, connections::CablePath, device::DeviceAccess,
+        AccessTopology, circuit_termination::CircuitTerminationAccess,
+        connections::CableConnection, connections::CablePath, device::DeviceAccess,
         front_port::FrontPortAccess, interface::InterfaceAccess, rear_port::RearPortAccess,
     },
 };
@@ -18,6 +19,7 @@ pub enum CablePortAccess {
     Interface(InterfaceAccess),
     FrontPort(FrontPortAccess),
     RearPort(RearPortAccess),
+    CircuitTermination(CircuitTerminationAccess),
 }
 
 impl AccessTopology for CableAccess {
@@ -67,6 +69,9 @@ impl CableAccess {
             CablePort::RearPort(id) => {
                 CablePortAccess::RearPort(RearPortAccess::create(self.topology(), id))
             }
+            CablePort::CircuitTermination(id) => CablePortAccess::CircuitTermination(
+                CircuitTerminationAccess::create(self.topology(), id),
+            ),
         }
     }
 
@@ -112,6 +117,7 @@ impl CablePortAccess {
             CablePortAccess::Interface(a) => Some(a.name()),
             CablePortAccess::FrontPort(a) => a.name(),
             CablePortAccess::RearPort(a) => a.name(),
+            CablePortAccess::CircuitTermination(a) => a.circuit(),
         }
     }
 
@@ -120,6 +126,7 @@ impl CablePortAccess {
             CablePortAccess::Interface(a) => a.device(),
             CablePortAccess::FrontPort(a) => a.device(),
             CablePortAccess::RearPort(a) => a.device(),
+            CablePortAccess::CircuitTermination(_) => None,
         }
     }
     pub fn port(&self) -> CablePort {
@@ -127,6 +134,7 @@ impl CablePortAccess {
             CablePortAccess::Interface(a) => CablePort::Interface(a.id()),
             CablePortAccess::FrontPort(a) => CablePort::FrontPort(a.id()),
             CablePortAccess::RearPort(a) => CablePort::RearPort(a.id()),
+            CablePortAccess::CircuitTermination(a) => CablePort::CircuitTermination(a.id()),
         }
     }
     pub fn cable(&self) -> Option<CableAccess> {
@@ -134,6 +142,7 @@ impl CablePortAccess {
             CablePortAccess::Interface(a) => a.cable(),
             CablePortAccess::FrontPort(a) => a.cable(),
             CablePortAccess::RearPort(a) => a.cable(),
+            CablePortAccess::CircuitTermination(a) => a.cable(),
         }
     }
     pub fn next_device_port_id(&self) -> Option<CablePortAccess> {
@@ -141,6 +150,10 @@ impl CablePortAccess {
             CablePortAccess::Interface(_) => None,
             CablePortAccess::FrontPort(a) => a.rear_port().map(CablePortAccess::RearPort),
             CablePortAccess::RearPort(a) => a.front_port().map(CablePortAccess::FrontPort),
+            // the path goes on at the circuit's other end, as NetBox' trace does
+            CablePortAccess::CircuitTermination(a) => {
+                a.peer().map(CablePortAccess::CircuitTermination)
+            }
         }
     }
     pub fn attached_cable_segments(&self) -> Box<[CableConnection]> {
