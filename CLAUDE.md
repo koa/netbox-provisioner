@@ -62,6 +62,17 @@ starts working, so fixing a generator gap means dropping its entry. Scripts land
 `target/netbox-example/` for review. An empty bridge with an address is legitimate there (CAPsMAN
 or OpenVPN add their ports at runtime), so don't treat it as a generator error.
 
+`topology/findings.rs` computes the findings about NetBox itself (config-helper concept, Befund
+„NetBox in sich“) once per built topology (`Topology::with_findings`, called by
+`build_topology_from` and `TopologyBuilder::build`; a test changing the topology after `build`
+calls it again). Only RouterOS devices are checked; each finding is a typed variant of the union
+`FindingKind` with refs (id + name) the frontend links into NetBox (`netboxUrl`, the web UI
+derived from `netbox_url`) and words in `i18n::findings`. Of a cable, the MTU is compared at the
+ports; `ospf` on one end and a common subnet at the port's bridge where it has one, and only when
+both ends have IPv4: a radio bridge device's end is L2 only. `findings_of_netbox_example` writes
+what the stored export has to `target/netbox-example/findings.txt`. The prefix tags
+`loopback`/`transfer` (`IpPrefixData::pool`) are only used here so far.
+
 `backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR
 instances under QEMU (software emulation, no KVM needed) and proves actual distributed network
 behavior, not just that the generator's output parses. `--ignored` by default (`cargo test -p

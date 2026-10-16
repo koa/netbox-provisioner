@@ -7,6 +7,9 @@ query ListSites{
                 id
                 name
             }
+            findings{
+                severity
+            }
         }
     }
 }
@@ -22,6 +25,9 @@ query SiteDevices($site: Int!){
                     }
                 }
                 serial
+                findings{
+                    severity
+                }
             }
         }
     }

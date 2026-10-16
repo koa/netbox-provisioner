@@ -123,6 +123,18 @@ fn netbox_url() -> &'static str {
     CONFIG.netbox_url.as_str()
 }
 
+/// NetBox' web UI, for links to its objects: `netbox_url` (the GraphQL endpoint) without
+/// `graphql/`, ending in `/`.
+pub fn web_url() -> String {
+    web_url_of(netbox_url())
+}
+
+fn web_url_of(graphql_url: &str) -> String {
+    let base = graphql_url.trim_end_matches('/');
+    let base = base.strip_suffix("graphql").unwrap_or(base);
+    format!("{}/", base.trim_end_matches('/'))
+}
+
 /// The `Authorization` header for a NetBox API token: a v2 token (NetBox 4.5+,
 /// `nbt_<key>.<secret>`) goes as `Bearer`, a legacy v1 token (40 hex chars) as `Token`.
 fn authorization_header(token: &str) -> String {
@@ -152,4 +164,24 @@ fn netbox_client() -> Result<reqwest::Client, NetboxError> {
     Ok(reqwest::Client::builder()
         .default_headers(headers)
         .build()?)
+}
+
+#[cfg(test)]
+mod test {
+    use super::web_url_of;
+
+    #[test]
+    fn web_url_is_the_graphql_url_without_graphql() {
+        for url in [
+            "http://127.0.0.1:8001/graphql/",
+            "http://127.0.0.1:8001/graphql",
+            "http://127.0.0.1:8001/",
+        ] {
+            assert_eq!(web_url_of(url), "http://127.0.0.1:8001/", "{url}");
+        }
+        assert_eq!(
+            web_url_of("https://example.org/netbox/graphql/"),
+            "https://example.org/netbox/"
+        );
+    }
 }

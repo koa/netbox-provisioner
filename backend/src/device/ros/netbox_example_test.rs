@@ -19,7 +19,9 @@ use crate::{
         test::empty_current,
     },
     netbox::fetch_topology::ResponseData,
-    topology::{PhysicalPortId, access::device::DeviceAccess, fetch::build_topology_from},
+    topology::{
+        PhysicalPortId, Topology, access::device::DeviceAccess, fetch::build_topology_from,
+    },
 };
 use mikrotik_model::{
     generator::Generator,
@@ -35,8 +37,9 @@ use tokio::time::Instant;
 /// list can't silently go stale.
 const KNOWN_FAILURES: &[(&str, &str)] = &[];
 
-#[tokio::test]
-async fn generate_all_devices_of_netbox_example() {
+/// The topology of `docs/netbox-response-example.json`, with what older exports lack
+/// filled in as empty.
+pub(crate) fn example_topology() -> Arc<Topology> {
     let raw = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../docs/netbox-response-example.json"
@@ -94,10 +97,15 @@ async fn generate_all_devices_of_netbox_example() {
     }
     let response: graphql_client::Response<ResponseData> =
         serde_json::from_value(raw).expect("parse example response");
-    let topology = Arc::new(build_topology_from(
+    Arc::new(build_topology_from(
         response.data.expect("response without data"),
         Instant::now(),
-    ));
+    ))
+}
+
+#[tokio::test]
+async fn generate_all_devices_of_netbox_example() {
+    let topology = example_topology();
     let out_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/netbox-example");
     std::fs::create_dir_all(&out_dir).expect("output directory");
 

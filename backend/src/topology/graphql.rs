@@ -1,5 +1,6 @@
 use crate::topology::{
-    DeviceId, SiteId, TopologyHolder,
+    DeviceId,
+    findings::Finding, SiteId, TopologyHolder,
     access::{AccessTopology, device::DeviceAccess, site::SiteAccess},
 };
 use async_graphql::{InputObject, Object};
@@ -53,6 +54,22 @@ impl TopologyHolder {
         topo.sites
             .contains_key(&SiteId(id))
             .then(|| SiteAccess::create(topo.clone(), SiteId(id)))
+    }
+    /// The findings about the devices of the site `site_id`, without it those about the whole
+    /// network (the prefix pools); the worst first.
+    async fn findings(&self, site_id: Option<u32>) -> Vec<Finding> {
+        let Some(topo) = self.topo_lock().await.as_ref().cloned() else {
+            return Vec::new();
+        };
+        match site_id {
+            Some(site) => topo.site_findings(SiteId(site)),
+            None => topo
+                .findings()
+                .iter()
+                .filter(|finding| finding.devices.is_empty())
+                .cloned()
+                .collect(),
+        }
     }
     async fn device_by_id(&self, id: u32) -> Option<DeviceAccess> {
         if let Some(topo) = self.topo_lock().await.as_ref() {

@@ -1,0 +1,30 @@
+query Findings($site: Int){
+    netboxUrl
+    topology{
+        findings(siteId: $site){
+            severity
+            kind{
+                __typename
+                ... on PoolMissing{ pool version }
+                ... on PoolNearlyFull{ pool version free size }
+                ... on NoLoopback{ device{ ...Device } }
+                ... on NoPrimaryIpv4{ device{ ...Device } }
+                ... on PrimaryIpv4NotOnLoopback{
+                    device{ ...Device }
+                    address{ ...Address }
+                    interface{ ...Interface }
+                }
+                ... on AddressWithoutPrefix{ interface{ ...Interface } address{ ...Address } dhcp }
+                ... on PortLikeName{ interface{ ...Interface } }
+                ... on VlanWithoutGroup{ interface{ ...Interface } vlan }
+                ... on MtuMismatch{ interface{ ...Interface } mtu farEnd{ ...Interface } farMtu }
+                ... on OspfOnOneEnd{ interface{ ...Interface } farEnd{ ...Interface } }
+                ... on NoCommonSubnet{ interface{ ...Interface } farEnd{ ...Interface } }
+                ... on AddressWithoutOspf{ interface{ ...Interface } farEnd{ ...Interface } }
+            }
+        }
+    }
+}
+fragment Device on DeviceRef{ id name }
+fragment Address on AddressRef{ id address }
+fragment Interface on InterfaceRef{ id name device{ ...Device } }

@@ -1,5 +1,6 @@
 use crate::{
     i18n,
+    components::findings::{self, FindingsList},
     error::FrontendError,
     graphql::{
         authenticated::{ListSites, list_sites},
@@ -47,18 +48,29 @@ impl Component for Sites {
                         view: SiteView::Devices,
                     };
                     let count = i18n::pages::device_count(site.devices.len());
+                    let findings = findings::count(
+                        site.findings
+                            .iter()
+                            .map(|f| matches!(f.severity, list_sites::Severity::ERROR)),
+                    )
+                    .map(|count| html!(<div class="site-findings">{count}</div>));
                     html! {
                         <Card key={site.id}>
                             <CardHeader><CardTitle>
                                 <Link<AppRoute> {to}>{site.name.clone()}</Link<AppRoute>>
                             </CardTitle></CardHeader>
-                            <CardBody>{count}</CardBody>
+                            <CardBody>{count}{findings}</CardBody>
                         </Card>
                     }
                 })
                 .collect(),
         };
-        html!(<div class="site-list">{content}</div>)
+        html! {
+            <>
+                <FindingsList site={None::<u32>}/>
+                <div class="site-list">{content}</div>
+            </>
+        }
     }
 
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {

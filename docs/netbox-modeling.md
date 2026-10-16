@@ -26,8 +26,8 @@ Die Slugs müssen exakt so heißen:
 | `nat`         | Uplink, dessen Netz nicht zurückroutet: ausgehend maskieren   |
 
 An Prefixen markieren zwei Tags, woraus der Config-Helper Adressen vergeben soll
-([Konzept](concepts/config-helper.md#prefixe)). Sie werden gelesen, aber noch nicht
-ausgewertet:
+([Konzept](concepts/config-helper.md#prefixe)). Die Config ändern sie nicht; die Befunde melden
+einen fehlenden oder fast vollen Pool (unter 10 % frei):
 
 | Tag-Slug   | Bedeutung, wenn am Prefix gesetzt                                   |
 |------------|---------------------------------------------------------------------|
@@ -515,7 +515,8 @@ reicht also nicht, sie zu setzen:
 - **Device Role** (`router`, `switch`, `wlan-bridge`): wird gelesen, aber nirgends verwendet.
   Router und Switch unterscheiden sich nur durch ihre Interfaces.
 - **Device Type**: wird gelesen (für den Config-Helper), das Board kommt aber live vom Gerät.
-- **Prefixe**: Beschreibung, Tags und Scope (Site) werden gelesen, aber noch nicht ausgewertet.
+- **Prefixe**: Beschreibung und Scope (Site) werden gelesen, aber noch nicht ausgewertet; die
+  Tags `loopback`/`transfer` nur für die Befunde.
 - **802.1Q Mode**: siehe oben; nur die VLAN-Zuweisungen zählen.
 - **Tags an Bridge-Ports**: bei Bridges zählen die Tags des Bridge-Interfaces und des
   VLAN-Interfaces, das die IP trägt, nicht die der Mitgliedsports.

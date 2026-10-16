@@ -1,5 +1,6 @@
 use crate::{
     i18n,
+    components::findings::{self, FindingsList},
     error::FrontendError,
     graphql::{
         authenticated::{PingDevice, SiteDevices, ping_device, site_devices},
@@ -32,6 +33,8 @@ pub struct DeviceRow {
     name: Box<str>,
     address: Option<IpAddr>,
     serial: Option<Box<str>>,
+    /// how many findings it has, `None` without
+    findings: Option<String>,
 }
 #[derive(Debug)]
 pub enum DevicesMsg {
@@ -63,7 +66,8 @@ impl Component for Devices {
         }
     }
 
-    fn view(&self, _ctx: &Context<Self>) -> Html {
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let site = ctx.props().site;
         let error_msg = self.error_state.as_ref().map(FrontendError::to_html);
         let data = match &self.state {
             DeviceState::Loading => {
@@ -81,10 +85,13 @@ impl Component for Devices {
             }
         };
         html! {
-            <div class="device-list">
-                {error_msg}
-                {data}
-            </div>
+            <>
+                <FindingsList site={Some(site)}/>
+                <div class="device-list">
+                    {error_msg}
+                    {data}
+                </div>
+            </>
         }
     }
 
@@ -115,6 +122,9 @@ impl Component for Devices {
                                         .and_then(|ip| ip.address)
                                         .and_then(|a| IpAddr::from_str(a.ip.as_str()).ok()),
                                     serial: device.serial.map(|s| s.into_boxed_str()),
+                                    findings: findings::count(device.findings.iter().map(|f| {
+                                        matches!(f.severity, site_devices::Severity::ERROR)
+                                    })),
                                 })
                                 .collect(),
                         ));
@@ -226,6 +236,10 @@ impl Component for DeviceEntryCard {
             .serial
             .as_deref()
             .map(|serial| html!(<div class="device-serial">{serial}</div>));
+        let findings = device
+            .findings
+            .clone()
+            .map(|count| html!(<div class="device-findings">{count}</div>));
 
         html! {
             <Card>
@@ -234,6 +248,7 @@ impl Component for DeviceEntryCard {
                     <div class="device-address">{address}</div>
                     <div class="device-ping">{ping_result_data}</div>
                     <div class="device-detected-model">{type_description}</div>
+                    {findings}
                     {serial} {detected_serial}
                 </CardBody>
             </Card>

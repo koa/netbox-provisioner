@@ -1,4 +1,5 @@
 use crate::topology::{
+    findings::Finding,
     SiteData, SiteId, Topology,
     access::{AccessTopology, device::DeviceAccess},
 };
@@ -63,5 +64,9 @@ impl SiteAccess {
             .collect::<Box<[_]>>();
         devices.sort_by(|a, b| a.name().cmp(b.name()));
         devices
+    }
+    /// The findings about its devices, the worst first.
+    async fn findings(&self) -> Vec<Finding> {
+        self.topology.site_findings(self.id)
     }
 }

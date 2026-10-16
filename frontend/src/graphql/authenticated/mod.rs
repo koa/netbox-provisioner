@@ -131,3 +131,11 @@ pub struct DeviceJobs;
     response_derives = "Debug"
 )]
 pub struct CancelJob;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/findings.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct Findings;

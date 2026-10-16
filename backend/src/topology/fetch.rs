@@ -10,7 +10,7 @@ use crate::{
     topology::{
         Cable, CableId, CablePort, Device, DeviceId, DeviceRole, FrontPort, FrontPortId, Interface,
         InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
-        PhysicalPortId, PortType, Radio, RadioLink, RadioRole, RearPort, RearPortId, SiteData, SiteId,
+        PhysicalPortId, PortType, PrefixPool, Radio, RadioLink, RadioRole, RearPort, RearPortId, SiteData, SiteId,
         Topology,
         VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData,
         WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
@@ -424,6 +424,11 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             prefix_data.prefix.parse::<IpNet>(),
         ) {
             prefix_idx.insert(prefix, id);
+            let pool = prefix_data.tags.iter().find_map(|tag| match tag.slug.as_str() {
+                "loopback" => Some(PrefixPool::Loopback),
+                "transfer" => Some(PrefixPool::Transfer),
+                _ => None,
+            });
             ip_prefixes.insert(
                 id,
                 IpPrefixData {
@@ -432,6 +437,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     children: Box::new([]),
                     parent: None,
                     ranges: Box::new([]),
+                    pool,
                 },
             );
         }
@@ -565,7 +571,9 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             .into_iter()
             .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
             .collect(),
+        findings: Box::default(),
     }
+    .with_findings()
 }
 
 fn termination_2_cable_port(termination: CableConnectionTermination) -> Option<CablePort> {

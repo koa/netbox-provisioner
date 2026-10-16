@@ -22,6 +22,7 @@ use tokio::{
 
 pub mod access;
 pub mod fetch;
+pub mod findings;
 mod graphql;
 pub mod test;
 
@@ -95,6 +96,8 @@ pub struct Topology {
     ip_prefixes: HashMap<IpPrefixId, IpPrefixData>,
     ip_ranges: HashMap<IpRangeId, IpRangeData>,
     ip_range_idx: HashMap<IpNet, Box<[IpRangeId]>>,
+    /// `findings::collect`, computed when the topology is built (`Topology::with_findings`)
+    findings: Box<[findings::Finding]>,
 }
 
 impl Topology {
@@ -224,6 +227,17 @@ pub struct IpPrefixData {
     pub children: Box<[IpPrefixId]>,
     pub parent: Option<IpPrefixId>,
     pub ranges: Box<[IpRangeId]>,
+    /// NetBox tag `loopback` or `transfer`: the prefix is part of that pool.
+    pub pool: Option<PrefixPool>,
+}
+/// What a prefix with one of the tags `loopback` or `transfer` hands out: all prefixes with
+/// the same tag and IP version form one pool (`docs/concepts/config-helper.md`).
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, async_graphql::Enum)]
+pub enum PrefixPool {
+    /// `/32` and `/128` on `lo`
+    Loopback,
+    /// The networks between two routers
+    Transfer,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Union)]
 pub enum WlanAuth {

@@ -1,6 +1,9 @@
 # Konzept: Config-Helper
 
-Status: Konzept, nicht umgesetzt. Offener Punkt „Config-Helper“ aus [pending.md](../pending.md).
+Status: Schritt 1 (Befund „NetBox in sich“) umgesetzt (`topology/findings.rs`, Befunde oben auf der
+Site-Seite, Netz-Befunde auf der Site-Übersicht, Anzahl an den Karten), ohne die PoE-Prüfung, WLAN-Gruppen,
+Regionen und die gesammelten Generatorfehler. Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
+[pending.md](../pending.md).
 
 ## Ausgangslage
 
@@ -74,6 +77,19 @@ Provisioner ohnehin lädt. Fast jede Regel aus `netbox-modeling.md` wird eine Pr
 
 Jeder Befund hat Schwere (Fehler: Generator scheitert oder macht etwas Falsches / Warnung /
 Hinweis), Objekt mit Link nach NetBox und, wenn es dafür einen Helfer gibt, den Knopf dazu.
+
+Umgesetzt und abweichend vom Entwurf oben:
+
+- `ospf` nur an einem Ende und „verschiedene Netze“ werden nur geprüft, wenn beide Enden (der Port
+  oder seine Bridge) IPv4 haben. Ein Brückengerät ohne Adresse arbeitet nur auf L2, das OSPF des
+  Routers geht hindurch zum Router auf der anderen Seite. Im Export waren das zehn falsche Treffer.
+- Ohne Primary IPv4 ist ein Fehler, wo das Gerät `ospf` hat (Router-ID), sonst eine Warnung.
+- „Prefix ohne Prefix-Rolle“ entfällt, die Pools kommen über Tags.
+
+Im gespeicherten Export, mit gesetzten Tags `loopback`/`transfer`: 16 Geräte ohne Primary IPv4 und 14 ohne
+`lo` (die Brückengeräte, ein AP, ein Switch-Paar), eine Adresse ohne Prefix, ein Hinweis auf eine
+Verbindung ohne `ospf` (`lkw-switch-20`–`lte-16`). Den Stand schreibt der Test
+`findings_of_netbox_example` nach `target/netbox-example/findings.txt`.
 
 ### NetBox gegen Gerät
 

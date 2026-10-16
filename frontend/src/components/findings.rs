@@ -1,0 +1,194 @@
+//! What NetBox lacks or what doesn't fit together, for a site or the whole network
+//! (`TopologyHolder.findings`), every object a link to it in NetBox.
+use crate::{
+    error::FrontendError,
+    graphql::{
+        authenticated::{
+            Findings,
+            findings::{
+                self, FindingsTopologyFindings, FindingsTopologyFindingsKind as Kind, IpVersion,
+                PrefixPool, Severity,
+            },
+        },
+        query_authenticated,
+    },
+    i18n::findings as t,
+};
+use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Color, Label, Spinner};
+use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
+
+#[derive(Debug, Clone, PartialEq, Properties)]
+pub struct FindingsProps {
+    /// the site whose devices' findings are shown; without, those about the whole network,
+    /// and nothing when there are none
+    pub site: Option<u32>,
+}
+
+pub struct FindingsList {
+    data: Option<Result<(String, Vec<FindingsTopologyFindings>), FrontendError>>,
+}
+
+pub enum FindingsMsg {
+    Data(Result<(String, Vec<FindingsTopologyFindings>), FrontendError>),
+}
+
+impl Component for FindingsList {
+    type Message = FindingsMsg;
+    type Properties = FindingsProps;
+
+    fn create(_ctx: &Context<Self>) -> Self {
+        Self { data: None }
+    }
+
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            FindingsMsg::Data(data) => self.data = Some(data),
+        }
+        true
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let site = ctx.props().site;
+        let body = match &self.data {
+            None if site.is_none() => return Html::default(),
+            None => html!(<Spinner/>),
+            Some(Err(error)) => error.to_html(),
+            Some(Ok((_, findings))) if findings.is_empty() => match site {
+                Some(_) => html!(<p>{t::NONE}</p>),
+                None => return Html::default(),
+            },
+            Some(Ok((netbox, findings))) => {
+                let links = Links { netbox };
+                html! {
+                    <ul class="finding-list">
+                        { for findings.iter().map(|finding| html! {
+                            <li>
+                                {severity(&finding.severity)}
+                                <span>{links.describe(&finding.kind)}</span>
+                            </li>
+                        }) }
+                    </ul>
+                }
+            }
+        };
+        let title = if site.is_some() {
+            t::TITLE
+        } else {
+            t::NETWORK_TITLE
+        };
+        html! {
+            <Card class="findings">
+                <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+                <CardBody>{body}</CardBody>
+            </Card>
+        }
+    }
+
+    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
+        if first_render {
+            let scope = ctx.link().clone();
+            let site = ctx.props().site.map(i64::from);
+            spawn_local(async move {
+                let data =
+                    query_authenticated::<Findings, _>(scope.clone(), findings::Variables { site })
+                        .await
+                        .map(|data| (data.netbox_url, data.topology.findings));
+                scope.send_message(FindingsMsg::Data(data));
+            });
+        }
+    }
+}
+
+fn severity(severity: &Severity) -> Html {
+    let (label, color) = match severity {
+        Severity::ERROR => (t::ERROR, Color::Red),
+        Severity::WARNING => (t::WARNING, Color::Orange),
+        Severity::HINT | Severity::Other(_) => (t::HINT, Color::Blue),
+    };
+    html!(<Label compact=true {color} label={label}/>)
+}
+
+/// Links to the objects of a finding in NetBox' web UI.
+struct Links<'a> {
+    /// ends in `/`
+    netbox: &'a str,
+}
+
+impl Links<'_> {
+    fn link(&self, path: &str, text: &str) -> Html {
+        let href = format!("{}{path}", self.netbox);
+        html!(<a {href} target="_blank" rel="noopener">{text.to_string()}</a>)
+    }
+    fn device(&self, device: &findings::Device) -> Html {
+        self.link(&format!("dcim/devices/{}/", device.id), &device.name)
+    }
+    fn interface(&self, interface: &findings::Interface) -> Html {
+        self.link(
+            &format!("dcim/interfaces/{}/", interface.id),
+            &format!("{} {}", interface.device.name, interface.name),
+        )
+    }
+    fn address(&self, address: &findings::Address) -> Html {
+        self.link(
+            &format!("ipam/ip-addresses/{}/", address.id),
+            &address.address,
+        )
+    }
+    fn pool(&self, pool: &PrefixPool) -> Html {
+        let tag = t::pool(matches!(pool, PrefixPool::LOOPBACK));
+        self.link(&format!("ipam/prefixes/?tag={tag}"), &format!("„{tag}“"))
+    }
+
+    fn describe(&self, kind: &Kind) -> Html {
+        let version = |v: &IpVersion| t::version(matches!(v, IpVersion::V6));
+        match kind {
+            Kind::PoolMissing(f) => t::pool_missing(self.pool(&f.pool), version(&f.version)),
+            Kind::PoolNearlyFull(f) => {
+                t::pool_nearly_full(self.pool(&f.pool), version(&f.version), f.free, f.size)
+            }
+            Kind::NoLoopback(f) => t::no_loopback(self.device(&f.device)),
+            Kind::NoPrimaryIpv4(f) => t::no_primary_ipv4(self.device(&f.device)),
+            Kind::PrimaryIpv4NotOnLoopback(f) => t::primary_not_on_loopback(
+                self.device(&f.device),
+                self.address(&f.address),
+                f.interface.as_ref().map(|i| self.interface(i)),
+            ),
+            Kind::AddressWithoutPrefix(f) => t::address_without_prefix(
+                self.interface(&f.interface),
+                self.address(&f.address),
+                f.dhcp,
+            ),
+            Kind::PortLikeName(f) => t::port_like_name(self.interface(&f.interface)),
+            Kind::VlanWithoutGroup(f) => t::vlan_without_group(
+                self.interface(&f.interface),
+                self.link(&format!("ipam/vlans/{}/", f.vlan), &t::vlan(f.vlan)),
+            ),
+            Kind::MtuMismatch(f) => t::mtu_mismatch(
+                self.interface(&f.interface),
+                f.mtu,
+                self.interface(&f.far_end),
+                f.far_mtu,
+            ),
+            Kind::OspfOnOneEnd(f) => {
+                t::ospf_on_one_end(self.interface(&f.interface), self.interface(&f.far_end))
+            }
+            Kind::NoCommonSubnet(f) => {
+                t::no_common_subnet(self.interface(&f.interface), self.interface(&f.far_end))
+            }
+            Kind::AddressWithoutOspf(f) => {
+                t::address_without_ospf(self.interface(&f.interface), self.interface(&f.far_end))
+            }
+        }
+    }
+}
+
+/// The text for a card of a list: how many findings, how many errors; one `bool` per finding,
+/// whether it is an error (each query has its own `Severity`).
+pub fn count(errors: impl IntoIterator<Item = bool>) -> Option<String> {
+    let (mut all, mut error_count) = (0, 0);
+    for error in errors {
+        all += 1;
+        error_count += usize::from(error);
+    }
+    t::count(all, error_count)
+}

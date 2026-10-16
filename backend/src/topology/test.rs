@@ -157,6 +157,7 @@ impl TopologyBuilder {
                         children: Box::new([]),
                         parent: None,
                         ranges: Box::new([]),
+                        pool: None,
                     },
                 );
                 prefix_id
@@ -186,10 +187,12 @@ impl TopologyBuilder {
                         children: Box::new([]),
                         parent: None,
                         ranges: Box::new([]),
+                        pool: None,
                     },
                 );
                 prefix_id
             };
+            address_data.prefix = Some(prefix_id);
             ips_of_prefixes
                 .entry(prefix_id)
                 .or_insert(Vec::new())
@@ -247,7 +250,9 @@ impl TopologyBuilder {
                 .into_iter()
                 .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
                 .collect(),
+            findings: Box::default(),
         }
+        .with_findings()
     }
 }
 impl From<TopologyBuilder> for TopologyHolder {

@@ -269,3 +269,32 @@ div.device-columns {
         }
     }
 }
+
+div.device-list > div.pf-v6-c-card > div.pf-v6-c-card__body > div.device-findings {
+    grid-row: 4;
+    grid-column: 2 / -1;
+}
+div.device-findings, div.site-findings {
+    color: var(--pf-t--global--text--color--subtle);
+}
+div.pf-v6-c-card.findings {
+    margin: 0.5em;
+}
+ul.finding-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+
+    & > li {
+        display: flex;
+        gap: 0.5em;
+        align-items: baseline;
+        padding: 0.25em 0;
+    }
+    & > li + li {
+        border-top: 1px solid var(--pf-t--global--border--color--default, #d2d2d2);
+    }
+    & > li > span.pf-v6-c-label {
+        flex: none;
+    }
+}

@@ -63,7 +63,7 @@ mod mtu_test;
 #[cfg(test)]
 mod mac_server_test;
 #[cfg(test)]
-mod netbox_example_test;
+pub(crate) mod netbox_example_test;
 #[cfg(test)]
 mod poe_test;
 #[cfg(test)]
@@ -211,7 +211,7 @@ pub enum SetupError {
 }
 
 /// RouterOS's L3 MTU of a port NetBox gives none.
-const DEFAULT_MTU: u16 = 1500;
+pub(crate) const DEFAULT_MTU: u16 = 1500;
 /// What the L2 MTU leaves on top of the L3 MTU, for a VLAN tag.
 const VLAN_TAG_SIZE: u16 = 4;
 

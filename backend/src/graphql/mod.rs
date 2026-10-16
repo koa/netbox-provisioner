@@ -9,6 +9,7 @@ use crate::{
     },
     graphql::scalars::ScalarMac,
     job::{self, Job, JobKind},
+    netbox,
     topology::{
         DeviceId, TopologyHolder,
         access::{AdhocCredentials, device::DeviceAccess},
@@ -61,6 +62,10 @@ impl QueryAuthenticated {
     /// without it the UI offers them disabled instead of failing on the click.
     async fn allow_apply(&self) -> bool {
         CONFIG.allow_apply
+    }
+    /// NetBox' web UI, ending in `/`, for links to the objects of findings.
+    async fn netbox_url(&self) -> String {
+        netbox::web_url()
     }
     async fn job(&self, id: u32) -> Option<Arc<Job>> {
         job::get(id)

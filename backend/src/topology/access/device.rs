@@ -7,6 +7,7 @@ use crate::{
     },
     topology::{
         CablePort, Device, DeviceId, DeviceRole, Topology,
+        findings::Finding,
         access::{
             AccessTopology, AdhocCredentials, interface::InterfaceAccess,
             ip_addresses::IpAddressAccess, site::SiteAccess, wlan_group::WlanGroupAccess,
@@ -275,6 +276,15 @@ impl DeviceAccess {
     /// Why there is no `bootstrapPlan`.
     async fn bootstrap_problem(&self) -> Option<ErrorInfo> {
         bootstrap::plan(self).err().map(|error| ErrorInfo::from(&error))
+    }
+    /// The findings about it, the worst first.
+    async fn findings(&self) -> Vec<Finding> {
+        self.topology
+            .findings()
+            .iter()
+            .filter(|finding| finding.devices.contains(&self.id))
+            .cloned()
+            .collect()
     }
     #[graphql(name = "wlanControllerOf")]
     async fn api_is_wlan_controller_of(&self) -> Option<WlanGroupAccess> {
