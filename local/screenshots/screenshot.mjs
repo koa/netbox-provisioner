@@ -13,7 +13,8 @@
 //   wait:ms                 wait a fixed time
 //   top                     scroll everything back to the top
 //   shot:name               store a full-page PNG
-// The login page and the first page after it are always captured.
+// The login page and the first page after it are always captured. The viewport is
+// VIEWPORT_WIDTH x VIEWPORT_HEIGHT (default 1440 x 1800); 390 is a phone.
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
@@ -24,7 +25,7 @@ const origin = process.env.PROVISIONER_URL ?? 'http://localhost:8082';
 fs.mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: Number(process.env.VIEWPORT_HEIGHT ?? 1800) } });
+const page = await browser.newPage({ viewport: { width: Number(process.env.VIEWPORT_WIDTH ?? 1440), height: Number(process.env.VIEWPORT_HEIGHT ?? 1800) } });
 page.on('console', (m) => m.type() === 'error' && console.log('  console error:', m.text()));
 page.on('pageerror', (e) => console.log('  page error:', e.message));
 
