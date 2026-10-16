@@ -115,21 +115,35 @@ prüft der Helfer nur die Namen) und `lo` (Typ Virtual). Dann direkt weiter zu �
 
 ### Loopback
 
-Nächste freie `/32` aus dem Loopback-Prefix, auf `lo`, als Primary IPv4. Mit IPv6 ebenso eine
-`/128`. NetBox vergibt freie Adressen selbst und atomar (`POST
-/api/ipam/prefixes/{id}/available-ips/`), zwei gleichzeitige Helfer bekommen also nicht dieselbe.
+Nächste freie `/32` aus dem Loopback-Prefix (siehe [Prefixe](#prefixe)), auf `lo`, als
+Primary IPv4, dazu eine `/128` aus dem IPv6-Loopback-Prefix als Primary IPv6. NetBox vergibt
+freie Adressen selbst und atomar (`POST /api/ipam/prefixes/{id}/available-ips/`), zwei
+gleichzeitige Helfer bekommen also nicht dieselbe.
 
 ### Verbindung
 
-Zwei Ports wählen (oder ein Kabel aus dem Befund übernehmen). Plan: Kabel, falls es fehlt;
-nächstes freies Transfernetz (`/30`, `POST …/available-prefixes/`) aus dem Transfer-Prefix; je
-eine Adresse an beide Enden; `ospf` an beide Enden; gleiche MTU an beiden Enden (Vorgabe
-übernehmen oder eingeben); Label je mit dem Namen der Gegenseite.
+Zwei Varianten, beide mit dem nächsten freien Netz aus dem Transfer-Prefix (`POST
+…/available-prefixes/`), `ospf` an beiden Enden, gleicher MTU an beiden Enden (Vorgabe übernehmen
+oder eingeben) und als Label je dem Namen der Gegenseite:
+
+- **Direkt:** Zwei Ports wählen (oder ein Kabel aus dem Befund übernehmen). Plan: Kabel, falls es
+  fehlt; ein `/31`, je eine Adresse an beide Enden. Ein `/31` hat genau zwei Adressen, ohne
+  Netz- und Broadcast-Adresse (RFC 3021); der Transfer-Prefix reicht so doppelt so weit wie mit
+  `/30`. Die vorhandenen `/30` bleiben gültig, der Helfer vergibt nur neue als `/31`.
+- **Über eine Bridge:** Die beiden Router hängen an den Enden einer [Funkbrücke](#funkbrücke).
+  Plan: ein `/29` mit festen Adressen für die beiden Router und die beiden Brückengeräte, siehe
+  [Brückengeräte mit fester Adresse](#brückengeräte-mit-fester-adresse).
+
+Bevor der Helfer `/31` vergibt, ist auf einer CHR zu prüfen, dass RouterOS damit tut, was es soll:
+Adresse, OSPF-Nachbarschaft und Ersteinrichtung über einen Nachbarn im `/31`. Ebenso, dass der
+Generator damit umgehen kann (Ersteinrichtung sucht den Nachbarn „im selben Netz“, der DHCP-Pool
+rechnet freie Adressen).
 
 ### Kunden-Netz
 
-Ein Port oder ein VLAN wählen. Plan: nächstes freies Netz aus dem Kunden-Prefix (Länge wählbar,
-Vorgabe `/24`), Gateway-Adresse (erste Adresse) am Port bzw. an einem neuen virtuellen
+Ein Port oder ein VLAN wählen, dann das **Parent-Prefix**: Der Helfer bietet die Prefixe der Site
+des Geräts an (Kunden-Netze gehören zum Standort), gewählt wird von Hand, nicht automatisch.
+Plan: nächstes freies Netz darin (Länge wählbar, Vorgabe `/24`), Gateway-Adresse (erste Adresse) am Port bzw. an einem neuen virtuellen
 VLAN-Interface, `dhcp`, optional eine IP-Range mit Rolle `dhcp`.
 
 ### OSPF- und DHCP-Flags
@@ -152,25 +166,65 @@ Eingabe: die beiden Standorte bzw. die beiden Router, an deren Ports die Brücke
 Plan für beide Seiten: Device mit Board und Name (Vorschlag `<site-a>-<site-b>` und umgekehrt),
 `ether1`, Funk-Port (`wlan1` bzw. `wlan60-1`), Bridge mit beiden; RF Role `AP` auf der einen
 Seite, `Station` auf der anderen; ein Wireless Link mit SSID (Vorschlag aus den Namen),
-WPA Personal und einem erzeugten PSK; die Kabel von `ether1` zu den Router-Ports. Auf
-Wunsch gleich „Verbindung“ zwischen den beiden Routern über die Brücke (Transfernetz, `ospf`, MTU
-über die ganze Strecke gleich, wie [netbox-modeling.md](../netbox-modeling.md#mtu) es verlangt).
+WPA Personal und einem erzeugten PSK; die Kabel von `ether1` zu den Router-Ports; je eine
+Loopback und eine feste Adresse im `/29` ([Brückengeräte mit fester
+Adresse](#brückengeräte-mit-fester-adresse)). Dazu die [Verbindung](#verbindung) zwischen den
+beiden Routern über die Brücke (`/29`, `ospf`, MTU über die ganze Strecke gleich, wie
+[netbox-modeling.md](../netbox-modeling.md#mtu) es verlangt).
 
-## Prefix-Konventionen
+### Brückengeräte mit fester Adresse
 
-Damit der Helfer „das“ Loopback-, Transfer- oder Kunden-Prefix findet, muss NetBox es kennzeichnen.
-Vorschlag: **Prefix-Rollen** mit festen Slugs, wie die IP-Range-Rolle `dhcp`:
+Heute holen sich die Brückengeräte ihre Adresse per DHCP-Client von einem der beiden Router
+([netbox-modeling.md](../netbox-modeling.md#funkbrücke)). Funktioniert dieser Router nicht
+richtig, bekommen sie keine Adresse mehr und sind gerade dann nicht erreichbar, wenn man sie
+zur Fehlersuche braucht.
 
-| Rolle | Inhalt | vergeben wird |
+Der Helfer legt die Brückengeräte deshalb wie Router an, nur ohne Routing der Nutzdaten:
+
+- **Loopback** `/32` und `/128` aus den Loopback-Prefixen als Primary IPv4 (Router-ID) und
+  Primary IPv6 (Management-Adresse).
+- **Feste Adresse im `/29`** auf der Bridge des Brückengeräts, Tag `ospf` an der Bridge.
+- **OSPF-Priorität 0** auf dem Brückengerät: Es wird nie DR oder BDR, die Rolle bleibt bei den
+  Routern. Das braucht eine neue Regel im Generator. Das Feld `priority` von
+  `/routing/ospf/interface-template` kennt `mikrotik-model` schon.
+
+Warum das hilft:
+
+- Ohne DHCP-Abhängigkeit bleibt ein Brückengerät erreichbar, solange einer der beiden Router es
+  erreicht.
+- Fällt die Funkstrecke aus, zerfällt das `/29` in zwei Hälften. Beide Router kündigen es weiter an,
+  eine Adresse im `/29` wäre also nur zufällig richtig geroutet. Die Loopback dagegen kündigt nur
+  die Seite an, auf der das Brückengerät noch hängt. So ist jedes Brückengerät auch bei
+  unterbrochener Strecke von seiner Seite her erreichbar. Das ist der Fall, in dem man es am
+  dringendsten braucht.
+
+Die Nutzdaten bleiben auf L2: Die beiden Router sind im selben `/29` direkt Nachbarn und schicken
+sich ihre Pakete direkt zu. Die Bridge des Brückengeräts leitet sie weiter wie heute. Zur CPU des
+Brückengeräts kommt nur, was an seine eigenen Adressen geht (Management, OSPF-Hellos). Das
+Brückengerät hat nur ein L3-Interface und kann deshalb keinen Transit-Verkehr routen. Weiterhin
+gilt: Die Bridge darf keine IP-Firewall für gebridgten Verkehr einschalten (`use-ip-firewall=no`,
+der Standard).
+
+Zu prüfen auf CHR, bevor der Helfer das anlegt: vier OSPF-Sprecher in einem Segment, Priorität 0,
+die Strecke getrennt (Loopback von jeder Seite erreichbar) und wieder verbunden.
+
+## Prefixe
+
+| Prefix | in NetBox | vergeben wird |
 |---|---|---|
-| `loopback` | z.B. `172.16.1.0/24` | `/32` je Gerät |
-| `transfer` | Container für Transfernetze | `/30` je Verbindung |
-| `clients` | Container für Kunden-Netze | `/24` (wählbar) je Netz |
+| Loopback | gibt es, netzweit, IPv4 und IPv6 | `/32` und `/128` je Gerät, automatisch |
+| Transfer | gibt es, netzweit, nur IPv4 | `/31` (direkt) oder `/29` (über Bridge) je Verbindung, automatisch |
+| Kunden | pro Standort (Scope Site) | Netz wählbarer Länge im **gewählten** Parent-Prefix |
 
-Gesucht wird das Prefix mit der Rolle, dessen Scope (Site, Location, Region) am nächsten am Gerät
-liegt, sonst ein globales. Die heutigen Daten (30 `/30`, 62 `/24`) sehen nach genau dieser
-Aufteilung aus. Ob es Container dafür schon gibt, sieht man in den Daten aber nicht: Die Abfrage
-liest heute weder Rolle noch Scope eines Prefixes. Siehe offene Fragen.
+Transfernetze bekommen keine IPv6-Adressen: OSPFv3 und der IPv6-Verkehr laufen dort über die
+Link-Local-Adressen der Ports.
+
+Loopback und Transfer vergibt der Helfer automatisch aus dem Prefix dafür. Heute sind die
+Prefixe nur über einen Kommentar gekennzeichnet. Künftig tragen sie die **Tags** `loopback`
+(das IPv4- und das IPv6-Prefix) bzw. `transfer` (wie `ospf`/`dhcp` an Interfaces). Die Abfrage
+liest dafür neu Tags und Scope der Prefixe. Fehlt das Tag oder tragen es mehrere Prefixe
+derselben IP-Version, meldet das der Befund, und der Helfer vergibt nichts. Kunden-Netze brauchen kein Tag: Angeboten werden die Prefixe mit Scope der
+Site des Geräts.
 
 ## Technik
 
@@ -182,7 +236,14 @@ liest heute weder Rolle noch Scope eines Prefixes. Siehe offene Fragen.
 - **Eigene Freigabe.** `allow_netbox_write` (wie `allow_apply`) und ein eigenes Token
   `netbox_write_token` mit Schreibrechten. Ohne beide läuft der Provisioner nur lesend, der Befund
   geht trotzdem.
-- **Wer war es.** NetBox ab 4.4 nimmt `changelog_message` bei jedem Schreiben an. Der Helfer setzt
+- **Berechtigungen vorbereitet, noch nicht unterschieden.** Heute darf jeder angemeldete Benutzer
+  NetBox ändern, so wie in NetBox selbst. Später soll es abgestuft werden: Self-Service für
+  Nutzer, den Systemzustand sehen für alle, Systemänderungen nur für Admins. Damit das ohne Umbau
+  geht, gehört jede Helfer-Aktion (und jede bestehende Mutation) schon jetzt zu einer Klasse, etwa
+  `read`, `self_service`, `network`, `admin`. Geprüft wird an einer Stelle (wie heute
+  `WritesAllowed` für `allow_apply`). Vorerst lässt diese Prüfung alle Klassen für alle durch.
+  Später kommen die Klassen aus einem Claim des OIDC-Tokens (z.B. `groups`).
+- **Wer war es.** NetBox 4.7 nimmt `changelog_message` bei jedem Schreiben an. Der Helfer setzt
   dort Aktion und Benutzer aus dem OIDC-Token (z.B. „Verbindung np1–np2 (koa)“). Im Changelog
   von NetBox steht so, wer im Provisioner was ausgelöst hat, auch wenn alle Änderungen mit
   demselben Token laufen.
@@ -212,12 +273,3 @@ liest heute weder Rolle noch Scope eines Prefixes. Siehe offene Fragen.
 7. **Funkbrücke**.
 
 Schritte 1 und 2 helfen auch dann, wenn jemand weiter von Hand in NetBox pflegt.
-
-## Offene Fragen
-
-- Gibt es in NetBox schon Container-Prefixe für Loopbacks, Transfernetze und Kunden-Netze? Mit
-  Rolle, oder nur als Konvention über Adressbereiche?
-- Welche NetBox-Version läuft? (`changelog_message` ab 4.4; das `nbt_`-Token deutet auf 4.5+.)
-- Darf der Provisioner ein Token mit Schreibrechten bekommen? Für alle Benutzer aus
-  `auth_users`, oder braucht es eine zweite Liste für die, die NetBox ändern dürfen?
-- Transfernetze `/30` oder `/31`? RouterOS kann `/31`, die vorhandenen sind `/30`.
