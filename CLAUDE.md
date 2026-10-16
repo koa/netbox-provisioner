@@ -378,8 +378,10 @@ configuration and without the scheduler. The scheduler switching back by itself 
 `local/` runs the lab: `netbox/` (NetBox + `seed-lab.py`), `keycloak/` (realm `lab` on
 `localhost:8180`, admin/admin), `lab/make-config.sh` (the lab devices' password comes from the
 ignored `.lab-netbox/device-password`, never put it in the repo) + `lab/run-provisioner.sh`
-(builds frontend and binary, serves on :8082), `screenshots/` (Playwright, `run.sh STEP...`; a page reload asks
-for the Keycloak login again, so navigate with `click:` instead of `goto:`). The harness's
+(builds frontend and binary, serves on :8082; the lab config lets the helpers write to the lab
+NetBox with its admin token), `screenshots/` (Playwright, `run.sh STEP...`; a page reload asks
+for the Keycloak login again, so navigate with `click:` instead of `goto:`, and `clicklast:` for
+a card title whose text a link above has too). The harness's
 `mac_telnet.rs` and `update.rs` cover setup and update against CHRs, reaching the new node
 through a tunnel to the entry like the provisioner: `ensure_factory_image` gives
 an untouched image of a `ChrRelease` (`CHR`, or `CHR_OLDER` to update from), `start_node` boots

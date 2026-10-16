@@ -24,6 +24,9 @@ settings:
   server_port: 8082
   netbox_url: http://127.0.0.1:8001/graphql/
   netbox_token: "$(cat "$root/.lab-netbox/api-token")"
+  # the helpers write to the lab NetBox with the same (admin) token
+  allow_netbox_write: true
+  netbox_write_token: "$(cat "$root/.lab-netbox/api-token")"
   # the lab's entry point: everything behind lab-core is reached through its /ip socks
   management_proxy:
     device: lab-core

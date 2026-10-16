@@ -7,6 +7,7 @@
 // Steps, run in order after the login:
 //   goto:/path              open a page of the provisioner
 //   click:Text              click the button (or else the element) with this text
+//   clicklast:Text          click the last element with this text (a card title after links)
 //   clickrow:Text=Label     click the button with this label in the table row containing Text
 //   fill:Placeholder=Value  type into the input with this placeholder
 //   waitfor:Text|Other      wait until one of the texts shows up (WAIT_TIMEOUT_MS, 5 min)
@@ -61,6 +62,9 @@ for (const step of args) {
       await ((await button.count()) ? button.first() : page.getByText(value, { exact: true }).first()).click();
       break;
     }
+    case 'clicklast':
+      await page.getByText(value, { exact: true }).last().click();
+      break;
     case 'clickrow': {
       const [row, ...label] = value.split('=');
       await page.locator('tr', { hasText: row })
