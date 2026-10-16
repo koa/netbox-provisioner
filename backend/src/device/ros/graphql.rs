@@ -13,9 +13,9 @@ use crate::{
             fallback,
             BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent,
             W60GDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
-            hw_facts::{RadioPackage, build_w60g_ports},
+            hw_facts::{RadioPackage, build_w60g_ports, radio_package},
             needed_radio_package,
-            warning::ApplyWarning,
+            warning::{ApplyWarning, CapOffOutsideWlanGroup},
         },
         device_mode, partitions, raw, update,
     },
@@ -31,7 +31,7 @@ use mikrotik_model::{
     generator::Generator,
     hwconfig::DeviceType,
     model::{
-        CapsManManagerCfg, CertificateCfg, InterfaceWifiCapCfg, InterfaceWifiCapsmanCfg, InterfaceWifiState,
+        CapsManManagerCfg, CertificateCfg, InterfaceWifiCapCfg, InterfaceWirelessCapCfg, InterfaceWifiCapsmanCfg, InterfaceWifiState,
         InterfaceWifiCapsmanState,
         ReferenceType, SystemIdentityCfg, SystemPackageState, SystemRouterboardState, YesNo,
     },
@@ -84,6 +84,8 @@ pub struct DeviceCfg {
     bound_radios: Box<[AsciiString]>,
     /// what `generate_from` couldn't bring in line (a bound radio)
     wifi_warnings: Vec<ApplyWarning>,
+    /// the board's radios NetBox leaves alone, with the CAP off (`CapOffOutsideWlanGroup`)
+    idle_radios: Option<RadioPackage>,
 }
 
 impl DeviceCfg {
@@ -150,6 +152,11 @@ impl DeviceCfg {
         self.base_target.setup_maintenance_ports(device, &l2);
         self.base_target.setup_mtu(device)?;
         self.base_target.setup_poe(device)?;
+        if let Some(package) = self.idle_radios {
+            warnings.push(ApplyWarning::CapOffOutsideWlanGroup(CapOffOutsideWlanGroup {
+                package: package.name().into(),
+            }));
+        }
         self.wifi_warnings = warnings;
         Ok(())
     }
@@ -712,6 +719,31 @@ impl DeviceCfg {
         } else {
             (None, None)
         };
+        // A device in no Wireless LAN Group serves no WLAN where NetBox uses none of its radios:
+        // the target switches a CAP of `/interface/wifi` off, one of `/interface/wireless`
+        // stays as it is, off after the initial setup. On an AP missing from its group in
+        // NetBox the operator should see that. The installed package tells which one the
+        // radios run (a wAP ac runs either).
+        let idle_radios = match radio_package(model) {
+            Some(package)
+                if needed.is_none()
+                    && device.wlan_ap_of().is_none()
+                    && device.wlan_controller_of().is_none() =>
+            {
+                let wireless = RadioPackage::Wireless;
+                if installed_packages.contains(wireless.name().as_bytes()) {
+                    let cap_on = InterfaceWirelessCapCfg::fetch(client)
+                        .await
+                        .ok()
+                        .flatten()
+                        .is_some_and(|cap| cap.enabled);
+                    (!cap_on).then_some(wireless)
+                } else {
+                    Some(package)
+                }
+            }
+            _ => None,
+        };
         Ok(DeviceCfg {
             base_current: current,
             base_target: target,
@@ -727,6 +759,7 @@ impl DeviceCfg {
             capsman_target,
             bound_radios,
             wifi_warnings: Vec::new(),
+            idle_radios,
         })
     }
 }

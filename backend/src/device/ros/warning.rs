@@ -7,6 +7,7 @@ pub enum ApplyWarning {
     PoeCut(PoeCut),
     RadioBound(RadioBound),
     LegacyRadioManaged(LegacyRadioManaged),
+    CapOffOutsideWlanGroup(CapOffOutsideWlanGroup),
 }
 
 /// The PoE out of `port` powers something, and the target switches it off (NetBox has no
@@ -33,4 +34,13 @@ pub struct RadioBound {
 pub struct LegacyRadioManaged {
     pub radio: Box<str>,
     pub expected: Box<str>,
+}
+
+/// The board has radios, but NetBox uses none of them and has the device in no Wireless LAN
+/// Group: its CAP is off after the apply (`/interface/wifi` switched off, `/interface/wireless`
+/// left off, as the initial setup leaves it), so it serves no WLAN.
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
+pub struct CapOffOutsideWlanGroup {
+    /// the package of the board's radios (`hw_facts::radio_package`)
+    pub package: Box<str>,
 }

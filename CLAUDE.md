@@ -367,7 +367,11 @@ script (`device::ros::warning::ApplyWarning`, a union `i18n::device::warning` wo
 `BaseDeviceDataTarget::poe_warnings`: on at the device, off in the target, and
 powering something: `/interface/ethernet/poe/monitor` reports `poe-out-status=powered-on`, not
 `waiting-for-load`; read only where a port would lose PoE, and when it can't be read every such
-port warns), and the device page shows them above the changes.
+port warns), and the device page shows them above the changes. `CapOffOutsideWlanGroup`: a
+board with radios in no Wireless LAN Group whose radios NetBox doesn't use serves no WLAN after
+the apply (a CAP of `/interface/wifi` goes off, one of `/interface/wireless` is left as it is,
+which is off after the initial setup); with `wireless` installed it warns only while that CAP
+is off. It caught an AP missing from its group in NetBox.
 
 mac-telnet for remote maintenance: the generated config has an interface list `maintenance`
 (it was `mac-server`) and sets `/tool mac-server allowed-interface-list` and `/ip/neighbor

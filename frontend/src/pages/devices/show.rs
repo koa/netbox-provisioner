@@ -945,5 +945,6 @@ fn describe_warning(warning: &Warning) -> String {
         Warning::LegacyRadioManaged(managed) => {
             t::warning::legacy_radio_managed(&managed.radio, &managed.expected)
         }
+        Warning::CapOffOutsideWlanGroup(cap) => t::warning::cap_off_outside_wlan_group(&cap.package),
     }
 }
