@@ -33,7 +33,7 @@ use mikrotik_model::{
         InterfaceWirelessFrequencyMode, InterfaceWirelessMode, InterfaceWirelessTxPowerMode,
         InterfaceWirelessWirelessProtocol::{Nv2, Nv2Nstreme80211},
         InterfaceListByName, InterfaceListCfg, InterfaceListMemberCfg, IpAddressByAddress, IpAddressCfg, IpDhcpClientCfg,
-        IpDhcpClientDhcpOptions, ToolMacServerCfg,
+        IpDhcpClientDhcpOptions, IpNeighborDiscoverySettingsCfg, ToolMacServerCfg,
         IpFirewallFilterAction, IpFirewallFilterCfg, IpFirewallNatAction, IpFirewallNatCfg,
         Ipv6NdAdvertiseDns, Ipv6NdByInterface, Ipv6NdCfg,
         IpSocksAuthMethod, IpSocksUsersByName, IpSshCfg, IpSshForwardingEnabled, IpSocksUsersCfg, Ipv6AddressByAddress,
@@ -122,12 +122,15 @@ mikrotik_model!(
         ssh(single = "ip/ssh"),
         ipv6_settings(single = "ipv6/settings"),
         mac_server(single = "tool/mac-server"),
+        neighbor_discovery(single = "ip/neighbor/discovery-settings"),
     ),
 );
 
 pub(crate) const CAPS_BRIDGE_NAME: &[u8; 11] = b"bridge-caps";
-/// The interface list `/tool mac-server` allows mac-telnet on ([`BaseDeviceDataTarget::setup_mac_server`]).
-pub(crate) const MAC_SERVER_LIST: &[u8; 10] = b"mac-server";
+/// The interface list of the ports to own devices and the free ports
+/// ([`BaseDeviceDataTarget::setup_maintenance_ports`]): `/tool mac-server` allows mac-telnet
+/// there, and the device discovers its neighbors there (`/ip/neighbor`).
+pub(crate) const MAINTENANCE_LIST: &[u8; 11] = b"maintenance";
 
 #[derive(Error, Debug)]
 pub enum SetupError {
@@ -299,17 +302,22 @@ impl BaseDeviceDataTarget {
             // are invalid and OSPFv3 never comes up, while the diff of them looks applied
             ipv_6_settings: Default::default(),
             // the list stays empty without ports to own devices: no mac-telnet at all then,
-            // rather than on every port (`setup_mac_server`)
+            // rather than on every port (`setup_maintenance_ports`)
             mac_server: ToolMacServerCfg {
-                allowed_interface_list: MAC_SERVER_LIST.into(),
+                allowed_interface_list: MAINTENANCE_LIST.into(),
+            },
+            // not on customer ports; left alone it names the factory list `LAN` an apply
+            // removes, which turns discovery off (`*2000011`)
+            neighbor_discovery: IpNeighborDiscoverySettingsCfg {
+                discover_interface_list: MAINTENANCE_LIST.into(),
             },
             interface_list: [(
-                MAC_SERVER_LIST.into(),
+                MAINTENANCE_LIST.into(),
                 InterfaceListByName(InterfaceListCfg {
-                    comment: Some(b"ports to own devices and free ports: mac-telnet for remote maintenance".into()),
+                    comment: Some(b"ports to own devices and free ports: mac-telnet and neighbor discovery".into()),
                     exclude: Default::default(),
                     include: Default::default(),
-                    name: MAC_SERVER_LIST.into(),
+                    name: MAINTENANCE_LIST.into(),
                 }),
             )]
             .into(),
@@ -625,7 +633,7 @@ impl BaseDeviceDataTarget {
         self.setup_dns(device);
         self.setup_ospf(device, &l2);
         self.setup_l2(device, &l2, None)?;
-        self.setup_mac_server(device, &l2);
+        self.setup_maintenance_ports(device, &l2);
         self.setup_mtu(device)?;
         self.setup_poe(device)?;
         Ok(l2)
@@ -641,7 +649,7 @@ impl BaseDeviceDataTarget {
     /// Customer ports stay out, also those in the same bridge: the list takes the port itself,
     /// which RouterOS honors for a bridge port too (CHR 7.24.5). Runs after `setup_l2`, which
     /// names the ports.
-    fn setup_mac_server<N: NameGenerator>(&mut self, device: &DeviceAccess, l2: &L2Setup<N>) {
+    fn setup_maintenance_ports<N: NameGenerator>(&mut self, device: &DeviceAccess, l2: &L2Setup<N>) {
         let mut members = BTreeSet::new();
         let mut used = HashSet::new();
         for port in device.interfaces() {
@@ -672,12 +680,12 @@ impl BaseDeviceDataTarget {
         }
         for name in members {
             self.interface_list_member.insert(
-                (name.clone(), MAC_SERVER_LIST.into()),
+                (name.clone(), MAINTENANCE_LIST.into()),
                 InterfaceListMemberCfg {
                     comment: None,
                     disabled: false,
                     interface: name,
-                    list: MAC_SERVER_LIST.into(),
+                    list: MAINTENANCE_LIST.into(),
                 },
             );
         }

@@ -147,5 +147,6 @@ pub(crate) fn empty_current(target: &BaseDeviceDataTarget) -> BaseDeviceDataCurr
         ssh: Default::default(),
         ipv_6_settings: Default::default(),
         mac_server: Default::default(),
+        neighbor_discovery: Default::default(),
     }
 }

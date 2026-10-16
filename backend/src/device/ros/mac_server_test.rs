@@ -1,7 +1,7 @@
 //! mac-telnet on the ports to own devices and the free ones, not towards customers
-//! (`BaseDeviceDataTarget::setup_mac_server`).
+//! (`BaseDeviceDataTarget::setup_maintenance_ports`).
 use crate::{
-    device::ros::{BaseDeviceDataTarget, MAC_SERVER_LIST, l2::KeepNameGenerator},
+    device::ros::{BaseDeviceDataTarget, MAINTENANCE_LIST, l2::KeepNameGenerator},
     topology::{
         Cable, CablePort, Device, Interface, PhysicalPortId, PortType, TopologyHolder,
         test::TopologyBuilder,
@@ -76,8 +76,9 @@ async fn allows_mac_telnet_towards_own_devices_and_on_free_ports() {
     let mut target = BaseDeviceDataTarget::new(b"CRS326-24G-2S+").unwrap();
     target.generate_from(&core, KeepNameGenerator).unwrap();
 
-    let list = AsciiString::from(MAC_SERVER_LIST);
+    let list = AsciiString::from(MAINTENANCE_LIST);
     assert_eq!(target.mac_server.allowed_interface_list, list);
+    assert_eq!(target.neighbor_discovery.discover_interface_list, list);
     assert!(target.interface_list.contains_key(&list));
     let members: Vec<_> = target
         .interface_list_member

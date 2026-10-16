@@ -135,8 +135,10 @@ Gelesen auf vier konfigurierten Lab-Geräten:
 Dort kam mac-telnet vermutlich nicht durch. Das Anwenden entfernt jede Interface-Liste, die
 nicht aus NetBox kommt, also auch die Werks-Liste `LAN`.
 
-*Umgesetzt* (`BaseDeviceDataTarget::setup_mac_server`): Die generierte Konfiguration hat
-eine Interface-Liste `mac-server` und setzt `/tool mac-server allowed-interface-list=mac-server`.
+*Umgesetzt* (`BaseDeviceDataTarget::setup_maintenance_ports`): Die generierte Konfiguration hat
+eine Interface-Liste `maintenance` (früher `mac-server`) und setzt `/tool mac-server
+allowed-interface-list=maintenance`, ebenso die Neighbor Discovery (`/ip/neighbor
+discovery-settings discover-interface-list`, die sonst aus demselben Grund auf `*2000011` stand).
 In der Liste stehen:
 - Ports mit Kabel zu einem Gerät mit RouterOS in NetBox;
 - Radios einer Funkstrecke (Wireless Link);

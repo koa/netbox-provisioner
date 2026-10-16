@@ -80,7 +80,7 @@ the generated config gives them: match by NetBox's (default) name or the short n
 first `-` (`s01-core` is `sfp-sfpplus1`), never by MAC. A cable to a radio bridge device can't be
 seen (the router on the other side shows up instead). A `discover-interface-list` naming a list
 that doesn't exist (`*2000011`, the factory `LAN` an apply removed) means discovery is off; the
-generator doesn't set `/ip/neighbor/discovery-settings` yet.
+generator sets it to `maintenance` now.
 
 `backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR
 instances under QEMU (software emulation, no KVM needed) and proves actual distributed network
@@ -316,15 +316,17 @@ powering something: `/interface/ethernet/poe/monitor` reports `poe-out-status=po
 `waiting-for-load`; read only where a port would lose PoE, and when it can't be read every such
 port warns), and the device page shows them above the changes.
 
-mac-telnet for remote maintenance: the generated config has an interface list `mac-server`
-and sets `/tool mac-server allowed-interface-list` to it (`setup_mac_server`, after
+mac-telnet for remote maintenance: the generated config has an interface list `maintenance`
+(it was `mac-server`) and sets `/tool mac-server allowed-interface-list` and `/ip/neighbor
+discovery-settings discover-interface-list` to it (`setup_maintenance_ports`, after
 `setup_l2`, which names the ports). The list holds the ports cabled to a device with RouterOS
 in NetBox, the radios of a wireless link, and every free Ethernet port: not in NetBox, or there
 without cable, address, VLAN and bridge, so a notebook on a free port on site can get in. It
 takes the port itself, which RouterOS honors for a bridge port too (CHR 7.24.5), so customer
 ports in the same bridge stay out. Interface lists are modeled whole: an apply removes every
 list NetBox doesn't give, the factory `LAN` included. That is what left lab devices with
-`allowed-interface-list=*2000011` before.
+`allowed-interface-list=*2000011` before, and `discover-interface-list=*2000011` (discovery
+off) until the generator set it too.
 
 The device mode (`/system/device-mode`, RouterOS 7.17+) locks features the provisioner needs
 (`device::device_mode::wanted`: `scheduler` for the apply fallback, `socks` on the management

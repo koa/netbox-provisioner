@@ -132,7 +132,8 @@ Was dabei gelernt wurde:
 - Im Lab hatten `lab-ap1`, `lab-sxt-a` und `lab-sxt-b` `discover-interface-list=*2000011`: Die
   Discovery verweist auf eine Interface-Liste, die ein Apply entfernt hat (die Factory-Liste
   `LAN`), und ist damit aus. Das meldet der Befund als eigenen Fehler statt lauter „sieht
-  niemanden“. Der Generator setzt `/ip/neighbor/discovery-settings` noch nicht.
+  niemanden“. Der Generator setzt sie jetzt auf die Interface-Liste `maintenance` (die Ports zu
+  eigenen Geräten und die freien Ports, dieselbe wie für mac-telnet), nicht auf Kunden-Ports.
 
 ## 2. Helfer
 

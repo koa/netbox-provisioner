@@ -386,12 +386,24 @@ async fn three_node_ospf_chain_apply_via_entry() {
     while let Some(r) = s.next().await {
         if let mikrotik_api::simple::SimpleResult::Sentence(row) = r {
             let field = |name| row.get(name).cloned().flatten().unwrap_or_default();
-            assert_eq!(field("list").as_ref(), "mac-server");
+            assert_eq!(field("list").as_ref(), "maintenance");
             members.push(field("interface").to_string());
         }
     }
     members.sort();
     assert_eq!(members, ["e01", "e04", "e05", "ether2", "ether3"]);
+    // neighbor discovery on the same list: without it the generated config left it naming
+    // the factory list `LAN` it removes (discovery off)
+    let mut s = a_simple
+        .send_simple_command(b"/ip/neighbor/discovery-settings/print".as_slice(), ())
+        .await;
+    let mut discover = None;
+    while let Some(r) = s.next().await {
+        if let mikrotik_api::simple::SimpleResult::Sentence(row) = r {
+            discover = row.get("discover-interface-list").cloned().flatten();
+        }
+    }
+    assert_eq!(discover.as_deref(), Some("maintenance"));
     assert!(
         mac_telnet_login(&nodes[&entry], &mac_of(nodes[&a].index, 1).to_string()).await,
         "no mac-telnet from entry to a over their cable"
