@@ -1,4 +1,7 @@
-use crate::{netbox::NetboxError, topology::fetch::build_topology};
+use crate::{
+    netbox::{NetboxError, fetch_topology::ResponseData},
+    topology::fetch::build_topology,
+};
 use access::device::DeviceAccess;
 use async_graphql::{Interface, SimpleObject, Union};
 use ipnet::IpNet;
@@ -99,9 +102,58 @@ pub struct Topology {
     ip_range_idx: HashMap<IpNet, Box<[IpRangeId]>>,
     /// `findings::collect`, computed when the topology is built (`Topology::with_findings`)
     findings: Box<[findings::Finding]>,
+    /// the NetBox response it is built from, which a helper's plan is tried on
+    /// (`helper::preview`); none in tests built from parts
+    source: Option<Source>,
+}
+
+/// The NetBox response a topology is built from: compared by identity and not printed, it is
+/// the whole of NetBox.
+#[derive(Clone)]
+pub struct Source(pub Arc<ResponseData>);
+impl PartialEq for Source {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for Source {}
+impl std::fmt::Debug for Source {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Source")
+    }
 }
 
 impl Topology {
+    /// The prefixes of `pool` for IPv6 or IPv4, in the order they are filled: ascending
+    /// (`docs/concepts/config-helper.md`, Pools).
+    pub(crate) fn pool_prefixes(&self, pool: PrefixPool, v6: bool) -> Vec<(IpPrefixId, IpNet)> {
+        let mut prefixes = self
+            .ip_prefixes
+            .iter()
+            .filter(|(_, prefix)| {
+                prefix.pool == Some(pool) && matches!(prefix.prefix, IpNet::V6(_)) == v6
+            })
+            .map(|(id, prefix)| (*id, prefix.prefix))
+            .collect::<Vec<_>>();
+        prefixes.sort_by_key(|(_, net)| (net.network(), net.prefix_len()));
+        prefixes
+    }
+    /// This topology built again from its NetBox response after `change` (the JSON of
+    /// `ResponseData`): what NetBox will be after a helper's plan. `None` for a topology not
+    /// built from a response (tests built from parts).
+    pub(crate) fn rebuilt_with(
+        &self,
+        change: impl FnOnce(&mut serde_json::Value),
+    ) -> Option<Result<Topology, serde_json::Error>> {
+        let source = self.source.as_ref()?;
+        Some((|| {
+            let mut json = serde_json::to_value(&*source.0)?;
+            change(&mut json);
+            let data: ResponseData = serde_json::from_value(json)?;
+            Ok(fetch::build_topology_from(data, Instant::now()))
+        })())
+    }
+
     /// Whether `device` is an AP of a Wireless LAN Group whose radios NetBox has as `wlanN`
     /// (`/interface/wireless`): such a radio can only be a CAP of the legacy CAPsMAN
     /// (`/caps-man`), which forwards the clients' traffic to the controller, so the AP needs

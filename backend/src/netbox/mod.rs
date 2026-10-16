@@ -6,15 +6,17 @@ use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use thiserror::Error;
 
+pub mod rest;
+
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "src/netbox/schema.graphqls",
     query_path = "src/netbox/fetch_topology.graphql",
-    response_derives = "Debug"
+    response_derives = "Debug, Clone, Serialize"
 )]
 pub struct FetchTopology;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct JSON {
     pub mikrotik_credentials: Option<Box<str>>,
     pub wlan_group: Option<u32>,
@@ -40,6 +42,12 @@ pub struct JSON {
 /// sent as a string, but also accepted as a plain number.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Decimal(pub f64);
+
+impl Serialize for Decimal {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_f64(self.0)
+    }
+}
 
 impl<'de> Deserialize<'de> for Decimal {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -81,6 +89,13 @@ pub enum NetboxError {
     InvalidHeaderValue(#[from] reqwest::header::InvalidHeaderValue),
     #[error("no data from netbox")]
     EmptyResult,
+    #[error("netbox refused, HTTP {status}: {body}")]
+    Rest {
+        status: reqwest::StatusCode,
+        body: Box<str>,
+    },
+    #[error("writing to netbox is disabled (allow_netbox_write, netbox_write_token)")]
+    WriteNotAllowed,
     #[error("unexpected answer from netbox, HTTP {status} {error}: {body}")]
     UnexpectedResponse {
         status: reqwest::StatusCode,

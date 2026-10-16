@@ -3,7 +3,8 @@
 Status: Schritt 1 (Befund „NetBox in sich“) umgesetzt (`topology/findings.rs`, Befunde oben auf der
 Site-Seite, Netz-Befunde auf der Site-Übersicht, Anzahl an den Karten), ohne die PoE-Prüfung, WLAN-Gruppen,
 Regionen und die gesammelten Generatorfehler. Von Schritt 2 („NetBox gegen Gerät“) die Nachbarn
-→ Kabel (`device/neighbors.rs`, „Nachbarn lesen“ auf der Site-Seite). Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
+→ Kabel (`device/neighbors.rs`, „Nachbarn lesen“ auf der Site-Seite). Schritt 3 mit dem Helfer
+„Loopback“ (`backend/src/helper/`, Karte „NetBox ergänzen“ auf der Geräteseite). Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
 [pending.md](../pending.md).
 
 ## Ausgangslage
@@ -153,9 +154,24 @@ prüft der Helfer nur die Namen) und `lo` (Typ Virtual). Dann direkt weiter zu �
 ### Loopback
 
 Nächste freie `/32` aus dem Loopback-Pool (siehe [Pools](#pools)), auf `lo`, als
-Primary IPv4, dazu eine `/128` aus dem IPv6-Loopback-Pool als Primary IPv6. NetBox vergibt
-freie Adressen selbst und atomar (`POST /api/ipam/prefixes/{id}/available-ips/`), zwei
-gleichzeitige Helfer bekommen also nicht dieselbe.
+Primary IPv4, dazu eine `/128` aus dem IPv6-Loopback-Pool als Primary IPv6. Was schon da ist,
+bleibt: ein `lo`, eine Adresse der IP-Version darauf, eine Primary IP, die diese Adresse ist.
+
+Umgesetzt: `POST …/available-ips/` legt die Adresse mit der Länge des Prefixes an (`/26`), nicht
+als `/32`. Der Plan liest deshalb die erste freie Adresse (`GET …/available-ips/?limit=1`) und
+legt sie beim Schreiben als `/32` bzw. `/128` an, nachdem er geprüft hat, dass sie noch frei ist.
+Hat sie inzwischen jemand, bricht er ab (siehe Gleichzeitige Änderungen).
+
+Frei in NetBox heisst nicht frei im Netz: Ein Gerät, das NetBox nicht kennt, kann die Adresse
+schon haben. Deshalb prüft der Plan jede neue Adresse gegen die Routen eines Routers der
+OSPF-Area, die alle dieselben kennen (`helper/routes.rs`, nur lesend): zuerst den
+Einstiegs-Router (`management_proxy.device`), sonst die Router mit den meisten OSPF-Interfaces,
+den ersten von dreien, der antwortet. Liegt die
+Adresse in einer Route, die spezifischer ist als der Pool-Prefix (eine /32 aus OSPF, ein
+Transfernetz), überspringt er sie und nimmt die nächste freie. Die übersprungene zeigt der Plan
+mit Route und Gateway an, damit sie in NetBox nachgetragen wird. Antwortet keiner, vergibt der
+Helfer keine Adresse. Der Schreib-Job rechnet den Plan neu und
+prüft damit noch einmal.
 
 ### Verbindung
 
@@ -289,9 +305,9 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
 
 ## Technik
 
-- **Schreiben über die REST-API.** NetBox' GraphQL kann nur lesen. Ein neues Modul
-  `backend/src/netbox/write.rs` (reqwest, wie die Abfrage) mit den paar Endpunkten, die die
-  Helfer brauchen: `dcim/devices`, `dcim/interfaces`, `dcim/cables`, `ipam/ip-addresses`,
+- **Schreiben über die REST-API.** NetBox' GraphQL kann nur lesen. Das Modul
+  `backend/src/netbox/rest.rs` (reqwest, wie die Abfrage) liest und schreibt allgemein unter
+  `api/`; die Helfer (`backend/src/helper/`) brauchen davon nach und nach: `dcim/devices`, `dcim/interfaces`, `dcim/cables`, `ipam/ip-addresses`,
   `ipam/prefixes/{id}/available-ips|available-prefixes`, `ipam/ip-ranges`,
   `wireless/wireless-links`, Tags.
 - **Eigene Freigabe.** `allow_netbox_write` (wie `allow_apply`) und ein eigenes Token
@@ -313,13 +329,26 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
   ist (erst Prefix, dann Adressen, dann Primary IP). Er merkt sich, was angelegt wurde und welche
   Werte vorher galten. Bricht er ab, zeigt das UI, was geschrieben ist, und bietet „Rückgängig“
   an: Angelegtes löschen, alte Werte zurück. Läuft als Job mit Events, wie Anwenden.
+  Umgesetzt: Was geschrieben ist, steht in den Events des Jobs (`NetboxWritten`, mit den alten
+  Werten); „Rückgängig“ ist ein eigener Job, der diese Events rückwärts abarbeitet. Die Geräteseite
+  findet den letzten Schreib-Job wieder, solange der Server ihn kennt: nach einem Neustart des
+  Provisioners geht „Rückgängig“ nicht mehr, dann bleibt NetBox' Changelog.
 - **Gleichzeitige Änderungen.** Vor dem Schreiben vergleicht der Plan `last_updated` der Objekte,
   die er ändert, mit dem Stand der Vorschau. Hat jemand inzwischen in NetBox geändert, bricht er
   ab, statt zu überschreiben.
+  Umgesetzt anders: Statt `last_updated` rechnet der Schreib-Job den Plan neu und vergleicht ihn mit
+  dem gezeigten (`fingerprint`). Vor jedem Schritt prüft er dann den Wert, auf dem der Schritt
+  aufbaut: `lo` fehlt noch, die Adresse ist noch frei, die Primary IP ist noch die alte. Das
+  erkennt genau die Änderungen, die der Plan überschreiben würde, und nicht jede andere an
+  denselben Objekten.
 - **Danach neu laden.** Nach dem Schreiben lädt der Provisioner die Topologie neu. Die Geräteseite
   zeigt dann das neue Skript.
 - **Testen** gegen das Lab-NetBox (`local/lab/`): Jede Helfer-Aktion bekommt einen Test, der sie
   dort ausführt, die Vorschau mit dem Ergebnis vergleicht und alles wieder zurücknimmt.
+  Bisher: Die Vorschau prüft ein Test auf dem gespeicherten Export
+  (`helper::test::preview_has_what_the_plan_creates`). Der Loopback-Helfer ist im Lab von Hand
+  geprüft, mit einem Testgerät ohne `lo`: Schreiben und Rückgängig über die Oberfläche, dann
+  das Gerät gelöscht. Ein automatischer Lab-Test fehlt noch.
 
 ## Reihenfolge
 

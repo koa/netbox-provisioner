@@ -216,6 +216,8 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         JobKind::DEVICE_MODE => t::DEVICE_MODE,
         JobKind::REPARTITION => t::REPARTITION,
         JobKind::BOOT_PARTITION => t::BOOT_PARTITION,
+        JobKind::NETBOX_WRITE => t::NETBOX_WRITE,
+        JobKind::NETBOX_UNDO => t::NETBOX_UNDO,
         JobKind::Other(other) => other,
     };
     let events = || job.events.iter().map(|event| &event.event);
@@ -383,6 +385,17 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::UpdateFallbackDisarmed(disarmed) => e::update_fallback_disarmed(&disarmed.partition),
         Event::UpdateWithoutFallback(without) => e::update_without_fallback(without.partitions),
         Event::OspfNeighborsBack(back) => e::ospf_neighbors_back(&back.neighbors),
+        Event::NetboxWritten(written) => match &written.change {
+            None => e::netbox_created(&written.display, &written.path),
+            Some(change) => e::netbox_changed(
+                &written.display,
+                &change.field,
+                change.value.as_deref(),
+                change.previous.as_deref(),
+            ),
+        },
+        Event::NetboxUndone(undone) if undone.deleted => e::netbox_deleted(&undone.display),
+        Event::NetboxUndone(undone) => e::netbox_restored(&undone.display),
         Event::RepartitionStarted(started) => e::repartition_started(started.count, started.files),
         Event::Repartitioned(done) => e::repartitioned(
             &done

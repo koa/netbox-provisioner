@@ -89,6 +89,26 @@ seen (the router on the other side shows up instead). A `discover-interface-list
 that doesn't exist (`*2000011`, the factory `LAN` an apply removed) means discovery is off; the
 generator sets it to `maintenance` now.
 
+`helper/` holds the helpers that write to NetBox (config-helper concept, step 3; so far
+`helper::loopback`). A helper computes a `NetboxPlan` of steps (`PlanStep`: create interface,
+create address, set primary IP) from the topology plus REST reads (`netbox::rest::NetboxRest`;
+GraphQL can't list free addresses or write). A new address must also be unrouted:
+`helper::routes::Routes` reads `/ip/route` and `/ipv6/route` of one OSPF router (the management
+proxy's device, else the RouterOS devices with the most OSPF interfaces, first of three to
+answer) and skips a candidate inside a route more specific than its pool (undocumented in NetBox, but in
+use), listing it in `NetboxPlan.undocumented`; when no router answers, no address is handed out
+(`NoRouteCheck`). Its `preview` is the topology rebuilt from the
+NetBox response it was built from (`Topology.source`, `Topology::rebuilt_with`) with the plan
+applied to that JSON, created objects getting ids from `u32::MAX` down; `previewAccess` connects
+through the device as it is now (`AccessibleDevice::generating_for`) but generates from the
+preview, since the new primary IP may not be on the device yet. Writing (`writeNetboxPlan`) is a
+job: it recomputes the plan, refuses one whose `fingerprint` changed, checks before each step that
+what it builds on is unchanged (no `lo` yet, address free, primary IP as planned), and emits a
+`NetboxWritten` event per object with the old values; `undoNetboxWrite` replays those backwards
+(lost on a server restart). Every write carries `changelog_message` (`<plan description>
+(<user>)`); writing needs `allow_netbox_write` and `netbox_write_token` (`NetboxWritesAllowed`),
+the lab config sets both. The topology is fetched again after each write or undo.
+
 `backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR
 instances under QEMU (software emulation, no KVM needed) and proves actual distributed network
 behavior, not just that the generator's output parses. `--ignored` by default (`cargo test -p

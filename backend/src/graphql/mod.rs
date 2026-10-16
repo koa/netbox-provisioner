@@ -7,7 +7,9 @@ use crate::{
         power::PowerChain,
         update::{self, DeviceLink},
     },
+    context::UserInfo,
     graphql::scalars::ScalarMac,
+    helper::{self, Helper, NetboxPlan},
     job::{self, Job, JobKind},
     netbox,
     topology::{
@@ -67,6 +69,20 @@ impl QueryAuthenticated {
     async fn netbox_url(&self) -> String {
         netbox::web_url()
     }
+    /// Whether the helpers may write to NetBox (`allow_netbox_write` and
+    /// `netbox_write_token`); without it they show their plan only.
+    async fn allow_netbox_write(&self) -> bool {
+        CONFIG.allow_netbox_write && CONFIG.netbox_write_token.is_some()
+    }
+    /// What `helper` would write to NetBox for device `id`, with its preview.
+    async fn netbox_plan(&self, id: u32, helper: Helper) -> Result<NetboxPlan, ApiError> {
+        let device = self
+            .topology
+            .devices_by_id(DeviceId(id))
+            .await
+            .ok_or(Error::UnknownDevice(id))?;
+        Ok(helper.plan(&device).await?)
+    }
     async fn job(&self, id: u32) -> Option<Arc<Job>> {
         job::get(id)
     }
@@ -76,6 +92,13 @@ impl QueryAuthenticated {
         job::list(device_id.map(DeviceId))
     }
 }
+/// Fetches the topology after a write to NetBox, so the next page shows it.
+async fn refetch(topology: &TopologyHolder) {
+    if let Err(error) = topology.fetch().await {
+        log::error!("Cannot fetch the topology after writing to NetBox: {error}");
+    }
+}
+
 impl MutationAuthenticated {
     async fn device(&self, id: u32) -> Result<DeviceAccess, Error> {
         self.topology
@@ -98,8 +121,69 @@ impl Guard for WritesAllowed {
     }
 }
 
+/// Lets a helper's write to NetBox through only with `allow_netbox_write` and
+/// `netbox_write_token`. Who may use which helper (the permission classes of
+/// `docs/concepts/config-helper.md`) isn't told apart yet: every user of `auth_users` may.
+struct NetboxWritesAllowed;
+impl Guard for NetboxWritesAllowed {
+    async fn check(&self, _ctx: &Context<'_>) -> async_graphql::Result<()> {
+        if CONFIG.allow_netbox_write && CONFIG.netbox_write_token.is_some() {
+            Ok(())
+        } else {
+            Err(ApiError(Error::Netbox(netbox::NetboxError::WriteNotAllowed)).into())
+        }
+    }
+}
+
+/// Who asked, for NetBox' changelog: the name or email of the login.
+fn user_label(ctx: &Context<'_>) -> Box<str> {
+    ctx.data_opt::<UserInfo>()
+        .and_then(|user| user.name.clone().or_else(|| user.email.clone()))
+        .unwrap_or_else(|| "unknown user".into())
+        .into()
+}
+
 #[Object]
 impl MutationAuthenticated {
+    /// Writes `helper`'s plan for device `id` to NetBox, if it is still the one shown
+    /// (`NetboxPlan.fingerprint`). The job's `NetboxWritten` events tell what it wrote;
+    /// `undoNetboxWrite` takes that back. The topology is fetched again afterwards.
+    #[graphql(guard = "NetboxWritesAllowed")]
+    async fn write_netbox_plan(
+        &self,
+        ctx: &Context<'_>,
+        id: u32,
+        helper: Helper,
+        fingerprint: String,
+    ) -> Result<Arc<Job>, ApiError> {
+        let device = self.device(id).await?;
+        let user = user_label(ctx);
+        let topology = self.topology.clone();
+        Ok(job::start(&device.clone(), JobKind::NetboxWrite, |log| async move {
+            let result = helper::write(helper, &device, &fingerprint, &user, &log).await;
+            refetch(&topology).await;
+            result
+        })?)
+    }
+    /// Takes back what the `NetboxWrite` job `job_id` wrote, the last first.
+    #[graphql(guard = "NetboxWritesAllowed")]
+    async fn undo_netbox_write(&self, ctx: &Context<'_>, job_id: u32) -> Result<Arc<Job>, ApiError> {
+        let written = job::get(job_id)
+            .filter(|job| job.job_kind() == JobKind::NetboxWrite && !job.is_running())
+            .ok_or(Error::UnknownJob(job_id))?;
+        let objects = written.netbox_written();
+        if objects.is_empty() {
+            return Err(Error::NothingToUndo(job_id).into());
+        }
+        let device = self.device(written.job_device().0).await?;
+        let user = user_label(ctx);
+        let topology = self.topology.clone();
+        Ok(job::start(&device, JobKind::NetboxUndo, |log| async move {
+            let result = helper::undo(job_id, &objects, &user, &log).await;
+            refetch(&topology).await;
+            result
+        })?)
+    }
     /// Starts the initial setup over mac-telnet from a neighbor along
     /// `DeviceAccess.bootstrapPlan`, for a device that can't be reached over IP yet
     /// (`allow_apply` must be set). `mac` is the physical device that gets this NetBox

@@ -154,6 +154,31 @@ pub mod error {
             "UNKNOWN_JOB" => format!("Auftrag {} gibt es nicht (mehr)", p("id")),
             "CANCELLED" => "Abgebrochen".into(),
             "PING" => format!("Ping fehlgeschlagen: {}", p("cause")),
+            "NETBOX_WRITE_NOT_ALLOWED" => "Schreiben in NetBox ist gesperrt (allow_netbox_write, \
+                netbox_write_token in der config.yaml)"
+                .into(),
+            "NETBOX" => format!("NetBox: {}", p("cause")),
+            "PLAN_OUTDATED" => "NetBox hat sich seit der Vorschau geändert: bitte den Plan neu \
+                ansehen"
+                .into(),
+            "NETBOX_CHANGED" => format!(
+                "NetBox hat sich seit dem Plan geändert ({}): nichts weiter geschrieben",
+                p("what")
+            ),
+            "NO_PREVIEW" | "PREVIEW" => {
+                format!("Vorschau nicht möglich: {}", problem.message)
+            }
+            "NO_FREE_ADDRESS" => format!(
+                "Im Pool {} ist keine IPv{}-Adresse mehr frei",
+                p("pool"),
+                p("version")
+            ),
+            "NO_ROUTE_CHECK" => format!(
+                "Keine Adresse vergeben: ob sie im Netz schon belegt ist, lässt sich nicht \
+                prüfen ({})",
+                p("reason")
+            ),
+            "NOTHING_TO_UNDO" => format!("Auftrag {} hat nichts in NetBox geschrieben", p("job")),
             "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
             "NO_PORTS" => format!(
                 "Das Board {} ist im Provisioner nicht beschrieben (hw_facts.rs): seine Ports sind unbekannt",
@@ -566,6 +591,8 @@ pub mod job {
     pub const DEVICE_MODE: &str = "Device-Mode-Änderung";
     pub const REPARTITION: &str = "Aufteilen des Flash";
     pub const BOOT_PARTITION: &str = "Start von einer anderen Partition";
+    pub const NETBOX_WRITE: &str = "Schreiben in NetBox";
+    pub const NETBOX_UNDO: &str = "Rückgängig in NetBox";
 
     pub const NOTHING_TO_APPLY: &str = "Nichts anzuwenden, das Gerät entspricht NetBox";
     pub const NOT_ALL_APPLIED: &str = "Nicht alles wurde angewendet";
@@ -763,6 +790,27 @@ pub mod job {
                 ),
             }
         }
+        pub fn netbox_created(display: &str, path: &str) -> String {
+            format!("In NetBox angelegt: {display} ({path})")
+        }
+        pub fn netbox_changed(
+            display: &str,
+            field: &str,
+            value: Option<&str>,
+            previous: Option<&str>,
+        ) -> String {
+            format!(
+                "In NetBox geändert: {display}, {field} {} (vorher {})",
+                value.unwrap_or("leer"),
+                previous.unwrap_or("leer")
+            )
+        }
+        pub fn netbox_deleted(display: &str) -> String {
+            format!("In NetBox gelöscht: {display}")
+        }
+        pub fn netbox_restored(display: &str) -> String {
+            format!("In NetBox zurückgesetzt: {display}")
+        }
         pub fn ospf_neighbors_back(neighbors: &[String]) -> String {
             format!("OSPF-Nachbarn wieder Full: {}", neighbors.join(", "))
         }
@@ -782,6 +830,69 @@ pub mod job {
             } else {
                 format!("Device-Mode geändert, eingeschaltet: {}", features.join(", "))
             }
+        }
+    }
+}
+
+/// The helpers that write to NetBox (`components::netbox_helper`).
+pub mod helper {
+    pub const TITLE: &str = "NetBox ergänzen";
+    pub const LOOPBACK: &str = "Loopback";
+    pub const LOOPBACK_HINT: &str = "Legt lo mit je einer Adresse aus den Loopback-Pools an und \
+        macht sie zur Primary IP (Router-ID und Verwaltungsadresse).";
+    pub const PREVIEW: &str = "Vorschau";
+    pub const PREVIEW_TITLE: &str = "Was danach Anwenden auf dem Gerät tun würde:";
+    pub const PREVIEW_NOTHING: &str = "Anwenden hätte danach nichts zu tun.";
+    pub const PREVIEW_UNREACHABLE: &str = "Das Gerät ist nicht erreichbar: keine Vorschau des \
+        Skripts.";
+    pub const FINDINGS_AFTER: &str = "Befunde danach:";
+    pub const NO_FINDINGS_AFTER: &str = "Danach keine Befunde mehr zum Gerät.";
+    pub const WRITE: &str = "In NetBox schreiben";
+    pub const UNDO: &str = "Rückgängig";
+    pub const LOCKED: &str = "Schreiben in NetBox gibt erst allow_netbox_write: true mit \
+        netbox_write_token in der config.yaml frei.";
+    pub const WRITTEN: &str = "Geschrieben. Das Gerät bekommt es erst mit Anwenden.";
+
+    /// a finding by its kind (`__typename`), short
+    pub fn finding_kind(kind: String) -> String {
+        match kind.as_str() {
+            "NoLoopback" => "kein lo".into(),
+            "NoPrimaryIpv4" => "keine Primary IPv4".into(),
+            "PrimaryIpv4NotOnLoopback" => "Primary IPv4 nicht auf lo".into(),
+            "AddressWithoutPrefix" => "Adresse ohne Prefix".into(),
+            "PortLikeName" => "Name wie ein Port".into(),
+            "VlanWithoutGroup" => "VLAN ohne Gruppe".into(),
+            "MtuMismatch" => "MTU verschieden".into(),
+            "OspfOnOneEnd" => "OSPF nur an einem Ende".into(),
+            "NoCommonSubnet" => "kein gemeinsames Netz".into(),
+            "AddressWithoutOspf" => "Adresse ohne OSPF".into(),
+            _ => kind,
+        }
+    }
+    pub fn findings_gone(gone: &[&String]) -> String {
+        let gone: Vec<&str> = gone.iter().map(|kind| kind.as_str()).collect();
+        format!("Erledigt: {}", gone.join(", "))
+    }
+    pub const UNDOCUMENTED: &str = "Belegt, aber nicht in NetBox: übersprungen, bitte dokumentieren";
+    pub fn checked_with(router: &str) -> String {
+        format!("Die neuen Adressen sind gegen die Routen von {router} geprüft: dort nicht belegt.")
+    }
+    pub fn undocumented(address: &str, route: &str, gateway: Option<&str>, router: &str) -> String {
+        match gateway {
+            Some(gateway) => format!("{address}: {router} hat die Route {route} über {gateway}"),
+            None => format!("{address}: {router} hat die Route {route}"),
+        }
+    }
+    pub fn create_interface(name: &str, kind: &str) -> String {
+        format!("Interface {name} ({kind}) anlegen")
+    }
+    pub fn create_address(address: &str, interface: &str, prefix: &str) -> String {
+        format!("Adresse {address} auf {interface} anlegen (aus {prefix})")
+    }
+    pub fn set_primary(version: &str, address: &str, before: Option<&str>) -> String {
+        match before {
+            Some(before) => format!("Primary {version} auf {address} setzen (vorher {before})"),
+            None => format!("Primary {version} auf {address} setzen"),
         }
     }
 }

@@ -51,6 +51,9 @@ impl AccessTopology for DeviceAccess {
 }
 
 impl DeviceAccess {
+    pub(crate) fn topology(&self) -> &Arc<Topology> {
+        &self.topology
+    }
     pub fn id(&self) -> DeviceId {
         self.id
     }

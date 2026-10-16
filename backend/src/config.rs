@@ -20,6 +20,12 @@ pub struct Settings {
 
     pub netbox_url: String,
     pub netbox_token: String,
+    /// Writing to NetBox (the helpers): off unless set, and only with `netbox_write_token`.
+    #[serde(default)]
+    pub allow_netbox_write: bool,
+    /// A NetBox token with write permission, used only by the helpers; `netbox_token` can
+    /// stay read-only.
+    pub netbox_write_token: Option<String>,
 
     pub mikrotik_credentials: HashMap<Box<str>, MikrotikCredentials>,
 

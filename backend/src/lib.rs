@@ -9,6 +9,7 @@ pub mod context;
 pub mod device;
 pub mod error_info;
 pub mod graphql;
+pub mod helper;
 pub mod job;
 pub mod netbox;
 pub mod topology;
@@ -112,6 +113,26 @@ pub enum Error {
     Panic(Box<str>),
     #[error("Ping: {0}")]
     Ping(#[from] surge_ping::SurgeError),
+    #[error("NetBox: {0}")]
+    Netbox(#[from] crate::netbox::NetboxError),
+    /// the plan written isn't the one shown: NetBox changed in between
+    #[error("The plan changed since it was shown")]
+    PlanOutdated,
+    /// what is not as the plan found it
+    #[error("NetBox changed since the plan: {0}")]
+    NetboxChanged(Box<str>),
+    #[error("No preview: the topology isn't built from a NetBox response")]
+    NoPreview,
+    #[error("Cannot compute the preview: {0}")]
+    Preview(Box<str>),
+    /// the pool (`loopback`, `transfer`) and the IP version
+    #[error("No free address in the {0} pool for IPv{1}")]
+    NoFreeAddress(&'static str, u8),
+    /// why the routes couldn't be read, without which no address is handed out
+    #[error("Cannot check which addresses the network routes: {0}")]
+    NoRouteCheck(Box<str>),
+    #[error("Job {0} wrote nothing to NetBox to take back")]
+    NothingToUndo(u32),
 }
 
 impl From<ResourceMutationError> for Error {

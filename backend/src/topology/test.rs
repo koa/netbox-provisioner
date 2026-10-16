@@ -259,6 +259,7 @@ impl TopologyBuilder {
                 .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
                 .collect(),
             findings: Box::default(),
+            source: None,
         }
         .with_findings()
     }

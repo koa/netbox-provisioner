@@ -1,0 +1,39 @@
+query NetboxPlan($id: Int!, $helper: Helper!){
+    allowNetboxWrite
+    netboxPlan(id: $id, helper: $helper){
+        fingerprint
+        checkedWith
+        undocumented{ address route gateway router }
+        steps{
+            __typename
+            ... on CreateInterface{ name kind }
+            ... on CreateAddress{ address interface prefix }
+            ... on SetPrimaryIp{ version address before }
+        }
+    }
+}
+query NetboxPlanPreview($id: Int!, $helper: Helper!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+    topology{
+        deviceById(id: $id){
+            findings{ kind{ __typename } }
+        }
+    }
+    netboxPlan(id: $id, helper: $helper){
+        fingerprint
+        preview{
+            findings{ kind{ __typename } }
+        }
+        previewAccess(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
+            generateCfg{ script }
+        }
+    }
+}
+mutation WriteNetboxPlan($id: Int!, $helper: Helper!, $fingerprint: String!){
+    writeNetboxPlan(id: $id, helper: $helper, fingerprint: $fingerprint){ id }
+}
+mutation UndoNetboxWrite($jobId: Int!){
+    undoNetboxWrite(jobId: $jobId){ id }
+}
+query HelperJobs($deviceId: Int!){
+    jobs(deviceId: $deviceId){ id kind state }
+}

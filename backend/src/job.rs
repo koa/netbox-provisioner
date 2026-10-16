@@ -18,6 +18,7 @@ use crate::{
         update_fallback,
     },
     graphql::scalars::ScalarDuration,
+    helper,
     topology::{DeviceId, access::device::DeviceAccess},
 };
 use async_graphql::{Enum, Object, SimpleObject, Union};
@@ -68,6 +69,8 @@ pub enum Event {
     UpdateFallbackDisarmed(update_fallback::UpdateFallbackDisarmed),
     UpdateWithoutFallback(update_fallback::UpdateWithoutFallback),
     OspfNeighborsBack(update_fallback::OspfNeighborsBack),
+    NetboxWritten(helper::NetboxWritten),
+    NetboxUndone(helper::NetboxUndone),
 }
 
 /// An event and when it happened, counted from the start of the job.
@@ -164,6 +167,10 @@ pub enum JobKind {
     Repartition,
     /// booting from another partition (`bootPartition`)
     BootPartition,
+    /// a helper's plan written to NetBox (`writeNetboxPlan`)
+    NetboxWrite,
+    /// what a `NetboxWrite` job wrote taken back (`undoNetboxWrite`)
+    NetboxUndo,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
@@ -206,6 +213,26 @@ fn first_id(started: SystemTime) -> u32 {
 }
 
 impl Job {
+    pub fn job_kind(&self) -> JobKind {
+        self.kind
+    }
+    pub fn job_device(&self) -> DeviceId {
+        self.device
+    }
+    pub fn is_running(&self) -> bool {
+        self.state() == JobState::Running
+    }
+    /// What the job wrote to NetBox (a `NetboxWrite` job), for taking it back.
+    pub fn netbox_written(&self) -> Vec<helper::NetboxWritten> {
+        self.log
+            .events()
+            .into_iter()
+            .filter_map(|event| match event {
+                Event::NetboxWritten(written) => Some(written),
+                _ => None,
+            })
+            .collect()
+    }
     fn state(&self) -> JobState {
         self.outcome.lock().expect("job outcome").0
     }

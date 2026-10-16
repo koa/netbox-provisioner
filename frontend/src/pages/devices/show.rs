@@ -2,6 +2,7 @@ use crate::{
     components::{
         adjust_target::{AdjustTarget, SelectedTarget},
         job::JobView,
+        netbox_helper::NetboxHelper,
     },
     error::{FrontendError, ServerProblem},
     i18n::{
@@ -611,6 +612,11 @@ impl Component for ShowDevice {
             {job}
             <div class="device-columns">
                 {device}
+                <NetboxHelper
+                    id={self.id}
+                    target={self.alternate_target.clone()}
+                    on_written={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}
+                />
                 <Card class="device-cfg">
                     <CardHeader><CardTitle>{t::CHANGES}</CardTitle></CardHeader>
                     <CardBody>

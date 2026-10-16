@@ -139,6 +139,20 @@ impl From<&Error> for ErrorInfo {
             Error::Cancelled => ("CANCELLED", vec![]),
             Error::Panic(message) => ("PANIC", vec![("message", message.to_string())]),
             Error::Ping(error) => ("PING", cause(error)),
+            Error::Netbox(crate::netbox::NetboxError::WriteNotAllowed) => {
+                ("NETBOX_WRITE_NOT_ALLOWED", vec![])
+            }
+            Error::Netbox(error) => ("NETBOX", cause(error)),
+            Error::PlanOutdated => ("PLAN_OUTDATED", vec![]),
+            Error::NetboxChanged(what) => ("NETBOX_CHANGED", vec![("what", what.to_string())]),
+            Error::NoPreview => ("NO_PREVIEW", vec![]),
+            Error::Preview(error) => ("PREVIEW", cause(error)),
+            Error::NoFreeAddress(pool, version) => (
+                "NO_FREE_ADDRESS",
+                vec![("pool", pool.to_string()), ("version", version.to_string())],
+            ),
+            Error::NoRouteCheck(reason) => ("NO_ROUTE_CHECK", vec![("reason", reason.to_string())]),
+            Error::NothingToUndo(job) => ("NOTHING_TO_UNDO", vec![("job", job.to_string())]),
         };
         info(code, params, error)
     }

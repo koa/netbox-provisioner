@@ -22,6 +22,7 @@ use log::warn;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     str::FromStr,
+    sync::Arc,
 };
 use tokio::time::Instant;
 
@@ -35,6 +36,7 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
 /// from `build_topology` so a stored response (`docs/netbox-response-example.json`)
 /// can be turned into a topology offline.
 pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> Topology {
+    let source = super::Source(Arc::new(data.clone()));
     let mut credentials_by_tenants = HashMap::<&str, &str>::new();
     for tenant in &data.tenant_list {
         if let Some(cred) = tenant.custom_field_data.mikrotik_credentials.as_ref() {
@@ -575,6 +577,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
 
     Topology {
         fetch_time,
+        source: Some(source),
         devices,
         sites: sites
             .into_iter()

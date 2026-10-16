@@ -70,6 +70,12 @@ impl PingResult {
 }
 
 impl AccessibleDevice {
+    /// The same connection, generating for `device` instead: the device as NetBox has it
+    /// after a helper's plan (`NetboxPlan.previewAccess`).
+    pub(crate) fn generating_for(mut self, device: DeviceAccess) -> Self {
+        self.device_config = device;
+        self
+    }
     pub async fn create_client(
         device_config: DeviceAccess,
         address: IpAddr,
@@ -133,7 +139,7 @@ fn resolve(credentials: &Credentials) -> Result<(&str, Option<&str>), Error> {
 }
 
 /// Logs in to the API of the device at `address` along `path`.
-async fn connect<D: ParsedMessage>(
+pub(crate) async fn connect<D: ParsedMessage>(
     address: IpAddr,
     path: &Path,
     credentials: &Credentials,
