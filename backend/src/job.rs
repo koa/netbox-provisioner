@@ -248,7 +248,20 @@ where
     info!("{}: job {} {kind:?} started", job.device_name, job.id);
     let running = job.clone();
     tokio::spawn(async move {
-        match work.await {
+        // a panic in the work ends the job as failed, instead of leaving it running forever
+        let result = tokio::spawn(work).await.unwrap_or_else(|join| {
+            if !join.is_panic() {
+                return Err(Error::Cancelled);
+            }
+            let panic = join.into_panic();
+            let message = panic
+                .downcast_ref::<&str>()
+                .map(|message| message.to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_default();
+            Err(Error::Panic(message.into()))
+        });
+        match result {
             Ok(()) => running.finish(JobState::Done, None),
             Err(Error::Cancelled) => running.finish(JobState::Cancelled, None),
             Err(error) => running.finish(JobState::Failed, Some(ErrorInfo::from(&error))),
@@ -386,5 +399,20 @@ mod tests {
 
         let done = start(&device, JobKind::Update, |_| async { Ok(()) }).unwrap();
         wait_for(done.id, JobState::Done).await;
+
+        // a bug in the work: failed with the panic's message, and the device is free again
+        let panicked = start(&device, JobKind::Apply, |_| async {
+            if true {
+                panic!("Send command failed");
+            }
+            Ok(())
+        })
+        .unwrap();
+        wait_for(panicked.id, JobState::Failed).await;
+        let error = panicked.outcome.lock().unwrap().1.clone().expect("error");
+        assert_eq!(error.code, "PANIC");
+        assert!(error.message.contains("Send command failed"), "{}", error.message);
+        let after = start(&device, JobKind::Update, |_| async { Ok(()) }).unwrap();
+        wait_for(after.id, JobState::Done).await;
     }
 }

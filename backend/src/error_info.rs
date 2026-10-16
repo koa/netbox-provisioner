@@ -137,6 +137,7 @@ impl From<&Error> for ErrorInfo {
             Error::Busy(device) => ("BUSY", vec![("device", device.to_string())]),
             Error::UnknownJob(id) => ("UNKNOWN_JOB", vec![("id", id.to_string())]),
             Error::Cancelled => ("CANCELLED", vec![]),
+            Error::Panic(message) => ("PANIC", vec![("message", message.to_string())]),
             Error::Ping(error) => ("PING", cause(error)),
         };
         info(code, params, error)

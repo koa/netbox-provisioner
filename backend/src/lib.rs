@@ -107,6 +107,9 @@ pub enum Error {
     UnknownJob(u32),
     #[error("Cancelled")]
     Cancelled,
+    /// a bug: the job's work panicked with this message
+    #[error("Internal error: {0}")]
+    Panic(Box<str>),
     #[error("Ping: {0}")]
     Ping(#[from] surge_ping::SurgeError),
 }

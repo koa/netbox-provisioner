@@ -122,6 +122,7 @@ pub mod error {
                 ),
             },
             "NOT_BACK_AFTER_REBOOT" => "Das Gerät ist nach dem Neustart nicht zurück".into(),
+            "PANIC" => format!("Interner Fehler im Provisioner (bitte melden): {}", p("message")),
             "UPDATE_ROLLED_BACK" => format!(
                 "Update zurückgenommen: Das Gerät war nach dem Update nicht erreichbar und läuft \
                  wieder mit RouterOS {} von {}",

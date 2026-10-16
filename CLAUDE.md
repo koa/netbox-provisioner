@@ -204,7 +204,10 @@ goes on in the background and reports typed events (`job::Event`, a GraphQL unio
 frontend words them in German, `i18n::job`, shown by `components/job.rs`). The frontend asks `job(id) { events(after)
 }` every second: the API is plain POST with the bearer token, a subscription would need the
 token over a websocket. A device runs one job at a time, the device page picks up a running one
-(`jobs(deviceId)`); jobs are kept in the process only. `cancelJob` sets a flag the work checks
+(`jobs(deviceId)`); jobs are kept in the process only. A panic in a job's work ends it as
+failed with `PANIC` and its message, rather than leaving it running forever (`job::start`).
+A command on an API connection that is gone answers `ConnectionClosed` (mikrotik-api; it
+used to panic in `send_command`). `cancelJob` sets a flag the work checks
 between steps (`Log::check`) and while it waits (`Log::unless_cancelled`), so a step that must
 not stop halfway (the upload with `/ip ssh` switched) completes first. The update downloads all
 packages of a step before the first upload, and removes the uploaded ones when it stops before
