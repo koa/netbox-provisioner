@@ -33,6 +33,7 @@ pub const COUNT: usize = 2;
 pub struct Partition {
     pub name: Box<str>,
     /// the RouterOS on it, e.g. `RouterOS v7.23.8 2026-10-08 09:46:16`; empty when none
+    /// (RouterOS reports that as `EMPTY` or nothing)
     pub version: Box<str>,
     pub size_mib: u64,
     /// the one the device boots from
@@ -70,7 +71,10 @@ fn partition(row: &Row) -> Partition {
     let flag = |name| field(row, name) == Some("true");
     Partition {
         name: field(row, "name").unwrap_or_default().into(),
-        version: field(row, "version").unwrap_or_default().into(),
+        version: field(row, "version")
+            .filter(|version| *version != "EMPTY")
+            .unwrap_or_default()
+            .into(),
         size_mib: field(row, "size").and_then(|s| s.parse().ok()).unwrap_or_default(),
         active: flag("active"),
         running: flag("running"),
@@ -300,5 +304,11 @@ mod tests {
         assert!(!can_split(&[part0.clone(), part0], true));
         // 16 MiB devices list none
         assert!(!can_split(&[], true));
+        // a partition without RouterOS, as a C52iG-5HaxD2HaxD on 7.23.8 lists it
+        let row = [("name", "part1"), ("version", "EMPTY"), ("size", "64")]
+            .into_iter()
+            .map(|(k, v)| (k.into(), Some(v.into())))
+            .collect();
+        assert_eq!(partition(&row).version.as_ref(), "");
     }
 }
