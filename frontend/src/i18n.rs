@@ -531,6 +531,14 @@ pub mod device {
                 configuration.unwrap_or("-")
             )
         }
+
+        pub fn legacy_radio_managed(radio: &str, expected: &str) -> String {
+            if radio == expected {
+                format!("{radio} wird von CAPsMAN verwaltet und lässt sich nicht ändern: es behält seine Einstellungen")
+            } else {
+                format!("{radio} wird von CAPsMAN verwaltet und lässt sich nicht ändern: es behält seinen Namen (NetBox: {expected}) und seine Einstellungen")
+            }
+        }
     }
 }
 

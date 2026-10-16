@@ -1,4 +1,4 @@
-use crate::device::ros::l2::{EndpointNameGenerator, L2Setup, NameGenerator};
+use crate::device::ros::l2::{EndpointNameGenerator, KeptNames, L2Setup, NameGenerator};
 use crate::device::ros::{
     CapsManDeviceDataCurrent, CapsManDeviceDataTarget, WifiDeviceDataCurrent,
     WifiDeviceDataTarget,
@@ -38,7 +38,7 @@ use mikrotik_model::{
     resource::{ResourceMutation, SingleResource, apply_mutations_via_script, collect_resource},
 };
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     time::{Duration, Instant},
 };
 
@@ -94,26 +94,54 @@ impl DeviceCfg {
     ) -> Result<(), SetupError> {
         self.base_target.set_name_and_loopback(device);
 
-        let l2 = L2Setup::new(device, name_generator)?;
+        // a legacy radio CAPsMAN manages keeps its name, NetBox's is in a warning
+        let mut name_generator = name_generator;
+        let kept = self
+            .wireless_current
+            .as_ref()
+            .map(WirelessDeviceDataCurrent::managed_radios)
+            .unwrap_or_default();
+        let expected = device
+            .interfaces()
+            .iter()
+            .filter_map(|interface| {
+                let default_name = AsciiString::from(interface.external_port()?.to_string());
+                kept.contains_key(&default_name).then(|| {
+                    let name = name_generator.generate_interface_name(interface).into();
+                    (default_name, name)
+                })
+            })
+            .collect::<HashMap<_, Box<str>>>();
+        let l2 = L2Setup::new(
+            device,
+            KeptNames {
+                inner: name_generator,
+                kept,
+            },
+        )?;
+        let mut warnings = Vec::new();
 
         self.base_target.setup_ip_addresses(&l2)?;
         self.base_target.setup_dns(device);
         self.base_target.setup_ospf(device, &l2);
         if let Some(wireless_target) = self.wireless_target.as_mut() {
             wireless_target.generate_from(device, &l2, self.wireless_current.as_ref())?;
+            if let Some(current) = &self.wireless_current {
+                warnings.extend(wireless_target.keep_managed_radios(current, &expected));
+            }
         }
         if let Some(w60g_target) = self.w60g_target.as_mut() {
             w60g_target.generate_from(device, &l2, self.w60g_current.as_ref())?;
         }
         if let Some(wifi_target) = self.wifi_target.as_mut() {
-            self.wifi_warnings = wifi_target.generate_from(
+            warnings.extend(wifi_target.generate_from(
                 device,
                 &l2,
                 self.wifi_current.as_ref(),
                 &self.capsman_certificates,
                 self.radio_package,
                 &self.bound_radios,
-            )?;
+            )?);
         }
         if let Some(capsman_target) = self.capsman_target.as_mut() {
             capsman_target.generate_from(device)?;
@@ -122,6 +150,7 @@ impl DeviceCfg {
         self.base_target.setup_maintenance_ports(device, &l2);
         self.base_target.setup_mtu(device)?;
         self.base_target.setup_poe(device)?;
+        self.wifi_warnings = warnings;
         Ok(())
     }
     /// [`Self::generate_from`] with the provisioner's own needs on top: the device the

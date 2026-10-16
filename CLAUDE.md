@@ -293,6 +293,11 @@ different configuration than NetBox's is a warning before applying (`RadioBound`
 configuration it uses (`datapath=`), a plain entry. A bound radio reports
 `configuration=capsman` also where no such entry is (cAP ax, 7.23.7), which RouterOS provides
 (`provided_by_routeros`, the sort's seeds besides `lo`, `main` and the firewall chains).
+A legacy radio (`wireless`) CAPsMAN manages refuses any change too (ap-klr-solar, 7.23.7:
+`interface managed by CAPsMAN`), and the API has no flag for it: one the enabled CAP lists
+(`WirelessDeviceDataCurrent::managed_radios`) keeps its name, which L2 uses for it
+(`l2::KeptNames`, so bridge port and CAP match), and its settings
+(`keep_managed_radios`); NetBox's name or other settings are a warning (`LegacyRadioManaged`).
 Moving to `wireless` leaves the `/interface/wifi` radios inactive under their names, so without a
 wifi package they get their default names back, and `/interface/wifi` mutations come before
 `/interface/wireless` ones (the sort keeps the order within a round). "Pakete anpassen" next to the

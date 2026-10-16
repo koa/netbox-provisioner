@@ -4,8 +4,9 @@ use crate::{
     device::ros::{
         CapsManDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
         hw_facts::RadioPackage,
-        l2::{KeepNameGenerator, L2Port, L2Setup},
+        l2::{EndpointNameGenerator, KeepNameGenerator, KeptNames, L2Port, L2Setup, NameGenerator},
         needed_radio_package,
+        warning::{ApplyWarning, LegacyRadioManaged},
     },
     topology::{
         Device, Interface, IpAddressData, PhysicalPortId, TopologyHolder, VlanData,
@@ -16,10 +17,13 @@ use crate::{
 use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
-    model::{CapsAuthenticationTypes, CapsManDatapathVlanMode},
+    model::{CapsAuthenticationTypes, CapsManDatapathVlanMode, InterfaceWirelessByDefaultName},
     value::HasNone,
 };
-use std::net::{IpAddr, Ipv4Addr};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr},
+};
 
 /// `(controller, legacy CAP, wifi CAP)`
 async fn wlan_group() -> (DeviceAccess, DeviceAccess, DeviceAccess) {
@@ -232,4 +236,59 @@ async fn controller_runs_the_legacy_capsman() {
     assert_eq!(datapath.local_forwarding, Some(true));
     let provisioning = target.provisioning.values().next().unwrap();
     assert_eq!(provisioning.master_configuration, name);
+}
+
+/// ap-klr-solar: CAPsMAN manages the radio, still named `wlan1`; RouterOS refuses to rename
+/// it ("interface managed by CAPsMAN"), so it keeps its name and settings everywhere (CAP,
+/// bridge), and NetBox's name is a warning.
+#[tokio::test]
+async fn managed_legacy_radio_keeps_its_name() {
+    let (_, legacy_cap, _) = wlan_group().await;
+    let wlan1 = AsciiString::from("wlan1");
+    let mut target = WirelessDeviceDataTarget::new(b"SXT G-5HPacD");
+    let mut data = target.wireless[&Some(wlan1.clone())].clone();
+    data.name = wlan1.clone();
+    data.mtu = Some(1500);
+    let mut current = WirelessDeviceDataCurrent {
+        wireless_cap: Default::default(),
+        wireless: Box::new([InterfaceWirelessByDefaultName {
+            default_name: Some(wlan1.clone()),
+            data: data.clone(),
+        }]),
+    };
+    current.wireless_cap.enabled = true;
+    current.wireless_cap.interfaces = [wlan1.clone()].into();
+
+    let kept = current.managed_radios();
+    assert_eq!(kept, HashMap::from([(wlan1.clone(), wlan1.clone())]));
+    let mut names = EndpointNameGenerator;
+    let interface = legacy_cap
+        .interfaces()
+        .iter()
+        .find(|i| i.external_port() == Some(PhysicalPortId::Wlan(1)))
+        .unwrap()
+        .clone();
+    let netbox_name: Box<str> = names.generate_interface_name(&interface).into();
+    assert_ne!(&*netbox_name, "wlan1");
+    let setup = L2Setup::new(&legacy_cap, KeptNames { inner: names, kept }).unwrap();
+    if let Some((name, _)) = setup.placement_of_port(PhysicalPortId::Wlan(1)) {
+        assert_eq!(name, &wlan1);
+    }
+    target
+        .generate_from(&legacy_cap, &setup, Some(&current))
+        .unwrap();
+    let warnings = target.keep_managed_radios(
+        &current,
+        &HashMap::from([(wlan1.clone(), netbox_name.clone())]),
+    );
+
+    assert_eq!(target.wireless[&Some(wlan1.clone())], data);
+    assert_eq!(target.wireless_cap.interfaces, [wlan1.clone()].into());
+    assert_eq!(
+        warnings,
+        [ApplyWarning::LegacyRadioManaged(LegacyRadioManaged {
+            radio: "wlan1".into(),
+            expected: netbox_name,
+        })]
+    );
 }

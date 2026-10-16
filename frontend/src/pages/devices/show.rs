@@ -936,5 +936,8 @@ fn describe_warning(warning: &Warning) -> String {
         Warning::RadioBound(bound) => {
             t::warning::radio_bound(&bound.radio, bound.configuration.as_deref(), &bound.expected)
         }
+        Warning::LegacyRadioManaged(managed) => {
+            t::warning::legacy_radio_managed(&managed.radio, &managed.expected)
+        }
     }
 }

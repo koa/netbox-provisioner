@@ -171,6 +171,39 @@ impl NameGenerator for KeepNameGenerator {
         "bridge".into()
     }
 }
+/// `inner`, but a port in `kept` (by its default name) keeps the name it has on the device: a
+/// legacy radio CAPsMAN manages can't be renamed (`WirelessDeviceDataCurrent::managed_radios`).
+pub struct KeptNames<N> {
+    pub inner: N,
+    pub kept: HashMap<AsciiString, AsciiString>,
+}
+impl<N: NameGenerator> NameGenerator for KeptNames<N> {
+    fn generate_interface_name<'s>(&mut self, interface: &'s InterfaceAccess) -> Cow<'s, str> {
+        let kept = interface
+            .external_port()
+            .and_then(|port| self.kept.get(&AsciiString::from(port.to_string())));
+        match kept {
+            Some(name) => name.to_string().into(),
+            None => self.inner.generate_interface_name(interface),
+        }
+    }
+    fn generate_vxlan_name<'s>(&mut self, vxlan: &'s VxlanAccess) -> Cow<'s, str> {
+        self.inner.generate_vxlan_name(vxlan)
+    }
+    fn generate_vlan_name<'s>(
+        &mut self,
+        vlan: Option<&'s VlanAccess>,
+        vlan_id: u16,
+    ) -> Cow<'s, str> {
+        self.inner.generate_vlan_name(vlan, vlan_id)
+    }
+    fn generate_main_bridge<'s>(
+        &mut self,
+        root_device: Option<&'s InterfaceAccess>,
+    ) -> Cow<'s, str> {
+        self.inner.generate_main_bridge(root_device)
+    }
+}
 #[derive(Debug, Copy, Clone)]
 pub struct EndpointNameGenerator;
 
