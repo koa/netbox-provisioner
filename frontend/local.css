@@ -192,3 +192,80 @@ ul.job-events {
         overflow-y: auto;
     }
 }
+
+/* Device page (pages/devices/show.rs): head, job, then device and configuration side by side
+   where there is room, one below the other on phones. */
+div.device-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-t--global--spacer--md);
+
+    & dl.device-overview {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        column-gap: var(--pf-t--global--spacer--md);
+        row-gap: var(--pf-t--global--spacer--sm);
+        margin: 0;
+
+        & > dt {
+            font-weight: var(--pf-t--global--font--weight--body--bold);
+        }
+        & > dd {
+            margin: 0;
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+    }
+
+    /* the script scrolls in its box, never the page */
+    & .pf-v6-c-code-block__content {
+        overflow-x: auto;
+    }
+    & .pf-v6-c-code-block__pre {
+        white-space: pre;
+    }
+    & .device-cfg .pf-v6-c-card__body > .pf-v6-c-button {
+        margin-block-start: var(--pf-t--global--spacer--md);
+    }
+    /* "Ändern" next to the access, on its line */
+    & .device-head dd > .pf-v6-c-button.pf-m-link {
+        padding: 0;
+        vertical-align: baseline;
+        margin-inline-start: var(--pf-t--global--spacer--sm);
+    }
+    /* the form for another address or other credentials (components/adjust_target.rs) */
+    & .pf-v6-c-form {
+        max-width: 40rem;
+        margin-block-start: var(--pf-t--global--spacer--md);
+    }
+}
+
+div.device-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--pf-t--global--spacer--md);
+}
+
+@media screen and (min-width: 72rem) {
+    div.device-columns {
+        grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+        align-items: start;
+
+        /* without the device card (unreachable) the configuration takes the whole width */
+        & > :only-child {
+            grid-column: 1 / -1;
+        }
+    }
+}
+
+/* phones: a term above its value */
+@media screen and (max-width: calc(36rem - 1px)) {
+    div.device-page dl.device-overview {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: 0;
+
+        & > dd {
+            margin-block-end: var(--pf-t--global--spacer--sm);
+        }
+    }
+}

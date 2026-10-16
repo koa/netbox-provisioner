@@ -20,8 +20,8 @@ use crate::{
     },
 };
 use patternfly_yew::prelude::{
-    Alert, AlertType, Button, ButtonVariant, CodeBlock, CodeBlockCode, ExpandableSection,
-    SimpleSelect, Spinner, SpinnerSize, TextInput,
+    Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
+    CodeBlockCode, SimpleSelect, Spinner, SpinnerSize, TextInput,
 };
 use yew::{Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
 
@@ -47,6 +47,9 @@ pub struct ShowDevice {
     confirm_repartition: bool,
     /// the partition to boot from, asked before
     confirm_boot: Option<String>,
+    /// the form for another address or other credentials is open (in the head; on an
+    /// unreachable device it is always shown, in the warning)
+    show_target: bool,
 }
 type Candidate =
     bootstrap_candidates::BootstrapCandidatesTopologyDeviceByIdBootstrapPlanDiscovered;
@@ -108,6 +111,8 @@ pub enum ShowDeviceMessage {
     /// ask before booting from a partition (`Some`), or not anymore
     ConfirmBoot(Option<String>),
     BootPartition(String),
+    /// open or close the form for another address or other credentials
+    ShowTarget(bool),
     JobStarted(Result<i64, FrontendError>),
     JobFinished,
 }
@@ -131,6 +136,7 @@ impl Component for ShowDevice {
             confirm_device_mode: false,
             confirm_repartition: false,
             confirm_boot: None,
+            show_target: false,
         }
     }
 
@@ -219,6 +225,10 @@ impl Component for ShowDevice {
                 boot_from(ctx.link().clone(), self.id, partition, self.alternate_target.clone());
                 true
             }
+            ShowDeviceMessage::ShowTarget(show) => {
+                self.show_target = show;
+                true
+            }
             ShowDeviceMessage::JobStarted(result) => {
                 match result {
                     Ok(id) => {
@@ -265,6 +275,14 @@ impl Component for ShowDevice {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let error = self.error.as_ref().map(|e| e.to_html());
+        let job = self.job.map(|id| html! {
+            <JobView key={id} id={id} on_finished={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}/>
+        });
+        // a job started before the overview is there (it reloads after each job)
+        let job_fallback = job.clone();
+        let target_form = html! {
+            <AdjustTarget onchange={ctx.link().callback(ShowDeviceMessage::AdjustTarget)} value={self.alternate_target.clone()} />
+        };
         let data = self.data.as_ref().map(|data| {
             // a job runs, or writing is locked
             let running = self.job_running || !data.allow_apply;
@@ -527,8 +545,9 @@ impl Component for ShowDevice {
                     (None, None) => html!(),
                 };
                 html!(<Alert inline=true title={t::UNREACHABLE} r#type={AlertType::Warning}>
-                    <p>{t::UNREACHABLE_HINT}</p>
                     {setup}
+                    <p>{t::UNREACHABLE_HINT}</p>
+                    {target_form.clone()}
                 </Alert>)
             } else if !generated {
                 html!(<Alert inline=true title={t::NOT_GENERATED} r#type={AlertType::Warning}>
@@ -544,38 +563,81 @@ impl Component for ShowDevice {
                     <CodeBlock><CodeBlockCode>{ cfg_update }</CodeBlockCode></CodeBlock>
                 </>}
             };
+            let reachable = data.access.is_some();
+            let head = html! {
+                <Card class="device-head">
+                    <CardHeader><CardTitle>{ data.configured_name.as_ref() }</CardTitle></CardHeader>
+                    <CardBody>
+                        <dl class="device-overview">
+                            if reachable {
+                                <dt>{t::BOARD}</dt><dd>{ board }</dd>
+                            }
+                            <dt>{target::ACCESS}</dt><dd>
+                                { target::describe(&self.alternate_target) }
+                                if reachable {
+                                    {" "}
+                                    <Button
+                                        variant={ButtonVariant::Link}
+                                        label={if self.show_target { target::HIDE } else { target::SHOW }}
+                                        onclick={ctx.link().callback({
+                                            let show = !self.show_target;
+                                            move |_| ShowDeviceMessage::ShowTarget(show)
+                                        })}
+                                    />
+                                }
+                            </dd>
+                        </dl>
+                        if reachable && self.show_target {
+                            {target_form.clone()}
+                        }
+                    </CardBody>
+                </Card>
+            };
+            let device = (routeros.is_some() || device_mode.is_some() || partitions.is_some()).then(|| html! {
+                <Card class="device-state">
+                    <CardHeader><CardTitle>{t::DEVICE}</CardTitle></CardHeader>
+                    <CardBody>
+                        <dl class="device-overview">
+                            {routeros}
+                            {device_mode}
+                            {partitions}
+                        </dl>
+                    </CardBody>
+                </Card>
+            });
             html! {<>
             {locked}
-            <dl class="device-overview">
-            <dt>{t::NAME}</dt><dd>{ data.configured_name.as_ref() }</dd>
-            <dt>{t::BOARD}</dt><dd>{ board }</dd>
-            {routeros}
-            {device_mode}
-            {partitions}
-            <dt>{t::CHANGES}</dt><dd>
-                {update}
-                <Button
-                    variant={ButtonVariant::Primary}
-                    label={t::APPLY}
-                    disabled={nothing_to_do || running || update_running}
-                    onclick={ctx.link().callback(|_| ShowDeviceMessage::Apply)}
-                />
-            </dd>
-            </dl>
+            {head}
+            {job}
+            <div class="device-columns">
+                {device}
+                <Card class="device-cfg">
+                    <CardHeader><CardTitle>{t::CHANGES}</CardTitle></CardHeader>
+                    <CardBody>
+                        {update}
+                        if reachable {
+                            <Button
+                                variant={ButtonVariant::Primary}
+                                label={t::APPLY}
+                                disabled={nothing_to_do || running || update_running}
+                                onclick={ctx.link().callback(|_| ShowDeviceMessage::Apply)}
+                            />
+                        }
+                    </CardBody>
+                </Card>
+            </div>
             </>}
         });
-        let job = self.job.map(|id| html! {
-            <JobView key={id} id={id} on_finished={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}/>
-        });
         html! {
-            <>
-            <ExpandableSection toggle_text_hidden={target::SHOW} toggle_text_expanded={target::HIDE}>
-                <AdjustTarget onchange={ctx.link().callback(ShowDeviceMessage::AdjustTarget)} value={self.alternate_target.clone()} />
-            </ExpandableSection>
+            <div class="device-page">
             {error}
-            {job}
-            {data}
-            </>
+            if let Some(data) = data {
+                {data}
+            } else {
+                {job_fallback}
+                <Spinner size={SpinnerSize::Md}/>
+            }
+            </div>
         }
     }
 

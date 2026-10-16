@@ -237,8 +237,28 @@ pub mod pages {
 
 /// Choosing another address or other credentials (`components::adjust_target`).
 pub mod target {
-    pub const SHOW: &str = "Ziel ändern";
-    pub const HIDE: &str = "Zielauswahl ausblenden";
+    use crate::components::adjust_target::{SelectedCredentials, SelectedTarget};
+
+    pub const SHOW: &str = "Ändern";
+    pub const HIDE: &str = "Ausblenden";
+    pub const ACCESS: &str = "Zugang";
+
+    /// How the device is reached: as NetBox and the config say, or what was chosen by hand.
+    pub fn describe(target: &SelectedTarget) -> String {
+        let address = match target.address {
+            Some(address) => format!("Adresse von Hand: {address}"),
+            None => "Adresse aus NetBox".into(),
+        };
+        let credentials = match &target.credentials {
+            SelectedCredentials::Default => "Zugangsdaten des Tenants".into(),
+            SelectedCredentials::Named(name) => format!("Zugangsdaten von Hand: „{name}“"),
+            SelectedCredentials::Adhoc { username, .. } if username.is_empty() => {
+                "Passwort von Hand".into()
+            }
+            SelectedCredentials::Adhoc { username, .. } => format!("Benutzer von Hand: {username}"),
+        };
+        format!("{address}, {credentials}")
+    }
     pub const ADDRESS: &str = "IP-Adresse";
     pub const ADDRESS_PLACEHOLDER: &str = "Andere IP-Adresse";
     pub const INVALID_ADDRESS: &str = "Keine gültige IP-Adresse";
@@ -249,10 +269,11 @@ pub mod target {
 
 /// The device page (`pages::devices::show`).
 pub mod device {
-    pub const NAME: &str = "Name";
     pub const BOARD: &str = "Board";
     pub const ROUTEROS: &str = "RouterOS";
     pub const CHANGES: &str = "Änderungen";
+    /// the card with RouterOS, device mode and partitions
+    pub const DEVICE: &str = "Gerät";
     pub const APPLY: &str = "Anwenden";
 
     pub const LOCKED: &str = "Schreiben auf Geräte ist gesperrt";
@@ -306,8 +327,7 @@ pub mod device {
     }
 
     pub const UNREACHABLE: &str = "Gerät nicht erreichbar";
-    pub const UNREACHABLE_HINT: &str =
-        "Unter „Ziel ändern“ eine andere Adresse oder andere Zugangsdaten wählen.";
+    pub const UNREACHABLE_HINT: &str = "Mit einer anderen Adresse oder anderen Zugangsdaten versuchen:";
     pub const NOT_GENERATED: &str = "Keine Konfiguration erzeugt";
     pub const NOT_GENERATED_HINT: &str =
         "Der Fehler steht oben.";

@@ -1,8 +1,9 @@
 # Konzept: Geräteseite
 
-Status: Konzept, nicht umgesetzt. Offener Punkt „Device-Darstellung“ aus [pending.md](../pending.md).
+Status: Schritte 1 und 2 umgesetzt (Karten und Raster, „Ziel ändern“ als „Zugang“ im Kopf und in
+der Meldung „nicht erreichbar“), Schritt 3 offen. Offener Punkt „Device-Darstellung“ aus [pending.md](../pending.md).
 
-## Heute
+## Vorher
 
 `pages/devices/show.rs` zeigt von oben nach unten: „Ziel ändern“ (aufklappbar), Fehler, laufender
 Job, dann eine einzige Liste (`<dl>`) mit Name, Board, RouterOS samt Update-Knöpfen,
