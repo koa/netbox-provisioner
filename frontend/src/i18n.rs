@@ -373,6 +373,7 @@ pub mod neighbors {
     pub const AGAIN: &str = "Nochmals lesen";
     pub const IN_LINE: &str = "passt zu NetBox";
     pub const UNREACHABLE: &str = "nicht erreichbar";
+    pub const TAKE_OVER: &str = "Als Verbindung übernehmen";
 
     /// what the device sees: its entries, separated
     pub fn seen(entries: Vec<Html>) -> Html {

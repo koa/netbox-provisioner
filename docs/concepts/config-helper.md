@@ -5,7 +5,7 @@ Site-Seite, Netz-Befunde auf der Site-Übersicht, Anzahl an den Karten), ohne di
 Regionen und die gesammelten Generatorfehler. Von Schritt 2 („NetBox gegen Gerät“) die Nachbarn
 → Kabel (`device/neighbors.rs`, „Nachbarn lesen“ auf der Site-Seite). Schritt 3 mit dem Helfer
 „Loopback“ (`backend/src/helper/`, Karte „NetBox ergänzen“ auf der Geräteseite), von Schritt 4
-die Verbindung „Direkt“ (`/31`); „Kabel aus Befund übernehmen“ fehlt noch. Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
+die Verbindung „Direkt“ (`/31`) und „Kabel aus Befund übernehmen“. Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
 [pending.md](../pending.md).
 
 ## Ausgangslage
@@ -206,7 +206,11 @@ IPv4 ausserhalb des Netzes der Gegenseite. Das `/31` ist das erste aus `availabl
 Pools, in dem NetBox auch keine Adresse hat (ältere Verbindungen haben oft Adressen ohne Prefix)
 und das kein Router routet (wie bei Loopback). Das neue Prefix bekommt kein Tag, als
 Beschreibung die beiden Geräte. Ports und Geräte stehen in der Auswahl in NetBox' Reihenfolge
-(`topology/natural.rs`, wie NetBox' `naturalize_interface`). Im Lab geprüft: Plan, Vorschau, Schreiben und Rückgängig mit zwei
+(`topology/natural.rs`, wie NetBox' `naturalize_interface`). „Kabel aus Befund übernehmen“: Meldet
+der Vergleich mit den Geräten an einem Port, den NetBox hat, „kein Kabel“ und sieht das Gerät
+dort genau einen Nachbarn, dessen Port NetBox auch hat, öffnet „Als Verbindung übernehmen“ den
+Helfer darunter mit diesen beiden Enden. Im Lab geprüft (Kabel lab-np2 – lab-wap in NetBox
+vorübergehend gelöscht, nach dem Test wieder angelegt). Den Helfer selbst im Lab geprüft: Plan, Vorschau, Schreiben und Rückgängig mit zwei
 vorübergehenden Ports `sfp-sfpplus2` an lab-np1 und lab-np2 (danach gelöscht); das Lab-NetBox hat
 dafür den Transfer-Pool `192.168.101.0/24`.
 

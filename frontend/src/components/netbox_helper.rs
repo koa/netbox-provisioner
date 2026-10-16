@@ -34,6 +34,17 @@ pub struct NetboxHelperProps {
     /// NetBox was written to (or that was taken back): the page shows what changed
     #[prop_or_default]
     pub on_written: Callback<()>,
+    /// opens „Verbindung“ with these ends chosen (a cable from a finding)
+    #[prop_or_default]
+    pub link: Option<LinkPreset>,
+}
+
+/// The ends of a link to choose at the start: the device's port and the other end.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinkPreset {
+    pub port: u32,
+    pub peer_device: u32,
+    pub peer: u32,
 }
 
 /// What the preview shows: the device's finding kinds before and after the plan, and the
@@ -153,13 +164,27 @@ impl Component for NetboxHelper {
     type Properties = NetboxHelperProps;
 
     fn create(ctx: &Context<Self>) -> Self {
-        fetch_plan(ctx.link().clone(), ctx.props().id, HelperChoice::Loopback);
+        let (kind, link) = match &ctx.props().link {
+            None => (HelperKind::Loopback, LinkChoice::default()),
+            Some(preset) => (
+                HelperKind::Connection,
+                LinkChoice {
+                    port: Some(preset.port),
+                    peer_device: Some(preset.peer_device),
+                    peer: Some(preset.peer),
+                    mtu: String::new(),
+                },
+            ),
+        };
+        if kind == HelperKind::Connection {
+            fetch_ports(ctx.link().clone(), ctx.props().id);
+        }
         last_write(ctx.link().clone(), ctx.props().id);
-        Self {
-            kind: HelperKind::Loopback,
-            link: LinkChoice::default(),
+        let mut helper = Self {
+            kind,
+            link,
             ports: None,
-            planned: Some(HelperChoice::Loopback),
+            planned: None,
             plan: None,
             preview: None,
             preview_loading: false,
@@ -167,7 +192,9 @@ impl Component for NetboxHelper {
             job_running: false,
             written: None,
             error: None,
-        }
+        };
+        helper.choose(ctx);
+        helper
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {

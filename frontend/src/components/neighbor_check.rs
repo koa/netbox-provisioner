@@ -1,8 +1,13 @@
 //! What the devices of a site see at their ports against NetBox's cables there
 //! (`AccessibleDevice.neighborFindings`): read on a click, every device at once, each shown as
-//! it answers.
+//! it answers. A missing cable whose two ends NetBox has can be taken over: the helper
+//! „Verbindung“ opens below it with those ends.
 use crate::{
-    components::findings::{Level, level_label, netbox_link},
+    components::{
+        adjust_target::SelectedTarget,
+        findings::{Level, level_label, netbox_link},
+        netbox_helper::{LinkPreset, NetboxHelper},
+    },
     error::FrontendError,
     graphql::{
         authenticated::{
@@ -20,6 +25,7 @@ use crate::{
 use patternfly_yew::prelude::{
     Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize,
 };
+use std::collections::HashSet;
 use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
 
 #[derive(Debug, Clone, PartialEq, Properties)]
@@ -38,11 +44,14 @@ pub enum DeviceResult {
 pub struct NeighborCheck {
     /// per device of the props, once started
     results: Option<Vec<DeviceResult>>,
+    /// the findings (device, finding) whose cable is being taken over
+    taking_over: HashSet<(usize, usize)>,
 }
 
 pub enum NeighborCheckMsg {
     Start,
     Result(usize, DeviceResult),
+    TakeOver(usize, usize),
 }
 
 impl Component for NeighborCheck {
@@ -50,7 +59,10 @@ impl Component for NeighborCheck {
     type Properties = NeighborCheckProps;
 
     fn create(_ctx: &Context<Self>) -> Self {
-        Self { results: None }
+        Self {
+            results: None,
+            taking_over: HashSet::new(),
+        }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
@@ -58,6 +70,7 @@ impl Component for NeighborCheck {
             NeighborCheckMsg::Start => {
                 let devices = &ctx.props().devices;
                 self.results = Some(devices.iter().map(|_| DeviceResult::Pending).collect());
+                self.taking_over.clear();
                 for (index, (id, _)) in devices.iter().enumerate() {
                     let scope = ctx.link().clone();
                     let id = i64::from(*id);
@@ -80,6 +93,9 @@ impl Component for NeighborCheck {
                         scope.send_message(NeighborCheckMsg::Result(index, result));
                     });
                 }
+            }
+            NeighborCheckMsg::TakeOver(device, finding) => {
+                self.taking_over.insert((device, finding));
             }
             NeighborCheckMsg::Result(index, result) => {
                 if let Some(slot) = self.results.as_mut().and_then(|r| r.get_mut(index)) {
@@ -104,10 +120,10 @@ impl Component for NeighborCheck {
         let results = self.results.as_ref().map(|results| {
             html! {
                 <dl class="neighbor-results">
-                    { for ctx.props().devices.iter().zip(results).map(|((_, name), result)| html! {
+                    { for ctx.props().devices.iter().zip(results).enumerate().map(|(index, ((id, name), result))| html! {
                         <>
                             <dt>{name.to_string()}</dt>
-                            <dd>{device_result(result)}</dd>
+                            <dd>{self.device_result(ctx, index, *id, result)}</dd>
                         </>
                     }) }
                 </dl>
@@ -126,30 +142,71 @@ impl Component for NeighborCheck {
     }
 }
 
-fn device_result(result: &DeviceResult) -> Html {
-    match result {
-        DeviceResult::Pending => html!(<Spinner size={SpinnerSize::Sm}/>),
-        DeviceResult::Unreachable => html!({ t::UNREACHABLE }),
-        DeviceResult::Failed(error) => error.to_html(),
-        DeviceResult::Done { findings, .. } if findings.is_empty() => html!({ t::IN_LINE }),
-        DeviceResult::Done { netbox, findings } => {
-            let links = Links { netbox };
-            html! {
-                <ul class="finding-list">
-                    { for findings.iter().map(|finding| html! {
-                        <li>
-                            {level_label(match finding.severity {
-                                Severity::ERROR => Level::Error,
-                                Severity::WARNING => Level::Warning,
-                                Severity::HINT | Severity::Other(_) => Level::Hint,
-                            })}
-                            <span>{links.describe(&finding.kind)}</span>
-                        </li>
-                    }) }
-                </ul>
+impl NeighborCheck {
+    fn device_result(
+        &self,
+        ctx: &Context<Self>,
+        device: usize,
+        device_id: u32,
+        result: &DeviceResult,
+    ) -> Html {
+        match result {
+            DeviceResult::Pending => html!(<Spinner size={SpinnerSize::Sm}/>),
+            DeviceResult::Unreachable => html!({ t::UNREACHABLE }),
+            DeviceResult::Failed(error) => error.to_html(),
+            DeviceResult::Done { findings, .. } if findings.is_empty() => html!({ t::IN_LINE }),
+            DeviceResult::Done { netbox, findings } => {
+                let links = Links { netbox };
+                html! {
+                    <ul class="finding-list">
+                        { for findings.iter().enumerate().map(|(index, finding)| {
+                            let preset = link_preset(&finding.kind);
+                            let open = self.taking_over.contains(&(device, index));
+                            html! {
+                                <li>
+                                    {level_label(match finding.severity {
+                                        Severity::ERROR => Level::Error,
+                                        Severity::WARNING => Level::Warning,
+                                        Severity::HINT | Severity::Other(_) => Level::Hint,
+                                    })}
+                                    <span>{links.describe(&finding.kind)}</span>
+                                    if let Some(preset) = preset {
+                                        if open {
+                                            <NetboxHelper id={device_id} target={SelectedTarget::default()} link={preset}/>
+                                        } else {
+                                            {" "}
+                                            <Button
+                                                variant={ButtonVariant::Link}
+                                                onclick={ctx.link().callback(move |_| NeighborCheckMsg::TakeOver(device, index))}
+                                            >{t::TAKE_OVER}</Button>
+                                        }
+                                    }
+                                </li>
+                            }
+                        }) }
+                    </ul>
+                }
             }
         }
     }
+}
+
+/// A missing cable between two ports NetBox has, the device seeing one neighbor there: the
+/// ends for the helper „Verbindung“.
+fn link_preset(kind: &Kind) -> Option<LinkPreset> {
+    let Kind::CableMissing(missing) = kind else {
+        return None;
+    };
+    let port = missing.port.interface.as_ref()?;
+    let [seen] = missing.seen.as_slice() else {
+        return None;
+    };
+    let peer = seen.interface.as_ref()?;
+    Some(LinkPreset {
+        port: port.id as u32,
+        peer_device: peer.device.id as u32,
+        peer: peer.id as u32,
+    })
 }
 
 struct Links<'a> {
