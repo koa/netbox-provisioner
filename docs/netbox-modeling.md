@@ -102,10 +102,11 @@ Gerät nicht erreichbar. Im Frontend kann man dann noch Ad-hoc-Zugangsdaten eing
 
 Das **Board-Modell** kommt nicht aus NetBox (der Device Type wird nicht gelesen), sondern wird
 live vom Gerät gelesen (`/system/routerboard`). Unterstützt sind nur die Modelle in
-`backend/src/device/ros/hw_facts.rs`: `RB962UiGS-5HacT2HnT`, `RB750Gr3`, `CRS326-24G-2S+`,
-`CRS318-16P-2S+`, `C52iG-5HaxD2HaxD`, `cAPGi-5HaxD2HaxD`, `CCR1009-7G-1C-1S+`,
-`CRS354-48G-4S+2Q+`, `CRS109-8G-1S-2HnD`. Für jedes andere Modell bricht die Generierung mit
-`NoPortsFound` ab.
+`backend/src/device/ros/hw_facts.rs`: `RB750Gr3`, `RB960PGS`, `RB962UiGS-5HacT2HnT`,
+`RBwAPG-5HacD2HnD`, `C52iG-5HaxD2HaxD`, `cAPGi-5HaxD2HaxD`, `CRS109-8G-1S-2HnD`, `CRS318-16P-2S+`,
+`CRS326-24G-2S+`, `CRS354-48G-4S+2Q+`, `CCR1009-7G-1C-1S+`, `CCR2004-1G-12S+2XS`, dazu die Boards
+der [Funkbrücken](#funkbrücke) und `RB912UAG-2HPnD`. Für jedes andere Modell bricht die
+Generierung mit `NoPortsFound` ab.
 
 **Empfehlung:** Die primäre IPv4 auf das Loopback-Interface legen (siehe unten). Dann ist die
 Router-ID stabil, und die VTEP-Adresse hängt an keinem physischen Link.
