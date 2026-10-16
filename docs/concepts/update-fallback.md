@@ -132,10 +132,35 @@ Gelesen auf vier konfigurierten Lab-Geräten:
 | lab-np1, lab-ap2 | `all` |
 | lab-sxt-a, lab-ap1 | `*2000011`, ein Verweis auf eine gelöschte Liste (vermutlich die Werks-Liste `LAN`, die das Anwenden entfernt hat) |
 
-Dort kommt mac-telnet heute vermutlich nicht durch. Die generierte Konfiguration setzt den
-MAC-Server bisher nicht. Sie soll ihn ausdrücklich auf eine eigene Interface-Liste setzen: die
-Ports mit Kabel zu eigenen Geräten aus NetBox, nicht `all`, damit Kunden-Ports kein mac-telnet
-bekommen. Das braucht auch die Ersteinrichtung hinter so einem Gerät nach einem Zurücksetzen.
+Dort kam mac-telnet vermutlich nicht durch. Das Anwenden entfernt jede Interface-Liste, die
+nicht aus NetBox kommt, also auch die Werks-Liste `LAN`.
+
+*Umgesetzt* (`BaseDeviceDataTarget::setup_mac_server`): Die generierte Konfiguration hat
+eine Interface-Liste `mac-server` und setzt `/tool mac-server allowed-interface-list=mac-server`.
+In der Liste stehen:
+- Ports mit Kabel zu einem Gerät mit RouterOS in NetBox;
+- Radios einer Funkstrecke (Wireless Link);
+- alle freien Ethernet-Ports: solche, die NetBox nicht kennt, oder die dort weder Kabel noch
+  Adresse, VLAN oder Bridge haben. Vor Ort kann man so ein Notebook an einen freien Stecker
+  anschliessen und das Gerät wiederbeleben.
+
+Kunden-Ports bleiben draussen, auch wenn sie in derselben Bridge stecken. Die Liste nimmt den
+Port selbst, nicht die Bridge, und RouterOS lässt mac-telnet auch an einem Bridge-Port zu.
+Geprüft auf CHR 7.24.5:
+
+| Liste | Port in Bridge | mac-telnet |
+|---|---|---|
+| leer | nein | abgewiesen |
+| `ether2` | nein | verbunden |
+| `ether2` | ja | verbunden |
+| nur die Bridge | ja | verbunden |
+
+Ein Gerät, dessen Ports alle zu Kunden gehen, hat eine leere Liste und damit kein mac-telnet.
+Das ist bewusst so: Lieber gar keins als eins auf allen Ports.
+
+Auf der CHR geprüft (`three_node_ospf_chain_apply_via_entry`): Nach dem Apply enthält die Liste
+die beiden verkabelten Ports und die freien Ports, und mac-telnet vom Nachbarn über das Kabel
+verbindet.
 
 ## Umgesetzt: Device-Mode anpassen
 

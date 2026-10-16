@@ -11,10 +11,11 @@
 use crate::chr_network::apply::{apply_mutations_via_entry, enable_socks};
 use crate::chr_network::golden_image::GoldenImage;
 use crate::chr_network::scenario::boot_scenario;
-use crate::chr_network::vm::RunningNode;
+use crate::chr_network::vm::{RunningNode, mac_of};
 use crate::chr_network::wait::wait_for_ospf_full;
 use backend::device::ros::graphql::DeviceCfg;
 use backend::device::ros::l2::KeepNameGenerator;
+use backend::device::terminal::Terminal;
 use backend::topology::test::TopologyBuilder;
 use backend::topology::{
     Cable, CablePort, Device, DeviceId, Interface, IpAddressData, PhysicalPortId, TopologyHolder,
@@ -106,6 +107,7 @@ fn build_chain() -> ChainTopology {
             name: "entry".into(),
             primary_ip_v4: Some(entry_loopback),
             loopback_ip: Some(entry_loopback),
+            has_routeros: true,
             ..Default::default()
         },
     );
@@ -115,6 +117,7 @@ fn build_chain() -> ChainTopology {
             name: "a".into(),
             primary_ip_v4: Some(a_loopback),
             loopback_ip: Some(a_loopback),
+            has_routeros: true,
             ..Default::default()
         },
     );
@@ -124,6 +127,7 @@ fn build_chain() -> ChainTopology {
             name: "target".into(),
             primary_ip_v4: Some(target_loopback_id),
             loopback_ip: Some(target_loopback_id),
+            has_routeros: true,
             ..Default::default()
         },
     );
@@ -258,6 +262,31 @@ async fn bootstrap_node_directly(
     Ok(())
 }
 
+/// Whether a mac-telnet session from `from` to `mac` gets to the other device's prompt (the
+/// client asks for login and password itself, before it reaches the other end).
+async fn mac_telnet_login(from: &RunningNode, mac: &str) -> bool {
+    let mut terminal = Terminal::connect(
+        ([127, 0, 0, 1], from.ssh_port).into(),
+        "admin",
+        Some(crate::TEST_PASSWORD),
+    )
+    .await
+    .expect("ssh");
+    terminal.sync(Duration::from_secs(20)).await.expect("sync");
+    terminal.send_line(&format!("/tool mac-telnet {mac}")).await.unwrap();
+    terminal.expect(&["Login:"], Duration::from_secs(20)).await.expect("login prompt");
+    terminal.send_line("admin").await.unwrap();
+    terminal.expect(&["Password:"], Duration::from_secs(20)).await.expect("password prompt");
+    terminal.send_line(crate::TEST_PASSWORD).await.unwrap();
+    let connected = terminal
+        .expect(&["Connected to"], Duration::from_secs(30))
+        .await
+        .is_ok();
+    eprintln!("--- mac-telnet {mac} ---\n{}", terminal.transcript());
+    terminal.close().await;
+    connected
+}
+
 #[tokio::test]
 #[ignore]
 async fn three_node_ospf_chain_apply_via_entry() {
@@ -347,6 +376,26 @@ async fn three_node_ospf_chain_apply_via_entry() {
     enable_socks(&entry_simple)
         .await
         .expect("enable socks on entry failed");
+
+    // mac-telnet on a's ports to its neighbors and on its ports not in NetBox (the harness's
+    // management port ether1 among them), and it lets entry in over the cable
+    let mut members = Vec::new();
+    let mut s = a_simple
+        .send_simple_command(b"/interface/list/member/print".as_slice(), ())
+        .await;
+    while let Some(r) = s.next().await {
+        if let mikrotik_api::simple::SimpleResult::Sentence(row) = r {
+            let field = |name| row.get(name).cloned().flatten().unwrap_or_default();
+            assert_eq!(field("list").as_ref(), "mac-server");
+            members.push(field("interface").to_string());
+        }
+    }
+    members.sort();
+    assert_eq!(members, ["e01", "e04", "e05", "ether2", "ether3"]);
+    assert!(
+        mac_telnet_login(&nodes[&entry], &mac_of(nodes[&a].index, 1).to_string()).await,
+        "no mac-telnet from entry to a over their cable"
+    );
 
     // The call under test: an incremental change to target, reached only
     // via entry's SOCKS proxy and a's OSPF-learned route to target's

@@ -290,6 +290,16 @@ powering something: `/interface/ethernet/poe/monitor` reports `poe-out-status=po
 `waiting-for-load`; read only where a port would lose PoE, and when it can't be read every such
 port warns), and the device page shows them above the changes.
 
+mac-telnet for remote maintenance: the generated config has an interface list `mac-server`
+and sets `/tool mac-server allowed-interface-list` to it (`setup_mac_server`, after
+`setup_l2`, which names the ports). The list holds the ports cabled to a device with RouterOS
+in NetBox, the radios of a wireless link, and every free Ethernet port: not in NetBox, or there
+without cable, address, VLAN and bridge, so a notebook on a free port on site can get in. It
+takes the port itself, which RouterOS honors for a bridge port too (CHR 7.24.5), so customer
+ports in the same bridge stay out. Interface lists are modeled whole: an apply removes every
+list NetBox doesn't give, the factory `LAN` included. That is what left lab devices with
+`allowed-interface-list=*2000011` before.
+
 The device mode (`/system/device-mode`, RouterOS 7.17+) locks features the provisioner needs
 (`device::device_mode::wanted`: `scheduler` for the apply fallback, `socks` on the management
 proxy's device, `partitions` where `/partitions` reports 128 MiB or more for the planned update

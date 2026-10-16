@@ -119,6 +119,7 @@ impl DeviceCfg {
             capsman_target.generate_from(device)?;
         }
         self.base_target.setup_l2(device, &l2, self.radio_package)?;
+        self.base_target.setup_mac_server(device, &l2);
         self.base_target.setup_mtu(device)?;
         self.base_target.setup_poe(device)?;
         Ok(())

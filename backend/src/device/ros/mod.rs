@@ -32,7 +32,8 @@ use mikrotik_model::{
         WifiCountryLower as CapsManWifiCountry, InterfaceWifiCapsmanUpgradePolicy, InterfaceWifiProvisioningAction, InterfaceWirelessCfg, InterfaceWirelessChannelWidth,
         InterfaceWirelessFrequencyMode, InterfaceWirelessMode, InterfaceWirelessTxPowerMode,
         InterfaceWirelessWirelessProtocol::{Nv2, Nv2Nstreme80211},
-        IpAddressByAddress, IpAddressCfg, IpDhcpClientCfg, IpDhcpClientDhcpOptions,
+        InterfaceListByName, InterfaceListCfg, InterfaceListMemberCfg, IpAddressByAddress, IpAddressCfg, IpDhcpClientCfg,
+        IpDhcpClientDhcpOptions, ToolMacServerCfg,
         IpFirewallFilterAction, IpFirewallFilterCfg, IpFirewallNatAction, IpFirewallNatCfg,
         Ipv6NdAdvertiseDns, Ipv6NdByInterface, Ipv6NdCfg,
         IpSocksAuthMethod, IpSocksUsersByName, IpSshCfg, IpSshForwardingEnabled, IpSocksUsersCfg, Ipv6AddressByAddress,
@@ -59,6 +60,8 @@ mod capsman_test;
 pub mod l2;
 #[cfg(test)]
 mod mtu_test;
+#[cfg(test)]
+mod mac_server_test;
 #[cfg(test)]
 mod netbox_example_test;
 #[cfg(test)]
@@ -118,10 +121,13 @@ mikrotik_model!(
         socks_users(by_key(path = "ip/socks/users", key = name)),
         ssh(single = "ip/ssh"),
         ipv6_settings(single = "ipv6/settings"),
+        mac_server(single = "tool/mac-server"),
     ),
 );
 
 pub(crate) const CAPS_BRIDGE_NAME: &[u8; 11] = b"bridge-caps";
+/// The interface list `/tool mac-server` allows mac-telnet on ([`BaseDeviceDataTarget::setup_mac_server`]).
+pub(crate) const MAC_SERVER_LIST: &[u8; 10] = b"mac-server";
 
 #[derive(Error, Debug)]
 pub enum SetupError {
@@ -262,7 +268,6 @@ impl BaseDeviceDataTarget {
             bridge: Default::default(),
             bridge_port: Default::default(),
             ospf_area: Default::default(),
-            interface_list: Default::default(),
             interface_list_member: Default::default(),
             ipv_4_address: Default::default(),
             ipv_6_address: Default::default(),
@@ -293,6 +298,21 @@ impl BaseDeviceDataTarget {
             // every device gets OSPFv3 and its IPv6 addresses from NetBox; with IPv6 off they
             // are invalid and OSPFv3 never comes up, while the diff of them looks applied
             ipv_6_settings: Default::default(),
+            // the list stays empty without ports to own devices: no mac-telnet at all then,
+            // rather than on every port (`setup_mac_server`)
+            mac_server: ToolMacServerCfg {
+                allowed_interface_list: MAC_SERVER_LIST.into(),
+            },
+            interface_list: [(
+                MAC_SERVER_LIST.into(),
+                InterfaceListByName(InterfaceListCfg {
+                    comment: Some(b"ports to own devices and free ports: mac-telnet for remote maintenance".into()),
+                    exclude: Default::default(),
+                    include: Default::default(),
+                    name: MAC_SERVER_LIST.into(),
+                }),
+            )]
+            .into(),
         }
     }
     /// Makes this device the provisioner's way into the network: `/ip socks` as SOCKS5, only
@@ -605,9 +625,62 @@ impl BaseDeviceDataTarget {
         self.setup_dns(device);
         self.setup_ospf(device, &l2);
         self.setup_l2(device, &l2, None)?;
+        self.setup_mac_server(device, &l2);
         self.setup_mtu(device)?;
         self.setup_poe(device)?;
         Ok(l2)
+    }
+
+    /// mac-telnet for remote maintenance, on the ports to own devices and the free ones:
+    /// - ports cabled to a device with RouterOS in NetBox, and radios of a wireless link: a
+    ///   neighbor reaching a device that lost its addresses or routes
+    ///   (`docs/concepts/update-fallback.md`);
+    /// - Ethernet ports NetBox doesn't use (not there, or without cable, address, VLAN and
+    ///   bridge): a notebook plugged into a free port on site.
+    ///
+    /// Customer ports stay out, also those in the same bridge: the list takes the port itself,
+    /// which RouterOS honors for a bridge port too (CHR 7.24.5). Runs after `setup_l2`, which
+    /// names the ports.
+    fn setup_mac_server<N: NameGenerator>(&mut self, device: &DeviceAccess, l2: &L2Setup<N>) {
+        let mut members = BTreeSet::new();
+        let mut used = HashSet::new();
+        for port in device.interfaces() {
+            let Some(id) = port.external_port() else {
+                continue;
+            };
+            let unused = port.cable().is_none()
+                && port.ips().is_empty()
+                && port.untagged_vlan().is_none()
+                && port.tagged_vlans().next().is_none()
+                && port.bridge().is_none();
+            if !unused && let Some(default_name) = id.default_name() {
+                used.insert(default_name);
+            }
+            let own = port
+                .connected_interfaces()
+                .iter()
+                .any(|far| far.device().is_some_and(|d| d.has_routeros()))
+                || port.radio().is_some_and(|radio| radio.link.is_some());
+            if own && let Some((name, _)) = l2.placement_of_port(id) {
+                members.insert(name.clone());
+            }
+        }
+        for (default_name, ethernet) in &self.ethernet {
+            if !used.contains(default_name) {
+                members.insert(ethernet.name.clone());
+            }
+        }
+        for name in members {
+            self.interface_list_member.insert(
+                (name.clone(), MAC_SERVER_LIST.into()),
+                InterfaceListMemberCfg {
+                    comment: None,
+                    disabled: false,
+                    interface: name,
+                    list: MAC_SERVER_LIST.into(),
+                },
+            );
+        }
     }
 
     /// PoE out of every port NetBox has: `auto-on` with `poe_mode=pse`, else `off`.

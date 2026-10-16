@@ -146,5 +146,6 @@ pub(crate) fn empty_current(target: &BaseDeviceDataTarget) -> BaseDeviceDataCurr
         socks_users: Box::new([]),
         ssh: Default::default(),
         ipv_6_settings: Default::default(),
+        mac_server: Default::default(),
     }
 }
