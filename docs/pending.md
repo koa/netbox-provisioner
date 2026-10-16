@@ -108,3 +108,14 @@ Gibt es noch einen validen Anwendungsfall für "Ziel ändern". Wenn nicht, weg d
 Polling verbessern
 ==================
  Ein einzelner Fehler beim Polling führt dazu, dass der Client den ganzen Vorgang abbricht. Das sollte so nicht sein (Der Fehler soll angezeigt werden und der Nutzer soll die Möglichkeit haben den Vorgang abzubrechen, aber es muss auch weiter gehen können)
+
+ Config-Helper
+==============
+
+Die Konfiguration über Netbox ist sehr flexibel, aber auch sehr aufwendig und fehlerträchtig. Für Standart-Situationen braucht es ein einfaches UI im Netbox Provisioner.
+- Hinzufügen von einem neuen Gerät (Standort, Name, Typ erkennen oder eingeben)
+- Primäre IP-Adresse für Loopback aus Prefix zuweisen
+- IP-Adressen für Direkte Verbindunge, WLAN-Bridge-Verbindungen, lokale Clients aus entsprechenden Prefixes laden und zuweisen
+- OSPF und DHCP-Flags setzen
+- PoE Beziehungen checken/ändern in Netbox
+- WLAN Bridge konfigurieren (Gerätetyp auswählen, beide Geräte automatisch passend in Netbox konfigurieren)
