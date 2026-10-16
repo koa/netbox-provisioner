@@ -177,19 +177,27 @@ ul.job-events {
     list-style: none;
     padding: 0;
 
+    /* the time, then the entry in a column of its own: a long console line wraps there
+       instead of running past the card */
+    & > li {
+        display: grid;
+        grid-template-columns: 3.5em minmax(0, 1fr);
+    }
     & span.job-time {
-        display: inline-block;
-        min-width: 3.5em;
         color: var(--pf-t--global--text--color--subtle, #6a6e73);
         font-variant-numeric: tabular-nums;
-        vertical-align: top;
     }
-    & pre.job-console {
-        display: inline-block;
-        margin: 0;
-        white-space: pre-wrap;
+    /* reversed, the box starts scrolled to the end and stays there as output comes */
+    & div.job-console {
+        display: flex;
+        flex-direction: column-reverse;
         max-height: 30em;
         overflow-y: auto;
+    }
+    & div.job-console > pre {
+        margin: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
     }
 }
 

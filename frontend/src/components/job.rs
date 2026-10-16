@@ -301,14 +301,15 @@ fn items(events: &[JobEventsJobEvents]) -> Vec<Html> {
         };
         items.push(html!(<li>
             <span class="job-time">{ elapsed(event.at) }</span>
-            { content }
+            <div>{ content }</div>
         </li>));
     }
     items
 }
 
+/// Scrolled to its end, where new output comes (`column-reverse` in `local.css`).
 fn console(text: &str) -> Html {
-    html!(<pre class="job-console">{ text.to_string() }</pre>)
+    html!(<div class="job-console"><pre>{ text.to_string() }</pre></div>)
 }
 
 fn describe(event: &JobEventsJobEvents) -> Html {
