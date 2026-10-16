@@ -1,6 +1,7 @@
 # Konzept: Jobs über Fehler und Neustarts hinweg verfolgen
 
-Status: Konzept, nicht umgesetzt. Offener Punkt „Polling verbessern“ aus [pending.md](../pending.md).
+Status: Schritte 1 und 2 umgesetzt (Ende bei unbekanntem Job, Back-off, Job-Nummern pro Lauf),
+Schritte 3 und 4 offen. Offener Punkt „Polling verbessern“ aus [pending.md](../pending.md).
 Auslöser: „Wenn ich den Server neustarte hängt alles.“
 
 ## Was heute passiert
@@ -33,10 +34,10 @@ erfolgreich aktualisiertes Gerät auf die alte Version zurück, und niemand weis
 
 ### Server
 
-- **Job-Nummern über Neustarts eindeutig.** Die Nummer beginnt mit dem Startzeitpunkt des
-  Servers (z.B. Millisekunden seit 1970 beim Start, dann hochgezählt, als `u64`; GraphQL braucht
-  dafür einen String oder ein `ID`). Eine Nummer aus einem früheren Lauf findet nie einen fremden
-  Job.
+- **Job-Nummern über Neustarts eindeutig** (umgesetzt). Die Nummern eines Laufs beginnen bei
+  1000 je Sekunde des Startzeitpunkts (modulo 1 000 000 Sekunden, passt in `u32` und GraphQL'
+  `Int`). Eine Nummer aus einem früheren Lauf findet so keinen fremden Job, ausser nach mehr als
+  1000 Jobs je Sekunde zwischen zwei Starts.
 - **Antwort für einen Job aus einem früheren Lauf.** Statt `null` ein Job im Zustand `LOST`
   („Server neu gestartet“), sobald die Nummer zu einem früheren Start gehört. Mit den Events, wenn
   sie gespeichert sind (nächster Punkt).

@@ -25,10 +25,20 @@ use yew::{
 
 /// How often a running job is asked for new events.
 const POLL: Duration = Duration::from_secs(1);
+/// How long to wait after the 1st, 2nd, … failed asking in a row; then the last one.
+const RETRY: [Duration; 4] = [
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+    Duration::from_secs(5),
+    Duration::from_secs(10),
+];
 
 pub struct JobView {
     job: Option<JobEventsJob>,
+    /// the last asking failed (the server is away, restarts); asked again until it answers
     error: Option<FrontendError>,
+    /// the server doesn't know the job (anymore): it restarted meanwhile
+    lost: bool,
     /// asking stops once the component is gone
     alive: Rc<Cell<bool>>,
     cancelling: bool,
@@ -45,6 +55,8 @@ pub struct JobViewProps {
 pub enum JobMessage {
     Loaded(JobEventsJob),
     Error(FrontendError),
+    /// the server answered without the job
+    Lost,
     Cancel,
 }
 
@@ -58,6 +70,7 @@ impl Component for JobView {
         JobView {
             job: None,
             error: None,
+            lost: false,
             alive,
             cancelling: false,
         }
@@ -78,6 +91,11 @@ impl Component for JobView {
                 self.error = None;
             }
             JobMessage::Error(error) => self.error = Some(error),
+            JobMessage::Lost => {
+                self.lost = true;
+                self.error = None;
+                ctx.props().on_finished.emit(());
+            }
             JobMessage::Cancel => {
                 self.cancelling = true;
                 let scope = ctx.link().clone();
@@ -96,15 +114,31 @@ impl Component for JobView {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let error = self.error.as_ref().map(|e| e.to_html());
+        // one line while the server is away, it is asked again
+        let error = self
+            .error
+            .as_ref()
+            .map(|e| html!(<p class="job-unreachable">{t::server_away(&e.message())}</p>));
         let Some(job) = &self.job else {
+            if self.lost {
+                return html!(<Alert inline=true title={t::LOST} r#type={AlertType::Warning}><p>{t::LOST_TEXT}{t::LOST_FALLBACK}</p></Alert>);
+            }
             return html!(<>{error}<Spinner size={SpinnerSize::Md}/></>);
         };
-        let running = job.state == JobState::RUNNING;
-        let (title, kind) = title(job);
+        let fallback = matches!(job.kind, JobKind::APPLY | JobKind::UPDATE);
+        let lost = self.lost.then(|| {
+            html!(<p>{t::LOST_TEXT}{if fallback { t::LOST_FALLBACK } else { "" }}</p>)
+        });
+        let running = job.state == JobState::RUNNING && !self.lost;
+        let (title, kind) = if self.lost {
+            (t::LOST.to_string(), AlertType::Warning)
+        } else {
+            title(job)
+        };
         html! {
             <Alert inline=true title={title} r#type={kind}>
                 {error}
+                {lost}
                 if let Some(error) = &job.error { <p>{ problem(error) }</p> }
                 <ul class="job-events">
                     { for items(&job.events) }
@@ -129,10 +163,12 @@ impl Component for JobView {
     }
 }
 
-/// Asks for the job's new events until it is over.
+/// Asks for the job's new events until it is over, or the server doesn't know it anymore. While
+/// asking fails it asks again, less often.
 fn poll(scope: Scope<JobView>, id: i64, alive: Rc<Cell<bool>>) {
     spawn_local(async move {
         let mut after = 0;
+        let mut failed = 0;
         while alive.get() {
             match query_authenticated::<JobEvents, _>(
                 scope.clone(),
@@ -144,6 +180,7 @@ fn poll(scope: Scope<JobView>, id: i64, alive: Rc<Cell<bool>>) {
             .await
             {
                 Ok(job_events::ResponseData { job: Some(job) }) => {
+                    failed = 0;
                     if let Some(last) = job.events.last() {
                         after = last.index + 1;
                     }
@@ -155,10 +192,15 @@ fn poll(scope: Scope<JobView>, id: i64, alive: Rc<Cell<bool>>) {
                 }
                 // the backend restarted and forgot it
                 Ok(job_events::ResponseData { job: None }) => {
-                    scope.send_message(JobMessage::Error(FrontendError::MissingData));
+                    scope.send_message(JobMessage::Lost);
                     return;
                 }
-                Err(error) => scope.send_message(JobMessage::Error(error)),
+                Err(error) => {
+                    scope.send_message(JobMessage::Error(error));
+                    sleep(RETRY[failed.min(RETRY.len() - 1)]).await;
+                    failed += 1;
+                    continue;
+                }
             }
             sleep(POLL).await;
         }

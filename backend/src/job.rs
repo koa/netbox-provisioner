@@ -8,7 +8,8 @@
 //! inside a step that would leave the device half changed (the upload with `/ip ssh` switched
 //! for it). What it started on the device keeps going there (an uploaded package installs at
 //! the next boot). Jobs live in the provisioner process only, the last [`KEEP`] finished ones
-//! are kept.
+//! are kept. Their numbers start anew after each start of the provisioner ([`first_id`]), so a
+//! page still asking for a job of the run before gets no job rather than someone else's.
 use crate::{
     error_info::ErrorInfo,
     Error,
@@ -26,7 +27,7 @@ use std::{
         Arc, LazyLock, Mutex,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::Notify;
 
@@ -183,14 +184,26 @@ pub struct Job {
     took: Mutex<Option<Duration>>,
 }
 
-#[derive(Default)]
 struct Jobs {
     next: u32,
     /// oldest first
     jobs: Vec<Arc<Job>>,
 }
 
-static JOBS: LazyLock<Mutex<Jobs>> = LazyLock::new(Default::default);
+static JOBS: LazyLock<Mutex<Jobs>> = LazyLock::new(|| {
+    Mutex::new(Jobs {
+        next: first_id(SystemTime::now()),
+        jobs: Vec::new(),
+    })
+});
+
+/// Where the numbers of the jobs of a run start: 1000 per second of the start time, so the
+/// numbers of two runs only meet after 1000 jobs per second between their starts (they wrap
+/// every 11.5 days, `u32` and GraphQL's `Int` hold them).
+fn first_id(started: SystemTime) -> u32 {
+    let seconds = started.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    (seconds % 1_000_000) as u32 * 1000
+}
 
 impl Job {
     fn state(&self) -> JobState {
@@ -356,6 +369,17 @@ mod tests {
         assert_eq!(log.since(1)[0].index, 1);
         assert!(log.since(2).is_empty());
         assert!(log.since(5).is_empty());
+    }
+
+    #[test]
+    fn numbers_of_two_runs_are_apart() {
+        use super::first_id;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let start = UNIX_EPOCH + Duration::from_secs(1_791_000_000);
+        let restart = start + Duration::from_secs(30);
+        assert_eq!(first_id(restart) - first_id(start), 30_000);
+        // it wraps instead of overflowing
+        assert!(first_id(SystemTime::now()) < 1_000_000_000);
     }
 
     async fn wait_for(id: u32, state: JobState) {

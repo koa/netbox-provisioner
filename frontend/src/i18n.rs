@@ -407,6 +407,17 @@ pub mod device {
 /// A job and its events (`components::job`), as the backend reports them.
 pub mod job {
     pub const CANCELLING: &str = "Wird abgebrochen …";
+    pub const LOST: &str = "Auftrag unterbrochen";
+    pub const LOST_TEXT: &str = "Der Provisioner wurde neu gestartet und kennt den Auftrag nicht \
+        mehr. Was der Auftrag auf dem Gerät begonnen hat, läuft dort weiter.";
+    /// after LOST_TEXT for an apply or an update, whose fallback is still armed on the device
+    pub const LOST_FALLBACK: &str = " Ein Fallback, den er scharf gemacht hat, setzt das Gerät nach \
+        Ablauf seiner Frist zurück und startet es neu.";
+
+    /// asking for the job failed, it is asked again
+    pub fn server_away(cause: &str) -> String {
+        format!("Keine Antwort vom Provisioner, es wird weiter gefragt … ({cause})")
+    }
     pub const SCRIPT: &str = "Skript:";
     pub const REMAINING: &str = "Noch offen:";
 
