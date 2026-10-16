@@ -207,7 +207,10 @@ of the factory bridge in the background. Factory bridges answer MAC-telnet only 
 MAC, which is also the one they announce. `/tool mac-telnet` is tried with `interface=` the
 neighbor's port (its name read over the API, `MacTelnetSetup.neighbor_port`) and without: a
 CRS (klr-sw-1) only answered with it, CHR 7.24.5 only without; the variant that got a login
-prompt stays for that MAC. `connect` falls back to that bootstrap
+prompt stays for that MAC. Before the console session `check_neighbor` reads the neighbor's
+`/ip ssh forwarding-enabled` and stops with `NeighborNoForwarding` unless it is `local`/`both`
+(checked on CHR: an unreachable or closed target fails the forward at once, only a disallowed
+forward stays silent), so such a neighbor leaves the device untouched. `connect` falls back to that bootstrap
 address when the primary IP doesn't answer yet, through an SSH tunnel to the neighbor
 (`terminal::Tunnel`, `direct-tcpip`; `device::Path::Neighbor`): API, re-diff and SCP all go
 from the neighbor's address on the cable, so the device needs no route back before its first

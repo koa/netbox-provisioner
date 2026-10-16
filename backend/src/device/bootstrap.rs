@@ -258,27 +258,42 @@ async fn discover(plan: &BootstrapPlan) -> Result<Vec<Discovered>, Error> {
     Ok(found)
 }
 
-/// What the neighbor calls its port to the device; NetBox' name when it can't be read.
-async fn neighbor_port_name(plan: &BootstrapPlan) -> String {
-    let name = async {
-        let credentials = Credentials::Named(
-            plan.neighbor_device
-                .credentials()
-                .ok_or(Error::MissingCredentials)?
-                .into(),
-        );
-        let neighbor =
-            connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await?;
-        port_name(&neighbor, &plan.neighbor_port).await
-    };
-    match name.await {
+/// Checks that the neighbor forwards the connections to the device (see [`tunnel`]) and
+/// returns what it calls its port to the device, NetBox' name when that can't be read. Before
+/// the console session, so a neighbor without forwarding leaves the device untouched.
+async fn check_neighbor(plan: &BootstrapPlan) -> Result<String, Error> {
+    let credentials = Credentials::Named(
+        plan.neighbor_device
+            .credentials()
+            .ok_or(Error::MissingCredentials)?
+            .into(),
+    );
+    let neighbor =
+        match connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await {
+            Ok(neighbor) => neighbor,
+            Err(error) => {
+                warn!("cannot check {} over the API: {error}", plan.neighbor);
+                return Ok(plan.neighbor_port.clone());
+            }
+        };
+    // RouterOS never answers a forward it doesn't allow, the tunnel would only time out
+    if let Some(row) = rows(&neighbor, "/ip/ssh/print").await?.first()
+        && let Some(forwarding) = field(row, "forwarding-enabled")
+        && !matches!(forwarding, "local" | "both")
+    {
+        return Err(Error::NeighborNoForwarding(
+            plan.neighbor.as_str().into(),
+            forwarding.into(),
+        ));
+    }
+    Ok(match port_name(&neighbor, &plan.neighbor_port).await {
         Ok(Some(name)) => name,
         Ok(None) => plan.neighbor_port.clone(),
         Err(error) => {
             warn!("cannot read the port names of {}: {error}", plan.neighbor);
             plan.neighbor_port.clone()
         }
-    }
+    })
 }
 
 /// The name the neighbor gives its Ethernet port with the factory name `factory_name`, if it
@@ -327,6 +342,8 @@ pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -
         macs(&plan.setup.macs)
     );
     log.check()?;
+    let mut setup = plan.setup.clone();
+    setup.neighbor_port = Some(check_neighbor(plan).await?);
     log.emit(SetupStarted {
         neighbor: plan.neighbor.as_str().into(),
         neighbor_port: plan.neighbor_port.as_str().into(),
@@ -347,8 +364,6 @@ pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -
     };
     terminal.hide(password);
     terminal.stream_to(log);
-    let mut setup = plan.setup.clone();
-    setup.neighbor_port = Some(neighbor_port_name(plan).await);
     let result = set_up(&mut terminal, &setup, user, password).await;
     terminal.close().await;
     if let Err(error) = &result {

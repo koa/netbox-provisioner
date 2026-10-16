@@ -94,6 +94,13 @@ pub mod error {
                 p("command"),
                 p("cause")
             ),
+            "NEIGHBOR_NO_FORWARDING" => format!(
+                "{} leitet keine Verbindungen zum Gerät weiter (/ip ssh forwarding-enabled={}); \
+                 es braucht local, wie es jede generierte Konfiguration hat: {} zuerst anwenden",
+                p("neighbor"),
+                p("forwarding"),
+                p("neighbor")
+            ),
             "CONSOLE_SESSION_ENDED" => format!(
                 "Die mac-telnet-Sitzung endete vor {}",
                 p("command")

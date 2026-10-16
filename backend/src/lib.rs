@@ -60,6 +60,9 @@ pub enum Error {
     /// a setup command (passwords replaced by `***`) and the error the console printed
     #[error("Setup command failed: {0}: {1}")]
     SetupCommand(Box<str>, Box<str>),
+    /// the neighbor and its `/ip ssh forwarding-enabled`
+    #[error("{0} doesn't forward connections to the device (forwarding-enabled={1})")]
+    NeighborNoForwarding(Box<str>, Box<str>),
     #[error("The mac-telnet session ended before {0}")]
     ConsoleSessionEnded(Box<str>),
     #[error("The device refused: {0}")]
