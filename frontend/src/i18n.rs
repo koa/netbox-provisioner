@@ -122,6 +122,17 @@ pub mod error {
                 ),
             },
             "NOT_BACK_AFTER_REBOOT" => "Das Gerät ist nach dem Neustart nicht zurück".into(),
+            "UPDATE_ROLLED_BACK" => format!(
+                "Update zurückgenommen: Das Gerät war nach dem Update nicht erreichbar und läuft \
+                 wieder mit RouterOS {} von {}",
+                p("version"),
+                p("partition")
+            ),
+            "OSPF_NEIGHBORS_MISSING" => format!(
+                "Nach dem Update fehlen OSPF-Nachbarn, die vorher Full waren: {}. Zurück geht es \
+                 auf der Geräteseite unter Partitionen",
+                p("neighbors")
+            ),
             "REFUSED" => format!("Das Gerät lehnt ab: {}", p("cause")),
             "CANNOT_REPARTITION" => format!(
                 "Der Flash lässt sich nicht aufteilen: {} Partitionen, oder der Device-Mode erlaubt keine",
@@ -271,6 +282,13 @@ pub mod device {
         }
         text
     }
+    pub fn partition_boot(name: &str) -> String {
+        format!("Von {name} starten")
+    }
+    pub const PARTITION_BOOT_NOW: &str = "Jetzt starten";
+    pub const PARTITION_BOOT_CONFIRM: &str = "Das Gerät startet neu mit dem RouterOS und der \
+        Konfiguration auf dieser Partition. Das Gerät und was es über PoE versorgt, ist \
+        währenddessen weg. ";
     pub const DEVICE_MODE_ADJUST: &str = "Device-Mode anpassen";
     pub const DEVICE_MODE_NOW: &str = "Jetzt anpassen";
     pub const DEVICE_MODE_CONFIRM: &str = "Danach verlangt das Gerät eine Bestätigung vor Ort: den Knopf \
@@ -373,6 +391,7 @@ pub mod job {
     pub const REBOOT: &str = "Neustart";
     pub const DEVICE_MODE: &str = "Device-Mode-Änderung";
     pub const REPARTITION: &str = "Aufteilen des Flash";
+    pub const BOOT_PARTITION: &str = "Start von einer anderen Partition";
 
     pub const NOTHING_TO_APPLY: &str = "Nichts anzuwenden, das Gerät entspricht NetBox";
     pub const NOT_ALL_APPLIED: &str = "Nicht alles wurde angewendet";
@@ -516,6 +535,7 @@ pub mod job {
             Requested,
             DeviceMode,
             Repartition,
+            Partition,
             Other(&'a str),
         }
         pub fn reboot(reason: Reboot, minutes: u64) -> String {
@@ -525,6 +545,7 @@ pub mod job {
                 Reboot::Requested => "auf Anfrage",
                 Reboot::DeviceMode => "nach der Bestätigung",
                 Reboot::Repartition => "zum Aufteilen des Flash",
+                Reboot::Partition => "von der anderen Partition",
                 Reboot::Other(other) => other,
             };
             format!("Neustart {reason}, wartet bis zu {minutes} min, bis das Gerät zurück ist")
@@ -547,6 +568,29 @@ pub mod job {
                 "Jetzt am Gerät bestätigen: den Knopf (Reset oder Mode) drücken oder den Strom kurz unterbrechen, innerhalb von {minutes} min. Schaltet ein: {}",
                 features.join(", ")
             )
+        }
+        pub fn partition_running(name: &str, version: &str) -> String {
+            format!("Läuft von {name}: {version}")
+        }
+        pub fn update_fallback_armed(partition: &str, version: &str, minutes: u64) -> String {
+            format!(
+                "{version} samt Konfiguration auf {partition} kopiert: Erreicht der Provisioner das \
+                 Gerät nicht innert {minutes} min nach dem Start, startet es wieder von {partition}"
+            )
+        }
+        pub fn update_fallback_disarmed(partition: &str) -> String {
+            format!("Gerät erreicht, es schaltet nicht mehr selbst zurück; {partition} bleibt als Weg zurück")
+        }
+        pub fn update_without_fallback(partitions: i64) -> String {
+            match partitions {
+                0 => "Ohne Weg zurück: Das Gerät hat keine Partitionen".into(),
+                n => format!(
+                    "Ohne Weg zurück: {n} Partition(en), es braucht zwei (Partitionen auf der Geräteseite)"
+                ),
+            }
+        }
+        pub fn ospf_neighbors_back(neighbors: &[String]) -> String {
+            format!("OSPF-Nachbarn wieder Full: {}", neighbors.join(", "))
         }
         pub fn repartition_started(count: i64, files: i64) -> String {
             format!("Teilt den Flash in {count} Partitionen auf ({files} Dateien vorher)")

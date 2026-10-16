@@ -92,6 +92,15 @@ pub enum Error {
     },
     #[error("Not back after the reboot")]
     NotBackAfterReboot,
+    /// the device switched back to the partition with the RouterOS from before the update
+    #[error("The update was rolled back: the device runs RouterOS {version} from {partition}")]
+    UpdateRolledBack {
+        partition: Box<str>,
+        version: Box<str>,
+    },
+    /// the OSPF neighbors `Full` before the update that aren't after it (`<instance> <router-id>`)
+    #[error("OSPF neighbors missing after the update: {0}")]
+    OspfNeighborsMissing(Box<str>),
     #[error("{0} runs a job already")]
     Busy(Box<str>),
     #[error("No job {0}")]

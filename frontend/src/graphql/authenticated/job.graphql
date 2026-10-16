@@ -36,6 +36,11 @@ query JobEvents($id: Int!, $after: Int){
                 ... on DeviceModeChanged { changes { feature reason } }
                 ... on RepartitionStarted { count files }
                 ... on Repartitioned { partitions { name version sizeMib running } missingFiles }
+                ... on PartitionRunning { name version }
+                ... on UpdateFallbackArmed { partition version delay }
+                ... on UpdateFallbackDisarmed { partition }
+                ... on UpdateWithoutFallback { partitions }
+                ... on OspfNeighborsBack { neighbors }
             }
         }
     }

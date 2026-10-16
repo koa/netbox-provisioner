@@ -12,7 +12,10 @@
 use crate::{
     error_info::ErrorInfo,
     Error,
-    device::{bootstrap, device_mode, partitions, power, ros::graphql as apply, terminal, update},
+    device::{
+        bootstrap, device_mode, partitions, power, ros::graphql as apply, terminal, update,
+        update_fallback,
+    },
     graphql::scalars::ScalarDuration,
     topology::{DeviceId, access::device::DeviceAccess},
 };
@@ -59,6 +62,11 @@ pub enum Event {
     DeviceModeChanged(device_mode::DeviceModeChanged),
     RepartitionStarted(partitions::RepartitionStarted),
     Repartitioned(partitions::Repartitioned),
+    PartitionRunning(partitions::PartitionRunning),
+    UpdateFallbackArmed(update_fallback::UpdateFallbackArmed),
+    UpdateFallbackDisarmed(update_fallback::UpdateFallbackDisarmed),
+    UpdateWithoutFallback(update_fallback::UpdateWithoutFallback),
+    OspfNeighborsBack(update_fallback::OspfNeighborsBack),
 }
 
 /// An event and when it happened, counted from the start of the job.
@@ -153,6 +161,8 @@ pub enum JobKind {
     DeviceMode,
     /// the flash split in partitions (`repartitionDevice`)
     Repartition,
+    /// booting from another partition (`bootPartition`)
+    BootPartition,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]

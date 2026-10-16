@@ -36,6 +36,10 @@ pub struct Settings {
     /// Seconds after which a device loads the backup from before an apply, unless the
     /// provisioner reached it again with the new config (default 180).
     apply_fallback_seconds: Option<u64>,
+    /// Seconds after a boot after which a device updated with two partitions switches back to
+    /// the RouterOS from before, unless the provisioner reached it (default 900). Longer than
+    /// the provisioner waits for a reboot (10 min), so a slow update isn't taken back.
+    update_fallback_seconds: Option<u64>,
 }
 
 /// A RouterOS device acting as SOCKS5 proxy (`/ip socks`) for the provisioner. Its own
@@ -71,6 +75,9 @@ impl MikrotikCredentials {
 impl Settings {
     pub fn apply_fallback(&self) -> std::time::Duration {
         std::time::Duration::from_secs(self.apply_fallback_seconds.unwrap_or(180))
+    }
+    pub fn update_fallback(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.update_fallback_seconds.unwrap_or(900))
     }
     pub fn auth_client_id(&self) -> &str {
         &self.auth_client_id

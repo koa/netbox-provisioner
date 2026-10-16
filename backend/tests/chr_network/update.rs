@@ -12,6 +12,7 @@ use backend::device::bootstrap::{MacTelnetSetup, set_up};
 use backend::device::power::PowerChain;
 use backend::device::terminal::{Terminal, Tunnel, upload};
 use backend::device::update::{DeviceLink, UpdateDone, Version, read_state, update};
+use backend::device::update_fallback::UpdateWithoutFallback;
 use backend::job::{Event, Log};
 use encoding_rs::mem::encode_latin1_lossy;
 use mikrotik_api::prelude::MikrotikDevice;
@@ -134,7 +135,8 @@ async fn update_older_chr_to_current() {
         log.cancel();
     };
     let power = PowerChain::unpowered("chr");
-    let (result, ()) = tokio::join!(update(&link, &power, &target, &[], &log), cancel);
+    let fallback = std::time::Duration::from_secs(900);
+    let (result, ()) = tokio::join!(update(&link, &power, &target, &[], fallback, &log), cancel);
     eprintln!("--- cancelled update log ---\n{:#?}", log.events());
     assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
     assert!(log.events().iter().any(|e| matches!(e, Event::PackageUploaded(_))));
@@ -150,9 +152,13 @@ async fn update_older_chr_to_current() {
     assert_eq!(read_state(&link.api().await.unwrap()).await.unwrap().version, before.version);
 
     let log = Log::new("chr");
-    let result = update(&link, &power, &target, &[], &log).await;
+    let result = update(&link, &power, &target, &[], fallback, &log).await;
     eprintln!("--- update log ---\n{:#?}", log.events());
     result.expect("update");
+    // a CHR has no partitions to fall back to
+    assert!(log.events().contains(&Event::UpdateWithoutFallback(UpdateWithoutFallback {
+        partitions: 0
+    })));
     assert_eq!(
         log.events().last(),
         Some(&Event::UpdateDone(UpdateDone {

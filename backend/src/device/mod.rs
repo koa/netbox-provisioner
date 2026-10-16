@@ -23,6 +23,7 @@ pub(crate) mod raw;
 pub mod ros;
 pub mod terminal;
 pub mod update;
+pub mod update_fallback;
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum Credentials {
     Named(Box<str>),

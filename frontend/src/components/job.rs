@@ -173,6 +173,7 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         JobKind::REBOOT => t::REBOOT,
         JobKind::DEVICE_MODE => t::DEVICE_MODE,
         JobKind::REPARTITION => t::REPARTITION,
+        JobKind::BOOT_PARTITION => t::BOOT_PARTITION,
         JobKind::Other(other) => other,
     };
     let events = || job.events.iter().map(|event| &event.event);
@@ -320,6 +321,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
                 RebootReason::REQUESTED => e::Reboot::Requested,
                 RebootReason::DEVICE_MODE => e::Reboot::DeviceMode,
                 RebootReason::REPARTITION => e::Reboot::Repartition,
+                RebootReason::PARTITION => e::Reboot::Partition,
                 RebootReason::Other(other) => e::Reboot::Other(other),
             },
             reboot.timeout / 60_000_000_000,
@@ -332,6 +334,13 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             &features(confirm.changes.iter().map(|c| (c.feature.as_str(), &c.reason))),
             confirm.timeout / 60_000_000_000,
         ),
+        Event::PartitionRunning(running) => e::partition_running(&running.name, &running.version),
+        Event::UpdateFallbackArmed(armed) => {
+            e::update_fallback_armed(&armed.partition, &armed.version, seconds(armed.delay) / 60)
+        }
+        Event::UpdateFallbackDisarmed(disarmed) => e::update_fallback_disarmed(&disarmed.partition),
+        Event::UpdateWithoutFallback(without) => e::update_without_fallback(without.partitions),
+        Event::OspfNeighborsBack(back) => e::ospf_neighbors_back(&back.neighbors),
         Event::RepartitionStarted(started) => e::repartition_started(started.count, started.files),
         Event::Repartitioned(done) => e::repartitioned(
             &done

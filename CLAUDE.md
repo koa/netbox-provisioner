@@ -306,6 +306,21 @@ It compares identity, files and the partition count after the reboot and reports
 On lab-core (CCR2004, 7.23.8) it took about 80 s and kept the configuration, all files and the
 OSPF neighbors; part1 is empty afterwards. A CHR has no `/partitions`, so there is no CHR test.
 
+An update on a RouterOS 7 device with two partitions first copies the running RouterOS to the
+other one (`device::update_fallback::arm`, `/partitions copy-to`). It then adds a scheduler
+`netbox-provisioner-update-fallback` (`start-time=startup`). Its script waits
+`update_fallback_seconds` (default 900) and, if its own entry is still there, activates the old
+partition and reboots. A running script doesn't stop when its scheduler entry is removed, so the
+script checks for the entry itself. With the fallback armed, the update waits for a reboot
+until the device could be back from it. Back on the old partition is `UPDATE_ROLLED_BACK`.
+Reached on the new partition, the scheduler is removed: no switching back once the provisioner
+sees the device. Then the OSPF neighbors that were `Full` before have to be `Full` again within
+3 min, else `OSPF_NEIGHBORS_MISSING`. The way back is the device page's "Von partN starten"
+(`bootPartition`), never automatic. A device without two partitions updates as before and gets
+an `UpdateWithoutFallback` event. Checked on lab-core (7.23.8 → 7.24.5 and back, both ways):
+`copy-to` ends by itself after about 7 s. Booting `part1` brings back the old version with its
+configuration and without the scheduler. The scheduler switching back by itself is untested.
+
 `local/` runs the lab: `netbox/` (NetBox + `seed-lab.py`), `keycloak/` (realm `lab` on
 `localhost:8180`, admin/admin), `lab/make-config.sh` (the lab devices' password comes from the
 ignored `.lab-netbox/device-password`, never put it in the repo) + `lab/run-provisioner.sh`

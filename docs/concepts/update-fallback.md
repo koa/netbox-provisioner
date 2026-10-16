@@ -1,7 +1,7 @@
 # Konzept: Fallback für RouterOS-Updates
 
-Status: Konzept. Umgesetzt ist bisher nur die Einrichtung für Stufe 1: das Anpassen des
-Device-Mode (siehe unten) und das Aufteilen in zwei Partitionen. Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
+Status: Stufe 1 ist umgesetzt: Device-Mode anpassen (siehe unten), in zwei Partitionen
+aufteilen und der Ablauf beim Update. Stufe 2 ist noch Konzept. Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
 noch einen Fallback Mechanismus für Updates“).
 
 ## Ausgangslage
@@ -58,6 +58,26 @@ Konfiguration. Geprüft nur lesend im Lab und in der MikroTik-Doku
    hat keine `/partitions`.
 
 ### Ablauf eines Updates
+
+*Umgesetzt* in `backend/src/device/update_fallback.rs` und `update.rs`, wie unten beschrieben.
+Die Frist ist `update_fallback_seconds`, Standard 900. Auf der Geräteseite bietet jede
+Partition mit einem RouterOS, die gerade nicht läuft, „Von partN starten“ an (Job
+`BootPartition`: `activate` und Neustart). Eine CHR hat keine Partitionen, deshalb lief die
+Prüfung im Lab.
+
+Im Lab geprüft (lab-core, 2026-10-15), über die UI:
+- **Update 7.23.8 → 7.24.5:** `copy-to` auf `part1` dauerte über die API etwa 7 s und endete von
+  selbst. Das Gerät kam nach rund 80 s mit 7.24.5 zurück. Der Scheduler wurde entfernt, alle 6
+  OSPF-Nachbarn (v2 und v3) waren sofort wieder `Full`. Danach folgte das Firmware-Upgrade.
+- **„Von part1 starten“:** lab-core lief nach rund 75 s mit 7.23.8 samt Konfiguration. Die
+  OSPF-Nachbarn waren `Full`, und auf `part1` war kein Scheduler, weil er erst nach der Kopie
+  angelegt wird.
+- **„Von part0 starten“:** wieder 7.24.5, OSPF `Full`.
+- **Nicht ausgelöst:** das Zurückschalten durch den Scheduler. Dafür müsste das Gerät nach einem
+  Update unerreichbar sein.
+- **Nebenbei gefunden:** RouterOS 7.24.5 meldet in `/system/routerboard` kein
+  `factory-firmware` mehr (dafür `minimum-firmware`). In mikrotik-model ist das Feld jetzt
+  optional. Davor galt lab-core nach dem Update als nicht erreichbar.
 
 1. `copy-to` auf die nicht aktive Partition: Sie hält danach die Version und die Konfiguration
    von vorher.

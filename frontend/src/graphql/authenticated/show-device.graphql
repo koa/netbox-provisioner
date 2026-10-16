@@ -96,6 +96,11 @@ mutation RepartitionDevice($id: Int!, $target: String, $credentialName: String, 
         id
     }
 }
+mutation BootPartition($id: Int!, $partition: String!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+    bootPartition(id: $id, partition: $partition, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
+        id
+    }
+}
 fragment Problem on ErrorInfo {
     code
     message

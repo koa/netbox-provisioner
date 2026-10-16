@@ -13,7 +13,7 @@ use crate::{
     device::{
         power::PowerChain,
         raw::{Row, command, field, rows},
-        update::{DeviceLink, Reboot, RebootReason, read_state, wait_until_back},
+        update::{DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason, read_state, wait_until_back},
     },
     job::Log,
 };
@@ -116,6 +116,17 @@ pub async fn read(device: &RawDevice<SimpleResult>) -> Result<Option<Partitions>
     }))
 }
 
+/// The `.id` of partition `name`, for `number` of `activate` and `copy-to`.
+pub(crate) async fn id_of(device: &RawDevice<SimpleResult>, name: &str) -> Result<Box<str>, Error> {
+    rows(device, "/partitions/print")
+        .await?
+        .iter()
+        .find(|row| field(row, "name") == Some(name))
+        .and_then(|row| field(row, ".id"))
+        .map(Box::from)
+        .ok_or_else(|| Error::Refused(format!("no partition {name}").into()))
+}
+
 async fn files(device: &RawDevice<SimpleResult>) -> Result<Vec<Box<str>>, Error> {
     Ok(rows(device, "/file/print")
         .await?
@@ -164,9 +175,9 @@ pub async fn repartition(link: &impl DeviceLink, power: &PowerChain, log: &Log) 
     drop(device);
     log.emit(Reboot {
         reason: RebootReason::Repartition,
-        timeout: crate::device::update::REBOOT_TIMEOUT.into(),
+        timeout: REBOOT_TIMEOUT.into(),
     });
-    wait_until_back(link, log, uptime, sent, |_| Some(())).await?;
+    wait_until_back(link, log, uptime, sent, REBOOT_TIMEOUT, |_| Some(())).await?;
     drop(rebooting);
     let device = link.api().await?;
     let partitions = list(&device).await;
@@ -189,6 +200,68 @@ pub async fn repartition(link: &impl DeviceLink, power: &PowerChain, log: &Log) 
         missing_files,
     });
     Ok(())
+}
+
+/// The device is back, running `name` with `version`.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct PartitionRunning {
+    pub name: Box<str>,
+    pub version: Box<str>,
+}
+
+/// Boots the device from `name`, a partition with a RouterOS on it (`/partitions activate`, a
+/// reboot), e.g. back to the RouterOS from before an update. The partition booted from before
+/// stays as it is.
+pub async fn boot_from(
+    link: &impl DeviceLink,
+    power: &PowerChain,
+    name: &str,
+    log: &Log,
+) -> Result<(), Error> {
+    let device = link.api().await?;
+    let partition = list(&device)
+        .await
+        .into_iter()
+        .find(|p| p.name.as_ref() == name && !p.version.is_empty())
+        .ok_or_else(|| Error::Refused(format!("no partition {name} with a RouterOS").into()))?;
+    if partition.running {
+        log.emit(PartitionRunning {
+            name: partition.name,
+            version: partition.version,
+        });
+        return Ok(());
+    }
+    let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
+    let uptime = read_state(&device).await?.uptime;
+    let id = id_of(&device, name).await?;
+    command(&device, "/partitions/activate", &[("number", &id)]).await?;
+    let sent = Instant::now();
+    // the answer, or the connection breaking with the reboot
+    let _ = timeout(Duration::from_secs(10), command(&device, "/system/reboot", &[])).await;
+    drop(device);
+    log.emit(Reboot {
+        reason: RebootReason::Partition,
+        timeout: REBOOT_TIMEOUT.into(),
+    });
+    wait_until_back(link, log, uptime, sent, REBOOT_TIMEOUT, |_| Some(())).await?;
+    drop(rebooting);
+    let running = list(&link.api().await?).await.into_iter().find(|p| p.running);
+    match running {
+        Some(running) if running.name.as_ref() == name => {
+            log.emit(PartitionRunning {
+                name: running.name,
+                version: running.version,
+            });
+            Ok(())
+        }
+        running => Err(Error::Refused(
+            format!(
+                "runs {} after activating {name}",
+                running.map_or("no partition".into(), |p| p.name)
+            )
+            .into(),
+        )),
+    }
 }
 
 #[cfg(test)]

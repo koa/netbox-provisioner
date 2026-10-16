@@ -6,11 +6,14 @@
 //! (`device::ros::needed_radio_package`); other packages are uninstalled. After the system the
 //! RouterBOARD firmware follows (`/system/routerboard/upgrade`, one more reboot). A device that
 //! powers others over PoE reboots only while none of them updates ([`power`](super::power)).
+//! Where the device has two partitions, the RouterOS from before stays on the other one as the
+//! way back ([`update_fallback`]), and the update is done when the OSPF neighbors are back.
 use crate::{
     Error,
     device::{
         power::{PowerChain, RebootLease},
         raw::{command, field, rows},
+        update_fallback,
     },
     graphql::scalars::ScalarDuration,
     job::Log,
@@ -98,6 +101,8 @@ pub enum RebootReason {
     DeviceMode,
     /// the flash is reformatted in partitions
     Repartition,
+    /// to boot from another partition (`bootPartition`)
+    Partition,
 }
 
 /// The device is back with this RouterOS.
@@ -449,13 +454,14 @@ async fn download(version: &Version, file: &str) -> Result<Vec<u8>, Error> {
         .to_vec())
 }
 
-/// Reboots and waits until the device answers with `expect` (a version, a firmware); the
-/// lease is held until the device is back.
+/// Reboots and waits (up to `wait`) until the device answers with `expect` (a version, a
+/// firmware); the lease is held until the device is back.
 async fn reboot_and_wait<T, F>(
     link: &impl DeviceLink,
     _rebooting: RebootLease,
     log: &Log,
     reason: RebootReason,
+    wait: Duration,
     check: F,
 ) -> Result<T, Error>
 where
@@ -470,18 +476,19 @@ where
     drop(device);
     log.emit(Reboot {
         reason,
-        timeout: REBOOT_TIMEOUT.into(),
+        timeout: wait.into(),
     });
-    wait_until_back(link, log, before, sent, check).await
+    wait_until_back(link, log, before, sent, wait, check).await
 }
 
-/// Waits (up to [`REBOOT_TIMEOUT`]) until the device answers again after a boot that came
-/// after `sent`, when it had been up for `before`, and checks it with `check`.
+/// Waits (up to `wait`, usually [`REBOOT_TIMEOUT`]) until the device answers again after a
+/// boot that came after `sent`, when it had been up for `before`, and checks it with `check`.
 pub(crate) async fn wait_until_back<T, F>(
     link: &impl DeviceLink,
     log: &Log,
     before: Duration,
     sent: Instant,
+    wait: Duration,
     check: F,
 ) -> Result<T, Error>
 where
@@ -489,7 +496,7 @@ where
 {
     // A connection while the device boots may just wait for it (it does through QEMU's port
     // forwarding), so the reboot shows in the uptime, not in a failing connection.
-    let deadline = Instant::now() + REBOOT_TIMEOUT;
+    let deadline = Instant::now() + wait;
     loop {
         log.unless_cancelled(sleep(Duration::from_secs(5))).await?;
         let state = match timeout(Duration::from_secs(30), link.api()).await {
@@ -517,7 +524,7 @@ where
 /// [`update`]: not while a device it powers updates).
 pub async fn reboot(link: &impl DeviceLink, power: &PowerChain, log: &Log) -> Result<(), Error> {
     let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
-    let state = reboot_and_wait(link, rebooting, log, RebootReason::Requested, |state| {
+    let state = reboot_and_wait(link, rebooting, log, RebootReason::Requested, REBOOT_TIMEOUT, |state| {
         Some(state.clone())
     })
     .await?;
@@ -529,13 +536,16 @@ pub async fn reboot(link: &impl DeviceLink, power: &PowerChain, log: &Log) -> Re
 
 /// Updates the device to `target` with `routeros` and the `wanted` packages, step by step (see
 /// [`next_step`]), telling `log` how far it got. Writes to the device without asking for
-/// `allow_apply`, that is up to the caller (`WritesAllowed`). `power` says which devices' updates and reboots it
-/// has to wait for.
+/// `allow_apply`, that is up to the caller (`WritesAllowed`). `power` says which devices' updates
+/// and reboots it has to wait for. On a device with two partitions the RouterOS from before
+/// stays on the other one, and the device switches back to it `fallback` after a boot unless
+/// the provisioner reaches it ([`update_fallback`]).
 pub async fn update(
     link: &impl DeviceLink,
     power: &PowerChain,
     target: &Version,
     wanted: &[Box<str>],
+    fallback: Duration,
     log: &Log,
 ) -> Result<(), Error> {
     let mut state = read_state(&link.api().await?).await?;
@@ -550,9 +560,90 @@ pub async fn update(
     } else {
         None
     };
+    let newest_v6 = newest_v6.as_ref().unwrap_or(target);
     // from the upload on a power loss can brick the device: it installs at the next boot
     let _updating = log.unless_cancelled(power.updating(log)).await?;
-    while let Some(step) = next_step(&state, target, newest_v6.as_ref().unwrap_or(target), wanted) {
+    if next_step(&state, target, newest_v6, wanted).is_some() {
+        log.check()?;
+        let device = link.api().await?;
+        let ospf = update_fallback::ospf_full(&device).await?;
+        // RouterOS 6 has no partitions to copy to with this menu
+        let armed = match state.version.major() >= 7 {
+            true => update_fallback::arm(&device, fallback, log).await?,
+            false => None,
+        };
+        drop(device);
+        let wait = match armed {
+            Some(_) => fallback + REBOOT_TIMEOUT,
+            None => REBOOT_TIMEOUT,
+        };
+        let stepped = steps(link, power, state, target, newest_v6, wanted, armed.as_deref(), wait, log).await;
+        state = match (stepped, armed) {
+            (Ok(state), Some(partition)) => {
+                update_fallback::disarm(&link.api().await?, &partition, log).await?;
+                state
+            }
+            (Ok(state), None) => state,
+            (Err(error), Some(partition)) => return Err(not_updated(link, &partition, error, log).await),
+            (Err(error), None) => return Err(error),
+        };
+        let missing = update_fallback::wait_for_ospf(&link.api().await?, &ospf, log).await?;
+        if !missing.is_empty() {
+            return Err(Error::OspfNeighborsMissing(missing.join(", ").into()));
+        }
+        if !ospf.is_empty() {
+            log.emit(update_fallback::OspfNeighborsBack {
+                neighbors: ospf.into(),
+            });
+        }
+    }
+    if let Some((current, upgrade)) = &state.firmware
+        && current != upgrade
+    {
+        let upgrade_event = |running| FirmwareUpgrade {
+            current: current.clone(),
+            upgrade: upgrade.clone(),
+            running,
+        };
+        log.check()?;
+        log.emit(upgrade_event(false));
+        // the firmware loads at the next boot, whenever that is
+        rows(&link.api().await?, "/system/routerboard/upgrade").await?;
+        let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
+        reboot_and_wait(link, rebooting, log, RebootReason::Firmware, REBOOT_TIMEOUT, |state| {
+            state
+                .firmware
+                .as_ref()
+                .is_some_and(|(running, _)| running == upgrade)
+                .then_some(())
+        })
+        .await?;
+        log.emit(upgrade_event(true));
+    }
+    log.emit(UpdateDone {
+        from,
+        to: state.version.to_string().into(),
+    });
+    Ok(())
+}
+
+
+/// The update steps from `state`; `armed`: the partition the device switches back to, where it
+/// has one ([`update_fallback`]); `wait`: how long a reboot is waited for (with the fallback,
+/// until the device would be back from it).
+#[allow(clippy::too_many_arguments)]
+async fn steps(
+    link: &impl DeviceLink,
+    power: &PowerChain,
+    mut state: DeviceState,
+    target: &Version,
+    newest_v6: &Version,
+    wanted: &[Box<str>],
+    armed: Option<&str>,
+    wait: Duration,
+    log: &Log,
+) -> Result<DeviceState, Error> {
+    while let Some(step) = next_step(&state, target, newest_v6, wanted) {
         log.check()?;
         log.emit(UpdateStepPlanned {
             version: step.version.to_string().into(),
@@ -629,42 +720,50 @@ pub async fn update(
         };
         uninstall(&link.api().await?, &step.uninstall).await?;
         let expected = step.version.clone();
-        state = reboot_and_wait(link, rebooting, log, RebootReason::Packages, |state| {
+        state = reboot_and_wait(link, rebooting, log, RebootReason::Packages, wait, |state| {
             (state.version == expected).then(|| state.clone())
         })
         .await?;
+        // back from the fallback, with the version a package-only step expects too
+        if let Some(partition) = armed
+            && update_fallback::running(&link.api().await?).await.as_deref() == Some(partition)
+        {
+            return Err(Error::UpdateRolledBack {
+                partition: partition.into(),
+                version: state.version.to_string().into(),
+            });
+        }
         log.emit(RouterOsRunning {
             version: state.version.to_string().into(),
         });
     }
-    if let Some((current, upgrade)) = &state.firmware
-        && current != upgrade
-    {
-        let upgrade_event = |running| FirmwareUpgrade {
-            current: current.clone(),
-            upgrade: upgrade.clone(),
-            running,
-        };
-        log.check()?;
-        log.emit(upgrade_event(false));
-        // the firmware loads at the next boot, whenever that is
-        rows(&link.api().await?, "/system/routerboard/upgrade").await?;
-        let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
-        reboot_and_wait(link, rebooting, log, RebootReason::Firmware, |state| {
-            state
-                .firmware
-                .as_ref()
-                .is_some_and(|(running, _)| running == upgrade)
-                .then_some(())
-        })
-        .await?;
-        log.emit(upgrade_event(true));
+
+    Ok(state)
+}
+
+/// The update failed with `error` while the device can switch back to `partition`: back on it
+/// is [`Error::UpdateRolledBack`]; where the device is reached on the new one, the scheduler goes,
+/// so the device doesn't switch back by itself (the device page offers that). Unreached, the
+/// scheduler stays and does its job.
+async fn not_updated(link: &impl DeviceLink, partition: &str, error: Error, log: &Log) -> Error {
+    if matches!(error, Error::NotBackAfterReboot | Error::UpdateRolledBack { .. }) {
+        return error;
     }
-    log.emit(UpdateDone {
-        from,
-        to: state.version.to_string().into(),
-    });
-    Ok(())
+    let device = match timeout(Duration::from_secs(30), link.api()).await {
+        Ok(Ok(device)) => device,
+        _ => return error,
+    };
+    if update_fallback::running(&device).await.as_deref() == Some(partition) {
+        let version = read_state(&device).await.map(|state| state.version.to_string());
+        return Error::UpdateRolledBack {
+            partition: partition.into(),
+            version: version.unwrap_or_default().into(),
+        };
+    }
+    if let Err(disarm) = update_fallback::disarm(&device, partition, log).await {
+        warn!("update fallback not removed: {disarm}");
+    }
+    error
 }
 
 #[cfg(test)]

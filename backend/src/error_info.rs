@@ -127,6 +127,13 @@ impl From<&Error> for ErrorInfo {
                     .collect(),
             ),
             Error::NotBackAfterReboot => ("NOT_BACK_AFTER_REBOOT", vec![]),
+            Error::UpdateRolledBack { partition, version } => (
+                "UPDATE_ROLLED_BACK",
+                vec![("partition", partition.to_string()), ("version", version.to_string())],
+            ),
+            Error::OspfNeighborsMissing(neighbors) => {
+                ("OSPF_NEIGHBORS_MISSING", vec![("neighbors", neighbors.to_string())])
+            }
             Error::Busy(device) => ("BUSY", vec![("device", device.to_string())]),
             Error::UnknownJob(id) => ("UNKNOWN_JOB", vec![("id", id.to_string())]),
             Error::Cancelled => ("CANCELLED", vec![]),

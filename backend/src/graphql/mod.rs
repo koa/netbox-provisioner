@@ -133,7 +133,7 @@ impl MutationAuthenticated {
                 Some(channel) => update::newest(7, channel).await?,
                 None => update::read_state(&device.api().await?).await?.version,
             };
-            update::update(&device, &power, &version, &wanted, &log).await
+            update::update(&device, &power, &version, &wanted, CONFIG.update_fallback(), &log).await
         })?)
     }
     /// Starts a reboot of a device (`allow_apply` must be set) and waits until it is back.
@@ -197,6 +197,28 @@ impl MutationAuthenticated {
                 .await??
                 .ok_or(Error::MissingCredentials)?;
             partitions::repartition(&link, &power, &log).await
+        })?)
+    }
+    /// Starts booting the device from `partition` (one of `DeviceAccess.access.partitions` with
+    /// a RouterOS on it; `allow_apply` must be set), e.g. back to the RouterOS from before an
+    /// update. Target and credentials as for `DeviceAccess.access`.
+    #[graphql(guard = "WritesAllowed")]
+    async fn boot_partition(
+        &self,
+        id: u32,
+        partition: Box<str>,
+        target: Option<String>,
+        credential_name: Option<Box<str>>,
+        adhoc_credentials: Option<AdhocCredentials>,
+    ) -> Result<Arc<Job>, ApiError> {
+        let device = self.device(id).await?;
+        let power = PowerChain::of(&device);
+        Ok(job::start(&device.clone(), JobKind::BootPartition, |log| async move {
+            let link = log
+                .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
+                .await??
+                .ok_or(Error::MissingCredentials)?;
+            partitions::boot_from(&link, &power, &partition, &log).await
         })?)
     }
     /// Stops a job (`Query.job`) at the next point where that is safe: an update between its

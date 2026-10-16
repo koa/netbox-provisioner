@@ -12,9 +12,9 @@ use crate::{
     graphql::{
         authenticated::{
             ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, ChangeDeviceMode, DeviceJobs,
-            DeviceOverview, RebootDevice, RepartitionDevice, UpdateRouteros, apply_device_cfg,
+            BootPartition, DeviceOverview, RebootDevice, RepartitionDevice, UpdateRouteros, apply_device_cfg,
             reboot_device, bootstrap_candidates, bootstrap_device, change_device_mode, device_jobs,
-            device_overview, repartition_device, update_routeros,
+            boot_partition, device_overview, repartition_device, update_routeros,
         },
         query_authenticated, query_authenticated_response,
     },
@@ -45,6 +45,8 @@ pub struct ShowDevice {
     confirm_device_mode: bool,
     /// "In zwei Partitionen aufteilen" was clicked, waiting for the confirmation
     confirm_repartition: bool,
+    /// the partition to boot from, asked before
+    confirm_boot: Option<String>,
 }
 type Candidate =
     bootstrap_candidates::BootstrapCandidatesTopologyDeviceByIdBootstrapPlanDiscovered;
@@ -103,6 +105,9 @@ pub enum ShowDeviceMessage {
     /// ask before splitting the flash (`true`), or not anymore
     ConfirmRepartition(bool),
     Repartition,
+    /// ask before booting from a partition (`Some`), or not anymore
+    ConfirmBoot(Option<String>),
+    BootPartition(String),
     JobStarted(Result<i64, FrontendError>),
     JobFinished,
 }
@@ -125,6 +130,7 @@ impl Component for ShowDevice {
             confirm_reboot: false,
             confirm_device_mode: false,
             confirm_repartition: false,
+            confirm_boot: None,
         }
     }
 
@@ -201,6 +207,16 @@ impl Component for ShowDevice {
                 self.confirm_repartition = false;
                 self.job_running = true;
                 repartition(ctx.link().clone(), self.id, self.alternate_target.clone());
+                true
+            }
+            ShowDeviceMessage::ConfirmBoot(partition) => {
+                self.confirm_boot = partition;
+                true
+            }
+            ShowDeviceMessage::BootPartition(partition) => {
+                self.confirm_boot = None;
+                self.job_running = true;
+                boot_from(ctx.link().clone(), self.id, partition, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::JobStarted(result) => {
@@ -395,9 +411,38 @@ impl Component for ShowDevice {
             let partitions = data.partitions.as_ref().map(|partitions| {
                 html! {<>
                 <dt>{t::PARTITIONS}</dt><dd>
-                    { for partitions.partitions.iter().map(|p| html!(
-                        <div>{ t::partition(&p.name, &p.version, p.size_mib, p.active, p.running) }</div>
-                    ))}
+                    { for partitions.partitions.iter().map(|p| {
+                        // a RouterOS to boot, e.g. the one from before an update
+                        let bootable = !p.running && !p.version.is_empty();
+                        let name = p.name.clone();
+                        html!(
+                        <div>
+                            { t::partition(&p.name, &p.version, p.size_mib, p.active, p.running) }
+                            if bootable && self.confirm_boot.as_ref() == Some(&p.name) {
+                                {" "}{t::PARTITION_BOOT_CONFIRM}
+                                <Button
+                                    variant={ButtonVariant::Danger}
+                                    label={t::PARTITION_BOOT_NOW}
+                                    disabled={running}
+                                    onclick={ctx.link().callback(move |_| ShowDeviceMessage::BootPartition(name.clone()))}
+                                />
+                                {" "}
+                                <Button
+                                    variant={ButtonVariant::Link}
+                                    label={CANCEL}
+                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmBoot(None))}
+                                />
+                            } else if bootable {
+                                {" "}
+                                <Button
+                                    variant={ButtonVariant::Secondary}
+                                    label={t::partition_boot(&p.name)}
+                                    disabled={running}
+                                    onclick={ctx.link().callback(move |_| ShowDeviceMessage::ConfirmBoot(Some(name.clone())))}
+                                />
+                            }
+                        </div>
+                    )})}
                     if partitions.can_split {
                         <div class="partitions-split">
                             if self.confirm_repartition {
@@ -773,6 +818,30 @@ fn repartition(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
         )
         .await
         .map(|data| data.repartition_device.id);
+        scope.send_message(ShowDeviceMessage::JobStarted(result));
+    });
+}
+
+/// Boots the device from `partition`.
+fn boot_from(scope: Scope<ShowDevice>, id: u32, partition: String, target: SelectedTarget) {
+    spawn_local(async move {
+        let (credential_name, adhoc_credentials) =
+            target.credentials.variables(|username, password| boot_partition::AdhocCredentials {
+                username,
+                password,
+            });
+        let result = query_authenticated::<BootPartition, _>(
+            scope.clone(),
+            boot_partition::Variables {
+                id: id as i64,
+                partition,
+                target: target.address.map(|a| a.to_string()),
+                credential_name,
+                adhoc_credentials,
+            },
+        )
+        .await
+        .map(|data| data.boot_partition.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }
