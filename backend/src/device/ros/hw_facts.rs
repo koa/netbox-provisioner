@@ -60,6 +60,8 @@ pub fn radio_package(model: &[u8]) -> Option<RadioPackage> {
         b"RBwAPG-5HacD2HnD" => Some(RadioPackage::WifiQcomAc),
         b"CRS109-8G-1S-2HnD"
         | b"RB962UiGS-5HacT2HnT"
+        // the first wAP ac (mipsbe): no `wifi-qcom-ac` for it
+        | b"RBwAPG-5HacT2HnD"
         | b"RBDynaDishG-5HacDr3"
         // RouterOS 6 reports the RB912 without `RB`
         | b"RB912UAG-2HPnD"
@@ -157,6 +159,14 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         .enumerate()
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
+        // the first wAP ac: a single port, PoE-in only (7.23.7)
+        b"RBwAPG-5HacT2HnD" => [generate_ethernet(
+            EthernetNamePattern::Ether,
+            &ADVERTISE_1G,
+            1600,
+            false,
+        )(1)]
+        .into(),
         b"RB750Gr3" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1596, false),
             5,
@@ -522,7 +532,7 @@ pub fn w60g_port(idx: usize) -> InterfaceW60GByDefaultName {
 
 #[cfg(test)]
 mod tests {
-    use super::build_ethernet_ports;
+    use super::{RadioPackage, build_ethernet_ports, radio_package};
     use mikrotik_model::value::{Auto, HasNone};
 
     #[test]
@@ -567,6 +577,16 @@ mod tests {
         let ether2 = &ports[1];
         assert_eq!(&*ether2.default_name, b"ether2");
         assert_eq!(ether2.data.power_cycle_ping_enabled, None);
+    }
+
+    #[test]
+    fn first_wap_ac_has_one_port_and_runs_wireless() {
+        let ports = build_ethernet_ports(b"RBwAPG-5HacT2HnD");
+        assert_eq!(ports.len(), 1);
+        assert_eq!(&*ports[0].default_name, b"ether1");
+        assert_eq!(ports[0].data.l_2_mtu, Some(1600));
+        assert_eq!(ports[0].data.poe_out, None);
+        assert_eq!(radio_package(b"RBwAPG-5HacT2HnD"), Some(RadioPackage::Wireless));
     }
 
     #[test]

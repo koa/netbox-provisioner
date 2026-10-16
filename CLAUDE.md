@@ -329,6 +329,8 @@ get no DHCP), so they are static access ports of that bridge instead
 carry each WLAN's `datapath.vlan-id` and the CAP's datapath only the bridge (MikroTik's CAPsMAN
 VLAN example; no 802.11ax device in the lab to try it); a `wifi-qcom-ac` CAP is refused then,
 it runs `wireless` instead with `wlan<N>` in NetBox (`hw_facts::runs_wireless`, the wAP ac).
+The first wAP ac (`RBwAPG-5HacT2HnD`, mipsbe, one port) has no `wifi-qcom-ac` and only runs
+`wireless`, like the hAP ac.
 A CAP's radio refers to a local `/interface/wifi/configuration` (`manager=capsman`, the
 datapath; `capsman` for the first datapath, `capsman-<bridge>` for others) and keeps its
 default name (`wifi1`; L2 names it so too): CAPsMAN binds it through that configuration. A
