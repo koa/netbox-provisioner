@@ -205,7 +205,8 @@ gemeinsamen Netz. Abgelehnt wird ein Port mit Kabel woandershin, in einer Bridge
 IPv4 ausserhalb des Netzes der Gegenseite. Das `/31` ist das erste aus `available-prefixes` des
 Pools, in dem NetBox auch keine Adresse hat (ältere Verbindungen haben oft Adressen ohne Prefix)
 und das kein Router routet (wie bei Loopback). Das neue Prefix bekommt kein Tag, als
-Beschreibung die beiden Geräte. Im Lab geprüft: Plan, Vorschau, Schreiben und Rückgängig mit zwei
+Beschreibung die beiden Geräte. Ports und Geräte stehen in der Auswahl in NetBox' Reihenfolge
+(`topology/natural.rs`, wie NetBox' `naturalize_interface`). Im Lab geprüft: Plan, Vorschau, Schreiben und Rückgängig mit zwei
 vorübergehenden Ports `sfp-sfpplus2` an lab-np1 und lab-np2 (danach gelöscht); das Lab-NetBox hat
 dafür den Transfer-Pool `192.168.101.0/24`.
 

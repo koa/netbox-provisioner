@@ -95,6 +95,8 @@ missing, the next free `/31` of the transfer pool as a new prefix, an address at
 `ospf`, MTU, the far device as label). The GraphQL input `Helper` is a `@oneOf` (graphql_client
 makes it an enum; its queries need `skip_serializing_none`), naming the device or the two ports;
 the frontend shows them in one card with a choice, so "Rückgängig" is the device's last write.
+Lists of devices and interfaces follow NetBox' order (`topology::natural`, its
+`naturalize`/`naturalize_interface`).
 A helper computes a `NetboxPlan` of steps (`PlanStep`: create interface, address, cable,
 prefix, set primary IP, update interface) from the topology plus REST reads
 (`netbox::rest::NetboxRest`; GraphQL can't list free addresses or write). A new address must also be unrouted:

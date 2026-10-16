@@ -1,6 +1,7 @@
 use crate::topology::{
     DeviceId,
     findings::Finding, SiteId, TopologyHolder,
+    natural::naturalize,
     access::{AccessTopology, device::DeviceAccess, site::SiteAccess},
 };
 use async_graphql::{InputObject, Object};
@@ -12,8 +13,10 @@ struct DeviceListFilter {
 
 #[Object]
 impl TopologyHolder {
+    /// In NetBox' order of names.
     async fn all_devices(&self, filter: Option<DeviceListFilter>) -> Box<[DeviceAccess]> {
-        self.topo_lock()
+        let mut devices: Box<[DeviceAccess]> = self
+            .topo_lock()
             .await
             .as_ref()
             .map(|topo| {
@@ -33,7 +36,9 @@ impl TopologyHolder {
                     })
                     .collect()
             })
-            .unwrap_or_default()
+            .unwrap_or_default();
+        devices.sort_by_cached_key(|device| naturalize(device.name()));
+        devices
     }
     /// Sorted by name, the ones with a device with RouterOS.
     async fn all_sites(&self) -> Box<[SiteAccess]> {

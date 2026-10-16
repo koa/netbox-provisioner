@@ -17,6 +17,7 @@ use crate::{
         InterfaceId, PrefixPool, Topology,
         access::{device::DeviceAccess, interface::InterfaceAccess},
         findings::{InterfaceRef, interface_ref},
+        natural::naturalize_interface,
     },
 };
 use async_graphql::{InputObject, SimpleObject};
@@ -162,11 +163,13 @@ pub struct LinkPort {
     pub connected: Vec<InterfaceRef>,
 }
 
+/// The device's Ethernet ports (SFP included, no `lo` or radio: a direct link is a cable) in
+/// NetBox' order.
 pub fn link_ports(device: &DeviceAccess) -> Vec<LinkPort> {
-    device
+    let mut ports: Vec<LinkPort> = device
         .interfaces()
         .iter()
-        .filter(|interface| interface.external_port().is_some())
+        .filter(|interface| interface.is_ethernet_port())
         .map(|interface| LinkPort {
             id: interface.id().0,
             name: interface.name().into(),
@@ -182,7 +185,9 @@ pub fn link_ports(device: &DeviceAccess) -> Vec<LinkPort> {
                 .map(interface_ref)
                 .collect(),
         })
-        .collect()
+        .collect();
+    ports.sort_by_cached_key(|port| naturalize_interface(&port.name));
+    ports
 }
 
 /// `device port`, for messages.
