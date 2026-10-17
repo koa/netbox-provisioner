@@ -136,7 +136,8 @@ pub struct CancelJob;
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/findings.graphql",
-    response_derives = "Debug, Clone, PartialEq"
+    response_derives = "Debug, Clone, PartialEq",
+    skip_serializing_none
 )]
 pub struct Findings;
 
@@ -198,3 +199,11 @@ pub struct HelperJobs;
     response_derives = "Debug, Clone, PartialEq"
 )]
 pub struct LinkPorts;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/netbox-helper.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct FlagInterfaces;

@@ -1,7 +1,7 @@
-query Findings($site: Int){
+query Findings($site: Int, $device: Int, $after: Helper){
     netboxUrl
     topology{
-        findings(siteId: $site){
+        findings(siteId: $site, deviceId: $device, after: $after){
             severity
             kind{
                 __typename

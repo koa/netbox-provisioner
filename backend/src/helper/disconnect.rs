@@ -7,6 +7,7 @@
 //! link is applied at both ends (`NetboxPlan.cut_off`).
 use super::{
     DeleteAddress, DeleteCable, DeletePrefix, NetboxPlan, PlanStep, UpdateInterface, device_ref,
+    flags::InterfaceTag,
 };
 use crate::{
     Error,
@@ -118,8 +119,8 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
                     label_before: end.label().map(Box::from),
                     mtu: None,
                     mtu_before: end.mtu(),
-                    ospf: false,
-                    ospf_removed: end.use_ospf(),
+                    tags_added: Vec::new(),
+                    tags_removed: end.use_ospf().then_some(InterfaceTag::Ospf).into_iter().collect(),
                 }));
             }
         }

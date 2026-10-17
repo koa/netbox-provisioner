@@ -5,7 +5,8 @@ Site-Seite, Netz-Befunde auf der Site-Übersicht, Anzahl an den Karten), ohne di
 Regionen und die gesammelten Generatorfehler. Von Schritt 2 („NetBox gegen Gerät“) die Nachbarn
 → Kabel (`device/neighbors.rs`, „Nachbarn lesen“ auf der Site-Seite). Schritt 3 mit dem Helfer
 „Loopback“ (`backend/src/helper/`, Karte „NetBox ergänzen“ auf der Geräteseite), von Schritt 4
-die Verbindung „Direkt“ (`/31`) und „Kabel aus Befund übernehmen“. Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
+die Verbindung „Direkt“ (`/31`), „Kabel aus Befund übernehmen“ und „Verbindung abräumen“, von
+Schritt 5 die OSPF-/DHCP-Flags. Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
 [pending.md](../pending.md).
 
 ## Ausgangslage
@@ -241,6 +242,16 @@ VLAN-Interface, `dhcp`, optional eine IP-Range mit Rolle `dhcp`.
 
 Eine Tabelle aller Interfaces eines Geräts mit den Tags `ospf`, `dhcp`, `dhcp-client`, `nat` als
 Schalter. Die Prüfungen von oben laufen live mit, etwa „`ospf` nur an einem Kabelende“.
+
+Umgesetzt (`helper/flags.rs`, „Flags“ in „NetBox ergänzen“): Die Tabelle zeigt die Interfaces des
+Geräts in NetBox' Reihenfolge mit Adressen, Kabel und Bridge. Ports einer Bridge fehlen, weil dort
+die Tags der Bridge zählen; einer mit eigenem Tag steht trotzdem da, damit es sich entfernen lässt.
+Ein umgestellter Schalter ist markiert, der Plan ändert je Interface die Tags in einem Schritt.
+Darunter stehen die Befunde des Geräts, wie sie nach den umgestellten Schaltern wären
+(`topology.findings(deviceId:, after:)` rechnet sie auf der Vorschau des Plans), mit Links nach
+NetBox. Schaltet man etwa `ospf` an einem Ende einer Verbindung aus, erscheint „`ospf` nur an einem
+Ende“, bevor etwas geschrieben ist. Im Lab geprüft an lab-np1: `ospf` an `sfp-sfpplus1` aus zeigt
+den Befund, `nat` an `ether2` zeigt in der Vorschau die `srcnat`-Regel; Schreiben und Rückgängig.
 
 ### PoE
 

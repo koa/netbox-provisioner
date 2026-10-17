@@ -846,10 +846,14 @@ pub mod job {
         ) -> String {
             let changes: Vec<String> = changes
                 .map(|(field, value, previous)| match field {
-                    "tags" => match (value, previous) {
-                        (None, Some(previous)) => format!("Tag {previous} weg"),
-                        _ => format!("Tag {} dazu", value.unwrap_or_default()),
-                    },
+                    "tags" => [
+                        value.map(|added| format!("Tag {added} dazu")),
+                        previous.map(|removed| format!("Tag {removed} weg")),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join(", "),
                     _ => format!(
                         "{field} {} (vorher {})",
                         value.unwrap_or("leer"),
@@ -906,6 +910,25 @@ pub mod helper {
         dieses Netzes, wenn danach nichts mehr darin ist. Danach lässt sich die richtige mit \
         „Verbindung“ anlegen.";
     pub const CHOOSE_DISCONNECT_PORT: &str = "Den Port wählen, dessen Verbindung weg soll.";
+    pub const FLAGS: &str = "Flags";
+    pub const FLAGS_HINT: &str = "Die Tags der Interfaces: ospf (OSPF), dhcp (DHCP-Server), \
+        dhcp-client (DHCP-Client, falls ohne Adresse), nat (Uplink, ausgehend maskieren). Bei \
+        Ports einer Bridge zählen die Tags der Bridge.";
+    pub const CHOOSE_FLAGS: &str = "Schalter umstellen, dann zeigt der Plan die Änderung.";
+    pub const INTERFACE: &str = "Interface";
+    /// the device's findings, `after` the switches or as they are
+    pub fn flag_findings(after: bool) -> &'static str {
+        if after { "Befunde des Geräts danach:" } else { "Befunde des Geräts:" }
+    }
+    pub fn no_flag_findings(after: bool) -> &'static str {
+        if after { "Danach keine Befunde zum Gerät." } else { "Keine Befunde zum Gerät." }
+    }
+    pub fn bridge_port(bridge: &str) -> String {
+        format!("Port von {bridge}: dessen Tags zählen")
+    }
+    pub fn cabled_to(device: &str, port: &str) -> String {
+        format!("Kabel zu {device} {port}")
+    }
     pub const ADDRESSES_GO: &str = "Beim nächsten Anwenden verschwinden diese Adressen von den \
         Geräten, die Verbindung ist bis zur neuen ohne Adressen.";
     pub const CUT_OFF: &str = "Über diese Verbindung allein erreicht: nach dem Anwenden des einen \
@@ -998,8 +1021,8 @@ pub mod helper {
         port: (&str, &str),
         label: Option<(&str, Option<&str>)>,
         mtu: Option<(i64, Option<i64>)>,
-        ospf: bool,
-        ospf_removed: bool,
+        tags_added: &[&str],
+        tags_removed: &[&str],
     ) -> String {
         let mut changes = Vec::new();
         if let Some((label, before)) = label {
@@ -1015,13 +1038,16 @@ pub mod helper {
                 None => format!("MTU {mtu} (vorher 1500)"),
             });
         }
-        if ospf {
-            changes.push("Tag ospf".into());
+        if !tags_added.is_empty() {
+            changes.push(format!("{} {}", tags_word(tags_added), tags_added.join(", ")));
         }
-        if ospf_removed {
-            changes.push("Tag ospf weg".into());
+        if !tags_removed.is_empty() {
+            changes.push(format!("{} {} weg", tags_word(tags_removed), tags_removed.join(", ")));
         }
         format!("{} {}: {}", port.0, port.1, changes.join(", "))
+    }
+    fn tags_word(tags: &[&str]) -> &'static str {
+        if tags.len() == 1 { "Tag" } else { "Tags" }
     }
     /// a port in the choice of a link's ends: where its cable goes, what it has
     pub fn link_port(

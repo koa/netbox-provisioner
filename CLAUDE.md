@@ -89,14 +89,18 @@ seen (the router on the other side shows up instead). A `discover-interface-list
 that doesn't exist (`*2000011`, the factory `LAN` an apply removed) means discovery is off; the
 generator sets it to `maintenance` now.
 
-`helper/` holds the helpers that write to NetBox (config-helper concept, steps 3 and 4:
+`helper/` holds the helpers that write to NetBox (config-helper concept, steps 3 to 5:
 `helper::loopback`, `helper::connection` for a direct link between two routers: cable if
 missing, the next free `/31` of the transfer pool as a new prefix, an address at each end,
 `ospf`, MTU, the far device as label), `helper::disconnect` taking a wrong link out of NetBox
 (its cable, the port's transfer-pool addresses and the far end's in the same network, the
 link's prefix once empty, label naming the other end and `ospf`; a primary IP is refused; the
 plan names devices it cuts off, `NetboxPlan.cut_off`). „Verbindung“ offers it as a button for a
-chosen port whose link is in the way. Deleting is undone by creating the object again from the
+chosen port whose link is in the way. `helper::flags` switches the tags `ospf`, `dhcp`,
+`dhcp-client`, `nat` of a device's interfaces (`flagInterfaces`: all but bridge ports, which
+come only with a tag to take off); `UpdateInterface` carries `tags_added`/`tags_removed`. Its card
+shows the device's findings after the switches live: `topology.findings(deviceId:, after:)`
+computes them on the preview of a helper's plan. Deleting is undone by creating the object again from the
 JSON NetBox had (`NetboxWritten.recreate`, `helper::recreate`; it gets a new id): undoing an
 older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (graphql_client
 makes it an enum; its queries need `skip_serializing_none`), naming the device or the two ports;

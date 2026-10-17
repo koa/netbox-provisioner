@@ -331,3 +331,25 @@ dl.neighbor-results {
         grid-template-columns: 1fr;
     }
 }
+/* „Flags“ in „NetBox ergänzen“ (components/netbox_helper.rs): a switch per interface and tag,
+   one changed from NetBox marked; the second line of an interface says what it has. */
+.flag-table {
+    overflow-x: auto;
+    margin-block: var(--pf-t--global--spacer--md);
+
+    & th {
+        white-space: nowrap;
+        overflow: visible;
+    }
+    & small {
+        color: var(--pf-t--global--text--color--subtle);
+        overflow-wrap: anywhere;
+    }
+    & td.flag-changed {
+        background-color: var(--pf-t--global--background--color--secondary--default);
+        box-shadow: inset 3px 0 var(--pf-t--global--border--color--status--info--default, #2b9af3);
+    }
+}
+.helper-findings {
+    margin-block-end: var(--pf-t--global--spacer--md);
+}

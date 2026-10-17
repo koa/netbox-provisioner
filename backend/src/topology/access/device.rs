@@ -301,4 +301,8 @@ impl DeviceAccess {
     async fn link_ports(&self) -> Vec<crate::helper::connection::LinkPort> {
         crate::helper::connection::link_ports(self)
     }
+    /// Its interfaces whose tags count, for the helper „Flags“.
+    async fn flag_interfaces(&self) -> Vec<crate::helper::flags::FlagInterface> {
+        crate::helper::flags::flag_interfaces(self)
+    }
 }

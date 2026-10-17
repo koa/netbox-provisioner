@@ -57,19 +57,7 @@ impl Component for FindingsList {
                 Some(_) => html!(<p>{t::NONE}</p>),
                 None => return Html::default(),
             },
-            Some(Ok((netbox, findings))) => {
-                let links = Links { netbox };
-                html! {
-                    <ul class="finding-list">
-                        { for findings.iter().map(|finding| html! {
-                            <li>
-                                {severity(&finding.severity)}
-                                <span>{links.describe(&finding.kind)}</span>
-                            </li>
-                        }) }
-                    </ul>
-                }
-            }
+            Some(Ok((netbox, findings))) => finding_list(netbox, findings),
         };
         let title = if site.is_some() {
             t::TITLE
@@ -90,12 +78,34 @@ impl Component for FindingsList {
             let site = ctx.props().site.map(i64::from);
             spawn_local(async move {
                 let data =
-                    query_authenticated::<Findings, _>(scope.clone(), findings::Variables { site })
+                    query_authenticated::<Findings, _>(
+                        scope.clone(),
+                        findings::Variables {
+                            site,
+                            device: None,
+                            after: None,
+                        },
+                    )
                         .await
                         .map(|data| (data.netbox_url, data.topology.findings));
                 scope.send_message(FindingsMsg::Data(data));
             });
         }
+    }
+}
+
+/// The findings, each object a link into NetBox at `netbox` (ending in `/`).
+pub fn finding_list(netbox: &str, findings: &[FindingsTopologyFindings]) -> Html {
+    let links = Links { netbox };
+    html! {
+        <ul class="finding-list">
+            { for findings.iter().map(|finding| html! {
+                <li>
+                    {severity(&finding.severity)}
+                    <span>{links.describe(&finding.kind)}</span>
+                </li>
+            }) }
+        </ul>
     }
 }
 

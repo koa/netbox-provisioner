@@ -4,14 +4,18 @@
 //! NetBox only, the device gets it by applying. „Verbindung“ asks for the two ports first
 //! (`linkPorts`); a port cabled to a router brings the other end along. A chosen port whose
 //! link is in the way gets a button to „Verbindung abräumen“ with it, which takes that link out
-//! of NetBox.
+//! of NetBox. „Flags“ is a table of the interfaces' tags as switches, with the device's findings
+//! as they would be after the switches (`topology.findings(after:)`).
 use crate::{
-    components::{adjust_target::SelectedTarget, job::JobView, menu::popup::Select},
+    components::{
+        adjust_target::SelectedTarget, findings::finding_list, job::JobView, menu::popup::Select,
+    },
     error::FrontendError,
     graphql::{
         authenticated::{
-            HelperJobs, LinkPorts, NetboxPlan, NetboxPlanPreview, UndoNetboxWrite,
-            WriteNetboxPlan,
+            FlagInterfaces, Findings, HelperJobs, LinkPorts, NetboxPlan, NetboxPlanPreview,
+            UndoNetboxWrite, WriteNetboxPlan, flag_interfaces,
+            findings::{self, FindingsTopologyFindings},
             helper_jobs::{self, JobKind, JobState},
             link_ports::{self, LinkPortFields},
             netbox_plan::{self, NetboxPlanNetboxPlanSteps as Step},
@@ -25,8 +29,13 @@ use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
     CodeBlockCode, Form, FormGroup, Spinner, SpinnerSize, TextInput,
 };
-use std::fmt::{self, Display, Formatter};
-use yew::{Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Display, Formatter},
+};
+use yew::{
+    Callback, Component, Context, Html, Properties, classes, html, html::Scope, platform::spawn_local,
+};
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct NetboxHelperProps {
@@ -69,6 +78,30 @@ pub enum HelperChoice {
     },
     /// the link of this port, on the device or at the far end of one of its links
     Disconnect(u32),
+    /// the tags switched: interface, tag, set
+    Flags(Vec<(u32, Flag, bool)>),
+}
+
+/// A tag of „Flags“.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Flag {
+    Ospf,
+    Dhcp,
+    DhcpClient,
+    Nat,
+}
+
+const FLAGS: [Flag; 4] = [Flag::Ospf, Flag::Dhcp, Flag::DhcpClient, Flag::Nat];
+
+impl Flag {
+    fn slug(self) -> &'static str {
+        match self {
+            Flag::Ospf => "ospf",
+            Flag::Dhcp => "dhcp",
+            Flag::DhcpClient => "dhcp-client",
+            Flag::Nat => "nat",
+        }
+    }
 }
 
 /// The helper's input in the variables of `$module` (each query has its own types).
@@ -91,6 +124,22 @@ macro_rules! helper_input {
                     interface: interface as i64,
                 })
             }
+            HelperChoice::Flags(changes) => $module::Helper::Flags($module::FlagsInput {
+                device: $id as i64,
+                changes: changes
+                    .into_iter()
+                    .map(|(interface, flag, set)| $module::TagChange {
+                        interface: interface as i64,
+                        tag: match flag {
+                            Flag::Ospf => $module::InterfaceTag::OSPF,
+                            Flag::Dhcp => $module::InterfaceTag::DHCP,
+                            Flag::DhcpClient => $module::InterfaceTag::DHCP_CLIENT,
+                            Flag::Nat => $module::InterfaceTag::NAT,
+                        },
+                        set,
+                    })
+                    .collect(),
+            }),
         }
     };
 }
@@ -101,6 +150,7 @@ pub enum HelperKind {
     Loopback,
     Connection,
     Disconnect,
+    Flags,
 }
 
 impl HelperKind {
@@ -116,6 +166,7 @@ impl Display for HelperKind {
             HelperKind::Loopback => t::LOOPBACK,
             HelperKind::Connection => t::CONNECTION,
             HelperKind::Disconnect => t::DISCONNECT,
+            HelperKind::Flags => t::FLAGS,
         })
     }
 }
@@ -148,6 +199,11 @@ pub struct NetboxHelper {
     /// the port whose link „Verbindung abräumen“ takes out
     disconnect: Option<u32>,
     ports: Option<Result<link_ports::ResponseData, FrontendError>>,
+    flag_interfaces: Option<Result<Vec<FlagInterface>, FrontendError>>,
+    /// the tags switched away from what NetBox has
+    flags: BTreeMap<(u32, Flag), bool>,
+    /// the device's findings after the switches, with NetBox' address: for these
+    flag_findings: Option<FlagFindings>,
     /// what the plan shown was computed for
     planned: Option<HelperChoice>,
     plan: Option<Result<netbox_plan::ResponseData, FrontendError>>,
@@ -170,6 +226,13 @@ pub enum NetboxHelperMsg {
     Mtu(String),
     /// „Verbindung abräumen“ with this port
     DisconnectPort(u32),
+    FlagInterfaces(Result<Vec<FlagInterface>, FrontendError>),
+    /// a switch of „Flags“ to this
+    Toggle(u32, Flag, bool),
+    FlagFindings(
+        Vec<(u32, Flag, bool)>,
+        Result<(String, Vec<FindingsTopologyFindings>), FrontendError>,
+    ),
     Plan(HelperChoice, Result<netbox_plan::ResponseData, FrontendError>),
     LoadPreview,
     Preview(Result<Preview, FrontendError>),
@@ -208,6 +271,9 @@ impl Component for NetboxHelper {
             link,
             disconnect: None,
             ports: None,
+            flag_interfaces: None,
+            flags: BTreeMap::new(),
+            flag_findings: None,
             planned: None,
             plan: None,
             preview: None,
@@ -228,7 +294,32 @@ impl Component for NetboxHelper {
                 if kind.needs_ports() && self.ports.is_none() {
                     fetch_ports(ctx.link().clone(), ctx.props().id);
                 }
+                if kind == HelperKind::Flags {
+                    if self.flag_interfaces.is_none() {
+                        fetch_flag_interfaces(ctx.link().clone(), ctx.props().id);
+                    }
+                    self.check_flags(ctx);
+                }
                 self.choose(ctx);
+            }
+            NetboxHelperMsg::FlagInterfaces(interfaces) => self.flag_interfaces = Some(interfaces),
+            NetboxHelperMsg::Toggle(interface, flag, set) => {
+                let has = self
+                    .flag_interface(interface)
+                    .is_some_and(|i| i.tags.iter().any(|tag| tag_slug(tag) == flag.slug()));
+                if has == set {
+                    self.flags.remove(&(interface, flag));
+                } else {
+                    self.flags.insert((interface, flag), set);
+                }
+                self.check_flags(ctx);
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::FlagFindings(changes, _) if changes != self.flag_changes() => {
+                return false;
+            }
+            NetboxHelperMsg::FlagFindings(changes, findings) => {
+                self.flag_findings = Some((changes, findings));
             }
             NetboxHelperMsg::Ports(ports) => self.ports = Some(ports),
             NetboxHelperMsg::Port(port) => {
@@ -355,6 +446,13 @@ impl Component for NetboxHelper {
                 if self.ports.is_some() {
                     fetch_ports(ctx.link().clone(), ctx.props().id);
                 }
+                // NetBox has the tags switched now (or again what it had)
+                if self.flag_interfaces.is_some() {
+                    self.flags.clear();
+                    fetch_flag_interfaces(ctx.link().clone(), ctx.props().id);
+                    self.check_flags(ctx);
+                    self.choose(ctx);
+                }
                 ctx.props().on_written.emit(());
             }
         }
@@ -370,6 +468,7 @@ impl Component for NetboxHelper {
             (None, _) if self.kind == HelperKind::Disconnect => {
                 html!(<p>{t::CHOOSE_DISCONNECT_PORT}</p>)
             }
+            (None, _) if self.kind == HelperKind::Flags => html!(<p>{t::CHOOSE_FLAGS}</p>),
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),
             (_, None) => html!(<Spinner size={SpinnerSize::Md}/>),
             (_, Some(Err(error))) => error.to_html(),
@@ -438,6 +537,7 @@ impl Component for NetboxHelper {
             HelperKind::Loopback => t::LOOPBACK_HINT,
             HelperKind::Connection => t::CONNECTION_HINT,
             HelperKind::Disconnect => t::DISCONNECT_HINT,
+            HelperKind::Flags => t::FLAGS_HINT,
         };
         html! {
             <Card class="netbox-helper">
@@ -449,7 +549,12 @@ impl Component for NetboxHelper {
                     <div class="helper-kind">
                         <Select<HelperKind>
                             selected={Some(self.kind)}
-                            entries={vec![HelperKind::Loopback, HelperKind::Connection, HelperKind::Disconnect]}
+                            entries={vec![
+                                HelperKind::Loopback,
+                                HelperKind::Connection,
+                                HelperKind::Disconnect,
+                                HelperKind::Flags,
+                            ]}
                             onselect={ctx.link().callback(NetboxHelperMsg::Kind)}
                         />
                     </div>
@@ -459,6 +564,9 @@ impl Component for NetboxHelper {
                     }
                     if self.kind == HelperKind::Disconnect {
                         { self.disconnect_form(ctx) }
+                    }
+                    if self.kind == HelperKind::Flags {
+                        { self.flags_form(ctx) }
                     }
                     {plan}
                 </CardBody>
@@ -479,7 +587,109 @@ impl NetboxHelper {
                 mtu: self.link.mtu.trim().parse().ok(),
             }),
             HelperKind::Disconnect => Some(HelperChoice::Disconnect(self.disconnect?)),
+            HelperKind::Flags => {
+                let changes = self.flag_changes();
+                (!changes.is_empty()).then_some(HelperChoice::Flags(changes))
+            }
         }
+    }
+    fn flag_changes(&self) -> Vec<(u32, Flag, bool)> {
+        self.flags
+            .iter()
+            .map(|(&(interface, flag), &set)| (interface, flag, set))
+            .collect()
+    }
+    fn flag_interface(&self, id: u32) -> Option<&FlagInterface> {
+        self.flag_interfaces
+            .as_ref()?
+            .as_ref()
+            .ok()?
+            .iter()
+            .find(|interface| interface.id as u32 == id)
+    }
+    /// Fetches the device's findings after the switches, unless they are there already.
+    fn check_flags(&mut self, ctx: &Context<Self>) {
+        let changes = self.flag_changes();
+        if self.flag_findings.as_ref().is_some_and(|(shown, _)| *shown == changes) {
+            return;
+        }
+        self.flag_findings = None;
+        fetch_flag_findings(ctx.link().clone(), ctx.props().id, changes);
+    }
+    fn flags_form(&self, ctx: &Context<Self>) -> Html {
+        let interfaces = match &self.flag_interfaces {
+            None => return html!(<Spinner size={SpinnerSize::Md}/>),
+            Some(Err(error)) => return error.to_html(),
+            Some(Ok(interfaces)) => interfaces,
+        };
+        let rows = interfaces.iter().map(|interface| {
+            let id = interface.id as u32;
+            let name = match &interface.label {
+                Some(label) => format!("{} ({label})", interface.name),
+                None => interface.name.clone(),
+            };
+            let mut about: Vec<String> = interface.addresses.clone();
+            about.extend(
+                interface
+                    .connected
+                    .iter()
+                    .map(|far| t::cabled_to(&far.device.name, &far.name)),
+            );
+            if let Some(bridge) = &interface.bridge {
+                about.push(t::bridge_port(bridge));
+            }
+            let switches = FLAGS.iter().map(|&flag| {
+                let has = interface.tags.iter().any(|tag| tag_slug(tag) == flag.slug());
+                let set = self.flags.get(&(id, flag)).copied().unwrap_or(has);
+                let class = (set != has).then_some("flag-changed");
+                let onchange = ctx.link().callback(move |_| NetboxHelperMsg::Toggle(id, flag, !set));
+                html! {
+                    <td class={classes!("pf-v6-c-table__td", class)} data-label={flag.slug()}>
+                        <input
+                            type="checkbox"
+                            checked={set}
+                            aria-label={format!("{} {}", interface.name, flag.slug())}
+                            disabled={self.job_running}
+                            {onchange}
+                        />
+                    </td>
+                }
+            });
+            html! {
+                <tr class="pf-v6-c-table__tr" key={id}>
+                    <td class="pf-v6-c-table__td" data-label={t::INTERFACE}>
+                        <div>{name}</div>
+                        <small>{about.join(", ")}</small>
+                    </td>
+                    { for switches }
+                </tr>
+            }
+        });
+        let findings = match &self.flag_findings {
+            None => html!(<Spinner size={SpinnerSize::Md}/>),
+            Some((_, Err(error))) => error.to_html(),
+            Some((changes, Ok((_, findings)))) if findings.is_empty() => {
+                html!(<p>{t::no_flag_findings(!changes.is_empty())}</p>)
+            }
+            Some((changes, Ok((netbox, findings)))) => html! {<>
+                <p>{t::flag_findings(!changes.is_empty())}</p>
+                { finding_list(netbox, findings) }
+            </>},
+        };
+        html! {<>
+            <div class="flag-table">
+                <table class="pf-v6-c-table pf-m-compact pf-m-grid-md" role="grid">
+                    <thead class="pf-v6-c-table__thead">
+                        <tr class="pf-v6-c-table__tr">
+                            <th class="pf-v6-c-table__th">{t::INTERFACE}</th>
+                            { for FLAGS.iter().map(|flag| html!(<th class="pf-v6-c-table__th">{flag.slug()}</th>)) }
+                        </tr>
+                    </thead>
+                    <tbody class="pf-v6-c-table__tbody">{ for rows }</tbody>
+                </table>
+            </div>
+            <div class="helper-findings">{findings}</div>
+        </>}
     }
     fn choose(&mut self, ctx: &Context<Self>) {
         let choice = self.choice();
@@ -745,8 +955,8 @@ fn describe(step: &Step) -> String {
                 .as_deref()
                 .map(|label| (label, update.label_before.as_deref())),
             update.mtu.map(|mtu| (mtu, update.mtu_before)),
-            update.ospf,
-            update.ospf_removed,
+            &update.tags_added.iter().map(tag_slug).collect::<Vec<_>>(),
+            &update.tags_removed.iter().map(tag_slug).collect::<Vec<_>>(),
         ),
         Step::DeleteCable(delete) => t::delete_cable(
             (&delete.port.device.name, &delete.port.name),
@@ -805,6 +1015,42 @@ fn fetch_plan(scope: Scope<NetboxHelper>, id: u32, choice: HelperChoice) {
         )
         .await;
         scope.send_message(NetboxHelperMsg::Plan(choice, plan));
+    });
+}
+
+fn fetch_flag_interfaces(scope: Scope<NetboxHelper>, id: u32) {
+    spawn_local(async move {
+        let interfaces = query_authenticated::<FlagInterfaces, _>(
+            scope.clone(),
+            flag_interfaces::Variables { id: id as i64 },
+        )
+        .await
+        .map(|data| {
+            data.topology
+                .device_by_id
+                .map(|device| device.flag_interfaces)
+                .unwrap_or_default()
+        });
+        scope.send_message(NetboxHelperMsg::FlagInterfaces(interfaces));
+    });
+}
+
+/// The device's findings as they would be with `changes` (as they are without any).
+fn fetch_flag_findings(scope: Scope<NetboxHelper>, id: u32, changes: Vec<(u32, Flag, bool)>) {
+    spawn_local(async move {
+        let after = (!changes.is_empty())
+            .then(|| helper_input!(findings, HelperChoice::Flags(changes.clone()), id));
+        let result = query_authenticated::<Findings, _>(
+            scope.clone(),
+            findings::Variables {
+                site: None,
+                device: Some(id as i64),
+                after,
+            },
+        )
+        .await
+        .map(|data| (data.netbox_url, data.topology.findings));
+        scope.send_message(NetboxHelperMsg::FlagFindings(changes, result));
     });
 }
 
@@ -874,4 +1120,39 @@ fn same_network(a: &str, b: &str) -> bool {
         Some((u32::from(address) & mask, len))
     };
     matches!((parse(a), parse(b)), (Some(a), Some(b)) if a == b)
+}
+
+type FlagInterface = flag_interfaces::FlagInterfacesTopologyDeviceByIdFlagInterfaces;
+
+/// The device's findings after these switches, with NetBox' address.
+type FlagFindings = (
+    Vec<(u32, Flag, bool)>,
+    Result<(String, Vec<FindingsTopologyFindings>), FrontendError>,
+);
+
+/// A tag as NetBox names it, from the `InterfaceTag` of a query (each has its own).
+trait TagSlug {
+    fn slug(&self) -> &str;
+}
+
+macro_rules! tag_slug {
+    ($($module:ident),*) => {$(
+        impl TagSlug for $module::InterfaceTag {
+            fn slug(&self) -> &str {
+                match self {
+                    $module::InterfaceTag::OSPF => "ospf",
+                    $module::InterfaceTag::DHCP => "dhcp",
+                    $module::InterfaceTag::DHCP_CLIENT => "dhcp-client",
+                    $module::InterfaceTag::NAT => "nat",
+                    $module::InterfaceTag::Other(other) => other,
+                }
+            }
+        }
+    )*};
+}
+
+tag_slug!(flag_interfaces, netbox_plan);
+
+fn tag_slug(tag: &impl TagSlug) -> &str {
+    tag.slug()
 }

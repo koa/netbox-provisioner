@@ -9,6 +9,7 @@
 //! the job (`NetboxWritten`), which is what `undo` takes back.
 pub mod connection;
 pub mod disconnect;
+pub mod flags;
 pub mod loopback;
 pub mod routes;
 
@@ -39,6 +40,8 @@ pub enum Helper {
     Connection(connection::ConnectionInput),
     /// the link of a port out of NetBox: cable, transfer addresses, their prefix
     Disconnect(disconnect::DisconnectInput),
+    /// the tags `ospf`, `dhcp`, `dhcp-client`, `nat` of a device's interfaces
+    Flags(flags::FlagsInput),
 }
 
 impl Helper {
@@ -47,6 +50,7 @@ impl Helper {
             Helper::Loopback(_) => loopback::plan(&self.device(topology)?).await,
             Helper::Connection(input) => connection::plan(topology, input).await,
             Helper::Disconnect(input) => disconnect::plan(topology, input),
+            Helper::Flags(input) => flags::plan(topology, input),
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -60,6 +64,9 @@ impl Helper {
                 .and_then(|interface| interface.device())
                 .ok_or(Error::UnknownInterface(input.interface)),
             Helper::Disconnect(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
+            Helper::Flags(input) => topology
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
         }
@@ -276,11 +283,11 @@ impl NetboxPlan {
                             interface["mtu"] = json!(mtu);
                         }
                         if let Some(tags) = interface["tags"].as_array_mut() {
-                            if update.ospf {
-                                tags.push(json!({ "slug": "ospf" }));
+                            for tag in &update.tags_removed {
+                                tags.retain(|t| t["slug"] != tag.slug());
                             }
-                            if update.ospf_removed {
-                                tags.retain(|tag| tag["slug"] != "ospf");
+                            for tag in &update.tags_added {
+                                tags.push(json!({ "slug": tag.slug() }));
                             }
                         }
                     }
@@ -365,7 +372,7 @@ pub struct CreatePrefix {
 }
 
 /// Changes of an interface: a new label (empty to take it off), a new MTU (each none to keep
-/// it) and the tag `ospf` added or taken off.
+/// it) and tags added or taken off.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct UpdateInterface {
     pub interface: InterfaceRef,
@@ -373,8 +380,8 @@ pub struct UpdateInterface {
     pub label_before: Option<Box<str>>,
     pub mtu: Option<u16>,
     pub mtu_before: Option<u16>,
-    pub ospf: bool,
-    pub ospf_removed: bool,
+    pub tags_added: Vec<flags::InterfaceTag>,
+    pub tags_removed: Vec<flags::InterfaceTag>,
 }
 
 /// The cable at `port`, to `far` if it reaches an interface (through patch panels too).
@@ -725,17 +732,16 @@ async fn update_interface(
     let label = current["label"].as_str().filter(|l| !l.is_empty());
     let mtu = current["mtu"].as_u64().map(|mtu| mtu as u16);
     let tags = current["tags"].as_array().cloned().unwrap_or_default();
-    let has_ospf = tags.iter().any(|tag| tag["slug"] == "ospf");
+    let has = |tag: &flags::InterfaceTag| tags.iter().any(|t| t["slug"] == tag.slug());
     if label != update.label_before.as_deref()
         || mtu != update.mtu_before
-        || (update.ospf && has_ospf)
-        || (update.ospf_removed && !has_ospf)
+        || update.tags_added.iter().any(has)
+        || !update.tags_removed.iter().all(has)
     {
         return Err(Error::NetboxChanged(
             format!("{} {}", name.device.name, name.name).into(),
         ));
     }
-    let tag_ids = tags.iter().map(|tag| tag["id"].clone()).collect::<Vec<_>>();
     let mut change = serde_json::Map::new();
     let mut before = serde_json::Map::new();
     let mut changes = Vec::new();
@@ -757,34 +763,33 @@ async fn update_interface(
             previous: mtu.map(|mtu| mtu.to_string().into()),
         });
     }
-    if update.ospf {
-        let found = rest.get("extras/tags/?slug=ospf").await?;
-        let ospf = found["results"][0]["id"].clone();
-        if ospf.is_null() {
-            return Err(Error::TagMissing("ospf".into()));
-        }
-        let mut with_ospf = tag_ids.clone();
-        with_ospf.push(ospf);
-        change.insert("tags".into(), Value::Array(with_ospf));
-        before.insert("tags".into(), Value::Array(tag_ids.clone()));
-        changes.push(FieldChange {
-            field: "tags".into(),
-            value: Some("ospf".into()),
-            previous: None,
-        });
-    }
-    if update.ospf_removed {
-        let without_ospf = tags
+    if !update.tags_added.is_empty() || !update.tags_removed.is_empty() {
+        let mut ids: Vec<Value> = tags
             .iter()
-            .filter(|tag| tag["slug"] != "ospf")
-            .map(|tag| tag["id"].clone())
+            .filter(|t| !update.tags_removed.iter().any(|tag| t["slug"] == tag.slug()))
+            .map(|t| t["id"].clone())
             .collect();
-        change.insert("tags".into(), Value::Array(without_ospf));
-        before.insert("tags".into(), Value::Array(tag_ids));
+        for tag in &update.tags_added {
+            let found = rest.get(&format!("extras/tags/?slug={}", tag.slug())).await?;
+            let id = found["results"][0]["id"].clone();
+            if id.is_null() {
+                return Err(Error::TagMissing(tag.slug().into()));
+            }
+            ids.push(id);
+        }
+        let slugs = |list: &[flags::InterfaceTag]| {
+            let text = list.iter().map(|tag| tag.slug()).collect::<Vec<_>>().join(", ");
+            (!text.is_empty()).then(|| Box::from(text))
+        };
+        change.insert("tags".into(), Value::Array(ids));
+        before.insert(
+            "tags".into(),
+            Value::Array(tags.iter().map(|t| t["id"].clone()).collect()),
+        );
         changes.push(FieldChange {
             field: "tags".into(),
-            value: None,
-            previous: Some("ospf".into()),
+            value: slugs(&update.tags_added),
+            previous: slugs(&update.tags_removed),
         });
     }
     let object = rest.update(&path, Value::Object(change)).await?;
@@ -975,8 +980,8 @@ mod test {
                 label_before: end.label().map(Box::from),
                 mtu: Some(2000),
                 mtu_before: end.mtu(),
-                ospf: true,
-                ospf_removed: false,
+                tags_added: vec![flags::InterfaceTag::Ospf],
+                tags_removed: Vec::new(),
             })
         };
         let address = |end: &InterfaceAccess, address: &str| {

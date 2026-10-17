@@ -8,7 +8,7 @@
 //! one the network routes (`routes::Routes`) or with addresses in NetBox is passed over.
 use super::{
     CreateAddress, CreateCable, CreatePrefix, NetboxPlan, PlanStep, Target, UpdateInterface,
-    device_ref, routes::Routes,
+    device_ref, flags::InterfaceTag, routes::Routes,
 };
 use crate::{
     Error,
@@ -139,8 +139,8 @@ pub async fn plan(topology: &Arc<Topology>, input: &ConnectionInput) -> Result<N
                 label_before: end.label().map(Box::from),
                 mtu: new_mtu,
                 mtu_before: end.mtu(),
-                ospf,
-                ospf_removed: false,
+                tags_added: ospf.then_some(InterfaceTag::Ospf).into_iter().collect(),
+                tags_removed: Vec::new(),
             }));
         }
     }
@@ -307,7 +307,7 @@ mod test {
             let PlanStep::UpdateInterface(update) = step else { unreachable!() };
             let end = if update.interface.id == a.id().0 { &a } else { &b };
             assert_eq!(update.mtu.is_some(), end.mtu() != mtu);
-            assert_eq!(update.ospf, !end.use_ospf());
+            assert_eq!(update.tags_added.contains(&InterfaceTag::Ospf), !end.use_ospf());
         }
         let reverse = ConnectionInput {
             interface: b.id().0,

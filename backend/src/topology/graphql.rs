@@ -4,6 +4,7 @@ use crate::topology::{
     natural::naturalize,
     access::{AccessTopology, device::DeviceAccess, site::SiteAccess},
 };
+use crate::{error_info::ApiError, helper::Helper};
 use async_graphql::{InputObject, Object};
 
 #[derive(InputObject)]
@@ -60,21 +61,36 @@ impl TopologyHolder {
             .contains_key(&SiteId(id))
             .then(|| SiteAccess::create(topo.clone(), SiteId(id)))
     }
-    /// The findings about the devices of the site `site_id`, without it those about the whole
-    /// network (the prefix pools); the worst first.
-    async fn findings(&self, site_id: Option<u32>) -> Vec<Finding> {
-        let Some(topo) = self.topo_lock().await.as_ref().cloned() else {
-            return Vec::new();
+    /// The findings about the devices of the site `site_id` or about the device `device_id`,
+    /// without either those about the whole network (the prefix pools); the worst first. With
+    /// `after`, as NetBox would be after that helper's plan.
+    async fn findings(
+        &self,
+        site_id: Option<u32>,
+        device_id: Option<u32>,
+        after: Option<Helper>,
+    ) -> Result<Vec<Finding>, ApiError> {
+        let Some(mut topo) = self.topo_lock().await.as_ref().cloned() else {
+            return Ok(Vec::new());
         };
-        match site_id {
-            Some(site) => topo.site_findings(SiteId(site)),
-            None => topo
+        if let Some(helper) = after {
+            topo = helper.plan(&topo).await?.preview_topology()?;
+        }
+        Ok(match (site_id, device_id) {
+            (Some(site), _) => topo.site_findings(SiteId(site)),
+            (None, Some(device)) => topo
+                .findings()
+                .iter()
+                .filter(|finding| finding.devices.contains(&DeviceId(device)))
+                .cloned()
+                .collect(),
+            (None, None) => topo
                 .findings()
                 .iter()
                 .filter(|finding| finding.devices.is_empty())
                 .cloned()
                 .collect(),
-        }
+        })
     }
     async fn device_by_id(&self, id: u32) -> Option<DeviceAccess> {
         if let Some(topo) = self.topo_lock().await.as_ref() {
