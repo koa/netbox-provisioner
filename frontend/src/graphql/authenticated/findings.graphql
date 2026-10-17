@@ -22,6 +22,7 @@ query Findings($site: Int, $device: Int, $after: Helper){
                 ... on OspfOnOneEnd{ interface{ ...Interface } farEnd{ ...Interface } }
                 ... on NoCommonSubnet{ interface{ ...Interface } farEnd{ ...Interface } }
                 ... on AddressWithoutOspf{ interface{ ...Interface } farEnd{ ...Interface } }
+                ... on WlanWithoutVlan{ id ssid group{ id name } }
             }
         }
     }

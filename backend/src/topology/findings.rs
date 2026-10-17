@@ -8,7 +8,7 @@ use crate::{
         DeviceId, PortType, PrefixPool, SiteId, Topology,
         access::{
             AccessTopology, device::DeviceAccess, interface::InterfaceAccess,
-            ip_addresses::IpAddressAccess,
+            ip_addresses::IpAddressAccess, wlan_group::WlanGroupAccess,
         },
     },
 };
@@ -51,6 +51,7 @@ pub enum FindingKind {
     OspfOnOneEnd(OspfOnOneEnd),
     NoCommonSubnet(NoCommonSubnet),
     AddressWithoutOspf(AddressWithoutOspf),
+    WlanWithoutVlan(WlanWithoutVlan),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
@@ -177,6 +178,23 @@ pub struct AddressWithoutOspf {
     pub far_end: InterfaceRef,
 }
 
+/// A WLAN of `group` without a VLAN: its CAPs forward the clients themselves into the bridge
+/// of the WLAN's VLAN, which carries them over the VXLAN to their network, so without one the
+/// clients connect and reach nothing (no bridge, no VXLAN on the CAPs).
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct WlanWithoutVlan {
+    /// NetBox id of the Wireless LAN
+    pub id: u32,
+    pub ssid: Box<str>,
+    pub group: WlanGroupRef,
+}
+/// A NetBox Wireless LAN Group.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct WlanGroupRef {
+    pub id: u32,
+    pub name: Box<str>,
+}
+
 impl Topology {
     /// Every finding, the worst first.
     pub fn findings(&self) -> &[Finding] {
@@ -206,6 +224,7 @@ impl Topology {
 fn collect(topo: &Arc<Topology>) -> Box<[Finding]> {
     let mut findings = Vec::new();
     pools(topo, &mut findings);
+    wlans(topo, &mut findings);
     let mut devices = topo
         .list_devices()
         .filter(DeviceAccess::has_routeros)
@@ -265,6 +284,41 @@ fn pools(topo: &Topology, findings: &mut Vec<Finding>) {
                     version,
                     free: u64::try_from(free).unwrap_or(u64::MAX),
                     size: u64::try_from(size).unwrap_or(u64::MAX),
+                }),
+            });
+        }
+    }
+}
+
+/// The WLANs without a VLAN, at the group's controller and APs.
+fn wlans(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
+    let mut groups = topo
+        .wlan_groups
+        .keys()
+        .map(|id| WlanGroupAccess::create(topo.clone(), *id))
+        .collect::<Vec<_>>();
+    groups.sort_by(|a, b| a.name().cmp(&b.name()));
+    for group in groups {
+        let devices = group
+            .controller()
+            .into_iter()
+            .chain(group.aps())
+            .filter(DeviceAccess::has_routeros)
+            .map(|device| device.id())
+            .collect::<Box<[_]>>();
+        let mut wlans = group.wlan().filter(|wlan| wlan.vlan().is_none()).collect::<Vec<_>>();
+        wlans.sort_by(|a, b| a.ssid().cmp(&b.ssid()));
+        for wlan in wlans {
+            findings.push(Finding {
+                severity: Severity::Error,
+                devices: devices.clone(),
+                kind: FindingKind::WlanWithoutVlan(WlanWithoutVlan {
+                    id: wlan.id().0,
+                    ssid: wlan.ssid().unwrap_or_default().into(),
+                    group: WlanGroupRef {
+                        id: group.id().0,
+                        name: group.name().unwrap_or_default().into(),
+                    },
                 }),
             });
         }
@@ -774,6 +828,59 @@ mod test {
         assert_eq!(findings[0].severity, Severity::Error);
         assert!(matches!(&findings[0].kind, FindingKind::DhcpPoolEmpty(d)
             if &*d.address.address == "172.17.1.1/30" && &*d.prefix.prefix == "172.17.1.0/30"));
+    }
+
+/// Of two WLANs, the one without VLAN is an error at the controller and the AP.
+    #[test]
+    fn a_wlan_without_vlan_is_an_error() {
+        use crate::topology::{
+            VlanData, VlanGroupData, WlanAuth, WlanData, WlanGroupData, WlanOpenSettings,
+        };
+        let mut net = Net::new();
+        let builder = &mut net.builder;
+        let (group, vlan_group) = (builder.wlan_groups.next_id(), builder.vlan_groups.next_id());
+        let vlan = builder.vlans.next_id();
+        let (with, without) = (builder.wlans.next_id(), builder.wlans.next_id());
+        builder.vlan_groups.insert(vlan_group, VlanGroupData { vlans: Box::new([vlan]) });
+        builder.vlans.insert(
+            vlan,
+            VlanData {
+                name: "kunde".into(),
+                vlan_id: 10,
+                group: vlan_group,
+                terminations: Box::new([]),
+                vxlan: None,
+                wlans: Box::new([with]),
+            },
+        );
+        for (id, ssid, vlan) in [(with, "kunde", Some(vlan)), (without, "walter", None)] {
+            builder.wlans.insert(
+                id,
+                WlanData {
+                    ssid: ssid.into(),
+                    vlan,
+                    wlan_auth: WlanAuth::Open(WlanOpenSettings { use_owe: false }),
+                    wlan_group: group,
+                },
+            );
+        }
+        builder.wlan_groups.insert(
+            group,
+            WlanGroupData {
+                name: "Spitzwies".into(),
+                mgmt_vlan: None,
+                controller: net.r1,
+                aps: Box::new([net.r2]),
+                wlans: Box::new([with, without]),
+            },
+        );
+        let (r1, r2) = (net.r1, net.r2);
+        let findings = net.findings();
+        assert_eq!(findings.len(), 1, "{findings:#?}");
+        assert_eq!(findings[0].severity, Severity::Error);
+        assert_eq!(&*findings[0].devices, [r1, r2]);
+        assert!(matches!(&findings[0].kind, FindingKind::WlanWithoutVlan(w)
+            if &*w.ssid == "walter" && &*w.group.name == "Spitzwies"));
     }
 
     #[test]

@@ -368,6 +368,9 @@ pub mod findings {
     pub fn dhcp_pool_empty(interface: Html, address: Html, prefix: Html) -> Html {
         html!(<>{interface}{" hat das Tag „dhcp“, aber im Prefix "}{prefix}{" von "}{address}{" ist keine Adresse für einen Pool frei: Der DHCP-Server dort entsteht nicht."}</>)
     }
+    pub fn wlan_without_vlan(wlan: Html, group: Html) -> Html {
+        html!(<>{"Das WLAN "}{wlan}{" der Gruppe "}{group}{" hat keine VLAN: Die APs legen seine Clients in keine Bridge und haben kein VXLAN dafür, die Clients verbinden sich und erreichen nichts."}</>)
+    }
     pub fn port_like_name(interface: Html) -> Html {
         html!(<>{interface}{" ist ein physisches Interface, heisst aber nicht wie ein RouterOS-Port: Der Generator nimmt es nicht als Port."}</>)
     }
@@ -1083,6 +1086,7 @@ pub mod helper {
             "OspfOnOneEnd" => "OSPF nur an einem Ende".into(),
             "NoCommonSubnet" => "kein gemeinsames Netz".into(),
             "AddressWithoutOspf" => "Adresse ohne OSPF".into(),
+            "WlanWithoutVlan" => "WLAN ohne VLAN".into(),
             _ => kind,
         }
     }

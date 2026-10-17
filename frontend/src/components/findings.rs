@@ -213,6 +213,10 @@ impl Links<'_> {
             Kind::AddressWithoutOspf(f) => {
                 t::address_without_ospf(self.interface(&f.interface), self.interface(&f.far_end))
             }
+            Kind::WlanWithoutVlan(f) => t::wlan_without_vlan(
+                self.link(&format!("wireless/wireless-lans/{}/", f.id), &f.ssid),
+                self.link(&format!("wireless/wireless-lan-groups/{}/", f.group.id), &f.group.name),
+            ),
         }
     }
 }
