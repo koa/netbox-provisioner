@@ -207,3 +207,11 @@ pub struct LinkPorts;
     response_derives = "Debug, Clone, PartialEq"
 )]
 pub struct FlagInterfaces;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/netbox-helper.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct CustomerNetOptions;

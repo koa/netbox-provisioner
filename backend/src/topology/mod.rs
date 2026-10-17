@@ -143,6 +143,26 @@ impl Topology {
         prefixes.sort_by_key(|(_, net)| (net.network(), net.prefix_len()));
         prefixes
     }
+    /// The IPv4 prefixes scoped to `site` that can hold networks: no pool's, none that is a
+    /// network itself (with an address of its own length), by address.
+    pub(crate) fn customer_parents(&self, site: SiteId) -> Vec<(IpPrefixId, IpNet)> {
+        let mut prefixes = self
+            .ip_prefixes
+            .iter()
+            .filter(|(_, prefix)| {
+                prefix.site == Some(site)
+                    && prefix.pool.is_none()
+                    && prefix.addresses.is_empty()
+                    && matches!(prefix.prefix, IpNet::V4(_))
+            })
+            .map(|(id, prefix)| (*id, prefix.prefix))
+            .collect::<Vec<_>>();
+        prefixes.sort_by_key(|(_, net)| (net.network(), net.prefix_len()));
+        prefixes
+    }
+    pub(crate) fn prefix_data(&self, id: IpPrefixId) -> Option<&IpPrefixData> {
+        self.ip_prefixes.get(&id)
+    }
     /// This topology built again from its NetBox response after `change` (the JSON of
     /// `ResponseData`): what NetBox will be after a helper's plan. `None` for a topology not
     /// built from a response (tests built from parts).
@@ -287,6 +307,8 @@ pub struct IpPrefixData {
     pub ranges: Box<[IpRangeId]>,
     /// NetBox tag `loopback` or `transfer`: the prefix is part of that pool.
     pub pool: Option<PrefixPool>,
+    /// its scope, if that is a site: a customer network's parent
+    pub site: Option<SiteId>,
 }
 /// What a prefix with one of the tags `loopback` or `transfer` hands out: all prefixes with
 /// the same tag and IP version form one pool (`docs/concepts/config-helper.md`).

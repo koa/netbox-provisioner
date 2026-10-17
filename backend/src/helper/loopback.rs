@@ -32,6 +32,8 @@ pub async fn plan(device: &DeviceAccess) -> Result<NetboxPlan, Error> {
                 device: device_ref(device),
                 name: "lo".into(),
                 kind: "virtual".into(),
+                vlan: None,
+                tags: Vec::new(),
             }));
             Target::Step(plan.steps.len() - 1)
         }

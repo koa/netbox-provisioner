@@ -477,6 +477,7 @@ async fn test_scenario_dhcp_household() -> Result<(), Box<dyn Error>> {
             parent: None,
             ranges: Box::new([]),
             pool: None,
+            site: None,
         },
     );
     let range_id = builder.ip_ranges.next_id();
@@ -1169,6 +1170,7 @@ async fn create_default_bridge_device(explicit_bridge: bool) -> DeviceAccess {
             parent: None,
             ranges: Box::new([]),
             pool: None,
+            site: None,
         },
     );
     let gateway_ip = builder.ip_addresses.next_id();

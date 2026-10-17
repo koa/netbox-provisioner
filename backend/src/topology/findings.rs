@@ -615,6 +615,7 @@ mod test {
                 parent: None,
                 ranges: Box::new([]),
                 pool: Some(pool),
+                site: None,
             },
         );
         id
@@ -765,6 +766,7 @@ mod test {
                     parent: None,
                     ranges: Box::new([]),
                     pool: None,
+                    site: None,
                 },
             );
         }

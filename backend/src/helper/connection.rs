@@ -98,6 +98,8 @@ pub async fn plan(topology: &Arc<Topology>, input: &ConnectionInput) -> Result<N
                 prefix: net.to_string().into(),
                 pool: pool.to_string().into(),
                 description: format!("{} – {}", a_device.name(), b_device.name()).into(),
+                site: None,
+                vlan: None,
             }));
             for (end, address) in [(&a, net.network()), (&b, net.broadcast())] {
                 plan.steps.push(PlanStep::CreateAddress(CreateAddress {

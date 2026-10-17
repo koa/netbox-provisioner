@@ -161,6 +161,18 @@ pub enum Error {
     /// a port (`device port`) without cable or transfer address
     #[error("{0} has no link to take out of NetBox")]
     NothingToDisconnect(Box<str>),
+    #[error("{0} has no site")]
+    NoSite(Box<str>),
+    /// not a prefix of the device's site
+    #[error("Unknown prefix {0}")]
+    UnknownPrefix(u32),
+    #[error("Unknown VLAN {0}")]
+    UnknownVlan(u32),
+    /// a network's length not inside its parent prefix, or longer than `/30`
+    #[error("No /{length} network in {parent}")]
+    NetworkLength { length: u8, parent: Box<str> },
+    #[error("No free /{length} in {parent}")]
+    NoFreeNetwork { parent: Box<str>, length: u8 },
 }
 
 impl From<ResourceMutationError> for Error {

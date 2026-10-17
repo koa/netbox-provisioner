@@ -79,6 +79,24 @@ impl Routes {
                 router: self.router.clone(),
             })
     }
+
+    /// The route that shows a part of `net` of the prefix `parent` in use: one overlapping
+    /// it, more specific than `parent`.
+    pub fn overlapping(&self, net: IpNet, parent: IpNet) -> Option<UndocumentedAddress> {
+        self.routes
+            .iter()
+            .filter(|route| {
+                (route.dst.contains(&net.network()) || net.contains(&route.dst.network()))
+                    && route.dst.prefix_len() > parent.prefix_len()
+            })
+            .max_by_key(|route| route.dst.prefix_len())
+            .map(|route| UndocumentedAddress {
+                address: net.to_string().into(),
+                route: route.dst.to_string().into(),
+                gateway: route.gateway.clone(),
+                router: self.router.clone(),
+            })
+    }
 }
 
 /// How many routers are asked before giving up, and how long each may take.

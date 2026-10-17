@@ -7,7 +7,7 @@ query NetboxPlan($helper: Helper!){
         cutOff{ name }
         steps{
             __typename
-            ... on CreateInterface{ name kind }
+            ... on CreateInterface{ name kind tags }
             ... on CreateAddress{ address device{ name } interface prefix }
             ... on SetPrimaryIp{ version address before }
             ... on CreateCable{ a{ name device{ name } } b{ name device{ name } } }
@@ -68,6 +68,17 @@ query FlagInterfaces($id: Int!){
             flagInterfaces{
                 id name label addresses bridge tags
                 connected{ name device{ name } }
+            }
+        }
+    }
+}
+query CustomerNetOptions($id: Int!){
+    topology{
+        deviceById(id: $id){
+            customerNetOptions{
+                interfaces{ id name label }
+                vlans{ id name vid interface }
+                parents{ id prefix }
             }
         }
     }

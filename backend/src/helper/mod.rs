@@ -8,6 +8,7 @@
 //! change made in between stops it instead of being overwritten. Every write is an event of
 //! the job (`NetboxWritten`), which is what `undo` takes back.
 pub mod connection;
+pub mod customer_net;
 pub mod disconnect;
 pub mod flags;
 pub mod loopback;
@@ -42,6 +43,8 @@ pub enum Helper {
     Disconnect(disconnect::DisconnectInput),
     /// the tags `ospf`, `dhcp`, `dhcp-client`, `nat` of a device's interfaces
     Flags(flags::FlagsInput),
+    /// a network of the device's site on a port or VLAN of it
+    CustomerNet(customer_net::CustomerNetInput),
 }
 
 impl Helper {
@@ -51,6 +54,7 @@ impl Helper {
             Helper::Connection(input) => connection::plan(topology, input).await,
             Helper::Disconnect(input) => disconnect::plan(topology, input),
             Helper::Flags(input) => flags::plan(topology, input),
+            Helper::CustomerNet(input) => customer_net::plan(topology, input).await,
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -67,6 +71,9 @@ impl Helper {
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
             Helper::Flags(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
+            Helper::CustomerNet(input) => topology
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
         }
@@ -194,8 +201,8 @@ impl NetboxPlan {
                             "type": create.kind,
                             "mtu": null,
                             "bridge": null,
-                            "tags": [],
-                            "untagged_vlan": null,
+                            "tags": create.tags.iter().map(|tag| json!({ "slug": tag.slug() })).collect::<Vec<_>>(),
+                            "untagged_vlan": create.vlan.map(|vlan| json!({ "id": vlan.to_string() })),
                             "tagged_vlans": [],
                             "poe_mode": null,
                             "rf_role": null,
@@ -247,7 +254,7 @@ impl NetboxPlan {
                             "prefix": create.prefix,
                             "description": create.description,
                             "tags": [],
-                            "scope": null,
+                            "scope": create.site.map(|site| json!({ "__typename": "SiteType", "id": site.to_string() })),
                         }));
                     }
                 }
@@ -318,12 +325,16 @@ pub enum Target {
     Step(usize),
 }
 
-/// A new interface `name` of NetBox type `kind` (`virtual`) on `device`.
+/// A new interface `name` of NetBox type `kind` (`virtual`) on `device`, with an untagged
+/// VLAN (802.1Q mode access) and tags.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct CreateInterface {
     pub device: DeviceRef,
     pub name: Box<str>,
     pub kind: Box<str>,
+    #[graphql(skip)]
+    pub vlan: Option<u32>,
+    pub tags: Vec<flags::InterfaceTag>,
 }
 
 /// A new IP address on `interface` (its name; it may be one the plan creates), the next free
@@ -361,14 +372,19 @@ pub struct CreateCable {
     pub b: InterfaceRef,
 }
 
-/// A new prefix, the next free one of the pool prefix `pool` when the plan was computed (as for
-/// `CreateAddress`). It carries no tag: a pool's prefixes have one.
+/// A new prefix, the next free one of the pool prefix `pool` (or the parent prefix) when the
+/// plan was computed (as for `CreateAddress`). It carries no tag: a pool's prefixes have one.
+/// A customer network is scoped to its site and names its VLAN.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct CreatePrefix {
     /// `172.17.1.28/31`
     pub prefix: Box<str>,
     pub pool: Box<str>,
     pub description: Box<str>,
+    #[graphql(skip)]
+    pub site: Option<u32>,
+    #[graphql(skip)]
+    pub vlan: Option<u32>,
 }
 
 /// Changes of an interface: a new label (empty to take it off), a new MTU (each none to keep
@@ -478,12 +494,16 @@ pub async fn write(
                         format!("{} has {} already", create.device.name, create.name).into(),
                     ));
                 }
-                let object = rest
-                    .create(
-                        "dcim/interfaces/",
-                        json!({ "device": create.device.id, "name": create.name, "type": create.kind }),
-                    )
-                    .await?;
+                let mut body =
+                    json!({ "device": create.device.id, "name": create.name, "type": create.kind });
+                if let Some(vlan) = create.vlan {
+                    body["mode"] = json!("access");
+                    body["untagged_vlan"] = json!(vlan);
+                }
+                if !create.tags.is_empty() {
+                    body["tags"] = Value::Array(tag_ids(&rest, &create.tags).await?);
+                }
+                let object = rest.create("dcim/interfaces/", body).await?;
                 Some(logged_create(log, "dcim/interfaces", &object)?)
             }
             PlanStep::CreateAddress(create) => {
@@ -576,16 +596,19 @@ pub async fn write(
                         format!("{} is taken", create.prefix).into(),
                     ));
                 }
-                let object = rest
-                    .create(
-                        "ipam/prefixes/",
-                        json!({
-                            "prefix": create.prefix,
-                            "status": "active",
-                            "description": create.description,
-                        }),
-                    )
-                    .await?;
+                let mut body = json!({
+                    "prefix": create.prefix,
+                    "status": "active",
+                    "description": create.description,
+                });
+                if let Some(site) = create.site {
+                    body["scope_type"] = json!("dcim.site");
+                    body["scope_id"] = json!(site);
+                }
+                if let Some(vlan) = create.vlan {
+                    body["vlan"] = json!(vlan);
+                }
+                let object = rest.create("ipam/prefixes/", body).await?;
                 Some(logged_create(log, "ipam/prefixes", &object)?)
             }
             PlanStep::UpdateInterface(update) => {
@@ -769,14 +792,7 @@ async fn update_interface(
             .filter(|t| !update.tags_removed.iter().any(|tag| t["slug"] == tag.slug()))
             .map(|t| t["id"].clone())
             .collect();
-        for tag in &update.tags_added {
-            let found = rest.get(&format!("extras/tags/?slug={}", tag.slug())).await?;
-            let id = found["results"][0]["id"].clone();
-            if id.is_null() {
-                return Err(Error::TagMissing(tag.slug().into()));
-            }
-            ids.push(id);
-        }
+        ids.extend(tag_ids(rest, &update.tags_added).await?);
         let slugs = |list: &[flags::InterfaceTag]| {
             let text = list.iter().map(|tag| tag.slug()).collect::<Vec<_>>().join(", ");
             (!text.is_empty()).then(|| Box::from(text))
@@ -802,6 +818,20 @@ async fn update_interface(
         recreate: None,
     }));
     Ok(())
+}
+
+/// The ids of `tags` in NetBox.
+async fn tag_ids(rest: &NetboxRest, tags: &[flags::InterfaceTag]) -> Result<Vec<Value>, Error> {
+    let mut ids = Vec::new();
+    for tag in tags {
+        let found = rest.get(&format!("extras/tags/?slug={}", tag.slug())).await?;
+        let id = found["results"][0]["id"].clone();
+        if id.is_null() {
+            return Err(Error::TagMissing(tag.slug().into()));
+        }
+        ids.push(id);
+    }
+    Ok(ids)
 }
 
 /// Deletes the object at `path` (`current` as NetBox has it), `undo` creates it again from
@@ -920,6 +950,8 @@ mod test {
                 device: device_ref(&device),
                 name: "lo-test".into(),
                 kind: "virtual".into(),
+                vlan: None,
+                tags: Vec::new(),
             }),
             PlanStep::CreateAddress(CreateAddress {
                 address: "192.0.2.1/32".into(),
@@ -1002,6 +1034,8 @@ mod test {
                 prefix: "192.0.2.0/31".into(),
                 pool: "192.0.2.0/24".into(),
                 description: "test".into(),
+                site: None,
+                vlan: None,
             }),
             address(&a, "192.0.2.0/31"),
             address(&b, "192.0.2.1/31"),

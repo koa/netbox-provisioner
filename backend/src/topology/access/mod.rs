@@ -57,6 +57,13 @@ impl Topology {
             None
         }
     }
+    pub fn list_vlans(self: &Arc<Self>) -> impl Iterator<Item = vlan::VlanAccess> {
+        let topo = self;
+        self.vlans
+            .keys()
+            .copied()
+            .map(move |id| vlan::VlanAccess::create(topo.clone(), id))
+    }
     pub fn get_interface_by_id(self: &Arc<Self>, id: InterfaceId) -> Option<InterfaceAccess> {
         self.interfaces
             .contains_key(&id)

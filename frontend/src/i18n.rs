@@ -200,7 +200,7 @@ pub mod error {
                 p("bridge")
             ),
             "PORT_ADDRESSED" => format!(
-                "{} hat schon die Adresse {}, nicht im Netz der Gegenseite",
+                "{} hat schon die Adresse {}",
                 p("port"),
                 p("address")
             ),
@@ -214,6 +214,15 @@ pub mod error {
                 "{} hat in NetBox kein Kabel und keine Adresse aus dem Transfer-Pool mehr",
                 p("port")
             ),
+            "NO_SITE" => format!("{} hat in NetBox keine Site", p("device")),
+            "UNKNOWN_PREFIX" => format!("Prefix {} ist keines der Site des Geräts", p("id")),
+            "UNKNOWN_VLAN" => format!("VLAN {} hat das Gerät nicht", p("id")),
+            "NETWORK_LENGTH" => format!(
+                "Ein /{} passt nicht in {} (länger als das Prefix, höchstens /30)",
+                p("length"),
+                p("parent")
+            ),
+            "NO_FREE_NETWORK" => format!("In {} ist kein /{} mehr frei", p("parent"), p("length")),
             "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
             "NO_PORTS" => format!(
                 "Das Board {} ist im Provisioner nicht beschrieben (hw_facts.rs): seine Ports sind unbekannt",
@@ -910,6 +919,35 @@ pub mod helper {
         dieses Netzes, wenn danach nichts mehr darin ist. Danach lässt sich die richtige mit \
         „Verbindung“ anlegen.";
     pub const CHOOSE_DISCONNECT_PORT: &str = "Den Port wählen, dessen Verbindung weg soll.";
+    pub const CUSTOMER_NET: &str = "Kunden-Netz";
+    pub const CUSTOMER_NET_HINT: &str = "Legt ein Netz für einen Port oder ein VLAN an: das \
+        nächste freie Netz der gewählten Länge im gewählten Prefix der Site, die erste Adresse \
+        als Gateway (auf einem VLAN an einem neuen virtuellen Interface mit dem Namen des VLANs) \
+        und, falls gewählt, das Tag dhcp. Der DHCP-Pool ist dann der Rest des Netzes.";
+    pub const NET_TARGET: &str = "Port oder VLAN";
+    pub const CHOOSE_NET_TARGET: &str = "Port oder VLAN wählen";
+    pub const NO_NET_TARGETS: &str = "Das Gerät hat keinen freien Port (ohne IPv4, ohne Bridge \
+        oder VLAN, nicht zu einem Router) und kein VLAN ohne Netz.";
+    pub const PARENT: &str = "Prefix der Site";
+    pub const CHOOSE_PARENT: &str = "Prefix wählen";
+    pub const NO_PARENTS: &str = "Die Site hat kein IPv4-Prefix, das Netze aufnehmen kann \
+        (Scope Site, ohne Tag loopback/transfer, selbst kein Netz mit Adressen).";
+    pub const LENGTH: &str = "Länge";
+    pub const LENGTH_PLACEHOLDER: &str = "24";
+    pub const DHCP_SERVER: &str = "DHCP-Server (Tag dhcp)";
+    pub const CHOOSE_NET: &str = "Port oder VLAN und Prefix wählen.";
+    pub fn net_vlan(name: &str, vid: i64, interface: Option<&str>) -> String {
+        match interface {
+            Some(interface) => format!("VLAN {name} ({vid}), an {interface}"),
+            None => format!("VLAN {name} ({vid}), neues Interface"),
+        }
+    }
+    pub fn net_port(name: &str, label: Option<&str>) -> String {
+        match label {
+            Some(label) => format!("{name} ({label})"),
+            None => name.to_string(),
+        }
+    }
     pub const FLAGS: &str = "Flags";
     pub const FLAGS_HINT: &str = "Die Tags der Interfaces: ospf (OSPF), dhcp (DHCP-Server), \
         dhcp-client (DHCP-Client, falls ohne Adresse), nat (Uplink, ausgehend maskieren). Bei \
@@ -1004,8 +1042,11 @@ pub mod helper {
             None => format!("{address}: {router} hat die Route {route}"),
         }
     }
-    pub fn create_interface(name: &str, kind: &str) -> String {
-        format!("Interface {name} ({kind}) anlegen")
+    pub fn create_interface(name: &str, kind: &str, tags: &[&str]) -> String {
+        match tags {
+            [] => format!("Interface {name} ({kind}) anlegen"),
+            tags => format!("Interface {name} ({kind}, {} {}) anlegen", tags_word(tags), tags.join(", ")),
+        }
     }
     pub fn create_address(address: &str, device: &str, interface: &str, prefix: &str) -> String {
         format!("Adresse {address} auf {device} {interface} anlegen (aus {prefix})")

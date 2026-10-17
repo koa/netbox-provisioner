@@ -165,6 +165,7 @@ impl TopologyBuilder {
                         parent: None,
                         ranges: Box::new([]),
                         pool: None,
+                        site: None,
                     },
                 );
                 prefix_id
@@ -195,6 +196,7 @@ impl TopologyBuilder {
                         parent: None,
                         ranges: Box::new([]),
                         pool: None,
+                        site: None,
                     },
                 );
                 prefix_id

@@ -5,7 +5,8 @@
 //! (`linkPorts`); a port cabled to a router brings the other end along. A chosen port whose
 //! link is in the way gets a button to „Verbindung abräumen“ with it, which takes that link out
 //! of NetBox. „Flags“ is a table of the interfaces' tags as switches, with the device's findings
-//! as they would be after the switches (`topology.findings(after:)`).
+//! as they would be after the switches (`topology.findings(after:)`). „Kunden-Netz“ chooses a
+//! port or VLAN and a prefix of the site (`customerNetOptions`).
 use crate::{
     components::{
         adjust_target::SelectedTarget, findings::finding_list, job::JobView, menu::popup::Select,
@@ -13,7 +14,7 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            FlagInterfaces, Findings, HelperJobs, LinkPorts, NetboxPlan, NetboxPlanPreview,
+            CustomerNetOptions, FlagInterfaces, Findings, HelperJobs, customer_net_options, LinkPorts, NetboxPlan, NetboxPlanPreview,
             UndoNetboxWrite, WriteNetboxPlan, flag_interfaces,
             findings::{self, FindingsTopologyFindings},
             helper_jobs::{self, JobKind, JobState},
@@ -80,6 +81,52 @@ pub enum HelperChoice {
     Disconnect(u32),
     /// the tags switched: interface, tag, set
     Flags(Vec<(u32, Flag, bool)>),
+    CustomerNet {
+        target: NetTarget,
+        parent: u32,
+        length: Option<u8>,
+        dhcp: bool,
+    },
+}
+
+/// Where „Kunden-Netz“ puts the network.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum NetTarget {
+    Interface(u32),
+    Vlan(u32),
+}
+
+/// What „Kunden-Netz“ is choosing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetChoice {
+    target: Option<NetTarget>,
+    parent: Option<u32>,
+    length: String,
+    dhcp: bool,
+}
+
+impl Default for NetChoice {
+    fn default() -> Self {
+        Self {
+            target: None,
+            parent: None,
+            length: String::new(),
+            dhcp: true,
+        }
+    }
+}
+
+/// A port, VLAN or prefix in a select of „Kunden-Netz“.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetEntry<T> {
+    value: T,
+    text: String,
+}
+
+impl<T> Display for NetEntry<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.text)
+    }
 }
 
 /// A tag of „Flags“.
@@ -140,6 +187,21 @@ macro_rules! helper_input {
                     })
                     .collect(),
             }),
+            HelperChoice::CustomerNet {
+                target,
+                parent,
+                length,
+                dhcp,
+            } => $module::Helper::CustomerNet($module::CustomerNetInput {
+                device: $id as i64,
+                target: match target {
+                    NetTarget::Interface(id) => $module::CustomerNetTarget::Interface(id as i64),
+                    NetTarget::Vlan(id) => $module::CustomerNetTarget::Vlan(id as i64),
+                },
+                parent: parent as i64,
+                length: length.map(i64::from),
+                dhcp,
+            }),
         }
     };
 }
@@ -151,6 +213,7 @@ pub enum HelperKind {
     Connection,
     Disconnect,
     Flags,
+    CustomerNet,
 }
 
 impl HelperKind {
@@ -167,6 +230,7 @@ impl Display for HelperKind {
             HelperKind::Connection => t::CONNECTION,
             HelperKind::Disconnect => t::DISCONNECT,
             HelperKind::Flags => t::FLAGS,
+            HelperKind::CustomerNet => t::CUSTOMER_NET,
         })
     }
 }
@@ -204,6 +268,8 @@ pub struct NetboxHelper {
     flags: BTreeMap<(u32, Flag), bool>,
     /// the device's findings after the switches, with NetBox' address: for these
     flag_findings: Option<FlagFindings>,
+    net: NetChoice,
+    net_options: Option<Result<NetOptions, FrontendError>>,
     /// what the plan shown was computed for
     planned: Option<HelperChoice>,
     plan: Option<Result<netbox_plan::ResponseData, FrontendError>>,
@@ -233,6 +299,11 @@ pub enum NetboxHelperMsg {
         Vec<(u32, Flag, bool)>,
         Result<(String, Vec<FindingsTopologyFindings>), FrontendError>,
     ),
+    NetOptions(Result<NetOptions, FrontendError>),
+    NetTarget(NetTarget),
+    NetParent(u32),
+    NetLength(String),
+    NetDhcp(bool),
     Plan(HelperChoice, Result<netbox_plan::ResponseData, FrontendError>),
     LoadPreview,
     Preview(Result<Preview, FrontendError>),
@@ -274,6 +345,8 @@ impl Component for NetboxHelper {
             flag_interfaces: None,
             flags: BTreeMap::new(),
             flag_findings: None,
+            net: NetChoice::default(),
+            net_options: None,
             planned: None,
             plan: None,
             preview: None,
@@ -294,6 +367,9 @@ impl Component for NetboxHelper {
                 if kind.needs_ports() && self.ports.is_none() {
                     fetch_ports(ctx.link().clone(), ctx.props().id);
                 }
+                if kind == HelperKind::CustomerNet && self.net_options.is_none() {
+                    fetch_net_options(ctx.link().clone(), ctx.props().id);
+                }
                 if kind == HelperKind::Flags {
                     if self.flag_interfaces.is_none() {
                         fetch_flag_interfaces(ctx.link().clone(), ctx.props().id);
@@ -303,6 +379,23 @@ impl Component for NetboxHelper {
                 self.choose(ctx);
             }
             NetboxHelperMsg::FlagInterfaces(interfaces) => self.flag_interfaces = Some(interfaces),
+            NetboxHelperMsg::NetOptions(options) => self.net_options = Some(options),
+            NetboxHelperMsg::NetTarget(target) => {
+                self.net.target = Some(target);
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::NetParent(parent) => {
+                self.net.parent = Some(parent);
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::NetLength(length) => {
+                self.net.length = length;
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::NetDhcp(dhcp) => {
+                self.net.dhcp = dhcp;
+                self.choose(ctx);
+            }
             NetboxHelperMsg::Toggle(interface, flag, set) => {
                 let has = self
                     .flag_interface(interface)
@@ -446,6 +539,12 @@ impl Component for NetboxHelper {
                 if self.ports.is_some() {
                     fetch_ports(ctx.link().clone(), ctx.props().id);
                 }
+                // the port or VLAN has its network now
+                if self.net_options.is_some() {
+                    self.net = NetChoice::default();
+                    fetch_net_options(ctx.link().clone(), ctx.props().id);
+                    self.choose(ctx);
+                }
                 // NetBox has the tags switched now (or again what it had)
                 if self.flag_interfaces.is_some() {
                     self.flags.clear();
@@ -469,6 +568,7 @@ impl Component for NetboxHelper {
                 html!(<p>{t::CHOOSE_DISCONNECT_PORT}</p>)
             }
             (None, _) if self.kind == HelperKind::Flags => html!(<p>{t::CHOOSE_FLAGS}</p>),
+            (None, _) if self.kind == HelperKind::CustomerNet => html!(<p>{t::CHOOSE_NET}</p>),
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),
             (_, None) => html!(<Spinner size={SpinnerSize::Md}/>),
             (_, Some(Err(error))) => error.to_html(),
@@ -538,6 +638,7 @@ impl Component for NetboxHelper {
             HelperKind::Connection => t::CONNECTION_HINT,
             HelperKind::Disconnect => t::DISCONNECT_HINT,
             HelperKind::Flags => t::FLAGS_HINT,
+            HelperKind::CustomerNet => t::CUSTOMER_NET_HINT,
         };
         html! {
             <Card class="netbox-helper">
@@ -554,6 +655,7 @@ impl Component for NetboxHelper {
                                 HelperKind::Connection,
                                 HelperKind::Disconnect,
                                 HelperKind::Flags,
+                                HelperKind::CustomerNet,
                             ]}
                             onselect={ctx.link().callback(NetboxHelperMsg::Kind)}
                         />
@@ -567,6 +669,9 @@ impl Component for NetboxHelper {
                     }
                     if self.kind == HelperKind::Flags {
                         { self.flags_form(ctx) }
+                    }
+                    if self.kind == HelperKind::CustomerNet {
+                        { self.net_form(ctx) }
                     }
                     {plan}
                 </CardBody>
@@ -591,6 +696,87 @@ impl NetboxHelper {
                 let changes = self.flag_changes();
                 (!changes.is_empty()).then_some(HelperChoice::Flags(changes))
             }
+            HelperKind::CustomerNet => Some(HelperChoice::CustomerNet {
+                target: self.net.target?,
+                parent: self.net.parent?,
+                length: self.net.length.trim().trim_start_matches('/').parse().ok(),
+                dhcp: self.net.dhcp,
+            }),
+        }
+    }
+    fn net_form(&self, ctx: &Context<Self>) -> Html {
+        let options = match &self.net_options {
+            None => return html!(<Spinner size={SpinnerSize::Md}/>),
+            Some(Err(error)) => return error.to_html(),
+            Some(Ok(options)) => options,
+        };
+        let targets: Vec<NetEntry<NetTarget>> = options
+            .interfaces
+            .iter()
+            .map(|interface| NetEntry {
+                value: NetTarget::Interface(interface.id as u32),
+                text: t::net_port(&interface.name, interface.label.as_deref()),
+            })
+            .chain(options.vlans.iter().map(|vlan| NetEntry {
+                value: NetTarget::Vlan(vlan.id as u32),
+                text: t::net_vlan(&vlan.name, vlan.vid, vlan.interface.as_deref()),
+            }))
+            .collect();
+        let parents: Vec<NetEntry<u32>> = options
+            .parents
+            .iter()
+            .map(|parent| NetEntry {
+                value: parent.id as u32,
+                text: parent.prefix.clone(),
+            })
+            .collect();
+        let target = targets.iter().find(|e| Some(e.value) == self.net.target).cloned();
+        let parent = parents.iter().find(|e| Some(e.value) == self.net.parent).cloned();
+        let dhcp = self.net.dhcp;
+        html! {
+            <Form>
+                <FormGroup label={t::NET_TARGET}>
+                    if targets.is_empty() {
+                        <p>{t::NO_NET_TARGETS}</p>
+                    } else {
+                        <Select<NetEntry<NetTarget>>
+                            placeholder={t::CHOOSE_NET_TARGET}
+                            selected={target}
+                            entries={targets}
+                            onselect={ctx.link().callback(|entry: NetEntry<NetTarget>| NetboxHelperMsg::NetTarget(entry.value))}
+                        />
+                    }
+                </FormGroup>
+                <FormGroup label={t::PARENT}>
+                    if parents.is_empty() {
+                        <p>{t::NO_PARENTS}</p>
+                    } else {
+                        <Select<NetEntry<u32>>
+                            placeholder={t::CHOOSE_PARENT}
+                            selected={parent}
+                            entries={parents}
+                            onselect={ctx.link().callback(|entry: NetEntry<u32>| NetboxHelperMsg::NetParent(entry.value))}
+                        />
+                    }
+                </FormGroup>
+                <FormGroup label={t::LENGTH}>
+                    <TextInput
+                        value={self.net.length.clone()}
+                        placeholder={t::LENGTH_PLACEHOLDER}
+                        onchange={ctx.link().callback(NetboxHelperMsg::NetLength)}
+                    />
+                </FormGroup>
+                <FormGroup>
+                    <label class="net-dhcp">
+                        <input
+                            type="checkbox"
+                            checked={dhcp}
+                            onchange={ctx.link().callback(move |_| NetboxHelperMsg::NetDhcp(!dhcp))}
+                        />
+                        {" "}{t::DHCP_SERVER}
+                    </label>
+                </FormGroup>
+            </Form>
         }
     }
     fn flag_changes(&self) -> Vec<(u32, Flag, bool)> {
@@ -937,7 +1123,11 @@ impl NetboxHelper {
 
 fn describe(step: &Step) -> String {
     match step {
-        Step::CreateInterface(create) => t::create_interface(&create.name, &create.kind),
+        Step::CreateInterface(create) => t::create_interface(
+            &create.name,
+            &create.kind,
+            &create.tags.iter().map(tag_slug).collect::<Vec<_>>(),
+        ),
         Step::CreateAddress(create) => {
             t::create_address(&create.address, &create.device.name, &create.interface, &create.prefix)
         }
@@ -1015,6 +1205,25 @@ fn fetch_plan(scope: Scope<NetboxHelper>, id: u32, choice: HelperChoice) {
         )
         .await;
         scope.send_message(NetboxHelperMsg::Plan(choice, plan));
+    });
+}
+
+fn fetch_net_options(scope: Scope<NetboxHelper>, id: u32) {
+    spawn_local(async move {
+        let options = query_authenticated::<CustomerNetOptions, _>(
+            scope.clone(),
+            customer_net_options::Variables { id: id as i64 },
+        )
+        .await
+        .map(|data| match data.topology.device_by_id {
+            Some(device) => device.customer_net_options,
+            None => NetOptions {
+                interfaces: Vec::new(),
+                vlans: Vec::new(),
+                parents: Vec::new(),
+            },
+        });
+        scope.send_message(NetboxHelperMsg::NetOptions(options));
     });
 }
 
@@ -1156,3 +1365,5 @@ tag_slug!(flag_interfaces, netbox_plan);
 fn tag_slug(tag: &impl TagSlug) -> &str {
     tag.slug()
 }
+
+type NetOptions = customer_net_options::CustomerNetOptionsTopologyDeviceByIdCustomerNetOptions;

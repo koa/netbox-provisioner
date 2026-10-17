@@ -6,7 +6,7 @@ Regionen und die gesammelten Generatorfehler. Von Schritt 2 („NetBox gegen Ger
 → Kabel (`device/neighbors.rs`, „Nachbarn lesen“ auf der Site-Seite). Schritt 3 mit dem Helfer
 „Loopback“ (`backend/src/helper/`, Karte „NetBox ergänzen“ auf der Geräteseite), von Schritt 4
 die Verbindung „Direkt“ (`/31`), „Kabel aus Befund übernehmen“ und „Verbindung abräumen“, von
-Schritt 5 die OSPF-/DHCP-Flags. Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
+Schritt 5 die OSPF-/DHCP-Flags und das Kunden-Netz (ohne IP-Range). Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
 [pending.md](../pending.md).
 
 ## Ausgangslage
@@ -237,6 +237,23 @@ Ein Port oder ein VLAN wählen, dann das **Parent-Prefix**: Der Helfer bietet di
 des Geräts an (Kunden-Netze gehören zum Standort), gewählt wird von Hand, nicht automatisch.
 Plan: nächstes freies Netz darin (Länge wählbar, Vorgabe `/24`), Gateway-Adresse (erste Adresse) am Port bzw. an einem neuen virtuellen
 VLAN-Interface, `dhcp`, optional eine IP-Range mit Rolle `dhcp`.
+
+Umgesetzt (`helper/customer_net.rs`, „Kunden-Netz“ in „NetBox ergänzen“), noch ohne IP-Range: Der
+DHCP-Pool ist dann der freie Rest des Netzes, wie ohne Range üblich.
+- **Auswahl:** freie Ports und Bridges (ohne IPv4, nicht in einer Bridge, ohne VLAN, nicht zu
+  einem Router verkabelt) und die VLANs des Geräts ohne Netz darauf. Ein VLAN mit einem
+  virtuellen Interface ohne Adresse bekommt das Netz dort, sonst entsteht ein neues virtuelles
+  Interface mit dem Namen des VLANs (Mode access, Untagged VLAN).
+- **Parent-Prefixe:** die IPv4-Prefixe mit Scope der Site des Geräts, ohne Tag `loopback`/`transfer`
+  und ohne Adresse eigener Länge darin (also selbst kein Netz). Die Topologie liest dafür den Scope
+  der Prefixe (`IpPrefixData.site`).
+- **Plan:** das erste freie Netz der Länge (`available-prefixes`), in dem NetBox keine Adresse hat
+  und das kein Router routet, auch nicht teilweise (`Routes::overlapping`). Dazu das Prefix mit
+  Scope Site und, bei einem VLAN, dem VLAN, die erste Adresse als Gateway und das Tag `dhcp`.
+
+Im Lab geprüft an lab-np1 mit einem vorübergehenden Port `ether9` und einem VLAN `lab-test` (199)
+im Prefix `192.168.120.0/22` (Scope Lab): Die Vorschau zeigt in beiden Fällen Pool, DHCP-Server
+und DHCP-Netz. Für das VLAN habe ich geschrieben und rückgängig gemacht, danach alles gelöscht.
 
 ### OSPF- und DHCP-Flags
 

@@ -185,6 +185,17 @@ impl From<&Error> for ErrorInfo {
             Error::NothingToDisconnect(port) => {
                 ("NOTHING_TO_DISCONNECT", vec![("port", port.to_string())])
             }
+            Error::NoSite(device) => ("NO_SITE", vec![("device", device.to_string())]),
+            Error::UnknownPrefix(id) => ("UNKNOWN_PREFIX", vec![("id", id.to_string())]),
+            Error::UnknownVlan(id) => ("UNKNOWN_VLAN", vec![("id", id.to_string())]),
+            Error::NetworkLength { length, parent } => (
+                "NETWORK_LENGTH",
+                vec![("length", length.to_string()), ("parent", parent.to_string())],
+            ),
+            Error::NoFreeNetwork { parent, length } => (
+                "NO_FREE_NETWORK",
+                vec![("parent", parent.to_string()), ("length", length.to_string())],
+            ),
         };
         info(code, params, error)
     }

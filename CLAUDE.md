@@ -100,7 +100,12 @@ chosen port whose link is in the way. `helper::flags` switches the tags `ospf`, 
 `dhcp-client`, `nat` of a device's interfaces (`flagInterfaces`: all but bridge ports, which
 come only with a tag to take off); `UpdateInterface` carries `tags_added`/`tags_removed`. Its card
 shows the device's findings after the switches live: `topology.findings(deviceId:, after:)`
-computes them on the preview of a helper's plan. Deleting is undone by creating the object again from the
+computes them on the preview of a helper's plan. `helper::customer_net` puts the next free
+network of a chosen site prefix (`customerNetOptions.parents`: IPv4, scope the device's site, no
+pool, not a network itself; `IpPrefixData.site`) on a free port or a VLAN (its virtual interface,
+or a new one named like the VLAN, `CreateInterface.vlan`/`tags`): prefix scoped to the site,
+gateway as the first address, `dhcp` if asked; candidates overlapping a route more specific than
+the parent are passed over (`Routes::overlapping`). Deleting is undone by creating the object again from the
 JSON NetBox had (`NetboxWritten.recreate`, `helper::recreate`; it gets a new id): undoing an
 older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (graphql_client
 makes it an enum; its queries need `skip_serializing_none`), naming the device or the two ports;
