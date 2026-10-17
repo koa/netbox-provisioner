@@ -1,11 +1,12 @@
 use crate::pages::routes::AppRoute;
 use patternfly_yew::prelude::{Divider, Icon, MenuToggle, MenuToggleVariant};
+use std::fmt::Display;
 use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlElement, Node};
 use yew::events::{FocusEvent, KeyboardEvent, MouseEvent};
 use yew::{
     AttrValue, Callback, Component, Context, ContextHandle, ContextProvider, Html, NodeRef,
-    Properties, classes, function_component, html,
+    Properties, classes, function_component, html, use_context,
 };
 use yew_nested_router::prelude::RouterContext;
 
@@ -246,6 +247,81 @@ fn item_class(selected: bool) -> yew::Classes {
         class.push("pf-m-selected");
     }
     class
+}
+
+#[derive(Properties, PartialEq)]
+pub struct SelectProps<T: Clone + PartialEq + Display + 'static> {
+    #[prop_or_default]
+    pub placeholder: Option<AttrValue>,
+    pub entries: Vec<T>,
+    #[prop_or_default]
+    pub selected: Option<T>,
+    pub onselect: Callback<T>,
+}
+
+/// A select on a `PopupMenu`, used instead of patternfly-yew's `SimpleSelect`: that one's menu is
+/// a popper with `position: fixed`, which the page doesn't grow for and which moves along when
+/// it scrolls, so a list longer than the window below the toggle (all devices, all ports) had
+/// entries out of reach. This menu scrolls in itself (`pf-m-scrollable`) and lies in the page.
+#[function_component]
+pub fn Select<T: Clone + PartialEq + Display + 'static>(props: &SelectProps<T>) -> Html {
+    let text = props
+        .selected
+        .as_ref()
+        .map(|selected| AttrValue::from(selected.to_string()))
+        .or_else(|| props.placeholder.clone())
+        .unwrap_or_default();
+    let entries = props
+        .entries
+        .iter()
+        .map(|entry| {
+            let onclick = props.onselect.reform({
+                let entry = entry.clone();
+                move |()| entry.clone()
+            });
+            html! {
+                <MenuActionItem selected={props.selected.as_ref() == Some(entry)} {onclick}>
+                    {entry.to_string()}
+                </MenuActionItem>
+            }
+        })
+        .collect::<Html>();
+    html! {
+        <PopupMenu text={html!(text)}>
+            <MenuGroup>{entries}</MenuGroup>
+        </PopupMenu>
+    }
+}
+
+#[derive(Properties, PartialEq)]
+pub struct MenuActionItemProps {
+    #[prop_or_default]
+    pub selected: bool,
+    pub onclick: Callback<()>,
+    #[prop_or_default]
+    pub children: Html,
+}
+
+/// Entry of a `PopupMenu` calling `onclick` and closing the menu.
+#[function_component]
+pub fn MenuActionItem(props: &MenuActionItemProps) -> Html {
+    let close = use_context::<CloseMenu>();
+    let onclick = {
+        let onclick = props.onclick.clone();
+        Callback::from(move |_: MouseEvent| {
+            if let Some(CloseMenu(close)) = &close {
+                close.emit(());
+            }
+            onclick.emit(());
+        })
+    };
+    html! {
+        <li class="pf-v6-c-menu__list-item" role="none">
+            <button class={item_class(props.selected)} type="button" role="menuitem" tabindex="-1" {onclick}>
+                {item_main(props.selected, &props.children)}
+            </button>
+        </li>
+    }
 }
 
 #[derive(Properties, PartialEq)]

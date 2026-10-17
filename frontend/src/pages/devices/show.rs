@@ -2,6 +2,7 @@ use crate::{
     components::{
         adjust_target::{AdjustTarget, SelectedTarget},
         job::JobView,
+        menu::popup::Select,
         netbox_helper::NetboxHelper,
     },
     error::{FrontendError, ServerProblem},
@@ -22,7 +23,7 @@ use crate::{
 };
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
-    CodeBlockCode, SimpleSelect, Spinner, SpinnerSize, TextInput,
+    CodeBlockCode, Spinner, SpinnerSize, TextInput,
 };
 use yew::{Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
 
@@ -324,7 +325,7 @@ impl Component for ShowDevice {
                     { routeros.version.clone() }
                     {t::packages(&routeros.packages, &routeros.wanted)}
                     <div class="routeros-update">
-                        <SimpleSelect<Box<str>>
+                        <Select<Box<str>>
                             selected={selected.map(channel_label)}
                             entries={entries}
                             onselect={ctx.link().callback(ShowDeviceMessage::SelectChannel)}

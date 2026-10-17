@@ -2,9 +2,10 @@ use crate::error::FrontendError;
 use crate::i18n::target as t;
 use crate::graphql::authenticated::{AdjustTargetListCredentials, adjust_target_list_credentials};
 use crate::graphql::query_authenticated_response;
+use crate::components::menu::popup::Select;
 use log::error;
 use patternfly_yew::prelude::{
-    Form, FormGroup, FormGroupValidated, InputState, SimpleSelect, TextInput, ValidationContext,
+    Form, FormGroup, FormGroupValidated, InputState, TextInput, ValidationContext,
     ValidationResult, Validator,
 };
 use std::net::IpAddr;
@@ -262,7 +263,7 @@ impl Component for AdjustTarget {
                     />
                 </FormGroupValidated<TextInput>>
                 <FormGroup label={t::CREDENTIALS}>
-                    <SimpleSelect<Box<str>> selected={selected_credential} entries={defined_credentials} onselect={on_change_credential}/>
+                    <Select<Box<str>> selected={selected_credential} entries={defined_credentials} onselect={on_change_credential}/>
                 </FormGroup>
                 <FormGroup label={t::USERNAME}>
                     <TextInput disabled={!enable_adhoc} onchange={on_change_username} value={username} />

@@ -6,7 +6,7 @@
 //! link is in the way gets a button to „Verbindung abräumen“ with it, which takes that link out
 //! of NetBox.
 use crate::{
-    components::{adjust_target::SelectedTarget, job::JobView},
+    components::{adjust_target::SelectedTarget, job::JobView, menu::popup::Select},
     error::FrontendError,
     graphql::{
         authenticated::{
@@ -23,7 +23,7 @@ use crate::{
 };
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
-    CodeBlockCode, Form, FormGroup, SimpleSelect, Spinner, SpinnerSize, TextInput,
+    CodeBlockCode, Form, FormGroup, Spinner, SpinnerSize, TextInput,
 };
 use std::fmt::{self, Display, Formatter};
 use yew::{Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
@@ -447,7 +447,7 @@ impl Component for NetboxHelper {
                     {job}
                     {undo}
                     <div class="helper-kind">
-                        <SimpleSelect<HelperKind>
+                        <Select<HelperKind>
                             selected={Some(self.kind)}
                             entries={vec![HelperKind::Loopback, HelperKind::Connection, HelperKind::Disconnect]}
                             onselect={ctx.link().callback(NetboxHelperMsg::Kind)}
@@ -584,8 +584,8 @@ impl NetboxHelper {
         html! {
             <Form>
                 <FormGroup label={t::PORT}>
-                    <SimpleSelect<Choice>
-                        placeholder={t::CHOOSE_PORT.to_string()}
+                    <Select<Choice>
+                        placeholder={t::CHOOSE_PORT}
                         selected={selected}
                         entries={entries}
                         onselect={ctx.link().callback(|port: Choice| NetboxHelperMsg::DisconnectPort(port.id))}
@@ -648,24 +648,24 @@ impl NetboxHelper {
         html! {
             <Form>
                 <FormGroup label={t::PORT}>
-                    <SimpleSelect<Choice>
-                        placeholder={t::CHOOSE_PORT.to_string()}
+                    <Select<Choice>
+                        placeholder={t::CHOOSE_PORT}
                         selected={selected(&own, self.link.port)}
                         entries={own.clone()}
                         onselect={ctx.link().callback(NetboxHelperMsg::Port)}
                     />
                 </FormGroup>
                 <FormGroup label={t::PEER_DEVICE}>
-                    <SimpleSelect<Choice>
-                        placeholder={t::CHOOSE_DEVICE.to_string()}
+                    <Select<Choice>
+                        placeholder={t::CHOOSE_DEVICE}
                         selected={selected(&devices, self.link.peer_device)}
                         entries={devices.clone()}
                         onselect={ctx.link().callback(NetboxHelperMsg::PeerDevice)}
                     />
                 </FormGroup>
                 <FormGroup label={t::PEER_PORT}>
-                    <SimpleSelect<Choice>
-                        placeholder={t::CHOOSE_PEER_PORT.to_string()}
+                    <Select<Choice>
+                        placeholder={t::CHOOSE_PEER_PORT}
                         selected={selected(&peer_ports, self.link.peer)}
                         entries={peer_ports.clone()}
                         onselect={ctx.link().callback(NetboxHelperMsg::Peer)}

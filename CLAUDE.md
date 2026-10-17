@@ -180,7 +180,9 @@ log says why; the frontend words the status, `i18n::error::refused`) (`docs/logi
 the `auth_*` settings and how to set up Pocket-ID; keep it in line with them). The UI picks a
 NetBox site first, then one of its devices (`/sites`, `/site/<id>`, `/site/<id>/device/<id>/show`,
 `pages/routes.rs`): no sidebar, a breadcrumb of dropdowns to the sibling sites and devices
-(`components/menu/`, page layout and `PopupMenu` taken from the cable-editor). Devices are
+(`components/menu/`, page layout and `PopupMenu` taken from the cable-editor). Selects use
+`menu::popup::Select` on `PopupMenu`, not patternfly-yew's `SimpleSelect`, whose fixed-position
+popper left the end of a long list out of reach. Devices are
 reached directly, or, with `management_proxy` set, all through one device's `/ip socks` (SOCKS5
 with password; `device::proxied_stream` retries the sporadic "General SOCKS server failure" of a
 first connection); the proxy's own device is reached at the proxy's address

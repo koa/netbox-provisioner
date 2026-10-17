@@ -75,8 +75,15 @@ body {
     }
 }
 
+/* PatternFly's card scrolls its overflow, which cut an open menu off at a short card's end
+   (the select in „NetBox ergänzen“); while one is open, it reaches past the card. */
+.pf-v6-c-card:has(.popup-menu > .pf-v6-c-menu) {
+    overflow: visible;
+}
+
 /* On phones a menu as wide as its content would often reach past the screen edge. There it keeps
-   its place below the toggle but takes the width of the page section around it. */
+   its place below the toggle but takes the width of the page section around it, and long
+   entries (a port with its cable and addresses) wrap instead of being cut off. */
 @media screen and (max-width: calc(48rem - 1px)) {
     .app-page .pf-v6-c-page__main-breadcrumb,
     .app-page .pf-v6-c-page__main-section {
@@ -90,6 +97,11 @@ body {
             inset-block-start: auto;
             inset-inline: var(--pf-t--global--spacer--md);
             min-width: 0;
+        }
+
+        & .pf-v6-c-menu__item-text {
+            white-space: normal;
+            overflow-wrap: anywhere;
         }
     }
 }
