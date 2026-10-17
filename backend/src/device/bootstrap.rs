@@ -16,7 +16,7 @@ use crate::{
     config::{CONFIG, MikrotikCredentials},
     error_info::{ApiError, BootstrapObstacle},
     device::{
-        Credentials, Path, connect,
+        Credentials, Path, connect, other_device_named,
         proxied_stream,
         raw::{field, rows},
         terminal::{LOGIN_FLAGS, Terminal, TerminalError, Tunnel},
@@ -31,7 +31,7 @@ use log::{info, warn};
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::MacAddress;
 use std::{collections::HashSet, net::IpAddr, str::FromStr, time::Duration};
-use tokio::time::{Instant, sleep};
+use tokio::time::{Instant, sleep, timeout};
 
 /// Marks what the setup added besides the address, so it can be told apart on the device.
 const COMMENT: &str = "netbox-provisioner setup";
@@ -375,8 +375,7 @@ pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -
         address: address.to_string().into(),
         timeout: API_TIMEOUT.into(),
     });
-    let path = Path::Neighbor(tunnel(plan).await?.into());
-    log.unless_cancelled(wait_for_api(device, address, &path)).await??;
+    log.unless_cancelled(wait_for_api(device, address, plan)).await??;
     log.emit(SetupDone {
         address: address.to_string().into(),
     });
@@ -772,8 +771,15 @@ fn quote(value: &str) -> String {
         .replace('$', "\\$")
 }
 
-/// Waits until the device answers the API at its new address with its credentials.
-async fn wait_for_api(device: &DeviceAccess, address: IpAddr, path: &Path) -> Result<(), Error> {
+/// Waits until the device answers the API at its new address with its credentials, through an
+/// SSH tunnel to `plan`'s neighbor. Each try has its own time limit: neither the tunnel nor a
+/// connection through it nor the login gives up by itself (the setup of link-5-ap hung here),
+/// and a tunnel whose try ran out is made again.
+async fn wait_for_api(
+    device: &DeviceAccess,
+    address: IpAddr,
+    plan: &BootstrapPlan,
+) -> Result<(), Error> {
     let credentials = Credentials::Named(
         device
             .credentials()
@@ -781,14 +787,50 @@ async fn wait_for_api(device: &DeviceAccess, address: IpAddr, path: &Path) -> Re
             .into(),
     );
     let deadline = Instant::now() + API_TIMEOUT;
+    let mut path = None;
     loop {
-        match connect::<SimpleResult>(address, path, &credentials).await {
-            Ok(_) => return Ok(()),
-            Err(error) if Instant::now() > deadline => return Err(error),
-            Err(_) => sleep(Duration::from_secs(2)).await,
+        let attempt = async {
+            let path = match &path {
+                Some(path) => Path::clone(path),
+                None => {
+                    let made = Path::Neighbor(tunnel(plan).await?.into());
+                    path = Some(made.clone());
+                    made
+                }
+            };
+            let client = connect::<SimpleResult>(address, &path, &credentials).await?;
+            let rows = rows(&client, "/system/identity/print").await?;
+            Ok(rows.first().and_then(|row| field(row, "name")).map(Box::<str>::from))
+        };
+        let limit = deadline
+            .saturating_duration_since(Instant::now())
+            .clamp(MIN_API_ATTEMPT, API_ATTEMPT);
+        let error = match timeout(limit, attempt).await {
+            // the address answered from another device in NetBox: waiting won't change that
+            Ok(Ok(Some(identity))) if let Some(other) = other_device_named(device, &identity) => {
+                return Err(Error::WrongDevice {
+                    device: device.name().into(),
+                    address: address.to_string().into(),
+                    other,
+                });
+            }
+            Ok(Ok(_)) => return Ok(()),
+            Ok(Err(error)) => error,
+            Err(_) => {
+                path = None;
+                Error::Timeout(address)
+            }
+        };
+        if Instant::now() > deadline {
+            return Err(error);
         }
+        sleep(Duration::from_secs(2)).await;
     }
 }
+
+/// The longest one try of [`wait_for_api`] may take, and the least the last one gets.
+const API_ATTEMPT: Duration = Duration::from_secs(10);
+const MIN_API_ATTEMPT: Duration = Duration::from_secs(3);
 
 #[cfg(test)]
 mod tests {

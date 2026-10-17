@@ -262,7 +262,9 @@ from the neighbor's address on the cable, so the device needs no route back befo
 apply brings OSPF. It tries every neighbor of `bootstrap::plans` in turn, the management
 proxy's device first: another neighbor may be cut off itself. Every generated config has `/ip
 ssh forwarding-enabled=local` for that; without it RouterOS never answers the forward (no
-refusal), hence the timeout in `Tunnel::open`. Don't go back to static return routes on the device: with
+refusal), hence the timeout in `Tunnel::open`; neither the tunnel's SSH login nor an API login
+through it gives up by itself, so `bootstrap::wait_for_api` limits each try and makes the tunnel
+again after one that ran out (the setup of link-5-ap hung there for good). Don't go back to static return routes on the device: with
 `redistribute=static` they go out as /32s that beat the neighbors' connected networks. When the
 mac-telnet session ends early, the following lines land on the neighbor's own console (this
 once left setup routes on lab-np1), so every setup command is wrapped to do nothing where the
