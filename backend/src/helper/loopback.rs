@@ -24,6 +24,18 @@ use std::net::IpAddr;
 
 pub async fn plan(device: &DeviceAccess) -> Result<NetboxPlan, Error> {
     let mut plan = NetboxPlan::new(device, format!("Loopback {}", device.name()));
+    let mut routes = None;
+    add_to(&mut plan, device, &mut routes).await?;
+    Ok(plan)
+}
+
+/// Adds what `device` lacks of its loopback to `plan`, which may have addresses for other
+/// devices already (they aren't handed out twice). `routes` is read once an address is needed.
+pub(crate) async fn add_to(
+    plan: &mut NetboxPlan,
+    device: &DeviceAccess,
+    routes: &mut Option<Routes>,
+) -> Result<(), Error> {
     let lo = device.interfaces().iter().find(|i| i.name() == "lo").cloned();
     let on = match &lo {
         Some(lo) => Target::Existing(lo.id().0),
@@ -38,9 +50,8 @@ pub async fn plan(device: &DeviceAccess) -> Result<NetboxPlan, Error> {
             Target::Step(plan.steps.len() - 1)
         }
     };
-    let rest = NetboxRest::reader()?;
     // read once an address is needed: a plan that only sets what exists asks no router
-    let mut routes = None;
+    let mut rest = None;
     for v6 in [false, true] {
         let version = if v6 { IpVersion::V6 } else { IpVersion::V4 };
         let existing = lo
@@ -56,10 +67,14 @@ pub async fn plan(device: &DeviceAccess) -> Result<NetboxPlan, Error> {
                 if routes.is_none() {
                     let read = Routes::read(device.topology()).await?;
                     plan.checked_with = Some(read.router.clone());
-                    routes = Some(read);
+                    *routes = Some(read);
                 }
                 let routes = routes.as_ref().expect("read above");
-                let (prefix, host) = next_free(device, &rest, routes, &mut plan, v6).await?;
+                if rest.is_none() {
+                    rest = Some(NetboxRest::reader()?);
+                }
+                let rest = rest.as_ref().expect("read above");
+                let (prefix, host) = next_free(device, rest, routes, plan, v6).await?;
                 let address = IpNet::new(host, if v6 { 128 } else { 32 })
                     .map_err(|error| Error::Preview(error.to_string().into()))?
                     .to_string();
@@ -93,7 +108,7 @@ pub async fn plan(device: &DeviceAccess) -> Result<NetboxPlan, Error> {
             }));
         }
     }
-    Ok(plan)
+    Ok(())
 }
 
 /// How many free addresses of a pool prefix are looked at: past that many in use but not
@@ -121,6 +136,13 @@ async fn next_free(
             .filter_map(|free| free["address"].as_str())
             .filter_map(|address| address.parse::<IpNet>().ok());
         for candidate in candidates {
+            let planned = plan.steps.iter().any(|step| {
+                matches!(step, PlanStep::CreateAddress(create)
+                    if create.address.split('/').next() == Some(&candidate.addr().to_string()))
+            });
+            if planned {
+                continue;
+            }
             match routes.in_use(candidate.addr(), prefix) {
                 Some(taken) => plan.undocumented.push(taken),
                 None => return Ok((prefix, candidate.addr())),

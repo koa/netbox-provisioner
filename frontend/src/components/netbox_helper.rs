@@ -8,7 +8,9 @@
 //! as they would be after the switches (`topology.findings(after:)`). „Kunden-Netz“ chooses a
 //! port or VLAN and a prefix of the site (`customerNetOptions`). „PoE“ chooses the direction and
 //! both ports (`poeOptions`), or takes them from what the device reports feeding
-//! (`access.poeObserved`).
+//! (`access.poeObserved`). „Funkbrücke“ runs on a bridge's page: its role, the other bridge
+//! (from its wireless link), and only where they aren't cabled the router ports
+//! (`radioBridgeCandidates`, `linkPorts`).
 use crate::{
     components::{
         adjust_target::SelectedTarget, findings::finding_list, job::JobView, menu::popup::Select,
@@ -17,7 +19,8 @@ use crate::{
     graphql::{
         authenticated::{
             CustomerNetOptions, FlagInterfaces, Findings, HelperJobs, customer_net_options, LinkPorts, NetboxPlan, NetboxPlanPreview,
-            PoeObserved, PoeOptions, UndoNetboxWrite, WriteNetboxPlan, flag_interfaces,
+            PoeObserved, PoeOptions, RadioBridgeCandidates, UndoNetboxWrite, WriteNetboxPlan,
+            flag_interfaces, radio_bridge_candidates,
             poe_observed, poe_options::{self, PoePortFields},
             findings::{self, FindingsTopologyFindings},
             helper_jobs::{self, JobKind, JobState},
@@ -94,6 +97,40 @@ pub enum HelperChoice {
         pse: u32,
         pd: u32,
     },
+    RadioBridge {
+        ap: u32,
+        station: u32,
+        ap_router_port: Option<u32>,
+        station_router_port: Option<u32>,
+        ap_address: Option<String>,
+        station_address: Option<String>,
+        ssid: Option<String>,
+    },
+}
+
+/// What „Funkbrücke“ is choosing: whether this bridge is the AP, the other bridge, and per side
+/// (this one first) a router port where the bridge isn't cabled and an address.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RadioChoice {
+    own_ap: bool,
+    peer: Option<u32>,
+    router_device: [Option<u32>; 2],
+    router_port: [Option<u32>; 2],
+    address: [String; 2],
+    ssid: String,
+}
+
+impl Default for RadioChoice {
+    fn default() -> Self {
+        Self {
+            own_ap: true,
+            peer: None,
+            router_device: [None; 2],
+            router_port: [None; 2],
+            address: Default::default(),
+            ssid: String::new(),
+        }
+    }
 }
 
 /// What „PoE“ is choosing: whether the device feeds (else it is fed), its port, the other end.
@@ -234,6 +271,23 @@ macro_rules! helper_input {
                 pse: pse as i64,
                 pd: pd as i64,
             }),
+            HelperChoice::RadioBridge {
+                ap,
+                station,
+                ap_router_port,
+                station_router_port,
+                ap_address,
+                station_address,
+                ssid,
+            } => $module::Helper::RadioBridge($module::RadioBridgeInput {
+                ap: ap as i64,
+                station: station as i64,
+                ap_router_port: ap_router_port.map(i64::from),
+                station_router_port: station_router_port.map(i64::from),
+                ap_address,
+                station_address,
+                ssid,
+            }),
         }
     };
 }
@@ -247,12 +301,16 @@ pub enum HelperKind {
     Flags,
     CustomerNet,
     Poe,
+    RadioBridge,
 }
 
 impl HelperKind {
     /// whether it chooses among the ports of `linkPorts`
     fn needs_ports(self) -> bool {
-        matches!(self, HelperKind::Connection | HelperKind::Disconnect)
+        matches!(
+            self,
+            HelperKind::Connection | HelperKind::Disconnect | HelperKind::RadioBridge
+        )
     }
 }
 
@@ -265,6 +323,7 @@ impl Display for HelperKind {
             HelperKind::Flags => t::FLAGS,
             HelperKind::CustomerNet => t::CUSTOMER_NET,
             HelperKind::Poe => t::POE,
+            HelperKind::RadioBridge => t::RADIO_BRIDGE,
         })
     }
 }
@@ -292,6 +351,8 @@ pub struct LinkChoice {
 }
 
 pub struct NetboxHelper {
+    /// the device of the page
+    device: u32,
     kind: HelperKind,
     link: LinkChoice,
     /// the port whose link „Verbindung abräumen“ takes out
@@ -309,6 +370,8 @@ pub struct NetboxHelper {
     /// what the device reports feeding, once asked
     poe_observed: Option<Result<Vec<Observed>, FrontendError>>,
     poe_observing: bool,
+    radio: RadioChoice,
+    radio_options: Option<Result<Vec<Candidate>, FrontendError>>,
     /// what the plan shown was computed for
     planned: Option<HelperChoice>,
     plan: Option<Result<netbox_plan::ResponseData, FrontendError>>,
@@ -352,6 +415,14 @@ pub enum NetboxHelperMsg {
     PoeObserved(Result<Vec<Observed>, FrontendError>),
     /// what the device reports: its port feeds the other end (device, port) if known
     PoeTake(u32, Option<(u32, u32)>),
+    RadioOptions(Result<Vec<Candidate>, FrontendError>),
+    RadioOwnAp(bool),
+    RadioPeer(Choice),
+    /// side 0 is this bridge, 1 the other one
+    RadioRouterDevice(usize, Choice),
+    RadioRouterPort(usize, Choice),
+    RadioAddress(usize, String),
+    RadioSsid(String),
     Plan(HelperChoice, Result<netbox_plan::ResponseData, FrontendError>),
     LoadPreview,
     Preview(Result<Preview, FrontendError>),
@@ -386,6 +457,7 @@ impl Component for NetboxHelper {
         }
         last_write(ctx.link().clone(), ctx.props().id);
         let mut helper = Self {
+            device: ctx.props().id,
             kind,
             link,
             disconnect: None,
@@ -399,6 +471,8 @@ impl Component for NetboxHelper {
             poe_options: None,
             poe_observed: None,
             poe_observing: false,
+            radio: RadioChoice::default(),
+            radio_options: None,
             planned: None,
             plan: None,
             preview: None,
@@ -424,6 +498,9 @@ impl Component for NetboxHelper {
                 }
                 if kind == HelperKind::Poe && self.poe_options.is_none() {
                     fetch_poe_options(ctx.link().clone(), ctx.props().id);
+                }
+                if kind == HelperKind::RadioBridge && self.radio_options.is_none() {
+                    fetch_radio_options(ctx.link().clone(), ctx.props().id);
                 }
                 if kind == HelperKind::Flags {
                     if self.flag_interfaces.is_none() {
@@ -452,6 +529,53 @@ impl Component for NetboxHelper {
                 self.choose(ctx);
             }
             NetboxHelperMsg::PoeOptions(options) => self.poe_options = Some(options),
+            NetboxHelperMsg::RadioOptions(options) => {
+                // this bridge's role and the other end of its link, as NetBox has them
+                if let Ok(candidates) = &options
+                    && let Some(own) = candidates.iter().find(|c| c.device.id as u32 == ctx.props().id)
+                {
+                    if self.radio.peer.is_none() {
+                        self.radio.peer = own.peer.as_ref().map(|peer| peer.id as u32);
+                    }
+                    if let Some(role) = &own.role {
+                        self.radio.own_ap = !matches!(role, radio_bridge_candidates::RadioRole::STATION);
+                    }
+                }
+                self.radio_options = Some(options);
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::RadioOwnAp(ap) => {
+                self.radio.own_ap = ap;
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::RadioPeer(peer) => {
+                if self.radio.peer != Some(peer.id) {
+                    self.radio.router_device[1] = None;
+                    self.radio.router_port[1] = None;
+                    self.radio.address[1].clear();
+                }
+                self.radio.peer = Some(peer.id);
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::RadioRouterDevice(side, device) => {
+                if self.radio.router_device[side] != Some(device.id) {
+                    self.radio.router_port[side] = None;
+                }
+                self.radio.router_device[side] = Some(device.id);
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::RadioRouterPort(side, port) => {
+                self.radio.router_port[side] = Some(port.id);
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::RadioAddress(side, address) => {
+                self.radio.address[side] = address;
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::RadioSsid(ssid) => {
+                self.radio.ssid = ssid;
+                self.choose(ctx);
+            }
             NetboxHelperMsg::PoeFeeds(feeds) => {
                 self.poe.feeds = feeds;
                 self.choose(ctx);
@@ -646,6 +770,10 @@ impl Component for NetboxHelper {
                     fetch_net_options(ctx.link().clone(), ctx.props().id);
                     self.choose(ctx);
                 }
+                // the bridges have their links and addresses now
+                if self.radio_options.is_some() {
+                    fetch_radio_options(ctx.link().clone(), ctx.props().id);
+                }
                 // the ports have their modes now
                 if self.poe_options.is_some() {
                     fetch_poe_options(ctx.link().clone(), ctx.props().id);
@@ -675,6 +803,9 @@ impl Component for NetboxHelper {
             (None, _) if self.kind == HelperKind::Flags => html!(<p>{t::CHOOSE_FLAGS}</p>),
             (None, _) if self.kind == HelperKind::CustomerNet => html!(<p>{t::CHOOSE_NET}</p>),
             (None, _) if self.kind == HelperKind::Poe => html!(<p>{t::CHOOSE_POE}</p>),
+            (None, _) if self.kind == HelperKind::RadioBridge => {
+                html!(<p>{t::CHOOSE_RADIO_BRIDGE}</p>)
+            }
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),
             (_, None) => html!(<Spinner size={SpinnerSize::Md}/>),
             (_, Some(Err(error))) => error.to_html(),
@@ -746,6 +877,7 @@ impl Component for NetboxHelper {
             HelperKind::Flags => t::FLAGS_HINT,
             HelperKind::CustomerNet => t::CUSTOMER_NET_HINT,
             HelperKind::Poe => t::POE_HINT,
+            HelperKind::RadioBridge => t::RADIO_BRIDGE_HINT,
         };
         html! {
             <Card class="netbox-helper">
@@ -764,6 +896,7 @@ impl Component for NetboxHelper {
                                 HelperKind::Flags,
                                 HelperKind::CustomerNet,
                                 HelperKind::Poe,
+                                HelperKind::RadioBridge,
                             ]}
                             onselect={ctx.link().callback(NetboxHelperMsg::Kind)}
                         />
@@ -783,6 +916,9 @@ impl Component for NetboxHelper {
                     }
                     if self.kind == HelperKind::Poe {
                         { self.poe_form(ctx) }
+                    }
+                    if self.kind == HelperKind::RadioBridge {
+                        { self.radio_form(ctx) }
                     }
                     {plan}
                 </CardBody>
@@ -818,7 +954,39 @@ impl NetboxHelper {
                 let (pse, pd) = if self.poe.feeds { (own, peer) } else { (peer, own) };
                 Some(HelperChoice::Poe { pse, pd })
             }
+            HelperKind::RadioBridge => {
+                let radio = &self.radio;
+                let (own, peer) = (self.own_candidate()?.device.id as u32, radio.peer?);
+                let address = |side: usize| {
+                    Some(radio.address[side].trim().to_string()).filter(|a| !a.is_empty())
+                };
+                // this side first, the AP's first in the input
+                let [mut a, mut b] = [0, 1].map(|side| (radio.router_port[side], address(side)));
+                let (ap, station) = if radio.own_ap {
+                    (own, peer)
+                } else {
+                    std::mem::swap(&mut a, &mut b);
+                    (peer, own)
+                };
+                Some(HelperChoice::RadioBridge {
+                    ap,
+                    station,
+                    ap_router_port: a.0,
+                    station_router_port: b.0,
+                    ap_address: a.1,
+                    station_address: b.1,
+                    ssid: Some(radio.ssid.trim().to_string()).filter(|s| !s.is_empty()),
+                })
+            }
         }
+    }
+    /// This device among the radio bridges, if it is one.
+    fn own_candidate(&self) -> Option<&Candidate> {
+        self.candidate(self.device)
+    }
+    fn candidate(&self, id: u32) -> Option<&Candidate> {
+        let candidates = self.radio_options.as_ref()?.as_ref().ok()?;
+        candidates.iter().find(|c| c.device.id as u32 == id)
     }
     /// A port of the device or of another device of „PoE“.
     fn poe_port(&self, id: u32) -> Option<&PoePortFields> {
@@ -954,6 +1122,148 @@ impl NetboxHelper {
                 </FormGroup>
             </Form>
         </>}
+    }
+    fn radio_form(&self, ctx: &Context<Self>) -> Html {
+        let candidates = match &self.radio_options {
+            None => return html!(<Spinner size={SpinnerSize::Md}/>),
+            Some(Err(error)) => return error.to_html(),
+            Some(Ok(candidates)) => candidates,
+        };
+        let Some(own) = self.own_candidate() else {
+            return html!(<p>{t::NOT_A_RADIO_BRIDGE}</p>);
+        };
+        let ports = match &self.ports {
+            None => return html!(<Spinner size={SpinnerSize::Md}/>),
+            Some(Err(error)) => return error.to_html(),
+            Some(Ok(ports)) => ports,
+        };
+        let roles = vec![
+            NetEntry { value: true, text: t::RADIO_AP.to_string() },
+            NetEntry { value: false, text: t::RADIO_STATION.to_string() },
+        ];
+        let role = roles.iter().find(|r| r.value == self.radio.own_ap).cloned();
+        let peers: Vec<Choice> = candidates
+            .iter()
+            .filter(|c| c.device.id != own.device.id)
+            .map(|c| Choice {
+                id: c.device.id as u32,
+                text: t::radio_candidate(
+                    &c.device.name,
+                    &c.radio.name,
+                    c.peer.as_ref().map(|p| p.name.as_str()),
+                ),
+            })
+            .collect();
+        let selected = |entries: &[Choice], id: Option<u32>| {
+            id.and_then(|id| entries.iter().find(|entry| entry.id == id).cloned())
+        };
+        let routers: Vec<Choice> = ports
+            .topology
+            .all_devices
+            .iter()
+            .filter(|device| self.candidate(device.id as u32).is_none())
+            .map(|device| Choice {
+                id: device.id as u32,
+                text: t::link_device(&device.name, device.site.as_ref().map(|s| s.name.as_str())),
+            })
+            .collect();
+        let router_ports = |side: usize| -> Vec<Choice> {
+            self.radio.router_device[side]
+                .and_then(|id| ports.topology.all_devices.iter().find(|d| d.id as u32 == id))
+                .map(|device| {
+                    device
+                        .link_ports
+                        .iter()
+                        .map(|port| Choice {
+                            id: port.id as u32,
+                            text: t::link_port(
+                                &port.name,
+                                port.label.as_deref(),
+                                port.connected
+                                    .first()
+                                    .map(|far| (far.device.name.as_str(), far.name.as_str())),
+                                port.cabled,
+                                port.ipv4.as_deref(),
+                                port.bridge.as_deref(),
+                            ),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let peer = self.radio.peer.and_then(|id| self.candidate(id));
+        let side = |index: usize, bridge: Option<&Candidate>, ap: bool| {
+            let cabled = bridge.and_then(|b| b.router_port.as_ref());
+            let placeholder = match cabled {
+                Some(port) => format!("{}: {} {}", t::CABLED_ROUTER, port.device.name, port.name),
+                None => t::CHOOSE_DEVICE.to_string(),
+            };
+            let address_placeholder = bridge
+                .and_then(|b| b.address.clone())
+                .unwrap_or_else(|| t::BRIDGE_ADDRESS_PLACEHOLDER.to_string());
+            let title = bridge
+                .map(|b| t::radio_side(&b.device.name, ap))
+                .unwrap_or_default();
+            let port_entries = router_ports(index);
+            html! {<>
+                <h4>{title}</h4>
+                <FormGroup label={t::ROUTER_DEVICE}>
+                    <Select<Choice>
+                        placeholder={placeholder}
+                        selected={selected(&routers, self.radio.router_device[index])}
+                        entries={routers.clone()}
+                        onselect={ctx.link().callback(move |c| NetboxHelperMsg::RadioRouterDevice(index, c))}
+                    />
+                </FormGroup>
+                if self.radio.router_device[index].is_some() {
+                    <FormGroup label={t::ROUTER_PORT}>
+                        <Select<Choice>
+                            placeholder={t::CHOOSE_PORT}
+                            selected={selected(&port_entries, self.radio.router_port[index])}
+                            entries={port_entries.clone()}
+                            onselect={ctx.link().callback(move |c| NetboxHelperMsg::RadioRouterPort(index, c))}
+                        />
+                    </FormGroup>
+                }
+                <FormGroup label={t::BRIDGE_ADDRESS}>
+                    <TextInput
+                        value={self.radio.address[index].clone()}
+                        placeholder={address_placeholder}
+                        onchange={ctx.link().callback(move |a| NetboxHelperMsg::RadioAddress(index, a))}
+                    />
+                </FormGroup>
+            </>}
+        };
+        html! {
+            <Form>
+                <FormGroup label={t::RADIO_ROLE}>
+                    <Select<NetEntry<bool>>
+                        selected={role}
+                        entries={roles}
+                        onselect={ctx.link().callback(|entry: NetEntry<bool>| NetboxHelperMsg::RadioOwnAp(entry.value))}
+                    />
+                </FormGroup>
+                <FormGroup label={t::RADIO_PEER}>
+                    <Select<Choice>
+                        placeholder={t::CHOOSE_DEVICE}
+                        selected={selected(&peers, self.radio.peer)}
+                        entries={peers.clone()}
+                        onselect={ctx.link().callback(NetboxHelperMsg::RadioPeer)}
+                    />
+                </FormGroup>
+                <FormGroup label={t::SSID}>
+                    <TextInput
+                        value={self.radio.ssid.clone()}
+                        placeholder={t::SSID_PLACEHOLDER}
+                        onchange={ctx.link().callback(NetboxHelperMsg::RadioSsid)}
+                    />
+                </FormGroup>
+                { side(0, Some(own), self.radio.own_ap) }
+                if peer.is_some() {
+                    { side(1, peer, !self.radio.own_ap) }
+                }
+            </Form>
+        }
     }
     fn net_form(&self, ctx: &Context<Self>) -> Html {
         let options = match &self.net_options {
@@ -1410,6 +1720,26 @@ fn describe(step: &Step) -> String {
             &delete.interface.name,
         ),
         Step::DeletePrefix(delete) => t::delete_prefix(&delete.prefix),
+        Step::UpdatePort(update) => t::update_port(
+            (&update.interface.device.name, &update.interface.name),
+            update.name.as_deref(),
+            update
+                .rf_role
+                .as_ref()
+                .map(|role| (rf_role(role), update.rf_role_before.as_ref().map(rf_role))),
+            update.bridge.as_deref(),
+        ),
+        Step::CreateWirelessLink(create) => t::create_wireless_link(
+            (&create.a.device.name, &create.a.name),
+            (&create.b.device.name, &create.b.name),
+            &create.ssid,
+        ),
+        Step::UpdateWirelessLink(update) => t::update_wireless_link(
+            (&update.a.device.name, &update.a.name),
+            (&update.b.device.name, &update.b.name),
+            update.ssid.as_deref().map(|ssid| (ssid, update.ssid_before.as_str())),
+            update.psk_set,
+        ),
         Step::SetPrimaryIp(set) => t::set_primary(
             match set.version {
                 netbox_plan::IpVersion::V4 => "IPv4",
@@ -1476,6 +1806,23 @@ fn fetch_net_options(scope: Scope<NetboxHelper>, id: u32) {
             },
         });
         scope.send_message(NetboxHelperMsg::NetOptions(options));
+    });
+}
+
+fn fetch_radio_options(scope: Scope<NetboxHelper>, id: u32) {
+    spawn_local(async move {
+        let options = query_authenticated::<RadioBridgeCandidates, _>(
+            scope.clone(),
+            radio_bridge_candidates::Variables { id: id as i64 },
+        )
+        .await
+        .map(|data| {
+            data.topology
+                .device_by_id
+                .map(|device| device.radio_bridge_candidates)
+                .unwrap_or_default()
+        });
+        scope.send_message(NetboxHelperMsg::RadioOptions(options));
     });
 }
 
@@ -1676,6 +2023,17 @@ fn poe_mode(mode: &poe_options::PoeMode) -> &str {
         poe_options::PoeMode::PSE => "PSE",
         poe_options::PoeMode::PD => "PD",
         poe_options::PoeMode::Other(other) => other,
+    }
+}
+
+type Candidate =
+    radio_bridge_candidates::RadioBridgeCandidatesTopologyDeviceByIdRadioBridgeCandidates;
+
+fn rf_role(role: &netbox_plan::RadioRole) -> &str {
+    match role {
+        netbox_plan::RadioRole::AP => "AP",
+        netbox_plan::RadioRole::STATION => "Station",
+        netbox_plan::RadioRole::Other(other) => other,
     }
 }
 

@@ -302,17 +302,49 @@ weg. Ein gespeistes Gerät meldet seine Quelle nicht; abgelesen wird deshalb am 
 
 ### Funkbrücke
 
-Eingabe: die beiden Standorte bzw. die beiden Router, an deren Ports die Brücke hängt, das Board
-(Auswahl aus den Funk-Boards in `hw_facts.rs`, 5 oder 60 GHz), optional Frequenz und Breite.
+Vervollständigt oder korrigiert eine Brücke zwischen zwei Routern, deren beide Geräte in NetBox
+schon existieren (anlegen ist Teil von „Neues Gerät“). Aufgerufen auf der Seite einer der beiden
+Brücken (`radioBridgeCandidates`: RouterOS-Geräte mit genau einem Funk-Port). Eingabe: ob diese
+Brücke AP oder Station ist (immer gewählt, vorbelegt mit ihrer RF Role), die andere Brücke
+(vorbelegt mit der Gegenseite ihres Wireless Links), je Seite der Router-Port nur dort, wo
+`ether1` noch nicht zu einem Router verkabelt ist, optional die Adresse jeder Bridge und die SSID.
 
-Plan für beide Seiten: Device mit Board und Name (Vorschlag `<site-a>-<site-b>` und umgekehrt),
-`ether1`, Funk-Port (`wlan1` bzw. `wlan60-1`), Bridge mit beiden; RF Role `AP` auf der einen
-Seite, `Station` auf der anderen; ein Wireless Link mit SSID (Vorschlag aus den Namen),
-WPA Personal und einem erzeugten PSK; die Kabel von `ether1` zu den Router-Ports; je eine
-Loopback und eine feste Adresse im `/29` ([Brückengeräte mit fester
-Adresse](#brückengeräte-mit-fester-adresse)). Dazu die [Verbindung](#verbindung) zwischen den
-beiden Routern über die Brücke (`/29`, `ospf`, MTU über die ganze Strecke gleich, wie
-[netbox-modeling.md](../netbox-modeling.md#mtu) es verlangt).
+Plan (`helper::radio_bridge`) für jede Seite:
+
+- Kabel vom ersten freien Ethernet-Port zum gewählten Router-Port, falls keines zu einem Router
+  geht (`NoRouterPort` ohne beides).
+- Die Bridge des Geräts (die des Funk-Ports, sonst ein vorhandenes Bridge-Interface), sonst eine
+  neue `bridge` mit `ospf`; Ethernet-Port und Funk-Port als ihre Ports (`UpdatePort`).
+- Der Funk-Port mit dem RouterOS-Namen (`wlan1`, bei 60 GHz `wlan60-1`; `NameTaken`, wenn das
+  Gerät schon so ein Interface hat) und der RF Role.
+- `lo` mit Loopback wie der Helfer „Loopback“, falls sie fehlt.
+
+Dann der Wireless Link: einer zu einem dritten Gerät wird abgelehnt (`WirelessLinkElsewhere`). Ein
+vorhandener bekommt fehlende SSID (Eingabe, sonst der Name des APs) und, wenn er offen ist, WPA
+Personal mit einem erzeugten PSK (24 Zeichen). Ein vorhandener PSK bleibt; ist der Link
+verschlüsselt, NetBox gibt den PSK aber nicht heraus, bricht der Plan ab (`PskUnreadable`). Ohne
+Link wird einer angelegt (`CreateWirelessLink`). Ändert sich am Funk etwas, steht die Station in
+`cut_off`: bis beide Seiten angewendet sind, ist die Strecke getrennt.
+
+Zuletzt das Segment: L3-Interfaces sind die beiden Router-Ports (bzw. deren Bridge) und die beiden
+Bridges. Das Netz ist das IPv4-Netz eines Router-Ports (`PortAddressed`, wenn der andere eins
+ausserhalb hat), sonst ein neues `/29` aus dem Transfer-Pool. Jedes Ende ohne IPv4 bekommt eine
+Adresse darin (die eingegebene oder die nächste freie, gegen die Routen geprüft wie bei
+„Verbindung“; `NetworkTooSmall`, wenn das Netz keine vier Adressen hat) und `ospf`. Für IPv6
+reichen die Link-Local-Adressen, die Brücken sind über ihre Loopback erreichbar. Die Adresse,
+die eine Brücke per DHCP hatte, kennt NetBox nicht; ist sie die nächste freie, bekommt sie
+dieselbe, sonst eine andere (die eingegebene geht vor).
+
+Geschrieben werden Port-Änderungen (Name, RF Role, Bridge, vorher geprüft) und der Wireless Link
+(`POST wireless/wireless-links/`, `status=connected`, `auth_cipher=aes`); der PSK steht nicht im
+Fingerprint und nicht im Job-Log. Rückgängig nimmt beim geänderten Link Authentication und PSK
+wieder weg.
+
+Im Lab geprüft an `lab-sxt-a`/`lab-sxt-b`: vollständig ergab „NetBox hat schon alles dafür“; ohne
+die Bridge-Adresse von `lab-sxt-b` plante der Helfer `192.168.101.12/29` (dieselbe) und schrieb
+sie; ohne RF Role an `lab-sxt-b wlan1` setzte er `station`. Anlegen des Links, Umbenennen und
+Verkabeln sind nur mit Unit-Tests geprüft (`schopf_burri_gets_its_addresses` am Produktions-Export:
+drei Adressen in `172.17.0.40/29`, `ospf` auf beiden Bridges).
 
 ### Brückengeräte mit fester Adresse
 
@@ -329,6 +361,9 @@ Der Helfer legt die Brückengeräte deshalb wie Router an, nur ohne Routing der 
 - **OSPF-Priorität 0** auf dem Brückengerät: Es wird nie DR oder BDR, die Rolle bleibt bei den
   Routern. Das braucht eine neue Regel im Generator. Das Feld `priority` von
   `/routing/ospf/interface-template` kennt `mikrotik-model` schon.
+
+Loopback, feste Adresse und `ospf` trägt der Helfer [Funkbrücke](#funkbrücke) ein; die
+Priorität 0 fehlt noch.
 
 Warum das hilft:
 

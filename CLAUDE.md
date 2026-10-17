@@ -122,7 +122,16 @@ the parent are passed over (`Routes::overlapping`). `helper::poe` sets `poe_mode
 `pd` on two Ethernet ports (`is_ethernet`, any device; `Interface.poe`, `UpdateInterface.poe`),
 cabling them if both are free; `poeOptions` offers the device's ports and the site's devices,
 `AccessibleDevice.poeObserved` what the device feeds now (`poe/monitor` `powered-on`, the far
-end by NetBox's cable, else `/ip/neighbor`). Deleting is undone by creating the object again from the
+end by NetBox's cable, else `/ip/neighbor`). `helper::radio_bridge` completes a radio bridge
+between two routers on two existing devices (`radioBridgeCandidates`: one radio each): cable to
+the router port where none goes to a router, bridge with ether and radio as ports
+(`UpdatePort`: name, RF role, bridge), the RouterOS radio name, `lo` (`loopback::add_to`), the
+wireless link (`CreateWirelessLink`/`UpdateWirelessLink`: SSID, WPA with a PSK generated only
+where none is; the PSK is never in the fingerprint, a step's `Debug` or the log), and the
+segment's IPv4 (the router port's network, else a new `/29` of the transfer pool) with an
+address and `ospf` on each router port and bridge; IPv6 stays link-local, the bridges are
+reached at their loopback. Topology carries the link's id and peer (`Interface.wireless_link`,
+`WirelessLinkEnd`); `example_topology` makes up both for an export lacking them. Deleting is undone by creating the object again from the
 JSON NetBox had (`NetboxWritten.recreate`, `helper::recreate`; it gets a new id): undoing an
 older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (graphql_client
 makes it an enum; its queries need `skip_serializing_none`), naming the device or the two ports;
@@ -131,7 +140,8 @@ A `CableMissing` neighbor finding with both ends in NetBox opens the card below 
 ends (`components::neighbor_check`, `LinkPreset`). Lists of devices and interfaces follow
 NetBox' order (`topology::natural`, its `naturalize`/`naturalize_interface`).
 A helper computes a `NetboxPlan` of steps (`PlanStep`: create interface, address, cable,
-prefix, set primary IP, update interface, delete cable, address, prefix) from the topology plus REST reads
+prefix, set primary IP, update interface or port, create or update wireless link, delete
+cable, address, prefix) from the topology plus REST reads
 (`netbox::rest::NetboxRest`; GraphQL can't list free addresses or write). A new address must also be unrouted:
 `helper::routes::Routes` reads `/ip/route` and `/ipv6/route` of one OSPF router (the management
 proxy's device, else the RouterOS devices with the most OSPF interfaces, first of three to

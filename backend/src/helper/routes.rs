@@ -65,6 +65,15 @@ impl Routes {
         }))
     }
 
+    /// No routes, as read from `router`: for tests.
+    #[cfg(test)]
+    pub(crate) fn none(router: &str) -> Routes {
+        Routes {
+            router: router.into(),
+            routes: Vec::new(),
+        }
+    }
+
     /// The route that shows `host` of the pool `pool` in use: one more specific than the pool
     /// (the pool itself, a summary or the default route say nothing about one address).
     pub fn in_use(&self, host: IpAddr, pool: IpNet) -> Option<UndocumentedAddress> {

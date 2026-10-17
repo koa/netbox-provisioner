@@ -223,6 +223,29 @@ pub mod error {
                 p("parent")
             ),
             "NOT_ETHERNET" => format!("{} ist laut NetBox kein Ethernet-Port", p("port")),
+            "NO_SINGLE_RADIO" => format!(
+                "{} hat in NetBox keinen oder mehrere Funk-Ports: eine Funkbrücke hat genau einen",
+                p("device")
+            ),
+            "NO_ROUTER_PORT" => format!(
+                "{} ist mit keinem Router verkabelt: den Router-Port wählen",
+                p("device")
+            ),
+            "WIRELESS_LINK_ELSEWHERE" => match p("far") {
+                "" => format!("{} hat schon einen Wireless Link", p("port")),
+                far => format!("{} hat schon einen Wireless Link zu {far}", p("port")),
+            },
+            "PSK_UNREADABLE" => format!(
+                "Der Wireless Link an {} ist verschlüsselt, NetBox gibt seinen PSK aber nicht \
+                heraus (Rechte des API-Tokens)",
+                p("port")
+            ),
+            "NETWORK_TOO_SMALL" => format!(
+                "{} hat keinen Platz für {} Adressen (zwei Router, zwei Brücken)",
+                p("net"),
+                p("ends")
+            ),
+            "NAME_TAKEN" => format!("{} hat schon ein Interface {}", p("device"), p("name")),
             "NO_FREE_NETWORK" => format!("In {} ist kein /{} mehr frei", p("parent"), p("length")),
             "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
             "NO_PORTS" => format!(
@@ -1013,6 +1036,84 @@ pub mod helper {
             None => {}
         }
         text
+    }
+    pub const RADIO_BRIDGE: &str = "Funkbrücke";
+    pub const RADIO_BRIDGE_HINT: &str = "Vervollständigt eine Funkbrücke zwischen zwei Routern: \
+        Kabel zu den Routern, falls sie fehlen, auf beiden Brücken die Bridge mit Ethernet-Port \
+        und Funk-Port (so benannt wie in RouterOS), RF-Rolle AP und Station, lo mit Loopback, den \
+        Wireless Link mit SSID und PSK (ein fehlender PSK wird erzeugt), und ein IPv4-Netz für \
+        das Segment: das des Router-Ports, sonst ein neues /29 aus dem Transfer-Pool. Router-Ports \
+        und Bridges bekommen je eine Adresse darin und ospf; für IPv6 reichen die Link-Local-Adressen. \
+        Die Nutzdaten bleiben auf L2.";
+    pub const CHOOSE_RADIO_BRIDGE: &str = "Rolle dieser Brücke und die Gegenseite wählen.";
+    pub const NOT_A_RADIO_BRIDGE: &str = "Das Gerät hat nicht genau einen Funk-Port: keine \
+        Funkbrücke. Den Helper auf der Seite einer Brücke öffnen.";
+    pub const RADIO_ROLE: &str = "Diese Brücke ist";
+    pub const RADIO_AP: &str = "AP";
+    pub const RADIO_STATION: &str = "Station";
+    pub const RADIO_PEER: &str = "Andere Brücke";
+    pub const ROUTER_DEVICE: &str = "Router";
+    pub const ROUTER_PORT: &str = "Router-Port";
+    pub const CABLED_ROUTER: &str = "wie verkabelt";
+    pub const BRIDGE_ADDRESS: &str = "IPv4 der Bridge";
+    pub const BRIDGE_ADDRESS_PLACEHOLDER: &str = "die vorhandene oder die nächste freie";
+    pub const SSID: &str = "SSID";
+    pub const SSID_PLACEHOLDER: &str = "die des Links, sonst der Name des APs";
+    /// a side of the form: this bridge or the other one
+    pub fn radio_side(device: &str, ap: bool) -> String {
+        format!("{device} ({})", if ap { "AP" } else { "Station" })
+    }
+    /// a bridge in the choice: its radio and where its link goes
+    pub fn radio_candidate(device: &str, radio: &str, peer: Option<&str>) -> String {
+        match peer {
+            Some(peer) => format!("{device} ({radio}, Link zu {peer})"),
+            None => format!("{device} ({radio})"),
+        }
+    }
+    pub fn update_port(
+        port: (&str, &str),
+        name: Option<&str>,
+        role: Option<(&str, Option<&str>)>,
+        bridge: Option<&str>,
+    ) -> String {
+        let mut changes = Vec::new();
+        if let Some(name) = name {
+            changes.push(format!("heisst {name}"));
+        }
+        if let Some((role, before)) = role {
+            changes.push(match before {
+                Some(before) => format!("RF-Rolle {role} (vorher {before})"),
+                None => format!("RF-Rolle {role}"),
+            });
+        }
+        if let Some(bridge) = bridge {
+            changes.push(format!("Port von {bridge}"));
+        }
+        format!("{} {}: {}", port.0, port.1, changes.join(", "))
+    }
+    pub fn create_wireless_link(a: (&str, &str), b: (&str, &str), ssid: &str) -> String {
+        format!(
+            "Wireless Link {} {} – {} {} anlegen, SSID {ssid}, WPA mit neuem PSK",
+            a.0, a.1, b.0, b.1
+        )
+    }
+    pub fn update_wireless_link(
+        a: (&str, &str),
+        b: (&str, &str),
+        ssid: Option<(&str, &str)>,
+        psk: bool,
+    ) -> String {
+        let mut changes = Vec::new();
+        if let Some((ssid, before)) = ssid {
+            changes.push(match before {
+                "" => format!("SSID {ssid}"),
+                before => format!("SSID {ssid} (vorher {before})"),
+            });
+        }
+        if psk {
+            changes.push("WPA mit neuem PSK".to_string());
+        }
+        format!("Wireless Link {} {} – {} {}: {}", a.0, a.1, b.0, b.1, changes.join(", "))
     }
     pub const FLAGS: &str = "Flags";
     pub const FLAGS_HINT: &str = "Die Tags der Interfaces: ospf (OSPF), dhcp (DHCP-Server), \

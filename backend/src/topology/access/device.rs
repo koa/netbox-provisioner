@@ -309,6 +309,10 @@ impl DeviceAccess {
     async fn poe_options(&self) -> crate::helper::poe::PoeOptions {
         crate::helper::poe::options(self)
     }
+    /// The radio bridge devices of the network, for the helper „Funkbrücke“.
+    async fn radio_bridge_candidates(&self) -> Vec<crate::helper::radio_bridge::RadioBridgeCandidate> {
+        crate::helper::radio_bridge::candidates(self.topology())
+    }
     /// Its interfaces whose tags count, for the helper „Flags“.
     async fn flag_interfaces(&self) -> Vec<crate::helper::flags::FlagInterface> {
         crate::helper::flags::flag_interfaces(self)

@@ -197,6 +197,22 @@ impl From<&Error> for ErrorInfo {
                 vec![("parent", parent.to_string()), ("length", length.to_string())],
             ),
             Error::NotEthernet(port) => ("NOT_ETHERNET", vec![("port", port.to_string())]),
+            Error::NoSingleRadio(device) => ("NO_SINGLE_RADIO", vec![("device", device.to_string())]),
+            Error::NoRouterPort(device) => ("NO_ROUTER_PORT", vec![("device", device.to_string())]),
+            Error::WirelessLinkElsewhere { port, far } => {
+                let mut params = vec![("port", port.to_string())];
+                params.extend(far.as_ref().map(|far| ("far", far.to_string())));
+                ("WIRELESS_LINK_ELSEWHERE", params)
+            }
+            Error::PskUnreadable(port) => ("PSK_UNREADABLE", vec![("port", port.to_string())]),
+            Error::NetworkTooSmall { net, ends } => (
+                "NETWORK_TOO_SMALL",
+                vec![("net", net.to_string()), ("ends", ends.to_string())],
+            ),
+            Error::NameTaken { device, name } => (
+                "NAME_TAKEN",
+                vec![("device", device.to_string()), ("name", name.to_string())],
+            ),
         };
         info(code, params, error)
     }

@@ -440,10 +440,12 @@ weiterreicht. Pro Seite:
 2. Interfaces mit den RouterOS-Namen: `ether1` und der Funk-Port, **`wlan1`** bei 5 GHz,
    **`wlan60-1`** bei 60 GHz.
 3. Eine Bridge (virtuelles Interface), bei `ether1` und dem Funk-Port als **Bridge** eingetragen.
-4. Management: nichts zu tun. Ein Gerät ohne jede IP-Adresse und ohne Tag `dhcp-client` bekommt
-   auf seiner Bridge automatisch einen DHCP-Client (siehe
-   [IP-Adressen, Prefixe und DHCP](#ip-adressen-prefixe-und-dhcp)). Wer eine feste Adresse will,
-   trägt sie an der Bridge ein.
+4. Management: `lo` mit Loopback als Primary IP und eine feste IPv4 an der Bridge im Netz der
+   Router-Ports, mit Tag `ospf` an der Bridge: die Brücke ist dann ein OSPF-Router, der seine
+   Loopback ankündigt, die Nutzdaten bleiben auf L2. Für IPv6 reichen die Link-Local-Adressen.
+   Eine Loopback ohne `ospf` meldet `LoopbackWithoutOspf`. Ein Gerät ganz ohne IP-Adresse und
+   ohne Tag `dhcp-client` bekommt stattdessen auf seiner Bridge einen DHCP-Client (siehe
+   [IP-Adressen, Prefixe und DHCP](#ip-adressen-prefixe-und-dhcp)).
 5. Am Funk-Port die **RF Role**: `AP` auf der einen, `Station` auf der anderen Seite.
    **RF Channel Frequency** (MHz) und **RF Channel Width** sind optional; die Frequenz gilt nur
    am AP, ohne sie wählt er selbst (`auto`). **TX Power** (dBm, nur 5 GHz) ist ebenfalls
@@ -472,6 +474,10 @@ am Wireless Link übersteuern:
 
 Ein Übersteuern verlässt in der Regel die zulässigen Grenzen. Es ist für Ausnahmen gedacht, nicht
 für den Normalfall.
+
+Der Helfer **Funkbrücke** (Karte „NetBox ergänzen“ auf der Seite einer Brücke) trägt das alles
+ein, was fehlt: Kabel, Bridge, Namen, RF Role, Wireless Link mit PSK, Loopback, Adressen und
+`ospf` ([config-helper.md](concepts/config-helper.md#funkbrücke)).
 
 Was daraus generiert wird und worauf beim Ausrollen zu achten ist:
 [radio-bridge-generation.md](radio-bridge-generation.md).

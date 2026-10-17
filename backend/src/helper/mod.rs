@@ -13,6 +13,7 @@ pub mod disconnect;
 pub mod flags;
 pub mod loopback;
 pub mod poe;
+pub mod radio_bridge;
 pub mod routes;
 
 use crate::{
@@ -21,7 +22,7 @@ use crate::{
     job::{Event, Log},
     netbox::rest::NetboxRest,
     topology::{
-        DeviceId, PoeMode, Topology,
+        DeviceId, PoeMode, RadioRole, Topology,
         access::{AdhocCredentials, device::DeviceAccess, interface::InterfaceAccess},
         findings::{DeviceRef, InterfaceRef, IpVersion},
     },
@@ -48,6 +49,8 @@ pub enum Helper {
     CustomerNet(customer_net::CustomerNetInput),
     /// a port feeding another one over PoE
     Poe(poe::PoeInput),
+    /// two radio bridge devices between two routers, for the AP's device
+    RadioBridge(radio_bridge::RadioBridgeInput),
 }
 
 impl Helper {
@@ -59,6 +62,7 @@ impl Helper {
             Helper::Flags(input) => flags::plan(topology, input),
             Helper::CustomerNet(input) => customer_net::plan(topology, input).await,
             Helper::Poe(input) => poe::plan(topology, input),
+            Helper::RadioBridge(input) => radio_bridge::plan(topology, input).await,
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -83,6 +87,9 @@ impl Helper {
             Helper::Poe(input) => topology
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
+            Helper::RadioBridge(input) => topology
+                .get_device_by_id(&DeviceId(input.ap))
+                .ok_or(Error::UnknownDevice(input.ap)),
         }
     }
 }
@@ -288,6 +295,49 @@ impl NetboxPlan {
                         prefixes.retain(|prefix| prefix["id"] != id.as_str());
                     }
                 }
+                PlanStep::UpdatePort(update) => {
+                    if let Some(interface) = interface(json, &update.interface.id.to_string()) {
+                        if let Some(name) = &update.name {
+                            interface["name"] = json!(name);
+                        }
+                        if let Some(role) = update.rf_role {
+                            interface["rf_role"] = json!(role.value());
+                        }
+                        if let Some(bridge) = update.bridge_id {
+                            interface["bridge"] = json!({ "id": target_id(bridge) });
+                        }
+                    }
+                }
+                PlanStep::CreateWirelessLink(create) => {
+                    let link = json!({
+                        "id": created_id(index),
+                        "interface_a": { "id": create.a.id.to_string() },
+                        "interface_b": { "id": create.b.id.to_string() },
+                        "ssid": create.ssid,
+                        "auth_type": "wpa-personal",
+                        "auth_psk": create.psk,
+                        "custom_field_data": {},
+                    });
+                    for end in [&create.a, &create.b] {
+                        if let Some(interface) = interface(json, &end.id.to_string()) {
+                            interface["wireless_link"] = link.clone();
+                        }
+                    }
+                }
+                PlanStep::UpdateWirelessLink(update) => {
+                    for end in [&update.a, &update.b] {
+                        if let Some(interface) = interface(json, &end.id.to_string()) {
+                            let link = &mut interface["wireless_link"];
+                            if let Some(ssid) = &update.ssid {
+                                link["ssid"] = json!(ssid);
+                            }
+                            if let Some(psk) = &update.psk {
+                                link["auth_type"] = json!("wpa-personal");
+                                link["auth_psk"] = json!(psk);
+                            }
+                        }
+                    }
+                }
                 PlanStep::UpdateInterface(update) => {
                     if let Some(interface) = interface(json, &update.interface.id.to_string()) {
                         if let Some(label) = &update.label {
@@ -326,6 +376,9 @@ pub enum PlanStep {
     DeleteCable(DeleteCable),
     DeleteAddress(DeleteAddress),
     DeletePrefix(DeletePrefix),
+    UpdatePort(UpdatePort),
+    CreateWirelessLink(CreateWirelessLink),
+    UpdateWirelessLink(UpdateWirelessLink),
 }
 
 /// An object of NetBox or one an earlier step of the plan creates.
@@ -410,6 +463,82 @@ pub struct UpdateInterface {
     pub tags_removed: Vec<flags::InterfaceTag>,
     pub poe: Option<PoeMode>,
     pub poe_before: Option<PoeMode>,
+}
+
+/// Changes of a port of a radio bridge: a new name, an RF role, the bridge it becomes a port of
+/// (each none to keep it). The port must still have its name, `rf_role_before` and
+/// `bridge_before`.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct UpdatePort {
+    pub interface: InterfaceRef,
+    pub name: Option<Box<str>>,
+    pub rf_role: Option<RadioRole>,
+    pub rf_role_before: Option<RadioRole>,
+    /// the name of the bridge, for reading
+    pub bridge: Option<Box<str>>,
+    #[graphql(skip)]
+    pub bridge_id: Option<Target>,
+    #[graphql(skip)]
+    pub bridge_before: Option<u32>,
+}
+
+/// A new wireless link between two radio ports, WPA personal with `psk`.
+#[derive(Clone, PartialEq, Eq, SimpleObject)]
+pub struct CreateWirelessLink {
+    pub a: InterfaceRef,
+    pub b: InterfaceRef,
+    pub ssid: Box<str>,
+    #[graphql(skip)]
+    pub psk: Box<str>,
+}
+
+/// Changes of the wireless link `id` between `a` and `b`: a new SSID (instead of
+/// `ssid_before`), a PSK where it has none (WPA personal then). Shown is only that it gets one.
+#[derive(Clone, PartialEq, Eq, SimpleObject)]
+pub struct UpdateWirelessLink {
+    pub id: u32,
+    pub a: InterfaceRef,
+    pub b: InterfaceRef,
+    pub ssid: Option<Box<str>>,
+    pub ssid_before: Box<str>,
+    pub psk_set: bool,
+    #[graphql(skip)]
+    pub psk: Option<Box<str>>,
+}
+
+// The PSK is left out: it is new each time the plan is computed, which must not change the
+// plan's fingerprint (and it isn't shown).
+impl std::fmt::Debug for CreateWirelessLink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CreateWirelessLink")
+            .field("a", &self.a)
+            .field("b", &self.b)
+            .field("ssid", &self.ssid)
+            .finish_non_exhaustive()
+    }
+}
+impl std::fmt::Debug for UpdateWirelessLink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpdateWirelessLink")
+            .field("id", &self.id)
+            .field("a", &self.a)
+            .field("b", &self.b)
+            .field("ssid", &self.ssid)
+            .field("ssid_before", &self.ssid_before)
+            .field("psk_set", &self.psk_set)
+            .finish_non_exhaustive()
+    }
+}
+
+/// A random WPA key of 24 letters and digits.
+pub(crate) fn new_psk() -> Box<str> {
+    use rand::Rng;
+    const CHARS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    let mut rng = rand::rng();
+    (0..24)
+        .map(|_| CHARS[rng.random_range(0..CHARS.len())] as char)
+        .collect::<String>()
+        .into()
 }
 
 /// The cable at `port`, to `far` if it reaches an interface (through patch panels too).
@@ -627,6 +756,46 @@ pub async fn write(
                 update_interface(&rest, update, log).await?;
                 None
             }
+            PlanStep::UpdatePort(update) => {
+                let bridge = match update.bridge_id {
+                    Some(target) => Some(
+                        resolve(&created, target)
+                            .ok_or_else(|| Error::NetboxChanged(update.interface.name.clone()))?,
+                    ),
+                    None => None,
+                };
+                update_port(&rest, update, bridge, log).await?;
+                None
+            }
+            PlanStep::CreateWirelessLink(create) => {
+                for end in [&create.a, &create.b] {
+                    let current = rest.get(&format!("dcim/interfaces/{}/", end.id)).await?;
+                    if !current["wireless_link"].is_null() {
+                        return Err(Error::NetboxChanged(
+                            format!("{} {} has a wireless link", end.device.name, end.name).into(),
+                        ));
+                    }
+                }
+                let object = rest
+                    .create(
+                        "wireless/wireless-links/",
+                        json!({
+                            "interface_a": create.a.id,
+                            "interface_b": create.b.id,
+                            "ssid": create.ssid,
+                            "status": "connected",
+                            "auth_type": "wpa-personal",
+                            "auth_cipher": "aes",
+                            "auth_psk": create.psk,
+                        }),
+                    )
+                    .await?;
+                Some(logged_create(log, "wireless/wireless-links", &object)?)
+            }
+            PlanStep::UpdateWirelessLink(update) => {
+                update_wireless_link(&rest, update, log).await?;
+                None
+            }
             PlanStep::DeleteCable(delete) => {
                 let path = format!("dcim/cables/{}/", delete.id);
                 let current = rest.get(&path).await?;
@@ -833,6 +1002,123 @@ async fn update_interface(
             field: "tags".into(),
             value: slugs(&update.tags_added),
             previous: slugs(&update.tags_removed),
+        });
+    }
+    let object = rest.update(&path, Value::Object(change)).await?;
+    log.emit(Event::NetboxWritten(NetboxWritten {
+        path: path.into(),
+        display: display(&object),
+        before: Some(Value::Object(before).to_string().into()),
+        changes,
+        deleted: false,
+        recreate: None,
+    }));
+    Ok(())
+}
+
+/// Writes `update` once the port is still as the plan found it; `bridge` is its new bridge's id.
+async fn update_port(
+    rest: &NetboxRest,
+    update: &UpdatePort,
+    bridge: Option<u32>,
+    log: &Log,
+) -> Result<(), Error> {
+    let port = &update.interface;
+    let path = format!("dcim/interfaces/{}/", port.id);
+    let current = rest.get(&path).await?;
+    let name = current["name"].as_str().unwrap_or_default();
+    let role = match current["rf_role"]["value"].as_str() {
+        Some("ap") => Some(RadioRole::Ap),
+        Some("station") => Some(RadioRole::Station),
+        _ => None,
+    };
+    let bridge_before = current["bridge"]["id"].as_u64().map(|id| id as u32);
+    if name != &*port.name
+        || (update.rf_role.is_some() && role != update.rf_role_before)
+        || (bridge.is_some() && bridge_before != update.bridge_before)
+    {
+        return Err(Error::NetboxChanged(format!("{} {}", port.device.name, port.name).into()));
+    }
+    let mut change = serde_json::Map::new();
+    let mut before = serde_json::Map::new();
+    let mut changes = Vec::new();
+    if let Some(new) = &update.name {
+        change.insert("name".into(), json!(new));
+        before.insert("name".into(), json!(name));
+        changes.push(FieldChange {
+            field: "name".into(),
+            value: Some(new.clone()),
+            previous: Some(name.into()),
+        });
+    }
+    if let Some(new) = update.rf_role {
+        change.insert("rf_role".into(), json!(new.value()));
+        before.insert("rf_role".into(), json!(role.map(RadioRole::value).unwrap_or_default()));
+        changes.push(FieldChange {
+            field: "rf_role".into(),
+            value: Some(new.value().into()),
+            previous: role.map(|role| role.value().into()),
+        });
+    }
+    if let Some(new) = bridge {
+        change.insert("bridge".into(), json!(new));
+        before.insert("bridge".into(), json!(bridge_before));
+        changes.push(FieldChange {
+            field: "bridge".into(),
+            value: update.bridge.clone(),
+            previous: current["bridge"]["name"].as_str().map(Box::from),
+        });
+    }
+    let object = rest.update(&path, Value::Object(change)).await?;
+    log.emit(Event::NetboxWritten(NetboxWritten {
+        path: path.into(),
+        display: display(&object),
+        before: Some(Value::Object(before).to_string().into()),
+        changes,
+        deleted: false,
+        recreate: None,
+    }));
+    Ok(())
+}
+
+/// Writes `update` once the link still has its SSID and, where a PSK comes, none.
+async fn update_wireless_link(
+    rest: &NetboxRest,
+    update: &UpdateWirelessLink,
+    log: &Log,
+) -> Result<(), Error> {
+    let path = format!("wireless/wireless-links/{}/", update.id);
+    let current = rest.get(&path).await?;
+    let ssid = current["ssid"].as_str().unwrap_or_default();
+    let psk = current["auth_psk"].as_str().unwrap_or_default();
+    if ssid != &*update.ssid_before || (update.psk.is_some() && !psk.is_empty()) {
+        return Err(Error::NetboxChanged(format!("wireless link {}", update.id).into()));
+    }
+    let mut change = serde_json::Map::new();
+    let mut before = serde_json::Map::new();
+    let mut changes = Vec::new();
+    if let Some(new) = &update.ssid {
+        change.insert("ssid".into(), json!(new));
+        before.insert("ssid".into(), json!(ssid));
+        changes.push(FieldChange {
+            field: "ssid".into(),
+            value: Some(new.clone()),
+            previous: (!ssid.is_empty()).then(|| ssid.into()),
+        });
+    }
+    if let Some(new) = &update.psk {
+        let auth = |field: &str| current[field]["value"].as_str().unwrap_or_default().to_string();
+        change.insert("auth_type".into(), json!("wpa-personal"));
+        change.insert("auth_cipher".into(), json!("aes"));
+        change.insert("auth_psk".into(), json!(new));
+        before.insert("auth_type".into(), json!(auth("auth_type")));
+        before.insert("auth_cipher".into(), json!(auth("auth_cipher")));
+        before.insert("auth_psk".into(), json!(""));
+        // the key itself stays out of the job's log
+        changes.push(FieldChange {
+            field: "auth_psk".into(),
+            value: Some("•••".into()),
+            previous: None,
         });
     }
     let object = rest.update(&path, Value::Object(change)).await?;

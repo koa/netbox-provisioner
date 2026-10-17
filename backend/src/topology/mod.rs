@@ -131,6 +131,14 @@ impl std::fmt::Debug for Source {
 impl Topology {
     /// The prefixes of `pool` for IPv6 or IPv4, in the order they are filled: ascending
     /// (`docs/concepts/config-helper.md`, Pools).
+    /// The hosts of the IP addresses NetBox has in `net`.
+    pub(crate) fn addresses_in(&self, net: IpNet) -> Vec<std::net::IpAddr> {
+        self.ip_addresses
+            .values()
+            .map(|address| address.ip.addr())
+            .filter(|host| net.contains(host))
+            .collect()
+    }
     pub(crate) fn pool_prefixes(&self, pool: PrefixPool, v6: bool) -> Vec<(IpPrefixId, IpNet)> {
         let mut prefixes = self
             .ip_prefixes
@@ -422,12 +430,22 @@ pub struct Radio {
     pub link: Option<RadioLink>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Ord, PartialOrd, Eq, Hash, async_graphql::Enum)]
 pub enum RadioRole {
     /// NetBox RF role `ap`: the side the station connects to (`mode=bridge`).
     Ap,
     /// NetBox RF role `station` (`mode=station-bridge`).
     Station,
+}
+
+impl RadioRole {
+    /// as NetBox' API takes it (`rf_role`)
+    pub fn value(self) -> &'static str {
+        match self {
+            RadioRole::Ap => "ap",
+            RadioRole::Station => "station",
+        }
+    }
 }
 
 /// The NetBox wireless link a radio port is an end of.

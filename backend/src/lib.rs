@@ -176,6 +176,24 @@ pub enum Error {
     /// a port (`device port`) whose NetBox type is no Ethernet
     #[error("{0} is no Ethernet port")]
     NotEthernet(Box<str>),
+    /// a device with no radio port, or several
+    #[error("{0} has no single radio port")]
+    NoSingleRadio(Box<str>),
+    /// a radio bridge whose Ethernet ports reach no router
+    #[error("{0} is cabled to no router")]
+    NoRouterPort(Box<str>),
+    /// a radio port (`device port`) with a wireless link to `far`
+    #[error("{port} has a wireless link to {far:?} already")]
+    WirelessLinkElsewhere { port: Box<str>, far: Option<Box<str>> },
+    /// an encrypted wireless link whose PSK NetBox doesn't give (the token's rights)
+    #[error("NetBox gives no PSK for the wireless link at {0}")]
+    PskUnreadable(Box<str>),
+    /// a network with less hosts than the ends on it
+    #[error("{net} has no room for {ends} addresses")]
+    NetworkTooSmall { net: Box<str>, ends: u8 },
+    /// a name another interface of the device has
+    #[error("{device} has an interface {name} already")]
+    NameTaken { device: Box<str>, name: Box<str> },
 }
 
 impl From<ResourceMutationError> for Error {
