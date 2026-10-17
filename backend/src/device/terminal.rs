@@ -59,6 +59,8 @@ pub enum TerminalError {
     NoForwarding(IpAddr, u16),
     #[error("upload refused at {0}: {1}")]
     Upload(&'static str, Box<str>),
+    #[error("upload: no answer within {waited:?} at {step}")]
+    UploadNoAnswer { step: &'static str, waited: Duration },
     #[error("upload stalled: nothing went through for {waited:?} after {sent} of {total} bytes")]
     UploadStalled {
         sent: usize,
@@ -208,8 +210,11 @@ impl Tunnel {
 }
 
 /// Copies `data` to the file `name` in the device's root directory over SCP, telling
-/// `progress` the bytes sent at each quarter. Stops with [`TerminalError::UploadStalled`] when
-/// nothing goes through for [`UPLOAD_STALL`] (a slow link takes long, but keeps going).
+/// `progress` the bytes sent once the device takes the file (0) and at each quarter. Every step
+/// has [`UPLOAD_STALL`]: the SSH login, starting SCP and each answer end with
+/// [`TerminalError::UploadNoAnswer`] (an update of berghof-stall-haus hung somewhere there,
+/// right after allowing password logins), sending with [`TerminalError::UploadStalled`] when
+/// nothing goes through (a slow link takes long, but keeps going).
 pub async fn upload<S>(
     stream: S,
     user: &str,
@@ -221,14 +226,22 @@ pub async fn upload<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let session = open_session(stream, user, password).await?;
-    let mut channel = session.channel_open_session().await?;
-    channel.exec(true, format!("scp -t {name}")).await?;
-    acknowledge(&mut channel, "start").await?;
-    channel
-        .data_bytes(format!("C0644 {} {name}\n", data.len()).into_bytes())
-        .await?;
-    acknowledge(&mut channel, "header").await?;
+    let session = answered("ssh login", open_session(stream, user, password)).await?;
+    let mut channel = answered("scp start", async {
+        let channel = session.channel_open_session().await?;
+        channel.exec(true, format!("scp -t {name}")).await?;
+        Ok(channel)
+    })
+    .await?;
+    answered("scp start", acknowledge(&mut channel, "start")).await?;
+    answered("scp header", async {
+        channel
+            .data_bytes(format!("C0644 {} {name}\n", data.len()).into_bytes())
+            .await?;
+        acknowledge(&mut channel, "header").await
+    })
+    .await?;
+    progress(0);
     let total = data.len();
     let stalled = |sent| TerminalError::UploadStalled {
         sent,
@@ -255,6 +268,19 @@ where
         .disconnect(Disconnect::ByApplication, "", "en")
         .await;
     Ok(())
+}
+
+/// `work`, the upload's `step`, within [`UPLOAD_STALL`].
+async fn answered<T>(
+    step: &'static str,
+    work: impl Future<Output = Result<T, TerminalError>>,
+) -> Result<T, TerminalError> {
+    timeout(UPLOAD_STALL, work)
+        .await
+        .map_err(|_| TerminalError::UploadNoAnswer {
+            step,
+            waited: UPLOAD_STALL,
+        })?
 }
 
 /// How many quarters of `total` `sent` is.

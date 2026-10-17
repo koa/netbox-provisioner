@@ -331,8 +331,10 @@ failed with `PANIC` and its message, rather than leaving it running forever (`jo
 A job says where it is before anything slow: `graphql::connect_for_job` reports `Connecting`
 and `Connected` (address, the neighbor's tunnel, the identity) for the device and each supplier,
 the update its `UpdateTarget` and `WatchdogNotSet` for a supplier without one, and an upload
-`PackageUploading` at each quarter (`terminal::upload` sends 64 KiB parts; one that doesn't go
-through within 60 s is `UploadStalled`). A job without events was indistinguishable from a hung
+`PackageUploading` once the device takes the file (0 bytes) and at each quarter
+(`terminal::upload` sends 64 KiB parts; one that doesn't go through within 60 s is
+`UploadStalled`, and the SSH login, the SCP start and each answer before have 60 s each,
+`UploadNoAnswer` with the step). A job without events was indistinguishable from a hung
 one (the upload of 11 MB over berghof-burri's radio took 15 s, but looked stuck).
 A command on an API connection that is gone answers `ConnectionClosed` (mikrotik-api; it
 used to panic in `send_command`). `cancelJob` sets a flag the work checks

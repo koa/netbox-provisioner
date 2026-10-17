@@ -858,6 +858,9 @@ pub mod job {
             format!("{file}: {:.1} MB heruntergeladen", bytes as f64 / 1_000_000.0)
         }
         pub fn uploading(file: &str, bytes: i64, total: i64) -> String {
+            if bytes == 0 {
+                return format!("{file}: Gerät nimmt die Datei an, Übertragung beginnt");
+            }
             format!(
                 "{file}: {:.1} von {:.1} MB auf das Gerät übertragen",
                 bytes as f64 / 1_000_000.0,
