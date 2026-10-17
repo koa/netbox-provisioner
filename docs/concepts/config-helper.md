@@ -89,6 +89,9 @@ Umgesetzt und abweichend vom Entwurf oben:
   Routers geht hindurch zum Router auf der anderen Seite. Im Export waren das zehn falsche Treffer.
 - Ohne Primary IPv4 ist ein Fehler, wo das Gerät `ospf` hat (Router-ID), sonst eine Warnung.
 - „Prefix ohne Prefix-Rolle“ entfällt, die Pools kommen über Tags.
+- Dazu gekommen: `dhcp` an einem Interface, in dessen Prefix keine Adresse für einen Pool frei
+  ist (ein /30 mit beiden Hosts belegt, ein /31). Der Generator setzt dort keinen DHCP-Server auf,
+  ohne Fehler; der Befund rechnet den Pool wie er (`dhcp_pool_v4`).
 
 Im gespeicherten Export, mit gesetzten Tags `loopback`/`transfer`: 16 Geräte ohne Primary IPv4 und 14 ohne
 `lo` (die Brückengeräte, ein AP, ein Switch-Paar), eine Adresse ohne Prefix, ein Hinweis auf eine

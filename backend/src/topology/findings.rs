@@ -3,7 +3,7 @@
 //! are looked at, the ones the provisioner manages. Data only: the frontend words it and links
 //! each object to NetBox.
 use crate::{
-    device::ros::DEFAULT_MTU,
+    device::ros::{DEFAULT_MTU, dhcp_pool_v4},
     topology::{
         DeviceId, PortType, PrefixPool, SiteId, Topology,
         access::{
@@ -44,6 +44,7 @@ pub enum FindingKind {
     NoPrimaryIpv4(NoPrimaryIpv4),
     PrimaryIpv4NotOnLoopback(PrimaryIpv4NotOnLoopback),
     AddressWithoutPrefix(AddressWithoutPrefix),
+    DhcpPoolEmpty(DhcpPoolEmpty),
     PortLikeName(PortLikeName),
     VlanWithoutGroup(VlanWithoutGroup),
     MtuMismatch(MtuMismatch),
@@ -118,6 +119,21 @@ pub struct AddressWithoutPrefix {
     pub interface: InterfaceRef,
     pub address: AddressRef,
     pub dhcp: bool,
+}
+/// The interface has the tag `dhcp`, but the prefix of `address` (`prefix`) has no address
+/// left for a pool (a /30 with both hosts taken, a /31): no DHCP server there.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct DhcpPoolEmpty {
+    pub interface: InterfaceRef,
+    pub address: AddressRef,
+    pub prefix: PrefixRef,
+}
+/// A NetBox prefix.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct PrefixRef {
+    pub id: u32,
+    /// `172.17.1.0/30`
+    pub prefix: Box<str>,
 }
 /// A physical interface (Ethernet or radio) whose name is no RouterOS port name, so the
 /// generator doesn't take it for a port.
@@ -325,6 +341,24 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
                         interface: interface_ref(interface),
                         address: address_ref(&address),
                         dhcp,
+                    }),
+                );
+            }
+            if interface.is_enable_dhcp_server()
+                && let (Some(prefix), IpNet::V4(_)) = (address.prefix(), net)
+                && let Some(IpNet::V4(prefix_net)) = prefix.prefix()
+                && dhcp_pool_v4(&prefix, prefix_net).is_empty()
+            {
+                push(
+                    Severity::Error,
+                    &this,
+                    FindingKind::DhcpPoolEmpty(DhcpPoolEmpty {
+                        interface: interface_ref(interface),
+                        address: address_ref(&address),
+                        prefix: PrefixRef {
+                            id: prefix.id().0,
+                            prefix: prefix_net.to_string().into(),
+                        },
                     }),
                 );
             }
@@ -723,6 +757,23 @@ mod test {
         assert_eq!(findings[0].severity, Severity::Error);
         assert!(matches!(&findings[0].kind, FindingKind::AddressWithoutPrefix(a)
             if a.dhcp && &*a.address.address == "172.17.1.1/30"));
+    }
+
+/// The cabled /30 has both hosts taken; the generator makes no DHCP server there. A port with
+    /// one host of its /30 left gets one, so no finding.
+    #[test]
+    fn dhcp_without_a_free_address_is_an_error() {
+        let mut net = Net::new();
+        let (r1, e1) = (net.r1, net.e1);
+        net.interface(e1).enable_dhcp_server = true;
+        let customer = port(&mut net.builder, r1, "ether2", "10.200.1.9/30");
+        net.interface(customer).enable_dhcp_server = true;
+        net.interface(customer).use_ospf = false;
+        let findings = net.findings();
+        assert_eq!(findings.len(), 1, "{findings:#?}");
+        assert_eq!(findings[0].severity, Severity::Error);
+        assert!(matches!(&findings[0].kind, FindingKind::DhcpPoolEmpty(d)
+            if &*d.address.address == "172.17.1.1/30" && &*d.prefix.prefix == "172.17.1.0/30"));
     }
 
     #[test]

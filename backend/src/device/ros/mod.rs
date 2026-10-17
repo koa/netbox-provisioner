@@ -13,11 +13,11 @@ use crate::{
         IpPrefixId, PhysicalPortId, Radio, RadioLink, RadioRole, WlanAuth,
         access::{
             AccessTopology, device::DeviceAccess, interface::InterfaceAccess,
-            wlan_group::WlanGroupAccess,
+            ip_prefix::IpPrefixAccess, wlan_group::WlanGroupAccess,
         },
     },
 };
-use ipnet::{IpAdd, IpNet, IpSub, Ipv4Net, Ipv6Net};
+use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use mikrotik_model::{
     MacAddress, MikrotikDevice,
     ascii::{self, AsciiString},
@@ -45,9 +45,9 @@ use mikrotik_model::{
     value::{Auto, HasNone, ParseRosValueResult, RosValue},
 };
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet, btree_map::Iter},
+    collections::{BTreeSet, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr},
-    ops::Range,
+    ops::{Range, RangeInclusive},
 };
 
 pub mod fallback;
@@ -967,34 +967,7 @@ impl BaseDeviceDataTarget {
                                 prefix: prefix.id(),
                             })?,
                         ) {
-                            let mut dhcp_ranges_explicit = Vec::new();
-                            let mut gap_finder = GapFinder::<Ipv4Addr>::new();
-                            for range in prefix.ranges() {
-                                if let (Some(IpAddr::V4(start)), Some(IpAddr::V4(end))) =
-                                    (range.start(), range.end())
-                                {
-                                    if range.is_dhcp() {
-                                        dhcp_ranges_explicit.push(start..end);
-                                    }
-                                    gap_finder.reserve_ipv4_range(start..end);
-                                }
-                            }
-                            let dhcp_ranges = if dhcp_ranges_explicit.is_empty() {
-                                for child_prefix in prefix.children() {
-                                    if let Some(IpNet::V4(net)) = child_prefix.prefix() {
-                                        gap_finder.reserve_ipv4_net(net);
-                                    }
-                                }
-                                for ip in prefix.ips() {
-                                    if let Some(IpAddr::V4(ip)) = ip.addr() {
-                                        gap_finder.reserve_ipv4(ip)
-                                    }
-                                }
-
-                                gap_finder.find_gaps_ipv4(net).collect()
-                            } else {
-                                dhcp_ranges_explicit
-                            };
+                            let dhcp_ranges = dhcp_pool_v4(&prefix, net);
                             if !dhcp_ranges.is_empty() {
                                 let suffix = if ip_idx == 0 {
                                     if_name.to_string()
@@ -1157,76 +1130,82 @@ impl BaseDeviceDataTarget {
     }
 }
 
-struct GapFinder<V: Ord + Copy> {
-    reserved_chunks: BTreeMap<V, i32>,
+/// The ranges a DHCP server on `net` (of `prefix`) hands out: the prefix' IP ranges marked
+/// DHCP, else every address of it no address, IP range or child prefix takes. Empty, there is
+/// no DHCP server (finding `DhcpPoolEmpty`).
+pub(crate) fn dhcp_pool_v4(prefix: &IpPrefixAccess, net: Ipv4Net) -> Vec<Range<Ipv4Addr>> {
+    let mut explicit = Vec::new();
+    let mut gap_finder = GapFinder::new();
+    for range in prefix.ranges() {
+        if let (Some(IpAddr::V4(start)), Some(IpAddr::V4(end))) = (range.start(), range.end()) {
+            if range.is_dhcp() {
+                explicit.push(start..end);
+            }
+            gap_finder.reserve_ipv4_range(start..end);
+        }
+    }
+    if !explicit.is_empty() {
+        return explicit;
+    }
+    for child_prefix in prefix.children() {
+        if let Some(IpNet::V4(net)) = child_prefix.prefix() {
+            gap_finder.reserve_ipv4_net(net);
+        }
+    }
+    for ip in prefix.ips() {
+        if let Some(IpAddr::V4(ip)) = ip.addr() {
+            gap_finder.reserve_ipv4(ip)
+        }
+    }
+    gap_finder.find_gaps_ipv4(net).collect()
 }
 
-impl<V: Ord + Copy> GapFinder<V> {
+/// The addresses of a network not reserved, as ranges with both ends included (as RouterOS'
+/// `/ip pool` takes them): reserved are single addresses, IP ranges and child prefixes.
+struct GapFinder {
+    reserved: Vec<RangeInclusive<u32>>,
+}
+
+impl GapFinder {
     pub fn new() -> Self {
         GapFinder {
-            reserved_chunks: BTreeMap::new(),
+            reserved: Vec::new(),
         }
     }
-    pub fn reserve(&mut self, chunk: Range<V>) {
-        *self.reserved_chunks.entry(chunk.start).or_insert(0) += 1;
-        *self.reserved_chunks.entry(chunk.end).or_insert(0) -= 1;
-    }
-    pub fn gaps(&self, Range { start, end }: Range<V>) -> GapIterator<'_, V> {
-        GapIterator {
-            current_value: 0,
-            last_key: start,
-            start,
-            end,
-            gap_iter: self.reserved_chunks.iter(),
-        }
-    }
-}
-
-impl GapFinder<Ipv4Addr> {
     pub fn reserve_ipv4(&mut self, ip: Ipv4Addr) {
-        self.reserve(ip.saturating_sub(1)..ip.saturating_add(1))
+        self.reserved.push(u32::from(ip)..=u32::from(ip));
     }
+    /// `ip.end` included, as in a NetBox IP range
     pub fn reserve_ipv4_range(&mut self, ip: Range<Ipv4Addr>) {
-        self.reserve(ip.start.saturating_sub(1)..ip.end.saturating_add(1))
+        self.reserved.push(u32::from(ip.start)..=u32::from(ip.end));
     }
     pub fn reserve_ipv4_net(&mut self, ip: Ipv4Net) {
         self.reserve_ipv4_range(ip.network()..ip.broadcast());
     }
-    pub fn find_gaps_ipv4(&self, net: Ipv4Net) -> GapIterator<'_, Ipv4Addr> {
-        self.gaps(net.network().saturating_add(1)..net.broadcast().saturating_sub(1))
-    }
-}
-struct GapIterator<'a, V: Ord + Copy> {
-    current_value: i32,
-    last_key: V,
-    start: V,
-    end: V,
-    gap_iter: Iter<'a, V, i32>,
-}
-impl<'a, V: Ord + Copy> Iterator for GapIterator<'a, V> {
-    type Item = Range<V>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        for (current_key, increment) in self.gap_iter.by_ref() {
-            let current_key = (*current_key).clamp(self.start, self.end);
-            let found_gap = if self.current_value <= 0 && current_key > self.last_key {
-                Some(self.last_key..current_key)
-            } else {
-                None
-            };
-            self.current_value += increment;
-            self.last_key = current_key;
-            if let Some(found_gap) = found_gap {
-                return Some(found_gap);
+    /// The free ranges of `net` without its network and broadcast address, each `end`
+    /// included; a single free address is a range from it to itself.
+    pub fn find_gaps_ipv4(&self, net: Ipv4Net) -> impl Iterator<Item = Range<Ipv4Addr>> {
+        let (first, last) = (
+            u64::from(u32::from(net.network())) + 1,
+            u64::from(u32::from(net.broadcast())).saturating_sub(1),
+        );
+        let mut reserved = self.reserved.clone();
+        reserved.sort_by_key(|range| *range.start());
+        let mut gaps = Vec::new();
+        // the first address not known to be reserved
+        let mut next = first;
+        for range in reserved {
+            let (start, end) = (u64::from(*range.start()), u64::from(*range.end()));
+            if start > next && next <= last {
+                gaps.push(next..(start - 1).min(last));
             }
+            next = next.max(end + 1);
         }
-        if self.current_value <= 0 && self.end > self.last_key {
-            let last_key = self.last_key;
-            self.last_key = self.end;
-            Some(last_key..self.end)
-        } else {
-            None
+        if next <= last {
+            gaps.push(next..last);
         }
+        gaps.into_iter()
+            .map(|gap| Ipv4Addr::from(gap.start as u32)..Ipv4Addr::from(gap.end as u32))
     }
 }
 mikrotik_model!(

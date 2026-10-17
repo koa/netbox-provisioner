@@ -188,6 +188,11 @@ impl Links<'_> {
                 self.address(&f.address),
                 f.dhcp,
             ),
+            Kind::DhcpPoolEmpty(f) => t::dhcp_pool_empty(
+                self.interface(&f.interface),
+                self.address(&f.address),
+                self.link(&format!("ipam/prefixes/{}/", f.prefix.id), &f.prefix.prefix),
+            ),
             Kind::PortLikeName(f) => t::port_like_name(self.interface(&f.interface)),
             Kind::VlanWithoutGroup(f) => t::vlan_without_group(
                 self.interface(&f.interface),

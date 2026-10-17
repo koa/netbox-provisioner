@@ -364,6 +364,9 @@ pub mod findings {
         };
         html!(<>{address}{" an "}{interface}{" hat kein Prefix gleicher Länge"}{consequence}</>)
     }
+    pub fn dhcp_pool_empty(interface: Html, address: Html, prefix: Html) -> Html {
+        html!(<>{interface}{" hat das Tag „dhcp“, aber im Prefix "}{prefix}{" von "}{address}{" ist keine Adresse für einen Pool frei: Der DHCP-Server dort entsteht nicht."}</>)
+    }
     pub fn port_like_name(interface: Html) -> Html {
         html!(<>{interface}{" ist ein physisches Interface, heisst aber nicht wie ein RouterOS-Port: Der Generator nimmt es nicht als Port."}</>)
     }
@@ -1019,6 +1022,7 @@ pub mod helper {
             "NoPrimaryIpv4" => "keine Primary IPv4".into(),
             "PrimaryIpv4NotOnLoopback" => "Primary IPv4 nicht auf lo".into(),
             "AddressWithoutPrefix" => "Adresse ohne Prefix".into(),
+            "DhcpPoolEmpty" => "DHCP ohne freie Adresse".into(),
             "PortLikeName" => "Name wie ein Port".into(),
             "VlanWithoutGroup" => "VLAN ohne Gruppe".into(),
             "MtuMismatch" => "MTU verschieden".into(),

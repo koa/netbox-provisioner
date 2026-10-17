@@ -1,7 +1,7 @@
 use crate::device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, GapFinder};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use mikrotik_model::model::{InterfaceEthernetByDefaultName, InterfaceEthernetCfg};
-use std::{net::Ipv4Addr, str::FromStr};
+use std::str::FromStr;
 
 /// RouterOS rejects `auto-link-local=no` on anything but a link-local address.
 #[test]
@@ -17,7 +17,7 @@ pub fn test_auto_link_local_only_off_for_link_local() {
 
 #[test]
 pub fn test_gap_empty() {
-    let finder = GapFinder::<Ipv4Addr>::new();
+    let finder = GapFinder::new();
     let gaps = finder
         .find_gaps_ipv4("172.16.1.1/24".parse().unwrap())
         .collect::<Vec<_>>();
@@ -28,8 +28,8 @@ pub fn test_gap_empty() {
 }
 #[test]
 pub fn test_gap_none() {
-    let mut finder = GapFinder::<Ipv4Addr>::new();
-    finder.reserve("172.16.1.0".parse().unwrap().."172.16.1.255".parse().unwrap());
+    let mut finder = GapFinder::new();
+    finder.reserve_ipv4_net("172.16.1.0/24".parse().unwrap());
     let gaps = finder
         .find_gaps_ipv4("172.16.1.1/24".parse().unwrap())
         .collect::<Vec<_>>();
@@ -37,7 +37,7 @@ pub fn test_gap_none() {
 }
 #[test]
 pub fn test_gap_router_ip() {
-    let mut finder = GapFinder::<Ipv4Addr>::new();
+    let mut finder = GapFinder::new();
     finder.reserve_ipv4("172.16.1.1".parse().unwrap());
     let gaps = finder
         .find_gaps_ipv4("172.16.1.1/24".parse().unwrap())
@@ -49,7 +49,7 @@ pub fn test_gap_router_ip() {
 }
 #[test]
 pub fn test_gap_router_and_host_ip() {
-    let mut finder = GapFinder::<Ipv4Addr>::new();
+    let mut finder = GapFinder::new();
     finder.reserve_ipv4("172.16.1.1".parse().unwrap());
     finder.reserve_ipv4("172.16.1.10".parse().unwrap());
     let gaps = finder
@@ -65,7 +65,7 @@ pub fn test_gap_router_and_host_ip() {
 }
 #[test]
 pub fn test_gap_overlapping_ranges() {
-    let mut finder = GapFinder::<Ipv4Addr>::new();
+    let mut finder = GapFinder::new();
     finder.reserve_ipv4("172.16.1.1".parse().unwrap());
     finder.reserve_ipv4("172.16.1.15".parse().unwrap());
     finder.reserve_ipv4_range("172.16.1.10".parse().unwrap().."172.16.1.20".parse().unwrap());
@@ -83,7 +83,7 @@ pub fn test_gap_overlapping_ranges() {
 }
 #[test]
 pub fn test_gap_subnet() {
-    let mut finder = GapFinder::<Ipv4Addr>::new();
+    let mut finder = GapFinder::new();
     finder.reserve_ipv4("172.16.1.1".parse().unwrap());
     finder.reserve_ipv4("172.16.1.15".parse().unwrap());
     finder.reserve_ipv4_range("172.16.1.10".parse().unwrap().."172.16.1.20".parse().unwrap());
@@ -99,6 +99,33 @@ pub fn test_gap_subnet() {
             "172.16.1.2".parse().unwrap().."172.16.1.9".parse().unwrap(),
             "172.16.1.21".parse().unwrap().."172.16.2.255".parse().unwrap(),
             "172.16.4.0".parse().unwrap().."172.31.255.254".parse().unwrap()
+        ]
+    );
+}
+
+/// A /30 with the gateway leaves one address for DHCP, and a single free address between two
+/// reserved ones is a gap too: such a pool was lost, and with it the DHCP server.
+#[test]
+pub fn test_gap_single_addresses() {
+    let mut finder = GapFinder::new();
+    finder.reserve_ipv4("10.200.1.9".parse().unwrap());
+    let gaps = finder
+        .find_gaps_ipv4("10.200.1.8/30".parse().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(gaps, vec!["10.200.1.10".parse().unwrap().."10.200.1.10".parse().unwrap()]);
+
+    let mut finder = GapFinder::new();
+    for ip in ["172.16.1.1", "172.16.1.3", "172.16.1.254"] {
+        finder.reserve_ipv4(ip.parse().unwrap());
+    }
+    let gaps = finder
+        .find_gaps_ipv4("172.16.1.0/24".parse().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        gaps,
+        vec![
+            "172.16.1.2".parse().unwrap().."172.16.1.2".parse().unwrap(),
+            "172.16.1.4".parse().unwrap().."172.16.1.253".parse().unwrap(),
         ]
     );
 }

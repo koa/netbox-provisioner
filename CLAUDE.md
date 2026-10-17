@@ -77,7 +77,10 @@ calls it again). Only RouterOS devices are checked; each finding is a typed vari
 derived from `netbox_url`) and words in `i18n::findings`. Of a cable, the MTU is compared at the
 ports; `ospf` on one end and a common subnet at the port's bridge where it has one, and only when
 both ends have IPv4: a radio bridge device's end is L2 only. `findings_of_netbox_example` writes
-what the stored export has to `target/netbox-example/findings.txt`. The prefix tags
+what the stored export has to `target/netbox-example/findings.txt`. A `dhcp` interface whose prefix leaves no
+address for a pool gets no DHCP server, silently; `DhcpPoolEmpty` says so, computing the pool
+with the generator's `device::ros::dhcp_pool_v4` (a single free address is a pool of one, it
+once was lost, so a /30 customer port got no server). The prefix tags
 `loopback`/`transfer` (`IpPrefixData::pool`) are only used here so far.
 
 `device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's
