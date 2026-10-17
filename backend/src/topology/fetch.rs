@@ -11,7 +11,7 @@ use crate::{
     topology::{
         Cable, CableId, CablePort, Device, DeviceId, DeviceRole, FrontPort, FrontPortId, Interface,
         InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
-        PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink, RadioRole, RearPort, RearPortId, CircuitTermination, CircuitTerminationId, SiteData, SiteId,
+        PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink, RadioRole, WirelessLinkEnd, RearPort, RearPortId, CircuitTermination, CircuitTerminationId, SiteData, SiteId,
         Topology,
         VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData,
         WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
@@ -170,11 +170,12 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     let enable_dhcp_server = interface.tags.iter().any(|t| t.slug == "dhcp");
                     let nat = interface.tags.iter().any(|t| t.slug == "nat");
                     let external = PhysicalPortId::from_str(&interface.name).ok();
+                    let sixty_ghz = matches!(interface.type_.as_str(), "ieee802.11ad" | "ieee802.11ay");
                     let port_type = match interface.type_.as_str() {
                         "10gbase-x-sfpp" | "1000base-x-sfp" | "1000base-t" | "100base-tx"
                         | "40gbase-x-qsfpp" => Some(PortType::Ethernet),
                         "ieee802.11a" | "ieee802.11g" | "ieee802.11n" | "ieee802.11ac"
-                        | "ieee802.11ad" | "ieee802.11ax" => Some(PortType::Wireless),
+                        | "ieee802.11ad" | "ieee802.11ay" | "ieee802.11ax" => Some(PortType::Wireless),
                         "bridge" => Some(PortType::Bridge),
                         "virtual" => Some(PortType::Loopback),
                         &_ => {
@@ -199,23 +200,13 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                         "pd" => Some(PoeMode::Pd),
                         _ => None,
                     });
-                    let wireless_link = interface.wireless_link.is_some();
-                    let radio = interface
-                        .rf_role
-                        .as_deref()
-                        .and_then(|role| match role {
-                            "ap" => Some(RadioRole::Ap),
-                            "station" => Some(RadioRole::Station),
-                            _ => None,
-                        })
-                        .map(|role| Radio {
-                            role,
-                            frequency: interface.rf_channel_frequency.map(|f| f.0.round() as u32),
-                            channel_width: interface.rf_channel_width.map(|w| w.0.round() as u32),
-                            tx_power: interface
-                                .tx_power
-                                .and_then(|power| i8::try_from(power).ok()),
-                            link: interface.wireless_link.map(|link| RadioLink {
+                    let wireless_link = interface.wireless_link.map(|link| {
+                        let ends = [&link.interface_a.id, &link.interface_b.id]
+                            .map(|end| end.parse().ok().map(InterfaceId));
+                        WirelessLinkEnd {
+                            id: link.id.parse().unwrap_or_default(),
+                            peer: ends.into_iter().flatten().find(|end| *end != id),
+                            link: RadioLink {
                                 ssid: link.ssid.into_boxed_str(),
                                 encrypted: link
                                     .auth_type
@@ -232,7 +223,25 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                                     .custom_field_data
                                     .rf_frequency_mode
                                     .filter(|mode| !mode.is_empty()),
-                            }),
+                            },
+                        }
+                    });
+                    let radio = interface
+                        .rf_role
+                        .as_deref()
+                        .and_then(|role| match role {
+                            "ap" => Some(RadioRole::Ap),
+                            "station" => Some(RadioRole::Station),
+                            _ => None,
+                        })
+                        .map(|role| Radio {
+                            role,
+                            frequency: interface.rf_channel_frequency.map(|f| f.0.round() as u32),
+                            channel_width: interface.rf_channel_width.map(|w| w.0.round() as u32),
+                            tx_power: interface
+                                .tx_power
+                                .and_then(|power| i8::try_from(power).ok()),
+                            link: wireless_link.as_ref().map(|end| end.link.clone()),
                         });
                     interfaces.insert(
                         id,
@@ -255,6 +264,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             mtu: interface.mtu.and_then(|mtu| u16::try_from(mtu).ok()),
                             radio,
                             wireless_link,
+                            sixty_ghz,
                         },
                     );
                     if let Some(vlan_id) = vlan {

@@ -374,8 +374,20 @@ pub struct Interface {
     pub mtu: Option<u16>,
     /// Set on a radio port with an RF role in NetBox (a point-to-point bridge end).
     pub radio: Option<Radio>,
-    /// An end of a NetBox wireless link, with or without RF role.
-    pub wireless_link: bool,
+    /// The NetBox wireless link it is an end of, with or without RF role.
+    pub wireless_link: Option<WirelessLinkEnd>,
+    /// NetBox type 802.11ad or ay: a 60 GHz radio, `wlan60-<N>` on RouterOS.
+    pub sixty_ghz: bool,
+}
+
+/// An interface's end of a NetBox wireless link.
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct WirelessLinkEnd {
+    /// NetBox id of the wireless link
+    pub id: u32,
+    /// the interface at the other end
+    pub peer: Option<InterfaceId>,
+    pub link: RadioLink,
 }
 
 /// NetBox `poe_mode` of an interface.

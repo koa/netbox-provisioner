@@ -1,5 +1,5 @@
 use crate::topology::{
-    Interface, InterfaceId, PhysicalPortId, PoeMode, PortType, Radio, Topology,
+    Interface, InterfaceId, PhysicalPortId, PoeMode, PortType, Radio, Topology, WirelessLinkEnd,
     access::{
         AccessTopology,
         cable::{CableAccess, CablePortAccess},
@@ -199,7 +199,20 @@ impl InterfaceAccess {
     }
     /// An end of a NetBox wireless link.
     pub fn has_wireless_link(&self) -> bool {
-        self.data().is_some_and(|d| d.wireless_link)
+        self.wireless_link().is_some()
+    }
+    /// The NetBox wireless link it is an end of.
+    pub fn wireless_link(&self) -> Option<&WirelessLinkEnd> {
+        self.data().and_then(|d| d.wireless_link.as_ref())
+    }
+    /// The interface at the other end of its wireless link.
+    pub fn wireless_peer(&self) -> Option<InterfaceAccess> {
+        let peer = self.wireless_link()?.peer?;
+        self.topology().get_interface_by_id(peer)
+    }
+    /// NetBox type 802.11ad/ay: a 60 GHz radio.
+    pub fn is_sixty_ghz(&self) -> bool {
+        self.data().is_some_and(|d| d.sixty_ghz)
     }
 }
 

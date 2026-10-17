@@ -973,7 +973,17 @@ mod test {
                     external: Some(PhysicalPortId::W60g(1)),
                     port_type: Some(PortType::Wireless),
                     radio,
-                    wireless_link: true,
+                    wireless_link: Some(crate::topology::WirelessLinkEnd {
+                        id: 1,
+                        peer: None,
+                        link: crate::topology::RadioLink {
+                            ssid: "link".into(),
+                            encrypted: false,
+                            psk: None,
+                            country: None,
+                            frequency_mode: None,
+                        },
+                    }),
                     ..Interface::default()
                 },
             );

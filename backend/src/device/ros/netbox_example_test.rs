@@ -59,6 +59,50 @@ pub(crate) fn example_topology() -> Arc<Topology> {
                 .or_insert_with(|| serde_json::json!({}));
         }
     }
+    // Exports from before the wireless links were queried with their id and ends lack them:
+    // the two ends of a link are the two interfaces with its SSID, without one the devices
+    // named after each other (`hegglin-schopf`, `schopf-hegglin`); one alone has no peer.
+    let mut ends = std::collections::BTreeMap::<String, Vec<String>>::new();
+    for device in raw["data"]["device_list"].as_array().into_iter().flatten() {
+        for interface in device["interfaces"].as_array().into_iter().flatten() {
+            let link = &interface["wireless_link"];
+            if link.is_object() && link.get("id").is_none() {
+                let id = interface["id"].as_str().unwrap_or_default().to_string();
+                let key = match link["ssid"].as_str().unwrap_or_default() {
+                    "" => {
+                        let mut parts = device["name"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .split('-')
+                            .collect::<Vec<_>>();
+                        parts.sort();
+                        format!("#{}", parts.join("-"))
+                    }
+                    ssid => ssid.to_string(),
+                };
+                ends.entry(key).or_default().push(id);
+            }
+        }
+    }
+    let synthetic = ends
+        .values()
+        .enumerate()
+        .flat_map(|(index, ids)| {
+            let (a, b) = (ids[0].clone(), ids.get(1).unwrap_or(&ids[0]).clone());
+            ids.iter().map(move |id| (id.clone(), (900_000 + index, a.clone(), b.clone())))
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    for device in raw["data"]["device_list"].as_array_mut().into_iter().flatten() {
+        for interface in device["interfaces"].as_array_mut().into_iter().flatten() {
+            let id = interface["id"].as_str().unwrap_or_default().to_string();
+            if let Some((link_id, a, b)) = synthetic.get(&id) {
+                let link = &mut interface["wireless_link"];
+                link["id"] = serde_json::json!(link_id.to_string());
+                link["interface_a"] = serde_json::json!({ "id": a });
+                link["interface_b"] = serde_json::json!({ "id": b });
+            }
+        }
+    }
     // The export has the wireless links' PSKs removed: an encrypted link gets a placeholder,
     // as the provisioner would get the real one.
     for device in raw["data"]["device_list"].as_array_mut().into_iter().flatten() {

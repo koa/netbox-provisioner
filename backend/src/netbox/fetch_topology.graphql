@@ -45,6 +45,13 @@ query FetchTopology{
             rf_channel_width
             tx_power
             wireless_link {
+                id
+                interface_a {
+                    id
+                }
+                interface_b {
+                    id
+                }
                 ssid
                 auth_type
                 auth_psk
