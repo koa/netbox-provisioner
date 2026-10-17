@@ -26,7 +26,7 @@ use crate::{
 use mikrotik_model::{
     generator::Generator,
     hwconfig::{ADVERTISE_1G, EthernetNamePattern, generate_ethernet},
-    model::{InterfaceW60GByDefaultName, InterfaceWirelessByDefaultName, ReferenceType},
+    model::{InterfaceWirelessByDefaultName, ReferenceType},
     resource::ResourceMutation,
 };
 use std::{collections::BTreeMap, path::Path, sync::Arc};
@@ -180,7 +180,7 @@ fn generate(device: &DeviceAccess) -> Result<String, String> {
                 PhysicalPortId::W60g(idx) => Some(w60g_port(idx.into())),
                 _ => None,
             })
-            .map(|port| (port.default_name, port.data))
+            .map(|port| (port.0.name.clone(), port))
             .collect(),
     };
     // A reset device: the radios under their default names, as the board builds them.
@@ -198,11 +198,8 @@ fn generate(device: &DeviceAccess) -> Result<String, String> {
     let w60g_current = W60GDeviceDataCurrent {
         radio: w60g
             .radio
-            .iter()
-            .map(|(default_name, data)| InterfaceW60GByDefaultName {
-                default_name: default_name.clone(),
-                data: data.clone(),
-            })
+            .values()
+            .cloned()
             .collect(),
     };
     target

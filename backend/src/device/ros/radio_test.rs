@@ -15,7 +15,7 @@ use crate::{
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
-        EnabledDisabled, InterfaceW60GByDefaultName, InterfaceW60GMode, InterfaceW60GRegion,
+        EnabledDisabled, InterfaceW60GMode, InterfaceW60GRegion,
         InterfaceWirelessByDefaultName, InterfaceWirelessChannelWidth,
         InterfaceWirelessFrequencyMode, InterfaceWirelessMode, InterfaceWirelessTxPowerMode,
         InterfaceWirelessWdsMode, InterfaceWirelessWirelessProtocol,
@@ -131,15 +131,16 @@ async fn test_60ghz_ap_joins_its_stations_into_the_bridge() {
     let current = W60GDeviceDataCurrent {
         radio: W60GDeviceDataTarget::new(b"RBwAPG-60ad-A")
             .radio
-            .into_iter()
-            .map(|(default_name, data)| InterfaceW60GByDefaultName { default_name, data })
+            .into_values()
             .collect(),
     };
     let mut target = W60GDeviceDataTarget::new(b"RBwAPG-60ad-A");
     target.generate_from(&device, &l2, Some(&current)).unwrap();
 
-    let radio = &target.radio[&AsciiString::from("wlan60-1")];
+    let radio = &target.radio[&AsciiString::from("wlan60-1")].0;
+    // found by its name, so it keeps it in the bridge too
     let (name, bridge) = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
+    assert_eq!(name, &AsciiString::from("wlan60-1"));
     assert_eq!(&radio.name, name);
     assert_eq!(radio.mode, Some(InterfaceW60GMode::Bridge));
     assert_eq!(radio.ssid, Some(AsciiString::from("hegglin-schopf")));
@@ -161,7 +162,6 @@ async fn test_60ghz_ap_joins_its_stations_into_the_bridge() {
         [
             "isolate-stations",
             "mode",
-            "name",
             "password",
             "put-stations-in-bridge",
             "region",

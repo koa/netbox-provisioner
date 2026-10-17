@@ -11,7 +11,7 @@ Referenz-Konfigurationen: `examples/06-wlan-bridge-p2p`.
 Eine Funkbrücke ist eine transparente L2-Strecke: eine flache Bridge aus `ether1` und dem Funk-Port,
 auf beiden Seiten. Das L2 dafür entsteht wie überall aus dem NetBox-Modell (siehe
 [l2-generation.md](l2-generation.md)). Der Funk-Port wird dabei wie ein Ethernet-Port behandelt und
-bekommt einen eigenen Namen (`w01`).
+bekommt einen eigenen Namen (`w01`); ein 60-GHz-Radio bleibt `wlan60-<N>`.
 
 Erreichbar ist eine Brücke über DHCP: ohne IP-Adresse in NetBox bekommt ihre Bridge automatisch
 einen DHCP-Client (`setup_ip_addresses`, reines L2-Gerät).
@@ -77,6 +77,10 @@ den Anfang (`C`), die Station folgt mit `X` dem Layout des APs.
 | `region`                 | aus dem Land der Site (`ch` → `eu`) | wie AP        |
 | `put-stations-in-bridge` | die Bridge des Funk-Ports | die Bridge des Funk-Ports |
 | `isolate-stations`       | `yes`                    | `no`                     |
+
+Das Radio wird über seinen Namen gefunden: `/interface/w60g` meldet kein `default-name` (RouterOS
+7.23, schopf-burri). Es behält deshalb immer `wlan60-<N>`, auch als Bridge-Port; der
+Name-Generator benennt es nicht nach der Gegenstelle um.
 
 `tx-sector`, `arp-timeout` sind `auto`, `mtu` 1500. Auf der AP-Seite erscheint jede Gegenstelle als
 eigenes, dynamisches Interface (`/interface/w60g/station`, z.B. `wlan60-station-2`). Diese werden

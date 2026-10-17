@@ -1492,7 +1492,7 @@ fn wireless_channel_width(
 mikrotik_model!(
     name = W60GDeviceData,
     detect = new,
-    fields(radio(by_key(path = "interface/w60g", key = defaultName)),),
+    fields(radio(by_key(path = "interface/w60g", key = name)),),
 );
 
 impl W60GDeviceDataTarget {
@@ -1500,7 +1500,7 @@ impl W60GDeviceDataTarget {
         Self {
             radio: build_w60g_ports(model)
                 .into_iter()
-                .map(|port| (port.default_name, port.data))
+                .map(|port| (port.0.name.clone(), port))
                 .collect(),
         }
     }
@@ -1517,8 +1517,8 @@ impl W60GDeviceDataTarget {
     ) -> Result<(), SetupError> {
         let profiles = self.radio.clone();
         for port in current.iter().flat_map(|current| current.radio.iter()) {
-            if let Some(target) = self.radio.get_mut(&port.default_name) {
-                *target = port.data.clone();
+            if let Some(target) = self.radio.get_mut(&port.0.name) {
+                *target = port.clone();
             }
         }
         for interface in device.interfaces() {
@@ -1526,17 +1526,18 @@ impl W60GDeviceDataTarget {
                 continue;
             };
             let key = AsciiString::from(port.to_string());
-            let radio_port = self
+            let radio_port = &mut self
                 .radio
                 .get_mut(&key)
-                .ok_or(SetupError::PortNotFound(port))?;
+                .ok_or(SetupError::PortNotFound(port))?
+                .0;
             let placement = l2.placement_of_port(port);
             if let Some(radio) = interface.radio() {
                 let link = radio
                     .link
                     .as_ref()
                     .ok_or(SetupError::MissingWirelessLink(port))?;
-                *radio_port = profiles[&key].clone();
+                *radio_port = profiles[&key].0.clone();
                 radio_port.mode = Some(match radio.role {
                     RadioRole::Ap => InterfaceW60GMode::Bridge,
                     RadioRole::Station => InterfaceW60GMode::StationBridge,
@@ -1556,9 +1557,6 @@ impl W60GDeviceDataTarget {
                     },
                     None => country_settings(device)?.1,
                 });
-            }
-            if let Some((name, _)) = placement {
-                radio_port.name = name.clone();
             }
         }
         Ok(())

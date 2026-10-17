@@ -7,7 +7,7 @@ use mikrotik_model::{
     },
     model::{
         EnabledDisabled, InterfaceEthernetByDefaultName, InterfaceW60GArp,
-        InterfaceW60GByDefaultName, InterfaceW60GCfg,
+        InterfaceW60GByName, InterfaceW60GCfg,
         InterfaceWirelessAdaptiveNoiseImmunity, InterfaceWirelessArp, InterfaceWirelessBand,
         InterfaceWirelessBasicRatesAG, InterfaceWirelessByDefaultName, InterfaceWirelessCfg,
         InterfaceWirelessChannelWidth, InterfaceWirelessFrequencyMode,
@@ -493,7 +493,7 @@ pub fn wireless_bridge_port(idx: usize, antenna_gain: u32) -> InterfaceWirelessB
     }
 }
 
-pub fn build_w60g_ports(model: &[u8]) -> Box<[InterfaceW60GByDefaultName]> {
+pub fn build_w60g_ports(model: &[u8]) -> Box<[InterfaceW60GByName]> {
     match model {
         b"RBwAPG-60ad" | b"RBwAPG-60ad-A" | b"RBLHGG-60ad" => [w60g_port(1)].into(),
         &_ => Box::default(),
@@ -504,13 +504,11 @@ pub fn build_w60g_ports(model: &[u8]) -> Box<[InterfaceW60GByDefaultName]> {
 /// board, with every field the radio reports set to its factory value (as on the
 /// production links). `W60GDeviceDataTarget::generate_from` adds role, channel,
 /// link and region - or replaces all of it with the radio's current configuration
-/// if NetBox gives it no RF role.
-pub fn w60g_port(idx: usize) -> InterfaceW60GByDefaultName {
-    let name: AsciiString = format!("wlan60-{idx}").into();
-    InterfaceW60GByDefaultName {
-        default_name: name.clone(),
-        data: InterfaceW60GCfg {
-            name,
+/// if NetBox gives it no RF role. Keyed by its name: `/interface/w60g` reports no
+/// `default-name` (RouterOS 7.23).
+pub fn w60g_port(idx: usize) -> InterfaceW60GByName {
+    InterfaceW60GByName(InterfaceW60GCfg {
+            name: format!("wlan60-{idx}").into(),
             comment: None,
             disabled: false,
             mode: None,
@@ -526,8 +524,7 @@ pub fn w60g_port(idx: usize) -> InterfaceW60GByDefaultName {
             arp_timeout: Some(Auto::Auto),
             mtu: Some(1500),
             l_2_mtu: None,
-        },
-    }
+    })
 }
 
 #[cfg(test)]

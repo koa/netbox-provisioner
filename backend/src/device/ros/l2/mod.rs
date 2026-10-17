@@ -209,6 +209,11 @@ pub struct EndpointNameGenerator;
 
 impl NameGenerator for EndpointNameGenerator {
     fn generate_interface_name<'s>(&mut self, interface: &'s InterfaceAccess) -> Cow<'s, str> {
+        // a 60 GHz radio is found by its name (`/interface/w60g` has no `default-name`), so
+        // it can't be renamed
+        if let Some(port @ PhysicalPortId::W60g(_)) = interface.external_port() {
+            return port.to_string().into();
+        }
         let mut parts = Vec::new();
         if let Some(port) = interface.external_port() {
             parts.push(port.short_name().to_string());
