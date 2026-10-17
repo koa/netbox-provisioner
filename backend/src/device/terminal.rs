@@ -18,7 +18,7 @@ use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
-    time::{Instant, timeout_at},
+    time::{Instant, timeout, timeout_at},
 };
 
 /// Drops carriage returns and the terminal control sequences RouterOS sends (cursor moves
@@ -59,7 +59,19 @@ pub enum TerminalError {
     NoForwarding(IpAddr, u16),
     #[error("upload refused at {0}: {1}")]
     Upload(&'static str, Box<str>),
+    #[error("upload stalled: nothing went through for {waited:?} after {sent} of {total} bytes")]
+    UploadStalled {
+        sent: usize,
+        total: usize,
+        waited: Duration,
+    },
 }
+
+/// How long an upload may go without a part of the file going through (or, at the end, without
+/// the device confirming it), before it counts as stalled.
+const UPLOAD_STALL: Duration = Duration::from_secs(60);
+/// The parts an upload sends the file in; each must go through within [`UPLOAD_STALL`].
+const UPLOAD_CHUNK: usize = 64 * 1024;
 
 /// Appended to the user name: no colors (`c`), no terminal detection (`t`), and wide enough
 /// (`400w`) that the echo of a command isn't wrapped.
@@ -195,13 +207,16 @@ impl Tunnel {
     }
 }
 
-/// Copies `data` to the file `name` in the device's root directory over SCP.
+/// Copies `data` to the file `name` in the device's root directory over SCP, telling
+/// `progress` the bytes sent at each quarter. Stops with [`TerminalError::UploadStalled`] when
+/// nothing goes through for [`UPLOAD_STALL`] (a slow link takes long, but keeps going).
 pub async fn upload<S>(
     stream: S,
     user: &str,
     password: Option<&str>,
     name: &str,
     data: &[u8],
+    progress: &(dyn Fn(usize) + Sync),
 ) -> Result<(), TerminalError>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -214,14 +229,37 @@ where
         .data_bytes(format!("C0644 {} {name}\n", data.len()).into_bytes())
         .await?;
     acknowledge(&mut channel, "header").await?;
-    channel.data(data).await?;
+    let total = data.len();
+    let stalled = |sent| TerminalError::UploadStalled {
+        sent,
+        total,
+        waited: UPLOAD_STALL,
+    };
+    let mut sent = 0;
+    for chunk in data.chunks(UPLOAD_CHUNK) {
+        timeout(UPLOAD_STALL, channel.data(chunk))
+            .await
+            .map_err(|_| stalled(sent))??;
+        let before = sent;
+        sent += chunk.len();
+        if quarter(before, total) != quarter(sent, total) {
+            progress(sent);
+        }
+    }
     channel.data_bytes(vec![0]).await?;
-    acknowledge(&mut channel, "data").await?;
+    timeout(UPLOAD_STALL, acknowledge(&mut channel, "data"))
+        .await
+        .map_err(|_| stalled(sent))??;
     let _ = channel.eof().await;
     let _ = session
         .disconnect(Disconnect::ByApplication, "", "en")
         .await;
     Ok(())
+}
+
+/// How many quarters of `total` `sent` is.
+fn quarter(sent: usize, total: usize) -> usize {
+    (sent * 4).checked_div(total).unwrap_or(4)
 }
 
 /// Waits for the SCP sink's answer to `step`: a zero byte, or else an error message.
@@ -521,5 +559,24 @@ mod tests {
             strip_escapes("\x1b[9999B[admin@CHR] > /quit\r\ninterrupted\r\n\x1b7\x1b8"),
             "[admin@CHR] > /quit\ninterrupted\n"
         );
+    }
+}
+
+#[cfg(test)]
+mod upload_tests {
+    use super::quarter;
+
+    /// progress at each quarter, the last at the end
+    #[test]
+    fn upload_progress_comes_in_quarters() {
+        let total = 1000;
+        let reported: Vec<usize> = (0..total)
+            .step_by(64)
+            .map(|before| (before, (before + 64).min(total)))
+            .filter(|&(before, sent)| quarter(before, total) != quarter(sent, total))
+            .map(|(_, sent)| sent)
+            .collect();
+        assert_eq!(reported, [256, 512, 768, 1000]);
+        assert_eq!(quarter(0, 0), 4);
     }
 }

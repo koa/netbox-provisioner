@@ -65,14 +65,22 @@ pub struct AccessibleDevice {
 /// The device a connection reached. Only the identity tells it apart from another one at the
 /// same address; [`AccessibleDevice::create_client`] refuses one named like another NetBox
 /// device, a different identity (a factory `MikroTik`, a name NetBox doesn't know) only shows.
-#[derive(SimpleObject)]
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct Connected {
+    /// the device in NetBox it was looked for as
+    pub device: Box<str>,
     pub address: Box<str>,
     /// the neighbor whose SSH tunnel the connection goes through, `None` when routed
     pub neighbor: Option<Box<str>>,
     pub identity: Box<str>,
     /// the identity is the device's name in NetBox
     pub same_name: bool,
+}
+
+/// A job connects to `device`: the one it works on, or one powering it.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct Connecting {
+    pub device: Box<str>,
 }
 
 /// The device other than `device` NetBox has by the name `identity`.
@@ -135,6 +143,7 @@ impl AccessibleDevice {
     /// The device actually answering: where, how and with which identity.
     pub fn connected_device(&self) -> Connected {
         Connected {
+            device: self.device_config.name().into(),
             address: self.address.to_string().into(),
             neighbor: match &self.path {
                 Path::Routed => None,
@@ -170,10 +179,15 @@ impl update::DeviceLink for AccessibleDevice {
     async fn api(&self) -> Result<RawDevice<SimpleResult>, Error> {
         self.connect_again().await
     }
-    async fn upload(&self, name: &str, data: &[u8]) -> Result<(), Error> {
+    async fn upload(
+        &self,
+        name: &str,
+        data: &[u8],
+        progress: &(dyn Fn(usize) + Sync),
+    ) -> Result<(), Error> {
         let (user, password) = resolve(&self.credentials)?;
         let stream = open_stream(self.address, &self.path, 22).await?;
-        terminal::upload(stream, user, password, name, data).await?;
+        terminal::upload(stream, user, password, name, data, progress).await?;
         Ok(())
     }
 }

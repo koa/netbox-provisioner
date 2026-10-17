@@ -857,6 +857,13 @@ pub mod job {
         pub fn downloaded(file: &str, bytes: i64) -> String {
             format!("{file}: {:.1} MB heruntergeladen", bytes as f64 / 1_000_000.0)
         }
+        pub fn uploading(file: &str, bytes: i64, total: i64) -> String {
+            format!(
+                "{file}: {:.1} von {:.1} MB auf das Gerät übertragen",
+                bytes as f64 / 1_000_000.0,
+                total as f64 / 1_000_000.0
+            )
+        }
         pub fn uploaded(file: &str) -> String {
             format!("{file}: auf das Gerät kopiert")
         }
@@ -961,6 +968,35 @@ pub mod job {
         }
         pub fn ospf_neighbors_back(neighbors: &[String]) -> String {
             format!("OSPF-Nachbarn wieder Full: {}", neighbors.join(", "))
+        }
+        pub fn connecting(device: &str) -> String {
+            format!("Verbinde mit {device}")
+        }
+        pub fn connected(
+            device: &str,
+            address: &str,
+            neighbor: Option<&str>,
+            identity: &str,
+            same_name: bool,
+        ) -> String {
+            let way = match neighbor {
+                Some(neighbor) => format!("{address}, über {neighbor}"),
+                None => address.to_string(),
+            };
+            if same_name {
+                format!("Verbunden mit {device} an {way}")
+            } else {
+                format!("Verbunden mit {device} an {way}; das Gerät heisst „{identity}“")
+            }
+        }
+        pub fn update_target(version: &str, channel: Option<&str>) -> String {
+            match channel {
+                Some(channel) => format!("Ziel: RouterOS {version} ({channel})"),
+                None => format!("Ziel: die laufende Version {version} (nur Pakete und Firmware)"),
+            }
+        }
+        pub fn watchdog_not_set(device: &str) -> String {
+            format!("{device} hat keinen Watchdog gesetzt: nichts auszusetzen")
         }
         pub fn watchdog_suspended(device: &str, address: &str, safety_net_minutes: u64) -> String {
             format!(

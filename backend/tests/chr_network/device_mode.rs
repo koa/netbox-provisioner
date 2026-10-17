@@ -28,7 +28,12 @@ impl DeviceLink for Direct {
         )
         .await?)
     }
-    async fn upload(&self, _name: &str, _data: &[u8]) -> Result<(), Error> {
+    async fn upload(
+        &self,
+        _name: &str,
+        _data: &[u8],
+        _progress: &(dyn Fn(usize) + Sync),
+    ) -> Result<(), Error> {
         unreachable!("no upload in a device-mode change")
     }
 }

@@ -37,9 +37,14 @@ impl DeviceLink for TunnelLink {
                 .await?,
         )
     }
-    async fn upload(&self, name: &str, data: &[u8]) -> Result<(), Error> {
+    async fn upload(
+        &self,
+        name: &str,
+        data: &[u8],
+        progress: &(dyn Fn(usize) + Sync),
+    ) -> Result<(), Error> {
         let stream = self.tunnel.open(self.address, 22).await?;
-        Ok(upload(stream, "admin", Some(PASSWORD), name, data).await?)
+        Ok(upload(stream, "admin", Some(PASSWORD), name, data, progress).await?)
     }
 }
 

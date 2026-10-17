@@ -10,12 +10,17 @@ query JobEvents($id: Int!, $after: Int){
             at
             event {
                 __typename
+                ... on Connecting { device }
+                ... on Connected { device address neighbor identity sameName }
+                ... on UpdateTarget { version channel }
+                ... on WatchdogNotSet { device }
                 ... on PoeChain { suppliers consumers }
                 ... on WaitingForPower { device reason }
                 ... on UpdateStart { version architecture packages }
                 ... on UpdateStepPlanned { version files uninstall }
                 ... on SshPasswordLogin { setting value restored }
                 ... on PackageDownloaded { file bytes }
+                ... on PackageUploading { file bytes total }
                 ... on PackageUploaded { file }
                 ... on Reboot { reason timeout }
                 ... on RouterOsRunning { version }

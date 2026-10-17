@@ -37,6 +37,12 @@ pub struct SupplierWatchdog {
     pub problem: Option<ErrorInfo>,
 }
 
+/// `device`, which powers the updating one, watches no address: nothing to suspend.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct WatchdogNotSet {
+    pub device: Box<str>,
+}
+
 /// The update suspended the watchdog of `device`, which powers the updating one; the scheduler
 /// entry restores it after `safety_net` should the provisioner not.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -184,7 +190,7 @@ pub async fn suspend_all<L: super::update::DeviceLink>(
                     watch_address,
                 });
             }
-            Ok(None) => {}
+            Ok(None) => log.emit(WatchdogNotSet { device }),
             Err(error) => {
                 restore_all(suspended, log).await;
                 return Err(Error::WatchdogNotSuspended {

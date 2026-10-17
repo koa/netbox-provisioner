@@ -15,7 +15,7 @@ async fn main() -> anyhow::Result<()> {
     let data = tokio::fs::read(file).await?;
     let name = Path::new(file).file_name().unwrap().to_string_lossy();
     let stream = TcpStream::connect(address.as_str()).await?;
-    upload(stream, user, Some(password), &name, &data).await?;
+    upload(stream, user, Some(password), &name, &data, &|sent| println!("{sent} bytes")).await?;
     println!("uploaded {name}, {} bytes", data.len());
     Ok(())
 }

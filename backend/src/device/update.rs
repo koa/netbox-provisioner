@@ -41,7 +41,30 @@ pub trait DeviceLink {
     /// A fresh API connection (the device reboots in between).
     async fn api(&self) -> Result<RawDevice<SimpleResult>, Error>;
     /// Copies a file to the device's root directory.
-    async fn upload(&self, name: &str, data: &[u8]) -> Result<(), Error>;
+    /// `progress` gets the bytes sent now and then ([`terminal::upload`](super::terminal::upload)).
+    async fn upload(
+        &self,
+        name: &str,
+        data: &[u8],
+        progress: &(dyn Fn(usize) + Sync),
+    ) -> Result<(), Error>;
+}
+
+/// `bytes` of the package `file` (`total` bytes) are on their way to the device.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct PackageUploading {
+    pub file: Box<str>,
+    pub bytes: u64,
+    pub total: u64,
+}
+
+/// The version the update goes to: the newest of `channel`, or the one the device runs (only
+/// its packages and firmware then).
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct UpdateTarget {
+    pub version: Box<str>,
+    /// the channel's name (`long-term`); `None`: the version the device runs
+    pub channel: Option<Box<str>>,
 }
 
 /// What the device runs before the update.
@@ -232,7 +255,7 @@ pub enum Channel {
 }
 
 impl Channel {
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Channel::LongTerm => "long-term",
             Channel::Stable => "stable",
@@ -664,7 +687,15 @@ async fn steps(
         let relaxed = allow_password_login(&link.api().await?, log).await?;
         let uploaded = async {
             for &(file, ref data) in &packages {
-                link.upload(file, data).await?;
+                let total = data.len() as u64;
+                let progress = |sent: usize| {
+                    log.emit(PackageUploading {
+                        file: file.clone(),
+                        bytes: sent as u64,
+                        total,
+                    })
+                };
+                link.upload(file, data, &progress).await?;
                 // the size shows up while the file is still being written out (on 16 MB devices the
                 // root directory is in RAM, there it settles within seconds)
                 let device = link.api().await?;

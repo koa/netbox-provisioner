@@ -347,6 +347,16 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             None => e::radios_reprovisioned(radios.count, &radios.menu),
             Some(error) => e::radios_not_reprovisioned(&radios.menu, &problem(error)),
         },
+        Event::Connecting(connecting) => e::connecting(&connecting.device),
+        Event::Connected(connected) => e::connected(
+            &connected.device,
+            &connected.address,
+            connected.neighbor.as_deref(),
+            &connected.identity,
+            connected.same_name,
+        ),
+        Event::UpdateTarget(target) => e::update_target(&target.version, target.channel.as_deref()),
+        Event::WatchdogNotSet(not_set) => e::watchdog_not_set(&not_set.device),
         Event::PoeChain(chain) => e::poe_chain(&chain.suppliers, &chain.consumers),
         Event::WaitingForPower(wait) => match &wait.reason {
             PowerWait::SUPPLIER_REBOOTING => e::waiting_for_supplier(&wait.device),
@@ -358,6 +368,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::SshPasswordLogin(ssh) if ssh.restored => e::ssh_restored(&ssh.setting, &ssh.value),
         Event::SshPasswordLogin(ssh) => e::ssh_for_upload(&ssh.setting, &ssh.value),
         Event::PackageDownloaded(package) => e::downloaded(&package.file, package.bytes),
+        Event::PackageUploading(package) => e::uploading(&package.file, package.bytes, package.total),
         Event::PackageUploaded(package) => e::uploaded(&package.file),
         Event::Reboot(reboot) => e::reboot(
             match &reboot.reason {

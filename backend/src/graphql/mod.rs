@@ -3,7 +3,7 @@ use crate::{
     config::CONFIG,
     error_info::ApiError,
     device::{
-        bootstrap, device_mode, partitions,
+        AccessibleDevice, Connecting, bootstrap, device_mode, partitions,
         power::{self, PowerChain},
         update::{self, DeviceLink},
         watchdog,
@@ -11,7 +11,7 @@ use crate::{
     context::UserInfo,
     graphql::scalars::ScalarMac,
     helper::{self, Helper, NetboxPlan},
-    job::{self, Job, JobKind},
+    job::{self, Job, JobKind, Log},
     netbox,
     topology::{
         DeviceId, TopologyHolder,
@@ -133,6 +133,26 @@ impl Guard for NetboxWritesAllowed {
 }
 
 /// The watchdog of `device` couldn't be suspended for this.
+/// Connects to `device` for a job, which shows where it got to: a connection that takes long
+/// (the NetBox address first, then each neighbor's tunnel) is otherwise a job without events.
+async fn connect_for_job(
+    device: &DeviceAccess,
+    target: Option<String>,
+    credential_name: Option<Box<str>>,
+    adhoc_credentials: Option<AdhocCredentials>,
+    log: &Log,
+) -> Result<AccessibleDevice, Error> {
+    log.emit(Connecting {
+        device: device.name().into(),
+    });
+    let link = log
+        .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
+        .await??
+        .ok_or(Error::MissingCredentials)?;
+    log.emit(link.connected_device());
+    Ok(link)
+}
+
 fn not_suspended(device: &str) -> impl Fn(Error) -> Error + '_ {
     move |error| Error::WatchdogNotSuspended {
         device: device.into(),
@@ -229,21 +249,22 @@ impl MutationAuthenticated {
             _ => Vec::new(),
         };
         Ok(job::start(&device.clone(), JobKind::Update, |log| async move {
-            let device = log
-                .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
-                .await??
-                .ok_or(Error::MissingCredentials)?;
+            let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             let wanted = device.wanted_packages().await?;
             let version = match channel {
                 Some(channel) => update::newest(7, channel).await?,
                 None => update::read_state(&device.api().await?).await?.version,
             };
+            log.emit(update::UpdateTarget {
+                version: version.to_string().into(),
+                channel: channel.map(|channel| channel.name().into()),
+            });
             let mut links = Vec::new();
             for supplier in suppliers {
                 let name: Box<str> = supplier.name().into();
-                let link = match log.unless_cancelled(supplier.connect(None, None, None)).await? {
-                    Ok(Some(link)) => link,
-                    Ok(None) => Err(Error::MissingCredentials).map_err(not_suspended(&name))?,
+                let link = match connect_for_job(&supplier, None, None, None, &log).await {
+                    Ok(link) => link,
+                    Err(Error::Cancelled) => return Err(Error::Cancelled),
                     Err(error) => Err(error).map_err(not_suspended(&name))?,
                 };
                 links.push((name, link));
@@ -268,10 +289,7 @@ impl MutationAuthenticated {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
         Ok(job::start(&device.clone(), JobKind::Reboot, |log| async move {
-            let device = log
-                .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
-                .await??
-                .ok_or(Error::MissingCredentials)?;
+            let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             update::reboot(&device, &power, &log).await
         })?)
     }
@@ -290,10 +308,7 @@ impl MutationAuthenticated {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
         Ok(job::start(&device.clone(), JobKind::DeviceMode, |log| async move {
-            let link = log
-                .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
-                .await??
-                .ok_or(Error::MissingCredentials)?;
+            let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             device_mode::change(&link, &device, &power, &log).await
         })?)
     }
@@ -311,10 +326,7 @@ impl MutationAuthenticated {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
         Ok(job::start(&device.clone(), JobKind::Repartition, |log| async move {
-            let link = log
-                .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
-                .await??
-                .ok_or(Error::MissingCredentials)?;
+            let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             partitions::repartition(&link, &power, &log).await
         })?)
     }
@@ -333,10 +345,7 @@ impl MutationAuthenticated {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
         Ok(job::start(&device.clone(), JobKind::BootPartition, |log| async move {
-            let link = log
-                .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
-                .await??
-                .ok_or(Error::MissingCredentials)?;
+            let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             partitions::boot_from(&link, &power, &partition, &log).await
         })?)
     }
@@ -360,9 +369,8 @@ impl MutationAuthenticated {
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         Ok(job::start(&device.clone(), JobKind::Apply, |log| async move {
-            log.unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
-                .await??
-                .ok_or(Error::MissingCredentials)?
+            connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
+                .await?
                 .apply(&log)
                 .await
         })?)

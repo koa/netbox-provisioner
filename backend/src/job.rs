@@ -14,7 +14,7 @@ use crate::{
     error_info::ErrorInfo,
     Error,
     device::{
-        bootstrap, device_mode, partitions, power, ros::graphql as apply, terminal, update,
+        self, bootstrap, device_mode, partitions, power, ros::graphql as apply, terminal, update,
         update_fallback, watchdog,
     },
     graphql::scalars::ScalarDuration,
@@ -38,12 +38,16 @@ const KEEP: usize = 50;
 /// Something a job did or waits for.
 #[derive(Debug, Clone, PartialEq, Union)]
 pub enum Event {
+    Connecting(device::Connecting),
+    Connected(device::Connected),
     PoeChain(power::PoeChain),
     WaitingForPower(power::WaitingForPower),
+    UpdateTarget(update::UpdateTarget),
     UpdateStart(update::UpdateStart),
     UpdateStepPlanned(update::UpdateStepPlanned),
     SshPasswordLogin(update::SshPasswordLogin),
     PackageDownloaded(update::PackageDownloaded),
+    PackageUploading(update::PackageUploading),
     PackageUploaded(update::PackageUploaded),
     Reboot(update::Reboot),
     RouterOsRunning(update::RouterOsRunning),
@@ -69,6 +73,7 @@ pub enum Event {
     UpdateFallbackDisarmed(update_fallback::UpdateFallbackDisarmed),
     UpdateWithoutFallback(update_fallback::UpdateWithoutFallback),
     OspfNeighborsBack(update_fallback::OspfNeighborsBack),
+    WatchdogNotSet(watchdog::WatchdogNotSet),
     WatchdogSuspended(watchdog::WatchdogSuspended),
     WatchdogRestored(watchdog::WatchdogRestored),
     WatchdogNotRestored(watchdog::WatchdogNotRestored),
