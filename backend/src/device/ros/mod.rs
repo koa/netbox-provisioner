@@ -413,9 +413,10 @@ impl BaseDeviceDataTarget {
                         .entry((bridge.name.clone(), name.clone()))
                         .or_default();
                     bridge_port.frame_types = VlanFrameTypes::AdmitOnlyUntaggedAndPriorityTagged;
-                    // a `/interface/wireless` port has no hardware offloading, and RouterOS
-                    // doesn't report `hw` for it (seen on 7.20.8)
-                    if matches!(port_id, PhysicalPortId::Wlan(_)) {
+                    // a `/interface/wireless` or `/interface/w60g` port has no hardware
+                    // offloading, and RouterOS doesn't report `hw` for it (seen on 7.20.8,
+                    // `wlan60-1` of a wAP 60G on 7.23.8)
+                    if matches!(port_id, PhysicalPortId::Wlan(_) | PhysicalPortId::W60g(_)) {
                         bridge_port.hw = None;
                     }
                 }

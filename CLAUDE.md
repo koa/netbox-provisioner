@@ -52,7 +52,8 @@ specific (ports, radio profiles, which package a board's radios need: `wireless`
 `wifi-qcom-ac`) belongs in `hw_facts.rs`. A radio stack is only read, and its package only
 installed, where NetBox needs it (`needed_radio_package`); a controller reads `WifiDeviceData`
 without radios, CAPsMAN being in the base package since 7.13. A 60 GHz radio is keyed by its
-name (`/interface/w60g` reports no `default-name`), so it is never renamed: it stays `wlan60-<N>`. A
+name (`/interface/w60g` reports no `default-name`), so it is never renamed: it stays `wlan60-<N>`.
+A radio's bridge port (`wlan<N>`, `wlan60-<N>`) leaves `hw` unset: RouterOS doesn't report it there. A
 `wlan<N>`/`wifi<N>` in NetBox on a 60 GHz board is `PortNotFound` (its misnamed `wlan60-<N>`).
 
 `device/ros/netbox_example_test.rs` runs every RouterOS device of the stored production

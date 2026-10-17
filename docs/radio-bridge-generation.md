@@ -39,6 +39,8 @@ findet der Provisioner keine Ports.
 ## Was generiert wird
 
 Jeder Funk-Port, den das L2 benutzt, wird umbenannt (`set [find default-name=wlan1] name=w01`).
+Als Bridge-Port bekommt er kein `hw`: Funk hat keinen Hardware-Offload, und RouterOS meldet das Feld
+dort nicht (sonst erschiene es bei jedem Abgleich als Änderung).
 
 **Ohne RF Role** wird der Funk-Port nicht als Funk verwaltet: der Generator übernimmt seine
 aktuelle Konfiguration unverändert als Soll (z.B. das CAPsMAN-Radio eines `CRS109`).

@@ -355,6 +355,21 @@ async fn test_radio_bridge_without_addresses_gets_a_dhcp_client() {
     );
 }
 
+/// RouterOS doesn't report `hw` for a 60 GHz bridge port (wAP 60G, 7.23.8): setting it would
+/// show up as a change on every comparison.
+#[tokio::test]
+async fn test_60ghz_bridge_port_leaves_hw_offloading_alone() {
+    let device = radio_bridge(PhysicalPortId::W60g(1), None, None).await;
+    let l2 = L2Setup::new(&device, EndpointNameGenerator).unwrap();
+    let (radio, bridge) = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
+    let (ether, _) = l2.placement_of_port(PhysicalPortId::Ethernet(1)).unwrap();
+    let bridge = bridge.unwrap().clone();
+    let mut target = BaseDeviceDataTarget::new(b"RBwAPG-60ad").unwrap();
+    target.generate_from(&device, EndpointNameGenerator).unwrap();
+    assert_eq!(target.bridge_port[&(bridge.clone(), radio.clone())].hw, None);
+    assert_eq!(target.bridge_port[&(bridge, ether.clone())].hw, Some(true));
+}
+
 /// A bridge that is an OSPF router for its management: the static address and `ospf` of its
 /// `bridge` (L2 forwarding stays), the loopback is the router ID; no DHCP client then.
 #[tokio::test]
