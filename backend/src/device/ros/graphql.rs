@@ -905,7 +905,7 @@ impl AccessibleDevice {
 
 /// A field error that leaves the field `null` instead of its parent: async-graphql passes an
 /// `Err` of a resolver on to the parent even for a nullable field.
-fn nullable<T>(ctx: &Context<'_>, result: Result<T, Error>) -> Option<T> {
+pub(crate) fn nullable<T>(ctx: &Context<'_>, result: Result<T, Error>) -> Option<T> {
     match result {
         Ok(value) => Some(value),
         Err(error) => {

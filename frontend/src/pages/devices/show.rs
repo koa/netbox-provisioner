@@ -74,6 +74,8 @@ pub struct ShowDeviceData {
     access: Option<(Box<str>, Option<GeneratedCfg>)>,
     /// the device the connection reached, `None` if it couldn't be reached
     connected: Option<Connected>,
+    /// why it couldn't be reached
+    access_problem: Option<Box<str>>,
     routeros: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessRouteros>,
     /// `None` before RouterOS 7.17, or when it couldn't be read
     device_mode: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessDeviceMode>,
@@ -564,6 +566,9 @@ impl Component for ShowDevice {
                     (None, None) => html!(),
                 };
                 html!(<Alert inline=true title={t::UNREACHABLE} r#type={AlertType::Warning}>
+                    if let Some(problem) = &data.access_problem {
+                        <p>{problem.as_ref()}</p>
+                    }
                     {setup}
                     <p>{t::UNREACHABLE_HINT}</p>
                     {target_form.clone()}
@@ -750,8 +755,20 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
         {
             Ok(response) => {
                 if let Some(data) = response.data {
-                    let error = response
+                    // why the device couldn't be reached goes with the warning, not the banner
+                    let (access_errors, errors): (Vec<_>, Vec<_>) = response
                         .errors
+                        .unwrap_or_default()
+                        .into_iter()
+                        .partition(|e| {
+                            e.path.as_ref().is_some_and(|path| {
+                                path.iter().map(|p| p.to_string()).eq(["topology", "deviceById", "access"])
+                            })
+                        });
+                    let access_problem = access_errors
+                        .first()
+                        .map(|e| ServerProblem::of(e).text().into_boxed_str());
+                    let error = Some(errors)
                         .filter(|e| !e.is_empty())
                         .map(FrontendError::Graphql);
                     let device = data.topology.device_by_id;
@@ -759,6 +776,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                         .map(|mut d| ShowDeviceData {
                             configured_name: d.name.into_boxed_str(),
                             connected: d.access.as_ref().map(|a| a.connected.clone()),
+                            access_problem,
                             routeros: d.access.as_mut().and_then(|a| a.routeros.take()),
                             device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
                             partitions: d.access.as_mut().and_then(|a| a.partitions.take()),

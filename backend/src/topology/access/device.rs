@@ -256,20 +256,18 @@ impl DeviceAccess {
     }
     async fn access(
         &self,
+        ctx: &async_graphql::Context<'_>,
         target: Option<String>,
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
     ) -> Option<AccessibleDevice> {
-        match self
+        // the page shows why next to "unreachable" (an error at this path, which a returned
+        // error would put on the whole device); `None` also without credentials or an address
+        let result = self
             .connect(target, credential_name, adhoc_credentials)
             .await
-        {
-            Ok(c) => c,
-            Err(error) => {
-                error!("Cannot access device {}: {}", self.name(), error);
-                None
-            }
-        }
+            .inspect_err(|error| error!("Cannot access device {}: {}", self.name(), error));
+        crate::device::ros::graphql::nullable(ctx, result).flatten()
     }
     /// How the device would be set up over mac-telnet, see [`MutationAuthenticated::bootstrap`].
     #[graphql(name = "bootstrapPlan")]

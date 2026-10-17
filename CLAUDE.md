@@ -289,7 +289,10 @@ reads it, and one named like another NetBox device is `WrongDevice` (an address 
 DHCP client left on), which `connect` treats as a failed way and tries the next. Any other
 identity (a factory `MikroTik` after the initial setup, an old name) only shows: the device page
 has `access.connected` (address, the neighbor the tunnel goes through, identity) and warns when
-the identity isn't the NetBox name, so the operator sees what an apply would land on.
+the identity isn't the NetBox name, so the operator sees what an apply would land on. Why a
+device couldn't be reached is an error at `topology/deviceById/access` (`nullable`: a returned
+error would null the whole `deviceById`), which the page shows in its "unreachable" warning
+instead of the banner.
 
 `device::update` brings RouterOS to the newest release of the channel picked in the UI
 (long-term, stable, testing, development; `routeros_channel` preselects it, long-term if unset), from
