@@ -368,11 +368,31 @@ pub struct Interface {
     pub nat: bool,
     pub bridge: Option<InterfaceId>,
     pub cable: Option<CableId>,
-    pub enable_poe: bool,
+    /// NetBox `poe_mode`: `Pse` feeds the device at the other end of its cable
+    pub poe: Option<PoeMode>,
     /// NetBox `mtu`: the L3 MTU of a physical port, for both ends of its cable
     pub mtu: Option<u16>,
     /// Set on a radio port with an RF role in NetBox (a point-to-point bridge end).
     pub radio: Option<Radio>,
+}
+
+/// NetBox `poe_mode` of an interface.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, async_graphql::Enum)]
+pub enum PoeMode {
+    /// powering equipment: it feeds what is cabled to it
+    Pse,
+    /// powered device: fed through it
+    Pd,
+}
+
+impl PoeMode {
+    /// as NetBox' API takes it
+    pub fn value(self) -> &'static str {
+        match self {
+            PoeMode::Pse => "pse",
+            PoeMode::Pd => "pd",
+        }
+    }
 }
 
 /// A radio port's settings from NetBox: its RF role, channel and wireless link.

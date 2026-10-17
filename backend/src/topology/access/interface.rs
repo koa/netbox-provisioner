@@ -1,5 +1,5 @@
 use crate::topology::{
-    Interface, InterfaceId, PhysicalPortId, PortType, Radio, Topology,
+    Interface, InterfaceId, PhysicalPortId, PoeMode, PortType, Radio, Topology,
     access::{
         AccessTopology,
         cable::{CableAccess, CablePortAccess},
@@ -177,6 +177,12 @@ impl InterfaceAccess {
     }
     /// Whether NetBox models this interface itself as a bridge (interface type
     /// `bridge`), regardless of whether any port references it yet.
+    /// NetBox type Ethernet (copper or SFP), on any device; `is_ethernet_port` also needs a
+    /// RouterOS port name.
+    pub fn is_ethernet(&self) -> bool {
+        self.data()
+            .is_some_and(|d| d.port_type == Some(PortType::Ethernet))
+    }
     pub fn is_bridge(&self) -> bool {
         self.data()
             .is_some_and(|d| d.port_type == Some(PortType::Bridge))
@@ -186,7 +192,10 @@ impl InterfaceAccess {
         self.data().and_then(|d| d.mtu)
     }
     pub fn enable_poe(&self) -> bool {
-        self.data().map(|d| d.enable_poe).unwrap_or(false)
+        self.poe() == Some(PoeMode::Pse)
+    }
+    pub fn poe(&self) -> Option<PoeMode> {
+        self.data().and_then(|d| d.poe)
     }
 }
 

@@ -238,6 +238,8 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
             mtu_before: interface.mtu(),
             tags_added: vec![InterfaceTag::Dhcp],
             tags_removed: Vec::new(),
+            poe: None,
+            poe_before: None,
         }));
     }
     Ok(plan)

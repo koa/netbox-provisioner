@@ -110,7 +110,11 @@ network of a chosen site prefix (`customerNetOptions.parents`: IPv4, scope the d
 pool, not a network itself; `IpPrefixData.site`) on a free port or a VLAN (its virtual interface,
 or a new one named like the VLAN, `CreateInterface.vlan`/`tags`): prefix scoped to the site,
 gateway as the first address, `dhcp` if asked; candidates overlapping a route more specific than
-the parent are passed over (`Routes::overlapping`). Deleting is undone by creating the object again from the
+the parent are passed over (`Routes::overlapping`). `helper::poe` sets `poe_mode` `pse` and
+`pd` on two Ethernet ports (`is_ethernet`, any device; `Interface.poe`, `UpdateInterface.poe`),
+cabling them if both are free; `poeOptions` offers the device's ports and the site's devices,
+`AccessibleDevice.poeObserved` what the device feeds now (`poe/monitor` `powered-on`, the far
+end by NetBox's cable, else `/ip/neighbor`). Deleting is undone by creating the object again from the
 JSON NetBox had (`NetboxWritten.recreate`, `helper::recreate`; it gets a new id): undoing an
 older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (graphql_client
 makes it an enum; its queries need `skip_serializing_none`), naming the device or the two ports;

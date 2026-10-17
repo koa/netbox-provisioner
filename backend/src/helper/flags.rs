@@ -153,6 +153,8 @@ pub fn plan(topology: &Arc<Topology>, input: &FlagsInput) -> Result<NetboxPlan, 
             mtu_before: interface.mtu(),
             tags_added: added,
             tags_removed: removed,
+            poe: None,
+            poe_before: None,
         }));
     }
     Ok(plan)

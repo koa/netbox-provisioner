@@ -305,6 +305,10 @@ impl DeviceAccess {
     async fn customer_net_options(&self) -> crate::helper::customer_net::CustomerNetOptions {
         crate::helper::customer_net::options(self)
     }
+    /// What the helper „PoE“ can choose from.
+    async fn poe_options(&self) -> crate::helper::poe::PoeOptions {
+        crate::helper::poe::options(self)
+    }
     /// Its interfaces whose tags count, for the helper „Flags“.
     async fn flag_interfaces(&self) -> Vec<crate::helper::flags::FlagInterface> {
         crate::helper::flags::flag_interfaces(self)

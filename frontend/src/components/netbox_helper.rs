@@ -6,7 +6,9 @@
 //! link is in the way gets a button to „Verbindung abräumen“ with it, which takes that link out
 //! of NetBox. „Flags“ is a table of the interfaces' tags as switches, with the device's findings
 //! as they would be after the switches (`topology.findings(after:)`). „Kunden-Netz“ chooses a
-//! port or VLAN and a prefix of the site (`customerNetOptions`).
+//! port or VLAN and a prefix of the site (`customerNetOptions`). „PoE“ chooses the direction and
+//! both ports (`poeOptions`), or takes them from what the device reports feeding
+//! (`access.poeObserved`).
 use crate::{
     components::{
         adjust_target::SelectedTarget, findings::finding_list, job::JobView, menu::popup::Select,
@@ -15,7 +17,8 @@ use crate::{
     graphql::{
         authenticated::{
             CustomerNetOptions, FlagInterfaces, Findings, HelperJobs, customer_net_options, LinkPorts, NetboxPlan, NetboxPlanPreview,
-            UndoNetboxWrite, WriteNetboxPlan, flag_interfaces,
+            PoeObserved, PoeOptions, UndoNetboxWrite, WriteNetboxPlan, flag_interfaces,
+            poe_observed, poe_options::{self, PoePortFields},
             findings::{self, FindingsTopologyFindings},
             helper_jobs::{self, JobKind, JobState},
             link_ports::{self, LinkPortFields},
@@ -87,6 +90,30 @@ pub enum HelperChoice {
         length: Option<u8>,
         dhcp: bool,
     },
+    Poe {
+        pse: u32,
+        pd: u32,
+    },
+}
+
+/// What „PoE“ is choosing: whether the device feeds (else it is fed), its port, the other end.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PoeChoice {
+    feeds: bool,
+    port: Option<u32>,
+    peer_device: Option<u32>,
+    peer: Option<u32>,
+}
+
+impl Default for PoeChoice {
+    fn default() -> Self {
+        Self {
+            feeds: true,
+            port: None,
+            peer_device: None,
+            peer: None,
+        }
+    }
 }
 
 /// Where „Kunden-Netz“ puts the network.
@@ -202,6 +229,11 @@ macro_rules! helper_input {
                 length: length.map(i64::from),
                 dhcp,
             }),
+            HelperChoice::Poe { pse, pd } => $module::Helper::Poe($module::PoeInput {
+                device: $id as i64,
+                pse: pse as i64,
+                pd: pd as i64,
+            }),
         }
     };
 }
@@ -214,6 +246,7 @@ pub enum HelperKind {
     Disconnect,
     Flags,
     CustomerNet,
+    Poe,
 }
 
 impl HelperKind {
@@ -231,6 +264,7 @@ impl Display for HelperKind {
             HelperKind::Disconnect => t::DISCONNECT,
             HelperKind::Flags => t::FLAGS,
             HelperKind::CustomerNet => t::CUSTOMER_NET,
+            HelperKind::Poe => t::POE,
         })
     }
 }
@@ -270,6 +304,11 @@ pub struct NetboxHelper {
     flag_findings: Option<FlagFindings>,
     net: NetChoice,
     net_options: Option<Result<NetOptions, FrontendError>>,
+    poe: PoeChoice,
+    poe_options: Option<Result<PoeOptionsData, FrontendError>>,
+    /// what the device reports feeding, once asked
+    poe_observed: Option<Result<Vec<Observed>, FrontendError>>,
+    poe_observing: bool,
     /// what the plan shown was computed for
     planned: Option<HelperChoice>,
     plan: Option<Result<netbox_plan::ResponseData, FrontendError>>,
@@ -304,6 +343,15 @@ pub enum NetboxHelperMsg {
     NetParent(u32),
     NetLength(String),
     NetDhcp(bool),
+    PoeOptions(Result<PoeOptionsData, FrontendError>),
+    PoeFeeds(bool),
+    PoePort(Choice),
+    PoePeerDevice(Choice),
+    PoePeer(Choice),
+    PoeObserve,
+    PoeObserved(Result<Vec<Observed>, FrontendError>),
+    /// what the device reports: its port feeds the other end (device, port) if known
+    PoeTake(u32, Option<(u32, u32)>),
     Plan(HelperChoice, Result<netbox_plan::ResponseData, FrontendError>),
     LoadPreview,
     Preview(Result<Preview, FrontendError>),
@@ -347,6 +395,10 @@ impl Component for NetboxHelper {
             flag_findings: None,
             net: NetChoice::default(),
             net_options: None,
+            poe: PoeChoice::default(),
+            poe_options: None,
+            poe_observed: None,
+            poe_observing: false,
             planned: None,
             plan: None,
             preview: None,
@@ -369,6 +421,9 @@ impl Component for NetboxHelper {
                 }
                 if kind == HelperKind::CustomerNet && self.net_options.is_none() {
                     fetch_net_options(ctx.link().clone(), ctx.props().id);
+                }
+                if kind == HelperKind::Poe && self.poe_options.is_none() {
+                    fetch_poe_options(ctx.link().clone(), ctx.props().id);
                 }
                 if kind == HelperKind::Flags {
                     if self.flag_interfaces.is_none() {
@@ -394,6 +449,52 @@ impl Component for NetboxHelper {
             }
             NetboxHelperMsg::NetDhcp(dhcp) => {
                 self.net.dhcp = dhcp;
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::PoeOptions(options) => self.poe_options = Some(options),
+            NetboxHelperMsg::PoeFeeds(feeds) => {
+                self.poe.feeds = feeds;
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::PoePort(port) => {
+                self.poe.port = Some(port.id);
+                // the other end of its cable
+                let far = self
+                    .poe_port(port.id)
+                    .and_then(|p| p.connected.first())
+                    .map(|far| (far.device.id as u32, far.id as u32));
+                if let Some((device, far)) = far {
+                    self.poe.peer_device = Some(device);
+                    self.poe.peer = Some(far);
+                }
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::PoePeerDevice(device) => {
+                if self.poe.peer_device != Some(device.id) {
+                    self.poe.peer = None;
+                }
+                self.poe.peer_device = Some(device.id);
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::PoePeer(port) => {
+                self.poe.peer = Some(port.id);
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::PoeObserve => {
+                self.poe_observing = true;
+                fetch_poe_observed(ctx.link().clone(), ctx.props().id, ctx.props().target.clone());
+            }
+            NetboxHelperMsg::PoeObserved(observed) => {
+                self.poe_observing = false;
+                self.poe_observed = Some(observed);
+            }
+            NetboxHelperMsg::PoeTake(port, far) => {
+                self.poe = PoeChoice {
+                    feeds: true,
+                    port: Some(port),
+                    peer_device: far.map(|(device, _)| device),
+                    peer: far.map(|(_, port)| port),
+                };
                 self.choose(ctx);
             }
             NetboxHelperMsg::Toggle(interface, flag, set) => {
@@ -545,6 +646,10 @@ impl Component for NetboxHelper {
                     fetch_net_options(ctx.link().clone(), ctx.props().id);
                     self.choose(ctx);
                 }
+                // the ports have their modes now
+                if self.poe_options.is_some() {
+                    fetch_poe_options(ctx.link().clone(), ctx.props().id);
+                }
                 // NetBox has the tags switched now (or again what it had)
                 if self.flag_interfaces.is_some() {
                     self.flags.clear();
@@ -569,6 +674,7 @@ impl Component for NetboxHelper {
             }
             (None, _) if self.kind == HelperKind::Flags => html!(<p>{t::CHOOSE_FLAGS}</p>),
             (None, _) if self.kind == HelperKind::CustomerNet => html!(<p>{t::CHOOSE_NET}</p>),
+            (None, _) if self.kind == HelperKind::Poe => html!(<p>{t::CHOOSE_POE}</p>),
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),
             (_, None) => html!(<Spinner size={SpinnerSize::Md}/>),
             (_, Some(Err(error))) => error.to_html(),
@@ -639,6 +745,7 @@ impl Component for NetboxHelper {
             HelperKind::Disconnect => t::DISCONNECT_HINT,
             HelperKind::Flags => t::FLAGS_HINT,
             HelperKind::CustomerNet => t::CUSTOMER_NET_HINT,
+            HelperKind::Poe => t::POE_HINT,
         };
         html! {
             <Card class="netbox-helper">
@@ -656,6 +763,7 @@ impl Component for NetboxHelper {
                                 HelperKind::Disconnect,
                                 HelperKind::Flags,
                                 HelperKind::CustomerNet,
+                                HelperKind::Poe,
                             ]}
                             onselect={ctx.link().callback(NetboxHelperMsg::Kind)}
                         />
@@ -672,6 +780,9 @@ impl Component for NetboxHelper {
                     }
                     if self.kind == HelperKind::CustomerNet {
                         { self.net_form(ctx) }
+                    }
+                    if self.kind == HelperKind::Poe {
+                        { self.poe_form(ctx) }
                     }
                     {plan}
                 </CardBody>
@@ -702,7 +813,147 @@ impl NetboxHelper {
                 length: self.net.length.trim().trim_start_matches('/').parse().ok(),
                 dhcp: self.net.dhcp,
             }),
+            HelperKind::Poe => {
+                let (own, peer) = (self.poe.port?, self.poe.peer?);
+                let (pse, pd) = if self.poe.feeds { (own, peer) } else { (peer, own) };
+                Some(HelperChoice::Poe { pse, pd })
+            }
         }
+    }
+    /// A port of the device or of another device of „PoE“.
+    fn poe_port(&self, id: u32) -> Option<&PoePortFields> {
+        let options = self.poe_options.as_ref()?.as_ref().ok()?;
+        options
+            .ports
+            .iter()
+            .chain(options.peers.iter().flat_map(|peer| &peer.ports))
+            .find(|port| port.id as u32 == id)
+    }
+    fn poe_form(&self, ctx: &Context<Self>) -> Html {
+        let options = match &self.poe_options {
+            None => return html!(<Spinner size={SpinnerSize::Md}/>),
+            Some(Err(error)) => return error.to_html(),
+            Some(Ok(options)) => options,
+        };
+        let choices = |ports: &[PoePortFields]| -> Vec<Choice> {
+            ports
+                .iter()
+                .map(|port| Choice {
+                    id: port.id as u32,
+                    text: t::poe_port(
+                        &port.name,
+                        port.label.as_deref(),
+                        port.poe.as_ref().map(poe_mode),
+                        port.connected
+                            .first()
+                            .map(|far| (far.device.name.as_str(), far.name.as_str())),
+                        port.cabled,
+                    ),
+                })
+                .collect()
+        };
+        let directions = vec![
+            NetEntry { value: true, text: t::POE_FEEDS.to_string() },
+            NetEntry { value: false, text: t::POE_FED.to_string() },
+        ];
+        let direction = directions.iter().find(|d| d.value == self.poe.feeds).cloned();
+        let own = choices(&options.ports);
+        let devices: Vec<Choice> = options
+            .peers
+            .iter()
+            .map(|peer| Choice { id: peer.id as u32, text: peer.name.clone() })
+            .collect();
+        let peer_ports = self
+            .poe
+            .peer_device
+            .and_then(|id| options.peers.iter().find(|peer| peer.id as u32 == id))
+            .map(|peer| choices(&peer.ports))
+            .unwrap_or_default();
+        let selected = |entries: &[Choice], id: Option<u32>| {
+            id.and_then(|id| entries.iter().find(|entry| entry.id == id).cloned())
+        };
+        let observed = match &self.poe_observed {
+            _ if self.poe_observing => html!(<Spinner size={SpinnerSize::Md}/>),
+            None => Html::default(),
+            Some(Err(error)) => error.to_html(),
+            Some(Ok(observed)) if observed.is_empty() => html!(<p>{t::POE_OBSERVED_NONE}</p>),
+            Some(Ok(observed)) => html! {
+                <ul class="poe-observed">
+                { for observed.iter().map(|o| {
+                    let far = o.far.as_ref();
+                    // NetBox has it as the device does: the cable, PSE here and PD there
+                    let mode = |id: i64| self.poe_port(id as u32).and_then(|p| p.poe.clone());
+                    let recorded = !o.from_neighbor
+                        && o.port.interface.as_ref().is_some_and(|port| mode(port.id) == Some(poe_options::PoeMode::PSE))
+                        && far.is_some_and(|far| mode(far.id) == Some(poe_options::PoeMode::PD));
+                    let text = t::poe_observed(
+                        &o.port.name,
+                        far.map(|far| (far.device.name.as_str(), far.name.as_str())),
+                        o.from_neighbor,
+                        recorded,
+                    );
+                    let take = o.port.interface.as_ref().filter(|_| !recorded).map(|port| {
+                        let (port, far) = (
+                            port.id as u32,
+                            far.map(|far| (far.device.id as u32, far.id as u32)),
+                        );
+                        html! {
+                            <Button
+                                variant={ButtonVariant::Link}
+                                label={t::POE_TAKE}
+                                onclick={ctx.link().callback(move |_| NetboxHelperMsg::PoeTake(port, far))}
+                            />
+                        }
+                    });
+                    html!(<li>{text}{" "}{take}</li>)
+                })}
+                </ul>
+            },
+        };
+        html! {<>
+            <div class="helper-actions">
+                <Button
+                    variant={ButtonVariant::Secondary}
+                    label={t::POE_OBSERVE}
+                    disabled={self.poe_observing}
+                    onclick={ctx.link().callback(|_| NetboxHelperMsg::PoeObserve)}
+                />
+            </div>
+            {observed}
+            <Form>
+                <FormGroup label={t::POE_DIRECTION}>
+                    <Select<NetEntry<bool>>
+                        selected={direction}
+                        entries={directions}
+                        onselect={ctx.link().callback(|entry: NetEntry<bool>| NetboxHelperMsg::PoeFeeds(entry.value))}
+                    />
+                </FormGroup>
+                <FormGroup label={t::PORT}>
+                    <Select<Choice>
+                        placeholder={t::CHOOSE_PORT}
+                        selected={selected(&own, self.poe.port)}
+                        entries={own.clone()}
+                        onselect={ctx.link().callback(NetboxHelperMsg::PoePort)}
+                    />
+                </FormGroup>
+                <FormGroup label={t::PEER_DEVICE}>
+                    <Select<Choice>
+                        placeholder={t::CHOOSE_DEVICE}
+                        selected={selected(&devices, self.poe.peer_device)}
+                        entries={devices.clone()}
+                        onselect={ctx.link().callback(NetboxHelperMsg::PoePeerDevice)}
+                    />
+                </FormGroup>
+                <FormGroup label={t::PEER_PORT}>
+                    <Select<Choice>
+                        placeholder={t::CHOOSE_PEER_PORT}
+                        selected={selected(&peer_ports, self.poe.peer)}
+                        entries={peer_ports.clone()}
+                        onselect={ctx.link().callback(NetboxHelperMsg::PoePeer)}
+                    />
+                </FormGroup>
+            </Form>
+        </>}
     }
     fn net_form(&self, ctx: &Context<Self>) -> Html {
         let options = match &self.net_options {
@@ -1147,6 +1398,7 @@ fn describe(step: &Step) -> String {
             update.mtu.map(|mtu| (mtu, update.mtu_before)),
             &update.tags_added.iter().map(tag_slug).collect::<Vec<_>>(),
             &update.tags_removed.iter().map(tag_slug).collect::<Vec<_>>(),
+            update.poe.as_ref().map(|poe| (plan_poe_mode(poe), update.poe_before.as_ref().map(plan_poe_mode))),
         ),
         Step::DeleteCable(delete) => t::delete_cable(
             (&delete.port.device.name, &delete.port.name),
@@ -1224,6 +1476,52 @@ fn fetch_net_options(scope: Scope<NetboxHelper>, id: u32) {
             },
         });
         scope.send_message(NetboxHelperMsg::NetOptions(options));
+    });
+}
+
+fn fetch_poe_options(scope: Scope<NetboxHelper>, id: u32) {
+    spawn_local(async move {
+        let options = query_authenticated::<PoeOptions, _>(
+            scope.clone(),
+            poe_options::Variables { id: id as i64 },
+        )
+        .await
+        .map(|data| match data.topology.device_by_id {
+            Some(device) => device.poe_options,
+            None => PoeOptionsData {
+                ports: Vec::new(),
+                peers: Vec::new(),
+            },
+        });
+        scope.send_message(NetboxHelperMsg::PoeOptions(options));
+    });
+}
+
+/// What the device reports feeding, reached as the page reaches it.
+fn fetch_poe_observed(scope: Scope<NetboxHelper>, id: u32, target: SelectedTarget) {
+    spawn_local(async move {
+        let (credential_name, adhoc_credentials) =
+            target.credentials.variables(|username, password| {
+                poe_observed::AdhocCredentials { username, password }
+            });
+        let observed = query_authenticated::<PoeObserved, _>(
+            scope.clone(),
+            poe_observed::Variables {
+                id: id as i64,
+                target: target.address.map(|a| a.to_string()),
+                credential_name,
+                adhoc_credentials,
+            },
+        )
+        .await
+        .map(|data| {
+            data.topology
+                .device_by_id
+                .and_then(|device| device.access)
+                .map(|access| access.poe_observed)
+                .unwrap_or_default()
+        });
+        scope.send_message(NetboxHelperMsg::PoeObserved(observed));
     });
 }
 
@@ -1367,3 +1665,24 @@ fn tag_slug(tag: &impl TagSlug) -> &str {
 }
 
 type NetOptions = customer_net_options::CustomerNetOptionsTopologyDeviceByIdCustomerNetOptions;
+
+type PoeOptionsData = poe_options::PoeOptionsTopologyDeviceByIdPoeOptions;
+
+type Observed = poe_observed::PoeObservedTopologyDeviceByIdAccessPoeObserved;
+
+/// NetBox' PoE mode as the UI shows it.
+fn poe_mode(mode: &poe_options::PoeMode) -> &str {
+    match mode {
+        poe_options::PoeMode::PSE => "PSE",
+        poe_options::PoeMode::PD => "PD",
+        poe_options::PoeMode::Other(other) => other,
+    }
+}
+
+fn plan_poe_mode(mode: &netbox_plan::PoeMode) -> &str {
+    match mode {
+        netbox_plan::PoeMode::PSE => "PSE",
+        netbox_plan::PoeMode::PD => "PD",
+        netbox_plan::PoeMode::Other(other) => other,
+    }
+}

@@ -12,7 +12,7 @@ query NetboxPlan($helper: Helper!){
             ... on SetPrimaryIp{ version address before }
             ... on CreateCable{ a{ name device{ name } } b{ name device{ name } } }
             ... on CreatePrefix{ prefix pool description }
-            ... on UpdateInterface{ interface{ name device{ name } } label labelBefore mtu mtuBefore tagsAdded tagsRemoved }
+            ... on UpdateInterface{ interface{ name device{ name } } label labelBefore mtu mtuBefore tagsAdded tagsRemoved poe poeBefore }
             ... on DeleteCable{ port{ name device{ name } } far{ name device{ name } } }
             ... on DeleteAddress{ address interface{ name device{ name } } }
             ... on DeletePrefix{ prefix }
@@ -68,6 +68,33 @@ query FlagInterfaces($id: Int!){
             flagInterfaces{
                 id name label addresses bridge tags
                 connected{ name device{ name } }
+            }
+        }
+    }
+}
+query PoeOptions($id: Int!){
+    topology{
+        deviceById(id: $id){
+            poeOptions{
+                ports{ ...PoePortFields }
+                peers{ id name ports{ ...PoePortFields } }
+            }
+        }
+    }
+}
+fragment PoePortFields on PoePort{
+    id name label poe cabled
+    connected{ id name device{ id name } }
+}
+query PoeObserved($id: Int!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+    topology{
+        deviceById(id: $id){
+            access(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
+                poeObserved{
+                    port{ name interface{ id name } }
+                    far{ id name device{ id name } }
+                    fromNeighbor
+                }
             }
         }
     }

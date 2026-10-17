@@ -196,6 +196,7 @@ impl From<&Error> for ErrorInfo {
                 "NO_FREE_NETWORK",
                 vec![("parent", parent.to_string()), ("length", length.to_string())],
             ),
+            Error::NotEthernet(port) => ("NOT_ETHERNET", vec![("port", port.to_string())]),
         };
         info(code, params, error)
     }

@@ -266,7 +266,7 @@ pub fn compare(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> 
 /// The port of `device` its RouterOS names `name`: NetBox's name (the default name), or the
 /// one the generated config gives it, which starts with the port's short name (`s01-core`).
 /// `bridge/ether2` and `ether2,bridge` name the port too.
-fn port_named(device: &DeviceAccess, name: &str) -> Option<InterfaceAccess> {
+pub(crate) fn port_named(device: &DeviceAccess, name: &str) -> Option<InterfaceAccess> {
     let names = name.split(['/', ',']).collect::<Vec<_>>();
     device.interfaces().into_iter().find(|interface| {
         let short = interface.external_port().map(|port| port.short_name().to_string());

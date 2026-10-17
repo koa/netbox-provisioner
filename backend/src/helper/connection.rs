@@ -8,7 +8,7 @@
 //! one the network routes (`routes::Routes`) or with addresses in NetBox is passed over.
 use super::{
     CreateAddress, CreateCable, CreatePrefix, NetboxPlan, PlanStep, Target, UpdateInterface,
-    device_ref, flags::InterfaceTag, routes::Routes,
+    device_ref, flags::InterfaceTag, port_name, routes::Routes,
 };
 use crate::{
     Error,
@@ -143,6 +143,8 @@ pub async fn plan(topology: &Arc<Topology>, input: &ConnectionInput) -> Result<N
                 mtu_before: end.mtu(),
                 tags_added: ospf.then_some(InterfaceTag::Ospf).into_iter().collect(),
                 tags_removed: Vec::new(),
+                poe: None,
+                poe_before: None,
             }));
         }
     }
@@ -191,17 +193,6 @@ pub fn link_ports(device: &DeviceAccess) -> Vec<LinkPort> {
         .collect();
     ports.sort_by_cached_key(|port| naturalize_interface(&port.name));
     ports
-}
-
-/// `device port`, for messages.
-fn port_name(interface: &InterfaceAccess) -> Box<str> {
-    let device = interface.device();
-    format!(
-        "{} {}",
-        device.as_ref().map(|d| d.name()).unwrap_or_default(),
-        interface.name()
-    )
-    .into()
 }
 
 fn ipv4(interface: &InterfaceAccess) -> Option<IpNet> {

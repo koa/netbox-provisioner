@@ -11,7 +11,7 @@ use crate::{
     topology::{
         Cable, CableId, CablePort, Device, DeviceId, DeviceRole, FrontPort, FrontPortId, Interface,
         InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
-        PhysicalPortId, PortType, PrefixPool, Radio, RadioLink, RadioRole, RearPort, RearPortId, CircuitTermination, CircuitTerminationId, SiteData, SiteId,
+        PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink, RadioRole, RearPort, RearPortId, CircuitTermination, CircuitTerminationId, SiteData, SiteId,
         Topology,
         VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData,
         WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
@@ -194,7 +194,11 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                         .bridge
                         .and_then(|b| b.id.parse().ok())
                         .map(InterfaceId);
-                    let enable_poe = interface.poe_mode.map(|v| v == "pse").unwrap_or(false);
+                    let poe = interface.poe_mode.as_deref().and_then(|mode| match mode {
+                        "pse" => Some(PoeMode::Pse),
+                        "pd" => Some(PoeMode::Pd),
+                        _ => None,
+                    });
                     let radio = interface
                         .rf_role
                         .as_deref()
@@ -246,7 +250,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             nat,
                             bridge,
                             cable: None,
-                            enable_poe,
+                            poe,
                             mtu: interface.mtu.and_then(|mtu| u16::try_from(mtu).ok()),
                             radio,
                         },

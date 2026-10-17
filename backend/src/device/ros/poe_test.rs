@@ -31,7 +31,7 @@ async fn warnings(current_poe_out: InterfaceEthernetPoeOut, powered: &[&str]) ->
                 name: format!("ether{port}").into(),
                 device,
                 external: Some(PhysicalPortId::Ethernet(port)),
-                enable_poe,
+                poe: enable_poe.then_some(crate::topology::PoeMode::Pse),
                 ..Default::default()
             },
         );

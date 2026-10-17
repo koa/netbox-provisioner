@@ -121,6 +121,8 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
                     mtu_before: end.mtu(),
                     tags_added: Vec::new(),
                     tags_removed: end.use_ospf().then_some(InterfaceTag::Ospf).into_iter().collect(),
+                    poe: None,
+                    poe_before: None,
                 }));
             }
         }

@@ -834,6 +834,11 @@ impl AccessibleDevice {
     async fn neighbor_findings(&self) -> Result<Vec<neighbors::NeighborFinding>, ApiError> {
         Ok(neighbors::check(&self.connect_again().await?, &self.device_config).await?)
     }
+    /// The ports the device reports feeding something over PoE, and what is at their other
+    /// end (helper „PoE“).
+    async fn poe_observed(&self) -> Result<Vec<crate::helper::poe::PoeObserved>, ApiError> {
+        Ok(crate::helper::poe::observed(&self.connect_again().await?, &self.device_config).await?)
+    }
     /// The partitions of the flash; `null` on a device without (16 MiB of flash, a CHR).
     async fn partitions(&self, ctx: &Context<'_>) -> Option<partitions::Partitions> {
         let read = async { partitions::read(&self.connect_again().await?).await };

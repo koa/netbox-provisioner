@@ -280,6 +280,19 @@ speist wen. Ändern heisst `PSE` am speisenden und `PD` am gespeisten Port setze
 nur, wo das Board PoE-out hat und das Kabel existiert. Der Befund „Gerät speist hier, NetBox weiss
 es nicht“ führt direkt hierher.
 
+Umgesetzt und abweichend vom Entwurf: kein Baum, sondern eine Beziehung zwischen zwei Ports. Die
+Karte wählt die Richtung (das Gerät speist oder wird gespeist), seinen Port und Gerät und Port der
+Gegenseite (die Geräte der Site und die, zu denen seine Kabel gehen; alle Ethernet-Ports, auch von
+Geräten ohne RouterOS). „Vom Gerät ablesen“ liest `/interface/ethernet/poe/monitor` und zeigt die
+Ports mit `poe-out-status=powered-on`, mit der Gegenseite aus dem Kabel in NetBox oder, ohne
+Kabel, aus `/ip/neighbor`; „Übernehmen“ setzt sie in die Karte. Hat NetBox es schon so (Kabel,
+`PSE` hier, `PD` dort), steht „in NetBox so erfasst“ statt des Knopfs. Der Plan setzt `PSE` und `PD`
+(`UpdateInterface.poe`) und legt das Kabel an, wenn beide Ports frei sind. Ein Kabel woandershin
+wird abgelehnt. Ob das Board am Port PoE-out hat, weiss NetBox nicht (kein Board-Modell); der
+Generator setzt `poe-out` ohnehin nur, wo das Board es hat. Im Lab geprüft an lab-np1: abgelesen
+`e01-sxt-a` und `e02-ap1`, übernommen, `lab-sxt-a ether1` bekam `PD`, Rückgängig nahm es wieder
+weg. Ein gespeistes Gerät meldet seine Quelle nicht; abgelesen wird deshalb am speisenden.
+
 ### Funkbrücke
 
 Eingabe: die beiden Standorte bzw. die beiden Router, an deren Ports die Brücke hängt, das Board

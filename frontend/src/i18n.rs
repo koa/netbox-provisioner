@@ -222,6 +222,7 @@ pub mod error {
                 p("length"),
                 p("parent")
             ),
+            "NOT_ETHERNET" => format!("{} ist laut NetBox kein Ethernet-Port", p("port")),
             "NO_FREE_NETWORK" => format!("In {} ist kein /{} mehr frei", p("parent"), p("length")),
             "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
             "NO_PORTS" => format!(
@@ -951,6 +952,59 @@ pub mod helper {
             None => name.to_string(),
         }
     }
+    pub const POE: &str = "PoE";
+    pub const POE_HINT: &str = "Hält fest, wer wen über PoE speist: der speisende Port bekommt \
+        PoE-Modus PSE, der gespeiste PD, und das Kabel dazwischen, falls es fehlt. Die Ports \
+        von Hand wählen oder vom Gerät ablesen, welche Ports gerade speisen. Ob das Board am \
+        Port PoE-out hat, weiss NetBox nicht; ohne setzt der Generator dort nichts.";
+    pub const CHOOSE_POE: &str = "Richtung und beide Ports wählen.";
+    pub const POE_DIRECTION: &str = "Richtung";
+    pub const POE_FEEDS: &str = "Dieses Gerät speist die Gegenseite";
+    pub const POE_FED: &str = "Dieses Gerät wird von der Gegenseite gespeist";
+    pub const POE_OBSERVE: &str = "Vom Gerät ablesen";
+    pub const POE_OBSERVED_NONE: &str = "Das Gerät speist an keinem Port etwas.";
+    pub const POE_TAKE: &str = "Übernehmen";
+    /// a port the device reports feeding, and what is at its other end; `recorded`: NetBox
+    /// has it so (cable, PSE, PD)
+    pub fn poe_observed(
+        port: &str,
+        far: Option<(&str, &str)>,
+        from_neighbor: bool,
+        recorded: bool,
+    ) -> String {
+        match far {
+            Some((device, far)) if recorded => {
+                format!("{port} speist {device} {far}, in NetBox so erfasst")
+            }
+            Some((device, far)) if from_neighbor => {
+                format!("{port} speist, dort sieht das Gerät {device} {far} (kein Kabel in NetBox)")
+            }
+            Some((device, far)) => format!("{port} speist {device} {far} (Kabel in NetBox)"),
+            None => format!("{port} speist, die Gegenseite ist unbekannt"),
+        }
+    }
+    /// a port in the choice of „PoE“: its mode and where its cable goes
+    pub fn poe_port(
+        name: &str,
+        label: Option<&str>,
+        poe: Option<&str>,
+        connected: Option<(&str, &str)>,
+        cabled: bool,
+    ) -> String {
+        let mut text = match label {
+            Some(label) => format!("{name} ({label})"),
+            None => name.to_string(),
+        };
+        if let Some(poe) = poe {
+            text.push_str(&format!(", {poe}"));
+        }
+        match connected {
+            Some((device, port)) => text.push_str(&format!(" – Kabel zu {device} {port}")),
+            None if cabled => text.push_str(" – Kabel"),
+            None => {}
+        }
+        text
+    }
     pub const FLAGS: &str = "Flags";
     pub const FLAGS_HINT: &str = "Die Tags der Interfaces: ospf (OSPF), dhcp (DHCP-Server), \
         dhcp-client (DHCP-Client, falls ohne Adresse), nat (Uplink, ausgehend maskieren). Bei \
@@ -1068,8 +1122,15 @@ pub mod helper {
         mtu: Option<(i64, Option<i64>)>,
         tags_added: &[&str],
         tags_removed: &[&str],
+        poe: Option<(&str, Option<&str>)>,
     ) -> String {
         let mut changes = Vec::new();
+        if let Some((poe, before)) = poe {
+            changes.push(match before {
+                Some(before) => format!("PoE {poe} (vorher {before})"),
+                None => format!("PoE {poe}"),
+            });
+        }
         if let Some((label, before)) = label {
             changes.push(match before {
                 Some(before) if label.is_empty() => format!("Label {before} weg"),

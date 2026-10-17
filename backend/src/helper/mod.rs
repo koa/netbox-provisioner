@@ -12,6 +12,7 @@ pub mod customer_net;
 pub mod disconnect;
 pub mod flags;
 pub mod loopback;
+pub mod poe;
 pub mod routes;
 
 use crate::{
@@ -20,8 +21,8 @@ use crate::{
     job::{Event, Log},
     netbox::rest::NetboxRest,
     topology::{
-        DeviceId, Topology,
-        access::{AdhocCredentials, device::DeviceAccess},
+        DeviceId, PoeMode, Topology,
+        access::{AdhocCredentials, device::DeviceAccess, interface::InterfaceAccess},
         findings::{DeviceRef, InterfaceRef, IpVersion},
     },
 };
@@ -45,6 +46,8 @@ pub enum Helper {
     Flags(flags::FlagsInput),
     /// a network of the device's site on a port or VLAN of it
     CustomerNet(customer_net::CustomerNetInput),
+    /// a port feeding another one over PoE
+    Poe(poe::PoeInput),
 }
 
 impl Helper {
@@ -55,6 +58,7 @@ impl Helper {
             Helper::Disconnect(input) => disconnect::plan(topology, input),
             Helper::Flags(input) => flags::plan(topology, input),
             Helper::CustomerNet(input) => customer_net::plan(topology, input).await,
+            Helper::Poe(input) => poe::plan(topology, input),
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -74,6 +78,9 @@ impl Helper {
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
             Helper::CustomerNet(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
+            Helper::Poe(input) => topology
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
         }
@@ -289,6 +296,9 @@ impl NetboxPlan {
                         if let Some(mtu) = update.mtu {
                             interface["mtu"] = json!(mtu);
                         }
+                        if let Some(poe) = update.poe {
+                            interface["poe_mode"] = json!(poe.value());
+                        }
                         if let Some(tags) = interface["tags"].as_array_mut() {
                             for tag in &update.tags_removed {
                                 tags.retain(|t| t["slug"] != tag.slug());
@@ -387,8 +397,8 @@ pub struct CreatePrefix {
     pub vlan: Option<u32>,
 }
 
-/// Changes of an interface: a new label (empty to take it off), a new MTU (each none to keep
-/// it) and tags added or taken off.
+/// Changes of an interface: a new label (empty to take it off), a new MTU, a PoE mode (each
+/// none to keep it) and tags added or taken off. `poe_before` is checked only with `poe`.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct UpdateInterface {
     pub interface: InterfaceRef,
@@ -398,6 +408,8 @@ pub struct UpdateInterface {
     pub mtu_before: Option<u16>,
     pub tags_added: Vec<flags::InterfaceTag>,
     pub tags_removed: Vec<flags::InterfaceTag>,
+    pub poe: Option<PoeMode>,
+    pub poe_before: Option<PoeMode>,
 }
 
 /// The cable at `port`, to `far` if it reaches an interface (through patch panels too).
@@ -756,8 +768,14 @@ async fn update_interface(
     let mtu = current["mtu"].as_u64().map(|mtu| mtu as u16);
     let tags = current["tags"].as_array().cloned().unwrap_or_default();
     let has = |tag: &flags::InterfaceTag| tags.iter().any(|t| t["slug"] == tag.slug());
+    let poe = match current["poe_mode"]["value"].as_str() {
+        Some("pse") => Some(PoeMode::Pse),
+        Some("pd") => Some(PoeMode::Pd),
+        _ => None,
+    };
     if label != update.label_before.as_deref()
         || mtu != update.mtu_before
+        || (update.poe.is_some() && poe != update.poe_before)
         || update.tags_added.iter().any(has)
         || !update.tags_removed.iter().all(has)
     {
@@ -784,6 +802,15 @@ async fn update_interface(
             field: "mtu".into(),
             value: Some(new.to_string().into()),
             previous: mtu.map(|mtu| mtu.to_string().into()),
+        });
+    }
+    if let Some(new) = update.poe {
+        change.insert("poe_mode".into(), json!(new.value()));
+        before.insert("poe_mode".into(), json!(poe.map(PoeMode::value).unwrap_or_default()));
+        changes.push(FieldChange {
+            field: "poe_mode".into(),
+            value: Some(new.value().into()),
+            previous: poe.map(|poe| poe.value().into()),
         });
     }
     if !update.tags_added.is_empty() || !update.tags_removed.is_empty() {
@@ -919,6 +946,17 @@ fn logged_create(log: &Log, path: &str, object: &Value) -> Result<u32, Error> {
     Ok(id)
 }
 
+/// `device port`, for messages.
+pub(crate) fn port_name(interface: &InterfaceAccess) -> Box<str> {
+    let device = interface.device();
+    format!(
+        "{} {}",
+        device.as_ref().map(|d| d.name()).unwrap_or_default(),
+        interface.name()
+    )
+    .into()
+}
+
 /// The device, as `DeviceRef`, for a plan step.
 pub(crate) fn device_ref(device: &DeviceAccess) -> DeviceRef {
     crate::topology::findings::device_ref(device)
@@ -1014,6 +1052,8 @@ mod test {
                 mtu_before: end.mtu(),
                 tags_added: vec![flags::InterfaceTag::Ospf],
                 tags_removed: Vec::new(),
+                poe: None,
+                poe_before: None,
             })
         };
         let address = |end: &InterfaceAccess, address: &str| {

@@ -173,6 +173,9 @@ pub enum Error {
     NetworkLength { length: u8, parent: Box<str> },
     #[error("No free /{length} in {parent}")]
     NoFreeNetwork { parent: Box<str>, length: u8 },
+    /// a port (`device port`) whose NetBox type is no Ethernet
+    #[error("{0} is no Ethernet port")]
+    NotEthernet(Box<str>),
 }
 
 impl From<ResourceMutationError> for Error {
