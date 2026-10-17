@@ -280,6 +280,34 @@ impl DeviceAccess {
     async fn bootstrap_problem(&self) -> Option<ErrorInfo> {
         bootstrap::plan(self).err().map(|error| ErrorInfo::from(&error))
     }
+    /// The watchdogs of the RouterOS devices powering this one over PoE, nearest first: one
+    /// watching an address behind this device reboots while this one updates, and cuts its
+    /// power (`updateRouteros(suspendWatchdogs:)`).
+    async fn supplier_watchdogs(&self) -> Vec<crate::device::watchdog::SupplierWatchdog> {
+        let mut watchdogs = Vec::new();
+        for supplier in crate::device::power::supplier_devices(self) {
+            if !supplier.has_routeros() {
+                continue;
+            }
+            let read = async {
+                let link = supplier
+                    .connect(None, None, None)
+                    .await?
+                    .ok_or(Error::MissingCredentials)?;
+                crate::device::watchdog::read(&link.connect_again().await?).await
+            };
+            let (watch_address, problem) = match read.await {
+                Ok(address) => (address, None),
+                Err(error) => (None, Some(ErrorInfo::from(&error))),
+            };
+            watchdogs.push(crate::device::watchdog::SupplierWatchdog {
+                device: supplier.name().into(),
+                watch_address,
+                problem,
+            });
+        }
+        watchdogs
+    }
     /// The findings about it, the worst first.
     async fn findings(&self) -> Vec<Finding> {
         self.topology

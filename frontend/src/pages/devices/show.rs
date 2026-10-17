@@ -52,7 +52,10 @@ pub struct ShowDevice {
     /// the form for another address or other credentials is open (in the head; on an
     /// unreachable device it is always shown, in the warning)
     show_target: bool,
+    /// suspend the watchdogs of the devices powering this one during an update
+    suspend_watchdogs: bool,
 }
+type SupplierWatchdog = device_overview::DeviceOverviewTopologyDeviceByIdSupplierWatchdogs;
 type Candidate =
     bootstrap_candidates::BootstrapCandidatesTopologyDeviceByIdBootstrapPlanDiscovered;
 /// the planned changes and what applying them would do that NetBox can't show (PoE switched off)
@@ -75,6 +78,8 @@ pub struct ShowDeviceData {
     partitions: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessPartitions>,
     bootstrap_plan: Option<device_overview::DeviceOverviewTopologyDeviceByIdBootstrapPlan>,
     bootstrap_problem: Option<device_overview::Problem>,
+    /// the watchdogs of the devices powering this one over PoE
+    supplier_watchdogs: Vec<SupplierWatchdog>,
     /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
     allow_apply: bool,
 }
@@ -115,6 +120,7 @@ pub enum ShowDeviceMessage {
     BootPartition(String),
     /// open or close the form for another address or other credentials
     ShowTarget(bool),
+    SuspendWatchdogs(bool),
     JobStarted(Result<i64, FrontendError>),
     JobFinished,
 }
@@ -139,6 +145,7 @@ impl Component for ShowDevice {
             confirm_repartition: false,
             confirm_boot: None,
             show_target: false,
+            suspend_watchdogs: true,
         }
     }
 
@@ -179,12 +186,18 @@ impl Component for ShowDevice {
                     return false;
                 };
                 self.job_running = true;
-                update(ctx.link().clone(), self.id, Some(channel), self.alternate_target.clone());
+                let suspend = self.suspend();
+                update(ctx.link().clone(), self.id, Some(channel), suspend, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::AdjustPackages => {
                 self.job_running = true;
-                update(ctx.link().clone(), self.id, None, self.alternate_target.clone());
+                let suspend = self.suspend();
+                update(ctx.link().clone(), self.id, None, suspend, self.alternate_target.clone());
+                true
+            }
+            ShowDeviceMessage::SuspendWatchdogs(suspend) => {
+                self.suspend_watchdogs = suspend;
                 true
             }
             ShowDeviceMessage::ConfirmReboot(confirm) => {
@@ -351,6 +364,7 @@ impl Component for ShowDevice {
                             />
                         }
                     </div>
+                    { self.watchdogs_view(ctx, &data.supplier_watchdogs) }
                     <div class="device-reboot">
                         if self.confirm_reboot {
                             {t::REBOOT_CONFIRM}
@@ -656,6 +670,54 @@ impl Component for ShowDevice {
     }
 }
 
+impl ShowDevice {
+    /// Whether an update suspends the suppliers' watchdogs: asked for, and one watches an address.
+    fn suspend(&self) -> bool {
+        self.suspend_watchdogs
+            && self.data.as_ref().is_some_and(|data| {
+                data.supplier_watchdogs.iter().any(|w| w.watch_address.is_some())
+            })
+    }
+    /// The watchdogs of the devices powering this one, where one watches an address or can't
+    /// be read, with the choice to suspend them during an update.
+    fn watchdogs_view(&self, ctx: &Context<Self>, watchdogs: &[SupplierWatchdog]) -> Html {
+        let watching: Vec<Html> = watchdogs
+            .iter()
+            .filter_map(|w| {
+                let address = w.watch_address.as_deref()?;
+                Some(html!(<p>{t::supplier_watchdog(&w.device, address)}</p>))
+            })
+            .collect();
+        let unread: Vec<Html> = watchdogs
+            .iter()
+            .filter_map(|w| {
+                let problem = w.problem.as_ref()?;
+                Some(html!(<p>{t::supplier_watchdog_unread(&w.device, &ServerProblem::from(problem).text())}</p>))
+            })
+            .collect();
+        if watching.is_empty() && unread.is_empty() {
+            return Html::default();
+        }
+        let suspend = self.suspend_watchdogs;
+        html! {
+            <Alert inline=true title={t::WATCHDOG_TITLE} r#type={AlertType::Warning}>
+                { for watching.iter().cloned() }
+                { for unread.iter().cloned() }
+                if !watching.is_empty() {
+                    <label class="suspend-watchdogs">
+                        <input
+                            type="checkbox"
+                            checked={suspend}
+                            onchange={ctx.link().callback(move |_| ShowDeviceMessage::SuspendWatchdogs(!suspend))}
+                        />
+                        {" "}{t::SUSPEND_WATCHDOGS}
+                    </label>
+                }
+            </Alert>
+        }
+    }
+}
+
 fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
     spawn_local(async move {
         let (credential_name, adhoc_credentials) =
@@ -698,6 +760,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                             }),
                             bootstrap_plan: d.bootstrap_plan,
                             bootstrap_problem: d.bootstrap_problem,
+                            supplier_watchdogs: d.supplier_watchdogs,
                             allow_apply: data.allow_apply,
                         })
                         .unwrap_or_default();
@@ -786,11 +849,13 @@ fn channel_label(
     t::channel(name, &channel.newest).into()
 }
 
-/// Updates to the newest release of `channel`, or without one only adjusts the packages.
+/// Updates to the newest release of `channel`, or without one only adjusts the packages;
+/// `suspend`: with the suppliers' watchdogs suspended.
 fn update(
     scope: Scope<ShowDevice>,
     id: u32,
     channel: Option<device_overview::Channel>,
+    suspend: bool,
     target: SelectedTarget,
 ) {
     spawn_local(async move {
@@ -813,6 +878,7 @@ fn update(
                 target: target.address.map(|a| a.to_string()),
                 credential_name,
                 adhoc_credentials,
+                suspend_watchdogs: suspend.then_some(true),
             },
         )
         .await

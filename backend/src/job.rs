@@ -15,7 +15,7 @@ use crate::{
     Error,
     device::{
         bootstrap, device_mode, partitions, power, ros::graphql as apply, terminal, update,
-        update_fallback,
+        update_fallback, watchdog,
     },
     graphql::scalars::ScalarDuration,
     helper,
@@ -69,6 +69,9 @@ pub enum Event {
     UpdateFallbackDisarmed(update_fallback::UpdateFallbackDisarmed),
     UpdateWithoutFallback(update_fallback::UpdateWithoutFallback),
     OspfNeighborsBack(update_fallback::OspfNeighborsBack),
+    WatchdogSuspended(watchdog::WatchdogSuspended),
+    WatchdogRestored(watchdog::WatchdogRestored),
+    WatchdogNotRestored(watchdog::WatchdogNotRestored),
     NetboxWritten(helper::NetboxWritten),
     NetboxUndone(helper::NetboxUndone),
 }

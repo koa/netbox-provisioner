@@ -386,6 +386,19 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::UpdateFallbackDisarmed(disarmed) => e::update_fallback_disarmed(&disarmed.partition),
         Event::UpdateWithoutFallback(without) => e::update_without_fallback(without.partitions),
         Event::OspfNeighborsBack(back) => e::ospf_neighbors_back(&back.neighbors),
+        Event::WatchdogSuspended(suspended) => e::watchdog_suspended(
+            &suspended.device,
+            &suspended.watch_address,
+            seconds(suspended.safety_net) / 60,
+        ),
+        Event::WatchdogRestored(restored) => {
+            e::watchdog_restored(&restored.device, &restored.watch_address)
+        }
+        Event::WatchdogNotRestored(failed) => e::watchdog_not_restored(
+            &failed.device,
+            &failed.watch_address,
+            &problem(&failed.error),
+        ),
         Event::NetboxWritten(written) if written.deleted => e::netbox_deleted(&written.display),
         Event::NetboxWritten(written) if written.changes.is_empty() => {
             e::netbox_created(&written.display, &written.path)

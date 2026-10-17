@@ -21,6 +21,7 @@ mod chr_network {
     pub mod update;
     pub mod vm;
     pub mod wait;
+    pub mod watchdog;
 }
 
 use backend::topology::test::TopologyBuilder;

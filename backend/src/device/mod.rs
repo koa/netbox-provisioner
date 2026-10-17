@@ -25,6 +25,7 @@ pub mod ros;
 pub mod terminal;
 pub mod update;
 pub mod update_fallback;
+pub mod watchdog;
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum Credentials {
     Named(Box<str>),

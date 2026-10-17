@@ -213,6 +213,10 @@ impl From<&Error> for ErrorInfo {
                 "NAME_TAKEN",
                 vec![("device", device.to_string()), ("name", name.to_string())],
             ),
+            Error::WatchdogNotSuspended { device, cause } => (
+                "WATCHDOG_NOT_SUSPENDED",
+                vec![("device", device.to_string()), ("cause", cause.to_string())],
+            ),
         };
         info(code, params, error)
     }

@@ -78,16 +78,8 @@ impl PowerChain {
     pub fn of(device: &DeviceAccess) -> PowerChain {
         PowerChain {
             device: device.name().into(),
-            suppliers: walk(device, |device| {
-                device
-                    .interfaces()
-                    .iter()
-                    .flat_map(|port| port.connected_interfaces())
-                    .filter(|far| far.enable_poe())
-                    .filter_map(|far| far.device())
-                    .collect()
-            }),
-            consumers: walk(device, |device| {
+            suppliers: names(supplier_devices(device)),
+            consumers: names(walk(device, |device| {
                 device
                     .interfaces()
                     .iter()
@@ -95,7 +87,7 @@ impl PowerChain {
                     .flat_map(|port| port.connected_interfaces())
                     .filter_map(|far| far.device())
                     .collect()
-            }),
+            })),
         }
     }
     /// Waits until no supplier reboots, then marks the device as updating.
@@ -144,19 +136,36 @@ impl PowerChain {
     }
 }
 
-/// The devices reachable from `device` over `next`, without `device` itself.
+/// The devices powering `device`, directly or further up.
+pub fn supplier_devices(device: &DeviceAccess) -> Vec<DeviceAccess> {
+    walk(device, |device| {
+        device
+            .interfaces()
+            .iter()
+            .flat_map(|port| port.connected_interfaces())
+            .filter(|far| far.enable_poe())
+            .filter_map(|far| far.device())
+            .collect()
+    })
+}
+
+fn names(devices: Vec<DeviceAccess>) -> BTreeSet<Box<str>> {
+    devices.iter().map(|device| device.name().into()).collect()
+}
+
+/// The devices reachable from `device` over `next`, without `device` itself, nearest first.
 fn walk(
     device: &DeviceAccess,
     next: impl Fn(&DeviceAccess) -> Vec<DeviceAccess>,
-) -> BTreeSet<Box<str>> {
+) -> Vec<DeviceAccess> {
     let mut seen = HashSet::from([device.id()]);
-    let mut found = BTreeSet::new();
-    let mut todo = vec![device.clone()];
-    while let Some(device) = todo.pop() {
+    let mut found = Vec::new();
+    let mut todo = std::collections::VecDeque::from([device.clone()]);
+    while let Some(device) = todo.pop_front() {
         for other in next(&device) {
             if seen.insert(other.id()) {
-                found.insert(other.name().into());
-                todo.push(other);
+                found.push(other.clone());
+                todo.push_back(other);
             }
         }
     }

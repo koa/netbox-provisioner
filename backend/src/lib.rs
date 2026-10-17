@@ -194,6 +194,10 @@ pub enum Error {
     /// a name another interface of the device has
     #[error("{device} has an interface {name} already")]
     NameTaken { device: Box<str>, name: Box<str> },
+    /// the watchdog of a device powering the one to update couldn't be suspended (`cause`, as
+    /// the device or the connection answered)
+    #[error("The watchdog of {device} could not be suspended: {cause}")]
+    WatchdogNotSuspended { device: Box<str>, cause: Box<str> },
 }
 
 impl From<ResourceMutationError> for Error {

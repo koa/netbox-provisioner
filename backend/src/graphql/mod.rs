@@ -4,8 +4,9 @@ use crate::{
     error_info::ApiError,
     device::{
         bootstrap, device_mode, partitions,
-        power::PowerChain,
+        power::{self, PowerChain},
         update::{self, DeviceLink},
+        watchdog,
     },
     context::UserInfo,
     graphql::scalars::ScalarMac,
@@ -131,6 +132,14 @@ impl Guard for NetboxWritesAllowed {
     }
 }
 
+/// The watchdog of `device` couldn't be suspended for this.
+fn not_suspended(device: &str) -> impl Fn(Error) -> Error + '_ {
+    move |error| Error::WatchdogNotSuspended {
+        device: device.into(),
+        cause: error.to_string().into(),
+    }
+}
+
 /// Who asked, for NetBox' changelog: the name or email of the login.
 fn user_label(ctx: &Context<'_>) -> Box<str> {
     ctx.data_opt::<UserInfo>()
@@ -196,8 +205,11 @@ impl MutationAuthenticated {
     /// Starts updating RouterOS (and the RouterBOARD firmware) to the newest release of
     /// `channel`, with the packages the device needs (`allow_apply` must be set); without
     /// `channel` it only brings the packages in line, at the version the device runs. Target
-    /// and credentials as for `DeviceAccess.access`. The job's events tell how far it got.
+    /// and credentials as for `DeviceAccess.access`. With `suspendWatchdogs` the watchdogs of the
+    /// devices powering it (`DeviceAccess.supplierWatchdogs`) are suspended for the update and
+    /// restored afterwards. The job's events tell how far it got.
     #[graphql(guard = "WritesAllowed")]
+    #[allow(clippy::too_many_arguments)]
     async fn update_routeros(
         &self,
         id: u32,
@@ -205,9 +217,17 @@ impl MutationAuthenticated {
         target: Option<String>,
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
+        suspend_watchdogs: Option<bool>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
+        let suppliers: Vec<_> = match suspend_watchdogs {
+            Some(true) => power::supplier_devices(&device)
+                .into_iter()
+                .filter(|supplier| supplier.has_routeros())
+                .collect(),
+            _ => Vec::new(),
+        };
         Ok(job::start(&device.clone(), JobKind::Update, |log| async move {
             let device = log
                 .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
@@ -218,7 +238,21 @@ impl MutationAuthenticated {
                 Some(channel) => update::newest(7, channel).await?,
                 None => update::read_state(&device.api().await?).await?.version,
             };
-            update::update(&device, &power, &version, &wanted, CONFIG.update_fallback(), &log).await
+            let mut links = Vec::new();
+            for supplier in suppliers {
+                let name: Box<str> = supplier.name().into();
+                let link = match log.unless_cancelled(supplier.connect(None, None, None)).await? {
+                    Ok(Some(link)) => link,
+                    Ok(None) => Err(Error::MissingCredentials).map_err(not_suspended(&name))?,
+                    Err(error) => Err(error).map_err(not_suspended(&name))?,
+                };
+                links.push((name, link));
+            }
+            let suspended = watchdog::suspend_all(links, &log).await?;
+            let updated =
+                update::update(&device, &power, &version, &wanted, CONFIG.update_fallback(), &log).await;
+            watchdog::restore_all(suspended, &log).await;
+            updated
         })?)
     }
     /// Starts a reboot of a device (`allow_apply` must be set) and waits until it is back.

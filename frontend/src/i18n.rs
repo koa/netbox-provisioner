@@ -246,6 +246,11 @@ pub mod error {
                 p("ends")
             ),
             "NAME_TAKEN" => format!("{} hat schon ein Interface {}", p("device"), p("name")),
+            "WATCHDOG_NOT_SUSPENDED" => format!(
+                "Der Watchdog von {} liess sich nicht aussetzen ({}): kein Update gestartet",
+                p("device"),
+                p("cause")
+            ),
             "NO_FREE_NETWORK" => format!("In {} ist kein /{} mehr frei", p("parent"), p("length")),
             "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
             "NO_PORTS" => format!(
@@ -518,6 +523,21 @@ pub mod device {
 
     pub const ADJUST_PACKAGES: &str = "Pakete anpassen";
     pub const UP_TO_DATE: &str = " aktuell";
+    pub const WATCHDOG_TITLE: &str = "Watchdog auf einem Gerät, das dieses über PoE speist";
+    /// a supplier watching an address: while this device updates, the address may be cut off
+    pub fn supplier_watchdog(device: &str, address: &str) -> String {
+        format!(
+            "{device} überwacht {address}. Ist die Adresse nur über dieses Gerät erreichbar, \
+            startet {device} während des Updates neu und schaltet ihm mitten in der Installation \
+            den Strom ab."
+        )
+    }
+    pub fn supplier_watchdog_unread(device: &str, problem: &str) -> String {
+        format!("Watchdog von {device} nicht lesbar: {problem}")
+    }
+    pub const SUSPEND_WATCHDOGS: &str = "Watchdog während des Updates aussetzen (danach wieder \
+        hergestellt; ein Scheduler auf dem Gerät tut es nach 2 h selbst, falls der Provisioner \
+        nicht dazu kommt)";
     pub const REBOOT: &str = "Neu starten";
     pub const REBOOT_NOW: &str = "Jetzt neu starten";
     pub const REBOOT_CONFIRM: &str =
@@ -920,6 +940,21 @@ pub mod job {
         }
         pub fn ospf_neighbors_back(neighbors: &[String]) -> String {
             format!("OSPF-Nachbarn wieder Full: {}", neighbors.join(", "))
+        }
+        pub fn watchdog_suspended(device: &str, address: &str, safety_net_minutes: u64) -> String {
+            format!(
+                "Watchdog von {device} ausgesetzt (watch-address {address}); stellt sich nach \
+                {safety_net_minutes} min selbst wieder her, falls der Provisioner es nicht tut"
+            )
+        }
+        pub fn watchdog_restored(device: &str, address: &str) -> String {
+            format!("Watchdog von {device} wieder aktiv (watch-address {address})")
+        }
+        pub fn watchdog_not_restored(device: &str, address: &str, error: &str) -> String {
+            format!(
+                "Watchdog von {device} nicht wiederhergestellt ({error}): der Scheduler auf \
+                {device} setzt watch-address {address} nach Ablauf seiner Frist selbst"
+            )
         }
         pub fn repartition_started(count: i64, files: i64) -> String {
             format!("Teilt den Flash in {count} Partitionen auf ({files} Dateien vorher)")

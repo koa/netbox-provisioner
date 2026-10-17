@@ -22,6 +22,17 @@ Für PoE löst `device/power.rs` dasselbe Problem schon: ein speisendes Gerät s
 wenn keines der gespeisten mehr ein Update macht. Der Vorschlag verallgemeinert das. Neben
 „speist“ gibt es die Beziehung „liegt auf dem Weg zu“.
 
+Die Leases halten nur Neustarts zurück, die der Provisioner selbst schickt. Ein Speiser mit
+`/system/watchdog watch-address` startet von selbst neu, wenn die Adresse hinter dem Gerät liegt,
+das gerade installiert. So hat berghof-burri dem wAP 60G burri-schopf mitten im Update den Strom
+abgeschaltet: Danach fand RouterBOOT keinen Kernel mehr und fiel auf Netboot zurück (BOOTP alle
+40 s), erst Netinstall brachte ihn zurück. Die Geräteseite liest deshalb vor dem Update die
+Watchdogs der Speiser (`supplierWatchdogs`) und warnt. Gewählt, setzt das Update sie für seine
+Dauer aus (`watch-address=none`, `device/watchdog.rs`) und stellt sie danach wieder her, auch
+nach einem Fehler oder Abbruch. Ein Scheduler auf dem Speiser (`netbox-provisioner-watchdog`)
+stellt die Adresse nach 2 h selbst wieder her, falls der Provisioner nicht dazu kommt; geprüft
+auf CHR 7.24.5 (`watchdog_is_restored_or_restores_itself`).
+
 ### Wegegraph
 
 - **Knoten:** die Geräte mit RouterOS der Site, dazu der Management-Proxy als Wurzel.

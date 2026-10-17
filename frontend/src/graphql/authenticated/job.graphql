@@ -41,6 +41,9 @@ query JobEvents($id: Int!, $after: Int){
                 ... on UpdateFallbackDisarmed { partition }
                 ... on UpdateWithoutFallback { partitions }
                 ... on OspfNeighborsBack { neighbors }
+                ... on WatchdogSuspended { device watchAddress safetyNet }
+                ... on WatchdogRestored { device watchAddress }
+                ... on WatchdogNotRestored { device watchAddress error { ...Problem } }
                 ... on NetboxWritten { path display deleted changes { field value previous } }
                 ... on NetboxUndone { path display deleted recreated }
             }

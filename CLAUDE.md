@@ -404,7 +404,15 @@ not reboot while that one updates: uploaded packages install at the next boot, a
 then has bricked devices. `device::power::PowerChain::of` collects the devices up and down the
 PoE chains; the update holds an update lease from before the upload to the end and a reboot
 lease per reboot, and a reboot waits while a consumer holds an update lease, an update waits to
-start while a supplier reboots (both under one lock). The leases are in-process only.
+start while a supplier reboots (both under one lock). The leases are in-process only. They only hold back reboots the provisioner sends: a supplier with
+`/system/watchdog watch-address` behind the updating device reboots by itself and cuts its
+power mid-install (berghof-burri bricked burri-schopf that way; RouterBOOT then only asked for
+Netinstall). `DeviceAccess.supplierWatchdogs` reads the suppliers' watchdogs for the device
+page's warning; `updateRouteros(suspendWatchdogs: true)` sets them to `none` for the update and
+restores them after it whatever its outcome (`device::watchdog`, events `WatchdogSuspended`,
+`WatchdogRestored`, `WatchdogNotRestored`). A scheduler entry on the supplier, added before the
+address goes, restores it after `SAFETY_NET` (2 h) should the provisioner not (CHR test
+`watchdog_is_restored_or_restores_itself`); a leftover entry is where `read` finds the address.
 A modeled port of a PoE board without `pse` gets `poe-out=off`, which cuts what it feeds and
 which the script alone doesn't make obvious, so `generateCfg` returns `warnings` next to the
 script (`device::ros::warning::ApplyWarning`, a union `i18n::device::warning` words; `PoeCut` from
