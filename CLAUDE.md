@@ -80,7 +80,9 @@ both ends have IPv4: a radio bridge device's end is L2 only. `findings_of_netbox
 what the stored export has to `target/netbox-example/findings.txt`. A `dhcp` interface whose prefix leaves no
 address for a pool gets no DHCP server, silently; `DhcpPoolEmpty` says so, computing the pool
 with the generator's `device::ros::dhcp_pool_v4` (a single free address is a pool of one, it
-once was lost, so a /30 customer port got no server). The prefix tags
+once was lost, so a /30 customer port got no server). Pool ranges are written as RouterOS reports them
+(`pool_range`: one address alone, a range covering exactly one network as that network, CHR
+7.24.5), else the diff never gets empty. The prefix tags
 `loopback`/`transfer` (`IpPrefixData::pool`) are only used here so far.
 
 `device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's

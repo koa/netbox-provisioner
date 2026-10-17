@@ -1,4 +1,4 @@
-use crate::device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, GapFinder};
+use crate::device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, GapFinder, pool_range};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use mikrotik_model::model::{InterfaceEthernetByDefaultName, InterfaceEthernetCfg};
 use std::str::FromStr;
@@ -128,6 +128,25 @@ pub fn test_gap_single_addresses() {
             "172.16.1.4".parse().unwrap().."172.16.1.253".parse().unwrap(),
         ]
     );
+}
+
+/// What CHR 7.24.5 reported for these ranges written as `start-end`.
+#[test]
+pub fn test_pool_range_as_routeros_reports_it() {
+    for (start, end, reported) in [
+        ("10.200.1.10", "10.200.1.10", "10.200.1.10"),
+        ("10.200.1.20", "10.200.1.21", "10.200.1.20/31"),
+        ("10.1.0.2", "10.1.0.254", "10.1.0.2-10.1.0.254"),
+        ("10.1.1.128", "10.1.1.255", "10.1.1.128/25"),
+        ("10.1.2.1", "10.1.2.2", "10.1.2.1-10.1.2.2"),
+        ("10.1.3.0", "10.1.4.255", "10.1.3.0-10.1.4.255"),
+        ("10.1.8.4", "10.1.8.7", "10.1.8.4/30"),
+    ] {
+        assert_eq!(
+            pool_range(&(start.parse().unwrap()..end.parse().unwrap())),
+            reported
+        );
+    }
 }
 
 /// The state of a freshly reset device with the same ports as `target`: every

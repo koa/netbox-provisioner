@@ -996,7 +996,7 @@ impl BaseDeviceDataTarget {
                                 self.ipv_4_pool.entry(server_name).or_default().0.ranges =
                                     dhcp_ranges
                                         .iter()
-                                        .map(|r| format!("{}-{}", r.start, r.end).into())
+                                        .map(|r| pool_range(r).into())
                                         .collect();
                             }
                         }
@@ -1158,6 +1158,21 @@ pub(crate) fn dhcp_pool_v4(prefix: &IpPrefixAccess, net: Ipv4Net) -> Vec<Range<I
         }
     }
     gap_finder.find_gaps_ipv4(net).collect()
+}
+
+/// A pool range (`end` included) as RouterOS reports it: one address alone, a range covering
+/// exactly one network as that network, every other one as `start-end` (CHR 7.24.5 turns
+/// `10.200.1.20-10.200.1.21` into `10.200.1.20/31`; written otherwise, the diff never ends).
+fn pool_range(range: &Range<Ipv4Addr>) -> String {
+    let (start, end) = (u32::from(range.start), u32::from(range.end));
+    let size = u64::from(end) - u64::from(start) + 1;
+    if start == end {
+        range.start.to_string()
+    } else if size.is_power_of_two() && u64::from(start) % size == 0 {
+        format!("{}/{}", range.start, 32 - size.trailing_zeros())
+    } else {
+        format!("{}-{}", range.start, range.end)
+    }
 }
 
 /// The addresses of a network not reserved, as ranges with both ends included (as RouterOS'
