@@ -386,6 +386,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::UpdateFallbackDisarmed(disarmed) => e::update_fallback_disarmed(&disarmed.partition),
         Event::UpdateWithoutFallback(without) => e::update_without_fallback(without.partitions),
         Event::OspfNeighborsBack(back) => e::ospf_neighbors_back(&back.neighbors),
+        Event::NetboxWritten(written) if written.deleted => e::netbox_deleted(&written.display),
         Event::NetboxWritten(written) if written.changes.is_empty() => {
             e::netbox_created(&written.display, &written.path)
         }
@@ -397,6 +398,9 @@ fn describe(event: &JobEventsJobEvents) -> Html {
                 .map(|change| (change.field.as_str(), change.value.as_deref(), change.previous.as_deref())),
         ),
         Event::NetboxUndone(undone) if undone.deleted => e::netbox_deleted(&undone.display),
+        Event::NetboxUndone(undone) if undone.recreated => {
+            e::netbox_recreated(&undone.display, &undone.path)
+        }
         Event::NetboxUndone(undone) => e::netbox_restored(&undone.display),
         Event::RepartitionStarted(started) => e::repartition_started(started.count, started.files),
         Event::Repartitioned(done) => e::repartitioned(

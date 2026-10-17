@@ -4,6 +4,7 @@ query NetboxPlan($helper: Helper!){
         fingerprint
         checkedWith
         undocumented{ address route gateway router }
+        cutOff{ name }
         steps{
             __typename
             ... on CreateInterface{ name kind }
@@ -11,7 +12,10 @@ query NetboxPlan($helper: Helper!){
             ... on SetPrimaryIp{ version address before }
             ... on CreateCable{ a{ name device{ name } } b{ name device{ name } } }
             ... on CreatePrefix{ prefix pool description }
-            ... on UpdateInterface{ interface{ name device{ name } } label labelBefore mtu mtuBefore ospf }
+            ... on UpdateInterface{ interface{ name device{ name } } label labelBefore mtu mtuBefore ospf ospfRemoved }
+            ... on DeleteCable{ port{ name device{ name } } far{ name device{ name } } }
+            ... on DeleteAddress{ address interface{ name device{ name } } }
+            ... on DeletePrefix{ prefix }
         }
     }
 }
@@ -43,6 +47,7 @@ query HelperJobs($deviceId: Int!){
 query LinkPorts($id: Int!){
     topology{
         deviceById(id: $id){
+            name
             linkPorts{ ...LinkPortFields }
         }
         allDevices(filter: { hasRouteros: true }){

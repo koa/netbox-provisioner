@@ -155,6 +155,12 @@ pub enum Error {
     PortAddressed { port: Box<str>, address: Box<str> },
     #[error("NetBox has no tag {0}")]
     TagMissing(Box<str>),
+    /// an address a helper would delete is the primary IP of `device`
+    #[error("{address} is the primary IP of {device}")]
+    PrimaryAddress { address: Box<str>, device: Box<str> },
+    /// a port (`device port`) without cable or transfer address
+    #[error("{0} has no link to take out of NetBox")]
+    NothingToDisconnect(Box<str>),
 }
 
 impl From<ResourceMutationError> for Error {

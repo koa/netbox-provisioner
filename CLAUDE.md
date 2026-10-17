@@ -92,14 +92,20 @@ generator sets it to `maintenance` now.
 `helper/` holds the helpers that write to NetBox (config-helper concept, steps 3 and 4:
 `helper::loopback`, `helper::connection` for a direct link between two routers: cable if
 missing, the next free `/31` of the transfer pool as a new prefix, an address at each end,
-`ospf`, MTU, the far device as label). The GraphQL input `Helper` is a `@oneOf` (graphql_client
+`ospf`, MTU, the far device as label), `helper::disconnect` taking a wrong link out of NetBox
+(its cable, the port's transfer-pool addresses and the far end's in the same network, the
+link's prefix once empty, label naming the other end and `ospf`; a primary IP is refused; the
+plan names devices it cuts off, `NetboxPlan.cut_off`). „Verbindung“ offers it as a button for a
+chosen port whose link is in the way. Deleting is undone by creating the object again from the
+JSON NetBox had (`NetboxWritten.recreate`, `helper::recreate`; it gets a new id): undoing an
+older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (graphql_client
 makes it an enum; its queries need `skip_serializing_none`), naming the device or the two ports;
 the frontend shows them in one card with a choice, so "Rückgängig" is the device's last write.
 A `CableMissing` neighbor finding with both ends in NetBox opens the card below it with those
 ends (`components::neighbor_check`, `LinkPreset`). Lists of devices and interfaces follow
 NetBox' order (`topology::natural`, its `naturalize`/`naturalize_interface`).
 A helper computes a `NetboxPlan` of steps (`PlanStep`: create interface, address, cable,
-prefix, set primary IP, update interface) from the topology plus REST reads
+prefix, set primary IP, update interface, delete cable, address, prefix) from the topology plus REST reads
 (`netbox::rest::NetboxRest`; GraphQL can't list free addresses or write). A new address must also be unrouted:
 `helper::routes::Routes` reads `/ip/route` and `/ipv6/route` of one OSPF router (the management
 proxy's device, else the RouterOS devices with the most OSPF interfaces, first of three to

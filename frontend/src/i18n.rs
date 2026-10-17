@@ -205,6 +205,15 @@ pub mod error {
                 p("address")
             ),
             "TAG_MISSING" => format!("Den Tag {} gibt es in NetBox nicht", p("tag")),
+            "PRIMARY_ADDRESS" => format!(
+                "{} ist die Primary IP von {}: zuerst eine andere Primary IP setzen (Loopback)",
+                p("address"),
+                p("device")
+            ),
+            "NOTHING_TO_DISCONNECT" => format!(
+                "{} hat in NetBox kein Kabel und keine Adresse aus dem Transfer-Pool mehr",
+                p("port")
+            ),
             "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
             "NO_PORTS" => format!(
                 "Das Board {} ist im Provisioner nicht beschrieben (hw_facts.rs): seine Ports sind unbekannt",
@@ -837,7 +846,10 @@ pub mod job {
         ) -> String {
             let changes: Vec<String> = changes
                 .map(|(field, value, previous)| match field {
-                    "tags" => format!("Tag {} dazu", value.unwrap_or_default()),
+                    "tags" => match (value, previous) {
+                        (None, Some(previous)) => format!("Tag {previous} weg"),
+                        _ => format!("Tag {} dazu", value.unwrap_or_default()),
+                    },
                     _ => format!(
                         "{field} {} (vorher {})",
                         value.unwrap_or("leer"),
@@ -849,6 +861,10 @@ pub mod job {
         }
         pub fn netbox_deleted(display: &str) -> String {
             format!("In NetBox gelöscht: {display}")
+        }
+        /// created again by an undo, with a new id
+        pub fn netbox_recreated(display: &str, path: &str) -> String {
+            format!("In NetBox wieder angelegt: {display} ({path})")
         }
         pub fn netbox_restored(display: &str) -> String {
             format!("In NetBox zurückgesetzt: {display}")
@@ -884,6 +900,32 @@ pub mod helper {
     pub const CONNECTION_HINT: &str = "Verbindet zwei Router direkt: Kabel, falls es fehlt, ein /31 \
         aus dem Transfer-Pool mit je einer Adresse an beiden Enden, ospf, dieselbe MTU und als \
         Label den Namen der Gegenseite.";
+    pub const DISCONNECT: &str = "Verbindung abräumen";
+    pub const DISCONNECT_HINT: &str = "Nimmt eine falsche Verbindung aus NetBox: das Kabel am Port, \
+        seine Adressen aus dem Transfer-Pool und die der Gegenseite im selben Netz, und das Prefix \
+        dieses Netzes, wenn danach nichts mehr darin ist. Danach lässt sich die richtige mit \
+        „Verbindung“ anlegen.";
+    pub const CHOOSE_DISCONNECT_PORT: &str = "Den Port wählen, dessen Verbindung weg soll.";
+    pub const ADDRESSES_GO: &str = "Beim nächsten Anwenden verschwinden diese Adressen von den \
+        Geräten, die Verbindung ist bis zur neuen ohne Adressen.";
+    pub const CUT_OFF: &str = "Über diese Verbindung allein erreicht: nach dem Anwenden des einen \
+        Endes weg, bis die neue Verbindung an beiden Enden angewendet ist";
+    /// the button in „Verbindung“ for a chosen port whose link is in the way
+    pub fn disconnect_port(device: &str, port: &str) -> String {
+        format!("Verbindung an {device} {port} abräumen")
+    }
+    pub fn delete_cable(port: (&str, &str), far: Option<(&str, &str)>) -> String {
+        match far {
+            Some(far) => format!("Kabel {} {} – {} {} löschen", port.0, port.1, far.0, far.1),
+            None => format!("Kabel an {} {} löschen", port.0, port.1),
+        }
+    }
+    pub fn delete_address(address: &str, device: &str, interface: &str) -> String {
+        format!("Adresse {address} auf {device} {interface} löschen")
+    }
+    pub fn delete_prefix(prefix: &str) -> String {
+        format!("Prefix {prefix} löschen")
+    }
     pub const CHOOSE_PORTS: &str = "Beide Ports wählen.";
     pub const COMPLETE: &str = "NetBox hat schon alles dafür.";
     pub const PORT: &str = "Port";
@@ -957,10 +999,12 @@ pub mod helper {
         label: Option<(&str, Option<&str>)>,
         mtu: Option<(i64, Option<i64>)>,
         ospf: bool,
+        ospf_removed: bool,
     ) -> String {
         let mut changes = Vec::new();
         if let Some((label, before)) = label {
             changes.push(match before {
+                Some(before) if label.is_empty() => format!("Label {before} weg"),
                 Some(before) => format!("Label {label} (vorher {before})"),
                 None => format!("Label {label}"),
             });
@@ -973,6 +1017,9 @@ pub mod helper {
         }
         if ospf {
             changes.push("Tag ospf".into());
+        }
+        if ospf_removed {
+            changes.push("Tag ospf weg".into());
         }
         format!("{} {}: {}", port.0, port.1, changes.join(", "))
     }

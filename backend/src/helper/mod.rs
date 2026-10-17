@@ -8,6 +8,7 @@
 //! change made in between stops it instead of being overwritten. Every write is an event of
 //! the job (`NetboxWritten`), which is what `undo` takes back.
 pub mod connection;
+pub mod disconnect;
 pub mod loopback;
 pub mod routes;
 
@@ -36,6 +37,8 @@ pub enum Helper {
     Loopback(u32),
     /// a direct link between two routers, for the device of `interface`
     Connection(connection::ConnectionInput),
+    /// the link of a port out of NetBox: cable, transfer addresses, their prefix
+    Disconnect(disconnect::DisconnectInput),
 }
 
 impl Helper {
@@ -43,6 +46,7 @@ impl Helper {
         match self {
             Helper::Loopback(_) => loopback::plan(&self.device(topology)?).await,
             Helper::Connection(input) => connection::plan(topology, input).await,
+            Helper::Disconnect(input) => disconnect::plan(topology, input),
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -55,6 +59,9 @@ impl Helper {
                 .get_interface_by_id(crate::topology::InterfaceId(input.interface))
                 .and_then(|interface| interface.device())
                 .ok_or(Error::UnknownInterface(input.interface)),
+            Helper::Disconnect(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
         }
     }
 }
@@ -70,6 +77,9 @@ pub struct NetboxPlan {
     pub checked_with: Option<Box<str>>,
     /// addresses NetBox has free that the network routes: passed over, to be documented
     pub undocumented: Vec<routes::UndocumentedAddress>,
+    /// devices whose only link to a router the plan takes the addresses from: applying cuts
+    /// them off until a new link is applied at both ends
+    pub cut_off: Vec<DeviceRef>,
     #[graphql(skip)]
     device: DeviceAccess,
 }
@@ -111,6 +121,7 @@ impl NetboxPlan {
             description: description.into(),
             checked_with: None,
             undocumented: Vec::new(),
+            cut_off: Vec::new(),
             device: device.clone(),
         }
     }
@@ -233,6 +244,29 @@ impl NetboxPlan {
                         }));
                     }
                 }
+                PlanStep::DeleteCable(delete) => {
+                    let id = delete.id.to_string();
+                    if let Some(cables) = json["cable_list"].as_array_mut() {
+                        cables.retain(|cable| cable["id"] != id.as_str());
+                    }
+                }
+                PlanStep::DeleteAddress(delete) => {
+                    let id = delete.id.to_string();
+                    if let Some(addresses) = interface(json, &delete.interface.id.to_string())
+                        .and_then(|interface| interface["ip_addresses"].as_array_mut())
+                    {
+                        addresses.retain(|address| address["id"] != id.as_str());
+                    }
+                    if let Some(addresses) = json["ip_address_list"].as_array_mut() {
+                        addresses.retain(|address| address["id"] != id.as_str());
+                    }
+                }
+                PlanStep::DeletePrefix(delete) => {
+                    let id = delete.id.to_string();
+                    if let Some(prefixes) = json["prefix_list"].as_array_mut() {
+                        prefixes.retain(|prefix| prefix["id"] != id.as_str());
+                    }
+                }
                 PlanStep::UpdateInterface(update) => {
                     if let Some(interface) = interface(json, &update.interface.id.to_string()) {
                         if let Some(label) = &update.label {
@@ -241,10 +275,13 @@ impl NetboxPlan {
                         if let Some(mtu) = update.mtu {
                             interface["mtu"] = json!(mtu);
                         }
-                        if update.ospf
-                            && let Some(tags) = interface["tags"].as_array_mut()
-                        {
-                            tags.push(json!({ "slug": "ospf" }));
+                        if let Some(tags) = interface["tags"].as_array_mut() {
+                            if update.ospf {
+                                tags.push(json!({ "slug": "ospf" }));
+                            }
+                            if update.ospf_removed {
+                                tags.retain(|tag| tag["slug"] != "ospf");
+                            }
                         }
                     }
                 }
@@ -262,6 +299,9 @@ pub enum PlanStep {
     CreateCable(CreateCable),
     CreatePrefix(CreatePrefix),
     UpdateInterface(UpdateInterface),
+    DeleteCable(DeleteCable),
+    DeleteAddress(DeleteAddress),
+    DeletePrefix(DeletePrefix),
 }
 
 /// An object of NetBox or one an earlier step of the plan creates.
@@ -324,8 +364,8 @@ pub struct CreatePrefix {
     pub description: Box<str>,
 }
 
-/// Changes of an interface: a new label, a new MTU (each none to keep it) and the tag `ospf`
-/// added.
+/// Changes of an interface: a new label (empty to take it off), a new MTU (each none to keep
+/// it) and the tag `ospf` added or taken off.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct UpdateInterface {
     pub interface: InterfaceRef,
@@ -334,10 +374,34 @@ pub struct UpdateInterface {
     pub mtu: Option<u16>,
     pub mtu_before: Option<u16>,
     pub ospf: bool,
+    pub ospf_removed: bool,
 }
 
-/// An object a helper wrote: created (`before` is none) or changed from `before` (the JSON
-/// of the fields it changed). `undo` takes it back from this.
+/// The cable at `port`, to `far` if it reaches an interface (through patch panels too).
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct DeleteCable {
+    pub id: u32,
+    pub port: InterfaceRef,
+    pub far: Option<InterfaceRef>,
+}
+
+/// The IP address `address` (with its length) on `interface`.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct DeleteAddress {
+    pub id: u32,
+    pub address: Box<str>,
+    pub interface: InterfaceRef,
+}
+
+/// The prefix `prefix`, empty once the plan's addresses are gone.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct DeletePrefix {
+    pub id: u32,
+    pub prefix: Box<str>,
+}
+
+/// An object a helper wrote: created (`before` and `recreate` none), changed from `before`
+/// (the JSON of the fields it changed) or deleted (`recreate`). `undo` takes it back from this.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct NetboxWritten {
     /// below NetBox' `api/`, `ipam/ip-addresses/12/`
@@ -347,8 +411,12 @@ pub struct NetboxWritten {
     /// the JSON `undo` sets back
     #[graphql(skip)]
     pub before: Option<Box<str>>,
-    /// what changed, for reading; empty for a created object
+    /// what changed, for reading; empty for a created or deleted object
     pub changes: Vec<FieldChange>,
+    pub deleted: bool,
+    /// the JSON `undo` creates a deleted object again with (it gets a new id)
+    #[graphql(skip)]
+    pub recreate: Option<Box<str>>,
 }
 
 /// A field a helper changed, as NetBox shows its values.
@@ -359,12 +427,14 @@ pub struct FieldChange {
     pub previous: Option<Box<str>>,
 }
 
-/// An object `undo` took back: deleted or its fields set back.
+/// An object `undo` took back: deleted, its fields set back or created again (`recreated`, at
+/// `path` then, with its new id).
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct NetboxUndone {
     pub path: Box<str>,
     pub display: Box<str>,
     pub deleted: bool,
+    pub recreated: bool,
 }
 
 /// Writes `plan`, after computing it again from NetBox as it is now: it must still have
@@ -459,6 +529,8 @@ pub async fn write(
                         value: shown(&object),
                         previous: shown(&current),
                     }],
+                    deleted: false,
+                    recreate: None,
                 }));
                 None
             }
@@ -513,6 +585,77 @@ pub async fn write(
                 update_interface(&rest, update, log).await?;
                 None
             }
+            PlanStep::DeleteCable(delete) => {
+                let path = format!("dcim/cables/{}/", delete.id);
+                let current = rest.get(&path).await?;
+                let at_port = ["a_terminations", "b_terminations"].iter().any(|end| {
+                    current[end].as_array().into_iter().flatten().any(|termination| {
+                        termination["object_type"] == "dcim.interface"
+                            && termination["object_id"].as_u64() == Some(delete.port.id.into())
+                    })
+                });
+                if !at_port {
+                    return Err(Error::NetboxChanged(
+                        format!("{} {}: cable {}", delete.port.device.name, delete.port.name, delete.id)
+                            .into(),
+                    ));
+                }
+                deleted(&rest, log, &path, &current, recreate_cable(&current)).await?;
+                None
+            }
+            PlanStep::DeleteAddress(delete) => {
+                let path = format!("ipam/ip-addresses/{}/", delete.id);
+                let current = rest.get(&path).await?;
+                if current["address"].as_str() != Some(&*delete.address)
+                    || current["assigned_object_id"].as_u64() != Some(delete.interface.id.into())
+                {
+                    return Err(Error::NetboxChanged(delete.address.clone()));
+                }
+                let device = rest
+                    .get(&format!("dcim/devices/{}/", delete.interface.device.id))
+                    .await?;
+                if ["primary_ip4", "primary_ip6"]
+                    .iter()
+                    .any(|field| device[field]["id"].as_u64() == Some(delete.id.into()))
+                {
+                    return Err(Error::PrimaryAddress {
+                        address: delete.address.clone(),
+                        device: delete.interface.device.name.clone(),
+                    });
+                }
+                let body = recreate(
+                    &current,
+                    &[
+                        "address", "vrf", "tenant", "status", "role", "assigned_object_type",
+                        "assigned_object_id", "dns_name", "description", "comments", "tags",
+                        "custom_fields",
+                    ],
+                );
+                deleted(&rest, log, &path, &current, body).await?;
+                None
+            }
+            PlanStep::DeletePrefix(delete) => {
+                let path = format!("ipam/prefixes/{}/", delete.id);
+                let current = rest.get(&path).await?;
+                let addresses = rest
+                    .get(&format!("ipam/ip-addresses/?parent={}&limit=1", delete.prefix))
+                    .await?;
+                if current["prefix"].as_str() != Some(&*delete.prefix)
+                    || addresses["count"].as_u64() != Some(0)
+                {
+                    return Err(Error::NetboxChanged(delete.prefix.clone()));
+                }
+                let body = recreate(
+                    &current,
+                    &[
+                        "prefix", "vrf", "tenant", "vlan", "status", "role", "scope_type",
+                        "scope_id", "is_pool", "mark_utilized", "description", "comments", "tags",
+                        "custom_fields",
+                    ],
+                );
+                deleted(&rest, log, &path, &current, body).await?;
+                None
+            }
         };
         created.push(id);
     }
@@ -530,19 +673,42 @@ pub async fn undo(
     let rest = NetboxRest::writer(format!("Undo of provisioner job {job} ({user})"))?;
     for object in written.iter().rev() {
         log.check()?;
-        match &object.before {
-            None => rest.delete(&object.path).await?,
-            Some(before) => {
-                let before: Value = serde_json::from_str(before)
-                    .map_err(|error| Error::Preview(error.to_string().into()))?;
-                rest.update(&object.path, before).await?;
+        let parse = |json: &str| {
+            serde_json::from_str::<Value>(json).map_err(|error| Error::Preview(error.to_string().into()))
+        };
+        let undone = match (&object.recreate, &object.before) {
+            (Some(body), _) => {
+                // the collection the object was in
+                let collection = object.path.trim_end_matches('/');
+                let collection = &collection[..collection.rfind('/').map_or(0, |i| i + 1)];
+                let created = rest.create(collection, parse(body)?).await?;
+                NetboxUndone {
+                    path: format!("{collection}{}/", created["id"]).into(),
+                    display: display(&created),
+                    deleted: false,
+                    recreated: true,
+                }
             }
-        }
-        log.emit(Event::NetboxUndone(NetboxUndone {
-            path: object.path.clone(),
-            display: object.display.clone(),
-            deleted: object.before.is_none(),
-        }));
+            (None, None) => {
+                rest.delete(&object.path).await?;
+                NetboxUndone {
+                    path: object.path.clone(),
+                    display: object.display.clone(),
+                    deleted: true,
+                    recreated: false,
+                }
+            }
+            (None, Some(before)) => {
+                rest.update(&object.path, parse(before)?).await?;
+                NetboxUndone {
+                    path: object.path.clone(),
+                    display: object.display.clone(),
+                    deleted: false,
+                    recreated: false,
+                }
+            }
+        };
+        log.emit(Event::NetboxUndone(undone));
     }
     Ok(())
 }
@@ -563,6 +729,7 @@ async fn update_interface(
     if label != update.label_before.as_deref()
         || mtu != update.mtu_before
         || (update.ospf && has_ospf)
+        || (update.ospf_removed && !has_ospf)
     {
         return Err(Error::NetboxChanged(
             format!("{} {}", name.device.name, name.name).into(),
@@ -577,7 +744,7 @@ async fn update_interface(
         before.insert("label".into(), json!(label.unwrap_or_default()));
         changes.push(FieldChange {
             field: "label".into(),
-            value: Some(new.clone()),
+            value: Some(new.clone()).filter(|new| !new.is_empty()),
             previous: label.map(Box::from),
         });
     }
@@ -599,11 +766,25 @@ async fn update_interface(
         let mut with_ospf = tag_ids.clone();
         with_ospf.push(ospf);
         change.insert("tags".into(), Value::Array(with_ospf));
-        before.insert("tags".into(), Value::Array(tag_ids));
+        before.insert("tags".into(), Value::Array(tag_ids.clone()));
         changes.push(FieldChange {
             field: "tags".into(),
             value: Some("ospf".into()),
             previous: None,
+        });
+    }
+    if update.ospf_removed {
+        let without_ospf = tags
+            .iter()
+            .filter(|tag| tag["slug"] != "ospf")
+            .map(|tag| tag["id"].clone())
+            .collect();
+        change.insert("tags".into(), Value::Array(without_ospf));
+        before.insert("tags".into(), Value::Array(tag_ids));
+        changes.push(FieldChange {
+            field: "tags".into(),
+            value: None,
+            previous: Some("ospf".into()),
         });
     }
     let object = rest.update(&path, Value::Object(change)).await?;
@@ -612,8 +793,75 @@ async fn update_interface(
         display: display(&object),
         before: Some(Value::Object(before).to_string().into()),
         changes,
+        deleted: false,
+        recreate: None,
     }));
     Ok(())
+}
+
+/// Deletes the object at `path` (`current` as NetBox has it), `undo` creates it again from
+/// `body`.
+async fn deleted(
+    rest: &NetboxRest,
+    log: &Log,
+    path: &str,
+    current: &Value,
+    body: Value,
+) -> Result<(), Error> {
+    rest.delete(path).await?;
+    log.emit(Event::NetboxWritten(NetboxWritten {
+        path: path.into(),
+        display: display(current),
+        before: None,
+        changes: Vec::new(),
+        deleted: true,
+        recreate: Some(body.to_string().into()),
+    }));
+    Ok(())
+}
+
+/// The `fields` of `object` (as NetBox returns it) as NetBox takes them to create it: a choice
+/// by its value, a related object by its id, tags by their ids.
+fn recreate(object: &Value, fields: &[&str]) -> Value {
+    let writable = |value: &Value| match value {
+        Value::Object(map) if map.contains_key("value") => map["value"].clone(),
+        Value::Object(map) if map.contains_key("id") => map["id"].clone(),
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| item.get("id").cloned().unwrap_or_else(|| item.clone()))
+                .collect(),
+        ),
+        other => other.clone(),
+    };
+    Value::Object(
+        fields
+            .iter()
+            .filter(|field| !object[**field].is_null())
+            .map(|field| (field.to_string(), writable(&object[*field])))
+            .collect(),
+    )
+}
+
+/// A cable as NetBox takes it to create it: its terminations by type and id.
+fn recreate_cable(cable: &Value) -> Value {
+    let mut body = recreate(
+        cable,
+        &[
+            "type", "status", "tenant", "label", "color", "length", "length_unit", "description",
+            "comments", "tags", "custom_fields",
+        ],
+    );
+    for end in ["a_terminations", "b_terminations"] {
+        let terminations: Vec<Value> = cable[end]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|t| json!({ "object_type": t["object_type"], "object_id": t["object_id"] }))
+            .collect();
+        body[end] = Value::Array(terminations);
+    }
+    body
 }
 
 fn display(object: &Value) -> Box<str> {
@@ -630,6 +878,8 @@ fn logged_create(log: &Log, path: &str, object: &Value) -> Result<u32, Error> {
         display: display(object),
         before: None,
         changes: Vec::new(),
+        deleted: false,
+        recreate: None,
     }));
     Ok(id)
 }
@@ -726,6 +976,7 @@ mod test {
                 mtu: Some(2000),
                 mtu_before: end.mtu(),
                 ospf: true,
+                ospf_removed: false,
             })
         };
         let address = |end: &InterfaceAccess, address: &str| {

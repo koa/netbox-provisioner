@@ -2,7 +2,9 @@
 //! what it would write, on a click the preview (the findings and the script applying would
 //! bring after it), then writing it as a job, and taking the last one back. They write to
 //! NetBox only, the device gets it by applying. „Verbindung“ asks for the two ports first
-//! (`linkPorts`); a port cabled to a router brings the other end along.
+//! (`linkPorts`); a port cabled to a router brings the other end along. A chosen port whose
+//! link is in the way gets a button to „Verbindung abräumen“ with it, which takes that link out
+//! of NetBox.
 use crate::{
     components::{adjust_target::SelectedTarget, job::JobView},
     error::FrontendError,
@@ -65,6 +67,8 @@ pub enum HelperChoice {
         peer: u32,
         mtu: Option<u16>,
     },
+    /// the link of this port, on the device or at the far end of one of its links
+    Disconnect(u32),
 }
 
 /// The helper's input in the variables of `$module` (each query has its own types).
@@ -81,6 +85,12 @@ macro_rules! helper_input {
                 peer: peer as i64,
                 mtu: mtu.map(i64::from),
             }),
+            HelperChoice::Disconnect(interface) => {
+                $module::Helper::Disconnect($module::DisconnectInput {
+                    device: $id as i64,
+                    interface: interface as i64,
+                })
+            }
         }
     };
 }
@@ -90,6 +100,14 @@ macro_rules! helper_input {
 pub enum HelperKind {
     Loopback,
     Connection,
+    Disconnect,
+}
+
+impl HelperKind {
+    /// whether it chooses among the ports of `linkPorts`
+    fn needs_ports(self) -> bool {
+        matches!(self, HelperKind::Connection | HelperKind::Disconnect)
+    }
 }
 
 impl Display for HelperKind {
@@ -97,6 +115,7 @@ impl Display for HelperKind {
         f.write_str(match self {
             HelperKind::Loopback => t::LOOPBACK,
             HelperKind::Connection => t::CONNECTION,
+            HelperKind::Disconnect => t::DISCONNECT,
         })
     }
 }
@@ -126,6 +145,8 @@ pub struct LinkChoice {
 pub struct NetboxHelper {
     kind: HelperKind,
     link: LinkChoice,
+    /// the port whose link „Verbindung abräumen“ takes out
+    disconnect: Option<u32>,
     ports: Option<Result<link_ports::ResponseData, FrontendError>>,
     /// what the plan shown was computed for
     planned: Option<HelperChoice>,
@@ -147,6 +168,8 @@ pub enum NetboxHelperMsg {
     PeerDevice(Choice),
     Peer(Choice),
     Mtu(String),
+    /// „Verbindung abräumen“ with this port
+    DisconnectPort(u32),
     Plan(HelperChoice, Result<netbox_plan::ResponseData, FrontendError>),
     LoadPreview,
     Preview(Result<Preview, FrontendError>),
@@ -176,13 +199,14 @@ impl Component for NetboxHelper {
                 },
             ),
         };
-        if kind == HelperKind::Connection {
+        if kind.needs_ports() {
             fetch_ports(ctx.link().clone(), ctx.props().id);
         }
         last_write(ctx.link().clone(), ctx.props().id);
         let mut helper = Self {
             kind,
             link,
+            disconnect: None,
             ports: None,
             planned: None,
             plan: None,
@@ -201,7 +225,7 @@ impl Component for NetboxHelper {
         match msg {
             NetboxHelperMsg::Kind(kind) => {
                 self.kind = kind;
-                if kind == HelperKind::Connection && self.ports.is_none() {
+                if kind.needs_ports() && self.ports.is_none() {
                     fetch_ports(ctx.link().clone(), ctx.props().id);
                 }
                 self.choose(ctx);
@@ -233,6 +257,11 @@ impl Component for NetboxHelper {
             }
             NetboxHelperMsg::Mtu(mtu) => {
                 self.link.mtu = mtu;
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::DisconnectPort(port) => {
+                self.kind = HelperKind::Disconnect;
+                self.disconnect = Some(port);
                 self.choose(ctx);
             }
             NetboxHelperMsg::Plan(choice, _) if self.planned.as_ref() != Some(&choice) => {
@@ -338,6 +367,9 @@ impl Component for NetboxHelper {
         });
         let error = self.error.as_ref().map(|error| error.to_html());
         let plan = match (&self.planned, &self.plan) {
+            (None, _) if self.kind == HelperKind::Disconnect => {
+                html!(<p>{t::CHOOSE_DISCONNECT_PORT}</p>)
+            }
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),
             (_, None) => html!(<Spinner size={SpinnerSize::Md}/>),
             (_, Some(Err(error))) => error.to_html(),
@@ -350,6 +382,16 @@ impl Component for NetboxHelper {
                     </ol>
                     if let Some(router) = &plan.netbox_plan.checked_with {
                         <p>{t::checked_with(router)}</p>
+                    }
+                    if plan.netbox_plan.steps.iter().any(|step| matches!(step, Step::DeleteAddress(_))) {
+                        <p>{t::ADDRESSES_GO}</p>
+                    }
+                    if !plan.netbox_plan.cut_off.is_empty() {
+                        <Alert inline=true title={t::CUT_OFF} r#type={AlertType::Warning}>
+                            <ul>
+                            { for plan.netbox_plan.cut_off.iter().map(|device| html!(<li>{&device.name}</li>)) }
+                            </ul>
+                        </Alert>
                     }
                     if !plan.netbox_plan.undocumented.is_empty() {
                         <Alert inline=true title={t::UNDOCUMENTED} r#type={AlertType::Warning}>
@@ -395,6 +437,7 @@ impl Component for NetboxHelper {
         let hint = match self.kind {
             HelperKind::Loopback => t::LOOPBACK_HINT,
             HelperKind::Connection => t::CONNECTION_HINT,
+            HelperKind::Disconnect => t::DISCONNECT_HINT,
         };
         html! {
             <Card class="netbox-helper">
@@ -406,13 +449,16 @@ impl Component for NetboxHelper {
                     <div class="helper-kind">
                         <SimpleSelect<HelperKind>
                             selected={Some(self.kind)}
-                            entries={vec![HelperKind::Loopback, HelperKind::Connection]}
+                            entries={vec![HelperKind::Loopback, HelperKind::Connection, HelperKind::Disconnect]}
                             onselect={ctx.link().callback(NetboxHelperMsg::Kind)}
                         />
                     </div>
                     <p>{hint}</p>
                     if self.kind == HelperKind::Connection {
                         { self.link_form(ctx) }
+                    }
+                    if self.kind == HelperKind::Disconnect {
+                        { self.disconnect_form(ctx) }
                     }
                     {plan}
                 </CardBody>
@@ -432,6 +478,7 @@ impl NetboxHelper {
                 peer: self.link.peer?,
                 mtu: self.link.mtu.trim().parse().ok(),
             }),
+            HelperKind::Disconnect => Some(HelperChoice::Disconnect(self.disconnect?)),
         }
     }
     fn choose(&mut self, ctx: &Context<Self>) {
@@ -457,6 +504,95 @@ impl NetboxHelper {
             .link_ports
             .iter()
             .find(|port| port.id as u32 == id)
+    }
+    /// A port of any router, with its device's name.
+    fn any_port(&self, id: u32) -> Option<(&str, &LinkPortFields)> {
+        self.ports()?.topology.all_devices.iter().find_map(|device| {
+            device
+                .link_ports
+                .iter()
+                .find(|port| port.id as u32 == id)
+                .map(|port| (device.name.as_str(), port))
+        })
+    }
+    /// The chosen ends of „Verbindung“ whose link is in the way: a cable elsewhere, or an IPv4
+    /// not in a network with the other end.
+    fn in_the_way(&self) -> Vec<(String, u32)> {
+        let (Some(own), Some(peer)) = (self.link.port, self.link.peer) else {
+            return Vec::new();
+        };
+        let ends = [(own, peer), (peer, own)];
+        ends.iter()
+            .filter_map(|&(end, other)| {
+                let (device, port) = self.any_port(end).or_else(|| {
+                    // the device's own port (the device may not be a router in the list)
+                    let device = self.ports()?.topology.device_by_id.as_ref()?;
+                    self.port(end).map(|port| (device.name.as_str(), port))
+                })?;
+                let other_port = self.any_port(other).map(|(_, p)| p).or_else(|| self.port(other));
+                let cabled_elsewhere = port.cabled
+                    && !port.connected.iter().any(|far| far.id as u32 == other);
+                let addressed_elsewhere = port.ipv4.as_deref().is_some_and(|own| {
+                    !other_port
+                        .and_then(|other| other.ipv4.as_deref())
+                        .is_some_and(|other| same_network(own, other))
+                });
+                (cabled_elsewhere || addressed_elsewhere)
+                    .then(|| (t::disconnect_port(device, &port.name), end))
+            })
+            .collect()
+    }
+    fn disconnect_form(&self, ctx: &Context<Self>) -> Html {
+        let ports = match &self.ports {
+            None => return html!(<Spinner size={SpinnerSize::Md}/>),
+            Some(Err(error)) => return error.to_html(),
+            Some(Ok(ports)) => ports,
+        };
+        let mut entries: Vec<Choice> = ports
+            .topology
+            .device_by_id
+            .iter()
+            .flat_map(|device| &device.link_ports)
+            .filter(|port| port.cabled || port.ipv4.is_some())
+            .map(|port| Choice {
+                id: port.id as u32,
+                text: t::link_port(
+                    &port.name,
+                    port.label.as_deref(),
+                    port.connected
+                        .first()
+                        .map(|far| (far.device.name.as_str(), far.name.as_str())),
+                    port.cabled,
+                    port.ipv4.as_deref(),
+                    port.bridge.as_deref(),
+                ),
+            })
+            .collect();
+        // a port at the far end, from „Verbindung“
+        if let Some(id) = self.disconnect
+            && !entries.iter().any(|entry| entry.id == id)
+            && let Some((device, port)) = self.any_port(id)
+        {
+            entries.push(Choice {
+                id,
+                text: format!("{device} {}", port.name),
+            });
+        }
+        let selected = self
+            .disconnect
+            .and_then(|id| entries.iter().find(|entry| entry.id == id).cloned());
+        html! {
+            <Form>
+                <FormGroup label={t::PORT}>
+                    <SimpleSelect<Choice>
+                        placeholder={t::CHOOSE_PORT.to_string()}
+                        selected={selected}
+                        entries={entries}
+                        onselect={ctx.link().callback(|port: Choice| NetboxHelperMsg::DisconnectPort(port.id))}
+                    />
+                </FormGroup>
+            </Form>
+        }
     }
     fn link_form(&self, ctx: &Context<Self>) -> Html {
         let ports = match &self.ports {
@@ -508,6 +644,7 @@ impl NetboxHelper {
             id.and_then(|id| entries.iter().find(|entry| entry.id == id).cloned())
         };
         let mtu = self.link.mtu.clone();
+        let in_the_way = self.in_the_way();
         html! {
             <Form>
                 <FormGroup label={t::PORT}>
@@ -541,6 +678,17 @@ impl NetboxHelper {
                         onchange={ctx.link().callback(NetboxHelperMsg::Mtu)}
                     />
                 </FormGroup>
+                if !in_the_way.is_empty() {
+                    <div class="helper-actions">
+                        { for in_the_way.into_iter().map(|(label, port)| html! {
+                            <Button
+                                variant={ButtonVariant::Secondary}
+                                label={label}
+                                onclick={ctx.link().callback(move |_| NetboxHelperMsg::DisconnectPort(port))}
+                            />
+                        })}
+                    </div>
+                }
             </Form>
         }
     }
@@ -598,7 +746,18 @@ fn describe(step: &Step) -> String {
                 .map(|label| (label, update.label_before.as_deref())),
             update.mtu.map(|mtu| (mtu, update.mtu_before)),
             update.ospf,
+            update.ospf_removed,
         ),
+        Step::DeleteCable(delete) => t::delete_cable(
+            (&delete.port.device.name, &delete.port.name),
+            delete.far.as_ref().map(|far| (far.device.name.as_str(), far.name.as_str())),
+        ),
+        Step::DeleteAddress(delete) => t::delete_address(
+            &delete.address,
+            &delete.interface.device.name,
+            &delete.interface.name,
+        ),
+        Step::DeletePrefix(delete) => t::delete_prefix(&delete.prefix),
         Step::SetPrimaryIp(set) => t::set_primary(
             match set.version {
                 netbox_plan::IpVersion::V4 => "IPv4",
@@ -703,4 +862,16 @@ fn fetch_preview(scope: Scope<NetboxHelper>, id: u32, choice: HelperChoice, targ
         });
         scope.send_message(NetboxHelperMsg::Preview(preview));
     });
+}
+
+/// Whether two IPv4 addresses with their length (`172.17.1.41/30`) are in one network.
+fn same_network(a: &str, b: &str) -> bool {
+    let parse = |text: &str| -> Option<(u32, u32)> {
+        let (address, len) = text.split_once('/')?;
+        let address: std::net::Ipv4Addr = address.parse().ok()?;
+        let len: u32 = len.parse().ok()?;
+        let mask = u32::MAX.checked_shl(32 - len).unwrap_or(0);
+        Some((u32::from(address) & mask, len))
+    };
+    matches!((parse(a), parse(b)), (Some(a), Some(b)) if a == b)
 }

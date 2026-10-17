@@ -214,6 +214,22 @@ vorübergehend gelöscht, nach dem Test wieder angelegt). Den Helfer selbst im L
 vorübergehenden Ports `sfp-sfpplus2` an lab-np1 und lab-np2 (danach gelöscht); das Lab-NetBox hat
 dafür den Transfer-Pool `192.168.101.0/24`.
 
+**Verbindung abräumen** (`helper/disconnect.rs`): Nimmt eine falsche Verbindung aus NetBox, damit
+„Verbindung“ die richtige anlegen kann. Für einen Port: sein Kabel, seine Adressen aus dem
+Transfer-Pool und die der Gegenseite im selben Netz, das Prefix dieses Netzes, wenn danach nichts
+mehr darin ist (nie ein Prefix des Pools selbst), und mit dem Kabel an beiden Enden das Label,
+wenn es die Gegenseite nennt, und `ospf`. Andere Adressen (ein Kunden-Netz) bleiben. Ist eine
+der Adressen die Primary IP eines Geräts, lehnt der Helfer ab. Die Adressen verschwinden beim
+nächsten Anwenden von den Geräten; ein Gerät, das sonst keine Verbindung zu einem Router hat,
+nennt der Plan als abgeschnitten, bis die neue Verbindung an beiden Enden angewendet ist. In
+„Verbindung“ bekommt ein gewählter Port, dessen Verbindung im Weg ist (Kabel woandershin, IPv4
+nicht im Netz der Gegenseite), einen Knopf „Verbindung an … abräumen“. Der Port kann auch der
+Gegenseite gehören; geschrieben wird im Job des Geräts, dessen Seite fragt. „Rückgängig“ legt
+Gelöschtes aus dem JSON wieder an, das NetBox vorher hatte (mit neuer ID). Im Lab geprüft mit
+vorübergehenden Ports `sfp-sfpplus2` an lab-np1 und lab-np2 und `ether9` an lab-np2: Knopf,
+Plan, Vorschau, Schreiben, Rückgängig (Kabel, Adressen, Prefix, Label und `ospf` wieder da),
+danach gelöscht.
+
 ### Kunden-Netz
 
 Ein Port oder ein VLAN wählen, dann das **Parent-Prefix**: Der Helfer bietet die Prefixe der Site
@@ -381,7 +397,7 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
 2. **Befund „NetBox gegen Gerät“**, zuerst Nachbarn → Kabel.
 3. **Schreib-Infrastruktur** (Plan, Vorschau mit Generator, Changelog, Rückgängig) mit dem
    einfachsten Helfer: **Loopback**.
-4. **Verbindung** und „Kabel aus Befund übernehmen“.
+4. **Verbindung**, „Kabel aus Befund übernehmen“ und „Verbindung abräumen“.
 5. **OSPF-/DHCP-Flags**, **Kunden-Netz**.
 6. **Neues Gerät**, **PoE**.
 7. **Funkbrücke**.

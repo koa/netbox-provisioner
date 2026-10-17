@@ -178,6 +178,13 @@ impl From<&Error> for ErrorInfo {
                 vec![("port", port.to_string()), ("address", address.to_string())],
             ),
             Error::TagMissing(tag) => ("TAG_MISSING", vec![("tag", tag.to_string())]),
+            Error::PrimaryAddress { address, device } => (
+                "PRIMARY_ADDRESS",
+                vec![("address", address.to_string()), ("device", device.to_string())],
+            ),
+            Error::NothingToDisconnect(port) => {
+                ("NOTHING_TO_DISCONNECT", vec![("port", port.to_string())])
+            }
         };
         info(code, params, error)
     }

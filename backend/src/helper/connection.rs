@@ -140,6 +140,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &ConnectionInput) -> Result<N
                 mtu: new_mtu,
                 mtu_before: end.mtu(),
                 ospf,
+                ospf_removed: false,
             }));
         }
     }
