@@ -811,6 +811,12 @@ impl AccessibleDevice {
         Ok(self.simple_ping(count.unwrap_or(1)).await.map_err(Error::from)?)
     }
 
+    /// The device the connection actually reached, to tell it from another one answering at
+    /// the same address.
+    async fn connected(&self) -> crate::device::Connected {
+        self.connected_device()
+    }
+
     async fn device_stats(&self) -> Result<DeviceStats, ApiError> {
         Ok(DeviceStats::fetch(&self.client).await?)
     }

@@ -6,7 +6,11 @@ use mikrotik_api::{
     prelude::{MikrotikDevice as RawDevice, ParsedMessage},
     simple::SimpleResult,
 };
-use mikrotik_model::{MikrotikDevice, model::SystemRouterboardState};
+use mikrotik_model::{
+    MikrotikDevice,
+    model::{SystemIdentityCfg, SystemRouterboardState},
+    resource::SingleResource,
+};
 use std::{net::IpAddr, sync::Arc, time::Duration};
 use surge_ping::{IcmpPacket, SurgeError, ping};
 use tokio::{
@@ -54,6 +58,30 @@ pub struct AccessibleDevice {
     credentials: Credentials,
     client: MikrotikDevice,
     device_config: DeviceAccess,
+    /// `/system/identity` of the device answering at `address`
+    identity: Box<str>,
+}
+
+/// The device a connection reached. Only the identity tells it apart from another one at the
+/// same address; [`AccessibleDevice::create_client`] refuses one named like another NetBox
+/// device, a different identity (a factory `MikroTik`, a name NetBox doesn't know) only shows.
+#[derive(SimpleObject)]
+pub struct Connected {
+    pub address: Box<str>,
+    /// the neighbor whose SSH tunnel the connection goes through, `None` when routed
+    pub neighbor: Option<Box<str>>,
+    pub identity: Box<str>,
+    /// the identity is the device's name in NetBox
+    pub same_name: bool,
+}
+
+/// The device other than `device` NetBox has by the name `identity`.
+pub(crate) fn other_device_named(device: &DeviceAccess, identity: &str) -> Option<Box<str>> {
+    device
+        .topology()
+        .list_devices()
+        .find(|other| other.id() != device.id() && other.name() == identity)
+        .map(|other| other.name().into())
 }
 
 #[derive(SimpleObject)]
@@ -84,13 +112,41 @@ impl AccessibleDevice {
         credentials: Credentials,
     ) -> Result<AccessibleDevice, Error> {
         let client = connect(address, &path, &credentials).await?;
+        let identity: Box<str> = SystemIdentityCfg::fetch(&client)
+            .await?
+            .map(|identity| identity.name.to_string().into())
+            .unwrap_or_default();
+        if let Some(other) = other_device_named(&device_config, &identity) {
+            return Err(Error::WrongDevice {
+                device: device_config.name().into(),
+                address: address.to_string().into(),
+                other,
+            });
+        }
         Ok(AccessibleDevice {
             address,
             path,
             credentials,
             client,
             device_config,
+            identity,
         })
+    }
+    /// The device actually answering: where, how and with which identity.
+    pub fn connected_device(&self) -> Connected {
+        Connected {
+            address: self.address.to_string().into(),
+            neighbor: match &self.path {
+                Path::Routed => None,
+                Path::Neighbor(_) => bootstrap::plans(&self.device_config)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find(|plan| plan.port_address() == self.address)
+                    .map(|plan| plan.neighbor.as_str().into()),
+            },
+            identity: self.identity.clone(),
+            same_name: *self.identity == *self.device_config.name(),
+        }
     }
     /// A further connection to the same device, with another result type.
     pub(crate) async fn connect_again<D: ParsedMessage>(&self) -> Result<RawDevice<D>, Error> {
@@ -215,5 +271,38 @@ impl GraphqlSystemRouterboard {
     }
     async fn firmware_type(&self) -> String {
         self.0.firmware_type.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::other_device_named;
+    use crate::topology::{Device, TopologyHolder, test::TopologyBuilder};
+
+    /// a factory identity or one NetBox doesn't know only shows; the name of another NetBox
+    /// device is that device (berghof-haus-stall's address answered by another one)
+    #[tokio::test]
+    async fn an_identity_naming_another_device_is_that_device() {
+        let mut builder = TopologyBuilder::default();
+        let mut ids = Vec::new();
+        for name in ["berghof-haus-stall", "link-5-ap"] {
+            let id = builder.devices.next_id();
+            builder.devices.insert(
+                id,
+                Device {
+                    name: name.into(),
+                    ..Default::default()
+                },
+            );
+            ids.push(id);
+        }
+        let holder = Into::<TopologyHolder>::into(builder);
+        let device = holder.devices_by_id(ids[0]).await.unwrap();
+        assert_eq!(other_device_named(&device, "berghof-haus-stall"), None);
+        assert_eq!(other_device_named(&device, "MikroTik"), None);
+        assert_eq!(
+            other_device_named(&device, "link-5-ap").as_deref(),
+            Some("link-5-ap")
+        );
     }
 }

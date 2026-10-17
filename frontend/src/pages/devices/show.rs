@@ -56,6 +56,7 @@ pub struct ShowDevice {
     suspend_watchdogs: bool,
 }
 type SupplierWatchdog = device_overview::DeviceOverviewTopologyDeviceByIdSupplierWatchdogs;
+type Connected = device_overview::DeviceOverviewTopologyDeviceByIdAccessConnected;
 type Candidate =
     bootstrap_candidates::BootstrapCandidatesTopologyDeviceByIdBootstrapPlanDiscovered;
 /// the planned changes and what applying them would do that NetBox can't show (PoE switched off)
@@ -71,6 +72,8 @@ pub struct ShowDeviceData {
     /// board and planned changes (`None`: the generator failed); `None` if the device couldn't
     /// be reached
     access: Option<(Box<str>, Option<GeneratedCfg>)>,
+    /// the device the connection reached, `None` if it couldn't be reached
+    connected: Option<Connected>,
     routeros: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessRouteros>,
     /// `None` before RouterOS 7.17, or when it couldn't be read
     device_mode: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessDeviceMode>,
@@ -588,6 +591,15 @@ impl Component for ShowDevice {
                             if reachable {
                                 <dt>{t::BOARD}</dt><dd>{ board }</dd>
                             }
+                            if let Some(connected) = &data.connected {
+                                <dt>{t::CONNECTED}</dt><dd>
+                                    { t::connected(&connected.address, connected.neighbor.as_deref(), &connected.identity) }
+                                    if !connected.same_name {
+                                        <Alert inline=true r#type={AlertType::Warning}
+                                            title={t::other_identity(&connected.identity, &data.configured_name)}/>
+                                    }
+                                </dd>
+                            }
                             <dt>{target::ACCESS}</dt><dd>
                                 { target::describe(&self.alternate_target) }
                                 if reachable {
@@ -746,6 +758,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                     let data = device
                         .map(|mut d| ShowDeviceData {
                             configured_name: d.name.into_boxed_str(),
+                            connected: d.access.as_ref().map(|a| a.connected.clone()),
                             routeros: d.access.as_mut().and_then(|a| a.routeros.take()),
                             device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
                             partitions: d.access.as_mut().and_then(|a| a.partitions.take()),

@@ -217,6 +217,18 @@ impl From<&Error> for ErrorInfo {
                 "WATCHDOG_NOT_SUSPENDED",
                 vec![("device", device.to_string()), ("cause", cause.to_string())],
             ),
+            Error::WrongDevice {
+                device,
+                address,
+                other,
+            } => (
+                "WRONG_DEVICE",
+                vec![
+                    ("device", device.to_string()),
+                    ("address", address.to_string()),
+                    ("other", other.to_string()),
+                ],
+            ),
         };
         info(code, params, error)
     }

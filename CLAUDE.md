@@ -282,6 +282,13 @@ to CAPs mode (`docs/netbox-modeling.md`); `set_up` turns the CAP that mode enabl
 (`:parse`, the menus depend on the packages), since CAPsMAN refuses the first apply renaming the
 radios.
 
+Only `/system/identity` tells which device answers at an address. `AccessibleDevice::create_client`
+reads it, and one named like another NetBox device is `WrongDevice` (an address taken twice, a
+DHCP client left on), which `connect` treats as a failed way and tries the next. Any other
+identity (a factory `MikroTik` after the initial setup, an old name) only shows: the device page
+has `access.connected` (address, the neighbor the tunnel goes through, identity) and warns when
+the identity isn't the NetBox name, so the operator sees what an apply would land on.
+
 `device::update` brings RouterOS to the newest release of the channel picked in the UI
 (long-term, stable, testing, development; `routeros_channel` preselects it, long-term if unset), from
 `upgrade.mikrotik.com/routeros/NEWESTa7.<channel>` (`NEWEST7.*` stopped at 7.12.1; testing and

@@ -198,6 +198,14 @@ pub enum Error {
     /// the device or the connection answered)
     #[error("The watchdog of {device} could not be suspended: {cause}")]
     WatchdogNotSuspended { device: Box<str>, cause: Box<str> },
+    /// `address`, where `device` was looked for, answers with the identity of `other`, another
+    /// device in NetBox (an address taken twice, a DHCP client left on)
+    #[error("{address} is {other}, not {device}")]
+    WrongDevice {
+        device: Box<str>,
+        address: Box<str>,
+        other: Box<str>,
+    },
 }
 
 impl From<ResourceMutationError> for Error {

@@ -246,6 +246,13 @@ pub mod error {
                 p("ends")
             ),
             "NAME_TAKEN" => format!("{} hat schon ein Interface {}", p("device"), p("name")),
+            "WRONG_DEVICE" => format!(
+                "An {} antwortet {}, ein anderes Gerät in NetBox, nicht {}: Adresse doppelt \
+                 vergeben oder ein DHCP-Client noch aktiv?",
+                p("address"),
+                p("other"),
+                p("device")
+            ),
             "WATCHDOG_NOT_SUSPENDED" => format!(
                 "Der Watchdog von {} liess sich nicht aussetzen ({}): kein Update gestartet",
                 p("device"),
@@ -511,6 +518,20 @@ pub mod target {
 /// The device page (`pages::devices::show`).
 pub mod device {
     pub const BOARD: &str = "Board";
+    pub const CONNECTED: &str = "Verbunden mit";
+    /// the device the connection reached (`access.connected`)
+    pub fn connected(address: &str, neighbor: Option<&str>, identity: &str) -> String {
+        match neighbor {
+            Some(neighbor) => format!("„{identity}“ an {address}, über {neighbor}"),
+            None => format!("„{identity}“ an {address}"),
+        }
+    }
+    pub fn other_identity(identity: &str, name: &str) -> String {
+        format!(
+            "Das Gerät heisst „{identity}“, nicht „{name}“: vor dem Anwenden prüfen, ob es das \
+             richtige ist (nach der Ersteinrichtung heisst es noch wie ab Werk)"
+        )
+    }
     pub const ROUTEROS: &str = "RouterOS";
     pub const CHANGES: &str = "Änderungen";
     /// the card with RouterOS, device mode and partitions
