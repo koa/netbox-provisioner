@@ -19,7 +19,7 @@ use crate::{
         },
         device_mode, partitions, raw, update,
     },
-    topology::access::device::DeviceAccess,
+    topology::{PhysicalPortId, access::device::DeviceAccess},
 };
 use crate::{graphql::scalars::ScalarDuration, job::Log};
 use async_graphql::{Context, Enum, Object, SimpleObject};
@@ -692,7 +692,17 @@ impl DeviceCfg {
         } else {
             (None, None, Box::default())
         };
-        // the 60 GHz radios have their own menu (in `wireless` too)
+        // the 60 GHz radios have their own menu (in `wireless` too); such a board has no other
+        // radio, a `wlan<N>` or `wifi<N>` in NetBox is its `wlan60-<N>` misnamed
+        if !build_w60g_ports(model).is_empty()
+            && let Some(port) = device.interfaces().iter().find_map(|interface| {
+                interface
+                    .external_port()
+                    .filter(|port| matches!(port, PhysicalPortId::Wlan(_) | PhysicalPortId::Wifi(_)))
+            })
+        {
+            return Err(SetupError::PortNotFound(port));
+        }
         let (w60g_current, w60g_target) = if needed == Some(RadioPackage::Wireless)
             && !build_w60g_ports(model).is_empty()
         {

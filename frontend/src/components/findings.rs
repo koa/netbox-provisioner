@@ -194,6 +194,10 @@ impl Links<'_> {
                 self.link(&format!("ipam/prefixes/{}/", f.prefix.id), &f.prefix.prefix),
             ),
             Kind::PortLikeName(f) => t::port_like_name(self.interface(&f.interface)),
+            Kind::RadioWithoutRole(f) => t::radio_without_role(self.interface(&f.interface)),
+            Kind::LoopbackWithoutOspf(f) => {
+                t::loopback_without_ospf(self.device(&f.device), self.address(&f.address))
+            }
             Kind::VlanWithoutGroup(f) => t::vlan_without_group(
                 self.interface(&f.interface),
                 self.link(&format!("ipam/vlans/{}/", f.vlan), &t::vlan(f.vlan)),

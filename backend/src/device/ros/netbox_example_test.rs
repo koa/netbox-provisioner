@@ -59,6 +59,19 @@ pub(crate) fn example_topology() -> Arc<Topology> {
                 .or_insert_with(|| serde_json::json!({}));
         }
     }
+    // The export has the wireless links' PSKs removed: an encrypted link gets a placeholder,
+    // as the provisioner would get the real one.
+    for device in raw["data"]["device_list"].as_array_mut().into_iter().flatten() {
+        for interface in device["interfaces"].as_array_mut().into_iter().flatten() {
+            let link = &mut interface["wireless_link"];
+            let encrypted = link["auth_type"]
+                .as_str()
+                .is_some_and(|auth| !auth.is_empty() && auth != "open");
+            if encrypted && link["auth_psk"].as_str().is_none_or(str::is_empty) {
+                link["auth_psk"] = serde_json::json!("removed-from-export");
+            }
+        }
+    }
     // Exports from before circuits were queried lack them, and the ends of the circuits on
     // the cables their id: those cables end there, as they did then.
     if let Some(data) = raw["data"].as_object_mut() {

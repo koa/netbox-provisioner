@@ -89,6 +89,10 @@ Umgesetzt und abweichend vom Entwurf oben:
   Routers geht hindurch zum Router auf der anderen Seite. Im Export waren das zehn falsche Treffer.
 - Ohne Primary IPv4 ist ein Fehler, wo das Gerät `ospf` hat (Router-ID), sonst eine Warnung.
 - „Prefix ohne Prefix-Rolle“ entfällt, die Pools kommen über Tags.
+- Dazu gekommen: eine Primary IPv4 auf `lo` ohne `ospf` an irgendeinem Interface, als Fehler:
+  niemand kündigt sie an, der Provisioner erreicht das Gerät dort nicht.
+- Dazu gekommen: ein Ende eines Wireless Links ohne RF-Rolle, als Warnung. Ohne Rolle richtet
+  der Provisioner die Funkbrücke nicht ein, das Radio behält seine Konfiguration.
 - Dazu gekommen: eine WLAN ohne VLAN, als Fehler am Controller und an den APs ihrer Gruppe. Die
   CAPs legen ihre Clients in die Bridge der WLAN-VLAN und tragen sie über deren VXLAN weiter;
   ohne VLAN bekommen sie weder Bridge noch VXLAN, die Clients verbinden sich und erreichen nichts.

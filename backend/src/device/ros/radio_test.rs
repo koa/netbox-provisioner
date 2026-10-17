@@ -355,6 +355,83 @@ async fn test_radio_bridge_without_addresses_gets_a_dhcp_client() {
     );
 }
 
+/// A bridge that is an OSPF router for its management: the static address and `ospf` of its
+/// `bridge` (L2 forwarding stays), the loopback is the router ID; no DHCP client then.
+#[tokio::test]
+async fn test_radio_bridge_with_a_static_address_runs_ospf() {
+    use crate::topology::IpAddressData;
+    let mut builder = TopologyBuilder::default();
+    let device = builder.devices.next_id();
+    let mut address = |ip: &str| {
+        let id = builder.ip_addresses.next_id();
+        builder.ip_addresses.insert(
+            id,
+            IpAddressData {
+                ip: ip.parse().unwrap(),
+                interface: None,
+                prefix: None,
+            },
+        );
+        id
+    };
+    let (loopback, transfer) = (address("172.16.1.14/32"), address("172.17.0.42/29"));
+    builder.devices.insert(
+        device,
+        Device {
+            name: "schopf-burri".into(),
+            primary_ip_v4: Some(loopback),
+            loopback_ip: Some(loopback),
+            ..Default::default()
+        },
+    );
+    let bridge = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        bridge,
+        Interface {
+            name: "bridge".into(),
+            device,
+            ips: Box::new([transfer]),
+            use_ospf: true,
+            ..Default::default()
+        },
+    );
+    for (name, external, ips, bridge) in [
+        ("lo", PhysicalPortId::Loopback, vec![loopback], None),
+        ("ether1", PhysicalPortId::Ethernet(1), vec![], Some(bridge)),
+        ("wlan60-1", PhysicalPortId::W60g(1), vec![], Some(bridge)),
+    ] {
+        let id = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            id,
+            Interface {
+                name: name.into(),
+                device,
+                external: Some(external),
+                ips: ips.into(),
+                bridge,
+                ..Default::default()
+            },
+        );
+    }
+    let holder = Into::<TopologyHolder>::into(builder);
+    let device = holder.devices_by_id(device).await.expect("device");
+    let l2 = L2Setup::new(&device, EndpointNameGenerator).unwrap();
+    let (_, bridge) = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
+    let bridge = bridge.unwrap().clone();
+    let mut target = BaseDeviceDataTarget::new(b"RBwAPG-60ad").unwrap();
+    target.generate_from(&device, EndpointNameGenerator).unwrap();
+    assert!(target.dhcp_v_4_client.is_empty(), "no DHCP client");
+    let on_bridge = target
+        .ipv_4_address
+        .iter()
+        .filter(|(_, address)| address.0.interface == bridge)
+        .map(|(net, _)| net.to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(on_bridge, ["172.17.0.42/29"]);
+    let backbone = &target.ospf_interface[&(AsciiString::from("backbone-v2"),)];
+    assert_eq!(backbone.interfaces.iter().collect::<Vec<_>>(), [&bridge]);
+}
+
 #[tokio::test]
 async fn test_known_radio_boards_have_their_ports() {
     for (model, wireless, w60g) in [

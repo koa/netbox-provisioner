@@ -199,6 +199,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                         "pd" => Some(PoeMode::Pd),
                         _ => None,
                     });
+                    let wireless_link = interface.wireless_link.is_some();
                     let radio = interface
                         .rf_role
                         .as_deref()
@@ -253,6 +254,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             poe,
                             mtu: interface.mtu.and_then(|mtu| u16::try_from(mtu).ok()),
                             radio,
+                            wireless_link,
                         },
                     );
                     if let Some(vlan_id) = vlan {

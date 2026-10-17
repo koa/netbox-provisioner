@@ -374,6 +374,8 @@ pub struct Interface {
     pub mtu: Option<u16>,
     /// Set on a radio port with an RF role in NetBox (a point-to-point bridge end).
     pub radio: Option<Radio>,
+    /// An end of a NetBox wireless link, with or without RF role.
+    pub wireless_link: bool,
 }
 
 /// NetBox `poe_mode` of an interface.

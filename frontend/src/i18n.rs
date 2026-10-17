@@ -374,6 +374,12 @@ pub mod findings {
     pub fn port_like_name(interface: Html) -> Html {
         html!(<>{interface}{" ist ein physisches Interface, heisst aber nicht wie ein RouterOS-Port: Der Generator nimmt es nicht als Port."}</>)
     }
+    pub fn loopback_without_ospf(device: Html, address: Html) -> Html {
+        html!(<>{device}{" hat seine Primary IPv4 "}{address}{" auf lo, aber kein Interface mit ospf: Niemand kündigt sie an, der Provisioner erreicht das Gerät dort nicht."}</>)
+    }
+    pub fn radio_without_role(interface: Html) -> Html {
+        html!(<>{interface}{" ist ein Ende eines Wireless Links, hat aber keine RF-Rolle (AP oder Station): Der Provisioner richtet die Funkbrücke nicht ein, das Radio behält seine Konfiguration."}</>)
+    }
     pub fn vlan_without_group(interface: Html, vlan: Html) -> Html {
         html!(<>{interface}{" hat ein "}{vlan}{" ohne VLAN-Gruppe: Der Provisioner liest es nicht."}</>)
     }
@@ -1081,6 +1087,8 @@ pub mod helper {
             "AddressWithoutPrefix" => "Adresse ohne Prefix".into(),
             "DhcpPoolEmpty" => "DHCP ohne freie Adresse".into(),
             "PortLikeName" => "Name wie ein Port".into(),
+            "RadioWithoutRole" => "Funk ohne RF-Rolle".into(),
+            "LoopbackWithoutOspf" => "Loopback ohne OSPF".into(),
             "VlanWithoutGroup" => "VLAN ohne Gruppe".into(),
             "MtuMismatch" => "MTU verschieden".into(),
             "OspfOnOneEnd" => "OSPF nur an einem Ende".into(),

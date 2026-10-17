@@ -52,7 +52,8 @@ specific (ports, radio profiles, which package a board's radios need: `wireless`
 `wifi-qcom-ac`) belongs in `hw_facts.rs`. A radio stack is only read, and its package only
 installed, where NetBox needs it (`needed_radio_package`); a controller reads `WifiDeviceData`
 without radios, CAPsMAN being in the base package since 7.13. A 60 GHz radio is keyed by its
-name (`/interface/w60g` reports no `default-name`), so it is never renamed: it stays `wlan60-<N>`.
+name (`/interface/w60g` reports no `default-name`), so it is never renamed: it stays `wlan60-<N>`. A
+`wlan<N>`/`wifi<N>` in NetBox on a 60 GHz board is `PortNotFound` (its misnamed `wlan60-<N>`).
 
 `device/ros/netbox_example_test.rs` runs every RouterOS device of the stored production
 response `docs/netbox-response-example.json` (maintained by the user from the live NetBox; never
@@ -83,7 +84,11 @@ address for a pool gets no DHCP server, silently; `DhcpPoolEmpty` says so, compu
 with the generator's `device::ros::dhcp_pool_v4` (a single free address is a pool of one, it
 once was lost, so a /30 customer port got no server). A WLAN without VLAN is an error at its
 group's controller and APs (`WlanWithoutVlan`): the CAPs bridge their clients by its VLAN and
-carry them over its VXLAN, so without one the clients reach nothing (router-walter). Pool ranges are written as RouterOS reports them
+carry them over its VXLAN, so without one the clients reach nothing (router-walter). A wireless link end without RF role is a warning (`RadioWithoutRole`): the radio then keeps its
+configuration, no bridge is set up. A primary IPv4 on `lo` without `ospf` on any interface is an error
+(`LoopbackWithoutOspf`): nothing announces it, and it ends a radio bridge's DHCP fallback. A radio
+bridge is an OSPF router through a static address and `ospf` on its `bridge` (management only,
+forwarding stays L2). Pool ranges are written as RouterOS reports them
 (`pool_range`: one address alone, a range covering exactly one network as that network, CHR
 7.24.5), else the diff never gets empty. The prefix tags
 `loopback`/`transfer` (`IpPrefixData::pool`) are only used here so far.

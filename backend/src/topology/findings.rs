@@ -52,6 +52,8 @@ pub enum FindingKind {
     NoCommonSubnet(NoCommonSubnet),
     AddressWithoutOspf(AddressWithoutOspf),
     WlanWithoutVlan(WlanWithoutVlan),
+    RadioWithoutRole(RadioWithoutRole),
+    LoopbackWithoutOspf(LoopbackWithoutOspf),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
@@ -106,6 +108,14 @@ pub struct NoLoopback {
 pub struct NoPrimaryIpv4 {
     pub device: DeviceRef,
 }
+/// The primary IPv4 is on `lo`, but no interface has `ospf`: nothing announces it, so the
+/// provisioner, which connects to it, doesn't reach the device (a radio bridge that has lost
+/// its DHCP address to it).
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct LoopbackWithoutOspf {
+    pub device: DeviceRef,
+    pub address: AddressRef,
+}
 /// The primary IPv4 is not on `lo` (on `interface`, or on none).
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct PrimaryIpv4NotOnLoopback {
@@ -140,6 +150,12 @@ pub struct PrefixRef {
 /// generator doesn't take it for a port.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct PortLikeName {
+    pub interface: InterfaceRef,
+}
+/// An end of a wireless link without RF role (AP or station): the provisioner doesn't set up
+/// the radio bridge, the radio keeps the configuration it has.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct RadioWithoutRole {
     pub interface: InterfaceRef,
 }
 /// The interface has a VLAN (NetBox id `vlan`) that is in no VLAN group, so the provisioner
@@ -363,6 +379,18 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
         ),
         Some(address) => {
             let interface = address.interface();
+            if interface.as_ref().map(InterfaceAccess::name) == Some("lo")
+                && !interfaces.iter().any(InterfaceAccess::use_ospf)
+            {
+                push(
+                    Severity::Error,
+                    &this,
+                    FindingKind::LoopbackWithoutOspf(LoopbackWithoutOspf {
+                        device: device_ref(device),
+                        address: address_ref(&address),
+                    }),
+                );
+            }
             if interface.as_ref().map(InterfaceAccess::name) != Some("lo") {
                 push(
                     Severity::Warning,
@@ -426,6 +454,15 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
                 Severity::Warning,
                 &this,
                 FindingKind::PortLikeName(PortLikeName {
+                    interface: interface_ref(interface),
+                }),
+            );
+        }
+        if interface.has_wireless_link() && interface.radio().is_none() {
+            push(
+                Severity::Warning,
+                &this,
+                FindingKind::RadioWithoutRole(RadioWithoutRole {
                     interface: interface_ref(interface),
                 }),
             );
@@ -720,7 +757,12 @@ mod test {
         net.interface(net.e2).mtu = Some(2000);
         net.interface(net.e2).use_ospf = false;
         let (e1, e2) = (net.e1, net.e2);
-        let findings = net.findings();
+        // r2 has no `ospf` left at all
+        let (unannounced, findings): (Vec<_>, Vec<_>) = net
+            .findings()
+            .into_iter()
+            .partition(|f| matches!(f.kind, FindingKind::LoopbackWithoutOspf(_)));
+        assert_eq!(unannounced.len(), 1, "{unannounced:#?}");
         assert_eq!(findings.len(), 2, "{findings:#?}");
         for finding in &findings {
             assert_eq!(finding.severity, Severity::Error);
@@ -749,7 +791,11 @@ mod test {
         let (e1, e2) = (net.e1, net.e2);
         net.interface(e1).use_ospf = false;
         net.interface(e2).use_ospf = false;
-        let findings = net.findings();
+        let (unannounced, findings): (Vec<_>, Vec<_>) = net
+            .findings()
+            .into_iter()
+            .partition(|f| matches!(f.kind, FindingKind::LoopbackWithoutOspf(_)));
+        assert_eq!(unannounced.len(), 2, "{unannounced:#?}");
         assert_eq!(findings.len(), 1, "{findings:#?}");
         assert_eq!(findings[0].severity, Severity::Hint);
         assert!(matches!(findings[0].kind, FindingKind::AddressWithoutOspf(_)));
@@ -766,14 +812,31 @@ mod test {
     }
 
     /// A radio bridge device is L2 only: its end has neither address nor `ospf`, the router's
-    /// OSPF goes through it to the other side.
+    /// OSPF goes through it to the other side. With a loopback but no `ospf` nothing announces
+    /// it (schopf-burri).
     #[test]
     fn ospf_to_a_bridge_device_without_address_is_no_finding() {
         let mut net = Net::new();
-        let e2 = net.e2;
+        let (r2, e2) = (net.r2, net.e2);
         net.interface(e2).use_ospf = false;
         net.interface(e2).ips = Box::new([]);
-        assert_eq!(net.findings(), vec![]);
+        let findings = net.findings();
+        assert_eq!(findings.len(), 1, "{findings:#?}");
+        assert_eq!(findings[0].severity, Severity::Error);
+        assert_eq!(&*findings[0].devices, [r2]);
+        assert!(matches!(&findings[0].kind, FindingKind::LoopbackWithoutOspf(l)
+            if &*l.address.address == "172.16.1.2/32"));
+        // without its loopback it is reached by DHCP
+        net = Net::new();
+        net.interface(e2).use_ospf = false;
+        net.interface(e2).ips = Box::new([]);
+        net.builder.devices.get_mut(&r2).unwrap().primary_ip_v4 = None;
+        net.builder.interfaces.retain(|_, i| !(i.device == r2 && &*i.name == "lo"));
+        let findings = net.findings();
+        assert!(
+            findings.iter().all(|f| !matches!(f.kind, FindingKind::LoopbackWithoutOspf(_))),
+            "{findings:#?}"
+        );
     }
 
     #[test]
@@ -881,6 +944,47 @@ mod test {
         assert_eq!(&*findings[0].devices, [r1, r2]);
         assert!(matches!(&findings[0].kind, FindingKind::WlanWithoutVlan(w)
             if &*w.ssid == "walter" && &*w.group.name == "Spitzwies"));
+    }
+
+    /// Of the two ends of a wireless link, the one without RF role is reported.
+    #[test]
+    fn a_link_end_without_rf_role_is_a_warning() {
+        use crate::topology::{Radio, RadioRole};
+        let mut net = Net::new();
+        for (device, radio) in [
+            (net.r1, None),
+            (
+                net.r2,
+                Some(Radio {
+                    role: RadioRole::Station,
+                    frequency: None,
+                    channel_width: None,
+                    tx_power: None,
+                    link: None,
+                }),
+            ),
+        ] {
+            let id = net.builder.interfaces.next_id();
+            net.builder.interfaces.insert(
+                id,
+                Interface {
+                    name: "wlan60-1".into(),
+                    device,
+                    external: Some(PhysicalPortId::W60g(1)),
+                    port_type: Some(PortType::Wireless),
+                    radio,
+                    wireless_link: true,
+                    ..Interface::default()
+                },
+            );
+        }
+        let r1 = net.r1;
+        let findings = net.findings();
+        assert_eq!(findings.len(), 1, "{findings:#?}");
+        assert_eq!(findings[0].severity, Severity::Warning);
+        assert_eq!(&*findings[0].devices, [r1]);
+        assert!(matches!(&findings[0].kind, FindingKind::RadioWithoutRole(r)
+            if &*r.interface.name == "wlan60-1"));
     }
 
     #[test]

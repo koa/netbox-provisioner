@@ -13,8 +13,17 @@ auf beiden Seiten. Das L2 dafür entsteht wie überall aus dem NetBox-Modell (si
 [l2-generation.md](l2-generation.md)). Der Funk-Port wird dabei wie ein Ethernet-Port behandelt und
 bekommt einen eigenen Namen (`w01`); ein 60-GHz-Radio bleibt `wlan60-<N>`.
 
-Erreichbar ist eine Brücke über DHCP: ohne IP-Adresse in NetBox bekommt ihre Bridge automatisch
-einen DHCP-Client (`setup_ip_addresses`, reines L2-Gerät).
+Erreichbar ist eine Brücke auf zwei Arten:
+
+- **Als OSPF-Router** (das Ziel): das NetBox-Interface `bridge` hat eine statische Adresse im Netz
+  des Router-Ports und das Tag `ospf`, `lo` die Loopback (Primary IP, Router-ID). OSPF läuft nur
+  für das Management über die Bridge, die Nutzdaten bleiben auf L2 (`test_radio_bridge_with_a_static_address_runs_ospf`).
+- **Rein L2**: ohne IP-Adresse in NetBox bekommt ihre Bridge automatisch einen DHCP-Client
+  (`setup_ip_addresses`).
+
+Eine Loopback ohne `ospf` an irgendeinem Interface hebt das reine L2 auf (kein DHCP-Client mehr),
+ohne dass jemand sie ankündigt: das Gerät ist danach nicht erreichbar (schopf-burri). Der Befund
+`LoopbackWithoutOspf` meldet das als Fehler.
 
 Zwei RouterOS-Funktypen kommen vor, je nach Hardware:
 
@@ -111,7 +120,12 @@ bei jedem Abgleich wieder als Änderung. Das Setzen ist harmlos, weil der Wert g
 
 `DeviceCfg::fetch_with_board_model` liest `/interface/wireless` nur, wenn das Paket `wireless`
 installiert ist, und `/interface/w60g` nur auf einem Board mit 60-GHz-Ports (`build_w60g_ports`).
-Ein Funk-Port, den NetBox nennt, das Board aber nicht hat, ergibt `PortNotFound`.
+Ein Funk-Port, den NetBox nennt, das Board aber nicht hat, ergibt `PortNotFound`. Auf einem
+60-GHz-Board gilt das auch für `wlan<N>` und `wifi<N>`: es hat nur `wlan60-<N>`, ein so benannter
+Port ist sein falsch benanntes 60-GHz-Radio (ohne die Prüfung käme ein Bridge-Port auf ein
+Interface, das es nicht gibt).
+
+Ein Ende eines Wireless Links ohne RF-Rolle meldet der Befund `RadioWithoutRole` (Warnung).
 
 ## Prüfung
 
