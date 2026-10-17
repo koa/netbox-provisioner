@@ -166,19 +166,23 @@ mod test {
         assert_eq!(routes.in_use("192.168.100.10".parse().unwrap(), pool), None);
     }
 
-    /// Without a management proxy the core routers are asked, the proxy's device first.
+    /// Without a management proxy the routers with the most OSPF interfaces are asked (by
+    /// count, not by name: the export changes), with one the proxy's device first.
     #[test]
     fn the_routers_with_the_most_ospf_first() {
         let topology = crate::device::ros::netbox_example_test::example_topology();
-        let names = |proxy| {
-            routers(&topology, proxy)
-                .iter()
-                .take(TRIED)
-                .map(|d| d.name().to_string())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(names(None), ["srv-router-berg", "switch-mimi", "klr-sw-1"]);
-        assert_eq!(names(Some("wrk-sw1"))[0], "wrk-sw1");
+        let ospf = |device: &DeviceAccess| device.interfaces().iter().filter(|i| i.use_ospf()).count();
+        let most = topology
+            .list_devices()
+            .filter(|d| d.has_routeros() && d.primary_ip().is_some())
+            .map(|d| ospf(&d))
+            .max()
+            .expect("a router");
+        let asked = routers(&topology, None);
+        assert_eq!(ospf(&asked[0]), most);
+        assert!(asked.windows(2).all(|pair| ospf(&pair[0]) >= ospf(&pair[1])));
+        let proxy = asked.last().expect("a router").name().to_string();
+        assert_eq!(routers(&topology, Some(&proxy))[0].name(), proxy);
     }
 
     #[test]

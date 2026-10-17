@@ -372,7 +372,10 @@ mod test {
         let plan = super::plan(&topology, &input).expect("plan");
         assert!(matches!(&plan.steps[0], PlanStep::CreateCable(c)
             if c.a.id == other_free.id().0 && c.b.id == free.id().0));
-        assert_eq!(plan.steps.len(), 3);
+        // an update for each port that has another mode
+        let updates = usize::from(other_free.poe() != Some(PoeMode::Pse))
+            + usize::from(free.poe() != Some(PoeMode::Pd));
+        assert_eq!(plan.steps.len(), 1 + updates, "{:?}", plan.steps);
     }
 
     fn device(builder: &mut TopologyBuilder, name: &str) -> DeviceId {
