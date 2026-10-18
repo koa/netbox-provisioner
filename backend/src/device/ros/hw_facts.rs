@@ -558,6 +558,21 @@ mod tests {
         assert_eq!(names, wanted);
     }
 
+    /// klr-sw-1: the module of a cage reports its shutdown temperature on its first lane only.
+    #[test]
+    fn crs354_qsfp_lanes_after_the_first_have_no_shutdown_temperature() {
+        let ports = build_ethernet_ports(b"CRS354-48G-4S+2Q+");
+        let temperatures: Vec<(String, Option<u8>)> = ports
+            .iter()
+            .filter(|port| port.default_name.to_string().starts_with("qsfpplus"))
+            .map(|port| (port.default_name.to_string(), port.data.sfp_shutdown_temperature))
+            .collect();
+        let wanted: Vec<(String, Option<u8>)> = (1..=2)
+            .flat_map(|cage| (1..=4).map(move |lane| (format!("qsfpplus{cage}-{lane}"), (lane == 1).then_some(95))))
+            .collect();
+        assert_eq!(temperatures, wanted);
+    }
+
     #[test]
     fn crs318_poe_ports_have_their_power_settings() {
         let ports = build_ethernet_ports(b"CRS318-16P-2S+");
