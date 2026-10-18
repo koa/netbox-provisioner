@@ -5,12 +5,15 @@
 //!
 //! Over a radio bridge a port sees the router on the other side, not the bridge device (its
 //! L2 bridge doesn't announce itself there), so a cable to a bridge device is only checked
-//! when the device sees something NetBox has nowhere near that port.
+//! when the device sees something NetBox has nowhere near that port. A radio port sees across
+//! the air (walter-schopf's `wlan60-1` saw router-schopf behind the other end), where NetBox has
+//! a wireless link, not a cable: no cable is checked there.
 use crate::{
     Error,
     device::raw::{Row, field, rows},
     topology::{
         DeviceRole,
+        PhysicalPortId,
         access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess},
         findings::{DeviceRef, InterfaceRef, Severity, device_ref, interface_ref},
     },
@@ -194,7 +197,7 @@ pub fn compare(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> 
                 }),
             });
         }
-        if known.is_empty() {
+        if known.is_empty() || interface.is_some_and(is_radio) {
             continue;
         }
         if far_ends.is_empty() {
@@ -278,6 +281,16 @@ pub(crate) fn port_named(device: &DeviceAccess, name: &str) -> Option<InterfaceA
                 })
         })
     })
+}
+
+/// A radio port: what it sees is across the air.
+fn is_radio(interface: &InterfaceAccess) -> bool {
+    interface.has_wireless_link()
+        || interface.radio().is_some()
+        || matches!(
+            interface.external_port(),
+            Some(PhysicalPortId::Wifi(_) | PhysicalPortId::Wlan(_) | PhysicalPortId::W60g(_))
+        )
 }
 
 /// A device that only bridges (a radio link end): it doesn't show up as neighbor of the port
@@ -484,6 +497,15 @@ mod test {
         let kinds = net.compare(&[]);
         assert!(matches!(&kinds[..], [NeighborFindingKind::NeighborNotSeen(n)]
             if &*n.far_end.device.name == "r2"), "{kinds:#?}");
+    }
+
+    /// A radio port sees the router behind the other end of its link: no cable is missing.
+    #[test]
+    fn a_radio_port_needs_no_cable() {
+        let mut net = net();
+        port(&mut net.builder, net.r1, "wlan60-1");
+        let seen = seen("wlan60-1", "r2", "ether1");
+        assert_eq!(net.compare(&[seen]), vec![]);
     }
 
     /// A radio bridge doesn't announce itself, the router on the other side shows up instead.
