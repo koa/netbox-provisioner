@@ -565,6 +565,17 @@ fn setup_commands(
         ));
     }
     let address = setup.address;
+    // A DHCP client holding the address (a factory or old config; link-5-station) keeps
+    // RouterOS from adding it statically ("already have such address"), and the setup's check
+    // counts the lease as there: the apply then either fails on the address or takes the
+    // lease, and the connection, away with the client. Off over mac-telnet, this needs no IP.
+    commands.push(format!(
+        "{{:local n 0; :foreach c in=[/ip dhcp-client find disabled=no] do={{\
+         :if ([/ip dhcp-client get $c address] = \"{address}\") do={{\
+         :put (\"dhcp-client on \" . [/ip dhcp-client get $c interface] . \" disabled: it held {address}\"); \
+         /ip dhcp-client disable $c}}}}; \
+         :while (([:len [/ip address find address=\"{address}\" dynamic=yes]] > 0) && ($n < 10)) do={{:delay 1s; :set n ($n + 1)}}}}"
+    ));
     if setup.on_bridge {
         commands.push(format!(
             "{{:local i \"{port}\"; :local p [/interface bridge port find interface=\"{port}\"]; \

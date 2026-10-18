@@ -263,7 +263,12 @@ apply brings OSPF. It tries every neighbor of `bootstrap::plans` in turn, the ma
 proxy's device first: another neighbor may be cut off itself. Every generated config has `/ip
 ssh forwarding-enabled=local` for that; without it RouterOS never answers the forward (no
 refusal), hence the timeout in `Tunnel::open`. `bootstrap::wait_for_api` limits each try and makes the tunnel
-again after one that ran out (the setup of link-5-ap hung there for good). Don't go back to static return routes on the device: with
+again after one that ran out (the setup of link-5-ap hung there for good). A DHCP client holding the setup address (link-5-station's old config, served across the radio
+link) is turned off by the setup, which `:put`s that into the console log: RouterOS refuses the
+address statically next to the lease ("already have such address", CHR 7.24.5), and the
+address check counts the lease, so the apply would fail on the address or remove the client and
+the lease with it, cutting its own connection (`mac_telnet_setup_takes_the_address_from_a_dhcp_client`).
+Don't go back to static return routes on the device: with
 `redistribute=static` they go out as /32s that beat the neighbors' connected networks. When the
 mac-telnet session ends early, the following lines land on the neighbor's own console (this
 once left setup routes on lab-np1), so every setup command is wrapped to do nothing where the

@@ -294,3 +294,122 @@ async fn mac_telnet_setup_survives_a_stalled_device() {
     }
     assert!(found, "no 192.168.77.2/30 on the target");
 }
+
+/// Runs `command` with `attributes`, printing the answers.
+async fn run(device: &MikrotikDevice<SimpleResult>, command: &str, attributes: &[(&str, &str)]) {
+    let mut stream = device
+        .send_command(
+            command.as_bytes(),
+            |cmd| {
+                attributes
+                    .iter()
+                    .fold(cmd, |cmd, (k, v)| cmd.attribute(k.as_bytes(), v.as_bytes()))
+            },
+            (),
+        )
+        .await;
+    while let Some(r) = stream.next().await {
+        eprintln!("{command}: {r:?}");
+    }
+}
+
+/// The rows of `/ip/address/print` with `address`: whether each is dynamic.
+async fn address_rows(device: &MikrotikDevice<SimpleResult>, address: &str) -> Vec<bool> {
+    let mut stream = device.send_simple_command(b"/ip/address/print".as_slice(), ()).await;
+    let mut rows = Vec::new();
+    while let Some(row) = stream.next().await {
+        if let SimpleResult::Sentence(row) = &row
+            && row.get("address").and_then(|v| v.as_deref()) == Some(address)
+        {
+            rows.push(row.get("dynamic").and_then(|v| v.as_deref()) == Some("true"));
+        }
+    }
+    rows
+}
+
+/// A device whose bridge holds the setup address from DHCP (link-5-station: its old config's
+/// client, served by the router on the other side of the radio link): RouterOS refuses the
+/// address statically next to the lease, so the setup turns the client off and adds it.
+#[tokio::test]
+#[ignore]
+async fn mac_telnet_setup_takes_the_address_from_a_dhcp_client() {
+    if nix_unavailable() {
+        eprintln!("skipping: `nix` is not available in this environment");
+        return;
+    }
+    let golden = ensure_golden_image(&crate::cache_dir(), crate::TEST_PASSWORD)
+        .await
+        .expect("golden image build failed");
+    let work_dir = std::env::temp_dir().join("chr-network-mac-telnet-dhcp-test");
+    let link = free_tcp_port().unwrap();
+    let entry = boot_node(&golden, &work_dir, "entry", &[PortWiring::Listen(link)], crate::TEST_PASSWORD)
+        .await
+        .expect("entry boot failed");
+    let target = boot_node(&golden, &work_dir, "target", &[PortWiring::Connect(link)], crate::TEST_PASSWORD)
+        .await
+        .expect("target boot failed");
+    let entry_api = entry.connect_api(crate::TEST_PASSWORD).await.expect("entry api");
+    let target_api = target.connect_api(crate::TEST_PASSWORD).await.expect("target api");
+    let address = "192.168.77.4/29";
+    run(&entry_api, "/ip/address/add", &[("address", "192.168.77.1/29"), ("interface", "ether2")]).await;
+    run(&entry_api, "/ip/pool/add", &[("name", "one"), ("ranges", "192.168.77.4")]).await;
+    run(&entry_api, "/ip/dhcp-server/network/add", &[("address", "192.168.77.0/29"), ("gateway", "192.168.77.1")]).await;
+    run(&entry_api, "/ip/dhcp-server/add", &[("name", "lan"), ("interface", "ether2"), ("address-pool", "one")]).await;
+    run(&entry_api, "/ip/ssh/set", &[("forwarding-enabled", "local")]).await;
+    run(&target_api, "/interface/bridge/add", &[("name", "bridge-lan")]).await;
+    run(&target_api, "/interface/bridge/port/add", &[("bridge", "bridge-lan"), ("interface", "ether2")]).await;
+    run(&target_api, "/ip/dhcp-client/add", &[("interface", "bridge-lan")]).await;
+    wait_until(
+        || async { Ok(address_rows(&target_api, address).await == [true]) },
+        Duration::from_secs(120),
+    )
+    .await
+    .expect("no lease on the target");
+
+    let mut terminal = Terminal::connect(
+        ([127, 0, 0, 1], entry.ssh_port).into(),
+        "admin",
+        Some(crate::TEST_PASSWORD),
+    )
+    .await
+    .expect("ssh to entry");
+    terminal.hide(crate::TEST_PASSWORD);
+    let setup = MacTelnetSetup {
+        macs: [mac_of(target.index, 1)].into(),
+        port: "ether2".into(),
+        address: address.parse().unwrap(),
+        on_bridge: true,
+        neighbor_port: Some("ether2".into()),
+        neighbor_address: "192.168.77.1".parse().unwrap(),
+    };
+    let result = set_up(&mut terminal, &setup, "admin", crate::TEST_PASSWORD).await;
+    let transcript = terminal.transcript();
+    eprintln!("--- transcript ---\n{transcript}");
+    result.unwrap_or_else(|e| panic!("setup failed: {e}"));
+    terminal.close().await;
+    assert!(transcript.contains("disabled: it held 192.168.77.4/29"), "{transcript}");
+
+    assert_eq!(address_rows(&target_api, address).await, [false], "the static address only");
+    let mut clients = target_api.send_simple_command(b"/ip/dhcp-client/print".as_slice(), ()).await;
+    while let Some(row) = clients.next().await {
+        if let SimpleResult::Sentence(row) = &row
+            && row.get("interface").and_then(|v| v.as_deref()) == Some("bridge-lan")
+        {
+            assert_eq!(row.get("disabled").and_then(|v| v.as_deref()), Some("true"), "{row:?}");
+        }
+    }
+    let ssh = tokio::net::TcpStream::connect(("127.0.0.1", entry.ssh_port))
+        .await
+        .expect("ssh to entry");
+    let tunnel = Tunnel::connect_with_stream(ssh, "admin", Some(crate::TEST_PASSWORD))
+        .await
+        .expect("tunnel to entry");
+    let stream = tunnel.open("192.168.77.4".parse().unwrap(), 8728).await.expect("tunnel");
+    MikrotikDevice::<SimpleResult>::connect_with_stream(
+        stream,
+        b"admin",
+        Some(crate::TEST_PASSWORD.as_bytes()),
+    )
+    .await
+    .expect("API through the entry at the static address");
+}
