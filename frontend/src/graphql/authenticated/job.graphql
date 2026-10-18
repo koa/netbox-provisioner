@@ -28,6 +28,7 @@ query JobEvents($id: Int!, $after: Int){
                 ... on UpdateDone { from to }
                 ... on ApplyPlanned { script }
                 ... on FallbackArmed { delay radioWait }
+                ... on FallbackUnavailable { deviceMode }
                 ... on ApplyRunning { timeout error { ...Problem } }
                 ... on ApplyWritten { lead }
                 ... on ApplyStarted { startsIn error { ...Problem } }

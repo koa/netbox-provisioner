@@ -25,8 +25,13 @@ fn backup_file() -> String {
 }
 
 /// Saves the backup and schedules loading it in `delay`. A fallback left from an apply the
-/// provisioner didn't see to the end is replaced.
-pub async fn arm(raw: &RawDevice<SimpleResult>, delay: Duration) -> Result<(), Error> {
+/// provisioner didn't see to the end is replaced. `Some(mode)` and nothing saved where the
+/// device mode `mode` has the scheduler off (`home`): RouterOS refuses the entry ("not allowed
+/// by device-mode", berghof-hansueli, 7.21.5), so there is no fallback.
+pub async fn arm(raw: &RawDevice<SimpleResult>, delay: Duration) -> Result<Option<Box<str>>, Error> {
+    if let Some(mode) = without_scheduler(raw).await? {
+        return Ok(Some(mode));
+    }
     remove_scheduler(raw).await?;
     // encrypted, should the file be copied off the device; the password is only in the
     // scheduler entry
@@ -66,7 +71,20 @@ pub async fn arm(raw: &RawDevice<SimpleResult>, delay: Duration) -> Result<(), E
         ],
     )
     .await?;
-    Ok(())
+    Ok(None)
+}
+
+/// The device mode, where it has the scheduler off; `None` with the scheduler on, or before
+/// RouterOS 7.17, which has no device mode.
+async fn without_scheduler(raw: &RawDevice<SimpleResult>) -> Result<Option<Box<str>>, Error> {
+    let mode = match rows(raw, "/system/device-mode/print").await {
+        Ok(rows) => rows.into_iter().next(),
+        Err(Error::Refused(_)) => None,
+        Err(error) => return Err(error),
+    };
+    Ok(mode
+        .filter(|mode| field(mode, "scheduler") == Some("false"))
+        .map(|mode| field(&mode, "mode").unwrap_or_default().into()))
 }
 
 /// Takes the fallback away: the device is reachable with the new config.

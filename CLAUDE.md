@@ -562,7 +562,11 @@ fallback, `docs/concepts/update-fallback.md`). A change needs a confirmation at 
 cancels it and a warm reboot doesn't confirm (CHR 7.24.5), so the `DeviceMode` job holds the
 connection until the device goes down, sends only features that are off (an update changing
 nothing counts down too), and is done when the device mode reads back with them on
-(`device_mode_change_confirmed_by_a_cold_boot`, `RunningNode::power_cycle`).
+(`device_mode_change_confirmed_by_a_cold_boot`, `RunningNode::power_cycle`). Without the
+scheduler (`home`) RouterOS refuses a scheduler entry ("not allowed by device-mode",
+berghof-hansueli 7.21.5): the apply then goes on without a fallback, a warning in the job
+(`FallbackUnavailable`, `fallback::arm` reads the device mode first and saves no backup), with
+nothing to stop or leave afterwards, in a batch too (`home_mode_has_no_fallback`).
 
 With `partitions` on, the `Repartition` job (`device::partitions::repartition`) splits a single
 partition of 128 MiB or more in two (`/partitions repartition partitions=2`: reboot, reformat).

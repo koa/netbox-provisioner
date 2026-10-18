@@ -366,6 +366,13 @@ pub struct FallbackArmed {
     pub radio_wait: Option<ScalarDuration>,
 }
 
+/// No fallback: the device mode `device_mode` has the scheduler off (Device-Mode on the device
+/// page). The apply goes on; should it cut the device off, nothing brings the old config back.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct FallbackUnavailable {
+    pub device_mode: Box<str>,
+}
+
 /// The script runs on the device, or stopped at the line of `error`; the apply waits up to
 /// `timeout` for the device to be in line.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -514,19 +521,23 @@ pub(crate) async fn write_script(
 }
 
 /// Saves the backup the device loads in `delay` unless the fallback is taken away
-/// (`FallbackArmed`, with the part of it for a radio to come back), over `raw`.
+/// (`FallbackArmed`, with the part of it for a radio to come back), over `raw`; `false` where
+/// the device mode doesn't allow it (`FallbackUnavailable`), a warning only.
 pub(crate) async fn arm_fallback_on(
     raw: &RawDevice<SimpleResult>,
     delay: Duration,
     radio_wait: Option<Duration>,
     log: &Log,
-) -> Result<(), Error> {
-    fallback::arm(raw, delay).await?;
+) -> Result<bool, Error> {
+    if let Some(device_mode) = fallback::arm(raw, delay).await? {
+        log.emit(FallbackUnavailable { device_mode });
+        return Ok(false);
+    }
     log.emit(FallbackArmed {
         delay: delay.into(),
         radio_wait: radio_wait.map(Into::into),
     });
-    Ok(())
+    Ok(true)
 }
 
 /// Starts the script [`write_script`] left, in the background (`:execute`,
@@ -644,12 +655,12 @@ impl AccessibleDevice {
         let radio_wait = planned.radio_wait();
         let delay = CONFIG.apply_fallback() + radio_wait.unwrap_or_default();
         let fires = Instant::now() + delay;
-        self.arm_fallback(delay, radio_wait, log).await?;
+        let armed = self.arm_fallback(delay, radio_wait, log).await?;
         self.run_script(&planned, SCRIPT_ANSWER, log).await;
         // cancelled from here on, the fallback stays
         let wait = async |time| {
             let waited = log.unless_cancelled(tokio::time::sleep(time)).await;
-            if waited.is_err() {
+            if waited.is_err() && armed {
                 fallback_left(log, fires, FallbackLeftReason::Cancelled, None);
             }
             waited
@@ -666,10 +677,10 @@ impl AccessibleDevice {
             }
         };
         emit_checked(log, &remaining);
-        if remaining.is_ok() {
-            self.stop_fallback(fires, delay, log).await?;
-        } else {
-            fallback_left(log, fires, FallbackLeftReason::NotReached, None);
+        match (armed, remaining.is_ok()) {
+            (false, _) => {}
+            (true, true) => self.stop_fallback(fires, delay, log).await?,
+            (true, false) => fallback_left(log, fires, FallbackLeftReason::NotReached, None),
         }
         self.after_apply(&planned, log).await
     }
@@ -687,13 +698,13 @@ impl AccessibleDevice {
         Ok(PlannedApply { cfg, script, restarts_radio })
     }
     /// Saves the backup the device loads in `delay` unless the fallback is taken away
-    /// (`FallbackArmed`).
+    /// (`FallbackArmed`); `false` where the device mode doesn't allow it.
     pub(crate) async fn arm_fallback(
         &self,
         delay: Duration,
         radio_wait: Option<Duration>,
         log: &Log,
-    ) -> Result<(), Error> {
+    ) -> Result<bool, Error> {
         arm_fallback_on(&self.connect_again::<SimpleResult>().await?, delay, radio_wait, log).await
     }
     /// Runs `planned` as a script on the device, waiting up to `answer` for it to answer

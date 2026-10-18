@@ -81,13 +81,13 @@ pub(crate) trait Applying: Send + Sync {
     /// How much longer the fallback waits for a radio the plan changes, if it does.
     fn radio_wait(&self) -> Option<Duration>;
     /// Sets up the fallback, firing in `delay`, `radio_wait` of it for a radio
-    /// (`FallbackArmed`).
+    /// (`FallbackArmed`); `false` where the device mode doesn't allow one (`FallbackUnavailable`).
     fn arm(
         &self,
         delay: Duration,
         radio_wait: Option<Duration>,
         log: &Log,
-    ) -> impl Future<Output = Result<(), Error>> + Send;
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
     /// Leaves the script on the device, applying `lead` after it starts (`ApplyWritten`).
     fn write(&self, lead: Duration, log: &Log) -> impl Future<Output = Result<(), Error>> + Send;
     /// Starts the script; `true` once it runs.
@@ -140,7 +140,7 @@ impl Applying for Linked {
     fn radio_wait(&self) -> Option<Duration> {
         self.reached().planned.radio_wait()
     }
-    async fn arm(&self, delay: Duration, radio_wait: Option<Duration>, log: &Log) -> Result<(), Error> {
+    async fn arm(&self, delay: Duration, radio_wait: Option<Duration>, log: &Log) -> Result<bool, Error> {
         arm_fallback_on(&self.reached().control, delay, radio_wait, log).await
     }
     async fn write(&self, lead: Duration, log: &Log) -> Result<(), Error> {
@@ -216,6 +216,8 @@ struct Running<M> {
     name: Box<str>,
     log: Log,
     member: M,
+    /// whether it has a fallback: not where the device mode has the scheduler off
+    fallback: bool,
     /// what the check after the scripts found: `None` while the device isn't in line, or
     /// can't be reached
     checked: Option<Result<Box<str>, Error>>,
@@ -283,6 +285,7 @@ pub(crate) async fn run<M: Applying>(
                 name: names[index].clone(),
                 log: logs[index].clone(),
                 member,
+                fallback: true,
                 checked: None,
             }),
             Err(error) if failure.is_none() => failure = Some((index, error)),
@@ -313,12 +316,15 @@ pub(crate) async fn run<M: Applying>(
         }
         .await;
         match armed {
-            Ok(()) => (true, m.member.write(timing.lead, &m.log).await),
-            Err(error) => (false, Err(error)),
+            Ok(fallback) => (Some(fallback), m.member.write(timing.lead, &m.log).await),
+            Err(error) => (None, Err(error)),
         }
     }))
     .await;
-    let armed: Vec<bool> = prepared.iter().map(|(armed, _)| *armed).collect();
+    for (m, (fallback, _)) in running.iter_mut().zip(&prepared) {
+        m.fallback = fallback.unwrap_or(false);
+    }
+    let armed: Vec<bool> = running.iter().map(|m| m.fallback).collect();
     if let Some((failed, error)) = first_failure(prepared.into_iter().map(|(_, r)| r).collect()) {
         // nothing applied yet: taking it away is all there is to do
         take_back(&running, &armed, fires, delay).await;
@@ -412,7 +418,11 @@ pub(crate) async fn run<M: Applying>(
         .collect();
     if unreached.is_empty() && not_applied.is_empty() {
         let stopped = join_all(running.iter().map(|m| async {
-            match m.member.stop(fires, delay, &m.log).await {
+            let stopped = match m.fallback {
+                true => m.member.stop(fires, delay, &m.log).await,
+                false => Ok(()),
+            };
+            match stopped {
                 Ok(()) => m.member.after(&m.log).await,
                 Err(error) => Err(error),
             }
@@ -442,7 +452,9 @@ pub(crate) async fn run<M: Applying>(
             } else {
                 FallbackLeftReason::BatchIncomplete
             };
-            fallback_left(&member.log, fires, reason, None);
+            if member.fallback {
+                fallback_left(&member.log, fires, reason, None);
+            }
             results[member.index] = Some(Err(Error::BatchIncomplete(list.clone())));
         }
     }
@@ -471,7 +483,9 @@ fn left_cancelled<M>(
     finish: impl FnOnce(Vec<Option<Result<(), Error>>>) -> Vec<Result<(), Error>>,
 ) -> Vec<Result<(), Error>> {
     for member in running {
-        fallback_left(&member.log, fires, FallbackLeftReason::Cancelled, None);
+        if member.fallback {
+            fallback_left(&member.log, fires, FallbackLeftReason::Cancelled, None);
+        }
         results[member.index] = Some(Err(Error::Cancelled));
     }
     finish(results)
@@ -533,6 +547,8 @@ mod run_test {
         left: bool,
         /// its plan changes a radio
         radio: bool,
+        /// its device mode has the scheduler off: no fallback
+        no_scheduler: bool,
         calls: Arc<Mutex<Vec<String>>>,
         delays: Arc<Mutex<Vec<Duration>>>,
     }
@@ -555,10 +571,11 @@ mod run_test {
         fn radio_wait(&self) -> Option<Duration> {
             self.radio.then_some(Duration::from_millis(200))
         }
-        async fn arm(&self, delay: Duration, _radio_wait: Option<Duration>, _log: &Log) -> Result<(), Error> {
+        async fn arm(&self, delay: Duration, _radio_wait: Option<Duration>, _log: &Log) -> Result<bool, Error> {
             self.delays.lock().unwrap().push(delay);
             self.call("arm");
-            self.fails(self.arm_fails)
+            self.fails(self.arm_fails)?;
+            Ok(!self.no_scheduler)
         }
         async fn write(&self, _lead: Duration, _log: &Log) -> Result<(), Error> {
             self.call("write");
@@ -638,6 +655,22 @@ mod run_test {
             ]
         );
         assert!(results.iter().all(Result::is_ok), "{results:?}");
+    }
+
+    /// A device whose device mode has the scheduler off has no fallback to take away or leave.
+    #[tokio::test]
+    async fn a_device_without_scheduler_has_no_fallback_to_stop() {
+        let (calls, results, _) = batch(Fake { no_scheduler: true, ..Fake::default() }, Fake::default()).await;
+        assert!(calls.contains(&"stop far".to_string()), "{calls:?}");
+        assert!(!calls.contains(&"stop near".to_string()), "{calls:?}");
+        assert!(results.iter().all(Result::is_ok), "{results:?}");
+        let (_, _, logs) = batch(
+            Fake { no_scheduler: true, ..Fake::default() },
+            Fake { lost: true, ..Fake::default() },
+        )
+        .await;
+        assert_eq!(left(&logs[0]), []);
+        assert_eq!(left(&logs[1]), [FallbackLeftReason::NotReached]);
     }
 
     #[tokio::test]

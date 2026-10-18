@@ -855,6 +855,13 @@ pub mod job {
                 None => text,
             }
         }
+        pub fn fallback_unavailable(device_mode: &str) -> String {
+            format!(
+                "Ohne Fallback: Der Device-Mode {device_mode} hat den Scheduler aus (Device-Mode \
+                 anpassen auf der Geräteseite). Schneidet das Anwenden das Gerät ab, holt nichts \
+                 die alte Konfiguration zurück"
+            )
+        }
         pub fn script_stopped(error: &str, seconds: u64) -> String {
             format!(
                 "Das Skript hat angehalten ({error}), die Zeilen davor sind angewendet; wartet bis zu {seconds} s auf das Gerät"

@@ -132,3 +132,67 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
         [Event::DeviceModeChanged(DeviceModeChanged { changes: vec![] })]
     );
 }
+
+/// In the device mode `home` the scheduler is off: RouterOS refuses a scheduler entry ("not
+/// allowed by device-mode", berghof-hansueli 7.21.5), so an apply has no fallback. `arm` says
+/// so instead of failing, and leaves no backup behind.
+#[tokio::test]
+#[ignore]
+async fn home_mode_has_no_fallback() {
+    if nix_unavailable() {
+        eprintln!("skipping: `nix` is not available in this environment");
+        return;
+    }
+    let golden = ensure_golden_image(&crate::cache_dir(), crate::TEST_PASSWORD)
+        .await
+        .expect("golden image build failed");
+    let work_dir = std::env::temp_dir().join("chr-network-home-mode-test");
+    let mut node = boot_node(&golden, &work_dir, "home", &[], crate::TEST_PASSWORD)
+        .await
+        .expect("node boot failed");
+    // the update counts down as long as its connection stays open; a cold boot confirms it
+    let counting = node.connect_api(crate::TEST_PASSWORD).await.expect("api");
+    let update = tokio::spawn(async move {
+        let mut answers = counting
+            .send_command(
+                b"/system/device-mode/update".as_slice(),
+                |cmd| cmd.attribute(b"mode".as_slice(), b"home".as_slice()),
+                (),
+            )
+            .await;
+        while answers.next().await.is_some() {}
+    });
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    node.power_cycle().await.expect("power cycle");
+    update.abort();
+    assert_eq!(feature(&node, "mode").await, "home");
+    assert_eq!(feature(&node, "scheduler").await, "false");
+
+    let device = node.connect_api(crate::TEST_PASSWORD).await.expect("api");
+    let mut answers = device
+        .send_command(
+            b"/system/scheduler/add".as_slice(),
+            |cmd| {
+                cmd.attribute(b"name".as_slice(), b"probe".as_slice())
+                    .attribute(b"interval".as_slice(), b"1h".as_slice())
+                    .attribute(b"on-event".as_slice(), b":nothing".as_slice())
+            },
+            (),
+        )
+        .await;
+    let mut refused = Vec::new();
+    while let Some(answer) = answers.next().await {
+        refused.push(format!("{answer:?}"));
+    }
+    assert!(refused.iter().any(|a| a.contains("device-mode")), "{refused:?}");
+    let armed = backend::device::ros::fallback::arm(&device, Duration::from_secs(60))
+        .await
+        .expect("arm");
+    assert_eq!(armed.as_deref(), Some("home"));
+    let mut files = device.send_simple_command(b"/file/print".as_slice(), ()).await;
+    while let Some(file) = files.next().await {
+        assert!(!format!("{file:?}").contains("netbox-provisioner"), "{file:?}");
+    }
+    // taking a fallback away that isn't there works too
+    backend::device::ros::fallback::disarm(&device).await.expect("disarm");
+}

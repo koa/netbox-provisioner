@@ -55,6 +55,7 @@ pub enum Event {
     UpdateDone(update::UpdateDone),
     ApplyPlanned(apply::ApplyPlanned),
     FallbackArmed(apply::FallbackArmed),
+    FallbackUnavailable(apply::FallbackUnavailable),
     ApplyRunning(apply::ApplyRunning),
     ApplyWritten(apply::ApplyWritten),
     ApplyStarted(apply::ApplyStarted),
