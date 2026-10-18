@@ -14,7 +14,7 @@ use crate::{
     error_info::ErrorInfo,
     Error,
     device::{
-        self, bootstrap, device_mode, partitions, power, ros::graphql as apply, terminal, update,
+        self, batch, bootstrap, device_mode, partitions, power, ros::graphql as apply, terminal, update,
         update_fallback, watchdog,
     },
     graphql::scalars::ScalarDuration,
@@ -56,10 +56,15 @@ pub enum Event {
     ApplyPlanned(apply::ApplyPlanned),
     FallbackArmed(apply::FallbackArmed),
     ApplyRunning(apply::ApplyRunning),
+    ApplyWritten(apply::ApplyWritten),
+    ApplyStarted(apply::ApplyStarted),
     ApplyChecked(apply::ApplyChecked),
     FallbackStopped(apply::FallbackStopped),
     FallbackLeft(apply::FallbackLeft),
     RadiosReprovisioned(apply::RadiosReprovisioned),
+    BatchApply(batch::BatchApply),
+    BatchStopped(batch::BatchStopped),
+    BatchIncomplete(batch::BatchIncomplete),
     SetupStarted(bootstrap::SetupStarted),
     ConsoleOutput(terminal::ConsoleOutput),
     WaitingForApi(bootstrap::WaitingForApi),
@@ -244,6 +249,13 @@ impl Job {
     fn state(&self) -> JobState {
         self.outcome.lock().expect("job outcome").0
     }
+    fn finish_with(&self, result: Result<(), Error>) {
+        match result {
+            Ok(()) => self.finish(JobState::Done, None),
+            Err(Error::Cancelled) => self.finish(JobState::Cancelled, None),
+            Err(error) => self.finish(JobState::Failed, Some(ErrorInfo::from(&error))),
+        }
+    }
     fn finish(&self, state: JobState, error: Option<ErrorInfo>) {
         *self.took.lock().expect("job time") = Some(self.log.started.elapsed());
         match &error {
@@ -265,8 +277,55 @@ where
 {
     let log = Log::new(device.name());
     let work = work(log.clone());
-    let job = {
-        let mut jobs = JOBS.lock().expect("jobs");
+    let job = register(&[(device, log)], kind)?.swap_remove(0);
+    let running = job.clone();
+    tokio::spawn(async move {
+        let result = run(work).await;
+        running.finish_with(result);
+    });
+    Ok(job)
+}
+
+/// Starts `work` for all of `devices` together (a batch), each with a job of its own, unless
+/// one of them runs a job already. `work` gets their logs in the order of `devices` and gives
+/// back each job's outcome in that order.
+pub fn start_all<F>(
+    devices: &[DeviceAccess],
+    kind: JobKind,
+    work: impl FnOnce(Vec<Log>) -> F,
+) -> Result<Vec<Arc<Job>>, Error>
+where
+    F: Future<Output = Vec<Result<(), Error>>> + Send + 'static,
+{
+    let logs: Vec<Log> = devices.iter().map(|device| Log::new(device.name())).collect();
+    let work = work(logs.clone());
+    let members: Vec<_> = devices.iter().zip(logs).collect();
+    let jobs = register(&members, kind)?;
+    let running = jobs.clone();
+    tokio::spawn(async move {
+        match run(async move { Ok(work.await) }).await {
+            Ok(results) => {
+                let mut results = results.into_iter();
+                for job in &running {
+                    job.finish_with(results.next().unwrap_or(Ok(())));
+                }
+            }
+            Err(Error::Cancelled) => running.iter().for_each(|job| job.finish(JobState::Cancelled, None)),
+            Err(error) => {
+                let error = ErrorInfo::from(&error);
+                for job in &running {
+                    job.finish(JobState::Failed, Some(error.clone()));
+                }
+            }
+        }
+    });
+    Ok(jobs)
+}
+
+/// Adds a running job for each of `members`, none if one of their devices runs a job already.
+fn register(members: &[(&DeviceAccess, Log)], kind: JobKind) -> Result<Vec<Arc<Job>>, Error> {
+    let mut jobs = JOBS.lock().expect("jobs");
+    for (device, _) in members {
         if jobs
             .jobs
             .iter()
@@ -274,13 +333,16 @@ where
         {
             return Err(Error::Busy(device.name().into()));
         }
+    }
+    let mut started = Vec::new();
+    for (device, log) in members {
         jobs.next += 1;
         let job = Arc::new(Job {
             id: jobs.next,
             device: device.id(),
             device_name: device.name().into(),
             kind,
-            log,
+            log: log.clone(),
             outcome: Mutex::new((JobState::Running, None)),
             took: Mutex::new(None),
         });
@@ -291,31 +353,28 @@ where
         {
             jobs.jobs.remove(oldest);
         }
-        job
-    };
-    info!("{}: job {} {kind:?} started", job.device_name, job.id);
-    let running = job.clone();
-    tokio::spawn(async move {
-        // a panic in the work ends the job as failed, instead of leaving it running forever
-        let result = tokio::spawn(work).await.unwrap_or_else(|join| {
-            if !join.is_panic() {
-                return Err(Error::Cancelled);
-            }
-            let panic = join.into_panic();
-            let message = panic
-                .downcast_ref::<&str>()
-                .map(|message| message.to_string())
-                .or_else(|| panic.downcast_ref::<String>().cloned())
-                .unwrap_or_default();
-            Err(Error::Panic(message.into()))
-        });
-        match result {
-            Ok(()) => running.finish(JobState::Done, None),
-            Err(Error::Cancelled) => running.finish(JobState::Cancelled, None),
-            Err(error) => running.finish(JobState::Failed, Some(ErrorInfo::from(&error))),
+        info!("{}: job {} {kind:?} started", job.device_name, job.id);
+        started.push(job);
+    }
+    Ok(started)
+}
+
+/// Runs `work`; a panic in it is an error, instead of a job left running forever.
+async fn run<T: Send + 'static>(
+    work: impl Future<Output = Result<T, Error>> + Send + 'static,
+) -> Result<T, Error> {
+    tokio::spawn(work).await.unwrap_or_else(|join| {
+        if !join.is_panic() {
+            return Err(Error::Cancelled);
         }
-    });
-    Ok(job)
+        let panic = join.into_panic();
+        let message = panic
+            .downcast_ref::<&str>()
+            .map(|message| message.to_string())
+            .or_else(|| panic.downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        Err(Error::Panic(message.into()))
+    })
 }
 
 pub fn get(id: u32) -> Option<Arc<Job>> {

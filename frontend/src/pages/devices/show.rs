@@ -1,6 +1,7 @@
 use crate::{
     components::{
         adjust_target::{AdjustTarget, SelectedTarget},
+        batch_apply::{BatchApply, BatchJob},
         job::JobView,
         menu::popup::Select,
         netbox_helper::NetboxHelper,
@@ -26,6 +27,8 @@ use patternfly_yew::prelude::{
     CodeBlockCode, Spinner, SpinnerSize, TextInput,
 };
 use yew::{Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
+use yew_nested_router::components::Link;
+use crate::pages::routes::AppRoute;
 
 pub struct ShowDevice {
     id: u32,
@@ -35,6 +38,10 @@ pub struct ShowDevice {
     /// the job shown (an update, an apply, a setup), started here or running when the page was opened
     job: Option<i64>,
     job_running: bool,
+    /// the jobs of a batch started here (this device first), shown side by side instead of `job`
+    batch_jobs: Vec<BatchJob>,
+    /// how many of them are over
+    batch_finished: usize,
     /// what the bootstrap neighbor sees on its port; `None` while it is asked
     candidates: Option<Result<Vec<Candidate>, String>>,
     /// a MAC typed in instead of picking a candidate
@@ -128,6 +135,8 @@ pub enum ShowDeviceMessage {
     SuspendWatchdogs(bool),
     JobStarted(Result<i64, FrontendError>),
     JobFinished,
+    BatchStarted(Vec<BatchJob>),
+    BatchJobFinished,
 }
 
 impl Component for ShowDevice {
@@ -142,6 +151,8 @@ impl Component for ShowDevice {
             alternate_target: Default::default(),
             job: None,
             job_running: false,
+            batch_jobs: Vec::new(),
+            batch_finished: 0,
             candidates: None,
             manual_mac: String::new(),
             channel: None,
@@ -254,6 +265,7 @@ impl Component for ShowDevice {
                     Ok(id) => {
                         self.job = Some(id);
                         self.job_running = true;
+                        self.batch_jobs.clear();
                     }
                     Err(error) => {
                         self.job_running = false;
@@ -261,6 +273,20 @@ impl Component for ShowDevice {
                     }
                 }
                 true
+            }
+            ShowDeviceMessage::BatchStarted(jobs) => {
+                self.job = None;
+                self.batch_jobs = jobs;
+                self.batch_finished = 0;
+                self.job_running = true;
+                true
+            }
+            ShowDeviceMessage::BatchJobFinished => {
+                self.batch_finished += 1;
+                if self.batch_finished >= self.batch_jobs.len() {
+                    ctx.link().send_message(ShowDeviceMessage::JobFinished);
+                }
+                false
             }
             ShowDeviceMessage::JobFinished => {
                 self.job_running = false;
@@ -295,9 +321,28 @@ impl Component for ShowDevice {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let error = self.error.as_ref().map(|e| e.to_html());
-        let job = self.job.map(|id| html! {
-            <JobView key={id} id={id} on_finished={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}/>
-        });
+        let job = if self.batch_jobs.is_empty() {
+            self.job.map(|id| html! {
+                <JobView key={id} id={id} on_finished={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}/>
+            })
+        } else {
+            Some(html! {
+                <div class="batch-jobs">
+                    { for self.batch_jobs.iter().map(|job| html! {
+                        <div class="batch-job" key={job.job}>
+                            <h3>
+                                if let Some(site) = job.site {
+                                    <Link<AppRoute> to={AppRoute::device(site as u32, job.device as u32)}>{&job.name}</Link<AppRoute>>
+                                } else {
+                                    {&job.name}
+                                }
+                            </h3>
+                            <JobView id={job.job} on_finished={ctx.link().callback(|_| ShowDeviceMessage::BatchJobFinished)}/>
+                        </div>
+                    })}
+                </div>
+            })
+        };
         // a job started before the overview is there (it reloads after each job)
         let job_fallback = job.clone();
         let target_form = html! {
@@ -659,6 +704,11 @@ impl Component for ShowDevice {
                                 label={t::APPLY}
                                 disabled={nothing_to_do || running || update_running}
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::Apply)}
+                            />
+                            <BatchApply
+                                id={self.id}
+                                disabled={running}
+                                on_started={ctx.link().callback(ShowDeviceMessage::BatchStarted)}
                             />
                         }
                     </CardBody>

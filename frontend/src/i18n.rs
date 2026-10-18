@@ -160,6 +160,16 @@ pub mod error {
                 p("cause")
             ),
             "BUSY" => format!("Auf {} läuft schon ein Auftrag", p("device")),
+            "SCRIPT_NO_ANSWER" => format!(
+                "Keine Antwort vom Skript innerhalb von {} s; es läuft auf dem Gerät weiter",
+                p("seconds")
+            ),
+            "BATCH_STOPPED" => format!("Gemeinsames Anwenden abgebrochen: {} ging nicht", p("device")),
+            "BATCH_INCOMPLETE" => format!(
+                "Nicht durch: {}; alle Geräte laden die Konfiguration von vorher",
+                p("devices")
+            ),
+            "SCRIPT_NOT_STARTED" => format!("Skript läuft nicht innerhalb von {} s nach dem Start", p("seconds")),
             "UNKNOWN_JOB" => format!("Auftrag {} gibt es nicht (mehr)", p("id")),
             "CANCELLED" => "Abgebrochen".into(),
             "PING" => format!("Ping fehlgeschlagen: {}", p("cause")),
@@ -699,6 +709,30 @@ pub mod device {
     }
 }
 
+/// Applying together with other devices (`components::batch_apply`).
+pub mod batch {
+    pub const OPEN: &str = "Gemeinsam mit anderen Geräten anwenden …";
+    pub const TITLE: &str = "Gemeinsam anwenden";
+    pub const EXPLANATION: &str = "Alle ausgewählten Geräte und dieses bekommen ihre Änderungen \
+        mit einem gemeinsamen Fallback: er wird erst weggenommen, wenn alle wieder erreichbar \
+        sind, sonst laden alle die Konfiguration von vorher. Für die beiden Enden einer \
+        Funkstrecke, die nur zusammen wieder eine Verbindung haben.";
+    pub const NO_CANDIDATES: &str = "Keine anderen RouterOS-Geräte an diesem Standort oder am \
+        anderen Ende einer Funkstrecke.";
+    pub const PARTNER: &str = "Funkstrecke";
+    pub const IN_LINE: &str = "Keine Änderungen";
+    pub const NO_ACCESS: &str = "Keine Adresse oder Zugangsdaten";
+    pub const NOT_READY: &str = "Erst wenn alle ausgewählten Geräte erreichbar sind und ihre \
+        Änderungen geladen sind.";
+    pub fn unreachable(problem: &str) -> String {
+        format!("Nicht erreichbar: {problem}")
+    }
+    /// `count` devices, this one included
+    pub fn apply(count: usize) -> String {
+        format!("{count} Geräte gemeinsam anwenden")
+    }
+}
+
 /// A job and its events (`components::job`), as the backend reports them.
 pub mod job {
     pub const CANCELLING: &str = "Wird abgebrochen …";
@@ -780,11 +814,48 @@ pub mod job {
             format!("Das Gerät lässt sich nicht prüfen: {error}")
         }
 
+        /// the devices applied together
+        pub fn batch_apply(devices: &[String]) -> String {
+            format!(
+                "Gemeinsam anwenden: {}. Die Skripte werden auf allen hinterlegt und dann gleichzeitig \
+                 gestartet, die Fallbacks werden erst weggenommen, wenn alle wieder erreichbar und \
+                 angewendet sind",
+                devices.join(", ")
+            )
+        }
+        pub fn apply_written(lead: u64) -> String {
+            format!("Skript auf dem Gerät hinterlegt; gestartet wartet es {lead} s, bis alle laufen")
+        }
+        pub fn apply_started(seconds: u64) -> String {
+            format!("Skript gestartet, wendet in {seconds} s an")
+        }
+        pub fn apply_not_started(problem: &str) -> String {
+            format!("Skript nicht gestartet: {problem}; das Gerät bleibt, wie es ist, und alle gehen zurück")
+        }
+        pub fn batch_stopped(device: &str) -> String {
+            format!("Gemeinsames Anwenden abgebrochen, bevor etwas angewendet wurde: {device} ging nicht")
+        }
+        pub fn batch_incomplete(unreached: &[String], not_applied: &[String]) -> String {
+            let mut parts = Vec::new();
+            if !unreached.is_empty() {
+                parts.push(format!("nicht wieder erreicht: {}", unreached.join(", ")));
+            }
+            if !not_applied.is_empty() {
+                parts.push(format!("nicht angewendet: {}", not_applied.join(", ")));
+            }
+            format!(
+                "Nicht alle durch ({}). Kein Fallback wird weggenommen, alle Geräte laden die \
+                 Konfiguration von vorher",
+                parts.join("; ")
+            )
+        }
         /// Why the fallback stays (`FallbackLeftReason`).
         pub enum FallbackLeft<'a> {
             Cancelled,
             NotReached,
             NotStopped(Option<String>),
+            NotApplied,
+            BatchIncomplete,
             Other(&'a str),
         }
         pub fn fallback_left(reason: FallbackLeft, seconds: u64) -> String {
@@ -795,6 +866,12 @@ pub mod job {
                     format!("Fallback lässt sich nicht stoppen ({error})")
                 }
                 FallbackLeft::NotStopped(None) => "Fallback lässt sich nicht stoppen".into(),
+                FallbackLeft::NotApplied => {
+                    "Erreichbar, aber die Änderungen sind nicht angewendet, der Fallback bleibt".into()
+                }
+                FallbackLeft::BatchIncomplete => {
+                    "Ein anderes Gerät des gemeinsamen Anwendens ist nicht durch, der Fallback bleibt".into()
+                }
                 FallbackLeft::Other(other) => format!("Fallback bleibt ({other})"),
             };
             format!(

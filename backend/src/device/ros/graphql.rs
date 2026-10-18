@@ -317,6 +317,21 @@ pub struct ApplyRunning {
     pub error: Option<ErrorInfo>,
 }
 
+/// The script is on the device, waiting for the other devices of the batch; once started, it
+/// applies after `lead`.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct ApplyWritten {
+    pub lead: ScalarDuration,
+}
+
+/// The script is started and applies in `starts_in`; `error` if it couldn't be started or
+/// wasn't seen running (the check after the batch tells whether it applied).
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct ApplyStarted {
+    pub starts_in: ScalarDuration,
+    pub error: Option<ErrorInfo>,
+}
+
 /// What the device still lacks after the apply (empty when everything was applied), or why it
 /// couldn't be checked.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -349,6 +364,11 @@ pub enum FallbackLeftReason {
     NotReached,
     /// reached, but taking the fallback away failed until shortly before it fires
     NotStopped,
+    /// reached, but not in line after a batch's script: all of the batch go back
+    NotApplied,
+    /// another device of the batch wasn't reached or isn't in line (`BatchIncomplete`): all
+    /// go back
+    BatchIncomplete,
 }
 
 /// A controller provisioned `count` CAP radios of `menu` again, since the WLANs changed (their
@@ -411,10 +431,113 @@ async fn provision_radios(
 const APPLY_SCRIPT: &str = "netbox-provisioner-apply";
 /// How long the device may take to run the script; reachable but not in line after that, the
 /// script stopped at an error.
-const APPLY_TIMEOUT: Duration = Duration::from_secs(90);
+pub(crate) const APPLY_TIMEOUT: Duration = Duration::from_secs(90);
 /// Before the fallback fires, the provisioner stops trying to reach the device: taking the
 /// fallback away just as it loads the backup would leave it half done.
-const FALLBACK_MARGIN: Duration = Duration::from_secs(30);
+pub(crate) const FALLBACK_MARGIN: Duration = Duration::from_secs(30);
+
+/// How long an apply waits for its script to answer before it goes on to check the device.
+const SCRIPT_ANSWER: Duration = APPLY_TIMEOUT;
+
+/// Leaves `planned` on the device as a script that waits `lead` before it applies
+/// (`ApplyWritten`), until [`start_script`] starts it. The batch writes all its devices'
+/// scripts first and then starts them at once, the wait is for starting all of them before
+/// the first changes cut a connection.
+pub(crate) async fn write_script(
+    raw: &RawDevice<SimpleResult>,
+    planned: &PlannedApply,
+    lead: Duration,
+    log: &Log,
+) -> Result<(), Error> {
+    let _ = raw::command(raw, "/system/script/remove", &[("numbers", APPLY_SCRIPT)]).await;
+    let source = format!(":delay {}s\n{}", lead.as_secs().max(1), planned.script);
+    raw::command(raw, "/system/script/add", &[("name", APPLY_SCRIPT), ("source", &source)]).await?;
+    log.emit(ApplyWritten { lead: lead.into() });
+    Ok(())
+}
+
+/// Saves the backup the device loads in `delay` unless the fallback is taken away
+/// (`FallbackArmed`), over `raw`.
+pub(crate) async fn arm_fallback_on(raw: &RawDevice<SimpleResult>, delay: Duration, log: &Log) -> Result<(), Error> {
+    fallback::arm(raw, delay).await?;
+    log.emit(FallbackArmed {
+        delay: delay.into(),
+    });
+    Ok(())
+}
+
+/// Starts the script [`write_script`] left, in the background (`:execute`,
+/// nothing waits on the connection), and makes sure it runs; `false` when it doesn't (yet).
+pub(crate) async fn start_script(raw: &RawDevice<SimpleResult>) -> Result<bool, Error> {
+    let run = format!("/system script run \"{APPLY_SCRIPT}\"");
+    raw::command(raw, "/execute", &[("script", &run)]).await?;
+    script_running(raw).await
+}
+
+/// Whether the apply script runs on the device.
+pub(crate) async fn script_running(raw: &RawDevice<SimpleResult>) -> Result<bool, Error> {
+    Ok(raw::rows(raw, "/system/script/job/print")
+        .await?
+        .iter()
+        .any(|job| raw::field(job, "script") == Some(APPLY_SCRIPT)))
+}
+
+/// Takes the apply script away, before it is started; nothing to do for one never written.
+pub(crate) async fn remove_script(raw: &RawDevice<SimpleResult>) -> Result<(), Error> {
+    for script in raw::rows(raw, "/system/script/print").await? {
+        if raw::field(&script, "name") == Some(APPLY_SCRIPT)
+            && let Some(id) = raw::field(&script, ".id")
+        {
+            raw::command(raw, "/system/script/remove", &[("numbers", id)]).await?;
+        }
+    }
+    Ok(())
+}
+
+/// When to stop trying to reach a device whose fallback `fires` then.
+pub(crate) fn give_up(fires: Instant) -> Instant {
+    fires.checked_sub(FALLBACK_MARGIN).unwrap_or(fires)
+}
+
+pub(crate) fn fallback_left(
+    log: &Log,
+    fires: Instant,
+    reason: FallbackLeftReason,
+    error: Option<&Error>,
+) {
+    log.emit(FallbackLeft {
+        fires_in: fires.saturating_duration_since(Instant::now()).into(),
+        reason,
+        error: error.map(ErrorInfo::from),
+    });
+}
+
+pub(crate) fn emit_checked(log: &Log, remaining: &Result<Box<str>, Error>) {
+    log.emit(match remaining {
+        Ok(script) => ApplyChecked {
+            remaining: script.clone(),
+            error: None,
+        },
+        Err(error) => ApplyChecked {
+            remaining: "".into(),
+            error: Some(ErrorInfo::from(error)),
+        },
+    });
+}
+
+/// A device's diff, read and generated for an apply.
+pub(crate) struct PlannedApply {
+    cfg: DeviceCfg,
+    script: Box<str>,
+}
+
+impl PlannedApply {
+    /// The device is in line already.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.script.trim().is_empty()
+    }
+}
+
 
 impl AccessibleDevice {
     /// Applies the generated config: the diff runs as a script on the device itself, so it
@@ -426,103 +549,125 @@ impl AccessibleDevice {
     /// config from before. Writes without asking for `allow_apply`, that is up to the caller
     /// (`WritesAllowed`).
     pub async fn apply(&self, log: &Log) -> Result<(), Error> {
-        let mut cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
-        cfg.generate_for(&self.device_config)?;
-        let mutations = cfg.sorted_mutations()?;
-        let applied = render_script(&mutations)?;
-        log.emit(ApplyPlanned {
-            script: applied.clone(),
-        });
-        if applied.is_empty() {
+        let planned = self.plan_apply(log).await?;
+        if planned.is_empty() {
             return Ok(());
         }
         log.check()?;
-        let raw = self.connect_again::<SimpleResult>().await?;
         let delay = CONFIG.apply_fallback();
-        fallback::arm(&raw, delay).await?;
         let fires = Instant::now() + delay;
-        log.emit(FallbackArmed {
-            delay: delay.into(),
-        });
-        // an error is mostly the script's own: it stopped at a line, the ones before are
-        // applied, so the fallback stays until the device is reached again, as without
-        let error = apply_mutations_via_script(&raw, &mutations, APPLY_SCRIPT)
-            .await
-            .err();
-        drop(raw);
-        log.emit(ApplyRunning {
-            timeout: APPLY_TIMEOUT.into(),
-            error: error.map(|error| ErrorInfo::from(&Error::from(error))),
-        });
+        self.arm_fallback(delay, log).await?;
+        self.run_script(&planned, SCRIPT_ANSWER, log).await;
         // cancelled from here on, the fallback stays
         let wait = async |time| {
             let waited = log.unless_cancelled(tokio::time::sleep(time)).await;
             if waited.is_err() {
-                log.emit(FallbackLeft {
-                    fires_in: fires.saturating_duration_since(Instant::now()).into(),
-                    reason: FallbackLeftReason::Cancelled,
-                    error: None,
-                });
+                fallback_left(log, fires, FallbackLeftReason::Cancelled, None);
             }
             waited
         };
 
         let settled = Instant::now() + APPLY_TIMEOUT;
-        let give_up = fires.checked_sub(FALLBACK_MARGIN).unwrap_or(fires);
+        let give_up = give_up(fires);
         let remaining = loop {
             wait(Duration::from_secs(3)).await?;
-            let remaining = self.remaining().await;
-            match &remaining {
-                Ok(script) if script.is_empty() => break remaining,
-                Ok(_) if Instant::now() >= settled => break remaining,
-                _ if Instant::now() >= give_up => break remaining,
-                _ => info!("{}: not done yet", self.device_config.name()),
+            match self.check_applied(settled).await {
+                Some(remaining) => break remaining,
+                None if Instant::now() >= give_up => break self.remaining().await,
+                None => info!("{}: not done yet", self.device_config.name()),
             }
         };
-        log.emit(match &remaining {
-            Ok(script) => ApplyChecked {
-                remaining: script.clone(),
-                error: None,
-            },
-            Err(error) => ApplyChecked {
-                remaining: "".into(),
-                error: Some(ErrorInfo::from(error)),
-            },
+        emit_checked(log, &remaining);
+        if remaining.is_ok() {
+            self.stop_fallback(fires, delay, log).await?;
+        } else {
+            fallback_left(log, fires, FallbackLeftReason::NotReached, None);
+        }
+        self.after_apply(&planned, log).await
+    }
+    /// The diff to apply, planned (`ApplyPlanned`); an empty one is nothing to do.
+    pub(crate) async fn plan_apply(&self, log: &Log) -> Result<PlannedApply, Error> {
+        let mut cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
+        cfg.generate_for(&self.device_config)?;
+        let script = render_script(&cfg.sorted_mutations()?)?;
+        log.emit(ApplyPlanned {
+            script: script.clone(),
         });
-        let reachable = remaining.is_ok();
-        // taken away, trying again until `give_up`
-        let disarmed = loop {
-            if !reachable {
-                break Err(None);
+        Ok(PlannedApply { cfg, script })
+    }
+    /// Saves the backup the device loads in `delay` unless the fallback is taken away
+    /// (`FallbackArmed`).
+    pub(crate) async fn arm_fallback(&self, delay: Duration, log: &Log) -> Result<(), Error> {
+        arm_fallback_on(&self.connect_again::<SimpleResult>().await?, delay, log).await
+    }
+    /// Runs `planned` as a script on the device, waiting up to `answer` for it to answer
+    /// (`ApplyRunning`): the script goes on without the provisioner, also when it cuts the
+    /// connection it was started over, so the apply goes on to check the device. An error is
+    /// mostly the script's own: it stopped at a line, the ones before are applied.
+    pub(crate) async fn run_script(&self, planned: &PlannedApply, answer: Duration, log: &Log) {
+        let error = async {
+            let raw = self.connect_again::<SimpleResult>().await?;
+            let mutations = planned.cfg.sorted_mutations()?;
+            match tokio::time::timeout(answer, apply_mutations_via_script(&raw, &mutations, APPLY_SCRIPT)).await {
+                Ok(result) => result.map_err(Error::from),
+                Err(_) => Err(Error::ScriptNoAnswer(answer)),
             }
+        }
+        .await
+        .err();
+        log.emit(ApplyRunning {
+            timeout: APPLY_TIMEOUT.into(),
+            error: error.map(|error| ErrorInfo::from(&error)),
+        });
+    }
+    /// What is left of the diff once the device is in line, or `settled` has passed: `None`
+    /// while it isn't, or can't be reached.
+    pub(crate) async fn check_applied(&self, settled: Instant) -> Option<Result<Box<str>, Error>> {
+        match self.remaining().await {
+            Ok(script) if script.is_empty() || Instant::now() >= settled => Some(Ok(script)),
+            _ => None,
+        }
+    }
+    /// Takes the fallback away (`FallbackStopped`), trying until shortly before it `fires`
+    /// (`FallbackLeft`). Cancelled between the tries, the fallback stays.
+    pub(crate) async fn stop_fallback(
+        &self,
+        fires: Instant,
+        delay: Duration,
+        log: &Log,
+    ) -> Result<(), Error> {
+        let give_up = give_up(fires);
+        loop {
             let disarmed = match self.connect_again::<SimpleResult>().await {
                 Ok(raw) => fallback::disarm(&raw).await,
                 Err(error) => Err(error),
             };
             match disarmed {
-                Ok(()) => break Ok(()),
-                Err(error) if Instant::now() >= give_up => break Err(Some(error)),
+                Ok(()) => {
+                    log.emit(FallbackStopped {
+                        after: delay
+                            .saturating_sub(fires.saturating_duration_since(Instant::now()))
+                            .into(),
+                    });
+                    return Ok(());
+                }
+                Err(error) if Instant::now() >= give_up => {
+                    fallback_left(log, fires, FallbackLeftReason::NotStopped, Some(&error));
+                    return Ok(());
+                }
                 Err(error) => info!("{}: fallback not stopped yet: {error}", self.device_config.name()),
             }
-            wait(Duration::from_secs(3)).await?;
-        };
-        match disarmed {
-            Ok(()) => log.emit(FallbackStopped {
-                after: delay
-                    .saturating_sub(fires.saturating_duration_since(Instant::now()))
-                    .into(),
-            }),
-            Err(error) => log.emit(FallbackLeft {
-                fires_in: fires.saturating_duration_since(Instant::now()).into(),
-                reason: match error {
-                    None => FallbackLeftReason::NotReached,
-                    Some(_) => FallbackLeftReason::NotStopped,
-                },
-                error: error.map(|error| ErrorInfo::from(&error)),
-            }),
+            if log.unless_cancelled(tokio::time::sleep(Duration::from_secs(3))).await.is_err() {
+                fallback_left(log, fires, FallbackLeftReason::Cancelled, None);
+                return Err(Error::Cancelled);
+            }
         }
+    }
+    /// What follows an apply: a controller provisions its CAPs' radios again.
+    pub(crate) async fn after_apply(&self, planned: &PlannedApply, log: &Log) -> Result<(), Error> {
         if self.device_config.wlan_controller_of().is_some() {
             log.check()?;
+            let mutations = planned.cfg.sorted_mutations()?;
             self.reprovision(reprovisioned_menus(&mutations), log).await;
         }
         Ok(())
@@ -583,6 +728,9 @@ impl AccessibleDevice {
             .is_some_and(|manager| manager.enabled)
     }
     /// The diff of a fresh look at the device.
+    pub(crate) async fn remaining_diff(&self) -> Result<Box<str>, Error> {
+        self.remaining().await
+    }
     async fn remaining(&self) -> Result<Box<str>, Error> {
         let client = self.connect_again().await?;
         let mut cfg = DeviceCfg::fetch(&client, &self.device_config).await?;

@@ -237,7 +237,34 @@ part left, takes both away, otherwise it reboots into the config from before (CH
 `fallback_is_stopped_or_restores`). A diff that never gets empty after an apply usually means a field RouterOS accepts
 but doesn't report in that state (see the `k`/`o` notes in mikrotik-model's CLAUDE.md); compare
 with the device's own `print` (`examples/print_device.rs`, read-only) and on a CHR before
-changing defaults.
+changing defaults. The apply waits up to 90 s for its script to answer
+(`ApplyRunning.error` `SCRIPT_NO_ANSWER` after that), then checks the device as usual: a script
+that cuts its own connection goes on on the device, and waiting longer would outlast the
+fallback.
+
+`applyBatch` applies several devices together (`device::batch`; the device page's „Gemeinsam
+anwenden“, `components::batch_apply`, with the other ends of its wireless links picked and the
+devices of the sites to add, `DeviceAccess.batchCandidates`, each picked device's changes
+shown before): one job per device (`job::start_all`, none if one is busy; cancelling one
+cancels all; the page shows all jobs as equals, side by side where there is room,
+`div.batch-jobs`), and one fallback for all, firing at one moment. Each step runs on all
+devices at once, the next only once all are through: planning (it also opens a second
+connection, used up to the start, so no login falls between the steps), then fallback and
+script on each (`write_script`, `ApplyWritten`: the script starts with `:delay 15s`), then
+the start on all at once (`/execute` running the script in the background, then seen in
+`/system/script/job`; `ApplyStarted`, its `error` `SCRIPT_NOT_STARTED` after 10 s; checked on
+a CHR: the script goes on when the connection drops). The delay only lets every start get
+through before the first changes cut a connection; a started script is never stopped (the
+operator's call). Starting the scripts one after the other failed in the lab: the AP of the
+60 GHz link cut the way to the station before its script could start, and the station,
+reached over another way, came back unchanged. So the fallbacks are taken away only once every
+device is reached and in line; otherwise none is (`BatchIncomplete` with the unreached and the
+not applied, `FallbackLeftReason::NotApplied`/`BatchIncomplete`), and all load their config
+from before together: the operator rolled a radio link back by hand when its far end couldn't
+be reached after a single apply. A script that didn't start leaves its device not in line,
+so that too sends all back. A problem before the start (planning, arming, writing) takes the
+scripts and fallbacks away again, with nothing applied (`BatchStopped`). The steps are the
+trait `batch::Applying`, so the rules are tested with stand-ins (`run_test`).
 
 A device that doesn't answer gets its initial setup over `/tool mac-telnet` from a neighbor that
 does (`device::bootstrap`, on the device page): `plan` picks a cabled port with an IPv4 (on the

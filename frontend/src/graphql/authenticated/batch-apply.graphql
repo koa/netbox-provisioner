@@ -1,0 +1,36 @@
+query BatchCandidates($id: Int!){
+    topology{
+        deviceById(id: $id){
+            batchCandidates {
+                partner
+                device { id name site { id name } }
+            }
+        }
+    }
+}
+query BatchDevice($id: Int!){
+    topology{
+        deviceById(id: $id){
+            access {
+                connected { address neighbor identity sameName }
+                generateCfg {
+                    script
+                    warnings {
+                        __typename
+                        ... on PoeCut { port defaultName }
+                        ... on RadioBound { radio configuration expected }
+                        ... on LegacyRadioManaged { radio expected }
+                        ... on CapOffOutsideWlanGroup { package }
+                    }
+                }
+            }
+        }
+    }
+}
+mutation ApplyBatch($ids: [Int!]!){
+    applyBatch(ids: $ids){
+        id
+        deviceId
+        deviceName
+    }
+}

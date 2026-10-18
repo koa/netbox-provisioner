@@ -239,3 +239,27 @@ pub struct PoeObserved;
     response_derives = "Debug, Clone, PartialEq"
 )]
 pub struct RadioBridgeCandidates;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/batch-apply.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct BatchCandidates;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/batch-apply.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct BatchDevice;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/batch-apply.graphql",
+    response_derives = "Debug"
+)]
+pub struct ApplyBatch;

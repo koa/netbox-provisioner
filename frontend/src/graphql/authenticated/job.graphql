@@ -29,10 +29,15 @@ query JobEvents($id: Int!, $after: Int){
                 ... on ApplyPlanned { script }
                 ... on FallbackArmed { delay }
                 ... on ApplyRunning { timeout error { ...Problem } }
+                ... on ApplyWritten { lead }
+                ... on ApplyStarted { startsIn error { ...Problem } }
                 ... on ApplyChecked { remaining error { ...Problem } }
                 ... on FallbackStopped { after }
                 ... on FallbackLeft { firesIn reason error { ...Problem } }
                 ... on RadiosReprovisioned { menu count error { ...Problem } }
+                ... on BatchApply { devices }
+                ... on BatchStopped { device }
+                ... on BatchIncomplete { devices notApplied }
                 ... on SetupStarted { neighbor neighborPort macs }
                 ... on ConsoleOutput { text }
                 ... on WaitingForApi { address timeout }

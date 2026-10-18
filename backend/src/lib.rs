@@ -16,6 +16,18 @@ pub mod topology;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    /// the apply script didn't answer in time; it goes on on the device, the apply checks it
+    #[error("no answer from the apply script within {0:?}; it goes on on the device")]
+    ScriptNoAnswer(std::time::Duration),
+    /// the batch stopped before anything was applied, because of `0`
+    #[error("the batch stopped before applying anything: {0} failed")]
+    BatchStopped(Box<str>),
+    /// the batch's script didn't run on the device within `0` of starting it
+    #[error("the apply script didn't start within {0:?}")]
+    ScriptNotStarted(std::time::Duration),
+    /// devices of the batch weren't reached after it: all of it goes back
+    #[error("not reached after the apply: {0}; every device of the batch loads its config from before")]
+    BatchIncomplete(Box<str>),
     #[error("Error accessing device: {0}")]
     MikrotikApi(#[from] mikrotik_api::error::Error),
     #[error("Error on data model: {0}")]

@@ -260,6 +260,22 @@ div.device-page {
     }
 }
 
+/* the jobs of a batch (components/batch_apply.rs): equal, side by side where there is room */
+div.batch-jobs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 32rem), 1fr));
+    gap: var(--pf-t--global--spacer--md);
+    align-items: start;
+
+    & > div.batch-job {
+        min-width: 0;
+    }
+    & > div.batch-job > h3 {
+        margin-block-end: var(--pf-t--global--spacer--sm);
+        font-weight: var(--pf-t--global--font--weight--heading--default);
+    }
+}
+
 div.device-columns {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

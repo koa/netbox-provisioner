@@ -135,7 +135,7 @@ impl Guard for NetboxWritesAllowed {
 /// The watchdog of `device` couldn't be suspended for this.
 /// Connects to `device` for a job, which shows where it got to: a connection that takes long
 /// (the NetBox address first, then each neighbor's tunnel) is otherwise a job without events.
-async fn connect_for_job(
+pub(crate) async fn connect_for_job(
     device: &DeviceAccess,
     target: Option<String>,
     credential_name: Option<Box<str>>,
@@ -356,6 +356,23 @@ impl MutationAuthenticated {
     /// reboot before it is sent, or while it is waited for.
     async fn cancel_job(&self, id: u32) -> Result<Arc<Job>, ApiError> {
         Ok(job::cancel(id).ok_or(Error::UnknownJob(id))?)
+    }
+    /// Starts applying the generated config to `ids` together (`allow_apply` must be set),
+    /// each with its NetBox address and credentials: one job per device, with one fallback
+    /// for all of them, taken away only once every one is reached again (`device::batch`).
+    #[graphql(guard = "WritesAllowed")]
+    async fn apply_batch(&self, ids: Vec<u32>) -> Result<Vec<Arc<Job>>, ApiError> {
+        let mut devices = Vec::new();
+        for id in ids {
+            let device = self.device(id).await?;
+            if !devices.iter().any(|d: &DeviceAccess| d.id() == device.id()) {
+                devices.push(device);
+            }
+        }
+        let members = devices.clone();
+        Ok(job::start_all(&devices, JobKind::Apply, |logs| {
+            crate::device::batch::apply(members, logs)
+        })?)
     }
     /// Starts applying the generated config to a device (`allow_apply` must be set). Target
     /// and credentials as for `DeviceAccess.access`.

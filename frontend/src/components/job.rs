@@ -227,6 +227,7 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         }
         let incomplete = events().any(|e| match e {
             Event::ApplyRunning(running) => running.error.is_some(),
+            Event::ApplyStarted(started) => started.error.is_some(),
             Event::ApplyChecked(checked) => checked.error.is_some() || !checked.remaining.trim().is_empty(),
             Event::FallbackLeft(_) => true,
             _ => false,
@@ -335,6 +336,8 @@ fn describe(event: &JobEventsJobEvents) -> Html {
                 FallbackLeftReason::NOT_STOPPED => {
                     e::FallbackLeft::NotStopped(left.error.as_ref().map(problem))
                 }
+                FallbackLeftReason::NOT_APPLIED => e::FallbackLeft::NotApplied,
+                FallbackLeftReason::BATCH_INCOMPLETE => e::FallbackLeft::BatchIncomplete,
                 FallbackLeftReason::Other(other) => e::FallbackLeft::Other(other),
             },
             seconds(left.fires_in),
@@ -343,6 +346,16 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::ConsoleOutput(output) => return console(&output.text),
         Event::WaitingForApi(wait) => e::waiting_for_api(seconds(wait.timeout), &wait.address),
         Event::SetupDone(done) => e::setup_done(&done.address),
+        Event::BatchApply(batch) => e::batch_apply(&batch.devices),
+        Event::BatchStopped(stopped) => e::batch_stopped(&stopped.device),
+        Event::BatchIncomplete(incomplete) => {
+            e::batch_incomplete(&incomplete.devices, &incomplete.not_applied)
+        }
+        Event::ApplyWritten(written) => e::apply_written(seconds(written.lead)),
+        Event::ApplyStarted(started) => match &started.error {
+            Some(error) => e::apply_not_started(&problem(error)),
+            None => e::apply_started(seconds(started.starts_in)),
+        },
         Event::RadiosReprovisioned(radios) => match &radios.error {
             None => e::radios_reprovisioned(radios.count, &radios.menu),
             Some(error) => e::radios_not_reprovisioned(&radios.menu, &problem(error)),

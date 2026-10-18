@@ -244,6 +244,14 @@ impl DeviceAccess {
     }
 }
 
+/// A device to apply together with another (`batchCandidates`).
+#[derive(async_graphql::SimpleObject)]
+pub struct BatchCandidate {
+    device: DeviceAccess,
+    /// at the other end of one of its wireless links
+    partner: bool,
+}
+
 #[Object]
 impl DeviceAccess {
     #[graphql(name = "id")]
@@ -281,6 +289,34 @@ impl DeviceAccess {
             .await
             .inspect_err(|error| error!("Cannot access device {}: {}", self.name(), error));
         crate::device::ros::graphql::nullable(ctx, result).flatten()
+    }
+    /// The devices to apply together with this one (`applyBatch`): the other ends of its
+    /// wireless links (`partner`), then the RouterOS devices of its site and theirs.
+    async fn batch_candidates(&self) -> Vec<BatchCandidate> {
+        let partners = crate::device::batch::wireless_partners(self);
+        let mut sites: Vec<SiteAccess> = self.site().into_iter().collect();
+        sites.extend(partners.iter().filter_map(DeviceAccess::site));
+        let mut seen = std::collections::HashSet::from([self.id()]);
+        let mut candidates: Vec<BatchCandidate> = Vec::new();
+        let mut partners = partners;
+        partners.sort_by(|a, b| a.name().cmp(b.name()));
+        for device in partners {
+            if seen.insert(device.id()) {
+                candidates.push(BatchCandidate { device, partner: true });
+            }
+        }
+        let mut others: Vec<DeviceAccess> = sites
+            .iter()
+            .flat_map(|site| site.devices())
+            .filter(DeviceAccess::has_routeros)
+            .collect();
+        others.sort_by(|a, b| a.name().cmp(b.name()));
+        for device in others {
+            if seen.insert(device.id()) {
+                candidates.push(BatchCandidate { device, partner: false });
+            }
+        }
+        candidates
     }
     /// How the device would be set up over mac-telnet, see [`MutationAuthenticated::bootstrap`].
     #[graphql(name = "bootstrapPlan")]
