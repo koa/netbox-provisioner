@@ -829,6 +829,13 @@ impl Component for NetboxHelper {
                             </ul>
                         </Alert>
                     }
+                    if !plan.netbox_plan.apply_together.is_empty() {
+                        <Alert inline=true title={t::APPLY_TOGETHER} r#type={AlertType::Warning}>
+                            <ul>
+                            { for plan.netbox_plan.apply_together.iter().map(|device| html!(<li>{&device.name}</li>)) }
+                            </ul>
+                        </Alert>
+                    }
                     if !plan.netbox_plan.undocumented.is_empty() {
                         <Alert inline=true title={t::UNDOCUMENTED} r#type={AlertType::Warning}>
                             <ul>

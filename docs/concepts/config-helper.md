@@ -323,8 +323,10 @@ Dann der Wireless Link: einer zu einem dritten Gerät wird abgelehnt (`WirelessL
 vorhandener bekommt fehlende SSID (Eingabe, sonst der Name des APs) und, wenn er offen ist, WPA
 Personal mit einem erzeugten PSK (24 Zeichen). Ein vorhandener PSK bleibt; ist der Link
 verschlüsselt, NetBox gibt den PSK aber nicht heraus, bricht der Plan ab (`PskUnreadable`). Ohne
-Link wird einer angelegt (`CreateWirelessLink`). Ändert sich am Funk etwas, steht die Station in
-`cut_off`: bis beide Seiten angewendet sind, ist die Strecke getrennt.
+Link wird einer angelegt (`CreateWirelessLink`). Ändert sich am Funk etwas, stehen AP und
+Station in `apply_together`: Sie finden sich erst wieder, wenn beide die neuen Einstellungen
+haben. Das geht nur gemeinsam (Batch); nacheinander lädt der Fallback der zuerst angewendeten
+Seite die alten Einstellungen zurück.
 
 Zuletzt das Segment: L3-Interfaces sind die beiden Router-Ports (bzw. deren Bridge) und die beiden
 Bridges. Das Netz ist das IPv4-Netz eines Router-Ports (`PortAddressed`, wenn der andere eins

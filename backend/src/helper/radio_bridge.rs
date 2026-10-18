@@ -338,7 +338,7 @@ fn radios(plan: &mut NetboxPlan, sides: &[Side], ssid: Option<&str>) -> Result<(
     }
     // the station only hears the AP again once both have the new radio settings
     if changed {
-        plan.cut_off.push(device_ref(&station.device));
+        plan.apply_together = vec![device_ref(&ap.device), device_ref(&station.device)];
     }
     Ok(())
 }
@@ -785,9 +785,10 @@ mod test {
         assert_eq!(link.ssid.as_deref(), Some("hegglin-schopf"));
         assert!(link.psk_set);
         assert_eq!(
-            plan.cut_off.iter().map(|d| d.name.to_string()).collect::<Vec<_>>(),
-            ["schopf-hegglin"]
+            plan.apply_together.iter().map(|d| d.name.to_string()).collect::<Vec<_>>(),
+            ["hegglin-schopf", "schopf-hegglin"]
         );
+        assert!(plan.cut_off.is_empty());
     }
 
     /// The same device on both ends is refused.

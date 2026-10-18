@@ -108,6 +108,10 @@ pub struct NetboxPlan {
     /// devices whose only link to a router the plan takes the addresses from: applying cuts
     /// them off until a new link is applied at both ends
     pub cut_off: Vec<DeviceRef>,
+    /// the two ends of a radio link whose radio settings change: they hear each other only once
+    /// both have them, so only applying them together works (one after the other, the first
+    /// one's fallback brings its old settings back)
+    pub apply_together: Vec<DeviceRef>,
     #[graphql(skip)]
     device: DeviceAccess,
 }
@@ -150,6 +154,7 @@ impl NetboxPlan {
             checked_with: None,
             undocumented: Vec::new(),
             cut_off: Vec::new(),
+            apply_together: Vec::new(),
             device: device.clone(),
         }
     }

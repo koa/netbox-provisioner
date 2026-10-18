@@ -5,6 +5,7 @@ query NetboxPlan($helper: Helper!){
         checkedWith
         undocumented{ address route gateway router }
         cutOff{ name }
+        applyTogether{ name }
         steps{
             __typename
             ... on CreateInterface{ name kind tags }

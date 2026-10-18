@@ -1386,6 +1386,10 @@ pub mod helper {
         Geräten, die Verbindung ist bis zur neuen ohne Adressen.";
     pub const CUT_OFF: &str = "Über diese Verbindung allein erreicht: nach dem Anwenden des einen \
         Endes weg, bis die neue Verbindung an beiden Enden angewendet ist";
+    pub const APPLY_TOGETHER: &str = "Die Funkeinstellungen ändern sich: die beiden Seiten finden \
+        sich erst wieder, wenn beide sie haben. Nur gemeinsam anwenden („Gemeinsam mit anderen \
+        Geräten anwenden …“ auf der Geräteseite); nacheinander lädt der Fallback der zuerst \
+        angewendeten Seite die alten Einstellungen zurück";
     /// the button in „Verbindung“ for a chosen port whose link is in the way
     pub fn disconnect_port(device: &str, port: &str) -> String {
         format!("Verbindung an {device} {port} abräumen")
