@@ -236,17 +236,17 @@ impl DeviceCfg {
     }
 }
 
-/// What RouterOS has without anyone adding it, which mutations may refer to: a radio that
-/// CAPsMAN manages reports `configuration=capsman`, the configuration CAPsMAN gave it
-/// (`/interface/wifi`, 7.23.7), which is no `/interface/wifi/configuration` entry.
-pub(super) fn provided_by_routeros() -> [(ReferenceType, std::borrow::Cow<'static, [u8]>); 6] {
+/// What RouterOS has without anyone adding it, which mutations may refer to. Not the
+/// `capsman` a bound radio reports without such an entry (cAP ax, 7.23.7): the target always
+/// has that configuration, and taking it as there let router-stall-burri's radios get
+/// `configuration=capsman` before it was added, which RouterOS refused.
+pub(super) fn provided_by_routeros() -> [(ReferenceType, std::borrow::Cow<'static, [u8]>); 5] {
     [
         (ReferenceType::Interface, b"lo".into()),
         (ReferenceType::RoutingTable, b"main".into()),
         (ReferenceType::FirewallChain, b"input".into()),
         (ReferenceType::FirewallChain, b"output".into()),
         (ReferenceType::FirewallChain, b"forward".into()),
-        (ReferenceType::WifiConfiguration, b"capsman".into()),
     ]
 }
 

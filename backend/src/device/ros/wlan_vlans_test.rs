@@ -467,8 +467,8 @@ async fn provisioning_with_two_slaves_sorts() {
 }
 
 /// The radios of a CAP that CAPsMAN manages report `configuration=capsman` (a cAP ax,
-/// 7.23.7), which no `/interface/wifi/configuration` provides: RouterOS does
-/// (`provided_by_routeros`), so the radios' mutations still sort.
+/// 7.23.7) without such an `/interface/wifi/configuration` entry: the reference they keep is
+/// no dependency, and the target adds the entry, so the radios' mutations still sort.
 #[tokio::test]
 async fn cap_radios_managed_by_capsman_sort() {
     let [_, ap_ax, ..] = wlan_group(&[104, 105]).await;
@@ -504,6 +504,41 @@ async fn cap_radios_managed_by_capsman_sort() {
         provided_by_routeros().into_iter().chain([bridge]),
     )
     .unwrap();
+}
+
+/// Radios that aren't bound yet get `configuration=capsman` only once the apply added that
+/// entry: RouterOS refused it before (router-stall-burri, "input does not match any value of
+/// configuration") while the sort took `capsman` as one RouterOS has.
+#[tokio::test]
+async fn cap_radios_get_the_configuration_after_it_is_added() {
+    let [_, ap_ax, ..] = wlan_group(&[104, 105]).await;
+    let setup = L2Setup::new(&ap_ax, KeepNameGenerator).unwrap();
+    let current = WifiDeviceDataCurrent {
+        provisioning: Box::new([]),
+        datapath: Box::new([]),
+        cap: Default::default(),
+        capsman: Default::default(),
+        wifi: build_wifi_ports(b"C52iG-5HaxD2HaxD"),
+        configuration: Box::new([]),
+        certificate: Box::new([]),
+    };
+    let mut target = WifiDeviceDataTarget::new(b"C52iG-5HaxD2HaxD");
+    target
+        .generate_from(&ap_ax, &setup, Some(&current), &[], Some(RadioPackage::WifiQcom), &[])
+        .unwrap();
+    let mutations = target.generate_mutations(&current).unwrap();
+    let bridge = (ReferenceType::Interface, b"bridge-caps".into());
+    let sorted = ResourceMutation::sort_mutations_with_provided_dependencies(
+        &mutations,
+        provided_by_routeros().into_iter().chain([bridge]),
+    )
+    .unwrap();
+    let position = |found: &dyn Fn(&ResourceMutation) -> bool| sorted.iter().position(|m| found(m)).unwrap();
+    let added = position(&|m| m.resource == b"interface/wifi/configuration");
+    let radio = position(&|m| {
+        m.resource == b"interface/wifi" && m.fields.iter().any(|f| f.key == b"configuration")
+    });
+    assert!(added < radio, "{sorted:?}");
 }
 
 /// A radio leaving its datapath: the radio's `datapath` is marked `blocks-removal`, so the

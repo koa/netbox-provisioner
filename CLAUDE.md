@@ -465,8 +465,10 @@ bound radio is flagged dynamic and RouterOS refuses any change to it, also with 
 from `InterfaceWifiState::dynamic`), the configuration and datapath it uses stay, and a
 different configuration than NetBox's is a warning before applying (`RadioBound`). What changes is the
 configuration it uses (`datapath=`), a plain entry. A bound radio reports
-`configuration=capsman` also where no such entry is (cAP ax, 7.23.7), which RouterOS provides
-(`provided_by_routeros`, the sort's seeds besides `lo`, `main` and the firewall chains).
+`configuration=capsman` also where no such entry is (cAP ax, 7.23.7). It needs no seed in the
+sort (`provided_by_routeros`): a kept reference isn't a dependency (`written_references`), and
+the target adds the entry. As a seed it let unbound radios get `configuration=capsman` before
+the add, which RouterOS refused (router-stall-burri).
 A legacy radio (`wireless`) CAPsMAN manages refuses any change too (ap-klr-solar, 7.23.7:
 `interface managed by CAPsMAN`), and the API has no flag for it: one the enabled CAP lists
 (`WirelessDeviceDataCurrent::managed_radios`) keeps its name, which L2 uses for it
