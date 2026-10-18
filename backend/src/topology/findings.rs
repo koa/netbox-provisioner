@@ -132,12 +132,13 @@ pub struct AddressWithoutPrefix {
     pub dhcp: bool,
 }
 /// The interface has the tag `dhcp`, but the prefix of `address` (`prefix`) has no address
-/// left for a pool (a /30 with both hosts taken, a /31): no DHCP server there.
+/// left for a pool (a /30 with both hosts taken, a /31), or `address` is a /32 without one (a
+/// loopback, router-stall-burri): no DHCP server there.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct DhcpPoolEmpty {
     pub interface: InterfaceRef,
     pub address: AddressRef,
-    pub prefix: PrefixRef,
+    pub prefix: Option<PrefixRef>,
 }
 /// A NetBox prefix.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -427,22 +428,31 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
                 );
             }
             if interface.is_enable_dhcp_server()
-                && let (Some(prefix), IpNet::V4(_)) = (address.prefix(), net)
-                && let Some(IpNet::V4(prefix_net)) = prefix.prefix()
-                && dhcp_pool_v4(&prefix, prefix_net).is_empty()
+                && let IpNet::V4(v4) = net
             {
-                push(
-                    Severity::Error,
-                    &this,
-                    FindingKind::DhcpPoolEmpty(DhcpPoolEmpty {
-                        interface: interface_ref(interface),
-                        address: address_ref(&address),
-                        prefix: PrefixRef {
-                            id: prefix.id().0,
-                            prefix: prefix_net.to_string().into(),
-                        },
-                    }),
-                );
+                let empty = match address.prefix() {
+                    Some(prefix) => match prefix.prefix() {
+                        Some(IpNet::V4(prefix_net)) if dhcp_pool_v4(&prefix, prefix_net).is_empty() => {
+                            Some(Some(PrefixRef {
+                                id: prefix.id().0,
+                                prefix: prefix_net.to_string().into(),
+                            }))
+                        }
+                        _ => None,
+                    },
+                    None => (v4.prefix_len() == 32).then_some(None),
+                };
+                if let Some(prefix) = empty {
+                    push(
+                        Severity::Error,
+                        &this,
+                        FindingKind::DhcpPoolEmpty(DhcpPoolEmpty {
+                            interface: interface_ref(interface),
+                            address: address_ref(&address),
+                            prefix,
+                        }),
+                    );
+                }
             }
         }
         if matches!(
@@ -890,7 +900,28 @@ mod test {
         assert_eq!(findings.len(), 1, "{findings:#?}");
         assert_eq!(findings[0].severity, Severity::Error);
         assert!(matches!(&findings[0].kind, FindingKind::DhcpPoolEmpty(d)
-            if &*d.address.address == "172.17.1.1/30" && &*d.prefix.prefix == "172.17.1.0/30"));
+            if &*d.address.address == "172.17.1.1/30"
+                && d.prefix.as_ref().is_some_and(|p| &*p.prefix == "172.17.1.0/30")));
+    }
+
+    /// A /32 with the tag `dhcp` (router-stall-burri's loopback) has no address for a client
+    /// and no prefix of its own: the generator makes no DHCP server there.
+    #[test]
+    fn dhcp_on_a_host_address_is_an_error() {
+        let mut net = Net::new();
+        let r1 = net.r1;
+        let lo = port(&mut net.builder, r1, "lo", "172.16.1.60/32");
+        net.interface(lo).enable_dhcp_server = true;
+        net.interface(lo).use_ospf = false;
+        let mut topology = net.builder.build();
+        let address = topology.interfaces[&lo].ips[0];
+        topology.ip_addresses.get_mut(&address).unwrap().prefix = None;
+        let findings = topology.with_findings().findings().to_vec();
+        assert!(
+            findings.iter().any(|f| matches!(&f.kind, FindingKind::DhcpPoolEmpty(d)
+                if &*d.address.address == "172.16.1.60/32" && d.prefix.is_none())),
+            "{findings:#?}"
+        );
     }
 
 /// Of two WLANs, the one without VLAN is an error at the controller and the AP.

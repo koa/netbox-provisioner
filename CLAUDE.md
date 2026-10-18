@@ -83,7 +83,10 @@ both ends have IPv4: a radio bridge device's end is L2 only. `findings_of_netbox
 what the stored export has to `target/netbox-example/findings.txt`. A `dhcp` interface whose prefix leaves no
 address for a pool gets no DHCP server, silently; `DhcpPoolEmpty` says so, computing the pool
 with the generator's `device::ros::dhcp_pool_v4` (a single free address is a pool of one, it
-once was lost, so a /30 customer port got no server). A WLAN without VLAN is an error at its
+once was lost, so a /30 customer port got no server). A /32 with `dhcp` (router-stall-burri's
+`lo`) is the same finding without prefix and no server, not a generator error; an IPv4 with
+`dhcp` and without its prefix is `NO_PREFIX`, naming the interface. IPv6 needs no prefix
+there (SLAAC). A WLAN without VLAN is an error at its
 group's controller and APs (`WlanWithoutVlan`): the CAPs bridge their clients by its VLAN and
 carry them over its VXLAN, so without one the clients reach nothing (router-walter). A wireless link end without RF role is a warning (`RadioWithoutRole`): the radio then keeps its
 configuration, no bridge is set up. A primary IPv4 on `lo` without `ospf` on any interface is an error

@@ -148,8 +148,8 @@ pub enum SetupError {
     NoPortsFound(AsciiString),
     #[error("Declared port {0} not found on device")]
     PortNotFound(PhysicalPortId),
-    #[error("Missing Prefix configuration for ip address: {ip}")]
-    MissingPrefixOnIpAddress { ip: IpNet },
+    #[error("DHCP server on {interface}: no NetBox prefix {ip} for its pool")]
+    MissingPrefixOnIpAddress { ip: IpNet, interface: AsciiString },
     #[error("Address on Prefix {prefix} not found")]
     MissingAddressOnPrefix { prefix: IpPrefixId },
     #[error("No AP Mgmt Interface defined")]
@@ -967,49 +967,58 @@ impl BaseDeviceDataTarget {
                     {
                         address.0.advertise = true;
                     }
-                    if dhcp_server {
-                        let prefix = ip_address
-                            .prefix()
-                            .ok_or(SetupError::MissingPrefixOnIpAddress { ip: *ip })?;
-                        if let (IpNet::V4(ip), IpNet::V4(net)) = (
-                            ip,
-                            prefix.prefix().ok_or(SetupError::MissingAddressOnPrefix {
-                                prefix: prefix.id(),
-                            })?,
-                        ) {
-                            let dhcp_ranges = dhcp_pool_v4(&prefix, net);
-                            if !dhcp_ranges.is_empty() {
-                                let suffix = if ip_idx == 0 {
-                                    if_name.to_string()
-                                } else {
-                                    format!("{if_name}-{ip_idx}")
-                                };
-                                let server_name: AsciiString = format!("dhcp-{suffix}").into();
-                                let server = &mut self
-                                    .dhcp_v_4_server
-                                    .entry(server_name.clone())
-                                    .or_default()
-                                    .0;
-                                server.interface = if_name.clone();
-                                server.address_pool = server_name.clone();
-                                let network =
-                                    &mut self.dhcp_v_4_server_network.entry(net).or_default().0;
-                                network.gateway.insert(ip.addr());
-                                if !network.dns_server.contains(&ip.addr()) {
-                                    network.dns_server = network
-                                        .dns_server
-                                        .iter()
-                                        .copied()
-                                        .chain([ip.addr()])
-                                        .collect();
-                                }
-                                self.ipv_4_pool.entry(server_name).or_default().0.ranges =
-                                    dhcp_ranges
-                                        .iter()
-                                        .map(|r| pool_range(r).into())
-                                        .collect();
+                    // the pool comes from the IPv4 prefix; IPv6 clients take SLAAC
+                    if let (true, IpNet::V4(v4)) = (dhcp_server, ip) {
+                        let Some(prefix) = ip_address.prefix() else {
+                            // a /32 (a loopback) has no address for a client: no DHCP server,
+                            // as with an empty pool (finding `DhcpPoolEmpty`)
+                            if v4.prefix_len() == 32 {
+                                continue;
                             }
+                            return Err(SetupError::MissingPrefixOnIpAddress {
+                                ip: ip.trunc(),
+                                interface: if_name.clone(),
+                            });
+                        };
+                        let IpNet::V4(net) = prefix.prefix().ok_or(SetupError::MissingAddressOnPrefix {
+                            prefix: prefix.id(),
+                        })?
+                        else {
+                            continue;
+                        };
+                        let dhcp_ranges = dhcp_pool_v4(&prefix, net);
+                        if dhcp_ranges.is_empty() {
+                            continue;
                         }
+                        let suffix = if ip_idx == 0 {
+                            if_name.to_string()
+                        } else {
+                            format!("{if_name}-{ip_idx}")
+                        };
+                        let server_name: AsciiString = format!("dhcp-{suffix}").into();
+                        let server = &mut self
+                            .dhcp_v_4_server
+                            .entry(server_name.clone())
+                            .or_default()
+                            .0;
+                        server.interface = if_name.clone();
+                        server.address_pool = server_name.clone();
+                        let network =
+                            &mut self.dhcp_v_4_server_network.entry(net).or_default().0;
+                        network.gateway.insert(v4.addr());
+                        if !network.dns_server.contains(&v4.addr()) {
+                            network.dns_server = network
+                                .dns_server
+                                .iter()
+                                .copied()
+                                .chain([v4.addr()])
+                                .collect();
+                        }
+                        self.ipv_4_pool.entry(server_name).or_default().0.ranges =
+                            dhcp_ranges
+                                .iter()
+                                .map(|r| pool_range(r).into())
+                                .collect();
                     }
                 }
             }
@@ -1142,7 +1151,7 @@ impl BaseDeviceDataTarget {
 
 /// The ranges a DHCP server on `net` (of `prefix`) hands out: the prefix' IP ranges marked
 /// DHCP, else every address of it no address, IP range or child prefix takes. Empty, there is
-/// no DHCP server (finding `DhcpPoolEmpty`).
+/// no DHCP server (finding `DhcpPoolEmpty`), as on a /32 without prefix.
 pub(crate) fn dhcp_pool_v4(prefix: &IpPrefixAccess, net: Ipv4Net) -> Vec<Range<Ipv4Addr>> {
     let mut explicit = Vec::new();
     let mut gap_finder = GapFinder::new();

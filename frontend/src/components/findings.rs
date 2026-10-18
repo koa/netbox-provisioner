@@ -191,7 +191,9 @@ impl Links<'_> {
             Kind::DhcpPoolEmpty(f) => t::dhcp_pool_empty(
                 self.interface(&f.interface),
                 self.address(&f.address),
-                self.link(&format!("ipam/prefixes/{}/", f.prefix.id), &f.prefix.prefix),
+                f.prefix
+                    .as_ref()
+                    .map(|prefix| self.link(&format!("ipam/prefixes/{}/", prefix.id), &prefix.prefix)),
             ),
             Kind::PortLikeName(f) => t::port_like_name(self.interface(&f.interface)),
             Kind::RadioWithoutRole(f) => t::radio_without_role(self.interface(&f.interface)),

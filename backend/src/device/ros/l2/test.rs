@@ -1799,3 +1799,56 @@ async fn test_non_ether_ports_keep_their_address() -> Result<(), Box<dyn Error>>
     }
     Ok(())
 }
+
+/// A device with the `dhcp` tag on `ether1`, which has only `address` (in a prefix of its own
+/// size, which `TopologyBuilder` makes).
+async fn dhcp_server_on(address: &str) -> DeviceAccess {
+    let mut builder = TopologyBuilder::default();
+    let device = builder.devices.next_id();
+    let ip = builder.ip_addresses.next_id();
+    builder.ip_addresses.insert(
+        ip,
+        IpAddressData {
+            ip: address.parse().unwrap(),
+            interface: None,
+            prefix: None,
+        },
+    );
+    let port = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        port,
+        Interface {
+            name: "ether1".into(),
+            device,
+            external: Some(PhysicalPortId::Ethernet(1)),
+            ips: Box::new([ip]),
+            enable_dhcp_server: true,
+            ..Default::default()
+        },
+    );
+    builder.devices.insert(
+        device,
+        Device {
+            name: "router".into(),
+            ..Default::default()
+        },
+    );
+    Into::<TopologyHolder>::into(builder)
+        .devices_by_id(device)
+        .await
+        .expect("device not found")
+}
+
+/// A /32 with the tag `dhcp` (router-stall-burri's loopback) has no address for a client:
+/// no DHCP server, as with an empty pool (finding `DhcpPoolEmpty`), not an error.
+#[tokio::test]
+async fn dhcp_server_without_addresses_for_clients_is_left_out() {
+    let (mut target, _) = setup_testdata(b"CRS326-24G-2S+").unwrap();
+    let device = dhcp_server_on("172.16.1.60/32").await;
+    target.generate_from(&device, KeepNameGenerator).unwrap();
+    assert!(target.dhcp_v_4_server.is_empty());
+    // IPv6 clients take SLAAC: a /128 there needs no pool
+    let (mut target, _) = setup_testdata(b"CRS326-24G-2S+").unwrap();
+    let device = dhcp_server_on("2a02:16a:fe00:ffff::60/128").await;
+    target.generate_from(&device, KeepNameGenerator).unwrap();
+}

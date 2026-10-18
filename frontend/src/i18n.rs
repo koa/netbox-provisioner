@@ -270,6 +270,11 @@ pub mod error {
             ),
             "NO_FREE_NETWORK" => format!("In {} ist kein /{} mehr frei", p("parent"), p("length")),
             "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
+            "NO_PREFIX" => format!(
+                "DHCP-Server auf {} (Tag dhcp): NetBox hat kein Prefix {}, aus dem der Pool käme",
+                p("interface"),
+                p("net")
+            ),
             "NO_PORTS" => format!(
                 "Das Board {} ist im Provisioner nicht beschrieben (hw_facts.rs): seine Ports sind unbekannt",
                 p("model")
@@ -410,8 +415,11 @@ pub mod findings {
         };
         html!(<>{address}{" an "}{interface}{" hat kein Prefix gleicher Länge"}{consequence}</>)
     }
-    pub fn dhcp_pool_empty(interface: Html, address: Html, prefix: Html) -> Html {
-        html!(<>{interface}{" hat das Tag „dhcp“, aber im Prefix "}{prefix}{" von "}{address}{" ist keine Adresse für einen Pool frei: Der DHCP-Server dort entsteht nicht."}</>)
+    pub fn dhcp_pool_empty(interface: Html, address: Html, prefix: Option<Html>) -> Html {
+        match prefix {
+            Some(prefix) => html!(<>{interface}{" hat das Tag „dhcp“, aber im Prefix "}{prefix}{" von "}{address}{" ist keine Adresse für einen Pool frei: Der DHCP-Server dort entsteht nicht."}</>),
+            None => html!(<>{interface}{" hat das Tag „dhcp“, aber "}{address}{" ist eine einzelne Adresse ohne Netz für Clients: Der DHCP-Server dort entsteht nicht."}</>),
+        }
     }
     pub fn wlan_without_vlan(wlan: Html, group: Html) -> Html {
         html!(<>{"Das WLAN "}{wlan}{" der Gruppe "}{group}{" hat keine VLAN: Die APs legen seine Clients in keine Bridge und haben kein VXLAN dafür, die Clients verbinden sich und erreichen nichts."}</>)

@@ -252,7 +252,10 @@ impl From<&SetupError> for ErrorInfo {
             SetupError::RouterboardNotDefined => ("NO_ROUTERBOARD", vec![]),
             SetupError::NoPortsFound(model) => ("NO_PORTS", one("model", model)),
             SetupError::PortNotFound(port) => ("PORT_NOT_FOUND", one("port", port)),
-            SetupError::MissingPrefixOnIpAddress { ip } => ("NO_PREFIX", one("address", ip)),
+            SetupError::MissingPrefixOnIpAddress { ip, interface } => (
+                "NO_PREFIX",
+                vec![("net", ip.to_string()), ("interface", interface.to_string())],
+            ),
             SetupError::MissingAddressOnPrefix { prefix } => {
                 ("NO_ADDRESS_ON_PREFIX", one("prefix", prefix))
             }
