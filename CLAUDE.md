@@ -256,14 +256,21 @@ prompt stays for that MAC. Before the console session `check_neighbor` reads the
 `/ip ssh forwarding-enabled` and stops with `NeighborNoForwarding` unless it is `local`/`both`
 (checked on CHR: an unreachable or closed target fails the forward at once, only a disallowed
 forward stays silent), so such a neighbor leaves the device untouched. `connect` falls back to that bootstrap
-address when the primary IP doesn't answer yet, through an SSH tunnel to the neighbor
+address when the primary IP doesn't answer yet (the loopback, which only the first apply
+brings), directly first (berghof-stall-haus' 10.198.1.4 was routed to), then through an SSH
+tunnel to the neighbor
 (`terminal::Tunnel`, `direct-tcpip`; `device::Path::Neighbor`): API, re-diff and SCP all go
 from the neighbor's address on the cable, so the device needs no route back before its first
 apply brings OSPF. It tries every neighbor of `bootstrap::plans` in turn, the management
 proxy's device first: another neighbor may be cut off itself. Every generated config has `/ip
 ssh forwarding-enabled=local` for that; without it RouterOS never answers the forward (no
-refusal), hence the timeout in `Tunnel::open`. `bootstrap::wait_for_api` limits each try and makes the tunnel
-again after one that ran out (the setup of link-5-ap hung there for good). A DHCP client holding the setup address (link-5-station's old config, served across the radio
+refusal), hence the timeout in `Tunnel::open`. Each connection over a neighbor gets an SSH
+session of its own (`Path::Neighbor` holds the plan, `Tunnel::into_stream`): of two API logins
+at once over one session through RouterOS the second got no answer 4 times in 5 (lab-np2 to
+lab-sxt-a, 7.23.8; link-5-station logged such logins in, the answer never came back), with a
+session each 15 of 15 went through. The connect to the neighbor's SSH is limited to
+`OPEN_TIMEOUT`, else Linux waits about 2 min. `bootstrap::wait_for_api` limits each try, each with its own
+session (the setup of link-5-ap hung there for good). A DHCP client holding the setup address (link-5-station's old config, served across the radio
 link) is turned off by the setup, which `:put`s that into the console log: RouterOS refuses the
 address statically next to the lease ("already have such address", CHR 7.24.5), and the
 address check counts the lease, so the apply would fail on the address or remove the client and

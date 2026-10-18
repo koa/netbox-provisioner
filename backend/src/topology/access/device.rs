@@ -141,9 +141,22 @@ impl DeviceAccess {
                 self.name(),
                 plan.neighbor
             );
+            // directly first: the port's address may well be routed to (berghof-stall-haus'
+            // 10.198.1.4 was, from the provisioner's own network), only the device has no
+            // route back to the provisioner on all of its sites' networks
+            match timeout(
+                CONNECT_TIMEOUT,
+                AccessibleDevice::create_client(self.clone(), address, Path::Routed, credentials.clone()),
+            )
+            .await
+            .unwrap_or(Err(Error::Timeout(address)))
+            {
+                Ok(device) => return Ok(Some(device)),
+                Err(e) => info!("{}: {address} not reachable directly ({e})", self.name()),
+            }
             let credentials = credentials.clone();
             match timeout(CONNECT_TIMEOUT, async {
-                let path = Path::Neighbor(bootstrap::tunnel(&plan).await?.into());
+                let path = Path::Neighbor(plan.into());
                 AccessibleDevice::create_client(self.clone(), address, path, credentials).await
             })
             .await

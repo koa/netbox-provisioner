@@ -393,9 +393,15 @@ pub async fn tunnel(plan: &BootstrapPlan) -> Result<Tunnel, Error> {
             Tunnel::connect_with_stream(stream, neighbor.user(), neighbor.password()).await?
         }
         None => {
-            let stream = tokio::net::TcpStream::connect((plan.neighbor_address, 22))
-                .await
-                .map_err(|e| TerminalError::Ssh(e.into()))?;
+            // without a limit, Linux gives up on an unanswered connect after about 2 min: an
+            // apply's checks of a device behind a radio link that was down came that rarely
+            let stream = timeout(
+                super::OPEN_TIMEOUT,
+                tokio::net::TcpStream::connect((plan.neighbor_address, 22)),
+            )
+            .await
+            .map_err(|_| Error::Timeout(plan.neighbor_address))?
+            .map_err(|e| TerminalError::Ssh(e.into()))?;
             Tunnel::connect_with_stream(stream, neighbor.user(), neighbor.password()).await?
         }
     })
@@ -798,17 +804,9 @@ async fn wait_for_api(
             .into(),
     );
     let deadline = Instant::now() + API_TIMEOUT;
-    let mut path = None;
+    let path = Path::Neighbor(plan.clone().into());
     loop {
         let attempt = async {
-            let path = match &path {
-                Some(path) => Path::clone(path),
-                None => {
-                    let made = Path::Neighbor(tunnel(plan).await?.into());
-                    path = Some(made.clone());
-                    made
-                }
-            };
             let client = connect::<SimpleResult>(address, &path, &credentials).await?;
             let rows = rows(&client, "/system/identity/print").await?;
             Ok(rows.first().and_then(|row| field(row, "name")).map(Box::<str>::from))
@@ -827,10 +825,8 @@ async fn wait_for_api(
             }
             Ok(Ok(_)) => return Ok(()),
             Ok(Err(error)) => error,
-            Err(_) => {
-                path = None;
-                Error::Timeout(address)
-            }
+            // each try opens its own SSH session to the neighbor
+            Err(_) => Error::Timeout(address),
         };
         if Instant::now() > deadline {
             return Err(error);

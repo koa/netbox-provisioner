@@ -198,6 +198,13 @@ impl Tunnel {
         })
     }
 
+    /// A connection to `port` at `address`, made by the forwarding device, that keeps the
+    /// session to it for itself: it ends with the connection.
+    pub async fn into_stream(self, address: IpAddr, port: u16) -> Result<TunnelStream, TerminalError> {
+        let stream = self.open(address, port).await?;
+        Ok(TunnelStream { _tunnel: self, stream })
+    }
+
     /// A connection to `port` at `address`, made by the forwarding device.
     pub async fn open(
         &self,
@@ -217,6 +224,44 @@ impl Tunnel {
         .await
         .map_err(|_| TerminalError::NoForwarding(address, port))??;
         Ok(channel.into_stream())
+    }
+}
+
+/// A connection through a [`Tunnel`] of its own ([`Tunnel::into_stream`]).
+pub struct TunnelStream {
+    _tunnel: Tunnel,
+    stream: ChannelStream<client::Msg>,
+}
+
+impl AsyncRead for TunnelStream {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.stream).poll_read(cx, buf)
+    }
+}
+
+impl AsyncWrite for TunnelStream {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.stream).poll_write(cx, buf)
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.stream).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.stream).poll_shutdown(cx)
     }
 }
 

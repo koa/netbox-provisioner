@@ -44,8 +44,12 @@ pub enum Path {
     /// over IP: directly, or through the management proxy
     Routed,
     /// through an SSH tunnel to a neighbor on the same cable, which needs no route back on the
-    /// device: how it is reached after its initial setup, until its first apply brings OSPF
-    Neighbor(Arc<terminal::Tunnel>),
+    /// device: how it is reached after its initial setup, until its first apply brings OSPF.
+    /// Each connection gets its own SSH session: of two API logins at once over one session
+    /// through RouterOS (lab-np2 to lab-sxt-a, 7.23.8) the second got no answer 4 times in 5,
+    /// though the device logged it in (link-5-station's log, over router-stall-burri); with
+    /// a session each, 15 of 15 went through.
+    Neighbor(Arc<bootstrap::BootstrapPlan>),
 }
 
 /// A connection to a device, whatever [`Path`] it takes.
@@ -147,11 +151,7 @@ impl AccessibleDevice {
             address: self.address.to_string().into(),
             neighbor: match &self.path {
                 Path::Routed => None,
-                Path::Neighbor(_) => bootstrap::plans(&self.device_config)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .find(|plan| plan.port_address() == self.address)
-                    .map(|plan| plan.neighbor.as_str().into()),
+                Path::Neighbor(plan) => Some(plan.neighbor.as_str().into()),
             },
             identity: self.identity.clone(),
             same_name: *self.identity == *self.device_config.name(),
@@ -224,7 +224,7 @@ pub(crate) async fn connect<D: ParsedMessage>(
 /// unless it is the proxy, or made by the neighbor.
 async fn open_stream(address: IpAddr, path: &Path, port: u16) -> Result<Box<dyn Io>, Error> {
     Ok(match path {
-        Path::Neighbor(tunnel) => Box::new(tunnel.open(address, port).await?),
+        Path::Neighbor(plan) => Box::new(bootstrap::tunnel(plan).await?.into_stream(address, port).await?),
         Path::Routed => match proxied_stream(address, port).await? {
             Some(stream) => Box::new(stream),
             None => {
@@ -241,7 +241,7 @@ async fn open_stream(address: IpAddr, path: &Path, port: u16) -> Result<Box<dyn 
 
 /// How long opening a connection may take, directly or through the management proxy (each
 /// try of it).
-const OPEN_TIMEOUT: Duration = Duration::from_secs(20);
+pub(crate) const OPEN_TIMEOUT: Duration = Duration::from_secs(20);
 /// A connection to `port` at `address` through the management proxy; `None` if it is to be
 /// reached directly (no proxy configured, or it is the proxy itself).
 ///
