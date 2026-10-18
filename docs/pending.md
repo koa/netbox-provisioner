@@ -119,3 +119,72 @@ Die Konfiguration über Netbox ist sehr flexibel, aber auch sehr aufwendig und f
 - OSPF und DHCP-Flags setzen
 - PoE Beziehungen checken/ändern in Netbox
 - WLAN Bridge konfigurieren (Gerätetyp auswählen, beide Geräte automatisch passend in Netbox konfigurieren)
+
+Graphql Files
+=============
+Erstelle für jeden Graphql-Query ein eigenes .graphql File
+
+
+DSL für Mikrotik Kommandos
+==========================
+
+Alle Mikrotik-Befehle sind aktuell strings. Prüfe die Möglichkeit dafür eine DSL mit Makros oder ähnlich zu bauen um die Semantik besser beizubehalten.
+
+Provisionierung
+===============
+Für das Rollout braucht die Applikation:
+- Dockerfile basierend auf bare (kein volles Linux)
+- Helm-Chart
+- Github Actions für Build und rollout (snapshot für jeden commit, abgeleitet vom Hash, alte Snapshots automatisch löschen, Echte, dauerhafte Release-Version für prod)
+
+
+User Journeys
+=============
+
+Hier ein paar User Journeys, die gut funktionieren sollen. Bitte nicht das UI als Wizzard entlang dieser Journeys ausrichten, sondern nur die Aufteilung der Funktionen so anpassen, dass diese Journeys gut unterstützt sind.
+Diese Journeys sollen zuerst nur die Struktur der Gesamtlösung führen. Sie sollen nicht alle sofort implementiert werden.
+
+Rollout
+-------
+Neue Geräte werden installiert. Diese brauchen neue Verbindungen (Funk oder Direkt), Loopback-Adressen und ggf Kunden-Netze.
+Gerade neue Verbindungen sind sehr mühsam direkt in Netbox einzurichten (Geräte, IP-Adressen, Prefixe, etc. alles über mehrere Masken verteilt) und haben ein grosses Risiko für Fehler.
+Idee: Man verbindet die neuen Geräte im Feld und konfiguriert diese Fortlaufend mit dem Mobiltelefon. Die Geräte kommen laufend online und man kann sie gleich testen (ohne zu Hause am PC das Netz in Netbox nachzeichen zu müssen)
+
+Datenkorrektur
+--------------
+Die Daten in Netbox und der Realität sind voneinander abgewichen. Die Abweichungen sollen möglichst einfach erkannt und korrigiert werden können. Initial müssen mal alle Geräte "synct" werden, dass man sie später ohne grössere Risiken ausrollen kann.
+
+Überwachung
+-----------
+Jeder Anwender soll auf den ersten Blick sehen können wie gut das Netz läuft. Einerseits für seine eigenen Bedürfnisse (Wie gut geht es der Internetverbindung?) und auch für einen Gesamtüberblick (Was muss kontrolliert/gewartet werden?).
+
+Firewall
+--------
+Das Netz hat einige wenige Firewalls. Diese sollen in Netbox verwaltet werden.
+- Port-Forwarding IPv4
+- Address-Forwarding IPv6
+- https://manual.mikrotik.com/docs/firewall-and-quality-of-service/user-guides/bruteforce-prevention (IPv4 und IPv6)
+
+Self-Service
+------------
+Anwender sollen ein paar einfache Handgriffe selbst ausführen können
+- Anpassung SSID / Passwort
+- Physische Stecker (Switch-Ports) einem WLAN-VLAN zuordnen
+- Liste der IP Leases in den eigenen Netzen
+
+
+Personas
+========
+
+Admin
+-----
+Ein Admin richtet das Netz ein und löst die Probleme im ganzen Netz. Er kann alles sehen und anpassen.
+
+Anwohner (Usergruppen)
+----------------------
+Ein Anwohner besitzt VLANs mit ihren WLANs und eine Liste von Switch-Ports oder ganze Geräte.
+Er kann:
+- SSID / Passwort ändern
+- Ports in seinem Besitz umkonfigurieren (VLAN oder AP anschliessen)
+- Zusätzliche APs anschliessen und in seine WLAN-Gruppe aufnehmen
+- Seine IP Leases sehen
