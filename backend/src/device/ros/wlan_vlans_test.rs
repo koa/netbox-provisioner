@@ -188,6 +188,16 @@ async fn controller_sets_the_vlan_of_each_wlan() {
     }
 }
 
+/// The controller names a CAP's interfaces after the CAP and its radio, to see where they
+/// belong.
+#[tokio::test]
+async fn controller_names_cap_interfaces_after_the_cap() {
+    let [controller, ..] = wlan_group(&[104, 105]).await;
+    let target = wifi(&controller, b"CCR2004-1G-12S+2XS", RadioPackage::WifiQcom).unwrap();
+    let provisioning = target.provisioning.values().next().unwrap();
+    assert_eq!(provisioning.name_format.as_deref(), Some(b"cap-%I-%r".as_slice()));
+}
+
 /// With one VLAN, the CAP sets it on its radios, and the controller none.
 #[tokio::test]
 async fn one_vlan_stays_on_the_cap() {

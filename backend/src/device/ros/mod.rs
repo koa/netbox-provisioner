@@ -29,7 +29,7 @@ use mikrotik_model::{
         InterfaceEthernetCfg, InterfaceEthernetPoeOut, InterfaceVlanByName, InterfaceVlanCfg,
         InterfaceVxlanByName, InterfaceVxlanCfg, InterfaceW60GMode, InterfaceW60GRegion,
         CapsAuthenticationTypes, CapsEncryption, CapsManConfigurationMode,
-        CapsManDatapathVlanMode, CapsManProvisioningAction, CapsManProvisioningCfg,
+        CapsManDatapathVlanMode, CapsManProvisioningAction, CapsManProvisioningCfg, CapsManProvisioningNameFormat,
         CapsManProvisioningHwSupportedModes,
         WifiCountryLower as CapsManWifiCountry, InterfaceWifiCapsmanUpgradePolicy, InterfaceWifiProvisioningAction, InterfaceWirelessCfg, InterfaceWirelessChannelWidth,
         InterfaceWirelessFrequencyMode, InterfaceWirelessMode, InterfaceWirelessTxPowerMode,
@@ -1832,6 +1832,9 @@ impl WifiDeviceDataTarget {
                 provisioning.action = InterfaceWifiProvisioningAction::CreateDynamicEnabled;
                 provisioning.disabled = false;
                 provisioning.master_configuration = Some(master.clone());
+                // the CAP and its radio in the name, to see where an interface belongs; the
+                // virtual ones follow it (`<master>-virtual`)
+                provisioning.name_format = Some("cap-%I-%r".into());
                 provisioning.slave_configurations =
                     (!slaves.is_empty()).then(|| slaves.iter().cloned().collect());
             }
@@ -1923,6 +1926,10 @@ impl CapsManDeviceDataTarget {
                 action: HasNone::Value(CapsManProvisioningAction::CreateDynamicEnabled),
                 master_configuration: master.clone(),
                 slave_configurations: slaves.iter().cloned().collect(),
+                // `cap-<identity>`, to see where an interface belongs (no radio in the name:
+                // the legacy CAPsMAN only knows these formats)
+                name_format: CapsManProvisioningNameFormat::PrefixIdentity,
+                name_prefix: "cap".into(),
                 ..Default::default()
             };
             self.provisioning.insert(

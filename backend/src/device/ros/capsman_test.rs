@@ -18,7 +18,7 @@ use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
-        CapsAuthenticationTypes, CapsManDatapathVlanMode, InterfaceBridgeProtocolMode,
+        CapsAuthenticationTypes, CapsManDatapathVlanMode, CapsManProvisioningNameFormat, InterfaceBridgeProtocolMode,
         InterfaceWirelessByDefaultName,
     },
     value::HasNone,
@@ -239,6 +239,8 @@ async fn controller_runs_the_legacy_capsman() {
     assert_eq!(datapath.local_forwarding, Some(true));
     let provisioning = target.provisioning.values().next().unwrap();
     assert_eq!(provisioning.master_configuration, name);
+    assert_eq!(provisioning.name_format, CapsManProvisioningNameFormat::PrefixIdentity);
+    assert_eq!(provisioning.name_prefix, "cap".into());
 }
 
 /// ap-klr-solar: CAPsMAN manages the radio, still named `wlan1`; RouterOS refuses to rename
