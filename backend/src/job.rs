@@ -82,6 +82,7 @@ pub enum Event {
     WatchdogSuspended(watchdog::WatchdogSuspended),
     WatchdogRestored(watchdog::WatchdogRestored),
     WatchdogNotRestored(watchdog::WatchdogNotRestored),
+    WatchdogLeft(watchdog::WatchdogLeft),
     NetboxWritten(helper::NetboxWritten),
     NetboxUndone(helper::NetboxUndone),
 }

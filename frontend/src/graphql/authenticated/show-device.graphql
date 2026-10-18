@@ -10,7 +10,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                 address
             }
             bootstrapProblem { ...Problem }
-            supplierWatchdogs { device watchAddress problem { ...Problem } }
+            watchdogs { device supplier watching { watchAddress poePings { port address } } problem { ...Problem } }
             access(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
                 connected { address neighbor identity sameName }
                 deviceStats{
@@ -28,6 +28,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                         ... on RadioBound { radio configuration expected }
                         ... on LegacyRadioManaged { radio expected }
                         ... on CapOffOutsideWlanGroup { package }
+                        ... on WatchTargetSilent { address port device }
                     }
                 }
                 deviceMode {

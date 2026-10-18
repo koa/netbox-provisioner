@@ -1,11 +1,11 @@
-//! Suspending a supplier's watchdog for an update (`backend::device::watchdog`) on a real CHR:
+//! Suspending a watchdog for an update (`backend::device::watchdog`) on a real CHR:
 //! restored by the provisioner it leaves nothing behind; left alone, the scheduler entry
 //! restores the watch address by itself.
 use crate::chr_network::golden_image::ensure_golden_image;
 use crate::chr_network::qemu::nix_unavailable;
 use crate::chr_network::vm::boot_node;
 use crate::chr_network::wait::wait_until;
-use backend::device::watchdog::{read, restore, suspend};
+use backend::device::watchdog::{Watching, read, restore, suspend};
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
 use std::time::Duration;
@@ -75,25 +75,32 @@ async fn watchdog_is_restored_or_restores_itself() {
 
     // without a watch address nothing changes
     assert_eq!(watch_address(&device).await, "none");
-    assert_eq!(read(&device).await.unwrap(), None);
-    assert_eq!(suspend(&device, Duration::from_secs(60)).await.unwrap(), None);
+    let nothing = read(&device, &[]).await.unwrap();
+    assert!(nothing.is_empty());
+    suspend(&device, &nothing, Duration::from_secs(60)).await.unwrap();
     assert!(entries(&device).await.is_empty());
 
     // suspended and restored by the provisioner
     set_watch_address(&device, WATCHED).await;
-    assert_eq!(read(&device).await.unwrap().as_deref(), Some(WATCHED));
-    let suspended = suspend(&device, Duration::from_secs(600)).await.unwrap();
-    assert_eq!(suspended.as_deref(), Some(WATCHED));
+    let watching = read(&device, &[]).await.unwrap();
+    assert_eq!(
+        watching,
+        Watching {
+            watch_address: Some(WATCHED.into()),
+            poe_pings: Vec::new(),
+        }
+    );
+    suspend(&device, &watching, Duration::from_secs(600)).await.unwrap();
     assert_eq!(watch_address(&device).await, "none");
     assert_eq!(entries(&device).await, [ENTRY]);
     // a suspend the provisioner didn't see to the end still knows the address
-    assert_eq!(read(&device).await.unwrap().as_deref(), Some(WATCHED));
-    restore(&device, WATCHED).await.unwrap();
+    assert_eq!(read(&device, &[]).await.unwrap(), watching);
+    restore(&device, &watching).await.unwrap();
     assert_eq!(watch_address(&device).await, WATCHED);
     assert!(entries(&device).await.is_empty());
 
     // left alone: the scheduler entry restores it after the safety net and goes
-    suspend(&device, Duration::from_secs(20)).await.unwrap();
+    suspend(&device, &watching, Duration::from_secs(20)).await.unwrap();
     assert_eq!(watch_address(&device).await, "none");
     wait_until(
         || async { Ok(watch_address(&device).await == WATCHED && entries(&device).await.is_empty()) },

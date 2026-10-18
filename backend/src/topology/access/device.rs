@@ -327,33 +327,41 @@ impl DeviceAccess {
     async fn bootstrap_problem(&self) -> Option<ErrorInfo> {
         bootstrap::plan(self).err().map(|error| ErrorInfo::from(&error))
     }
-    /// The watchdogs of the RouterOS devices powering this one over PoE, nearest first: one
-    /// watching an address behind this device reboots while this one updates, and cuts its
-    /// power (`updateRouteros(suspendWatchdogs:)`).
-    async fn supplier_watchdogs(&self) -> Vec<crate::device::watchdog::SupplierWatchdog> {
-        let mut watchdogs = Vec::new();
-        for supplier in crate::device::power::supplier_devices(self) {
-            if !supplier.has_routeros() {
-                continue;
+    /// The watchdogs that may fire while this device updates (`device::watchdog::watchers`):
+    /// of the devices powering it, which cut its power mid-install, and of the ones reaching
+    /// the network through it (`updateRouteros(suspendWatchdogs:)`). Only those watching
+    /// something or that can't be read.
+    async fn watchdogs(&self) -> Vec<crate::device::watchdog::Watchdog> {
+        use crate::device::watchdog;
+        let powered = watchdog::addresses(self);
+        let watchers = watchdog::watchers(self, &crate::graphql::management_tree(self));
+        let read = watchers.iter().map(|watchdog::Watcher { device, supplier }| {
+            let powered = if *supplier { powered.as_slice() } else { &[] };
+            async move {
+                let read = async {
+                    let link = device
+                        .connect(None, None, None)
+                        .await?
+                        .ok_or(Error::MissingCredentials)?;
+                    watchdog::read(&link.connect_again().await?, powered).await
+                };
+                let (watching, problem) = match read.await {
+                    Ok(watching) => (watching, None),
+                    Err(error) => (Default::default(), Some(ErrorInfo::from(&error))),
+                };
+                watchdog::Watchdog {
+                    device: device.name().into(),
+                    supplier: *supplier,
+                    watching,
+                    problem,
+                }
             }
-            let read = async {
-                let link = supplier
-                    .connect(None, None, None)
-                    .await?
-                    .ok_or(Error::MissingCredentials)?;
-                crate::device::watchdog::read(&link.connect_again().await?).await
-            };
-            let (watch_address, problem) = match read.await {
-                Ok(address) => (address, None),
-                Err(error) => (None, Some(ErrorInfo::from(&error))),
-            };
-            watchdogs.push(crate::device::watchdog::SupplierWatchdog {
-                device: supplier.name().into(),
-                watch_address,
-                problem,
-            });
-        }
-        watchdogs
+        });
+        async_graphql::futures_util::future::join_all(read)
+            .await
+            .into_iter()
+            .filter(|watchdog| !watchdog.watching.is_empty() || watchdog.problem.is_some())
+            .collect()
     }
     /// The findings about it, the worst first.
     async fn findings(&self) -> Vec<Finding> {

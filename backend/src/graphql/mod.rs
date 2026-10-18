@@ -4,7 +4,7 @@ use crate::{
     error_info::ApiError,
     device::{
         AccessibleDevice, Connecting, bootstrap, device_mode, partitions,
-        power::{self, PowerChain},
+        power::PowerChain,
         update::{self, DeviceLink},
         watchdog,
     },
@@ -16,6 +16,7 @@ use crate::{
     topology::{
         DeviceId, TopologyHolder,
         access::{AdhocCredentials, device::DeviceAccess},
+        management::ManagementTree,
     },
 };
 use std::sync::Arc;
@@ -132,7 +133,6 @@ impl Guard for NetboxWritesAllowed {
     }
 }
 
-/// The watchdog of `device` couldn't be suspended for this.
 /// Connects to `device` for a job, which shows where it got to: a connection that takes long
 /// (the NetBox address first, then each neighbor's tunnel) is otherwise a job without events.
 pub(crate) async fn connect_for_job(
@@ -153,11 +153,13 @@ pub(crate) async fn connect_for_job(
     Ok(link)
 }
 
-fn not_suspended(device: &str) -> impl Fn(Error) -> Error + '_ {
-    move |error| Error::WatchdogNotSuspended {
-        device: device.into(),
-        cause: error.to_string().into(),
-    }
+/// The way of `device`'s watchdogs to the management roots, the management proxy's device
+/// among them (`topology::management`).
+pub(crate) fn management_tree(device: &DeviceAccess) -> ManagementTree {
+    ManagementTree::of(
+        device.topology(),
+        CONFIG.management_proxy.as_ref().map(|proxy| proxy.device.as_ref()),
+    )
 }
 
 /// Who asked, for NetBox' changelog: the name or email of the login.
@@ -225,8 +227,8 @@ impl MutationAuthenticated {
     /// Starts updating RouterOS (and the RouterBOARD firmware) to the newest release of
     /// `channel`, with the packages the device needs (`allow_apply` must be set); without
     /// `channel` it only brings the packages in line, at the version the device runs. Target
-    /// and credentials as for `DeviceAccess.access`. With `suspendWatchdogs` the watchdogs of the
-    /// devices powering it (`DeviceAccess.supplierWatchdogs`) are suspended for the update and
+    /// and credentials as for `DeviceAccess.access`. With `suspendWatchdogs` the watchdogs that
+    /// may fire while it is away (`DeviceAccess.watchdogs`) are suspended for the update and
     /// restored afterwards. The job's events tell how far it got.
     #[graphql(guard = "WritesAllowed")]
     #[allow(clippy::too_many_arguments)]
@@ -241,13 +243,11 @@ impl MutationAuthenticated {
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
-        let suppliers: Vec<_> = match suspend_watchdogs {
-            Some(true) => power::supplier_devices(&device)
-                .into_iter()
-                .filter(|supplier| supplier.has_routeros())
-                .collect(),
+        let watchers = match suspend_watchdogs {
+            Some(true) => watchdog::watchers(&device, &management_tree(&device)),
             _ => Vec::new(),
         };
+        let powered = watchdog::addresses(&device);
         Ok(job::start(&device.clone(), JobKind::Update, |log| async move {
             let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             let wanted = device.wanted_packages().await?;
@@ -260,14 +260,17 @@ impl MutationAuthenticated {
                 channel: channel.map(|channel| channel.name().into()),
             });
             let mut links = Vec::new();
-            for supplier in suppliers {
-                let name: Box<str> = supplier.name().into();
-                let link = match connect_for_job(&supplier, None, None, None, &log).await {
-                    Ok(link) => link,
-                    Err(Error::Cancelled) => return Err(Error::Cancelled),
-                    Err(error) => Err(error).map_err(not_suspended(&name))?,
-                };
-                links.push((name, link));
+            for watchdog::Watcher { device, supplier } in watchers {
+                let link = connect_for_job(&device, None, None, None, &log).await;
+                if matches!(link, Err(Error::Cancelled)) {
+                    return Err(Error::Cancelled);
+                }
+                links.push(watchdog::WatcherLink {
+                    device: device.name().into(),
+                    supplier,
+                    powered: powered.clone(),
+                    link,
+                });
             }
             let suspended = watchdog::suspend_all(links, &log).await?;
             let updated =

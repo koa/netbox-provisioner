@@ -391,7 +391,7 @@ frees the page. While asking fails (server away) it shows one line and asks agai
 failed with `PANIC` and its message, rather than leaving it running forever (`job::start`).
 A job says where it is before anything slow: `graphql::connect_for_job` reports `Connecting`
 and `Connected` (address, the neighbor's tunnel, the identity) for the device and each supplier,
-the update its `UpdateTarget` and `WatchdogNotSet` for a supplier without one, and an upload
+the update its `UpdateTarget` and `WatchdogNotSet` for a watcher without one, and an upload
 `PackageUploading` once the device takes the file (0 bytes) and at each quarter
 (`terminal::upload` sends 64 KiB parts; one that doesn't go through within 60 s is
 `UploadStalled`, and the SSH login, the SCP start and each answer before have 60 s each,
@@ -491,12 +491,34 @@ lease per reboot, and a reboot waits while a consumer holds an update lease, an 
 start while a supplier reboots (both under one lock). The leases are in-process only. They only hold back reboots the provisioner sends: a supplier with
 `/system/watchdog watch-address` behind the updating device reboots by itself and cuts its
 power mid-install (berghof-burri bricked burri-schopf that way; RouterBOOT then only asked for
-Netinstall). `DeviceAccess.supplierWatchdogs` reads the suppliers' watchdogs for the device
-page's warning; `updateRouteros(suspendWatchdogs: true)` sets them to `none` for the update and
-restores them after it whatever its outcome (`device::watchdog`, events `WatchdogSuspended`,
-`WatchdogRestored`, `WatchdogNotRestored`). A scheduler entry on the supplier, added before the
-address goes, restores it after `SAFETY_NET` (2 h) should the provisioner not (CHR test
-`watchdog_is_restored_or_restores_itself`); a leftover entry is where `read` finds the address.
+Netinstall).
+
+Every device gets watchdogs (`docs/concepts/watchdog.md`, `device::ros::watchdog`): the
+hardware one, a ping watchdog on its parent's primary IPv4 and, on a `pse` port powering a
+RouterOS device, `power-cycle-ping` on that device. The parent comes from
+`topology::management::ManagementTree`: roots are the `propagate_default_route` devices and
+the management proxy's (`generate_for` adds it, `generate_from` knows only the first), two
+RouterOS devices are neighbors where both have an `ospf` interface in the same IPv4 network
+(a radio bridge's segment makes all four ends neighbors), the parent is the neighbor nearest
+a root, a cabled one first (lab-sxt-b watched lab-np1 across its own radio before). The PoE
+port pings the powered device's IPv4 at the cable (the setup gives it, the loopback comes with
+the first apply). Only addresses that answer three pings from the device are set
+(`DeviceCfg::generate_live`, in the plan, every check and `generateCfg`): a silent one keeps
+what the device has and is the warning `WatchTargetSilent`, so a device being set up isn't
+power cycled every 5 min and a check after the apply sees no diff from it. A device reaching its parent only through ports that power what they are cabled to
+watches nothing: its reboot would cut that power (also the far router of a radio bridge it
+powers). The ping watchdog reboots after one `ping-timeout` without answer, not several, and
+10 min is RouterOS' maximum (CHR 7.24.5), so an update cuts it short: the watchers of a
+device (`device::watchdog::watchers`: suppliers, `ManagementTree::depending_on`) are read for
+the device page's warning (`DeviceAccess.watchdogs`: watch address, the PoE ports pinging the
+device), and `updateRouteros(suspendWatchdogs: true)` sets them to `none` and
+`power-cycle-ping-enabled=no` for the update and restores them after it whatever its outcome
+(events `WatchdogSuspended`, `WatchdogRestored`, `WatchdogNotRestored`; a non-supplier that
+can't be suspended is `WatchdogLeft` and the update goes on, a supplier stops it). A scheduler
+entry on each, added before they go, restores them after `SAFETY_NET` (2 h) should the
+provisioner not (CHR test `watchdog_is_restored_or_restores_itself`); a leftover entry is
+where `read` finds them. An apply that changes a radio doesn't suspend anything yet.
+
 A modeled port of a PoE board without `pse` gets `poe-out=off`, which cuts what it feeds and
 which the script alone doesn't make obvious, so `generateCfg` returns `warnings` next to the
 script (`device::ros::warning::ApplyWarning`, a union `i18n::device::warning` words; `PoeCut` from

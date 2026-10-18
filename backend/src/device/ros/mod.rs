@@ -1,4 +1,6 @@
 use crate::device::ros::l2::NameGenerator;
+#[cfg(test)]
+use crate::topology::management::ManagementTree;
 use crate::device::ros::warning::{ApplyWarning, LegacyRadioManaged, PoeCut, RadioBound};
 use crate::{
     Error,
@@ -54,6 +56,7 @@ pub mod fallback;
 pub mod graphql;
 pub(crate) mod hw_facts;
 pub mod warning;
+pub mod watchdog;
 
 #[cfg(test)]
 mod capsman_test;
@@ -70,6 +73,8 @@ mod poe_test;
 mod radio_test;
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod watchdog_test;
 #[cfg(test)]
 mod wlan_vlans_test;
 
@@ -123,6 +128,7 @@ mikrotik_model!(
         ipv6_settings(single = "ipv6/settings"),
         mac_server(single = "tool/mac-server"),
         neighbor_discovery(single = "ip/neighbor/discovery-settings"),
+        watchdog(single = "system/watchdog"),
     ),
 );
 
@@ -321,6 +327,8 @@ impl BaseDeviceDataTarget {
                 }),
             )]
             .into(),
+            // set by `setup_watchdog`
+            watchdog: Default::default(),
         }
     }
     /// Makes this device the provisioner's way into the network: `/ip socks` as SOCKS5, only
@@ -669,6 +677,7 @@ impl BaseDeviceDataTarget {
         self.setup_maintenance_ports(device, &l2);
         self.setup_mtu(device)?;
         self.setup_poe(device)?;
+        self.setup_watchdog(device, &ManagementTree::of(device.topology(), None))?;
         Ok(l2)
     }
 

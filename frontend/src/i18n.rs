@@ -554,20 +554,34 @@ pub mod device {
 
     pub const ADJUST_PACKAGES: &str = "Pakete anpassen";
     pub const UP_TO_DATE: &str = " aktuell";
-    pub const WATCHDOG_TITLE: &str = "Watchdog auf einem Gerät, das dieses über PoE speist";
-    /// a supplier watching an address: while this device updates, the address may be cut off
-    pub fn supplier_watchdog(device: &str, address: &str) -> String {
+    pub const WATCHDOG_TITLE: &str = "Watchdogs, die während des Updates auslösen können";
+    /// a device watching an address the update may cut off; `supplier`: it powers this one
+    pub fn watchdog_watching(device: &str, supplier: bool, address: &str) -> String {
+        if supplier {
+            format!(
+                "{device} speist dieses Gerät über PoE und überwacht {address}. Ist die Adresse \
+                nur über dieses Gerät erreichbar, startet {device} während des Updates neu und \
+                schaltet ihm mitten in der Installation den Strom ab."
+            )
+        } else {
+            format!(
+                "{device} überwacht {address} auf dem Weg über dieses Gerät und startet neu, wenn \
+                das Update länger dauert als sein ping-timeout."
+            )
+        }
+    }
+    /// a port powering this device, power cycling it when it doesn't answer
+    pub fn watchdog_poe_ping(device: &str, port: &str, address: &str) -> String {
         format!(
-            "{device} überwacht {address}. Ist die Adresse nur über dieses Gerät erreichbar, \
-            startet {device} während des Updates neu und schaltet ihm mitten in der Installation \
-            den Strom ab."
+            "{device} schaltet {port} aus und wieder ein, wenn {address} nicht antwortet: dauert \
+            die Installation zu lange, verliert dieses Gerät mittendrin den Strom."
         )
     }
-    pub fn supplier_watchdog_unread(device: &str, problem: &str) -> String {
+    pub fn watchdog_unread(device: &str, problem: &str) -> String {
         format!("Watchdog von {device} nicht lesbar: {problem}")
     }
-    pub const SUSPEND_WATCHDOGS: &str = "Watchdog während des Updates aussetzen (danach wieder \
-        hergestellt; ein Scheduler auf dem Gerät tut es nach 2 h selbst, falls der Provisioner \
+    pub const SUSPEND_WATCHDOGS: &str = "Watchdogs während des Updates aussetzen (danach wieder \
+        hergestellt; ein Scheduler auf jedem Gerät tut es nach 2 h selbst, falls der Provisioner \
         nicht dazu kommt)";
     pub const REBOOT: &str = "Neu starten";
     pub const REBOOT_NOW: &str = "Jetzt neu starten";
@@ -704,6 +718,21 @@ pub mod device {
                 "Das Gerät ist in NetBox in keiner WLAN-Gruppe und nutzt keinen seiner Funk-Ports: \
                  sein CAP ({menu} cap) ist danach aus, es sendet kein WLAN. Für einen Access Point \
                  die WLAN-Gruppe in NetBox ergänzen."
+            )
+        }
+
+        /// a watchdog's address (`port`'s power cycling, else the ping watchdog) that doesn't
+        /// answer from the device
+        pub fn watch_target_silent(address: &str, port: Option<&str>, device: &str) -> String {
+            let watchdog = match port {
+                Some(port) => format!("Der PoE-Watchdog an {port}"),
+                None => "Der Ping-Watchdog".to_string(),
+            };
+            let device = if device.is_empty() { String::new() } else { format!(" ({device})") };
+            format!(
+                "{watchdog} soll {address}{device} überwachen, aber die Adresse antwortet vom Gerät \
+                 aus nicht: er bleibt, wie er ist, bis sie antwortet (ein Gerät ohne erstes \
+                 Anwenden hat noch keine Loopback)."
             )
         }
     }
@@ -1084,21 +1113,37 @@ pub mod job {
             }
         }
         pub fn watchdog_not_set(device: &str) -> String {
-            format!("{device} hat keinen Watchdog gesetzt: nichts auszusetzen")
+            format!("{device} hat keinen Watchdog, der auslösen könnte: nichts auszusetzen")
         }
-        pub fn watchdog_suspended(device: &str, address: &str, safety_net_minutes: u64) -> String {
+        /// what a device's watchdogs watch: its watch address and the ports power cycling
+        /// the updating device (port, address)
+        pub fn watching(address: Option<&str>, ports: &[(&str, &str)]) -> String {
+            address
+                .map(|address| format!("watch-address {address}"))
+                .into_iter()
+                .chain(ports.iter().map(|(port, address)| format!("PoE-Ping an {port} auf {address}")))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+        pub fn watchdog_suspended(device: &str, watching: &str, safety_net_minutes: u64) -> String {
             format!(
-                "Watchdog von {device} ausgesetzt (watch-address {address}); stellt sich nach \
+                "Watchdog von {device} ausgesetzt ({watching}); stellt sich nach \
                 {safety_net_minutes} min selbst wieder her, falls der Provisioner es nicht tut"
             )
         }
-        pub fn watchdog_restored(device: &str, address: &str) -> String {
-            format!("Watchdog von {device} wieder aktiv (watch-address {address})")
+        pub fn watchdog_restored(device: &str, watching: &str) -> String {
+            format!("Watchdog von {device} wieder aktiv ({watching})")
         }
-        pub fn watchdog_not_restored(device: &str, address: &str, error: &str) -> String {
+        pub fn watchdog_not_restored(device: &str, watching: &str, error: &str) -> String {
             format!(
                 "Watchdog von {device} nicht wiederhergestellt ({error}): der Scheduler auf \
-                {device} setzt watch-address {address} nach Ablauf seiner Frist selbst"
+                {device} stellt {watching} nach Ablauf seiner Frist selbst wieder her"
+            )
+        }
+        pub fn watchdog_left(device: &str, error: &str) -> String {
+            format!(
+                "Watchdog von {device} nicht ausgesetzt ({error}): {device} kann während des \
+                Updates neu starten"
             )
         }
         pub fn repartition_started(count: i64, files: i64) -> String {

@@ -8,6 +8,19 @@ pub enum ApplyWarning {
     RadioBound(RadioBound),
     LegacyRadioManaged(LegacyRadioManaged),
     CapOffOutsideWlanGroup(CapOffOutsideWlanGroup),
+    WatchTargetSilent(WatchTargetSilent),
+}
+
+/// A watchdog would watch `address` (on the PoE port `port`, else `/system/watchdog`), but it
+/// doesn't answer from the device: what the device has there stays, since watching what is
+/// silent reboots or power cycles for nothing (a device just set up has no loopback yet).
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
+pub struct WatchTargetSilent {
+    pub address: Box<str>,
+    /// the name the target gives the port
+    pub port: Option<Box<str>>,
+    /// the device NetBox has at the address
+    pub device: Box<str>,
 }
 
 /// The PoE out of `port` powers something, and the target switches it off (NetBox has no

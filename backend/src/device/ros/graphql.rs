@@ -19,7 +19,7 @@ use crate::{
         },
         device_mode, partitions, raw, update,
     },
-    topology::{PhysicalPortId, access::device::DeviceAccess},
+    topology::{PhysicalPortId, access::device::DeviceAccess, management::ManagementTree},
 };
 use crate::{graphql::scalars::ScalarDuration, job::Log};
 use async_graphql::{Context, Enum, Object, SimpleObject};
@@ -37,8 +37,10 @@ use mikrotik_model::{
     },
     resource::{ResourceMutation, SingleResource, apply_mutations_via_script, collect_resource},
 };
+use async_graphql::futures_util::future::join_all;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
+    net::IpAddr,
     time::{Duration, Instant},
 };
 
@@ -86,6 +88,8 @@ pub struct DeviceCfg {
     wifi_warnings: Vec<ApplyWarning>,
     /// the board's radios NetBox leaves alone, with the CAP off (`CapOffOutsideWlanGroup`)
     idle_radios: Option<RadioPackage>,
+    /// the addresses a watchdog would watch that don't answer (`generate_live`)
+    watchdog_warnings: Vec<ApplyWarning>,
 }
 
 impl DeviceCfg {
@@ -152,6 +156,8 @@ impl DeviceCfg {
         self.base_target.setup_maintenance_ports(device, &l2);
         self.base_target.setup_mtu(device)?;
         self.base_target.setup_poe(device)?;
+        self.base_target
+            .setup_watchdog(device, &ManagementTree::of(device.topology(), None))?;
         if let Some(package) = self.idle_radios {
             warnings.push(ApplyWarning::CapOffOutsideWlanGroup(CapOffOutsideWlanGroup {
                 package: package.name().into(),
@@ -161,9 +167,12 @@ impl DeviceCfg {
         Ok(())
     }
     /// [`Self::generate_from`] with the provisioner's own needs on top: the device the
-    /// provisioner reaches the network through gets its SOCKS proxy.
+    /// provisioner reaches the network through gets its SOCKS proxy, and the watchdogs find
+    /// their way to it too.
     pub fn generate_for(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
         self.generate_from(device, EndpointNameGenerator)?;
+        self.base_target
+            .setup_watchdog(device, &crate::graphql::management_tree(device))?;
         if let Some(proxy) = CONFIG
             .management_proxy
             .as_ref()
@@ -192,6 +201,31 @@ impl DeviceCfg {
         }
         Ok(mutations.into())
     }
+    /// [`Self::generate_for`] with the watchdogs only on addresses that answer from the device,
+    /// asked over `raw` (`keep_silent_watchdogs`): the plan and every check after the apply
+    /// see the same, since a silent address keeps what the device has.
+    pub async fn generate_live(
+        &mut self,
+        device: &DeviceAccess,
+        raw: &RawDevice<SimpleResult>,
+    ) -> Result<(), Error> {
+        self.generate_for(device)?;
+        let addresses = self.base_target.watched_addresses();
+        let answering = answering(raw, &addresses).await;
+        let topology = device.topology().clone();
+        self.watchdog_warnings = self.base_target.keep_silent_watchdogs(
+            &self.base_current,
+            &answering,
+            |address| {
+                topology
+                    .list_devices()
+                    .find(|device| crate::device::watchdog::addresses(device).contains(&address))
+                    .map(|device| device.name().into())
+                    .unwrap_or_default()
+            },
+        );
+        Ok(())
+    }
     /// The diff from [`Self::generate_mutations`] in an order where everything a command
     /// refers to exists before it.
     pub fn sorted_mutations(&self) -> Result<Box<[ResourceMutation<'_>]>, Error> {
@@ -218,7 +252,7 @@ impl DeviceCfg {
     ) -> Vec<ApplyWarning> {
         let ports = self.base_target.poe_switched_off(&self.base_current);
         if ports.is_empty() {
-            return self.wifi_warnings.clone();
+            return [self.wifi_warnings.clone(), self.watchdog_warnings.clone()].concat();
         }
         let names = ports.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>();
         let powered = match raw().await {
@@ -232,6 +266,7 @@ impl DeviceCfg {
         });
         let mut warnings = self.wifi_warnings.clone();
         warnings.extend(self.base_target.poe_warnings(&self.base_current, &powered));
+        warnings.extend(self.watchdog_warnings.iter().cloned());
         warnings
     }
 }
@@ -248,6 +283,25 @@ pub(super) fn provided_by_routeros() -> [(ReferenceType, std::borrow::Cow<'stati
         (ReferenceType::FirewallChain, b"output".into()),
         (ReferenceType::FirewallChain, b"forward".into()),
     ]
+}
+
+/// The ones of `addresses` that answer a ping from the device, all asked at once.
+async fn answering(raw: &RawDevice<SimpleResult>, addresses: &[IpAddr]) -> BTreeSet<IpAddr> {
+    let pings = addresses.iter().map(|address| async move {
+        let text = address.to_string();
+        let attributes = [("address", text.as_str()), ("count", "3"), ("interval", "0.3")];
+        let ping = raw::command(raw, "/ping", &attributes);
+        let answered = tokio::time::timeout(Duration::from_secs(10), ping)
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .is_some_and(|rows| {
+                rows.iter()
+                    .any(|row| raw::field(row, "received").is_some_and(|received| received != "0"))
+            });
+        answered.then_some(*address)
+    });
+    join_all(pings).await.into_iter().flatten().collect()
 }
 
 fn render_script(mutations: &[ResourceMutation]) -> Result<Box<str>, Error> {
@@ -622,7 +676,7 @@ impl AccessibleDevice {
     /// The diff to apply, planned (`ApplyPlanned`); an empty one is nothing to do.
     pub(crate) async fn plan_apply(&self, log: &Log) -> Result<PlannedApply, Error> {
         let mut cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
-        cfg.generate_for(&self.device_config)?;
+        cfg.generate_live(&self.device_config, &self.connect_again().await?).await?;
         let mutations = cfg.sorted_mutations()?;
         let script = render_script(&mutations)?;
         let restarts_radio = restarts_radio(&mutations);
@@ -779,7 +833,7 @@ impl AccessibleDevice {
         tokio::time::timeout(CHECK_TIMEOUT, async {
             let client = self.connect_again().await?;
             let mut cfg = DeviceCfg::fetch(&client, &self.device_config).await?;
-            cfg.generate_for(&self.device_config)?;
+            cfg.generate_live(&self.device_config, &self.connect_again().await?).await?;
             cfg.script()
         })
         .await
@@ -966,6 +1020,7 @@ impl DeviceCfg {
             bound_radios,
             wifi_warnings: Vec::new(),
             idle_radios,
+            watchdog_warnings: Vec::new(),
         })
     }
 }
@@ -1026,7 +1081,9 @@ impl AccessibleDevice {
     async fn generate_cfg(&self, ctx: &Context<'_>) -> Option<GeneratedCfg> {
         let generated = async {
             let mut device_cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
-            device_cfg.generate_for(&self.device_config)?;
+            device_cfg
+                .generate_live(&self.device_config, &self.connect_again().await?)
+                .await?;
             Ok(GeneratedCfg {
                 script: device_cfg.script()?,
                 warnings: device_cfg

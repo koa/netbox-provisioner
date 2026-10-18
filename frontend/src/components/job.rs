@@ -313,6 +313,18 @@ fn console(text: &str) -> Html {
     html!(<div class="job-console"><pre>{ text.to_string() }</pre></div>)
 }
 
+/// The words for what a watchdog watches; each event has its own type for it.
+macro_rules! watching {
+    ($watching:expr) => {{
+        let ports = $watching
+            .poe_pings
+            .iter()
+            .map(|ping| (ping.port.as_str(), ping.address.as_str()))
+            .collect::<Vec<_>>();
+        e::watching($watching.watch_address.as_deref(), &ports)
+    }};
+}
+
 fn describe(event: &JobEventsJobEvents) -> Html {
     use t::event as e;
     let text = match &event.event {
@@ -414,17 +426,18 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::OspfNeighborsBack(back) => e::ospf_neighbors_back(&back.neighbors),
         Event::WatchdogSuspended(suspended) => e::watchdog_suspended(
             &suspended.device,
-            &suspended.watch_address,
+            &watching!(suspended.watching),
             seconds(suspended.safety_net) / 60,
         ),
         Event::WatchdogRestored(restored) => {
-            e::watchdog_restored(&restored.device, &restored.watch_address)
+            e::watchdog_restored(&restored.device, &watching!(restored.watching))
         }
         Event::WatchdogNotRestored(failed) => e::watchdog_not_restored(
             &failed.device,
-            &failed.watch_address,
+            &watching!(failed.watching),
             &problem(&failed.error),
         ),
+        Event::WatchdogLeft(left) => e::watchdog_left(&left.device, &problem(&left.error)),
         Event::NetboxWritten(written) if written.deleted => e::netbox_deleted(&written.display),
         Event::NetboxWritten(written) if written.changes.is_empty() => {
             e::netbox_created(&written.display, &written.path)

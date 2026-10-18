@@ -59,10 +59,10 @@ pub struct ShowDevice {
     /// the form for another address or other credentials is open (in the head; on an
     /// unreachable device it is always shown, in the warning)
     show_target: bool,
-    /// suspend the watchdogs of the devices powering this one during an update
+    /// suspend the watchdogs that may fire while this one updates
     suspend_watchdogs: bool,
 }
-type SupplierWatchdog = device_overview::DeviceOverviewTopologyDeviceByIdSupplierWatchdogs;
+type Watchdog = device_overview::DeviceOverviewTopologyDeviceByIdWatchdogs;
 type Connected = device_overview::DeviceOverviewTopologyDeviceByIdAccessConnected;
 type Candidate =
     bootstrap_candidates::BootstrapCandidatesTopologyDeviceByIdBootstrapPlanDiscovered;
@@ -90,8 +90,9 @@ pub struct ShowDeviceData {
     partitions: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessPartitions>,
     bootstrap_plan: Option<device_overview::DeviceOverviewTopologyDeviceByIdBootstrapPlan>,
     bootstrap_problem: Option<device_overview::Problem>,
-    /// the watchdogs of the devices powering this one over PoE
-    supplier_watchdogs: Vec<SupplierWatchdog>,
+    /// the watchdogs that may fire while this one updates, of the devices powering it and of
+    /// those reaching the network through it
+    watchdogs: Vec<Watchdog>,
     /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
     allow_apply: bool,
 }
@@ -414,7 +415,7 @@ impl Component for ShowDevice {
                             />
                         }
                     </div>
-                    { self.watchdogs_view(ctx, &data.supplier_watchdogs) }
+                    { self.watchdogs_view(ctx, &data.watchdogs) }
                     <div class="device-reboot">
                         if self.confirm_reboot {
                             {t::REBOOT_CONFIRM}
@@ -738,28 +739,35 @@ impl Component for ShowDevice {
 }
 
 impl ShowDevice {
-    /// Whether an update suspends the suppliers' watchdogs: asked for, and one watches an address.
+    /// Whether an update suspends the watchdogs: asked for, and one watches something.
     fn suspend(&self) -> bool {
         self.suspend_watchdogs
             && self.data.as_ref().is_some_and(|data| {
-                data.supplier_watchdogs.iter().any(|w| w.watch_address.is_some())
+                data.watchdogs.iter().any(|w| {
+                    w.watching.watch_address.is_some() || !w.watching.poe_pings.is_empty()
+                })
             })
     }
-    /// The watchdogs of the devices powering this one, where one watches an address or can't
-    /// be read, with the choice to suspend them during an update.
-    fn watchdogs_view(&self, ctx: &Context<Self>, watchdogs: &[SupplierWatchdog]) -> Html {
+    /// The watchdogs that may fire while this device updates, where one watches something or
+    /// can't be read, with the choice to suspend them during an update.
+    fn watchdogs_view(&self, ctx: &Context<Self>, watchdogs: &[Watchdog]) -> Html {
         let watching: Vec<Html> = watchdogs
             .iter()
-            .filter_map(|w| {
-                let address = w.watch_address.as_deref()?;
-                Some(html!(<p>{t::supplier_watchdog(&w.device, address)}</p>))
+            .flat_map(|w| {
+                let address = w.watching.watch_address.as_deref().map(|address| {
+                    html!(<p>{t::watchdog_watching(&w.device, w.supplier, address)}</p>)
+                });
+                let ports = w.watching.poe_pings.iter().map(|ping| {
+                    html!(<p>{t::watchdog_poe_ping(&w.device, &ping.port, &ping.address)}</p>)
+                });
+                address.into_iter().chain(ports).collect::<Vec<_>>()
             })
             .collect();
         let unread: Vec<Html> = watchdogs
             .iter()
             .filter_map(|w| {
                 let problem = w.problem.as_ref()?;
-                Some(html!(<p>{t::supplier_watchdog_unread(&w.device, &ServerProblem::from(problem).text())}</p>))
+                Some(html!(<p>{t::watchdog_unread(&w.device, &ServerProblem::from(problem).text())}</p>))
             })
             .collect();
         if watching.is_empty() && unread.is_empty() {
@@ -841,7 +849,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                             }),
                             bootstrap_plan: d.bootstrap_plan,
                             bootstrap_problem: d.bootstrap_problem,
-                            supplier_watchdogs: d.supplier_watchdogs,
+                            watchdogs: d.watchdogs,
                             allow_apply: data.allow_apply,
                         })
                         .unwrap_or_default();
@@ -1094,5 +1102,8 @@ fn describe_warning(warning: &Warning) -> String {
             t::warning::legacy_radio_managed(&managed.radio, &managed.expected)
         }
         Warning::CapOffOutsideWlanGroup(cap) => t::warning::cap_off_outside_wlan_group(&cap.package),
+        Warning::WatchTargetSilent(silent) => {
+            t::warning::watch_target_silent(&silent.address, silent.port.as_deref(), &silent.device)
+        }
     }
 }

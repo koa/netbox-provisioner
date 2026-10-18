@@ -21,6 +21,7 @@ query BatchDevice($id: Int!){
                         ... on RadioBound { radio configuration expected }
                         ... on LegacyRadioManaged { radio expected }
                         ... on CapOffOutsideWlanGroup { package }
+                        ... on WatchTargetSilent { address port device }
                     }
                 }
             }
