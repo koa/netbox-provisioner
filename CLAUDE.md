@@ -122,7 +122,10 @@ network of a chosen site prefix (`customerNetOptions.parents`: IPv4, scope the d
 pool, not a network itself; `IpPrefixData.site`) on a free port or a VLAN (its virtual interface,
 or a new one named like the VLAN, `CreateInterface.vlan`/`tags`): prefix scoped to the site,
 gateway as the first address, `dhcp` if asked; candidates overlapping a route more specific than
-the parent are passed over (`Routes::overlapping`). `helper::poe` sets `poe_mode` `pse` and
+the parent are passed over (`Routes::overlapping`). IPv6 likewise from a chosen IPv6 site prefix
+(`parentsV6`, `parentV6`): the next free `/64`, `::1` as gateway, announced for SLAAC by `dhcp`.
+Either family may come alone, so a client network (`dhcp`) with IPv4 but no IPv6 is offered too
+(`open`) and gets its IPv6 later. `helper::poe` sets `poe_mode` `pse` and
 `pd` on two Ethernet ports (`is_ethernet`, any device; `Interface.poe`, `UpdateInterface.poe`),
 cabling them if both are free; `poeOptions` offers the device's ports and the site's devices,
 `AccessibleDevice.poeObserved` what the device feeds now (`poe/monitor` `powered-on`, the far

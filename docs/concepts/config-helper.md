@@ -246,15 +246,20 @@ danach gelöscht.
 Ein Port oder ein VLAN wählen, dann das **Parent-Prefix**: Der Helfer bietet die Prefixe der Site
 des Geräts an (Kunden-Netze gehören zum Standort), gewählt wird von Hand, nicht automatisch.
 Plan: nächstes freies Netz darin (Länge wählbar, Vorgabe `/24`), Gateway-Adresse (erste Adresse) am Port bzw. an einem neuen virtuellen
-VLAN-Interface, `dhcp`, optional eine IP-Range mit Rolle `dhcp`.
+VLAN-Interface, `dhcp`, optional eine IP-Range mit Rolle `dhcp`. Dazu oder allein ein
+**IPv6-Prefix** der Site: das nächste freie `/64` mit `::1` als Gateway am selben Interface, das
+`dhcp` per SLAAC ankündigt.
 
 Umgesetzt (`helper/customer_net.rs`, „Kunden-Netz“ in „NetBox ergänzen“), noch ohne IP-Range: Der
 DHCP-Pool ist dann der freie Rest des Netzes, wie ohne Range üblich.
-- **Auswahl:** freie Ports und Bridges (ohne IPv4, nicht in einer Bridge, ohne VLAN, nicht zu
-  einem Router verkabelt) und die VLANs des Geräts ohne Netz darauf. Ein VLAN mit einem
+- **Auswahl:** freie Ports und Bridges (ohne IPv4, oder ein Kunden-Netz mit `dhcp` ohne IPv6;
+  nicht in einer Bridge, ohne VLAN, nicht zu einem Router verkabelt) und die VLANs des Geräts
+  ebenso. Jede Familie ist wahlfrei („keins“), mindestens eine muss es sein; so bekommt ein
+  bestehendes IPv4-Kunden-Netz sein IPv6 nachträglich, eine Familie, die der Port schon hat,
+  lehnt der Plan ab. Ein VLAN mit einem
   virtuellen Interface ohne Adresse bekommt das Netz dort, sonst entsteht ein neues virtuelles
   Interface mit dem Namen des VLANs (Mode access, Untagged VLAN).
-- **Parent-Prefixe:** die IPv4-Prefixe mit Scope der Site des Geräts, ohne Tag `loopback`/`transfer`
+- **Parent-Prefixe:** je Familie die Prefixe mit Scope der Site des Geräts, ohne Tag `loopback`/`transfer`
   und ohne Adresse eigener Länge darin (also selbst kein Netz). Die Topologie liest dafür den Scope
   der Prefixe (`IpPrefixData.site`).
 - **Plan:** das erste freie Netz der Länge (`available-prefixes`), in dem NetBox keine Adresse hat
@@ -264,6 +269,9 @@ DHCP-Pool ist dann der freie Rest des Netzes, wie ohne Range üblich.
 Im Lab geprüft an lab-np1 mit einem vorübergehenden Port `ether9` und einem VLAN `lab-test` (199)
 im Prefix `192.168.120.0/22` (Scope Lab): Die Vorschau zeigt in beiden Fällen Pool, DHCP-Server
 und DHCP-Netz. Für das VLAN habe ich geschrieben und rückgängig gemacht, danach alles gelöscht.
+IPv6 ebenso an `ether9` mit `fd99:1ab::/48` (Scope Lab): beide Familien zusammen (Vorschau mit
+`fd99:1ab::1/64 advertise=yes` neben Pool und DHCP-Server), und an einem schon mit
+`192.168.120.1/24` und `dhcp` versehenen Port nur das `/64`; IPv4 dort lehnt der Plan ab.
 
 ### OSPF- und DHCP-Flags
 

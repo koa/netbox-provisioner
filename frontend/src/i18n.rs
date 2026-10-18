@@ -276,6 +276,7 @@ pub mod error {
                 p("device"),
                 p("cause")
             ),
+            "NO_PARENT" => "Ein IPv4- oder IPv6-Prefix wählen, aus dem das Netz kommt".into(),
             "NO_FREE_NETWORK" => format!("In {} ist kein /{} mehr frei", p("parent"), p("length")),
             "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
             "NO_PREFIX" => format!(
@@ -1247,19 +1248,26 @@ pub mod helper {
     pub const CUSTOMER_NET_HINT: &str = "Legt ein Netz für einen Port oder ein VLAN an: das \
         nächste freie Netz der gewählten Länge im gewählten Prefix der Site, die erste Adresse \
         als Gateway (auf einem VLAN an einem neuen virtuellen Interface mit dem Namen des VLANs) \
-        und, falls gewählt, das Tag dhcp. Der DHCP-Pool ist dann der Rest des Netzes.";
+        und, falls gewählt, das Tag dhcp. Der DHCP-Pool ist dann der Rest des Netzes. Mit einem \
+        IPv6-Prefix dazu das nächste freie /64 mit ::1 als Gateway, per SLAAC angekündigt; ein \
+        Kunden-Netz mit IPv4 bekommt so auch später noch sein IPv6.";
     pub const NET_TARGET: &str = "Port oder VLAN";
     pub const CHOOSE_NET_TARGET: &str = "Port oder VLAN wählen";
-    pub const NO_NET_TARGETS: &str = "Das Gerät hat keinen freien Port (ohne IPv4, ohne Bridge \
-        oder VLAN, nicht zu einem Router) und kein VLAN ohne Netz.";
-    pub const PARENT: &str = "Prefix der Site";
+    pub const NO_NET_TARGETS: &str = "Das Gerät hat keinen freien Port (ohne IPv4 oder ein \
+        Kunden-Netz ohne IPv6, ohne Bridge oder VLAN, nicht zu einem Router) und kein VLAN ohne \
+        Netz.";
+    pub const PARENT: &str = "IPv4-Prefix der Site";
     pub const CHOOSE_PARENT: &str = "Prefix wählen";
+    pub const PARENT_V6: &str = "IPv6-Prefix der Site";
+    pub const NO_PARENT: &str = "keins";
+    pub const NO_PARENTS_V6: &str = "Die Site hat kein IPv6-Prefix, das Netze aufnehmen kann \
+        (Scope Site, ohne Tag loopback/transfer, selbst kein Netz mit Adressen).";
     pub const NO_PARENTS: &str = "Die Site hat kein IPv4-Prefix, das Netze aufnehmen kann \
         (Scope Site, ohne Tag loopback/transfer, selbst kein Netz mit Adressen).";
     pub const LENGTH: &str = "Länge";
     pub const LENGTH_PLACEHOLDER: &str = "24";
     pub const DHCP_SERVER: &str = "DHCP-Server (Tag dhcp)";
-    pub const CHOOSE_NET: &str = "Port oder VLAN und Prefix wählen.";
+    pub const CHOOSE_NET: &str = "Port oder VLAN und ein IPv4- oder IPv6-Prefix wählen.";
     pub fn net_vlan(name: &str, vid: i64, interface: Option<&str>) -> String {
         match interface {
             Some(interface) => format!("VLAN {name} ({vid}), an {interface}"),

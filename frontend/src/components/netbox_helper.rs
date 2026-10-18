@@ -89,8 +89,9 @@ pub enum HelperChoice {
     Flags(Vec<(u32, Flag, bool)>),
     CustomerNet {
         target: NetTarget,
-        parent: u32,
+        parent: Option<u32>,
         length: Option<u8>,
+        parent_v6: Option<u32>,
         dhcp: bool,
     },
     Poe {
@@ -166,6 +167,7 @@ pub struct NetChoice {
     target: Option<NetTarget>,
     parent: Option<u32>,
     length: String,
+    parent_v6: Option<u32>,
     dhcp: bool,
 }
 
@@ -175,6 +177,7 @@ impl Default for NetChoice {
             target: None,
             parent: None,
             length: String::new(),
+            parent_v6: None,
             dhcp: true,
         }
     }
@@ -255,6 +258,7 @@ macro_rules! helper_input {
                 target,
                 parent,
                 length,
+                parent_v6,
                 dhcp,
             } => $module::Helper::CustomerNet($module::CustomerNetInput {
                 device: $id as i64,
@@ -262,8 +266,9 @@ macro_rules! helper_input {
                     NetTarget::Interface(id) => $module::CustomerNetTarget::Interface(id as i64),
                     NetTarget::Vlan(id) => $module::CustomerNetTarget::Vlan(id as i64),
                 },
-                parent: parent as i64,
+                parent: parent.map(i64::from),
                 length: length.map(i64::from),
+                parent_v6: parent_v6.map(i64::from),
                 dhcp,
             }),
             HelperChoice::Poe { pse, pd } => $module::Helper::Poe($module::PoeInput {
@@ -403,7 +408,8 @@ pub enum NetboxHelperMsg {
     ),
     NetOptions(Result<NetOptions, FrontendError>),
     NetTarget(NetTarget),
-    NetParent(u32),
+    NetParent(Option<u32>),
+    NetParentV6(Option<u32>),
     NetLength(String),
     NetDhcp(bool),
     PoeOptions(Result<PoeOptionsData, FrontendError>),
@@ -517,7 +523,11 @@ impl Component for NetboxHelper {
                 self.choose(ctx);
             }
             NetboxHelperMsg::NetParent(parent) => {
-                self.net.parent = Some(parent);
+                self.net.parent = parent;
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::NetParentV6(parent) => {
+                self.net.parent_v6 = parent;
                 self.choose(ctx);
             }
             NetboxHelperMsg::NetLength(length) => {
@@ -950,12 +960,14 @@ impl NetboxHelper {
                 let changes = self.flag_changes();
                 (!changes.is_empty()).then_some(HelperChoice::Flags(changes))
             }
-            HelperKind::CustomerNet => Some(HelperChoice::CustomerNet {
-                target: self.net.target?,
-                parent: self.net.parent?,
-                length: self.net.length.trim().trim_start_matches('/').parse().ok(),
-                dhcp: self.net.dhcp,
-            }),
+            HelperKind::CustomerNet => (self.net.parent.is_some() || self.net.parent_v6.is_some())
+                .then_some(HelperChoice::CustomerNet {
+                    target: self.net.target?,
+                    parent: self.net.parent,
+                    length: self.net.length.trim().trim_start_matches('/').parse().ok(),
+                    parent_v6: self.net.parent_v6,
+                    dhcp: self.net.dhcp,
+                }),
             HelperKind::Poe => {
                 let (own, peer) = (self.poe.port?, self.poe.peer?);
                 let (pse, pd) = if self.poe.feeds { (own, peer) } else { (peer, own) };
@@ -1290,16 +1302,28 @@ impl NetboxHelper {
                 text: t::net_vlan(&vlan.name, vlan.vid, vlan.interface.as_deref()),
             }))
             .collect();
-        let parents: Vec<NetEntry<u32>> = options
-            .parents
-            .iter()
-            .map(|parent| NetEntry {
-                value: parent.id as u32,
-                text: parent.prefix.clone(),
-            })
-            .collect();
+        // with „keins“ first: a network may come in one family only
+        let entries = |parents: Vec<(i64, &String)>| -> Vec<NetEntry<Option<u32>>> {
+            (!parents.is_empty())
+                .then(|| NetEntry {
+                    value: None,
+                    text: t::NO_PARENT.into(),
+                })
+                .into_iter()
+                .chain(parents.into_iter().map(|(id, prefix)| NetEntry {
+                    value: Some(id as u32),
+                    text: prefix.clone(),
+                }))
+                .collect()
+        };
+        let parents = entries(options.parents.iter().map(|p| (p.id, &p.prefix)).collect());
+        let parents_v6 = entries(options.parents_v6.iter().map(|p| (p.id, &p.prefix)).collect());
         let target = targets.iter().find(|e| Some(e.value) == self.net.target).cloned();
-        let parent = parents.iter().find(|e| Some(e.value) == self.net.parent).cloned();
+        let selected = |entries: &[NetEntry<Option<u32>>], value: Option<u32>| {
+            value.and_then(|value| entries.iter().find(|e| e.value == Some(value)).cloned())
+        };
+        let parent = selected(&parents, self.net.parent);
+        let parent_v6 = selected(&parents_v6, self.net.parent_v6);
         let dhcp = self.net.dhcp;
         html! {
             <Form>
@@ -1319,11 +1343,23 @@ impl NetboxHelper {
                     if parents.is_empty() {
                         <p>{t::NO_PARENTS}</p>
                     } else {
-                        <Select<NetEntry<u32>>
+                        <Select<NetEntry<Option<u32>>>
                             placeholder={t::CHOOSE_PARENT}
                             selected={parent}
                             entries={parents}
-                            onselect={ctx.link().callback(|entry: NetEntry<u32>| NetboxHelperMsg::NetParent(entry.value))}
+                            onselect={ctx.link().callback(|entry: NetEntry<Option<u32>>| NetboxHelperMsg::NetParent(entry.value))}
+                        />
+                    }
+                </FormGroup>
+                <FormGroup label={t::PARENT_V6}>
+                    if parents_v6.is_empty() {
+                        <p>{t::NO_PARENTS_V6}</p>
+                    } else {
+                        <Select<NetEntry<Option<u32>>>
+                            placeholder={t::CHOOSE_PARENT}
+                            selected={parent_v6}
+                            entries={parents_v6}
+                            onselect={ctx.link().callback(|entry: NetEntry<Option<u32>>| NetboxHelperMsg::NetParentV6(entry.value))}
                         />
                     }
                 </FormGroup>
@@ -1810,6 +1846,7 @@ fn fetch_net_options(scope: Scope<NetboxHelper>, id: u32) {
                 interfaces: Vec::new(),
                 vlans: Vec::new(),
                 parents: Vec::new(),
+                parents_v6: Vec::new(),
             },
         });
         scope.send_message(NetboxHelperMsg::NetOptions(options));

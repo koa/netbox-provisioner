@@ -4,6 +4,10 @@
 //! interface of the VLAN (a new one named like the VLAN, `docs/netbox-modeling.md`), and the
 //! tag `dhcp` if wanted. Without an IP range the DHCP pool is the rest of the network.
 //!
+//! IPv6 likewise, out of an IPv6 prefix of the site chosen by hand: the next free `/64`, its
+//! first address as gateway on the same interface, which `dhcp` announces for SLAAC. Either
+//! family may come alone, so a network that has IPv4 already gets its IPv6 later.
+//!
 //! As with the links, a network NetBox has free may be in use: one the network routes in part
 //! (`routes::Routes::overlapping`) or with addresses in NetBox is passed over.
 use super::{
@@ -24,12 +28,12 @@ use crate::{
 };
 use async_graphql::{InputObject, OneofObject, SimpleObject};
 use ipnet::IpNet;
-use std::sync::Arc;
+use std::{net::IpAddr, sync::Arc};
 
 /// Where the network goes.
 #[derive(Debug, Clone, PartialEq, Eq, OneofObject)]
 pub enum CustomerNetTarget {
-    /// a port or bridge of the device without IPv4
+    /// a port or bridge of the device without IPv4, or a client network (`dhcp`) without IPv6
     Interface(u32),
     /// a VLAN the device has: its virtual interface, or a new one
     Vlan(u32),
@@ -39,10 +43,12 @@ pub enum CustomerNetTarget {
 pub struct CustomerNetInput {
     pub device: u32,
     pub target: CustomerNetTarget,
-    /// the prefix of the site the network is taken from
-    pub parent: u32,
-    /// the network's length, `/24` without
+    /// the IPv4 prefix of the site the network is taken from
+    pub parent: Option<u32>,
+    /// the IPv4 network's length, `/24` without
     pub length: Option<u8>,
+    /// the IPv6 prefix of the site its `/64` is taken from
+    pub parent_v6: Option<u32>,
     /// the tag `dhcp`: a DHCP server on the network
     pub dhcp: bool,
 }
@@ -53,6 +59,7 @@ pub struct CustomerNetOptions {
     pub interfaces: Vec<CustomerNetInterface>,
     pub vlans: Vec<CustomerNetVlan>,
     pub parents: Vec<CustomerNetParent>,
+    pub parents_v6: Vec<CustomerNetParent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -78,16 +85,24 @@ pub struct CustomerNetParent {
 }
 
 const DEFAULT_LENGTH: u8 = 24;
+/// The length of an IPv6 client network: SLAAC needs a `/64`.
+const LENGTH_V6: u8 = 64;
 
-/// The ports and bridges without IPv4 that aren't a link to a router or in a bridge or VLAN,
-/// the VLANs of the device without a network on it, and the prefixes of its site.
+/// Whether `interface` (a port, bridge or VLAN interface) can take a network: without IPv4,
+/// or a client network (`dhcp`) without IPv6.
+fn open(interface: &InterfaceAccess) -> bool {
+    ipv4(interface).is_none() || (interface.is_enable_dhcp_server() && ipv6(interface).is_none())
+}
+
+/// The ports and bridges that can take a network ([`open`]) and aren't a link to a router or
+/// in a bridge or VLAN, the VLANs of the device that can, and the prefixes of its site.
 pub fn options(device: &DeviceAccess) -> CustomerNetOptions {
     let interfaces = device.interfaces();
     let mut free: Vec<CustomerNetInterface> = interfaces
         .iter()
         .filter(|interface| {
             (interface.is_ethernet_port() || interface.is_bridge())
-                && ipv4(interface).is_none()
+                && open(interface)
                 && interface.bridge().is_none()
                 && interface.carried_vlans().is_empty()
                 && !interface
@@ -108,7 +123,7 @@ pub fn options(device: &DeviceAccess) -> CustomerNetOptions {
         .filter(|vlan| vlan.devices().iter().any(|d| d.id() == device.id()))
         .filter_map(|vlan| {
             let gateway = vlan_interface(device, &vlan);
-            if gateway.as_ref().is_some_and(|i| ipv4(i).is_some()) {
+            if gateway.as_ref().is_some_and(|i| !open(i)) {
                 return None;
             }
             Some(CustomerNetVlan {
@@ -120,20 +135,23 @@ pub fn options(device: &DeviceAccess) -> CustomerNetOptions {
         })
         .collect();
     vlans.sort_by_key(|vlan| (vlan.vid, vlan.name.clone()));
-    let parents = device
-        .site()
-        .map(|site| device.topology().customer_parents(site.id()))
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(id, prefix)| CustomerNetParent {
-            id: id.0,
-            prefix: prefix.to_string().into(),
-        })
-        .collect();
+    let parents = |v6| {
+        device
+            .site()
+            .map(|site| device.topology().customer_parents(site.id(), v6))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id, prefix)| CustomerNetParent {
+                id: id.0,
+                prefix: prefix.to_string().into(),
+            })
+            .collect()
+    };
     CustomerNetOptions {
         interfaces: free,
         vlans,
-        parents,
+        parents: parents(false),
+        parents_v6: parents(true),
     }
 }
 
@@ -142,15 +160,33 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
         .get_device_by_id(&DeviceId(input.device))
         .ok_or(Error::UnknownDevice(input.device))?;
     let site = device.site().ok_or_else(|| Error::NoSite(device.name().into()))?;
-    let parent = topology
-        .prefix_data(IpPrefixId(input.parent))
-        .filter(|parent| parent.site == Some(site.id()))
-        .map(|parent| parent.prefix)
-        .ok_or(Error::UnknownPrefix(input.parent))?;
+    let parent_of = |id: u32, v6: bool| {
+        topology
+            .prefix_data(IpPrefixId(id))
+            .filter(|parent| parent.site == Some(site.id()))
+            .map(|parent| parent.prefix)
+            .filter(|prefix| matches!(prefix, IpNet::V6(_)) == v6)
+            .ok_or(Error::UnknownPrefix(id))
+    };
+    let parent = input.parent.map(|id| parent_of(id, false)).transpose()?;
+    let parent_v6 = input.parent_v6.map(|id| parent_of(id, true)).transpose()?;
+    if parent.is_none() && parent_v6.is_none() {
+        return Err(Error::NoParent);
+    }
     let length = input.length.unwrap_or(DEFAULT_LENGTH);
-    if length <= parent.prefix_len() || length > 30 {
+    if let Some(parent) = parent
+        && (length <= parent.prefix_len() || length > 30)
+    {
         return Err(Error::NetworkLength {
             length,
+            parent: parent.to_string().into(),
+        });
+    }
+    if let Some(parent) = parent_v6
+        && LENGTH_V6 <= parent.prefix_len()
+    {
+        return Err(Error::NetworkLength {
+            length: LENGTH_V6,
             parent: parent.to_string().into(),
         });
     }
@@ -182,18 +218,31 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
             (vlan_interface(&device, &vlan), Some(vlan), what)
         }
     };
-    if let Some(address) = existing.as_ref().and_then(ipv4) {
-        let interface = existing.as_ref().expect("has an address");
-        return Err(Error::PortAddressed {
-            port: format!("{} {}", device.name(), interface.name()).into(),
-            address: address.to_string().into(),
-        });
+    // an address of the family a network is wanted for: the port has its network
+    for (wanted, family) in [(parent.is_some(), ipv4 as fn(&_) -> _), (parent_v6.is_some(), ipv6)] {
+        if let Some(interface) = existing.as_ref().filter(|_| wanted)
+            && let Some(address) = family(interface)
+        {
+            return Err(Error::PortAddressed {
+                port: format!("{} {}", device.name(), interface.name()).into(),
+                address: address.to_string().into(),
+            });
+        }
     }
     let mut plan = NetboxPlan::new(&device, format!("Kunden-Netz {what}"));
     let rest = NetboxRest::reader()?;
     let routes = Routes::read(topology).await?;
     plan.checked_with = Some(routes.router.clone());
-    let net = next_free(&rest, &routes, &mut plan, input.parent, parent, length).await?;
+    let mut nets = Vec::new();
+    for (id, parent, length) in [
+        (input.parent, parent, length),
+        (input.parent_v6, parent_v6, LENGTH_V6),
+    ] {
+        if let (Some(id), Some(parent)) = (id, parent) {
+            let net = next_free(&rest, &routes, &mut plan, id, parent, length).await?;
+            nets.push((parent, net));
+        }
+    }
 
     let dhcp = input.dhcp.then_some(InterfaceTag::Dhcp);
     let (on, interface_name) = match &existing {
@@ -211,21 +260,22 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
             (Target::Step(plan.steps.len() - 1), name)
         }
     };
-    plan.steps.push(PlanStep::CreatePrefix(CreatePrefix {
-        prefix: net.to_string().into(),
-        pool: parent.to_string().into(),
-        description: what.into(),
-        site: Some(site.id().0),
-        vlan: vlan.as_ref().map(|vlan| vlan.id.0),
-    }));
-    let gateway = net.hosts().next().ok_or(Error::NoFreeAddress("customer", 4))?;
-    plan.steps.push(PlanStep::CreateAddress(CreateAddress {
-        address: IpNet::new(gateway, length).expect("a host of the network").to_string().into(),
-        device: device_ref(&device),
-        interface: interface_name,
-        prefix: net.to_string().into(),
-        on,
-    }));
+    for (parent, net) in nets {
+        plan.steps.push(PlanStep::CreatePrefix(CreatePrefix {
+            prefix: net.to_string().into(),
+            pool: parent.to_string().into(),
+            description: what.clone().into(),
+            site: Some(site.id().0),
+            vlan: vlan.as_ref().map(|vlan| vlan.id.0),
+        }));
+        plan.steps.push(PlanStep::CreateAddress(CreateAddress {
+            address: gateway(net).to_string().into(),
+            device: device_ref(&device),
+            interface: interface_name.clone(),
+            prefix: net.to_string().into(),
+            on,
+        }));
+    }
     if let Some(interface) = &existing
         && input.dhcp
         && !interface.is_enable_dhcp_server()
@@ -255,12 +305,31 @@ fn vlan_interface(device: &DeviceAccess, vlan: &VlanAccess) -> Option<InterfaceA
     })
 }
 
+/// The first address of `net` (`::1` for IPv6, whose network address is the subnet-router
+/// anycast), with its length.
+fn gateway(net: IpNet) -> IpNet {
+    let first = match net {
+        IpNet::V4(net) => IpAddr::V4((u32::from(net.network()) + 1).into()),
+        IpNet::V6(net) => IpAddr::V6((u128::from(net.network()) + 1).into()),
+    };
+    IpNet::new(first, net.prefix_len()).expect("the length of the network")
+}
+
 fn ipv4(interface: &InterfaceAccess) -> Option<IpNet> {
     interface
         .ips()
         .iter()
         .filter_map(|ip| ip.net())
         .find(|net| matches!(net, IpNet::V4(_)))
+}
+
+/// A global IPv6 address of `interface` (not link-local).
+fn ipv6(interface: &InterfaceAccess) -> Option<IpNet> {
+    interface
+        .ips()
+        .iter()
+        .filter_map(|ip| ip.net())
+        .find(|net| matches!(net, IpNet::V6(v6) if !v6.addr().is_unicast_link_local()))
 }
 
 /// How many free networks are looked at, as `connection::CANDIDATES`.
@@ -366,8 +435,8 @@ mod test {
         assert_eq!(prefix.site, Some(site));
     }
 
-    /// The choices leave out ports with an address, links to routers and bridge ports, and
-    /// offer only prefixes of the device's site that aren't a network themselves.
+    /// The choices leave out ports with their networks, links to routers and bridge ports, and
+    /// offer only prefixes of the device's site that aren't a network themselves, by family.
     #[test]
     fn options_are_free_ports_and_site_prefixes() {
         let topology = example_topology();
@@ -375,14 +444,51 @@ mod test {
             let options = options(&device);
             for choice in &options.interfaces {
                 let interface = topology.get_interface_by_id(InterfaceId(choice.id)).unwrap();
-                assert!(ipv4(&interface).is_none() && interface.bridge().is_none(), "{choice:?}");
+                assert!(open(&interface) && interface.bridge().is_none(), "{choice:?}");
             }
             let site = device.site().map(|s| s.id());
-            for parent in &options.parents {
-                let data = topology.prefix_data(IpPrefixId(parent.id)).unwrap();
-                assert_eq!(data.site, site);
-                assert!(data.addresses.is_empty() && data.pool.is_none());
+            for (parents, v6) in [(&options.parents, false), (&options.parents_v6, true)] {
+                for parent in parents {
+                    let data = topology.prefix_data(IpPrefixId(parent.id)).unwrap();
+                    assert_eq!(data.site, site);
+                    assert!(data.addresses.is_empty() && data.pool.is_none());
+                    assert_eq!(matches!(data.prefix, IpNet::V6(_)), v6, "{parent:?}");
+                }
             }
         }
+    }
+
+    /// The gateway is the first address: `.1` of an IPv4 network, `::1` of a `/64`.
+    #[test]
+    fn the_gateway_is_the_first_address() {
+        let net = |net: &str| gateway(net.parse().unwrap()).to_string();
+        assert_eq!(net("192.0.2.0/24"), "192.0.2.1/24");
+        assert_eq!(net("2001:db8:0:7::/64"), "2001:db8:0:7::1/64");
+    }
+
+    /// A client network without IPv6 is open for one; one with both, or IPv4 without `dhcp`
+    /// (an uplink), isn't.
+    #[test]
+    fn a_client_network_without_ipv6_is_open() {
+        let topology = example_topology();
+        let client = |v6: bool| {
+            topology.list_devices().flat_map(|d| d.interfaces()).find(|interface| {
+                interface.is_enable_dhcp_server()
+                    && ipv4(interface).is_some()
+                    && ipv6(interface).is_some() == v6
+            })
+        };
+        if let Some(interface) = client(false) {
+            assert!(open(&interface), "{}", interface.name());
+        }
+        if let Some(interface) = client(true) {
+            assert!(!open(&interface), "{}", interface.name());
+        }
+        let uplink = topology
+            .list_devices()
+            .flat_map(|d| d.interfaces())
+            .find(|interface| !interface.is_enable_dhcp_server() && ipv4(interface).is_some())
+            .expect("an address without dhcp");
+        assert!(!open(&uplink), "{}", uplink.name());
     }
 }

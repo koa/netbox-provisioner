@@ -206,6 +206,7 @@ impl From<&Error> for ErrorInfo {
                 "NETWORK_LENGTH",
                 vec![("length", length.to_string()), ("parent", parent.to_string())],
             ),
+            Error::NoParent => ("NO_PARENT", Vec::new()),
             Error::NoFreeNetwork { parent, length } => (
                 "NO_FREE_NETWORK",
                 vec![("parent", parent.to_string()), ("length", length.to_string())],

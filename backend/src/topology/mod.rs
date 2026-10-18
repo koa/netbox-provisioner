@@ -152,9 +152,9 @@ impl Topology {
         prefixes.sort_by_key(|(_, net)| (net.network(), net.prefix_len()));
         prefixes
     }
-    /// The IPv4 prefixes scoped to `site` that can hold networks: no pool's, none that is a
-    /// network itself (with an address of its own length), by address.
-    pub(crate) fn customer_parents(&self, site: SiteId) -> Vec<(IpPrefixId, IpNet)> {
+    /// The prefixes scoped to `site` that can hold networks, IPv4 or IPv6 (`v6`): no pool's,
+    /// none that is a network itself (with an address of its own length), by address.
+    pub(crate) fn customer_parents(&self, site: SiteId, v6: bool) -> Vec<(IpPrefixId, IpNet)> {
         let mut prefixes = self
             .ip_prefixes
             .iter()
@@ -162,7 +162,7 @@ impl Topology {
                 prefix.site == Some(site)
                     && prefix.pool.is_none()
                     && prefix.addresses.is_empty()
-                    && matches!(prefix.prefix, IpNet::V4(_))
+                    && matches!(prefix.prefix, IpNet::V6(_)) == v6
             })
             .map(|(id, prefix)| (*id, prefix.prefix))
             .collect::<Vec<_>>();

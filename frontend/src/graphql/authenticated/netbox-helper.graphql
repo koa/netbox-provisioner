@@ -124,6 +124,7 @@ query CustomerNetOptions($id: Int!){
                 interfaces{ id name label }
                 vlans{ id name vid interface }
                 parents{ id prefix }
+                parentsV6{ id prefix }
             }
         }
     }
