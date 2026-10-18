@@ -75,6 +75,9 @@ pub enum Error {
     /// the neighbor and its `/ip ssh forwarding-enabled`
     #[error("{0} doesn't forward connections to the device (forwarding-enabled={1})")]
     NeighborNoForwarding(Box<str>, Box<str>),
+    /// the neighbor and the device's address: it took the connections, the device answered none
+    #[error("{0} took the connection to {1}, but the device didn't answer the login")]
+    NeighborNoAnswer(Box<str>, std::net::IpAddr),
     #[error("The mac-telnet session ended before {0}")]
     ConsoleSessionEnded(Box<str>),
     #[error("The device refused: {0}")]

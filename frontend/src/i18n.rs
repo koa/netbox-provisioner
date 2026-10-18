@@ -94,6 +94,14 @@ pub mod error {
                 p("command"),
                 p("cause")
             ),
+            "NEIGHBOR_NO_ANSWER" => format!(
+                "{} hat die Verbindung zu {} angenommen, aber das Gerät hat in drei Versuchen \
+                 nicht auf den Login geantwortet: kommt der Nachbar bis zum API-Dienst (Firewall \
+                 des Geräts, Route auf {})?",
+                p("neighbor"),
+                p("address"),
+                p("neighbor")
+            ),
             "NEIGHBOR_NO_FORWARDING" => format!(
                 "{} leitet keine Verbindungen zum Gerät weiter (/ip ssh forwarding-enabled={}); \
                  es braucht local, wie es jede generierte Konfiguration hat: {} zuerst anwenden",

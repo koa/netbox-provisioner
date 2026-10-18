@@ -297,8 +297,10 @@ neighbor's port (its name read over the API, `MacTelnetSetup.neighbor_port`) and
 CRS (klr-sw-1) only answered with it, CHR 7.24.5 only without; the variant that got a login
 prompt stays for that MAC. Before the console session `check_neighbor` reads the neighbor's
 `/ip ssh forwarding-enabled` and stops with `NeighborNoForwarding` unless it is `local`/`both`
-(checked on CHR: an unreachable or closed target fails the forward at once, only a disallowed
-forward stays silent), so such a neighbor leaves the device untouched. `connect` falls back to that bootstrap
+(a disallowed forward stays silent), so such a neighbor leaves the device untouched. RouterOS
+takes a forward whose connection doesn't come about all the same (CHR 7.24.5): only an address
+on the cable without a device fails it at once, a closed port closes it at the login, a
+firewall dropping or rejecting it and a route elsewhere leave the login without an answer. `connect` falls back to that bootstrap
 address when the primary IP doesn't answer yet (the loopback, which only the first apply
 brings), directly first (berghof-stall-haus' 10.198.1.4 was routed to), then through an SSH
 tunnel to the neighbor
@@ -311,7 +313,11 @@ refusal), hence the timeout in `Tunnel::open`. Each connection over a neighbor g
 session of its own (`Path::Neighbor` holds the plan, `Tunnel::into_stream`): of two API logins
 at once over one session through RouterOS the second got no answer 4 times in 5 (lab-np2 to
 lab-sxt-a, 7.23.8; link-5-station logged such logins in, the answer never came back), with a
-session each 15 of 15 went through. The connect to the neighbor's SSH is limited to
+session each 15 of 15 went through. Still, of five logins at once over berghof-burri three
+never reached berghof-hansueli (7.21.5, its log): a login over a neighbor gets 10 s, up to three
+times (`NEIGHBOR_LOGIN_TIMEOUT`), then `NeighborNoAnswer`; the SSH login to the neighbor isn't
+in that time, RouterOS spaces many at once out (CHR: 6 s, 18 s from about seven on). The
+connect to the neighbor's SSH is limited to
 `OPEN_TIMEOUT`, else Linux waits about 2 min. `bootstrap::wait_for_api` limits each try, each with its own
 session (the setup of link-5-ap hung there for good). A DHCP client holding the setup address (link-5-station's old config, served across the radio
 link) is turned off by the setup, which `:put`s that into the console log: RouterOS refuses the

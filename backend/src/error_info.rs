@@ -86,6 +86,10 @@ impl From<&Error> for ErrorInfo {
                 "SETUP_COMMAND",
                 vec![("command", command.to_string()), ("cause", error.to_string())],
             ),
+            Error::NeighborNoAnswer(neighbor, address) => (
+                "NEIGHBOR_NO_ANSWER",
+                vec![("neighbor", neighbor.to_string()), ("address", address.to_string())],
+            ),
             Error::NeighborNoForwarding(neighbor, forwarding) => (
                 "NEIGHBOR_NO_FORWARDING",
                 vec![

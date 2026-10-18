@@ -217,9 +217,28 @@ pub(crate) async fn connect<D: ParsedMessage>(
     credentials: &Credentials,
 ) -> Result<RawDevice<D>, Error> {
     let (username, password) = resolve(credentials)?;
-    let stream = open_stream(address, path, 8728).await?;
-    Ok(RawDevice::connect_with_stream(stream, username.as_bytes(), password.map(str::as_bytes)).await?)
+    let Path::Neighbor(plan) = path else {
+        let stream = open_stream(address, path, 8728).await?;
+        return Ok(RawDevice::connect_with_stream(stream, username.as_bytes(), password.map(str::as_bytes)).await?);
+    };
+    for attempt in 1..=NEIGHBOR_LOGIN_TRIES {
+        let stream = open_stream(address, path, 8728).await?;
+        let login = RawDevice::connect_with_stream(stream, username.as_bytes(), password.map(str::as_bytes));
+        match tokio::time::timeout(NEIGHBOR_LOGIN_TIMEOUT, login).await {
+            Ok(connected) => return Ok(connected?),
+            Err(_) => log::info!("{address}: no answer to the login over {} ({attempt})", plan.neighbor),
+        }
+    }
+    Err(Error::NeighborNoAnswer(plan.neighbor.as_str().into(), address))
 }
+
+/// How long a login over a neighbor may take, each of [`NEIGHBOR_LOGIN_TRIES`]: across the
+/// cable the device answers within a second. RouterOS takes a forward also when its connection
+/// doesn't come about (CHR 7.24.5: a firewall dropping it, a route elsewhere), which leaves the
+/// login without an answer; of five logins at once over berghof-burri, three never reached
+/// berghof-hansueli (7.21.5, its log), the others went through.
+const NEIGHBOR_LOGIN_TIMEOUT: Duration = Duration::from_secs(10);
+const NEIGHBOR_LOGIN_TRIES: u32 = 3;
 
 /// A connection to `port` at `address` along `path`: routed through the management proxy
 /// unless it is the proxy, or made by the neighbor.
