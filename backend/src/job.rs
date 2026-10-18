@@ -15,7 +15,7 @@ use crate::{
     Error,
     device::{
         self, batch, bootstrap, device_mode, partitions, power, ros::graphql as apply, terminal, update,
-        update_fallback, watchdog,
+        radio_hold, update_fallback, watchdog,
     },
     graphql::scalars::ScalarDuration,
     helper,
@@ -84,6 +84,7 @@ pub enum Event {
     WatchdogRestored(watchdog::WatchdogRestored),
     WatchdogNotRestored(watchdog::WatchdogNotRestored),
     WatchdogLeft(watchdog::WatchdogLeft),
+    WatchdogKept(radio_hold::WatchdogKept),
     NetboxWritten(helper::NetboxWritten),
     NetboxUndone(helper::NetboxUndone),
 }

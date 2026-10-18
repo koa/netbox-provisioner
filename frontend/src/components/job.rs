@@ -439,6 +439,11 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             &problem(&failed.error),
         ),
         Event::WatchdogLeft(left) => e::watchdog_left(&left.device, &problem(&left.error)),
+        Event::WatchdogKept(kept) => e::watchdog_kept(
+            &kept.device,
+            &watching!(kept.watching),
+            seconds(kept.safety_net) / 60,
+        ),
         Event::NetboxWritten(written) if written.deleted => e::netbox_deleted(&written.display),
         Event::NetboxWritten(written) if written.changes.is_empty() => {
             e::netbox_created(&written.display, &written.path)

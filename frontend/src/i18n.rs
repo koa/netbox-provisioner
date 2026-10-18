@@ -1165,8 +1165,14 @@ pub mod job {
         }
         pub fn watchdog_left(device: &str, error: &str) -> String {
             format!(
-                "Watchdog von {device} nicht ausgesetzt ({error}): {device} kann während des \
-                Updates neu starten"
+                "Watchdog von {device} nicht ausgesetzt ({error}): {device} kann in der Zeit neu \
+                starten"
+            )
+        }
+        pub fn watchdog_kept(device: &str, watching: &str, safety_net_minutes: u64) -> String {
+            format!(
+                "Watchdog von {device} bleibt ausgesetzt, solange der Fallback noch auslösen kann: \
+                der Scheduler auf {device} stellt {watching} nach {safety_net_minutes} min wieder her"
             )
         }
         pub fn repartition_started(count: i64, files: i64) -> String {

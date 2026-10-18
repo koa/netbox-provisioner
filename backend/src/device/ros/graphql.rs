@@ -18,6 +18,8 @@ use crate::{
             warning::{ApplyWarning, CapOffOutsideWlanGroup},
         },
         device_mode, partitions, raw, update,
+        radio_hold::RadioHold,
+        watchdog::Watching,
     },
     topology::{PhysicalPortId, access::device::DeviceAccess, management::ManagementTree},
 };
@@ -41,6 +43,7 @@ use async_graphql::futures_util::future::join_all;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     net::IpAddr,
+    sync::atomic::Ordering,
     time::{Duration, Instant},
 };
 
@@ -608,6 +611,19 @@ pub(crate) struct PlannedApply {
 }
 
 impl PlannedApply {
+    /// Leaves the watch address as the device has it (`radio_hold`), planned again
+    /// (`ApplyPlanned`) where that changes the script.
+    pub(crate) fn hold_watchdog(&mut self, log: &Log) -> Result<(), Error> {
+        self.cfg.base_target.watchdog.watch_address = self.cfg.base_current.watchdog.watch_address.clone();
+        let script = render_script(&self.cfg.sorted_mutations()?)?;
+        if script != self.script {
+            log.emit(ApplyPlanned {
+                script: script.clone(),
+            });
+            self.script = script;
+        }
+        Ok(())
+    }
     /// The device is in line already.
     pub(crate) fn is_empty(&self) -> bool {
         self.script.trim().is_empty()
@@ -647,16 +663,37 @@ impl AccessibleDevice {
     /// config from before. Writes without asking for `allow_apply`, that is up to the caller
     /// (`WritesAllowed`).
     pub async fn apply(&self, log: &Log) -> Result<(), Error> {
-        let planned = self.plan_apply(log).await?;
+        let mut planned = self.plan_apply(log).await?;
         if planned.is_empty() {
             return Ok(());
         }
         log.check()?;
+        let hold = match planned.radio_wait() {
+            Some(_) => {
+                let applied = BTreeSet::from([self.device_config.id()]);
+                Some(RadioHold::take(self, &mut planned, &applied, &Default::default(), log).await?)
+            }
+            None => None,
+        };
+        let (applied, back) = self.apply_planned(&planned, log).await;
+        match hold {
+            Some(hold) if back => hold.release(self, log).await,
+            Some(hold) => hold.leave(log),
+            None => {}
+        }
+        applied
+    }
+    /// [`Self::apply`] once planned; `true` along with it where the fallback won't fire:
+    /// nothing applied, or the device reached again and the fallback taken away.
+    async fn apply_planned(&self, planned: &PlannedApply, log: &Log) -> (Result<(), Error>, bool) {
         let radio_wait = planned.radio_wait();
         let delay = CONFIG.apply_fallback() + radio_wait.unwrap_or_default();
         let fires = Instant::now() + delay;
-        let armed = self.arm_fallback(delay, radio_wait, log).await?;
-        self.run_script(&planned, SCRIPT_ANSWER, log).await;
+        let armed = match self.arm_fallback(delay, radio_wait, log).await {
+            Ok(armed) => armed,
+            Err(error) => return (Err(error), true),
+        };
+        self.run_script(planned, SCRIPT_ANSWER, log).await;
         // cancelled from here on, the fallback stays
         let wait = async |time| {
             let waited = log.unless_cancelled(tokio::time::sleep(time)).await;
@@ -669,7 +706,9 @@ impl AccessibleDevice {
         let settled = Instant::now() + APPLY_TIMEOUT;
         let give_up = give_up(fires);
         let remaining = loop {
-            wait(Duration::from_secs(3)).await?;
+            if let Err(error) = wait(Duration::from_secs(3)).await {
+                return (Err(error), false);
+            }
             match self.check_applied(settled).await {
                 Some(remaining) => break remaining,
                 None if Instant::now() >= give_up => break self.remaining().await,
@@ -677,12 +716,17 @@ impl AccessibleDevice {
             }
         };
         emit_checked(log, &remaining);
-        match (armed, remaining.is_ok()) {
+        let back = remaining.is_ok();
+        match (armed, back) {
             (false, _) => {}
-            (true, true) => self.stop_fallback(fires, delay, log).await?,
+            (true, true) => {
+                if let Err(error) = self.stop_fallback(fires, delay, log).await {
+                    return (Err(error), false);
+                }
+            }
             (true, false) => fallback_left(log, fires, FallbackLeftReason::NotReached, None),
         }
-        self.after_apply(&planned, log).await
+        (self.after_apply(planned, log).await, back)
     }
     /// The diff to apply, planned (`ApplyPlanned`); an empty one is nothing to do.
     pub(crate) async fn plan_apply(&self, log: &Log) -> Result<PlannedApply, Error> {
@@ -834,6 +878,28 @@ impl AccessibleDevice {
             .flatten()
             .is_some_and(|manager| manager.enabled)
     }
+    /// Whether the checks keep the watch address as the device has it (`radio_hold`).
+    pub(crate) fn hold_watchdog(&self, held: bool) {
+        self.watchdog_held.store(held, Ordering::Relaxed);
+    }
+    /// What the watch address is to be after `radio_hold`: as NetBox has it where that answers
+    /// (none, where it has none), else `old`, as the device had it.
+    pub(crate) async fn watch_after_hold(
+        &self,
+        raw: &RawDevice<SimpleResult>,
+        old: &Watching,
+    ) -> Result<Watching, Error> {
+        let mut cfg = DeviceCfg::fetch(&self.connect_again().await?, &self.device_config).await?;
+        cfg.generate_for(&self.device_config)?;
+        Ok(match cfg.base_target.watchdog.watch_address.value().copied() {
+            None => Watching::default(),
+            Some(address) if answering(raw, &[address]).await.contains(&address) => Watching {
+                watch_address: Some(address.to_string().into()),
+                poe_pings: Vec::new(),
+            },
+            Some(_) => old.clone(),
+        })
+    }
     /// The diff of a fresh look at the device.
     pub(crate) async fn remaining_diff(&self) -> Result<Box<str>, Error> {
         self.remaining().await
@@ -845,6 +911,9 @@ impl AccessibleDevice {
             let client = self.connect_again().await?;
             let mut cfg = DeviceCfg::fetch(&client, &self.device_config).await?;
             cfg.generate_live(&self.device_config, &self.connect_again().await?).await?;
+            if self.watchdog_held.load(Ordering::Relaxed) {
+                cfg.base_target.watchdog.watch_address = cfg.base_current.watchdog.watch_address.clone();
+            }
             cfg.script()
         })
         .await

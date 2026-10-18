@@ -96,6 +96,28 @@ Ist ein Speiser nicht erreichbar oder lässt er sich nicht aussetzen, startet ke
 (`WATCHDOG_NOT_SUSPENDED`). Bei jedem anderen Gerät geht das Update weiter
 (`WatchdogLeft`): Schlimmstenfalls startet es einmal unnötig neu.
 
+## Anwenden mit Funkänderung
+
+Ein AP auf einem DFS-Kanal prüft nach einer Änderung 10 min oder länger auf Radar
+(`RADIO_RESTART`), so lang wie `ping-timeout`. Ohne Pause startet die Station neu, und wer seinen
+Parent über die Strecke erreicht; ihr Fallback-Scheduler zählt nach dem Neustart von vorne.
+Ändert der Plan einen Funk, setzt das Anwenden deshalb ohne Nachfrage aus
+(`device::radio_hold`):
+
+- die `watch-address` des Geräts selbst; Plan und Prüfung danach behalten, was das Gerät dort
+  hat, so macht die Pause kein Rest-Diff;
+- die `watch-address` der Geräte, die von ihm abhängen (`depending_on`, wie beim Update).
+
+Die PoE-Pings bleiben: Ein Port pingt nur das Gerät an seinem Kabel, und das bleibt erreichbar.
+Dieselben Scheduler wie beim Update stellen nach 2 h wieder her. Erreicht der Provisioner die
+Geräte wieder (oder ist nichts angewendet), stellt er sie selbst her, die eigene so, wie NetBox
+sie hat, wenn die Adresse antwortet, sonst wie vorher. Solange der Fallback noch auslösen kann
+(nicht erreicht, nach dem Skript abgebrochen), bleiben sie ausgesetzt (`WatchdogKept`): Die alte
+Konfiguration kann ihren Funk wieder prüfen lassen. Beim gemeinsamen Anwenden hält jedes Gerät
+mit Funkänderung seine eigene und die der Abhängigen ausserhalb des Batches, jedes nur einmal.
+Ein Gerät im Batch ohne eigene Funkänderung, das von einem anderen abhängt, wird nicht
+ausgesetzt.
+
 ## Neustart-Schleifen
 
 Fällt eine Verbindung dauerhaft aus (Funkstrecke bei Schnee), startet ein Gerät, das seinen
@@ -109,12 +131,6 @@ etwa alle 26 min. Jedes Mal bricht sein lokales Netz kurz weg.
 
 ## Offen
 
-- **Anwenden mit Funkänderung.** Ein AP auf einem DFS-Kanal prüft nach einer Änderung 10 min
-  oder länger auf Radar (`RADIO_RESTART`). Länger als `ping-timeout`: Die Station und wer
-  seinen Parent über sie erreicht, startet in der Zeit neu. Dabei läuft ihr Fallback-Scheduler (`interval`)
-  nach dem Neustart neu an und feuert später als die der anderen. Die Pause beim Update
-  liesse sich auf das Anwenden übertragen. Dann muss aber die Prüfung nach dem Skript den
-  ausgesetzten Watchdog als „in line“ werten.
 - **Befunde:** kein Weg zu einer Wurzel (kein Watchdog möglich) als Warnung; ein
   Custom Field für Sonderfälle (aus, oder eine feste Adresse).
 - **Ersatz eines gespeisten Geräts:** Der Port des Speisers pingt weiter die Adresse des

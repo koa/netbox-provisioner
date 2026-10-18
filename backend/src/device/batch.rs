@@ -15,12 +15,17 @@
 //! can't be repaired from afar; reached over another way but not in line counts as not
 //! through, lab-w60-b was). A problem before the scripts start stops the batch with nothing
 //! applied; cancelling any of its jobs cancels all.
+//!
+//! A device whose plan changes a radio suspends its ping watchdog and those depending on it
+//! before the fallbacks (`radio_hold`), and restores them once all are through or nothing is
+//! applied; while the fallbacks may still fire they stay suspended.
 use crate::{
     Error,
     config::CONFIG,
     error_info::ErrorInfo,
     device::{
         AccessibleDevice,
+        radio_hold::RadioHold,
         ros::graphql::{
             APPLY_TIMEOUT, ApplyStarted, FALLBACK_MARGIN, FallbackLeftReason, PlannedApply,
             arm_fallback_on, emit_checked, fallback_left, remove_script, script_running,
@@ -34,7 +39,11 @@ use crate::{
 use async_graphql::{SimpleObject, futures_util::future::join_all};
 use log::info;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use std::time::Instant;
 use tokio::time::sleep;
 
@@ -80,6 +89,12 @@ pub(crate) trait Applying: Send + Sync {
     fn plan(&mut self, log: &Log) -> impl Future<Output = Result<bool, Error>> + Send;
     /// How much longer the fallback waits for a radio the plan changes, if it does.
     fn radio_wait(&self) -> Option<Duration>;
+    /// Suspends the watchdogs a radio the plan changes may set off (`radio_hold`); nothing
+    /// without one.
+    fn hold(&mut self, log: &Log) -> impl Future<Output = Result<(), Error>> + Send;
+    /// Restores what [`Self::hold`] suspended once the fallback won't fire (`back`), else leaves
+    /// it to the scheduler entries.
+    fn release(&self, back: bool, log: &Log) -> impl Future<Output = ()> + Send;
     /// Sets up the fallback, firing in `delay`, `radio_wait` of it for a radio
     /// (`FallbackArmed`); `false` where the device mode doesn't allow one (`FallbackUnavailable`).
     fn arm(
@@ -110,6 +125,10 @@ pub(crate) trait Applying: Send + Sync {
 pub(crate) struct Linked {
     device: DeviceAccess,
     reached: Option<Reached>,
+    /// the devices of the batch, which hold their own watchdogs
+    batch: Arc<BTreeSet<DeviceId>>,
+    /// the devices whose watchdogs a member holds already
+    claimed: Arc<Mutex<BTreeSet<DeviceId>>>,
 }
 
 /// A planned device of the batch: its connection, the plan, and a second connection for the
@@ -118,6 +137,7 @@ struct Reached {
     link: AccessibleDevice,
     planned: PlannedApply,
     control: RawDevice<SimpleResult>,
+    hold: Mutex<Option<RadioHold>>,
 }
 
 impl Linked {
@@ -133,12 +153,35 @@ impl Applying for Linked {
         let something = !planned.is_empty();
         if something {
             let control = link.connect_again::<SimpleResult>().await?;
-            self.reached = Some(Reached { link, planned, control });
+            self.reached = Some(Reached {
+                link,
+                planned,
+                control,
+                hold: Mutex::new(None),
+            });
         }
         Ok(something)
     }
     fn radio_wait(&self) -> Option<Duration> {
         self.reached().planned.radio_wait()
+    }
+    async fn hold(&mut self, log: &Log) -> Result<(), Error> {
+        let (batch, claimed) = (self.batch.clone(), self.claimed.clone());
+        let reached = self.reached.as_mut().expect("planned before");
+        if reached.planned.radio_wait().is_some() {
+            let hold = RadioHold::take(&reached.link, &mut reached.planned, &batch, &claimed, log).await?;
+            *reached.hold.lock().unwrap_or_else(|p| p.into_inner()) = Some(hold);
+        }
+        Ok(())
+    }
+    async fn release(&self, back: bool, log: &Log) {
+        let reached = self.reached();
+        let hold = reached.hold.lock().unwrap_or_else(|p| p.into_inner()).take();
+        match hold {
+            Some(hold) if back => hold.release(&reached.link, log).await,
+            Some(hold) => hold.leave(log),
+            None => {}
+        }
     }
     async fn arm(&self, delay: Duration, radio_wait: Option<Duration>, log: &Log) -> Result<bool, Error> {
         arm_fallback_on(&self.reached().control, delay, radio_wait, log).await
@@ -187,11 +230,15 @@ pub(crate) struct Timing {
 /// outcome, in the order of `devices`.
 pub async fn apply(devices: Vec<DeviceAccess>, logs: Vec<Log>) -> Vec<Result<(), Error>> {
     let names: Vec<Box<str>> = devices.iter().map(|d| d.name().into()).collect();
+    let batch = Arc::new(devices.iter().map(DeviceAccess::id).collect::<BTreeSet<_>>());
+    let claimed = Arc::new(Mutex::new(BTreeSet::new()));
     let members = devices
         .into_iter()
         .map(|device| Linked {
             device,
             reached: None,
+            batch: batch.clone(),
+            claimed: claimed.clone(),
         })
         .collect();
     run(
@@ -304,6 +351,21 @@ pub(crate) async fn run<M: Applying>(
         return finish(results);
     }
 
+    // the watchdogs a changed radio may set off, one device after the other
+    for index in 0..running.len() {
+        let m = &mut running[index];
+        let held = match cancelled(&logs) {
+            Ok(()) => m.member.hold(&m.log).await,
+            Err(error) => Err(error),
+        };
+        if let Err(error) = held {
+            let failed = m.index;
+            release_all(&running, true).await;
+            stop(&mut results, failed, error);
+            return finish(results);
+        }
+    }
+
     // on each a fallback, all firing together, and the script; a radio changed on one of
     // them may keep the others off as long
     let radio_wait = running.iter().filter_map(|m| m.member.radio_wait()).max();
@@ -328,6 +390,7 @@ pub(crate) async fn run<M: Applying>(
     if let Some((failed, error)) = first_failure(prepared.into_iter().map(|(_, r)| r).collect()) {
         // nothing applied yet: taking it away is all there is to do
         take_back(&running, &armed, fires, delay).await;
+        release_all(&running, true).await;
         stop(&mut results, running[failed].index, error);
         return finish(results);
     }
@@ -336,6 +399,7 @@ pub(crate) async fn run<M: Applying>(
     // it is and the check below sends all back
     if let Err(error) = cancelled(&logs) {
         take_back(&running, &armed, fires, delay).await;
+        release_all(&running, true).await;
         stop(&mut results, running[0].index, error);
         return finish(results);
     }
@@ -366,6 +430,7 @@ pub(crate) async fn run<M: Applying>(
     loop {
         sleep(timing.poll).await;
         if cancelled(&logs).is_err() {
+            release_all(&running, false).await;
             return left_cancelled(&running, fires, results, finish);
         }
         let checks = join_all(
@@ -428,6 +493,7 @@ pub(crate) async fn run<M: Applying>(
             }
         }))
         .await;
+        release_all(&running, true).await;
         for (member, stopped) in running.iter().zip(stopped) {
             results[member.index] = Some(stopped);
         }
@@ -443,6 +509,7 @@ pub(crate) async fn run<M: Applying>(
             .collect::<Vec<&str>>()
             .join(", ")
             .into();
+        release_all(&running, false).await;
         for member in &running {
             member.log.emit(event.clone());
             let reason = if member.checked.is_none() {
@@ -473,6 +540,11 @@ async fn take_back<M: Applying>(running: &[Running<M>], armed: &[bool], fires: I
         }
     }))
     .await;
+}
+
+/// [`Applying::release`] on all, at once.
+async fn release_all<M: Applying>(running: &[Running<M>], back: bool) {
+    join_all(running.iter().map(|m| m.member.release(back, &m.log))).await;
 }
 
 /// Cancelled once the scripts may run: the fallbacks stay, as after a single apply's script.
@@ -570,6 +642,17 @@ mod run_test {
         }
         fn radio_wait(&self) -> Option<Duration> {
             self.radio.then_some(Duration::from_millis(200))
+        }
+        async fn hold(&mut self, _log: &Log) -> Result<(), Error> {
+            if self.radio {
+                self.call("hold");
+            }
+            Ok(())
+        }
+        async fn release(&self, back: bool, _log: &Log) {
+            if self.radio {
+                self.call(if back { "release" } else { "keep" });
+            }
         }
         async fn arm(&self, delay: Duration, _radio_wait: Option<Duration>, _log: &Log) -> Result<bool, Error> {
             self.delays.lock().unwrap().push(delay);
@@ -734,6 +817,26 @@ mod run_test {
         let delays = delays.lock().unwrap();
         assert_eq!(delays.len(), 2);
         assert!(delays.iter().all(|d| *d > Duration::from_millis(400)), "{delays:?}");
+    }
+
+    /// A changed radio holds the watchdogs before the fallbacks, restores them once all are
+    /// back or nothing is applied, and leaves them while the fallbacks may still fire.
+    #[tokio::test]
+    async fn a_changed_radio_holds_the_watchdogs_until_all_are_back() {
+        let radio = || Fake { radio: true, ..Fake::default() };
+        let (calls, results, _) = batch(radio(), Fake::default()).await;
+        assert_eq!(
+            calls,
+            [
+                "plan near", "plan far", "hold near", "arm near", "write near", "arm far",
+                "write far", "start near", "start far", "stop near", "stop far", "release near"
+            ]
+        );
+        assert!(results.iter().all(Result::is_ok), "{results:?}");
+        let (calls, _, _) = batch(radio(), Fake { lost: true, ..Fake::default() }).await;
+        assert_eq!(calls.last().map(String::as_str), Some("keep near"), "{calls:?}");
+        let (calls, _, _) = batch(radio(), Fake { write_fails: true, ..Fake::default() }).await;
+        assert_eq!(calls.last().map(String::as_str), Some("release near"), "{calls:?}");
     }
 
     #[tokio::test]

@@ -25,6 +25,7 @@ pub mod device_mode;
 pub mod neighbors;
 pub mod partitions;
 pub mod power;
+pub(crate) mod radio_hold;
 pub(crate) mod raw;
 pub mod ros;
 pub mod terminal;
@@ -65,6 +66,9 @@ pub struct AccessibleDevice {
     device_config: DeviceAccess,
     /// `/system/identity` of the device answering at `address`
     identity: Box<str>,
+    /// an apply changing a radio suspended its watch address (`radio_hold`): the checks after
+    /// it keep what the device has there
+    watchdog_held: std::sync::atomic::AtomicBool,
 }
 
 /// The device a connection reached. Only the identity tells it apart from another one at the
@@ -143,6 +147,7 @@ impl AccessibleDevice {
             client,
             device_config,
             identity,
+            watchdog_held: Default::default(),
         })
     }
     /// The device actually answering: where, how and with which identity.

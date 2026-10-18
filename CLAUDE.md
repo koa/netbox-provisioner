@@ -528,7 +528,16 @@ device), and `updateRouteros(suspendWatchdogs: true)` sets them to `none` and
 can't be suspended is `WatchdogLeft` and the update goes on, a supplier stops it). A scheduler
 entry on each, added before they go, restores them after `SAFETY_NET` (2 h) should the
 provisioner not (CHR test `watchdog_is_restored_or_restores_itself`); a leftover entry is
-where `read` finds them. An apply that changes a radio doesn't suspend anything yet.
+where `read` finds them. An apply whose plan changes a radio (a DFS AP listens 10 min or longer,
+as long as `ping-timeout`) suspends the watch address of the device and of those depending on
+it, not the PoE pings (a port only pings what is on its cable), without asking
+(`device::radio_hold`): its own makes the plan and the checks keep what the device has
+(`PlannedApply::hold_watchdog`, `AccessibleDevice.watchdog_held`), and it is restored as NetBox
+has it where that answers, else as it was. Restored once the fallback won't fire (back, or
+nothing applied); while it may (not reached, cancelled after the script) they stay for the
+scheduler entries (`WatchdogKept`). In a batch each radio-changing member holds its own and the
+dependents outside the batch, each once; a member without a radio change depending on one
+isn't held.
 
 A modeled port of a PoE board without `pse` gets `poe-out=off`, which cuts what it feeds and
 which the script alone doesn't make obvious, so `generateCfg` returns `warnings` next to the
