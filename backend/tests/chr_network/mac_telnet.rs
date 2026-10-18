@@ -105,6 +105,11 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
         eprintln!("entry ssh forwarding: {r:?}");
     }
     wait_for_boot(&fresh).await;
+    // an old config has its ports renamed: the setup finds the port by its factory name
+    // (berghof-hansueli)
+    let configured_api = configured.connect_api(crate::TEST_PASSWORD).await.expect("configured api");
+    run(&configured_api, "/interface/ethernet/set", &[("numbers", "ether3"), ("name", "e03-old")]).await;
+    drop(configured_api);
 
     for (node, slot, password) in [
         (&fresh, 1, NEW_PASSWORD),
@@ -356,8 +361,9 @@ async fn mac_telnet_setup_takes_the_address_from_a_dhcp_client() {
     run(&entry_api, "/ip/dhcp-server/network/add", &[("address", "192.168.77.0/29"), ("gateway", "192.168.77.1")]).await;
     run(&entry_api, "/ip/dhcp-server/add", &[("name", "lan"), ("interface", "ether2"), ("address-pool", "one")]).await;
     run(&entry_api, "/ip/ssh/set", &[("forwarding-enabled", "local")]).await;
+    run(&target_api, "/interface/ethernet/set", &[("numbers", "ether2"), ("name", "e02-old")]).await;
     run(&target_api, "/interface/bridge/add", &[("name", "bridge-lan")]).await;
-    run(&target_api, "/interface/bridge/port/add", &[("bridge", "bridge-lan"), ("interface", "ether2")]).await;
+    run(&target_api, "/interface/bridge/port/add", &[("bridge", "bridge-lan"), ("interface", "e02-old")]).await;
     run(&target_api, "/ip/dhcp-client/add", &[("interface", "bridge-lan")]).await;
     wait_until(
         || async { Ok(address_rows(&target_api, address).await == [true]) },

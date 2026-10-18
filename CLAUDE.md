@@ -289,7 +289,9 @@ operator picks the physical device from what the neighbor's `/ip/neighbor` shows
 (`device::terminal`, russh; login flags `+ct400w` so long echoes don't wrap) through the factory
 prompts (license, default-config notice, new password - each answered once, some versions print
 `new password>` twice), sets password, address, API and a firewall accept, and takes the port out
-of the factory bridge in the background. Factory bridges answer MAC-telnet only on the bridge's
+of the factory bridge in the background. The port is found by its factory name
+(`default-name`): a device with an old config has its ports renamed (berghof-hansueli; the
+CHR tests rename the target's port). Factory bridges answer MAC-telnet only on the bridge's
 MAC, which is also the one they announce. `/tool mac-telnet` is tried with `interface=` the
 neighbor's port (its name read over the API, `MacTelnetSetup.neighbor_port`) and without: a
 CRS (klr-sw-1) only answered with it, CHR 7.24.5 only without; the variant that got a login

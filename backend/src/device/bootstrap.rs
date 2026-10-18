@@ -556,7 +556,10 @@ fn setup_commands(
     how: LoggedIn,
     mac: &MacAddress,
 ) -> Vec<String> {
-    let port = &setup.port;
+    // the port under the name the device has for it: a device with an old config has its
+    // ports renamed (berghof-hansueli: no `ether1`, "input does not match any value of
+    // interface")
+    let port = format!("[/interface ethernet get [find default-name=\"{}\"] name]", setup.port);
     let mut commands = Vec::new();
     if let LoggedIn::WithoutPassword = how {
         commands.push(format!(
@@ -584,17 +587,17 @@ fn setup_commands(
     ));
     if setup.on_bridge {
         commands.push(format!(
-            "{{:local i \"{port}\"; :local p [/interface bridge port find interface=\"{port}\"]; \
+            "{{:local e {port}; :local i $e; :local p [/interface bridge port find interface=$e]; \
              :if ([:len $p] > 0) do={{:set i [/interface bridge port get ($p->0) bridge]}} else={{\
              :local b [/interface bridge find mac-address={mac}]; :if ([:len $b] > 0) do={{\
-             :set i [/interface bridge get ($b->0) name]; /interface bridge port add bridge=$i interface=\"{port}\"}}}}; \
+             :set i [/interface bridge get ($b->0) name]; /interface bridge port add bridge=$i interface=$e}}}}; \
              /ip address remove [find address=\"{address}\" and interface!=$i]; \
              :if ([:len [/ip address find address=\"{address}\" interface=$i]] = 0) do={{/ip address add address=\"{address}\" interface=$i}}}}"
         ));
     } else {
         // stays inactive while the port is in a (factory) bridge, see below
         commands.push(format!(
-            ":if ([:len [/ip address find address=\"{address}\" interface={port}]] = 0) do={{/ip address add address=\"{address}\" interface={port}}}"
+            "{{:local e {port}; :if ([:len [/ip address find address=\"{address}\" interface=$e]] = 0) do={{/ip address add address=\"{address}\" interface=$e}}}}"
         ));
     }
     // a factory firewall drops everything not from the LAN ports
