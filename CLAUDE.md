@@ -262,8 +262,7 @@ from the neighbor's address on the cable, so the device needs no route back befo
 apply brings OSPF. It tries every neighbor of `bootstrap::plans` in turn, the management
 proxy's device first: another neighbor may be cut off itself. Every generated config has `/ip
 ssh forwarding-enabled=local` for that; without it RouterOS never answers the forward (no
-refusal), hence the timeout in `Tunnel::open`; neither the tunnel's SSH login nor an API login
-through it gives up by itself, so `bootstrap::wait_for_api` limits each try and makes the tunnel
+refusal), hence the timeout in `Tunnel::open`. `bootstrap::wait_for_api` limits each try and makes the tunnel
 again after one that ran out (the setup of link-5-ap hung there for good). Don't go back to static return routes on the device: with
 `redistribute=static` they go out as /32s that beat the neighbors' connected networks. When the
 mac-telnet session ends early, the following lines land on the neighbor's own console (this
@@ -283,6 +282,18 @@ factory ether1 is WAN (firewall, no MAC server or discovery there), so it is set
 to CAPs mode (`docs/netbox-modeling.md`); `set_up` turns the CAP that mode enables off again
 (`:parse`, the menus depend on the packages), since CAPsMAN refuses the first apply renaming the
 radios.
+
+Nothing waits on a device or the way to it without a limit: over a radio link a connection can
+stall for good without ending (jobs hung at the setup, before the upload, after it). Opening a
+connection, directly or through the management proxy, has 20 s (`device::OPEN_TIMEOUT`, each
+try); an SSH key exchange and login 30 s (`terminal::SSH_LOGIN_TIMEOUT`, also the tunnel's);
+an API login 30 s and every API command 120 s without a reply (mikrotik-api's `LOGIN_TIMEOUT`,
+`REPLY_TIMEOUT`, `Error::ReplyTimeout`; a reply restarts it, so a monitor that keeps answering
+goes on). A command that rightly stays silent longer says so with
+`send_command_with_reply_timeout`: the device-mode countdown (`None`, its own deadline), the
+partition copy (`COPY_TIMEOUT`) and mikrotik-model's `/system/script/run` of an apply
+(`SCRIPT_RUN_TIMEOUT`, 10 min). Downloads from MikroTik have 20 s to connect and 60 s per read
+(`update::http`). A new wait on a device needs one of these, or its own timeout.
 
 Only `/system/identity` tells which device answers at an address. `AccessibleDevice::create_client`
 reads it, and one named like another NetBox device is `WrongDevice` (an address taken twice, a

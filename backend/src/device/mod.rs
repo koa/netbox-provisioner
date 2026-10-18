@@ -228,8 +228,9 @@ async fn open_stream(address: IpAddr, path: &Path, port: u16) -> Result<Box<dyn 
         Path::Routed => match proxied_stream(address, port).await? {
             Some(stream) => Box::new(stream),
             None => {
-                let stream = TcpStream::connect((address, port))
+                let stream = tokio::time::timeout(OPEN_TIMEOUT, TcpStream::connect((address, port)))
                     .await
+                    .map_err(|_| Error::Timeout(address))?
                     .map_err(|e| terminal::TerminalError::Ssh(e.into()))?;
                 let _ = stream.set_nodelay(true);
                 Box::new(stream)
@@ -237,6 +238,10 @@ async fn open_stream(address: IpAddr, path: &Path, port: u16) -> Result<Box<dyn 
         },
     })
 }
+
+/// How long opening a connection may take, directly or through the management proxy (each
+/// try of it).
+const OPEN_TIMEOUT: Duration = Duration::from_secs(20);
 /// A connection to `port` at `address` through the management proxy; `None` if it is to be
 /// reached directly (no proxy configured, or it is the proxy itself).
 ///
@@ -255,14 +260,18 @@ pub async fn proxied_stream(
     };
     let mut attempt = 0;
     loop {
-        match Socks5Stream::connect_with_password(
-            proxy.address,
-            (address, port),
-            &proxy.user,
-            &proxy.password,
+        let connected = tokio::time::timeout(
+            OPEN_TIMEOUT,
+            Socks5Stream::connect_with_password(
+                proxy.address,
+                (address, port),
+                &proxy.user,
+                &proxy.password,
+            ),
         )
         .await
-        {
+        .map_err(|_| Error::Timeout(address))?;
+        match connected {
             Ok(stream) => return Ok(Some(stream)),
             Err(tokio_socks::Error::GeneralSocksServerFailure) if attempt < 2 => {
                 attempt += 1;

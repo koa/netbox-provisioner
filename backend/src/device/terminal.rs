@@ -59,6 +59,8 @@ pub enum TerminalError {
     NoForwarding(IpAddr, u16),
     #[error("upload refused at {0}: {1}")]
     Upload(&'static str, Box<str>),
+    #[error("ssh: no login within {0:?}")]
+    LoginTimeout(Duration),
     #[error("upload: no answer within {waited:?} at {step}")]
     UploadNoAnswer { step: &'static str, waited: Duration },
     #[error("upload stalled: nothing went through for {waited:?} after {sent} of {total} bytes")]
@@ -148,16 +150,25 @@ where
         gex: client::GexParams::new(2048, 8192, 8192).expect("valid group sizes"),
         ..config
     });
-    let mut session = client::connect_stream(config, stream, AcceptAnyKey).await?;
-    if !session
-        .authenticate_password(login, password.unwrap_or_default())
-        .await?
-        .success()
-    {
-        return Err(TerminalError::LoginRefused(login.into()));
-    }
-    Ok(session)
+    // key exchange and login: on a slow device over a radio link a few seconds, but nothing
+    // gives up by itself when the other end stops answering
+    timeout(SSH_LOGIN_TIMEOUT, async {
+        let mut session = client::connect_stream(config, stream, AcceptAnyKey).await?;
+        if !session
+            .authenticate_password(login, password.unwrap_or_default())
+            .await?
+            .success()
+        {
+            return Err(TerminalError::LoginRefused(login.into()));
+        }
+        Ok(session)
+    })
+    .await
+    .map_err(|_| TerminalError::LoginTimeout(SSH_LOGIN_TIMEOUT))?
 }
+
+/// How long an SSH key exchange and login may take.
+pub const SSH_LOGIN_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// An SSH session to a device that forwards connections to others it reaches (`direct-tcpip`,
 /// `/ip ssh forwarding-enabled=local`): from the device's own address, so the far end needs no

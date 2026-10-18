@@ -132,11 +132,13 @@ fn script(target: &str, delay: Duration) -> String {
 async fn copy_to(device: &RawDevice<SimpleResult>, target: &str) -> Result<(), Error> {
     let path = "/partitions/copy-to";
     let id = partitions::id_of(device, target).await?;
+    // copying slow flash may stay silent for a while; the copy's own limit holds
     let mut stream = device
-        .send_command(
+        .send_command_with_reply_timeout(
             path.as_bytes(),
             |cmd| cmd.attribute(b"number", id.as_bytes()),
             (),
+            Some(COPY_TIMEOUT),
         )
         .await;
     let copied = timeout(COPY_TIMEOUT, async {

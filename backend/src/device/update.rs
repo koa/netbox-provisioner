@@ -271,7 +271,9 @@ pub async fn newest(major: u32, channel: Channel) -> Result<Version, Error> {
     let prefix = if major >= 7 { "a" } else { "" };
     let url = format!("{NEWEST_URL}{prefix}{major}.{}", channel.name());
     let failed = |e: reqwest::Error| Error::Download(url.as_str().into(), e);
-    let text = reqwest::get(&url)
+    let text = http()
+        .get(&url)
+        .send()
         .await
         .and_then(|r| r.error_for_status())
         .map_err(failed)?
@@ -464,10 +466,25 @@ pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState,
     })
 }
 
+/// The client for MikroTik's servers: a connection that stops delivering fails, rather than
+/// holding the update forever (a package takes long on a slow line, but keeps coming).
+fn http() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(20))
+            .read_timeout(Duration::from_secs(60))
+            .build()
+            .expect("a client with timeouts")
+    })
+}
+
 async fn download(version: &Version, file: &str) -> Result<Vec<u8>, Error> {
     let url = format!("{DOWNLOAD_URL}/{version}/{file}");
     let failed = |e: reqwest::Error| Error::Download(url.as_str().into(), e);
-    Ok(reqwest::get(&url)
+    Ok(http()
+        .get(&url)
+        .send()
         .await
         .and_then(|r| r.error_for_status())
         .map_err(failed)?

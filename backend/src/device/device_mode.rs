@@ -184,8 +184,9 @@ pub async fn change_to(
     // what the device powers goes down with it
     let _rebooting = log.unless_cancelled(power.rebooting(log)).await?;
     let confirm_timeout = format!("{}s", CONFIRM_TIMEOUT.as_secs());
+    // the countdown has its own deadline below, not the API's limit without a reply
     let mut countdown = device
-        .send_command(
+        .send_command_with_reply_timeout(
             b"/system/device-mode/update".as_slice(),
             |cmd| {
                 changes
@@ -194,6 +195,7 @@ pub async fn change_to(
                     .attribute(b"activation-timeout".as_slice(), confirm_timeout.as_bytes())
             },
             (),
+            None,
         )
         .await;
     let refused = |message: &str| Error::Refused(format!("/system/device-mode/update: {message}").into());
