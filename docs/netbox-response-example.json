@@ -1587,8 +1587,12 @@
       {
         "id": "287",
         "name": "ap-eg-vorraum",
-        "primary_ip4": null,
-        "primary_ip6": null,
+        "primary_ip4": {
+          "id": "536"
+        },
+        "primary_ip6": {
+          "id": "534"
+        },
         "role": {
           "slug": "access-point"
         },
@@ -1602,13 +1606,21 @@
           {
             "id": "733",
             "name": "ether1",
-            "label": "",
-            "ip_addresses": [],
+            "label": "klr-sw-1",
+            "ip_addresses": [
+              {
+                "id": "538"
+              }
+            ],
             "enabled": true,
             "type": "1000base-t",
             "mtu": null,
             "bridge": null,
-            "tags": [],
+            "tags": [
+              {
+                "slug": "ospf"
+              }
+            ],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": "pd",
@@ -1622,7 +1634,14 @@
             "id": "736",
             "name": "lo",
             "label": "",
-            "ip_addresses": [],
+            "ip_addresses": [
+              {
+                "id": "536"
+              },
+              {
+                "id": "534"
+              }
+            ],
             "enabled": true,
             "type": "virtual",
             "mtu": null,
@@ -1698,7 +1717,7 @@
         },
         "serial": "",
         "custom_field_data": {
-          "wlan_group": null
+          "wlan_group": 1
         },
         "config_context": {}
       },
@@ -2012,7 +2031,7 @@
             ],
             "untagged_vlan": null,
             "tagged_vlans": [],
-            "poe_mode": null,
+            "poe_mode": "pd",
             "rf_role": null,
             "rf_channel_frequency": null,
             "rf_channel_width": null,
@@ -2372,10 +2391,10 @@
           {
             "id": "355",
             "name": "ether1",
-            "label": "switch",
+            "label": "srv-router-berg",
             "ip_addresses": [
               {
-                "id": "349"
+                "id": "542"
               }
             ],
             "enabled": true,
@@ -2399,7 +2418,34 @@
           {
             "id": "356",
             "name": "ether2",
-            "label": "tv",
+            "label": "switch-mimi",
+            "ip_addresses": [
+              {
+                "id": "539"
+              }
+            ],
+            "enabled": true,
+            "type": "1000base-t",
+            "mtu": null,
+            "bridge": null,
+            "tags": [
+              {
+                "slug": "ospf"
+              }
+            ],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "357",
+            "name": "ether3",
+            "label": "",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -2418,43 +2464,18 @@
             "wireless_link": null
           },
           {
-            "id": "357",
-            "name": "ether3",
-            "label": "",
-            "ip_addresses": [
-              {
-                "id": "63"
-              }
-            ],
-            "enabled": true,
-            "type": "1000base-t",
-            "mtu": null,
-            "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
-            "tagged_vlans": [],
-            "poe_mode": null,
-            "rf_role": null,
-            "rf_channel_frequency": null,
-            "rf_channel_width": null,
-            "tx_power": null,
-            "wireless_link": null
-          },
-          {
             "id": "358",
             "name": "ether4",
             "label": "",
-            "ip_addresses": [
-              {
-                "id": "64"
-              }
-            ],
+            "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
             "mtu": null,
             "bridge": null,
             "tags": [],
-            "untagged_vlan": null,
+            "untagged_vlan": {
+              "id": "16"
+            },
             "tagged_vlans": [],
             "poe_mode": null,
             "rf_role": null,
@@ -2466,22 +2487,16 @@
           {
             "id": "359",
             "name": "ether5",
-            "label": "koenig",
-            "ip_addresses": [
-              {
-                "id": "346"
-              }
-            ],
+            "label": "",
+            "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
             "mtu": null,
             "bridge": null,
-            "tags": [
-              {
-                "slug": "ospf"
-              }
-            ],
-            "untagged_vlan": null,
+            "tags": [],
+            "untagged_vlan": {
+              "id": "16"
+            },
             "tagged_vlans": [],
             "poe_mode": "pse",
             "rf_role": null,
@@ -2495,9 +2510,6 @@
             "name": "lo",
             "label": "",
             "ip_addresses": [
-              {
-                "id": "119"
-              },
               {
                 "id": "344"
               },
@@ -3417,7 +3429,7 @@
           },
           {
             "id": "287",
-            "name": "wlan1",
+            "name": "wlan60-1",
             "label": "",
             "ip_addresses": [],
             "enabled": true,
@@ -3625,7 +3637,9 @@
                 "slug": "dhcp"
               }
             ],
-            "untagged_vlan": null,
+            "untagged_vlan": {
+              "id": "51"
+            },
             "tagged_vlans": [],
             "poe_mode": null,
             "rf_role": null,
@@ -3724,7 +3738,7 @@
         },
         "serial": "HEE08Z7RPNT",
         "custom_field_data": {
-          "wlan_group": null
+          "wlan_group": 34
         },
         "config_context": {}
       },
@@ -4169,8 +4183,12 @@
       {
         "id": "103",
         "name": "burri-schopf",
-        "primary_ip4": null,
-        "primary_ip6": null,
+        "primary_ip4": {
+          "id": "550"
+        },
+        "primary_ip6": {
+          "id": "551"
+        },
         "role": {
           "slug": "wireless-bridge"
         },
@@ -4222,8 +4240,34 @@
             "wireless_link": null
           },
           {
+            "id": "742",
+            "name": "lo",
+            "label": "",
+            "ip_addresses": [
+              {
+                "id": "550"
+              },
+              {
+                "id": "551"
+              }
+            ],
+            "enabled": true,
+            "type": "virtual",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
             "id": "344",
-            "name": "wlan1",
+            "name": "wlan60-1",
             "label": "",
             "ip_addresses": [],
             "enabled": true,
@@ -4236,15 +4280,18 @@
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null,
-            "rf_role": null,
+            "rf_role": "station",
             "rf_channel_frequency": null,
             "rf_channel_width": null,
             "tx_power": null,
             "wireless_link": {
-              "ssid": "",
-              "auth_type": null,
+              "ssid": "schopf-burri",
+              "auth_type": "wpa-personal",
               "auth_psk": "",
-              "custom_field_data": {}
+              "custom_field_data": {
+                "rf_country": null,
+                "rf_frequency_mode": null
+              }
             }
           }
         ],
@@ -5915,7 +5962,7 @@
           },
           {
             "id": "284",
-            "name": "wlan1",
+            "name": "wlan60-1",
             "label": "",
             "ip_addresses": [],
             "enabled": true,
@@ -6503,7 +6550,7 @@
             "tags": [],
             "untagged_vlan": null,
             "tagged_vlans": [],
-            "poe_mode": "pse",
+            "poe_mode": "pd",
             "rf_role": null,
             "rf_channel_frequency": null,
             "rf_channel_width": null,
@@ -6512,7 +6559,7 @@
           },
           {
             "id": "290",
-            "name": "wlan1",
+            "name": "wlan60-1",
             "label": "",
             "ip_addresses": [],
             "enabled": true,
@@ -6613,7 +6660,7 @@
             "tags": [],
             "untagged_vlan": null,
             "tagged_vlans": [],
-            "poe_mode": "pse",
+            "poe_mode": "pd",
             "rf_role": null,
             "rf_channel_frequency": null,
             "rf_channel_width": null,
@@ -6622,7 +6669,7 @@
           },
           {
             "id": "293",
-            "name": "wlan1",
+            "name": "wlan60-1",
             "label": "",
             "ip_addresses": [],
             "enabled": true,
@@ -7707,15 +7754,21 @@
           {
             "id": "141",
             "name": "ether3",
-            "label": "E.2.3.a",
-            "ip_addresses": [],
+            "label": "ap-eg-vorraum",
+            "ip_addresses": [
+              {
+                "id": "537"
+              }
+            ],
             "enabled": true,
             "type": "1000base-t",
             "mtu": null,
-            "bridge": {
-              "id": "416"
-            },
-            "tags": [],
+            "bridge": null,
+            "tags": [
+              {
+                "slug": "ospf"
+              }
+            ],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null,
@@ -9869,8 +9922,12 @@
       {
         "id": "105",
         "name": "koenig-hegglin",
-        "primary_ip4": null,
-        "primary_ip6": null,
+        "primary_ip4": {
+          "id": "544"
+        },
+        "primary_ip6": {
+          "id": "545"
+        },
         "role": {
           "slug": "wireless-bridge"
         },
@@ -9922,8 +9979,34 @@
             "wireless_link": null
           },
           {
+            "id": "737",
+            "name": "lo",
+            "label": "",
+            "ip_addresses": [
+              {
+                "id": "544"
+              },
+              {
+                "id": "545"
+              }
+            ],
+            "enabled": true,
+            "type": "virtual",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
             "id": "354",
-            "name": "wlan1",
+            "name": "wlan60-1",
             "label": "",
             "ip_addresses": [],
             "enabled": true,
@@ -13180,7 +13263,7 @@
         "id": "91",
         "name": "router-hegglin",
         "primary_ip4": {
-          "id": "44"
+          "id": "535"
         },
         "primary_ip6": {
           "id": "420"
@@ -13372,7 +13455,7 @@
             "label": "",
             "ip_addresses": [
               {
-                "id": "44"
+                "id": "535"
               },
               {
                 "id": "420"
@@ -13707,7 +13790,11 @@
             "type": "1000base-t",
             "mtu": null,
             "bridge": null,
-            "tags": [],
+            "tags": [
+              {
+                "slug": "dhcp"
+              }
+            ],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": "pd",
@@ -14145,7 +14232,7 @@
         "id": "101",
         "name": "router-walter",
         "primary_ip4": {
-          "id": "54"
+          "id": "543"
         },
         "primary_ip6": {
           "id": "426"
@@ -14190,15 +14277,21 @@
           {
             "id": "311",
             "name": "ether2",
-            "label": "",
-            "ip_addresses": [],
+            "label": "walter-balkon-ap",
+            "ip_addresses": [
+              {
+                "id": "546"
+              }
+            ],
             "enabled": true,
             "type": "1000base-t",
             "mtu": null,
-            "bridge": {
-              "id": "341"
-            },
-            "tags": [],
+            "bridge": null,
+            "tags": [
+              {
+                "slug": "ospf"
+              }
+            ],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null,
@@ -14211,7 +14304,7 @@
           {
             "id": "312",
             "name": "ether3",
-            "label": "",
+            "label": "PC Roland",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -14253,7 +14346,7 @@
           {
             "id": "314",
             "name": "ether5",
-            "label": "",
+            "label": "Solar Haus",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -14676,7 +14769,7 @@
             "label": "",
             "ip_addresses": [
               {
-                "id": "54"
+                "id": "543"
               },
               {
                 "id": "426"
@@ -14761,34 +14854,14 @@
             "type": "bridge",
             "mtu": null,
             "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
-            "tagged_vlans": [],
-            "poe_mode": null,
-            "rf_role": null,
-            "rf_channel_frequency": null,
-            "rf_channel_width": null,
-            "tx_power": null,
-            "wireless_link": null
-          },
-          {
-            "id": "341",
-            "name": "switch-mgmt",
-            "label": "",
-            "ip_addresses": [
+            "tags": [
               {
-                "id": "56"
-              },
-              {
-                "id": "481"
+                "slug": "dhcp"
               }
             ],
-            "enabled": true,
-            "type": "bridge",
-            "mtu": null,
-            "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
+            "untagged_vlan": {
+              "id": "52"
+            },
             "tagged_vlans": [],
             "poe_mode": null,
             "rf_role": null,
@@ -14902,8 +14975,12 @@
       {
         "id": "99",
         "name": "schopf-burri",
-        "primary_ip4": null,
-        "primary_ip6": null,
+        "primary_ip4": {
+          "id": "552"
+        },
+        "primary_ip6": {
+          "id": "553"
+        },
         "role": {
           "slug": "wireless-bridge"
         },
@@ -14947,7 +15024,33 @@
             "tags": [],
             "untagged_vlan": null,
             "tagged_vlans": [],
-            "poe_mode": "pse",
+            "poe_mode": "pd",
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "743",
+            "name": "lo",
+            "label": "",
+            "ip_addresses": [
+              {
+                "id": "552"
+              },
+              {
+                "id": "553"
+              }
+            ],
+            "enabled": true,
+            "type": "virtual",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
             "rf_role": null,
             "rf_channel_frequency": null,
             "rf_channel_width": null,
@@ -14956,7 +15059,7 @@
           },
           {
             "id": "306",
-            "name": "wlan1",
+            "name": "wlan60-1",
             "label": "",
             "ip_addresses": [],
             "enabled": true,
@@ -14969,15 +15072,18 @@
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null,
-            "rf_role": null,
+            "rf_role": "ap",
             "rf_channel_frequency": null,
             "rf_channel_width": null,
             "tx_power": null,
             "wireless_link": {
-              "ssid": "",
-              "auth_type": null,
+              "ssid": "schopf-burri",
+              "auth_type": "wpa-personal",
               "auth_psk": "",
-              "custom_field_data": {}
+              "custom_field_data": {
+                "rf_country": null,
+                "rf_frequency_mode": null
+              }
             }
           }
         ],
@@ -15057,7 +15163,7 @@
             "tags": [],
             "untagged_vlan": null,
             "tagged_vlans": [],
-            "poe_mode": "pse",
+            "poe_mode": "pd",
             "rf_role": null,
             "rf_channel_frequency": null,
             "rf_channel_width": null,
@@ -15066,7 +15172,7 @@
           },
           {
             "id": "296",
-            "name": "wlan1",
+            "name": "wlan60-1",
             "label": "",
             "ip_addresses": [],
             "enabled": true,
@@ -15176,7 +15282,7 @@
           },
           {
             "id": "309",
-            "name": "wlan1",
+            "name": "wlan60-1",
             "label": "",
             "ip_addresses": [],
             "enabled": true,
@@ -15879,10 +15985,10 @@
           {
             "id": "6",
             "name": "ether5",
-            "label": "mimi",
+            "label": "ap-mimi-schlafzimmer",
             "ip_addresses": [
               {
-                "id": "347"
+                "id": "541"
               }
             ],
             "enabled": true,
@@ -16201,10 +16307,10 @@
           {
             "id": "488",
             "name": "ether3",
-            "label": "Schlafzimmer",
+            "label": "ap-mimi-schlafzimmer",
             "ip_addresses": [
               {
-                "id": "348"
+                "id": "540"
               }
             ],
             "enabled": true,
@@ -16863,6 +16969,141 @@
         "config_context": {}
       },
       {
+        "id": "288",
+        "name": "walter-balkon-ap",
+        "primary_ip4": {
+          "id": "548"
+        },
+        "primary_ip6": {
+          "id": "549"
+        },
+        "role": {
+          "slug": "access-point"
+        },
+        "device_type": {
+          "model": "wAP ac",
+          "manufacturer": {
+            "slug": "mikrotik"
+          }
+        },
+        "interfaces": [
+          {
+            "id": "738",
+            "name": "ether1",
+            "label": "router-walter",
+            "ip_addresses": [
+              {
+                "id": "547"
+              }
+            ],
+            "enabled": true,
+            "type": "1000base-t",
+            "mtu": null,
+            "bridge": null,
+            "tags": [
+              {
+                "slug": "ospf"
+              }
+            ],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": "pd",
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "741",
+            "name": "lo",
+            "label": "",
+            "ip_addresses": [
+              {
+                "id": "548"
+              },
+              {
+                "id": "549"
+              }
+            ],
+            "enabled": true,
+            "type": "virtual",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "739",
+            "name": "wlan1",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11n",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          },
+          {
+            "id": "740",
+            "name": "wlan2",
+            "label": "",
+            "ip_addresses": [],
+            "enabled": true,
+            "type": "ieee802.11ac",
+            "mtu": null,
+            "bridge": null,
+            "tags": [],
+            "untagged_vlan": null,
+            "tagged_vlans": [],
+            "poe_mode": null,
+            "rf_role": null,
+            "rf_channel_frequency": null,
+            "rf_channel_width": null,
+            "tx_power": null,
+            "wireless_link": null
+          }
+        ],
+        "frontports": [],
+        "rearports": [],
+        "platform": {
+          "name": "routeros"
+        },
+        "tenant": null,
+        "location": null,
+        "site": {
+          "id": "11",
+          "name": "Oberspitzwies 681",
+          "tenant": {
+            "id": "1"
+          },
+          "region": {
+            "slug": "ch",
+            "parent": null
+          }
+        },
+        "serial": "",
+        "custom_field_data": {
+          "wlan_group": 35
+        },
+        "config_context": {}
+      },
+      {
         "id": "102",
         "name": "walter-schopf",
         "primary_ip4": null,
@@ -16919,7 +17160,7 @@
           },
           {
             "id": "338",
-            "name": "wlan1",
+            "name": "wlan60-1",
             "label": "",
             "ip_addresses": [],
             "enabled": true,
@@ -19006,7 +19247,11 @@
             "type": "bridge",
             "mtu": null,
             "bridge": null,
-            "tags": [],
+            "tags": [
+              {
+                "slug": "dhcp"
+              }
+            ],
             "untagged_vlan": null,
             "tagged_vlans": [],
             "poe_mode": null,
@@ -21704,21 +21949,6 @@
         ]
       },
       {
-        "id": "181",
-        "a_terminations": [
-          {
-            "__typename": "InterfaceType",
-            "id": "359"
-          }
-        ],
-        "b_terminations": [
-          {
-            "__typename": "InterfaceType",
-            "id": "6"
-          }
-        ]
-      },
-      {
         "id": "214",
         "a_terminations": [
           {
@@ -21850,21 +22080,6 @@
           {
             "__typename": "InterfaceType",
             "id": "626"
-          }
-        ]
-      },
-      {
-        "id": "317",
-        "a_terminations": [
-          {
-            "__typename": "InterfaceType",
-            "id": "355"
-          }
-        ],
-        "b_terminations": [
-          {
-            "__typename": "InterfaceType",
-            "id": "488"
           }
         ]
       },
@@ -22007,7 +22222,8 @@
         "id": "361",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "3"
           }
         ],
         "b_terminations": [
@@ -22021,7 +22237,8 @@
         "id": "362",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "4"
           }
         ],
         "b_terminations": [
@@ -22035,7 +22252,8 @@
         "id": "363",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "5"
           }
         ],
         "b_terminations": [
@@ -22049,7 +22267,8 @@
         "id": "364",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "6"
           }
         ],
         "b_terminations": [
@@ -22063,7 +22282,8 @@
         "id": "365",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "7"
           }
         ],
         "b_terminations": [
@@ -22077,7 +22297,8 @@
         "id": "366",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "8"
           }
         ],
         "b_terminations": [
@@ -22091,7 +22312,8 @@
         "id": "367",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "9"
           }
         ],
         "b_terminations": [
@@ -22105,7 +22327,8 @@
         "id": "368",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "10"
           }
         ],
         "b_terminations": [
@@ -22119,7 +22342,8 @@
         "id": "369",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "11"
           }
         ],
         "b_terminations": [
@@ -22133,7 +22357,8 @@
         "id": "370",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "12"
           }
         ],
         "b_terminations": [
@@ -22147,7 +22372,8 @@
         "id": "371",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "13"
           }
         ],
         "b_terminations": [
@@ -22161,7 +22387,8 @@
         "id": "372",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "14"
           }
         ],
         "b_terminations": [
@@ -22175,7 +22402,8 @@
         "id": "373",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "15"
           }
         ],
         "b_terminations": [
@@ -22189,7 +22417,8 @@
         "id": "374",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "16"
           }
         ],
         "b_terminations": [
@@ -22203,7 +22432,8 @@
         "id": "375",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "17"
           }
         ],
         "b_terminations": [
@@ -22217,7 +22447,8 @@
         "id": "376",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "18"
           }
         ],
         "b_terminations": [
@@ -22231,7 +22462,8 @@
         "id": "377",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "19"
           }
         ],
         "b_terminations": [
@@ -22245,7 +22477,8 @@
         "id": "378",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "20"
           }
         ],
         "b_terminations": [
@@ -22259,7 +22492,8 @@
         "id": "379",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "21"
           }
         ],
         "b_terminations": [
@@ -22273,7 +22507,8 @@
         "id": "380",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "22"
           }
         ],
         "b_terminations": [
@@ -22287,7 +22522,8 @@
         "id": "381",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "23"
           }
         ],
         "b_terminations": [
@@ -22301,7 +22537,8 @@
         "id": "382",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "24"
           }
         ],
         "b_terminations": [
@@ -22315,7 +22552,8 @@
         "id": "383",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "25"
           }
         ],
         "b_terminations": [
@@ -22329,7 +22567,8 @@
         "id": "384",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "26"
           }
         ],
         "b_terminations": [
@@ -22358,7 +22597,8 @@
         "id": "386",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "27"
           }
         ],
         "b_terminations": [
@@ -22372,7 +22612,8 @@
         "id": "387",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "28"
           }
         ],
         "b_terminations": [
@@ -22386,7 +22627,8 @@
         "id": "388",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "29"
           }
         ],
         "b_terminations": [
@@ -22400,7 +22642,8 @@
         "id": "389",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "30"
           }
         ],
         "b_terminations": [
@@ -22414,7 +22657,8 @@
         "id": "390",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "31"
           }
         ],
         "b_terminations": [
@@ -22428,7 +22672,8 @@
         "id": "391",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "32"
           }
         ],
         "b_terminations": [
@@ -22442,7 +22687,8 @@
         "id": "392",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "33"
           }
         ],
         "b_terminations": [
@@ -22456,7 +22702,8 @@
         "id": "393",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "34"
           }
         ],
         "b_terminations": [
@@ -22470,7 +22717,8 @@
         "id": "394",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "35"
           }
         ],
         "b_terminations": [
@@ -22484,7 +22732,8 @@
         "id": "395",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "36"
           }
         ],
         "b_terminations": [
@@ -22498,7 +22747,8 @@
         "id": "396",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "37"
           }
         ],
         "b_terminations": [
@@ -22512,7 +22762,8 @@
         "id": "397",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "38"
           }
         ],
         "b_terminations": [
@@ -22571,7 +22822,8 @@
         "id": "403",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "41"
           }
         ],
         "b_terminations": [
@@ -22585,7 +22837,8 @@
         "id": "404",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "42"
           }
         ],
         "b_terminations": [
@@ -22599,7 +22852,8 @@
         "id": "405",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "43"
           }
         ],
         "b_terminations": [
@@ -22613,7 +22867,8 @@
         "id": "406",
         "a_terminations": [
           {
-            "__typename": "CircuitTerminationType"
+            "__typename": "CircuitTerminationType",
+            "id": "44"
           }
         ],
         "b_terminations": [
@@ -22650,6 +22905,273 @@
           {
             "__typename": "InterfaceType",
             "id": "141"
+          }
+        ]
+      },
+      {
+        "id": "409",
+        "a_terminations": [
+          {
+            "__typename": "InterfaceType",
+            "id": "356"
+          }
+        ],
+        "b_terminations": [
+          {
+            "__typename": "InterfaceType",
+            "id": "488"
+          }
+        ]
+      },
+      {
+        "id": "410",
+        "a_terminations": [
+          {
+            "__typename": "InterfaceType",
+            "id": "6"
+          }
+        ],
+        "b_terminations": [
+          {
+            "__typename": "InterfaceType",
+            "id": "355"
+          }
+        ]
+      },
+      {
+        "id": "411",
+        "a_terminations": [
+          {
+            "__typename": "InterfaceType",
+            "id": "311"
+          }
+        ],
+        "b_terminations": [
+          {
+            "__typename": "InterfaceType",
+            "id": "738"
+          }
+        ]
+      }
+    ],
+    "circuit_list": [
+      {
+        "cid": "FIBER-00243-00370",
+        "terminations": [
+          {
+            "id": "33"
+          },
+          {
+            "id": "34"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00245-00371",
+        "terminations": [
+          {
+            "id": "27"
+          },
+          {
+            "id": "28"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00247-00373",
+        "terminations": [
+          {
+            "id": "31"
+          },
+          {
+            "id": "32"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00249-00375",
+        "terminations": [
+          {
+            "id": "37"
+          },
+          {
+            "id": "38"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00251-00377",
+        "terminations": [
+          {
+            "id": "29"
+          },
+          {
+            "id": "30"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00253-00379",
+        "terminations": [
+          {
+            "id": "35"
+          },
+          {
+            "id": "36"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00297-00267",
+        "terminations": [
+          {
+            "id": "43"
+          },
+          {
+            "id": "44"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00298-00268",
+        "terminations": [
+          {
+            "id": "41"
+          },
+          {
+            "id": "42"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00345-00220",
+        "terminations": [
+          {
+            "id": "7"
+          },
+          {
+            "id": "8"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00347-00222",
+        "terminations": [
+          {
+            "id": "21"
+          },
+          {
+            "id": "22"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00349-00223",
+        "terminations": [
+          {
+            "id": "3"
+          },
+          {
+            "id": "4"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00351-00225",
+        "terminations": [
+          {
+            "id": "15"
+          },
+          {
+            "id": "16"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00353-00227",
+        "terminations": [
+          {
+            "id": "5"
+          },
+          {
+            "id": "6"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00355-00229",
+        "terminations": [
+          {
+            "id": "19"
+          },
+          {
+            "id": "20"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00357-00231",
+        "terminations": [
+          {
+            "id": "11"
+          },
+          {
+            "id": "12"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00359-00234",
+        "terminations": [
+          {
+            "id": "17"
+          },
+          {
+            "id": "18"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00361-00236",
+        "terminations": [
+          {
+            "id": "9"
+          },
+          {
+            "id": "10"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00363-00238",
+        "terminations": [
+          {
+            "id": "23"
+          },
+          {
+            "id": "24"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00365-00240",
+        "terminations": [
+          {
+            "id": "13"
+          },
+          {
+            "id": "14"
+          }
+        ]
+      },
+      {
+        "cid": "FIBER-00367-00242",
+        "terminations": [
+          {
+            "id": "25"
+          },
+          {
+            "id": "26"
           }
         ]
       }
@@ -22718,15 +23240,47 @@
             }
           }
         ]
+      },
+      {
+        "id": "34",
+        "custom_fields": {
+          "controller": 104,
+          "wlan_mgmt": null
+        },
+        "name": "Berghof",
+        "wireless_lans": [
+          {
+            "id": "39",
+            "ssid": "burri2",
+            "auth_type": "wpa-personal",
+            "auth_psk": "",
+            "vlan": {
+              "id": "51"
+            }
+          }
+        ]
+      },
+      {
+        "id": "35",
+        "custom_fields": {
+          "controller": 101,
+          "wlan_mgmt": null
+        },
+        "name": "Spitzwies",
+        "wireless_lans": [
+          {
+            "id": "40",
+            "ssid": "walter",
+            "auth_type": "wpa-personal",
+            "auth_psk": "",
+            "vlan": {
+              "id": "52"
+            }
+          }
+        ]
       }
     ],
     "vlan_group_list": [
-      {
-        "id": "1",
-        "name": "Berg 1654 VLAN",
-        "custom_field_data": {},
-        "vlans": []
-      },
       {
         "id": "3",
         "name": "Berg-WLAN",
@@ -22768,6 +23322,34 @@
             "id": "17",
             "name": "wlan-mgmt",
             "vid": 99
+          }
+        ]
+      },
+      {
+        "id": "36",
+        "name": "Berghof Netze",
+        "custom_field_data": {
+          "vxlan_vni": 2
+        },
+        "vlans": [
+          {
+            "id": "51",
+            "name": "burri2",
+            "vid": 1
+          }
+        ]
+      },
+      {
+        "id": "37",
+        "name": "Spitzwies",
+        "custom_field_data": {
+          "vxlan_vni": 3
+        },
+        "vlans": [
+          {
+            "id": "52",
+            "name": "walter",
+            "vid": 1
           }
         ]
       },
@@ -22868,14 +23450,6 @@
         "address": "10.195.252.1/22"
       },
       {
-        "id": "63",
-        "address": "10.197.2.1/24"
-      },
-      {
-        "id": "64",
-        "address": "10.197.3.1/24"
-      },
-      {
         "id": "65",
         "address": "10.197.5.1/24"
       },
@@ -22902,10 +23476,6 @@
       {
         "id": "55",
         "address": "10.200.0.1/24"
-      },
-      {
-        "id": "56",
-        "address": "10.200.1.1/24"
       },
       {
         "id": "300",
@@ -22988,20 +23558,8 @@
         "address": "10.220.16.65/29"
       },
       {
-        "id": "44",
-        "address": "172.16.0.2/32"
-      },
-      {
         "id": "24",
         "address": "172.16.0.4/32"
-      },
-      {
-        "id": "119",
-        "address": "172.16.0.6/32"
-      },
-      {
-        "id": "54",
-        "address": "172.16.0.9/32"
       },
       {
         "id": "337",
@@ -23024,6 +23582,14 @@
         "address": "172.16.1.1/32"
       },
       {
+        "id": "535",
+        "address": "172.16.1.2/32"
+      },
+      {
+        "id": "536",
+        "address": "172.16.1.3/32"
+      },
+      {
         "id": "117",
         "address": "172.16.1.4/32"
       },
@@ -23044,8 +23610,28 @@
         "address": "172.16.1.8/32"
       },
       {
+        "id": "543",
+        "address": "172.16.1.9/32"
+      },
+      {
         "id": "301",
         "address": "172.16.1.10/32"
+      },
+      {
+        "id": "544",
+        "address": "172.16.1.11/32"
+      },
+      {
+        "id": "548",
+        "address": "172.16.1.12/32"
+      },
+      {
+        "id": "550",
+        "address": "172.16.1.13/32"
+      },
+      {
+        "id": "552",
+        "address": "172.16.1.14/32"
       },
       {
         "id": "114",
@@ -23168,6 +23754,38 @@
         "address": "172.17.0.58/29"
       },
       {
+        "id": "537",
+        "address": "172.17.0.64/31"
+      },
+      {
+        "id": "538",
+        "address": "172.17.0.65/31"
+      },
+      {
+        "id": "539",
+        "address": "172.17.0.66/31"
+      },
+      {
+        "id": "540",
+        "address": "172.17.0.67/31"
+      },
+      {
+        "id": "541",
+        "address": "172.17.0.68/31"
+      },
+      {
+        "id": "542",
+        "address": "172.17.0.69/31"
+      },
+      {
+        "id": "546",
+        "address": "172.17.0.70/31"
+      },
+      {
+        "id": "547",
+        "address": "172.17.0.71/31"
+      },
+      {
         "id": "111",
         "address": "172.17.1.1/30"
       },
@@ -23246,22 +23864,6 @@
       {
         "id": "343",
         "address": "172.17.1.38/30"
-      },
-      {
-        "id": "347",
-        "address": "172.17.1.41/30"
-      },
-      {
-        "id": "346",
-        "address": "172.17.1.42/30"
-      },
-      {
-        "id": "348",
-        "address": "172.17.1.45/30"
-      },
-      {
-        "id": "349",
-        "address": "172.17.1.46/30"
       },
       {
         "id": "352",
@@ -23428,10 +24030,6 @@
         "address": "2a02:16a:fe00:a00::1/64"
       },
       {
-        "id": "481",
-        "address": "2a02:16a:fe00:a01::1/64"
-      },
-      {
         "id": "441",
         "address": "2a02:16a:fe00:ff80::1/64"
       },
@@ -23472,6 +24070,10 @@
         "address": "2a02:16a:fe00:ffff:ffff:ffff:ffff:ff02/128"
       },
       {
+        "id": "534",
+        "address": "2a02:16a:fe00:ffff:ffff:ffff:ffff:ff03/128"
+      },
+      {
         "id": "421",
         "address": "2a02:16a:fe00:ffff:ffff:ffff:ffff:ff04/128"
       },
@@ -23494,6 +24096,22 @@
       {
         "id": "426",
         "address": "2a02:16a:fe00:ffff:ffff:ffff:ffff:ff09/128"
+      },
+      {
+        "id": "545",
+        "address": "2a02:16a:fe00:ffff:ffff:ffff:ffff:ff0a/128"
+      },
+      {
+        "id": "549",
+        "address": "2a02:16a:fe00:ffff:ffff:ffff:ffff:ff0b/128"
+      },
+      {
+        "id": "551",
+        "address": "2a02:16a:fe00:ffff:ffff:ffff:ffff:ff0c/128"
+      },
+      {
+        "id": "553",
+        "address": "2a02:16a:fe00:ffff:ffff:ffff:ffff:ff0d/128"
       },
       {
         "id": "427",
@@ -24642,6 +25260,34 @@
         "scope": null
       },
       {
+        "id": "677",
+        "prefix": "172.17.0.64/31",
+        "description": "klr-sw-1 – ap-eg-vorraum",
+        "tags": [],
+        "scope": null
+      },
+      {
+        "id": "678",
+        "prefix": "172.17.0.66/31",
+        "description": "ap-mimi-schlafzimmer – switch-mimi",
+        "tags": [],
+        "scope": null
+      },
+      {
+        "id": "679",
+        "prefix": "172.17.0.68/31",
+        "description": "srv-router-berg – ap-mimi-schlafzimmer",
+        "tags": [],
+        "scope": null
+      },
+      {
+        "id": "680",
+        "prefix": "172.17.0.70/31",
+        "description": "router-walter – walter-balkon-ap",
+        "tags": [],
+        "scope": null
+      },
+      {
         "id": "117",
         "prefix": "172.17.1.0/24",
         "description": "Direktverbindungen (/30)",
@@ -24719,20 +25365,6 @@
         "id": "421",
         "prefix": "172.17.1.36/30",
         "description": "",
-        "tags": [],
-        "scope": null
-      },
-      {
-        "id": "422",
-        "prefix": "172.17.1.40/30",
-        "description": "koenig-wurm",
-        "tags": [],
-        "scope": null
-      },
-      {
-        "id": "423",
-        "prefix": "172.17.1.44/30",
-        "description": "switch-schlafzimmer",
         "tags": [],
         "scope": null
       },
