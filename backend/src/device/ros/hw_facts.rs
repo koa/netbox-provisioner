@@ -188,6 +188,21 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         )
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
+        // ether1 takes PoE in only; l2mtu 1584 on every port (klr-sw-3)
+        b"CRS309-1G-8S+" => repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1584, false),
+            1,
+        )
+        .enumerate()
+        .chain(
+            repeat_n(
+                generate_ethernet(EthernetNamePattern::SfpSfpPlus, &ADVERTISE_10G, 1584, false),
+                8,
+            )
+            .enumerate(),
+        )
+        .map(|(idx, generator)| generator(idx + 1))
+        .collect(),
         b"CRS318-16P-2S+" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1592, true),
             16,
@@ -531,6 +546,17 @@ pub fn w60g_port(idx: usize) -> InterfaceW60GByName {
 mod tests {
     use super::{RadioPackage, build_ethernet_ports, radio_package};
     use mikrotik_model::value::{Auto, HasNone};
+
+    #[test]
+    fn crs309_has_one_ether_and_eight_sfp_plus_ports() {
+        let names: Vec<String> = build_ethernet_ports(b"CRS309-1G-8S+")
+            .iter()
+            .map(|port| port.default_name.to_string())
+            .collect();
+        let mut wanted = vec!["ether1".to_string()];
+        wanted.extend((1..=8).map(|n| format!("sfp-sfpplus{n}")));
+        assert_eq!(names, wanted);
+    }
 
     #[test]
     fn crs318_poe_ports_have_their_power_settings() {
