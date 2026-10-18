@@ -44,6 +44,10 @@ impl AccessTopology for CableAccess {
 }
 
 impl CableAccess {
+    /// NetBox `type` of the cable (`dac-passive`, `smf-os2`, `cat6` ...).
+    pub fn kind(&self) -> Option<&str> {
+        self.data().and_then(|d| d.kind.as_deref())
+    }
     pub fn port_a(&self) -> impl Iterator<Item = CablePortAccess> {
         self.data()
             .map(|d| &d.port_a)

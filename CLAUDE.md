@@ -428,6 +428,11 @@ cut off from OSPF through the neighbor already changed (see the bootstrap fallba
 its apply brings the link back. A new MTU
 restarts a `wlan` radio; on a DFS weather radar channel (5600-5650 MHz) it listens for radar for
 10 minutes (ETSI) before it sends again. The lab runs 2000 on every link between its devices.
+NetBox's interface `speed` (kbit/s) fixes an Ethernet port's speed without auto-negotiation
+(`setup_speed`, `device/ros/speed.rs`); the RouterOS speed names the medium, which for a cage
+comes from the cable's NetBox `type` (DAC, fiber, copper). Both RouterOS ends need the same, and
+the board must advertise it there. The model keeps a device's `speed` where none is given
+(`speed: k`): RouterOS refuses it empty and a negotiating port ignores it.
 `DeviceCfg::generate_from` (the real path) calls the target's steps itself, not
 `BaseDeviceDataTarget::generate_from` (which only tests use): a step added to one must be in the
 other too. PoE out (`setup_poe`) was only in the latter, so the real path never set it before.

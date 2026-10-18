@@ -312,6 +312,33 @@ impl From<&SetupError> for ErrorInfo {
                 ],
             ),
             SetupError::MtuNotSupported(port) => ("MTU_NOT_SUPPORTED", one("port", port)),
+            SetupError::SpeedNotSupported(port) => ("SPEED_NOT_SUPPORTED", one("port", port)),
+            SetupError::SpeedNeedsCableType { port, speed } => (
+                "SPEED_NEEDS_CABLE_TYPE",
+                vec![("port", port.to_string()), ("speed", speed.clone())],
+            ),
+            SetupError::UnknownSpeed { port, speed } => (
+                "UNKNOWN_SPEED",
+                vec![("port", port.to_string()), ("speed", speed.clone())],
+            ),
+            SetupError::SpeedNotOnPort { port, speed } => (
+                "SPEED_NOT_ON_PORT",
+                vec![("port", port.to_string()), ("speed", speed.clone())],
+            ),
+            SetupError::SpeedMismatch {
+                port,
+                speed,
+                far_end,
+                far_speed,
+            } => (
+                "SPEED_MISMATCH",
+                vec![
+                    ("port", port.to_string()),
+                    ("speed", speed.clone()),
+                    ("farEnd", far_end.to_string()),
+                    ("farSpeed", far_speed.as_deref().unwrap_or_default().to_string()),
+                ],
+            ),
         };
         info(code, params, error)
     }

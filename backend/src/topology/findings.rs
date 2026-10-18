@@ -658,6 +658,7 @@ mod test {
                 Cable {
                     port_a: Box::new([CablePort::Interface(e1)]),
                     port_b: Box::new([CablePort::Interface(e2)]),
+                    kind: None,
                 },
             );
             pool(&mut builder, "172.16.1.0/24", PrefixPool::Loopback);

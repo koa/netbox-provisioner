@@ -262,6 +262,7 @@ fn cable(builder: &mut TopologyBuilder, a: InterfaceId, b: InterfaceId) {
         Cable {
             port_a: Box::new([CablePort::Interface(a)]),
             port_b: Box::new([CablePort::Interface(b)]),
+            kind: None,
         },
     );
 }

@@ -345,6 +345,7 @@ mod test {
             Cable {
                 port_a: Box::new([CablePort::Interface(a)]),
                 port_b: Box::new([CablePort::Interface(b)]),
+                kind: None,
             },
         );
     }
@@ -474,7 +475,7 @@ mod test {
             let id = builder.cables.next_id();
             builder
                 .cables
-                .insert(id, Cable { port_a: Box::new([a]), port_b: Box::new([b]) });
+                .insert(id, Cable { port_a: Box::new([a]), port_b: Box::new([b]), kind: None });
         }
     }
 

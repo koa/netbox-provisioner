@@ -928,6 +928,7 @@ mod test {
             Cable {
                 port_a: Box::new([CablePort::Interface(a)]),
                 port_b: Box::new([CablePort::Interface(b)]),
+                kind: None,
             },
         );
     }

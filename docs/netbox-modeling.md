@@ -170,12 +170,30 @@ werden.
 | Tags                 | `ospf`, `dhcp`, `dhcp-client`, `nat` (siehe oben)                          |
 | PoE Mode             | `PSE` → PoE-Ausgang `auto-on`, sonst `off` (nur auf PoE-fähigen Boards); das Gerät am anderen Kabelende gilt als von diesem Port gespeist. Ein Update startet das speisende Gerät erst neu, wenn kein gespeistes (auch weiter unten in der Kette) mehr ein Update macht. Würde Anwenden an einem Port mit eingeschaltetem PoE-Ausgang diesen ausschalten, warnt die Geräteseite davor. `PD` am gespeisten Port hält die Gegenseite fest (Helfer „PoE“), der Generator braucht es nicht |
 | MTU                  | L3-MTU eines Ethernet-Ports oder `wlan`-Radios, siehe [MTU](#mtu) |
+| Speed, Duplex        | feste Geschwindigkeit eines Ethernet-Ports ohne Autonegotiation, siehe [Feste Geschwindigkeit](#feste-geschwindigkeit) |
 | RF Role, RF Channel Frequency/Width, TX Power | Funk-Port einer [Funkbrücke](#funkbrücke) |
 | Wireless Link        | SSID, PSK und Funkregeln einer [Funkbrücke](#funkbrücke)                   |
-| Cable                | Namensgenerierung, wenn kein Label gesetzt ist; Weg für die Ersteinrichtung |
+| Cable                | Namensgenerierung, wenn kein Label gesetzt ist; Weg für die Ersteinrichtung; der Typ (DAC, Glasfaser, Kupfer) für eine [feste Geschwindigkeit](#feste-geschwindigkeit) |
 
 Der 802.1Q-Mode selbst (Access/Tagged) wird nicht ausgewertet. NetBox verlangt ihn aber, damit
 man VLANs zuweisen kann.
+
+### Feste Geschwindigkeit
+
+Ohne `Speed` in NetBox handelt ein Port die Geschwindigkeit aus (`auto-negotiation=yes`). Mit
+`Speed` läuft er fest damit, ohne Autonegotiation: Ein QSFP+-Breakout an einem DAC (klr-sw-1
+`qsfpplus1-1`) kommt nur so hoch. RouterOS nennt die Geschwindigkeit mit dem Medium
+(`10G-baseCR` Twinax, `10G-baseSR-LR` Optik, `10G-baseT` Kupfer); bei einem SFP-/QSFP-Käfig
+ergibt es sich aus dem **Typ des Kabels** (`DAC (Passive/Active)`, `SMF…`/`MMF…`/`AOC`,
+`CAT…`), ohne Typ schlägt die Generierung fehl. `Duplex` zählt nur bei Kupfer bis 1G
+(`Half`, sonst voll).
+
+- **Beide Enden brauchen dieselbe Speed** (wenn am anderen Ende RouterOS läuft), sonst schlägt
+  die Generierung fehl: Fest gegen Autonegotiation gibt keinen Link.
+- Eine Geschwindigkeit, die das Board am Port nicht anbietet (`advertise`), lehnt die
+  Generierung ab.
+- Zurück auf Autonegotiation (Speed gelöscht) bleibt die alte `speed` auf dem Gerät stehen:
+  RouterOS lehnt sie leer ab und braucht sie dann nicht.
 
 ### MTU
 

@@ -430,6 +430,7 @@ mod test {
             Cable {
                 port_a: Box::new([CablePort::Interface(sw2)]),
                 port_b: Box::new([CablePort::Interface(ap1)]),
+                kind: None,
             },
         );
         let topology = Arc::new(builder.build());

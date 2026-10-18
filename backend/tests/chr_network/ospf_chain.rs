@@ -141,6 +141,7 @@ fn build_chain(link_len: u8) -> ChainTopology {
         Cable {
             port_a: Box::new([CablePort::Interface(entry_if)]),
             port_b: Box::new([CablePort::Interface(a_if1)]),
+            kind: None,
         },
     );
     let cable2 = builder.cables.next_id();
@@ -149,6 +150,7 @@ fn build_chain(link_len: u8) -> ChainTopology {
         Cable {
             port_a: Box::new([CablePort::Interface(a_if2)]),
             port_b: Box::new([CablePort::Interface(target_if)]),
+            kind: None,
         },
     );
 

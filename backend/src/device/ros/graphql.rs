@@ -158,6 +158,7 @@ impl DeviceCfg {
         self.base_target.setup_l2(device, &l2, self.radio_package)?;
         self.base_target.setup_maintenance_ports(device, &l2);
         self.base_target.setup_mtu(device)?;
+        self.base_target.setup_speed(device)?;
         self.base_target.setup_poe(device)?;
         self.base_target
             .setup_watchdog(device, &ManagementTree::of(device.topology(), None))?;

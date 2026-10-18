@@ -55,6 +55,7 @@ use std::{
 pub mod fallback;
 pub mod graphql;
 pub(crate) mod hw_facts;
+pub(crate) mod speed;
 pub mod warning;
 pub mod watchdog;
 
@@ -63,6 +64,8 @@ mod capsman_test;
 pub mod l2;
 #[cfg(test)]
 mod mtu_test;
+#[cfg(test)]
+mod speed_test;
 #[cfg(test)]
 mod mac_server_test;
 #[cfg(test)]
@@ -217,6 +220,21 @@ pub enum SetupError {
     },
     #[error("{0} has an MTU in NetBox, which is only set on Ethernet ports and wlan radios")]
     MtuNotSupported(Box<str>),
+    #[error("{0} has a speed in NetBox, which only Ethernet ports run at")]
+    SpeedNotSupported(Box<str>),
+    #[error("{port} runs at {speed} in NetBox: its cable needs a type (DAC, fiber or copper)")]
+    SpeedNeedsCableType { port: Box<str>, speed: String },
+    #[error("{port} runs at {speed} in NetBox, which RouterOS has no speed for on it with its cable")]
+    UnknownSpeed { port: Box<str>, speed: String },
+    #[error("{port} runs at {speed} in NetBox, which the board doesn't offer on it")]
+    SpeedNotOnPort { port: Box<str>, speed: String },
+    #[error("{port} runs at {speed} in NetBox, the other end of its cable, {far_end}, at {}", far_speed.as_deref().unwrap_or("auto-negotiation"))]
+    SpeedMismatch {
+        port: Box<str>,
+        speed: String,
+        far_end: Box<str>,
+        far_speed: Option<Box<str>>,
+    },
 }
 
 /// RouterOS's L3 MTU of a port NetBox gives none.
@@ -676,6 +694,7 @@ impl BaseDeviceDataTarget {
         self.setup_l2(device, &l2, None)?;
         self.setup_maintenance_ports(device, &l2);
         self.setup_mtu(device)?;
+        self.setup_speed(device)?;
         self.setup_poe(device)?;
         self.setup_watchdog(device, &ManagementTree::of(device.topology(), None))?;
         Ok(l2)
@@ -814,6 +833,31 @@ impl BaseDeviceDataTarget {
                 }
                 (None, Some(_)) => return Err(SetupError::MtuNotSupported(port.name().into())),
             }
+        }
+        Ok(())
+    }
+
+    /// The speed NetBox gives an Ethernet port, without auto-negotiation (`speed`).
+    fn setup_speed(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
+        for port in device.interfaces() {
+            let Some(speed) = speed::fixed_speed(&port)? else {
+                continue;
+            };
+            let ethernet_port = match port.external_port() {
+                Some(port_id) => self.get_ethernet_port(port_id)?,
+                None => None,
+            }
+            .ok_or_else(|| SetupError::SpeedNotSupported(port.name().into()))?;
+            if !ethernet_port.advertise.contains(&speed) {
+                return Err(SetupError::SpeedNotOnPort {
+                    port: port.name().into(),
+                    speed: speed::label(port.speed().unwrap_or_default()),
+                });
+            }
+            ethernet_port.auto_negotiation = false;
+            ethernet_port.speed = Some(speed);
+            // RouterOS shows no `advertise` without auto-negotiation (klr-sw-1 qsfpplus1-1)
+            ethernet_port.advertise = Default::default();
         }
         Ok(())
     }

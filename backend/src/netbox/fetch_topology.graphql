@@ -27,6 +27,8 @@ query FetchTopology{
             enabled
             type
             mtu
+            speed
+            duplex
             bridge {
                 id
             }
@@ -102,6 +104,7 @@ query FetchTopology{
     }
     cable_list{
         id
+        type
         a_terminations {
             ...CableConnectionTermination
         }

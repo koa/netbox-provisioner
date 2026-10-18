@@ -1014,6 +1014,7 @@ async fn test_vlan_on_cable_and_tunnel_is_rejected() {
             Cable {
                 port_a: Box::new([CablePort::Interface(ids.switch_port)]),
                 port_b: Box::new([CablePort::Interface(ids.ap_port)]),
+                kind: None,
             },
         );
     })
@@ -1659,6 +1660,7 @@ async fn name_towards(far_device: &str) -> String {
         Cable {
             port_a: Box::new([CablePort::Interface(near_if)]),
             port_b: Box::new([CablePort::Interface(far_if)]),
+            kind: None,
         },
     );
     builder.devices.insert(

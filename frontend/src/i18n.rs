@@ -303,6 +303,40 @@ pub mod error {
                 p("farEnd"),
                 p("farMtu")
             ),
+            "SPEED_NOT_SUPPORTED" => format!(
+                "{} hat in NetBox eine Geschwindigkeit, die nur Ethernet-Ports fest bekommen",
+                p("port")
+            ),
+            "SPEED_NEEDS_CABLE_TYPE" => format!(
+                "{} läuft in NetBox fest mit {}: sein Kabel braucht einen Typ (DAC, Glasfaser oder \
+                 Kupfer), RouterOS nennt die Geschwindigkeit mit dem Medium",
+                p("port"),
+                p("speed")
+            ),
+            "UNKNOWN_SPEED" => format!(
+                "{} läuft in NetBox fest mit {}: dafür hat RouterOS an diesem Port mit diesem \
+                 Kabeltyp keine Geschwindigkeit",
+                p("port"),
+                p("speed")
+            ),
+            "SPEED_NOT_ON_PORT" => format!(
+                "{} läuft in NetBox fest mit {}, das bietet das Board an diesem Port nicht",
+                p("port"),
+                p("speed")
+            ),
+            "SPEED_MISMATCH" => {
+                let far = match p("farSpeed") {
+                    "" => "handelt die Geschwindigkeit aus".to_string(),
+                    speed => format!("läuft mit {speed}"),
+                };
+                format!(
+                    "{} läuft in NetBox fest mit {}, das andere Ende des Kabels, {}, {far}: ohne \
+                     dieselbe feste Geschwindigkeit an beiden Enden kommt kein Link",
+                    p("port"),
+                    p("speed"),
+                    p("farEnd")
+                )
+            }
             "MTU_NOT_SUPPORTED" => format!(
                 "{} hat in NetBox eine MTU, die nur Ethernet-Ports und wlan-Radios bekommen",
                 p("port")

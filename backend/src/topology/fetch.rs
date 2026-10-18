@@ -11,7 +11,7 @@ use crate::{
     topology::{
         Cable, CableId, CablePort, Device, DeviceId, DeviceRole, FrontPort, FrontPortId, Interface,
         InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
-        PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink, RadioRole, WirelessLinkEnd, RearPort, RearPortId, CircuitTermination, CircuitTerminationId, SiteData, SiteId,
+        Duplex, PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink, RadioRole, WirelessLinkEnd, RearPort, RearPortId, CircuitTermination, CircuitTerminationId, SiteData, SiteId,
         Topology,
         VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData,
         WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
@@ -262,6 +262,13 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             cable: None,
                             poe,
                             mtu: interface.mtu.and_then(|mtu| u16::try_from(mtu).ok()),
+                            speed: interface.speed.and_then(|speed| speed.kbits()),
+                            duplex: match interface.duplex.as_deref() {
+                                Some("half") => Some(Duplex::Half),
+                                Some("full") => Some(Duplex::Full),
+                                Some("auto") => Some(Duplex::Auto),
+                                _ => None,
+                            },
                             radio,
                             wireless_link,
                             sixty_ghz,
@@ -458,7 +465,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     }
                 }
             }
-            cables.insert(cable_id, Cable { port_a, port_b });
+            cables.insert(cable_id, Cable { port_a, port_b, kind: cable.type_.filter(|kind| !kind.is_empty()).map(Into::into) });
         }
     }
     let mut ip_prefixes = HashMap::new();

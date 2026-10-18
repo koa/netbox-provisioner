@@ -191,6 +191,13 @@ impl InterfaceAccess {
     pub fn mtu(&self) -> Option<u16> {
         self.data().and_then(|d| d.mtu)
     }
+    /// NetBox `speed` in kbit/s: the port runs at it, without auto-negotiation.
+    pub fn speed(&self) -> Option<u32> {
+        self.data().and_then(|d| d.speed)
+    }
+    pub fn duplex(&self) -> Option<crate::topology::Duplex> {
+        self.data().and_then(|d| d.duplex)
+    }
     pub fn enable_poe(&self) -> bool {
         self.poe() == Some(PoeMode::Pse)
     }

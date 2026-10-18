@@ -68,6 +68,7 @@ async fn allows_mac_telnet_towards_own_devices_and_on_free_ports() {
             Cable {
                 port_a: Box::new([CablePort::Interface(a)]),
                 port_b: Box::new([CablePort::Interface(b)]),
+                kind: None,
             },
         );
     }

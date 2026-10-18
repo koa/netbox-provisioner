@@ -381,6 +381,10 @@ pub struct Interface {
     pub poe: Option<PoeMode>,
     /// NetBox `mtu`: the L3 MTU of a physical port, for both ends of its cable
     pub mtu: Option<u16>,
+    /// NetBox `speed` (kbit/s) and `duplex`: the port runs at it, without auto-negotiation
+    /// (`device::ros::speed`)
+    pub speed: Option<u32>,
+    pub duplex: Option<Duplex>,
     /// Set on a radio port with an RF role in NetBox (a point-to-point bridge end).
     pub radio: Option<Radio>,
     /// The NetBox wireless link it is an end of, with or without RF role.
@@ -397,6 +401,14 @@ pub struct WirelessLinkEnd {
     /// the interface at the other end
     pub peer: Option<InterfaceId>,
     pub link: RadioLink,
+}
+
+/// NetBox `duplex` of an interface.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Duplex {
+    Half,
+    Full,
+    Auto,
 }
 
 /// NetBox `poe_mode` of an interface.
@@ -522,6 +534,8 @@ pub struct CircuitTermination {
 pub struct Cable {
     pub port_a: Box<[CablePort]>,
     pub port_b: Box<[CablePort]>,
+    /// NetBox `type`: `dac-passive`, `smf-os2`, `cat6` ... (`device::ros::speed`)
+    pub kind: Option<Box<str>>,
 }
 lazy_static! {
     static ref ETHER_PORT_PATTERN: Regex = Regex::new("^ether([0-9]+)$").unwrap();

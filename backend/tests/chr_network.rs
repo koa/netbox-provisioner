@@ -267,6 +267,7 @@ async fn scenario_derived_wiring_can_ping() {
         backend::topology::Cable {
             port_a: Box::new([backend::topology::CablePort::Interface(if_a)]),
             port_b: Box::new([backend::topology::CablePort::Interface(if_b)]),
+            kind: None,
         },
     );
 

@@ -36,6 +36,7 @@ async fn topology(mtu_a: Option<u16>, mtu_b: Option<u16>) -> [DeviceAccess; 3] {
         Cable {
             port_a: Box::new([CablePort::Interface(ends[0])]),
             port_b: Box::new([CablePort::Interface(ends[1])]),
+            kind: None,
         },
     );
     let wlan = builder.interfaces.next_id();

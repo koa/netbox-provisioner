@@ -16,6 +16,24 @@ pub mod rest;
 )]
 pub struct FetchTopology;
 
+/// NetBox' `BigInt` (an interface's `speed`), sent as a number or as a string.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum BigInt {
+    Number(i64),
+    Text(String),
+}
+
+impl BigInt {
+    /// The value as kbit/s, where it fits.
+    pub fn kbits(&self) -> Option<u32> {
+        match self {
+            BigInt::Number(value) => u32::try_from(*value).ok(),
+            BigInt::Text(value) => value.parse().ok(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct JSON {
     pub mikrotik_credentials: Option<Box<str>>,
