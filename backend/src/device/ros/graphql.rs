@@ -307,6 +307,9 @@ pub struct ApplyPlanned {
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct FallbackArmed {
     pub delay: ScalarDuration,
+    /// the part of `delay` for a radio to come back ([`RADIO_RESTART`]), when the apply
+    /// changes one
+    pub radio_wait: Option<ScalarDuration>,
 }
 
 /// The script runs on the device, or stopped at the line of `error`; the apply waits up to
@@ -457,11 +460,17 @@ pub(crate) async fn write_script(
 }
 
 /// Saves the backup the device loads in `delay` unless the fallback is taken away
-/// (`FallbackArmed`), over `raw`.
-pub(crate) async fn arm_fallback_on(raw: &RawDevice<SimpleResult>, delay: Duration, log: &Log) -> Result<(), Error> {
+/// (`FallbackArmed`, with the part of it for a radio to come back), over `raw`.
+pub(crate) async fn arm_fallback_on(
+    raw: &RawDevice<SimpleResult>,
+    delay: Duration,
+    radio_wait: Option<Duration>,
+    log: &Log,
+) -> Result<(), Error> {
     fallback::arm(raw, delay).await?;
     log.emit(FallbackArmed {
         delay: delay.into(),
+        radio_wait: radio_wait.map(Into::into),
     });
     Ok(())
 }
@@ -529,6 +538,8 @@ pub(crate) fn emit_checked(log: &Log, remaining: &Result<Box<str>, Error>) {
 pub(crate) struct PlannedApply {
     cfg: DeviceCfg,
     script: Box<str>,
+    /// it changes a radio (`/interface/wireless`, `/interface/wifi`)
+    restarts_radio: bool,
 }
 
 impl PlannedApply {
@@ -536,8 +547,30 @@ impl PlannedApply {
     pub(crate) fn is_empty(&self) -> bool {
         self.script.trim().is_empty()
     }
+    /// The longer fallback for a radio it changes, if it does ([`RADIO_RESTART`]).
+    pub(crate) fn radio_wait(&self) -> Option<Duration> {
+        self.restarts_radio.then_some(RADIO_RESTART)
+    }
 }
 
+/// How long a radio may stay off after a change: a 5 GHz AP with `frequency=auto` picks its
+/// channel again, and on a DFS channel listens for radar before it sends, 10 min where the
+/// channel touches the weather radar band (5600–5650 MHz; lab-sxt-a took 10 min on 5680 MHz
+/// at 80 MHz after a new SSID and key). Radar while it runs moves it to another channel that
+/// listens again (berghof-haus-stall: radar on 5680 MHz 5 min after the apply, then 5560 MHz),
+/// so the time covers two of them, plus the scans and the station finding it. Switzerland's
+/// outdoor channels are all DFS, and the high ones are kept for their higher power.
+pub(crate) const RADIO_RESTART: Duration = Duration::from_secs(24 * 60);
+
+/// How long one check of a device after its apply may take.
+const CHECK_TIMEOUT: Duration = Duration::from_secs(25);
+
+/// Whether `mutations` change a radio, which then may stay off for [`RADIO_RESTART`].
+fn restarts_radio(mutations: &[ResourceMutation<'_>]) -> bool {
+    mutations.iter().any(|m| {
+        m.resource.starts_with(b"interface/wireless") || m.resource.starts_with(b"interface/wifi")
+    })
+}
 
 impl AccessibleDevice {
     /// Applies the generated config: the diff runs as a script on the device itself, so it
@@ -554,9 +587,10 @@ impl AccessibleDevice {
             return Ok(());
         }
         log.check()?;
-        let delay = CONFIG.apply_fallback();
+        let radio_wait = planned.radio_wait();
+        let delay = CONFIG.apply_fallback() + radio_wait.unwrap_or_default();
         let fires = Instant::now() + delay;
-        self.arm_fallback(delay, log).await?;
+        self.arm_fallback(delay, radio_wait, log).await?;
         self.run_script(&planned, SCRIPT_ANSWER, log).await;
         // cancelled from here on, the fallback stays
         let wait = async |time| {
@@ -589,16 +623,24 @@ impl AccessibleDevice {
     pub(crate) async fn plan_apply(&self, log: &Log) -> Result<PlannedApply, Error> {
         let mut cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
         cfg.generate_for(&self.device_config)?;
-        let script = render_script(&cfg.sorted_mutations()?)?;
+        let mutations = cfg.sorted_mutations()?;
+        let script = render_script(&mutations)?;
+        let restarts_radio = restarts_radio(&mutations);
+        drop(mutations);
         log.emit(ApplyPlanned {
             script: script.clone(),
         });
-        Ok(PlannedApply { cfg, script })
+        Ok(PlannedApply { cfg, script, restarts_radio })
     }
     /// Saves the backup the device loads in `delay` unless the fallback is taken away
     /// (`FallbackArmed`).
-    pub(crate) async fn arm_fallback(&self, delay: Duration, log: &Log) -> Result<(), Error> {
-        arm_fallback_on(&self.connect_again::<SimpleResult>().await?, delay, log).await
+    pub(crate) async fn arm_fallback(
+        &self,
+        delay: Duration,
+        radio_wait: Option<Duration>,
+        log: &Log,
+    ) -> Result<(), Error> {
+        arm_fallback_on(&self.connect_again::<SimpleResult>().await?, delay, radio_wait, log).await
     }
     /// Runs `planned` as a script on the device, waiting up to `answer` for it to answer
     /// (`ApplyRunning`): the script goes on without the provisioner, also when it cuts the
@@ -731,11 +773,17 @@ impl AccessibleDevice {
     pub(crate) async fn remaining_diff(&self) -> Result<Box<str>, Error> {
         self.remaining().await
     }
+    /// The diff left, over a new connection, within [`CHECK_TIMEOUT`]: the apply checks
+    /// every few seconds, and a device reached again only for a short while must be caught.
     async fn remaining(&self) -> Result<Box<str>, Error> {
-        let client = self.connect_again().await?;
-        let mut cfg = DeviceCfg::fetch(&client, &self.device_config).await?;
-        cfg.generate_for(&self.device_config)?;
-        cfg.script()
+        tokio::time::timeout(CHECK_TIMEOUT, async {
+            let client = self.connect_again().await?;
+            let mut cfg = DeviceCfg::fetch(&client, &self.device_config).await?;
+            cfg.generate_for(&self.device_config)?;
+            cfg.script()
+        })
+        .await
+        .unwrap_or(Err(Error::Timeout(self.address)))
     }
 }
 

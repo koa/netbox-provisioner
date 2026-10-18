@@ -797,10 +797,18 @@ pub mod job {
         pub const FALLBACK_STOPPED: &str =
             "Fallback gestoppt: das Gerät ist mit der neuen Konfiguration erreichbar";
 
-        pub fn fallback_armed(seconds: u64) -> String {
-            format!(
+        pub fn fallback_armed(seconds: u64, radio_wait: Option<u64>) -> String {
+            let text = format!(
                 "Backup gespeichert: das Gerät lädt es in {seconds} s, wenn der Provisioner es danach nicht erreicht"
-            )
+            );
+            match radio_wait {
+                Some(wait) => format!(
+                    "{text}; {} min davon, weil sich ein Funk ändert: auf einem DFS-Kanal prüft der AP \
+                     bis zu 10 min auf Radar, bevor er sendet",
+                    wait / 60
+                ),
+                None => text,
+            }
         }
         pub fn script_stopped(error: &str, seconds: u64) -> String {
             format!(

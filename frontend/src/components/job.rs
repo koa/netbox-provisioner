@@ -318,7 +318,9 @@ fn describe(event: &JobEventsJobEvents) -> Html {
     let text = match &event.event {
         Event::ApplyPlanned(planned) if planned.script.trim().is_empty() => e::NOTHING_TO_DO.into(),
         Event::ApplyPlanned(planned) => return script(t::SCRIPT, &planned.script),
-        Event::FallbackArmed(armed) => e::fallback_armed(seconds(armed.delay)),
+        Event::FallbackArmed(armed) => {
+            e::fallback_armed(seconds(armed.delay), armed.radio_wait.map(seconds))
+        }
         Event::ApplyRunning(running) => match &running.error {
             Some(error) => e::script_stopped(&problem(error), seconds(running.timeout)),
             None => e::script_running(seconds(running.timeout)),

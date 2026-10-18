@@ -67,7 +67,8 @@ const LEAD: Duration = Duration::from_secs(15);
 /// How long starting a script and seeing it run may take, within [`LEAD`].
 const START_TIME: Duration = Duration::from_secs(10);
 
-/// The fallback delay of a batch: the single apply's after the scripts start.
+/// The fallback delay of a batch: the single apply's after the scripts start; longer by the
+/// time a radio takes to come back when one of them changes one.
 fn fallback_delay() -> Duration {
     CONFIG.apply_fallback() + PREPARE_TIME + LEAD
 }
@@ -77,8 +78,16 @@ fn fallback_delay() -> Duration {
 pub(crate) trait Applying: Send + Sync {
     /// Connects and plans the diff (`ApplyPlanned`); `false` when there is nothing to do.
     fn plan(&mut self, log: &Log) -> impl Future<Output = Result<bool, Error>> + Send;
-    /// Sets up the fallback, firing in `delay` (`FallbackArmed`).
-    fn arm(&self, delay: Duration, log: &Log) -> impl Future<Output = Result<(), Error>> + Send;
+    /// How much longer the fallback waits for a radio the plan changes, if it does.
+    fn radio_wait(&self) -> Option<Duration>;
+    /// Sets up the fallback, firing in `delay`, `radio_wait` of it for a radio
+    /// (`FallbackArmed`).
+    fn arm(
+        &self,
+        delay: Duration,
+        radio_wait: Option<Duration>,
+        log: &Log,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
     /// Leaves the script on the device, applying `lead` after it starts (`ApplyWritten`).
     fn write(&self, lead: Duration, log: &Log) -> impl Future<Output = Result<(), Error>> + Send;
     /// Starts the script; `true` once it runs.
@@ -128,8 +137,11 @@ impl Applying for Linked {
         }
         Ok(something)
     }
-    async fn arm(&self, delay: Duration, log: &Log) -> Result<(), Error> {
-        arm_fallback_on(&self.reached().control, delay, log).await
+    fn radio_wait(&self) -> Option<Duration> {
+        self.reached().planned.radio_wait()
+    }
+    async fn arm(&self, delay: Duration, radio_wait: Option<Duration>, log: &Log) -> Result<(), Error> {
+        arm_fallback_on(&self.reached().control, delay, radio_wait, log).await
     }
     async fn write(&self, lead: Duration, log: &Log) -> Result<(), Error> {
         let reached = self.reached();
@@ -289,13 +301,15 @@ pub(crate) async fn run<M: Applying>(
         return finish(results);
     }
 
-    // on each a fallback, all firing together, and the script
-    let delay = timing.delay;
+    // on each a fallback, all firing together, and the script; a radio changed on one of
+    // them may keep the others off as long
+    let radio_wait = running.iter().filter_map(|m| m.member.radio_wait()).max();
+    let delay = timing.delay + radio_wait.unwrap_or_default();
     let fires = Instant::now() + delay;
     let prepared = join_all(running.iter().map(|m| async {
         let armed = async {
             cancelled(&logs)?;
-            m.member.arm(fires.saturating_duration_since(Instant::now()), &m.log).await
+            m.member.arm(fires.saturating_duration_since(Instant::now()), radio_wait, &m.log).await
         }
         .await;
         match armed {
@@ -517,7 +531,10 @@ mod run_test {
         lost: bool,
         /// reached after its script, but not in line
         left: bool,
+        /// its plan changes a radio
+        radio: bool,
         calls: Arc<Mutex<Vec<String>>>,
+        delays: Arc<Mutex<Vec<Duration>>>,
     }
 
     impl Fake {
@@ -535,7 +552,11 @@ mod run_test {
             self.fails(self.plan_fails)?;
             Ok(!self.nothing_to_do)
         }
-        async fn arm(&self, _delay: Duration, _log: &Log) -> Result<(), Error> {
+        fn radio_wait(&self) -> Option<Duration> {
+            self.radio.then_some(Duration::from_millis(200))
+        }
+        async fn arm(&self, delay: Duration, _radio_wait: Option<Duration>, _log: &Log) -> Result<(), Error> {
+            self.delays.lock().unwrap().push(delay);
             self.call("arm");
             self.fails(self.arm_fails)
         }
@@ -574,8 +595,9 @@ mod run_test {
     /// `near` and `far`: the calls and the outcomes.
     async fn batch(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>, Vec<Log>) {
         let calls = Arc::new(Mutex::new(Vec::new()));
-        let near = Fake { name: "near", calls: calls.clone(), ..near };
-        let far = Fake { name: "far", calls: calls.clone(), ..far };
+        let delays = Arc::new(Mutex::new(Vec::new()));
+        let near = Fake { name: "near", calls: calls.clone(), delays: delays.clone(), ..near };
+        let far = Fake { name: "far", calls: calls.clone(), delays: delays.clone(), ..far };
         let logs = vec![Log::new("near"), Log::new("far")];
         let results = run(
             vec![near, far],
@@ -653,6 +675,32 @@ mod run_test {
             matches!(event, Event::ApplyStarted(started) if started.error.is_some())
         });
         assert!(started_with_error);
+    }
+
+    /// a radio changed on one end keeps the other end off as long: both wait for it
+    #[tokio::test]
+    async fn a_radio_change_lengthens_every_fallback() {
+        let delays = Arc::new(Mutex::new(Vec::new()));
+        let near = Fake { name: "near", radio: true, delays: delays.clone(), ..Fake::default() };
+        let far = Fake { name: "far", delays: delays.clone(), ..Fake::default() };
+        let results = run(
+            vec![near, far],
+            vec!["near".into(), "far".into()],
+            vec![Log::new("near"), Log::new("far")],
+            Timing {
+                delay: Duration::from_millis(300),
+                lead: Duration::from_millis(5),
+                start: Duration::from_millis(100),
+                poll: Duration::from_millis(10),
+                settle: Duration::ZERO,
+                margin: Duration::ZERO,
+            },
+        )
+        .await;
+        assert!(results.iter().all(Result::is_ok), "{results:?}");
+        let delays = delays.lock().unwrap();
+        assert_eq!(delays.len(), 2);
+        assert!(delays.iter().all(|d| *d > Duration::from_millis(400)), "{delays:?}");
     }
 
     #[tokio::test]

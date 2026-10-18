@@ -240,7 +240,18 @@ with the device's own `print` (`examples/print_device.rs`, read-only) and on a C
 changing defaults. The apply waits up to 90 s for its script to answer
 (`ApplyRunning.error` `SCRIPT_NO_ANSWER` after that), then checks the device as usual: a script
 that cuts its own connection goes on on the device, and waiting longer would outlast the
-fallback.
+fallback. A plan that changes a radio (`/interface/wireless…`, `/interface/wifi…`,
+`PlannedApply::radio_wait`) gets a fallback 24 min longer (`RADIO_RESTART`, shown in
+`FallbackArmed.radioWait`): a 5 GHz AP with `frequency=auto` picks its channel again and on a
+DFS channel touching the weather radar band listens 10 min before it sends (lab-sxt-a: a new
+SSID and key on 5680 MHz at 80 MHz, the link back after 10.5 min; before, the fallback fired
+first). Radar meanwhile moves it to a channel that listens again (berghof-haus-stall: radar on
+5680 MHz 5 min after the apply, then 5560 MHz), so the wait covers two of them. The high
+channels stay, they are Switzerland's outdoor channels with the most power. In a batch the
+longest radio wait counts for all. Each check after the script is limited to 25 s
+(`CHECK_TIMEOUT`): checks of a device behind a link that was down came about every 2 min (the
+connect to its neighbor had no limit yet), and berghof's batch missed the short while the
+link was back.
 
 `applyBatch` applies several devices together (`device::batch`; the device page's „Gemeinsam
 anwenden“, `components::batch_apply`, with the other ends of its wireless links picked and the
