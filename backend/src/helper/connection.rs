@@ -260,7 +260,7 @@ async fn next_free(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::device::ros::netbox_example_test::example_topology;
+    use crate::topology::test::example_topology;
 
     /// A link NetBox has whole, cable and common network, gets no cable, prefix or address,
     /// only what its ends lack; asking for it from either end is the same.

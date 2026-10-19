@@ -1257,7 +1257,7 @@ pub(crate) fn device_ref(device: &DeviceAccess) -> DeviceRef {
 mod test {
     use super::*;
     use crate::{
-        device::ros::netbox_example_test::example_topology,
+        topology::test::example_topology,
         topology::{
             access::{AccessTopology, interface::InterfaceAccess},
             findings::interface_ref,

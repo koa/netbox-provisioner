@@ -627,7 +627,7 @@ fn address_ref(address: &IpAddressAccess) -> AddressRef {
 mod test {
     use super::*;
     use crate::{
-        device::ros::netbox_example_test::example_topology,
+        topology::test::example_topology,
         topology::{
             Cable, CablePort, Device, Interface, InterfaceId, IpAddressData, IpPrefixData,
             IpPrefixId, PhysicalPortId, VlanId, builder::TopologyBuilder,

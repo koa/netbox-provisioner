@@ -30,6 +30,8 @@ pub mod management;
 pub mod natural;
 mod graphql;
 pub mod builder;
+#[cfg(test)]
+pub(crate) mod test;
 
 #[derive(Debug, Default, Clone)]
 pub struct TopologyHolder {

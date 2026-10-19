@@ -179,7 +179,7 @@ mod test {
     /// count, not by name: the export changes), with one the proxy's device first.
     #[test]
     fn the_routers_with_the_most_ospf_first() {
-        let topology = crate::device::ros::netbox_example_test::example_topology();
+        let topology = crate::topology::test::example_topology();
         let ospf = |device: &DeviceAccess| device.interfaces().iter().filter(|i| i.use_ospf()).count();
         let most = topology
             .list_devices()

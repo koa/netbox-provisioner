@@ -169,7 +169,7 @@ fn address_text(ip: &IpAddressAccess) -> Box<str> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::device::ros::netbox_example_test::example_topology;
+    use crate::topology::test::example_topology;
 
     /// A link between routers in a network of the transfer pool: the plan deletes the cable,
     /// the addresses at both ends and the link's prefix if it has one, and the preview has the

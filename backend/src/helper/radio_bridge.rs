@@ -655,7 +655,7 @@ pub fn candidates(topology: &Arc<Topology>) -> Vec<RadioBridgeCandidate> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::device::ros::netbox_example_test::example_topology;
+    use crate::topology::test::example_topology;
 
     fn find(topology: &Arc<Topology>, name: &str) -> DeviceAccess {
         topology

@@ -278,7 +278,7 @@ fn compare(
 mod test {
     use super::*;
     use crate::{
-        device::ros::netbox_example_test::example_topology,
+        topology::test::example_topology,
         topology::{
             Cable, CablePort, Device, Interface, PhysicalPortId, PortType, builder::TopologyBuilder,
         },

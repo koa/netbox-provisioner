@@ -134,9 +134,9 @@ Ein Ende eines Wireless Links ohne RF-Rolle meldet der Befund `RadioWithoutRole`
 
 CHR hat weder `/interface/wireless` noch `/interface/w60g`. Die Modelle sind deshalb mit
 statischen Decode-Tests aus echten Geräte-Ausgaben geprüft (`mikrotik-model`
-`src/model/wireless_tests.rs`, darunter die vollständige `print advanced detail` zweier Strecken),
-die Generierung mit `device/ros/radio_test.rs` und dem Produktions-Export
-(`netbox_example_test.rs`). Ob RouterOS jede generierte Zeile annimmt, zeigt erst ein echtes
+`src/model/test/wireless.rs`, darunter die vollständige `print advanced detail` zweier Strecken),
+die Generierung mit `device/ros/test/radio.rs` und dem Produktions-Export
+(`device/ros/test/netbox_example.rs`). Ob RouterOS jede generierte Zeile annimmt, zeigt erst ein echtes
 Gerät. Die Werte des Profils stammen aus der CLI-Ausgabe; die API kann einzelne Werte anders
 schreiben, das zeigt sich dann als wiederkehrende Änderung.
 

@@ -1,3 +1,13 @@
+mod capsman;
+mod mac_server;
+mod mtu;
+mod netbox_example;
+mod poe;
+mod radio;
+mod speed;
+mod watchdog;
+mod wlan_vlans;
+
 use crate::device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, GapFinder, pool_range};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use mikrotik_model::model::{InterfaceEthernetByDefaultName, InterfaceEthernetCfg};

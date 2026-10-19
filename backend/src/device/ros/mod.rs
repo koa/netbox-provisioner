@@ -59,27 +59,9 @@ pub(crate) mod speed;
 pub mod warning;
 pub mod watchdog;
 
-#[cfg(test)]
-mod capsman_test;
 pub mod l2;
 #[cfg(test)]
-mod mtu_test;
-#[cfg(test)]
-mod speed_test;
-#[cfg(test)]
-mod mac_server_test;
-#[cfg(test)]
-pub(crate) mod netbox_example_test;
-#[cfg(test)]
-mod poe_test;
-#[cfg(test)]
-mod radio_test;
-#[cfg(test)]
 mod test;
-#[cfg(test)]
-mod watchdog_test;
-#[cfg(test)]
-mod wlan_vlans_test;
 
 mikrotik_model!(
     name = BaseDeviceData,

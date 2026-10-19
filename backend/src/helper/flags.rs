@@ -163,7 +163,7 @@ pub fn plan(topology: &Arc<Topology>, input: &FlagsInput) -> Result<NetboxPlan, 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::device::ros::netbox_example_test::example_topology;
+    use crate::topology::test::example_topology;
 
     /// Switching a tag on and another one off is one change of the interface; switching one
     /// to what it is already is none.

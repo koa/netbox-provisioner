@@ -56,7 +56,7 @@ name (`/interface/w60g` reports no `default-name`), so it is never renamed: it s
 A radio's bridge port (`wlan<N>`, `wlan60-<N>`) leaves `hw` unset: RouterOS doesn't report it there. A
 `wlan<N>`/`wifi<N>` in NetBox on a 60 GHz board is `PortNotFound` (its misnamed `wlan60-<N>`).
 
-`device/ros/netbox_example_test.rs` runs every RouterOS device of the stored production
+`device/ros/test/netbox_example.rs` runs every RouterOS device of the stored production
 response `docs/netbox-response-example.json` (maintained by the user from the live NetBox; never
 edit or commit it yourself) through the whole generator, with each device given exactly the ports
 it declares in NetBox since the response carries no board model. Devices that don't generate yet
@@ -621,6 +621,11 @@ QEMU's, the golden image's dhcp-client is bound to it).
 
 ## Code conventions
 
+- Tests of more than a few cases go in a module of their own: `<module>/test.rs`, or for a
+  module with several, a directory `<module>/test/` (`device/ros/test/`, one file per topic),
+  never `*_test.rs` files next to the code. Fixtures several modules' tests use belong in
+  `topology::test` (`example_topology`, the stored export as a topology);
+  `topology::builder::TopologyBuilder` isn't `cfg(test)`, the CHR tests build with it too.
 - A RouterOS command no mikrotik-model type covers (actions, monitors, a menu read for one
   field) goes through `device::raw` (`command`, `rows`, `field`), which turns a `!trap` into
   `Error::Refused` naming the command; don't write another loop over `SimpleResult`.
