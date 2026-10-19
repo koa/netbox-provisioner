@@ -30,6 +30,8 @@ capable of producing the functionality of (not byte-for-byte). `docs/` describes
 NetBox-to-RouterOS config generation itself works (interface naming, L2/bridge/VLAN generation,
 OSPF, VXLAN, WLAN/CAPsMAN, point-to-point radio bridges) - read it before changing anything under
 `device/ros/`.
+`docs/todo.md` lists the open tasks of all three repos (numbered, with effort and status);
+mark one done there, with date and commit, in the commit that finishes it.
 `docs/netbox-modeling.md` is the user-facing contract for how devices must be modeled in NetBox
 (tags, custom fields, interface names, VLAN groups and their VXLAN VNI); update it whenever `fetch.rs` or
 `fetch_topology.graphql` changes what is read. Every custom field read (the `JSON` struct in
