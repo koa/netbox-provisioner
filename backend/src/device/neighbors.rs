@@ -14,7 +14,7 @@ use crate::{
     topology::{
         DeviceRole,
         PhysicalPortId,
-        access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess},
+        access::{device::DeviceAccess, interface::InterfaceAccess},
         findings::{DeviceRef, InterfaceRef, Severity, device_ref, interface_ref},
     },
 };
