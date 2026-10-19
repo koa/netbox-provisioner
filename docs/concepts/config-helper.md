@@ -6,8 +6,11 @@ Regionen und die gesammelten Generatorfehler. Von Schritt 2 („NetBox gegen Ger
 → Kabel (`device/neighbors.rs`, „Nachbarn lesen“ auf der Site-Seite). Schritt 3 mit dem Helfer
 „Loopback“ (`backend/src/helper/`, Karte „NetBox ergänzen“ auf der Geräteseite), von Schritt 4
 die Verbindung „Direkt“ (`/31`), „Kabel aus Befund übernehmen“ und „Verbindung abräumen“, von
-Schritt 5 die OSPF-/DHCP-Flags und das Kunden-Netz (ohne IP-Range). Der Rest ist Konzept. Offener Punkt „Config-Helper“ aus
-[pending.md](../pending.md).
+Schritt 5 die OSPF-/DHCP-Flags und das Kunden-Netz (IPv4 und IPv6, ohne IP-Range), von Schritt 6
+„PoE“ und Schritt 7 „Funkbrücke“ (samt Loopback und fester Adresse der Brückengeräte, mit
+„gemeinsam anwenden“ bei geänderter Funkstrecke). Offen sind „Neues Gerät“, die IP-Range des
+Kunden-Netzes, OSPF-Priorität 0 der Brückengeräte und von Schritt 2 Adressen und PoE gegen das
+Gerät. Offener Punkt „Config-Helper“ aus [pending.md](../pending.md).
 
 ## Ausgangslage
 

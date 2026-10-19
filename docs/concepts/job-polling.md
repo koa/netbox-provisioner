@@ -66,7 +66,11 @@ erfolgreich aktualisiertes Gerät auf die alte Version zurück, und niemand weis
 Die Geräteseite liest beim Laden ohnehin vom Gerät. Dazu kommt, was ein abgebrochener Job
 zurücklässt:
 
-- Scheduler `netbox-provisioner-*` (Apply- oder Update-Fallback), mit der verbleibenden Zeit,
+- Scheduler `netbox-provisioner-*` (Apply- oder Update-Fallback), mit der verbleibenden Zeit;
+  dazu `netbox-provisioner-watchdog`, der ausgesetzte Watchdogs nach 2 h selbst wieder setzt
+  (Update, Anwenden mit Funkänderung, [Watchdog](watchdog.md)), und das Skript
+  `netbox-provisioner-apply`. Ein abgebrochenes gemeinsames Anwenden lässt das auf jedem Gerät
+  des Batches zurück,
 - `.npk`-Dateien im Root,
 - eine Device-Mode-Änderung, die auf Bestätigung wartet.
 

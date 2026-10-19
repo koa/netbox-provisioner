@@ -1,7 +1,10 @@
 # Konzept: Fallback für RouterOS-Updates
 
 Status: Stufe 1 ist umgesetzt: Device-Mode anpassen (siehe unten), in zwei Partitionen
-aufteilen und der Ablauf beim Update. Stufe 2 ist noch Konzept. Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
+aufteilen und der Ablauf beim Update. Von Stufe 2 ist das Erreichen über den Tunnel zum Nachbarn
+da (`connect` fällt auf die Adresse am Kabel zurück, wenn die Primary IP nicht antwortet, siehe
+unten), ebenso der MAC-Server auf den Wartungs-Ports; offen sind mac-telnet zur Rettung und der
+Knopf für den Downgrade. Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
 noch einen Fallback Mechanismus für Updates“).
 
 ## Ausgangslage

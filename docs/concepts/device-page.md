@@ -1,7 +1,10 @@
 # Konzept: Geräteseite
 
 Status: Schritte 1 und 2 umgesetzt (Karten und Raster, „Ziel ändern“ als „Zugang“ im Kopf und in
-der Meldung „nicht erreichbar“), Schritt 3 offen. Offener Punkt „Device-Darstellung“ aus [pending.md](../pending.md).
+der Meldung „nicht erreichbar“), Schritt 3 offen. Seither dazugekommen: die Karte „NetBox
+ergänzen“ (die Helfer des [Config-Helpers](config-helper.md)) zwischen „Gerät“ und
+„Änderungen“, in „Änderungen“ „Gemeinsam anwenden“ und vor einem Update die Warnung zu den
+Watchdogs, die währenddessen auslösen könnten ([Watchdog](watchdog.md)). Offener Punkt „Device-Darstellung“ aus [pending.md](../pending.md).
 
 ## Vorher
 
