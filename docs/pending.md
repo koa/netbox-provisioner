@@ -60,6 +60,12 @@ das Modell nicht kennt, und braucht kein Inverses (hinzugefügte Einträge haben
 `.id`, die Reihenfolge der Firewall müsste wiederhergestellt werden); der Preis ist der
 Neustart, nur wenn der Fallback auslöst. Gemeint ist das Anwenden einer Konfigurationsänderung.
 
+Für Updates: **Status: in Arbeit**, siehe [Update-Fallback](concepts/update-fallback.md).
+Stufe 1 ist umgesetzt: Vor dem Update kopiert der Provisioner auf die zweite Partition, ein
+Scheduler schaltet ohne Erfolg dorthin zurück, und die Geräteseite bietet „Von partN starten“.
+Von Stufe 2 erreicht er ein Gerät schon über den Nachbarn; offen sind die Rettung über
+mac-telnet und der Downgrade auf Knopfdruck.
+
 Es braucht noch einen Fallback Mechanismus für Updates.
 D.h.: Befor ein Update angewendet wird, wird das Inverse Update berechnet (D.h. wie kann man dieses Update rückgängig machen). Dieses Update muss zu Begin des Updates auf das Gerät geschrieben und für die Automatische Ausführung geplant werden, für den Fall dass das Update schief geht.
 Wenn das Update fertig ist und das Gerät weiterhin erreichbar ist, wird dieser Fallback gestoppt.
@@ -73,13 +79,17 @@ Default: Long-Term
 
 Konzept für Updates im ganzen Netz
 ----------------------------------
-**Status: offen** (baut auf dem Server-Log auf).
+**Status: offen.** Konzept: [Updates im ganzen Netz](concepts/network-update.md), nichts
+umgesetzt. Was es braucht, ist schon da: Server-Log, Update-Fallback, PoE-Leases und das
+Aussetzen der Watchdogs.
 
 Konzept für Updates im ganzen Netz fehlt
 
 
 Visualisierung Netz-Zustand
 ===========================
+
+**Status: offen.** Konzept: [Netz-Karte](concepts/network-map.md), nichts umgesetzt.
 
 Es braucht eine einfache Übersicht über alle Verbindungen.
 
@@ -100,6 +110,9 @@ Visualisierung der PoE Versorgungen (Check Netbox-Doku, Anzeige Stromfluss)
 
 Device-Darstellung
 ==================
+**Status: in Arbeit**, siehe [Geräteseite](concepts/device-page.md). Karten im Raster, auf dem
+Handy einspaltig; „Ziel ändern“ ist jetzt „Zugang“ im Kopf und in der Meldung „nicht
+erreichbar“. Offen: ein Bereich für Liegengebliebenes auf dem Gerät und Befunde.
 
 Die Darstellung ist recht chaotisch. Das sollte besser angeordnet werden. Wenn möglich auch für Mobile passend.
 Gibt es noch einen validen Anwendungsfall für "Ziel ändern". Wenn nicht, weg damit.
@@ -107,10 +120,18 @@ Gibt es noch einen validen Anwendungsfall für "Ziel ändern". Wenn nicht, weg d
 
 Polling verbessern
 ==================
+**Status: in Arbeit**, siehe [Jobs](concepts/job-polling.md). Ein Fehler beim Abfragen hält den
+Job nicht mehr an: Das Frontend fragt mit wachsendem Abstand weiter und beendet die Ansicht bei
+einem unbekannten Job. Die Job-Nummern sind über Neustarts eindeutig. Offen: Liegengebliebenes
+auf dem Gerät anzeigen, Events speichern, geordnetes Beenden.
  Ein einzelner Fehler beim Polling führt dazu, dass der Client den ganzen Vorgang abbricht. Das sollte so nicht sein (Der Fehler soll angezeigt werden und der Nutzer soll die Möglichkeit haben den Vorgang abzubrechen, aber es muss auch weiter gehen können)
 
  Config-Helper
 ==============
+**Status: in Arbeit**, siehe [Config-Helper](concepts/config-helper.md). Umgesetzt sind die
+Befunde, „Nachbarn lesen“ und die Helfer Loopback, Verbindung (samt „Kabel übernehmen“ und
+„Verbindung abräumen“), Flags, Kunden-Netz (IPv4 und IPv6), PoE und Funkbrücke. Offen ist vor
+allem „Neues Gerät“.
 
 Die Konfiguration über Netbox ist sehr flexibel, aber auch sehr aufwendig und fehlerträchtig. Für Standart-Situationen braucht es ein einfaches UI im Netbox Provisioner.
 - Hinzufügen von einem neuen Gerät (Standort, Name, Typ erkennen oder eingeben)
@@ -122,16 +143,22 @@ Die Konfiguration über Netbox ist sehr flexibel, aber auch sehr aufwendig und f
 
 Graphql Files
 =============
+**Status: offen.** Konzept: [GraphQL-Dateien](concepts/graphql-files.md). Heute sind die Abfragen
+nach Seite gruppiert, z.B. 11 in `netbox-helper.graphql`.
 Erstelle für jeden Graphql-Query ein eigenes .graphql File
 
 
 DSL für Mikrotik Kommandos
 ==========================
+**Status: offen.** Konzept: [Befehle ohne Strings](concepts/command-dsl.md). Die Konfiguration
+ist schon getypt (mikrotik-model). Strings sind noch die einzelnen API-Befehle (`device::raw`) und
+die Skripte der Scheduler und der Ersteinrichtung.
 
 Alle Mikrotik-Befehle sind aktuell strings. Prüfe die Möglichkeit dafür eine DSL mit Makros oder ähnlich zu bauen um die Semantik besser beizubehalten.
 
 Provisionierung
 ===============
+**Status: offen.** Konzept: [Deployment](concepts/deployment.md).
 Für das Rollout braucht die Applikation:
 - Dockerfile basierend auf bare (kein volles Linux)
 - Helm-Chart
@@ -146,20 +173,28 @@ Diese Journeys sollen zuerst nur die Struktur der Gesamtlösung führen. Sie sol
 
 Rollout
 -------
+**Status: in Arbeit**, siehe [User Journeys](concepts/user-journeys.md#rollout). Ersteinrichtung,
+Helfer und gemeinsames Anwenden gibt es; es fehlt vor allem „Neues Gerät“.
 Neue Geräte werden installiert. Diese brauchen neue Verbindungen (Funk oder Direkt), Loopback-Adressen und ggf Kunden-Netze.
 Gerade neue Verbindungen sind sehr mühsam direkt in Netbox einzurichten (Geräte, IP-Adressen, Prefixe, etc. alles über mehrere Masken verteilt) und haben ein grosses Risiko für Fehler.
 Idee: Man verbindet die neuen Geräte im Feld und konfiguriert diese Fortlaufend mit dem Mobiltelefon. Die Geräte kommen laufend online und man kann sie gleich testen (ohne zu Hause am PC das Netz in Netbox nachzeichen zu müssen)
 
 Datenkorrektur
 --------------
+**Status: in Arbeit**, siehe [User Journeys](concepts/user-journeys.md#datenkorrektur). Befunde
+und „Nachbarn lesen“ gibt es; es fehlen eine Übersicht pro Site, wie weit jedes Gerät von NetBox
+abweicht, und das Übernehmen von Adressen, die nur auf dem Gerät stehen.
 Die Daten in Netbox und der Realität sind voneinander abgewichen. Die Abweichungen sollen möglichst einfach erkannt und korrigiert werden können. Initial müssen mal alle Geräte "synct" werden, dass man sie später ohne grössere Risiken ausrollen kann.
 
 Überwachung
 -----------
+**Status: offen.** Konzept: [Überwachung](concepts/monitoring.md).
 Jeder Anwender soll auf den ersten Blick sehen können wie gut das Netz läuft. Einerseits für seine eigenen Bedürfnisse (Wie gut geht es der Internetverbindung?) und auch für einen Gesamtüberblick (Was muss kontrolliert/gewartet werden?).
 
 Firewall
 --------
+**Status: offen.** Konzept: [Firewall](concepts/firewall.md). Heute erzeugt der Generator nur
+Masquerading und das Schliessen von DNS an `nat`-Uplinks.
 Das Netz hat einige wenige Firewalls. Diese sollen in Netbox verwaltet werden.
 - Port-Forwarding IPv4
 - Address-Forwarding IPv6
@@ -167,6 +202,7 @@ Das Netz hat einige wenige Firewalls. Diese sollen in Netbox verwaltet werden.
 
 Self-Service
 ------------
+**Status: offen.** Konzept: [Self-Service](concepts/self-service.md), zusammen mit den Personas.
 Anwender sollen ein paar einfache Handgriffe selbst ausführen können
 - Anpassung SSID / Passwort
 - Physische Stecker (Switch-Ports) einem WLAN-VLAN zuordnen
@@ -175,6 +211,8 @@ Anwender sollen ein paar einfache Handgriffe selbst ausführen können
 
 Personas
 ========
+**Status: offen.** Teil des Konzepts [Self-Service](concepts/self-service.md): Heute dürfen alle,
+die sich anmelden dürfen, alles.
 
 Admin
 -----
