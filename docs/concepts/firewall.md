@@ -30,6 +30,24 @@ Firewall-Router zu seinen Regeln zeigt. Verwaltet das Ziel die ganze Tabelle, w�
 von Hand gesetzte Regeln entfernen. Das wäre schon heute ein Risiko, nicht erst mit diesem
 Konzept.
 
+**Heutiger Stand, gemessen** (2026-10-19, Lab und Code):
+
+- Die Firewall-Tabellen werden nach `.id` abgeglichen (`generate_add_update_remove_by_id`):
+  Einträge auf dem Gerät werden mit den Zielen gepaart, die wenigsten geänderten Felder zuerst,
+  und **umgeschrieben**; was übrig bleibt, wird **entfernt**. Ein Apply auf einen Router mit
+  eigener Firewall (die Werks-Firewall eines hEX, oder die von Hand gepflegten Regeln der
+  Internet-Router) lässt nur `close_dns` übrig. Die Reihenfolge der Regeln spielt beim Paaren
+  keine Rolle, für RouterOS aber schon.
+- Die Lab-Geräte haben nach dem Anwenden **keine einzige Filter-Regel** (IPv4 und IPv6).
+- `/ip/service` verwaltet der Generator nicht: ftp, telnet, www, winbox, api (ohne TLS) bleiben
+  auf allen Geräten an, auf allen Adressen.
+- `/ip/socks` des Management-Proxys lauscht auf allen Interfaces (`setup_management_proxy`:
+  „reachable from wherever the device is“), geschützt nur durch das Passwort.
+
+Ein Router mit Internet-Zugang ist damit nach einem Apply von aussen offen, bis auf DNS. Die
+Perimeter-Firewall ist deshalb nicht nur eine Erweiterung, sondern behebt ein bestehendes
+Problem; und bis sie da ist, sollte kein Router mit eigener Firewall angewendet werden.
+
 ## Perimeter-Firewall
 
 **Wo:** an jedem Interface zum Internet. Heute markiert das Tag `nat` einen Uplink, dessen Netz
@@ -49,6 +67,8 @@ Schalter; ein Interface mit `nat` ohne `internet` ist ein Befund.
     Provisioner beim Anwenden selbst aus; der Fallback holt das Gerät zurück, aber ohne
     Änderung;
   - der Rest wird verworfen: API, Winbox, DNS (das heutige `close_dns` geht darin auf).
+- **Dienste:** `/ip/service` ins Modell; telnet, ftp, www aus, API nur von den eigenen Netzen
+  (`address=`), besser api-ssl. Das gilt für alle Geräte, nicht nur am Perimeter.
 - `forward` vom Internet:
   - IPv4 nur, was ein Port-Forwarding hereinlässt (`connection-nat-state=dstnat`);
   - IPv6 nur die Freigaben;
@@ -76,8 +96,15 @@ Schalter; ein Interface mit `nat` ohne `internet` ist ein Befund.
 
 **Wo:** auf dem Router, an dessen Interface das Netz hängt (sein Gateway). Mit OSPF geht jeder
 Verkehr in das Netz und aus ihm über dieses Interface, auch der Rückweg. Die Regeln brauchen
-deshalb nur dort zu stehen, und die übrigen Router bleiben ohne Connection Tracking. Hat ein Netz
-Adressen auf mehreren Routern, gelten die Regeln auf jedem davon.
+deshalb nur dort zu stehen, und die übrigen Router bleiben ohne Connection Tracking.
+
+**Ausnahme: ein Netz auf mehreren Routern.** Ein über VXLAN getunneltes VLAN darf auf mehreren
+Geräten Adressen desselben Netzes haben (Gateway plus Switch, `MultipleNetworksOnVlan` erlaubt
+das). Hat ein zweiter Router dort eine Adresse und `ospf`, kündigt er das Netz ebenfalls an:
+Verkehr kommt dann über ihn herein, die Antworten gehen über das Gateway der Clients hinaus. Das
+ist asymmetrisch; Connection Tracking sieht auf jedem Router nur eine Richtung und verwirft sie
+als `invalid`, und die Regeln auf dem Gateway werden umgangen. Für `guest` und `protected` darf
+deshalb nur **ein** Router das Netz routen; mehr ist ein Befund.
 
 **In NetBox:** ein Tag am Gateway-Interface, wie `dhcp` oder `ospf`. So gilt er für IPv4 und
 IPv6 des Netzes zusammen.
@@ -113,6 +140,10 @@ IPv6 des Netzes zusammen.
   Transfernetze sind nie Ziel einer internen Regel, nur Kunden-Netze.
 - Ein Gäste- oder geschütztes Netz an einem Port, über den ein Router erreicht wird, ist ein
   Befund (`ospf` und `guest`/`protected` am selben Interface).
+- **DNS der Gäste:** Mit `dns_servers` im Config Context beantwortet der Router keine
+  DNS-Anfragen (`allow-remote-requests=no`), die Clients fragen die Server von dort (z.B.
+  Blocky im internen Netz). Diese Server gehören deshalb automatisch zu den Freigaben eines
+  Gäste-Netzes, sonst haben Gäste kein DNS.
 
 ## Reihenfolge
 

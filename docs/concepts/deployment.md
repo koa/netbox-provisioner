@@ -10,8 +10,11 @@ Status: Konzept, nicht umgesetzt. Offener Punkt „Provisionierung“ aus
   Rust, `trunk`, `dart-sass` und das Ziel `wasm32-unknown-unknown`.
 - **Ports:** API und UI auf `server_port` (Vorgabe 8080), Management auf `server_mgmt_port`
   (Vorgabe +1000, also 9080) mit `/metrics` (Prometheus) und `health`.
-- **Konfiguration:** `config.yaml` im Arbeitsverzeichnis, übersteuerbar mit Umgebungsvariablen
-  `APP_…` (`config::Environment::with_prefix("app")`). Darin stehen Geheimnisse: NetBox-Tokens,
+- **Konfiguration:** `config.yaml` im Arbeitsverzeichnis. `config::Environment::with_prefix("app")`
+  ist zwar eingehängt, aber ohne Trenner (`separator("__")`): Die Werte liegen unter `settings`,
+  und ein einzelner wie `settings.netbox_token` lässt sich so nicht per Umgebungsvariable setzen.
+  Für Secrets aus Kubernetes braucht es den Trenner (dann `APP_SETTINGS__NETBOX_TOKEN`) oder die
+  ganze Datei als Secret. Darin stehen Geheimnisse: NetBox-Tokens,
   `mikrotik_credentials`, das Passwort des Management-Proxys.
 - **Zustand:** keiner auf der Platte. Jobs leben im Prozess ([Jobs](job-polling.md) schlägt ein
   `state_dir` vor).
@@ -84,7 +87,7 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
   Prozess. Zwei Repliken würden dasselbe Gerät gleichzeitig anwenden. Strategie `Recreate`, damit
   beim Update nie zwei laufen.
 - `config.yaml` als **Secret** (enthält Tokens und Passwörter), eingebunden als Datei. Einzelne
-  Werte optional über `APP_…` aus weiteren Secrets.
+  Werte aus weiteren Secrets erst, wenn `config.rs` den Trenner `__` hat (siehe oben).
 - `Service` für 8080, ein zweiter für 9080 (Metriken), `ServiceMonitor` optional.
 - `Ingress` mit TLS vor 8080; OIDC-Callback-URL = Ingress-Host ([Login](../login.md)).
 - Probes auf `health` am Management-Port. Achtung: Das Backend lädt beim Start die
