@@ -24,7 +24,7 @@ mod chr_network {
     pub mod watchdog;
 }
 
-use backend::topology::test::TopologyBuilder;
+use backend::topology::builder::TopologyBuilder;
 use backend::topology::{Device, Interface, PhysicalPortId};
 use chr_network::golden_image::ensure_golden_image;
 use chr_network::qemu::{free_tcp_port, nix_unavailable};

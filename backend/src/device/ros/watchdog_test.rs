@@ -8,7 +8,7 @@ use crate::{
     },
     topology::{
         Cable, CablePort, Device, DeviceId, Interface, InterfaceId, IpAddressData, PhysicalPortId,
-        PoeMode, PortType, TopologyHolder, management::ManagementTree, test::TopologyBuilder,
+        PoeMode, PortType, TopologyHolder, management::ManagementTree, builder::TopologyBuilder,
     },
 };
 use mikrotik_model::ascii::AsciiString;

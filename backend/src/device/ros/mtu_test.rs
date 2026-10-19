@@ -6,7 +6,7 @@ use crate::{
     },
     topology::{
         Cable, CablePort, Device, Interface, PhysicalPortId, TopologyHolder,
-        access::device::DeviceAccess, test::TopologyBuilder,
+        access::device::DeviceAccess, builder::TopologyBuilder,
     },
 };
 use mikrotik_model::ascii::AsciiString;

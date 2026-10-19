@@ -729,7 +729,7 @@ mod test {
     /// A 60 GHz radio named `wlan1` becomes `wlan60-1`, another radio `wlan1`.
     #[test]
     fn radios_get_their_routeros_name() {
-        use crate::topology::{Device, Interface, test::TopologyBuilder};
+        use crate::topology::{Device, Interface, builder::TopologyBuilder};
         use std::str::FromStr;
         let mut builder = TopologyBuilder::default();
         let device = builder.devices.next_id();

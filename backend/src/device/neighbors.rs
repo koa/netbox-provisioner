@@ -307,7 +307,7 @@ mod test {
     use super::*;
     use crate::topology::{
         Cable, CablePort, CircuitTermination, Device, DeviceId, FrontPort, Interface,
-        InterfaceId, PhysicalPortId, PortType, RearPort, test::TopologyBuilder,
+        InterfaceId, PhysicalPortId, PortType, RearPort, builder::TopologyBuilder,
     };
     use std::{str::FromStr, sync::Arc};
 

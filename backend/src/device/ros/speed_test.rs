@@ -3,7 +3,7 @@ use crate::{
     device::ros::{BaseDeviceDataTarget, SetupError, l2::KeepNameGenerator},
     topology::{
         Cable, CablePort, Device, Duplex, Interface, PhysicalPortId, TopologyHolder,
-        access::device::DeviceAccess, test::TopologyBuilder,
+        access::device::DeviceAccess, builder::TopologyBuilder,
     },
 };
 use mikrotik_model::{ascii::AsciiString, model::EthernetSpeed};

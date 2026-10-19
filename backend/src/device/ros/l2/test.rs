@@ -4,7 +4,7 @@ use crate::{
         Cable, CablePort, Device, DeviceId, Interface, InterfaceId, IpAddressData, IpAddressId,
         IpPrefixData, IpRangeData, PhysicalPortId, TopologyHolder, VlanData, VlanGroupData,
         VlanGroupId, VlanId, VxlanData, WlanAuth, WlanData, WlanGroupData, WlanOpenSettings,
-        access::device::DeviceAccess, test::TopologyBuilder,
+        access::device::DeviceAccess, builder::TopologyBuilder,
     },
 };
 use ipnet::IpNet;

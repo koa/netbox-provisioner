@@ -29,7 +29,7 @@ pub mod findings;
 pub mod management;
 pub mod natural;
 mod graphql;
-pub mod test;
+pub mod builder;
 
 #[derive(Debug, Default, Clone)]
 pub struct TopologyHolder {

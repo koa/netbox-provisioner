@@ -325,7 +325,7 @@ impl GraphqlSystemRouterboard {
 #[cfg(test)]
 mod tests {
     use super::other_device_named;
-    use crate::topology::{Device, TopologyHolder, test::TopologyBuilder};
+    use crate::topology::{Device, TopologyHolder, builder::TopologyBuilder};
 
     /// a factory identity or one NetBox doesn't know only shows; the name of another NetBox
     /// device is that device (berghof-haus-stall's address answered by another one)

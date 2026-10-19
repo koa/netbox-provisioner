@@ -16,7 +16,7 @@ use crate::chr_network::wait::wait_for_ospf_full;
 use backend::device::ros::graphql::DeviceCfg;
 use backend::device::ros::l2::KeepNameGenerator;
 use backend::device::terminal::Terminal;
-use backend::topology::test::TopologyBuilder;
+use backend::topology::builder::TopologyBuilder;
 use backend::topology::{
     Cable, CablePort, Device, DeviceId, Interface, IpAddressData, PhysicalPortId, TopologyHolder,
 };

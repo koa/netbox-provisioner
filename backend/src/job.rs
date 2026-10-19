@@ -445,7 +445,7 @@ mod tests {
     use super::{Event, JobKind, JobState, Log, cancel, get, start};
     use crate::{
         device::update::{Reboot, RebootReason},
-        topology::{Device, TopologyHolder, test::TopologyBuilder},
+        topology::{Device, TopologyHolder, builder::TopologyBuilder},
     };
     use std::time::Duration;
     use tokio::time::{sleep, timeout};

@@ -4,7 +4,7 @@ use crate::{
     device::ros::{BaseDeviceDataTarget, MAINTENANCE_LIST, l2::KeepNameGenerator},
     topology::{
         Cable, CablePort, Device, Interface, PhysicalPortId, PortType, TopologyHolder,
-        test::TopologyBuilder,
+        builder::TopologyBuilder,
     },
 };
 use mikrotik_model::ascii::AsciiString;

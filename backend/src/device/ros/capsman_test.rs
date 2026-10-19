@@ -11,7 +11,7 @@ use crate::{
     topology::{
         Device, Interface, IpAddressData, PhysicalPortId, TopologyHolder, VlanData,
         VlanGroupData, VxlanData, WlanAuth, WlanData, WlanGroupData, WlanWpaSettings,
-        access::device::DeviceAccess, test::TopologyBuilder,
+        access::device::DeviceAccess, builder::TopologyBuilder,
     },
 };
 use ipnet::IpNet;

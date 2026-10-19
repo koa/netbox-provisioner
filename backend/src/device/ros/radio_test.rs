@@ -9,7 +9,7 @@ use crate::{
     },
     topology::{
         Device, Interface, PhysicalPortId, Radio, RadioLink, RadioRole, TopologyHolder,
-        access::device::DeviceAccess, test::TopologyBuilder,
+        access::device::DeviceAccess, builder::TopologyBuilder,
     },
 };
 use mikrotik_model::{

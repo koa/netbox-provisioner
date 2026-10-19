@@ -630,7 +630,7 @@ mod test {
         device::ros::netbox_example_test::example_topology,
         topology::{
             Cable, CablePort, Device, Interface, InterfaceId, IpAddressData, IpPrefixData,
-            IpPrefixId, PhysicalPortId, VlanId, test::TopologyBuilder,
+            IpPrefixId, PhysicalPortId, VlanId, builder::TopologyBuilder,
         },
     };
     use std::{collections::BTreeMap, str::FromStr};

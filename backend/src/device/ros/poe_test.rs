@@ -6,7 +6,7 @@ use crate::{
         test::empty_current,
         warning::{ApplyWarning, PoeCut},
     },
-    topology::{Device, Interface, PhysicalPortId, TopologyHolder, test::TopologyBuilder},
+    topology::{Device, Interface, PhysicalPortId, TopologyHolder, builder::TopologyBuilder},
 };
 use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetPoeOut};
 

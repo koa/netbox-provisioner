@@ -5,7 +5,7 @@
 use crate::chr_network::golden_image::GoldenImage;
 use crate::chr_network::qemu::free_tcp_port;
 use crate::chr_network::vm::{PortWiring, RunningNode, boot_node};
-use backend::topology::test::TopologyBuilder;
+use backend::topology::builder::TopologyBuilder;
 use backend::topology::{CablePort, DeviceId, PhysicalPortId};
 use mikrotik_model::hwconfig::DeviceType;
 use std::collections::HashMap;

@@ -891,7 +891,7 @@ mod test {
     use super::wireless_partners;
     use crate::topology::{
         Cable, CablePort, Device, DeviceId, Interface, InterfaceId, PortType, RadioLink,
-        WirelessLinkEnd, test::TopologyBuilder,
+        WirelessLinkEnd, builder::TopologyBuilder,
     };
     use std::sync::Arc;
 
