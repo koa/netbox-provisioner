@@ -281,7 +281,7 @@ from before together: the operator rolled a radio link back by hand when its far
 be reached after a single apply. A script that didn't start leaves its device not in line,
 so that too sends all back. A problem before the start (planning, arming, writing) takes the
 scripts and fallbacks away again, with nothing applied (`BatchStopped`). The steps are the
-trait `batch::Applying`, so the rules are tested with stand-ins (`run_test`).
+trait `batch::Applying`, so the rules are tested with stand-ins (`batch::test::run`).
 
 A device that doesn't answer gets its initial setup over `/tool mac-telnet` from a neighbor that
 does (`device::bootstrap`, on the device page): `plan` picks a cabled port with an IPv4 (on the
