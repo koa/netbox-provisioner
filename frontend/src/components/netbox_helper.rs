@@ -477,6 +477,8 @@ pub struct NetboxHelper {
     /// what the plan shown was computed for
     planned: Option<HelperChoice>,
     plan: Option<Result<netbox_plan::ResponseData, FrontendError>>,
+    /// a removal written: its choice is gone from NetBox, there is no plan for it any more
+    removed: bool,
     preview: Option<Result<Preview, FrontendError>>,
     preview_loading: bool,
     /// the job shown, writing or undoing
@@ -616,6 +618,7 @@ impl Component for NetboxHelper {
             radio_options: None,
             planned: None,
             plan: None,
+            removed: false,
             preview: None,
             preview_loading: false,
             job: None,
@@ -896,7 +899,20 @@ impl Component for NetboxHelper {
                     self.write_done = Some(done);
                 }
                 self.preview = None;
-                if let Some(choice) = self.planned.clone() {
+                // a written removal took what it was chosen for: planned again it finds nothing
+                let removed = done
+                    && self.written.is_some()
+                    && self.written == self.job
+                    && matches!(
+                        self.kind,
+                        HelperKind::Disconnect
+                            | HelperKind::RadioDisconnect
+                            | HelperKind::CustomerDisconnect
+                    );
+                self.removed = removed;
+                if removed {
+                    self.plan = None;
+                } else if let Some(choice) = self.planned.clone() {
                     fetch_plan(ctx.link().clone(), ctx.props().id, choice);
                 }
                 // the ports have the link now
@@ -952,6 +968,7 @@ impl Component for NetboxHelper {
                 html!(<p>{t::CHOOSE_CUSTOMER_DISCONNECT}</p>)
             }
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),
+            (_, None) if self.removed => html!(),
             (_, None) => html!(<Spinner size={SpinnerSize::Md}/>),
             (_, Some(Err(error))) => error.to_html(),
             (_, Some(Ok(plan))) if plan.netbox_plan.steps.is_empty() => html!(<p>{t::COMPLETE}</p>),
@@ -1691,6 +1708,7 @@ impl NetboxHelper {
         }
         self.planned = choice.clone();
         self.plan = None;
+        self.removed = false;
         self.preview = None;
         if let Some(choice) = choice {
             fetch_plan(ctx.link().clone(), ctx.props().id, choice);
