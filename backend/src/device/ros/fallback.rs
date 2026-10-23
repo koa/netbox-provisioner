@@ -14,8 +14,8 @@ use crate::{
     device::raw::{command, field, rows},
 };
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use mikrotik_model::value::{ParseRosValueResult, RosValue};
 use rand::{Rng, distr::Alphanumeric};
-use chrono::NaiveDateTime;
 use std::time::Duration;
 
 /// The name of the scheduler entry and of the backup (`.backup` added by RouterOS).
@@ -95,40 +95,54 @@ async fn without_scheduler(raw: &RawDevice<SimpleResult>) -> Result<Option<Box<s
 /// Where the fallback stands on the device.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Pending {
-    /// it fires in this long, by the device's clock (`None` where that can't be read)
+    /// it fires in this long (`None` before the script brought it forward, or where the
+    /// device's uptime can't be read)
     Armed(Option<Duration>),
     /// no scheduler entry: it fired, or was taken away
     Gone,
 }
 
-/// Where the fallback stands, from its `next-run` and the device's clock.
-pub async fn pending(raw: &RawDevice<SimpleResult>) -> Result<Pending, Error> {
+/// The script brought the fallback forward (`progress::Instrument::rearm`): at this uptime of
+/// the device, to fire `window` later.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rearmed {
+    pub at: Duration,
+    pub window: Duration,
+}
+
+/// Where the fallback stands; when it fires from the uptime the script brought it forward at
+/// (`rearmed`). Not from `next-run` and the clock: a scheduler counts by uptime, and a clock
+/// that jumps forward (NTP setting it after the apply) leaves `next-run` behind, which then
+/// looked due (1og-sw1: „fires in 0 s“ at 51 s, so the fallback stayed and took a good apply
+/// back; on a CHR 7.24.5 an hour's jump left `next-run` and the entry didn't run).
+pub async fn pending(raw: &RawDevice<SimpleResult>, rearmed: Option<Rearmed>) -> Result<Pending, Error> {
     let entry = rows(raw, "/system/scheduler/print")
         .await?
         .into_iter()
         .find(|row| field(row, "name") == Some(NAME));
-    let Some(entry) = entry else {
+    if entry.is_none() {
         return Ok(Pending::Gone);
+    }
+    let Some(rearmed) = rearmed else {
+        return Ok(Pending::Armed(None));
     };
-    let clock = rows(raw, "/system/clock/print").await?.into_iter().next();
-    let now = clock
-        .as_ref()
-        .and_then(|clock| time_of(&format!("{} {}", field(clock, "date")?, field(clock, "time")?)));
-    let next = field(&entry, "next-run").and_then(time_of);
-    Ok(Pending::Armed(match (next, now) {
-        // past already: it fires now
-        (Some(next), Some(now)) => Some((next - now).to_std().unwrap_or_default()),
-        _ => None,
-    }))
+    Ok(Pending::Armed(
+        uptime(raw)
+            .await?
+            .map(|uptime| (rearmed.at + rearmed.window).saturating_sub(uptime)),
+    ))
 }
 
-/// A time RouterOS reports, `2026-10-20 00:34:19` (7.10 on) or `oct/20/2026 00:34:19`
-/// (before), in its own time zone, which only cancels out.
-fn time_of(text: &str) -> Option<NaiveDateTime> {
-    let text = text.trim();
-    NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S")
-        .or_else(|_| NaiveDateTime::parse_from_str(text, "%b/%d/%Y %H:%M:%S"))
-        .ok()
+/// The device's uptime (`/system/resource`).
+async fn uptime(raw: &RawDevice<SimpleResult>) -> Result<Option<Duration>, Error> {
+    Ok(rows(raw, "/system/resource/print")
+        .await?
+        .first()
+        .and_then(|resource| field(resource, "uptime"))
+        .and_then(|uptime| match Duration::parse_ros(uptime.as_bytes()) {
+            ParseRosValueResult::Value(uptime) => Some(uptime),
+            _ => None,
+        }))
 }
 
 /// What [`disarm_unless_due`] found.
@@ -143,8 +157,11 @@ pub(crate) enum Disarmed {
 }
 
 /// Takes the fallback away unless it fires within [`DUE`] or has fired.
-pub(crate) async fn disarm_unless_due(raw: &RawDevice<SimpleResult>) -> Result<Disarmed, Error> {
-    match pending(raw).await? {
+pub(crate) async fn disarm_unless_due(
+    raw: &RawDevice<SimpleResult>,
+    rearmed: Option<Rearmed>,
+) -> Result<Disarmed, Error> {
+    match pending(raw, rearmed).await? {
         Pending::Gone => Ok(Disarmed::Gone),
         Pending::Armed(Some(fires_in)) if fires_in < DUE => Ok(Disarmed::Due(fires_in)),
         Pending::Armed(_) => disarm(raw).await.map(|()| Disarmed::Stopped),
@@ -178,19 +195,4 @@ async fn remove_scheduler(raw: &RawDevice<SimpleResult>) -> Result<(), Error> {
         command(raw, "/system/scheduler/remove", &[(".id", &id)]).await?;
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod test {
-    use super::time_of;
-
-    #[test]
-    fn both_time_formats_read_alike() {
-        assert!(time_of("oct/20/2026 00:34:19").is_some());
-        assert_eq!(time_of("2026-10-20 00:34:19"), time_of("oct/20/2026 00:34:19"));
-        let seconds = |a, b| (time_of(a).unwrap() - time_of(b).unwrap()).num_seconds();
-        assert_eq!(seconds("2026-03-01 00:00:00", "2026-02-28 23:59:30"), 30);
-        assert_eq!(seconds("2025-01-01 00:00:05", "2024-12-31 23:59:55"), 10);
-        assert_eq!(time_of("never"), None);
-    }
 }

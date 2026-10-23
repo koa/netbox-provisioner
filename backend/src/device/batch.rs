@@ -27,7 +27,8 @@ use crate::{
         AccessibleDevice,
         radio_hold::RadioHold,
         ros::{
-            fallback::Pending,
+            fallback::{Pending, Rearmed},
+            progress::Progress,
             graphql::{
                 APPLY_TIMEOUT, ApplyStarted, FALLBACK_MARGIN, FallbackLeftReason, PlannedApply,
                 SCRIPT_LIMIT, ScriptProgress, arm_fallback_on, emit_checked, fallback_left,
@@ -165,6 +166,8 @@ struct Reached {
 #[derive(Default)]
 struct Seen {
     pending: Option<(Pending, Instant)>,
+    /// where the script brought the fallback forward
+    rearmed: Option<Rearmed>,
     /// `ScriptProgress` emitted
     shown: bool,
 }
@@ -263,7 +266,13 @@ impl Applying for Linked {
         .await
         .ok()?
         .ok()?;
-        lock(&reached.seen).pending = Some((look.pending, Instant::now()));
+        {
+            let mut seen = lock(&reached.seen);
+            seen.pending = Some((look.pending, Instant::now()));
+            if let Some(rearmed) = look.progress.as_ref().and_then(Progress::rearm) {
+                seen.rearmed = Some(rearmed);
+            }
+        }
         // without marks (a file the device couldn't write) through once settled, as before them
         let through = match &look.progress {
             Some(progress) => progress.finished(),
@@ -290,7 +299,8 @@ impl Applying for Linked {
         reached.link.remaining_diff().await
     }
     async fn stop(&self, fires: Instant, delay: Duration, log: &Log) -> Result<(), Error> {
-        self.reached().link.stop_fallback(fires, delay, log).await
+        let rearmed = lock(&self.reached().seen).rearmed;
+        self.reached().link.stop_fallback(fires, delay, rearmed, log).await
     }
     async fn after(&self, log: &Log) -> Result<(), Error> {
         let reached = self.reached();

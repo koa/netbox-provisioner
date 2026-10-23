@@ -1,4 +1,5 @@
 use super::{Instrument, Progress, instrument};
+use crate::device::ros::fallback::Rearmed;
 use std::time::Duration;
 
 const SCRIPT: &str = "/interface/list\nadd name=a\nadd name=b\n/ip/address\nadd address=10.0.0.1/24 interface=a\n";
@@ -39,7 +40,7 @@ fn without_probe_or_fallback_nothing_pings_or_rearms() {
 #[test]
 fn marks_of_a_run_that_lost_the_provisioner() {
     let text = "10:00:01 start 5 r1\n10:00:01 ping 10.0.2.2\n10:00:02 section 1\n\
-                10:00:02 section 4\n10:00:03 lost 5\n10:00:04 done\n10:00:04 rearmed 90\n";
+                10:00:02 section 4\n10:00:03 lost 5\n10:00:04 done\n10:00:04 rearmed 90 1w1d11:21:27\n";
     let progress = Progress::parse(text, "r1").unwrap();
     assert_eq!(progress.lines, 5);
     assert_eq!(progress.section, Some(4));
@@ -47,6 +48,18 @@ fn marks_of_a_run_that_lost_the_provisioner() {
     assert_eq!(progress.probe, Some(("10.0.2.2".into(), true)));
     assert!(progress.done && progress.finished());
     assert_eq!(progress.rearmed, Some(90));
+    let at = Duration::from_secs(((8 * 24 + 11) * 60 + 21) * 60 + 27);
+    assert_eq!(progress.rearm(), Some(Rearmed { at, window: Duration::from_secs(90) }));
+}
+
+/// The uptime as a script writes it, which the fallback's time counts from.
+#[test]
+fn uptimes_of_a_script() {
+    let uptime = |text| super::script_uptime(text).map(|d| d.as_secs());
+    assert_eq!(uptime("00:12:34"), Some(754));
+    assert_eq!(uptime("2d00:00:05"), Some(2 * 86400 + 5));
+    assert_eq!(uptime("1w00:00:00"), Some(7 * 86400));
+    assert_eq!(uptime("12:34"), None);
 }
 
 #[test]

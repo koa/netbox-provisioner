@@ -11,7 +11,7 @@ use crate::{
     device::{
         AccessibleDevice, GraphqlSystemRouterboard, PingResult, neighbors,
         ros::{
-            fallback::{self, Disarmed, Pending},
+            fallback::{self, Disarmed, Pending, Rearmed},
             progress::{self, Instrument, Progress},
             BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent,
             W60GDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
@@ -666,9 +666,11 @@ pub(crate) struct Look {
 
 /// The marks of `run` and the fallback on the device, over `raw`.
 pub(crate) async fn look_on(raw: &RawDevice<SimpleResult>, run: &str) -> Result<Look, Error> {
+    let progress = progress::read(raw, run).await?;
+    let rearmed = progress.as_ref().and_then(Progress::rearm);
     Ok(Look {
-        progress: progress::read(raw, run).await?,
-        pending: fallback::pending(raw).await?,
+        progress,
+        pending: fallback::pending(raw, rearmed).await?,
     })
 }
 
@@ -937,7 +939,7 @@ impl AccessibleDevice {
                     Ok(raw) => raw,
                     Err(_) => continue,
                 };
-                match fallback::disarm_unless_due(&raw).await {
+                match fallback::disarm_unless_due(&raw, seen.as_ref().and_then(Progress::rearm)).await {
                     Ok(Disarmed::Stopped) => log.emit(FallbackStopped {
                         after: armed_at.elapsed().into(),
                     }),
@@ -1000,17 +1002,19 @@ impl AccessibleDevice {
     }
     /// Takes the fallback away (`FallbackStopped`), trying until shortly before it `fires`
     /// (`FallbackLeft`), unless it fires within seconds (`FallbackLeft` `Due`) or has fired
-    /// (`FallbackFired`). Cancelled between the tries, the fallback stays.
+    /// (`FallbackFired`); when it fires is known where the script brought it forward
+    /// (`rearmed`). Cancelled between the tries, the fallback stays.
     pub(crate) async fn stop_fallback(
         &self,
         fires: Instant,
         delay: Duration,
+        rearmed: Option<Rearmed>,
         log: &Log,
     ) -> Result<(), Error> {
         let give_up = give_up(fires);
         loop {
             let disarmed = match self.connect_again::<SimpleResult>().await {
-                Ok(raw) => fallback::disarm_unless_due(&raw).await,
+                Ok(raw) => fallback::disarm_unless_due(&raw, rearmed).await,
                 Err(error) => Err(error),
             };
             let after = || delay.saturating_sub(fires.saturating_duration_since(Instant::now()));

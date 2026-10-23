@@ -288,8 +288,11 @@ the device saves a backup and schedules loading it (`device::ros::fallback`) aft
 `SCRIPT_LIMIT` (120 s) plus `apply_fallback_seconds` (90); the script's end (or its error)
 brings it forward to `apply_fallback_seconds` from then. The apply reads the marks every few
 seconds: once through and reached, it takes the fallback away (not within 10 s of it firing,
-`fallback::DUE`, read from the scheduler's `next-run` and the device's clock, `FallbackLeft`
-`DUE`), then diffs. Reached, even with a part left, the fallback goes; not reached, the apply
+`fallback::DUE`, `FallbackLeft` `DUE`), then diffs. When it fires is counted from the uptime
+the script's mark gives for bringing it forward (`fallback::Rearmed`): a scheduler counts by
+uptime, and a clock jumping forward (NTP after the apply set the DNS servers) leaves `next-run`
+behind; by `next-run` and the clock 1og-sw1's fallback looked due at once, stayed and took a
+good apply back (CHR test `a_clock_jump_leaves_the_fallback_time`). Reached, even with a part left, the fallback goes; not reached, the apply
 waits for the device to be back with the config from before (`FallbackFired`) and shows the
 marks then (CHR tests `fallback_is_stopped_or_restores`, `marks_outlast_the_fallback`). A device
 without marks of the run counts as through after 90 s, as before them. A diff that never gets empty after an apply usually means a field RouterOS accepts

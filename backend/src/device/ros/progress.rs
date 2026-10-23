@@ -13,7 +13,10 @@
 //! … count=1` gives the number of replies, and `/file set … contents=` takes text.
 use crate::{
     Error,
-    device::raw::{field, rows},
+    device::{
+        raw::{field, rows},
+        ros::fallback::Rearmed,
+    },
 };
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use std::{collections::HashMap, fmt::Write, net::IpAddr, time::Duration};
@@ -127,7 +130,7 @@ pub fn instrument(script: &str, how: &Instrument) -> String {
              :local ev [/system scheduler get $s on-event]; :local c [/system scheduler get $s comment]; \
              /system scheduler remove $s; \
              /system scheduler add name=\"{name}\" interval={seconds}s on-event=$ev comment=$c; \
-             $mark \"rearmed {seconds}\" }} }} on-error={{ $mark \"rearm-failed\" }}"
+             $mark (\"rearmed {seconds} \" . [/system resource get uptime]) }} }} on-error={{ $mark \"rearm-failed\" }}"
         );
     }
     out
@@ -149,6 +152,8 @@ pub struct Progress {
     pub reach: Vec<(u32, bool)>,
     /// the fallback's new delay from the end
     pub rearmed: Option<u64>,
+    /// the device's uptime then, which the scheduler counts by
+    pub rearmed_at: Option<Duration>,
     /// bringing the fallback forward failed: its delay from the start counts
     pub rearm_failed: bool,
     /// the file as it is, each line with the device's time
@@ -159,6 +164,14 @@ impl Progress {
     /// The script has come to its end, or stopped at an error.
     pub fn finished(&self) -> bool {
         self.done || self.error.is_some()
+    }
+
+    /// When the fallback fires, where the script brought it forward.
+    pub fn rearm(&self) -> Option<Rearmed> {
+        Some(Rearmed {
+            at: self.rearmed_at?,
+            window: Duration::from_secs(self.rearmed?),
+        })
     }
 
     /// The marks in `text`, if they are of `run`.
@@ -191,13 +204,31 @@ impl Progress {
                     let (line, message) = args.split_once(' ').unwrap_or((args, ""));
                     progress.error = Some((line.parse().unwrap_or(0), without_line(message).into()));
                 }
-                "rearmed" => progress.rearmed = number().map(u64::from),
+                "rearmed" => {
+                    let mut parts = args.split(' ');
+                    progress.rearmed = parts.next().and_then(|n| n.parse().ok());
+                    progress.rearmed_at = parts.next().and_then(script_uptime);
+                }
                 "rearm-failed" => progress.rearm_failed = true,
                 _ => {}
             }
         }
         of_run.then_some(progress)
     }
+}
+
+/// An uptime as a script writes it: `1w1d11:21:27`, `2d00:00:05`, `00:12:34`.
+fn script_uptime(text: &str) -> Option<Duration> {
+    let (weeks, rest) = text.split_once('w').unwrap_or(("0", text));
+    let (days, clock) = rest.split_once('d').unwrap_or(("0", rest));
+    let mut parts = clock.split(':').map(|part| part.split('.').next().unwrap_or(part).parse::<u64>());
+    let (Some(Ok(hours)), Some(Ok(minutes)), Some(Ok(seconds)), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return None;
+    };
+    let days = weeks.parse::<u64>().ok()? * 7 + days.parse::<u64>().ok()?;
+    Some(Duration::from_secs(((days * 24 + hours) * 60 + minutes) * 60 + seconds))
 }
 
 /// RouterOS' message without the line of the instrumented script, which isn't the one shown
