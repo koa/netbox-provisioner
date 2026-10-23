@@ -508,7 +508,10 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
   Werte vorher galten. Bricht er ab, zeigt das UI, was geschrieben ist, und bietet „Rückgängig“
   an: Angelegtes löschen, alte Werte zurück. Läuft als Job mit Events, wie Anwenden.
   Umgesetzt: Was geschrieben ist, steht in den Events des Jobs (`NetboxWritten`, mit den alten
-  Werten); „Rückgängig“ ist ein eigener Job, der diese Events rückwärts abarbeitet. Die Geräteseite
+  Werten); „Rückgängig“ ist ein eigener Job, der diese Events rückwärts abarbeitet. Ein wieder
+  angelegtes Interface bekommt eine neue Id; was danach zurückkommt (die Adressen eines gelöschten
+  VLAN-Interfaces, ein Kabel, ein Wireless Link, `bridge`/`parent` eines Ports), verweist auf die
+  neue. Die Geräteseite
   findet den letzten Schreib-Job wieder, solange der Server ihn kennt: nach einem Neustart des
   Provisioners geht „Rückgängig“ nicht mehr, dann bleibt NetBox' Changelog.
 - **Gleichzeitige Änderungen.** Vor dem Schreiben vergleicht der Plan `last_updated` der Objekte,

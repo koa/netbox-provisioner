@@ -380,7 +380,9 @@ pub async fn write(
 }
 
 /// Takes back what a job of `write` wrote (its `NetboxWritten` events), the last first:
-/// deletes what it created, sets back what it changed.
+/// deletes what it created, sets back what it changed, creates again what it deleted. An object
+/// created again gets a new id: what is taken back after it (an address of a VLAN interface
+/// deleted after its addresses) refers to that one ([`Recreated`]).
 pub async fn undo(
     job: u32,
     written: &[NetboxWritten],
@@ -388,6 +390,7 @@ pub async fn undo(
     log: &Log,
 ) -> Result<(), Error> {
     let rest = NetboxRest::writer(format!("Undo of provisioner job {job} ({user})"))?;
+    let mut recreated = Recreated::default();
     for object in written.iter().rev() {
         log.check()?;
         let parse = |json: &str| {
@@ -398,7 +401,10 @@ pub async fn undo(
                 // the collection the object was in
                 let collection = object.path.trim_end_matches('/');
                 let collection = &collection[..collection.rfind('/').map_or(0, |i| i + 1)];
-                let created = rest.create(collection, parse(body)?).await?;
+                let mut body = parse(body)?;
+                recreated.refer(&mut body);
+                let created = rest.create(collection, body).await?;
+                recreated.note(&object.path, &created);
                 NetboxUndone {
                     path: format!("{collection}{}/", created["id"]).into(),
                     display: display(&created),
@@ -416,7 +422,9 @@ pub async fn undo(
                 }
             }
             (None, Some(before)) => {
-                rest.update(&object.path, parse(before)?).await?;
+                let mut before = parse(before)?;
+                recreated.refer(&mut before);
+                rest.update(&object.path, before).await?;
                 NetboxUndone {
                     path: object.path.clone(),
                     display: object.display.clone(),
@@ -428,6 +436,51 @@ pub async fn undo(
         log.emit(Event::NetboxUndone(undone));
     }
     Ok(())
+}
+
+/// The interfaces `undo` created again: their id before (in the paths and JSON it takes back)
+/// and now.
+#[derive(Debug, Default)]
+struct Recreated {
+    interfaces: std::collections::HashMap<u64, u64>,
+}
+
+impl Recreated {
+    /// `created`, the object NetBox made again of the one at `path`.
+    fn note(&mut self, path: &str, created: &Value) {
+        let old = path
+            .strip_prefix("dcim/interfaces/")
+            .and_then(|id| id.trim_end_matches('/').parse().ok());
+        if let (Some(old), Some(new)) = (old, created["id"].as_u64()) {
+            self.interfaces.insert(old, new);
+        }
+    }
+
+    /// `body` with its references to an interface created again by its new id: an address's
+    /// assigned object, a wireless link's ends, a cable's terminations, a port's bridge or
+    /// parent.
+    fn refer(&self, body: &mut Value) {
+        let new = |id: &mut Value| {
+            if let Some(new) = id.as_u64().and_then(|old| self.interfaces.get(&old)) {
+                *id = json!(new);
+            }
+        };
+        if body["assigned_object_type"] == "dcim.interface" {
+            new(&mut body["assigned_object_id"]);
+        }
+        for field in ["interface_a", "interface_b", "bridge", "parent"] {
+            if let Some(id) = body.get_mut(field) {
+                new(id);
+            }
+        }
+        for end in ["a_terminations", "b_terminations"] {
+            for termination in body.get_mut(end).and_then(Value::as_array_mut).into_iter().flatten() {
+                if termination["object_type"] == "dcim.interface" {
+                    new(&mut termination["object_id"]);
+                }
+            }
+        }
+    }
 }
 
 /// Writes `update` once the interface is still as the plan found it.
@@ -796,4 +849,34 @@ fn logged_create(log: &Log, path: &str, object: &Value) -> Result<u32, Error> {
         recreate: None,
     }));
     Ok(id)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// The address of a VLAN interface deleted after it refers to the interface created again,
+    /// a cable to another interface stays as it was.
+    #[test]
+    fn taken_back_objects_refer_to_the_interface_created_again() {
+        let mut recreated = Recreated::default();
+        recreated.note("dcim/interfaces/38/", &json!({ "id": 66 }));
+        let mut address = json!({
+            "address": "192.168.105.1/24",
+            "assigned_object_type": "dcim.interface",
+            "assigned_object_id": 38,
+        });
+        recreated.refer(&mut address);
+        assert_eq!(address["assigned_object_id"], 66);
+        let mut cable = json!({
+            "a_terminations": [{ "object_type": "dcim.interface", "object_id": 38 }],
+            "b_terminations": [{ "object_type": "dcim.interface", "object_id": 7 }],
+        });
+        recreated.refer(&mut cable);
+        assert_eq!(cable["a_terminations"][0]["object_id"], 66);
+        assert_eq!(cable["b_terminations"][0]["object_id"], 7);
+        let mut prefix = json!({ "prefix": "192.168.105.0/24", "vlan": 38 });
+        recreated.refer(&mut prefix);
+        assert_eq!(prefix["vlan"], 38, "not an interface");
+    }
 }
