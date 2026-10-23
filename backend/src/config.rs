@@ -113,14 +113,72 @@ impl Settings {
 }
 
 fn create_settings() -> Result<Settings, ConfigError> {
-    let cfg = Config::builder()
-        .add_source(File::with_name("config.yaml"))
-        .add_source(Environment::with_prefix("app"))
-        .build()?;
-    let settings: Settings = cfg.get("settings")?;
-    Ok(settings)
+    settings_from(File::with_name("config.yaml"), environment())
+}
+
+/// `APP_SETTINGS__NETBOX_TOKEN` overrides `settings.netbox_token` of `config.yaml`, e.g. from a
+/// Kubernetes secret; `__` separates the levels, since the keys contain `_` themselves. Keys
+/// come out lowercase, so a `mikrotik_credentials` entry set this way needs a lowercase name.
+fn environment() -> Environment {
+    Environment::with_prefix("app")
+        .prefix_separator("_")
+        .separator("__")
+}
+
+fn settings_from(
+    file: impl config::Source + Send + Sync + 'static,
+    environment: Environment,
+) -> Result<Settings, ConfigError> {
+    Config::builder()
+        .add_source(file)
+        .add_source(environment)
+        .build()?
+        .get("settings")
 }
 
 lazy_static! {
     pub static ref CONFIG: Settings = create_settings().expect("Cannot load config.yaml");
+}
+
+#[cfg(test)]
+mod test {
+    use super::{environment, settings_from};
+    use config::{File, FileFormat};
+
+    const YAML: &str = "
+settings:
+  auth_client_id: client
+  auth_issuer: https://id.example
+  auth_users: [someone]
+  netbox_url: https://netbox.example
+  netbox_token: from-file
+  mikrotik_credentials:
+    lab:
+      user: admin
+";
+
+    #[test]
+    fn environment_overrides_single_values() {
+        let env = [
+            ("APP_SETTINGS__NETBOX_TOKEN", "from-env"),
+            ("APP_SETTINGS__ALLOW_APPLY", "true"),
+            ("APP_SETTINGS__SERVER_PORT", "9000"),
+            ("APP_SETTINGS__MIKROTIK_CREDENTIALS__LAB__PASSWORD", "0123"),
+            ("OTHER_SETTINGS__NETBOX_URL", "ignored"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect();
+        let settings = settings_from(
+            File::from_str(YAML, FileFormat::Yaml),
+            environment().source(Some(env)),
+        )
+        .unwrap();
+        assert_eq!(settings.netbox_token, "from-env");
+        assert_eq!(settings.netbox_url, "https://netbox.example");
+        assert!(settings.allow_apply);
+        assert_eq!(settings.server_port(), 9000);
+        let lab = &settings.mikrotik_credentials["lab"];
+        assert_eq!((lab.user(), lab.password()), ("admin", Some("0123")));
+    }
 }
