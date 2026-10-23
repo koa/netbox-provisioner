@@ -71,7 +71,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 |---|---|---|---|
 | B1 | `binary/build.rs` startet `trunk` mit `spawn()` und wartet nicht (kann ein halbfertiges Frontend einbetten); die Hooks in `frontend/Trunk.toml` (`clear`, `npm install`) gehören aus dem Build | S | erledigt 2026-10-23 („build the frontend before the binary“): `build.rs` prüft nur `dist` und baut neu, wenn es sich ändert; `npm install` in `build.sh` und `run-provisioner.sh` |
 | B2 | `config::Environment::with_prefix("app")` ohne Trenner: einzelne Werte (`settings.netbox_token`) lassen sich nicht per Umgebungsvariable setzen; Trenner `__` | S | erledigt 2026-10-23 („set single settings from the environment“): `APP_SETTINGS__NETBOX_TOKEN` |
-| B3 | Crate `netbox-model` (cynic, eigenes Schema, eingecheckte `.idea/`) wird von niemandem benutzt: entfernen (Z5) | S | offen |
+| B3 | Crate `netbox-model` (cynic, eigenes Schema, eingecheckte `.idea/`) wird von niemandem benutzt: entfernen (Z5) | S | erledigt 2026-10-23 („remove the unused netbox-model crate“) |
 | B4 | `DeviceCfg::generate_from` und `BaseDeviceDataTarget::generate_from` rufen dieselben `setup_*`-Schritte je selbst auf (PoE fehlte so einmal im echten Weg): eine gemeinsame Funktion | S | offen |
 | B5 | `lazy_static` (3 Dateien) durch `std::sync::LazyLock` ersetzen | S | offen |
 | B6 | Ein vergifteter Mutex in `job.rs` (`.expect("jobs")`) lässt den Server abstürzen statt nur den Job | S | offen |

@@ -1,14 +1,11 @@
 # netbox-provisioner
 
-Cargo workspace (`binary`, `backend`, `frontend`, `netbox-model`) that provisions a MikroTik
+Cargo workspace (`binary`, `backend`, `frontend`) that provisions a MikroTik
 RouterOS network from NetBox. `backend` fetches topology via GraphQL using the `graphql_client`
 crate directly against `backend/src/netbox/schema.graphqls` + `fetch_topology.graphql` (the
 `#[derive(GraphQLQuery)]` in `backend/src/netbox/mod.rs` generates the request/response types from
 those two files at compile time) — edit `fetch_topology.graphql` to change what's fetched, no
-other codegen step needed. `netbox-model` is a separate, currently-unused `cynic`-based NetBox
-client that `backend` does not depend on; don't confuse its hand-maintained query structs
-(`netbox-model/src/graphql/netbox.rs`) with the real, graphql_client-generated ones `backend`
-actually uses. `backend` builds an in-memory `Topology`, generates per-device RouterOS config
+other codegen step needed. `backend` builds an in-memory `Topology`, generates per-device RouterOS config
 (`device/ros/`) against `mikrotik-model` (sibling repo, path dependency: `../mikrotik-model`), and
 exposes it over a GraphQL API + embedded `frontend` (Rust/WASM, built via `trunk`) through
 `binary`.
@@ -22,7 +19,7 @@ struct rather than creating a new scalar-backing type per query site.
 Building `binary` embeds `frontend/dist`, which has to be built first (`trunk` and the
 `wasm32-unknown-unknown` target; PatternFly from `frontend/node` via `npm install`): `build.sh`
 and `local/lab/run-provisioner.sh` do both. `binary/build.rs` only checks that `dist` exists and
-rebuilds when it changes — `backend`/`netbox-model` alone do not need this and can be
+rebuilds when it changes — `backend` alone does not need this and can be
 checked/tested independently.
 
 The full architecture, current gaps, and the phased completion plan (NetBox data model, BGP/OSPF
