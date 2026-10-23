@@ -25,6 +25,9 @@ impl Net {
         let r2 = router(&mut builder, "r2", "172.16.1.2/32");
         let e1 = port(&mut builder, r1, "ether1", "172.17.1.1/30");
         let e2 = port(&mut builder, r2, "ether1", "172.17.1.2/30");
+        // as „Verbindung“ labels them
+        builder.interfaces.get_mut(&e1).unwrap().label = "r2".into();
+        builder.interfaces.get_mut(&e2).unwrap().label = "r1".into();
         let cable = builder.cables.next_id();
         builder.cables.insert(
             cable,
@@ -343,7 +346,12 @@ fn a_wlan_without_vlan_is_an_error() {
         },
     );
     let (r1, r2) = (net.r1, net.r2);
-    let findings = net.findings();
+    // the VLAN of the other WLAN has no gateway: a finding of its own
+    let findings = net
+        .findings()
+        .into_iter()
+        .filter(|f| !matches!(f.kind, FindingKind::VlanWithoutGateway(_)))
+        .collect::<Vec<_>>();
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert_eq!(findings[0].severity, Severity::Error);
     assert_eq!(&*findings[0].devices, [r1, r2]);
@@ -394,12 +402,213 @@ fn a_link_end_without_rf_role_is_a_warning() {
         );
     }
     let r1 = net.r1;
-    let findings = net.findings();
+    // the link has no peer: incomplete, a finding of its own
+    let findings = net
+        .findings()
+        .into_iter()
+        .filter(|f| !matches!(f.kind, FindingKind::RadioPathIncomplete(_)))
+        .collect::<Vec<_>>();
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert_eq!(findings[0].severity, Severity::Warning);
     assert_eq!(&*findings[0].devices, [r1]);
     assert!(matches!(&findings[0].kind, FindingKind::RadioWithoutRole(r)
         if &*r.interface.name == "wlan60-1"));
+}
+
+/// A radio of `device` with a wireless link whose other end NetBox doesn't have.
+fn lone_radio(net: &mut Net, device: DeviceId) {
+    let radio = net.builder.interfaces.next_id();
+    net.builder.interfaces.insert(
+        radio,
+        Interface {
+            name: "wlan60-1".into(),
+            device,
+            external: Some(PhysicalPortId::W60g(1)),
+            port_type: Some(PortType::Wireless),
+            wireless_link: Some(crate::topology::WirelessLinkEnd {
+                id: 1,
+                peer: None,
+                link: crate::topology::RadioLink {
+                    ssid: "link".into(),
+                    encrypted: false,
+                    psk: None,
+                    country: None,
+                    frequency_mode: None,
+                },
+            }),
+            ..Interface::default()
+        },
+    );
+}
+
+/// Each radio of a link without peer lacks the link and the cable to its router.
+#[test]
+fn a_radio_without_peer_and_router_is_incomplete() {
+    let mut net = Net::new();
+    let r2 = net.r2;
+    lone_radio(&mut net, r2);
+    let r2 = net.r2;
+    let incomplete = net
+        .findings()
+        .into_iter()
+        .filter(|f| matches!(f.kind, FindingKind::RadioPathIncomplete(_)))
+        .collect::<Vec<_>>();
+    assert_eq!(incomplete.len(), 1, "{incomplete:#?}");
+    assert_eq!(incomplete[0].severity, Severity::Warning);
+    assert_eq!(&*incomplete[0].devices, [r2]);
+    assert!(matches!(&incomplete[0].kind, FindingKind::RadioPathIncomplete(r)
+        if r.missing == [RadioPathPart::RouterCable, RadioPathPart::WirelessLink]));
+}
+
+/// A radio bridge device is reached at its loopback only: without one an error.
+#[test]
+fn a_bridge_device_without_loopback_is_an_error() {
+    let mut net = Net::new();
+    let lo = net
+        .builder
+        .interfaces
+        .iter()
+        .find(|(_, i)| i.device == net.r2 && &*i.name == "lo")
+        .map(|(id, _)| *id)
+        .unwrap();
+    net.interface(lo).name = "loopback".into();
+    let r2 = net.r2;
+    lone_radio(&mut net, r2);
+    let no_loopback = net
+        .findings()
+        .into_iter()
+        .filter(|f| matches!(f.kind, FindingKind::NoLoopback(_)))
+        .collect::<Vec<_>>();
+    assert_eq!(no_loopback.len(), 1, "{no_loopback:#?}");
+    assert_eq!(no_loopback[0].severity, Severity::Error);
+}
+
+/// A label names the device at the far end, without case and punctuation; none is a hint.
+#[test]
+fn a_label_not_naming_the_far_end_is_a_hint() {
+    let mut net = Net::new();
+    let (e1, e2) = (net.e1, net.e2);
+    net.interface(e1).label = "R2 core".into();
+    net.interface(e2).label = "".into();
+    let findings = net.findings();
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert_eq!(findings[0].severity, Severity::Hint);
+    assert!(matches!(&findings[0].kind, FindingKind::LabelNotFarEnd(l)
+        if l.interface.id == e2.0 && l.label.is_none() && &*l.far_end.device.name == "r1"));
+}
+
+/// A VLAN `vid` in a group of its own, with a VNI (`vxlan`) or without.
+fn new_vlan(net: &mut Net, vid: u16, vxlan: bool) -> VlanId {
+    use crate::topology::{VlanData, VlanGroupData, VxlanData};
+    let builder = &mut net.builder;
+    let (id, group) = (builder.vlans.next_id(), builder.vlan_groups.next_id());
+    builder.vlan_groups.insert(group, VlanGroupData { vlans: Box::new([id]) });
+    let vxlan = vxlan.then(|| {
+        let vxlan = builder.vxlans.next_id();
+        builder.vxlans.insert(
+            vxlan,
+            VxlanData {
+                name: format!("vlan{vid}").into(),
+                vni: vid.into(),
+                vlans: Box::new([id]),
+            },
+        );
+        vxlan
+    });
+    builder.vlans.insert(
+        id,
+        VlanData {
+            name: format!("vlan{vid}").into(),
+            vlan_id: vid,
+            group,
+            terminations: Box::new([]),
+            vxlan,
+            wlans: Box::new([]),
+        },
+    );
+    id
+}
+
+/// A customer port `ether2` on `device` with `vlan` untagged and `ip`, if any.
+fn customer_port(net: &mut Net, device: DeviceId, vlan: VlanId, ip: Option<&str>) -> InterfaceId {
+    let id = port(&mut net.builder, device, "ether2", ip.unwrap_or("10.9.9.9/24"));
+    let interface = net.interface(id);
+    interface.use_ospf = false;
+    interface.vlan = Some(vlan);
+    if ip.is_none() {
+        interface.ips = Box::new([]);
+    }
+    id
+}
+
+/// Joined by a VNI, two devices with an address in the VLAN are two gateways in one network.
+#[test]
+fn two_gateways_in_a_vxlan_are_an_error() {
+    let mut net = Net::new();
+    let vlan = new_vlan(&mut net, 10, true);
+    let (r1, r2) = (net.r1, net.r2);
+    customer_port(&mut net, r1, vlan, Some("10.0.10.1/24"));
+    customer_port(&mut net, r2, vlan, Some("10.0.10.2/24"));
+    let findings = net
+        .findings()
+        .into_iter()
+        .filter(|f| !matches!(f.kind, FindingKind::AddressWithoutPrefix(_)))
+        .collect::<Vec<_>>();
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert_eq!(findings[0].severity, Severity::Error);
+    assert_eq!(&*findings[0].devices, [r1, r2]);
+    assert!(matches!(&findings[0].kind, FindingKind::VlanWithSeveralGateways(f)
+        if f.vlan.vid == 10 && f.interfaces.len() == 2));
+}
+
+/// Without a VNI a VLAN on two devices without a cable carrying it is two networks: one gateway
+/// each is right, a device without one has none.
+#[test]
+fn without_a_vni_each_device_is_its_own_network() {
+    let mut net = Net::new();
+    let vlan = new_vlan(&mut net, 10, false);
+    let (r1, r2) = (net.r1, net.r2);
+    customer_port(&mut net, r1, vlan, Some("10.0.10.1/24"));
+    customer_port(&mut net, r2, vlan, Some("10.0.11.1/24"));
+    let gateways = |findings: Vec<Finding>| {
+        findings
+            .into_iter()
+            .filter(|f| {
+                matches!(
+                    f.kind,
+                    FindingKind::VlanWithSeveralGateways(_) | FindingKind::VlanWithoutGateway(_)
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(gateways(net.findings()), vec![]);
+
+    let mut net = Net::new();
+    let vlan = new_vlan(&mut net, 10, false);
+    let r2 = net.r2;
+    customer_port(&mut net, r2, vlan, None);
+    let findings = gateways(net.findings());
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert_eq!(findings[0].severity, Severity::Warning);
+    assert_eq!(&*findings[0].devices, [r2]);
+}
+
+/// Tagged VLANs on an Ethernet port, its own or its bridge's, are a warning.
+#[test]
+fn tagged_vlans_on_a_port_are_a_warning() {
+    let mut net = Net::new();
+    let vlan = new_vlan(&mut net, 20, true);
+    let e1 = net.e1;
+    net.interface(e1).tagged_vlans = Box::new([vlan]);
+    let findings = net
+        .findings()
+        .into_iter()
+        .filter(|f| matches!(f.kind, FindingKind::TaggedVlanOnPort(_)))
+        .collect::<Vec<_>>();
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert_eq!(findings[0].severity, Severity::Warning);
+    assert!(matches!(&findings[0].kind, FindingKind::TaggedVlanOnPort(f)
+        if f.interface.id == e1.0 && f.vlans.iter().map(|v| v.vid).eq([20])));
 }
 
 #[test]

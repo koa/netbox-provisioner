@@ -31,6 +31,9 @@ impl Net {
         let link = port(&mut builder, r1, "ether1", Some("172.17.1.0/31"), true);
         let far = port(&mut builder, r2, "ether1", Some("172.17.1.1/31"), true);
         cable(&mut builder, link, far);
+        // each port cabled to a router names it, as „Verbindung“ labels them
+        builder.interfaces.get_mut(&link).unwrap().label = "r2".into();
+        builder.interfaces.get_mut(&far).unwrap().label = "r1".into();
 
         let uplink = port(&mut builder, r1, "ether2", None, false);
         builder.interfaces.get_mut(&uplink).unwrap().enable_dhcp_client = true;
@@ -41,6 +44,9 @@ impl Net {
         let (b2_ether, b2_radio) = bridge_device(&mut builder, b2, RadioRole::Station);
         cable(&mut builder, radio_port, b1_ether);
         cable(&mut builder, far_radio_port, b2_ether);
+        for (port, label) in [(radio_port, "b1"), (far_radio_port, "b2"), (b1_ether, "r1"), (b2_ether, "r2")] {
+            builder.interfaces.get_mut(&port).unwrap().label = label.into();
+        }
         for (radio, peer) in [(b1_radio, b2_radio), (b2_radio, b1_radio)] {
             let link = WirelessLinkEnd {
                 id: 1,
@@ -66,6 +72,16 @@ impl Net {
             },
         );
         let vlan = VlanId(10);
+        // the group's VNI joins r1's and r2's VLAN 10 into one network
+        let vxlan = builder.vxlans.next_id();
+        builder.vxlans.insert(
+            vxlan,
+            crate::topology::VxlanData {
+                name: "clients".into(),
+                vni: 10,
+                vlans: Box::new([vlan]),
+            },
+        );
         builder.vlans.insert(
             vlan,
             VlanData {
@@ -73,7 +89,7 @@ impl Net {
                 vlan_id: 10,
                 group,
                 terminations: Box::new([]),
-                vxlan: None,
+                vxlan: Some(vxlan),
                 wlans: Box::new([]),
             },
         );

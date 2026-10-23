@@ -25,10 +25,16 @@ query Findings($site: Int, $device: Int, $after: Helper){
                 ... on NoCommonSubnet{ interface{ ...Interface } farEnd{ ...Interface } }
                 ... on AddressWithoutOspf{ interface{ ...Interface } farEnd{ ...Interface } }
                 ... on WlanWithoutVlan{ id ssid group{ id name } }
+                ... on VlanWithSeveralGateways{ vlan{ ...Vlan } interfaces{ ...Interface } }
+                ... on VlanWithoutGateway{ vlan{ ...Vlan } interfaces{ ...Interface } }
+                ... on TaggedVlanOnPort{ interface{ ...Interface } vlans{ ...Vlan } }
+                ... on RadioPathIncomplete{ radio{ ...Interface } missing }
+                ... on LabelNotFarEnd{ interface{ ...Interface } label farEnd{ ...Interface } }
             }
         }
     }
 }
+fragment Vlan on VlanRef{ id vid name }
 fragment Device on DeviceRef{ id name }
 fragment Address on AddressRef{ id address }
 fragment Interface on InterfaceRef{ id name device{ ...Device } }

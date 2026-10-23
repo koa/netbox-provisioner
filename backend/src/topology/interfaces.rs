@@ -10,10 +10,11 @@ use crate::topology::{
         ip_addresses::IpAddressAccess, vlan::VlanAccess,
     },
     findings::{
-        AddressRef, DeviceRef, Finding, FindingKind, InterfaceRef, address_ref, device_ref,
-        interface_ref,
+        AddressRef, DeviceRef, Finding, FindingKind, InterfaceRef, VlanRef, address_ref,
+        device_ref, interface_ref, vlan_ref,
     },
     natural::naturalize_interface,
+    vlan_domain,
 };
 use async_graphql::{Enum, SimpleObject};
 use std::{collections::BTreeSet, sync::Arc};
@@ -113,14 +114,6 @@ pub struct InterfaceRow {
     pub findings: Vec<Finding>,
     /// the helpers it offers, the suggestion first
     pub actions: Vec<RowAction>,
-}
-
-/// A NetBox VLAN.
-#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
-pub struct VlanRef {
-    pub id: u32,
-    pub vid: u16,
-    pub name: Box<str>,
 }
 
 /// A radio link from a router port: `router_port ── bridge_port ┄ link ┄ peer_bridge_port ──
@@ -521,31 +514,22 @@ fn radio_path(
 
 /// The RouterOS devices other than the one of `interface` with an address on `vlan`: on an
 /// interface with it untagged, or on that interface's bridge.
+/// The other devices with an address in `vlan` where `interface` is in it (its domain,
+/// `vlan_domain`).
 fn gateways(vlan: &VlanAccess, interface: &InterfaceAccess) -> Vec<DeviceRef> {
-    let own = interface.device().map(|d| d.id());
+    let Some(own) = interface.device() else {
+        return Vec::new();
+    };
     let topology = vlan.topology();
-    let mut devices = topology
-        .list_devices()
-        .filter(DeviceAccess::has_routeros)
-        .filter(|device| Some(device.id()) != own)
-        .filter(|device| {
-            device.interfaces().iter().any(|i| {
-                i.untagged_vlan().map(|v| v.id) == Some(vlan.id)
-                    && (!i.ips().is_empty() || i.bridge().is_some_and(|b| !b.ips().is_empty()))
-            })
-        })
+    let mut devices = vlan_domain::domain_of(vlan, &own)
+        .into_iter()
+        .filter(|id| *id != own.id())
+        .filter_map(|id| topology.get_device_by_id(&id))
+        .filter(|device| !vlan_domain::l3_interfaces(vlan, device).is_empty())
         .map(|device| device_ref(&device))
         .collect::<Vec<_>>();
     devices.sort_by(|a, b| a.name.cmp(&b.name));
     devices
-}
-
-fn vlan_ref(vlan: &VlanAccess) -> Option<VlanRef> {
-    Some(VlanRef {
-        id: vlan.id.0,
-        vid: vlan.vlan_id()?,
-        name: vlan.name().unwrap_or_default().into(),
-    })
 }
 
 impl FindingKind {
@@ -580,6 +564,11 @@ impl FindingKind {
             FindingKind::OspfOnOneEnd(f) => vec![f.interface.id, f.far_end.id],
             FindingKind::NoCommonSubnet(f) => vec![f.interface.id, f.far_end.id],
             FindingKind::AddressWithoutOspf(f) => vec![f.interface.id, f.far_end.id],
+            FindingKind::VlanWithSeveralGateways(f) => f.interfaces.iter().map(|i| i.id).collect(),
+            FindingKind::VlanWithoutGateway(f) => f.interfaces.iter().map(|i| i.id).collect(),
+            FindingKind::TaggedVlanOnPort(f) => vec![f.interface.id],
+            FindingKind::RadioPathIncomplete(f) => vec![f.radio.id],
+            FindingKind::LabelNotFarEnd(f) => vec![f.interface.id],
         }
     }
 }

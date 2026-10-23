@@ -62,6 +62,11 @@ fragment Finding on Finding{
         ... on NoCommonSubnet{ interface{ ...Interface } farEnd{ ...Interface } }
         ... on AddressWithoutOspf{ interface{ ...Interface } farEnd{ ...Interface } }
         ... on WlanWithoutVlan{ id ssid group{ id name } }
+        ... on VlanWithSeveralGateways{ vlan{ ...Vlan } interfaces{ ...Interface } }
+        ... on VlanWithoutGateway{ vlan{ ...Vlan } interfaces{ ...Interface } }
+        ... on TaggedVlanOnPort{ interface{ ...Interface } vlans{ ...Vlan } }
+        ... on RadioPathIncomplete{ radio{ ...Interface } missing }
+        ... on LabelNotFarEnd{ interface{ ...Interface } label farEnd{ ...Interface } }
     }
 }
 fragment Action on RowAction{ kind helper interface peer{ ...Interface } vlan }

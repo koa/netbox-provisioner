@@ -61,6 +61,46 @@ pub fn dhcp_pool_empty(interface: Html, address: Html, prefix: Option<Html>) -> 
         None => html!(<>{interface}{" hat das Tag „dhcp“, aber "}{address}{" ist eine einzelne Adresse ohne Netz für Clients: Der DHCP-Server dort entsteht nicht."}</>),
     }
 }
+/// the link text of a VLAN
+pub fn vlan_name(vid: i64, name: &str) -> String {
+    format!("VLAN {vid} ({name})")
+}
+/// items joined by commas, the last by „und“
+pub fn list(items: Vec<Html>) -> Html {
+    let count = items.len();
+    html! {<>{ for items.into_iter().enumerate().map(|(index, item)| html! {<>
+        if index > 0 { { if index + 1 == count { " und " } else { ", " } } }
+        {item}
+    </>}) }</>}
+}
+pub fn vlan_with_several_gateways(vlan: Html, interfaces: Html) -> Html {
+    html!(<>{vlan}{" hat mehr als einen L3-Übergang im selben Netz: "}{interfaces}{". Genau ein Gerät soll eine Adresse darin haben, die übrigen geben das VLAN nur auf L2 weiter."}</>)
+}
+pub fn vlan_without_gateway(vlan: Html, interfaces: Option<Html>) -> Html {
+    html! {<>
+        {vlan}{" hat in seinem Netz keinen L3-Übergang: Kein Gerät hat eine Adresse darin, die Clients erreichen nichts."}
+        if let Some(interfaces) = interfaces { {" Untagged an "}{interfaces}{"."} }
+    </>}
+}
+pub fn tagged_vlan_on_port(interface: Html, vlans: Html) -> Html {
+    html!(<>{interface}{" führt tagged "}{vlans}{". Tagged VLANs an Ports sind nicht vorgesehen: Ein VLAN kommt über VXLAN zu einem anderen Gerät („vxlan_vni“ an der VLAN-Gruppe), eigene APs und Switches über eine Direktverbindung."}</>)
+}
+pub const RADIO_ROUTER_CABLE: &str = "das Kabel zum Router";
+pub const RADIO_WIRELESS_LINK: &str = "der Wireless Link zum anderen Brückengerät";
+pub const RADIO_SSID: &str = "die SSID des Wireless Links";
+pub const RADIO_PEER_ROUTER_CABLE: &str = "das Kabel vom anderen Brückengerät zum Router";
+pub fn radio_path_incomplete(radio: Html, missing: Vec<&'static str>) -> Html {
+    html!(<>{"Die Richtfunk-Strecke von "}{radio}{" ist unvollständig, in NetBox fehlt "}{list(missing.into_iter().map(Html::from).collect())}{": Der Provisioner richtet den Weg zwischen den Routern nicht ein."}</>)
+}
+pub fn label_not_far_end(interface: Html, label: Option<&str>, far_device: Html) -> Html {
+    html! {<>
+        { match label {
+            Some(label) => html!(<>{interface}{format!(" heisst „{label}“, am anderen Ende ist aber ")}</>),
+            None => html!(<>{interface}{" hat kein Label, am anderen Ende ist "}</>),
+        } }
+        {far_device}{". Das Label geht in den Portnamen auf dem Gerät ein („e02-ap1“), „Verbindung“ setzt es so."}
+    </>}
+}
 pub fn wlan_without_vlan(wlan: Html, group: Html) -> Html {
     html!(<>{"Das WLAN "}{wlan}{" der Gruppe "}{group}{" hat keine VLAN: Die APs legen seine Clients in keine Bridge und haben kein VXLAN dafür, die Clients verbinden sich und erreichen nichts."}</>)
 }

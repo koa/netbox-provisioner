@@ -8,8 +8,10 @@ use crate::{
         DeviceId, PortType, PrefixPool, SiteId, Topology,
         access::{
             AccessTopology, device::DeviceAccess, interface::InterfaceAccess,
-            ip_addresses::IpAddressAccess, wlan_group::WlanGroupAccess,
+            ip_addresses::IpAddressAccess, vlan::VlanAccess, wlan_group::WlanGroupAccess,
         },
+        interfaces::InterfaceTask,
+        vlan_domain,
     },
 };
 use async_graphql::{Enum, SimpleObject, Union};
@@ -54,6 +56,11 @@ pub enum FindingKind {
     WlanWithoutVlan(WlanWithoutVlan),
     RadioWithoutRole(RadioWithoutRole),
     LoopbackWithoutOspf(LoopbackWithoutOspf),
+    VlanWithSeveralGateways(VlanWithSeveralGateways),
+    VlanWithoutGateway(VlanWithoutGateway),
+    TaggedVlanOnPort(TaggedVlanOnPort),
+    RadioPathIncomplete(RadioPathIncomplete),
+    LabelNotFarEnd(LabelNotFarEnd),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
@@ -197,6 +204,65 @@ pub struct AddressWithoutOspf {
     pub far_end: InterfaceRef,
 }
 
+/// A NetBox VLAN.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct VlanRef {
+    pub id: u32,
+    pub vid: u16,
+    pub name: Box<str>,
+}
+/// More than one device has an address in the VLAN within one domain (`topology::vlan_domain`):
+/// two gateways in one network. A switch giving the VLAN on L2 only has no address in it.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct VlanWithSeveralGateways {
+    pub vlan: VlanRef,
+    /// the interfaces with the addresses, on different devices
+    pub interfaces: Vec<InterfaceRef>,
+}
+/// No device has an address in the VLAN within one domain: its clients reach nothing. Not for
+/// the management VLAN of a WLAN group, which CAPsMAN uses on L2.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct VlanWithoutGateway {
+    pub vlan: VlanRef,
+    /// the interfaces with the VLAN untagged in that domain
+    pub interfaces: Vec<InterfaceRef>,
+}
+/// An Ethernet port carries tagged VLANs (its own, or its bridge's): not wanted, a VLAN goes to
+/// another device over VXLAN (`vxlan_vni` of its group), own APs and switches over a direct
+/// link.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct TaggedVlanOnPort {
+    pub interface: InterfaceRef,
+    pub vlans: Vec<VlanRef>,
+}
+/// A part of a radio link NetBox doesn't have.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
+pub enum RadioPathPart {
+    /// the cable from the bridge device to a router
+    RouterCable,
+    /// the wireless link to the other bridge device
+    WirelessLink,
+    /// the SSID of the wireless link
+    Ssid,
+    /// the cable from the other bridge device to a router
+    PeerRouterCable,
+}
+/// A radio link from `radio` (a bridge device's) lacks `missing` in NetBox: the provisioner
+/// can't set up the way between the two routers.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct RadioPathIncomplete {
+    pub radio: InterfaceRef,
+    pub missing: Vec<RadioPathPart>,
+}
+/// The label of a port cabled to a RouterOS device doesn't name it (`None`: no label). The
+/// generated port name carries it (`e02-ap1`), and „Verbindung“ sets it so.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct LabelNotFarEnd {
+    pub interface: InterfaceRef,
+    pub label: Option<Box<str>>,
+    pub far_end: InterfaceRef,
+}
+
 /// A WLAN of `group` without a VLAN: its CAPs forward the clients themselves into the bridge
 /// of the WLAN's VLAN, which carries them over the VXLAN to their network, so without one the
 /// clients connect and reach nothing (no bridge, no VXLAN on the CAPs).
@@ -244,6 +310,7 @@ fn collect(topo: &Arc<Topology>) -> Box<[Finding]> {
     let mut findings = Vec::new();
     pools(topo, &mut findings);
     wlans(topo, &mut findings);
+    vlans(topo, &mut findings);
     let mut devices = topo
         .list_devices()
         .filter(DeviceAccess::has_routeros)
@@ -344,6 +411,80 @@ fn wlans(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
     }
 }
 
+/// One gateway per VLAN domain.
+fn vlans(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
+    let mut vlans = topo.list_vlans().collect::<Vec<_>>();
+    vlans.sort_by_key(|vlan| (vlan.vlan_id(), vlan.id.0));
+    for vlan in vlans {
+        let Some(vlan_ref) = vlan_ref(&vlan) else { continue };
+        for domain in vlan_domain::domains(&vlan) {
+            let devices = domain
+                .iter()
+                .filter_map(|id| topo.get_device_by_id(id))
+                .collect::<Vec<_>>();
+            let gateways = devices
+                .iter()
+                .map(|device| (device, vlan_domain::l3_interfaces(&vlan, device)))
+                .filter(|(_, l3)| !l3.is_empty())
+                .collect::<Vec<_>>();
+            // CAPsMAN finds its CAPs in a management VLAN on L2, it needs no gateway
+            let management = topo.wlan_groups.values().any(|g| g.mgmt_vlan == Some(vlan.id));
+            match gateways.len() {
+                0 if management => {}
+                0 => {
+                    let interfaces = devices
+                        .iter()
+                        .flat_map(|device| device.interfaces().into_vec())
+                        .filter(|i| i.untagged_vlan().map(|v| v.id) == Some(vlan.id))
+                        .map(|i| interface_ref(&i))
+                        .collect::<Vec<_>>();
+                    findings.push(Finding {
+                        severity: Severity::Warning,
+                        devices: domain.iter().copied().collect(),
+                        kind: FindingKind::VlanWithoutGateway(VlanWithoutGateway {
+                            vlan: vlan_ref.clone(),
+                            interfaces,
+                        }),
+                    });
+                }
+                1 => {}
+                _ => findings.push(Finding {
+                    severity: Severity::Error,
+                    devices: gateways.iter().map(|(device, _)| device.id()).collect(),
+                    kind: FindingKind::VlanWithSeveralGateways(VlanWithSeveralGateways {
+                        vlan: vlan_ref.clone(),
+                        interfaces: gateways
+                            .iter()
+                            .flat_map(|(_, l3)| l3.iter().map(interface_ref))
+                            .collect(),
+                    }),
+                }),
+            }
+        }
+    }
+}
+
+pub(crate) fn vlan_ref(vlan: &VlanAccess) -> Option<VlanRef> {
+    Some(VlanRef {
+        id: vlan.id.0,
+        vid: vlan.vlan_id()?,
+        name: vlan.name().unwrap_or_default().into(),
+    })
+}
+
+/// A label naming the device: one contains the other, compared without case and anything but
+/// letters and digits (`AP1` names `lab-ap1`, `SXT A` names `lab-sxt-a`).
+fn names(label: &str, device: &str) -> bool {
+    let plain = |text: &str| {
+        text.chars()
+            .filter(char::is_ascii_alphanumeric)
+            .map(|c| c.to_ascii_lowercase())
+            .collect::<String>()
+    };
+    let (label, device) = (plain(label), plain(device));
+    !label.is_empty() && (device.contains(&label) || label.contains(&device))
+}
+
 fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
     let topo = device.topology();
     let mut push = |severity, devices: &[DeviceId], kind| {
@@ -360,7 +501,12 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
         .any(|i| i.name() == "lo" && port_type(i) == Some(PortType::Loopback))
     {
         push(
-            Severity::Warning,
+            // a radio bridge device is reached at its loopback only
+            if device.is_bridge_device() {
+                Severity::Error
+            } else {
+                Severity::Warning
+            },
             &this,
             FindingKind::NoLoopback(NoLoopback {
                 device: device_ref(device),
@@ -479,6 +625,43 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
                 }),
             );
         }
+        if port_type(interface) == Some(PortType::Ethernet) {
+            let tagged = match interface.tagged_vlans().collect::<Vec<_>>() {
+                own if !own.is_empty() => own,
+                _ if interface.untagged_vlan().is_none() => interface
+                    .bridge()
+                    .map(|bridge| bridge.tagged_vlans().collect())
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            };
+            if !tagged.is_empty() {
+                push(
+                    Severity::Warning,
+                    &this,
+                    FindingKind::TaggedVlanOnPort(TaggedVlanOnPort {
+                        interface: interface_ref(interface),
+                        vlans: tagged.iter().filter_map(vlan_ref).collect(),
+                    }),
+                );
+            }
+        }
+        if let Some(far_end) = interface
+            .connected_interfaces()
+            .into_iter()
+            .find(|far| far.device().is_some_and(|d| d.has_routeros() && d.id() != device.id()))
+            && let Some(far_device) = far_end.device()
+            && !interface.label().is_some_and(|label| names(label, far_device.name()))
+        {
+            push(
+                Severity::Hint,
+                &this,
+                FindingKind::LabelNotFarEnd(LabelNotFarEnd {
+                    interface: interface_ref(interface),
+                    label: interface.label().map(Into::into),
+                    far_end: interface_ref(&far_end),
+                }),
+            );
+        }
         if let Some(data) = interface.data() {
             for vlan in data.vlan.iter().chain(data.tagged_vlans.iter()) {
                 if !topo.vlans.contains_key(vlan) {
@@ -562,6 +745,53 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
                 );
             }
         }
+    }
+    if device.is_bridge_device() {
+        radio_path(device, findings);
+    }
+}
+
+/// What a bridge device's radio link lacks, said once per link: from the end with the lower
+/// id, or from this one where the other is missing.
+fn radio_path(device: &DeviceAccess, findings: &mut Vec<Finding>) {
+    for (row, _) in device.interface_rows() {
+        let Some(path) = row.radio_path.filter(|_| row.task == InterfaceTask::RadioLink) else {
+            continue;
+        };
+        let Some(radio) = path.radio.clone() else { continue };
+        if path.peer_radio.as_ref().is_some_and(|peer| peer.device.id < device.id().0) {
+            continue;
+        }
+        let missing = [
+            (path.router_port.is_none(), RadioPathPart::RouterCable),
+            (path.peer_radio.is_none(), RadioPathPart::WirelessLink),
+            (path.peer_radio.is_some() && path.ssid.is_none(), RadioPathPart::Ssid),
+            (
+                path.peer_radio.is_some() && path.peer_router_port.is_none(),
+                RadioPathPart::PeerRouterCable,
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(missing, part)| missing.then_some(part))
+        .collect::<Vec<_>>();
+        if missing.is_empty() {
+            continue;
+        }
+        let devices = [
+            Some(device.id().0),
+            path.router_port.as_ref().map(|p| p.device.id),
+            path.peer_radio.as_ref().map(|p| p.device.id),
+            path.peer_router_port.as_ref().map(|p| p.device.id),
+        ]
+        .into_iter()
+        .flatten()
+        .map(DeviceId)
+        .collect::<std::collections::BTreeSet<_>>();
+        findings.push(Finding {
+            severity: Severity::Warning,
+            devices: devices.into_iter().collect(),
+            kind: FindingKind::RadioPathIncomplete(RadioPathIncomplete { radio, missing }),
+        });
     }
 }
 

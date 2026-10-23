@@ -26,6 +26,7 @@ pub mod access;
 pub mod fetch;
 pub mod findings;
 pub mod interfaces;
+pub mod vlan_domain;
 pub mod management;
 pub mod natural;
 mod graphql;

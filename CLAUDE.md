@@ -98,7 +98,16 @@ bridge is an OSPF router through a static address and `ospf` on its `bridge` (ma
 forwarding stays L2). Pool ranges are written as RouterOS reports them
 (`pool_range`: one address alone, a range covering exactly one network as that network, CHR
 7.24.5), else the diff never gets empty. The prefix tags
-`loopback`/`transfer` (`IpPrefixData::pool`) are only used here so far.
+`loopback`/`transfer` (`IpPrefixData::pool`) are only used here so far. One L3 gateway per VLAN
+counts per domain (`topology/vlan_domain.rs`): with a VNI every RouterOS device with the VLAN,
+without one the devices that cables carrying it join, so the same VLAN local on two devices is
+two networks. Two gateways are an error (`VlanWithSeveralGateways`), none a warning
+(`VlanWithoutGateway`), except a WLAN group's management VLAN, which CAPsMAN uses on L2. Tagged
+VLANs on an Ethernet port (or its bridge) are a warning (`TaggedVlanOnPort`, Z26); a bridge
+device's radio link missing a cable, the link or its SSID is `RadioPathIncomplete` (from the
+row's `RadioPath`, once per link); a bridge device without `lo` is an error, it is reached at its
+loopback only. A port cabled to a RouterOS device whose label doesn't name it (without case and
+punctuation, either containing the other) is a hint (`LabelNotFarEnd`); the export has many.
 
 `topology/interfaces.rs` sorts a device's interfaces by task (`DeviceAccess.interfaceView`,
 `docs/concepts/interface-view.md`): loopback, uplink, radio link, customer, direct, unknown, one

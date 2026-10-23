@@ -7,7 +7,7 @@ use crate::{
             Findings,
             findings::{
                 self, FindingsTopologyFindings, FindingsTopologyFindingsKind as Kind, IpVersion,
-                PrefixPool, Severity,
+                PrefixPool, RadioPathPart, Severity,
             },
         },
         query_authenticated,
@@ -164,6 +164,12 @@ impl Links<'_> {
             &address.address,
         )
     }
+    fn vlan(&self, vlan: &findings::Vlan) -> Html {
+        self.link(&format!("ipam/vlans/{}/", vlan.id), &t::vlan_name(vlan.vid, &vlan.name))
+    }
+    fn interfaces(&self, interfaces: &[findings::Interface]) -> Html {
+        t::list(interfaces.iter().map(|i| self.interface(i)).collect())
+    }
     fn pool(&self, pool: &PrefixPool) -> Html {
         let tag = t::pool(matches!(pool, PrefixPool::LOOPBACK));
         self.link(&format!("ipam/prefixes/?tag={tag}"), &format!("„{tag}“"))
@@ -222,6 +228,35 @@ impl Links<'_> {
             Kind::WlanWithoutVlan(f) => t::wlan_without_vlan(
                 self.link(&format!("wireless/wireless-lans/{}/", f.id), &f.ssid),
                 self.link(&format!("wireless/wireless-lan-groups/{}/", f.group.id), &f.group.name),
+            ),
+            Kind::VlanWithSeveralGateways(f) => {
+                t::vlan_with_several_gateways(self.vlan(&f.vlan), self.interfaces(&f.interfaces))
+            }
+            Kind::VlanWithoutGateway(f) => t::vlan_without_gateway(
+                self.vlan(&f.vlan),
+                (!f.interfaces.is_empty()).then(|| self.interfaces(&f.interfaces)),
+            ),
+            Kind::TaggedVlanOnPort(f) => t::tagged_vlan_on_port(
+                self.interface(&f.interface),
+                t::list(f.vlans.iter().map(|v| self.vlan(v)).collect()),
+            ),
+            Kind::RadioPathIncomplete(f) => t::radio_path_incomplete(
+                self.interface(&f.radio),
+                f.missing
+                    .iter()
+                    .filter_map(|part| match part {
+                        RadioPathPart::ROUTER_CABLE => Some(t::RADIO_ROUTER_CABLE),
+                        RadioPathPart::WIRELESS_LINK => Some(t::RADIO_WIRELESS_LINK),
+                        RadioPathPart::SSID => Some(t::RADIO_SSID),
+                        RadioPathPart::PEER_ROUTER_CABLE => Some(t::RADIO_PEER_ROUTER_CABLE),
+                        RadioPathPart::Other(_) => None,
+                    })
+                    .collect(),
+            ),
+            Kind::LabelNotFarEnd(f) => t::label_not_far_end(
+                self.interface(&f.interface),
+                f.label.as_deref(),
+                self.device(&f.far_end.device),
             ),
         }
     }

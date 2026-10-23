@@ -350,7 +350,26 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
      (`running=false`), lab-np1 hat auf `e01-sxt-a` keinen OSPF-Nachbarn; die Brückengeräte
      antworten über den 60-GHz-Weg.
 4. Die neuen Befunde (ein L3-Übergang pro VLAN, tagged VLAN an einem Port, Strecke
-   unvollständig, …).
+   unvollständig, …). Erledigt 2026-10-23, so:
+   - Ein VLAN ist ein Netz pro Bereich (`topology/vlan_domain.rs`): mit `vxlan_vni` alle
+     RouterOS-Geräte mit dem VLAN, ohne die Geräte, die Kabel mit dem VLAN an beiden Enden
+     verbinden. Dasselbe VLAN lokal auf zwei Geräten sind so zwei Netze, je mit eigenem
+     Gateway. Zwei Geräte mit Adresse in einem Bereich sind ein Fehler
+     (`VlanWithSeveralGateways`), keins eine Warnung (`VlanWithoutGateway`). Ausgenommen ist das
+     Management-VLAN einer WLAN-Gruppe (`wlan_mgmt`): CAPsMAN findet seine CAPs darin auf L2.
+     „L3 auf …“ der Kunden-Zeile zählt ebenso pro Bereich.
+   - `TaggedVlanOnPort`: tagged VLANs an einem Ethernet-Port, eigene oder (ohne eigenes VLAN)
+     die seiner Bridge, Warnung mit Verweis auf VXLAN.
+   - `RadioPathIncomplete` (Warnung) aus dem `RadioPath` der Richtfunk-Zeile eines
+     Brückengeräts: es fehlt das Kabel zum Router, der Wireless Link, seine SSID oder das Kabel
+     auf der Gegenseite; einmal pro Strecke.
+   - Brückengerät ohne Loopback: der bestehende `NoLoopback`, auf einem Brückengerät ein
+     Fehler, es ist nur über die Loopback erreichbar.
+   - `LabelNotFarEnd` (Hinweis): ein Port mit Kabel zu einem RouterOS-Gerät, dessen Label das
+     Gerät nicht nennt (ohne Gross/Klein und Satzzeichen, eins im anderen enthalten). Im
+     gespeicherten Export sind das 58, meist Ports ohne Label.
+   - Im Export kam keiner der beiden VLAN-Fehler und kein tagged Port vor; dazu drei Strecken
+     ohne SSID und sieben Brückengeräte ohne Loopback, die nun Fehler sind.
 5. Die neuen Helfer: Richtfunk abräumen, Kunden-Anschluss abräumen, VLAN am Port, Funkbrücke
    vom Router-Port, Kabel übernehmen.
 
