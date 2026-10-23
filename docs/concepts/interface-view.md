@@ -1,6 +1,7 @@
 # Konzept: Interfaces nach Aufgabe
 
-Status: Konzept, nicht umgesetzt. Ersetzt auf der [Geräteseite](device-page.md) die Karte
+Status: Schritt 1 umgesetzt (Zuordnung und Ansicht nur lesend, `topology/interfaces.rs`,
+`components/interfaces/`), der Rest offen. Ersetzt auf der [Geräteseite](device-page.md) die Karte
 „NetBox ergänzen“ mit ihrer Auswahl einzelner Helfer ([Config-Helper](config-helper.md)). Die
 Helfer selbst (Plan, Vorschau, Schreiben, Rückgängig) bleiben, sie werden nur anders aufgerufen.
 
@@ -20,10 +21,24 @@ passt, gilt):
 |---|---|
 | Loopback | Name `lo` |
 | Uplink | Tag `dhcp-client` oder `nat` (später `internet`) |
+| Richtfunk-Verbindung | das Interface oder ein Port seiner Bridge ist ein Ende eines Wireless Links |
+| Kunden-Anschluss | untagged VLAN am Interface, oder Tag `dhcp` |
 | Direktverbindung | Kabel (auch über Patch-Panels) zu einem Port eines anderen RouterOS-Geräts (Router, AP, Switch), das kein Brückengerät ist |
-| Richtfunk-Verbindung | Kabel zu einem Brückengerät (Rolle `wlan-bridge` oder genau ein Funk-Port mit RF-Rolle) |
-| Kunden-Anschluss | VLAN am Port (Mode access), oder Adresse in einem Prefix ohne Tag `transfer`/`loopback`, oder Tag `dhcp` |
+| Richtfunk-Verbindung | Kabel zu einem Brückengerät |
+| Kunden-Anschluss | Adresse in einem Prefix, das weder selbst noch über ein Eltern-Prefix im Pool `transfer`/`loopback` liegt |
 | Unbekannt | alles andere, auch freie Ports |
+
+Ein Brückengerät hat die Rolle `wlan-bridge` oder genau einen Funk-Port mit RF-Rolle oder
+Wireless Link. Die Rolle allein reicht nicht: Die Brückengeräte im Lab haben die Rolle `router`,
+im gespeicherten Export haben viele Link-Enden keine RF-Rolle (das ist dann der Befund
+`RadioWithoutRole`, die Zeile bleibt Richtfunk).
+
+Die Reihenfolge weicht vom ersten Entwurf ab (Direkt vor Kunden), wegen des gespeicherten
+Exports: Eine Kunden-Bridge eines Switches hat an ihren Ports andere RouterOS-Geräte (`1og-sw1`
+`switch-lan`, VLAN 1), darum zählen VLAN und `dhcp` vor den Kabeln. Die Links dort liegen dagegen
+oft in Prefixes ohne Pool (`router-hegglin` `172.17.0.16/29`), darum zählt das Prefix erst nach
+den Kabeln. Was der Export ergibt, schreibt der Test `interfaces_of_netbox_example` nach
+`target/netbox-example/interfaces.txt`.
 
 - **Bridges:** Gezählt wird das L3-Interface. Eine Bridge bekommt die Aufgabe über ihre Ports
   und Adressen; ihre Ports stehen als Unterzeilen in derselben Zeile, nicht als eigene Zeilen.
@@ -195,7 +210,8 @@ Flag-Tabelle passen nicht in eine Zeile pro Interface. Sie bleiben erreichbar ü
   (`localStorage`, nur Komfort).
 - **Pro Aufgabe** ein `Title` (h3) mit `Badge` und darunter eine Tabelle (`Table`,
   `TableMode::CompactExpandable`, auf schmalen Bildschirmen `grid`). Die Loopback ist keine
-  Tabelle, sondern eine `DescriptionList` (horizontal). Fehlt `lo`, steht dort ein `EmptyState`
+  Tabelle, sondern eine Liste ihrer Angaben (wie in der aufgeklappten Zeile; die
+  `DescriptionList` von PatternFly liess zu viel Platz). Fehlt `lo`, steht dort ein `EmptyState`
   mit dem Knopf „Loopback anlegen“. Leere Aufgaben sind ausgeblendet, ausser der Loopback.
 - **Spalten** je Aufgabe:
 
@@ -280,13 +296,16 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
   „VLAN am Port setzen“, der Aufruf von „Funkbrücke“ vom Router-Port her, und „Kabel übernehmen“
   als ein Plan aus Abräumen und Verbindung.
 - **Frontend:** `netbox_helper.rs` (über 2000 Zeilen) wird aufgeteilt: die Ansicht
-  (`components/interfaces/`, eine Datei pro Aufgabe) und das Modal mit dem Ablauf
-  (`components/helper_flow.rs`). Die heutigen Formulare der Helfer ziehen in das Modal um.
+  (`components/interfaces/`: `rows.rs` das Modell, `table.rs` die Tabelle mit den Spalten pro
+  Aufgabe, `loopback.rs`; eine Datei pro Aufgabe lohnte sich nicht, die Aufgaben unterscheiden
+  sich nur in den Spalten) und das Modal mit dem Ablauf (`components/helper_flow.rs`). Die heutigen Formulare der Helfer ziehen in das Modal um.
 
 ## Reihenfolge
 
 1. Zuordnung und Ansicht nur lesend: Aufgaben (Uplinks eingeschlossen), Prüfungen aus den
    vorhandenen Befunden, ohne Live-Prüfungen und ohne Knöpfe. Danach Screenshots schmal und breit im Lab.
+   Erledigt 2026-10-23; die Karte steht vorerst über „Gerät“ und „NetBox ergänzen“, die bis
+   Schritt 2 bleibt.
 2. Lösungsvorschläge über die vorhandenen Helfer (Loopback, Verbindung, Abräumen,
    Kunden-Netz, Funkbrücke) im Modal mit Stepper; die Karte „NetBox ergänzen“ fällt weg.
 3. Live-Prüfungen (Nachbarn, OSPF, Ping der Brückengeräte).

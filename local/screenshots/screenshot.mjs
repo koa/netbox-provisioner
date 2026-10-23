@@ -9,6 +9,7 @@
 //   click:Text              click the button (or else the element) with this text
 //   clicklast:Text          click the last element with this text (a card title after links)
 //   clickrow:Text=Label     click the button with this label in the table row containing Text
+//   expand:Text             click the first button (a table's toggle) in the row containing Text
 //   fill:Placeholder=Value  type into the input with this placeholder
 //   waitfor:Text|Other      wait until one of the texts shows up (WAIT_TIMEOUT_MS, 5 min)
 //   wait:ms                 wait a fixed time
@@ -64,6 +65,9 @@ for (const step of args) {
     }
     case 'clicklast':
       await page.getByText(value, { exact: true }).last().click();
+      break;
+    case 'expand':
+      await page.locator('tr', { hasText: value }).getByRole('button').first().click();
       break;
     case 'clickrow': {
       const [row, ...label] = value.split('=');

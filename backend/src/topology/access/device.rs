@@ -372,6 +372,11 @@ impl DeviceAccess {
             .cloned()
             .collect()
     }
+    /// Its interfaces by task, with the findings about each (NetBox only).
+    #[graphql(name = "interfaceView")]
+    async fn api_interface_view(&self) -> crate::topology::interfaces::InterfaceView {
+        self.interface_view()
+    }
     #[graphql(name = "wlanControllerOf")]
     async fn api_is_wlan_controller_of(&self) -> Option<WlanGroupAccess> {
         self.wlan_controller_of()

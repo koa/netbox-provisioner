@@ -38,3 +38,6 @@ pub mod job;
 
 /// The helpers that write to NetBox (`components::netbox_helper`).
 pub mod helper;
+
+/// The device's interfaces by task (`components::interfaces`).
+pub mod interfaces;

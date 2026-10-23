@@ -2,6 +2,7 @@ use crate::{
     components::{
         adjust_target::{AdjustTarget, SelectedTarget},
         batch_apply::{BatchApply, BatchJob},
+        interfaces::Interfaces,
         job::JobView,
         menu::popup::Select,
         netbox_helper::NetboxHelper,
@@ -61,6 +62,8 @@ pub struct ShowDevice {
     show_target: bool,
     /// suspend the watchdogs that may fire while this one updates
     suspend_watchdogs: bool,
+    /// counts the jobs over (NetBox written, the device changed): the interfaces are read again
+    jobs_finished: u32,
 }
 type Watchdog = device_overview::DeviceOverviewTopologyDeviceByIdWatchdogs;
 type Connected = device_overview::DeviceOverviewTopologyDeviceByIdAccessConnected;
@@ -163,6 +166,7 @@ impl Component for ShowDevice {
             confirm_boot: None,
             show_target: false,
             suspend_watchdogs: true,
+            jobs_finished: 0,
         }
     }
 
@@ -291,6 +295,7 @@ impl Component for ShowDevice {
             }
             ShowDeviceMessage::JobFinished => {
                 self.job_running = false;
+                self.jobs_finished += 1;
                 // the device changed: show what is left now
                 fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
                 true
@@ -688,6 +693,7 @@ impl Component for ShowDevice {
             {locked}
             {head}
             {job}
+            <Interfaces id={self.id} refresh={self.jobs_finished}/>
             <div class="device-columns">
                 {device}
                 <NetboxHelper

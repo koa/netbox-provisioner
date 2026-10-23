@@ -25,6 +25,7 @@ use tokio::{
 pub mod access;
 pub mod fetch;
 pub mod findings;
+pub mod interfaces;
 pub mod management;
 pub mod natural;
 mod graphql;

@@ -141,6 +141,15 @@ pub struct CancelJob;
 )]
 pub struct Findings;
 
+/// Serializes, to hand its findings on as the type of `Findings`.
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/interfaces.graphql",
+    response_derives = "Debug, Clone, PartialEq, Serialize"
+)]
+pub struct InterfaceView;
+
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",

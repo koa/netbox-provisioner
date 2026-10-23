@@ -100,6 +100,16 @@ forwarding stays L2). Pool ranges are written as RouterOS reports them
 7.24.5), else the diff never gets empty. The prefix tags
 `loopback`/`transfer` (`IpPrefixData::pool`) are only used here so far.
 
+`topology/interfaces.rs` sorts a device's interfaces by task (`DeviceAccess.interfaceView`,
+`docs/concepts/interface-view.md`): loopback, uplink, radio link, customer, direct, unknown, one
+row per L3 interface with a bridge's ports in it, the findings of `findings.rs` grouped onto the
+rows by the interfaces they name (those about the device as a whole go with the loopback), never
+computed again; a new check is a new finding. The order of the rules and what a bridge device is
+(`DeviceAccess::is_bridge_device`) come from the stored export and the lab, see the concept;
+`interfaces_of_netbox_example` writes the export's rows to `target/netbox-example/interfaces.txt`.
+The device page shows them in `components::interfaces`; its query hands the findings on to the
+type of `Findings` by serializing them (`rows::findings`), so `components::findings` words them.
+
 `device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's
 cables (`AccessibleDevice.neighborFindings`, read-only; the site page asks every device at once,
 `components::neighbor_check`). Ports on the device and the ports neighbors report carry the names

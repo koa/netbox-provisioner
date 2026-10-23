@@ -369,3 +369,56 @@ dl.neighbor-results {
 .helper-findings {
     margin-block-end: var(--pf-t--global--spacer--md);
 }
+
+/* the device's interfaces by task (components/interfaces/) */
+div.pf-v6-c-card.interfaces {
+    & div.interfaces-filter {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--pf-t--global--spacer--sm) var(--pf-t--global--spacer--lg);
+        align-items: center;
+        margin-block-end: var(--pf-t--global--spacer--md);
+    }
+    & section.interfaces-section {
+        margin-block-start: var(--pf-t--global--spacer--lg);
+
+        & > h3 {
+            margin-block-end: var(--pf-t--global--spacer--sm);
+        }
+    }
+    & div.interface-ports {
+        color: var(--pf-t--global--text--color--subtle);
+        font-size: var(--pf-t--global--font--size--sm);
+    }
+    & span.radio-path {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 0 0.4em;
+        align-items: baseline;
+
+        & > span.path-link {
+            color: var(--pf-t--global--text--color--subtle);
+        }
+        & > span.path-missing {
+            color: var(--pf-t--global--text--color--status--danger--default);
+        }
+    }
+    & div.interface-details {
+        display: flex;
+        flex-direction: column;
+        gap: var(--pf-t--global--spacer--sm);
+    }
+    & dl.interface-facts {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: var(--pf-t--global--spacer--xs) var(--pf-t--global--spacer--md);
+        margin-block-end: var(--pf-t--global--spacer--sm);
+
+        & > dt {
+            font-weight: var(--pf-t--global--font--weight--body--bold);
+        }
+        & > dd {
+            margin: 0;
+        }
+    }
+}

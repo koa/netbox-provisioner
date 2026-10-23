@@ -67,6 +67,8 @@ pub enum IpVersion {
 pub struct DeviceRef {
     pub id: u32,
     pub name: Box<str>,
+    /// its site, for the link to its page in the provisioner
+    pub site: Option<u32>,
 }
 /// A NetBox interface and its device.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -594,6 +596,7 @@ pub(crate) fn device_ref(device: &DeviceAccess) -> DeviceRef {
     DeviceRef {
         id: device.id().0,
         name: device.name().into(),
+        site: device.data().and_then(|d| d.site).map(|site| site.0),
     }
 }
 
@@ -608,11 +611,12 @@ pub(crate) fn interface_ref(interface: &InterfaceAccess) -> InterfaceRef {
             .unwrap_or(DeviceRef {
                 id: 0,
                 name: Box::default(),
+                site: None,
             }),
     }
 }
 
-fn address_ref(address: &IpAddressAccess) -> AddressRef {
+pub(crate) fn address_ref(address: &IpAddressAccess) -> AddressRef {
     AddressRef {
         id: address.id().0,
         address: address
