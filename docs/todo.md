@@ -74,7 +74,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | B3 | Crate `netbox-model` (cynic, eigenes Schema, eingecheckte `.idea/`) wird von niemandem benutzt: entfernen (Z5) | S | erledigt 2026-10-23 („remove the unused netbox-model crate“) |
 | B4 | `DeviceCfg::generate_from` und `BaseDeviceDataTarget::generate_from` rufen dieselben `setup_*`-Schritte je selbst auf (PoE fehlte so einmal im echten Weg): eine gemeinsame Funktion | S | erledigt 2026-10-23 („share the setup steps of both generate_from“): `setup_addressing` vor, `setup_ports` nach den Radios |
 | B5 | `lazy_static` (3 Dateien, dazu der Generator von mikrotik-model) durch `std::sync::LazyLock` ersetzen | S | erledigt 2026-10-23 („replace lazy_static with LazyLock“, in beiden Repos) |
-| B6 | Ein vergifteter Mutex in `job.rs` (`.expect("jobs")`) lässt den Server abstürzen statt nur den Job | S | offen |
+| B6 | Ein vergifteter Mutex in `job.rs` (`.expect("jobs")`) lässt den Server abstürzen statt nur den Job | S | erledigt 2026-10-23 („keep the jobs going after a panic holding their locks“), ebenso die Leases in `device/power.rs` |
 | B7 | Grosse Dateien aufteilen: `frontend/src/components/netbox_helper.rs` (2090 Zeilen, mit C12), `device/ros/mod.rs` (2067), `frontend/src/i18n.rs` (1609), `helper/mod.rs` (1391) | M | offen |
 | B8 | mikrotik-model: Der Generator gibt die Enums jedes Mal in anderer Reihenfolge aus (HashMap); Diffs des erzeugten Codes unlesbar, vermutlich unnötiges Neukompilieren | S | offen |
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |

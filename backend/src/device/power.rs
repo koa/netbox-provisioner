@@ -12,7 +12,7 @@ use crate::{job::Log, topology::access::device::DeviceAccess};
 use async_graphql::{Enum, SimpleObject};
 use std::{
     collections::{BTreeSet, HashSet},
-    sync::{LazyLock, Mutex},
+    sync::{LazyLock, Mutex, PoisonError},
 };
 use tokio::sync::Notify;
 
@@ -191,7 +191,7 @@ async fn acquire(log: &Log, mut try_take: impl FnMut(&mut Leases) -> Vec<Waiting
         let notified = changed.notified();
         tokio::pin!(notified);
         notified.as_mut().enable();
-        let blocking = try_take(&mut leases.lock().expect("power leases"));
+        let blocking = try_take(&mut leases.lock().unwrap_or_else(PoisonError::into_inner));
         if blocking.is_empty() {
             return;
         }
@@ -207,7 +207,7 @@ async fn acquire(log: &Log, mut try_take: impl FnMut(&mut Leases) -> Vec<Waiting
 fn release(list: impl FnOnce(&mut Leases) -> &mut Vec<Box<str>>, device: &str) {
     let (leases, changed) = &*LEASES;
     {
-        let mut leases = leases.lock().expect("power leases");
+        let mut leases = leases.lock().unwrap_or_else(PoisonError::into_inner);
         let list = list(&mut leases);
         if let Some(at) = list.iter().position(|d| &**d == device) {
             list.remove(at);

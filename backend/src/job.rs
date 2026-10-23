@@ -25,7 +25,7 @@ use async_graphql::{Enum, Object, SimpleObject, Union};
 use log::info;
 use std::{
     sync::{
-        Arc, LazyLock, Mutex,
+        Arc, LazyLock, Mutex, PoisonError,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -149,7 +149,7 @@ impl Log {
     pub fn emit(&self, event: impl Into<Event>) {
         let event = event.into();
         info!("{}: {event:?}", self.label);
-        let mut events = self.events.lock().expect("job events");
+        let mut events = self.events.lock().unwrap_or_else(PoisonError::into_inner);
         let index = events.len() as u32;
         events.push(Logged {
             index,
@@ -159,7 +159,7 @@ impl Log {
     }
     /// The events from `after` on.
     pub fn since(&self, after: u32) -> Vec<Logged> {
-        let events = self.events.lock().expect("job events");
+        let events = self.events.lock().unwrap_or_else(PoisonError::into_inner);
         events.get(after as usize..).unwrap_or_default().to_vec()
     }
     pub fn events(&self) -> Vec<Event> {
@@ -213,6 +213,9 @@ struct Jobs {
     jobs: Vec<Arc<Job>>,
 }
 
+/// Every lock here (the jobs, a job's outcome and events) takes a poisoned mutex's data as it
+/// is: each holds plain values no half-done step can leave inconsistent, and a panic in one
+/// request must not make every later job and the server panic too.
 static JOBS: LazyLock<Mutex<Jobs>> = LazyLock::new(|| {
     Mutex::new(Jobs {
         next: first_id(SystemTime::now()),
@@ -250,7 +253,7 @@ impl Job {
             .collect()
     }
     fn state(&self) -> JobState {
-        self.outcome.lock().expect("job outcome").0
+        self.outcome.lock().unwrap_or_else(PoisonError::into_inner).0
     }
     fn finish_with(&self, result: Result<(), Error>) {
         match result {
@@ -260,12 +263,12 @@ impl Job {
         }
     }
     fn finish(&self, state: JobState, error: Option<ErrorInfo>) {
-        *self.took.lock().expect("job time") = Some(self.log.started.elapsed());
+        *self.took.lock().unwrap_or_else(PoisonError::into_inner) = Some(self.log.started.elapsed());
         match &error {
             Some(error) => info!("{}: job {} {state:?}: {}", self.device_name, self.id, error.message),
             None => info!("{}: job {} {state:?}", self.device_name, self.id),
         }
-        *self.outcome.lock().expect("job outcome") = (state, error);
+        *self.outcome.lock().unwrap_or_else(PoisonError::into_inner) = (state, error);
     }
 }
 
@@ -327,7 +330,7 @@ where
 
 /// Adds a running job for each of `members`, none if one of their devices runs a job already.
 fn register(members: &[(&DeviceAccess, Log)], kind: JobKind) -> Result<Vec<Arc<Job>>, Error> {
-    let mut jobs = JOBS.lock().expect("jobs");
+    let mut jobs = JOBS.lock().unwrap_or_else(PoisonError::into_inner);
     for (device, _) in members {
         if jobs
             .jobs
@@ -382,7 +385,7 @@ async fn run<T: Send + 'static>(
 
 pub fn get(id: u32) -> Option<Arc<Job>> {
     JOBS.lock()
-        .expect("jobs")
+        .unwrap_or_else(PoisonError::into_inner)
         .jobs
         .iter()
         .find(|job| job.id == id)
@@ -392,7 +395,7 @@ pub fn get(id: u32) -> Option<Arc<Job>> {
 /// The jobs of `device` (all without), newest first.
 pub fn list(device: Option<DeviceId>) -> Vec<Arc<Job>> {
     JOBS.lock()
-        .expect("jobs")
+        .unwrap_or_else(PoisonError::into_inner)
         .jobs
         .iter()
         .rev()
@@ -428,11 +431,11 @@ impl Job {
     }
     /// why it failed
     async fn error(&self) -> Option<ErrorInfo> {
-        self.outcome.lock().expect("job outcome").1.clone()
+        self.outcome.lock().unwrap_or_else(PoisonError::into_inner).1.clone()
     }
     /// how long it ran; `None` while it runs
     async fn took(&self) -> Option<ScalarDuration> {
-        self.took.lock().expect("job time").map(ScalarDuration::from)
+        self.took.lock().unwrap_or_else(PoisonError::into_inner).map(ScalarDuration::from)
     }
     /// its events from `after` on (the `index` after the last one seen)
     async fn events(&self, after: Option<u32>) -> Vec<Logged> {
@@ -487,6 +490,21 @@ mod tests {
         })
         .await
         .expect("job state");
+    }
+
+    #[test]
+    fn a_panic_holding_the_events_does_not_stop_the_log() {
+        let log = Log::new("poisoned");
+        let events = log.events.clone();
+        std::thread::spawn(move || {
+            let _held = events.lock().unwrap();
+            panic!("while holding the events");
+        })
+        .join()
+        .unwrap_err();
+        assert!(log.events.is_poisoned());
+        log.emit(reboot());
+        assert_eq!(log.events(), [reboot()]);
     }
 
     #[tokio::test]
