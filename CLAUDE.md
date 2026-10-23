@@ -607,8 +607,10 @@ partition and reboots. A running script doesn't stop when its scheduler entry is
 script checks for the entry itself. With the fallback armed, the update waits for a reboot
 until the device could be back from it. Back on the old partition is `UPDATE_ROLLED_BACK`.
 Reached on the new partition, the scheduler is removed: no switching back once the provisioner
-sees the device. Then the OSPF neighbors that were `Full` before have to be `Full` again within
-3 min, else `OSPF_NEIGHBORS_MISSING`. The way back is the device page's "Von partN starten"
+sees the device. Then the OSPF neighbors it was adjacent with before have to be again within
+3 min, else `OSPF_NEIGHBORS_MISSING`: `Full`, or `TwoWay` where DR and BDR are two others of the
+segment (`update_fallback::adjacent`), since two DROthers stay there and a reboot elects anew
+(berghof-stall-haus, 7.23.8: a v3 neighbor `Full` as DR before stayed `TwoWay`). The way back is the device page's "Von partN starten"
 (`bootPartition`), never automatic. A device without two partitions updates as before and gets
 an `UpdateWithoutFallback` event. Checked on lab-core (7.23.8 → 7.24.5 and back, both ways):
 `copy-to` ends by itself after about 7 s. Booting `part1` brings back the old version with its

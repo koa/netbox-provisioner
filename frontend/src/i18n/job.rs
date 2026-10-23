@@ -325,7 +325,7 @@ pub mod event {
         format!("In NetBox zurückgesetzt: {display}")
     }
     pub fn ospf_neighbors_back(neighbors: &[String]) -> String {
-        format!("OSPF-Nachbarn wieder Full: {}", neighbors.join(", "))
+        format!("OSPF-Nachbarn wieder benachbart: {}", neighbors.join(", "))
     }
     pub fn connecting(device: &str) -> String {
         format!("Verbinde mit {device}")

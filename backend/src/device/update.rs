@@ -606,7 +606,7 @@ pub async fn update(
     if next_step(&state, target, newest_v6, wanted).is_some() {
         log.check()?;
         let device = link.api().await?;
-        let ospf = update_fallback::ospf_full(&device).await?;
+        let ospf = update_fallback::ospf_up(&device).await?;
         // RouterOS 6 has no partitions to copy to with this menu
         let armed = match state.version.major() >= 7 {
             true => update_fallback::arm(&device, fallback, log).await?,
@@ -633,7 +633,7 @@ pub async fn update(
         }
         if !ospf.is_empty() {
             log.emit(update_fallback::OspfNeighborsBack {
-                neighbors: ospf.into(),
+                neighbors: ospf.into_iter().collect(),
             });
         }
     }

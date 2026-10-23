@@ -7,26 +7,26 @@
 //! at all RouterBOOT leaves by itself (`fallback-to=next`).
 //!
 //! The update counts as done when the device is back with the version and the OSPF neighbors
-//! that were `Full` before are again ([`ospf_full`], [`missing`]).
+//! it was adjacent with before are again ([`ospf_up`], [`missing`]).
 use crate::{
     Error,
     device::{
         partitions::{self, Partition},
-        raw::{command, field, rows},
+        raw::{Row, command, field, rows},
     },
     graphql::scalars::ScalarDuration,
     job::Log,
 };
 use async_graphql::{SimpleObject, futures_util::StreamExt};
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
-use std::time::Duration;
+use std::{collections::BTreeSet, time::Duration};
 use tokio::time::{Instant, sleep, timeout};
 
 /// The name of the scheduler entry.
 const NAME: &str = "netbox-provisioner-update-fallback";
 /// Copying RouterOS between partitions: a few tens of MiB on NAND.
 const COPY_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-/// OSPF takes its dead interval and the exchange to get `Full` after a boot.
+/// OSPF takes its dead interval and the exchange to get adjacent after a boot.
 pub const OSPF_TIMEOUT: Duration = Duration::from_secs(3 * 60);
 
 /// The running RouterOS and its configuration are on `partition`, and the device switches back
@@ -52,7 +52,7 @@ pub struct UpdateWithoutFallback {
     pub partitions: u32,
 }
 
-/// The OSPF neighbors that were `Full` before the update are again.
+/// The OSPF neighbors this device was adjacent with before the update are again.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct OspfNeighborsBack {
     pub neighbors: Box<[Box<str>]>,
@@ -188,13 +188,36 @@ pub async fn running(device: &RawDevice<SimpleResult>) -> Option<Box<str>> {
         .map(|p| p.name)
 }
 
-/// The OSPF neighbors in state `Full`, as `<instance> <router-id>` (an instance per OSPF
-/// version); empty without OSPF.
-pub async fn ospf_full(device: &RawDevice<SimpleResult>) -> Result<Vec<Box<str>>, Error> {
-    let neighbors = rows(device, "/routing/ospf/neighbor/print").await?;
-    let mut full: Vec<Box<str>> = neighbors
+/// The OSPF neighbors this device is adjacent with (see [`adjacent`]), as `<instance>
+/// <router-id>` (an instance per OSPF version); empty without OSPF.
+pub async fn ospf_up(device: &RawDevice<SimpleResult>) -> Result<BTreeSet<Box<str>>, Error> {
+    Ok(adjacent(&rows(device, "/routing/ospf/neighbor/print").await?))
+}
+
+/// The neighbors in `rows` (`/routing/ospf/neighbor`) that are where OSPF leaves them: `Full`,
+/// or `TwoWay` where the DR and the BDR are two others on the segment. Two DROthers stay in
+/// `TwoWay` for good, and a reboot elects anew, so one that was `Full` as DR may end there
+/// (berghof-stall-haus, 7.23.8). v2 names the DR by its address, v3 by its router ID.
+fn adjacent(rows: &[Row]) -> BTreeSet<Box<str>> {
+    let same_segment = |a: &Row, b: &Row| {
+        field(a, "instance") == field(b, "instance") && field(a, "interface") == field(b, "interface")
+    };
+    // `id` (the DR or BDR) is none, or a neighbor of the segment other than `row`
+    let another = |row: &Row, id: Option<&str>| match id {
+        None | Some("" | "0.0.0.0") => true,
+        Some(id) => rows.iter().any(|other| {
+            !std::ptr::eq(other, row)
+                && same_segment(other, row)
+                && (field(other, "address") == Some(id) || field(other, "router-id") == Some(id))
+        }),
+    };
+    rows
         .iter()
-        .filter(|row| field(row, "state") == Some("Full"))
+        .filter(|row| match field(row, "state") {
+            Some("Full") => true,
+            Some("TwoWay") => another(row, field(row, "dr")) && another(row, field(row, "bdr")),
+            _ => false,
+        })
         .map(|row| {
             format!(
                 "{} {}",
@@ -203,27 +226,24 @@ pub async fn ospf_full(device: &RawDevice<SimpleResult>) -> Result<Vec<Box<str>>
             )
             .into()
         })
-        .collect();
-    full.sort();
-    full.dedup();
-    Ok(full)
+        .collect()
 }
 
 /// What of `before` isn't in `now`.
-pub fn missing(before: &[Box<str>], now: &[Box<str>]) -> Vec<Box<str>> {
-    before.iter().filter(|n| !now.contains(n)).cloned().collect()
+pub fn missing(before: &BTreeSet<Box<str>>, now: &BTreeSet<Box<str>>) -> Vec<Box<str>> {
+    before.difference(now).cloned().collect()
 }
 
-/// Waits (up to [`OSPF_TIMEOUT`]) until the neighbors `before` are `Full` again; the ones that
+/// Waits (up to [`OSPF_TIMEOUT`]) until the neighbors `before` are adjacent again; the ones that
 /// aren't by then.
 pub async fn wait_for_ospf(
     device: &RawDevice<SimpleResult>,
-    before: &[Box<str>],
+    before: &BTreeSet<Box<str>>,
     log: &Log,
 ) -> Result<Vec<Box<str>>, Error> {
     let deadline = Instant::now() + OSPF_TIMEOUT;
     loop {
-        let missing = missing(before, &ospf_full(device).await?);
+        let missing = missing(before, &ospf_up(device).await?);
         if missing.is_empty() || Instant::now() > deadline {
             return Ok(missing);
         }
@@ -233,8 +253,9 @@ pub async fn wait_for_ospf(
 
 #[cfg(test)]
 mod tests {
-    use super::{missing, other, script};
-    use std::time::Duration;
+    use super::{adjacent, missing, other, script};
+    use crate::device::raw::Row;
+    use std::{collections::BTreeSet, time::Duration};
     use crate::device::partitions::Partition;
 
     fn partition(name: &str, active: bool, running: bool) -> Partition {
@@ -270,10 +291,61 @@ mod tests {
     }
 
     #[test]
-    fn misses_only_neighbors_that_were_full() {
-        let before: Vec<Box<str>> = vec!["default-v2 10.0.0.1".into(), "default-v3 10.0.0.1".into()];
-        let now: Vec<Box<str>> = vec!["default-v2 10.0.0.1".into(), "default-v2 10.0.0.9".into()];
+    fn misses_only_neighbors_that_were_adjacent() {
+        let set = |neighbors: &[&str]| neighbors.iter().map(|&n| n.into()).collect::<BTreeSet<Box<str>>>();
+        let before = set(&["default-v2 10.0.0.1", "default-v3 10.0.0.1"]);
+        let now = set(&["default-v2 10.0.0.1", "default-v2 10.0.0.9"]);
         assert_eq!(missing(&before, &now), vec![Box::from("default-v3 10.0.0.1")]);
-        assert!(missing(&[], &now).is_empty());
+        assert!(missing(&set(&[]), &now).is_empty());
+    }
+
+    fn neighbor(instance: &str, address: &str, router_id: &str, dr: &str, bdr: &str, state: &str) -> Row {
+        [
+            ("instance", instance),
+            ("interface", "bridge-bridge"),
+            ("address", address),
+            ("router-id", router_id),
+            ("dr", dr),
+            ("bdr", bdr),
+            ("state", state),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.into(), Some(v.into())))
+        .collect()
+    }
+
+    /// berghof-stall-haus after its update (7.23.8): v3 elected 172.16.1.15 and 172.16.1.7, so
+    /// 172.16.1.60, `Full` before, is a DROther like this device and stays in `TwoWay`.
+    #[test]
+    fn two_drothers_in_two_way_are_adjacent() {
+        let v3 = |address, router_id, state| {
+            neighbor("default-v3", address, router_id, "172.16.1.15", "172.16.1.7", state)
+        };
+        let rows = [
+            neighbor("default-v2", "10.198.1.1", "172.16.1.7", "10.198.1.1", "10.198.1.3", "Full"),
+            neighbor("default-v2", "10.198.1.3", "172.16.1.60", "10.198.1.1", "10.198.1.3", "Full"),
+            v3("fe80::1", "172.16.1.7", "Full"),
+            v3("fe80::2", "172.16.1.15", "Full"),
+            v3("fe80::3", "172.16.1.60", "TwoWay"),
+        ];
+        assert_eq!(
+            adjacent(&rows),
+            ["default-v2 172.16.1.60", "default-v2 172.16.1.7", "default-v3 172.16.1.15", "default-v3 172.16.1.60", "default-v3 172.16.1.7"]
+                .map(Box::<str>::from)
+                .into()
+        );
+    }
+
+    /// `TwoWay` with the DR or BDR, or where this device is one, is a stuck adjacency.
+    #[test]
+    fn two_way_with_the_dr_is_not_adjacent() {
+        // the neighbor is the DR
+        let rows = [neighbor("default-v2", "10.0.0.1", "1.1.1.1", "10.0.0.1", "0.0.0.0", "TwoWay")];
+        assert!(adjacent(&rows).is_empty());
+        // the DR is no neighbor: this device
+        let rows = [neighbor("default-v2", "10.0.0.2", "2.2.2.2", "10.0.0.9", "0.0.0.0", "TwoWay")];
+        assert!(adjacent(&rows).is_empty());
+        let rows = [neighbor("default-v2", "10.0.0.2", "2.2.2.2", "10.0.0.1", "10.0.0.2", "ExStart")];
+        assert!(adjacent(&rows).is_empty());
     }
 }

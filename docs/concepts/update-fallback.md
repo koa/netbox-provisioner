@@ -28,8 +28,11 @@ jemand vor Ort hin.
    RouterBOOT (Reset beim Einschalten) bleibt der Weg vor Ort.
 
 **Erfolg** heisst deshalb für alle Stufen: Das Gerät ist mit der erwarteten Version erreichbar,
-*und* die OSPF-Nachbarn, die vor dem Update `Full` waren, sind es wieder (`/routing/ospf/neighbor`
-vor dem Update gelesen). Erst dann gilt das Update als gelungen.
+*und* die OSPF-Nachbarn, mit denen es vor dem Update benachbart war, sind es wieder
+(`/routing/ospf/neighbor` vor dem Update gelesen). Benachbart heisst `Full`, oder `TwoWay`, wenn
+DR und BDR zwei andere des Segments sind: Zwei DROther bleiben in `TwoWay`, und nach dem Neustart
+wird neu gewählt, so dass einer, der als DR `Full` war, dort landen kann (berghof-stall-haus,
+7.23.8). Erst dann gilt das Update als gelungen.
 
 ## Stufe 1: zwei Partitionen
 
@@ -200,4 +203,5 @@ verbindet.
   speisenden Port aus und wieder ein, mit Bestätigung), nie von selbst.
 - Ein Update **ganz ohne Fallback** (16 MiB, kein erreichbarer Nachbar) braucht eine
   ausdrückliche **Bestätigung**.
-- Nach einem Update müssen die OSPF-Nachbarn wieder `Full` sein, **die vorher `Full` waren**.
+- Nach einem Update müssen die OSPF-Nachbarn wieder benachbart sein, **die es vorher waren**
+  (`Full`, oder `TwoWay` zwischen zwei DROther).

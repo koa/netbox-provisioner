@@ -121,7 +121,7 @@ pub enum Error {
         partition: Box<str>,
         version: Box<str>,
     },
-    /// the OSPF neighbors `Full` before the update that aren't after it (`<instance> <router-id>`)
+    /// the OSPF neighbors adjacent before the update that aren't after it (`<instance> <router-id>`)
     #[error("OSPF neighbors missing after the update: {0}")]
     OspfNeighborsMissing(Box<str>),
     #[error("{0} runs a job already")]

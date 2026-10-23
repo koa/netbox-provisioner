@@ -104,8 +104,8 @@ pub fn server(problem: &ServerProblem) -> String {
             p("partition")
         ),
         "OSPF_NEIGHBORS_MISSING" => format!(
-            "Nach dem Update fehlen OSPF-Nachbarn, die vorher Full waren: {}. Zurück geht es \
-             auf der Geräteseite unter Partitionen",
+            "Nach dem Update fehlen OSPF-Nachbarn, mit denen das Gerät vorher benachbart war: {}. \
+             Zurück geht es auf der Geräteseite unter Partitionen",
             p("neighbors")
         ),
         "REFUSED" => format!("Das Gerät lehnt ab: {}", p("cause")),
