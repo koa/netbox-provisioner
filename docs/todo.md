@@ -78,7 +78,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | B7 | Grosse Dateien aufteilen: `frontend/src/components/netbox_helper.rs` (2090 Zeilen, mit C12), `device/ros/mod.rs` (2067, erledigt 2026-10-23 „split the radios and the DHCP pool off the generator“: 1247 Zeilen, Radios in `radio/`, Pool in `dhcp.rs`), `frontend/src/i18n.rs` (1609, erledigt 2026-10-23 „give each part of the UI texts a file“: `i18n/`, eine Datei pro Modul), `helper/mod.rs` (1391, erledigt 2026-10-23 „split the plan steps and the writing off the helpers“: 541 Zeilen, `plan.rs`, `write.rs`) | M | erledigt 2026-10-23, bis auf `netbox_helper.rs`, das mit C12 neu aufgeteilt wird |
 | B8 | mikrotik-model: Der Generator gibt die Enums jedes Mal in anderer Reihenfolge aus (HashMap); Diffs des erzeugten Codes unlesbar, vermutlich unnötiges Neukompilieren | S | erledigt 2026-10-23 (mikrotik-model „generate the same code on every build“) |
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B10 | `graphql_client` 0.16 von crates.io statt des Forks (`Chrisss93/graphql-client`, Branch `reqwest-upgrade`) prüfen; nur als Übergang, bis C4 den Fork ablöst (Z6) | S | offen |
+| B10 | `graphql_client` 0.16 von crates.io statt des Forks (`Chrisss93/graphql-client`, Branch `reqwest-upgrade`) prüfen; nur als Übergang, bis C4 den Fork ablöst (Z6) | S | erledigt 2026-10-23 („take graphql_client from crates.io“): ohne Features, `json` direkt an reqwest; Topologie aus der Lab-NetBox und Site-Seite im Browser geprüft |
 
 ## C. Konzepte zum Umsetzen
 

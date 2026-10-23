@@ -73,7 +73,7 @@ einem Teil der Union `Event`, gegen unser erzeugtes `schema.graphql`; dazu eine
 | | graphql_client (heute) | cynic |
 |---|---|---|
 | Quelle | `.graphql`-Datei + erzeugte Typen | Rust-Structs, Abfrage erzeugt |
-| Abhängigkeit | Git-Fork (`Chrisss93/graphql-client`, Branch `reqwest-upgrade`) | crates.io, gepflegt |
+| Abhängigkeit | crates.io 0.16 (bis 2026-10-23 ein Git-Fork, `Chrisss93/graphql-client`) | crates.io, gepflegt |
 | Typen | pro Abfrage neu erzeugt (`…TopologyDeviceByIdCustomerNetOptionsParents`), gleiche Daten in verschiedenen Typen (beim IPv6-Kunden-Netz zwei Parent-Typen) | selbst benannt, wiederverwendbar über Abfragen hinweg |
 | Fragmente | nur in derselben Datei | gewöhnliche Structs, beliebig geteilt |
 | Unbekannte Union-Fälle | Fehler beim Parsen, je nach Einstellung | `fallback` |
@@ -84,9 +84,9 @@ einem Teil der Union `Event`, gegen unser erzeugtes `schema.graphql`; dazu eine
 den Anfang hilft `cynic-querygen` (Crate, auch als Generator auf cynic-rs.dev): Es erzeugt die
 Structs aus einer vorhandenen Abfrage und dem Schema.
 Zuerst das Frontend (32 Abfragen, das eigene Schema), dann `fetch_topology.graphql` im Backend.
-Danach fällt der Git-Fork weg.
+Danach fällt `graphql_client` weg.
 
-Vorschlag: cynic statt Dateien aufzuteilen. Der Gewinn ist grösser (geteilte Typen, kein Fork,
+Vorschlag: cynic statt Dateien aufzuteilen. Der Gewinn ist grösser (geteilte Typen,
 Fehler am Struct), und die Aufteilung der Dateien erübrigt sich.
 
 ## Reihenfolge
@@ -96,7 +96,7 @@ Mit cynic:
 1. cynic ins Frontend, Schema in `frontend/build.rs` registrieren (das dort ohnehin geschrieben
    wird), eine kleine Abfrage umstellen (`FindingsList` o.ä.).
 2. Die Job-Events (die grösste Union, mit `fallback`), dann die Helfer, dann der Rest.
-3. `fetch_topology.graphql` im Backend; danach `graphql_client` und den Fork entfernen.
+3. `fetch_topology.graphql` im Backend; danach `graphql_client` entfernen.
 
 Bleibt es bei graphql_client:
 
