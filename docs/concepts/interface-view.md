@@ -378,6 +378,12 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
      den Helfer dieses Brückengeräts ein (`HelperPreset::RadioFrom`, Router und Router-Port
      vorbelegt; erreicht an seiner eigenen Adresse). Der Helfer setzt nun auch die Labels an
      beiden Kabeln, sonst behöbe der Vorschlag den Label-Hinweis nicht.
+   - Richtfunk abräumen, erledigt 2026-10-23: „Verbindung entfernen“ auf jeder
+     Richtfunk-Zeile mit Funk-Port (Router wie Brückengerät), Helfer `radio_disconnect` (siehe
+     [Config-Helper](config-helper.md#richtfunk-abräumen)). Zum Segment gehören auch Adressen aus
+     dem Transfer-Pool an nur einem Ende: im Export hat bei schopf-burri nur der Router eine. Der
+     Wireless Link geht mit einem Schalter im Plan, neu als Schritt `DeleteWirelessLink`.
+     Aus „Weitere Helfer“ ist er nicht erreichbar, er braucht den Funk-Port der Zeile.
 
 ## Entschieden (2026-10-23)
 

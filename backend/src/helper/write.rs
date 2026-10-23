@@ -249,6 +249,28 @@ pub async fn write(
                 update_wireless_link(&rest, update, log).await?;
                 None
             }
+            PlanStep::DeleteWirelessLink(delete) => {
+                let path = format!("wireless/wireless-links/{}/", delete.id);
+                let current = rest.get(&path).await?;
+                let ends = ["interface_a", "interface_b"].map(|end| current[end]["id"].as_u64());
+                let same = |a: &InterfaceRef, b: &InterfaceRef| {
+                    ends == [Some(a.id.into()), Some(b.id.into())]
+                };
+                if !same(&delete.a, &delete.b) && !same(&delete.b, &delete.a) {
+                    return Err(Error::NetboxChanged(format!("wireless link {}", delete.id).into()));
+                }
+                // with its PSK, so that undo brings the same link back
+                let body = recreate(
+                    &current,
+                    &[
+                        "interface_a", "interface_b", "ssid", "status", "tenant", "auth_type",
+                        "auth_cipher", "auth_psk", "distance", "distance_unit", "description",
+                        "comments", "tags", "custom_fields",
+                    ],
+                );
+                deleted(&rest, log, &path, &current, body).await?;
+                None
+            }
             PlanStep::DeleteCable(delete) => {
                 let path = format!("dcim/cables/{}/", delete.id);
                 let current = rest.get(&path).await?;

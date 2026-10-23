@@ -70,6 +70,8 @@ pub enum ActionHelper {
     Disconnect,
     CustomerNet,
     RadioBridge,
+    /// „Richtfunk abräumen“, from a radio of the link (`interface`)
+    RadioDisconnect,
 }
 
 /// An action of a row: the helper and what it starts with. The frontend hands it on to the
@@ -415,6 +417,15 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
                         None,
                     ));
                 }
+            }
+            if let Some(radio) = row.radio_path.as_ref().and_then(|p| p.radio.as_ref()) {
+                actions.push(action(
+                    ActionKind::Remove,
+                    ActionHelper::RadioDisconnect,
+                    Some(radio.id),
+                    None,
+                    None,
+                ));
             }
         }
         InterfaceTask::Customer => {

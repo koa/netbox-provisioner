@@ -34,7 +34,7 @@ use crate::{
 };
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
-    CodeBlockCode, Form, FormGroup, Spinner, SpinnerSize, TextInput,
+    CodeBlockCode, Form, FormGroup, Spinner, SpinnerSize, Switch, TextInput,
 };
 use std::{
     collections::BTreeMap,
@@ -79,6 +79,8 @@ pub enum HelperPreset {
     CustomerNet(NetTarget),
     /// „Funkbrücke“ from a router port, for the bridge device cabled to it
     RadioFrom(RadioPreset),
+    /// „Richtfunk abräumen“ from this radio of the link
+    RadioDisconnect(u32),
 }
 
 /// „Funkbrücke“ from a router port: the helper is the bridge device's, its router side set.
@@ -160,6 +162,10 @@ pub enum HelperChoice {
         ap_address: Option<String>,
         station_address: Option<String>,
         ssid: Option<String>,
+    },
+    RadioDisconnect {
+        radio: u32,
+        wireless_link: bool,
     },
 }
 
@@ -347,6 +353,14 @@ macro_rules! helper_input {
                 station_address,
                 ssid,
             }),
+            HelperChoice::RadioDisconnect {
+                radio,
+                wireless_link,
+            } => $module::Helper::RadioDisconnect($module::RadioDisconnectInput {
+                device: $id as i64,
+                radio: radio as i64,
+                wireless_link,
+            }),
         }
     };
 }
@@ -361,6 +375,8 @@ pub enum HelperKind {
     CustomerNet,
     Poe,
     RadioBridge,
+    /// only from a radio link's row: it needs the radio
+    RadioDisconnect,
 }
 
 impl HelperKind {
@@ -392,6 +408,7 @@ impl Display for HelperKind {
             HelperKind::CustomerNet => t::CUSTOMER_NET,
             HelperKind::Poe => t::POE,
             HelperKind::RadioBridge => t::RADIO_BRIDGE,
+            HelperKind::RadioDisconnect => t::RADIO_DISCONNECT,
         })
     }
 }
@@ -425,6 +442,9 @@ pub struct NetboxHelper {
     link: LinkChoice,
     /// the port whose link „Verbindung abräumen“ takes out
     disconnect: Option<u32>,
+    /// „Richtfunk abräumen“: the radio, and whether the wireless link goes too
+    radio_disconnect: Option<u32>,
+    radio_disconnect_link: bool,
     ports: Option<Result<link_ports::ResponseData, FrontendError>>,
     flag_interfaces: Option<Result<Vec<FlagInterface>, FrontendError>>,
     /// the tags switched away from what NetBox has
@@ -496,6 +516,7 @@ pub enum NetboxHelperMsg {
     RadioRouterPort(usize, Choice),
     RadioAddress(usize, String),
     RadioSsid(String),
+    RadioDisconnectLink(bool),
     Plan(HelperChoice, Result<netbox_plan::ResponseData, FrontendError>),
     LoadPreview,
     Preview(Result<Preview, FrontendError>),
@@ -518,6 +539,7 @@ impl Component for NetboxHelper {
         let mut disconnect = None;
         let mut net = NetChoice::default();
         let mut radio = RadioChoice::default();
+        let mut radio_disconnect = None;
         let kind = match &ctx.props().preset {
             None => HelperKind::Loopback,
             Some(HelperPreset::Kind(kind)) => *kind,
@@ -547,6 +569,10 @@ impl Component for NetboxHelper {
                 radio.router_port[0] = Some(preset.router_port);
                 HelperKind::RadioBridge
             }
+            Some(HelperPreset::RadioDisconnect(radio)) => {
+                radio_disconnect = Some(*radio);
+                HelperKind::RadioDisconnect
+            }
         };
         last_write(ctx.link().clone(), ctx.props().id);
         let mut helper = Self {
@@ -554,6 +580,8 @@ impl Component for NetboxHelper {
             kind,
             link,
             disconnect,
+            radio_disconnect,
+            radio_disconnect_link: false,
             ports: None,
             flag_interfaces: None,
             flags: BTreeMap::new(),
@@ -653,6 +681,10 @@ impl Component for NetboxHelper {
             }
             NetboxHelperMsg::RadioAddress(side, address) => {
                 self.radio.address[side] = address;
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::RadioDisconnectLink(link) => {
+                self.radio_disconnect_link = link;
                 self.choose(ctx);
             }
             NetboxHelperMsg::RadioSsid(ssid) => {
@@ -893,6 +925,9 @@ impl Component for NetboxHelper {
             (None, _) if self.kind == HelperKind::RadioBridge => {
                 html!(<p>{t::CHOOSE_RADIO_BRIDGE}</p>)
             }
+            (None, _) if self.kind == HelperKind::RadioDisconnect => {
+                html!(<p>{t::CHOOSE_RADIO_DISCONNECT}</p>)
+            }
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),
             (_, None) => html!(<Spinner size={SpinnerSize::Md}/>),
             (_, Some(Err(error))) => error.to_html(),
@@ -972,6 +1007,7 @@ impl Component for NetboxHelper {
             HelperKind::CustomerNet => t::CUSTOMER_NET_HINT,
             HelperKind::Poe => t::POE_HINT,
             HelperKind::RadioBridge => t::RADIO_BRIDGE_HINT,
+            HelperKind::RadioDisconnect => t::RADIO_DISCONNECT_HINT,
         };
         let content = html! {<>
                     {error}
@@ -1012,6 +1048,15 @@ impl Component for NetboxHelper {
                     }
                     if self.kind == HelperKind::RadioBridge {
                         { self.radio_form(ctx) }
+                    }
+                    if self.kind == HelperKind::RadioDisconnect {
+                        <Form>
+                            <Switch
+                                label={t::RADIO_DISCONNECT_LINK}
+                                checked={self.radio_disconnect_link}
+                                onchange={ctx.link().callback(NetboxHelperMsg::RadioDisconnectLink)}
+                            />
+                        </Form>
                     }
                     {plan}
         </>};
@@ -1083,6 +1128,10 @@ impl NetboxHelper {
                 mtu: self.link.mtu.trim().parse().ok(),
             }),
             HelperKind::Disconnect => Some(HelperChoice::Disconnect(self.disconnect?)),
+            HelperKind::RadioDisconnect => Some(HelperChoice::RadioDisconnect {
+                radio: self.radio_disconnect?,
+                wireless_link: self.radio_disconnect_link,
+            }),
             HelperKind::Flags => {
                 let changes = self.flag_changes();
                 (!changes.is_empty()).then_some(HelperChoice::Flags(changes))
@@ -1903,6 +1952,10 @@ fn describe(step: &Step) -> String {
             (&create.a.device.name, &create.a.name),
             (&create.b.device.name, &create.b.name),
             &create.ssid,
+        ),
+        Step::DeleteWirelessLink(delete) => t::delete_wireless_link(
+            (&delete.a.device.name, &delete.a.name),
+            (&delete.b.device.name, &delete.b.name),
         ),
         Step::UpdateWirelessLink(update) => t::update_wireless_link(
             (&update.a.device.name, &update.a.name),

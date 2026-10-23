@@ -464,8 +464,11 @@ fn rows_offer_the_helpers_that_fit() {
             (ActionKind::AssignRole, ActionHelper::Connection),
         ]
     );
-    // the router's end of a complete radio link without findings needs nothing
-    assert!(row(&view, "ether3").actions.is_empty());
+    // the router's end of a complete radio link without findings: only taking it out
+    assert_eq!(
+        helpers(row(&view, "ether3")),
+        [(ActionKind::Remove, ActionHelper::RadioDisconnect)]
+    );
     assert!(row(&view, "ether2").actions.is_empty());
     // a customer bridge with IPv4 only: the helper can bring IPv6
     assert_eq!(
@@ -503,7 +506,13 @@ fn a_radio_link_offers_funkbruecke_from_the_router_port() {
     let topology = Arc::new(net.builder.build());
     let view = topology.get_device_by_id(&r1).unwrap().interface_view();
     let radio = row(&view, "ether3");
-    assert_eq!(helpers(radio), [(ActionKind::Suggestion, ActionHelper::RadioBridge)]);
+    assert_eq!(
+        helpers(radio),
+        [
+            (ActionKind::Suggestion, ActionHelper::RadioBridge),
+            (ActionKind::Remove, ActionHelper::RadioDisconnect),
+        ]
+    );
     assert_eq!(radio.actions[0].interface, Some(ether3.0));
     assert_eq!(
         radio.actions[0].peer.as_ref().map(|p| (&*p.device.name, &*p.name)),

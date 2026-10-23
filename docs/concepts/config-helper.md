@@ -366,6 +366,25 @@ sie; ohne RF Role an `lab-sxt-b wlan1` setzte er `station`. Anlegen des Links, U
 Verkabeln sind nur mit Unit-Tests geprüft (`schopf_burri_gets_its_addresses` am Produktions-Export:
 drei Adressen in `172.17.0.40/29`, `ospf` auf beiden Bridges).
 
+### Richtfunk abräumen
+
+Nimmt das Netz einer Richtfunk-Strecke aus NetBox, damit „Funkbrücke“ oder eine andere
+Verbindung an ihre Stelle kann. Aufgerufen von der Richtfunk-Zeile der Interface-Ansicht („Verbindung
+entfernen“, auf dem Router wie auf dem Brückengerät), mit einem Funk-Port der Strecke.
+
+Plan (`helper::radio_disconnect`): L3-Enden sind die Bridges beider Brückengeräte und die
+Router-Ports (bzw. deren Bridge), die mit ihnen verkabelt sind. Von diesen gehen die IPv4-Adressen
+im Netz des Segments: jedes Netz auf einer Bridge eines Brückengeräts, im Transfer-Pool oder an
+mindestens zwei Enden. Eine Primary IP bricht den Plan ab (`PrimaryAddress`). Das Prefix des
+Netzes geht, wenn danach nichts mehr darin ist (wie bei „Verbindung abräumen“), `ospf` an jedem
+Ende, an dem keine andere IPv4 bleibt, und an beiden Kabeln das Label, das das andere Ende nennt.
+Kabel, Brückengeräte, ihre Bridges und die Funk-Ports bleiben. Der Wireless Link geht nur mit dem
+Schalter im Plan (`DeleteWirelessLink`, das Rückgängig legt ihn samt PSK wieder an). IPv6 bleibt:
+„Funkbrücke“ legt im Segment keine an.
+
+Nach dem Anwenden sind die Brückengeräte abgeschnitten, niemand kündigt ihre Loopback mehr an;
+ein Router auch, wenn er nur über diese Strecke erreichbar war (`cut_off`).
+
 ### Brückengeräte mit fester Adresse
 
 Heute holen sich die Brückengeräte ihre Adresse per DHCP-Client von einem der beiden Router

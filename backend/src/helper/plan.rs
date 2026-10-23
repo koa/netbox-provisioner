@@ -22,6 +22,7 @@ pub enum PlanStep {
     UpdatePort(UpdatePort),
     CreateWirelessLink(CreateWirelessLink),
     UpdateWirelessLink(UpdateWirelessLink),
+    DeleteWirelessLink(DeleteWirelessLink),
 }
 
 /// An object of NetBox or one an earlier step of the plan creates.
@@ -171,6 +172,14 @@ impl std::fmt::Debug for UpdateWirelessLink {
             .field("psk_set", &self.psk_set)
             .finish_non_exhaustive()
     }
+}
+
+/// The wireless link `id` between `a` and `b`.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct DeleteWirelessLink {
+    pub id: u32,
+    pub a: InterfaceRef,
+    pub b: InterfaceRef,
 }
 
 /// The cable at `port`, to `far` if it reaches an interface (through patch panels too).

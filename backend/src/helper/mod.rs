@@ -15,13 +15,14 @@ pub mod loopback;
 mod plan;
 pub mod poe;
 pub mod radio_bridge;
+pub mod radio_disconnect;
 pub mod routes;
 mod write;
 
 pub use plan::{
     CreateAddress, CreateCable, CreateInterface, CreatePrefix, CreateWirelessLink, DeleteAddress,
-    DeleteCable, DeletePrefix, PlanStep, SetPrimaryIp, Target, UpdateInterface, UpdatePort,
-    UpdateWirelessLink,
+    DeleteCable, DeletePrefix, DeleteWirelessLink, PlanStep, SetPrimaryIp, Target,
+    UpdateInterface, UpdatePort, UpdateWirelessLink,
 };
 pub use write::{FieldChange, NetboxUndone, NetboxWritten, undo, write};
 
@@ -58,6 +59,8 @@ pub enum Helper {
     Poe(poe::PoeInput),
     /// two radio bridge devices between two routers, for the AP's device
     RadioBridge(radio_bridge::RadioBridgeInput),
+    /// a radio link's network out of NetBox, the wireless link if asked
+    RadioDisconnect(radio_disconnect::RadioDisconnectInput),
 }
 
 impl Helper {
@@ -70,6 +73,7 @@ impl Helper {
             Helper::CustomerNet(input) => customer_net::plan(topology, input).await,
             Helper::Poe(input) => poe::plan(topology, input),
             Helper::RadioBridge(input) => radio_bridge::plan(topology, input).await,
+            Helper::RadioDisconnect(input) => radio_disconnect::plan(topology, input),
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -97,6 +101,9 @@ impl Helper {
             Helper::RadioBridge(input) => topology
                 .get_device_by_id(&DeviceId(input.ap))
                 .ok_or(Error::UnknownDevice(input.ap)),
+            Helper::RadioDisconnect(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
         }
     }
 }
@@ -333,6 +340,13 @@ impl NetboxPlan {
                     for end in [&create.a, &create.b] {
                         if let Some(interface) = interface(json, &end.id.to_string()) {
                             interface["wireless_link"] = link.clone();
+                        }
+                    }
+                }
+                PlanStep::DeleteWirelessLink(delete) => {
+                    for end in [&delete.a, &delete.b] {
+                        if let Some(interface) = interface(json, &end.id.to_string()) {
+                            interface["wireless_link"] = Value::Null;
                         }
                     }
                 }

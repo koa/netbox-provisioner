@@ -118,7 +118,8 @@ computed again; a new check is a new finding. The order of the rules and what a 
 `interfaces_of_netbox_example` writes the export's rows to `target/netbox-example/interfaces.txt`.
 The device page shows them in `components::interfaces`, each row with its actions (one may be
 another device's helper: „Funkbrücke“ from a router port is the cabled bridge device's,
-`HelperPreset::RadioFrom`, so `HelperFlow` embeds that device's helper); its query
+`HelperPreset::RadioFrom`, so `HelperFlow` embeds that device's helper; „Richtfunk abräumen“,
+`helper::radio_disconnect`, starts from the row's radio only); its query
 hands the findings on to the type of `Findings` by serializing them (`rows::findings`), so
 `components::findings` words them. The live checks of the rows are `device/interface_live.rs`
 (`AccessibleDevice.interfaceLive`, a query of its own after the view, grouped onto the same

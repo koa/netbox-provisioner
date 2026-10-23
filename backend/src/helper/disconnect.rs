@@ -83,31 +83,7 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
             interface: interface_ref(interface),
         }));
     }
-    // a link's own prefix, not a pool's: gone once the addresses freed were all it had
-    let mut prefixes = Vec::new();
-    for (ip, _) in &freed {
-        let Some(prefix) = ip.prefix() else { continue };
-        let (Some(net), Some(data)) = (prefix.prefix(), prefix.data()) else {
-            continue;
-        };
-        let only_freed = data
-            .addresses
-            .iter()
-            .all(|id| freed.iter().any(|(ip, _)| ip.id() == *id));
-        if data.pool.is_none()
-            && Some(net) == ip.net().map(|net| net.trunc())
-            && data.children.is_empty()
-            && data.ranges.is_empty()
-            && only_freed
-            && !prefixes.contains(&prefix.id().0)
-        {
-            prefixes.push(prefix.id().0);
-            plan.steps.push(PlanStep::DeletePrefix(DeletePrefix {
-                id: prefix.id().0,
-                prefix: net.to_string().into(),
-            }));
-        }
-    }
+    delete_prefixes(&mut plan, freed.iter().map(|(ip, _)| *ip));
     if let (Some(_), Some(far)) = (port.cable(), &far) {
         for (end, other) in [(&port, far), (far, &port)] {
             let other_name = other.device().map(|device| device.name().to_string());
@@ -146,9 +122,41 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
     Ok(plan)
 }
 
+/// The prefixes of the addresses `freed` that are a link's own, not a pool's: gone once these
+/// addresses were all they had.
+pub(super) fn delete_prefixes<'a>(
+    plan: &mut NetboxPlan,
+    freed: impl IntoIterator<Item = &'a IpAddressAccess> + Clone,
+) {
+    let mut prefixes = Vec::new();
+    for ip in freed.clone() {
+        let Some(prefix) = ip.prefix() else { continue };
+        let (Some(net), Some(data)) = (prefix.prefix(), prefix.data()) else {
+            continue;
+        };
+        let only_freed = data
+            .addresses
+            .iter()
+            .all(|id| freed.clone().into_iter().any(|ip| ip.id() == *id));
+        if data.pool.is_none()
+            && Some(net) == ip.net().map(|net| net.trunc())
+            && data.children.is_empty()
+            && data.ranges.is_empty()
+            && only_freed
+            && !prefixes.contains(&prefix.id().0)
+        {
+            prefixes.push(prefix.id().0);
+            plan.steps.push(PlanStep::DeletePrefix(DeletePrefix {
+                id: prefix.id().0,
+                prefix: net.to_string().into(),
+            }));
+        }
+    }
+}
+
 /// Whether `device` has a link to a router besides `end`: a port cabled to one, with an IPv4
 /// address in a network with it.
-fn has_other_link(device: &crate::topology::access::device::DeviceAccess, end: &InterfaceAccess) -> bool {
+pub(super) fn has_other_link(device: &crate::topology::access::device::DeviceAccess, end: &InterfaceAccess) -> bool {
     device.interfaces().iter().filter(|i| i.id() != end.id()).any(|interface| {
         interface.connected_interfaces().iter().any(|far| {
             far.device().is_some_and(|d| d.has_routeros())
@@ -162,7 +170,7 @@ fn has_other_link(device: &crate::topology::access::device::DeviceAccess, end: &
     })
 }
 
-fn address_text(ip: &IpAddressAccess) -> Box<str> {
+pub(super) fn address_text(ip: &IpAddressAccess) -> Box<str> {
     ip.net().map(|net| net.to_string()).unwrap_or_default().into()
 }
 

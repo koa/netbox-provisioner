@@ -20,6 +20,7 @@ query NetboxPlan($helper: Helper!){
             ... on UpdatePort{ interface{ name device{ name } } name rfRole rfRoleBefore bridge }
             ... on CreateWirelessLink{ a{ name device{ name } } b{ name device{ name } } ssid }
             ... on UpdateWirelessLink{ a{ name device{ name } } b{ name device{ name } } ssid ssidBefore pskSet }
+            ... on DeleteWirelessLink{ a{ name device{ name } } b{ name device{ name } } }
         }
     }
 }

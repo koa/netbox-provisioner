@@ -263,6 +263,10 @@ fn action(action: interface_view::Action, device: u32) -> Option<Action> {
             },
         ),
         ActionHelper::DISCONNECT => (HelperKind::Disconnect, HelperPreset::Disconnect(interface?)),
+        ActionHelper::RADIO_DISCONNECT => (
+            HelperKind::RadioDisconnect,
+            HelperPreset::RadioDisconnect(interface?),
+        ),
         ActionHelper::CUSTOMER_NET => (
             HelperKind::CustomerNet,
             HelperPreset::CustomerNet(match (action.vlan, interface) {

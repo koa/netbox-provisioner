@@ -218,6 +218,17 @@ pub fn delete_cable(port: (&str, &str), far: Option<(&str, &str)>) -> String {
 pub fn delete_address(address: &str, device: &str, interface: &str) -> String {
     format!("Adresse {address} auf {device} {interface} löschen")
 }
+pub fn delete_wireless_link(a: (&str, &str), b: (&str, &str)) -> String {
+    format!("Wireless Link {} {} – {} {} löschen", a.0, a.1, b.0, b.1)
+}
+pub const RADIO_DISCONNECT: &str = "Richtfunk abräumen";
+pub const RADIO_DISCONNECT_HINT: &str = "Nimmt das Netz einer Richtfunk-Strecke aus NetBox: \
+    die IPv4-Adressen des Segments an den beiden Router-Ports und den beiden Bridges, sein Prefix, \
+    wenn danach nichts mehr darin ist, ospf und an beiden Kabeln die Labels, die das andere Ende \
+    nennen. Kabel, Brückengeräte und Funk bleiben; den Wireless Link nur auf Wunsch. \
+    Nach dem Anwenden sind die Brückengeräte nicht mehr erreichbar.";
+pub const CHOOSE_RADIO_DISCONNECT: &str = "Über die Richtfunk-Zeile der Interfaces starten.";
+pub const RADIO_DISCONNECT_LINK: &str = "Wireless Link auch löschen";
 pub fn delete_prefix(prefix: &str) -> String {
     format!("Prefix {prefix} löschen")
 }
