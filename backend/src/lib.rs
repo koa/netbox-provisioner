@@ -16,9 +16,6 @@ pub mod topology;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    /// the apply script didn't answer in time; it goes on on the device, the apply checks it
-    #[error("no answer from the apply script within {0:?}; it goes on on the device")]
-    ScriptNoAnswer(std::time::Duration),
     /// the batch stopped before anything was applied, because of `0`
     #[error("the batch stopped before applying anything: {0} failed")]
     BatchStopped(Box<str>),

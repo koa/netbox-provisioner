@@ -148,9 +148,6 @@ impl From<&Error> for ErrorInfo {
                 ("OSPF_NEIGHBORS_MISSING", vec![("neighbors", neighbors.to_string())])
             }
             Error::Busy(device) => ("BUSY", vec![("device", device.to_string())]),
-            Error::ScriptNoAnswer(waited) => {
-                ("SCRIPT_NO_ANSWER", vec![("seconds", waited.as_secs().to_string())])
-            }
             Error::BatchStopped(device) => ("BATCH_STOPPED", vec![("device", device.to_string())]),
             Error::ScriptNotStarted(waited) => {
                 ("SCRIPT_NOT_STARTED", vec![("seconds", waited.as_secs().to_string())])

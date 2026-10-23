@@ -2,7 +2,7 @@
 use crate::device::batch::{Applying, Timing, run};
 use crate::{
     Error,
-    device::ros::graphql::FallbackLeftReason,
+    device::ros::{fallback::Pending, graphql::FallbackLeftReason},
     job::{Event, Log},
 };
 use std::{
@@ -27,6 +27,9 @@ struct Fake {
     radio: bool,
     /// its device mode has the scheduler off: no fallback
     no_scheduler: bool,
+    /// where its fallback stands at the first check that reaches it
+    pending: Option<Pending>,
+    seen: Arc<Mutex<Option<Instant>>>,
     calls: Arc<Mutex<Vec<String>>>,
     delays: Arc<Mutex<Vec<Duration>>>,
 }
@@ -60,13 +63,19 @@ impl Applying for Fake {
             self.call(if back { "release" } else { "keep" });
         }
     }
-    async fn arm(&self, delay: Duration, _radio_wait: Option<Duration>, _log: &Log) -> Result<bool, Error> {
+    async fn arm(
+        &self,
+        delay: Duration,
+        _window: Duration,
+        _radio_wait: Option<Duration>,
+        _log: &Log,
+    ) -> Result<bool, Error> {
         self.delays.lock().unwrap().push(delay);
         self.call("arm");
         self.fails(self.arm_fails)?;
         Ok(!self.no_scheduler)
     }
-    async fn write(&self, _lead: Duration, _log: &Log) -> Result<(), Error> {
+    async fn write(&self, _lead: Duration, _rearm: Option<Duration>, _log: &Log) -> Result<(), Error> {
         self.call("write");
         self.fails(self.write_fails)
     }
@@ -85,6 +94,11 @@ impl Applying for Fake {
     async fn check(&self, _settled: Instant) -> Option<Result<Box<str>, Error>> {
         // a script not started leaves its device as it was
         (!self.lost).then(|| Ok(if self.left || self.start_fails { "set x".into() } else { "".into() }))
+    }
+    fn pending(&self) -> Option<(Pending, Instant)> {
+        // seen at the first check: a device's fallback fires at one time, however often asked
+        let seen = *self.seen.lock().unwrap().get_or_insert_with(Instant::now);
+        self.pending.map(|pending| (pending, seen))
     }
     async fn last_look(&self) -> Result<Box<str>, Error> {
         if self.lost { Err(Error::MissingCredentials) } else { Ok("".into()) }
@@ -111,6 +125,7 @@ async fn batch(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>, V
         logs.clone(),
         Timing {
             delay: Duration::from_millis(300),
+            window: Duration::from_millis(100),
             lead: Duration::from_millis(5),
             start: Duration::from_millis(100),
             poll: Duration::from_millis(10),
@@ -211,6 +226,7 @@ async fn a_radio_change_lengthens_every_fallback() {
         vec![Log::new("near"), Log::new("far")],
         Timing {
             delay: Duration::from_millis(300),
+            window: Duration::from_millis(100),
             lead: Duration::from_millis(5),
             start: Duration::from_millis(100),
             poll: Duration::from_millis(10),
@@ -289,4 +305,29 @@ async fn a_device_in_line_is_left_out() {
     let (calls, results, _) = batch(Fake { nothing_to_do: true, ..Fake::default() }, Fake::default()).await;
     assert_eq!(calls, ["plan near", "plan far", "arm far", "write far", "start far", "stop far"]);
     assert!(results.iter().all(Result::is_ok), "{results:?}");
+}
+
+/// A device whose fallback fired takes the batch back at once, without waiting for one still
+/// not reached until the fallbacks' delay.
+#[tokio::test]
+async fn a_fired_fallback_ends_the_wait() {
+    let started = Instant::now();
+    let near = Fake { pending: Some(Pending::Gone), left: true, ..Fake::default() };
+    let (calls, results, logs) = batch(near, Fake { lost: true, ..Fake::default() }).await;
+    assert!(started.elapsed() < Duration::from_millis(250), "{:?}", started.elapsed());
+    assert!(!calls.iter().any(|call| call.starts_with("stop")), "{calls:?}");
+    assert!(results.iter().all(Result::is_err));
+    assert_eq!(left(&logs[1]), [FallbackLeftReason::NotReached]);
+}
+
+/// The earliest fallback a reached device reports bounds the wait for the others: its script
+/// brought it forward.
+#[tokio::test]
+async fn a_fallback_brought_forward_bounds_the_wait() {
+    let started = Instant::now();
+    let near = Fake { pending: Some(Pending::Armed(Some(Duration::from_millis(50)))), ..Fake::default() };
+    let (calls, results, _) = batch(near, Fake { lost: true, ..Fake::default() }).await;
+    assert!(started.elapsed() < Duration::from_millis(250), "{:?}", started.elapsed());
+    assert!(!calls.iter().any(|call| call.starts_with("stop")), "{calls:?}");
+    assert!(results.iter().all(Result::is_err));
 }

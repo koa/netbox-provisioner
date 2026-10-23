@@ -27,7 +27,7 @@ query JobEvents($id: Int!, $after: Int){
                 ... on FirmwareUpgrade { current upgrade running }
                 ... on UpdateDone { from to }
                 ... on ApplyPlanned { script }
-                ... on FallbackArmed { delay radioWait }
+                ... on FallbackArmed { delay window radioWait }
                 ... on FallbackUnavailable { deviceMode }
                 ... on ApplyRunning { timeout error { ...Problem } }
                 ... on ApplyWritten { lead }
@@ -35,6 +35,8 @@ query JobEvents($id: Int!, $after: Int){
                 ... on ApplyChecked { remaining error { ...Problem } }
                 ... on FallbackStopped { after }
                 ... on FallbackLeft { firesIn reason error { ...Problem } }
+                ... on FallbackFired { after }
+                ... on ScriptProgress { lines section done errorLine error probe probeAnswered lost back rearmed afterFallback marks }
                 ... on RadiosReprovisioned { menu count error { ...Problem } }
                 ... on BatchApply { devices }
                 ... on BatchStopped { device }

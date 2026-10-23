@@ -60,10 +60,18 @@ pub mod event {
     pub const FALLBACK_STOPPED: &str =
         "Fallback gestoppt: das Gerät ist mit der neuen Konfiguration erreichbar";
 
-    pub fn fallback_armed(seconds: u64, radio_wait: Option<u64>) -> String {
-        let text = format!(
-            "Backup gespeichert: das Gerät lädt es in {seconds} s, wenn der Provisioner es danach nicht erreicht"
-        );
+    /// `window` after the script's end, `seconds` without one
+    pub fn fallback_armed(seconds: u64, window: Option<u64>, radio_wait: Option<u64>) -> String {
+        let text = match window {
+            Some(window) => format!(
+                "Backup gespeichert: das Gerät lädt es, wenn der Provisioner es nicht innert \
+                 {window} s nach dem Ende des Skripts erreicht (kommt das Skript nicht zu Ende, \
+                 nach {seconds} s)"
+            ),
+            None => format!(
+                "Backup gespeichert: das Gerät lädt es in {seconds} s, wenn der Provisioner es danach nicht erreicht"
+            ),
+        };
         match radio_wait {
             Some(wait) => format!(
                 "{text}; {} min davon, weil sich ein Funk ändert: auf einem DFS-Kanal prüft der AP \
@@ -80,13 +88,84 @@ pub mod event {
              die alte Konfiguration zurück"
         )
     }
-    pub fn script_stopped(error: &str, seconds: u64) -> String {
+    pub fn script_running(seconds: u64) -> String {
         format!(
-            "Das Skript hat angehalten ({error}), die Zeilen davor sind angewendet; wartet bis zu {seconds} s auf das Gerät"
+            "Das Skript läuft auf dem Gerät; ist es durch, hat der Provisioner {seconds} s, das \
+             Gerät wieder zu erreichen"
         )
     }
-    pub fn script_running(seconds: u64) -> String {
-        format!("Das Skript läuft auf dem Gerät; wartet bis zu {seconds} s, bis es NetBox entspricht")
+    pub fn script_not_started(error: &str) -> String {
+        format!("Das Skript liess sich nicht starten ({error}), nichts ist angewendet")
+    }
+    pub fn fallback_fired(seconds: u64) -> String {
+        format!(
+            "Fallback ausgelöst ({seconds} s nach dem Backup): das Gerät hat das Backup von vor \
+             dem Anwenden geladen und startet mit der Konfiguration von vorher neu"
+        )
+    }
+    pub const MARKS: &str = "Marken des Skripts auf dem Gerät (Uhrzeit des Geräts)";
+
+    /// How far the script got (`ScriptProgress`).
+    pub struct Progress<'a> {
+        pub lines: u32,
+        pub section: Option<u32>,
+        pub done: bool,
+        pub error: Option<(u32, &'a str)>,
+        /// the provisioner's address, and whether it answered before the script
+        pub probe: Option<(&'a str, bool)>,
+        pub lost: &'a [i64],
+        pub back: &'a [i64],
+        pub rearmed: Option<u64>,
+        pub after_fallback: bool,
+    }
+    pub fn script_progress(p: Progress) -> Vec<String> {
+        let mut out = Vec::new();
+        let read = if p.after_fallback { "Nach dem Fallback vom Gerät gelesen: " } else { "" };
+        out.push(match (p.done, p.error) {
+            (_, Some((line, error))) => format!(
+                "{read}Das Skript hat in Zeile {line} von {} angehalten: {error}; die Zeilen \
+                 davor sind angewendet",
+                p.lines
+            ),
+            (true, None) => format!("{read}Das Skript ist durchgelaufen ({} Zeilen)", p.lines),
+            (false, None) => match p.section {
+                Some(section) => format!(
+                    "{read}Das Skript ist nicht zu Ende gekommen: zuletzt begonnen ab Zeile \
+                     {section} von {}",
+                    p.lines
+                ),
+                None => format!("{read}Das Skript hat keine Zeile begonnen"),
+            },
+        });
+        match p.probe {
+            None => out.push(
+                "Ohne Ping zum Provisioner: das Gerät kennt seine Adresse nicht".into(),
+            ),
+            Some((address, false)) => out.push(format!(
+                "Der Provisioner ({address}) antwortete schon vor dem Skript nicht auf Ping, \
+                 die Marken sagen nichts darüber, wo das Gerät abgeschnitten wurde"
+            )),
+            Some((address, true)) if p.lost.is_empty() => out.push(format!(
+                "Der Provisioner ({address}) antwortete nach jeder Zeile auf Ping"
+            )),
+            Some((address, true)) => {
+                for (index, lost) in p.lost.iter().enumerate() {
+                    let back = match p.back.get(index) {
+                        Some(back) => format!(", wieder ab Zeile {back}"),
+                        None => ", bis zum Ende nicht wieder".into(),
+                    };
+                    out.push(format!(
+                        "Ping vom Gerät zum Provisioner ({address}) ohne Antwort nach Zeile \
+                         {lost}{back}; der Ping hinkt etwas nach, die Ursache ist diese Zeile \
+                         oder eine kurz davor"
+                    ));
+                }
+            }
+        }
+        if let Some(seconds) = p.rearmed {
+            out.push(format!("Am Ende hat das Skript den Fallback auf {seconds} s verkürzt"));
+        }
+        out
     }
     pub fn not_checked(error: &str) -> String {
         format!("Das Gerät lässt sich nicht prüfen: {error}")
@@ -132,6 +211,7 @@ pub mod event {
         Cancelled,
         NotReached,
         NotStopped(Option<String>),
+        Due,
         NotApplied,
         BatchIncomplete,
         Other(&'a str),
@@ -144,6 +224,9 @@ pub mod event {
                 format!("Fallback lässt sich nicht stoppen ({error})")
             }
             FallbackLeft::NotStopped(None) => "Fallback lässt sich nicht stoppen".into(),
+            FallbackLeft::Due => {
+                "Erreichbar, aber der Fallback löst gleich aus, zu spät, um ihn zu stoppen".into()
+            }
             FallbackLeft::NotApplied => {
                 "Erreichbar, aber die Änderungen sind nicht angewendet, der Fallback bleibt".into()
             }
@@ -153,7 +236,7 @@ pub mod event {
             FallbackLeft::Other(other) => format!("Fallback bleibt ({other})"),
         };
         format!(
-            "{reason}: das Gerät lädt in etwa {seconds} s das Backup von vor dem Anwenden und startet neu"
+            "{reason}: das Gerät lädt spätestens in etwa {seconds} s das Backup von vor dem Anwenden und startet neu"
         )
     }
 

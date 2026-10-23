@@ -19,7 +19,8 @@ Ordnung. Nach einem **Neustart des Servers** geht es dagegen schief:
    womöglich auf einem anderen Gerät.
 3. **Das Gerät ist mitten im Vorgang stehen geblieben.** Was der Job auf dem Gerät vorbereitet
    hat, läuft weiter, ohne dass jemand es erfährt:
-   - Anwenden: Der Fallback-Scheduler lädt nach `apply_fallback_seconds` (180 s) das Backup und
+   - Anwenden: Der Fallback-Scheduler lädt `apply_fallback_seconds` (90 s) nach dem Ende des
+     Skripts (spätestens 120 s später) das Backup und
      startet das Gerät neu, auch wenn die Änderung gut war.
    - Update: Der Scheduler `netbox-provisioner-update-fallback` aktiviert nach
      `update_fallback_seconds` (900 s) die alte Partition und startet neu. Das Gerät läuft danach

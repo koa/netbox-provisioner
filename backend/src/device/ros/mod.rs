@@ -40,6 +40,7 @@ use std::{
 pub(crate) mod dhcp;
 pub mod fallback;
 pub mod graphql;
+pub mod progress;
 pub(crate) mod hw_facts;
 pub mod l2;
 pub(crate) mod radio;

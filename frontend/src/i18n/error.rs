@@ -125,10 +125,6 @@ pub fn server(problem: &ServerProblem) -> String {
             p("cause")
         ),
         "BUSY" => format!("Auf {} läuft schon ein Auftrag", p("device")),
-        "SCRIPT_NO_ANSWER" => format!(
-            "Keine Antwort vom Skript innerhalb von {} s; es läuft auf dem Gerät weiter",
-            p("seconds")
-        ),
         "BATCH_STOPPED" => format!("Gemeinsames Anwenden abgebrochen: {} ging nicht", p("device")),
         "BATCH_INCOMPLETE" => format!(
             "Nicht durch: {}; alle Geräte laden die Konfiguration von vorher",

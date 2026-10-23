@@ -270,22 +270,29 @@ first connection); the proxy's own device is reached at the proxy's address
 Nothing is written without `allow_apply`, checked by the `WritesAllowed` guard of every
 mutation that writes (the UI asks `allowApply` and disables apply, setup, update and reboot
 with a hint instead of failing on the click); `apply` runs the diff as a script on
-the device (`apply_mutations_via_script`), so it completes even when it changes the path the
+the device, started in the background, so it completes even when it changes the path the
 connection takes, then diffs again: a script stops at its first error, so whatever is left is
-what failed. That error comes back from `/system/script/run` (`ApplyRunning.error`) with the lines
-before it applied, so it is no reason to take the fallback away early (it once was, on lab-core).
-Before the script the device saves a backup and schedules loading it after
-`apply_fallback_seconds` (180; `device::ros::fallback`); reaching the device again, even with a
-part left, takes both away, otherwise it reboots into the config from before (CHR test
-`fallback_is_stopped_or_restores`). A diff that never gets empty after an apply usually means a field RouterOS accepts
+what failed. The script leaves marks in a file on the device as it goes (`device::ros::progress`,
+`ScriptProgress`): each menu begun, its end or the line it stopped at with RouterOS' message, and
+the lines after which a ping from the device to the provisioner (the address most of its API
+sessions come from, behind the SOCKS proxy the proxy's) stopped or came back. The ping lags
+about one line behind the change that cut it. The file is under `flash/` where the device has
+that disk (its root is in RAM then, the marks were gone after a reboot on lab-w60-a), so the
+marks outlast the fallback's reboot and say where an apply cut the device off. Before the script
+the device saves a backup and schedules loading it (`device::ros::fallback`) after
+`SCRIPT_LIMIT` (120 s) plus `apply_fallback_seconds` (90); the script's end (or its error)
+brings it forward to `apply_fallback_seconds` from then. The apply reads the marks every few
+seconds: once through and reached, it takes the fallback away (not within 10 s of it firing,
+`fallback::DUE`, read from the scheduler's `next-run` and the device's clock, `FallbackLeft`
+`DUE`), then diffs. Reached, even with a part left, the fallback goes; not reached, the apply
+waits for the device to be back with the config from before (`FallbackFired`) and shows the
+marks then (CHR tests `fallback_is_stopped_or_restores`, `marks_outlast_the_fallback`). A device
+without marks of the run counts as through after 90 s, as before them. A diff that never gets empty after an apply usually means a field RouterOS accepts
 but doesn't report in that state (see the `k`/`o` notes in mikrotik-model's CLAUDE.md); compare
 with the device's own `print` (`examples/print_device.rs`, read-only) and on a CHR before
-changing defaults. The apply waits up to 90 s for its script to answer
-(`ApplyRunning.error` `SCRIPT_NO_ANSWER` after that), then checks the device as usual: a script
-that cuts its own connection goes on on the device, and waiting longer would outlast the
-fallback. A plan that changes a radio (`/interface/wireless…`, `/interface/wifi…`,
+changing defaults. A plan that changes a radio (`/interface/wireless…`, `/interface/wifi…`,
 `PlannedApply::radio_wait`) gets a fallback 24 min longer (`RADIO_RESTART`, shown in
-`FallbackArmed.radioWait`): a 5 GHz AP with `frequency=auto` picks its channel again and on a
+`FallbackArmed.radioWait`, part of the window after the script): a 5 GHz AP with `frequency=auto` picks its channel again and on a
 DFS channel touching the weather radar band listens 10 min before it sends (lab-sxt-a: a new
 SSID and key on 5680 MHz at 80 MHz, the link back after 10.5 min; before, the fallback fired
 first). Radar meanwhile moves it to a channel that listens again (berghof-haus-stall: radar on
@@ -301,7 +308,9 @@ anwenden“, `components::batch_apply`, with the other ends of its wireless link
 devices of the sites to add, `DeviceAccess.batchCandidates`, each picked device's changes
 shown before): one job per device (`job::start_all`, none if one is busy; cancelling one
 cancels all; the page shows all jobs as equals, side by side where there is room,
-`div.batch-jobs`), and one fallback for all, firing at one moment. Each step runs on all
+`div.batch-jobs`), and one fallback for all, firing at one moment; each script brings its own
+forward to the window at its end, which is about the same moment, and the batch waits no longer
+than the earliest fallback a reached device reports, nor once one has fired. Each step runs on all
 devices at once, the next only once all are through: planning (it also opens a second
 connection, used up to the start, so no login falls between the steps), then fallback and
 script on each (`write_script`, `ApplyWritten`: the script starts with `:delay 15s`), then
@@ -312,7 +321,7 @@ through before the first changes cut a connection; a started script is never sto
 operator's call). Starting the scripts one after the other failed in the lab: the AP of the
 60 GHz link cut the way to the station before its script could start, and the station,
 reached over another way, came back unchanged. So the fallbacks are taken away only once every
-device is reached and in line; otherwise none is (`BatchIncomplete` with the unreached and the
+device is reached, its script through (by its marks) and in line; otherwise none is (`BatchIncomplete` with the unreached and the
 not applied, `FallbackLeftReason::NotApplied`/`BatchIncomplete`), and all load their config
 from before together: the operator rolled a radio link back by hand when its far end couldn't
 be reached after a single apply. A script that didn't start leaves its device not in line,

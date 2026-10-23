@@ -229,7 +229,8 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
             Event::ApplyRunning(running) => running.error.is_some(),
             Event::ApplyStarted(started) => started.error.is_some(),
             Event::ApplyChecked(checked) => checked.error.is_some() || !checked.remaining.trim().is_empty(),
-            Event::FallbackLeft(_) => true,
+            Event::FallbackLeft(_) | Event::FallbackFired(_) => true,
+            Event::ScriptProgress(progress) => progress.error.is_some() || !progress.done,
             _ => false,
         });
         if incomplete {
@@ -285,6 +286,11 @@ fn script(title: &str, script: &str) -> Html {
 
 /// One entry per event, consecutive console output in one.
 fn items(events: &[JobEventsJobEvents]) -> Vec<Html> {
+    // the lines the marks of the script count
+    let planned = events.iter().rev().find_map(|event| match &event.event {
+        Event::ApplyPlanned(planned) => Some(planned.script.as_str()),
+        _ => None,
+    });
     let mut items = Vec::new();
     let mut at = 0;
     while at < events.len() {
@@ -298,7 +304,10 @@ fn items(events: &[JobEventsJobEvents]) -> Vec<Html> {
             console(&text)
         } else {
             at += 1;
-            describe(event)
+            match &event.event {
+                Event::ScriptProgress(progress) => script_progress(progress, planned),
+                _ => describe(event),
+            }
         };
         items.push(html!(<li>
             <span class="job-time">{ elapsed(event.at) }</span>
@@ -306,6 +315,50 @@ fn items(events: &[JobEventsJobEvents]) -> Vec<Html> {
         </li>));
     }
     items
+}
+
+/// How far the script got: what it says, the lines it stopped at or lost the provisioner
+/// after (with the two before, from `planned`), and the marks as the device has them.
+fn script_progress(progress: &job_events::JobEventsJobEventsEventOnScriptProgress, planned: Option<&str>) -> Html {
+    let lines = t::event::script_progress(t::event::Progress {
+        lines: progress.lines as u32,
+        section: progress.section.map(|s| s as u32),
+        done: progress.done,
+        error: progress
+            .error_line
+            .zip(progress.error.as_deref())
+            .map(|(line, error)| (line as u32, error)),
+        probe: progress.probe.as_deref().map(|probe| (probe, progress.probe_answered)),
+        lost: &progress.lost,
+        back: &progress.back,
+        rearmed: progress.rearmed.map(seconds),
+        after_fallback: progress.after_fallback,
+    });
+    let at: Vec<i64> = progress.error_line.iter().chain(&progress.lost).copied().collect();
+    let shown = planned.map(|planned| {
+        let script: Vec<&str> = planned.lines().collect();
+        at.iter()
+            .map(|&line| {
+                let from = (line - 2).max(1);
+                (from..=line)
+                    .filter_map(|n| script.get(n as usize - 1).map(|text| format!("{n:>4}  {text}")))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n…\n")
+    });
+    html! {<>
+        { for lines.into_iter().map(|line| html!(<p>{ line }</p>)) }
+        if let Some(shown) = shown.filter(|shown| !shown.is_empty()) {
+            <CodeBlock><CodeBlockCode>{ shown }</CodeBlockCode></CodeBlock>
+        }
+        <details>
+            <summary>{ t::event::MARKS }</summary>
+            <pre>{ progress.marks.clone() }</pre>
+        </details>
+    </>}
 }
 
 /// Scrolled to its end, where new output comes (`column-reverse` in `local.css`).
@@ -330,14 +383,19 @@ fn describe(event: &JobEventsJobEvents) -> Html {
     let text = match &event.event {
         Event::ApplyPlanned(planned) if planned.script.trim().is_empty() => e::NOTHING_TO_DO.into(),
         Event::ApplyPlanned(planned) => return script(t::SCRIPT, &planned.script),
-        Event::FallbackArmed(armed) => {
-            e::fallback_armed(seconds(armed.delay), armed.radio_wait.map(seconds))
-        }
+        Event::FallbackArmed(armed) => e::fallback_armed(
+            seconds(armed.delay),
+            armed.window.map(seconds),
+            armed.radio_wait.map(seconds),
+        ),
         Event::FallbackUnavailable(unavailable) => e::fallback_unavailable(&unavailable.device_mode),
         Event::ApplyRunning(running) => match &running.error {
-            Some(error) => e::script_stopped(&problem(error), seconds(running.timeout)),
+            Some(error) => e::script_not_started(&problem(error)),
             None => e::script_running(seconds(running.timeout)),
         },
+        Event::FallbackFired(fired) => e::fallback_fired(seconds(fired.after)),
+        // with the script's lines, in `items`
+        Event::ScriptProgress(_) => String::new(),
         Event::ApplyChecked(checked) => match &checked.error {
             Some(error) => e::not_checked(&problem(error)),
             None if checked.remaining.trim().is_empty() => e::IN_LINE.into(),
@@ -352,6 +410,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
                     e::FallbackLeft::NotStopped(left.error.as_ref().map(problem))
                 }
                 FallbackLeftReason::NOT_APPLIED => e::FallbackLeft::NotApplied,
+                FallbackLeftReason::DUE => e::FallbackLeft::Due,
                 FallbackLeftReason::BATCH_INCOMPLETE => e::FallbackLeft::BatchIncomplete,
                 FallbackLeftReason::Other(other) => e::FallbackLeft::Other(other),
             },

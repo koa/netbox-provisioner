@@ -39,8 +39,10 @@ pub struct Settings {
     /// The RouterOS channel preselected for updates (`long-term` (default), `stable`,
     /// `testing`, `development`).
     pub routeros_channel: Option<crate::device::update::Channel>,
-    /// Seconds after which a device loads the backup from before an apply, unless the
-    /// provisioner reached it again with the new config (default 180).
+    /// Seconds after the end of the apply script within which the provisioner has to reach
+    /// the device again, or it loads the backup from before (default 90). The script brings
+    /// the fallback forward to this at its end; one that never ends has `SCRIPT_LIMIT` (120 s)
+    /// more.
     apply_fallback_seconds: Option<u64>,
     /// Seconds after a boot after which a device updated with two partitions switches back to
     /// the RouterOS from before, unless the provisioner reached it (default 900). Longer than
@@ -80,7 +82,7 @@ impl MikrotikCredentials {
 
 impl Settings {
     pub fn apply_fallback(&self) -> std::time::Duration {
-        std::time::Duration::from_secs(self.apply_fallback_seconds.unwrap_or(180))
+        std::time::Duration::from_secs(self.apply_fallback_seconds.unwrap_or(90))
     }
     pub fn update_fallback(&self) -> std::time::Duration {
         std::time::Duration::from_secs(self.update_fallback_seconds.unwrap_or(900))

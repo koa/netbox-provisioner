@@ -26,10 +26,14 @@ use crate::{
     device::{
         AccessibleDevice,
         radio_hold::RadioHold,
-        ros::graphql::{
-            APPLY_TIMEOUT, ApplyStarted, FALLBACK_MARGIN, FallbackLeftReason, PlannedApply,
-            arm_fallback_on, emit_checked, fallback_left, remove_script, script_running,
-            start_script, write_script,
+        ros::{
+            fallback::Pending,
+            graphql::{
+                APPLY_TIMEOUT, ApplyStarted, FALLBACK_MARGIN, FallbackLeftReason, PlannedApply,
+                SCRIPT_LIMIT, ScriptProgress, arm_fallback_on, emit_checked, fallback_left,
+                fallback_window, look_on, remove_script, script_running, start_script,
+                write_script,
+            },
         },
     },
     graphql::connect_for_job,
@@ -77,9 +81,10 @@ const LEAD: Duration = Duration::from_secs(15);
 const START_TIME: Duration = Duration::from_secs(10);
 
 /// The fallback delay of a batch: the single apply's after the scripts start; longer by the
-/// time a radio takes to come back when one of them changes one.
+/// time a radio takes to come back when one of them changes one. Each script brings its
+/// fallback forward to the window at its end.
 fn fallback_delay() -> Duration {
-    CONFIG.apply_fallback() + PREPARE_TIME + LEAD
+    SCRIPT_LIMIT + CONFIG.apply_fallback() + PREPARE_TIME + LEAD
 }
 
 /// The steps of one device's apply, as the batch runs them ([`run`]); a device reached over
@@ -95,24 +100,35 @@ pub(crate) trait Applying: Send + Sync {
     /// Restores what [`Self::hold`] suspended once the fallback won't fire (`back`), else leaves
     /// it to the scheduler entries.
     fn release(&self, back: bool, log: &Log) -> impl Future<Output = ()> + Send;
-    /// Sets up the fallback, firing in `delay`, `radio_wait` of it for a radio
-    /// (`FallbackArmed`); `false` where the device mode doesn't allow one (`FallbackUnavailable`).
+    /// Sets up the fallback, firing in `delay`, `radio_wait` of it for a radio, or `window`
+    /// after the script's end (`FallbackArmed`); `false` where the device mode doesn't allow
+    /// one (`FallbackUnavailable`).
     fn arm(
         &self,
         delay: Duration,
+        window: Duration,
         radio_wait: Option<Duration>,
         log: &Log,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
-    /// Leaves the script on the device, applying `lead` after it starts (`ApplyWritten`).
-    fn write(&self, lead: Duration, log: &Log) -> impl Future<Output = Result<(), Error>> + Send;
+    /// Leaves the script on the device, applying `lead` after it starts and bringing the
+    /// fallback forward to `rearm` at its end (`ApplyWritten`).
+    fn write(
+        &self,
+        lead: Duration,
+        rearm: Option<Duration>,
+        log: &Log,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
     /// Starts the script; `true` once it runs.
     fn start(&self) -> impl Future<Output = Result<bool, Error>> + Send;
     /// Whether the started script runs (by now).
     fn running(&self) -> impl Future<Output = Result<bool, Error>> + Send;
     /// Takes the script away before it is started (also one never written).
     fn remove(&self) -> impl Future<Output = Result<(), Error>> + Send;
-    /// What is left once in line, or once `settled` passed; `None` while not, or not reached.
+    /// What is left once the script is through (`ScriptProgress`) and the device in line, or
+    /// once `settled` passed; `None` while not, or not reached.
     fn check(&self, settled: Instant) -> impl Future<Output = Option<Result<Box<str>, Error>>> + Send;
+    /// Where the fallback stood at the last check that reached the device, and when that was.
+    fn pending(&self) -> Option<(Pending, Instant)>;
     /// A last look at a device [`Self::check`] never found in line.
     fn last_look(&self) -> impl Future<Output = Result<Box<str>, Error>> + Send;
     /// Takes the fallback away (`FallbackStopped`, or `FallbackLeft`).
@@ -138,12 +154,40 @@ struct Reached {
     planned: PlannedApply,
     control: RawDevice<SimpleResult>,
     hold: Mutex<Option<RadioHold>>,
+    /// the run of the script, to read its marks
+    run: Mutex<Option<Box<str>>>,
+    /// what the last check found
+    seen: Mutex<Seen>,
+    /// the device's job, for the marks found by a check
+    log: Log,
+}
+
+#[derive(Default)]
+struct Seen {
+    pending: Option<(Pending, Instant)>,
+    /// `ScriptProgress` emitted
+    shown: bool,
 }
 
 impl Linked {
     fn reached(&self) -> &Reached {
         self.reached.as_ref().expect("planned before")
     }
+    /// The marks of the script (`ScriptProgress`), once.
+    fn show(&self, progress: Option<&crate::device::ros::progress::Progress>, after_fallback: bool) {
+        let reached = self.reached();
+        let mut seen = lock(&reached.seen);
+        if let Some(progress) = progress
+            && !seen.shown
+        {
+            seen.shown = true;
+            reached.log.emit(ScriptProgress::of(progress, after_fallback));
+        }
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 impl Applying for Linked {
@@ -158,6 +202,9 @@ impl Applying for Linked {
                 planned,
                 control,
                 hold: Mutex::new(None),
+                run: Mutex::new(None),
+                seen: Mutex::new(Seen::default()),
+                log: log.clone(),
             });
         }
         Ok(something)
@@ -183,12 +230,20 @@ impl Applying for Linked {
             None => {}
         }
     }
-    async fn arm(&self, delay: Duration, radio_wait: Option<Duration>, log: &Log) -> Result<bool, Error> {
-        arm_fallback_on(&self.reached().control, delay, radio_wait, log).await
+    async fn arm(
+        &self,
+        delay: Duration,
+        window: Duration,
+        radio_wait: Option<Duration>,
+        log: &Log,
+    ) -> Result<bool, Error> {
+        arm_fallback_on(&self.reached().control, delay, window, radio_wait, log).await
     }
-    async fn write(&self, lead: Duration, log: &Log) -> Result<(), Error> {
+    async fn write(&self, lead: Duration, rearm: Option<Duration>, log: &Log) -> Result<(), Error> {
         let reached = self.reached();
-        write_script(&reached.control, &reached.planned, lead, log).await
+        let run = write_script(&reached.control, &reached.planned, lead, rearm, Some(log)).await?;
+        *lock(&reached.run) = Some(run);
+        Ok(())
     }
     async fn start(&self) -> Result<bool, Error> {
         start_script(&self.reached().control).await
@@ -200,10 +255,39 @@ impl Applying for Linked {
         remove_script(&self.reached().control).await
     }
     async fn check(&self, settled: Instant) -> Option<Result<Box<str>, Error>> {
-        self.reached().link.check_applied(settled).await
+        let reached = self.reached();
+        let run = lock(&reached.run).clone()?;
+        let look = tokio::time::timeout(Duration::from_secs(25), async {
+            look_on(&reached.link.connect_again::<SimpleResult>().await?, &run).await
+        })
+        .await
+        .ok()?
+        .ok()?;
+        lock(&reached.seen).pending = Some((look.pending, Instant::now()));
+        // without marks (a file the device couldn't write) through once settled, as before them
+        let through = match &look.progress {
+            Some(progress) => progress.finished(),
+            None => Instant::now() >= settled,
+        };
+        if !through {
+            return None;
+        }
+        self.show(look.progress.as_ref(), false);
+        reached.link.check_applied(settled).await
+    }
+    fn pending(&self) -> Option<(Pending, Instant)> {
+        lock(&self.reached().seen).pending
     }
     async fn last_look(&self) -> Result<Box<str>, Error> {
-        self.reached().link.remaining_diff().await
+        let reached = self.reached();
+        let run = lock(&reached.run).clone();
+        if let Some(run) = run
+            && let Ok(raw) = reached.link.connect_again::<SimpleResult>().await
+            && let Ok(look) = look_on(&raw, &run).await
+        {
+            self.show(look.progress.as_ref(), look.pending == Pending::Gone);
+        }
+        reached.link.remaining_diff().await
     }
     async fn stop(&self, fires: Instant, delay: Duration, log: &Log) -> Result<(), Error> {
         self.reached().link.stop_fallback(fires, delay, log).await
@@ -214,11 +298,12 @@ impl Applying for Linked {
     }
 }
 
-/// The times of a batch: the fallback's delay, how long a script waits once started and how
-/// long starting it may take, how often and how long it looks for the devices, and how long
-/// before the fallback fires it stops.
+/// The times of a batch: the fallback's delay and its window after a script's end, how long a
+/// script waits once started and how long starting it may take, how often and how long it
+/// looks for the devices, and how long before the fallback fires it stops.
 pub(crate) struct Timing {
     pub delay: Duration,
+    pub window: Duration,
     pub lead: Duration,
     pub start: Duration,
     pub poll: Duration,
@@ -247,6 +332,7 @@ pub async fn apply(devices: Vec<DeviceAccess>, logs: Vec<Log>) -> Vec<Result<(),
         logs,
         Timing {
             delay: fallback_delay(),
+            window: fallback_window(None),
             lead: LEAD,
             start: START_TIME,
             poll: Duration::from_secs(3),
@@ -370,15 +456,21 @@ pub(crate) async fn run<M: Applying>(
     // them may keep the others off as long
     let radio_wait = running.iter().filter_map(|m| m.member.radio_wait()).max();
     let delay = timing.delay + radio_wait.unwrap_or_default();
+    let window = timing.window + radio_wait.unwrap_or_default();
     let fires = Instant::now() + delay;
     let prepared = join_all(running.iter().map(|m| async {
         let armed = async {
             cancelled(&logs)?;
-            m.member.arm(fires.saturating_duration_since(Instant::now()), radio_wait, &m.log).await
+            m.member
+                .arm(fires.saturating_duration_since(Instant::now()), window, radio_wait, &m.log)
+                .await
         }
         .await;
         match armed {
-            Ok(fallback) => (Some(fallback), m.member.write(timing.lead, &m.log).await),
+            Ok(fallback) => {
+                let rearm = fallback.then_some(window);
+                (Some(fallback), m.member.write(timing.lead, rearm, &m.log).await)
+            }
             Err(error) => (None, Err(error)),
         }
     }))
@@ -424,9 +516,10 @@ pub(crate) async fn run<M: Applying>(
     // from here on the scripts apply without the provisioner: cancelled, the fallbacks stay
     sleep(timing.lead.saturating_sub(start.elapsed())).await;
 
-    // until every device is reached and checked, or the fallbacks are about to fire
+    // until every device is reached and checked, or the fallbacks are about to fire: the
+    // latest, or the earliest a device reached said, as each script brings its own forward
     let settled = Instant::now() + timing.settle;
-    let give_up = fires.checked_sub(timing.margin).unwrap_or(fires);
+    let latest = fires.checked_sub(timing.margin).unwrap_or(fires);
     loop {
         sleep(timing.poll).await;
         if cancelled(&logs).is_err() {
@@ -445,7 +538,22 @@ pub(crate) async fn run<M: Applying>(
                 member.checked = checked;
             }
         }
-        if running.iter().all(|m| m.checked.is_some()) || Instant::now() >= give_up {
+        let pending: Vec<_> = running.iter().filter_map(|m| m.member.pending()).collect();
+        // one that fired takes the batch back, waiting on the others is for nothing
+        let fired = pending.iter().any(|(pending, _)| *pending == Pending::Gone);
+        let give_up = pending
+            .iter()
+            .filter_map(|(pending, at)| match pending {
+                Pending::Armed(Some(fires_in)) => {
+                    let at = *at + *fires_in;
+                    Some(at.checked_sub(timing.margin).unwrap_or(at))
+                }
+                _ => None,
+            })
+            .chain([latest])
+            .min()
+            .unwrap_or(latest);
+        if running.iter().all(|m| m.checked.is_some()) || fired || Instant::now() >= give_up {
             break;
         }
         let waiting: Vec<_> = running

@@ -711,6 +711,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-graphql",
+ "chrono",
  "config 0.15.11",
  "encoding_rs",
  "env_logger",
