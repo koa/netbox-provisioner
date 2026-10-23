@@ -103,20 +103,13 @@ nicht antwortet, wird nicht schneller wiederholt als die anderen.
 
 | Zustand | Bedingung |
 |---|---|
-| grün | erreichbar, Router-ID im LSDB, keine Health-Warnung |
+| grün | erreichbar, Router-ID im LSDB |
 | rot | weder erreichbar noch im LSDB |
-| orange | erreichbar mit Problemen: Health-Warnung, nur über OSPF sichtbar aber API nicht erreichbar (oder umgekehrt), übrig gebliebener Fallback-Scheduler |
+| orange | nur über OSPF sichtbar, aber API nicht erreichbar (oder umgekehrt) |
 
-Warnungen aus Health, generisch nach Einheit und Name, mit Grenzwerten in der Konfiguration:
-
-- Temperatur (`C`): ab 70 °C orange, ab 85 °C rot.
-- `*-state` ungleich `ok`: orange.
-- Spannung mehr als 10 % unter dem gewohnten Wert: orange.
-- `cpu-load` über 80 % in drei Abfragen nacheinander: orange.
-
-Ein Netzteil, das absichtlich nicht angeschlossen ist (`psu1-state=fail` auf lab-core), würde so
-dauerhaft orange leuchten. Abhilfe: In NetBox die Power Ports des Geräts modellieren, und ein
-`psuN-state=fail` gilt nur als Warnung, wenn Power Port N verkabelt ist.
+Die Farbe hängt nur an der Erreichbarkeit. Health und Ressourcen werden nicht beurteilt, sondern
+angezeigt (beim Überfahren und in der Seitenleiste): keine Grenzwerte, keine Warnung. So leuchtet
+auch ein absichtlich nicht angeschlossenes Netzteil (`psu1-state=fail` auf lab-core) nicht.
 
 „Gerät entspricht NetBox“ gehört nicht zum Zustand: Den Diff zu berechnen kostet zu viel für alle
 30 s. Ein Abzeichen zeigt den zuletzt gesehenen Diff-Zustand von der Geräteseite.
@@ -149,17 +142,11 @@ dauerhaft orange leuchten. Abhilfe: In NetBox die Power Ports des Geräts modell
 
 ### Positionen speichern
 
-Der Provisioner hat keine Datenbank. Möglich sind:
-
-1. **Datei** `network-layout.json` neben `config.yaml` (Einstellung `layout_file`). Einfach; gilt
-   für alle Benutzer.
-2. **Custom Field** `map_position` (JSON) am Device in NetBox. Überlebt jede Neuinstallation des
-   Provisioners, braucht aber ein NetBox-Token mit Schreibrecht. Der Provisioner schreibt heute nie
-   nach NetBox.
-3. **Browser** (`localStorage`): pro Benutzer und Browser, geht verloren.
-
-Vorschlag: Datei (1). Positionen sind Darstellung, keine Netzdaten, und der Provisioner bleibt
-gegenüber NetBox nur lesend.
+- **Offizielles Layout in NetBox:** ein Custom Field `map_position` (JSON) am Device. Ein Admin
+  „publiziert“ seine Anordnung dorthin (über die Schreibrechte der Helfer, `allow_netbox_write`).
+- **Eigene Änderungen im Browser:** Jeder Benutzer startet mit dem offiziellen Layout; was er
+  verschiebt, bleibt in seinem Browser (`localStorage`) und lässt sich auf das offizielle
+  zurücksetzen.
 
 ## Backend
 
@@ -170,7 +157,7 @@ gegenüber NetBox nur lesend.
   wo `RosValue` lebt, mit Tests aus den hier gemessenen Zeilen.
 - GraphQL: `Query.networkState(siteId)` → Knoten (Gerät, Zustand, Gründe, Health, Ressourcen,
   PoE) und Kanten (Ports, Art, Zustand v2/v3, PoE-Leistung), plus `measuredAt`. Mutation
-  `saveNodePosition(deviceId, x, y)`.
+  `publishLayout(siteId, positions)` (nur Admins, schreibt `map_position`).
 - Alles nur lesend; `allow_apply` ist dafür nicht nötig.
 
 ## Alternative: Log-Aggregator (spätere Stufe)
@@ -190,11 +177,12 @@ Historie, ergänzend.
 2. `networkState` mit Kanten und Knoten nur aus dem LSDB, SVG-Ansicht mit festem Layout.
 3. Gerätedaten: Health, Ressourcen, Seitenleiste.
 4. PoE-Kanten und -Budget.
-5. Verschiebbare Knoten, gespeicherte Positionen.
+5. Verschiebbare Knoten, Positionen im Browser, Publizieren des offiziellen Layouts.
 
-## Zu entscheiden
+## Entschieden (2026-10-23)
 
-- Wo die Positionen liegen (Vorschlag: Datei).
-- Grenzwerte für Health: global in `config.yaml`, oder pro Gerät über den NetBox Config Context?
-  Vorschlag: global, mit Config Context als spätere Übersteuerung.
-- Power Ports in NetBox modellieren, damit `psuN-state` richtig bewertet wird?
+- Positionen: Admins **publizieren** das offizielle Layout in ein NetBox Custom Field; andere
+  nehmen es oder speichern eigene Änderungen **im Browser**.
+- Health wird **nicht beurteilt**, nur angezeigt (Hover oder Popup). Die Farben hängen nur an der
+  Erreichbarkeit.
+- Power Ports müssen dafür nicht modelliert werden (entfällt mit dem Punkt davor).

@@ -30,7 +30,7 @@ Status: Konzept, nicht umgesetzt. User Journey „Überwachung“ aus
 | Strecken und Router | OSPF-LSDB eines Routers ([Netz-Karte](network-map.md)) | 5 s |
 | Funk: Signal, CCQ/MCS, Rate | `/interface/wireless/registration-table`, `w60g` monitor, auf AP-Seite | 60 s |
 | Health: Spannung, Temperatur | `/system/health` | 5 min |
-| Uplink-Qualität: Verlust und Latenz zu einem Ziel im Internet | `/ping` vom NAT-Router, oder `/tool netwatch` dort | 60 s |
+| Uplink-Qualität: Verlust und Latenz zum Gateway des Uplinks | `/ping` vom `internet`-Router auf sein Default-Gateway | 60 s |
 | Uptime, Neustarts (Watchdog ausgelöst?) | `/system/resource` | 5 min |
 
 Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
@@ -42,7 +42,8 @@ Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
   speichert keine Historie.
 - **UI, Admin:** eine Seite „Zustand“ mit den Befunden in Reihenfolge der Dringlichkeit: Router
   unerreichbar, Strecke tot, Strecke schlecht (Signal, Verlust), Neustart in den letzten 24 h,
-  Temperatur hoch, PoE-Port ohne Last. Jeder Eintrag verlinkt das Gerät. Die Karte zeigt
+  PoE-Port ohne Last. Health (Spannung, Temperatur) wird angezeigt, aber nicht beurteilt; wer
+  Grenzwerte will, setzt sie als Alarm in Prometheus. Jeder Eintrag verlinkt das Gerät. Die Karte zeigt
   dasselbe räumlich.
 - **UI, Anwohner:** eine Zeile pro eigenem Netz: „Internet: gut (12 ms, 0 % Verlust)“, und der
   Weg dorthin als Kette der Strecken mit ihrem Zustand. Gerechnet über den Baum aus
@@ -64,7 +65,8 @@ Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
 3. Funk, Health, Uplink-Ping.
 4. Anwohner-Ansicht, sobald es [Self-Service](self-service.md) gibt.
 
-## Zu entscheiden
+## Entschieden (2026-10-23)
 
-- Alarme im Provisioner selbst oder nur über Prometheus/Alertmanager? Vorschlag: nur Prometheus.
-- Ziel des Uplink-Pings (je NAT-Router eins, als Config Context)?
+- Alarme **nur über Prometheus/Alertmanager**, keine im Provisioner.
+- Der Uplink-Ping geht an das **Gateway des Uplinks**, kein konfiguriertes Ziel.
+- Health wird nicht beurteilt, nur angezeigt (wie in der [Netz-Karte](network-map.md)).

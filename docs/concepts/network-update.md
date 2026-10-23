@@ -6,7 +6,8 @@ Baut auf dem Server-Log (Events, Jobs) auf, das erledigt ist, und profitiert vom
 
 ## Ziel
 
-Ein Knopf pro Site (später pro Tenant oder für alles): „Alle Geräte auf `long-term` bringen“.
+Ein Knopf für eine Auswahl von Sites (eine, mehrere, alle): „Alle Geräte auf `long-term`
+bringen“.
 Der Provisioner plant die Reihenfolge, zeigt den Plan, führt ihn nach Bestätigung aus und hält
 beim ersten Problem an. Pro Gerät läuft das bestehende `update::update`; neu ist nur, was
 *zwischen* den Geräten passiert.
@@ -35,7 +36,9 @@ auf CHR 7.24.5 (`watchdog_is_restored_or_restores_itself`).
 
 ### Wegegraph
 
-- **Knoten:** die Geräte mit RouterOS der Site, dazu der Management-Proxy als Wurzel.
+- **Knoten:** die Geräte mit RouterOS der gewählten Sites, dazu der Management-Proxy als Wurzel.
+  Ein Weg über eine Site ausserhalb der Auswahl zählt mit, deren Geräte werden aber nicht
+  aktualisiert.
 - **Kanten:** Kabel und Funkbrücken (Wireless Links) zwischen Ports mit OSPF, aus NetBox, wie
   sie `bootstrap::plans` und `PowerChain::of` schon durchlaufen. Dazu nur die Kanten, die laut
   OSPF gerade wirklich oben sind (siehe [Netz-Ansicht](network-map.md), gleiche Datenquelle). Ein
@@ -103,21 +106,22 @@ Geräten mit 3 Architekturen sind das wenige Dutzend MB statt einige hundert.
 
 ## Backend
 
-- `JobKind::Rollout`, ein Job pro Site, neben den bestehenden Jobs pro Gerät. Er startet für jedes
+- `JobKind::Rollout`, ein Job pro Rollout (über die gewählten Sites), neben den bestehenden Jobs
+  pro Gerät. Er startet für jedes
   Gerät einen normalen `JobKind::Update`-Job, sodass die Geräteseite das Update wie heute zeigt
   und abbrechen kann. Die Regel „ein Job pro Gerät“ bleibt, ein Gerät mit laufendem Job wartet im
   Rollout.
 - Events des Rollouts: `RolloutPlanned { waves }`, `RolloutDevice { device, job, state }`,
   `RolloutPaused { reason }`, `RolloutDone { updated, skipped, failed }`.
-- Mutationen: `planRollout(siteId, channel)` (nur lesend, gibt den Plan zurück),
-  `startRollout(siteId, channel)`, `continueRollout(jobId)`, `skipRolloutDevice(jobId, deviceId)`,
+- Mutationen: `planRollout(siteIds, channel)` (nur lesend, gibt den Plan zurück),
+  `startRollout(siteIds, channel)`, `continueRollout(jobId)`, `skipRolloutDevice(jobId, deviceId)`,
   `cancelJob` wie bisher.
 - `device/power.rs` wird zu `device/dependency.rs`: Leases wie heute, die Prüfung zusätzlich
   über den Wegegraphen.
 
 ## Frontend
 
-Eine Seite pro Site, „Netz aktualisieren“: Kanal wählen, Plan ansehen (Tabelle: Gerät, Version
+Eine Seite „Netz aktualisieren“: Sites und Kanal wählen, Plan ansehen (Tabelle: Gerät, Version
 jetzt → Ziel, Architektur, Fallback ja/nein, Welle, Grund für die Position), starten. Während er
 läuft: dieselbe Tabelle mit Zustand pro Gerät und Link auf den Job des Geräts. Später die
 [Netz-Ansicht](network-map.md) mit eingefärbten Knoten.
@@ -131,11 +135,8 @@ läuft: dieselbe Tabelle mit Zustand pro Gerät und Link auf den Job des Geräts
 - Lab: ein Rollout auf eine Version, die die Geräte schon haben, nur mit Paketabgleich. Ein echter
   Versionswechsel erst, wenn ein neues `long-term` erscheint.
 
-## Zu entscheiden
+## Entschieden (2026-10-23)
 
-- Pilot automatisch wählen oder vom Benutzer anklicken lassen? Vorschlag: automatisch
-  vorschlagen, im Plan änderbar.
-- Wartungsfenster (Start zu einer festen Zeit)? Vorschlag: vorerst nicht, der Rollout braucht
-  ohnehin Aufsicht, und der Provisioner hält keinen Zustand über einen Neustart.
-- Gilt der Rollout pro Site oder über alle Sites eines Tenants? Vorschlag: pro Site anfangen, weil
-  der Management-Proxy heute pro Provisioner eingestellt ist.
+- Den **Piloten schlägt der Provisioner vor**, im Plan änderbar.
+- **Kein Wartungsfenster** vorerst: Start von Hand, unter Aufsicht.
+- Ein Rollout gilt für **mehrere Sites** (frei gewählt), nicht nur für eine.

@@ -85,8 +85,8 @@ Schalter; ein Interface mit `nat` ohne `internet` ist ein Befund.
 - **Port-Forwarding** aus NetBox **Services** (IPAM → Services: Protokoll, Ports, IP-Adressen,
   Gerät). Ein Service an der **inneren** IPv4 eines Geräts im Kunden-Netz, mit Tag `forward`,
   ergibt auf dem Perimeter-Router, hinter dem das Netz liegt,
-  `dstnat in-interface=<Uplink> protocol=… dst-port=<aussen> action=dst-nat to-addresses=<innen> to-ports=<port>`.
-  Gilt aussen ein anderer Port, steht er in einem Custom Field `public_port`. Der Router ist der
+  `dstnat in-interface=<Uplink> protocol=… dst-port=<port> action=dst-nat to-addresses=<innen>`.
+  Aussen gilt derselbe Port wie innen; ein Umsetzen von Ports gibt es nicht. Der Router ist der
   mit `nat`-Uplink auf dem Weg aus dem Netz hinaus; gibt es keinen eindeutigen, ist das ein Befund.
 - **IPv6-Freigaben** aus demselben Modell: ein Service an einer IPv6-Adresse mit Tag `forward`
   ergibt auf jedem Perimeter-Router `forward accept dst-address=<adresse> protocol=… dst-port=…`.
@@ -147,18 +147,22 @@ IPv6 des Netzes zusammen.
 
 ## Reihenfolge
 
-1. Prüfen, was ein Apply heute mit den vorhandenen Regeln eines Firewall-Routers tut (Vorschau).
-   Falls es sie entfernt: zuerst Regeln ohne NetBox-Ursprung behalten (z.B. nur Einträge mit
-   einem Kommentar-Präfix verwalten), bevor irgendetwas anderes kommt.
+1. Nur eigene Regeln verwalten: Jede generierte Regel trägt einen Kommentar mit festem Präfix,
+   nur solche ändert oder entfernt der Provisioner; fremde bleiben stehen. Die eigenen stehen
+   vor den fremden. Das kommt vor allem anderen (heute werden fremde Regeln entfernt, siehe
+   oben).
 2. Perimeter-Firewall (`internet`): Grundregeln, SSH mit Bruteforce-Schutz, Zugang des
    Provisioners. CHR-Test mit Uplink, Router und Client, auch: das Apply sperrt sich nicht aus.
 3. Port-Forwarding IPv4 und IPv6-Freigaben aus Services.
 4. Interne Firewall `guest`, dann `protected`, je mit CHR-Test (Gast erreicht das Internet und
    die Freigabe, sonst nichts; geschütztes Netz nur von der Freigabe).
 
-## Zu entscheiden
+## Entschieden (2026-10-23)
 
-- Neues Tag `internet` für jedes Interface zum Internet, oder genügt `nat` (dann bleibt ein
-  Uplink ohne NAT ungeschützt)? Vorschlag: `internet`.
-- `public_port` als Custom Field am Service, oder ein zweiter Service am Router?
-- Freigaben der internen Firewall als Custom Fields am Interface, oder als eigene Prefix-Tags?
+- Eigene Regeln erkennt der Provisioner am **Kommentar-Präfix**; fremde bleiben stehen.
+- Ein Interface zum Internet trägt das neue Tag **`internet`**; `nat` setzt es voraus, `nat` ohne
+  `internet` ist ein Befund.
+- Port-Forwarding setzt **keine Ports um**: aussen gilt derselbe Port wie innen, kein
+  `public_port`.
+- Freigaben der internen Firewall als **Custom Fields am Interface** (`guest_access`,
+  `protected_access`), dazu Services mit Tag `guest`/`protected`.

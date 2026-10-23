@@ -65,7 +65,7 @@ RouterOS-Skriptsprache: nur, was der Provisioner selbst schreibt.
 2. Stufe 1 für die Menüs mit Modell (Scheduler, Script, Watchdog, File).
 3. Stufe 2 für die mac-telnet-Befehle der Ersteinrichtung (dort ist das Quoting am heikelsten).
 
-## Zu entscheiden
+## Entschieden (2026-10-23)
 
-- Lohnt Stufe 2 überhaupt, oder reichen Tests auf die gerenderten Skripte? Vorschlag: zuerst
-  Tests für alle heutigen Skripte; Stufe 2 nur, wenn danach noch Fehler durchrutschen.
+- **Vorerst nur Stufe 1** (getypte Befehle aus dem Modell). Stufe 2 überzeugt noch nicht und
+  ist nicht geplant.

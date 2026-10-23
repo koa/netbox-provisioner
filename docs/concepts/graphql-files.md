@@ -105,8 +105,8 @@ Bleibt es bei graphql_client:
 2. Die übrigen Dateien mit mehreren Abfragen.
 3. Fragmente erst, wenn eines in zwei Abfragen gebraucht wird.
 
-## Zu entscheiden
+## Entschieden (2026-10-23)
 
-- cynic oder Dateien aufteilen? Vorschlag: cynic.
-- Bei Dateien: Unterordner pro Bereich jetzt schon oder erst bei Bedarf? Vorschlag: erst bei
-  Bedarf.
+- **cynic** statt die Dateien aufzuteilen. Umstieg Abfrage für Abfrage; der Fork von
+  graphql_client fällt am Ende weg. Die Crate `netbox-model` wird entfernt, die NetBox-Abfrage
+  des Backends neu gegen das aktuelle Schema geschrieben.

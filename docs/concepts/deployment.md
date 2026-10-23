@@ -127,8 +127,8 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
 4. Release-Workflow und Aufräumen der Snapshots.
 5. Optional: rustls statt OpenSSL, dann `scratch`/musl.
 
-## Zu entscheiden
+## Entschieden (2026-10-23)
 
-- Nix-Image oder Containerfile? Vorschlag nach dem Versuch: Nix (kein `/bin`, Inhalt in der CI
-  prüfbar, dieselbe Toolchain wie im Lab).
-- Welcher Cluster? Rollout per Argo CD mit dem Helm-Chart.
+- Das Image baut **Nix**.
+- Der Provisioner liefert **Image und Helm-Chart**; die Konfiguration des Clusters (Argo CD,
+  Secrets, Ingress) macht der Betreiber von Hand.

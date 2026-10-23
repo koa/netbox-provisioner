@@ -194,12 +194,10 @@ verbindet.
   `partitions=true` zurück, und die Konfiguration und alle OSPF-Nachbarn sind wieder da. Auf der
   CHR geht nur der Kaltstart.
 
-## Zu entscheiden
+## Entschieden (2026-10-23)
 
-- Für PoE-gespeiste Geräte (SXT, ap1, ap2) könnte der Provisioner den Kaltstart selbst auslösen:
-  den PoE-Ausgang am speisenden Switch kurz aus- und wieder einschalten (`PowerChain` kennt ihn).
-  Dann braucht es dort niemanden vor Ort.
-- Updates ohne jeden Fallback (16 MiB, kein erreichbarer Nachbar) nur mit Bestätigung erlauben?
-  Vorschlag: ja, mit Bestätigung.
-- Zählt „gleiche OSPF-Nachbarn `Full`“ als Erfolgsbedingung auch dann, wenn schon vorher einer
-  fehlte? Vorschlag: nur die Nachbarn, die vorher `Full` waren.
+- Den Kaltstart eines PoE-gespeisten Geräts löst der Provisioner **auf Knopfdruck** aus (PoE am
+  speisenden Port aus und wieder ein, mit Bestätigung), nie von selbst.
+- Ein Update **ganz ohne Fallback** (16 MiB, kein erreichbarer Nachbar) braucht eine
+  ausdrückliche **Bestätigung**.
+- Nach einem Update müssen die OSPF-Nachbarn wieder `Full` sein, **die vorher `Full` waren**.

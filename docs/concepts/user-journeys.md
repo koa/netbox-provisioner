@@ -64,8 +64,7 @@ automatisch Anforderungen; der Mensch entscheidet beim Übernehmen.
 4. Diff in Worten.
 5. Strecken-Test im Feld.
 
-## Zu entscheiden
+## Entschieden (2026-10-23)
 
-- Die Diff-Grösse aller Geräte einer Site braucht pro Gerät eine Verbindung und das Lesen der
-  ganzen Konfiguration. Live beim Öffnen (langsam bei vielen Geräten) oder als Job im
-  Hintergrund mit Zwischenstand? Vorschlag: Job.
+- Die Abweichung aller Geräte einer Site rechnet ein **Job im Hintergrund**, die Seite zeigt den
+  Zwischenstand.
