@@ -10,12 +10,11 @@ Status: **offen**, **in Arbeit**, **erledigt**.
 
 ## Reihenfolge
 
-Vorschlag, noch nicht entschieden:
+1. B1, B2, B3, B4, B5, B6, B7, B8, B10
+2. C12
+3. D1-D5
 
-1. A1–A4 (Sicherheit)
-2. B1, B2, B3, B4, B8, B10 (klein)
-3. C1 (Perimeter-Firewall, baut auf A1 auf)
-4. danach nach Priorität: D1, D2 und C12 bringen im Alltag am meisten, C6 braucht der Betrieb
+Dann schauen wir weiter
 
 ## Entscheidungen
 
