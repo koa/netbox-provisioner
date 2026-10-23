@@ -1,5 +1,6 @@
 use crate::device::ros::l2::{EndpointNameGenerator, KeptNames, L2Setup, NameGenerator};
 use crate::device::ros::{
+    following_renames,
     CapsManDeviceDataCurrent, CapsManDeviceDataTarget, WifiDeviceDataCurrent,
     WifiDeviceDataTarget,
 };
@@ -181,7 +182,14 @@ impl DeviceCfg {
         Ok(())
     }
     pub fn generate_mutations(&self) -> Result<Box<[ResourceMutation<'_>]>, Error> {
-        let mut mutations = self.base_target.generate_mutations(&self.base_current)?.into_vec();
+        // owned: the device as it is after the renames lives only here
+        let current = following_renames(&self.base_target, &self.base_current, &self.radio_renames());
+        let mut mutations = self
+            .base_target
+            .generate_mutations(&current)?
+            .into_iter()
+            .map(ResourceMutation::into_owned)
+            .collect::<Vec<_>>();
         // `/interface/wifi` before `/interface/wireless`: radios a removed `wifi-qcom-ac` left
         // give their names back to the `wlan<N>` taking them (the sort keeps this order)
         if let (Some(target), Some(current)) = (&self.wifi_target, &self.wifi_current) {
@@ -197,6 +205,26 @@ impl DeviceCfg {
             mutations.extend(target.generate_mutations(current)?);
         }
         Ok(mutations.into())
+    }
+    /// The radios the plan renames, old name to new (`following_renames`).
+    fn radio_renames(&self) -> Vec<(AsciiString, AsciiString)> {
+        let wifi = self.wifi_target.as_ref().zip(self.wifi_current.as_ref()).into_iter().flat_map(
+            |(target, current)| {
+                current.wifi.iter().filter_map(|radio| {
+                    let new = &target.wifi.get(&radio.default_name)?.name;
+                    (new != &radio.data.name).then(|| (radio.data.name.clone(), new.clone()))
+                })
+            },
+        );
+        let wireless = self.wireless_target.as_ref().zip(self.wireless_current.as_ref()).into_iter().flat_map(
+            |(target, current)| {
+                current.wireless.iter().filter_map(|radio| {
+                    let new = &target.wireless.get(&radio.default_name.clone())?.name;
+                    (new != &radio.data.name).then(|| (radio.data.name.clone(), new.clone()))
+                })
+            },
+        );
+        wifi.chain(wireless).collect()
     }
     /// [`Self::generate_for`] with the watchdogs only on addresses that answer from the device,
     /// asked over `raw` (`keep_silent_watchdogs`): the plan and every check after the apply

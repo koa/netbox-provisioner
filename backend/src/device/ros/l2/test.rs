@@ -1874,3 +1874,42 @@ async fn dhcp_server_name_counts_ipv4_addresses_only() {
     );
 }
 
+
+/// Ports renamed in the same apply (a label that moved: `e12-buero-neben-tuere` became
+/// `e11-buero-neben-tuere`) stay in their bridge ports: RouterOS' port follows the rename.
+/// Paired by the names from before, every port looked like another and one was set onto an
+/// interface another port still held ("device already added as bridge port", 7.23.x).
+#[tokio::test]
+async fn test_renamed_ports_keep_their_bridge_ports() -> Result<(), Box<dyn Error>> {
+    let device = create_device_with_ports(1, 0, 4).await;
+    let (mut target_data, mut current) = setup_testdata(b"CRS326-24G-2S+")?;
+    target_data.generate_from(&device, KeepNameGenerator)?;
+    let old = |name: &AsciiString| AsciiString::from(format!("old-{name}").as_str());
+    for port in current.ethernet.iter_mut() {
+        port.data.name = old(&target_data.ethernet[&port.default_name].name);
+    }
+    // the device lists them in another order than the target
+    let mut ids = 0x100..;
+    current.bridge_port = target_data
+        .bridge_port
+        .iter()
+        .rev()
+        .map(|((bridge, interface), port)| InterfaceBridgePortById {
+            id: Id(ids.next().unwrap()),
+            data: InterfaceBridgePortCfg {
+                bridge: bridge.clone(),
+                interface: if interface.0.starts_with(b"ether") { old(interface) } else { interface.clone() },
+                ..port.clone()
+            },
+        })
+        .collect();
+    assert!(current.bridge_port.len() >= 4, "{:?}", current.bridge_port);
+    let current = crate::device::ros::following_renames(&target_data, &current, &[]);
+    let mutations = target_data.generate_mutations(&current)?;
+    let moved: Vec<_> = mutations
+        .iter()
+        .filter(|m| m.resource == b"interface/bridge/port" && !m.fields.is_empty())
+        .collect();
+    assert!(moved.is_empty(), "{moved:?}");
+    Ok(())
+}

@@ -166,6 +166,48 @@ mikrotik_model!(
     ),
 );
 
+/// `current` as it is once the interfaces `target` renames have their new names: what refers
+/// to them follows a rename on RouterOS, so a bridge port, a list member or a bridge VLAN on a
+/// renamed interface stays as it is instead of looking like an entry on another interface.
+/// Paired by the names from before, every port of a renamed set looked like another, and one
+/// was set onto an interface another port still held ("device already added as bridge port").
+/// `more` are renames besides the ethernet ports' (the radios'), old name to new.
+fn following_renames(
+    target: &BaseDeviceDataTarget,
+    current: &BaseDeviceDataCurrent,
+    more: &[(AsciiString, AsciiString)],
+) -> BaseDeviceDataCurrent {
+    let renames: HashMap<&AsciiString, &AsciiString> = current
+        .ethernet
+        .iter()
+        .filter_map(|port| {
+            let new = &target.ethernet.get(&port.default_name)?.name;
+            (new != &port.data.name).then_some((&port.data.name, new))
+        })
+        .chain(more.iter().map(|(old, new)| (old, new)))
+        .collect();
+    let mut current = current.clone();
+    if renames.is_empty() {
+        return current;
+    }
+    let follow = |name: &mut AsciiString| {
+        if let Some(new) = renames.get(name) {
+            *name = (*new).clone();
+        }
+    };
+    for port in current.bridge_port.iter_mut() {
+        follow(&mut port.data.interface);
+    }
+    for member in current.interface_list_member.iter_mut() {
+        follow(&mut member.data.interface);
+    }
+    for vlan in current.bridge_vlan.iter_mut() {
+        vlan.data.tagged = vlan.data.tagged.iter().cloned().map(|mut n| { follow(&mut n); n }).collect();
+        vlan.data.untagged = vlan.data.untagged.iter().cloned().map(|mut n| { follow(&mut n); n }).collect();
+    }
+    current
+}
+
 pub(crate) const CAPS_BRIDGE_NAME: &[u8; 11] = b"bridge-caps";
 /// The interface list of the ports to own devices and the free ports
 /// ([`BaseDeviceDataTarget::setup_maintenance_ports`]): `/tool mac-server` allows mac-telnet
