@@ -1081,10 +1081,16 @@ impl BaseDeviceDataTarget {
                         if dhcp_ranges.is_empty() {
                             continue;
                         }
-                        let suffix = if ip_idx == 0 {
+                        // numbered among the IPv4 addresses only: an IPv6 address before it in
+                        // NetBox (one created again first by an undo) doesn't rename the server
+                        let v4_idx = ips[..ip_idx]
+                            .iter()
+                            .filter(|(ip, _)| matches!(ip, IpNet::V4(_)))
+                            .count();
+                        let suffix = if v4_idx == 0 {
                             if_name.to_string()
                         } else {
-                            format!("{if_name}-{ip_idx}")
+                            format!("{if_name}-{v4_idx}")
                         };
                         let server_name: AsciiString = format!("dhcp-{suffix}").into();
                         let server = &mut self

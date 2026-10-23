@@ -1802,20 +1802,26 @@ async fn test_non_ether_ports_keep_their_address() -> Result<(), Box<dyn Error>>
     Ok(())
 }
 
-/// A device with the `dhcp` tag on `ether1`, which has only `address` (in a prefix of its own
-/// size, which `TopologyBuilder` makes).
-async fn dhcp_server_on(address: &str) -> DeviceAccess {
+/// A device with the `dhcp` tag on `ether1`, which has only `addresses`, in this order (each
+/// in a prefix of its own size, which `TopologyBuilder` makes).
+async fn dhcp_server_on(addresses: &[&str]) -> DeviceAccess {
     let mut builder = TopologyBuilder::default();
     let device = builder.devices.next_id();
-    let ip = builder.ip_addresses.next_id();
-    builder.ip_addresses.insert(
-        ip,
-        IpAddressData {
-            ip: address.parse().unwrap(),
-            interface: None,
-            prefix: None,
-        },
-    );
+    let ips = addresses
+        .iter()
+        .map(|address| {
+            let ip = builder.ip_addresses.next_id();
+            builder.ip_addresses.insert(
+                ip,
+                IpAddressData {
+                    ip: address.parse().unwrap(),
+                    interface: None,
+                    prefix: None,
+                },
+            );
+            ip
+        })
+        .collect::<Box<[_]>>();
     let port = builder.interfaces.next_id();
     builder.interfaces.insert(
         port,
@@ -1823,7 +1829,7 @@ async fn dhcp_server_on(address: &str) -> DeviceAccess {
             name: "ether1".into(),
             device,
             external: Some(PhysicalPortId::Ethernet(1)),
-            ips: Box::new([ip]),
+            ips,
             enable_dhcp_server: true,
             ..Default::default()
         },
@@ -1846,11 +1852,25 @@ async fn dhcp_server_on(address: &str) -> DeviceAccess {
 #[tokio::test]
 async fn dhcp_server_without_addresses_for_clients_is_left_out() {
     let (mut target, _) = setup_testdata(b"CRS326-24G-2S+").unwrap();
-    let device = dhcp_server_on("172.16.1.60/32").await;
+    let device = dhcp_server_on(&["172.16.1.60/32"]).await;
     target.generate_from(&device, KeepNameGenerator).unwrap();
     assert!(target.dhcp_v_4_server.is_empty());
     // IPv6 clients take SLAAC: a /128 there needs no pool
     let (mut target, _) = setup_testdata(b"CRS326-24G-2S+").unwrap();
-    let device = dhcp_server_on("2a02:16a:fe00:ffff::60/128").await;
+    let device = dhcp_server_on(&["2a02:16a:fe00:ffff::60/128"]).await;
     target.generate_from(&device, KeepNameGenerator).unwrap();
 }
+
+/// The DHCP server is named after its interface also with an IPv6 address before the IPv4 one
+/// in NetBox (as an undo creates them again), not numbered as the second address.
+#[tokio::test]
+async fn dhcp_server_name_counts_ipv4_addresses_only() {
+    let (mut target, _) = setup_testdata(b"CRS326-24G-2S+").unwrap();
+    let device = dhcp_server_on(&["2a02:16a:fe00:9002::1/64", "192.168.105.1/24"]).await;
+    target.generate_from(&device, KeepNameGenerator).unwrap();
+    assert_eq!(
+        target.dhcp_v_4_server.keys().map(|name| name.to_string()).collect::<Vec<_>>(),
+        ["dhcp-ether1"]
+    );
+}
+

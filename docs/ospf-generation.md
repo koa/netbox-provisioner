@@ -35,9 +35,11 @@ Die Quelle der Range ist:
   vergebenen IPs im Prefix und alle explizit nicht-DHCP-Ranges werden reserviert, der Rest des
   Adressraums (abzüglich Netz-/Broadcast-Adresse) wird als DHCP-Pool verwendet.
 
-Der Server-Name ist `dhcp-{if_name}` für die erste IP auf einer Schnittstelle, `dhcp-{if_name}-{n}`
-ab der zweiten (`ip_idx > 0`) — relevant, falls eine Schnittstelle mehrere IPv4-Adressen (und damit
-potenziell mehrere DHCP-Server) trägt. Gateway und DNS-Server der erzeugten
+Der Server-Name ist `dhcp-{if_name}` für die erste IPv4-Adresse auf einer Schnittstelle,
+`dhcp-{if_name}-{n}` ab der zweiten — relevant, falls eine Schnittstelle mehrere IPv4-Adressen (und
+damit potenziell mehrere DHCP-Server) trägt. Gezählt wird nur unter den IPv4-Adressen: eine
+IPv6-Adresse, die in NetBox davor steht (etwa nach einem Rückgängig neu angelegt), benennt den
+Server nicht um. Gateway und DNS-Server der erzeugten
 `/ip/dhcp-server/network`werden beide auf die eigene Router-IP gesetzt.
 
 ## OSPF (`setup_ospf`)
