@@ -226,3 +226,8 @@ Er kann:
 - Ports in seinem Besitz umkonfigurieren (VLAN oder AP anschliessen)
 - Zusätzliche APs anschliessen und in seine WLAN-Gruppe aufnehmen
 - Seine IP Leases sehen
+
+Konfiguration mit 2 Partitionen
+===============================
+
+Wenn ein Gerät 2 Partitionen hat, muss nach einer erfolgreichen Konfigurationsänderung die 2. Partition auch nachgezogen werden (Bei einer instabilen Stromversorgung schaltet Mikrotik manchmal automatisch auf die 2. Partition weil es fälschlicherweise ein Boot-Problem erkannt hat) 
