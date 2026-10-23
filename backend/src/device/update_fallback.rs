@@ -199,25 +199,8 @@ pub async fn ospf_up(device: &RawDevice<SimpleResult>) -> Result<BTreeSet<Box<st
 /// `TwoWay` for good, and a reboot elects anew, so one that was `Full` as DR may end there
 /// (berghof-stall-haus, 7.23.8). v2 names the DR by its address, v3 by its router ID.
 fn adjacent(rows: &[Row]) -> BTreeSet<Box<str>> {
-    let same_segment = |a: &Row, b: &Row| {
-        field(a, "instance") == field(b, "instance") && field(a, "interface") == field(b, "interface")
-    };
-    // `id` (the DR or BDR) is none, or a neighbor of the segment other than `row`
-    let another = |row: &Row, id: Option<&str>| match id {
-        None | Some("" | "0.0.0.0") => true,
-        Some(id) => rows.iter().any(|other| {
-            !std::ptr::eq(other, row)
-                && same_segment(other, row)
-                && (field(other, "address") == Some(id) || field(other, "router-id") == Some(id))
-        }),
-    };
-    rows
-        .iter()
-        .filter(|row| match field(row, "state") {
-            Some("Full") => true,
-            Some("TwoWay") => another(row, field(row, "dr")) && another(row, field(row, "bdr")),
-            _ => false,
-        })
+    rows.iter()
+        .filter(|row| is_adjacent(rows, row))
         .map(|row| {
             format!(
                 "{} {}",
@@ -227,6 +210,28 @@ fn adjacent(rows: &[Row]) -> BTreeSet<Box<str>> {
             .into()
         })
         .collect()
+}
+
+/// Whether `row` of `rows` (`/routing/ospf/neighbor`) is where OSPF leaves it (see
+/// [`adjacent`]).
+pub(crate) fn is_adjacent(rows: &[Row], row: &Row) -> bool {
+    let same_segment = |a: &Row, b: &Row| {
+        field(a, "instance") == field(b, "instance") && field(a, "interface") == field(b, "interface")
+    };
+    // `id` (the DR or BDR) is none, or a neighbor of the segment other than `row`
+    let another = |id: Option<&str>| match id {
+        None | Some("" | "0.0.0.0") => true,
+        Some(id) => rows.iter().any(|other| {
+            !std::ptr::eq(other, row)
+                && same_segment(other, row)
+                && (field(other, "address") == Some(id) || field(other, "router-id") == Some(id))
+        }),
+    };
+    match field(row, "state") {
+        Some("Full") => true,
+        Some("TwoWay") => another(field(row, "dr")) && another(field(row, "bdr")),
+        _ => false,
+    }
 }
 
 /// What of `before` isn't in `now`.

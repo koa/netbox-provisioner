@@ -164,11 +164,7 @@ impl NeighborCheck {
                             let open = self.taking_over.contains(&(device, index));
                             html! {
                                 <li>
-                                    {level_label(match finding.severity {
-                                        Severity::ERROR => Level::Error,
-                                        Severity::WARNING => Level::Warning,
-                                        Severity::HINT | Severity::Other(_) => Level::Hint,
-                                    })}
+                                    {level_label(level(&finding.severity))}
                                     <span>{links.describe(&finding.kind)}</span>
                                     if let Some(preset) = preset {
                                         if open {
@@ -207,6 +203,35 @@ fn link_preset(kind: &Kind) -> Option<LinkPreset> {
         peer_device: peer.device.id as u32,
         peer: peer.id as u32,
     })
+}
+
+/// Neighbor findings as a list, the worst first (the interface view's live checks); without
+/// taking a cable over, the row's actions do that.
+pub fn neighbor_finding_list(netbox: &str, findings: &[Finding]) -> Html {
+    let links = Links { netbox };
+    html! {
+        <ul class="finding-list">
+            { for findings.iter().map(|finding| html! {
+                <li>
+                    {level_label(level(&finding.severity))}
+                    <span>{links.describe(&finding.kind)}</span>
+                </li>
+            }) }
+        </ul>
+    }
+}
+
+/// Who the device sees, linked into NetBox.
+pub fn seen_list(netbox: &str, seen: &[Seen]) -> Html {
+    Links { netbox }.seen(seen)
+}
+
+fn level(severity: &Severity) -> Level {
+    match severity {
+        Severity::ERROR => Level::Error,
+        Severity::WARNING => Level::Warning,
+        Severity::HINT | Severity::Other(_) => Level::Hint,
+    }
 }
 
 struct Links<'a> {

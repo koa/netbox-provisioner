@@ -109,7 +109,13 @@ computed again; a new check is a new finding. The order of the rules and what a 
 `interfaces_of_netbox_example` writes the export's rows to `target/netbox-example/interfaces.txt`.
 The device page shows them in `components::interfaces`, each row with its actions; its query
 hands the findings on to the type of `Findings` by serializing them (`rows::findings`), so
-`components::findings` words them.
+`components::findings` words them. The live checks of the rows are `device/interface_live.rs`
+(`AccessibleDevice.interfaceLive`, a query of its own after the view, grouped onto the same
+rows, `DeviceAccess::interface_rows`): who the device sees (`neighbors::read`), its OSPF
+neighbors there, and the radio link's bridge devices answering a ping (`raw::answering`). An
+OSPF neighbor's interface is RouterOS' name, which for a bridge or VLAN interface is L2's
+(`bridge-link` for NetBox' `link`), so it is matched by port name, else by the addresses
+`/ip/address` has on it; never by NetBox' name alone.
 
 `device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's
 cables (`AccessibleDevice.neighborFindings`, read-only; the site page asks every device at once,

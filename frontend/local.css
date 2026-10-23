@@ -421,6 +421,20 @@ div.pf-v6-c-card.interfaces {
             margin: 0;
         }
     }
+    & div.interfaces-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--pf-t--global--spacer--sm);
+    }
+    & span.live-ok {
+        color: var(--pf-t--global--icon--color--status--success--default);
+    }
+    & span.live-failed {
+        color: var(--pf-t--global--icon--color--status--danger--default);
+    }
+    & p.live-pending, & p.live-unchecked {
+        color: var(--pf-t--global--text--color--subtle);
+    }
     & div.row-buttons {
         display: flex;
         flex-wrap: wrap;

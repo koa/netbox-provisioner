@@ -1,5 +1,8 @@
 //! The table of a task: a row per L3 interface, its findings when opened.
-use super::rows::{Action, Address, Device, Iface, Kind, RadioPath, Row, Task};
+use super::{
+    live::{self, RowLive},
+    rows::{Action, Address, Device, Iface, Kind, RadioPath, Row, Task},
+};
 use crate::{
     components::{
         findings::finding_list,
@@ -11,8 +14,8 @@ use crate::{
 };
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, Cell, CellContext, Color, Icon, Label,
-    MemoizedTableModel, MenuToggleVariant, Span, Table, TableColumn, TableEntryRenderer,
-    TableGridMode, TableHeader, TableMode, UseTableData, use_table_data,
+    MemoizedTableModel, MenuToggleVariant, Span, Spinner, SpinnerSize, Table, TableColumn,
+    TableEntryRenderer, TableGridMode, TableHeader, TableMode, UseTableData, use_table_data,
 };
 use std::rc::Rc;
 use yew::{Callback, Html, Properties, function_component, html, html_nested};
@@ -32,6 +35,7 @@ pub enum Column {
     Ipv6,
     Dhcp,
     NetboxHas,
+    Seen,
     State,
     Netbox,
     Actions,
@@ -52,6 +56,7 @@ impl Column {
             Column::Ipv6 => t::IPV6,
             Column::Dhcp => t::DHCP,
             Column::NetboxHas => t::NETBOX_HAS,
+            Column::Seen => t::SEES,
             Column::State => t::STATE,
             Column::Netbox => t::NETBOX,
             Column::Actions => t::ACTIONS,
@@ -83,7 +88,7 @@ fn columns(task: Task) -> &'static [Column] {
             Column::State,
             Column::Actions,
         ],
-        Task::Unknown => &[Column::Port, Column::NetboxHas, Column::State, Column::Actions],
+        Task::Unknown => &[Column::Port, Column::NetboxHas, Column::Seen, Column::State, Column::Actions],
     }
 }
 
@@ -92,6 +97,7 @@ pub struct Entry {
     pub row: Rc<Row>,
     /// NetBox' web UI, ending in `/`
     pub netbox: Rc<str>,
+    pub live: RowLive,
     /// written to NetBox here, the device not yet applied: opens the helper that wrote, which
     /// offers to take it back
     pub changed: Option<Callback<()>>,
@@ -181,8 +187,29 @@ impl TableEntryRenderer<Column> for Entry {
             Column::Ipv6 => customer_addresses(row, true),
             Column::Dhcp => yes(row.dhcp),
             Column::NetboxHas => netbox_has(row),
+            Column::Seen => match &self.live {
+                RowLive::Pending => html!(<Spinner size={SpinnerSize::Sm}/>),
+                RowLive::Unchecked => html!({ t::NONE }),
+                RowLive::Checked(live) if live.seen.is_empty() => html!({ t::SEES_NOBODY }),
+                RowLive::Checked(live) => {
+                    crate::components::neighbor_check::seen_list(&self.netbox, &live.seen)
+                }
+            },
             Column::State if self.changed.is_some() => changed_label(),
-            Column::State => state(row.findings.iter().map(|f| &f.severity)),
+            Column::State => {
+                let live_severities = match &self.live {
+                    RowLive::Checked(live) => live.severities(),
+                    _ => Vec::new(),
+                };
+                html! {<>
+                    {state(row.findings.iter().map(|f| &f.severity).chain(&live_severities))}
+                    { match &self.live {
+                        RowLive::Pending => html!(<>{" "}<Spinner size={SpinnerSize::Sm}/></>),
+                        RowLive::Unchecked => html!(<>{" "}{unchecked_label()}</>),
+                        RowLive::Checked(_) => Html::default(),
+                    } }
+                </>}
+            }
             Column::Netbox => html!(<a href={self.netbox_url()}
                 target="_blank" rel="noopener">{t::OPEN_IN_NETBOX}</a>),
             Column::Actions => self.menu(),
@@ -216,6 +243,7 @@ impl TableEntryRenderer<Column> for Entry {
             <div class="interface-details">
                 {changed}
                 {findings}
+                {live::details(&self.netbox, &self.live, device)}
                 <dl class="interface-facts">
                     if !row.ports.is_empty() {
                         <dt>{t::PORTS}</dt>
@@ -291,6 +319,11 @@ pub fn state<'s>(severities: impl IntoIterator<Item = &'s Severity>) -> Html {
     html!(<Label compact=true {color} {icon} {label}/>)
 }
 
+/// Checked from NetBox alone: the device couldn't be asked.
+pub fn unchecked_label() -> Html {
+    html!(<Label compact=true color={Color::Grey} label={t::WITHOUT_DEVICE.to_string()}/>)
+}
+
 /// A row written to NetBox, its device not applied yet.
 pub fn changed_label() -> Html {
     html!(<Label compact=true color={Color::Blue} icon={Icon::InfoCircle} label={t::CHANGED.to_string()}/>)
@@ -346,7 +379,7 @@ fn customer_addresses(row: &Row, v6: bool) -> Html {
 }
 
 /// A device, as a link to its page here.
-fn device(device: &Device) -> Html {
+pub fn device(device: &Device) -> Html {
     match device.site {
         Some(site) => html!(<Link<AppRoute> to={AppRoute::device(site as u32, device.id as u32)}>{&device.name}</Link<AppRoute>>),
         None => html!({ &device.name }),

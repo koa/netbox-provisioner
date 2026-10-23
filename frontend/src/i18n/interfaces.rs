@@ -136,3 +136,26 @@ pub fn flow_title(kind: Option<Kind>, helper: HelperKind, interface: Option<&str
         None => what,
     }
 }
+pub const CHECK_LIVE: &str = "Live prüfen";
+pub const LIVE_PENDING: &str = "Live-Prüfung läuft …";
+pub const LIVE_UNCHECKED: &str = "Live nicht geprüft: Gerät nicht erreichbar.";
+pub const LIVE_UNCHECKED_TITLE: &str = "Live-Prüfungen nicht möglich, nur NetBox geprüft";
+pub const WITHOUT_DEVICE: &str = "ohne Gerät";
+pub const SEES: &str = "Gerät sieht";
+pub const SEES_NOBODY: &str = "niemanden";
+pub const OSPF: &str = "OSPF";
+pub const OSPF_MISSING: &str = "kein OSPF-Nachbar:";
+pub const BRIDGES: &str = "Brückengeräte";
+pub const BRIDGE_NO_ADDRESS: &str = "ohne Primary IPv4, nicht gefragt";
+/// an OSPF neighbor's state in its instance (`default-v2`)
+pub fn ospf_state(instance: &str, state: &str) -> String {
+    format!("{state} ({instance})")
+}
+/// whether a bridge device answered a ping at `address`
+pub fn bridge_answer(address: &str, answers: bool) -> String {
+    if answers {
+        format!("antwortet an {address}")
+    } else {
+        format!("antwortet nicht an {address}")
+    }
+}

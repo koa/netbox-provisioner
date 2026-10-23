@@ -1,7 +1,8 @@
 # Konzept: Interfaces nach Aufgabe
 
-Status: Schritte 1 und 2 umgesetzt (Zuordnung und Ansicht, `topology/interfaces.rs`,
-`components/interfaces/`; die Helfer im Modal, `components/helper_flow.rs`), der Rest offen. Ersetzt auf der [Geräteseite](device-page.md) die Karte
+Status: Schritte 1 bis 3 umgesetzt (Zuordnung und Ansicht, `topology/interfaces.rs`,
+`components/interfaces/`; die Helfer im Modal, `components/helper_flow.rs`; die
+Live-Prüfungen, `device/interface_live.rs`), der Rest offen. Ersetzt auf der [Geräteseite](device-page.md) die Karte
 „NetBox ergänzen“ mit ihrer Auswahl einzelner Helfer ([Config-Helper](config-helper.md)). Die
 Helfer selbst (Plan, Vorschau, Schreiben, Rückgängig) bleiben, sie werden nur anders aufgerufen.
 
@@ -328,7 +329,26 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
      leer ist), und nur im Browser, bis die Seite neu lädt. „Rückgängig“ in der Zeile öffnet
      den Helfer wieder, der die letzte Schreibung des Geräts zurücknimmt.
    - Die Zeilen von „Nachbarn lesen“ öffnen den Helfer weiter als Karte darunter.
-3. Live-Prüfungen (Nachbarn, OSPF, Ping der Brückengeräte).
+3. Live-Prüfungen (Nachbarn, OSPF, Ping der Brückengeräte). Erledigt 2026-10-23, so:
+   - `AccessibleDevice.interfaceLive` liest Nachbarn (wie „Nachbarn lesen“, dieselben
+     Befunde), `/routing/ospf/neighbor`, `/ip/address` und pingt die Brückengeräte einer
+     Strecke an ihrer Primary IPv4. Gruppiert wird im Backend auf die Zeilen der Ansicht
+     (`DeviceAccess::interface_rows`); das Frontend fügt über das Interface der Zeile zusammen.
+   - Ein OSPF-Nachbar gehört zur Zeile seines Interfaces. RouterOS nennt Ports nach Kurzname
+     und Label (`e01-sxt-a`), Bridges und VLAN-Interfaces so, wie L2 sie erzeugt
+     (`bridge-link` für NetBox' `link`): darum ausser dem Portnamen über die Adressen, die
+     `/ip/address` dort hat. Sein Gerät ist das mit der Router-ID als Primary IPv4.
+   - Erwartet werden auf einer Zeile mit `ospf` die RouterOS-Geräte an den Kabeln (Direkt)
+     bzw. alle Geräte der Strecke mit `ospf` (Richtfunk, die Brückengeräte sind OSPF-Router
+     über ihre Bridge). Benachbart heisst `Full` oder `TwoWay` zwischen zwei DROthers, wie
+     nach einem Update (`update_fallback::is_adjacent`). Fehlt einer, ist das ein Fehler,
+     ebenso ein Brückengerät, das nicht antwortet.
+   - „Gerät sieht“ steht als Spalte nur bei „Unbekannt“, sonst in der aufgeklappten Zeile.
+     Nicht erreichbar: ein Hinweis über den Aufgaben mit dem Grund, die Zeilen grau „ohne
+     Gerät“.
+   - Im Lab zeigte es gleich einen echten Zustand: lab-sxt-a `e01-lab-np1` läuft nicht
+     (`running=false`), lab-np1 hat auf `e01-sxt-a` keinen OSPF-Nachbarn; die Brückengeräte
+     antworten über den 60-GHz-Weg.
 4. Die neuen Befunde (ein L3-Übergang pro VLAN, tagged VLAN an einem Port, Strecke
    unvollständig, …).
 5. Die neuen Helfer: Richtfunk abräumen, Kunden-Anschluss abräumen, VLAN am Port, Funkbrücke

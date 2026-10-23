@@ -22,6 +22,7 @@ use tokio_socks::tcp::Socks5Stream;
 pub mod batch;
 pub mod bootstrap;
 pub mod device_mode;
+pub mod interface_live;
 pub mod neighbors;
 pub mod partitions;
 pub mod power;

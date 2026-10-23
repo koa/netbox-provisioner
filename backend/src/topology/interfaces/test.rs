@@ -9,16 +9,17 @@ use std::{str::FromStr, sync::Arc};
 /// r1 and r2 with a direct link (e01), r1 with an uplink (e02), a radio link from r1 e03 over
 /// the bridge devices b1 and b2 to r2 e02, a customer bridge on r1 (port e04, VLAN 10 with an
 /// address) and a free port e05; r2 e03 has VLAN 10 without an address.
-struct Net {
-    builder: TopologyBuilder,
-    r1: DeviceId,
-    r2: DeviceId,
-    b1: DeviceId,
-    link: InterfaceId,
+pub(crate) struct Net {
+    pub(crate) builder: TopologyBuilder,
+    pub(crate) r1: DeviceId,
+    pub(crate) r2: DeviceId,
+    pub(crate) b1: DeviceId,
+    pub(crate) b2: DeviceId,
+    pub(crate) link: InterfaceId,
 }
 
 impl Net {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut builder = TopologyBuilder::default();
         pool(&mut builder, "172.16.1.0/24", PrefixPool::Loopback);
         pool(&mut builder, "172.17.1.0/24", PrefixPool::Transfer);
@@ -93,6 +94,7 @@ impl Net {
             r1,
             r2,
             b1,
+            b2,
             link,
         }
     }
@@ -211,7 +213,7 @@ fn cable(builder: &mut TopologyBuilder, a: InterfaceId, b: InterfaceId) {
     );
 }
 
-fn address(builder: &mut TopologyBuilder, ip: &str) -> crate::topology::IpAddressId {
+pub(crate) fn address(builder: &mut TopologyBuilder, ip: &str) -> crate::topology::IpAddressId {
     let id = builder.ip_addresses.next_id();
     builder.ip_addresses.insert(
         id,

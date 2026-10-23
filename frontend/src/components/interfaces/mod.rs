@@ -1,9 +1,11 @@
 //! The device's interfaces by task (`DeviceAccess.interfaceView`,
 //! `docs/concepts/interface-view.md`): a section per task, each with a table whose rows open to
-//! their findings. What NetBox has, no live checks. A row's actions open a helper in a modal
+//! their findings. What NetBox has comes first; the live checks (`live.rs`) follow in a query
+//! of their own and mark a row too, „Live prüfen“ asks again. A row's actions open a helper in a modal
 //! (`components::helper_flow`), with what the backend suggests chosen; „Weitere Helfer“ in the
 //! header opens any helper. A row written to stays marked until the device is applied. The
 //! filter by task and „nur mit Befund“ are kept in the browser (`localStorage`, comfort only).
+pub mod live;
 pub mod loopback;
 pub mod rows;
 pub mod table;
@@ -23,9 +25,11 @@ use crate::{
     },
     i18n::interfaces as t,
 };
+use live::Live;
 use patternfly_yew::prelude::{
-    Badge, Card, CardBody, CardHeader, CardHeaderActionsObject, CardTitle, ExpandableSection,
-    Level, MenuToggleVariant, Spinner, Switch, Title, ToggleGroup, ToggleGroupItem,
+    Alert, AlertType, Badge, Button, ButtonVariant, Card, CardBody, CardHeader,
+    CardHeaderActionsObject, CardTitle, ExpandableSection, Icon, Level, MenuToggleVariant, Spinner,
+    Switch, Title, ToggleGroup, ToggleGroupItem,
 };
 use rows::{Action, Row, Task, View};
 use std::{collections::BTreeMap, rc::Rc};
@@ -59,6 +63,7 @@ pub struct InterfacesProps {
 
 pub struct Interfaces {
     view: Option<Result<Rc<View>, FrontendError>>,
+    live: Live,
     /// `None`: all tasks
     filter: Option<Task>,
     only_findings: bool,
@@ -78,6 +83,9 @@ struct Flow {
 
 pub enum InterfacesMsg {
     Data(Result<View, FrontendError>),
+    Live(Live),
+    /// „Live prüfen“
+    CheckLive,
     Filter(Option<Task>),
     OnlyFindings(bool),
     /// a row's action (`None`: the loopback's, which may have no row)
@@ -99,6 +107,7 @@ impl Component for Interfaces {
             .and_then(|key| Task::ALL.into_iter().find(|task| task.key() == key));
         Self {
             view: None,
+            live: Live::Pending,
             filter,
             only_findings: stored(ONLY_FINDINGS_KEY).as_deref() == Some("true"),
             flow: None,
@@ -109,6 +118,11 @@ impl Component for Interfaces {
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             InterfacesMsg::Data(view) => self.view = Some(view.map(Rc::new)),
+            InterfacesMsg::Live(live) => self.live = live,
+            InterfacesMsg::CheckLive => {
+                self.live = Live::Pending;
+                live::fetch(ctx.link().clone(), ctx.props().id, ctx.props().target.clone());
+            }
             InterfacesMsg::Filter(filter) => {
                 self.filter = filter;
                 store(FILTER_KEY, filter.map(Task::key).unwrap_or_default());
@@ -155,8 +169,9 @@ impl Component for Interfaces {
         if props.applied != old.applied {
             self.changed.clear();
         }
-        if props.id != old.id || props.refresh != old.refresh {
+        if props.id != old.id || props.refresh != old.refresh || props.target != old.target {
             fetch(ctx);
+            ctx.link().send_message(InterfacesMsg::CheckLive);
         }
         props.applied != old.applied || props.target != old.target
     }
@@ -180,6 +195,15 @@ impl Component for Interfaces {
                 on_apply={props.on_apply.clone()}
             />
         });
+        let check_live = html! {
+            <Button
+                variant={ButtonVariant::Secondary}
+                icon={Icon::SyncAlt}
+                label={t::CHECK_LIVE}
+                disabled={self.live == Live::Pending}
+                onclick={ctx.link().callback(|_| InterfacesMsg::CheckLive)}
+            />
+        };
         let helpers = html! {
             <PopupMenu variant={MenuToggleVariant::Secondary} text={html!(t::MORE_HELPERS)}>
                 <MenuGroup>
@@ -193,7 +217,7 @@ impl Component for Interfaces {
         };
         html! {<>
             <Card class="interfaces">
-                <CardHeader actions={CardHeaderActionsObject { actions: helpers, has_no_offset: false, class: Default::default() }}>
+                <CardHeader actions={CardHeaderActionsObject { actions: html!(<div class="interfaces-actions">{check_live}{helpers}</div>), has_no_offset: false, class: Default::default() }}>
                     <CardTitle>{t::TITLE}</CardTitle>
                 </CardHeader>
                 <CardBody>{body}</CardBody>
@@ -205,6 +229,7 @@ impl Component for Interfaces {
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
             fetch(ctx);
+            ctx.link().send_message(InterfacesMsg::CheckLive);
         }
     }
 }
@@ -260,16 +285,34 @@ impl Interfaces {
             .map(|task| self.section(ctx, *task, view, &netbox))
             .collect::<Vec<_>>();
         let empty = sections.iter().all(Option::is_none);
+        let live_findings = match &self.live {
+            Live::Checked(checked) => checked.other_findings.clone(),
+            _ => Vec::new(),
+        };
+        let unchecked = match &self.live {
+            Live::Unchecked(message) => Some(html! {
+                <Alert inline=true r#type={AlertType::Warning} title={t::LIVE_UNCHECKED_TITLE}>
+                    <p>{message.clone()}</p>
+                </Alert>
+            }),
+            _ => None,
+        };
         html! {<>
             {filter}
+            {unchecked}
             { for sections.into_iter().flatten() }
             if empty {
                 <p>{t::NONE_WITH_FINDINGS}</p>
             }
-            if !view.other_findings.is_empty() && self.filter.is_none() {
+            if (!view.other_findings.is_empty() || !live_findings.is_empty()) && self.filter.is_none() {
                 <section class="interfaces-section">
                     <Title level={Level::H3}>{t::OTHER_FINDINGS}</Title>
-                    {finding_list(&netbox, &view.other_findings)}
+                    if !view.other_findings.is_empty() {
+                        {finding_list(&netbox, &view.other_findings)}
+                    }
+                    if !live_findings.is_empty() {
+                        {crate::components::neighbor_check::neighbor_finding_list(&netbox, &live_findings)}
+                    }
                 </section>
             }
         </>}
@@ -309,6 +352,7 @@ impl Interfaces {
                             })
                         });
                         Entry {
+                            live: self.live.row(row.interface.id),
                             changed: undo,
                             row,
                             netbox: netbox.clone(),

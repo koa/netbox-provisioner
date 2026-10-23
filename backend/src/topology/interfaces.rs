@@ -153,11 +153,12 @@ impl DeviceAccess {
                 == 1
     }
 
-    /// Its interfaces by task.
-    pub fn interface_view(&self) -> InterfaceView {
+    /// Its rows without findings and actions, each with the NetBox ids of its interface and
+    /// bridge ports (what the live checks group by).
+    pub fn interface_rows(&self) -> Vec<(InterfaceRow, BTreeSet<u32>)> {
         let mut interfaces = self.interfaces().into_vec();
         interfaces.sort_by_cached_key(|i| naturalize_interface(i.name()));
-        let mut rows = interfaces
+        interfaces
             .iter()
             .filter(|interface| interface.bridge().is_none())
             .map(|interface| {
@@ -168,7 +169,12 @@ impl DeviceAccess {
                     .collect::<Vec<_>>();
                 row(interface, &ports)
             })
-            .collect::<Vec<_>>();
+            .collect()
+    }
+
+    /// Its interfaces by task.
+    pub fn interface_view(&self) -> InterfaceView {
+        let mut rows = self.interface_rows();
         let mut device_findings = Vec::new();
         let mut other_findings = Vec::new();
         for finding in self
@@ -579,4 +585,4 @@ impl FindingKind {
 }
 
 #[cfg(test)]
-mod test;
+pub(crate) mod test;

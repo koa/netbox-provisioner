@@ -39,10 +39,8 @@ use mikrotik_model::{
     },
     resource::{ResourceMutation, SingleResource, apply_mutations_via_script, collect_resource},
 };
-use async_graphql::futures_util::future::join_all;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
-    net::IpAddr,
     sync::atomic::Ordering,
     time::{Duration, Instant},
 };
@@ -208,7 +206,7 @@ impl DeviceCfg {
     ) -> Result<(), Error> {
         self.generate_for(device)?;
         let addresses = self.base_target.watched_addresses();
-        let answering = answering(raw, &addresses).await;
+        let answering = raw::answering(raw, &addresses).await;
         let topology = device.topology().clone();
         self.watchdog_warnings = self.base_target.keep_silent_watchdogs(
             &self.base_current,
@@ -280,25 +278,6 @@ pub(super) fn provided_by_routeros() -> [(ReferenceType, std::borrow::Cow<'stati
         (ReferenceType::FirewallChain, b"output".into()),
         (ReferenceType::FirewallChain, b"forward".into()),
     ]
-}
-
-/// The ones of `addresses` that answer a ping from the device, all asked at once.
-async fn answering(raw: &RawDevice<SimpleResult>, addresses: &[IpAddr]) -> BTreeSet<IpAddr> {
-    let pings = addresses.iter().map(|address| async move {
-        let text = address.to_string();
-        let attributes = [("address", text.as_str()), ("count", "3"), ("interval", "0.3")];
-        let ping = raw::command(raw, "/ping", &attributes);
-        let answered = tokio::time::timeout(Duration::from_secs(10), ping)
-            .await
-            .ok()
-            .and_then(Result::ok)
-            .is_some_and(|rows| {
-                rows.iter()
-                    .any(|row| raw::field(row, "received").is_some_and(|received| received != "0"))
-            });
-        answered.then_some(*address)
-    });
-    join_all(pings).await.into_iter().flatten().collect()
 }
 
 fn render_script(mutations: &[ResourceMutation]) -> Result<Box<str>, Error> {
@@ -887,7 +866,7 @@ impl AccessibleDevice {
         cfg.generate_for(&self.device_config)?;
         Ok(match cfg.base_target.watchdog.watch_address.value().copied() {
             None => Watching::default(),
-            Some(address) if answering(raw, &[address]).await.contains(&address) => Watching {
+            Some(address) if raw::answering(raw, &[address]).await.contains(&address) => Watching {
                 watch_address: Some(address.to_string().into()),
                 poe_pings: Vec::new(),
             },
@@ -1178,6 +1157,11 @@ impl AccessibleDevice {
     /// What the device sees at its ports against NetBox's cables there, the worst first.
     async fn neighbor_findings(&self) -> Result<Vec<neighbors::NeighborFinding>, ApiError> {
         Ok(neighbors::check(&self.connect_again().await?, &self.device_config).await?)
+    }
+    /// The live checks of the interface view (`DeviceAccess.interfaceView`) by row: neighbors,
+    /// OSPF, the bridge devices of radio links answering.
+    async fn interface_live(&self) -> Result<crate::device::interface_live::InterfaceLive, ApiError> {
+        Ok(crate::device::interface_live::read(&self.connect_again().await?, &self.device_config).await?)
     }
     /// The ports the device reports feeding something over PoE, and what is at their other
     /// end (helper „PoE“).

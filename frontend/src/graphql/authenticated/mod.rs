@@ -153,6 +153,15 @@ pub struct InterfaceView;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/interface-live.graphql",
+    response_derives = "Debug, Clone, PartialEq, Serialize",
+    skip_serializing_none
+)]
+pub struct InterfaceLive;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/neighbor-findings.graphql",
     response_derives = "Debug, Clone, PartialEq"
 )]

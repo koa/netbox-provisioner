@@ -4,7 +4,12 @@
 use crate::Error;
 use async_graphql::futures_util::StreamExt;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
-use std::collections::HashMap;
+use async_graphql::futures_util::future::join_all;
+use std::{
+    collections::{BTreeSet, HashMap},
+    net::IpAddr,
+    time::Duration,
+};
 
 /// One answer of a command, by field name.
 pub(crate) type Row = HashMap<Box<str>, Option<Box<str>>>;
@@ -46,4 +51,23 @@ pub(crate) async fn rows(device: &RawDevice<SimpleResult>, path: &str) -> Result
 
 pub(crate) fn field<'r>(row: &'r Row, name: &str) -> Option<&'r str> {
     row.get(name).and_then(|v| v.as_deref())
+}
+
+/// The ones of `addresses` that answer a ping from the device, all asked at once.
+pub(crate) async fn answering(raw: &RawDevice<SimpleResult>, addresses: &[IpAddr]) -> BTreeSet<IpAddr> {
+    let pings = addresses.iter().map(|address| async move {
+        let text = address.to_string();
+        let attributes = [("address", text.as_str()), ("count", "3"), ("interval", "0.3")];
+        let ping = command(raw, "/ping", &attributes);
+        let answered = tokio::time::timeout(Duration::from_secs(10), ping)
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .is_some_and(|rows| {
+                rows.iter()
+                    .any(|row| field(row, "received").is_some_and(|received| received != "0"))
+            });
+        answered.then_some(*address)
+    });
+    join_all(pings).await.into_iter().flatten().collect()
 }

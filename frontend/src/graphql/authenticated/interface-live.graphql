@@ -1,0 +1,35 @@
+query InterfaceLive($id: Int!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+    topology{
+        deviceById(id: $id){
+            access(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
+                interfaceLive{
+                    rows{
+                        interface
+                        seen{ ...Seen }
+                        ospf{ instance address routerId state adjacent device{ ...Device } }
+                        ospfMissing{ ...Device }
+                        bridges{ device{ ...Device } address answers }
+                        findings{ ...NeighborFinding }
+                    }
+                    otherFindings{ ...NeighborFinding }
+                }
+            }
+        }
+    }
+}
+fragment NeighborFinding on NeighborFinding{
+    severity
+    kind{
+        __typename
+        ... on CableMissing{ port{ ...Port } seen{ ...Seen } }
+        ... on CableElsewhere{ port{ ...Port } farEnd{ ...Interface } seen{ ...Seen } }
+        ... on OtherFarPort{ port{ ...Port } farEnd{ ...Interface } seen{ ...Seen } }
+        ... on NeighborNotSeen{ port{ ...Port } farEnd{ ...Interface } }
+        ... on NeighborsNotInNetbox{ port{ ...Port } seen{ ...Seen } }
+        ... on DiscoveryOff{ list }
+    }
+}
+fragment Device on DeviceRef{ id name site }
+fragment Interface on InterfaceRef{ id name device{ ...Device } }
+fragment Port on PortRef{ name interface{ ...Interface } }
+fragment Seen on SeenNeighbor{ identity interfaceName board device{ ...Device } interface{ ...Interface } }

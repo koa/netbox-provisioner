@@ -105,6 +105,17 @@ pub async fn check(
     client: &RawDevice<SimpleResult>,
     device: &DeviceAccess,
 ) -> Result<Vec<NeighborFinding>, Error> {
+    Ok(read(client, device).await?.findings)
+}
+
+/// What [`read`] found: the findings, and who the device sees at each NetBox interface (by id).
+pub struct Neighbors {
+    pub findings: Vec<NeighborFinding>,
+    pub seen: BTreeMap<u32, Vec<SeenNeighbor>>,
+}
+
+/// [`check`] with who is seen where.
+pub async fn read(client: &RawDevice<SimpleResult>, device: &DeviceAccess) -> Result<Neighbors, Error> {
     let settings = rows(client, "/ip/neighbor/discovery-settings/print").await?;
     let lists = rows(client, "/interface/list/print").await?;
     if let Some(list) = settings
@@ -112,19 +123,39 @@ pub async fn check(
         .and_then(|row| field(row, "discover-interface-list"))
         && !lists.iter().any(|row| field(row, "name") == Some(list))
     {
-        return Ok(vec![NeighborFinding {
-            severity: Severity::Error,
-            kind: NeighborFindingKind::DiscoveryOff(DiscoveryOff { list: list.into() }),
-        }]);
+        return Ok(Neighbors {
+            findings: vec![NeighborFinding {
+                severity: Severity::Error,
+                kind: NeighborFindingKind::DiscoveryOff(DiscoveryOff { list: list.into() }),
+            }],
+            seen: BTreeMap::new(),
+        });
     }
     let interfaces = rows(client, "/interface/print").await?;
     let neighbors = rows(client, "/ip/neighbor/print").await?;
-    Ok(compare(device, &interfaces, &neighbors))
+    let (seen_at, netbox_ports) = seen_at(device, &interfaces, &neighbors);
+    let seen = seen_at
+        .iter()
+        .filter_map(|(default_name, (_, seen))| {
+            Some((netbox_ports.get(default_name)?.id().0, seen.clone()))
+        })
+        .collect();
+    Ok(Neighbors {
+        findings: compare(device, &interfaces, &neighbors),
+        seen,
+    })
 }
 
-/// [`check`] on what the device answered: `interfaces` from `/interface/print`, `neighbors`
-/// from `/ip/neighbor/print`.
-pub fn compare(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> Vec<NeighborFinding> {
+/// Who the device sees at each port, by the port's default name (its own name where it has
+/// none), with the port's own name.
+type SeenAt = BTreeMap<String, (Box<str>, Vec<SeenNeighbor>)>;
+
+/// [`SeenAt`], and NetBox's ports by name.
+fn seen_at(
+    device: &DeviceAccess,
+    interfaces: &[Row],
+    neighbors: &[Row],
+) -> (SeenAt, BTreeMap<String, InterfaceAccess>) {
     let topology_devices = device.topology().list_devices().collect::<Vec<_>>();
     let default_names = interfaces
         .iter()
@@ -138,7 +169,7 @@ pub fn compare(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> 
         .collect::<BTreeMap<_, _>>();
 
     // what the device sees, by the default name of its port (its own name where it has none)
-    let mut seen_at = BTreeMap::<String, (Box<str>, Vec<SeenNeighbor>)>::new();
+    let mut seen_at = SeenAt::new();
     for row in neighbors {
         let interface = field(row, "interface").unwrap_or_default();
         let Some((name, default_name)) = interface
@@ -175,7 +206,13 @@ pub fn compare(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> 
                 interface: netbox_interface.as_ref().map(interface_ref),
             });
     }
+    (seen_at, netbox_ports)
+}
 
+/// [`check`] on what the device answered: `interfaces` from `/interface/print`, `neighbors`
+/// from `/ip/neighbor/print`.
+pub fn compare(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> Vec<NeighborFinding> {
+    let (seen_at, netbox_ports) = seen_at(device, interfaces, neighbors);
     let mut findings = Vec::new();
     for (default_name, (name, seen)) in &seen_at {
         let interface = netbox_ports.get(default_name);
