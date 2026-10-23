@@ -646,9 +646,9 @@ QEMU's, the golden image's dhcp-client is bound to it).
   or a library answered). A command or anything else that may hold a password goes in with
   it replaced by `***` (`bootstrap::hidden`). The frontend words a code in
   `i18n::error::server` and falls back to `message` for one it doesn't know yet.
-- Every text the UI shows is in `frontend/src/i18n.rs` (German), a module per page or
+- Every text the UI shows is in `frontend/src/i18n/` (German), a module (file) per page or
   component, a `const` or a `fn` taking the values; components write none inline, so a second
-  language replaces that one file. Names RouterOS and NetBox use themselves (`RouterOS`,
+  language replaces that one module. Names RouterOS and NetBox use themselves (`RouterOS`,
   `long-term`) stay as they are. `FrontendError::message` is the one-line text for the user,
   its `Display` is for the log.
 - Who may call what is decided at the boundary, once: the token and `auth_users` in `binary`'s
