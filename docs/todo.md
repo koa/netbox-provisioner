@@ -15,7 +15,7 @@ Vorschlag, noch nicht entschieden:
 1. A1–A4 (Sicherheit)
 2. B1, B2, B3, B4, B8, B10 (klein)
 3. C1 (Perimeter-Firewall, baut auf A1 auf)
-4. danach nach Priorität: D1 und D2 bringen im Alltag am meisten, C6 braucht der Betrieb
+4. danach nach Priorität: D1, D2 und C12 bringen im Alltag am meisten, C6 braucht der Betrieb
 
 ## Entscheidungen
 
@@ -49,6 +49,9 @@ markiert und ins Konzept übernommen (dort unter „Entschieden“). Offen ist z
 | Z22 | Kaltstart PoE-gespeister Geräte selbst auslösen? | ja, auf Knopfdruck mit Bestätigung, nie von selbst (2026-10-23) | C11 |
 | Z23 | Updates ganz ohne Fallback? | nur mit ausdrücklicher Bestätigung (2026-10-23) | D3 |
 | Z24 | Welche OSPF-Nachbarn müssen nach einem Update `Full` sein? | die vorher `Full` waren, wie heute umgesetzt (2026-10-23) | D3 |
+| Z25 | Uplinks in der Interface-Ansicht? | eigene Aufgabe, nur angezeigt und geprüft; modelliert ganz in NetBox, keine Helfer (2026-10-23) | C12 |
+| Z26 | Tagged VLANs an physischen Ports (Trunk zu AP/Switch)? | nicht vorgesehen: L2 zu anderen Geräten über VXLAN, eigene APs und Switches über eine Direktverbindung; zurück auf den Tisch, wenn sich echte Nachteile zeigen (2026-10-23) | C12 |
+| Z27 | Ein L3-Übergang pro VLAN: Fehler oder Warnung, auch für Switches? | Fehler, auch für Switches: ein Switch mit dem VLAN nur auf L2 hat darin keine Adresse und ist nur über den Router des VLANs erreichbar (2026-10-23) | C12 |
 
 ## A. Sicherheit
 
@@ -73,7 +76,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | B4 | `DeviceCfg::generate_from` und `BaseDeviceDataTarget::generate_from` rufen dieselben `setup_*`-Schritte je selbst auf (PoE fehlte so einmal im echten Weg): eine gemeinsame Funktion | S | offen |
 | B5 | `lazy_static` (3 Dateien) durch `std::sync::LazyLock` ersetzen | S | offen |
 | B6 | Ein vergifteter Mutex in `job.rs` (`.expect("jobs")`) lässt den Server abstürzen statt nur den Job | S | offen |
-| B7 | Grosse Dateien aufteilen: `frontend/src/components/netbox_helper.rs` (2090 Zeilen), `device/ros/mod.rs` (2067), `frontend/src/i18n.rs` (1609), `helper/mod.rs` (1391) | M | offen |
+| B7 | Grosse Dateien aufteilen: `frontend/src/components/netbox_helper.rs` (2090 Zeilen, mit C12), `device/ros/mod.rs` (2067), `frontend/src/i18n.rs` (1609), `helper/mod.rs` (1391) | M | offen |
 | B8 | mikrotik-model: Der Generator gibt die Enums jedes Mal in anderer Reihenfolge aus (HashMap); Diffs des erzeugten Codes unlesbar, vermutlich unnötiges Neukompilieren | S | offen |
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
 | B10 | `graphql_client` 0.16 von crates.io statt des Forks (`Chrisss93/graphql-client`, Branch `reqwest-upgrade`) prüfen; nur als Übergang, bis C4 den Fork ablöst (Z6) | S | offen |
@@ -93,6 +96,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | offen |
 | C11 | Kaltstart eines PoE-gespeisten Geräts auf Knopfdruck: PoE am speisenden Port aus und wieder ein, mit Bestätigung (Z22); für Device-Mode und Rettung nach einem Update | [Update-Fallback](concepts/update-fallback.md) | S–M | offen |
+| C12 | Interfaces nach Aufgabe statt Helfer-Auswahl: Zuordnung (Loopback, Uplink, Direkt, Richtfunk, Kunden, Unbekannt) und Ansicht nur lesend (M); Lösungsvorschläge im Modal mit Stepper über die vorhandenen Helfer, „NetBox ergänzen“ fällt weg (M); Live-Prüfungen (S–M); neue Befunde: ein L3-Übergang pro VLAN (Z27), tagged VLAN am Port (Z26), Strecke unvollständig, Brückengerät ohne Loopback, Label (M); neue Helfer: Richtfunk und Kunden-Anschluss abräumen, VLAN am Port, Funkbrücke vom Router-Port, Kabel übernehmen (M–L); Uplinks ohne Helfer (Z25) | [Interfaces nach Aufgabe](concepts/interface-view.md) | L | offen |
 
 ## D. In Arbeit, Rest offen
 
