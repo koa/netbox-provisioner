@@ -109,7 +109,8 @@ seen (the router on the other side shows up instead). A `discover-interface-list
 that doesn't exist (`*2000011`, the factory `LAN` an apply removed) means discovery is off; the
 generator sets it to `maintenance` now.
 
-`helper/` holds the helpers that write to NetBox (config-helper concept, steps 3 to 5:
+`helper/` holds the helpers that write to NetBox (`mod.rs` the plan and its preview,
+`plan.rs` its steps, `write.rs` writing and undoing them; config-helper concept, steps 3 to 5:
 `helper::loopback`, `helper::connection` for a direct link between two routers: cable if
 missing, the next free `/31` of the transfer pool as a new prefix, an address at each end,
 `ospf`, MTU, the far device as label), `helper::disconnect` taking a wrong link out of NetBox
@@ -142,7 +143,7 @@ segment's IPv4 (the router port's network, else a new `/29` of the transfer pool
 address and `ospf` on each router port and bridge; IPv6 stays link-local, the bridges are
 reached at their loopback. Topology carries the link's id and peer (`Interface.wireless_link`,
 `WirelessLinkEnd`); `example_topology` makes up both for an export lacking them. Deleting is undone by creating the object again from the
-JSON NetBox had (`NetboxWritten.recreate`, `helper::recreate`; it gets a new id): undoing an
+JSON NetBox had (`NetboxWritten.recreate`, `helper::write::recreate`; it gets a new id): undoing an
 older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (graphql_client
 makes it an enum; its queries need `skip_serializing_none`), naming the device or the two ports;
 the frontend shows them in one card with a choice, so "Rückgängig" is the device's last write.
