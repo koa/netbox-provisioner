@@ -486,8 +486,10 @@ A CAP's radio refers to a local `/interface/wifi/configuration` (`manager=capsma
 datapath; `capsman` for the first datapath, `capsman-<bridge>` for others) and keeps its
 default name (`wifi1`; L2 names it so too): CAPsMAN binds it through that configuration. A
 bound radio is flagged dynamic and RouterOS refuses any change to it, also with the CAP off
-(hAP ax², 7.23.8: `can not change dynamic interface`), so it stays as read (`bound_radios`,
-from `InterfaceWifiState::dynamic`), the configuration and datapath it uses stay, and a
+(hAP ax², 7.23.8: `can not change dynamic interface`), or only bound (B): RouterOS takes a
+change but reports and uses the controller's values (router-stall-burri, also a hAP ax² on 7.23.8:
+`!datapath.vlan-id` stayed open with the controller's `.vlan-id=1`). So it stays as read
+(`bound_radios`, from `InterfaceWifiState::dynamic` or `bound`), the configuration and datapath it uses stay, and a
 different configuration than NetBox's is a warning before applying (`RadioBound`). What changes is the
 configuration it uses (`datapath=`), a plain entry. A bound radio reports
 `configuration=capsman` also where no such entry is (cAP ax, 7.23.7). It needs no seed in the

@@ -1005,7 +1005,9 @@ impl DeviceCfg {
             let bound_radios = collect_resource::<InterfaceWifiState>(client)
                 .await?
                 .into_iter()
-                .filter(|radio| radio.dynamic == Some(true))
+                // dynamic, or only bound with the same board and version (hAP ax², 7.23.8,
+                // router-stall-burri): RouterOS takes a change then but doesn't use it
+                .filter(|radio| radio.dynamic == Some(true) || radio.bound)
                 .filter_map(|radio| radio.default_name)
                 .collect();
             (
