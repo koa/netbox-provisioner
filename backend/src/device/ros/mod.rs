@@ -1,5 +1,4 @@
 use crate::device::ros::l2::NameGenerator;
-#[cfg(test)]
 use crate::topology::management::ManagementTree;
 use crate::device::ros::warning::{ApplyWarning, LegacyRadioManaged, PoeCut, RadioBound};
 use crate::{
@@ -670,16 +669,39 @@ impl BaseDeviceDataTarget {
         self.set_name_and_loopback(device);
 
         let l2 = L2Setup::new(device, name_generator)?;
-        self.setup_ip_addresses(&l2)?;
+        self.setup_addressing(device, &l2)?;
+        self.setup_ports(device, &l2, None)?;
+        Ok(l2)
+    }
+
+    /// The steps before the radios (`DeviceCfg::generate_from` and the tests share them):
+    /// addresses, DNS and OSPF.
+    pub(super) fn setup_addressing<N: NameGenerator>(
+        &mut self,
+        device: &DeviceAccess,
+        l2: &L2Setup<N>,
+    ) -> Result<(), SetupError> {
+        self.setup_ip_addresses(l2)?;
         self.setup_dns(device);
-        self.setup_ospf(device, &l2);
-        self.setup_l2(device, &l2, None)?;
-        self.setup_maintenance_ports(device, &l2);
+        self.setup_ospf(device, l2);
+        Ok(())
+    }
+
+    /// The steps after the radios, whose ports `setup_l2` puts in the bridges: L2, the
+    /// maintenance ports, MTU, speed, PoE and the watchdog (towards the device's own
+    /// management tree; `generate_for` sets the provisioner's).
+    pub(super) fn setup_ports<N: NameGenerator>(
+        &mut self,
+        device: &DeviceAccess,
+        l2: &L2Setup<N>,
+        radio_package: Option<RadioPackage>,
+    ) -> Result<(), SetupError> {
+        self.setup_l2(device, l2, radio_package)?;
+        self.setup_maintenance_ports(device, l2);
         self.setup_mtu(device)?;
         self.setup_speed(device)?;
         self.setup_poe(device)?;
-        self.setup_watchdog(device, &ManagementTree::of(device.topology(), None))?;
-        Ok(l2)
+        self.setup_watchdog(device, &ManagementTree::of(device.topology(), None))
     }
 
     /// mac-telnet for remote maintenance, on the ports to own devices and the free ones:

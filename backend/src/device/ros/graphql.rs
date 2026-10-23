@@ -21,7 +21,7 @@ use crate::{
         radio_hold::RadioHold,
         watchdog::Watching,
     },
-    topology::{PhysicalPortId, access::device::DeviceAccess, management::ManagementTree},
+    topology::{PhysicalPortId, access::device::DeviceAccess},
 };
 use crate::{graphql::scalars::ScalarDuration, job::Log};
 use async_graphql::{Context, Enum, Object, SimpleObject};
@@ -130,9 +130,7 @@ impl DeviceCfg {
         )?;
         let mut warnings = Vec::new();
 
-        self.base_target.setup_ip_addresses(&l2)?;
-        self.base_target.setup_dns(device);
-        self.base_target.setup_ospf(device, &l2);
+        self.base_target.setup_addressing(device, &l2)?;
         if let Some(wireless_target) = self.wireless_target.as_mut() {
             wireless_target.generate_from(device, &l2, self.wireless_current.as_ref())?;
             if let Some(current) = &self.wireless_current {
@@ -155,13 +153,8 @@ impl DeviceCfg {
         if let Some(capsman_target) = self.capsman_target.as_mut() {
             capsman_target.generate_from(device)?;
         }
-        self.base_target.setup_l2(device, &l2, self.radio_package)?;
-        self.base_target.setup_maintenance_ports(device, &l2);
-        self.base_target.setup_mtu(device)?;
-        self.base_target.setup_speed(device)?;
-        self.base_target.setup_poe(device)?;
         self.base_target
-            .setup_watchdog(device, &ManagementTree::of(device.topology(), None))?;
+            .setup_ports(device, &l2, self.radio_package)?;
         if let Some(package) = self.idle_radios {
             warnings.push(ApplyWarning::CapOffOutsideWlanGroup(CapOffOutsideWlanGroup {
                 package: package.name().into(),
