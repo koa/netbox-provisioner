@@ -189,6 +189,10 @@ pub fn server(problem: &ServerProblem) -> String {
             "{} hat in NetBox kein Kabel und keine Adresse aus dem Transfer-Pool mehr",
             p("port")
         ),
+        "NO_CUSTOMER_NET" => format!(
+            "{} hat in NetBox kein Kunden-Netz mehr: keine Adresse, kein dhcp und kein VLAN",
+            p("interface")
+        ),
         "NO_SITE" => format!("{} hat in NetBox keine Site", p("device")),
         "UNKNOWN_PREFIX" => format!("Prefix {} ist keines der Site des Geräts", p("id")),
         "UNKNOWN_VLAN" => format!("VLAN {} hat das Gerät nicht", p("id")),

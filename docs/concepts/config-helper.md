@@ -385,6 +385,21 @@ Schalter im Plan (`DeleteWirelessLink`, das Rückgängig legt ihn samt PSK wiede
 Nach dem Anwenden sind die Brückengeräte abgeschnitten, niemand kündigt ihre Loopback mehr an;
 ein Router auch, wenn er nur über diese Strecke erreichbar war (`cut_off`).
 
+### Kunden-Anschluss abräumen
+
+Das Gegenstück zu „Kunden-Netz“, aufgerufen von der Kunden-Zeile der Interface-Ansicht
+(„Verbindung entfernen“) mit dem Interface der Zeile: einem Port, einer Bridge oder einem
+VLAN-Interface.
+
+Plan (`helper::customer_disconnect`): alle Adressen des Interfaces (eine Primary IP bricht ab),
+ihr Prefix, wenn danach nichts mehr darin ist, `dhcp` und die VLANs am Port (`UpdatePortVlan`:
+untagged und tagged weg, ohne Mode). Bei einer Bridge sind das die Bridge und ihre Ports, bei
+einem VLAN-Interface die Kunden-Ports des Geräts mit seinem VLAN (Ethernet, in keiner Bridge,
+kein Kabel zu einem RouterOS-Gerät). Ein VLAN-Interface, das sonst nichts hat (kein `ospf`,
+`nat`, `dhcp-client`, Label oder tagged VLAN), wird gelöscht (`DeleteInterface`, nach seinen
+Adressen). Das VLAN selbst bleibt, andere Geräte können es haben. Ein Port, dessen L3 anderswo
+liegt, verliert nur sein VLAN.
+
 ### Brückengeräte mit fester Adresse
 
 Heute holen sich die Brückengeräte ihre Adresse per DHCP-Client von einem der beiden Router

@@ -8,6 +8,7 @@
 //! change made in between stops it instead of being overwritten. Every write is an event of
 //! the job (`NetboxWritten`), which is what `undo` takes back.
 pub mod connection;
+pub mod customer_disconnect;
 pub mod customer_net;
 pub mod disconnect;
 pub mod flags;
@@ -21,8 +22,8 @@ mod write;
 
 pub use plan::{
     CreateAddress, CreateCable, CreateInterface, CreatePrefix, CreateWirelessLink, DeleteAddress,
-    DeleteCable, DeletePrefix, DeleteWirelessLink, PlanStep, SetPrimaryIp, Target,
-    UpdateInterface, UpdatePort, UpdateWirelessLink,
+    DeleteCable, DeleteInterface, DeletePrefix, DeleteWirelessLink, PlanStep, SetPrimaryIp,
+    Target, UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLink,
 };
 pub use write::{FieldChange, NetboxUndone, NetboxWritten, undo, write};
 
@@ -61,6 +62,8 @@ pub enum Helper {
     RadioBridge(radio_bridge::RadioBridgeInput),
     /// a radio link's network out of NetBox, the wireless link if asked
     RadioDisconnect(radio_disconnect::RadioDisconnectInput),
+    /// a customer port's network and VLANs out of NetBox
+    CustomerDisconnect(customer_disconnect::CustomerDisconnectInput),
 }
 
 impl Helper {
@@ -74,6 +77,7 @@ impl Helper {
             Helper::Poe(input) => poe::plan(topology, input),
             Helper::RadioBridge(input) => radio_bridge::plan(topology, input).await,
             Helper::RadioDisconnect(input) => radio_disconnect::plan(topology, input),
+            Helper::CustomerDisconnect(input) => customer_disconnect::plan(topology, input),
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -102,6 +106,9 @@ impl Helper {
                 .get_device_by_id(&DeviceId(input.ap))
                 .ok_or(Error::UnknownDevice(input.ap)),
             Helper::RadioDisconnect(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
+            Helper::CustomerDisconnect(input) => topology
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
         }
@@ -341,6 +348,23 @@ impl NetboxPlan {
                         if let Some(interface) = interface(json, &end.id.to_string()) {
                             interface["wireless_link"] = link.clone();
                         }
+                    }
+                }
+                PlanStep::UpdatePortVlan(update) => {
+                    if let Some(interface) = interface(json, &update.interface.id.to_string()) {
+                        interface["untagged_vlan"] = match &update.vlan {
+                            Some(vlan) => json!({ "id": vlan.id.to_string() }),
+                            None => Value::Null,
+                        };
+                        interface["tagged_vlans"] = json!([]);
+                    }
+                }
+                PlanStep::DeleteInterface(delete) => {
+                    let id = delete.interface.id.to_string();
+                    if let Some(interfaces) = device(json, delete.interface.device.id)
+                        .and_then(|device| device["interfaces"].as_array_mut())
+                    {
+                        interfaces.retain(|interface| interface["id"] != id.as_str());
                     }
                 }
                 PlanStep::DeleteWirelessLink(delete) => {

@@ -384,6 +384,13 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
      dem Transfer-Pool an nur einem Ende: im Export hat bei schopf-burri nur der Router eine. Der
      Wireless Link geht mit einem Schalter im Plan, neu als Schritt `DeleteWirelessLink`.
      Aus „Weitere Helfer“ ist er nicht erreichbar, er braucht den Funk-Port der Zeile.
+   - Kunden-Anschluss abräumen, erledigt 2026-10-23: „Verbindung entfernen“ auf jeder
+     Kunden-Zeile, Helfer `customer_disconnect` (siehe
+     [Config-Helper](config-helper.md#kunden-anschluss-abräumen)), mit den neuen Schritten
+     `UpdatePortVlan` (taugt auch für „VLAN am Port“) und `DeleteInterface`. NetBox nimmt
+     `mode: null` zum Entfernen des Modes (4.7.1, im Lab an einem Test-Interface geprüft). Im
+     Lab mit Anwenden geprüft: lab-np2 `lan` abgeräumt und mit „Kunden-Netz“ neu angelegt,
+     lab-wap `ether2` (nur das VLAN) abgeräumt und per Rückgängig wiederhergestellt.
 
 ## Entschieden (2026-10-23)
 

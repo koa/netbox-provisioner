@@ -263,6 +263,10 @@ fn action(action: interface_view::Action, device: u32) -> Option<Action> {
             },
         ),
         ActionHelper::DISCONNECT => (HelperKind::Disconnect, HelperPreset::Disconnect(interface?)),
+        ActionHelper::CUSTOMER_DISCONNECT => (
+            HelperKind::CustomerDisconnect,
+            HelperPreset::CustomerDisconnect(interface?),
+        ),
         ActionHelper::RADIO_DISCONNECT => (
             HelperKind::RadioDisconnect,
             HelperPreset::RadioDisconnect(interface?),

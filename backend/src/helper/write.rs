@@ -2,7 +2,8 @@
 //! job (`NetboxWritten`, `NetboxUndone`).
 
 use super::{
-    Helper, PlanStep, Target, UpdateInterface, UpdatePort, UpdateWirelessLink, flags,
+    Helper, PlanStep, Target, UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLink,
+    flags,
 };
 use crate::{
     Error,
@@ -249,6 +250,36 @@ pub async fn write(
                 update_wireless_link(&rest, update, log).await?;
                 None
             }
+            PlanStep::UpdatePortVlan(update) => {
+                update_port_vlan(&rest, update, log).await?;
+                None
+            }
+            PlanStep::DeleteInterface(delete) => {
+                let interface = &delete.interface;
+                let path = format!("dcim/interfaces/{}/", interface.id);
+                let current = rest.get(&path).await?;
+                let addresses = rest
+                    .get(&format!("ipam/ip-addresses/?interface_id={}&limit=1", interface.id))
+                    .await?;
+                if current["name"].as_str() != Some(&*interface.name)
+                    || current["device"]["id"].as_u64() != Some(interface.device.id.into())
+                    || addresses["count"].as_u64() != Some(0)
+                {
+                    return Err(Error::NetboxChanged(
+                        format!("{} {}", interface.device.name, interface.name).into(),
+                    ));
+                }
+                let body = recreate(
+                    &current,
+                    &[
+                        "device", "name", "label", "type", "enabled", "parent", "bridge", "mtu",
+                        "mode", "untagged_vlan", "tagged_vlans", "vrf", "description", "tags",
+                        "custom_fields",
+                    ],
+                );
+                deleted(&rest, log, &path, &current, body).await?;
+                None
+            }
             PlanStep::DeleteWirelessLink(delete) => {
                 let path = format!("wireless/wireless-links/{}/", delete.id);
                 let current = rest.get(&path).await?;
@@ -484,6 +515,66 @@ async fn update_interface(
         path: path.into(),
         display: display(&object),
         before: Some(Value::Object(before).to_string().into()),
+        changes,
+        deleted: false,
+        recreate: None,
+    }));
+    Ok(())
+}
+
+/// Writes `update` once the port still has the VLANs the plan found.
+async fn update_port_vlan(
+    rest: &NetboxRest,
+    update: &UpdatePortVlan,
+    log: &Log,
+) -> Result<(), Error> {
+    let port = &update.interface;
+    let path = format!("dcim/interfaces/{}/", port.id);
+    let current = rest.get(&path).await?;
+    let untagged = current["untagged_vlan"]["id"].as_u64();
+    let mut tagged = current["tagged_vlans"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|vlan| vlan["id"].as_u64())
+        .collect::<Vec<_>>();
+    tagged.sort_unstable();
+    let mut tagged_before = update.tagged_before.iter().map(|v| u64::from(v.id)).collect::<Vec<_>>();
+    tagged_before.sort_unstable();
+    if untagged != update.vlan_before.as_ref().map(|v| v.id.into()) || tagged != tagged_before {
+        return Err(Error::NetboxChanged(format!("{} {}", port.device.name, port.name).into()));
+    }
+    let change = match &update.vlan {
+        Some(vlan) => json!({ "mode": "access", "untagged_vlan": vlan.id, "tagged_vlans": [] }),
+        None => json!({ "mode": null, "untagged_vlan": null, "tagged_vlans": [] }),
+    };
+    let before = json!({
+        "mode": current["mode"]["value"].clone(),
+        "untagged_vlan": untagged,
+        "tagged_vlans": tagged,
+    });
+    let name = |vlan: &crate::topology::findings::VlanRef| -> Box<str> {
+        format!("{} ({})", vlan.vid, vlan.name).into()
+    };
+    let mut changes = vec![FieldChange {
+        field: "untagged_vlan".into(),
+        value: update.vlan.as_ref().map(name),
+        previous: update.vlan_before.as_ref().map(name),
+    }];
+    if !update.tagged_before.is_empty() {
+        changes.push(FieldChange {
+            field: "tagged_vlans".into(),
+            value: None,
+            previous: Some(
+                update.tagged_before.iter().map(name).collect::<Vec<_>>().join(", ").into(),
+            ),
+        });
+    }
+    let object = rest.update(&path, change).await?;
+    log.emit(Event::NetboxWritten(NetboxWritten {
+        path: path.into(),
+        display: display(&object),
+        before: Some(before.to_string().into()),
         changes,
         deleted: false,
         recreate: None,

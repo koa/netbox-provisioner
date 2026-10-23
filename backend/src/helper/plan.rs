@@ -3,7 +3,7 @@
 use super::flags;
 use crate::topology::{
     PoeMode, RadioRole,
-    findings::{DeviceRef, InterfaceRef, IpVersion},
+    findings::{DeviceRef, InterfaceRef, IpVersion, VlanRef},
 };
 use async_graphql::{SimpleObject, Union};
 
@@ -23,6 +23,8 @@ pub enum PlanStep {
     CreateWirelessLink(CreateWirelessLink),
     UpdateWirelessLink(UpdateWirelessLink),
     DeleteWirelessLink(DeleteWirelessLink),
+    UpdatePortVlan(UpdatePortVlan),
+    DeleteInterface(DeleteInterface),
 }
 
 /// An object of NetBox or one an earlier step of the plan creates.
@@ -172,6 +174,23 @@ impl std::fmt::Debug for UpdateWirelessLink {
             .field("psk_set", &self.psk_set)
             .finish_non_exhaustive()
     }
+}
+
+/// The VLAN of a port: `vlan` untagged (802.1Q mode access), or none (no mode); no tagged
+/// VLANs either way. The port must still have `vlan_before` and `tagged_before`.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct UpdatePortVlan {
+    pub interface: InterfaceRef,
+    pub vlan: Option<VlanRef>,
+    pub vlan_before: Option<VlanRef>,
+    pub tagged_before: Vec<VlanRef>,
+}
+
+/// The interface `interface`, a virtual one without addresses left (they go in earlier
+/// steps).
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct DeleteInterface {
+    pub interface: InterfaceRef,
 }
 
 /// The wireless link `id` between `a` and `b`.

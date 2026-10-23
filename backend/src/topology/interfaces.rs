@@ -72,6 +72,8 @@ pub enum ActionHelper {
     RadioBridge,
     /// „Richtfunk abräumen“, from a radio of the link (`interface`)
     RadioDisconnect,
+    /// „Kunden-Anschluss abräumen“ of the row's interface
+    CustomerDisconnect,
 }
 
 /// An action of a row: the helper and what it starts with. The frontend hands it on to the
@@ -433,6 +435,13 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
             if row.gateways.is_empty() && !(has_v4 && has_v6) {
                 actions.push(customer_net());
             }
+            actions.push(action(
+                ActionKind::Remove,
+                ActionHelper::CustomerDisconnect,
+                own,
+                None,
+                None,
+            ));
         }
         InterfaceTask::Unknown => {
             if !row.free {

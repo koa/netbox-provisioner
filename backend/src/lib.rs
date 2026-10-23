@@ -176,6 +176,9 @@ pub enum Error {
     /// a port (`device port`) without cable or transfer address
     #[error("{0} has no link to take out of NetBox")]
     NothingToDisconnect(Box<str>),
+    /// an interface (`device interface`) without address, `dhcp` or VLAN
+    #[error("{0} has no customer network to take out of NetBox")]
+    NoCustomerNet(Box<str>),
     #[error("{0} has no site")]
     NoSite(Box<str>),
     /// not a prefix of the device's site

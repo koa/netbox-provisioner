@@ -21,6 +21,8 @@ query NetboxPlan($helper: Helper!){
             ... on CreateWirelessLink{ a{ name device{ name } } b{ name device{ name } } ssid }
             ... on UpdateWirelessLink{ a{ name device{ name } } b{ name device{ name } } ssid ssidBefore pskSet }
             ... on DeleteWirelessLink{ a{ name device{ name } } b{ name device{ name } } }
+            ... on UpdatePortVlan{ interface{ name device{ name } } vlan{ ...PlanVlan } vlanBefore{ ...PlanVlan } taggedBefore{ ...PlanVlan } }
+            ... on DeleteInterface{ interface{ name device{ name } } }
         }
     }
 }
@@ -130,3 +132,4 @@ query CustomerNetOptions($id: Int!){
         }
     }
 }
+fragment PlanVlan on VlanRef{ vid name }

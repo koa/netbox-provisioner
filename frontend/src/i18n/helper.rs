@@ -221,6 +221,34 @@ pub fn delete_address(address: &str, device: &str, interface: &str) -> String {
 pub fn delete_wireless_link(a: (&str, &str), b: (&str, &str)) -> String {
     format!("Wireless Link {} {} – {} {} löschen", a.0, a.1, b.0, b.1)
 }
+pub fn update_port_vlan(
+    port: (&str, &str),
+    vlan: Option<(i64, &str)>,
+    before: Option<(i64, &str)>,
+    tagged_before: &[(i64, &str)],
+) -> String {
+    let name = |(vid, name): (i64, &str)| format!("VLAN {vid} ({name})");
+    let mut text = match (vlan, before) {
+        (Some(vlan), _) => format!("{} {}: untagged {}", port.0, port.1, name(vlan)),
+        (None, Some(before)) => format!("{} {}: {} weg", port.0, port.1, name(before)),
+        (None, None) => format!("{} {}:", port.0, port.1),
+    };
+    if !tagged_before.is_empty() {
+        let tagged = tagged_before.iter().map(|v| name(*v)).collect::<Vec<_>>().join(", ");
+        text.push_str(&format!(", tagged {tagged} weg"));
+    }
+    text
+}
+pub fn delete_interface(interface: (&str, &str)) -> String {
+    format!("Interface {} {} löschen", interface.0, interface.1)
+}
+pub const CUSTOMER_DISCONNECT: &str = "Kunden-Anschluss abräumen";
+pub const CUSTOMER_DISCONNECT_HINT: &str = "Nimmt das Netz eines Kunden-Anschlusses aus NetBox: \
+    die Adressen am Interface, ihr Prefix, wenn danach nichts mehr darin ist, dhcp und die VLANs \
+    am Port (bei einer Bridge auch an ihren Ports, bei einem VLAN-Interface an den Kunden-Ports \
+    mit seinem VLAN). Ein VLAN-Interface, das sonst nichts hat, wird gelöscht. Das VLAN selbst \
+    bleibt.";
+pub const CHOOSE_CUSTOMER_DISCONNECT: &str = "Über die Kunden-Zeile der Interfaces starten.";
 pub const RADIO_DISCONNECT: &str = "Richtfunk abräumen";
 pub const RADIO_DISCONNECT_HINT: &str = "Nimmt das Netz einer Richtfunk-Strecke aus NetBox: \
     die IPv4-Adressen des Segments an den beiden Router-Ports und den beiden Bridges, sein Prefix, \

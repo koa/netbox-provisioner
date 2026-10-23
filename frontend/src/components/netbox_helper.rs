@@ -81,6 +81,8 @@ pub enum HelperPreset {
     RadioFrom(RadioPreset),
     /// „Richtfunk abräumen“ from this radio of the link
     RadioDisconnect(u32),
+    /// „Kunden-Anschluss abräumen“ of this interface
+    CustomerDisconnect(u32),
 }
 
 /// „Funkbrücke“ from a router port: the helper is the bridge device's, its router side set.
@@ -167,6 +169,7 @@ pub enum HelperChoice {
         radio: u32,
         wireless_link: bool,
     },
+    CustomerDisconnect(u32),
 }
 
 /// What „Funkbrücke“ is choosing: whether this bridge is the AP, the other bridge, and per side
@@ -361,6 +364,12 @@ macro_rules! helper_input {
                 radio: radio as i64,
                 wireless_link,
             }),
+            HelperChoice::CustomerDisconnect(interface) => {
+                $module::Helper::CustomerDisconnect($module::CustomerDisconnectInput {
+                    device: $id as i64,
+                    interface: interface as i64,
+                })
+            }
         }
     };
 }
@@ -377,6 +386,8 @@ pub enum HelperKind {
     RadioBridge,
     /// only from a radio link's row: it needs the radio
     RadioDisconnect,
+    /// only from a customer row: it needs the row's interface
+    CustomerDisconnect,
 }
 
 impl HelperKind {
@@ -409,6 +420,7 @@ impl Display for HelperKind {
             HelperKind::Poe => t::POE,
             HelperKind::RadioBridge => t::RADIO_BRIDGE,
             HelperKind::RadioDisconnect => t::RADIO_DISCONNECT,
+            HelperKind::CustomerDisconnect => t::CUSTOMER_DISCONNECT,
         })
     }
 }
@@ -445,6 +457,8 @@ pub struct NetboxHelper {
     /// „Richtfunk abräumen“: the radio, and whether the wireless link goes too
     radio_disconnect: Option<u32>,
     radio_disconnect_link: bool,
+    /// „Kunden-Anschluss abräumen“: the row's interface
+    customer_disconnect: Option<u32>,
     ports: Option<Result<link_ports::ResponseData, FrontendError>>,
     flag_interfaces: Option<Result<Vec<FlagInterface>, FrontendError>>,
     /// the tags switched away from what NetBox has
@@ -540,6 +554,7 @@ impl Component for NetboxHelper {
         let mut net = NetChoice::default();
         let mut radio = RadioChoice::default();
         let mut radio_disconnect = None;
+        let mut customer_disconnect = None;
         let kind = match &ctx.props().preset {
             None => HelperKind::Loopback,
             Some(HelperPreset::Kind(kind)) => *kind,
@@ -573,6 +588,10 @@ impl Component for NetboxHelper {
                 radio_disconnect = Some(*radio);
                 HelperKind::RadioDisconnect
             }
+            Some(HelperPreset::CustomerDisconnect(interface)) => {
+                customer_disconnect = Some(*interface);
+                HelperKind::CustomerDisconnect
+            }
         };
         last_write(ctx.link().clone(), ctx.props().id);
         let mut helper = Self {
@@ -582,6 +601,7 @@ impl Component for NetboxHelper {
             disconnect,
             radio_disconnect,
             radio_disconnect_link: false,
+            customer_disconnect,
             ports: None,
             flag_interfaces: None,
             flags: BTreeMap::new(),
@@ -928,6 +948,9 @@ impl Component for NetboxHelper {
             (None, _) if self.kind == HelperKind::RadioDisconnect => {
                 html!(<p>{t::CHOOSE_RADIO_DISCONNECT}</p>)
             }
+            (None, _) if self.kind == HelperKind::CustomerDisconnect => {
+                html!(<p>{t::CHOOSE_CUSTOMER_DISCONNECT}</p>)
+            }
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),
             (_, None) => html!(<Spinner size={SpinnerSize::Md}/>),
             (_, Some(Err(error))) => error.to_html(),
@@ -1008,6 +1031,7 @@ impl Component for NetboxHelper {
             HelperKind::Poe => t::POE_HINT,
             HelperKind::RadioBridge => t::RADIO_BRIDGE_HINT,
             HelperKind::RadioDisconnect => t::RADIO_DISCONNECT_HINT,
+            HelperKind::CustomerDisconnect => t::CUSTOMER_DISCONNECT_HINT,
         };
         let content = html! {<>
                     {error}
@@ -1128,6 +1152,9 @@ impl NetboxHelper {
                 mtu: self.link.mtu.trim().parse().ok(),
             }),
             HelperKind::Disconnect => Some(HelperChoice::Disconnect(self.disconnect?)),
+            HelperKind::CustomerDisconnect => {
+                Some(HelperChoice::CustomerDisconnect(self.customer_disconnect?))
+            }
             HelperKind::RadioDisconnect => Some(HelperChoice::RadioDisconnect {
                 radio: self.radio_disconnect?,
                 wireless_link: self.radio_disconnect_link,
@@ -1953,6 +1980,20 @@ fn describe(step: &Step) -> String {
             (&create.b.device.name, &create.b.name),
             &create.ssid,
         ),
+        Step::UpdatePortVlan(update) => {
+            fn vlan(vlan: &netbox_plan::PlanVlan) -> (i64, &str) {
+                (vlan.vid, vlan.name.as_str())
+            }
+            t::update_port_vlan(
+                (&update.interface.device.name, &update.interface.name),
+                update.vlan.as_ref().map(vlan),
+                update.vlan_before.as_ref().map(vlan),
+                &update.tagged_before.iter().map(vlan).collect::<Vec<_>>(),
+            )
+        }
+        Step::DeleteInterface(delete) => {
+            t::delete_interface((&delete.interface.device.name, &delete.interface.name))
+        }
         Step::DeleteWirelessLink(delete) => t::delete_wireless_link(
             (&delete.a.device.name, &delete.a.name),
             (&delete.b.device.name, &delete.b.name),

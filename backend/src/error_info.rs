@@ -199,6 +199,9 @@ impl From<&Error> for ErrorInfo {
             Error::NothingToDisconnect(port) => {
                 ("NOTHING_TO_DISCONNECT", vec![("port", port.to_string())])
             }
+            Error::NoCustomerNet(interface) => {
+                ("NO_CUSTOMER_NET", vec![("interface", interface.to_string())])
+            }
             Error::NoSite(device) => ("NO_SITE", vec![("device", device.to_string())]),
             Error::UnknownPrefix(id) => ("UNKNOWN_PREFIX", vec![("id", id.to_string())]),
             Error::UnknownVlan(id) => ("UNKNOWN_VLAN", vec![("id", id.to_string())]),

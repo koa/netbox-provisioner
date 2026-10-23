@@ -477,9 +477,12 @@ fn rows_offer_the_helpers_that_fit() {
     );
     assert!(view.loopback_actions.is_empty());
 
-    // r2's VLAN port has its L3 on r1
+    // r2's VLAN port has its L3 on r1: no network of its own, only taking it out
     let view = topology.get_device_by_id(&r2).unwrap().interface_view();
-    assert!(row(&view, "ether3").actions.is_empty());
+    assert_eq!(
+        helpers(row(&view, "ether3")),
+        [(ActionKind::Remove, ActionHelper::CustomerDisconnect)]
+    );
 
     // the bridge device: no loopback yet
     let view = topology.get_device_by_id(&b1).unwrap().interface_view();
