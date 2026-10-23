@@ -200,6 +200,7 @@ async fn bootstrap_node_directly(
         mutations.as_ref(),
         [
             (ReferenceType::Interface, b"lo".into()),
+            (ReferenceType::Interface, b"all".into()),
             (ReferenceType::RoutingTable, b"main".into()),
             (ReferenceType::FirewallChain, b"input".into()),
             (ReferenceType::FirewallChain, b"output".into()),

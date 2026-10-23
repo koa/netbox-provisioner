@@ -14,7 +14,7 @@ use mikrotik_model::{
     model::{
         InterfaceBridgePortById, InterfaceBridgePortCfg, InterfaceBridgeVlanById,
         InterfaceBridgeVlanCfg, InterfaceVxlanVtepsById,
-        InterfaceVxlanVtepsCfg, ReferenceType, RoutingOriginateDefault,
+        InterfaceVxlanVtepsCfg, RoutingOriginateDefault,
     },
     resource::{ResourceMutation, ResourceMutationOperation},
     value::Id,
@@ -862,10 +862,7 @@ async fn test_renamed_vxlan_frees_its_vni_first() -> Result<(), Box<dyn Error>> 
     let mutations = target_data.generate_mutations(&current)?;
     let sorted = ResourceMutation::sort_mutations_with_provided_dependencies(
         mutations.as_ref(),
-        [
-            (ReferenceType::Interface, b"lo".into()),
-            (ReferenceType::RoutingTable, b"main".into()),
-        ],
+        crate::device::ros::graphql::provided_by_routeros(),
     )
     .unwrap();
     let position = |what: &str, found: &dyn Fn(&ResourceMutation) -> bool| {
@@ -1424,13 +1421,7 @@ fn dump_mutations(
     let mutations = target_data.generate_mutations(empty_current)?;
     let mutations = ResourceMutation::sort_mutations_with_provided_dependencies(
         mutations.as_ref(),
-        [
-            (ReferenceType::Interface, b"lo".into()),
-            (ReferenceType::RoutingTable, b"main".into()),
-            (ReferenceType::FirewallChain, b"input".into()),
-            (ReferenceType::FirewallChain, b"output".into()),
-            (ReferenceType::FirewallChain, b"forward".into()),
-        ],
+        crate::device::ros::graphql::provided_by_routeros(),
     )
     .unwrap();
     let mut cfg = String::new();

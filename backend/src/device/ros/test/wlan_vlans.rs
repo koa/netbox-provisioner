@@ -471,7 +471,7 @@ async fn provisioning_with_two_slaves_sorts() {
     let mutations = wifi.generate_mutations(&current).unwrap();
     ResourceMutation::sort_mutations_with_provided_dependencies(
         &mutations,
-        [(ReferenceType::Interface, b"lo".into())],
+        crate::device::ros::graphql::provided_by_routeros(),
     )
     .unwrap();
 }

@@ -300,9 +300,11 @@ impl DeviceCfg {
 /// `capsman` a bound radio reports without such an entry (cAP ax, 7.23.7): the target always
 /// has that configuration, and taking it as there let router-stall-burri's radios get
 /// `configuration=capsman` before it was added, which RouterOS refused.
-pub(super) fn provided_by_routeros() -> [(ReferenceType, std::borrow::Cow<'static, [u8]>); 5] {
+pub(crate) fn provided_by_routeros() -> [(ReferenceType, std::borrow::Cow<'static, [u8]>); 6] {
     [
         (ReferenceType::Interface, b"lo".into()),
+        // `/ipv6/nd`'s own entry: every interface
+        (ReferenceType::Interface, b"all".into()),
         (ReferenceType::RoutingTable, b"main".into()),
         (ReferenceType::FirewallChain, b"input".into()),
         (ReferenceType::FirewallChain, b"output".into()),

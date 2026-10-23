@@ -23,7 +23,7 @@ use crate::{
 use mikrotik_model::{
     generator::Generator,
     hwconfig::{ADVERTISE_1G, EthernetNamePattern, generate_ethernet},
-    model::{InterfaceWirelessByDefaultName, ReferenceType},
+    model::InterfaceWirelessByDefaultName,
     resource::ResourceMutation,
 };
 use std::{collections::BTreeMap, path::Path};
@@ -136,13 +136,7 @@ fn generate(device: &DeviceAccess) -> Result<String, String> {
     .collect::<Vec<_>>();
     let mutations = ResourceMutation::sort_mutations_with_provided_dependencies(
         mutations.as_ref(),
-        [
-            (ReferenceType::Interface, b"lo".into()),
-            (ReferenceType::RoutingTable, b"main".into()),
-            (ReferenceType::FirewallChain, b"input".into()),
-            (ReferenceType::FirewallChain, b"output".into()),
-            (ReferenceType::FirewallChain, b"forward".into()),
-        ],
+        crate::device::ros::graphql::provided_by_routeros(),
     )
     .map_err(|e| format!("sort: {e:?}"))?;
     let mut script = String::new();
