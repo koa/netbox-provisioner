@@ -28,7 +28,9 @@ the `examples/` directory here for reference RouterOS configurations the generat
 capable of producing the functionality of (not byte-for-byte). `docs/` describes how the
 NetBox-to-RouterOS config generation itself works (interface naming, L2/bridge/VLAN generation,
 OSPF, VXLAN, WLAN/CAPsMAN, point-to-point radio bridges) - read it before changing anything under
-`device/ros/`.
+`device/ros/`. There `mod.rs` has the `mikrotik_model!` definitions and the base config
+(`BaseDeviceDataTarget`), `radio/` the radios (`wireless`, `w60g`, `wifi`, `capsman`, shared
+helpers in `radio/mod.rs`), `dhcp.rs` the DHCP pool, `l2/` the bridges and VLANs.
 `docs/todo.md` lists the open tasks of all three repos (numbered, with effort and status);
 mark one done there, with date and commit, in the commit that finishes it.
 `docs/netbox-modeling.md` is the user-facing contract for how devices must be modeled in NetBox

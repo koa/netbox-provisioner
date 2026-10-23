@@ -1,7 +1,7 @@
 # Funkbrücken-Generierung (5 GHz und 60 GHz)
 
-Code: `backend/src/device/ros/mod.rs` (`WirelessDeviceDataTarget::generate_from`,
-`W60GDeviceDataTarget::generate_from`), `backend/src/device/ros/hw_facts.rs` (Boards, Funk-Ports),
+Code: `backend/src/device/ros/radio/` (`wireless.rs`: `WirelessDeviceDataTarget::generate_from`,
+`w60g.rs`: `W60GDeviceDataTarget::generate_from`), `backend/src/device/ros/hw_facts.rs` (Boards, Funk-Ports),
 `backend/src/device/ros/l2/mod.rs` (`L2Setup::placement_of_port`), Modelle in `mikrotik-model`
 (`ros_model/interface.txt` `/interface/wireless`, `ros_model/interface/W60g.txt`).
 Referenz-Konfigurationen: `examples/06-wlan-bridge-p2p`.

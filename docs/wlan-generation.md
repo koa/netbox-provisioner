@@ -1,7 +1,7 @@
 # WLAN/CAPsMAN-Generierung
 
-Code: `backend/src/device/ros/mod.rs` (`WirelessDeviceData`/`WifiDeviceData`-Modelle,
-`WifiDeviceDataTarget::generate_from`), `backend/src/device/ros/l2/mod.rs` (`L2Port::CapsMan`/`Cap`/
+Code: `backend/src/device/ros/mod.rs` (`WirelessDeviceData`/`WifiDeviceData`-Modelle),
+`backend/src/device/ros/radio/wifi.rs` (`WifiDeviceDataTarget::generate_from`), `backend/src/device/ros/l2/mod.rs` (`L2Port::CapsMan`/`Cap`/
 `CapsManMgmt`/`CapMgmt`), `mikrotik-model/src/hwconfig.rs` (`generate_wifi`/`generate_wlan`).
 
 Generiert wird der neuere WiFi-Stack (`/interface/wifi`) mit CAPsMAN und lokalem Forwarding auf
@@ -25,7 +25,7 @@ RouterOS hat zwei unabhängige, sich gegenseitig ausschließende WLAN-Stacks, da
   (`hw_facts.rs::build_wifi_ports` ist noch ungenutzt).
 
 Welches Paket die Radios eines Boards brauchen, steht in `hw_facts.rs::radio_package` (dort gehört
-alles Modellspezifische hin). `needed_radio_package` (`device/ros/mod.rs`) gibt es nur zurück,
+alles Modellspezifische hin). `needed_radio_package` (`device/ros/radio/mod.rs`) gibt es nur zurück,
 wenn NetBox die Radios nutzt: ein Radio mit RF-Rolle, in einer Bridge, mit VLAN oder Adresse, oder
 das Gerät ist AP einer Wireless LAN Group. Nur dann liest `DeviceCfg::fetch_with_board_model` das
 passende Modell (`WirelessDeviceData` und `W60GDeviceData` für `wireless`, `WifiDeviceData` für
@@ -126,8 +126,9 @@ CAPsMAN-WLAN ist kein physischer Ethernet-Port, der gebridged werden könnte).
 
 ## Klassischer CAPsMAN-Stack
 
-Code: `CapsManDeviceDataTarget` und `WirelessDeviceDataTarget::setup_legacy_cap`
-(`device/ros/mod.rs`), `Topology::is_legacy_cap`.
+Code: `CapsManDeviceDataTarget` (`device/ros/radio/capsman.rs`) und
+`WirelessDeviceDataTarget::setup_legacy_cap` (`device/ros/radio/wireless.rs`),
+`Topology::is_legacy_cap`.
 
 Ein AP einer Wireless LAN Group, der in NetBox `wlan<N>`-Ports hat (Radios des `wireless`-Pakets),
 ist ein **Legacy-CAP**. RouterOS 7 hat für diese Radios nur den alten CAPsMAN, nicht den von

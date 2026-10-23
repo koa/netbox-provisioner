@@ -1,66 +1,56 @@
-use crate::device::ros::l2::NameGenerator;
-use crate::topology::management::ManagementTree;
-use crate::device::ros::warning::{ApplyWarning, LegacyRadioManaged, PoeCut, RadioBound};
 use crate::{
     Error,
     device::ros::{
-        hw_facts::{
-            RadioPackage, build_ethernet_ports, build_w60g_ports, build_wireless_ports,
-            radio_package, runs_wireless,
-        },
-        l2::{L2Port, L2Setup, SimpleBridgePort},
+        hw_facts::{RadioPackage, build_ethernet_ports},
+        l2::{L2Port, L2Setup, NameGenerator, SimpleBridgePort},
+        warning::{ApplyWarning, PoeCut},
     },
     topology::{
-        IpPrefixId, PhysicalPortId, Radio, RadioLink, RadioRole, WlanAuth,
-        access::{
-            AccessTopology, device::DeviceAccess, interface::InterfaceAccess,
-            ip_prefix::IpPrefixAccess, wlan_group::WlanGroupAccess,
-        },
+        IpPrefixId, PhysicalPortId,
+        access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess},
+        management::ManagementTree,
     },
 };
+use dhcp::pool_range;
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use mikrotik_model::{
     MacAddress, MikrotikDevice,
     ascii::{self, AsciiString},
     mikrotik_model,
     model::{
-        EnabledDisabled, InterfaceBridgeProtocolMode, InterfaceEthernetByDefaultName,
-        InterfaceEthernetCfg, InterfaceEthernetPoeOut, InterfaceVlanByName, InterfaceVlanCfg,
-        InterfaceVxlanByName, InterfaceVxlanCfg, InterfaceW60GMode, InterfaceW60GRegion,
-        CapsAuthenticationTypes, CapsEncryption, CapsManConfigurationMode,
-        CapsManDatapathVlanMode, CapsManProvisioningAction, CapsManProvisioningCfg, CapsManProvisioningNameFormat,
-        CapsManProvisioningHwSupportedModes,
-        WifiCountryLower as CapsManWifiCountry, InterfaceWifiCapsmanUpgradePolicy, InterfaceWifiProvisioningAction, InterfaceWirelessCfg, InterfaceWirelessChannelWidth,
-        InterfaceWirelessFrequencyMode, InterfaceWirelessMode, InterfaceWirelessTxPowerMode,
-        InterfaceWirelessWirelessProtocol::{Nv2, Nv2Nstreme80211},
-        InterfaceListByName, InterfaceListCfg, InterfaceListMemberCfg, IpAddressByAddress, IpAddressCfg, IpDhcpClientCfg,
-        IpDhcpClientDhcpOptions, IpNeighborDiscoverySettingsCfg, ToolMacServerCfg,
-        IpFirewallFilterAction, IpFirewallFilterCfg, IpFirewallNatAction, IpFirewallNatCfg,
-        Ipv6NdAdvertiseDns, Ipv6NdByInterface, Ipv6NdCfg,
-        IpSocksAuthMethod, IpSocksUsersByName, IpSshCfg, IpSshForwardingEnabled, IpSocksUsersCfg, Ipv6AddressByAddress,
-        Ipv6AddressCfg, RoutingOspfInstanceByName, RoutingOspfInstanceCfg,
-        RoutingOriginateDefault, RoutingOspfInstanceVersion, RoutingRedistribute, VlanFrameTypes, WifiChannelBand,
-        WifiAuthenticationTypes, WifiCountry, WifiManagement, YesNo,
+        CapsManProvisioningHwSupportedModes, InterfaceBridgeProtocolMode,
+        InterfaceEthernetByDefaultName, InterfaceEthernetCfg, InterfaceEthernetPoeOut,
+        InterfaceListByName, InterfaceListCfg, InterfaceListMemberCfg, InterfaceVlanByName,
+        InterfaceVlanCfg, InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress,
+        IpAddressCfg, IpDhcpClientCfg, IpDhcpClientDhcpOptions, IpFirewallFilterAction,
+        IpFirewallFilterCfg, IpFirewallNatAction, IpFirewallNatCfg,
+        IpNeighborDiscoverySettingsCfg, IpSocksAuthMethod, IpSocksUsersByName, IpSocksUsersCfg,
+        IpSshCfg, IpSshForwardingEnabled, Ipv6AddressByAddress, Ipv6AddressCfg,
+        Ipv6NdAdvertiseDns, Ipv6NdByInterface, Ipv6NdCfg, RoutingOriginateDefault,
+        RoutingOspfInstanceByName, RoutingOspfInstanceCfg, RoutingOspfInstanceVersion,
+        RoutingRedistribute, ToolMacServerCfg, VlanFrameTypes, WifiChannelBand, YesNo,
     },
     value,
-    value::{Auto, HasNone, ParseRosValueResult, RosValue},
 };
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
-    net::{IpAddr, Ipv4Addr},
-    ops::{Range, RangeInclusive},
+    net::IpAddr,
 };
 
+pub(crate) mod dhcp;
 pub mod fallback;
 pub mod graphql;
 pub(crate) mod hw_facts;
+pub mod l2;
+pub(crate) mod radio;
 pub(crate) mod speed;
 pub mod warning;
 pub mod watchdog;
-
-pub mod l2;
 #[cfg(test)]
 mod test;
+
+pub(crate) use dhcp::dhcp_pool_v4;
+pub use radio::needed_radio_package;
 
 mikrotik_model!(
     name = BaseDeviceData,
@@ -113,6 +103,65 @@ mikrotik_model!(
         mac_server(single = "tool/mac-server"),
         neighbor_discovery(single = "ip/neighbor/discovery-settings"),
         watchdog(single = "system/watchdog"),
+    ),
+);
+
+mikrotik_model!(
+    name = WirelessDeviceData,
+    detect = new,
+    fields(
+        wireless_cap(single = "interface/wireless/cap"),
+        wireless(by_key(path = "interface/wireless", key = defaultName)),
+    ),
+);
+
+mikrotik_model!(
+    name = W60GDeviceData,
+    detect = new,
+    fields(radio(by_key(path = "interface/w60g", key = name)),),
+);
+
+mikrotik_model!(
+    name = WifiDeviceData,
+    detect = new,
+    fields(
+        cap(single = "interface/wifi/cap"),
+        capsman(single = "interface/wifi/capsman"),
+        wifi(by_key(path = "interface/wifi", key = defaultName)),
+        datapath(by_key(path = "interface/wifi/datapath", key = name)),
+        configuration(by_key(path = "interface/wifi/configuration", key = name)),
+        certificate(by_key(path = "certificate", key = name)),
+        provisioning(by_id(
+            path = "interface/wifi/provisioning",
+            keys(
+                radio_mac,
+                identity_regexp,
+                common_name_regexp,
+                address_ranges,
+                supported_bands
+            )
+        )),
+    ),
+);
+
+mikrotik_model!(
+    name = CapsManDeviceData,
+    detect = new,
+    fields(
+        manager(single = "caps-man/manager"),
+        security(by_key(path = "caps-man/security", key = name)),
+        datapath(by_key(path = "caps-man/datapath", key = name)),
+        configuration(by_key(path = "caps-man/configuration", key = name)),
+        provisioning(by_id(
+            path = "caps-man/provisioning",
+            keys(
+                radio_mac,
+                identity_regexp,
+                common_name_regexp,
+                ip_address_ranges,
+                hw_supported_modes
+            )
+        )),
     ),
 );
 
@@ -1194,878 +1243,5 @@ impl BaseDeviceDataTarget {
                 },
             );
         }
-    }
-}
-
-/// The ranges a DHCP server on `net` (of `prefix`) hands out: the prefix' IP ranges marked
-/// DHCP, else every address of it no address, IP range or child prefix takes. Empty, there is
-/// no DHCP server (finding `DhcpPoolEmpty`), as on a /32 without prefix.
-pub(crate) fn dhcp_pool_v4(prefix: &IpPrefixAccess, net: Ipv4Net) -> Vec<Range<Ipv4Addr>> {
-    let mut explicit = Vec::new();
-    let mut gap_finder = GapFinder::new();
-    for range in prefix.ranges() {
-        if let (Some(IpAddr::V4(start)), Some(IpAddr::V4(end))) = (range.start(), range.end()) {
-            if range.is_dhcp() {
-                explicit.push(start..end);
-            }
-            gap_finder.reserve_ipv4_range(start..end);
-        }
-    }
-    if !explicit.is_empty() {
-        return explicit;
-    }
-    for child_prefix in prefix.children() {
-        if let Some(IpNet::V4(net)) = child_prefix.prefix() {
-            gap_finder.reserve_ipv4_net(net);
-        }
-    }
-    for ip in prefix.ips() {
-        if let Some(IpAddr::V4(ip)) = ip.addr() {
-            gap_finder.reserve_ipv4(ip)
-        }
-    }
-    gap_finder.find_gaps_ipv4(net).collect()
-}
-
-/// A pool range (`end` included) as RouterOS reports it: one address alone, a range covering
-/// exactly one network as that network, every other one as `start-end` (CHR 7.24.5 turns
-/// `10.200.1.20-10.200.1.21` into `10.200.1.20/31`; written otherwise, the diff never ends).
-fn pool_range(range: &Range<Ipv4Addr>) -> String {
-    let (start, end) = (u32::from(range.start), u32::from(range.end));
-    let size = u64::from(end) - u64::from(start) + 1;
-    if start == end {
-        range.start.to_string()
-    } else if size.is_power_of_two() && u64::from(start) % size == 0 {
-        format!("{}/{}", range.start, 32 - size.trailing_zeros())
-    } else {
-        format!("{}-{}", range.start, range.end)
-    }
-}
-
-/// The addresses of a network not reserved, as ranges with both ends included (as RouterOS'
-/// `/ip pool` takes them): reserved are single addresses, IP ranges and child prefixes.
-struct GapFinder {
-    reserved: Vec<RangeInclusive<u32>>,
-}
-
-impl GapFinder {
-    pub fn new() -> Self {
-        GapFinder {
-            reserved: Vec::new(),
-        }
-    }
-    pub fn reserve_ipv4(&mut self, ip: Ipv4Addr) {
-        self.reserved.push(u32::from(ip)..=u32::from(ip));
-    }
-    /// `ip.end` included, as in a NetBox IP range
-    pub fn reserve_ipv4_range(&mut self, ip: Range<Ipv4Addr>) {
-        self.reserved.push(u32::from(ip.start)..=u32::from(ip.end));
-    }
-    pub fn reserve_ipv4_net(&mut self, ip: Ipv4Net) {
-        self.reserve_ipv4_range(ip.network()..ip.broadcast());
-    }
-    /// The free ranges of `net` without its network and broadcast address, each `end`
-    /// included; a single free address is a range from it to itself.
-    pub fn find_gaps_ipv4(&self, net: Ipv4Net) -> impl Iterator<Item = Range<Ipv4Addr>> {
-        let (first, last) = (
-            u64::from(u32::from(net.network())) + 1,
-            u64::from(u32::from(net.broadcast())).saturating_sub(1),
-        );
-        let mut reserved = self.reserved.clone();
-        reserved.sort_by_key(|range| *range.start());
-        let mut gaps = Vec::new();
-        // the first address not known to be reserved
-        let mut next = first;
-        for range in reserved {
-            let (start, end) = (u64::from(*range.start()), u64::from(*range.end()));
-            if start > next && next <= last {
-                gaps.push(next..(start - 1).min(last));
-            }
-            next = next.max(end + 1);
-        }
-        if next <= last {
-            gaps.push(next..last);
-        }
-        gaps.into_iter()
-            .map(|gap| Ipv4Addr::from(gap.start as u32)..Ipv4Addr::from(gap.end as u32))
-    }
-}
-mikrotik_model!(
-    name = WirelessDeviceData,
-    detect = new,
-    fields(
-        wireless_cap(single = "interface/wireless/cap"),
-        wireless(by_key(path = "interface/wireless", key = defaultName)),
-    ),
-);
-
-impl WirelessDeviceDataCurrent {
-    /// The radios CAPsMAN manages, by default name with their name on the device: those the
-    /// enabled CAP lists. RouterOS refuses any change to them ("interface managed by
-    /// CAPsMAN", 7.23.7); they also stay while the CAP doesn't reach CAPsMAN, which the
-    /// API doesn't tell apart.
-    pub fn managed_radios(&self) -> HashMap<AsciiString, AsciiString> {
-        if !self.wireless_cap.enabled {
-            return HashMap::new();
-        }
-        self.wireless
-            .iter()
-            .filter(|radio| self.wireless_cap.interfaces.contains(&radio.data.name))
-            .filter_map(|radio| Some((radio.default_name.clone()?, radio.data.name.clone())))
-            .collect()
-    }
-}
-
-impl WirelessDeviceDataTarget {
-    fn new(model: &[u8]) -> Self {
-        Self {
-            wireless_cap: Default::default(),
-            wireless: build_wireless_ports(model)
-                .into_iter()
-                .map(|port| (port.default_name, port.data))
-                .collect(),
-        }
-    }
-    /// Configures every legacy wireless radio as NetBox describes it. One with an RF
-    /// role is an end of a point-to-point bridge: it gets the board's whole radio
-    /// profile (`hw_facts::wireless_bridge_port`), the AP side running plain Nv2, the
-    /// station side also falling back to Nstreme/802.11 (as the production links
-    /// do), with the wireless link's SSID, key and regulatory settings. One without
-    /// is not managed as a radio and keeps its `current` configuration (e.g. a CAP
-    /// of CAPsMAN), only named after its interface if the L2 setup uses it.
-    fn generate_from<N: NameGenerator>(
-        &mut self,
-        device: &DeviceAccess,
-        l2: &L2Setup<N>,
-        current: Option<&WirelessDeviceDataCurrent>,
-    ) -> Result<(), SetupError> {
-        let profiles = self.wireless.clone();
-        // a radio the board doesn't have is a card in its miniPCIe slot (`wlan2` of an RB912)
-        for port in current.iter().flat_map(|current| current.wireless.iter()) {
-            self.wireless
-                .insert(port.default_name.clone(), port.data.clone());
-        }
-        for interface in device.interfaces() {
-            let Some(port @ PhysicalPortId::Wlan(_)) = interface.external_port() else {
-                continue;
-            };
-            let key = Some(AsciiString::from(port.to_string()));
-            let wlan = self
-                .wireless
-                .get_mut(&key)
-                .ok_or(SetupError::PortNotFound(port))?;
-            if let Some(radio) = interface.radio() {
-                let profile = profiles
-                    .get(&key)
-                    .filter(|profile| profile.antenna_gain.is_some())
-                    .ok_or(SetupError::NoRadioProfile(port))?;
-                *wlan = profile.clone();
-                configure_bridge_radio(wlan, device, port, radio)?;
-            }
-            if let Some((name, _)) = l2.placement_of_port(port) {
-                wlan.name = name.clone();
-            }
-            let mtu = port_mtu(&interface)?;
-            let l2mtu = profiles.get(&key).and_then(|p| p.l_2_mtu).or(wlan.l_2_mtu);
-            wlan.mtu = Some(mtu.unwrap_or(DEFAULT_MTU));
-            wlan.l_2_mtu = l2mtu_for(l2mtu, mtu);
-        }
-        self.setup_legacy_cap(device, l2, current)
-    }
-    /// Gives the radios CAPsMAN manages (`WirelessDeviceDataCurrent::managed_radios`) back what
-    /// they have, like `/interface/wifi` its bound ones; `expected` is NetBox's name of each
-    /// (by default name). The L2 setup already has their names (`l2::KeptNames`), and a
-    /// different configuration is a warning.
-    pub fn keep_managed_radios(
-        &mut self,
-        current: &WirelessDeviceDataCurrent,
-        expected: &HashMap<AsciiString, Box<str>>,
-    ) -> Vec<ApplyWarning> {
-        let mut warnings = Vec::new();
-        for radio in current.wireless.iter() {
-            let Some(default_name) = &radio.default_name else {
-                continue;
-            };
-            let Some(expected) = expected.get(default_name) else {
-                continue;
-            };
-            let key = Some(default_name.clone());
-            if self.wireless.get(&key) != Some(&radio.data)
-                || radio.data.name.to_string() != **expected
-            {
-                warnings.push(ApplyWarning::LegacyRadioManaged(LegacyRadioManaged {
-                    radio: radio.data.name.to_string().into(),
-                    expected: expected.clone(),
-                }));
-            }
-            self.wireless.insert(key, radio.data.clone());
-            // a radio L2 doesn't place joins the CAP under its default name
-            if self.wireless_cap.interfaces.remove(default_name) {
-                self.wireless_cap.interfaces.insert(radio.data.name.clone());
-            }
-        }
-        warnings
-    }
-    /// A CAP of the legacy CAPsMAN (`Topology::is_legacy_cap`) with every radio NetBox has,
-    /// finding the controller at its loopback like a CAP of `/interface/wifi`. The CAP
-    /// forwards the clients' traffic itself (`local-forwarding`, `CapsManDeviceDataTarget`)
-    /// into `bridge`, the one carrying the WLANs' VLANs and their VXLAN, like a CAP of
-    /// `/interface/wifi`. An AP whose radios NetBox doesn't have keeps its CAP as it is (one
-    /// of a CAPsMAN NetBox doesn't know of), any other device has it off.
-    fn setup_legacy_cap<N: NameGenerator>(
-        &mut self,
-        device: &DeviceAccess,
-        l2: &L2Setup<N>,
-        current: Option<&WirelessDeviceDataCurrent>,
-    ) -> Result<(), SetupError> {
-        let Some(group) = device.legacy_cap_of() else {
-            self.wireless_cap = match (device.wlan_ap_of(), current) {
-                (Some(_), Some(current)) => current.wireless_cap.clone(),
-                _ => Default::default(),
-            };
-            return Ok(());
-        };
-        let controller = group
-            .controller()
-            .and_then(|controller| controller.loopback_ip())
-            .and_then(|ip| ip.addr())
-            .ok_or_else(|| SetupError::MissingController(device.name().into()))?;
-        let cap = &mut self.wireless_cap;
-        *cap = Default::default();
-        cap.enabled = true;
-        cap.caps_man_addresses = [controller].into();
-        cap.bridge = group
-            .wlan()
-            .find_map(|wlan| l2.bridge_of_wlan(&wlan))
-            .map_or(HasNone::NoneValue, |bridge| HasNone::Value(bridge.clone()));
-        for interface in device.interfaces() {
-            let Some(port @ PhysicalPortId::Wlan(_)) = interface.external_port() else {
-                continue;
-            };
-            let name = match l2.placement_of_port(port) {
-                Some((name, _)) => name.clone(),
-                None => AsciiString::from(port.to_string()),
-            };
-            cap.interfaces.insert(name);
-            // `wireless` installs its radios disabled (a wAP ac coming from `wifi-qcom-ac`)
-            if let Some(wlan) = self.wireless.get_mut(&Some(AsciiString::from(port.to_string()))) {
-                wlan.disabled = false;
-            }
-        }
-        Ok(())
-    }
-}
-
-/// Sets `wlan`, a 5 GHz bridge radio profile, up as the `radio` end of its link.
-fn configure_bridge_radio(
-    wlan: &mut InterfaceWirelessCfg,
-    device: &DeviceAccess,
-    port: PhysicalPortId,
-    radio: &Radio,
-) -> Result<(), SetupError> {
-    let link = radio
-        .link
-        .as_ref()
-        .ok_or(SetupError::MissingWirelessLink(port))?;
-    let (mode, protocol) = match radio.role {
-        RadioRole::Ap => (InterfaceWirelessMode::Bridge, Nv2),
-        RadioRole::Station => (InterfaceWirelessMode::StationBridge, Nv2Nstreme80211),
-    };
-    wlan.mode = Some(mode);
-    wlan.wireless_protocol = Some(protocol);
-    // a station scans for its AP
-    if radio.role == RadioRole::Ap {
-        wlan.frequency = Some(radio.frequency.map_or(Auto::Auto, Auto::Value));
-    }
-    if let Some(width) = radio.channel_width {
-        wlan.channel_width = Some(wireless_channel_width(width, radio.role)?);
-    }
-    wlan.ssid = Some(link.ssid.as_ref().into());
-    if let Some(key) = link_key(link)? {
-        wlan.nv_2_security = Some(EnabledDisabled::Enabled);
-        wlan.nv_2_preshared_key = Some(key.into());
-    }
-    wlan.country = Some(match &link.country {
-        Some(country) => country.as_ref().into(),
-        None => country_settings(device)?.0.into(),
-    });
-    if let Some(mode) = &link.frequency_mode {
-        wlan.frequency_mode = Some(
-            match InterfaceWirelessFrequencyMode::parse_ros(mode.as_bytes()) {
-                ParseRosValueResult::Value(mode) => mode,
-                _ => return Err(SetupError::InvalidFrequencyMode(mode.clone())),
-            },
-        );
-    }
-    if let Some(power) = radio.tx_power {
-        wlan.tx_power_mode = Some(InterfaceWirelessTxPowerMode::AllRatesFixed);
-        wlan.tx_power = Some(power);
-    }
-    Ok(())
-}
-
-/// The key of an encrypted link, `None` for an open one.
-fn link_key(link: &RadioLink) -> Result<Option<&str>, SetupError> {
-    if !link.encrypted {
-        return Ok(None);
-    }
-    link.psk
-        .as_deref()
-        .map(Some)
-        .ok_or_else(|| SetupError::MissingPsk(link.ssid.clone()))
-}
-
-/// RouterOS's `/interface/wireless` country and `/interface/w60g` region for the
-/// country of the device's site (the ISO 3166 code of its topmost region).
-fn country_settings(
-    device: &DeviceAccess,
-) -> Result<(&'static str, InterfaceW60GRegion), SetupError> {
-    use InterfaceW60GRegion::Eu;
-    let code = device
-        .country()
-        .ok_or_else(|| SetupError::MissingCountry(device.name().into()))?;
-    Ok(match code.to_ascii_lowercase().as_str() {
-        "ch" => ("switzerland", Eu),
-        "li" => ("liechtenstein", Eu),
-        "de" => ("germany", Eu),
-        "at" => ("austria", Eu),
-        "fr" => ("france", Eu),
-        "it" => ("italy", Eu),
-        _ => return Err(SetupError::UnknownCountry(code.into())),
-    })
-}
-
-/// The channel width for `width` MHz with the control channel first, as on the AP
-/// side; a station follows the AP's layout (`X`), whatever it is.
-fn wireless_channel_width(
-    width: u32,
-    role: RadioRole,
-) -> Result<InterfaceWirelessChannelWidth, SetupError> {
-    use InterfaceWirelessChannelWidth::*;
-    Ok(match (width, role) {
-        (5, _) => _5Mhz,
-        (10, _) => _10Mhz,
-        (20, _) => _20Mhz,
-        (40, RadioRole::Ap) => _2040MhzCe,
-        (40, RadioRole::Station) => _2040MhzXx,
-        (80, RadioRole::Ap) => _204080MhzCeee,
-        (80, RadioRole::Station) => _204080MhzXxxx,
-        (160, RadioRole::Ap) => _204080160MhzCeeeeeee,
-        (160, RadioRole::Station) => _204080160MhzXxxxxxxx,
-        _ => return Err(SetupError::UnsupportedChannelWidth(width)),
-    })
-}
-
-mikrotik_model!(
-    name = W60GDeviceData,
-    detect = new,
-    fields(radio(by_key(path = "interface/w60g", key = name)),),
-);
-
-impl W60GDeviceDataTarget {
-    fn new(model: &[u8]) -> Self {
-        Self {
-            radio: build_w60g_ports(model)
-                .into_iter()
-                .map(|port| (port.0.name.clone(), port))
-                .collect(),
-        }
-    }
-    /// Like the legacy wireless radios: one with an RF role is a bridge end and gets
-    /// the whole 60 GHz profile (`hw_facts::w60g_port`); its stations - the far ends,
-    /// as dynamic `/interface/w60g/station` interfaces on the AP side - join the
-    /// bridge the radio is in (`put-stations-in-bridge`), the wireless link's PSK is
-    /// the password. One without keeps its `current` configuration.
-    fn generate_from<N: NameGenerator>(
-        &mut self,
-        device: &DeviceAccess,
-        l2: &L2Setup<N>,
-        current: Option<&W60GDeviceDataCurrent>,
-    ) -> Result<(), SetupError> {
-        let profiles = self.radio.clone();
-        for port in current.iter().flat_map(|current| current.radio.iter()) {
-            if let Some(target) = self.radio.get_mut(&port.0.name) {
-                *target = port.clone();
-            }
-        }
-        for interface in device.interfaces() {
-            let Some(port @ PhysicalPortId::W60g(_)) = interface.external_port() else {
-                continue;
-            };
-            let key = AsciiString::from(port.to_string());
-            let radio_port = &mut self
-                .radio
-                .get_mut(&key)
-                .ok_or(SetupError::PortNotFound(port))?
-                .0;
-            let placement = l2.placement_of_port(port);
-            if let Some(radio) = interface.radio() {
-                let link = radio
-                    .link
-                    .as_ref()
-                    .ok_or(SetupError::MissingWirelessLink(port))?;
-                *radio_port = profiles[&key].0.clone();
-                radio_port.mode = Some(match radio.role {
-                    RadioRole::Ap => InterfaceW60GMode::Bridge,
-                    RadioRole::Station => InterfaceW60GMode::StationBridge,
-                });
-                if radio.role == RadioRole::Ap {
-                    radio_port.frequency = Some(radio.frequency.map_or(Auto::Auto, Auto::Value));
-                    radio_port.isolate_stations = Some(true);
-                }
-                radio_port.put_stations_in_bridge =
-                    placement.and_then(|(_, bridge)| bridge.cloned());
-                radio_port.ssid = Some(link.ssid.as_ref().into());
-                radio_port.password = link_key(link)?.map(Into::into);
-                radio_port.region = Some(match &link.country {
-                    Some(region) => match InterfaceW60GRegion::parse_ros(region.as_bytes()) {
-                        ParseRosValueResult::Value(region) => region,
-                        _ => return Err(SetupError::UnknownCountry(region.clone())),
-                    },
-                    None => country_settings(device)?.1,
-                });
-            }
-        }
-        Ok(())
-    }
-}
-mikrotik_model!(
-    name = WifiDeviceData,
-    detect = new,
-    fields(
-        cap(single = "interface/wifi/cap"),
-        capsman(single = "interface/wifi/capsman"),
-        wifi(by_key(path = "interface/wifi", key = defaultName)),
-        datapath(by_key(path = "interface/wifi/datapath", key = name)),
-        configuration(by_key(path = "interface/wifi/configuration", key = name)),
-        certificate(by_key(path = "certificate", key = name)),
-        provisioning(by_id(
-            path = "interface/wifi/provisioning",
-            keys(
-                radio_mac,
-                identity_regexp,
-                common_name_regexp,
-                address_ranges,
-                supported_bands
-            )
-        )),
-    ),
-);
-
-impl WifiDeviceDataTarget {
-    fn new(_model: &[u8]) -> Self {
-        Self {
-            provisioning: Default::default(),
-            datapath: Default::default(),
-            cap: Default::default(),
-            capsman: Default::default(),
-            wifi: Default::default(),
-            configuration: Default::default(),
-            certificate: Default::default(),
-        }
-    }
-    /// The native WiFi stack (`/interface/wifi`) as a Wireless LAN Group in NetBox describes
-    /// it. Its controller runs CAPsMAN with a configuration per WLAN (SSID, country of the
-    /// controller's site, WPA2/WPA3 PSK or OWE); the first WLAN is the master interface of
-    /// every radio, the others virtual ones. An AP of the group is a CAP that finds the
-    /// controller at its loopback (routed, no L2 to the controller needed) and forwards
-    /// locally: a radio NetBox puts into a bridge gets a datapath to that bridge, which
-    /// RouterOS adds the radio and its virtual interfaces to (so `setup_l2` leaves out its
-    /// bridge port). A radio without a bridge of its own goes into the VLAN of the group's
-    /// WLANs, on the bridge carrying it (`bridge-caps`, with the VXLAN to the controller):
-    /// through a datapath with that `vlan-id` where the radio package tags
-    /// (`RadioPackage::tags_vlans`), else as an access port of the bridge (`setup_l2`). The
-    /// CAP sets the VLAN, not the controller, which doesn't know its CAPs' boards; so a radio
-    /// has one VLAN, and WLANs of a group with different VLANs are refused. Radios of a
-    /// device that is no CAP keep their current configuration. Certificates stay, except
-    /// the ones CAPsMAN generated (`capsman_certificates`) on a device that is neither
-    /// controller nor CAP anymore.
-    fn generate_from<N: NameGenerator>(
-        &mut self,
-        device: &DeviceAccess,
-        l2: &L2Setup<N>,
-        current: Option<&WifiDeviceDataCurrent>,
-        capsman_certificates: &[AsciiString],
-        radio_package: Option<RadioPackage>,
-        bound_radios: &[AsciiString],
-    ) -> Result<Vec<ApplyWarning>, SetupError> {
-        let mut warnings = Vec::new();
-        // without a package of `/interface/wifi`, its radios are what one left (a wAP ac on
-        // `wireless` now): inactive, but keeping their names, which the `wlan<N>` need
-        let drivers = radio_package.is_some_and(RadioPackage::is_wifi);
-        for port in current.iter().flat_map(|current| current.wifi.iter()) {
-            let mut data = port.data.clone();
-            if let (false, Some(default_name)) = (drivers, &port.default_name) {
-                data.name = default_name.clone();
-            }
-            self.wifi.insert(port.default_name.clone(), data);
-        }
-        let in_wlan = device.wifi_cap_of().is_some() || device.wlan_controller_of().is_some();
-        for certificate in current.iter().flat_map(|current| current.certificate.iter()) {
-            if in_wlan || !capsman_certificates.contains(&certificate.0.name) {
-                self.certificate
-                    .insert(certificate.0.name.clone(), certificate.clone());
-            }
-        }
-        if let Some(group) = device.wifi_cap_of() {
-            let controller = group
-                .controller()
-                .and_then(|controller| controller.loopback_ip())
-                .and_then(|ip| ip.addr())
-                .ok_or_else(|| SetupError::MissingController(device.name().into()))?;
-            let cap = &mut self.cap;
-            cap.enabled = YesNo::Yes;
-            cap.caps_man_addresses = [controller].into();
-            let wlan_vlans = wlan_vlans(&group);
-            let wlan_bridge = group.wlan().find_map(|wlan| l2.bridge_of_wlan(&wlan));
-            let tags = radio_package.is_some_and(RadioPackage::tags_vlans);
-            // an AP without radios in NetBox (a controller also marked as AP) has none to tag
-            let has_radios = device
-                .interfaces()
-                .iter()
-                .any(|interface| matches!(interface.external_port(), Some(PhysicalPortId::Wifi(_))));
-            if wlan_vlans == WlanVlans::PerWlan && !tags && has_radios {
-                return Err(SetupError::WlanVlansNotTagged(device.name().into()));
-            }
-            // a configuration per datapath (`None`: none, an access port), the first `capsman`
-            let mut cap_configurations: Vec<(Option<AsciiString>, AsciiString)> = Vec::new();
-            for interface in device.interfaces() {
-                let Some(port @ PhysicalPortId::Wifi(_)) = interface.external_port() else {
-                    continue;
-                };
-                let default_name = AsciiString::from(port.to_string());
-                let radio = self
-                    .wifi
-                    .get_mut(&Some(default_name.clone()))
-                    .ok_or(SetupError::PortNotFound(port))?;
-                let placement = l2.placement_of_port(port);
-                // with a VLAN per WLAN, the controller's configurations have them
-                let vlan = match (placement.and_then(|(_, bridge)| bridge), wlan_bridge, wlan_vlans) {
-                    (None, Some(_), WlanVlans::One(Some(vlan))) if tags => Some(vlan),
-                    _ => None,
-                };
-                let bridge = match placement {
-                    None => None,
-                    Some((_, Some(bridge))) => Some(bridge),
-                    // an access port of the bridge, which `setup_l2` adds
-                    Some((_, None)) if !tags => None,
-                    Some((_, None)) => wlan_bridge,
-                };
-                if let Some(bridge) = bridge {
-                    let datapath = &mut self.datapath.entry(bridge.clone()).or_default().0;
-                    datapath.name = bridge.clone();
-                    datapath.bridge = Some(HasNone::Value(bridge.clone()));
-                    datapath.vlan_id = vlan.map(HasNone::Value);
-                    datapath.disabled = false;
-                    // virtual interfaces of the CAP use the one of the first radio
-                    self.cap.slaves_datapath.get_or_insert_with(|| bridge.clone());
-                }
-                let configuration_name = match cap_configurations
-                    .iter()
-                    .find(|(datapath, _)| datapath.as_ref() == bridge)
-                {
-                    Some((_, name)) => name.clone(),
-                    None => {
-                        let name = match (cap_configurations.is_empty(), bridge) {
-                            (true, _) => AsciiString::from("capsman"),
-                            (false, Some(bridge)) => format!("capsman-{bridge}").as_str().into(),
-                            (false, None) => AsciiString::from("capsman-local"),
-                        };
-                        cap_configurations.push((bridge.cloned(), name.clone()));
-                        let configuration =
-                            &mut self.configuration.entry(name.clone()).or_default().0;
-                        configuration.name = name.clone();
-                        configuration.disabled = false;
-                        configuration.manager = Some(WifiManagement::Capsman);
-                        configuration.datapath = bridge.cloned();
-                        // reported with the datapath's values, which are set to the same
-                        configuration.datapath_bridge = bridge.cloned();
-                        configuration.datapath_vlan_id = vlan.map(HasNone::Value);
-                        name
-                    }
-                };
-                // A radio CAPsMAN has bound is dynamic and RouterOS refuses any change to it
-                // (7.23.8, also with the CAP off): it stays as it is, a different configuration
-                // is a warning.
-                if bound_radios.contains(&default_name) {
-                    if radio.configuration.as_ref() != Some(&configuration_name) {
-                        warnings.push(ApplyWarning::RadioBound(RadioBound {
-                            radio: default_name.to_string().into(),
-                            configuration: radio.configuration.as_ref().map(|c| c.to_string().into()),
-                            expected: configuration_name.to_string().into(),
-                        }));
-                    }
-                    continue;
-                }
-                // under the name L2 gives it; the configuration has it all, which the radio
-                // reports as its own
-                radio.name = default_name;
-                radio.configuration = Some(configuration_name);
-                radio.configuration_manager = Some(WifiManagement::Capsman);
-                radio.datapath = None;
-                radio.datapath_bridge = bridge.cloned();
-                radio.datapath_vlan_id = vlan.map(HasNone::Value);
-            }
-        }
-        // what a bound radio uses stays, and with it its datapath
-        for radio in current.iter().flat_map(|current| current.wifi.iter()) {
-            let bound = radio
-                .default_name
-                .as_ref()
-                .is_some_and(|name| bound_radios.contains(name));
-            let Some(name) = radio.data.configuration.as_ref().filter(|_| bound) else {
-                continue;
-            };
-            let Some(used) = current
-                .iter()
-                .flat_map(|current| current.configuration.iter())
-                .find(|configuration| &configuration.0.name == name)
-            else {
-                continue;
-            };
-            let configuration = self
-                .configuration
-                .entry(name.clone())
-                .or_insert_with(|| used.clone());
-            if let Some(datapath) = configuration.0.datapath.clone()
-                && let Some(used) = current
-                    .iter()
-                    .flat_map(|current| current.datapath.iter())
-                    .find(|used| used.0.name == datapath)
-            {
-                self.datapath.entry(datapath).or_insert_with(|| used.clone());
-            }
-        }
-        if let Some(group) = device.wlan_controller_of() {
-            let capsman = &mut self.capsman;
-            capsman.enabled = YesNo::Yes;
-            // RouterOS's defaults, which it reports only once set
-            capsman.interfaces = Some([HasNone::Value("all".into())].into());
-            capsman.upgrade_policy = Some(InterfaceWifiCapsmanUpgradePolicy::SuggestSameVersion);
-            capsman.require_peer_certificate = Some(false);
-            let country = wifi_country(device)?;
-            let per_wlan = wlan_vlans(&group) == WlanVlans::PerWlan;
-            let mut names = Vec::new();
-            for wlan in group.wlan() {
-                let ssid = wlan.ssid().unwrap_or_default();
-                let name = wlan_configuration_name(ssid);
-                let configuration = &mut self.configuration.entry(name.clone()).or_default().0;
-                configuration.name = name.clone();
-                configuration.disabled = false;
-                configuration.ssid = Some(ssid.into());
-                configuration.country = Some(country);
-                // the CAP's datapath gives the bridge, this the VLAN in it
-                configuration.datapath_vlan_id = wlan
-                    .vlan()
-                    .and_then(|vlan| vlan.vlan_id())
-                    .filter(|_| per_wlan)
-                    .map(HasNone::Value);
-                match wlan.auth() {
-                    Some(WlanAuth::Wpa(settings)) => {
-                        configuration.security_authentication_types =
-                            [WifiAuthenticationTypes::Wpa2Psk, WifiAuthenticationTypes::Wpa3Psk]
-                                .into();
-                        configuration.security_passphrase = Some(settings.psk().into());
-                    }
-                    Some(WlanAuth::Open(settings)) if settings.use_owe => {
-                        configuration.security_authentication_types =
-                            [WifiAuthenticationTypes::Owe].into();
-                    }
-                    Some(WlanAuth::Open(_)) | None => {}
-                }
-                names.push(name);
-            }
-            if let Some((master, slaves)) = names.split_first() {
-                let provisioning = self.provisioning.entry(Default::default()).or_default();
-                provisioning.action = InterfaceWifiProvisioningAction::CreateDynamicEnabled;
-                provisioning.disabled = false;
-                provisioning.master_configuration = Some(master.clone());
-                // the CAP and its radio in the name, to see where an interface belongs; the
-                // virtual ones follow it (`<master>-virtual`)
-                provisioning.name_format = Some("cap-%I-%r".into());
-                provisioning.slave_configurations =
-                    (!slaves.is_empty()).then(|| slaves.iter().cloned().collect());
-            }
-        }
-        Ok(warnings)
-    }
-}
-
-mikrotik_model!(
-    name = CapsManDeviceData,
-    detect = new,
-    fields(
-        manager(single = "caps-man/manager"),
-        security(by_key(path = "caps-man/security", key = name)),
-        datapath(by_key(path = "caps-man/datapath", key = name)),
-        configuration(by_key(path = "caps-man/configuration", key = name)),
-        provisioning(by_id(
-            path = "caps-man/provisioning",
-            keys(
-                radio_mac,
-                identity_regexp,
-                common_name_regexp,
-                ip_address_ranges,
-                hw_supported_modes
-            )
-        )),
-    ),
-);
-
-impl CapsManDeviceDataTarget {
-    fn new(_model: &[u8]) -> Self {
-        Self {
-            manager: Default::default(),
-            security: Default::default(),
-            datapath: Default::default(),
-            configuration: Default::default(),
-            provisioning: Default::default(),
-        }
-    }
-    /// The legacy CAPsMAN (`/caps-man`, in `wireless`) of a controller whose Wireless LAN
-    /// Group has CAPs of it (`Topology::is_legacy_cap`), next to the `/interface/wifi` one:
-    /// a configuration per WLAN (named like that one's, SSID, country, WPA2 PSK), the first
-    /// WLAN the master of every radio, the others virtual ones. The CAPs forward the clients'
-    /// traffic themselves, into their bridge (`WirelessDeviceDataTarget::setup_legacy_cap`)
-    /// in the WLAN's VLAN, from where the VXLAN carries it on. Only read where NetBox asks
-    /// for it (`DeviceCfg::fetch`).
-    fn generate_from(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
-        let Some(group) = device
-            .wlan_controller_of()
-            .filter(WlanGroupAccess::has_legacy_caps)
-        else {
-            return Ok(());
-        };
-        self.manager.enabled = true;
-        let country = match CapsManWifiCountry::parse_ros(country_settings(device)?.0.as_bytes()) {
-            ParseRosValueResult::Value(country) => country,
-            _ => return Err(SetupError::UnknownCountry(country_settings(device)?.0.into())),
-        };
-        let mut names = Vec::new();
-        for wlan in group.wlan() {
-            let ssid = wlan.ssid().unwrap_or_default();
-            let name = wlan_configuration_name(ssid);
-            let configuration = &mut self.configuration.entry(name.clone()).or_default().0;
-            configuration.name = name.clone();
-            configuration.mode = Some(CapsManConfigurationMode::Ap);
-            configuration.ssid = Some(ssid.into());
-            configuration.country = Some(country);
-            configuration.datapath = Some(name.clone());
-            if let Some(WlanAuth::Wpa(settings)) = wlan.auth() {
-                let security = &mut self.security.entry(name.clone()).or_default().0;
-                security.name = name.clone();
-                security.authentication_types = [CapsAuthenticationTypes::Wpa2Psk].into();
-                security.encryption = [CapsEncryption::AesCcm].into();
-                security.passphrase = Some(settings.psk().into());
-                configuration.security = Some(name.clone());
-            }
-            let datapath = &mut self.datapath.entry(name.clone()).or_default().0;
-            datapath.name = name.clone();
-            datapath.local_forwarding = Some(true);
-            datapath.client_to_client_forwarding = Some(true);
-            if let Some(vlan) = wlan.vlan().and_then(|vlan| vlan.vlan_id()) {
-                datapath.vlan_mode = Some(CapsManDatapathVlanMode::UseTag);
-                datapath.vlan_id = Some(vlan);
-            }
-            names.push(name);
-        }
-        if let Some((master, slaves)) = names.split_first() {
-            let provisioning = CapsManProvisioningCfg {
-                action: HasNone::Value(CapsManProvisioningAction::CreateDynamicEnabled),
-                master_configuration: master.clone(),
-                slave_configurations: slaves.iter().cloned().collect(),
-                // `cap-<identity>`, to see where an interface belongs (no radio in the name:
-                // the legacy CAPsMAN only knows these formats)
-                name_format: CapsManProvisioningNameFormat::PrefixIdentity,
-                name_prefix: "cap".into(),
-                ..Default::default()
-            };
-            self.provisioning.insert(
-                (
-                    provisioning.radio_mac.clone(),
-                    provisioning.identity_regexp.clone(),
-                    provisioning.common_name_regexp.clone(),
-                    provisioning.ip_address_ranges.clone(),
-                    provisioning.hw_supported_modes.clone(),
-                ),
-                provisioning,
-            );
-        }
-        Ok(())
-    }
-}
-
-/// The VLANs the WLANs of a group put their clients in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WlanVlans {
-    /// one at most: the CAP sets it on its radios (or makes them access ports, `wifi-qcom-ac`)
-    One(Option<u16>),
-    /// several: the controller sets each WLAN's in its configuration, a CAP's radios tag them
-    PerWlan,
-}
-
-fn wlan_vlans(group: &WlanGroupAccess) -> WlanVlans {
-    let vlans = group
-        .wlan()
-        .filter_map(|wlan| wlan.vlan().and_then(|vlan| vlan.vlan_id()))
-        .collect::<BTreeSet<_>>();
-    match vlans.len() {
-        0 | 1 => WlanVlans::One(vlans.first().copied()),
-        _ => WlanVlans::PerWlan,
-    }
-}
-
-/// The name of a WLAN's configuration (`/interface/wifi` and `/caps-man`): its SSID with
-/// every character but ASCII letters, digits and `-` as `_`.
-fn wlan_configuration_name(ssid: &str) -> AsciiString {
-    ssid.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' })
-        .collect::<String>()
-        .into()
-}
-
-/// The package for the board's radios (`hw_facts::radio_package`) if NetBox uses them: a
-/// radio with an RF role, in a bridge, with a VLAN or an address, or the device is an AP of a
-/// Wireless LAN Group. A controller without radios of a group with CAPs of the legacy
-/// CAPsMAN needs `wireless` for running it (`CapsManDeviceDataTarget`), and so does a board
-/// whose radios also run with it (`hw_facts::runs_wireless`) where NetBox has `wlan<N>` ports.
-/// A RouterOS update installs just that besides `routeros`.
-pub fn needed_radio_package(device: &DeviceAccess, model: &[u8]) -> Option<RadioPackage> {
-    let Some(mut package) = radio_package(model) else {
-        return device
-            .wlan_controller_of()
-            .is_some_and(|group| group.has_legacy_caps())
-            .then_some(RadioPackage::Wireless);
-    };
-    if runs_wireless(model)
-        && device
-            .interfaces()
-            .iter()
-            .any(|interface| matches!(interface.external_port(), Some(PhysicalPortId::Wlan(_))))
-    {
-        package = RadioPackage::Wireless;
-    }
-    let uses_radio = device.interfaces().iter().any(|interface| {
-        matches!(
-            interface.external_port(),
-            Some(PhysicalPortId::Wlan(_) | PhysicalPortId::Wifi(_) | PhysicalPortId::W60g(_))
-        ) && (interface.radio().is_some()
-            || interface.bridge().is_some()
-            || !interface.ips().is_empty()
-            || interface.untagged_vlan().is_some()
-            || interface.tagged_vlans().next().is_some())
-    });
-    (uses_radio || device.wlan_ap_of().is_some()).then_some(package)
-}
-
-/// The RouterOS name of the device's country for `/interface/wifi` (capitalized, unlike the
-/// legacy `/interface/wireless` one).
-fn wifi_country(device: &DeviceAccess) -> Result<WifiCountry, SetupError> {
-    let (name, _) = country_settings(device)?;
-    let mut name = name.to_string();
-    name[..1].make_ascii_uppercase();
-    match WifiCountry::parse_ros(name.as_bytes()) {
-        ParseRosValueResult::Value(country) => Ok(country),
-        _ => Err(SetupError::UnknownCountry(name.into())),
     }
 }
