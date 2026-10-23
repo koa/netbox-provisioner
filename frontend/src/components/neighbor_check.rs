@@ -6,7 +6,7 @@ use crate::{
     components::{
         adjust_target::SelectedTarget,
         findings::{Level, level_label, netbox_link},
-        netbox_helper::{LinkPreset, NetboxHelper},
+        netbox_helper::{HelperPreset, LinkPreset, NetboxHelper},
     },
     error::FrontendError,
     graphql::{
@@ -172,7 +172,7 @@ impl NeighborCheck {
                                     <span>{links.describe(&finding.kind)}</span>
                                     if let Some(preset) = preset {
                                         if open {
-                                            <NetboxHelper id={device_id} target={SelectedTarget::default()} link={preset}/>
+                                            <NetboxHelper id={device_id} target={SelectedTarget::default()} preset={HelperPreset::Link(preset)}/>
                                         } else {
                                             {" "}
                                             <Button

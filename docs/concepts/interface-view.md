@@ -1,7 +1,7 @@
 # Konzept: Interfaces nach Aufgabe
 
-Status: Schritt 1 umgesetzt (Zuordnung und Ansicht nur lesend, `topology/interfaces.rs`,
-`components/interfaces/`), der Rest offen. Ersetzt auf der [Geräteseite](device-page.md) die Karte
+Status: Schritte 1 und 2 umgesetzt (Zuordnung und Ansicht, `topology/interfaces.rs`,
+`components/interfaces/`; die Helfer im Modal, `components/helper_flow.rs`), der Rest offen. Ersetzt auf der [Geräteseite](device-page.md) die Karte
 „NetBox ergänzen“ mit ihrer Auswahl einzelner Helfer ([Config-Helper](config-helper.md)). Die
 Helfer selbst (Plan, Vorschau, Schreiben, Rückgängig) bleiben, sie werden nur anders aufgerufen.
 
@@ -304,10 +304,30 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
 
 1. Zuordnung und Ansicht nur lesend: Aufgaben (Uplinks eingeschlossen), Prüfungen aus den
    vorhandenen Befunden, ohne Live-Prüfungen und ohne Knöpfe. Danach Screenshots schmal und breit im Lab.
-   Erledigt 2026-10-23; die Karte steht vorerst über „Gerät“ und „NetBox ergänzen“, die bis
-   Schritt 2 bleibt.
+   Erledigt 2026-10-23.
 2. Lösungsvorschläge über die vorhandenen Helfer (Loopback, Verbindung, Abräumen,
    Kunden-Netz, Funkbrücke) im Modal mit Stepper; die Karte „NetBox ergänzen“ fällt weg.
+   Erledigt 2026-10-23, so:
+   - Das Backend gibt jeder Zeile ihre Aktionen (`InterfaceRow.actions`, die der Loopback in
+     `InterfaceView.loopbackActions`, auch ohne `lo`): Art (Lösungsvorschlag, Verbindung
+     entfernen, Rolle zuweisen), Helfer und Vorbelegung (Port, Gegenstelle, VLAN). Direkt: ein
+     Vorschlag „Verbindung“ mit beiden Enden, nur mit Befund, und „Verbindung entfernen“.
+     Kunden: „Kunden-Netz“ auf VLAN bzw. Port, nur ohne L3 anderswo und solange eine Familie
+     fehlt. Richtfunk: „Funkbrücke“ nur auf dem Brückengerät, unvollständig oder mit Befund;
+     vom Router-Port her und das Abräumen kommen mit Schritt 5. Unbekannt (nicht frei): „Als
+     Kunden-Anschluss“, „Als Direktverbindung“, auf einem Brückengerät „Als Richtfunk“.
+     Uplinks: keine.
+   - Das Modal bettet den bisherigen Helfer ein (`NetboxHelper` mit `embedded`, ohne Karte
+     und Auswahl, `preset`), statt seine Formulare umzuziehen: Plan, Vorschau, Schreiben und
+     Rückgängig bleiben an einer Stelle; die Phase meldet er dem Stepper (`on_phase`). Die
+     Vorschau ist die bisherige (Befunde vorher/nachher, Skript), noch nicht die Prüfungen
+     der Zeile allein.
+   - „Weitere Helfer“ im Kartenkopf öffnet jeden der sieben Helfer, nicht nur PoE und Flags:
+     so geht ohne die alte Karte nichts verloren.
+   - Das blaue Label bleibt, bis ein Anwenden des Geräts fertig ist (nicht, bis die Vorschau
+     leer ist), und nur im Browser, bis die Seite neu lädt. „Rückgängig“ in der Zeile öffnet
+     den Helfer wieder, der die letzte Schreibung des Geräts zurücknimmt.
+   - Die Zeilen von „Nachbarn lesen“ öffnen den Helfer weiter als Karte darunter.
 3. Live-Prüfungen (Nachbarn, OSPF, Ping der Brückengeräte).
 4. Die neuen Befunde (ein L3-Übergang pro VLAN, tagged VLAN an einem Port, Strecke
    unvollständig, …).

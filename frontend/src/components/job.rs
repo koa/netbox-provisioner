@@ -47,9 +47,9 @@ pub struct JobView {
 #[derive(Properties, Clone, PartialEq)]
 pub struct JobViewProps {
     pub id: i64,
-    /// the job is over (done, failed or cancelled)
+    /// the job is over (done, failed or cancelled), `true` when it is done
     #[prop_or_default]
-    pub on_finished: Callback<()>,
+    pub on_finished: Callback<bool>,
 }
 
 pub enum JobMessage {
@@ -85,7 +85,7 @@ impl Component for JobView {
                     loaded.events = events;
                 }
                 if loaded.state != JobState::RUNNING {
-                    ctx.props().on_finished.emit(());
+                    ctx.props().on_finished.emit(loaded.state == JobState::DONE);
                 }
                 self.job = Some(loaded);
                 self.error = None;
@@ -94,7 +94,7 @@ impl Component for JobView {
             JobMessage::Lost => {
                 self.lost = true;
                 self.error = None;
-                ctx.props().on_finished.emit(());
+                ctx.props().on_finished.emit(false);
             }
             JobMessage::Cancel => {
                 self.cancelling = true;

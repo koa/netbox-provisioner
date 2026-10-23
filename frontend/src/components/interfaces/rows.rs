@@ -1,10 +1,11 @@
 //! The rows of `DeviceAccess.interfaceView` as the card shows them. The findings come over as
 //! the type of the query `Findings`, so `components::findings` words them as everywhere else.
 use crate::{
+    components::netbox_helper::{HelperKind, HelperPreset, LinkPreset, NetTarget},
     error::FrontendError,
     graphql::authenticated::{
         findings::FindingsTopologyFindings,
-        interface_view::{self, InterfaceTask},
+        interface_view::{self, ActionHelper, ActionKind, InterfaceTask},
     },
 };
 use serde::Serialize;
@@ -115,6 +116,23 @@ pub struct Row {
     pub gateways: Vec<Device>,
     pub free: bool,
     pub findings: Vec<FindingsTopologyFindings>,
+    pub actions: Vec<Action>,
+}
+
+/// What a button of a row does.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Kind {
+    Suggestion,
+    Remove,
+    AssignRole,
+}
+
+/// A row's action: what it is and the helper it opens with what.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Action {
+    pub kind: Kind,
+    pub helper: HelperKind,
+    pub preset: HelperPreset,
 }
 
 /// The view of a device: its rows, the findings about the device (shown with the loopback) and
@@ -125,6 +143,7 @@ pub struct View {
     pub rows: Vec<Row>,
     pub device_findings: Vec<FindingsTopologyFindings>,
     pub other_findings: Vec<FindingsTopologyFindings>,
+    pub loopback_actions: Vec<Action>,
 }
 
 impl View {
@@ -139,6 +158,7 @@ impl View {
             rows: view.rows.into_iter().map(Row::of).collect::<Result<_, _>>()?,
             device_findings: findings(&view.device_findings)?,
             other_findings: findings(&view.other_findings)?,
+            loopback_actions: view.loopback_actions.into_iter().filter_map(action).collect(),
         })
     }
 }
@@ -176,6 +196,7 @@ impl Row {
             gateways: row.gateways.into_iter().map(device).collect(),
             free: row.free,
             findings: findings(&row.findings)?,
+            actions: row.actions.into_iter().filter_map(action).collect(),
         })
     }
 }
@@ -210,4 +231,48 @@ fn vlan(vlan: interface_view::Vlan) -> Vlan {
         vid: vlan.vid,
         name: vlan.name,
     }
+}
+
+/// The helper and its start for an action of the backend; none for one it doesn't know.
+fn action(action: interface_view::Action) -> Option<Action> {
+    let kind = match action.kind {
+        ActionKind::SUGGESTION => Kind::Suggestion,
+        ActionKind::REMOVE => Kind::Remove,
+        ActionKind::ASSIGN_ROLE => Kind::AssignRole,
+        ActionKind::Other(_) => return None,
+    };
+    let interface = action.interface.map(|id| id as u32);
+    let (helper, preset) = match action.helper {
+        ActionHelper::LOOPBACK => (HelperKind::Loopback, HelperPreset::Kind(HelperKind::Loopback)),
+        ActionHelper::CONNECTION => (
+            HelperKind::Connection,
+            match (interface, action.peer) {
+                (Some(port), Some(peer)) => HelperPreset::Link(LinkPreset {
+                    port,
+                    peer_device: peer.device.id as u32,
+                    peer: peer.id as u32,
+                }),
+                (Some(port), None) => HelperPreset::LinkFrom(port),
+                (None, _) => HelperPreset::Kind(HelperKind::Connection),
+            },
+        ),
+        ActionHelper::DISCONNECT => (HelperKind::Disconnect, HelperPreset::Disconnect(interface?)),
+        ActionHelper::CUSTOMER_NET => (
+            HelperKind::CustomerNet,
+            HelperPreset::CustomerNet(match (action.vlan, interface) {
+                (Some(vlan), _) => NetTarget::Vlan(vlan as u32),
+                (None, Some(port)) => NetTarget::Interface(port),
+                (None, None) => return None,
+            }),
+        ),
+        ActionHelper::RADIO_BRIDGE => {
+            (HelperKind::RadioBridge, HelperPreset::Kind(HelperKind::RadioBridge))
+        }
+        ActionHelper::Other(_) => return None,
+    };
+    Some(Action {
+        kind,
+        helper,
+        preset,
+    })
 }

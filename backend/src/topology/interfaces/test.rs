@@ -404,3 +404,66 @@ fn interfaces_of_netbox_example() {
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(format!("{dir}/interfaces.txt"), out).unwrap();
 }
+
+fn helpers(row: &InterfaceRow) -> Vec<(ActionKind, ActionHelper)> {
+    row.actions.iter().map(|a| (a.kind, a.helper)).collect()
+}
+
+#[test]
+fn rows_offer_the_helpers_that_fit() {
+    let mut net = Net::new();
+    let link = net.link;
+    net.builder.interfaces.get_mut(&link).unwrap().mtu = Some(2000);
+    let (r1, r2, b1) = (net.r1, net.r2, net.b1);
+    // ether5 of r1 gets a label: no longer free, but still without a task
+    let ether5 = net
+        .builder
+        .interfaces
+        .iter()
+        .find(|(_, i)| i.device == r1 && &*i.name == "ether5")
+        .map(|(id, _)| *id)
+        .unwrap();
+    net.builder.interfaces.get_mut(&ether5).unwrap().label = "spare".into();
+    let topology = Arc::new(net.builder.build());
+    let view = topology.get_device_by_id(&r1).unwrap().interface_view();
+    let direct = row(&view, "ether1");
+    assert_eq!(
+        helpers(direct),
+        [
+            (ActionKind::Suggestion, ActionHelper::Connection),
+            (ActionKind::Remove, ActionHelper::Disconnect),
+        ]
+    );
+    assert_eq!(direct.actions[0].interface, Some(link.0));
+    assert_eq!(
+        direct.actions[0].peer.as_ref().map(|p| (&*p.device.name, &*p.name)),
+        Some(("r2", "ether1"))
+    );
+    assert_eq!(
+        helpers(row(&view, "ether5")),
+        [
+            (ActionKind::AssignRole, ActionHelper::CustomerNet),
+            (ActionKind::AssignRole, ActionHelper::Connection),
+        ]
+    );
+    // the router's end of a radio link waits for „Funkbrücke“ from the router port
+    assert!(row(&view, "ether3").actions.is_empty());
+    assert!(row(&view, "ether2").actions.is_empty());
+    // a customer bridge with IPv4 only: the helper can bring IPv6
+    assert_eq!(
+        row(&view, "bridge-clients").actions[0].vlan,
+        Some(10)
+    );
+    assert!(view.loopback_actions.is_empty());
+
+    // r2's VLAN port has its L3 on r1
+    let view = topology.get_device_by_id(&r2).unwrap().interface_view();
+    assert!(row(&view, "ether3").actions.is_empty());
+
+    // the bridge device: no loopback yet
+    let view = topology.get_device_by_id(&b1).unwrap().interface_view();
+    assert_eq!(
+        view.loopback_actions.iter().map(|a| a.helper).collect::<Vec<_>>(),
+        [ActionHelper::Loopback]
+    );
+}

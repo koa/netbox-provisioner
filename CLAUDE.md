@@ -107,8 +107,9 @@ rows by the interfaces they name (those about the device as a whole go with the 
 computed again; a new check is a new finding. The order of the rules and what a bridge device is
 (`DeviceAccess::is_bridge_device`) come from the stored export and the lab, see the concept;
 `interfaces_of_netbox_example` writes the export's rows to `target/netbox-example/interfaces.txt`.
-The device page shows them in `components::interfaces`; its query hands the findings on to the
-type of `Findings` by serializing them (`rows::findings`), so `components::findings` words them.
+The device page shows them in `components::interfaces`, each row with its actions; its query
+hands the findings on to the type of `Findings` by serializing them (`rows::findings`), so
+`components::findings` words them.
 
 `device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's
 cables (`AccessibleDevice.neighborFindings`, read-only; the site page asks every device at once,
@@ -156,7 +157,10 @@ reached at their loopback. Topology carries the link's id and peer (`Interface.w
 JSON NetBox had (`NetboxWritten.recreate`, `helper::write::recreate`; it gets a new id): undoing an
 older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (graphql_client
 makes it an enum; its queries need `skip_serializing_none`), naming the device or the two ports;
-the frontend shows them in one card with a choice, so "Rückgängig" is the device's last write.
+the device page opens them in a modal (`components::helper_flow`, a stepper over the embedded
+`NetboxHelper`, `embedded`/`preset`/`on_phase`) from a row of the interfaces card, which the
+backend gives its actions (`InterfaceRow.actions`, `InterfaceView.loopbackActions`: kind, helper,
+preset ports or VLAN), or from „Weitere Helfer“; "Rückgängig" is the device's last write.
 A `CableMissing` neighbor finding with both ends in NetBox opens the card below it with those
 ends (`components::neighbor_check`, `LinkPreset`). Lists of devices and interfaces follow
 NetBox' order (`topology::natural`, its `naturalize`/`naturalize_interface`).

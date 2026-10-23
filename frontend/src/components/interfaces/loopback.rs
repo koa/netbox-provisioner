@@ -1,15 +1,26 @@
 //! The loopback: a list of its facts, with the findings about the device as a whole.
-use super::{rows::Row, table::state};
+use super::{
+    rows::{Action, Row},
+    table::{action_buttons, changed_label, state},
+};
 use crate::{
     components::findings::finding_list,
     graphql::authenticated::findings::FindingsTopologyFindings,
     i18n::interfaces as t,
 };
 use patternfly_yew::prelude::{EmptyState, Size};
-use yew::{Html, html};
+use yew::{Callback, Html, html};
 
-/// `lo` if NetBox has it, and the findings about the device.
-pub fn view(netbox: &str, row: Option<&Row>, device_findings: &[FindingsTopologyFindings]) -> Html {
+/// `lo` if NetBox has it, the findings about the device and what the helpers can do: the
+/// loopback's actions, which are there without `lo` too.
+pub fn view(
+    netbox: &str,
+    row: Option<&Row>,
+    device_findings: &[FindingsTopologyFindings],
+    actions: &[Action],
+    changed: bool,
+    on_action: &Callback<Action>,
+) -> Html {
     let findings = row
         .map(|row| &row.findings[..])
         .unwrap_or_default()
@@ -26,6 +37,7 @@ pub fn view(netbox: &str, row: Option<&Row>, device_findings: &[FindingsTopology
         return html! {<>
             <EmptyState title={t::NO_LOOPBACK} size={Size::Small}>{t::NO_LOOPBACK_TEXT}</EmptyState>
             {list}
+            {action_buttons(actions, on_action)}
         </>};
     };
     let family = |v6: bool| {
@@ -51,8 +63,16 @@ pub fn view(netbox: &str, row: Option<&Row>, device_findings: &[FindingsTopology
             </dd>
             <dt>{t::IPV4}</dt><dd>{family(false)}</dd>
             <dt>{t::IPV6}</dt><dd>{family(true)}</dd>
-            <dt>{t::STATE}</dt><dd>{state(findings.iter().map(|f| &f.severity))}</dd>
+            <dt>{t::STATE}</dt>
+            <dd>
+                if changed {
+                    {changed_label()}
+                } else {
+                    {state(findings.iter().map(|f| &f.severity))}
+                }
+            </dd>
         </dl>
         {list}
+        {action_buttons(actions, on_action)}
     </>}
 }

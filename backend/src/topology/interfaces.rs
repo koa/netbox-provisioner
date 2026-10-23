@@ -4,7 +4,7 @@
 //! ones of `findings.rs`, grouped, not computed again. Computed from NetBox alone; the
 //! frontend only shows it.
 use crate::topology::{
-    DeviceRole,
+    DeviceRole, InterfaceId, Topology,
     access::{
         AccessTopology, device::DeviceAccess, interface::InterfaceAccess,
         ip_addresses::IpAddressAccess, vlan::VlanAccess,
@@ -16,7 +16,7 @@ use crate::topology::{
     natural::naturalize_interface,
 };
 use async_graphql::{Enum, SimpleObject};
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 /// What an interface is for. Checked in this order, the first that fits counts: loopback,
 /// uplink, a radio of a wireless link (radio link), an untagged VLAN or `dhcp` (customer),
@@ -48,6 +48,41 @@ pub struct InterfaceView {
     pub device_findings: Vec<Finding>,
     /// the findings of the device on none of its interfaces (a WLAN of its group)
     pub other_findings: Vec<Finding>,
+    /// what the helpers can do for the loopback (also where there is none)
+    pub loopback_actions: Vec<RowAction>,
+}
+
+/// What a button of a row does: complete what is there, take the link out of NetBox, or give
+/// an unknown interface a task.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
+pub enum ActionKind {
+    Suggestion,
+    Remove,
+    AssignRole,
+}
+
+/// The helper a row's action opens (`helper::Helper`).
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
+pub enum ActionHelper {
+    Loopback,
+    Connection,
+    Disconnect,
+    CustomerNet,
+    RadioBridge,
+}
+
+/// An action of a row: the helper and what it starts with. The frontend hands it on to the
+/// helper's form; with all it needs the plan is there at once.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct RowAction {
+    pub kind: ActionKind,
+    pub helper: ActionHelper,
+    /// the device's port: the end of a connection, the link to take out, a customer port
+    pub interface: Option<u32>,
+    /// the other end of a connection
+    pub peer: Option<InterfaceRef>,
+    /// a customer network on this VLAN
+    pub vlan: Option<u32>,
 }
 
 /// An L3 interface, a bridge with its ports.
@@ -76,6 +111,8 @@ pub struct InterfaceRow {
     pub free: bool,
     /// the worst first
     pub findings: Vec<Finding>,
+    /// the helpers it offers, the suggestion first
+    pub actions: Vec<RowAction>,
 }
 
 /// A NetBox VLAN.
@@ -156,10 +193,37 @@ impl DeviceAccess {
                 other_findings.push(finding.clone());
             }
         }
+        let topology = self.topology();
+        let bridge_device = self.is_bridge_device();
+        for (row, _) in rows.iter_mut() {
+            row.actions = actions(topology, row, bridge_device);
+        }
+        let loopback = rows.iter().find(|(row, _)| row.task == InterfaceTask::Loopback);
+        let loopback_missing = loopback.is_none_or(|(row, _)| {
+            !row.addresses.iter().any(|a| !a.address.contains(':'))
+        }) || device_findings.iter().any(|f| {
+            matches!(
+                f.kind,
+                FindingKind::NoLoopback(_)
+                    | FindingKind::NoPrimaryIpv4(_)
+                    | FindingKind::PrimaryIpv4NotOnLoopback(_)
+            )
+        });
+        let loopback_actions = loopback_missing
+            .then_some(RowAction {
+                kind: ActionKind::Suggestion,
+                helper: ActionHelper::Loopback,
+                interface: None,
+                peer: None,
+                vlan: None,
+            })
+            .into_iter()
+            .collect();
         InterfaceView {
             rows: rows.into_iter().map(|(row, _)| row).collect(),
             device_findings,
             other_findings,
+            loopback_actions,
         }
     }
 }
@@ -256,9 +320,124 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
         gateways,
         free,
         findings: Vec::new(),
+        actions: Vec::new(),
     };
     let ids = members.iter().map(|member| member.id().0).collect();
     (row, ids)
+}
+
+/// What the helpers can do for `row`: a suggestion where something is missing, taking a
+/// direct link out, a task for an unknown interface. No helper for uplinks; taking a radio link
+/// or a customer port out, and the radio bridge from the router's side, come with new helpers.
+fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) -> Vec<RowAction> {
+    let action = |kind, helper, interface: Option<u32>, peer: Option<InterfaceRef>, vlan| RowAction {
+        kind,
+        helper,
+        interface,
+        peer,
+        vlan,
+    };
+    // the port (the row's interface or one of its bridge ports) cabled to a router, and that
+    // router's port
+    let link = std::iter::once(&row.interface)
+        .chain(&row.ports)
+        .filter_map(|member| topology.get_interface_by_id(InterfaceId(member.id)))
+        .find_map(|member| {
+            member
+                .connected_interfaces()
+                .into_iter()
+                .find(|far| {
+                    far.device()
+                        .is_some_and(|d| d.has_routeros() && !d.is_bridge_device())
+                })
+                .map(|far| (member.id().0, interface_ref(&far)))
+        });
+    let own = Some(row.interface.id);
+    let has_v4 = row.addresses.iter().any(|a| !a.address.contains(':'));
+    let has_v6 = row.addresses.iter().any(|a| a.address.contains(':'));
+    let customer_net = || {
+        action(
+            ActionKind::Suggestion,
+            ActionHelper::CustomerNet,
+            own.filter(|_| row.untagged_vlan.is_none()),
+            None,
+            row.untagged_vlan.as_ref().map(|vlan| vlan.id),
+        )
+    };
+    let mut actions = Vec::new();
+    match row.task {
+        InterfaceTask::Loopback | InterfaceTask::Uplink => {}
+        InterfaceTask::Direct => {
+            if let Some((port, far)) = link {
+                if !row.findings.is_empty() {
+                    actions.push(action(
+                        ActionKind::Suggestion,
+                        ActionHelper::Connection,
+                        Some(port),
+                        Some(far),
+                        None,
+                    ));
+                }
+                actions.push(action(
+                    ActionKind::Remove,
+                    ActionHelper::Disconnect,
+                    Some(port),
+                    None,
+                    None,
+                ));
+            }
+        }
+        InterfaceTask::RadioLink => {
+            let incomplete = row.radio_path.as_ref().is_none_or(|path| {
+                path.router_port.is_none()
+                    || path.bridge_port.is_none()
+                    || path.ssid.is_none()
+                    || path.peer_bridge_port.is_none()
+                    || path.peer_router_port.is_none()
+            });
+            // „Funkbrücke“ starts on the bridge device
+            if bridge_device && (incomplete || !row.findings.is_empty()) {
+                actions.push(action(
+                    ActionKind::Suggestion,
+                    ActionHelper::RadioBridge,
+                    None,
+                    None,
+                    None,
+                ));
+            }
+        }
+        InterfaceTask::Customer => {
+            // with its L3 elsewhere a second gateway would be wrong
+            if row.gateways.is_empty() && !(has_v4 && has_v6) {
+                actions.push(customer_net());
+            }
+        }
+        InterfaceTask::Unknown => {
+            if !row.free {
+                actions.push(RowAction {
+                    kind: ActionKind::AssignRole,
+                    ..customer_net()
+                });
+                actions.push(action(
+                    ActionKind::AssignRole,
+                    ActionHelper::Connection,
+                    link.as_ref().map(|(port, _)| *port).or(own),
+                    link.map(|(_, far)| far),
+                    None,
+                ));
+                if bridge_device {
+                    actions.push(action(
+                        ActionKind::AssignRole,
+                        ActionHelper::RadioBridge,
+                        None,
+                        None,
+                        None,
+                    ));
+                }
+            }
+        }
+    }
+    actions
 }
 
 /// An address in a prefix that is in no pool (`loopback`, `transfer`), itself or by a parent: a

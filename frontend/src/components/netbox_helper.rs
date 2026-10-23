@@ -52,9 +52,43 @@ pub struct NetboxHelperProps {
     /// NetBox was written to (or that was taken back): the page shows what changed
     #[prop_or_default]
     pub on_written: Callback<()>,
-    /// opens „Verbindung“ with these ends chosen (a cable from a finding)
+    /// the helper to open and what it starts with (a cable from a finding, a row's action);
+    /// without, „Loopback“
     #[prop_or_default]
-    pub link: Option<LinkPreset>,
+    pub preset: Option<HelperPreset>,
+    /// inside the modal of `components::helper_flow`: no card, no choice of the helper
+    #[prop_or_default]
+    pub embedded: bool,
+    /// where it is: planning, the preview shown, writing, written
+    #[prop_or_default]
+    pub on_phase: Callback<Phase>,
+}
+
+/// The helper to open and what it starts with.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HelperPreset {
+    /// nothing chosen yet
+    Kind(HelperKind),
+    /// „Verbindung“ with these ends
+    Link(LinkPreset),
+    /// „Verbindung“ from this port, the other end to choose
+    LinkFrom(u32),
+    /// „Verbindung abräumen“ with this port
+    Disconnect(u32),
+    /// „Kunden-Netz“ on this port or VLAN
+    CustomerNet(NetTarget),
+}
+
+/// How far the helper is, for the stepper of `components::helper_flow`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Phase {
+    Plan,
+    Preview,
+    Writing,
+    /// the write job is done
+    Written,
+    /// it failed or was cancelled; what is written can be taken back
+    WriteFailed,
 }
 
 /// The ends of a link to choose at the start: the device's port and the other end.
@@ -310,6 +344,15 @@ pub enum HelperKind {
 }
 
 impl HelperKind {
+    pub const ALL: [HelperKind; 7] = [
+        HelperKind::Loopback,
+        HelperKind::Connection,
+        HelperKind::Disconnect,
+        HelperKind::CustomerNet,
+        HelperKind::RadioBridge,
+        HelperKind::Poe,
+        HelperKind::Flags,
+    ];
     /// whether it chooses among the ports of `linkPorts`
     fn needs_ports(self) -> bool {
         matches!(
@@ -387,6 +430,10 @@ pub struct NetboxHelper {
     job_running: bool,
     /// the write job whose objects "Rückgängig" deletes or sets back
     written: Option<i64>,
+    /// how the write job of this session ended
+    write_done: Option<bool>,
+    /// the phase told last (`on_phase`)
+    reported: Option<Phase>,
     error: Option<FrontendError>,
 }
 
@@ -436,7 +483,8 @@ pub enum NetboxHelperMsg {
     Undo,
     /// a write job (`true`) or an undo job started
     JobStarted(Result<i64, FrontendError>, bool),
-    JobFinished,
+    /// `true`: done
+    JobFinished(bool),
     /// the last write job of the device the server still knows, done and not taken back
     LastWrite(i64),
 }
@@ -446,32 +494,45 @@ impl Component for NetboxHelper {
     type Properties = NetboxHelperProps;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (kind, link) = match &ctx.props().link {
-            None => (HelperKind::Loopback, LinkChoice::default()),
-            Some(preset) => (
-                HelperKind::Connection,
-                LinkChoice {
+        let mut link = LinkChoice::default();
+        let mut disconnect = None;
+        let mut net = NetChoice::default();
+        let kind = match &ctx.props().preset {
+            None => HelperKind::Loopback,
+            Some(HelperPreset::Kind(kind)) => *kind,
+            Some(HelperPreset::Link(preset)) => {
+                link = LinkChoice {
                     port: Some(preset.port),
                     peer_device: Some(preset.peer_device),
                     peer: Some(preset.peer),
                     mtu: String::new(),
-                },
-            ),
+                };
+                HelperKind::Connection
+            }
+            Some(HelperPreset::LinkFrom(port)) => {
+                link.port = Some(*port);
+                HelperKind::Connection
+            }
+            Some(HelperPreset::Disconnect(port)) => {
+                disconnect = Some(*port);
+                HelperKind::Disconnect
+            }
+            Some(HelperPreset::CustomerNet(target)) => {
+                net.target = Some(*target);
+                HelperKind::CustomerNet
+            }
         };
-        if kind.needs_ports() {
-            fetch_ports(ctx.link().clone(), ctx.props().id);
-        }
         last_write(ctx.link().clone(), ctx.props().id);
         let mut helper = Self {
             device: ctx.props().id,
             kind,
             link,
-            disconnect: None,
+            disconnect,
             ports: None,
             flag_interfaces: None,
             flags: BTreeMap::new(),
             flag_findings: None,
-            net: NetChoice::default(),
+            net,
             net_options: None,
             poe: PoeChoice::default(),
             poe_options: None,
@@ -486,8 +547,11 @@ impl Component for NetboxHelper {
             job: None,
             job_running: false,
             written: None,
+            write_done: None,
+            reported: None,
             error: None,
         };
+        helper.load(ctx);
         helper.choose(ctx);
         helper
     }
@@ -496,24 +560,7 @@ impl Component for NetboxHelper {
         match msg {
             NetboxHelperMsg::Kind(kind) => {
                 self.kind = kind;
-                if kind.needs_ports() && self.ports.is_none() {
-                    fetch_ports(ctx.link().clone(), ctx.props().id);
-                }
-                if kind == HelperKind::CustomerNet && self.net_options.is_none() {
-                    fetch_net_options(ctx.link().clone(), ctx.props().id);
-                }
-                if kind == HelperKind::Poe && self.poe_options.is_none() {
-                    fetch_poe_options(ctx.link().clone(), ctx.props().id);
-                }
-                if kind == HelperKind::RadioBridge && self.radio_options.is_none() {
-                    fetch_radio_options(ctx.link().clone(), ctx.props().id);
-                }
-                if kind == HelperKind::Flags {
-                    if self.flag_interfaces.is_none() {
-                        fetch_flag_interfaces(ctx.link().clone(), ctx.props().id);
-                    }
-                    self.check_flags(ctx);
-                }
+                self.load(ctx);
                 self.choose(ctx);
             }
             NetboxHelperMsg::FlagInterfaces(interfaces) => self.flag_interfaces = Some(interfaces),
@@ -753,6 +800,7 @@ impl Component for NetboxHelper {
                 Ok(id) => {
                     self.job = Some(id);
                     self.written = write.then_some(id);
+                    self.write_done = None;
                 }
                 Err(error) => {
                     self.job_running = false;
@@ -764,8 +812,11 @@ impl Component for NetboxHelper {
                     self.written = Some(id);
                 }
             }
-            NetboxHelperMsg::JobFinished => {
+            NetboxHelperMsg::JobFinished(done) => {
                 self.job_running = false;
+                if self.written.is_some() && self.written == self.job {
+                    self.write_done = Some(done);
+                }
                 self.preview = None;
                 if let Some(choice) = self.planned.clone() {
                     fetch_plan(ctx.link().clone(), ctx.props().id, choice);
@@ -803,7 +854,7 @@ impl Component for NetboxHelper {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let job = self.job.map(|id| html! {
-            <JobView key={id} id={id} on_finished={ctx.link().callback(|_| NetboxHelperMsg::JobFinished)}/>
+            <JobView key={id} id={id} on_finished={ctx.link().callback(NetboxHelperMsg::JobFinished)}/>
         });
         let error = self.error.as_ref().map(|error| error.to_html());
         let plan = match (&self.planned, &self.plan) {
@@ -896,13 +947,11 @@ impl Component for NetboxHelper {
             HelperKind::Poe => t::POE_HINT,
             HelperKind::RadioBridge => t::RADIO_BRIDGE_HINT,
         };
-        html! {
-            <Card class="netbox-helper">
-                <CardHeader><CardTitle>{t::TITLE}</CardTitle></CardHeader>
-                <CardBody>
+        let content = html! {<>
                     {error}
                     {job}
                     {undo}
+                    if !ctx.props().embedded {
                     <div class="helper-kind">
                         <Select<HelperKind>
                             selected={Some(self.kind)}
@@ -918,6 +967,7 @@ impl Component for NetboxHelper {
                             onselect={ctx.link().callback(NetboxHelperMsg::Kind)}
                         />
                     </div>
+                    }
                     <p>{hint}</p>
                     if self.kind == HelperKind::Connection {
                         { self.link_form(ctx) }
@@ -938,13 +988,64 @@ impl Component for NetboxHelper {
                         { self.radio_form(ctx) }
                     }
                     {plan}
-                </CardBody>
+        </>};
+        if ctx.props().embedded {
+            return html!(<div class="netbox-helper">{content}</div>);
+        }
+        html! {
+            <Card class="netbox-helper">
+                <CardHeader><CardTitle>{t::TITLE}</CardTitle></CardHeader>
+                <CardBody>{content}</CardBody>
             </Card>
+        }
+    }
+
+    fn rendered(&mut self, ctx: &Context<Self>, _first_render: bool) {
+        let phase = self.phase();
+        if self.reported != Some(phase) {
+            self.reported = Some(phase);
+            ctx.props().on_phase.emit(phase);
         }
     }
 }
 
 impl NetboxHelper {
+    /// Fetches what the chosen helper chooses from, unless it is there.
+    fn load(&mut self, ctx: &Context<Self>) {
+        let kind = self.kind;
+        if kind.needs_ports() && self.ports.is_none() {
+            fetch_ports(ctx.link().clone(), ctx.props().id);
+        }
+        if kind == HelperKind::CustomerNet && self.net_options.is_none() {
+            fetch_net_options(ctx.link().clone(), ctx.props().id);
+        }
+        if kind == HelperKind::Poe && self.poe_options.is_none() {
+            fetch_poe_options(ctx.link().clone(), ctx.props().id);
+        }
+        if kind == HelperKind::RadioBridge && self.radio_options.is_none() {
+            fetch_radio_options(ctx.link().clone(), ctx.props().id);
+        }
+        if kind == HelperKind::Flags {
+            if self.flag_interfaces.is_none() {
+                fetch_flag_interfaces(ctx.link().clone(), ctx.props().id);
+            }
+            self.check_flags(ctx);
+        }
+    }
+    fn phase(&self) -> Phase {
+        let writing = self.written.is_some() && self.written == self.job;
+        if writing && self.job_running {
+            Phase::Writing
+        } else if writing && self.write_done == Some(true) {
+            Phase::Written
+        } else if writing && self.write_done == Some(false) {
+            Phase::WriteFailed
+        } else if matches!(self.preview, Some(Ok(_))) {
+            Phase::Preview
+        } else {
+            Phase::Plan
+        }
+    }
     /// The helper with its input as chosen now, `None` while ports are missing; a new one
     /// gets its plan.
     fn choice(&self) -> Option<HelperChoice> {

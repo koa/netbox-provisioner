@@ -5,7 +5,6 @@ use crate::{
         interfaces::Interfaces,
         job::JobView,
         menu::popup::Select,
-        netbox_helper::NetboxHelper,
     },
     error::{FrontendError, ServerProblem},
     i18n::{
@@ -64,6 +63,10 @@ pub struct ShowDevice {
     suspend_watchdogs: bool,
     /// counts the jobs over (NetBox written, the device changed): the interfaces are read again
     jobs_finished: u32,
+    /// the job running is an apply (alone or in a batch)
+    applying: bool,
+    /// counts the applies over: the interfaces written to are no longer changed
+    applied: u32,
 }
 type Watchdog = device_overview::DeviceOverviewTopologyDeviceByIdWatchdogs;
 type Connected = device_overview::DeviceOverviewTopologyDeviceByIdAccessConnected;
@@ -139,6 +142,8 @@ pub enum ShowDeviceMessage {
     SuspendWatchdogs(bool),
     JobStarted(Result<i64, FrontendError>),
     JobFinished,
+    /// „Anwenden“ of the interfaces: to the card „Änderungen“
+    ShowChanges,
     BatchStarted(Vec<BatchJob>),
     BatchJobFinished,
 }
@@ -167,6 +172,8 @@ impl Component for ShowDevice {
             show_target: false,
             suspend_watchdogs: true,
             jobs_finished: 0,
+            applying: false,
+            applied: 0,
         }
     }
 
@@ -199,6 +206,7 @@ impl Component for ShowDevice {
             }
             ShowDeviceMessage::Apply => {
                 self.job_running = true;
+                self.applying = true;
                 apply(ctx.link().clone(), self.id, self.alternate_target.clone());
                 true
             }
@@ -284,6 +292,7 @@ impl Component for ShowDevice {
                 self.batch_jobs = jobs;
                 self.batch_finished = 0;
                 self.job_running = true;
+                self.applying = true;
                 true
             }
             ShowDeviceMessage::BatchJobFinished => {
@@ -296,9 +305,22 @@ impl Component for ShowDevice {
             ShowDeviceMessage::JobFinished => {
                 self.job_running = false;
                 self.jobs_finished += 1;
+                if self.applying {
+                    self.applying = false;
+                    self.applied += 1;
+                }
                 // the device changed: show what is left now
                 fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
                 true
+            }
+            ShowDeviceMessage::ShowChanges => {
+                let card = web_sys::window()
+                    .and_then(|window| window.document())
+                    .and_then(|document| document.query_selector(".device-cfg").ok().flatten());
+                if let Some(card) = card {
+                    card.scroll_into_view();
+                }
+                false
             }
             ShowDeviceMessage::Candidates(candidates) => {
                 self.candidates = Some(candidates);
@@ -693,14 +715,16 @@ impl Component for ShowDevice {
             {locked}
             {head}
             {job}
-            <Interfaces id={self.id} refresh={self.jobs_finished}/>
+            <Interfaces
+                id={self.id}
+                refresh={self.jobs_finished}
+                applied={self.applied}
+                target={self.alternate_target.clone()}
+                on_written={ctx.link().callback(|()| ShowDeviceMessage::JobFinished)}
+                on_apply={ctx.link().callback(|()| ShowDeviceMessage::ShowChanges)}
+            />
             <div class="device-columns">
                 {device}
-                <NetboxHelper
-                    id={self.id}
-                    target={self.alternate_target.clone()}
-                    on_written={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}
-                />
                 <Card class="device-cfg">
                     <CardHeader><CardTitle>{t::CHANGES}</CardTitle></CardHeader>
                     <CardBody>

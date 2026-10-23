@@ -1,4 +1,7 @@
-use crate::components::interfaces::rows::Task;
+use crate::components::{
+    interfaces::rows::{Kind, Task},
+    netbox_helper::HelperKind,
+};
 
 pub const TITLE: &str = "Interfaces";
 pub const ALL: &str = "Alle";
@@ -97,3 +100,39 @@ pub fn tags(ospf: bool, dhcp: bool, dhcp_client: bool, nat: bool) -> String {
 pub const TAGS: &str = "Tags";
 pub const LABEL: &str = "Label";
 pub const DHCP_CLIENT: &str = "DHCP-Client";
+pub const ACTIONS: &str = "Aktionen";
+pub const MORE_HELPERS: &str = "Weitere Helfer";
+pub const CHANGED: &str = "in NetBox geändert, noch nicht angewendet";
+pub const CHANGED_TITLE: &str = "In NetBox geändert";
+pub const CHANGED_TEXT: &str = "Das Gerät hat die Änderung noch nicht.";
+pub const UNDO: &str = "Rückgängig";
+pub const APPLY: &str = "Anwenden";
+
+/// a button or menu entry of a row
+pub fn action(kind: Kind, helper: HelperKind) -> String {
+    match kind {
+        Kind::Suggestion => "Lösungsvorschlag".to_string(),
+        Kind::Remove => "Verbindung entfernen".to_string(),
+        Kind::AssignRole => format!(
+            "Als {}",
+            match helper {
+                HelperKind::CustomerNet => "Kunden-Anschluss",
+                HelperKind::Connection => "Direktverbindung",
+                HelperKind::RadioBridge => "Richtfunk",
+                other => return format!("Als {other}"),
+            }
+        ),
+    }
+}
+
+/// the title of a helper's modal for a row (`None`: from „Weitere Helfer“)
+pub fn flow_title(kind: Option<Kind>, helper: HelperKind, interface: Option<&str>) -> String {
+    let what = match kind {
+        Some(kind) => action(kind, helper),
+        None => helper.to_string(),
+    };
+    match interface {
+        Some(interface) => format!("{what}: {interface}"),
+        None => what,
+    }
+}

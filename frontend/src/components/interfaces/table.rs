@@ -1,17 +1,21 @@
 //! The table of a task: a row per L3 interface, its findings when opened.
-use super::rows::{Address, Device, Iface, RadioPath, Row, Task};
+use super::rows::{Action, Address, Device, Iface, Kind, RadioPath, Row, Task};
 use crate::{
-    components::findings::finding_list,
+    components::{
+        findings::finding_list,
+        menu::popup::{MenuActionItem, MenuGroup, PopupMenu},
+    },
     graphql::authenticated::findings::Severity,
     i18n::interfaces as t,
     pages::routes::AppRoute,
 };
 use patternfly_yew::prelude::{
-    Cell, CellContext, Color, Icon, Label, MemoizedTableModel, Span, Table, TableColumn,
-    TableEntryRenderer, TableGridMode, TableHeader, TableMode, UseTableData, use_table_data,
+    Alert, AlertType, Button, ButtonVariant, Cell, CellContext, Color, Icon, Label,
+    MemoizedTableModel, MenuToggleVariant, Span, Table, TableColumn, TableEntryRenderer,
+    TableGridMode, TableHeader, TableMode, UseTableData, use_table_data,
 };
 use std::rc::Rc;
-use yew::{Html, Properties, function_component, html, html_nested};
+use yew::{Callback, Html, Properties, function_component, html, html_nested};
 use yew_nested_router::components::Link;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -30,6 +34,7 @@ pub enum Column {
     NetboxHas,
     State,
     Netbox,
+    Actions,
 }
 
 impl Column {
@@ -49,6 +54,7 @@ impl Column {
             Column::NetboxHas => t::NETBOX_HAS,
             Column::State => t::STATE,
             Column::Netbox => t::NETBOX,
+            Column::Actions => t::ACTIONS,
         }
     }
 }
@@ -65,9 +71,9 @@ fn columns(task: Task) -> &'static [Column] {
             Column::Network,
             Column::Mtu,
             Column::State,
-            Column::Netbox,
+            Column::Actions,
         ],
-        Task::RadioLink => &[Column::Port, Column::Path, Column::Network, Column::State, Column::Netbox],
+        Task::RadioLink => &[Column::Port, Column::Path, Column::Network, Column::State, Column::Actions],
         Task::Customer => &[
             Column::Port,
             Column::Vlan,
@@ -75,9 +81,9 @@ fn columns(task: Task) -> &'static [Column] {
             Column::Ipv6,
             Column::Dhcp,
             Column::State,
-            Column::Netbox,
+            Column::Actions,
         ],
-        Task::Unknown => &[Column::Port, Column::NetboxHas, Column::State, Column::Netbox],
+        Task::Unknown => &[Column::Port, Column::NetboxHas, Column::State, Column::Actions],
     }
 }
 
@@ -86,6 +92,68 @@ pub struct Entry {
     pub row: Rc<Row>,
     /// NetBox' web UI, ending in `/`
     pub netbox: Rc<str>,
+    /// written to NetBox here, the device not yet applied: opens the helper that wrote, which
+    /// offers to take it back
+    pub changed: Option<Callback<()>>,
+    /// opens the helper of an action
+    pub on_action: Callback<Action>,
+    /// „Anwenden“ of a changed row: to the card „Änderungen“
+    pub on_apply: Callback<()>,
+}
+
+impl Entry {
+    fn netbox_url(&self) -> String {
+        format!("{}dcim/interfaces/{}/", self.netbox, self.row.interface.id)
+    }
+    /// The kebab menu: the actions and „In NetBox öffnen“.
+    fn menu(&self) -> Html {
+        let open = {
+            let url = self.netbox_url();
+            Callback::from(move |()| {
+                if let Some(window) = web_sys::window() {
+                    let _ = window.open_with_url_and_target(&url, "_blank");
+                }
+            })
+        };
+        html! {
+            <div class="row-actions">
+                <PopupMenu variant={MenuToggleVariant::Plain} icon={html!({Icon::EllipsisV})} aria_label={t::ACTIONS}>
+                    <MenuGroup>
+                        { for self.row.actions.iter().map(|action| {
+                            let on_action = self.on_action.clone();
+                            let chosen = action.clone();
+                            html!(<MenuActionItem onclick={Callback::from(move |()| on_action.emit(chosen.clone()))}>
+                                {t::action(action.kind, action.helper)}
+                            </MenuActionItem>)
+                        }) }
+                        <MenuActionItem onclick={open}>{t::OPEN_IN_NETBOX}</MenuActionItem>
+                    </MenuGroup>
+                </PopupMenu>
+            </div>
+        }
+    }
+}
+
+/// The buttons of the actions, the first suggestion primary, taking the link out as danger.
+pub fn action_buttons(actions: &[Action], on_action: &Callback<Action>) -> Html {
+    if actions.is_empty() {
+        return Html::default();
+    }
+    html! {
+        <div class="row-buttons">
+            { for actions.iter().enumerate().map(|(index, action)| {
+                let variant = match action.kind {
+                    Kind::Remove => ButtonVariant::Danger,
+                    Kind::Suggestion if index == 0 => ButtonVariant::Primary,
+                    _ => ButtonVariant::Secondary,
+                };
+                let on_action = on_action.clone();
+                let chosen = action.clone();
+                html!(<Button {variant} label={t::action(action.kind, action.helper)}
+                    onclick={Callback::from(move |_| on_action.emit(chosen.clone()))}/>)
+            }) }
+        </div>
+    }
 }
 
 impl TableEntryRenderer<Column> for Entry {
@@ -113,9 +181,11 @@ impl TableEntryRenderer<Column> for Entry {
             Column::Ipv6 => customer_addresses(row, true),
             Column::Dhcp => yes(row.dhcp),
             Column::NetboxHas => netbox_has(row),
+            Column::State if self.changed.is_some() => changed_label(),
             Column::State => state(row.findings.iter().map(|f| &f.severity)),
-            Column::Netbox => html!(<a href={format!("{}dcim/interfaces/{}/", self.netbox, row.interface.id)}
+            Column::Netbox => html!(<a href={self.netbox_url()}
                 target="_blank" rel="noopener">{t::OPEN_IN_NETBOX}</a>),
+            Column::Actions => self.menu(),
         }
         .into()
     }
@@ -128,8 +198,23 @@ impl TableEntryRenderer<Column> for Entry {
             finding_list(&self.netbox, &row.findings)
         };
         let tags = t::tags(row.ospf, row.dhcp, row.dhcp_client, row.nat);
+        let changed = self.changed.as_ref().map(|undo| {
+            let on_apply = self.on_apply.clone();
+            html! {
+                <Alert inline=true r#type={AlertType::Info} title={t::CHANGED_TITLE}>
+                    <p>{t::CHANGED_TEXT}</p>
+                    <div class="row-buttons">
+                        <Button variant={ButtonVariant::Primary} label={t::APPLY}
+                            onclick={Callback::from(move |_| on_apply.emit(()))}/>
+                        <Button variant={ButtonVariant::Secondary} label={t::UNDO}
+                            onclick={undo.reform(|_| ())}/>
+                    </div>
+                </Alert>
+            }
+        });
         vec![Span::max(html! {
             <div class="interface-details">
+                {changed}
                 {findings}
                 <dl class="interface-facts">
                     if !row.ports.is_empty() {
@@ -150,6 +235,7 @@ impl TableEntryRenderer<Column> for Entry {
                         <dd>{ format!("{} {}", t::TAGGED, row.tagged_vlans.iter().map(|v| v.vid.to_string()).collect::<Vec<_>>().join(", ")) }</dd>
                     }
                 </dl>
+                {action_buttons(&row.actions, &self.on_action)}
             </div>
         })]
     }
@@ -203,6 +289,11 @@ pub fn state<'s>(severities: impl IntoIterator<Item = &'s Severity>) -> Html {
         (t::IN_ORDER.to_string(), Color::Green, Icon::CheckCircle)
     };
     html!(<Label compact=true {color} {icon} {label}/>)
+}
+
+/// A row written to NetBox, its device not applied yet.
+pub fn changed_label() -> Html {
+    html!(<Label compact=true color={Color::Blue} icon={Icon::InfoCircle} label={t::CHANGED.to_string()}/>)
 }
 
 /// The name, the bridge's ports below it.

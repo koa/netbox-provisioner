@@ -29,9 +29,11 @@ query InterfaceView($device: Int!){
                     gateways{ ...Device }
                     free
                     findings{ ...Finding }
+                    actions{ ...Action }
                 }
                 deviceFindings{ ...Finding }
                 otherFindings{ ...Finding }
+                loopbackActions{ ...Action }
             }
         }
     }
@@ -62,6 +64,7 @@ fragment Finding on Finding{
         ... on WlanWithoutVlan{ id ssid group{ id name } }
     }
 }
+fragment Action on RowAction{ kind helper interface peer{ ...Interface } vlan }
 fragment Vlan on VlanRef{ id vid name }
 fragment Device on DeviceRef{ id name site }
 fragment Address on AddressRef{ id address }
