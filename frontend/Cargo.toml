@@ -18,7 +18,6 @@ wasm-logger = "0.2.0"
 web-sys = { version = "0.3.77", features = ["Element", "HtmlElement", "Location", "Node", "NodeList", "Window"] }
 thiserror = "2.0.11"
 yew-oauth2 = { version = "0.14", features = ["openid"] }
-lazy_static = "1.5.0"
 console_error_panic_hook = "0.1.7"
 gloo = "0.11.0"
 

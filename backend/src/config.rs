@@ -1,9 +1,9 @@
 use config::{Config, ConfigError, Environment, File};
-use lazy_static::lazy_static;
 use serde::Deserialize;
 use std::{
     collections::HashMap,
     net::{IpAddr, SocketAddr},
+    sync::LazyLock,
 };
 
 #[derive(Deserialize)]
@@ -136,9 +136,8 @@ fn settings_from(
         .get("settings")
 }
 
-lazy_static! {
-    pub static ref CONFIG: Settings = create_settings().expect("Cannot load config.yaml");
-}
+pub static CONFIG: LazyLock<Settings> =
+    LazyLock::new(|| create_settings().expect("Cannot load config.yaml"));
 
 #[cfg(test)]
 mod test {

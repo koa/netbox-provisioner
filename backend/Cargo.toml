@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 async-graphql = "7.0.16"
 graphql_client = { version = "0.15.0", features = ["reqwest-rustls"], git = "https://github.com/Chrisss93/graphql-client", branch = "reqwest-upgrade" }
-lazy_static = "1.5.0"
 serde = "1.0.219"
 config = "0.15.11"
 reqwest = "0.12.15"

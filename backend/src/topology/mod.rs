@@ -5,7 +5,6 @@ use crate::{
 use access::device::DeviceAccess;
 use async_graphql::{Interface, SimpleObject, Union};
 use ipnet::IpNet;
-use lazy_static::lazy_static;
 use log::{error, info};
 use mikrotik_model::ascii::AsciiString;
 use regex::Regex;
@@ -15,7 +14,7 @@ use std::{
     hash::Hash,
     net::IpAddr,
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::Duration,
 };
 use tokio::{
@@ -539,17 +538,24 @@ pub struct Cable {
     /// NetBox `type`: `dac-passive`, `smf-os2`, `cat6` ... (`device::ros::speed`)
     pub kind: Option<Box<str>>,
 }
-lazy_static! {
-    static ref ETHER_PORT_PATTERN: Regex = Regex::new("^ether([0-9]+)$").unwrap();
-    static ref SFP_PLUS_PORT_PATTERN: Regex = Regex::new("^sfp-sfpplus([0-9]+)$").unwrap();
-    static ref SFP28_PORT_PATTERN: Regex = Regex::new("^sfp28-([0-9]+)$").unwrap();
-    static ref SFP_PORT_PATTERN: Regex = Regex::new("^sfp([0-9]+)$").unwrap();
-    static ref COMBO_PORT_PATTERN: Regex = Regex::new("^combo([0-9]+)$").unwrap();
-    static ref QSFP_PLUS_PORT_PATTERN: Regex = Regex::new("^qsfpplus([0-9]+)-([0-9]+)$").unwrap();
-    static ref WIFI_PORT_PATTERN: Regex = Regex::new("^wifi([0-9]+)$").unwrap();
-    static ref WLAN_PORT_PATTERN: Regex = Regex::new("^wlan([0-9]+)$").unwrap();
-    static ref W60G_PORT_PATTERN: Regex = Regex::new("^wlan60-([0-9]+)$").unwrap();
-}
+static ETHER_PORT_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^ether([0-9]+)$").unwrap());
+static SFP_PLUS_PORT_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^sfp-sfpplus([0-9]+)$").unwrap());
+static SFP28_PORT_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^sfp28-([0-9]+)$").unwrap());
+static SFP_PORT_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^sfp([0-9]+)$").unwrap());
+static COMBO_PORT_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^combo([0-9]+)$").unwrap());
+static QSFP_PLUS_PORT_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^qsfpplus([0-9]+)-([0-9]+)$").unwrap());
+static WIFI_PORT_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^wifi([0-9]+)$").unwrap());
+static WLAN_PORT_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^wlan([0-9]+)$").unwrap());
+static W60G_PORT_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^wlan60-([0-9]+)$").unwrap());
 impl PhysicalPortId {
     pub fn short_name(&self) -> AsciiString {
         AsciiString::from(match self {

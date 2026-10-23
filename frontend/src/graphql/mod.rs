@@ -1,7 +1,7 @@
 use crate::error::FrontendError;
 use graphql_client::{GraphQLQuery, Response};
-use lazy_static::lazy_static;
 use reqwest::header::{AUTHORIZATION, HeaderMap};
+use std::sync::LazyLock;
 use yew::Component;
 use yew::html::Scope;
 use yew_oauth2::prelude::{Authentication, OAuth2Context};
@@ -9,10 +9,10 @@ use yew_oauth2::prelude::{Authentication, OAuth2Context};
 pub mod anonymous;
 pub mod authenticated;
 
-lazy_static! {
-    static ref GRAPHQL_AUTHENTICATED_URL: String = format!("{}/graphql", host());
-    static ref GRAPHQL_ANONYMOUS_URL: String = format!("{}/graphql_anonymous", host());
-}
+static GRAPHQL_AUTHENTICATED_URL: LazyLock<String> =
+    LazyLock::new(|| format!("{}/graphql", host()));
+static GRAPHQL_ANONYMOUS_URL: LazyLock<String> =
+    LazyLock::new(|| format!("{}/graphql_anonymous", host()));
 
 pub fn host() -> String {
     let location = web_sys::window().unwrap().location();
