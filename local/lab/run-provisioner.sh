@@ -6,8 +6,10 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 "$root/local/lab/make-config.sh" >/dev/null
 nix=(nix --extra-experimental-features 'nix-command flakes')
+if [ ! -d "$root/frontend/node/node_modules" ]; then
+  "${nix[@]}" shell nixpkgs#nodejs -c sh -c "cd '$root/frontend/node' && npm install"
+fi
 "${nix[@]}" shell nixpkgs#trunk nixpkgs#dart-sass -c sh -c "
-  cd '$root/frontend' && trunk build --release &&
-  touch '$root/binary/src/main.rs' && cd '$root' && cargo build -p binary"
+  cd '$root/frontend' && trunk build --release && cd '$root' && cargo build -p binary"
 cd "$root/.lab-netbox/provisioner"
 LOG_LEVEL="${LOG_LEVEL:-info}" exec "$root/target/debug/binary"

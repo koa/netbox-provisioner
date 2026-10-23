@@ -5,16 +5,6 @@ backend = "http://localhost:8080/graphql"
 [[proxy]]
 backend = "http://localhost:8080/graphql_anonymous"
 
-[[hooks]]
-stage = "pre_build"
-command = "sh"
-command_arguments = ["-c", "clear"]
-
-[[hooks]]
-stage = "pre_build"
-command = "sh"
-command_arguments = ["-c", "cd node && npm install"]
-
 [watch]
 watch = ["src", "Cargo.toml", "local.css"]
 ignore = ["src/graphql/authenticated/schema.graphql"]

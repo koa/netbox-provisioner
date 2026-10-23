@@ -19,9 +19,11 @@ by scalar name, not by field, every `custom_field_data`/`custom_fields` selectio
 `fetch_topology.graphql` shares the one `JSON` struct there; add new custom-field keys to that same
 struct rather than creating a new scalar-backing type per query site.
 
-Building `binary` requires `trunk` and the `wasm32-unknown-unknown` target installed locally
-(its `build.rs` runs `trunk build --release` against `../frontend`) — `backend`/`netbox-model`
-alone do not need this and can be checked/tested independently.
+Building `binary` embeds `frontend/dist`, which has to be built first (`trunk` and the
+`wasm32-unknown-unknown` target; PatternFly from `frontend/node` via `npm install`): `build.sh`
+and `local/lab/run-provisioner.sh` do both. `binary/build.rs` only checks that `dist` exists and
+rebuilds when it changes — `backend`/`netbox-model` alone do not need this and can be
+checked/tested independently.
 
 The full architecture, current gaps, and the phased completion plan (NetBox data model, BGP/OSPF
 design, apply/diff/review pipeline, etc.) are tracked outside this repo in the project plan; see
