@@ -614,7 +614,9 @@ configuration and without the scheduler. The scheduler switching back by itself 
 `localhost:8180`, admin/admin), `lab/make-config.sh` (the lab devices' password comes from the
 ignored `.lab-netbox/device-password`, never put it in the repo) + `lab/run-provisioner.sh`
 (builds frontend and binary, serves on :8082; the lab config lets the helpers write to the lab
-NetBox with its admin token), `screenshots/` (Playwright, `run.sh STEP...`; a page reload asks
+NetBox with its admin token), `screenshots/` (Playwright, `run.sh STEP...`, with the browsers of
+nixpkgs and the npm package of their version, installed unsaved when it differs from
+`package.json`; a page reload asks
 for the Keycloak login again, so navigate with `click:` instead of `goto:`, and `clicklast:` for
 a card title whose text a link above has too). The harness's
 `mac_telnet.rs` and `update.rs` cover setup and update against CHRs, reaching the new node
