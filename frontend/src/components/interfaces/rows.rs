@@ -1,7 +1,7 @@
 //! The rows of `DeviceAccess.interfaceView` as the card shows them. The findings come over as
 //! the type of the query `Findings`, so `components::findings` words them as everywhere else.
 use crate::{
-    components::netbox_helper::{HelperKind, HelperPreset, LinkPreset, NetTarget},
+    components::netbox_helper::{HelperKind, HelperPreset, LinkPreset, NetTarget, RadioPreset},
     error::FrontendError,
     graphql::authenticated::{
         findings::FindingsTopologyFindings,
@@ -158,13 +158,18 @@ impl View {
             rows: view.rows.into_iter().map(Row::of).collect::<Result<_, _>>()?,
             device_findings: findings(&view.device_findings)?,
             other_findings: findings(&view.other_findings)?,
-            loopback_actions: view.loopback_actions.into_iter().filter_map(action).collect(),
+            loopback_actions: view
+                .loopback_actions
+                .into_iter()
+                .filter_map(|a| action(a, 0))
+                .collect(),
         })
     }
 }
 
 impl Row {
     fn of(row: interface_view::InterfaceViewTopologyDeviceByIdInterfaceViewRows) -> Result<Row, FrontendError> {
+        let own_device = row.interface.device.id as u32;
         Ok(Row {
             task: Task::of(&row.task),
             interface: iface(row.interface),
@@ -196,7 +201,7 @@ impl Row {
             gateways: row.gateways.into_iter().map(device).collect(),
             free: row.free,
             findings: findings(&row.findings)?,
-            actions: row.actions.into_iter().filter_map(action).collect(),
+            actions: row.actions.into_iter().filter_map(|a| action(a, own_device)).collect(),
         })
     }
 }
@@ -233,8 +238,9 @@ fn vlan(vlan: interface_view::Vlan) -> Vlan {
     }
 }
 
-/// The helper and its start for an action of the backend; none for one it doesn't know.
-fn action(action: interface_view::Action) -> Option<Action> {
+/// The helper and its start for an action of the backend on a row of `device`; none for one it
+/// doesn't know.
+fn action(action: interface_view::Action, device: u32) -> Option<Action> {
     let kind = match action.kind {
         ActionKind::SUGGESTION => Kind::Suggestion,
         ActionKind::REMOVE => Kind::Remove,
@@ -265,9 +271,18 @@ fn action(action: interface_view::Action) -> Option<Action> {
                 (None, None) => return None,
             }),
         ),
-        ActionHelper::RADIO_BRIDGE => {
-            (HelperKind::RadioBridge, HelperPreset::Kind(HelperKind::RadioBridge))
-        }
+        ActionHelper::RADIO_BRIDGE => (
+            HelperKind::RadioBridge,
+            match (interface, action.peer) {
+                // from the router port: for the bridge device cabled to it
+                (Some(router_port), Some(bridge_port)) => HelperPreset::RadioFrom(RadioPreset {
+                    bridge: bridge_port.device.id as u32,
+                    router_device: device,
+                    router_port,
+                }),
+                _ => HelperPreset::Kind(HelperKind::RadioBridge),
+            },
+        ),
         ActionHelper::Other(_) => return None,
     };
     Some(Action {

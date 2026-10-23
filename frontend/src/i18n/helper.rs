@@ -106,6 +106,7 @@ pub const RADIO_BRIDGE_HINT: &str = "Vervollständigt eine Funkbrücke zwischen 
     Wireless Link mit SSID und PSK (ein fehlender PSK wird erzeugt), und ein IPv4-Netz für \
     das Segment: das des Router-Ports, sonst ein neues /29 aus dem Transfer-Pool. Router-Ports \
     und Bridges bekommen je eine Adresse darin und ospf; für IPv6 reichen die Link-Local-Adressen. \
+    Jedes Kabelende bekommt als Label den Namen des Geräts am anderen Ende. \
     Die Nutzdaten bleiben auf L2.";
 pub const CHOOSE_RADIO_BRIDGE: &str = "Rolle dieser Brücke und die Gegenseite wählen.";
 pub const NOT_A_RADIO_BRIDGE: &str = "Das Gerät hat nicht genau einen Funk-Port: keine \

@@ -394,15 +394,27 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
                     || path.peer_bridge_port.is_none()
                     || path.peer_router_port.is_none()
             });
-            // „Funkbrücke“ starts on the bridge device
-            if bridge_device && (incomplete || !row.findings.is_empty()) {
-                actions.push(action(
-                    ActionKind::Suggestion,
-                    ActionHelper::RadioBridge,
-                    None,
-                    None,
-                    None,
-                ));
+            // „Funkbrücke“ on the bridge device, or from the router port for the bridge device
+            // cabled to it (`peer`)
+            if incomplete || !row.findings.is_empty() {
+                let bridge_port = row.radio_path.as_ref().and_then(|path| path.bridge_port.clone());
+                if bridge_device {
+                    actions.push(action(
+                        ActionKind::Suggestion,
+                        ActionHelper::RadioBridge,
+                        None,
+                        None,
+                        None,
+                    ));
+                } else if let Some(bridge_port) = bridge_port {
+                    actions.push(action(
+                        ActionKind::Suggestion,
+                        ActionHelper::RadioBridge,
+                        row.radio_path.as_ref().and_then(|p| p.router_port.as_ref()).map(|p| p.id),
+                        Some(bridge_port),
+                        None,
+                    ));
+                }
             }
         }
         InterfaceTask::Customer => {

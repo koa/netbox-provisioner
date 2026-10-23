@@ -315,7 +315,9 @@ weg. Ein gespeistes Gerät meldet seine Quelle nicht; abgelesen wird deshalb am 
 
 Vervollständigt oder korrigiert eine Brücke zwischen zwei Routern, deren beide Geräte in NetBox
 schon existieren (anlegen ist Teil von „Neues Gerät“). Aufgerufen auf der Seite einer der beiden
-Brücken (`radioBridgeCandidates`: RouterOS-Geräte mit genau einem Funk-Port). Eingabe: ob diese
+Brücken (`radioBridgeCandidates`: RouterOS-Geräte mit genau einem Funk-Port) oder vom Router-Port
+einer Richtfunk-Zeile der Interface-Ansicht her, dann für das dort verkabelte Brückengerät mit
+diesem Router-Port vorbelegt. Eingabe: ob diese
 Brücke AP oder Station ist (immer gewählt, vorbelegt mit ihrer RF Role), die andere Brücke
 (vorbelegt mit der Gegenseite ihres Wireless Links), je Seite der Router-Port nur dort, wo
 `ether1` noch nicht zu einem Router verkabelt ist, optional die Adresse jeder Bridge und die SSID.
@@ -347,6 +349,11 @@ Adresse darin (die eingegebene oder die nächste freie, gegen die Routen geprüf
 reichen die Link-Local-Adressen, die Brücken sind über ihre Loopback erreichbar. Die Adresse,
 die eine Brücke per DHCP hatte, kennt NetBox nicht; ist sie die nächste freie, bekommt sie
 dieselbe, sonst eine andere (die eingegebene geht vor).
+
+Zuletzt die Labels: An beiden Kabeln bekommt jedes Ende den Namen des Geräts am anderen Ende,
+wo sein Label es nicht schon nennt (`LabelNotFarEnd`), wie bei „Verbindung“. Hat der Plan für
+das Interface schon eine Änderung (`ospf`), kommt das Label in dieselbe: Eine zweite fände das
+Label beim Schreiben schon geändert.
 
 Geschrieben werden Port-Änderungen (Name, RF Role, Bridge, vorher geprüft) und der Wireless Link
 (`POST wireless/wireless-links/`, `status=connected`, `auth_cipher=aes`); der PSK steht nicht im

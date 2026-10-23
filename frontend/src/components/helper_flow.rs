@@ -66,6 +66,17 @@ impl Component for HelperFlow {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let props = ctx.props();
+        // another device's helper (a bridge device's from the router port) reaches it at its
+        // own address, with the credentials chosen
+        let helper_device = props.preset.device(props.id);
+        let target = if helper_device == props.id {
+            props.target.clone()
+        } else {
+            SelectedTarget {
+                address: None,
+                ..props.target.clone()
+            }
+        };
         // the step it is at, and whether writing failed
         let (current, failed) = match self.phase {
             Phase::Plan => (0, false),
@@ -119,8 +130,8 @@ impl Component for HelperFlow {
                                 .map(|(index, label)| step(index, label)) }
                         </ProgressStepper>
                         <NetboxHelper
-                            id={props.id}
-                            target={props.target.clone()}
+                            id={helper_device}
+                            target={target}
                             preset={props.preset.clone()}
                             embedded=true
                             on_phase={ctx.link().callback(HelperFlowMsg::Phase)}

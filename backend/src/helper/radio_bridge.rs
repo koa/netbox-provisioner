@@ -14,6 +14,9 @@
 //!   needs no address: OSPFv3 runs over the link-local ones, the bridges are reached at their
 //!   loopbacks.
 //!
+//! - as label at each cable end the name of the device at the other end, where it doesn't name
+//!   it (the port's name on the device comes from it, as with „Verbindung“).
+//!
 //! What is there already stays; what is missing or doesn't fit becomes a step of the plan.
 //! Something that doesn't fit and isn't the helper's to change (a cable or wireless link to
 //! another device, an address in another network) stops it with an error naming it.
@@ -28,7 +31,7 @@ use crate::{
     topology::{
         DeviceId, PhysicalPortId, PortType, PrefixPool, RadioRole, Topology,
         access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess},
-        findings::{DeviceRef, InterfaceRef, interface_ref},
+        findings::{DeviceRef, InterfaceRef, interface_ref, names},
     },
 };
 use async_graphql::{InputObject, SimpleObject};
@@ -59,6 +62,8 @@ pub struct RadioBridgeInput {
 struct Side {
     device: DeviceAccess,
     radio: InterfaceAccess,
+    /// the Ethernet port cabled to the router
+    ether: InterfaceAccess,
     router_port: InterfaceAccess,
     /// the interface `bridge`: an existing one or the step creating it
     bridge: Target,
@@ -91,7 +96,42 @@ pub(crate) async fn plan_with(
         loopback::add_to(&mut plan, &side.device, routes).await?;
     }
     segment(topology, &mut plan, &sides, routes).await?;
+    labels(&mut plan, &sides);
     Ok(plan)
+}
+
+/// Each cable end's label the name of the device at the other end, in the interface's update
+/// where the plan has one already (a second one would find the label changed).
+fn labels(plan: &mut NetboxPlan, sides: &[Side]) {
+    for side in sides {
+        let Some(router) = side.router_port.device() else { continue };
+        for (end, far) in [(&side.router_port, &side.device), (&side.ether, &router)] {
+            if end.label().is_some_and(|label| names(label, far.name())) {
+                continue;
+            }
+            let label = Some(Box::from(far.name()));
+            let existing = plan.steps.iter_mut().find_map(|step| match step {
+                PlanStep::UpdateInterface(update) if update.interface.id == end.id().0 => {
+                    Some(update)
+                }
+                _ => None,
+            });
+            match existing {
+                Some(update) => update.label = label,
+                None => plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
+                    interface: interface_ref(end),
+                    label,
+                    label_before: end.label().map(Box::from),
+                    mtu: None,
+                    mtu_before: end.mtu(),
+                    tags_added: Vec::new(),
+                    tags_removed: Vec::new(),
+                    poe: None,
+                    poe_before: None,
+                })),
+            }
+        }
+    }
 }
 
 /// The steps for cables, bridges and radios, which need nothing but NetBox as the topology has
@@ -255,6 +295,7 @@ fn side(
     Ok(Side {
         device: device.clone(),
         radio: radio.clone(),
+        ether,
         router_port,
         bridge,
         bridge_name,
@@ -716,6 +757,36 @@ mod test {
             })
             .collect::<Vec<_>>();
         assert_eq!(tagged, ["schopf-burri", "burri-schopf"], "the routers have ospf");
+        // each cable end names the device at the other one, as „Verbindung“ labels them
+        let labels = plan
+            .steps
+            .iter()
+            .filter_map(|step| match step {
+                PlanStep::UpdateInterface(update) => Some((
+                    format!("{} {}", update.interface.device.name, update.interface.name),
+                    update.label.as_deref()?.to_string(),
+                )),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            labels.contains(&("schopf-burri ether1".into(), "router-schopf".into())),
+            "{labels:?}"
+        );
+        assert!(
+            labels.contains(&("burri-schopf ether1".into(), "berghof-burri".into())),
+            "{labels:?}"
+        );
+        let after = plan.preview_topology().expect("preview");
+        assert!(
+            !after.findings().iter().any(|f| matches!(&f.kind,
+                crate::topology::findings::FindingKind::LabelNotFarEnd(l)
+                    if [&*l.interface.device.name, &*l.far_end.device.name]
+                        .iter()
+                        .any(|name| ["schopf-burri", "burri-schopf"].contains(name)))),
+            "{:#?}",
+            after.findings()
+        );
         assert!(
             !plan.steps.iter().any(|step| matches!(
                 step,

@@ -77,6 +77,26 @@ pub enum HelperPreset {
     Disconnect(u32),
     /// „Kunden-Netz“ on this port or VLAN
     CustomerNet(NetTarget),
+    /// „Funkbrücke“ from a router port, for the bridge device cabled to it
+    RadioFrom(RadioPreset),
+}
+
+/// „Funkbrücke“ from a router port: the helper is the bridge device's, its router side set.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RadioPreset {
+    pub bridge: u32,
+    pub router_device: u32,
+    pub router_port: u32,
+}
+
+impl HelperPreset {
+    /// The device whose helper it is, `page` where it isn't another one's.
+    pub fn device(&self, page: u32) -> u32 {
+        match self {
+            HelperPreset::RadioFrom(preset) => preset.bridge,
+            _ => page,
+        }
+    }
 }
 
 /// How far the helper is, for the stepper of `components::helper_flow`.
@@ -497,6 +517,7 @@ impl Component for NetboxHelper {
         let mut link = LinkChoice::default();
         let mut disconnect = None;
         let mut net = NetChoice::default();
+        let mut radio = RadioChoice::default();
         let kind = match &ctx.props().preset {
             None => HelperKind::Loopback,
             Some(HelperPreset::Kind(kind)) => *kind,
@@ -521,6 +542,11 @@ impl Component for NetboxHelper {
                 net.target = Some(*target);
                 HelperKind::CustomerNet
             }
+            Some(HelperPreset::RadioFrom(preset)) => {
+                radio.router_device[0] = Some(preset.router_device);
+                radio.router_port[0] = Some(preset.router_port);
+                HelperKind::RadioBridge
+            }
         };
         last_write(ctx.link().clone(), ctx.props().id);
         let mut helper = Self {
@@ -538,7 +564,7 @@ impl Component for NetboxHelper {
             poe_options: None,
             poe_observed: None,
             poe_observing: false,
-            radio: RadioChoice::default(),
+            radio,
             radio_options: None,
             planned: None,
             plan: None,

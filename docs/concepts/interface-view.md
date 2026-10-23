@@ -371,7 +371,13 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
    - Im Export kam keiner der beiden VLAN-Fehler und kein tagged Port vor; dazu drei Strecken
      ohne SSID und sieben Brückengeräte ohne Loopback, die nun Fehler sind.
 5. Die neuen Helfer: Richtfunk abräumen, Kunden-Anschluss abräumen, VLAN am Port, Funkbrücke
-   vom Router-Port, Kabel übernehmen.
+   vom Router-Port, Kabel übernehmen. Je ein Commit:
+   - Funkbrücke vom Router-Port, erledigt 2026-10-23: Die Richtfunk-Zeile eines Routers
+     bietet den Vorschlag „Funkbrücke“ (unvollständig oder mit Befund), mit dem Router-Port als
+     `interface` und dem Port des verkabelten Brückengeräts als `peer`. Das Modal bettet dann
+     den Helfer dieses Brückengeräts ein (`HelperPreset::RadioFrom`, Router und Router-Port
+     vorbelegt; erreicht an seiner eigenen Adresse). Der Helfer setzt nun auch die Labels an
+     beiden Kabeln, sonst behöbe der Vorschlag den Label-Hinweis nicht.
 
 ## Entschieden (2026-10-23)
 

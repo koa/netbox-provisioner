@@ -464,7 +464,7 @@ fn rows_offer_the_helpers_that_fit() {
             (ActionKind::AssignRole, ActionHelper::Connection),
         ]
     );
-    // the router's end of a radio link waits for „Funkbrücke“ from the router port
+    // the router's end of a complete radio link without findings needs nothing
     assert!(row(&view, "ether3").actions.is_empty());
     assert!(row(&view, "ether2").actions.is_empty());
     // a customer bridge with IPv4 only: the helper can bring IPv6
@@ -483,5 +483,30 @@ fn rows_offer_the_helpers_that_fit() {
     assert_eq!(
         view.loopback_actions.iter().map(|a| a.helper).collect::<Vec<_>>(),
         [ActionHelper::Loopback]
+    );
+}
+
+/// With a finding on the router's end of a radio link, „Funkbrücke“ opens from the router port
+/// for the bridge device cabled to it.
+#[test]
+fn a_radio_link_offers_funkbruecke_from_the_router_port() {
+    let mut net = Net::new();
+    let r1 = net.r1;
+    let ether3 = net
+        .builder
+        .interfaces
+        .iter()
+        .find(|(_, i)| i.device == r1 && &*i.name == "ether3")
+        .map(|(id, _)| *id)
+        .unwrap();
+    net.builder.interfaces.get_mut(&ether3).unwrap().mtu = Some(1600);
+    let topology = Arc::new(net.builder.build());
+    let view = topology.get_device_by_id(&r1).unwrap().interface_view();
+    let radio = row(&view, "ether3");
+    assert_eq!(helpers(radio), [(ActionKind::Suggestion, ActionHelper::RadioBridge)]);
+    assert_eq!(radio.actions[0].interface, Some(ether3.0));
+    assert_eq!(
+        radio.actions[0].peer.as_ref().map(|p| (&*p.device.name, &*p.name)),
+        Some(("b1", "ether1"))
     );
 }

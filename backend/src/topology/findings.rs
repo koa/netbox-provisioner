@@ -474,7 +474,7 @@ pub(crate) fn vlan_ref(vlan: &VlanAccess) -> Option<VlanRef> {
 
 /// A label naming the device: one contains the other, compared without case and anything but
 /// letters and digits (`AP1` names `lab-ap1`, `SXT A` names `lab-sxt-a`).
-fn names(label: &str, device: &str) -> bool {
+pub(crate) fn names(label: &str, device: &str) -> bool {
     let plain = |text: &str| {
         text.chars()
             .filter(char::is_ascii_alphanumeric)
