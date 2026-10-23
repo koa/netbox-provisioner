@@ -83,7 +83,7 @@ pub fn runs_wireless(model: &[u8]) -> bool {
 }
 
 /// The factory values of the power cycling of a hung PD, which not every PoE board has, as a
-/// CRS318-16P-2S+ (RouterOS 7.19) and a hAP ax² (7.23.8) report them. Without them the diff
+/// CRS318-16P-2S+ (RouterOS 7.19), a hAP ax² and a cAP ax (7.23.8) report them. Without them the diff
 /// would clear them, which RouterOS refuses for `power-cycle-ping-enabled` (must be yes or no).
 fn with_poe_power_cycle(
     mut port: InterfaceEthernetByDefaultName,
@@ -234,17 +234,12 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
             .map(|(idx, generator)| generator(idx + 2)),
         )
         .collect(),
-        b"cAPGi-5HaxD2HaxD" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, false),
-            1,
-        )
-        .chain(repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, true),
-            1,
-        ))
-        .enumerate()
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
+        // cAP ax: PoE-out on ether2, with the power cycling of a hung PD (ap-schopf, 7.23.8)
+        b"cAPGi-5HaxD2HaxD" => [
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, false)(1),
+            with_poe_power_cycle(generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, true)(2)),
+        ]
+        .into(),
         b"CCR1009-7G-1C-1S+" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G_FULL, 1580, false),
             7,
