@@ -438,16 +438,14 @@ impl BaseDeviceDataTarget {
             let bridge_cfg = self.bridge.entry(bridge.name.clone()).or_default();
             bridge_cfg.0.vlan_filtering = false;
             bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Rstp;
-            // Without vlan filtering RouterOS accepts the vlan fields but never reports them
-            // (nor the mstp ones without mstp), so a value here would be a diff forever; mvrp
-            // is reported by some versions (7.20), not by others (7.24), and keeps whatever it is.
+            // Without vlan filtering RouterOS accepts the vlan fields but never reports them,
+            // so a value here would be a diff forever; mvrp is reported by some versions
+            // (7.20), not by others (7.24), and keeps whatever it is.
             bridge_cfg.0.ether_type = None;
             bridge_cfg.0.frame_types = None;
             bridge_cfg.0.ingress_filtering = None;
             bridge_cfg.0.pvid = None;
             bridge_cfg.0.mvrp = None;
-            bridge_cfg.0.max_hops = None;
-            bridge_cfg.0.region_revision = None;
             for port in &bridge.ports {
                 if let SimpleBridgePort::Ethernet {
                     name,
@@ -487,7 +485,9 @@ impl BaseDeviceDataTarget {
             // its radios are clients) closes no loop, and STP over the VXLAN, a segment it
             // shares with every bridge of the WLAN group, blocked its port (ap-buero-1og,
             // 7.23.7: no client got an address until STP was off). Without STP RouterOS
-            // doesn't report the STP settings, but `forward-reserved-addresses` (7.24.5).
+            // doesn't report the STP settings, but `forward-reserved-addresses` (7.24.5). It
+            // keeps them hidden and rejects an empty value (`forward-delay=""`, 7.24.5), so they
+            // stay at RouterOS's defaults, which mikrotik-model reads for a hidden one.
             let uplinks = bridge
                 .ports
                 .values()
@@ -506,13 +506,7 @@ impl BaseDeviceDataTarget {
             if uplinks.len() == 1 && uplinks.iter().all(|(_, vxlan)| *vxlan) {
                 let bridge_cfg = &mut bridge_cfg.0;
                 bridge_cfg.protocol_mode = InterfaceBridgeProtocolMode::None;
-                bridge_cfg.priority = None;
-                bridge_cfg.max_message_age = None;
-                bridge_cfg.forward_delay = None;
-                bridge_cfg.transmit_hold_count = None;
                 bridge_cfg.region_name = None;
-                bridge_cfg.region_revision = None;
-                bridge_cfg.max_hops = None;
                 bridge_cfg.forward_reserved_addresses = Some(false);
             }
             let mut tags_of_port = HashMap::<AsciiString, (Option<u16>, Vec<u16>)>::new();

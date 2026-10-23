@@ -18,7 +18,8 @@ use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
-        CapsAuthenticationTypes, CapsManDatapathVlanMode, CapsManProvisioningNameFormat, InterfaceBridgeProtocolMode,
+        CapsAuthenticationTypes, CapsManDatapathVlanMode, CapsManProvisioningNameFormat, InterfaceBridgeCfg,
+        InterfaceBridgeProtocolMode,
         InterfaceWirelessByDefaultName,
     },
     value::HasNone,
@@ -300,6 +301,7 @@ async fn managed_legacy_radio_keeps_its_name() {
 
 /// ap-buero-1og: a CAP's `bridge-caps` reaches other bridges only through the WLAN group's
 /// VXLAN, a segment shared with all of them, where STP blocked its port; it runs no STP.
+/// ap-klr-solar: switching an RSTP bridge off emptied the STP settings, which RouterOS rejects.
 #[tokio::test]
 async fn caps_bridge_runs_no_stp() {
     let (_, legacy_cap, wifi_cap) = wlan_group().await;
@@ -308,7 +310,12 @@ async fn caps_bridge_runs_no_stp() {
         target.generate_from(device, KeepNameGenerator).unwrap();
         let bridge = &target.bridge[&AsciiString::from("bridge-caps")].0;
         assert_eq!(bridge.protocol_mode, InterfaceBridgeProtocolMode::None, "{}", device.name());
-        assert_eq!(bridge.priority, None);
+        // RouterOS keeps the STP settings hidden and can't clear them (`forward-delay=""` is
+        // invalid), so they stay at its defaults rather than being emptied
+        let defaults = InterfaceBridgeCfg::default();
+        assert_eq!(bridge.priority, defaults.priority);
+        assert_eq!(bridge.forward_delay, defaults.forward_delay);
+        assert_eq!(bridge.max_message_age, defaults.max_message_age);
         assert_eq!(bridge.forward_reserved_addresses, Some(false));
     }
 }

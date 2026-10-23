@@ -470,7 +470,9 @@ group's VXLAN). A tagged bridge whose only way to other bridges is one VXLAN (a 
 `bridge-caps`; radios don't count) runs no STP: it closes no loop, and MSTP over the VXLAN,
 a segment shared with every bridge of the group, blocked its port (ap-buero-1og, 7.23.7:
 clients associated but got no DHCP). Without STP RouterOS reports none of the bridge's STP
-settings but `forward-reserved-addresses=no` (7.24.5), so the target clears them. With one VLAN in the group the CAP sets it: with `wifi-qcom` its radios get a
+settings but `forward-reserved-addresses=no` (7.24.5) and keeps them hidden; it rejects
+clearing them (`forward-delay=""`, ap-klr-solar), so the target leaves them at RouterOS's
+defaults, which mikrotik-model reads for a hidden one. With one VLAN in the group the CAP sets it: with `wifi-qcom` its radios get a
 datapath with `vlan-id` into the bridge carrying that VLAN; `wifi-qcom-ac` radios can't tag
 (MikroTik: "802.11ac chipsets do not support this type of VLAN tagging"; clients associate but
 get no DHCP), so they are static access ports of that bridge instead
