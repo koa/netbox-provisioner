@@ -5,6 +5,7 @@ mod netbox_example;
 mod poe;
 mod radio;
 mod speed;
+mod syslog;
 mod watchdog;
 mod wlan_vlans;
 
@@ -13,7 +14,13 @@ use crate::device::ros::{
     dhcp::{GapFinder, pool_range},
 };
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
-use mikrotik_model::model::{InterfaceEthernetByDefaultName, InterfaceEthernetCfg};
+use mikrotik_model::{
+    model::{
+        InterfaceEthernetByDefaultName, InterfaceEthernetCfg, SystemLoggingActionByName,
+        SystemLoggingActionRemoteLogFormat, SystemLoggingById,
+    },
+    value::Id,
+};
 use std::str::FromStr;
 
 /// RouterOS rejects `auto-link-local=no` on anything but a link-local address.
@@ -208,5 +215,22 @@ pub(crate) fn empty_current(target: &BaseDeviceDataTarget) -> BaseDeviceDataCurr
         mac_server: Default::default(),
         neighbor_discovery: Default::default(),
         watchdog: Default::default(),
+        logging_action: routeros_logging_actions(),
+        logging: crate::device::ros::syslog::routeros_logging()
+            .1
+            .into_values()
+            .enumerate()
+            .map(|(id, data)| SystemLoggingById { id: Id(id as u32 + 1), data })
+            .collect(),
     }
+}
+
+/// RouterOS's logging actions on a reset device: `remote` in the default format, which hides
+/// the CEF fields (CHR 7.24.5).
+fn routeros_logging_actions() -> Box<[SystemLoggingActionByName]> {
+    let mut actions = crate::device::ros::syslog::routeros_logging().0;
+    let remote = &mut actions.get_mut(&b"remote".as_slice().into()).expect("RouterOS's remote action").0;
+    remote.remote_log_format = Some(SystemLoggingActionRemoteLogFormat::Default);
+    remote.syslog_time_format = None;
+    actions.into_values().collect()
 }

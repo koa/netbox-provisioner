@@ -45,6 +45,7 @@ pub(crate) mod hw_facts;
 pub mod l2;
 pub(crate) mod radio;
 pub(crate) mod speed;
+pub(crate) mod syslog;
 pub mod warning;
 pub mod watchdog;
 #[cfg(test)]
@@ -104,6 +105,8 @@ mikrotik_model!(
         mac_server(single = "tool/mac-server"),
         neighbor_discovery(single = "ip/neighbor/discovery-settings"),
         watchdog(single = "system/watchdog"),
+        logging_action(by_key(path = "system/logging/action", key = name)),
+        logging(by_id(path = "system/logging", keys(action, topics))),
     ),
 );
 
@@ -389,6 +392,8 @@ impl BaseDeviceDataTarget {
     fn with_ethernet_ports(
         ethernet_ports: impl IntoIterator<Item = InterfaceEthernetByDefaultName>,
     ) -> Self {
+        // `setup_syslog` adds the server
+        let (logging_action, logging) = syslog::routeros_logging();
         Self {
             ethernet: ethernet_ports
                 .into_iter()
@@ -450,6 +455,8 @@ impl BaseDeviceDataTarget {
             .into(),
             // set by `setup_watchdog`
             watchdog: Default::default(),
+            logging_action,
+            logging,
         }
     }
     /// Makes this device the provisioner's way into the network: `/ip socks` as SOCKS5, only

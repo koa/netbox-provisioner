@@ -27,6 +27,9 @@ settings:
   allow_apply: true
   routeros_channel: stable
   apply_fallback_seconds: 120
+  device_syslog:
+    remote: "2a02:16a:fe00:1a0::10:8"
+    topics: [info, warning, error, critical]
 httpRoute:
   enabled: true
   parentRefs: [{name: public, namespace: gateway, sectionName: https}]

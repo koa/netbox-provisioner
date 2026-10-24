@@ -179,11 +179,15 @@ impl DeviceCfg {
             self.base_target
                 .setup_management_proxy(&proxy.user, &proxy.password);
         }
+        if let Some(syslog) = &CONFIG.device_syslog {
+            self.base_target.setup_syslog(syslog);
+        }
         Ok(())
     }
     pub fn generate_mutations(&self) -> Result<Box<[ResourceMutation<'_>]>, Error> {
         // owned: the device as it is after the renames lives only here
-        let current = following_renames(&self.base_target, &self.base_current, &self.radio_renames());
+        let mut current = following_renames(&self.base_target, &self.base_current, &self.radio_renames());
+        super::syslog::after_switch_to_cef(&mut current);
         let mut mutations = self
             .base_target
             .generate_mutations(&current)?

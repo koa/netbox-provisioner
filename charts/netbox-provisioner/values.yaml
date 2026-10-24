@@ -57,6 +57,14 @@ settings:
   apply_fallback_seconds: ""
   # seconds after an update's boot to reach the device again (empty: 900)
   update_fallback_seconds: ""
+  # the syslog server every device logs to, in CEF (for Loki); empty `remote`: the devices log
+  # only locally
+  device_syslog:
+    remote: ""
+    # empty: 514 (UDP)
+    port: ""
+    # one rule each; empty: info, warning, error, critical
+    topics: []
 
   # --- server; the container ports follow
   # empty: 8080

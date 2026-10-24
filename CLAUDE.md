@@ -585,6 +585,17 @@ start while a supplier reboots (both under one lock). The leases are in-process 
 power mid-install (berghof-burri bricked burri-schopf that way; RouterBOOT then only asked for
 Netinstall).
 
+Every device gets RouterOS's logging (`device::ros::syslog`): its actions and rules, which it
+refuses to remove (a target without them would remove them), with the `remote` action always in
+CEF. With `device_syslog` set (`generate_for`) the action goes to that server and a rule per
+topic sends to it (default `info`, `warning`, `error`, `critical`, as the devices had it, see
+`examples/`); rules NetBox doesn't know of go. The action stays in CEF without a server too
+(`remote=0.0.0.0`, no rule to it): RouterOS hides `syslog-time-format` and
+`cef-event-delimiter` in the default format and refuses to clear them (`=""`, `!field`), so the
+way back would fail. The hidden delimiter is RouterOS's `\r\n` once in CEF:
+`syslog::after_switch_to_cef` makes the diff see that, so the target's `""` goes in the same
+`set` (CHR 7.24.5: a second diff after either apply is empty).
+
 Every device gets watchdogs (`docs/concepts/watchdog.md`, `device::ros::watchdog`): the
 hardware one, a ping watchdog on its parent's primary IPv4 and, on a `pse` port powering a
 RouterOS device, `power-cycle-ping` on that device. The parent comes from

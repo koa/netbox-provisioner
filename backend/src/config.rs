@@ -48,6 +48,28 @@ pub struct Settings {
     /// the RouterOS from before, unless the provisioner reached it (default 900). Longer than
     /// the provisioner waits for a reboot (10 min), so a slow update isn't taken back.
     update_fallback_seconds: Option<u64>,
+    /// The syslog server every device logs to, in CEF; without it the devices log only
+    /// locally (RouterOS's own rules).
+    pub device_syslog: Option<DeviceSyslog>,
+}
+
+#[derive(Deserialize)]
+pub struct DeviceSyslog {
+    pub remote: IpAddr,
+    /// UDP port, default 514
+    pub port: Option<u16>,
+    /// the topics sent, one rule each; default `info`, `warning`, `error`, `critical`
+    pub topics: Option<Box<[Box<str>]>>,
+}
+
+impl DeviceSyslog {
+    pub fn topics(&self) -> impl Iterator<Item = &str> {
+        self.topics
+            .as_deref()
+            .map(|topics| topics.iter().map(Box::as_ref).collect::<Vec<_>>())
+            .unwrap_or_else(|| crate::device::ros::syslog::DEFAULT_TOPICS.to_vec())
+            .into_iter()
+    }
 }
 
 /// A RouterOS device acting as SOCKS5 proxy (`/ip socks`) for the provisioner. Its own
@@ -181,5 +203,15 @@ settings:
         assert_eq!(settings.server_port(), 9000);
         let lab = &settings.mikrotik_credentials["lab"];
         assert_eq!((lab.user(), lab.password()), ("admin", Some("0123")));
+    }
+
+    /// Without `topics` the devices send what they sent before the provisioner.
+    #[test]
+    fn device_syslog_defaults_to_the_four_levels() {
+        let yaml = format!("{YAML}  device_syslog:\n    remote: 2a02:16a:fe00:1a0::10:8\n");
+        let settings = settings_from(File::from_str(&yaml, FileFormat::Yaml), environment()).unwrap();
+        let syslog = settings.device_syslog.expect("device_syslog");
+        assert_eq!(syslog.port, None);
+        assert_eq!(syslog.topics().collect::<Vec<_>>(), ["info", "warning", "error", "critical"]);
     }
 }

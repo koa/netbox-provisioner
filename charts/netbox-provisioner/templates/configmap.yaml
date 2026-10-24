@@ -44,6 +44,18 @@ data:
       {{- with $s.update_fallback_seconds }}
       update_fallback_seconds: {{ . | int }}
       {{- end }}
+      {{- with $s.device_syslog }}
+      {{- if .remote }}
+      device_syslog:
+        remote: {{ .remote | quote }}
+        {{- with .port }}
+        port: {{ . | int }}
+        {{- end }}
+        {{- with .topics }}
+        topics: {{ . | toJson }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
       server_port: {{ include "netbox-provisioner.httpPort" . }}
       server_mgmt_port: {{ include "netbox-provisioner.mgmtPort" . }}
       {{- with $s.server_bind_address }}
