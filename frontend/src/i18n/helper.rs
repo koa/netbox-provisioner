@@ -260,6 +260,11 @@ pub const BRIDGE_LEAVE: &str = "Aus Bridge lösen";
 pub const BRIDGE_LEAVE_HINT: &str = "Nimmt den Port aus seiner Bridge, mit den VLANs des Ports \
     selbst: danach ist er frei. Sein Kabel bleibt, die Bridge mit ihrem Netz auch.";
 pub const CHOOSE_BRIDGE_LEAVE: &str = "Über den Port der Bridge in den Interfaces starten.";
+pub const ADDRESS_TAKEOVER: &str = "Adresse übernehmen";
+pub const ADDRESS_TAKEOVER_HINT: &str = "Trägt eine Adresse, die nur das Gerät hat, in NetBox an \
+    ihrem Interface ein, damit das nächste Anwenden sie nicht entfernt. Ihr Netz wird ein Prefix, \
+    wenn NetBox davon noch nichts hat.";
+pub const CHOOSE_ADDRESS_TAKEOVER: &str = "Über die Adresse in der Live-Prüfung der Interfaces starten.";
 pub const NEW_DEVICE: &str = "Neues Gerät";
 pub const NEW_DEVICE_HINT: &str = "Legt in NetBox ein Gerät an, das an diesem Port hängt: an der \
     Site und mit dem Tenant dieses Geräts (dessen Zugangsdaten die Ersteinrichtung braucht), \
@@ -439,7 +444,12 @@ pub fn create_cable(a: (&str, &str), b: (&str, &str)) -> String {
     format!("Kabel {} {} – {} {} anlegen", a.0, a.1, b.0, b.1)
 }
 pub fn create_prefix(prefix: &str, pool: &str, description: &str) -> String {
-    format!("Prefix {prefix} „{description}“ anlegen (aus {pool})")
+    if pool.is_empty() {
+        // a network NetBox has no prefix around (`helper::address_takeover`)
+        format!("Prefix {prefix} „{description}“ anlegen")
+    } else {
+        format!("Prefix {prefix} „{description}“ anlegen (aus {pool})")
+    }
 }
 /// the new label and MTU, each with the one before, and whether `ospf` is added
 pub fn update_interface(

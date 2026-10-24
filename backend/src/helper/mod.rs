@@ -7,6 +7,7 @@
 //! (`fingerprint`), and each step checks that NetBox is still as the plan found it, so a
 //! change made in between stops it instead of being overwritten. Every write is an event of
 //! the job (`NetboxWritten`), which is what `undo` takes back.
+pub mod address_takeover;
 pub mod cable_takeover;
 pub mod connection;
 pub mod bridge_leave;
@@ -77,6 +78,8 @@ pub enum Helper {
     BridgeLeave(bridge_leave::BridgeLeaveInput),
     /// a new device cabled to a free port of a router, for the router
     NewDevice(new_device::NewDeviceInput),
+    /// an address only the device has on its NetBox interface, for the device
+    AddressTakeover(address_takeover::AddressTakeoverInput),
 }
 
 impl Helper {
@@ -95,6 +98,7 @@ impl Helper {
             Helper::CableTakeover(input) => cable_takeover::plan(topology, input).await,
             Helper::BridgeLeave(input) => bridge_leave::plan(topology, input),
             Helper::NewDevice(input) => new_device::plan(topology, input).await,
+            Helper::AddressTakeover(input) => address_takeover::plan(topology, input),
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -142,6 +146,9 @@ impl Helper {
                 .get_interface_by_id(crate::topology::InterfaceId(input.port))
                 .and_then(|interface| interface.device())
                 .ok_or(Error::UnknownInterface(input.port)),
+            Helper::AddressTakeover(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
         }
     }
 }

@@ -192,6 +192,7 @@ fn another_far_port_suggests_taking_over_the_cable() {
             peer: to_r2.interface,
             vlan: None,
             seen: None,
+            address: None,
         }]
     );
     let b1_port = b1.interfaces().iter().find(|i| i.radio().is_none()).unwrap().name().to_string();
@@ -244,7 +245,59 @@ fn an_unknown_mikrotik_suggests_a_new_device() {
                 board: "RB962UiGS-5HacT2HnT".into(),
                 interface_name: "ether1".into(),
             }),
+            address: None,
         }]
     );
     assert!(actions("").is_empty());
+}
+
+/// What only the device has goes to the row of its interface, by port name or by an address
+/// NetBox has there; one NetBox has elsewhere is shown without the action, dynamic and
+/// link-local ones not at all.
+#[test]
+fn device_only_addresses_go_to_their_row() {
+    let net = Net::new();
+    let topology = Arc::new(net.builder.build());
+    let r1 = topology.get_device_by_id(&net.r1).unwrap();
+    let address = |address: &str, interface: &str| row(&[("address", address), ("interface", interface), ("dynamic", "false"), ("disabled", "false")]);
+    let addresses = [
+        address("192.168.5.1/24", "ether2"),
+        address("172.17.1.10/29", "ether2"),
+        row(&[("address", "192.168.6.1/24"), ("interface", "ether2"), ("dynamic", "true")]),
+        address("fe80::1/64", "ether2"),
+        address("172.17.1.0/31", "ether1"),
+        address("10.10.0.1/24", "bridge-clients"),
+        address("10.10.0.2/24", "bridge-clients"),
+        address("192.168.9.1/24", "vlan99"),
+    ];
+    let neighbors = Neighbors {
+        findings: Vec::new(),
+        seen: BTreeMap::new(),
+    };
+    let live = check(&r1, &r1.interface_rows(), neighbors, &[], &addresses, &BTreeSet::new());
+    let shown = |row: &LiveRow| {
+        row.device_only_addresses
+            .iter()
+            .map(|a| (a.address.to_string(), a.elsewhere.as_ref().map(|d| d.name.to_string())))
+            .collect::<Vec<_>>()
+    };
+    let uplink = live_row(&live, &r1, "ether2");
+    assert_eq!(
+        shown(uplink),
+        [("192.168.5.1/24".into(), None), ("172.17.1.10/29".into(), Some("r2".into()))]
+    );
+    assert_eq!(
+        uplink
+            .actions
+            .iter()
+            .map(|a| (a.helper, a.address.as_deref()))
+            .collect::<Vec<_>>(),
+        [(ActionHelper::AddressTakeover, Some("192.168.5.1/24"))]
+    );
+    assert_eq!(shown(live_row(&live, &r1, "bridge-clients")), [("10.10.0.2/24".into(), None)]);
+    assert!(live_row(&live, &r1, "ether1").device_only_addresses.is_empty());
+    assert_eq!(
+        live.other_addresses.iter().map(|a| &*a.address).collect::<Vec<_>>(),
+        ["192.168.9.1/24"]
+    );
 }

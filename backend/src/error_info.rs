@@ -202,6 +202,12 @@ impl From<&Error> for ErrorInfo {
                 ("NO_CUSTOMER_NET", vec![("interface", interface.to_string())])
             }
             Error::NoBridge(port) => ("NO_BRIDGE", vec![("port", port.to_string())]),
+            Error::AddressInNetbox(address) => {
+                ("ADDRESS_IN_NETBOX", vec![("address", address.to_string())])
+            }
+            Error::InvalidAddress(address) => {
+                ("INVALID_ADDRESS", vec![("address", address.to_string())])
+            }
             Error::VlanIdTaken { vid, vlan, group } => (
                 "VLAN_ID_TAKEN",
                 vec![

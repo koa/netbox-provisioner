@@ -89,6 +89,8 @@ pub enum ActionHelper {
     /// „Neues Gerät“: a device for NetBox cabled to the free port `interface`, the one the
     /// device sees there if `seen`
     NewDevice,
+    /// „Adresse übernehmen“: the `address`, which only the device has, on `interface` in NetBox
+    AddressTakeover,
 }
 
 /// A MikroTik the device sees at a port that NetBox doesn't know: its identity, board and port
@@ -114,6 +116,8 @@ pub struct RowAction {
     pub vlan: Option<u32>,
     /// the device seen at the port, for a new one
     pub seen: Option<SeenDevice>,
+    /// an address only the device has, to take over
+    pub address: Option<Box<str>>,
 }
 
 /// An L3 interface, a bridge with its ports.
@@ -250,6 +254,7 @@ impl DeviceAccess {
                         peer: None,
                         vlan: None,
                         seen: None,
+                        address: None,
                     });
                 }
             }
@@ -273,6 +278,7 @@ impl DeviceAccess {
                 peer: None,
                 vlan: None,
                 seen: None,
+                address: None,
             })
             .into_iter()
             .collect();
@@ -403,6 +409,7 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
         peer,
         vlan,
         seen: None,
+        address: None,
     };
     // the port (the row's interface or one of its bridge ports) cabled to a router, and that
     // router's port
@@ -600,6 +607,7 @@ fn port_actions(topology: &Arc<Topology>, port: &InterfaceRef) -> Vec<RowAction>
             peer: None,
             vlan: None,
             seen: None,
+            address: None,
         })
         .into_iter()
         .collect()

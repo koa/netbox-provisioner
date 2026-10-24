@@ -96,6 +96,8 @@ pub struct NetboxHelper {
     customer_disconnect: Option<u32>,
     /// „Aus Bridge lösen“: the port
     bridge_leave: Option<u32>,
+    /// „Adresse übernehmen“: the interface and the address
+    address_takeover: Option<(u32, String)>,
     ports: Option<Result<link_ports::ResponseData, FrontendError>>,
     flag_interfaces: Option<Result<Vec<FlagInterface>, FrontendError>>,
     /// the tags switched away from what NetBox has
@@ -196,6 +198,7 @@ impl Component for NetboxHelper {
         let mut radio_disconnect = None;
         let mut customer_disconnect = None;
         let mut bridge_leave = None;
+        let mut address_takeover = None;
         let mut port_vlan = PortVlanChoice::default();
         let mut cable_takeover = None;
         let mut poe = PoeChoice::default();
@@ -266,6 +269,10 @@ impl Component for NetboxHelper {
                 new_device = NewDeviceChoice::new(*port, seen.clone());
                 HelperKind::NewDevice
             }
+            Some(HelperPreset::AddressTakeover { interface, address }) => {
+                address_takeover = Some((*interface, address.clone()));
+                HelperKind::AddressTakeover
+            }
             // the flow chooses the bridge device first: not here
             Some(HelperPreset::RadioChoose { .. }) => HelperKind::RadioBridge,
         };
@@ -279,6 +286,7 @@ impl Component for NetboxHelper {
             radio_disconnect_link: false,
             customer_disconnect,
             bridge_leave,
+            address_takeover,
             ports: None,
             flag_interfaces: None,
             flags: BTreeMap::new(),
@@ -421,6 +429,7 @@ impl Component for NetboxHelper {
                             | HelperKind::CustomerDisconnect
                             | HelperKind::BridgeLeave
                             | HelperKind::NewDevice
+                            | HelperKind::AddressTakeover
                     );
                 self.removed = removed;
                 if removed {
@@ -504,6 +513,7 @@ impl Component for NetboxHelper {
             HelperKind::CustomerDisconnect => t::CUSTOMER_DISCONNECT_HINT,
             HelperKind::BridgeLeave => t::BRIDGE_LEAVE_HINT,
             HelperKind::NewDevice => t::NEW_DEVICE_HINT,
+            HelperKind::AddressTakeover => t::ADDRESS_TAKEOVER_HINT,
             HelperKind::PortVlan => t::PORT_VLAN_HINT,
             HelperKind::CableTakeover => t::CABLE_TAKEOVER_HINT,
         };
@@ -622,6 +632,10 @@ impl NetboxHelper {
             }),
             HelperKind::Disconnect => Some(HelperChoice::Disconnect(self.disconnect?)),
             HelperKind::BridgeLeave => Some(HelperChoice::BridgeLeave(self.bridge_leave?)),
+            HelperKind::AddressTakeover => {
+                let (interface, address) = self.address_takeover.clone()?;
+                Some(HelperChoice::AddressTakeover { interface, address })
+            }
             HelperKind::NewDevice => {
                 let choice = &self.new_device;
                 let name = choice.planned_name.trim();

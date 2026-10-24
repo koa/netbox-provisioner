@@ -109,6 +109,10 @@ pub const CHANGED_TEXT: &str = "Das Gerät hat die Änderung noch nicht.";
 pub const UNDO: &str = "Rückgängig";
 pub const APPLY: &str = "Anwenden";
 
+/// the button of an address only the device has
+pub fn address_takeover(address: &str) -> String {
+    format!("{address} übernehmen")
+}
 /// a button or menu entry of a row
 pub fn action(kind: Kind, helper: HelperKind) -> String {
     match kind {
@@ -133,12 +137,9 @@ pub fn action(kind: Kind, helper: HelperKind) -> String {
     }
 }
 
-/// the title of a helper's modal for a row (`None`: the loopback's, without row)
-pub fn flow_title(kind: Option<Kind>, helper: HelperKind, interface: Option<&str>) -> String {
-    let what = match kind {
-        Some(kind) => action(kind, helper),
-        None => helper.to_string(),
-    };
+/// the title of a helper's modal: the action's label, at its row's interface (`None`: the
+/// loopback's, without row)
+pub fn flow_title(what: String, interface: Option<&str>) -> String {
     match interface {
         Some(interface) => format!("{what}: {interface}"),
         None => what,
@@ -154,6 +155,15 @@ pub const SEES_NOBODY: &str = "niemanden";
 pub const OSPF: &str = "OSPF";
 pub const OSPF_MISSING: &str = "kein OSPF-Nachbar:";
 pub const BRIDGES: &str = "Brückengeräte";
+pub const DEVICE_ONLY: &str = "Nur auf dem Gerät";
+/// an address only the device has: the next apply removes it
+pub fn device_only(address: &str, interface: &str, disabled: bool) -> String {
+    let disabled = if disabled { ", deaktiviert" } else { "" };
+    format!("{address} an {interface}{disabled}: das nächste Anwenden entfernt sie")
+}
+pub const DEVICE_ONLY_ELSEWHERE: &str = "– NetBox hat sie an";
+pub const DEVICE_ONLY_UNASSIGNED: &str = "– NetBox hat sie an keinem Interface";
+pub const OTHER_ADDRESSES: &str = "Adressen nur auf dem Gerät, an Interfaces ohne Zeile";
 pub const BRIDGE_NO_ADDRESS: &str = "ohne Primary IPv4, nicht gefragt";
 /// an OSPF neighbor's state in its instance (`default-v2`)
 pub fn ospf_state(instance: &str, state: &str) -> String {

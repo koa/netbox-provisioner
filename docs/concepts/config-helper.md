@@ -456,6 +456,25 @@ niemanden, und „Kunden-Anschluss abräumen“ auf ihrer Zeile nimmt es heraus.
 Bridge ist `NO_BRIDGE`. Im Lab geprüft an lab-np2 `ether4` (letzter Port von `lan`): Plan mit
 dem Hinweis, geschrieben, Rückgängig brachte ihn zurück in `lan`.
 
+### Adresse übernehmen
+
+Trägt eine Adresse, die nur auf dem Gerät steht, in NetBox an ihrem Interface ein, damit das
+nächste Anwenden sie nicht entfernt (Datenkorrektur, [User Journeys](user-journeys.md#datenkorrektur)).
+Die Live-Prüfung der Interfaces findet sie: statische Einträge von `/ip/address` und
+`/ipv6/address` (ohne link-local), deren IP keines der NetBox-Interfaces des Geräts hat. Sie
+stehen an der Zeile ihres NetBox-Interfaces (über den Port-Namen oder eine andere Adresse, die
+NetBox dort hat) unter „Nur auf dem Gerät“, als Warnung, sonst unter den weiteren Befunden. Den
+Knopf „<Adresse> übernehmen“ gibt es nur, wenn NetBox die IP nirgends hat; hat sie ein anderes
+Gerät oder kein Interface, nennt die Zeile das.
+
+Plan (`helper::address_takeover`): `CreateAddress` am Interface, davor `CreatePrefix` für ihr Netz,
+wenn NetBox weder dieses Prefix noch eine Adresse darin hat und die Länge keine Host-Länge ist
+(`/32`, `/128`), mit dem kleinsten Prefix, das es enthält, als „aus“ und der Site des Geräts
+(ausser in einem Pool, wie bei den anderen Helfern). Hat NetBox die IP schon, ist das
+`ADDRESS_IN_NETBOX`. Im Lab geprüft an lab-np1 `ether6`: `192.168.199.1/30` über NetBox und
+Anwenden aufs Gerät gebracht, in NetBox gelöscht; die Live-Prüfung zeigte sie, der Plan legte
+Prefix und Adresse an, danach war der Diff leer; Rückgängig und Anwenden nahmen sie wieder weg.
+
 ### VLAN am Port
 
 Legt ein VLAN untagged an einen Port des Geräts (Mode access), für einen Kunden: das Netz eines

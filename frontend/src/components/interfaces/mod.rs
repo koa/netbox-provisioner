@@ -132,11 +132,7 @@ impl Component for Interfaces {
             }
             InterfacesMsg::Open(port, action) => {
                 self.flow = Some(Flow {
-                    title: t::flow_title(
-                        Some(action.kind),
-                        action.helper,
-                        port.as_ref().map(|(_, name)| name.as_str()),
-                    ),
+                    title: t::flow_title(action.label(), port.as_ref().map(|(_, name)| name.as_str())),
                     preset: action.preset.clone(),
                     row: port.map(|(id, _)| (id, action)),
                 });
@@ -266,9 +262,9 @@ impl Interfaces {
             .map(|task| self.section(ctx, *task, view, &netbox))
             .collect::<Vec<_>>();
         let empty = sections.iter().all(Option::is_none);
-        let live_findings = match &self.live {
-            Live::Checked(checked) => checked.other_findings.clone(),
-            _ => Vec::new(),
+        let (live_findings, live_addresses) = match &self.live {
+            Live::Checked(checked) => (checked.other_findings.clone(), checked.other_addresses.clone()),
+            _ => (Vec::new(), Vec::new()),
         };
         let unchecked = match &self.live {
             Live::Unchecked(message) => Some(html! {
@@ -285,7 +281,9 @@ impl Interfaces {
             if empty {
                 <p>{t::NONE_WITH_FINDINGS}</p>
             }
-            if (!view.other_findings.is_empty() || !live_findings.is_empty()) && self.filter.is_none() {
+            if (!view.other_findings.is_empty() || !live_findings.is_empty() || !live_addresses.is_empty())
+                && self.filter.is_none()
+            {
                 <section class="interfaces-section">
                     <Title level={Level::H3}>{t::OTHER_FINDINGS}</Title>
                     if !view.other_findings.is_empty() {
@@ -293,6 +291,10 @@ impl Interfaces {
                     }
                     if !live_findings.is_empty() {
                         {crate::components::neighbor_check::neighbor_finding_list(&netbox, &live_findings)}
+                    }
+                    if !live_addresses.is_empty() {
+                        <p>{t::OTHER_ADDRESSES}</p>
+                        {live::device_only_list(&live_addresses, table::device)}
                     }
                 </section>
             }

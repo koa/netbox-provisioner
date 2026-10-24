@@ -37,6 +37,8 @@ pub enum HelperPreset {
     BridgeLeave(u32),
     /// „Neues Gerät“ at this free port, with what the router sees there
     NewDevice { port: u32, seen: Option<SeenPreset> },
+    /// „Adresse übernehmen“: this address, which only the device has, on this interface
+    AddressTakeover { interface: u32, address: String },
 }
 
 /// „Funkbrücke“ from a router port: the helper is the bridge device's, its router side set.
@@ -66,7 +68,8 @@ impl HelperPreset {
             | HelperPreset::RadioDisconnect(_)
             | HelperPreset::CustomerDisconnect(_)
             | HelperPreset::CableTakeover { .. }
-            | HelperPreset::BridgeLeave(_) => false,
+            | HelperPreset::BridgeLeave(_)
+            | HelperPreset::AddressTakeover { .. } => false,
         }
     }
     /// The device whose helper it is, `page` where it isn't another one's.
@@ -141,6 +144,10 @@ pub enum HelperChoice {
         role: u32,
         far_port: String,
         wlan_group: Option<u32>,
+    },
+    AddressTakeover {
+        interface: u32,
+        address: String,
     },
 }
 
@@ -287,6 +294,13 @@ macro_rules! helper_input {
                 far_port,
                 wlan_group: wlan_group.map(i64::from),
             }),
+            HelperChoice::AddressTakeover { interface, address } => {
+                $module::Helper::AddressTakeover($module::AddressTakeoverInput {
+                    device: $id as i64,
+                    interface: interface as i64,
+                    address,
+                })
+            }
         }
     };
 }
@@ -312,6 +326,8 @@ pub enum HelperKind {
     BridgeLeave,
     /// only from a free port: it needs the port
     NewDevice,
+    /// only from a live check: it needs the address the device has
+    AddressTakeover,
 }
 
 impl HelperKind {
@@ -340,6 +356,7 @@ impl Display for HelperKind {
             HelperKind::CableTakeover => t::CABLE_TAKEOVER,
             HelperKind::BridgeLeave => t::BRIDGE_LEAVE,
             HelperKind::NewDevice => t::NEW_DEVICE,
+            HelperKind::AddressTakeover => t::ADDRESS_TAKEOVER,
         })
     }
 }

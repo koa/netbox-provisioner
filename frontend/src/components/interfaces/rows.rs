@@ -5,6 +5,7 @@ use crate::{
         HelperKind, HelperPreset, LinkPreset, NetTarget, RadioPreset, SeenPreset,
     },
     error::FrontendError,
+    i18n::interfaces as t,
     graphql::authenticated::{
         findings::FindingsTopologyFindings,
         interface_view::{self, ActionHelper, ActionKind, InterfaceTask},
@@ -150,6 +151,16 @@ pub struct Action {
     pub preset: HelperPreset,
     /// the port it starts from: a bridge's port shows its own
     pub interface: Option<u32>,
+}
+
+impl Action {
+    /// its button or menu entry: „Adresse übernehmen“ names the address, a row may have several
+    pub fn label(&self) -> String {
+        match &self.preset {
+            HelperPreset::AddressTakeover { address, .. } => t::address_takeover(address),
+            _ => t::action(self.kind, self.helper),
+        }
+    }
 }
 
 /// The view of a device: its rows, the findings about the device (shown with the loopback) and
@@ -304,6 +315,13 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
         ),
         ActionHelper::POE => (HelperKind::Poe, HelperPreset::Poe(interface?)),
         ActionHelper::BRIDGE_LEAVE => (HelperKind::BridgeLeave, HelperPreset::BridgeLeave(interface?)),
+        ActionHelper::ADDRESS_TAKEOVER => (
+            HelperKind::AddressTakeover,
+            HelperPreset::AddressTakeover {
+                interface: interface?,
+                address: action.address?,
+            },
+        ),
         ActionHelper::NEW_DEVICE => (
             HelperKind::NewDevice,
             HelperPreset::NewDevice {

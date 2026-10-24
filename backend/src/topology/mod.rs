@@ -149,6 +149,17 @@ impl Topology {
             .filter(|host| net.contains(host))
             .collect()
     }
+    /// The IP address NetBox has with the host `host`, of any length.
+    pub(crate) fn ip_address_with_host(&self, host: std::net::IpAddr) -> Option<&IpAddressData> {
+        self.ip_addresses.values().find(|address| address.ip.addr() == host)
+    }
+    /// The smallest prefix NetBox has that holds `net`, `net` itself included.
+    pub(crate) fn smallest_prefix_holding(&self, net: IpNet) -> Option<&IpPrefixData> {
+        self.ip_prefixes
+            .values()
+            .filter(|prefix| prefix.prefix.contains(&net))
+            .max_by_key(|prefix| prefix.prefix.prefix_len())
+    }
     pub(crate) fn pool_prefixes(&self, pool: PrefixPool, v6: bool) -> Vec<(IpPrefixId, IpNet)> {
         let mut prefixes = self
             .ip_prefixes

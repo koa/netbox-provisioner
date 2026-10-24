@@ -292,6 +292,9 @@ impl NetboxHelper {
             (None, _) if self.kind == HelperKind::BridgeLeave => {
                 html!(<p>{t::CHOOSE_BRIDGE_LEAVE}</p>)
             }
+            (None, _) if self.kind == HelperKind::AddressTakeover => {
+                html!(<p>{t::CHOOSE_ADDRESS_TAKEOVER}</p>)
+            }
             (None, _) if self.kind == HelperKind::NewDevice => {
                 html!(<p>{t::CHOOSE_NEW_DEVICE_NAME}</p>)
             }

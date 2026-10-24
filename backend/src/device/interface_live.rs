@@ -24,6 +24,7 @@ use crate::{
 };
 use async_graphql::SimpleObject;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use ipnet::IpNet;
 use std::{collections::BTreeSet, net::IpAddr};
 
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -31,6 +32,8 @@ pub struct InterfaceLive {
     pub rows: Vec<LiveRow>,
     /// the neighbor findings on no row (a port NetBox doesn't have, discovery off)
     pub other_findings: Vec<NeighborFinding>,
+    /// the addresses only the device has on an interface of no row
+    pub other_addresses: Vec<DeviceOnlyAddress>,
 }
 
 /// What the device shows at a row.
@@ -48,8 +51,29 @@ pub struct LiveRow {
     pub bridges: Vec<BridgeAnswer>,
     /// the neighbor findings about its ports, the worst first
     pub findings: Vec<NeighborFinding>,
-    /// what the findings suggest: the link to the router the device sees at a port
+    /// the addresses the device has at the row's interfaces and NetBox doesn't: the next apply
+    /// removes them
+    pub device_only_addresses: Vec<DeviceOnlyAddress>,
+    /// what the findings suggest: the link to the router the device sees at a port, an
+    /// address to take over
     pub actions: Vec<RowAction>,
+}
+
+/// A static address of `/ip/address` or `/ipv6/address` (no link-local one) that NetBox
+/// doesn't have on the device.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct DeviceOnlyAddress {
+    /// with its length, `192.168.1.1/24`
+    pub address: Box<str>,
+    /// the interface as RouterOS names it
+    pub interface_name: Box<str>,
+    /// its NetBox interface, by that name or another address there; where it is taken over
+    pub interface: Option<u32>,
+    pub disabled: bool,
+    /// the device NetBox has the address on instead; it isn't offered for taking over then
+    pub elsewhere: Option<DeviceRef>,
+    /// NetBox has the address on no interface: taking it over is for NetBox' own hands
+    pub unassigned: bool,
 }
 
 /// A neighbor of `/routing/ospf/neighbor`.
@@ -78,7 +102,8 @@ pub struct BridgeAnswer {
 pub async fn read(client: &RawDevice<SimpleResult>, device: &DeviceAccess) -> Result<InterfaceLive, Error> {
     let neighbors = neighbors::read(client, device).await?;
     let ospf = rows(client, "/routing/ospf/neighbor/print").await?;
-    let addresses = rows(client, "/ip/address/print").await?;
+    let mut addresses = rows(client, "/ip/address/print").await?;
+    addresses.extend(rows(client, "/ipv6/address/print").await?);
     let rows = device.interface_rows();
     let bridges = rows
         .iter()
@@ -133,6 +158,8 @@ pub fn check(
                 })
             })
     };
+    let device_only = device_only_addresses(device, addresses, netbox_interface);
+    let mut taken = vec![false; device_only.len()];
     let mut placed = vec![false; neighbors.findings.len()];
     let live_rows = rows
         .iter()
@@ -198,6 +225,16 @@ pub fn check(
                     actions.push(action);
                 }
             }
+            let device_only_addresses = device_only
+                .iter()
+                .zip(taken.iter_mut())
+                .filter(|(address, _)| address.interface.is_some_and(|id| members.contains(&id)))
+                .map(|(address, taken)| {
+                    *taken = true;
+                    address.clone()
+                })
+                .collect::<Vec<_>>();
+            actions.extend(device_only_addresses.iter().filter_map(address_takeover));
             LiveRow {
                 interface: row.interface.id,
                 seen,
@@ -205,6 +242,7 @@ pub fn check(
                 ospf_missing,
                 bridges,
                 findings,
+                device_only_addresses,
                 actions,
             }
         })
@@ -216,10 +254,77 @@ pub fn check(
         .filter(|(_, placed)| !placed)
         .map(|(finding, _)| finding)
         .collect();
+    let other_addresses = device_only
+        .into_iter()
+        .zip(taken)
+        .filter(|(_, taken)| !taken)
+        .map(|(address, _)| address)
+        .collect();
     InterfaceLive {
         rows: live_rows,
         other_findings,
+        other_addresses,
     }
+}
+
+/// The static addresses of the device (`/ip/address` and `/ipv6/address` rows) that NetBox
+/// doesn't have on it, link-local ones left out (RouterOS makes them).
+fn device_only_addresses(
+    device: &DeviceAccess,
+    addresses: &[Row],
+    netbox_interface: impl Fn(&str) -> Option<u32>,
+) -> Vec<DeviceOnlyAddress> {
+    let topology = device.topology();
+    let own = device
+        .interfaces()
+        .iter()
+        .flat_map(|i| i.ips())
+        .filter_map(|ip| ip.addr())
+        .chain(device.loopback_ip().and_then(|ip| ip.addr()))
+        .collect::<BTreeSet<_>>();
+    addresses
+        .iter()
+        .filter(|row| field(row, "dynamic") != Some("true"))
+        .filter_map(|row| {
+            let address = field(row, "address")?.parse::<IpNet>().ok()?;
+            let link_local = match address.addr() {
+                IpAddr::V6(v6) => v6.is_unicast_link_local(),
+                IpAddr::V4(_) => false,
+            };
+            if link_local || own.contains(&address.addr()) {
+                return None;
+            }
+            let interface_name = field(row, "interface").unwrap_or_default();
+            let netbox = topology.ip_address_with_host(address.addr());
+            Some(DeviceOnlyAddress {
+                address: address.to_string().into(),
+                interface_name: interface_name.into(),
+                interface: netbox_interface(interface_name),
+                disabled: field(row, "disabled") == Some("true"),
+                elsewhere: netbox
+                    .and_then(|ip| topology.get_interface_by_id(ip.interface?)?.device())
+                    .as_ref()
+                    .map(device_ref),
+                unassigned: netbox.is_some_and(|ip| ip.interface.is_none()),
+            })
+        })
+        .collect()
+}
+
+/// „Adresse übernehmen“ for an address NetBox has nowhere, at its NetBox interface.
+fn address_takeover(address: &DeviceOnlyAddress) -> Option<RowAction> {
+    if address.elsewhere.is_some() || address.unassigned {
+        return None;
+    }
+    Some(RowAction {
+        kind: ActionKind::Suggestion,
+        helper: ActionHelper::AddressTakeover,
+        interface: Some(address.interface?),
+        peer: None,
+        vlan: None,
+        seen: None,
+        address: Some(address.address.clone()),
+    })
 }
 
 /// The NetBox interface a neighbor finding is about.
@@ -260,6 +365,7 @@ fn seen_link(device: &DeviceAccess, finding: &NeighborFinding) -> Option<RowActi
         peer: Some(peer.clone()),
         vlan: None,
         seen: None,
+        address: None,
     })
 }
 
@@ -290,6 +396,7 @@ fn new_device(device: &DeviceAccess, finding: &NeighborFinding) -> Option<RowAct
             board: seen.board.clone(),
             interface_name: seen.interface_name.clone(),
         }),
+        address: None,
     })
 }
 

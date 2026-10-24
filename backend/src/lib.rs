@@ -185,6 +185,12 @@ pub enum Error {
     /// a port (`device port`) in no bridge
     #[error("{0} is in no bridge")]
     NoBridge(Box<str>),
+    /// an address to take over (`192.168.1.1/24`) that NetBox has already
+    #[error("NetBox has {0} already")]
+    AddressInNetbox(Box<str>),
+    /// an address to take over that isn't one (`address/length`)
+    #[error("{0} is no address with its length")]
+    InvalidAddress(Box<str>),
     /// another VLAN of the device (`vlan` of `group`) has the VID
     #[error("VLAN {vlan} of {group} has VID {vid} on the device already")]
     VlanIdTaken { vid: u16, vlan: Box<str>, group: Box<str> },

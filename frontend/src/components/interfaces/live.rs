@@ -45,6 +45,8 @@ pub struct Checked {
     /// by the row's interface
     pub rows: HashMap<i64, Rc<LiveRow>>,
     pub other_findings: Vec<NeighborFinding>,
+    /// the addresses only the device has on an interface of no row
+    pub other_addresses: Vec<DeviceOnly>,
 }
 
 /// What a row's live checks say.
@@ -62,6 +64,8 @@ pub struct LiveRow {
     pub ospf_missing: Vec<Device>,
     pub bridges: Vec<Bridge>,
     pub findings: Vec<NeighborFinding>,
+    /// the addresses only the device has there: the next apply removes them
+    pub device_only: Vec<DeviceOnly>,
     /// what the findings suggest, as the row's actions
     pub actions: Vec<Action>,
 }
@@ -73,6 +77,16 @@ pub struct Ospf {
     pub state: String,
     pub adjacent: bool,
     pub device: Option<Device>,
+}
+
+/// An address only the device has, NetBox the address elsewhere or on no interface.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceOnly {
+    pub address: String,
+    pub interface_name: String,
+    pub disabled: bool,
+    pub elsewhere: Option<Device>,
+    pub unassigned: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,7 +113,7 @@ impl Live {
 
 impl LiveRow {
     /// Its failures as severities: the neighbor findings, a missing OSPF neighbor and a bridge
-    /// device not answering are errors.
+    /// device not answering are errors, an address only the device has a warning.
     pub fn severities(&self) -> Vec<Severity> {
         self.findings
             .iter()
@@ -115,6 +129,7 @@ impl LiveRow {
                     .filter(|bridge| bridge.address.is_some() && !bridge.answers)
                     .map(|_| Severity::ERROR),
             )
+            .chain(self.device_only.iter().map(|_| Severity::WARNING))
             .collect()
     }
 }
@@ -178,11 +193,32 @@ pub fn details(netbox: &str, live: &RowLive, device: impl Fn(&Device) -> Html) -
                     }) }
                 </dd>
             }
+            if !row.device_only.is_empty() {
+                <dt>{t::DEVICE_ONLY}</dt>
+                <dd>{device_only_list(&row.device_only, &device)}</dd>
+            }
         </dl>
         if !row.findings.is_empty() {
             {neighbor_finding_list(netbox, &row.findings)}
         }
     </>}
+}
+
+/// Addresses only the device has, each with where NetBox has it instead.
+pub fn device_only_list(addresses: &[DeviceOnly], device: impl Fn(&Device) -> Html) -> Html {
+    html! {
+        { for addresses.iter().map(|a| html! {
+            <div>
+                <span class="live-failed">{Icon::ExclamationTriangle}</span>{" "}
+                {t::device_only(&a.address, &a.interface_name, a.disabled)}
+                if let Some(elsewhere) = &a.elsewhere {
+                    {" "}{t::DEVICE_ONLY_ELSEWHERE}{" "}{device(elsewhere)}
+                } else if a.unassigned {
+                    {" "}{t::DEVICE_ONLY_UNASSIGNED}
+                }
+            </div>
+        }) }
+    }
 }
 
 /// Reads the live checks for the card.
@@ -255,6 +291,7 @@ impl Checked {
                         })
                         .collect(),
                     findings: convert(&row.findings)?,
+                    device_only: row.device_only_addresses.into_iter().map(device_only).collect(),
                     actions: convert::<_, interface_view::Action>(&row.actions)?
                         .into_iter()
                         .filter_map(|action| rows::action(action, device_id))
@@ -266,6 +303,7 @@ impl Checked {
         Ok(Some(Checked {
             rows,
             other_findings: convert(&live.other_findings)?,
+            other_addresses: live.other_addresses.into_iter().map(device_only).collect(),
         }))
     }
 }
@@ -276,6 +314,16 @@ fn convert<F: Serialize, T: DeserializeOwned>(items: &[F]) -> Result<Vec<T>, Fro
         .iter()
         .map(|item| Ok(serde_json::from_value(serde_json::to_value(item)?)?))
         .collect()
+}
+
+fn device_only(address: interface_live::DeviceOnly) -> DeviceOnly {
+    DeviceOnly {
+        address: address.address,
+        interface_name: address.interface_name,
+        disabled: address.disabled,
+        elsewhere: address.elsewhere.map(device),
+        unassigned: address.unassigned,
+    }
 }
 
 fn device(device: interface_live::Device) -> Device {

@@ -172,7 +172,7 @@ impl Entry {
                             let on_action = self.on_action.clone();
                             let chosen = action.clone();
                             html!(<MenuActionItem onclick={Callback::from(move |()| on_action.emit(chosen.clone()))}>
-                                {t::action(action.kind, action.helper)}
+                                {action.label()}
                             </MenuActionItem>)
                         }) }
                         <MenuActionItem onclick={open}>{t::OPEN_IN_NETBOX}</MenuActionItem>
@@ -198,7 +198,7 @@ pub fn action_buttons(actions: &[Action], on_action: &Callback<Action>) -> Html 
                 };
                 let on_action = on_action.clone();
                 let chosen = action.clone();
-                html!(<Button {variant} label={t::action(action.kind, action.helper)}
+                html!(<Button {variant} label={action.label()}
                     onclick={Callback::from(move |_| on_action.emit(chosen.clone()))}/>)
             }) }
         </div>
@@ -277,8 +277,12 @@ impl TableEntryRenderer<Column> for Entry {
                 </div>
             })];
         }
-        let findings = if row.findings.is_empty() {
+        // the live checks' findings follow in their own list
+        let live_clean = !matches!(&self.live, RowLive::Checked(live) if !live.severities().is_empty());
+        let findings = if row.findings.is_empty() && live_clean {
             html!(<p>{t::NO_FINDINGS}</p>)
+        } else if row.findings.is_empty() {
+            Html::default()
         } else {
             finding_list(&self.netbox, &row.findings)
         };

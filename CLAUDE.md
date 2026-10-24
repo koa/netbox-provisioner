@@ -157,7 +157,14 @@ check sees an unknown MikroTik there: `CreateDevice` with the router's site and 
 AP; the cabled port, which the write takes from the device type when NetBox made it; then
 „Loopback“ and, but for a `wlan-bridge`, „Verbindung“ planned on the preview, whose steps refer
 to the new objects by their preview ids from `u32::MAX` down, `PlanStep::with_real_ids` in the
-write). Each row with its actions (one may be
+write); an address the live check finds only on the device „<address> übernehmen“
+(`interface_live`: the static rows of `/ip/address` and `/ipv6/address` but link-local ones
+whose IP no NetBox interface of the device has, `LiveRow.device_only_addresses` at the row of
+their NetBox interface, by port name or another address there, else `other_addresses`; offered
+only when NetBox has the IP nowhere; `helper::address_takeover`: `CreateAddress` on that
+interface, before it `CreatePrefix` of its network when NetBox has neither that prefix nor an
+address in it and the length isn't a host's, within the smallest prefix holding it, scoped to
+the device's site unless that one is a pool's). Each row with its actions (one may be
 another device's helper: „Funkbrücke“ from a router port is the cabled bridge device's,
 `HelperPreset::RadioFrom`, so `HelperFlow` embeds that device's helper; „Richtfunk abräumen“,
 `helper::radio_disconnect`, starts from the row's radio only, „Kunden-Anschluss abräumen“,
