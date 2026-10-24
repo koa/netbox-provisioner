@@ -47,7 +47,8 @@ OSPF, VXLAN, WLAN/CAPsMAN, point-to-point radio bridges) - read it before changi
 (`BaseDeviceDataTarget`), `radio/` the radios (`wireless`, `w60g`, `wifi`, `capsman`, shared
 helpers in `radio/mod.rs`), `dhcp.rs` the DHCP pool, `l2/` the bridges and VLANs.
 `docs/todo.md` lists the open tasks of all three repos (numbered, with effort and status);
-mark one done there, with date and commit, in the commit that finishes it.
+the commit that finishes one moves it to `docs/done.md`, with date and commit subject, keeping
+its number (a finished part likewise, the rest stays in `todo.md`).
 `docs/netbox-modeling.md` is the user-facing contract for how devices must be modeled in NetBox
 (tags, custom fields, interface names, VLAN groups and their VXLAN VNI); update it whenever `fetch.rs` or
 `fetch_topology.graphql` changes what is read. Every custom field read (the `JSON` struct in
