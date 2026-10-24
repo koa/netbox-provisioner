@@ -102,7 +102,10 @@ impl NetboxHelper {
             Some(Err(error)) => return error.to_html(),
             Some(Ok(interfaces)) => interfaces,
         };
-        let rows = interfaces.iter().map(|interface| {
+        let rows = interfaces
+            .iter()
+            .filter(|interface| self.flags_of.is_none_or(|id| interface.id as u32 == id))
+            .map(|interface| {
             let id = interface.id as u32;
             let name = match &interface.label {
                 Some(label) => format!("{} ({label})", interface.name),

@@ -200,6 +200,7 @@ impl From<&Error> for ErrorInfo {
             Error::NoCustomerNet(interface) => {
                 ("NO_CUSTOMER_NET", vec![("interface", interface.to_string())])
             }
+            Error::NoBridge(port) => ("NO_BRIDGE", vec![("port", port.to_string())]),
             Error::VlanIdTaken { vid, vlan, group } => (
                 "VLAN_ID_TAKEN",
                 vec![

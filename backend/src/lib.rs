@@ -180,6 +180,9 @@ pub enum Error {
     /// an interface (`device interface`) without address, `dhcp` or VLAN
     #[error("{0} has no customer network to take out of NetBox")]
     NoCustomerNet(Box<str>),
+    /// a port (`device port`) in no bridge
+    #[error("{0} is in no bridge")]
+    NoBridge(Box<str>),
     /// another VLAN of the device (`vlan` of `group`) has the VID
     #[error("VLAN {vlan} of {group} has VID {vid} on the device already")]
     VlanIdTaken { vid: u16, vlan: Box<str>, group: Box<str> },

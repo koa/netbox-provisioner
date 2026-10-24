@@ -18,6 +18,13 @@ pub enum HelperPreset {
     CustomerNet(NetTarget),
     /// „Funkbrücke“ from a router port, for the bridge device cabled to it
     RadioFrom(RadioPreset),
+    /// „Funkbrücke“ from a free router port: the bridge device is chosen first
+    /// (`components::helper_flow`), then it is `RadioFrom`
+    RadioChoose { router_device: u32, router_port: u32 },
+    /// „PoE“ of this port
+    Poe(u32),
+    /// „Flags“ of this interface
+    Flags(u32),
     /// „Richtfunk abräumen“ from this radio of the link
     RadioDisconnect(u32),
     /// „Kunden-Anschluss abräumen“ of this interface
@@ -26,6 +33,8 @@ pub enum HelperPreset {
     PortVlan { port: Option<u32>, vlan: Option<u32> },
     /// „Kabel übernehmen“: the link from this port to the one the device sees there
     CableTakeover { port: u32, peer: u32 },
+    /// „Aus Bridge lösen“ of this port
+    BridgeLeave(u32),
 }
 
 /// „Funkbrücke“ from a router port: the helper is the bridge device's, its router side set.
@@ -101,6 +110,7 @@ pub enum HelperChoice {
         port: u32,
         peer: u32,
     },
+    BridgeLeave(u32),
 }
 
 /// Where „Kunden-Netz“ puts the network.
@@ -225,6 +235,12 @@ macro_rules! helper_input {
                     peer: peer as i64,
                 })
             }
+            HelperChoice::BridgeLeave(port) => {
+                $module::Helper::BridgeLeave($module::BridgeLeaveInput {
+                    device: $id as i64,
+                    port: port as i64,
+                })
+            }
         }
     };
 }
@@ -246,19 +262,11 @@ pub enum HelperKind {
     PortVlan,
     /// only from a live finding: it needs the port the device sees
     CableTakeover,
+    /// only from a bridge's port: it needs the port
+    BridgeLeave,
 }
 
 impl HelperKind {
-    pub const ALL: [HelperKind; 8] = [
-        HelperKind::Loopback,
-        HelperKind::Connection,
-        HelperKind::Disconnect,
-        HelperKind::CustomerNet,
-        HelperKind::PortVlan,
-        HelperKind::RadioBridge,
-        HelperKind::Poe,
-        HelperKind::Flags,
-    ];
     /// whether it chooses among the ports of `linkPorts`
     pub(super) fn needs_ports(self) -> bool {
         matches!(
@@ -282,6 +290,7 @@ impl Display for HelperKind {
             HelperKind::CustomerDisconnect => t::CUSTOMER_DISCONNECT,
             HelperKind::PortVlan => t::PORT_VLAN,
             HelperKind::CableTakeover => t::CABLE_TAKEOVER,
+            HelperKind::BridgeLeave => t::BRIDGE_LEAVE,
         })
     }
 }

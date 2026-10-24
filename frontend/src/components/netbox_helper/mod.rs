@@ -27,7 +27,7 @@ use poe::{Observed, PoeChoice, PoeMsg, PoeOptionsData, fetch_poe_options};
 use port_vlan::{PortVlanChoice, PortVlanMsg, PortVlanOptionsData, fetch_port_vlan_options};
 use radio::{Candidate, RadioChoice, RadioMsg, fetch_radio_options};
 use crate::{
-    components::{adjust_target::SelectedTarget, job::JobView, menu::popup::Select},
+    components::{adjust_target::SelectedTarget, job::JobView},
     error::FrontendError,
     graphql::{
         authenticated::{
@@ -89,10 +89,14 @@ pub struct NetboxHelper {
     radio_disconnect_link: bool,
     /// „Kunden-Anschluss abräumen“: the row's interface
     customer_disconnect: Option<u32>,
+    /// „Aus Bridge lösen“: the port
+    bridge_leave: Option<u32>,
     ports: Option<Result<link_ports::ResponseData, FrontendError>>,
     flag_interfaces: Option<Result<Vec<FlagInterface>, FrontendError>>,
     /// the tags switched away from what NetBox has
     flags: BTreeMap<(u32, Flag), bool>,
+    /// „Flags“ of this interface only
+    flags_of: Option<u32>,
     /// the device's findings after the switches, with NetBox' address: for these
     flag_findings: Option<FlagFindings>,
     net: NetChoice,
@@ -128,7 +132,6 @@ pub struct NetboxHelper {
 }
 
 pub enum NetboxHelperMsg {
-    Kind(HelperKind),
     Link(LinkMsg),
     Flags(FlagsMsg),
     Net(NetMsg),
@@ -180,8 +183,11 @@ impl Component for NetboxHelper {
         let mut radio = RadioChoice::default();
         let mut radio_disconnect = None;
         let mut customer_disconnect = None;
+        let mut bridge_leave = None;
         let mut port_vlan = PortVlanChoice::default();
         let mut cable_takeover = None;
+        let mut poe = PoeChoice::default();
+        let mut flags_of = None;
         let kind = match &ctx.props().preset {
             None => HelperKind::Loopback,
             Some(HelperPreset::Kind(kind)) => *kind,
@@ -231,6 +237,20 @@ impl Component for NetboxHelper {
                 cable_takeover = Some((*port, *peer));
                 HelperKind::CableTakeover
             }
+            Some(HelperPreset::BridgeLeave(port)) => {
+                bridge_leave = Some(*port);
+                HelperKind::BridgeLeave
+            }
+            Some(HelperPreset::Poe(port)) => {
+                poe.port = Some(*port);
+                HelperKind::Poe
+            }
+            Some(HelperPreset::Flags(interface)) => {
+                flags_of = Some(*interface);
+                HelperKind::Flags
+            }
+            // the flow chooses the bridge device first: not here
+            Some(HelperPreset::RadioChoose { .. }) => HelperKind::RadioBridge,
         };
         last_write(ctx.link().clone(), ctx.props().id);
         let mut helper = Self {
@@ -241,16 +261,18 @@ impl Component for NetboxHelper {
             radio_disconnect,
             radio_disconnect_link: false,
             customer_disconnect,
+            bridge_leave,
             ports: None,
             flag_interfaces: None,
             flags: BTreeMap::new(),
+            flags_of,
             flag_findings: None,
             net,
             net_options: None,
             port_vlan,
             port_vlan_options: None,
             cable_takeover,
-            poe: PoeChoice::default(),
+            poe,
             poe_options: None,
             poe_observed: None,
             poe_observing: false,
@@ -275,11 +297,6 @@ impl Component for NetboxHelper {
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            NetboxHelperMsg::Kind(kind) => {
-                self.kind = kind;
-                self.load(ctx);
-                self.choose(ctx);
-            }
             NetboxHelperMsg::RadioDisconnectLink(link) => {
                 self.radio_disconnect_link = link;
                 self.choose(ctx);
@@ -381,6 +398,7 @@ impl Component for NetboxHelper {
                         HelperKind::Disconnect
                             | HelperKind::RadioDisconnect
                             | HelperKind::CustomerDisconnect
+                            | HelperKind::BridgeLeave
                     );
                 self.removed = removed;
                 if removed {
@@ -457,6 +475,7 @@ impl Component for NetboxHelper {
             HelperKind::RadioBridge => t::RADIO_BRIDGE_HINT,
             HelperKind::RadioDisconnect => t::RADIO_DISCONNECT_HINT,
             HelperKind::CustomerDisconnect => t::CUSTOMER_DISCONNECT_HINT,
+            HelperKind::BridgeLeave => t::BRIDGE_LEAVE_HINT,
             HelperKind::PortVlan => t::PORT_VLAN_HINT,
             HelperKind::CableTakeover => t::CABLE_TAKEOVER_HINT,
         };
@@ -464,24 +483,6 @@ impl Component for NetboxHelper {
                     {error}
                     {job}
                     {undo}
-                    if !ctx.props().embedded {
-                    <div class="helper-kind">
-                        <Select<HelperKind>
-                            selected={Some(self.kind)}
-                            entries={vec![
-                                HelperKind::Loopback,
-                                HelperKind::Connection,
-                                HelperKind::Disconnect,
-                                HelperKind::Flags,
-                                HelperKind::CustomerNet,
-                                HelperKind::PortVlan,
-                                HelperKind::Poe,
-                                HelperKind::RadioBridge,
-                            ]}
-                            onselect={ctx.link().callback(NetboxHelperMsg::Kind)}
-                        />
-                    </div>
-                    }
                     <p>{hint}</p>
                     if self.kind == HelperKind::Connection {
                         { self.link_form(ctx) }
@@ -586,6 +587,7 @@ impl NetboxHelper {
                 mtu: self.link.mtu.trim().parse().ok(),
             }),
             HelperKind::Disconnect => Some(HelperChoice::Disconnect(self.disconnect?)),
+            HelperKind::BridgeLeave => Some(HelperChoice::BridgeLeave(self.bridge_leave?)),
             HelperKind::CustomerDisconnect => {
                 Some(HelperChoice::CustomerDisconnect(self.customer_disconnect?))
             }

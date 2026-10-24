@@ -76,8 +76,14 @@ body {
 }
 
 /* PatternFly's card scrolls its overflow, which cut an open menu off at a short card's end
-   (the select in „NetBox ergänzen“); while one is open, it reaches past the card. */
+   (the select in „NetBox ergänzen“); while one is open, it reaches past the card, over the cards
+   after it (a free port's menu at the end of „Interfaces“ lay below „Gerät“), and out of an
+   expandable section (the free ports). */
 .pf-v6-c-card:has(.popup-menu > .pf-v6-c-menu) {
+    overflow: visible;
+    z-index: 1;
+}
+.pf-v6-c-expandable-section__content:has(.popup-menu > .pf-v6-c-menu) {
     overflow: visible;
 }
 

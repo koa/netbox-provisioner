@@ -117,6 +117,17 @@ pub struct Row {
     pub free: bool,
     pub findings: Vec<FindingsTopologyFindings>,
     pub actions: Vec<Action>,
+    /// a bridge's ports, each chosen on its own
+    pub port_rows: Vec<PortRow>,
+}
+
+/// A port of a bridge with its own actions.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PortRow {
+    pub interface: Iface,
+    pub label: Option<String>,
+    pub far_ends: Vec<Iface>,
+    pub actions: Vec<Action>,
 }
 
 /// What a button of a row does.
@@ -125,6 +136,8 @@ pub enum Kind {
     Suggestion,
     Remove,
     AssignRole,
+    /// a setting of the interface: PoE, tags
+    Edit,
 }
 
 /// A row's action: what it is and the helper it opens with what.
@@ -133,6 +146,8 @@ pub struct Action {
     pub kind: Kind,
     pub helper: HelperKind,
     pub preset: HelperPreset,
+    /// the port it starts from: a bridge's port shows its own
+    pub interface: Option<u32>,
 }
 
 /// The view of a device: its rows, the findings about the device (shown with the loopback) and
@@ -202,6 +217,16 @@ impl Row {
             free: row.free,
             findings: findings(&row.findings)?,
             actions: row.actions.into_iter().filter_map(|a| action(a, own_device)).collect(),
+            port_rows: row
+                .port_rows
+                .into_iter()
+                .map(|port| PortRow {
+                    interface: iface(port.interface),
+                    label: port.label,
+                    far_ends: port.far_ends.into_iter().map(iface).collect(),
+                    actions: port.actions.into_iter().filter_map(|a| action(a, own_device)).collect(),
+                })
+                .collect(),
         })
     }
 }
@@ -245,6 +270,7 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
         ActionKind::SUGGESTION => Kind::Suggestion,
         ActionKind::REMOVE => Kind::Remove,
         ActionKind::ASSIGN_ROLE => Kind::AssignRole,
+        ActionKind::EDIT => Kind::Edit,
         ActionKind::Other(_) => return None,
     };
     let interface = action.interface.map(|id| id as u32);
@@ -274,6 +300,9 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
                 vlan: action.vlan.map(|vlan| vlan as u32),
             },
         ),
+        ActionHelper::POE => (HelperKind::Poe, HelperPreset::Poe(interface?)),
+        ActionHelper::BRIDGE_LEAVE => (HelperKind::BridgeLeave, HelperPreset::BridgeLeave(interface?)),
+        ActionHelper::FLAGS => (HelperKind::Flags, HelperPreset::Flags(interface?)),
         ActionHelper::CABLE_TAKEOVER => (
             HelperKind::CableTakeover,
             HelperPreset::CableTakeover {
@@ -302,6 +331,11 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
                     router_device: device,
                     router_port,
                 }),
+                // from a free router port: the bridge device is chosen first
+                (Some(router_port), None) => HelperPreset::RadioChoose {
+                    router_device: device,
+                    router_port,
+                },
                 _ => HelperPreset::Kind(HelperKind::RadioBridge),
             },
         ),
@@ -311,5 +345,6 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
         kind,
         helper,
         preset,
+        interface,
     })
 }

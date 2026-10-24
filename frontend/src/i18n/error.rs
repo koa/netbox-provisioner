@@ -217,6 +217,7 @@ pub fn server(problem: &ServerProblem) -> String {
             "{} hat in NetBox kein Kabel und keine Adresse aus dem Transfer-Pool mehr",
             p("port")
         ),
+        "NO_BRIDGE" => format!("{} ist in keiner Bridge", p("port")),
         "NO_CUSTOMER_NET" => format!(
             "{} hat in NetBox kein Kunden-Netz mehr: keine Adresse, kein dhcp und kein VLAN",
             p("interface")

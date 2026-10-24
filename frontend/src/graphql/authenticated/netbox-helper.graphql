@@ -6,6 +6,7 @@ query NetboxPlan($helper: Helper!){
         undocumented{ address route gateway router }
         cutOff{ name }
         applyTogether{ name }
+        emptiedBridge{ name }
         steps{
             __typename
             ... on CreateInterface{ name kind tags }
@@ -17,7 +18,7 @@ query NetboxPlan($helper: Helper!){
             ... on DeleteCable{ port{ name device{ name } } far{ name device{ name } } }
             ... on DeleteAddress{ address interface{ name device{ name } } }
             ... on DeletePrefix{ prefix }
-            ... on UpdatePort{ interface{ name device{ name } } name rfRole rfRoleBefore bridge }
+            ... on UpdatePort{ interface{ name device{ name } } name rfRole rfRoleBefore bridge leavesBridge }
             ... on CreateWirelessLink{ a{ name device{ name } } b{ name device{ name } } ssid }
             ... on UpdateWirelessLink{ a{ name device{ name } } b{ name device{ name } } ssid ssidBefore pskSet }
             ... on DeleteWirelessLink{ a{ name device{ name } } b{ name device{ name } } }

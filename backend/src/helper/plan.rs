@@ -135,8 +135,8 @@ pub struct UpdateInterface {
     pub poe_before: Option<PoeMode>,
 }
 
-/// Changes of a port of a radio bridge: a new name, an RF role, the bridge it becomes a port of
-/// (each none to keep it). The port must still have its name, `rf_role_before` and
+/// Changes of a port: a new name, an RF role, the bridge it becomes a port of (each none to keep
+/// it), or the bridge it leaves. The port must still have its name, `rf_role_before` and
 /// `bridge_before`.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct UpdatePort {
@@ -146,6 +146,8 @@ pub struct UpdatePort {
     pub rf_role_before: Option<RadioRole>,
     /// the name of the bridge, for reading
     pub bridge: Option<Box<str>>,
+    /// the name of the bridge it leaves (`bridge_before`), for reading: no bridge then
+    pub leaves_bridge: Option<Box<str>>,
     #[graphql(skip)]
     pub bridge_id: Option<Target>,
     #[graphql(skip)]

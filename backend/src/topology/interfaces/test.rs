@@ -482,7 +482,13 @@ fn rows_offer_the_helpers_that_fit() {
         .find(|(_, i)| i.device == r1 && &*i.name == "ether5")
         .map(|(id, _)| *id)
         .unwrap();
+    // a free port has the same actions as one without a task
+    let free_view = Arc::new(net.builder.clone().build()).get_device_by_id(&r1).unwrap().interface_view();
+    let free = row(&free_view, "ether5");
+    assert!(free.free);
+    let free_helpers = helpers(free);
     net.builder.interfaces.get_mut(&ether5).unwrap().label = "spare".into();
+    port(&mut net.builder, b1, "ether2", None, false);
     let topology = Arc::new(net.builder.build());
     let view = topology.get_device_by_id(&r1).unwrap().interface_view();
     let direct = row(&view, "ether1");
@@ -491,6 +497,8 @@ fn rows_offer_the_helpers_that_fit() {
         [
             (ActionKind::Suggestion, ActionHelper::Connection),
             (ActionKind::Remove, ActionHelper::Disconnect),
+            (ActionKind::Edit, ActionHelper::Poe),
+            (ActionKind::Edit, ActionHelper::Flags),
         ]
     );
     assert_eq!(direct.actions[0].interface, Some(link.0));
@@ -498,21 +506,42 @@ fn rows_offer_the_helpers_that_fit() {
         direct.actions[0].peer.as_ref().map(|p| (&*p.device.name, &*p.name)),
         Some(("r2", "ether1"))
     );
-    assert_eq!(
-        helpers(row(&view, "ether5")),
-        [
-            (ActionKind::AssignRole, ActionHelper::CustomerNet),
-            (ActionKind::AssignRole, ActionHelper::Connection),
-            (ActionKind::AssignRole, ActionHelper::PortVlan),
-        ]
-    );
-    assert_eq!(row(&view, "ether5").actions[2].interface, Some(ether5.0));
-    // the router's end of a complete radio link without findings: only taking it out
+    let unknown = [
+        (ActionKind::AssignRole, ActionHelper::CustomerNet),
+        (ActionKind::AssignRole, ActionHelper::Connection),
+        (ActionKind::AssignRole, ActionHelper::PortVlan),
+        (ActionKind::AssignRole, ActionHelper::RadioBridge),
+        (ActionKind::Edit, ActionHelper::Poe),
+        (ActionKind::Edit, ActionHelper::Flags),
+    ];
+    assert_eq!(helpers(row(&view, "ether5")), unknown);
+    assert_eq!(free_helpers, unknown);
+    let ether5_row = row(&view, "ether5");
+    assert!(ether5_row.actions.iter().all(|a| a.interface == Some(ether5.0)));
+    // „Funkbrücke“ from the router port: the bridge device is chosen in the helper
+    assert!(ether5_row.actions[3].peer.is_none());
+    // the router's end of a complete radio link without findings: taking it out, its settings
     assert_eq!(
         helpers(row(&view, "ether3")),
-        [(ActionKind::Remove, ActionHelper::RadioDisconnect)]
+        [
+            (ActionKind::Remove, ActionHelper::RadioDisconnect),
+            (ActionKind::Edit, ActionHelper::Poe),
+            (ActionKind::Edit, ActionHelper::Flags),
+        ]
     );
     assert!(row(&view, "ether2").actions.is_empty());
+    // a customer bridge's port on its own: its PoE, out of the bridge
+    let clients = row(&view, "bridge-clients");
+    let ether4 = clients.ports.first().map(|p| p.id);
+    assert_eq!(
+        clients
+            .port_rows
+            .iter()
+            .map(|p| (&*p.interface.name, p.actions.iter().map(|a| (a.helper, a.interface)).collect::<Vec<_>>()))
+            .collect::<Vec<_>>(),
+        [("ether4", vec![(ActionHelper::Poe, ether4), (ActionHelper::BridgeLeave, ether4)])]
+    );
+    assert!(!helpers(clients).contains(&(ActionKind::Edit, ActionHelper::Poe)));
     // a customer bridge with IPv4 only: the helper can bring IPv6
     assert_eq!(
         row(&view, "bridge-clients").actions[0].vlan,
@@ -520,15 +549,42 @@ fn rows_offer_the_helpers_that_fit() {
     );
     assert!(view.loopback_actions.is_empty());
 
-    // r2's VLAN port has its L3 on r1: no network of its own, only taking it out
+    // r2's VLAN port has its L3 on r1: no network of its own, taking it out, its settings
     let view = topology.get_device_by_id(&r2).unwrap().interface_view();
     assert_eq!(
         helpers(row(&view, "ether3")),
-        [(ActionKind::Remove, ActionHelper::CustomerDisconnect)]
+        [
+            (ActionKind::Remove, ActionHelper::CustomerDisconnect),
+            (ActionKind::Edit, ActionHelper::Poe),
+            (ActionKind::Edit, ActionHelper::Flags),
+        ]
     );
 
     // the bridge device: no loopback yet
     let view = topology.get_device_by_id(&b1).unwrap().interface_view();
+    // a radio bridge's ports stay in its bridge
+    assert!(view
+        .rows
+        .iter()
+        .flat_map(|r| &r.port_rows)
+        .flat_map(|p| &p.actions)
+        .all(|a| a.helper != ActionHelper::BridgeLeave));
+    assert!(view.rows.iter().any(|r| !r.port_rows.is_empty()));
+    // a free port of it: only „Funkbrücke“ and its settings
+    let unknown_rows = view.rows.iter().filter(|r| r.task == InterfaceTask::Unknown).collect::<Vec<_>>();
+    assert_eq!(unknown_rows.iter().map(|r| &*r.interface.name).collect::<Vec<_>>(), ["ether2"]);
+    for unknown in unknown_rows {
+        assert_eq!(
+            helpers(unknown).first(),
+            Some(&(ActionKind::AssignRole, ActionHelper::RadioBridge)),
+            "{}",
+            unknown.interface.name
+        );
+        assert!(!helpers(unknown).iter().any(|(_, h)| matches!(
+            h,
+            ActionHelper::CustomerNet | ActionHelper::Connection | ActionHelper::PortVlan
+        )));
+    }
     assert_eq!(
         view.loopback_actions.iter().map(|a| a.helper).collect::<Vec<_>>(),
         [ActionHelper::Loopback]
@@ -557,6 +613,8 @@ fn a_radio_link_offers_funkbruecke_from_the_router_port() {
         [
             (ActionKind::Suggestion, ActionHelper::RadioBridge),
             (ActionKind::Remove, ActionHelper::RadioDisconnect),
+            (ActionKind::Edit, ActionHelper::Poe),
+            (ActionKind::Edit, ActionHelper::Flags),
         ]
     );
     assert_eq!(radio.actions[0].interface, Some(ether3.0));

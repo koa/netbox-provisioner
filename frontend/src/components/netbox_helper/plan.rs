@@ -109,6 +109,7 @@ pub(super) fn describe(step: &Step) -> String {
                 .as_ref()
                 .map(|role| (rf_role(role), update.rf_role_before.as_ref().map(rf_role))),
             update.bridge.as_deref(),
+            update.leaves_bridge.as_deref(),
         ),
         Step::CreateWirelessLink(create) => t::create_wireless_link(
             (&create.a.device.name, &create.a.name),
@@ -269,6 +270,9 @@ impl NetboxHelper {
                 html!(<p>{t::CHOOSE_CUSTOMER_DISCONNECT}</p>)
             }
             (None, _) if self.kind == HelperKind::PortVlan => html!(<p>{t::CHOOSE_PORT_VLAN}</p>),
+            (None, _) if self.kind == HelperKind::BridgeLeave => {
+                html!(<p>{t::CHOOSE_BRIDGE_LEAVE}</p>)
+            }
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),
             (_, None) if self.removed => html!(),
             (_, None) => html!(<Spinner size={SpinnerSize::Md}/>),
@@ -291,6 +295,11 @@ impl NetboxHelper {
                             <ul>
                             { for plan.netbox_plan.cut_off.iter().map(|device| html!(<li>{&device.name}</li>)) }
                             </ul>
+                        </Alert>
+                    }
+                    if let Some(bridge) = &plan.netbox_plan.emptied_bridge {
+                        <Alert inline=true title={t::emptied_bridge(&bridge.name)} r#type={AlertType::Warning}>
+                            <p>{t::EMPTIED_BRIDGE_TEXT}</p>
                         </Alert>
                     }
                     if !plan.netbox_plan.apply_together.is_empty() {

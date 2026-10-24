@@ -1,10 +1,11 @@
 //! The device's interfaces by task (`DeviceAccess.interfaceView`,
 //! `docs/concepts/interface-view.md`): a section per task, each with a table whose rows open to
 //! their findings. What NetBox has comes first; the live checks (`live.rs`) follow in a query
-//! of their own and mark a row too, „Live prüfen“ asks again. A row's actions open a helper in a modal
-//! (`components::helper_flow`), with what the backend suggests chosen; „Weitere Helfer“ in the
-//! header opens any helper. A row written to stays marked until the device is applied. The
-//! filter by task and „nur mit Befund“ are kept in the browser (`localStorage`, comfort only).
+//! of their own and mark a row too, „Live prüfen“ asks again. Every port has its row: a bridge's
+//! ports below it, the free ones in a section that opens. A row's actions, the ones possible on
+//! that port, open a helper in a modal (`components::helper_flow`) starting from it. A row
+//! written to stays marked until the device is applied. The filter by task and „nur mit Befund“
+//! are kept in the browser (`localStorage`, comfort only).
 pub mod live;
 pub mod loopback;
 pub mod rows;
@@ -15,8 +16,7 @@ use crate::{
         adjust_target::SelectedTarget,
         findings::finding_list,
         helper_flow::HelperFlow,
-        menu::popup::{MenuActionItem, MenuGroup, PopupMenu},
-        netbox_helper::{HelperKind, HelperPreset},
+        netbox_helper::HelperPreset,
     },
     error::FrontendError,
     graphql::{
@@ -28,8 +28,8 @@ use crate::{
 use live::Live;
 use patternfly_yew::prelude::{
     Alert, AlertType, Badge, Button, ButtonVariant, Card, CardBody, CardHeader,
-    CardHeaderActionsObject, CardTitle, ExpandableSection, Icon, Level, MenuToggleVariant, Spinner,
-    Switch, Title, ToggleGroup, ToggleGroupItem,
+    CardHeaderActionsObject, CardTitle, ExpandableSection, Icon, Level, Spinner, Switch, Title,
+    ToggleGroup, ToggleGroupItem,
 };
 use rows::{Action, Row, Task, View};
 use std::{collections::BTreeMap, rc::Rc};
@@ -88,10 +88,9 @@ pub enum InterfacesMsg {
     CheckLive,
     Filter(Option<Task>),
     OnlyFindings(bool),
-    /// a row's action (`None`: the loopback's, which may have no row)
-    Open(Option<Rc<Row>>, Action),
-    /// a helper of „Weitere Helfer“
-    OpenHelper(HelperKind),
+    /// the action of a row's port, its id and name (`None`: the loopback's, which may have no
+    /// row)
+    Open(Option<(i64, String)>, Action),
     Close,
     Written,
     /// the write of the open helper is done (`true`) or taken back
@@ -131,22 +130,15 @@ impl Component for Interfaces {
                 self.only_findings = only;
                 store(ONLY_FINDINGS_KEY, if only { "true" } else { "false" });
             }
-            InterfacesMsg::Open(row, action) => {
+            InterfacesMsg::Open(port, action) => {
                 self.flow = Some(Flow {
                     title: t::flow_title(
                         Some(action.kind),
                         action.helper,
-                        row.as_ref().map(|row| row.interface.name.as_str()),
+                        port.as_ref().map(|(_, name)| name.as_str()),
                     ),
                     preset: action.preset.clone(),
-                    row: row.map(|row| (row.interface.id, action)),
-                });
-            }
-            InterfacesMsg::OpenHelper(kind) => {
-                self.flow = Some(Flow {
-                    title: t::flow_title(None, kind, None),
-                    preset: HelperPreset::Kind(kind),
-                    row: None,
+                    row: port.map(|(id, _)| (id, action)),
                 });
             }
             InterfacesMsg::Close => self.flow = None,
@@ -204,20 +196,9 @@ impl Component for Interfaces {
                 onclick={ctx.link().callback(|_| InterfacesMsg::CheckLive)}
             />
         };
-        let helpers = html! {
-            <PopupMenu variant={MenuToggleVariant::Secondary} text={html!(t::MORE_HELPERS)}>
-                <MenuGroup>
-                    { for HelperKind::ALL.into_iter().map(|kind| html! {
-                        <MenuActionItem onclick={ctx.link().callback(move |()| InterfacesMsg::OpenHelper(kind))}>
-                            {kind.to_string()}
-                        </MenuActionItem>
-                    }) }
-                </MenuGroup>
-            </PopupMenu>
-        };
         html! {<>
             <Card class="interfaces">
-                <CardHeader actions={CardHeaderActionsObject { actions: html!(<div class="interfaces-actions">{check_live}{helpers}</div>), has_no_offset: false, class: Default::default() }}>
+                <CardHeader actions={CardHeaderActionsObject { actions: html!(<div class="interfaces-actions">{check_live}</div>), has_no_offset: false, class: Default::default() }}>
                     <CardTitle>{t::TITLE}</CardTitle>
                 </CardHeader>
                 <CardBody>{body}</CardBody>
@@ -340,30 +321,8 @@ impl Interfaces {
                 return None;
             }
             let (free, used): (Vec<&Row>, Vec<&Row>) = rows.into_iter().partition(|r| r.free);
-            let entries = Rc::new(
-                used.into_iter()
-                    .map(|row| {
-                        let row = Rc::new(row.clone());
-                        let shown = row.clone();
-                        let undo = self.changed.get(&row.interface.id).map(|action| {
-                            let (row, action) = (row.clone(), action.clone());
-                            ctx.link().callback(move |()| {
-                                InterfacesMsg::Open(Some(row.clone()), action.clone())
-                            })
-                        });
-                        Entry {
-                            live: self.live.row(row.interface.id),
-                            changed: undo,
-                            row,
-                            netbox: netbox.clone(),
-                            on_action: ctx
-                                .link()
-                                .callback(move |action| InterfacesMsg::Open(Some(shown.clone()), action)),
-                            on_apply: ctx.props().on_apply.clone(),
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            );
+            let entries = Rc::new(self.entries(ctx, &used, netbox));
+            let free_entries = Rc::new(self.entries(ctx, &free, netbox));
             let free_text = t::free_ports(free.len());
             html! {<>
                 if !entries.is_empty() {
@@ -371,7 +330,7 @@ impl Interfaces {
                 }
                 if !free.is_empty() {
                     <ExpandableSection toggle_text_hidden={free_text.clone()} toggle_text_expanded={free_text}>
-                        <p>{ free.iter().map(|r| r.interface.name.as_str()).collect::<Vec<_>>().join(", ") }</p>
+                        <TaskTable {task} entries={free_entries}/>
                     </ExpandableSection>
                 }
             </>}
@@ -383,6 +342,45 @@ impl Interfaces {
                 {content}
             </section>
         })
+    }
+}
+
+impl Interfaces {
+    /// The table entries of `rows`, each followed by its bridge's ports.
+    fn entries(&self, ctx: &Context<Self>, rows: &[&Row], netbox: &Rc<str>) -> Vec<Entry> {
+        let entry = |row: &Rc<Row>, port: Option<Rc<rows::PortRow>>| {
+            let (id, name) = match &port {
+                Some(port) => (port.interface.id, port.interface.name.clone()),
+                None => (row.interface.id, row.interface.name.clone()),
+            };
+            let undo = self.changed.get(&id).map(|action| {
+                let (name, action) = (name.clone(), action.clone());
+                ctx.link()
+                    .callback(move |()| InterfacesMsg::Open(Some((id, name.clone())), action.clone()))
+            });
+            Entry {
+                live: self.live.row(id),
+                changed: undo,
+                row: row.clone(),
+                port,
+                netbox: netbox.clone(),
+                on_action: ctx
+                    .link()
+                    .callback(move |action| InterfacesMsg::Open(Some((id, name.clone())), action)),
+                on_apply: ctx.props().on_apply.clone(),
+            }
+        };
+        rows.iter()
+            .flat_map(|row| {
+                let row = Rc::new((*row).clone());
+                std::iter::once(entry(&row, None)).chain(
+                    row.port_rows
+                        .iter()
+                        .map(|port| entry(&row, Some(Rc::new(port.clone()))))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect()
     }
 }
 

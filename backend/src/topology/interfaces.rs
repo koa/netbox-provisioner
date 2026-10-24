@@ -53,13 +53,14 @@ pub struct InterfaceView {
     pub loopback_actions: Vec<RowAction>,
 }
 
-/// What a button of a row does: complete what is there, take the link out of NetBox, or give
-/// an unknown interface a task.
+/// What a button of a row does: complete what is there, take the link out of NetBox, give an
+/// unknown interface a task, or change a setting of the interface (PoE, tags).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
 pub enum ActionKind {
     Suggestion,
     Remove,
     AssignRole,
+    Edit,
 }
 
 /// The helper a row's action opens (`helper::Helper`).
@@ -79,6 +80,12 @@ pub enum ActionHelper {
     /// „Kabel übernehmen“: the link from `interface` to `peer`, which the device sees there,
     /// instead of NetBox's
     CableTakeover,
+    /// „PoE“ of the port `interface`
+    Poe,
+    /// „Flags“: the tags of `interface`
+    Flags,
+    /// „Aus Bridge lösen“: the port `interface` out of its bridge
+    BridgeLeave,
 }
 
 /// An action of a row: the helper and what it starts with. The frontend hands it on to the
@@ -103,6 +110,8 @@ pub struct InterfaceRow {
     pub label: Option<Box<str>>,
     /// the ports of a bridge
     pub ports: Vec<InterfaceRef>,
+    /// the same ports, each with what it is cabled to and its own actions
+    pub port_rows: Vec<PortRow>,
     pub addresses: Vec<AddressRef>,
     pub ospf: bool,
     pub dhcp: bool,
@@ -122,6 +131,16 @@ pub struct InterfaceRow {
     /// the worst first
     pub findings: Vec<Finding>,
     /// the helpers it offers, the suggestion first
+    pub actions: Vec<RowAction>,
+}
+
+/// A port of a bridge: chosen on its own for what concerns the port alone.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct PortRow {
+    pub interface: InterfaceRef,
+    pub label: Option<Box<str>>,
+    /// the interfaces its cable ends at
+    pub far_ends: Vec<InterfaceRef>,
     pub actions: Vec<RowAction>,
 }
 
@@ -205,6 +224,20 @@ impl DeviceAccess {
         let bridge_device = self.is_bridge_device();
         for (row, _) in rows.iter_mut() {
             row.actions = actions(topology, row, bridge_device);
+            let customer = row.task == InterfaceTask::Customer;
+            for port in &mut row.port_rows {
+                port.actions = port_actions(topology, &port.interface);
+                // a customer's port alone out of the bridge; a radio bridge's ports stay
+                if customer {
+                    port.actions.push(RowAction {
+                        kind: ActionKind::Remove,
+                        helper: ActionHelper::BridgeLeave,
+                        interface: Some(port.interface.id),
+                        peer: None,
+                        vlan: None,
+                    });
+                }
+            }
         }
         let loopback = rows.iter().find(|(row, _)| row.task == InterfaceTask::Loopback);
         let loopback_missing = loopback.is_none_or(|(row, _)| {
@@ -315,6 +348,15 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
         interface: interface_ref(interface),
         label: interface.label().map(Into::into),
         ports: ports.iter().map(interface_ref).collect(),
+        port_rows: ports
+            .iter()
+            .map(|port| PortRow {
+                interface: interface_ref(port),
+                label: port.label().map(Into::into),
+                far_ends: port.connected_interfaces().iter().map(interface_ref).collect(),
+                actions: Vec::new(),
+            })
+            .collect(),
         addresses: addresses.iter().map(address_ref).collect(),
         ospf: interface.use_ospf(),
         dhcp: interface.is_enable_dhcp_server(),
@@ -335,7 +377,8 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
 }
 
 /// What the helpers can do for `row`: a suggestion where something is missing, taking the link
-/// or network out, a task for an unknown interface. No helper for uplinks.
+/// or network out, a task for an unknown interface (also a free one), then its PoE and tags. No
+/// helper for uplinks.
 fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) -> Vec<RowAction> {
     let action = |kind, helper, interface: Option<u32>, peer: Option<InterfaceRef>, vlan| RowAction {
         kind,
@@ -462,36 +505,46 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
                 None,
             ));
         }
+        // a bridge device carries no networks of its own: only its radio link
+        InterfaceTask::Unknown if bridge_device => {
+            actions.push(action(
+                ActionKind::AssignRole,
+                ActionHelper::RadioBridge,
+                None,
+                None,
+                None,
+            ));
+        }
         InterfaceTask::Unknown => {
-            if !row.free {
-                actions.push(RowAction {
-                    kind: ActionKind::AssignRole,
-                    ..customer_net()
-                });
+            let ethernet_port = topology
+                .get_interface_by_id(InterfaceId(row.interface.id))
+                .is_some_and(|i| i.is_ethernet_port());
+            actions.push(RowAction {
+                kind: ActionKind::AssignRole,
+                ..customer_net()
+            });
+            let no_router = link.is_none();
+            actions.push(action(
+                ActionKind::AssignRole,
+                ActionHelper::Connection,
+                link.as_ref().map(|(port, _)| *port).or(own),
+                link.map(|(_, far)| far),
+                None,
+            ));
+            if ethernet_port {
+                // a customer's VLAN on the port, its network elsewhere
                 actions.push(action(
                     ActionKind::AssignRole,
-                    ActionHelper::Connection,
-                    link.as_ref().map(|(port, _)| *port).or(own),
-                    link.map(|(_, far)| far),
+                    ActionHelper::PortVlan,
+                    own,
+                    None,
                     None,
                 ));
-                if bridge_device {
+                // a radio bridge to cable here, chosen in the helper
+                if no_router {
                     actions.push(action(
                         ActionKind::AssignRole,
                         ActionHelper::RadioBridge,
-                        None,
-                        None,
-                        None,
-                    ));
-                }
-                // a customer's VLAN on the port, its network elsewhere
-                if topology
-                    .get_interface_by_id(InterfaceId(row.interface.id))
-                    .is_some_and(|i| i.is_ethernet_port())
-                {
-                    actions.push(action(
-                        ActionKind::AssignRole,
-                        ActionHelper::PortVlan,
                         own,
                         None,
                         None,
@@ -500,7 +553,27 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
             }
         }
     }
+    if !matches!(row.task, InterfaceTask::Loopback | InterfaceTask::Uplink) {
+        actions.extend(port_actions(topology, &row.interface));
+        actions.push(action(ActionKind::Edit, ActionHelper::Flags, own, None, None));
+    }
     actions
+}
+
+/// What concerns a port alone: its PoE.
+fn port_actions(topology: &Arc<Topology>, port: &InterfaceRef) -> Vec<RowAction> {
+    topology
+        .get_interface_by_id(InterfaceId(port.id))
+        .filter(InterfaceAccess::is_ethernet)
+        .map(|_| RowAction {
+            kind: ActionKind::Edit,
+            helper: ActionHelper::Poe,
+            interface: Some(port.id),
+            peer: None,
+            vlan: None,
+        })
+        .into_iter()
+        .collect()
 }
 
 /// An address in a prefix that is in no pool (`loopback`, `transfer`), itself or by a parent: a

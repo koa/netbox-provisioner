@@ -137,7 +137,17 @@ rows by the interfaces they name (those about the device as a whole go with the 
 computed again; a new check is a new finding. The order of the rules and what a bridge device is
 (`DeviceAccess::is_bridge_device`) come from the stored export and the lab, see the concept;
 `interfaces_of_netbox_example` writes the export's rows to `target/netbox-example/interfaces.txt`.
-The device page shows them in `components::interfaces`, each row with its actions (one may be
+The device page shows them in `components::interfaces`, every port with a row of its own (a
+bridge's ports below it, `InterfaceRow.portRows`, with PoE only; the free ones in a section
+that opens) and on it exactly the actions possible there, the helper starting from that port:
+there is no menu of all helpers. A free or unknown port gets the roles, an Ethernet port
+without a router on its cable also „Als Richtfunk“ (`HelperPreset::RadioChoose`: the flow asks
+for a bridge device with one radio and no cable to a router first, then embeds its helper as
+`RadioFrom`), every port but loopback and uplink „PoE“ and „Flags“ (`ActionKind::Edit`,
+`HelperPreset::Poe`/`Flags`: the PoE form with the port and its cable's far end, the flags of
+that interface only); a customer bridge's port „Aus Bridge lösen“ (`helper::bridge_leave`:
+`UpdatePort` with `leaves_bridge`, its own VLANs with it; the bridge stays, named in
+`NetboxPlan.emptied_bridge` when it was the last port). Each row with its actions (one may be
 another device's helper: „Funkbrücke“ from a router port is the cabled bridge device's,
 `HelperPreset::RadioFrom`, so `HelperFlow` embeds that device's helper; „Richtfunk abräumen“,
 `helper::radio_disconnect`, starts from the row's radio only, „Kunden-Anschluss abräumen“,
@@ -199,7 +209,7 @@ cabling them if both are free; `poeOptions` offers the device's ports and the si
 end by NetBox's cable, else `/ip/neighbor`). `helper::radio_bridge` completes a radio bridge
 between two routers on two existing devices (`radioBridgeCandidates`: one radio each): cable to
 the router port where none goes to a router, bridge with ether and radio as ports
-(`UpdatePort`: name, RF role, bridge), the RouterOS radio name, `lo` (`loopback::add_to`), the
+(`UpdatePort`: name, RF role, bridge; `leaves_bridge` takes it out of one), the RouterOS radio name, `lo` (`loopback::add_to`), the
 wireless link (`CreateWirelessLink`/`UpdateWirelessLink`: SSID, WPA with a PSK generated only
 where none is; the PSK is never in the fingerprint, a step's `Debug` or the log), and the
 segment's IPv4 (the router port's network, else a new `/29` of the transfer pool) with an
@@ -212,7 +222,7 @@ makes it an enum; its queries need `skip_serializing_none`), naming the device o
 the device page opens them in a modal (`components::helper_flow`, a stepper over the embedded
 `NetboxHelper`, `embedded`/`preset`/`on_phase`) from a row of the interfaces card, which the
 backend gives its actions (`InterfaceRow.actions`, `InterfaceView.loopbackActions`: kind, helper,
-preset ports or VLAN), or from „Weitere Helfer“; "Rückgängig" is the device's last write.
+preset ports or VLAN); "Rückgängig" is the device's last write.
 `components::netbox_helper` keeps the component and what all helpers share in `mod.rs` and
 `choice.rs` (presets, `HelperKind`, `HelperChoice`, `helper_input!`), the plan and preview in
 `plan.rs`, and gives each helper with a form a module with its choice, form, queries and its

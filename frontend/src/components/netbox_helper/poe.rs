@@ -50,7 +50,21 @@ impl Default for PoeChoice {
 impl NetboxHelper {
     pub(super) fn update_poe(&mut self, ctx: &Context<Self>, msg: PoeMsg) -> bool {
         match msg {
-            PoeMsg::Options(options) => self.poe_options = Some(options),
+            PoeMsg::Options(options) => {
+                self.poe_options = Some(options);
+                // a port given: the other end of its cable
+                if let Some(port) = self.poe.port
+                    && self.poe.peer.is_none()
+                    && let Some((device, far)) = self
+                        .poe_port(port)
+                        .and_then(|p| p.connected.first())
+                        .map(|far| (far.device.id as u32, far.id as u32))
+                {
+                    self.poe.peer_device = Some(device);
+                    self.poe.peer = Some(far);
+                    self.choose(ctx);
+                }
+            }
             PoeMsg::Feeds(feeds) => {
                 self.poe.feeds = feeds;
                 self.choose(ctx);

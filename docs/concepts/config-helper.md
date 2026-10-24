@@ -297,6 +297,7 @@ Umgesetzt (`helper/flags.rs`, „Flags“ in „NetBox ergänzen“): Die Tabell
 Geräts in NetBox' Reihenfolge mit Adressen, Kabel und Bridge. Ports einer Bridge fehlen, weil dort
 die Tags der Bridge zählen; einer mit eigenem Tag steht trotzdem da, damit es sich entfernen lässt.
 Ein umgestellter Schalter ist markiert, der Plan ändert je Interface die Tags in einem Schritt.
+Von einem Port der Interface-Ansicht her zeigt die Tabelle nur dieses Interface.
 Darunter stehen die Befunde des Geräts, wie sie nach den umgestellten Schaltern wären
 (`topology.findings(deviceId:, after:)` rechnet sie auf der Vorschau des Plans), mit Links nach
 NetBox. Schaltet man etwa `ospf` an einem Ende einer Verbindung aus, erscheint „`ospf` nur an einem
@@ -322,6 +323,8 @@ wird abgelehnt. Ob das Board am Port PoE-out hat, weiss NetBox nicht (kein Board
 Generator setzt `poe-out` ohnehin nur, wo das Board es hat. Im Lab geprüft an lab-np1: abgelesen
 `e01-sxt-a` und `e02-ap1`, übernommen, `lab-sxt-a ether1` bekam `PD`, Rückgängig nahm es wieder
 weg. Ein gespeistes Gerät meldet seine Quelle nicht; abgelesen wird deshalb am speisenden.
+Von einem Port der Interface-Ansicht her ist er vorbelegt, die Gegenseite mit dem Ende seines
+Kabels.
 
 ### Funkbrücke
 
@@ -329,7 +332,8 @@ Vervollständigt oder korrigiert eine Brücke zwischen zwei Routern, deren beide
 schon existieren (anlegen ist Teil von „Neues Gerät“). Aufgerufen auf der Seite einer der beiden
 Brücken (`radioBridgeCandidates`: RouterOS-Geräte mit genau einem Funk-Port) oder vom Router-Port
 einer Richtfunk-Zeile der Interface-Ansicht her, dann für das dort verkabelte Brückengerät mit
-diesem Router-Port vorbelegt. Eingabe: ob diese
+diesem Router-Port vorbelegt. Von einem freien Router-Port her („Als Richtfunk“) wählt man zuerst
+das Brückengerät (genau ein Funk-Port, kein Kabel zu einem Router), dann ebenso. Eingabe: ob diese
 Brücke AP oder Station ist (immer gewählt, vorbelegt mit ihrer RF Role), die andere Brücke
 (vorbelegt mit der Gegenseite ihres Wireless Links), je Seite der Router-Port nur dort, wo
 `ether1` noch nicht zu einem Router verkabelt ist, optional die Adresse jeder Bridge und die SSID.
@@ -412,13 +416,24 @@ kein Kabel zu einem RouterOS-Gerät). Ein VLAN-Interface, das sonst nichts hat (
 Adressen). Das VLAN selbst bleibt, andere Geräte können es haben. Ein Port, dessen L3 anderswo
 liegt, verliert nur sein VLAN.
 
+### Aus Bridge lösen
+
+Nimmt einen Port aus der Bridge eines Kunden-Anschlusses, vom Menü des Ports aus
+(`helper::bridge_leave`): ein Schritt `UpdatePort` ohne Bridge (`leaves_bridge`, geprüft gegen
+die Bridge von vorher) und, wenn der Port eigene VLANs hat, `UpdatePortVlan` ohne sie. Danach
+ist er frei. Sein Kabel bleibt, die Bridge mit Adressen, Prefix und `dhcp` auch: War er ihr
+letzter Port, nennt der Plan sie (`NetboxPlan.emptied_bridge`), ihr Netz erreicht dann
+niemanden, und „Kunden-Anschluss abräumen“ auf ihrer Zeile nimmt es heraus. Ein Port ohne
+Bridge ist `NO_BRIDGE`. Im Lab geprüft an lab-np2 `ether4` (letzter Port von `lan`): Plan mit
+dem Hinweis, geschrieben, Rückgängig brachte ihn zurück in `lan`.
+
 ### VLAN am Port
 
 Legt ein VLAN untagged an einen Port des Geräts (Mode access), für einen Kunden: das Netz eines
 VLAN-Interfaces, dessen VLAN noch an keinem Port liegt (Befund `VlanWithoutPort`, von der
 Kunden-Zeile aus mit dem VLAN vorbelegt), oder einen Port, dessen Netz auf einem anderen Gerät
 liegt und über das VXLAN der VLAN-Gruppe kommt (aus „Rolle zuweisen“ einer unbekannten Zeile mit
-dem Port vorbelegt, sonst aus „Weitere Helfer“).
+dem Port vorbelegt, auch einer freien).
 
 Plan (`helper::port_vlan`): ein Schritt `UpdatePortVlan`, tagged VLANs am Port fallen weg (Z26).
 Zur Wahl stehen (`portVlanOptions`) die Ethernet-Ports ohne Bridge, Adresse, Uplink

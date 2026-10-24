@@ -169,19 +169,53 @@ Aktionen:
 - Passt der gesehene Nachbar zu einer Rolle, ist sie vorgewählt: ein Router mit dem Port in
   NetBox ergibt Direktverbindung, ein Brückengerät ergibt Richtfunk. Das entspricht dem heutigen
   „Als Verbindung übernehmen“.
-- **Freie Ports**, ohne Kabel und ohne Daten in NetBox, stehen zusammengefasst als eine Zeile
-  („12 freie Ports“), aufklappbar. Sonst gehen die Interfaces mit Daten zwischen ihnen unter.
+- **Freie Ports**, ohne Kabel und ohne Daten in NetBox, stehen zusammengefasst unter einer
+  aufklappbaren Zeile („12 freie Ports“), sonst gehen die Interfaces mit Daten zwischen ihnen
+  unter. Aufgeklappt hat jeder seine eigene Zeile mit denselben Aktionen wie eine unbekannte.
+
+### Aktionen pro Port
+
+Alles geht vom Port aus (2026-10-24, statt des Menüs „Weitere Helfer“): jede Zeile hat genau
+die Aktionen, die auf diesem Port möglich sind, und der Helfer startet mit ihm.
+
+| Port | Aktionen |
+|---|---|
+| frei oder unbekannt (Router) | Als Kunden-Anschluss, Als Direktverbindung; an einem Ethernet-Port Als VLAN am Port, ohne Kabel zu einem Router Als Richtfunk; PoE, Flags |
+| frei oder unbekannt (Brückengerät) | Als Richtfunk; PoE, Flags |
+| Direktverbindung | Lösungsvorschlag (mit Befund), Verbindung entfernen; PoE, Flags |
+| Richtfunk | Lösungsvorschlag (unvollständig oder mit Befund), Verbindung entfernen; PoE, Flags |
+| Kunden-Anschluss | VLAN am Port (`VlanWithoutPort`), Kunden-Netz, Verbindung entfernen; PoE, Flags |
+| Port einer Bridge | PoE; in einem Kunden-Anschluss auch Aus Bridge lösen |
+| aus der Live-Prüfung | Kabel übernehmen, Verbindung mit dem gesehenen Router |
+| Uplink | keine (Z25) |
+| Loopback | Loopback, nur wo sie fehlt |
+
+- **Ports einer Bridge** stehen eingerückt unter ihr (`InterfaceRow.portRows`, je mit Kabel und
+  Aktionen). Ihre Tags zählen nicht, die der Bridge schon: darum dort keine Flags. Den Port
+  eines Kunden-Anschlusses nimmt „Aus Bridge lösen“ allein heraus (siehe
+  [Config-Helper](config-helper.md#aus-bridge-lösen)); die Ports der Bridge eines Brückengeräts
+  bleiben, ohne sie gibt es keinen Richtfunk.
+- **PoE** gibt es an jedem Ethernet-Port, mit dem Port vorbelegt und der Gegenseite aus dem
+  Kabel. Ob das Board dort PoE-out hat, weiss NetBox nicht (siehe
+  [Config-Helper](config-helper.md#poe)).
+- **Flags** zeigt nur die vier Schalter dieses Interfaces, die Befunde danach wie bisher.
+- **Als Richtfunk** von einem freien Router-Port fragt zuerst nach dem Brückengerät (genau ein
+  Radio, kein Kabel zu einem Router) und bettet dann dessen Helfer ein, mit Router und
+  Router-Port vorbelegt (`HelperPreset::RadioChoose`, danach `RadioFrom`). Der Plan läuft wie
+  vom verkabelten Router-Port im Job des Brückengeräts.
+- Die andere Brücke und ihr Router werden weiter im Dialog gewählt: sie liegen auf anderen
+  Geräten.
 
 ## Oberfläche (PatternFly, patternfly-yew 0.8)
 
 ### Platz auf der Geräteseite
 
-Karte **„Interfaces“** über die volle Breite, an der Stelle von „NetBox ergänzen“. PoE und die
-Flag-Tabelle passen nicht in eine Zeile pro Interface. Sie bleiben erreichbar über das Menü
-„Weitere Helfer“ im Kartenkopf (`CardHeader` mit `actions`, `MenuToggle` mit `Menu`).
+Karte **„Interfaces“** über die volle Breite, an der Stelle von „NetBox ergänzen“. PoE und
+Flags öffnen vom Port aus, je für diesen einen Port (bis 2026-10-24 aus dem Menü „Weitere
+Helfer“ im Kartenkopf, das es nicht mehr gibt).
 
 ```
-┌ Interfaces ────────────────────────────────────── [Live prüfen ⟳] [Weitere Helfer ▾] ┐
+┌ Interfaces ─────────────────────────────────────────────────────────── [Live prüfen ⟳] ┐
 │ [Alle 15] [Loopback 1] [Uplink 1] [Direkt 2] [Richtfunk 1] [Kunden 3] [Unbekannt 7]   │
 │ ☐ nur Befunde                                                                         │
 │                                                                                       │
@@ -201,8 +235,9 @@ Flag-Tabelle passen nicht in eine Zeile pro Interface. Sie bleiben erreichbar ü
 │ ▸ e01-sxt-a  lab-sxt-a ┄ lab-link-3b ┄ lab-sxt-b → lab-np2 e01  192.168.101.8/29  ● ok │
 │ …                                                                                     │
 │ Unbekannt (7)                                                                         │
-│ ▸ ether7     kein Kabel · sieht lab-np3 ether2         ○ ohne Rolle  [Rolle zuweisen ▾]│
-│ ▸ 5 freie Ports                                                                       │
+│ ▸ ether7     kein Kabel · sieht lab-np3 ether2         ○ ohne Rolle                ⋮  │
+│ ▾ 5 freie Ports                                                                       │
+│ ▸ ether8     kein Kabel · sieht niemanden              ● in Ordnung                ⋮  │
 └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -324,8 +359,9 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
      Rückgängig bleiben an einer Stelle; die Phase meldet er dem Stepper (`on_phase`). Die
      Vorschau ist die bisherige (Befunde vorher/nachher, Skript), noch nicht die Prüfungen
      der Zeile allein.
-   - „Weitere Helfer“ im Kartenkopf öffnet jeden der sieben Helfer, nicht nur PoE und Flags:
-     so geht ohne die alte Karte nichts verloren.
+   - „Weitere Helfer“ im Kartenkopf öffnete jeden der sieben Helfer, nicht nur PoE und Flags:
+     so ging ohne die alte Karte nichts verloren. Seit 2026-10-24 geht alles vom Port aus
+     (siehe [Aktionen pro Port](#aktionen-pro-port)), das Menü ist weg.
    - Das blaue Label bleibt, bis ein Anwenden des Geräts fertig ist (nicht, bis die Vorschau
      leer ist), und nur im Browser, bis die Seite neu lädt. „Rückgängig“ in der Zeile öffnet
      den Helfer wieder, der die letzte Schreibung des Geräts zurücknimmt.
@@ -384,7 +420,7 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
      [Config-Helper](config-helper.md#richtfunk-abräumen)). Zum Segment gehören auch Adressen aus
      dem Transfer-Pool an nur einem Ende: im Export hat bei schopf-burri nur der Router eine. Der
      Wireless Link geht mit einem Schalter im Plan, neu als Schritt `DeleteWirelessLink`.
-     Aus „Weitere Helfer“ ist er nicht erreichbar, er braucht den Funk-Port der Zeile.
+     Er braucht den Funk-Port der Zeile.
    - Kunden-Anschluss abräumen, erledigt 2026-10-23: „Verbindung entfernen“ auf jeder
      Kunden-Zeile, Helfer `customer_disconnect` (siehe
      [Config-Helper](config-helper.md#kunden-anschluss-abräumen)), mit den neuen Schritten
@@ -398,7 +434,7 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
      Interface des Geräts führt, in keinem WLAN liegt und dessen Bereich (`vlan_domain`) nur das
      Gerät umfasst; das Netz erreicht niemanden. Auf seiner Kunden-Zeile ist „VLAN am Port“ der
      Lösungsvorschlag mit dem VLAN; auf einer unbekannten Zeile eines Ethernet-Ports kommt es zu
-     „Rolle zuweisen“ dazu, mit dem Port. Freie Ports erreicht man über „Weitere Helfer“. Im
+     „Rolle zuweisen“ dazu, mit dem Port, ebenso auf einem freien Port. Im
      gespeicherten Export kommt der Befund nicht vor.
    - Kabel übernehmen, erledigt 2026-10-24: Helfer `cable_takeover` (siehe
      [Config-Helper](config-helper.md#verbindung)). Die Vorschläge kommen aus der Live-Prüfung

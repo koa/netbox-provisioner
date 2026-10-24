@@ -101,7 +101,8 @@ pub const TAGS: &str = "Tags";
 pub const LABEL: &str = "Label";
 pub const DHCP_CLIENT: &str = "DHCP-Client";
 pub const ACTIONS: &str = "Aktionen";
-pub const MORE_HELPERS: &str = "Weitere Helfer";
+/// the bridge a port is in
+pub const BRIDGE: &str = "Bridge";
 pub const CHANGED: &str = "in NetBox geändert, noch nicht angewendet";
 pub const CHANGED_TITLE: &str = "In NetBox geändert";
 pub const CHANGED_TEXT: &str = "Das Gerät hat die Änderung noch nicht.";
@@ -112,8 +113,10 @@ pub const APPLY: &str = "Anwenden";
 pub fn action(kind: Kind, helper: HelperKind) -> String {
     match kind {
         Kind::Suggestion if helper == HelperKind::CableTakeover => helper.to_string(),
+        Kind::Remove if helper == HelperKind::BridgeLeave => helper.to_string(),
         Kind::Suggestion => "Lösungsvorschlag".to_string(),
         Kind::Remove => "Verbindung entfernen".to_string(),
+        Kind::Edit => helper.to_string(),
         Kind::AssignRole => format!(
             "Als {}",
             match helper {
@@ -126,7 +129,7 @@ pub fn action(kind: Kind, helper: HelperKind) -> String {
     }
 }
 
-/// the title of a helper's modal for a row (`None`: from „Weitere Helfer“)
+/// the title of a helper's modal for a row (`None`: the loopback's, without row)
 pub fn flow_title(kind: Option<Kind>, helper: HelperKind, interface: Option<&str>) -> String {
     let what = match kind {
         Some(kind) => action(kind, helper),

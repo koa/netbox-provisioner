@@ -1,19 +1,28 @@
-//! A helper in a modal, from a row of `components::interfaces` (its suggestion, taking the link
-//! out, a task for it) or its menu „Weitere Helfer“: a stepper Plan → Vorschau → In NetBox
-//! schreiben → Anwenden above the helper's form, plan and preview (`NetboxHelper`, embedded).
-//! Written, „Jetzt anwenden“ goes to the card „Änderungen“, „Später“ closes it.
+//! A helper in a modal, from a port's row of `components::interfaces` (its suggestion, taking
+//! the link out, a task for it, its settings): a stepper Plan → Vorschau → In NetBox schreiben →
+//! Anwenden above the helper's form, plan and preview (`NetboxHelper`, embedded). „Funkbrücke“
+//! from a free router port first asks for the bridge device to cable there (one radio, no cable
+//! to a router), then embeds that device's helper. Written, „Jetzt anwenden“ goes to the card
+//! „Änderungen“, „Später“ closes it.
 use crate::{
     components::{
         adjust_target::SelectedTarget,
-        netbox_helper::{HelperPreset, NetboxHelper, Phase},
+        menu::popup::Select,
+        netbox_helper::{HelperPreset, NetboxHelper, Phase, RadioPreset},
+    },
+    error::FrontendError,
+    graphql::{
+        authenticated::{RadioBridgeCandidates, radio_bridge_candidates},
+        query_authenticated,
     },
     i18n::helper_flow as t,
 };
 use patternfly_yew::prelude::{
-    Bullseye, Button, ButtonVariant, Modal, ModalVariant, ProgressStepper, ProgressStepperStep,
-    ProgressStepperStepStatus,
+    Bullseye, Button, ButtonVariant, Form, FormGroup, Modal, ModalVariant, ProgressStepper,
+    ProgressStepperStep, ProgressStepperStepStatus, Spinner, SpinnerSize,
 };
-use yew::{Callback, Component, Context, Html, Properties, html, html_nested};
+use std::fmt::{self, Display, Formatter};
+use yew::{Callback, Component, Context, Html, Properties, html, html_nested, platform::spawn_local};
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct HelperFlowProps {
@@ -35,18 +44,43 @@ pub struct HelperFlowProps {
 
 pub struct HelperFlow {
     phase: Phase,
+    /// „Funkbrücke“ from a free router port: the bridge devices to choose from, and the chosen
+    bridges: Option<Result<Vec<Bridge>, FrontendError>>,
+    bridge: Option<Bridge>,
 }
 
 pub enum HelperFlowMsg {
     Phase(Phase),
+    Bridges(Result<Vec<Bridge>, FrontendError>),
+    Bridge(Bridge),
+}
+
+/// A bridge device to cable to the router port.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Bridge {
+    id: u32,
+    text: String,
+}
+
+impl Display for Bridge {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.text)
+    }
 }
 
 impl Component for HelperFlow {
     type Message = HelperFlowMsg;
     type Properties = HelperFlowProps;
 
-    fn create(_ctx: &Context<Self>) -> Self {
-        Self { phase: Phase::Plan }
+    fn create(ctx: &Context<Self>) -> Self {
+        if matches!(ctx.props().preset, HelperPreset::RadioChoose { .. }) {
+            fetch_bridges(ctx);
+        }
+        Self {
+            phase: Phase::Plan,
+            bridges: None,
+            bridge: None,
+        }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
@@ -61,14 +95,34 @@ impl Component for HelperFlow {
                 self.phase = phase;
                 changed
             }
+            HelperFlowMsg::Bridges(bridges) => {
+                self.bridges = Some(bridges);
+                true
+            }
+            HelperFlowMsg::Bridge(bridge) => {
+                self.bridge = Some(bridge);
+                true
+            }
         }
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let props = ctx.props();
+        // from a free router port: the chosen bridge device's helper, as from a cabled one
+        let preset = match (&props.preset, &self.bridge) {
+            (HelperPreset::RadioChoose { router_device, router_port }, Some(bridge)) => {
+                Some(HelperPreset::RadioFrom(RadioPreset {
+                    bridge: bridge.id,
+                    router_device: *router_device,
+                    router_port: *router_port,
+                }))
+            }
+            (HelperPreset::RadioChoose { .. }, None) => None,
+            (preset, _) => Some(preset.clone()),
+        };
         // another device's helper (a bridge device's from the router port) reaches it at its
         // own address, with the credentials chosen
-        let helper_device = props.preset.device(props.id);
+        let helper_device = preset.as_ref().map_or(props.id, |preset| preset.device(props.id));
         let target = if helper_device == props.id {
             props.target.clone()
         } else {
@@ -129,17 +183,84 @@ impl Component for HelperFlow {
                                 .enumerate()
                                 .map(|(index, label)| step(index, label)) }
                         </ProgressStepper>
-                        <NetboxHelper
-                            id={helper_device}
-                            target={target}
-                            preset={props.preset.clone()}
-                            embedded=true
-                            on_phase={ctx.link().callback(HelperFlowMsg::Phase)}
-                            on_written={props.on_written.clone()}
-                        />
+                        if matches!(props.preset, HelperPreset::RadioChoose { .. }) {
+                            {self.bridge_choice(ctx)}
+                        }
+                        if let Some(preset) = preset {
+                            <NetboxHelper
+                                key={helper_device}
+                                id={helper_device}
+                                target={target}
+                                {preset}
+                                embedded=true
+                                on_phase={ctx.link().callback(HelperFlowMsg::Phase)}
+                                on_written={props.on_written.clone()}
+                            />
+                        }
                     </Modal>
                 </Bullseye>
             </div>
         }
     }
+}
+
+impl HelperFlow {
+    /// The bridge device to cable to the router port, chosen while nothing is written.
+    fn bridge_choice(&self, ctx: &Context<Self>) -> Html {
+        let bridges = match &self.bridges {
+            None => return html!(<Spinner size={SpinnerSize::Md}/>),
+            Some(Err(error)) => return error.to_html(),
+            Some(Ok(bridges)) => bridges,
+        };
+        let locked = !matches!(self.phase, Phase::Plan | Phase::Preview);
+        html! {
+            <Form>
+                <FormGroup label={t::BRIDGE_DEVICE}>
+                    if bridges.is_empty() {
+                        <p>{t::NO_BRIDGE_DEVICES}</p>
+                    } else if locked {
+                        <p>{ self.bridge.as_ref().map(|b| b.text.clone()).unwrap_or_default() }</p>
+                    } else {
+                        <Select<Bridge>
+                            placeholder={t::CHOOSE_BRIDGE_DEVICE}
+                            selected={self.bridge.clone()}
+                            entries={bridges.clone()}
+                            onselect={ctx.link().callback(HelperFlowMsg::Bridge)}
+                        />
+                    }
+                </FormGroup>
+            </Form>
+        }
+    }
+}
+
+/// The bridge devices without a cable to a router.
+fn fetch_bridges(ctx: &Context<HelperFlow>) {
+    let scope = ctx.link().clone();
+    let id = ctx.props().id;
+    spawn_local(async move {
+        let bridges = query_authenticated::<RadioBridgeCandidates, _>(
+            scope.clone(),
+            radio_bridge_candidates::Variables { id: id as i64 },
+        )
+        .await
+        .map(|data| {
+            data.topology
+                .device_by_id
+                .map(|device| device.radio_bridge_candidates)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|candidate| candidate.router_port.is_none())
+                .map(|candidate| Bridge {
+                    id: candidate.device.id as u32,
+                    text: t::bridge_device(
+                        &candidate.device.name,
+                        &candidate.radio.name,
+                        candidate.peer.as_ref().map(|peer| peer.name.as_str()),
+                    ),
+                })
+                .collect()
+        });
+        scope.send_message(HelperFlowMsg::Bridges(bridges));
+    });
 }

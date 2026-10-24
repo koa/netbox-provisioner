@@ -8,6 +8,7 @@ query InterfaceView($device: Int!){
                     interface{ ...Interface }
                     label
                     ports{ ...Interface }
+                    portRows{ interface{ ...Interface } label farEnds{ ...Interface } actions{ ...Action } }
                     addresses{ ...Address }
                     ospf
                     dhcp

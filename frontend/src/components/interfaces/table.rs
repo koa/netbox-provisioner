@@ -1,7 +1,7 @@
 //! The table of a task: a row per L3 interface, its findings when opened.
 use super::{
     live::{self, RowLive},
-    rows::{Action, Address, Device, Iface, Kind, RadioPath, Row, Task},
+    rows::{Action, Address, Device, Iface, Kind, PortRow, RadioPath, Row, Task},
 };
 use crate::{
     components::{
@@ -95,6 +95,8 @@ fn columns(task: Task) -> &'static [Column] {
 #[derive(Clone, PartialEq)]
 pub struct Entry {
     pub row: Rc<Row>,
+    /// a port of the row's bridge, shown below it with its own actions
+    pub port: Option<Rc<PortRow>>,
     /// NetBox' web UI, ending in `/`
     pub netbox: Rc<str>,
     pub live: RowLive,
@@ -115,18 +117,42 @@ impl Entry {
             RowLive::Checked(live) => live.actions.as_slice(),
             RowLive::Pending | RowLive::Unchecked => &[],
         };
+        let own = match &self.port {
+            Some(port) => &port.actions,
+            None => &self.row.actions,
+        };
         let mut actions = live.to_vec();
         actions.extend(
-            self.row
-                .actions
-                .iter()
+            own.iter()
                 .filter(|a| !live.iter().any(|l| (l.kind, l.helper) == (a.kind, a.helper)))
                 .cloned(),
         );
         actions
     }
     fn netbox_url(&self) -> String {
-        format!("{}dcim/interfaces/{}/", self.netbox, self.row.interface.id)
+        let id = self.port.as_ref().map_or(self.row.interface.id, |p| p.interface.id);
+        format!("{}dcim/interfaces/{id}/", self.netbox)
+    }
+    /// A bridge's port: its name and label, where its cable goes, its state, its actions.
+    fn render_port_cell(&self, port: &PortRow, column: Column) -> Html {
+        match column {
+            Column::Port => html! {
+                <span class="interface-port">
+                    {"↳ "}<span class="interface-name">{&port.interface.name}</span>
+                    if let Some(label) = &port.label {
+                        <div class="interface-ports">{label}</div>
+                    }
+                </span>
+            },
+            Column::FarEnd | Column::NetboxHas => far_ends(&port.far_ends),
+            Column::State => match &self.live {
+                RowLive::Pending => html!(<Spinner size={SpinnerSize::Sm}/>),
+                RowLive::Checked(live) => state(live.severities().iter()),
+                RowLive::Unchecked => Html::default(),
+            },
+            Column::Actions => self.menu(),
+            _ => Html::default(),
+        }
     }
     /// The kebab menu: the actions and „In NetBox öffnen“.
     fn menu(&self) -> Html {
@@ -182,6 +208,9 @@ pub fn action_buttons(actions: &[Action], on_action: &Callback<Action>) -> Html 
 impl TableEntryRenderer<Column> for Entry {
     fn render_cell(&self, context: CellContext<'_, Column>) -> Cell {
         let row = &self.row;
+        if let Some(port) = &self.port {
+            return self.render_port_cell(port, *context.column).into();
+        }
         match context.column {
             Column::Port => port(row),
             Column::Address => {
@@ -236,6 +265,18 @@ impl TableEntryRenderer<Column> for Entry {
 
     fn render_details(&self) -> Vec<Span> {
         let row = &self.row;
+        if let Some(port) = &self.port {
+            return vec![Span::max(html! {
+                <div class="interface-details">
+                    {live::details(&self.netbox, &self.live, device)}
+                    <dl class="interface-facts">
+                        <dt>{t::BRIDGE}</dt><dd>{&row.interface.name}</dd>
+                        <dt>{t::FAR_END}</dt><dd>{far_ends(&port.far_ends)}</dd>
+                    </dl>
+                    {action_buttons(&self.actions(), &self.on_action)}
+                </div>
+            })];
+        }
         let findings = if row.findings.is_empty() {
             html!(<p>{t::NO_FINDINGS}</p>)
         } else {
@@ -346,16 +387,9 @@ pub fn changed_label() -> Html {
     html!(<Label compact=true color={Color::Blue} icon={Icon::InfoCircle} label={t::CHANGED.to_string()}/>)
 }
 
-/// The name, the bridge's ports below it.
+/// The name; a bridge's ports follow as rows of their own.
 fn port(row: &Row) -> Html {
-    html! {<>
-        <span class="interface-name">{&row.interface.name}</span>
-        if !row.ports.is_empty() {
-            <div class="interface-ports">
-                { row.ports.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ") }
-            </div>
-        }
-    </>}
+    html!(<span class="interface-name">{&row.interface.name}</span>)
 }
 
 fn yes(set: bool) -> Html {

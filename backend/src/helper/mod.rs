@@ -9,6 +9,7 @@
 //! the job (`NetboxWritten`), which is what `undo` takes back.
 pub mod cable_takeover;
 pub mod connection;
+pub mod bridge_leave;
 pub mod customer_disconnect;
 pub mod customer_net;
 pub mod disconnect;
@@ -70,6 +71,8 @@ pub enum Helper {
     PortVlan(port_vlan::PortVlanInput),
     /// NetBox's link at a port replaced by the one the device sees, for the port's device
     CableTakeover(cable_takeover::CableTakeoverInput),
+    /// a port out of its bridge, with its VLANs
+    BridgeLeave(bridge_leave::BridgeLeaveInput),
 }
 
 impl Helper {
@@ -86,6 +89,7 @@ impl Helper {
             Helper::CustomerDisconnect(input) => customer_disconnect::plan(topology, input),
             Helper::PortVlan(input) => port_vlan::plan(topology, input),
             Helper::CableTakeover(input) => cable_takeover::plan(topology, input).await,
+            Helper::BridgeLeave(input) => bridge_leave::plan(topology, input),
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -126,6 +130,9 @@ impl Helper {
                 .get_interface_by_id(crate::topology::InterfaceId(input.port))
                 .and_then(|interface| interface.device())
                 .ok_or(Error::UnknownInterface(input.port)),
+            Helper::BridgeLeave(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
         }
     }
 }
@@ -148,6 +155,8 @@ pub struct NetboxPlan {
     /// both have them, so only applying them together works (one after the other, the first
     /// one's fallback brings its old settings back)
     pub apply_together: Vec<DeviceRef>,
+    /// a bridge the plan takes the last port of: its network reaches nobody then
+    pub emptied_bridge: Option<InterfaceRef>,
     #[graphql(skip)]
     device: DeviceAccess,
 }
@@ -191,6 +200,7 @@ impl NetboxPlan {
             undocumented: Vec::new(),
             cut_off: Vec::new(),
             apply_together: Vec::new(),
+            emptied_bridge: None,
             device: device.clone(),
         }
     }
@@ -346,6 +356,8 @@ impl NetboxPlan {
                         }
                         if let Some(bridge) = update.bridge_id {
                             interface["bridge"] = json!({ "id": target_id(bridge) });
+                        } else if update.leaves_bridge.is_some() {
+                            interface["bridge"] = Value::Null;
                         }
                     }
                 }

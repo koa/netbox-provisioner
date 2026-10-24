@@ -142,6 +142,7 @@ pub fn update_port(
     name: Option<&str>,
     role: Option<(&str, Option<&str>)>,
     bridge: Option<&str>,
+    leaves_bridge: Option<&str>,
 ) -> String {
     let mut changes = Vec::new();
     if let Some(name) = name {
@@ -155,6 +156,9 @@ pub fn update_port(
     }
     if let Some(bridge) = bridge {
         changes.push(format!("Port von {bridge}"));
+    }
+    if let Some(bridge) = leaves_bridge {
+        changes.push(format!("nicht mehr Port von {bridge}"));
     }
     format!("{} {}: {}", port.0, port.1, changes.join(", "))
 }
@@ -249,6 +253,16 @@ pub fn update_port_vlan(
 pub fn delete_interface(interface: (&str, &str)) -> String {
     format!("Interface {} {} löschen", interface.0, interface.1)
 }
+pub const BRIDGE_LEAVE: &str = "Aus Bridge lösen";
+pub const BRIDGE_LEAVE_HINT: &str = "Nimmt den Port aus seiner Bridge, mit den VLANs des Ports \
+    selbst: danach ist er frei. Sein Kabel bleibt, die Bridge mit ihrem Netz auch.";
+pub const CHOOSE_BRIDGE_LEAVE: &str = "Über den Port der Bridge in den Interfaces starten.";
+/// the plan takes a bridge's last port
+pub fn emptied_bridge(bridge: &str) -> String {
+    format!("{bridge} hat danach keinen Port mehr")
+}
+pub const EMPTIED_BRIDGE_TEXT: &str = "Ihr Netz erreicht dann niemanden. „Verbindung entfernen“ \
+    auf ihrer Zeile nimmt es aus NetBox.";
 pub const CUSTOMER_DISCONNECT: &str = "Kunden-Anschluss abräumen";
 pub const CUSTOMER_DISCONNECT_HINT: &str = "Nimmt das Netz eines Kunden-Anschlusses aus NetBox: \
     die Adressen am Interface, ihr Prefix, wenn danach nichts mehr darin ist, dhcp und die VLANs \

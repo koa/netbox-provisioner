@@ -654,7 +654,8 @@ async fn update_port(
     let bridge_before = current["bridge"]["id"].as_u64().map(|id| id as u32);
     if name != &*port.name
         || (update.rf_role.is_some() && role != update.rf_role_before)
-        || (bridge.is_some() && bridge_before != update.bridge_before)
+        || ((bridge.is_some() || update.leaves_bridge.is_some())
+            && bridge_before != update.bridge_before)
     {
         return Err(Error::NetboxChanged(format!("{} {}", port.device.name, port.name).into()));
     }
@@ -685,6 +686,14 @@ async fn update_port(
         changes.push(FieldChange {
             field: "bridge".into(),
             value: update.bridge.clone(),
+            previous: current["bridge"]["name"].as_str().map(Box::from),
+        });
+    } else if update.leaves_bridge.is_some() {
+        change.insert("bridge".into(), Value::Null);
+        before.insert("bridge".into(), json!(bridge_before));
+        changes.push(FieldChange {
+            field: "bridge".into(),
+            value: None,
             previous: current["bridge"]["name"].as_str().map(Box::from),
         });
     }

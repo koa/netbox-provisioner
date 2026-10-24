@@ -289,6 +289,7 @@ fn side(
                 bridge: to_bridge.then(|| bridge_name.clone()),
                 bridge_id: to_bridge.then_some(bridge),
                 bridge_before: port.bridge().map(|b| b.id().0),
+                leaves_bridge: None,
             }));
         }
     }
