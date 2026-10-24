@@ -379,6 +379,16 @@ fn l2mtu_for(l2mtu: Option<u16>, mtu: Option<u16>) -> Option<u16> {
     }
 }
 
+/// What OSPF announces besides its interfaces' networks: connected and static routes, and BGP's,
+/// which is configured by hand (on klr-sw-3, `examples/` 01 to 03) and reaches the rest of the
+/// network only this way. Where there is no BGP it brings nothing. A default route doesn't go out
+/// this way (CHR 7.24.5: a static `0.0.0.0/0` with `redistribute=static` is no external LSA), only
+/// by `originate-default`.
+fn ospf_redistribute() -> BTreeSet<RoutingRedistribute> {
+    [RoutingRedistribute::Connected, RoutingRedistribute::Static, RoutingRedistribute::Bgp]
+        .into_iter()
+        .collect()
+}
 impl BaseDeviceDataTarget {
     fn new(model: &[u8]) -> Result<Self, SetupError> {
         let ethernet_ports = build_ethernet_ports(model);
@@ -1038,10 +1048,7 @@ impl BaseDeviceDataTarget {
                     .ospf_instance
                     .entry(b"default-v2".into())
                     .or_insert(RoutingOspfInstanceByName(RoutingOspfInstanceCfg::default()));
-                v2_instance.0.redistribute =
-                    [RoutingRedistribute::Connected, RoutingRedistribute::Static]
-                        .into_iter()
-                        .collect();
+                v2_instance.0.redistribute = ospf_redistribute();
                 v2_instance.0.router_id = Some(router_id.to_string().into());
                 v2_instance.0.originate_default = originate_default;
                 v2_instance.0.version = RoutingOspfInstanceVersion::_2;
@@ -1049,10 +1056,7 @@ impl BaseDeviceDataTarget {
                     .ospf_instance
                     .entry(b"default-v3".into())
                     .or_insert(RoutingOspfInstanceByName(RoutingOspfInstanceCfg::default()));
-                v3_instance.0.redistribute =
-                    [RoutingRedistribute::Connected, RoutingRedistribute::Static]
-                        .into_iter()
-                        .collect();
+                v3_instance.0.redistribute = ospf_redistribute();
                 v3_instance.0.router_id = Some(router_id.to_string().into());
                 v3_instance.0.originate_default = originate_default;
                 v3_instance.0.version = RoutingOspfInstanceVersion::_3;

@@ -80,7 +80,7 @@ sie installiert ist (`originate-default=if-installed`). Alle anderen Geräte, au
 bekommen `originate-default=never`: Hat ein Gerät einen Uplink in ein anderes Netz (z.B. ein Lab
 mit Uplink ins produktive Netz), ginge dessen Default-Route sonst über OSPF in dieses Netz zurück
 und zöge dort den Verkehr an. Andere statische Routen verteilt OSPF weiterhin
-(`redistribute=connected,static`).
+(`redistribute=connected,static,bgp`).
 
 Achtung beim Umstellen: Ein Router, der bisher eine Default-Route verteilt hat, hört damit beim
 nächsten Anwenden auf, solange das Feld nicht gesetzt ist.

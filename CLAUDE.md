@@ -553,7 +553,9 @@ would be redistributed although it only works from that device. OSPF originates 
 on a device with the custom field `propagate_default_route` (`originate-default=if-installed`,
 RouterOS' own default), every other one gets `never`: an apply of the lab's uplink router, whose
 DHCP default from the production network was still installed, once announced it back into
-production. A client network's (`dhcp`)
+production. OSPF redistributes connected, static and BGP routes (`ospf_redistribute`): BGP is
+configured by hand (klr-sw-3), and its routes reach the network only so; a default route never
+goes out by `redistribute` (CHR 7.24.5), only by `originate-default`. A client network's (`dhcp`)
 IPv6 /64 is advertised for SLAAC. IPv6 is on everywhere (`/ipv6/settings disable-ipv6=no`):
 with it off the addresses are `invalid` and OSPFv3 never comes up, while the diff looks applied.
 

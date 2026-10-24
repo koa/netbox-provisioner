@@ -16,7 +16,7 @@ use mikrotik_model::{
     model::{
         InterfaceBridgePortById, InterfaceBridgePortCfg, InterfaceBridgeVlanById,
         InterfaceBridgeVlanCfg, InterfaceVxlanVtepsById,
-        InterfaceVxlanVtepsCfg, RoutingOriginateDefault,
+        InterfaceVxlanVtepsCfg, RoutingOriginateDefault, RoutingRedistribute,
     },
     resource::{ResourceMutation, ResourceMutationOperation},
     value::Id,
@@ -286,6 +286,26 @@ async fn test_ospf_originates_default_only_with_flag() -> Result<(), Box<dyn Err
             let cfg = &target_data.ospf_instance[&AsciiString::from(instance.as_bytes())].0;
             assert_eq!(cfg.originate_default, Some(expected), "{instance}");
         }
+    }
+    Ok(())
+}
+
+/// Die von Hand konfigurierten BGP-Routen (klr-sw-3) gehen über OSPF ins übrige Netz, wie in
+/// `examples/` 01 bis 03, in beiden Instanzen.
+#[tokio::test]
+async fn test_ospf_redistributes_bgp() -> Result<(), Box<dyn Error>> {
+    let device = ospf_router(false).await;
+    let (mut target_data, _) = setup_testdata(b"CCR1009-7G-1C-1S+")?;
+    target_data.generate_from(&device, KeepNameGenerator)?;
+    for instance in ["default-v2", "default-v3"] {
+        let cfg = &target_data.ospf_instance[&AsciiString::from(instance.as_bytes())].0;
+        assert_eq!(
+            cfg.redistribute,
+            [RoutingRedistribute::Connected, RoutingRedistribute::Static, RoutingRedistribute::Bgp]
+                .into_iter()
+                .collect(),
+            "{instance}"
+        );
     }
     Ok(())
 }
