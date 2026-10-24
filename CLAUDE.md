@@ -536,7 +536,7 @@ rollout therefore goes outward from the management proxy's device: `connect` rea
 cut off from OSPF through the neighbor already changed (see the bootstrap fallback below), and
 its apply brings the link back. A new MTU
 restarts a `wlan` radio; on a DFS weather radar channel (5600-5650 MHz) it listens for radar for
-10 minutes (ETSI) before it sends again. The lab runs 2000 on every link between its devices.
+10 minutes (ETSI) before it sends again. The lab's links have none, as in production.
 NetBox's interface `speed` (kbit/s) fixes an Ethernet port's speed without auto-negotiation
 (`setup_speed`, `device/ros/speed.rs`); the RouterOS speed names the medium, which for a cage
 comes from the cable's NetBox `type` (DAC, fiber, copper). Both RouterOS ends need the same, and
