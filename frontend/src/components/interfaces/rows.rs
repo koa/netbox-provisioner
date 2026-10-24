@@ -240,7 +240,7 @@ fn vlan(vlan: interface_view::Vlan) -> Vlan {
 
 /// The helper and its start for an action of the backend on a row of `device`; none for one it
 /// doesn't know.
-fn action(action: interface_view::Action, device: u32) -> Option<Action> {
+pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Action> {
     let kind = match action.kind {
         ActionKind::SUGGESTION => Kind::Suggestion,
         ActionKind::REMOVE => Kind::Remove,
@@ -272,6 +272,13 @@ fn action(action: interface_view::Action, device: u32) -> Option<Action> {
             HelperPreset::PortVlan {
                 port: interface,
                 vlan: action.vlan.map(|vlan| vlan as u32),
+            },
+        ),
+        ActionHelper::CABLE_TAKEOVER => (
+            HelperKind::CableTakeover,
+            HelperPreset::CableTakeover {
+                port: interface?,
+                peer: action.peer?.id as u32,
             },
         ),
         ActionHelper::RADIO_DISCONNECT => (

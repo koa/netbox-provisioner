@@ -2,7 +2,10 @@
 //! row's ports, its OSPF neighbors there, the bridge devices of a radio link answering. Read
 //! after the view, in a query of their own; the neighbor findings come over as the type of the
 //! query `NeighborFindings`, so `components::neighbor_check` words them.
-use super::{Interfaces, InterfacesMsg, rows::Device};
+use super::{
+    Interfaces, InterfacesMsg,
+    rows::{self, Action, Device},
+};
 use crate::{
     components::{
         adjust_target::SelectedTarget,
@@ -13,7 +16,7 @@ use crate::{
         authenticated::{
             InterfaceLive,
             findings::Severity,
-            interface_live,
+            interface_live, interface_view,
             neighbor_findings::{
                 NeighborFindingsTopologyDeviceByIdAccessNeighborFindings as NeighborFinding, Seen,
                 Severity as NeighborSeverity,
@@ -59,6 +62,8 @@ pub struct LiveRow {
     pub ospf_missing: Vec<Device>,
     pub bridges: Vec<Bridge>,
     pub findings: Vec<NeighborFinding>,
+    /// what the findings suggest, as the row's actions
+    pub actions: Vec<Action>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -198,7 +203,7 @@ pub fn fetch(scope: Scope<Interfaces>, id: u32, target: SelectedTarget) {
         .await;
         // `access` is null where the device can't be reached, the error says why
         let live = response.and_then(|response| {
-            match response.data.map(Checked::of).transpose()?.flatten() {
+            match response.data.map(|data| Checked::of(data, id)).transpose()?.flatten() {
                 Some(checked) => Ok(Live::Checked(Rc::new(checked))),
                 None => Ok(Live::Unchecked(
                     FrontendError::Graphql(response.errors.unwrap_or_default()).message(),
@@ -213,7 +218,7 @@ pub fn fetch(scope: Scope<Interfaces>, id: u32, target: SelectedTarget) {
 
 impl Checked {
     /// `None` where the device has no access (not reachable).
-    fn of(data: interface_live::ResponseData) -> Result<Option<Checked>, FrontendError> {
+    fn of(data: interface_live::ResponseData, device_id: u32) -> Result<Option<Checked>, FrontendError> {
         let Some(live) = data
             .topology
             .device_by_id
@@ -250,6 +255,10 @@ impl Checked {
                         })
                         .collect(),
                     findings: convert(&row.findings)?,
+                    actions: convert::<_, interface_view::Action>(&row.actions)?
+                        .into_iter()
+                        .filter_map(|action| rows::action(action, device_id))
+                        .collect(),
                 };
                 Ok((row.interface, Rc::new(live)))
             })

@@ -111,6 +111,7 @@ pub const APPLY: &str = "Anwenden";
 /// a button or menu entry of a row
 pub fn action(kind: Kind, helper: HelperKind) -> String {
     match kind {
+        Kind::Suggestion if helper == HelperKind::CableTakeover => helper.to_string(),
         Kind::Suggestion => "Lösungsvorschlag".to_string(),
         Kind::Remove => "Verbindung entfernen".to_string(),
         Kind::AssignRole => format!(

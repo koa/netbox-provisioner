@@ -244,6 +244,18 @@ vorübergehenden Ports `sfp-sfpplus2` an lab-np1 und lab-np2 und `ether9` an lab
 Plan, Vorschau, Schreiben, Rückgängig (Kabel, Adressen, Prefix, Label und `ospf` wieder da),
 danach gelöscht.
 
+**Kabel übernehmen** (`helper/cable_takeover.rs`): Sieht das Gerät an einem Port genau einen
+Router (kein Brückengerät), aber NetBox hat dort ein Kabel woandershin (`CableElsewhere`) oder an
+einen anderen Port desselben Geräts (`OtherFarPort`), bietet die Live-Prüfung der Zeile „Kabel
+übernehmen“ mit beiden Enden an; ohne Kabel in NetBox „Verbindung“ mit beiden Enden. Der Plan ist
+„Verbindung abräumen“ an jedem der beiden Ports, der in NetBox eine andere Verbindung hat (Kabel
+oder Adressen), nacheinander auf der Vorschau des vorigen, dann „Verbindung“ auf dem Ergebnis,
+deren Schritte hinten angehängt. Ein Kabel über ein Patch-Panel lehnt er ab (`PORT_PATCHED`): Das
+neue Kabel wäre direkt und ersetzte, was NetBox vom Gebäude dokumentiert; das korrigiert man von
+Hand. Im Lab geprüft: das Kabel lab-np2 `ether2` – lab-wap `ether1` in NetBox vorübergehend auf
+lab-wap `ether2` gelegt, auf lab-np2 Live prüfen, „Kabel übernehmen“ (11 Schritte, neues `/31`,
+lab-wap als abgeschnitten genannt), Schreiben, Rückgängig, danach das Kabel zurückgelegt.
+
 ### Kunden-Netz
 
 Ein Port oder ein VLAN wählen, dann das **Parent-Prefix**: Der Helfer bietet die Prefixe der Site

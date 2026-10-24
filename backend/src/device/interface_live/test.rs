@@ -140,3 +140,59 @@ fn an_ospf_neighbor_goes_to_the_interface_with_the_address() {
     assert_eq!(customer.ospf.len(), 1);
     assert_eq!(customer.ospf[0].device.as_ref().map(|d| &*d.name), Some("r2"));
 }
+
+/// NetBox has r1 ether1 – r2 ether1, r1 sees r2 ether3 there: „Kabel übernehmen“ to r2 ether3.
+/// One seeing a radio bridge device gets no action.
+#[test]
+fn another_far_port_suggests_taking_over_the_cable() {
+    let net = Net::new();
+    let topology = Arc::new(net.builder.build());
+    let r1 = topology.get_device_by_id(&net.r1).unwrap();
+    let r2 = topology.get_device_by_id(&net.r2).unwrap();
+    let b1 = topology.get_device_by_id(&net.b1).unwrap();
+    let link = topology.get_interface_by_id(net.link).unwrap();
+    let far = link.connected_interfaces()[0].clone();
+    let interface_ref = crate::topology::findings::interface_ref;
+    let seen = |device: &DeviceAccess, name: &str| {
+        let interface = device.interfaces().iter().find(|i| i.name() == name).unwrap().clone();
+        SeenNeighbor {
+            identity: device.name().into(),
+            interface_name: name.into(),
+            board: "CCR".into(),
+            device: Some(device_ref(device)),
+            interface: Some(interface_ref(&interface)),
+        }
+    };
+    let finding = |seen: SeenNeighbor| NeighborFinding {
+        severity: crate::topology::findings::Severity::Warning,
+        kind: NeighborFindingKind::OtherFarPort(neighbors::OtherFarPort {
+            port: neighbors::PortRef {
+                name: "ether1".into(),
+                interface: Some(interface_ref(&link)),
+            },
+            far_end: interface_ref(&far),
+            seen,
+        }),
+    };
+    let actions = |seen: SeenNeighbor| {
+        let neighbors = Neighbors {
+            findings: vec![finding(seen)],
+            seen: BTreeMap::new(),
+        };
+        let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &BTreeSet::new());
+        live_row(&live, &r1, "ether1").actions.clone()
+    };
+    let to_r2 = seen(&r2, "ether3");
+    assert_eq!(
+        actions(to_r2.clone()),
+        [RowAction {
+            kind: ActionKind::Suggestion,
+            helper: ActionHelper::CableTakeover,
+            interface: Some(link.id().0),
+            peer: to_r2.interface,
+            vlan: None,
+        }]
+    );
+    let b1_port = b1.interfaces().iter().find(|i| i.radio().is_none()).unwrap().name().to_string();
+    assert!(actions(seen(&b1, &b1_port)).is_empty());
+}

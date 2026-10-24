@@ -7,6 +7,7 @@
 //! (`fingerprint`), and each step checks that NetBox is still as the plan found it, so a
 //! change made in between stops it instead of being overwritten. Every write is an event of
 //! the job (`NetboxWritten`), which is what `undo` takes back.
+pub mod cable_takeover;
 pub mod connection;
 pub mod customer_disconnect;
 pub mod customer_net;
@@ -67,6 +68,8 @@ pub enum Helper {
     CustomerDisconnect(customer_disconnect::CustomerDisconnectInput),
     /// a VLAN untagged on a port of the device
     PortVlan(port_vlan::PortVlanInput),
+    /// NetBox's link at a port replaced by the one the device sees, for the port's device
+    CableTakeover(cable_takeover::CableTakeoverInput),
 }
 
 impl Helper {
@@ -82,6 +85,7 @@ impl Helper {
             Helper::RadioDisconnect(input) => radio_disconnect::plan(topology, input),
             Helper::CustomerDisconnect(input) => customer_disconnect::plan(topology, input),
             Helper::PortVlan(input) => port_vlan::plan(topology, input),
+            Helper::CableTakeover(input) => cable_takeover::plan(topology, input).await,
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -118,6 +122,10 @@ impl Helper {
             Helper::PortVlan(input) => topology
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
+            Helper::CableTakeover(input) => topology
+                .get_interface_by_id(crate::topology::InterfaceId(input.port))
+                .and_then(|interface| interface.device())
+                .ok_or(Error::UnknownInterface(input.port)),
         }
     }
 }

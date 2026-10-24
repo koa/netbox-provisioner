@@ -160,6 +160,10 @@ pub enum Error {
     /// a port (`device port`) cabled elsewhere, to `far` if the cable reaches an interface
     #[error("{port} has a cable to {far:?} already")]
     PortCabled { port: Box<str>, far: Option<Box<str>> },
+    /// a port (`device port`) whose cable goes to a patch panel: a direct cable would replace
+    /// what NetBox documents of the building
+    #[error("{0} is cabled to a patch panel")]
+    PortPatched(Box<str>),
     #[error("{port} is a port of bridge {bridge}")]
     PortInBridge { port: Box<str>, bridge: Box<str> },
     /// a port with an IPv4 address not in a network with the other end

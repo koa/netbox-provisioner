@@ -180,6 +180,7 @@ impl From<&Error> for ErrorInfo {
                 params.extend(far.as_ref().map(|far| ("far", far.to_string())));
                 ("PORT_CABLED", params)
             }
+            Error::PortPatched(port) => ("PORT_PATCHED", vec![("port", port.to_string())]),
             Error::PortInBridge { port, bridge } => (
                 "PORT_IN_BRIDGE",
                 vec![("port", port.to_string()), ("bridge", bridge.to_string())],

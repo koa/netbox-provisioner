@@ -108,6 +108,23 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// The row's actions, those of the live checks first: they take what the device sees, and
+    /// replace one of the row with the same helper (a link from the port, the other end open).
+    fn actions(&self) -> Vec<Action> {
+        let live = match &self.live {
+            RowLive::Checked(live) => live.actions.as_slice(),
+            RowLive::Pending | RowLive::Unchecked => &[],
+        };
+        let mut actions = live.to_vec();
+        actions.extend(
+            self.row
+                .actions
+                .iter()
+                .filter(|a| !live.iter().any(|l| (l.kind, l.helper) == (a.kind, a.helper)))
+                .cloned(),
+        );
+        actions
+    }
     fn netbox_url(&self) -> String {
         format!("{}dcim/interfaces/{}/", self.netbox, self.row.interface.id)
     }
@@ -125,7 +142,7 @@ impl Entry {
             <div class="row-actions">
                 <PopupMenu variant={MenuToggleVariant::Plain} icon={html!({Icon::EllipsisV})} aria_label={t::ACTIONS}>
                     <MenuGroup>
-                        { for self.row.actions.iter().map(|action| {
+                        { for self.actions().iter().map(|action| {
                             let on_action = self.on_action.clone();
                             let chosen = action.clone();
                             html!(<MenuActionItem onclick={Callback::from(move |()| on_action.emit(chosen.clone()))}>
@@ -263,7 +280,7 @@ impl TableEntryRenderer<Column> for Entry {
                         <dd>{ format!("{} {}", t::TAGGED, row.tagged_vlans.iter().map(|v| v.vid.to_string()).collect::<Vec<_>>().join(", ")) }</dd>
                     }
                 </dl>
-                {action_buttons(&row.actions, &self.on_action)}
+                {action_buttons(&self.actions(), &self.on_action)}
             </div>
         })]
     }

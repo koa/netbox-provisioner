@@ -399,6 +399,12 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
      Lösungsvorschlag mit dem VLAN; auf einer unbekannten Zeile eines Ethernet-Ports kommt es zu
      „Rolle zuweisen“ dazu, mit dem Port. Freie Ports erreicht man über „Weitere Helfer“. Im
      gespeicherten Export kommt der Befund nicht vor.
+   - Kabel übernehmen, erledigt 2026-10-24: Helfer `cable_takeover` (siehe
+     [Config-Helper](config-helper.md#verbindung)). Die Vorschläge kommen aus der Live-Prüfung
+     (`LiveRow.actions`), nicht aus der Ansicht: Sieht das Gerät an einem Port genau einen Router,
+     ist es bei `CableElsewhere` und `OtherFarPort` „Kabel übernehmen“, bei `CableMissing`
+     „Verbindung“ mit beiden Enden. Sie stehen vor den Aktionen der Zeile und ersetzen dort eine
+     mit demselben Helfer.
 
 ## Entschieden (2026-10-23)
 

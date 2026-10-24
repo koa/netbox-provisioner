@@ -76,6 +76,9 @@ pub enum ActionHelper {
     CustomerDisconnect,
     /// „VLAN am Port“: a VLAN untagged on a port (`interface`, `vlan`, either may be open)
     PortVlan,
+    /// „Kabel übernehmen“: the link from `interface` to `peer`, which the device sees there,
+    /// instead of NetBox's
+    CableTakeover,
 }
 
 /// An action of a row: the helper and what it starts with. The frontend hands it on to the

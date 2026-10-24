@@ -11,7 +11,7 @@ Status: **offen**, **in Arbeit**.
 
 ## Reihenfolge
 
-1. C12 (Rest), mit ihr B7
+1. B7
 2. D1-D5
 
 Dann schauen wir weiter
@@ -86,7 +86,6 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | offen |
 | C11 | Kaltstart eines PoE-gespeisten Geräts auf Knopfdruck: PoE am speisenden Port aus und wieder ein, mit Bestätigung (Z22); für Device-Mode und Rettung nach einem Update | [Update-Fallback](concepts/update-fallback.md) | S–M | offen |
-| C12 | Interfaces nach Aufgabe statt Helfer-Auswahl: Zuordnung (Loopback, Uplink, Direkt, Richtfunk, Kunden, Unbekannt) und Ansicht nur lesend (M); Lösungsvorschläge im Modal mit Stepper über die vorhandenen Helfer, „NetBox ergänzen“ fällt weg (M); Live-Prüfungen (S–M); neue Befunde: ein L3-Übergang pro VLAN (Z27), tagged VLAN am Port (Z26), Strecke unvollständig, Brückengerät ohne Loopback, Label (M); neue Helfer: Richtfunk und Kunden-Anschluss abräumen, VLAN am Port, Funkbrücke vom Router-Port, Kabel übernehmen (M–L); Uplinks ohne Helfer (Z25) | [Interfaces nach Aufgabe](concepts/interface-view.md) | L | in Arbeit: Schritte 1–4 erledigt, aus Schritt 5 Funkbrücke vom Router-Port, Richtfunk und Kunden-Anschluss abräumen, VLAN am Port ([done.md](done.md)); offen: Kabel übernehmen |
 | C14 | Metriken des mikrotik-metrik-exporter im Provisioner (erster Teil von C8): Funk-Clients mit DHCP-Hostname, Health, PoE, dazu System, Interfaces und DHCP-Leases; Labels `device` und `site` aus NetBox, Dashboards im Repo angepasst; danach weder Exporter noch `prometheus`-Benutzer nötig | [Überwachung](concepts/monitoring.md) | M–L | offen |
 
 ## D. In Arbeit, Rest offen

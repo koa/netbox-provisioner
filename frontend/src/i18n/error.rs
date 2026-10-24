@@ -192,6 +192,11 @@ pub fn server(problem: &ServerProblem) -> String {
             "" => format!("{} hat schon ein Kabel", p("port")),
             far => format!("{} hat schon ein Kabel zu {far}", p("port")),
         },
+        "PORT_PATCHED" => format!(
+            "{} ist auf ein Patch-Panel verkabelt: das Kabel in NetBox von Hand korrigieren, ein \
+             direktes Kabel würde die Panels ersetzen",
+            p("port")
+        ),
         "PORT_IN_BRIDGE" => format!(
             "{} ist Port der Bridge {}: eine Verbindung braucht den Port für sich",
             p("port"),

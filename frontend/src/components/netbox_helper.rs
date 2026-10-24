@@ -87,6 +87,8 @@ pub enum HelperPreset {
     CustomerDisconnect(u32),
     /// „VLAN am Port“ with this port or VLAN, or both
     PortVlan { port: Option<u32>, vlan: Option<u32> },
+    /// „Kabel übernehmen“: the link from this port to the one the device sees there
+    CableTakeover { port: u32, peer: u32 },
 }
 
 /// „Funkbrücke“ from a router port: the helper is the bridge device's, its router side set.
@@ -177,6 +179,10 @@ pub enum HelperChoice {
     PortVlan {
         port: u32,
         vlan: u32,
+    },
+    CableTakeover {
+        port: u32,
+        peer: u32,
     },
 }
 
@@ -393,6 +399,12 @@ macro_rules! helper_input {
                     vlan: vlan as i64,
                 })
             }
+            HelperChoice::CableTakeover { port, peer } => {
+                $module::Helper::CableTakeover($module::CableTakeoverInput {
+                    port: port as i64,
+                    peer: peer as i64,
+                })
+            }
         }
     };
 }
@@ -412,6 +424,8 @@ pub enum HelperKind {
     /// only from a customer row: it needs the row's interface
     CustomerDisconnect,
     PortVlan,
+    /// only from a live finding: it needs the port the device sees
+    CableTakeover,
 }
 
 impl HelperKind {
@@ -447,6 +461,7 @@ impl Display for HelperKind {
             HelperKind::RadioDisconnect => t::RADIO_DISCONNECT,
             HelperKind::CustomerDisconnect => t::CUSTOMER_DISCONNECT,
             HelperKind::PortVlan => t::PORT_VLAN,
+            HelperKind::CableTakeover => t::CABLE_TAKEOVER,
         })
     }
 }
@@ -495,6 +510,8 @@ pub struct NetboxHelper {
     net_options: Option<Result<NetOptions, FrontendError>>,
     port_vlan: PortVlanChoice,
     port_vlan_options: Option<Result<PortVlanOptionsData, FrontendError>>,
+    /// „Kabel übernehmen“: the port and the one the device sees there
+    cable_takeover: Option<(u32, u32)>,
     poe: PoeChoice,
     poe_options: Option<Result<PoeOptionsData, FrontendError>>,
     /// what the device reports feeding, once asked
@@ -590,6 +607,7 @@ impl Component for NetboxHelper {
         let mut radio_disconnect = None;
         let mut customer_disconnect = None;
         let mut port_vlan = PortVlanChoice::default();
+        let mut cable_takeover = None;
         let kind = match &ctx.props().preset {
             None => HelperKind::Loopback,
             Some(HelperPreset::Kind(kind)) => *kind,
@@ -635,6 +653,10 @@ impl Component for NetboxHelper {
                 };
                 HelperKind::PortVlan
             }
+            Some(HelperPreset::CableTakeover { port, peer }) => {
+                cable_takeover = Some((*port, *peer));
+                HelperKind::CableTakeover
+            }
         };
         last_write(ctx.link().clone(), ctx.props().id);
         let mut helper = Self {
@@ -653,6 +675,7 @@ impl Component for NetboxHelper {
             net_options: None,
             port_vlan,
             port_vlan_options: None,
+            cable_takeover,
             poe: PoeChoice::default(),
             poe_options: None,
             poe_observed: None,
@@ -1131,6 +1154,7 @@ impl Component for NetboxHelper {
             HelperKind::RadioDisconnect => t::RADIO_DISCONNECT_HINT,
             HelperKind::CustomerDisconnect => t::CUSTOMER_DISCONNECT_HINT,
             HelperKind::PortVlan => t::PORT_VLAN_HINT,
+            HelperKind::CableTakeover => t::CABLE_TAKEOVER_HINT,
         };
         let content = html! {<>
                     {error}
@@ -1265,6 +1289,10 @@ impl NetboxHelper {
                 port: self.port_vlan.port?,
                 vlan: self.port_vlan.vlan?,
             }),
+            HelperKind::CableTakeover => {
+                let (port, peer) = self.cable_takeover?;
+                Some(HelperChoice::CableTakeover { port, peer })
+            }
             HelperKind::RadioDisconnect => Some(HelperChoice::RadioDisconnect {
                 radio: self.radio_disconnect?,
                 wireless_link: self.radio_disconnect_link,

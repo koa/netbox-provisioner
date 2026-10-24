@@ -9,6 +9,10 @@ pub const DISCONNECT_HINT: &str = "Nimmt eine falsche Verbindung aus NetBox: das
     seine Adressen aus dem Transfer-Pool und die der Gegenseite im selben Netz, und das Prefix \
     dieses Netzes, wenn danach nichts mehr darin ist. Danach lässt sich die richtige mit \
     „Verbindung“ anlegen.";
+pub const CABLE_TAKEOVER: &str = "Kabel übernehmen";
+pub const CABLE_TAKEOVER_HINT: &str = "Das Gerät sieht am Port einen anderen Router als NetBox \
+    dort hat: räumt die Verbindungen ab, die NetBox an diesem Port und am gesehenen Port hat \
+    (wie „Verbindung abräumen“), und legt die gesehene an (wie „Verbindung“).";
 pub const CHOOSE_DISCONNECT_PORT: &str = "Den Port wählen, dessen Verbindung weg soll.";
 pub const CUSTOMER_NET: &str = "Kunden-Netz";
 pub const CUSTOMER_NET_HINT: &str = "Legt ein Netz für einen Port oder ein VLAN an: das \

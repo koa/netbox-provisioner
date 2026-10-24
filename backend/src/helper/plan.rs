@@ -34,6 +34,30 @@ pub enum Target {
     Step(usize),
 }
 
+impl Target {
+    fn shift(&mut self, by: usize) {
+        if let Target::Step(step) = self {
+            *step += by;
+        }
+    }
+}
+
+impl PlanStep {
+    /// The step after `by` steps put in front of its plan: its references to steps move along.
+    pub(super) fn shift(&mut self, by: usize) {
+        match self {
+            PlanStep::CreateAddress(create) => create.on.shift(by),
+            PlanStep::SetPrimaryIp(set) => set.address_id.shift(by),
+            PlanStep::UpdatePort(update) => {
+                if let Some(bridge) = &mut update.bridge_id {
+                    bridge.shift(by);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// A new interface `name` of NetBox type `kind` (`virtual`) on `device`, with an untagged
 /// VLAN (802.1Q mode access) and tags.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]

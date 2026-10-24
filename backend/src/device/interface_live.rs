@@ -17,7 +17,7 @@ use crate::{
         DeviceId,
         access::device::DeviceAccess,
         findings::{DeviceRef, device_ref},
-        interfaces::{InterfaceRow, InterfaceTask},
+        interfaces::{ActionHelper, ActionKind, InterfaceRow, InterfaceTask, RowAction},
     },
 };
 use async_graphql::SimpleObject;
@@ -46,6 +46,8 @@ pub struct LiveRow {
     pub bridges: Vec<BridgeAnswer>,
     /// the neighbor findings about its ports, the worst first
     pub findings: Vec<NeighborFinding>,
+    /// what the findings suggest: the link to the router the device sees at a port
+    pub actions: Vec<RowAction>,
 }
 
 /// A neighbor of `/routing/ospf/neighbor`.
@@ -173,7 +175,7 @@ pub fn check(
                     }
                 })
                 .collect();
-            let findings = neighbors
+            let findings: Vec<NeighborFinding> = neighbors
                 .findings
                 .iter()
                 .zip(placed.iter_mut())
@@ -185,6 +187,12 @@ pub fn check(
                     finding.clone()
                 })
                 .collect();
+            let mut actions = Vec::<RowAction>::new();
+            for action in findings.iter().filter_map(|finding| seen_link(device, finding)) {
+                if !actions.contains(&action) {
+                    actions.push(action);
+                }
+            }
             LiveRow {
                 interface: row.interface.id,
                 seen,
@@ -192,6 +200,7 @@ pub fn check(
                 ospf_missing,
                 bridges,
                 findings,
+                actions,
             }
         })
         .collect();
@@ -219,6 +228,33 @@ fn port_of(finding: &NeighborFinding) -> Option<u32> {
         NeighborFindingKind::DiscoveryOff(_) => return None,
     };
     port.interface.as_ref().map(|interface| interface.id)
+}
+
+/// The link to the one router the device sees at a port where NetBox has no cable
+/// („Verbindung“) or one elsewhere („Kabel übernehmen“). Radio bridge devices are left out:
+/// their links are radio links.
+fn seen_link(device: &DeviceAccess, finding: &NeighborFinding) -> Option<RowAction> {
+    let (port, seen, helper) = match &finding.kind {
+        NeighborFindingKind::CableMissing(f) => (&f.port, f.seen.as_slice(), ActionHelper::Connection),
+        NeighborFindingKind::CableElsewhere(f) => (&f.port, f.seen.as_slice(), ActionHelper::CableTakeover),
+        NeighborFindingKind::OtherFarPort(f) => (&f.port, std::slice::from_ref(&f.seen), ActionHelper::CableTakeover),
+        _ => return None,
+    };
+    let [seen] = seen else { return None };
+    let (port, peer) = (port.interface.as_ref()?, seen.interface.as_ref()?);
+    let topology = device.topology();
+    let peer_device = topology.get_device_by_id(&DeviceId(peer.device.id))?;
+    let routers = [device, &peer_device];
+    if routers.iter().any(|d| !d.has_routeros() || d.is_bridge_device()) {
+        return None;
+    }
+    Some(RowAction {
+        kind: ActionKind::Suggestion,
+        helper,
+        interface: Some(port.id),
+        peer: Some(peer.clone()),
+        vlan: None,
+    })
 }
 
 /// The routers an `ospf` row should be adjacent with: the RouterOS devices at its cables, and on

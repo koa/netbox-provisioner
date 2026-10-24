@@ -10,6 +10,7 @@ query InterfaceLive($id: Int!, $target: String, $credentialName: String, $adhocC
                         ospfMissing{ ...Device }
                         bridges{ device{ ...Device } address answers }
                         findings{ ...NeighborFinding }
+                        actions{ kind helper interface peer{ ...Interface } vlan }
                     }
                     otherFindings{ ...NeighborFinding }
                 }
