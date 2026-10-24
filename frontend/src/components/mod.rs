@@ -7,3 +7,4 @@ pub mod job;
 pub mod menu;
 pub mod netbox_helper;
 pub mod neighbor_check;
+pub mod site_diff;

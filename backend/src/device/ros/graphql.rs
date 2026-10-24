@@ -789,6 +789,15 @@ fn restarts_radio(mutations: &[ResourceMutation<'_>]) -> bool {
 }
 
 impl AccessibleDevice {
+    /// What an apply would change, by menu: the plan `generateCfg` shows as script
+    /// (`site_diff`).
+    pub async fn menu_changes(&self) -> Result<Vec<crate::device::site_diff::MenuChanges>, Error> {
+        let mut device_cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
+        device_cfg
+            .generate_live(&self.device_config, &self.connect_again().await?)
+            .await?;
+        Ok(crate::device::site_diff::menu_changes(&device_cfg.sorted_mutations()?))
+    }
     /// Applies the generated config: the diff runs as a script on the device itself, so it
     /// completes even when it changes the path this connection takes. Then the diff is built
     /// again over a new connection; whatever is left wasn't applied (RouterOS stops a script

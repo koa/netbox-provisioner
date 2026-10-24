@@ -3,6 +3,7 @@ use crate::{
     components::{
         findings::{self, FindingsList},
         neighbor_check::NeighborCheck,
+        site_diff::SiteDiff,
     },
     error::FrontendError,
     graphql::{
@@ -97,6 +98,7 @@ impl Component for Devices {
         html! {
             <>
                 <FindingsList site={Some(site)}/>
+                <SiteDiff {site}/>
                 {check}
                 <div class="device-list">
                     {error_msg}

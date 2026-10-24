@@ -24,9 +24,9 @@ use yew::{
 };
 
 /// How often a running job is asked for new events.
-const POLL: Duration = Duration::from_secs(1);
+pub(crate) const POLL: Duration = Duration::from_secs(1);
 /// How long to wait after the 1st, 2nd, … failed asking in a row; then the last one.
-const RETRY: [Duration; 4] = [
+pub(crate) const RETRY: [Duration; 4] = [
     Duration::from_secs(1),
     Duration::from_secs(2),
     Duration::from_secs(5),
@@ -218,6 +218,7 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         JobKind::BOOT_PARTITION => t::BOOT_PARTITION,
         JobKind::NETBOX_WRITE => t::NETBOX_WRITE,
         JobKind::NETBOX_UNDO => t::NETBOX_UNDO,
+        JobKind::SITE_DIFF => t::SITE_DIFF,
         JobKind::Other(other) => other,
     };
     let events = || job.events.iter().map(|event| &event.event);
@@ -381,6 +382,8 @@ macro_rules! watching {
 fn describe(event: &JobEventsJobEvents) -> Html {
     use t::event as e;
     let text = match &event.event {
+        // a site's job, shown by `components::site_diff`, never on a device's page
+        Event::SiteDiffStarted | Event::DeviceDiffed => return Html::default(),
         Event::ApplyPlanned(planned) if planned.script.trim().is_empty() => e::NOTHING_TO_DO.into(),
         Event::ApplyPlanned(planned) => return script(t::SCRIPT, &planned.script),
         Event::FallbackArmed(armed) => e::fallback_armed(

@@ -305,3 +305,27 @@ pub struct BatchDevice;
     response_derives = "Debug"
 )]
 pub struct ApplyBatch;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/site-diff.graphql",
+    response_derives = "Debug"
+)]
+pub struct DiffSite;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/site-diff.graphql",
+    response_derives = "Debug, PartialEq"
+)]
+pub struct SiteDiffJobs;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/site-diff.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct SiteDiffEvents;

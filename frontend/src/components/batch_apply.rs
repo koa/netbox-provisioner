@@ -323,7 +323,8 @@ fn start(scope: Scope<BatchApply>, ids: Vec<i64>) {
             .map(|data| {
                 data.apply_batch
                     .into_iter()
-                    .map(|job| (job.id, job.device_id, job.device_name))
+                    // a batch's jobs are each a device's
+                    .filter_map(|job| Some((job.id, job.device_id?, job.device_name?)))
                     .collect()
             });
         scope.send_message(BatchMessage::Started(result));

@@ -48,6 +48,8 @@ pub enum Error {
     ApplyNotAllowed,
     #[error("No device {0}")]
     UnknownDevice(u32),
+    #[error("No site {0}")]
+    UnknownSite(u32),
     #[error("No interface {0}")]
     UnknownInterface(u32),
     #[error("No topology: NetBox couldn't be read")]

@@ -40,13 +40,19 @@ Knopf), die der Reihe nach durch Loopback, Verbindung usw. führt, ohne Wizard z
 | Kabel | „Nachbarn lesen“ (MNDP/LLDP gegen NetBox) | |
 | Adressen auf dem Gerät, die NetBox nicht kennt | sichtbar nur im Diff (Skript entfernt sie) | Befund „Adresse auf dem Gerät, nicht in NetBox“ mit „übernehmen“ |
 | PoE | „Vom Gerät ablesen“ im Helfer PoE | als Befund für alle Geräte einer Site |
-| Konfiguration allgemein | Diff auf der Geräteseite | Übersicht pro Site: welches Gerät wie viele Zeilen Diff hat |
+| Konfiguration allgemein | Diff auf der Geräteseite; „Abweichung von NetBox“ auf der Site-Seite: je Gerät die Änderungen eines Anwendens nach Menü | Diff in Worten |
 
 **Erstmal alle syncen:** Für jedes Gerät gilt dieselbe Schleife: Diff ansehen, was davon ist
 gewollt (dann NetBox korrigieren) und was falsch (dann anwenden). Was fehlt, ist der Überblick:
 
-- **Site-Übersicht mit Diff-Grösse** je Gerät (Zeilen, und ob Adressen oder Kabel wegfallen
-  würden), sortiert, und wer schon „entspricht NetBox“ ist. Damit sieht man den Fortschritt.
+- **Site-Übersicht mit Diff-Grösse** je Gerät (umgesetzt, „Abweichung von NetBox“ auf der
+  Site-Seite): ein Job der Site (`diffSite`, `device::site_diff`) liest die RouterOS-Geräte, vier
+  zugleich, und meldet je Gerät, was ein Anwenden je Menü hinzufügt, ändert und entfernt (wie
+  das Skript: Updates ohne Felder zählen nicht), oder warum es nicht lesbar war. Die Karte zeigt
+  den Zwischenstand, die meisten Änderungen zuerst, hebt entfernte Adressen, OSPF und
+  Bridge-Ports hervor und zählt, wer schon „entspricht NetBox“. Er sperrt kein Gerät, ein Apply
+  daneben geht; ein zweiter Start gibt den laufenden zurück, und die Seite übernimmt beim
+  Öffnen den letzten Job der Site.
 - **Diff in Worten** zusätzlich zum Skript: „entfernt 2 Adressen, ändert die SSID“, die
   heiklen Teile hervorgehoben (Adressen, OSPF, Bridge-Ports).
 - **Übernehmen statt wegwerfen:** Für Adressen und Kabel, die nur auf dem Gerät existieren, ein
@@ -57,7 +63,7 @@ automatisch Anforderungen; der Mensch entscheidet beim Übernehmen.
 
 ## Reihenfolge
 
-1. Site-Übersicht mit Diff-Grösse (nur lesen, hilft sofort beim Syncen).
+1. Site-Übersicht mit Diff-Grösse (nur lesen, hilft sofort beim Syncen; umgesetzt).
 2. Helfer „Neues Gerät“.
 3. Befund und „Übernehmen“ für Adressen nur auf dem Gerät.
 4. Diff in Worten.

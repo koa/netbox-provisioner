@@ -49,6 +49,7 @@ pub fn server(problem: &ServerProblem) -> String {
         "MISSING_CREDENTIALS" => "Keine Zugangsdaten für das Gerät".into(),
         "APPLY_NOT_ALLOWED" => "Schreiben auf Geräte ist gesperrt (allow_apply)".into(),
         "UNKNOWN_DEVICE" => format!("Gerät {} gibt es in NetBox nicht", p("id")),
+        "UNKNOWN_SITE" => format!("Site {} gibt es in NetBox nicht", p("id")),
         "UNKNOWN_INTERFACE" => format!("Interface {} gibt es in NetBox nicht", p("id")),
         "NO_TOPOLOGY" => "NetBox liess sich nicht lesen".into(),
         "TIMEOUT" => format!("Keine Antwort von {}", p("address")),

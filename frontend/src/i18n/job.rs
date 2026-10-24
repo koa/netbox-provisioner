@@ -22,6 +22,7 @@ pub const REPARTITION: &str = "Aufteilen des Flash";
 pub const BOOT_PARTITION: &str = "Start von einer anderen Partition";
 pub const NETBOX_WRITE: &str = "Schreiben in NetBox";
 pub const NETBOX_UNDO: &str = "Rückgängig in NetBox";
+pub const SITE_DIFF: &str = "Abweichung von NetBox";
 
 pub const NOTHING_TO_APPLY: &str = "Nichts anzuwenden, das Gerät entspricht NetBox";
 pub const NOT_ALL_APPLIED: &str = "Nicht alles wurde angewendet";

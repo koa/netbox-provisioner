@@ -24,6 +24,9 @@ pub mod findings;
 /// What the devices see at their ports against NetBox's cables (`components::neighbor_check`).
 pub mod neighbors;
 
+/// How far each device of a site is from NetBox (`components::site_diff`).
+pub mod site_diff;
+
 /// Choosing another address or other credentials (`components::adjust_target`).
 pub mod target;
 

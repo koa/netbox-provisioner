@@ -183,6 +183,14 @@ end with another link, one after the other on the preview, then „Verbindung“
 its steps shifted behind (`PlanStep::shift`); a cable over a patch panel is refused
 (`PORT_PATCHED`), the new one would be direct.
 
+`device/site_diff.rs` is the site page's „Abweichung von NetBox“ (`Mutation.diffSite`,
+`components::site_diff`): a job of the site (`job::start_site`, `JobSubject::Site`; a site's job
+locks none of its devices, a second start gives back the running one) reads its RouterOS
+devices, four at a time, and emits `DeviceDiffed` per device with the changes of an apply by
+menu (`AccessibleDevice::menu_changes`: the sorted mutations counted like the script, which
+leaves out every update without fields) or the error. A job's `deviceId`/`deviceName` are
+`null` for a site's job, `siteId`/`siteName` then say which.
+
 `device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's
 cables (`AccessibleDevice.neighborFindings`, read-only; the site page asks every device at once,
 `components::neighbor_check`). Ports on the device and the ports neighbors report carry the names

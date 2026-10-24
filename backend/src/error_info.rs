@@ -66,6 +66,7 @@ impl From<&Error> for ErrorInfo {
             ),
             Error::ApplyNotAllowed => ("APPLY_NOT_ALLOWED", vec![]),
             Error::UnknownDevice(id) => ("UNKNOWN_DEVICE", vec![("id", id.to_string())]),
+            Error::UnknownSite(id) => ("UNKNOWN_SITE", vec![("id", id.to_string())]),
             Error::UnknownInterface(id) => ("UNKNOWN_INTERFACE", vec![("id", id.to_string())]),
             Error::NoTopology => ("NO_TOPOLOGY", vec![]),
             Error::Timeout(address) => ("TIMEOUT", vec![("address", address.to_string())]),

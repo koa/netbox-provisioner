@@ -1,0 +1,34 @@
+mutation DiffSite($site: Int!){
+    diffSite(siteId: $site){
+        id
+    }
+}
+query SiteDiffJobs($site: Int!){
+    jobs(siteId: $site){
+        id
+        kind
+    }
+}
+query SiteDiffEvents($id: Int!, $after: Int){
+    job(id: $id){
+        state
+        error { ...Problem }
+        events(after: $after){
+            index
+            event {
+                __typename
+                ... on SiteDiffStarted { devices { id name } }
+                ... on DeviceDiffed {
+                    device { id name }
+                    menus { menu added changed removed }
+                    error { ...Problem }
+                }
+            }
+        }
+    }
+}
+fragment Problem on ErrorInfo {
+    code
+    message
+    params { name value }
+}

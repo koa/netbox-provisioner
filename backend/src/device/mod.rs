@@ -29,6 +29,7 @@ pub mod power;
 pub(crate) mod radio_hold;
 pub(crate) mod raw;
 pub mod ros;
+pub mod site_diff;
 pub mod terminal;
 pub mod update;
 pub mod update_fallback;

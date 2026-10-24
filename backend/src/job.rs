@@ -19,7 +19,10 @@ use crate::{
     },
     graphql::scalars::ScalarDuration,
     helper,
-    topology::{DeviceId, access::device::DeviceAccess},
+    topology::{
+        DeviceId, SiteId,
+        access::{AccessTopology, device::DeviceAccess, site::SiteAccess},
+    },
 };
 use async_graphql::{Enum, Object, SimpleObject, Union};
 use log::info;
@@ -89,6 +92,8 @@ pub enum Event {
     WatchdogKept(radio_hold::WatchdogKept),
     NetboxWritten(helper::NetboxWritten),
     NetboxUndone(helper::NetboxUndone),
+    SiteDiffStarted(device::site_diff::SiteDiffStarted),
+    DeviceDiffed(device::site_diff::DeviceDiffed),
 }
 
 /// An event and when it happened, counted from the start of the job.
@@ -189,6 +194,8 @@ pub enum JobKind {
     NetboxWrite,
     /// what a `NetboxWrite` job wrote taken back (`undoNetboxWrite`)
     NetboxUndo,
+    /// how far each device of a site is from NetBox (`diffSite`), read only
+    SiteDiff,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
@@ -199,10 +206,19 @@ pub enum JobState {
     Cancelled,
 }
 
+/// What a job works on: a device, which runs one job at a time, or a site, whose job only reads
+/// its devices and so keeps none of them from a job of its own.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum JobSubject {
+    Device(DeviceId),
+    Site(SiteId),
+}
+
 pub struct Job {
     id: u32,
-    device: DeviceId,
-    device_name: Box<str>,
+    subject: JobSubject,
+    /// the device's or the site's name
+    name: Box<str>,
     kind: JobKind,
     log: Log,
     outcome: Mutex<(JobState, Option<ErrorInfo>)>,
@@ -237,8 +253,12 @@ impl Job {
     pub fn job_kind(&self) -> JobKind {
         self.kind
     }
-    pub fn job_device(&self) -> DeviceId {
-        self.device
+    /// The device it works on; `None` for a site's job.
+    pub fn job_device(&self) -> Option<DeviceId> {
+        match self.subject {
+            JobSubject::Device(device) => Some(device),
+            JobSubject::Site(_) => None,
+        }
     }
     pub fn is_running(&self) -> bool {
         self.state() == JobState::Running
@@ -267,8 +287,8 @@ impl Job {
     fn finish(&self, state: JobState, error: Option<ErrorInfo>) {
         *self.took.lock().unwrap_or_else(PoisonError::into_inner) = Some(self.log.started.elapsed());
         match &error {
-            Some(error) => info!("{}: job {} {state:?}: {}", self.device_name, self.id, error.message),
-            None => info!("{}: job {} {state:?}", self.device_name, self.id),
+            Some(error) => info!("{}: job {} {state:?}: {}", self.name, self.id, error.message),
+            None => info!("{}: job {} {state:?}", self.name, self.id),
         }
         *self.outcome.lock().unwrap_or_else(PoisonError::into_inner) = (state, error);
     }
@@ -285,13 +305,51 @@ where
 {
     let log = Log::new(device.name());
     let work = work(log.clone());
-    let job = register(&[(device, log)], kind)?.swap_remove(0);
-    let running = job.clone();
+    let job = register(&[(subject_of(device), log)], kind)?.swap_remove(0);
+    spawn(job.clone(), work);
+    Ok(job)
+}
+
+/// Starts `work` for `site` in the background (`JobKind::SiteDiff`). A site runs one job of a
+/// kind at a time: while one runs, that one is given back instead of a second, so a page
+/// opened again finds it.
+pub fn start_site<F>(
+    site: &SiteAccess,
+    kind: JobKind,
+    work: impl FnOnce(Log) -> F,
+) -> Arc<Job>
+where
+    F: Future<Output = Result<(), Error>> + Send + 'static,
+{
+    let mut jobs = JOBS.lock().unwrap_or_else(PoisonError::into_inner);
+    let subject = JobSubject::Site(site.id());
+    if let Some(running) = jobs
+        .jobs
+        .iter()
+        .find(|job| job.subject == subject && job.kind == kind && job.state() == JobState::Running)
+    {
+        return running.clone();
+    }
+    let log = Log::new(site.name());
+    let work = work(log.clone());
+    let job = add(&mut jobs, subject, site.name(), kind, log);
+    drop(jobs);
+    spawn(job.clone(), work);
+    job
+}
+
+fn spawn<F>(job: Arc<Job>, work: F)
+where
+    F: Future<Output = Result<(), Error>> + Send + 'static,
+{
     tokio::spawn(async move {
         let result = run(work).await;
-        running.finish_with(result);
+        job.finish_with(result);
     });
-    Ok(job)
+}
+
+fn subject_of(device: &DeviceAccess) -> (JobSubject, &str) {
+    (JobSubject::Device(device.id()), device.name())
 }
 
 /// Starts `work` for all of `devices` together (a batch), each with a job of its own, unless
@@ -307,7 +365,7 @@ where
 {
     let logs: Vec<Log> = devices.iter().map(|device| Log::new(device.name())).collect();
     let work = work(logs.clone());
-    let members: Vec<_> = devices.iter().zip(logs).collect();
+    let members: Vec<_> = devices.iter().map(subject_of).zip(logs).collect();
     let jobs = register(&members, kind)?;
     let running = jobs.clone();
     tokio::spawn(async move {
@@ -331,44 +389,48 @@ where
 }
 
 /// Adds a running job for each of `members`, none if one of their devices runs a job already.
-fn register(members: &[(&DeviceAccess, Log)], kind: JobKind) -> Result<Vec<Arc<Job>>, Error> {
+fn register(members: &[((JobSubject, &str), Log)], kind: JobKind) -> Result<Vec<Arc<Job>>, Error> {
     let mut jobs = JOBS.lock().unwrap_or_else(PoisonError::into_inner);
-    for (device, _) in members {
+    for ((subject, name), _) in members {
         if jobs
             .jobs
             .iter()
-            .any(|job| job.device == device.id() && job.state() == JobState::Running)
+            .any(|job| job.subject == *subject && job.state() == JobState::Running)
         {
-            return Err(Error::Busy(device.name().into()));
+            return Err(Error::Busy((*name).into()));
         }
     }
-    let mut started = Vec::new();
-    for (device, log) in members {
-        jobs.next += 1;
-        let job = Arc::new(Job {
-            id: jobs.next,
-            device: device.id(),
-            device_name: device.name().into(),
-            kind,
-            log: log.clone(),
-            outcome: Mutex::new((JobState::Running, None)),
-            took: Mutex::new(None),
-        });
-        jobs.jobs.push(job.clone());
-        let finished = jobs.jobs.iter().filter(|job| job.state() != JobState::Running).count();
-        if finished > KEEP
-            && let Some(oldest) = jobs.jobs.iter().position(|job| job.state() != JobState::Running)
-        {
-            jobs.jobs.remove(oldest);
-        }
-        info!("{}: job {} {kind:?} started", job.device_name, job.id);
-        started.push(job);
+    Ok(members
+        .iter()
+        .map(|((subject, name), log)| add(&mut jobs, *subject, name, kind, log.clone()))
+        .collect())
+}
+
+/// Adds a running job, dropping the oldest finished one beyond [`KEEP`].
+fn add(jobs: &mut Jobs, subject: JobSubject, name: &str, kind: JobKind, log: Log) -> Arc<Job> {
+    jobs.next += 1;
+    let job = Arc::new(Job {
+        id: jobs.next,
+        subject,
+        name: name.into(),
+        kind,
+        log,
+        outcome: Mutex::new((JobState::Running, None)),
+        took: Mutex::new(None),
+    });
+    jobs.jobs.push(job.clone());
+    let finished = jobs.jobs.iter().filter(|job| job.state() != JobState::Running).count();
+    if finished > KEEP
+        && let Some(oldest) = jobs.jobs.iter().position(|job| job.state() != JobState::Running)
+    {
+        jobs.jobs.remove(oldest);
     }
-    Ok(started)
+    info!("{}: job {} {kind:?} started", job.name, job.id);
+    job
 }
 
 /// Runs `work`; a panic in it is an error, instead of a job left running forever.
-async fn run<T: Send + 'static>(
+pub(crate) async fn run<T: Send + 'static>(
     work: impl Future<Output = Result<T, Error>> + Send + 'static,
 ) -> Result<T, Error> {
     tokio::spawn(work).await.unwrap_or_else(|join| {
@@ -394,14 +456,14 @@ pub fn get(id: u32) -> Option<Arc<Job>> {
         .cloned()
 }
 
-/// The jobs of `device` (all without), newest first.
-pub fn list(device: Option<DeviceId>) -> Vec<Arc<Job>> {
+/// The jobs of `subject` (all without), newest first.
+pub fn list(subject: Option<JobSubject>) -> Vec<Arc<Job>> {
     JOBS.lock()
         .unwrap_or_else(PoisonError::into_inner)
         .jobs
         .iter()
         .rev()
-        .filter(|job| device.is_none_or(|device| job.device == device))
+        .filter(|job| subject.is_none_or(|subject| job.subject == subject))
         .cloned()
         .collect()
 }
@@ -421,11 +483,22 @@ impl Job {
     async fn kind(&self) -> JobKind {
         self.kind
     }
-    async fn device_id(&self) -> u32 {
-        self.device.0
+    /// the device it works on; `null` for a site's job
+    async fn device_id(&self) -> Option<u32> {
+        self.job_device().map(|device| device.0)
     }
-    async fn device_name(&self) -> &str {
-        &self.device_name
+    async fn device_name(&self) -> Option<&str> {
+        self.job_device().map(|_| &*self.name)
+    }
+    /// the site it works on (`SITE_DIFF`); `null` for a device's job
+    async fn site_id(&self) -> Option<u32> {
+        match self.subject {
+            JobSubject::Site(site) => Some(site.0),
+            JobSubject::Device(_) => None,
+        }
+    }
+    async fn site_name(&self) -> Option<&str> {
+        matches!(self.subject, JobSubject::Site(_)).then_some(&*self.name)
     }
     #[graphql(name = "state")]
     async fn graphql_state(&self) -> JobState {

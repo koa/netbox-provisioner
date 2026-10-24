@@ -88,6 +88,12 @@ impl TopologyHolder {
             None
         }
     }
+    pub async fn site(&self, id: SiteId) -> Option<access::site::SiteAccess> {
+        let topo = self.topo_lock().await.as_ref().cloned()?;
+        topo.sites
+            .contains_key(&id)
+            .then(|| <access::site::SiteAccess as access::AccessTopology>::create(topo.clone(), id))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

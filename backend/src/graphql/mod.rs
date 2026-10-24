@@ -11,11 +11,11 @@ use crate::{
     context::UserInfo,
     graphql::scalars::ScalarMac,
     helper::{self, Helper, NetboxPlan},
-    job::{self, Job, JobKind, Log},
+    job::{self, Job, JobKind, JobSubject, Log},
     netbox,
     topology::{
-        DeviceId, TopologyHolder,
-        access::{AdhocCredentials, device::DeviceAccess},
+        DeviceId, SiteId, TopologyHolder,
+        access::{AdhocCredentials, device::DeviceAccess, site::SiteAccess},
         management::ManagementTree,
     },
 };
@@ -89,10 +89,14 @@ impl QueryAuthenticated {
     async fn job(&self, id: u32) -> Option<Arc<Job>> {
         job::get(id)
     }
-    /// The jobs of a device (of all devices without `device_id`), newest first; those still
-    /// running and the last finished ones.
-    async fn jobs(&self, device_id: Option<u32>) -> Vec<Arc<Job>> {
-        job::list(device_id.map(DeviceId))
+    /// The jobs of a device or a site (all without either), newest first; those still running
+    /// and the last finished ones.
+    async fn jobs(&self, device_id: Option<u32>, site_id: Option<u32>) -> Vec<Arc<Job>> {
+        job::list(
+            device_id
+                .map(|id| JobSubject::Device(DeviceId(id)))
+                .or(site_id.map(|id| JobSubject::Site(SiteId(id)))),
+        )
     }
 }
 /// Fetches the topology after a write to NetBox, so the next page shows it.
@@ -108,6 +112,9 @@ impl MutationAuthenticated {
             .devices_by_id(DeviceId(id))
             .await
             .ok_or(Error::UnknownDevice(id))
+    }
+    async fn site(&self, id: u32) -> Result<SiteAccess, Error> {
+        self.topology.site(SiteId(id)).await.ok_or(Error::UnknownSite(id))
     }
 }
 
@@ -207,7 +214,9 @@ impl MutationAuthenticated {
         if objects.is_empty() {
             return Err(Error::NothingToUndo(job_id).into());
         }
-        let device = self.device(written.job_device().0).await?;
+        let device = self
+            .device(written.job_device().ok_or(Error::UnknownJob(job_id))?.0)
+            .await?;
         let user = user_label(ctx);
         let topology = self.topology.clone();
         Ok(job::start(&device, JobKind::NetboxUndo, |log| async move {
@@ -369,6 +378,15 @@ impl MutationAuthenticated {
     /// each with its NetBox address and credentials: one job per device, with one fallback
     /// for all of them, taken away only once every one is reached again (`device::batch`).
     #[graphql(guard = "WritesAllowed")]
+    /// Starts reading how far each RouterOS device of the site is from NetBox (what an apply
+    /// would change, by menu; `device::site_diff`), or gives back the one still running. Only
+    /// reads, so it needs no `allow_apply`.
+    async fn diff_site(&self, site_id: u32) -> Result<Arc<Job>, ApiError> {
+        let site = self.site(site_id).await?;
+        Ok(job::start_site(&site.clone(), JobKind::SiteDiff, |log| {
+            crate::device::site_diff::run(site, log)
+        }))
+    }
     async fn apply_batch(&self, ids: Vec<u32>) -> Result<Vec<Arc<Job>>, ApiError> {
         let mut devices = Vec::new();
         for id in ids {
