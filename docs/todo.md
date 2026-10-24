@@ -11,8 +11,7 @@ Status: **offen**, **in Arbeit**.
 
 ## Reihenfolge
 
-1. B7
-2. D1-D5
+1. D1-D5
 
 Dann schauen wir weiter
 
@@ -69,7 +68,6 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
-| B7 | Grosse Dateien aufteilen: `frontend/src/components/netbox_helper.rs` (2090 Zeilen), mit C12 neu aufgeteilt; die übrigen sind erledigt ([done.md](done.md)) | S | offen |
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
 
 ## C. Konzepte zum Umsetzen

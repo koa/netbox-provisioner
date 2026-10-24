@@ -213,6 +213,10 @@ the device page opens them in a modal (`components::helper_flow`, a stepper over
 `NetboxHelper`, `embedded`/`preset`/`on_phase`) from a row of the interfaces card, which the
 backend gives its actions (`InterfaceRow.actions`, `InterfaceView.loopbackActions`: kind, helper,
 preset ports or VLAN), or from „Weitere Helfer“; "Rückgängig" is the device's last write.
+`components::netbox_helper` keeps the component and what all helpers share in `mod.rs` and
+`choice.rs` (presets, `HelperKind`, `HelperChoice`, `helper_input!`), the plan and preview in
+`plan.rs`, and gives each helper with a form a module with its choice, form, queries and its
+own message (`LinkMsg`, `PoeMsg`, …, wrapped by `From` so callbacks give it as is).
 A `CableMissing` neighbor finding with both ends in NetBox opens the card below it with those
 ends (`components::neighbor_check`, `LinkPreset`). Lists of devices and interfaces follow
 NetBox' order (`topology::natural`, its `naturalize`/`naturalize_interface`).

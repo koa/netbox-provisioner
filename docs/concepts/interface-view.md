@@ -296,7 +296,8 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
 - **Neue Helfer** (keine für Uplinks): „Richtfunk abräumen“, „Kunden-Anschluss abräumen“,
   „VLAN am Port setzen“, der Aufruf von „Funkbrücke“ vom Router-Port her, und „Kabel übernehmen“
   als ein Plan aus Abräumen und Verbindung.
-- **Frontend:** `netbox_helper.rs` (über 2000 Zeilen) wird aufgeteilt: die Ansicht
+- **Frontend:** `netbox_helper.rs` (über 2000 Zeilen) wird aufgeteilt (erledigt 2026-10-24,
+  `components/netbox_helper/`, ein Modul pro Helfer mit Formular): die Ansicht
   (`components/interfaces/`: `rows.rs` das Modell, `table.rs` die Tabelle mit den Spalten pro
   Aufgabe, `loopback.rs`; eine Datei pro Aufgabe lohnte sich nicht, die Aufgaben unterscheiden
   sich nur in den Spalten) und das Modal mit dem Ablauf (`components/helper_flow.rs`). Die heutigen Formulare der Helfer ziehen in das Modal um.
