@@ -287,7 +287,22 @@ impl From<&SetupError> for ErrorInfo {
                 vec![("vlan", vlan.to_string()), ("servers", servers.join(", "))],
             ),
             SetupError::MissingVtepAddress(vxlan) => ("NO_VTEP_ADDRESS", one("vxlan", vxlan)),
-            SetupError::PortInMultipleBridges(port) => ("PORT_IN_BRIDGES", one("port", port)),
+            // one line per VLAN in each of `vlans`, `vlanNames`, `bridges`; empty: untagged,
+            // no name, no bridge
+            SetupError::PortInMultipleBridges { port, vlans } => {
+                let lines = |value: &dyn Fn(&crate::device::ros::VlanOnBridge) -> String| {
+                    vlans.iter().map(value).collect::<Vec<_>>().join("\n")
+                };
+                (
+                    "PORT_IN_BRIDGES",
+                    vec![
+                        ("port", port.to_string()),
+                        ("vlans", lines(&|v| v.vlan.map(|id| id.to_string()).unwrap_or_default())),
+                        ("vlanNames", lines(&|v| v.vlan_name.as_deref().unwrap_or_default().into())),
+                        ("bridges", lines(&|v| v.bridge.as_deref().unwrap_or_default().into())),
+                    ],
+                )
+            }
             SetupError::UnsupportedChannelWidth(width) => ("CHANNEL_WIDTH", one("width", width)),
             SetupError::NoRadioProfile(radio) => ("NO_RADIO_PROFILE", one("radio", radio)),
             SetupError::MissingWirelessLink(radio) => ("NO_WIRELESS_LINK", one("radio", radio)),

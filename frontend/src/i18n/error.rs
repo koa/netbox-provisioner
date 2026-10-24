@@ -15,6 +15,33 @@ pub fn at(message: &str, path: &str) -> String {
 
 /// An error the backend reports, by its `code` (`backend::error_info`); a code not worded
 /// here yet shows the backend's English `message`.
+/// `PORT_IN_BRIDGES`: a port (the VXLAN of a VLAN group) whose VLANs NetBox puts in
+/// different bridges, each VLAN with its bridge (`vlans`, `vlanNames`, `bridges`: a line each).
+fn port_in_bridges(problem: &ServerProblem) -> String {
+    let lines = |name| problem.param(name).split('\n');
+    let vlans = lines("vlans")
+        .zip(lines("vlanNames"))
+        .zip(lines("bridges"))
+        .map(|((vlan, name), bridge)| {
+            let vlan = match (vlan, name) {
+                ("", _) => "ohne VLAN".to_string(),
+                (vlan, "") => format!("VLAN {vlan}"),
+                (vlan, name) => format!("VLAN {vlan} ({name})"),
+            };
+            match bridge {
+                "" => format!("{vlan} ohne Bridge"),
+                bridge => format!("{vlan} in {bridge}"),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{} müsste Port mehrerer Bridges sein, seine VLANs liegen in NetBox in verschiedenen: \
+         {vlans}. Ein Port kann nur in einer Bridge sein: leg diese VLANs in dieselbe Bridge",
+        problem.param("port")
+    )
+}
+
 pub fn server(problem: &ServerProblem) -> String {
     let p = |name| problem.param(name);
     match problem.code.as_str() {
@@ -254,6 +281,7 @@ pub fn server(problem: &ServerProblem) -> String {
             "{} ist AP einer Wireless LAN Group, deren Controller keine Loopback-Adresse hat",
             p("device")
         ),
+        "PORT_IN_BRIDGES" => port_in_bridges(problem),
         "MTU_MISMATCH" => format!(
             "{} hat MTU {}, das andere Ende des Kabels, {}, {}: OSPF braucht auf beiden dieselbe",
             p("port"),

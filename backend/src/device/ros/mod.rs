@@ -208,6 +208,30 @@ fn following_renames(
     current
 }
 
+/// A VLAN of a port and the bridge NetBox puts it in ([`SetupError::PortInMultipleBridges`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct VlanOnBridge {
+    /// `None`: untagged, without a VLAN
+    pub vlan: Option<u16>,
+    pub vlan_name: Option<Box<str>>,
+    /// the NetBox bridge; `None`: none, the device's default bridge
+    pub bridge: Option<Box<str>>,
+}
+
+impl std::fmt::Display for VlanOnBridge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (self.vlan, &self.vlan_name) {
+            (Some(id), Some(name)) => write!(f, "VLAN {id} ({name})")?,
+            (Some(id), None) => write!(f, "VLAN {id}")?,
+            (None, _) => f.write_str("untagged")?,
+        }
+        match &self.bridge {
+            Some(bridge) => write!(f, " on {bridge}"),
+            None => f.write_str(" without a bridge"),
+        }
+    }
+}
+
 pub(crate) const CAPS_BRIDGE_NAME: &[u8; 11] = b"bridge-caps";
 /// The interface list of the ports to own devices and the free ports
 /// ([`BaseDeviceDataTarget::setup_maintenance_ports`]): `/tool mac-server` allows mac-telnet
@@ -253,9 +277,15 @@ pub enum SetupError {
     #[error("Device has ports on VXLAN {0} but no primary IPv4 address to use as VTEP")]
     MissingVtepAddress(AsciiString),
     #[error(
-        "Port {0} would be a member of more than one bridge (its VLANs are split across bridges)"
+        "Port {port} would be a member of more than one bridge, its VLANs are split across \
+         them: {}",
+        vlans.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")
     )]
-    PortInMultipleBridges(AsciiString),
+    PortInMultipleBridges {
+        port: AsciiString,
+        /// each VLAN of the port where it is, in NetBox' order of bridges
+        vlans: Vec<VlanOnBridge>,
+    },
     #[error("Unsupported RF channel width {0} MHz for a wireless radio")]
     UnsupportedChannelWidth(u32),
     #[error("Radio {0} has an RF role, but the board has no point-to-point radio profile")]

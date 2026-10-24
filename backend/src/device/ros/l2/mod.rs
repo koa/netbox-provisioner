@@ -1,4 +1,4 @@
-use crate::device::ros::{CAPS_BRIDGE_NAME, SetupError};
+use crate::device::ros::{CAPS_BRIDGE_NAME, SetupError, VlanOnBridge};
 use crate::topology::access::AccessTopology;
 use crate::topology::access::ip_addresses::IpAddressAccess;
 use crate::topology::access::vxlan::VxlanAccess;
@@ -538,7 +538,31 @@ impl<G: NameGenerator> L2Setup<G> {
                 | L2Port::VxLan { name, .. } = port
                     && *root_of_port.entry(name).or_insert(*root) != *root
                 {
-                    return Err(SetupError::PortInMultipleBridges(name.clone()));
+                    let split = by_root
+                        .iter()
+                        .flat_map(|(root, sub)| sub.iter().map(move |(vlan, ports)| (root, vlan, ports)))
+                        .filter(|(_, _, ports)| {
+                            ports.iter().any(|p| {
+                                matches!(p, L2Port::TaggedEthernet { name: n, .. }
+                                    | L2Port::UntaggedEthernet { name: n, .. }
+                                    | L2Port::VxLan { name: n, .. } if n == name)
+                            })
+                        })
+                        .map(|(root, vlan, _)| {
+                            let vlan = vlan.and_then(|id| vlans.get(&id));
+                            VlanOnBridge {
+                                vlan: vlan.and_then(VlanAccess::vlan_id),
+                                vlan_name: vlan.and_then(VlanAccess::name).map(Box::from),
+                                bridge: root
+                                    .and_then(|id| root_interfaces.get(&id))
+                                    .map(|bridge| bridge.name().into()),
+                            }
+                        })
+                        .collect();
+                    return Err(SetupError::PortInMultipleBridges {
+                        port: name.clone(),
+                        vlans: split,
+                    });
                 }
             }
         }

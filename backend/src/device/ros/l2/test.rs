@@ -1,5 +1,7 @@
 use crate::{
-    device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, test::empty_current},
+    device::ros::{
+        BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, VlanOnBridge, test::empty_current,
+    },
     topology::{
         Cable, CablePort, Device, DeviceId, Interface, InterfaceId, IpAddressData, IpAddressId,
         IpPrefixData, IpRangeData, PhysicalPortId, TopologyHolder, VlanData, VlanGroupData,
@@ -1120,9 +1122,19 @@ async fn test_vxlan_on_two_bridges_is_rejected() {
     })
     .await;
     let result = L2Setup::new(&device, KeepNameGenerator);
+    let Err(SetupError::PortInMultipleBridges { port, vlans }) = &result else {
+        panic!("{result:?}");
+    };
+    assert_eq!(port, &AsciiString::from("client-berg"));
+    // the error names each VLAN with its bridge, so the operator sees what to join
+    assert!(vlans.contains(&VlanOnBridge {
+        vlan: Some(2),
+        vlan_name: Some("wohnung-gast".into()),
+        bridge: Some("bridge-gast".into()),
+    }), "{vlans:?}");
     assert!(
-        matches!(&result, Err(SetupError::PortInMultipleBridges(name)) if name == &AsciiString::from("client-berg")),
-        "{result:?}"
+        vlans.iter().any(|v| v.vlan == Some(1) && v.bridge.as_deref() != Some("bridge-gast")),
+        "{vlans:?}"
     );
 }
 
