@@ -739,8 +739,10 @@ QEMU's, the golden image's dhcp-client is bound to it).
 - Body: why the change was needed and anything non-obvious, wrapped at ~72 columns.
 - Update this file in the same commit as the change it describes.
 - Commits by Claude end with the `Co-Authored-By: Claude …` trailer, without a session link.
-- Push to `master` only when asked: a push to `master` publishes the image as a snapshot
-  (`ghcr.io/koa/netbox-provisioner:sha-<commit>`), a tag `vX.Y.Z` the release image and the Helm
-  chart (`oci://ghcr.io/koa/charts`), so this matters more here than in the other two repos.
+- Push to `master` only when asked: a push to `master` publishes image and Helm chart as a
+  snapshot (`ghcr.io/koa/netbox-provisioner:sha-<commit>`, chart in `oci://ghcr.io/koa/charts`
+  as prerelease of `Chart.yaml`'s `version`), a tag `vX.Y.Z` as the release X.Y.Z, so this
+  matters more here than in the other two repos. Snapshots are for a quick try: a daily
+  cleanup (`cleanup.yaml`) deletes all but the newest.
 - Verify with `cargo clippy` in addition to `cargo check`/`cargo test` — not every pre-existing
   warning needs fixing, but a change shouldn't leave new, avoidable ones behind.

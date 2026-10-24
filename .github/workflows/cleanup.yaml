@@ -1,0 +1,27 @@
+# Removes every snapshot image and chart but the newest, daily; releases stay
+# (.github/scripts/cleanup.sh).
+name: cleanup
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: only list what would go
+        type: boolean
+        default: true
+
+permissions:
+  packages: write
+
+jobs:
+  snapshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: .github/scripts/cleanup.sh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}

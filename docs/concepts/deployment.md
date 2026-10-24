@@ -1,6 +1,6 @@
 # Konzept: Container, Helm-Chart und CI
 
-Status: umgesetzt bis auf das Aufräumen der Snapshots und rustls (2026-10-23, siehe
+Status: umgesetzt bis auf rustls (2026-10-24, siehe
 [Umsetzung](#umsetzung)). Offener Punkt „Provisionierung“ aus
 [pending.md](../pending.md#provisionierung).
 
@@ -141,9 +141,18 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
   `devShell`. `mikrotik-model` und `mikrotik-api` sind Flake-Inputs (GitHub, Zweig
   `claude-edition`), der Build legt sie neben das Repository, wo die Pfad-Abhängigkeiten sie
   finden; `Cargo.toml` bleibt dabei, wie es ist.
-- **`.github/workflows/ci.yaml`:** bei jedem Push `nix flake check`, das Image und `helm lint`;
-  ein Push auf `master` schiebt `ghcr.io/koa/netbox-provisioner:sha-<kurz>`, ein Tag `vX.Y.Z` das
-  Image als `X.Y.Z` und das Chart nach `oci://ghcr.io/koa/charts` (mit `skopeo`, ohne Docker).
+- **`.github/workflows/ci.yaml`:** bei jedem Push `nix flake check`, das Image und `helm lint`.
+  Ein Push auf `master` veröffentlicht einen Snapshot: das Image
+  `ghcr.io/koa/netbox-provisioner:sha-<kurz>` und das Chart in `oci://ghcr.io/koa/charts` als
+  Vorabversion der nächsten Release (`version` in `Chart.yaml`), nach Zeit geordnet
+  (`0.1.0-snapshot.20261024123456.sha-abc1234`), mit dem Snapshot-Image als Vorgabe. Ein Tag
+  `vX.Y.Z` veröffentlicht Image und Chart als `X.Y.Z` (`.github/scripts/publish.sh`, mit
+  `skopeo`, ohne Docker). Nach einer Release gehört `version` in `Chart.yaml` auf die nächste.
+- **`.github/workflows/cleanup.yaml`:** täglich; behält vom Image und vom Chart nur den neuesten
+  Snapshot und löscht alle anderen samt unversionierten Resten, lieber zu viele als zu wenige:
+  Snapshots sind zum kurzen Ausprobieren da (`.github/scripts/cleanup.sh`, von Hand mit
+  `dry_run`). GHCR löscht eine Version mit allen Tags, und ein Release-Image teilt den Digest
+  mit dem Snapshot seines Commits: gelöscht wird nur, was ausschliesslich Snapshot-Tags trägt.
 - **`charts/netbox-provisioner`:** eine Replik mit `Recreate`. Jedes Setting von `config.yaml`
   ist ein eigener Wert unter `settings`; das Chart schreibt sie ohne die Geheimnisse in eine
   ConfigMap. Ein Geheimnis (`netbox_token`, `netbox_write_token`, das `password` einer
@@ -154,6 +163,5 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
   `server_mgmt_port`. Statt Ingress eine `HTTPRoute` (Gateway API) an ein Gateway des
   Betreibers, `ServiceMonitor` optional, Probes auf `/health`, nur lesbares Dateisystem ohne
   Rechte; eine geänderte Konfiguration startet den Pod neu (Prüfsummen-Annotation).
-- **Offen:** das Aufräumen alter Snapshots (ein Release-Image teilt sich den Digest mit seinem
-  Snapshot; ein Aufräumen nach Tag muss das berücksichtigen), rustls statt OpenSSL, das Image in
-  einem Cluster laufen lassen.
+- **Offen:** rustls statt OpenSSL, das Image in einem Cluster laufen lassen; beide Workflows
+  sind auf GitHub noch nicht gelaufen.

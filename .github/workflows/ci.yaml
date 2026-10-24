@@ -1,6 +1,6 @@
-# Tests, clippy and the image on every push; a push to master publishes the image as a
-# snapshot (`sha-<commit>`), a tag `vX.Y.Z` as a release together with the Helm chart
-# (docs/concepts/deployment.md).
+# Tests, clippy and the image on every push; a push to master publishes image and chart as a
+# snapshot (image `sha-<commit>`), a tag `vX.Y.Z` as the release X.Y.Z; cleanup.yaml removes
+# old snapshots (docs/concepts/deployment.md).
 name: ci
 
 on:
@@ -33,22 +33,21 @@ jobs:
           nix shell nixpkgs#kubernetes-helm -c \
             helm lint charts/netbox-provisioner -f charts/netbox-provisioner/ci/lint-values.yaml
 
+      # the chart's version in Chart.yaml is the next release; a snapshot is a prerelease of it,
+      # ordered by time: 0.2.0-snapshot.20261024123456.sha-abc1234
       - name: publish snapshot
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          nix shell nixpkgs#skopeo -c skopeo copy \
-            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
-            docker-archive:image.tar.gz "docker://$IMAGE:sha-${GITHUB_SHA::7}"
+          base="$(sed -n 's/^version: *//p' charts/netbox-provisioner/Chart.yaml)"
+          stamp="$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y%m%d%H%M%S)"
+          .github/scripts/publish.sh "sha-${GITHUB_SHA::7}" "$base-snapshot.$stamp.sha-${GITHUB_SHA::7}"
 
       - name: publish release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          nix shell nixpkgs#skopeo -c skopeo copy \
-            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
-            docker-archive:image.tar.gz "docker://$IMAGE:$version"
-          nix shell nixpkgs#kubernetes-helm -c sh -c "
-            echo '${{ secrets.GITHUB_TOKEN }}' |
-              helm registry login ghcr.io -u '${{ github.actor }}' --password-stdin &&
-            helm package charts/netbox-provisioner --version '$version' --app-version '$version' &&
-            helm push 'netbox-provisioner-$version.tgz' '$CHARTS'"
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .github/scripts/publish.sh "${GITHUB_REF_NAME#v}" "${GITHUB_REF_NAME#v}"
