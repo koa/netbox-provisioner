@@ -65,7 +65,15 @@ impl NetboxHelper {
 
 pub(super) fn describe(step: &Step) -> String {
     match step {
+        Step::CreateDevice(create) => t::create_device(
+            &create.name,
+            &create.device_type,
+            &create.role,
+            &create.site,
+            create.wlan_group.as_deref(),
+        ),
         Step::CreateInterface(create) => t::create_interface(
+            &create.device.name,
             &create.name,
             &create.kind,
             &create.tags.iter().map(tag_slug).collect::<Vec<_>>(),
@@ -146,6 +154,7 @@ pub(super) fn describe(step: &Step) -> String {
                 netbox_plan::IpVersion::V6 => "IPv6",
                 netbox_plan::IpVersion::Other(_) => "IP",
             },
+            &set.device.name,
             &set.address,
             set.before.as_deref(),
         ),
@@ -282,6 +291,9 @@ impl NetboxHelper {
             (None, _) if self.kind == HelperKind::PortVlan => html!(<p>{t::CHOOSE_PORT_VLAN}</p>),
             (None, _) if self.kind == HelperKind::BridgeLeave => {
                 html!(<p>{t::CHOOSE_BRIDGE_LEAVE}</p>)
+            }
+            (None, _) if self.kind == HelperKind::NewDevice => {
+                html!(<p>{t::CHOOSE_NEW_DEVICE_NAME}</p>)
             }
             (None, _) if self.fixed_port => html!(<p>{t::CHOOSE_PEER}</p>),
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),

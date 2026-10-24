@@ -157,14 +157,43 @@ Die Fälle aus `pending.md`. Jeder ist ein kurzes Formular, das einen Plan erzeu
 
 ### Neues Gerät
 
-Eingabe: Site, Name, Board. Das Board wird **erkannt**, wenn das Gerät schon am Kabel eines
-erreichbaren Nachbarn hängt (die Kandidaten der Ersteinrichtung zeigen Board und Identity), sonst
-aus der Liste der Boards in `hw_facts.rs` gewählt.
+Vom freien Port eines Routers aus („Neues Gerät anschliessen“, `helper::new_device`): das
+Gerät hängt an diesem Port. Frei ist ein Port ohne Kabel und einer, dessen einziger Kabelweg
+offen an einem Patchpanel endet (Front- oder Rear-Port ohne weiteres Kabel, `landing`): im Feld
+der Normalfall, Port → Panel → Dose, die Dose ohne dokumentiertes Gerät. Das neue Kabel geht
+dann von diesem offenen Ende zum Gerät, die Panels bleiben, wie NetBox sie hat. Sieht die Live-Prüfung dort ein MikroTik, das NetBox nicht kennt
+(`NeighborsNotInNetbox` mit Board), ist die Aktion ein Lösungsvorschlag mit Identity, Board und
+Port der Gegenseite. Ein Gerät ohne Kabel zu einem bekannten Gerät hat keinen Einstieg: die
+Ersteinrichtung braucht den Nachbarn.
 
-Plan: Device (Platform `routeros`, Device Type zum Board, Rolle, Tenant der Site), dazu die
-Interfaces mit den RouterOS-Namen aus `hw_facts.rs` (legt NetBox sie über den Device Type schon an,
-prüft der Helfer nur die Namen) und `lo` (Typ Virtual). Dann direkt weiter zu „Loopback“ und
-„Verbindung“.
+Eingabe: Name, Device Type, Rolle, Port am neuen Gerät (gesehen, sonst `ether1`) und für einen
+Access Point die WLAN-Gruppe (nur Gruppen mit Controller). Der **Device Type** ist einer der
+MikroTik-Typen in NetBox (`Query.newDeviceOptions`): RouterOS meldet das Board
+(`RB962UiGS-5HacT2HnT`), NetBox heisst die Typen meist wie MikroTik sie verkauft („hAP ac“).
+Vorgewählt ist der Typ, dessen Modell oder Part Number das gesehene Board ist; sonst wählt man,
+und fehlt der Typ, legt man ihn zuerst in NetBox an (entschieden 2026-10-24). Die Rolle ist mit
+`router` vorbelegt.
+
+Ein Plan (entschieden 2026-10-24):
+
+1. Device (`CreateDevice`): Site des Routers, Platform `routeros` (nach Namen gesucht, wie
+   `has_routeros` sie erkennt), Device Type, Rolle, Status aktiv, Tenant des Routers (sein
+   eigener, sonst der seiner Location; ohne beide keiner, dann gilt der der Site). Der Tenant
+   trägt die Zugangsdaten, und die Ersteinrichtung loggt sich vom Router aus ein. Dazu
+   `wlan_group`, wenn gewählt.
+2. Der Port, an dem das Kabel landet, und das Kabel selbst, wenn es an einem Patchpanel beginnt
+   oder das Gerät ein Brückengerät ist (sonst legt es „Verbindung“ an). Legt NetBox ihn mit dem Device Type schon an, übernimmt
+   der Schreib-Job diesen. Weitere Ports legt der Helfer nicht an: die des Device Types kommen
+   von NetBox, ein Port, den NetBox nicht hat, ist für den Generator frei.
+3. „Loopback“ und, ausser für ein Brückengerät (Rolle `wlan-bridge`), „Verbindung“ zum Port
+   (/31, `ospf`, Labels), beide auf der Vorschau des Geräts gerechnet. Ein Brückengerät bekommt
+   nur das Kabel; seinen Richtfunk macht danach „Funkbrücke“.
+
+Die Schritte nach dem Gerät verweisen auf seine Objekte mit den Ids der Vorschau (von `u32::MAX`
+abwärts, `PlanStep::with_real_ids`); der Schreib-Job setzt die Ids ein, die NetBox beim Anlegen
+vergibt. „Rückgängig“ löscht alles in umgekehrter Folge, zuletzt das Gerät mit den Ports seines
+Device Types. Nach dem Schreiben führt „Zum neuen Gerät“ auf dessen Seite mit der
+Ersteinrichtung; der Router bekommt die Verbindung mit „Anwenden“.
 
 ### Loopback
 

@@ -76,6 +76,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &ConnectionInput) -> Result<N
         plan.steps.push(PlanStep::CreateCable(CreateCable {
             a: interface_ref(&a),
             b: interface_ref(&b),
+            a_end: super::CableEnd::Interface,
         }));
     }
     for end in [&a, &b] {

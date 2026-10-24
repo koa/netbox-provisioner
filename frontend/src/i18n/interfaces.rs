@@ -114,6 +114,10 @@ pub fn action(kind: Kind, helper: HelperKind) -> String {
     match kind {
         Kind::Suggestion if helper == HelperKind::CableTakeover => helper.to_string(),
         Kind::Remove if helper == HelperKind::BridgeLeave => helper.to_string(),
+        // a device to cable here: the same from what the router sees and from a free port
+        Kind::Suggestion | Kind::AssignRole if helper == HelperKind::NewDevice => {
+            "Neues Gerät anschliessen".to_string()
+        }
         Kind::Suggestion => "Lösungsvorschlag".to_string(),
         Kind::Remove => "Verbindung entfernen".to_string(),
         Kind::Edit => helper.to_string(),

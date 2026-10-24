@@ -511,6 +511,7 @@ fn rows_offer_the_helpers_that_fit() {
         (ActionKind::AssignRole, ActionHelper::Connection),
         (ActionKind::AssignRole, ActionHelper::PortVlan),
         (ActionKind::AssignRole, ActionHelper::RadioBridge),
+        (ActionKind::AssignRole, ActionHelper::NewDevice),
         (ActionKind::Edit, ActionHelper::Poe),
         (ActionKind::Edit, ActionHelper::Flags),
     ];

@@ -260,6 +260,38 @@ pub const BRIDGE_LEAVE: &str = "Aus Bridge lösen";
 pub const BRIDGE_LEAVE_HINT: &str = "Nimmt den Port aus seiner Bridge, mit den VLANs des Ports \
     selbst: danach ist er frei. Sein Kabel bleibt, die Bridge mit ihrem Netz auch.";
 pub const CHOOSE_BRIDGE_LEAVE: &str = "Über den Port der Bridge in den Interfaces starten.";
+pub const NEW_DEVICE: &str = "Neues Gerät";
+pub const NEW_DEVICE_HINT: &str = "Legt in NetBox ein Gerät an, das an diesem Port hängt: an der \
+    Site und mit dem Tenant dieses Geräts (dessen Zugangsdaten die Ersteinrichtung braucht), \
+    Plattform RouterOS, dazu seine Loopback und, ausser für ein Brückengerät, die Verbindung \
+    hierher. Weitere Ports legt NetBox mit dem Device Type an.";
+pub const CHOOSE_NEW_DEVICE_NAME: &str = "Name, Device Type und Rolle wählen.";
+pub const CHOOSE_NEW_DEVICE: &str = "Über einen freien Port in den Interfaces starten.";
+pub const NEW_DEVICE_NAME: &str = "Name";
+pub const NEW_DEVICE_TYPE: &str = "Device Type";
+pub const NEW_DEVICE_NAME_PLACEHOLDER: &str = "z.B. ap-buero";
+pub const NEW_DEVICE_TYPE_PLACEHOLDER: &str = "Device Type wählen";
+pub const NEW_DEVICE_ROLE: &str = "Rolle";
+pub const NEW_DEVICE_PORT: &str = "Port am neuen Gerät";
+pub const NEW_DEVICE_WLAN_GROUP: &str = "WLAN-Gruppe (Access Point)";
+pub const NEW_DEVICE_NO_WLAN_GROUP: &str = "keine";
+pub const NEW_DEVICE_NO_TYPES: &str = "NetBox hat keinen Device Type von MikroTik: zuerst dort anlegen.";
+pub const NEW_DEVICE_OPEN: &str = "Zum neuen Gerät";
+/// the board RouterOS reports at the port, whether a device type is it
+pub fn new_device_seen(identity: &str, board: &str, port: &str, matched: bool) -> String {
+    if matched {
+        format!("Hier meldet sich {identity} ({board}) mit {port}.")
+    } else {
+        format!(
+            "Hier meldet sich {identity} ({board}) mit {port}; kein Device Type hat dieses Board \
+            als Modell oder Part Number, bitte wählen."
+        )
+    }
+}
+/// a WLAN group with its controller
+pub fn wlan_group(name: &str, controller: &str) -> String {
+    format!("{name} (Controller {controller})")
+}
 /// the plan takes a bridge's last port
 pub fn emptied_bridge(bridge: &str) -> String {
     format!("{bridge} hat danach keinen Port mehr")
@@ -382,10 +414,22 @@ pub fn undocumented(address: &str, route: &str, gateway: Option<&str>, router: &
         None => format!("{address}: {router} hat die Route {route}"),
     }
 }
-pub fn create_interface(name: &str, kind: &str, tags: &[&str]) -> String {
+pub fn create_device(name: &str, device_type: &str, role: &str, site: &str, wlan_group: Option<&str>) -> String {
+    match wlan_group {
+        Some(group) => format!(
+            "Gerät {name} anlegen ({device_type}, Rolle {role}, Site {site}, WLAN-Gruppe {group})"
+        ),
+        None => format!("Gerät {name} anlegen ({device_type}, Rolle {role}, Site {site})"),
+    }
+}
+pub fn create_interface(device: &str, name: &str, kind: &str, tags: &[&str]) -> String {
     match tags {
-        [] => format!("Interface {name} ({kind}) anlegen"),
-        tags => format!("Interface {name} ({kind}, {} {}) anlegen", tags_word(tags), tags.join(", ")),
+        [] => format!("Interface {device} {name} ({kind}) anlegen"),
+        tags => format!(
+            "Interface {device} {name} ({kind}, {} {}) anlegen",
+            tags_word(tags),
+            tags.join(", ")
+        ),
     }
 }
 pub fn create_address(address: &str, device: &str, interface: &str, prefix: &str) -> String {
@@ -469,9 +513,11 @@ pub fn link_device(name: &str, site: Option<&str>) -> String {
         None => name.to_string(),
     }
 }
-pub fn set_primary(version: &str, address: &str, before: Option<&str>) -> String {
+pub fn set_primary(version: &str, device: &str, address: &str, before: Option<&str>) -> String {
     match before {
-        Some(before) => format!("Primary {version} auf {address} setzen (vorher {before})"),
-        None => format!("Primary {version} auf {address} setzen"),
+        Some(before) => {
+            format!("Primary {version} von {device} auf {address} setzen (vorher {before})")
+        }
+        None => format!("Primary {version} von {device} auf {address} setzen"),
     }
 }

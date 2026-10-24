@@ -221,6 +221,12 @@ impl From<&Error> for ErrorInfo {
                 vec![("port", port.to_string()), ("vlan", vlan.to_string())],
             ),
             Error::NoSite(device) => ("NO_SITE", vec![("device", device.to_string())]),
+            Error::NoDeviceName => ("NO_DEVICE_NAME", vec![]),
+            Error::DeviceNameTaken(name) => {
+                ("DEVICE_NAME_TAKEN", vec![("name", name.to_string())])
+            }
+            Error::UnknownWlanGroup(id) => ("UNKNOWN_WLAN_GROUP", vec![("id", id.to_string())]),
+            Error::NoPlatform(name) => ("NO_PLATFORM", vec![("name", name.to_string())]),
             Error::UnknownPrefix(id) => ("UNKNOWN_PREFIX", vec![("id", id.to_string())]),
             Error::UnknownVlan(id) => ("UNKNOWN_VLAN", vec![("id", id.to_string())]),
             Error::NetworkLength { length, parent } => (

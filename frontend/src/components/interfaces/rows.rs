@@ -1,7 +1,9 @@
 //! The rows of `DeviceAccess.interfaceView` as the card shows them. The findings come over as
 //! the type of the query `Findings`, so `components::findings` words them as everywhere else.
 use crate::{
-    components::netbox_helper::{HelperKind, HelperPreset, LinkPreset, NetTarget, RadioPreset},
+    components::netbox_helper::{
+        HelperKind, HelperPreset, LinkPreset, NetTarget, RadioPreset, SeenPreset,
+    },
     error::FrontendError,
     graphql::authenticated::{
         findings::FindingsTopologyFindings,
@@ -302,6 +304,17 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
         ),
         ActionHelper::POE => (HelperKind::Poe, HelperPreset::Poe(interface?)),
         ActionHelper::BRIDGE_LEAVE => (HelperKind::BridgeLeave, HelperPreset::BridgeLeave(interface?)),
+        ActionHelper::NEW_DEVICE => (
+            HelperKind::NewDevice,
+            HelperPreset::NewDevice {
+                port: interface?,
+                seen: action.seen.map(|seen| SeenPreset {
+                    identity: seen.identity,
+                    board: seen.board,
+                    interface_name: seen.interface_name,
+                }),
+            },
+        ),
         ActionHelper::FLAGS => (HelperKind::Flags, HelperPreset::Flags(interface?)),
         ActionHelper::CABLE_TAKEOVER => (
             HelperKind::CableTakeover,

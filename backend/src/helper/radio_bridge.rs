@@ -223,6 +223,7 @@ fn side(
                     plan.steps.push(PlanStep::CreateCable(CreateCable {
                         a: interface_ref(&router_port),
                         b: interface_ref(free),
+                        a_end: super::CableEnd::Interface,
                     }));
                     free.clone()
                 }

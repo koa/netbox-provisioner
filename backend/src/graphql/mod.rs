@@ -81,6 +81,11 @@ impl QueryAuthenticated {
         let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
         Ok(helper.plan(&topology).await?)
     }
+    /// The device types, roles and WLAN groups the helper „Neues Gerät“ offers.
+    async fn new_device_options(&self) -> Result<helper::new_device::NewDeviceOptions, ApiError> {
+        let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
+        Ok(helper::new_device::options(&topology).await?)
+    }
     async fn job(&self, id: u32) -> Option<Arc<Job>> {
         job::get(id)
     }

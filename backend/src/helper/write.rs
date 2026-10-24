@@ -2,7 +2,7 @@
 //! job (`NetboxWritten`, `NetboxUndone`).
 
 use super::{
-    Helper, PlanStep, Target, UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLink,
+    CableEnd, Helper, PlanStep, Target, UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLink,
     flags,
 };
 use crate::{
@@ -74,9 +74,49 @@ pub async fn write(
         Target::Existing(id) => Some(id),
         Target::Step(step) => created.get(step).copied().flatten(),
     };
+    // the ids the plan's preview gives the objects it creates: step `n` has `u32::MAX - n`
+    let first_created = u32::MAX - plan.steps.len() as u32;
+    let is_created = |id: u32| id > first_created;
     for step in &plan.steps {
         log.check()?;
+        // a device created by the plan has the interfaces of its device type already
+        let on_new_device =
+            matches!(step, PlanStep::CreateInterface(create) if is_created(create.device.id));
+        let real = |id: u32| {
+            if is_created(id) {
+                created.get((u32::MAX - id) as usize).copied().flatten()
+            } else {
+                Some(id)
+            }
+        };
+        let step = &step
+            .with_real_ids(real)
+            .ok_or_else(|| Error::NetboxChanged(plan.description.clone()))?;
         let id = match step {
+            PlanStep::CreateDevice(create) => {
+                let existing = rest.get(&format!("dcim/devices/?name={}", create.name)).await?;
+                if existing["count"].as_u64() != Some(0) {
+                    return Err(Error::NetboxChanged(
+                        format!("{} exists already", create.name).into(),
+                    ));
+                }
+                let mut body = json!({
+                    "name": create.name,
+                    "site": create.site_id,
+                    "device_type": create.device_type_id,
+                    "role": create.role_id,
+                    "platform": create.platform_id,
+                    "status": "active",
+                });
+                if let Some(tenant) = create.tenant_id {
+                    body["tenant"] = json!(tenant);
+                }
+                if let Some(group) = create.wlan_group_id {
+                    body["custom_fields"] = json!({ "wlan_group": group });
+                }
+                let object = rest.create("dcim/devices/", body).await?;
+                Some(logged_create(log, "dcim/devices", &object)?)
+            }
             PlanStep::CreateInterface(create) => {
                 let existing = rest
                     .get(&format!(
@@ -84,6 +124,11 @@ pub async fn write(
                         create.device.id, create.name
                     ))
                     .await?;
+                // from the device type: taken as it is, it goes with the device
+                if on_new_device && let Some(id) = existing["results"][0]["id"].as_u64() {
+                    created.push(Some(id as u32));
+                    continue;
+                }
                 if existing["count"].as_u64() != Some(0) {
                     return Err(Error::NetboxChanged(
                         format!("{} has {} already", create.device.name, create.name).into(),
@@ -157,23 +202,24 @@ pub async fn write(
                 None
             }
             PlanStep::CreateCable(create) => {
-                for end in [&create.a, &create.b] {
-                    let current = rest.get(&format!("dcim/interfaces/{}/", end.id)).await?;
+                let ends = [(create.a_end, &create.a), (CableEnd::Interface, &create.b)];
+                for (kind, end) in ends {
+                    let current = rest.get(&format!("{}/{}/", kind.netbox().1, end.id)).await?;
                     if !current["cable"].is_null() {
                         return Err(Error::NetboxChanged(
                             format!("{} {} has a cable", end.device.name, end.name).into(),
                         ));
                     }
                 }
-                let end = |interface: &InterfaceRef| {
-                    json!([{ "object_type": "dcim.interface", "object_id": interface.id }])
+                let end = |(kind, interface): (CableEnd, &InterfaceRef)| {
+                    json!([{ "object_type": kind.netbox().0, "object_id": interface.id }])
                 };
                 let object = rest
                     .create(
                         "dcim/cables/",
                         json!({
-                            "a_terminations": end(&create.a),
-                            "b_terminations": end(&create.b),
+                            "a_terminations": end(ends[0]),
+                            "b_terminations": end(ends[1]),
                             "status": "connected",
                         }),
                     )

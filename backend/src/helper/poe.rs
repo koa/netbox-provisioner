@@ -78,6 +78,7 @@ pub fn plan(topology: &Arc<Topology>, input: &PoeInput) -> Result<NetboxPlan, Er
         plan.steps.push(PlanStep::CreateCable(CreateCable {
             a: interface_ref(&pse),
             b: interface_ref(&pd),
+            a_end: super::CableEnd::Interface,
         }));
     }
     for (port, mode) in [(&pse, PoeMode::Pse), (&pd, PoeMode::Pd)] {

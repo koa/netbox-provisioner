@@ -13,7 +13,7 @@ gut gehen. Die übrigen Journeys haben eigene Konzepte: [Überwachung](monitorin
 
 | Schritt im Feld | heute | fehlt |
 |---|---|---|
-| Gerät in NetBox anlegen | von Hand in NetBox | Helfer „Neues Gerät“ ([Config-Helper](config-helper.md#neues-gerät)): Board vom Nachbarn erkannt |
+| Gerät in NetBox anlegen | Helfer „Neues Gerät“ am freien Port des Nachbarn ([Config-Helper](config-helper.md#neues-gerät)): Device Type nach dem gesehenen Board vorgewählt, mit Loopback und Verbindung | |
 | Kabel zum Nachbarn | „Nachbarn lesen“ → Befund → „Kabel aus Befund übernehmen“ | |
 | Loopback, Verbindung, Kunden-Netz, PoE, Funkbrücke | Helfer auf der Geräteseite | IP-Range des Kunden-Netzes |
 | Erste Konfiguration | Ersteinrichtung über mac-telnet vom Nachbarn, dann Apply | |
@@ -26,8 +26,7 @@ Offen ist, die Helfer-Formulare und die Vorschau dort zu prüfen (lange Skripte,
 Telefon im Feld hat oft schlechtes Netz: Jobs laufen im Server weiter, auch wenn die Seite
 zwischendurch weg ist ([Jobs](job-polling.md)).
 
-**Fehlt am meisten:** „Neues Gerät“, denn ohne Gerät in NetBox geht keiner der anderen Schritte.
-Danach eine Ansicht „Was fehlt diesem Gerät noch“ (Befunde des Geräts mit den Helfern als
+**Fehlt am meisten:** eine Ansicht „Was fehlt diesem Gerät noch“ (Befunde des Geräts mit den Helfern als
 Knopf), die der Reihe nach durch Loopback, Verbindung usw. führt, ohne Wizard zu sein.
 
 ## Datenkorrektur

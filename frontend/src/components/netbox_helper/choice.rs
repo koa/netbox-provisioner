@@ -1,6 +1,6 @@
 //! What a helper is opened with (`HelperPreset`), which one is shown (`HelperKind`), what it is
 //! planned for (`HelperChoice`) and that as the input of a query (`helper_input!`).
-use super::{flags::Flag, t};
+use super::{flags::Flag, new_device::SeenPreset, t};
 use std::fmt::{self, Display, Formatter};
 
 /// The helper to open and what it starts with.
@@ -35,6 +35,8 @@ pub enum HelperPreset {
     CableTakeover { port: u32, peer: u32 },
     /// „Aus Bridge lösen“ of this port
     BridgeLeave(u32),
+    /// „Neues Gerät“ at this free port, with what the router sees there
+    NewDevice { port: u32, seen: Option<SeenPreset> },
 }
 
 /// „Funkbrücke“ from a router port: the helper is the bridge device's, its router side set.
@@ -56,6 +58,7 @@ impl HelperPreset {
             | HelperPreset::RadioFrom(_)
             | HelperPreset::RadioChoose { .. }
             | HelperPreset::Poe(_)
+            | HelperPreset::NewDevice { .. }
             | HelperPreset::PortVlan { port: Some(_), .. } => true,
             HelperPreset::Kind(_)
             | HelperPreset::PortVlan { port: None, .. }
@@ -131,6 +134,14 @@ pub enum HelperChoice {
         peer: u32,
     },
     BridgeLeave(u32),
+    NewDevice {
+        port: u32,
+        name: String,
+        device_type: u32,
+        role: u32,
+        far_port: String,
+        wlan_group: Option<u32>,
+    },
 }
 
 /// Where „Kunden-Netz“ puts the network.
@@ -261,6 +272,21 @@ macro_rules! helper_input {
                     port: port as i64,
                 })
             }
+            HelperChoice::NewDevice {
+                port,
+                name,
+                device_type,
+                role,
+                far_port,
+                wlan_group,
+            } => $module::Helper::NewDevice($module::NewDeviceInput {
+                port: port as i64,
+                name,
+                device_type: device_type as i64,
+                role: role as i64,
+                far_port,
+                wlan_group: wlan_group.map(i64::from),
+            }),
         }
     };
 }
@@ -284,6 +310,8 @@ pub enum HelperKind {
     CableTakeover,
     /// only from a bridge's port: it needs the port
     BridgeLeave,
+    /// only from a free port: it needs the port
+    NewDevice,
 }
 
 impl HelperKind {
@@ -311,6 +339,7 @@ impl Display for HelperKind {
             HelperKind::PortVlan => t::PORT_VLAN,
             HelperKind::CableTakeover => t::CABLE_TAKEOVER,
             HelperKind::BridgeLeave => t::BRIDGE_LEAVE,
+            HelperKind::NewDevice => t::NEW_DEVICE,
         })
     }
 }

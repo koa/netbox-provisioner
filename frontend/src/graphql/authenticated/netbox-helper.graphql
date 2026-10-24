@@ -9,9 +9,10 @@ query NetboxPlan($helper: Helper!){
         emptiedBridge{ name }
         steps{
             __typename
-            ... on CreateInterface{ name kind tags }
+            ... on CreateDevice{ name site deviceType role wlanGroup }
+            ... on CreateInterface{ name kind tags device{ name } }
             ... on CreateAddress{ address device{ name } interface prefix }
-            ... on SetPrimaryIp{ version address before }
+            ... on SetPrimaryIp{ version address before device{ name } }
             ... on CreateCable{ a{ name device{ name } } b{ name device{ name } } }
             ... on CreatePrefix{ prefix pool description }
             ... on UpdateInterface{ interface{ name device{ name } } label labelBefore mtu mtuBefore tagsAdded tagsRemoved poe poeBefore }
@@ -145,3 +146,15 @@ query PortVlanOptions($id: Int!){
     }
 }
 fragment PlanVlan on VlanRef{ vid name }
+query NewDeviceOptions{
+    newDeviceOptions{
+        deviceTypes{ id model partNumber }
+        roles{ id name slug }
+        wlanGroups{ id name controller }
+    }
+}
+query NewDeviceDevices{
+    topology{
+        allDevices{ id name site{ id } }
+    }
+}

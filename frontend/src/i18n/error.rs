@@ -241,6 +241,12 @@ pub fn server(problem: &ServerProblem) -> String {
         "PORT_UPLINK" => format!("{} ist ein Uplink (dhcp-client oder nat)", p("port")),
         "PORT_HAS_VLAN" => format!("{} hat VLAN {} schon, untagged und ohne weitere", p("port"), p("vlan")),
         "NO_SITE" => format!("{} hat in NetBox keine Site", p("device")),
+        "NO_DEVICE_NAME" => "Das Gerät braucht einen Namen".to_string(),
+        "DEVICE_NAME_TAKEN" => format!("NetBox hat schon ein Gerät {}", p("name")),
+        "UNKNOWN_WLAN_GROUP" => {
+            format!("WLAN-Gruppe {} gibt es nicht oder sie hat keinen Controller", p("id"))
+        }
+        "NO_PLATFORM" => format!("NetBox hat keine Plattform „{}“", p("name")),
         "UNKNOWN_PREFIX" => format!("Prefix {} ist keines der Site des Geräts", p("id")),
         "UNKNOWN_VLAN" => format!("VLAN {} hat das Gerät nicht", p("id")),
         "NETWORK_LENGTH" => format!(

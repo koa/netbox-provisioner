@@ -4,24 +4,29 @@
 //! to NetBox only, the device gets it by applying. The component here holds what each helper
 //! chooses; a helper with a form has a module of its own with the form, its message and the
 //! queries it chooses from: `link` („Verbindung“, „Verbindung abräumen“), `flags`, `net`
-//! („Kunden-Netz“), `port_vlan`, `poe`, `radio` („Funkbrücke“). `choice` is what all share: the
+//! („Kunden-Netz“), `port_vlan`, `poe`, `radio` („Funkbrücke“), `new_device` („Neues Gerät“). `choice` is what all share: the
 //! preset a helper opens with, the helper shown and its input.
 #[macro_use]
 mod choice;
 mod flags;
 mod link;
 mod net;
+mod new_device;
 mod plan;
 mod poe;
 mod port_vlan;
 mod radio;
 
 pub use choice::{HelperKind, HelperPreset, LinkPreset, NetTarget, RadioPreset};
+pub use new_device::SeenPreset;
 
 use choice::{Choice, HelperChoice, NetEntry};
 use flags::{Flag, FlagFindings, FlagInterface, FlagsMsg, fetch_flag_interfaces};
 use link::{LinkChoice, LinkMsg, fetch_ports};
 use net::{NetChoice, NetMsg, NetOptions, fetch_net_options};
+use new_device::{
+    NewDeviceChoice, NewDeviceMsg, fetch_new_device_options, fetch_written_device,
+};
 use plan::{Preview, fetch_plan, fetch_preview, last_write};
 use poe::{Observed, PoeChoice, PoeMsg, PoeOptionsData, fetch_poe_options};
 use port_vlan::{PortVlanChoice, PortVlanMsg, PortVlanOptionsData, fetch_port_vlan_options};
@@ -31,8 +36,8 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            UndoNetboxWrite, WriteNetboxPlan, link_ports, netbox_plan, undo_netbox_write,
-            write_netbox_plan,
+            UndoNetboxWrite, WriteNetboxPlan, link_ports, netbox_plan, new_device_options,
+            undo_netbox_write, write_netbox_plan,
         },
         query_authenticated,
     },
@@ -115,6 +120,8 @@ pub struct NetboxHelper {
     poe_observing: bool,
     radio: RadioChoice,
     radio_options: Option<Result<Vec<Candidate>, FrontendError>>,
+    new_device: NewDeviceChoice,
+    new_device_options: Option<Result<new_device_options::ResponseData, FrontendError>>,
     /// what the plan shown was computed for
     planned: Option<HelperChoice>,
     plan: Option<Result<netbox_plan::ResponseData, FrontendError>>,
@@ -141,6 +148,7 @@ pub enum NetboxHelperMsg {
     PortVlan(PortVlanMsg),
     Poe(PoeMsg),
     Radio(RadioMsg),
+    NewDevice(NewDeviceMsg),
     RadioDisconnectLink(bool),
     Plan(HelperChoice, Result<netbox_plan::ResponseData, FrontendError>),
     LoadPreview,
@@ -172,7 +180,8 @@ helper_msg!(
     Net(NetMsg),
     PortVlan(PortVlanMsg),
     Poe(PoeMsg),
-    Radio(RadioMsg)
+    Radio(RadioMsg),
+    NewDevice(NewDeviceMsg)
 );
 
 impl Component for NetboxHelper {
@@ -191,6 +200,7 @@ impl Component for NetboxHelper {
         let mut cable_takeover = None;
         let mut poe = PoeChoice::default();
         let mut flags_of = None;
+        let mut new_device = NewDeviceChoice::default();
         let kind = match &ctx.props().preset {
             None => HelperKind::Loopback,
             Some(HelperPreset::Kind(kind)) => *kind,
@@ -252,6 +262,10 @@ impl Component for NetboxHelper {
                 flags_of = Some(*interface);
                 HelperKind::Flags
             }
+            Some(HelperPreset::NewDevice { port, seen }) => {
+                new_device = NewDeviceChoice::new(*port, seen.clone());
+                HelperKind::NewDevice
+            }
             // the flow chooses the bridge device first: not here
             Some(HelperPreset::RadioChoose { .. }) => HelperKind::RadioBridge,
         };
@@ -282,6 +296,8 @@ impl Component for NetboxHelper {
             poe_observing: false,
             radio,
             radio_options: None,
+            new_device,
+            new_device_options: None,
             planned: None,
             plan: None,
             removed: false,
@@ -393,7 +409,8 @@ impl Component for NetboxHelper {
                     self.write_done = Some(done);
                 }
                 self.preview = None;
-                // a written removal took what it was chosen for: planned again it finds nothing
+                // a written removal took what it was chosen for: planned again it finds nothing;
+                // a new device has the port it was chosen for
                 let removed = done
                     && self.written.is_some()
                     && self.written == self.job
@@ -403,6 +420,7 @@ impl Component for NetboxHelper {
                             | HelperKind::RadioDisconnect
                             | HelperKind::CustomerDisconnect
                             | HelperKind::BridgeLeave
+                            | HelperKind::NewDevice
                     );
                 self.removed = removed;
                 if removed {
@@ -441,6 +459,10 @@ impl Component for NetboxHelper {
                     self.check_flags(ctx);
                     self.choose(ctx);
                 }
+                // the device is in NetBox now: a link to its page
+                if done && self.kind == HelperKind::NewDevice && self.written == self.job {
+                    fetch_written_device(ctx.link().clone(), self.new_device.planned_name.clone());
+                }
                 ctx.props().on_written.emit(());
             }
             NetboxHelperMsg::Link(msg) => return self.update_link(ctx, msg),
@@ -449,6 +471,7 @@ impl Component for NetboxHelper {
             NetboxHelperMsg::PortVlan(msg) => return self.update_port_vlan(ctx, msg),
             NetboxHelperMsg::Poe(msg) => return self.update_poe(ctx, msg),
             NetboxHelperMsg::Radio(msg) => return self.update_radio(ctx, msg),
+            NetboxHelperMsg::NewDevice(msg) => return self.update_new_device(ctx, msg),
         }
         true
     }
@@ -480,6 +503,7 @@ impl Component for NetboxHelper {
             HelperKind::RadioDisconnect => t::RADIO_DISCONNECT_HINT,
             HelperKind::CustomerDisconnect => t::CUSTOMER_DISCONNECT_HINT,
             HelperKind::BridgeLeave => t::BRIDGE_LEAVE_HINT,
+            HelperKind::NewDevice => t::NEW_DEVICE_HINT,
             HelperKind::PortVlan => t::PORT_VLAN_HINT,
             HelperKind::CableTakeover => t::CABLE_TAKEOVER_HINT,
         };
@@ -508,6 +532,9 @@ impl Component for NetboxHelper {
                     }
                     if self.kind == HelperKind::RadioBridge {
                         { self.radio_form(ctx) }
+                    }
+                    if self.kind == HelperKind::NewDevice {
+                        { self.new_device_form(ctx) }
                     }
                     if self.kind == HelperKind::RadioDisconnect {
                         <Form>
@@ -559,6 +586,9 @@ impl NetboxHelper {
         if kind == HelperKind::RadioBridge && self.radio_options.is_none() {
             fetch_radio_options(ctx.link().clone(), ctx.props().id);
         }
+        if kind == HelperKind::NewDevice && self.new_device_options.is_none() {
+            fetch_new_device_options(ctx.link().clone());
+        }
         if kind == HelperKind::Flags {
             if self.flag_interfaces.is_none() {
                 fetch_flag_interfaces(ctx.link().clone(), ctx.props().id);
@@ -592,6 +622,19 @@ impl NetboxHelper {
             }),
             HelperKind::Disconnect => Some(HelperChoice::Disconnect(self.disconnect?)),
             HelperKind::BridgeLeave => Some(HelperChoice::BridgeLeave(self.bridge_leave?)),
+            HelperKind::NewDevice => {
+                let choice = &self.new_device;
+                let name = choice.planned_name.trim();
+                (!name.is_empty()).then_some(())?;
+                Some(HelperChoice::NewDevice {
+                    port: choice.port?,
+                    name: name.to_string(),
+                    device_type: choice.device_type?,
+                    role: choice.role?,
+                    far_port: choice.planned_far_port.trim().to_string(),
+                    wlan_group: choice.wlan_group,
+                })
+            }
             HelperKind::CustomerDisconnect => {
                 Some(HelperChoice::CustomerDisconnect(self.customer_disconnect?))
             }

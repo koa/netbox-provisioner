@@ -10,6 +10,7 @@ use async_graphql::{SimpleObject, Union};
 /// One object a plan creates or changes.
 #[derive(Debug, Clone, PartialEq, Eq, Union)]
 pub enum PlanStep {
+    CreateDevice(CreateDevice),
     CreateInterface(CreateInterface),
     CreateAddress(CreateAddress),
     SetPrimaryIp(SetPrimaryIp),
@@ -56,6 +57,90 @@ impl PlanStep {
             _ => {}
         }
     }
+    /// The step with the ids of objects the plan creates replaced by `real`: a plan computed on
+    /// the preview of another one (`helper::new_device`) refers to them by their ids there,
+    /// from `u32::MAX` down, which NetBox only has once their step is written. `None` from
+    /// `real` for an id that isn't there yet.
+    pub(crate) fn with_real_ids(&self, real: impl Fn(u32) -> Option<u32>) -> Option<PlanStep> {
+        let device = |device: &mut DeviceRef| -> Option<()> {
+            device.id = real(device.id)?;
+            Some(())
+        };
+        let interface = |interface: &mut InterfaceRef| -> Option<()> {
+            interface.id = real(interface.id)?;
+            device(&mut interface.device)
+        };
+        let target = |target: &mut Target| -> Option<()> {
+            if let Target::Existing(id) = target {
+                *id = real(*id)?;
+            }
+            Some(())
+        };
+        let mut step = self.clone();
+        match &mut step {
+            PlanStep::CreateInterface(create) => device(&mut create.device)?,
+            PlanStep::CreateAddress(create) => {
+                device(&mut create.device)?;
+                target(&mut create.on)?;
+            }
+            PlanStep::SetPrimaryIp(set) => {
+                device(&mut set.device)?;
+                target(&mut set.address_id)?;
+            }
+            PlanStep::CreateCable(create) => {
+                interface(&mut create.a)?;
+                interface(&mut create.b)?;
+            }
+            PlanStep::UpdateInterface(update) => interface(&mut update.interface)?,
+            PlanStep::UpdatePort(update) => {
+                interface(&mut update.interface)?;
+                if let Some(bridge) = &mut update.bridge_id {
+                    target(bridge)?;
+                }
+            }
+            PlanStep::CreateWirelessLink(create) => {
+                interface(&mut create.a)?;
+                interface(&mut create.b)?;
+            }
+            PlanStep::UpdatePortVlan(update) => interface(&mut update.interface)?,
+            _ => {}
+        }
+        Some(step)
+    }
+}
+
+/// A new RouterOS device `name` at the site of `template`, the device it is cabled to: its
+/// device type, role and tenant (the template's, which its credentials come from), platform
+/// RouterOS. The preview takes the template's site and config context.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct CreateDevice {
+    pub name: Box<str>,
+    pub site: Box<str>,
+    pub device_type: Box<str>,
+    pub role: Box<str>,
+    #[graphql(skip)]
+    pub site_id: u32,
+    #[graphql(skip)]
+    pub device_type_id: u32,
+    /// its manufacturer, for the preview
+    #[graphql(skip)]
+    pub manufacturer: Box<str>,
+    #[graphql(skip)]
+    pub role_id: u32,
+    #[graphql(skip)]
+    pub role_slug: Box<str>,
+    #[graphql(skip)]
+    pub platform_id: u32,
+    #[graphql(skip)]
+    pub platform: Box<str>,
+    #[graphql(skip)]
+    pub tenant_id: Option<u32>,
+    /// the WLAN group of an access point (custom field `wlan_group`)
+    pub wlan_group: Option<Box<str>>,
+    #[graphql(skip)]
+    pub wlan_group_id: Option<u32>,
+    #[graphql(skip)]
+    pub template: u32,
 }
 
 /// A new interface `name` of NetBox type `kind` (`virtual`) on `device`, with an untagged
@@ -98,11 +183,42 @@ pub struct SetPrimaryIp {
     pub before_id: Option<u32>,
 }
 
-/// A new cable between two interfaces.
+/// A new cable between two interfaces, or from the open end of a patch panel (`a_end`, `a`
+/// then names the panel's port) to an interface.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct CreateCable {
     pub a: InterfaceRef,
     pub b: InterfaceRef,
+    #[graphql(skip)]
+    pub a_end: CableEnd,
+}
+
+/// What a cable's end is in NetBox.
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+pub enum CableEnd {
+    #[default]
+    Interface,
+    FrontPort,
+    RearPort,
+}
+
+impl CableEnd {
+    /// NetBox' object type and the path of its objects below `api/`.
+    pub(super) fn netbox(self) -> (&'static str, &'static str) {
+        match self {
+            CableEnd::Interface => ("dcim.interface", "dcim/interfaces"),
+            CableEnd::FrontPort => ("dcim.frontport", "dcim/front-ports"),
+            CableEnd::RearPort => ("dcim.rearport", "dcim/rear-ports"),
+        }
+    }
+    /// The `__typename` of the preview's JSON.
+    pub(super) fn typename(self) -> &'static str {
+        match self {
+            CableEnd::Interface => "InterfaceType",
+            CableEnd::FrontPort => "FrontPortType",
+            CableEnd::RearPort => "RearPortType",
+        }
+    }
 }
 
 /// A new prefix, the next free one of the pool prefix `pool` (or the parent prefix) when the

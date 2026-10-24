@@ -43,6 +43,13 @@ pub trait AccessTopology {
 }
 
 impl Topology {
+    pub fn list_wlan_groups(self: &Arc<Self>) -> impl Iterator<Item = wlan_group::WlanGroupAccess> {
+        let topo = self;
+        self.wlan_groups
+            .keys()
+            .copied()
+            .map(move |id| wlan_group::WlanGroupAccess::create(topo.clone(), id))
+    }
     pub fn list_devices(self: &Arc<Self>) -> impl Iterator<Item = DeviceAccess> {
         let topo = self;
         self.devices

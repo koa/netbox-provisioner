@@ -148,7 +148,16 @@ for a bridge device with one radio and no cable to a router first, then embeds i
 that interface only; a form doesn't offer the port its preset gives, `HelperPreset::fixes_port`,
 the modal's title names it); a customer bridge's port „Aus Bridge lösen“ (`helper::bridge_leave`:
 `UpdatePort` with `leaves_bridge`, its own VLANs with it; the bridge stays, named in
-`NetboxPlan.emptied_bridge` when it was the last port). Each row with its actions (one may be
+`NetboxPlan.emptied_bridge` when it was the last port); a router's port without cable „Neues
+Gerät anschliessen“ (`helper::new_device`, also on a port whose one cable path ends open at a
+patch panel, `new_device::landing`: the new cable starts at that front or rear port,
+`CreateCable.a_end`; a suggestion with the board and port when the live
+check sees an unknown MikroTik there: `CreateDevice` with the router's site and tenant, platform
+`routeros`, the device type and role chosen from `Query.newDeviceOptions`, the WLAN group of an
+AP; the cabled port, which the write takes from the device type when NetBox made it; then
+„Loopback“ and, but for a `wlan-bridge`, „Verbindung“ planned on the preview, whose steps refer
+to the new objects by their preview ids from `u32::MAX` down, `PlanStep::with_real_ids` in the
+write). Each row with its actions (one may be
 another device's helper: „Funkbrücke“ from a router port is the cabled bridge device's,
 `HelperPreset::RadioFrom`, so `HelperFlow` embeds that device's helper; „Richtfunk abräumen“,
 `helper::radio_disconnect`, starts from the row's radio only, „Kunden-Anschluss abräumen“,

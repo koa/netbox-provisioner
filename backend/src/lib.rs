@@ -198,6 +198,16 @@ pub enum Error {
     PortHasVlan { port: Box<str>, vlan: u16 },
     #[error("{0} has no site")]
     NoSite(Box<str>),
+    #[error("The device needs a name")]
+    NoDeviceName,
+    #[error("NetBox has a device {0} already")]
+    DeviceNameTaken(Box<str>),
+    /// not a WLAN group with a controller
+    #[error("Unknown WLAN group {0}")]
+    UnknownWlanGroup(u32),
+    /// NetBox has no platform of this name
+    #[error("NetBox has no platform {0}")]
+    NoPlatform(Box<str>),
     /// not a prefix of the device's site
     #[error("Unknown prefix {0}")]
     UnknownPrefix(u32),

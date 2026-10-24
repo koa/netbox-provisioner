@@ -86,6 +86,18 @@ pub enum ActionHelper {
     Flags,
     /// „Aus Bridge lösen“: the port `interface` out of its bridge
     BridgeLeave,
+    /// „Neues Gerät“: a device for NetBox cabled to the free port `interface`, the one the
+    /// device sees there if `seen`
+    NewDevice,
+}
+
+/// A MikroTik the device sees at a port that NetBox doesn't know: its identity, board and port
+/// (as it names them).
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct SeenDevice {
+    pub identity: Box<str>,
+    pub board: Box<str>,
+    pub interface_name: Box<str>,
 }
 
 /// An action of a row: the helper and what it starts with. The frontend hands it on to the
@@ -100,6 +112,8 @@ pub struct RowAction {
     pub peer: Option<InterfaceRef>,
     /// a customer network on this VLAN
     pub vlan: Option<u32>,
+    /// the device seen at the port, for a new one
+    pub seen: Option<SeenDevice>,
 }
 
 /// An L3 interface, a bridge with its ports.
@@ -235,6 +249,7 @@ impl DeviceAccess {
                         interface: Some(port.interface.id),
                         peer: None,
                         vlan: None,
+                        seen: None,
                     });
                 }
             }
@@ -257,6 +272,7 @@ impl DeviceAccess {
                 interface: None,
                 peer: None,
                 vlan: None,
+                seen: None,
             })
             .into_iter()
             .collect();
@@ -386,6 +402,7 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
         interface,
         peer,
         vlan,
+        seen: None,
     };
     // the port (the row's interface or one of its bridge ports) cabled to a router, and that
     // router's port
@@ -516,9 +533,10 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
             ));
         }
         InterfaceTask::Unknown => {
-            let ethernet_port = topology
-                .get_interface_by_id(InterfaceId(row.interface.id))
-                .is_some_and(|i| i.is_ethernet_port());
+            let port = topology.get_interface_by_id(InterfaceId(row.interface.id));
+            let ethernet_port = port.as_ref().is_some_and(|i| i.is_ethernet_port());
+            // no cable, or one ending open at a patch panel
+            let free = port.as_ref().and_then(crate::helper::new_device::landing).is_some();
             actions.push(RowAction {
                 kind: ActionKind::AssignRole,
                 ..customer_net()
@@ -550,6 +568,16 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
                         None,
                     ));
                 }
+                // a device NetBox doesn't have yet, cabled here
+                if free {
+                    actions.push(action(
+                        ActionKind::AssignRole,
+                        ActionHelper::NewDevice,
+                        own,
+                        None,
+                        None,
+                    ));
+                }
             }
         }
     }
@@ -571,6 +599,7 @@ fn port_actions(topology: &Arc<Topology>, port: &InterfaceRef) -> Vec<RowAction>
             interface: Some(port.id),
             peer: None,
             vlan: None,
+            seen: None,
         })
         .into_iter()
         .collect()

@@ -15,6 +15,7 @@ pub mod customer_net;
 pub mod disconnect;
 pub mod flags;
 pub mod loopback;
+pub mod new_device;
 mod plan;
 pub mod poe;
 pub mod port_vlan;
@@ -24,9 +25,10 @@ pub mod routes;
 mod write;
 
 pub use plan::{
-    CreateAddress, CreateCable, CreateInterface, CreatePrefix, CreateWirelessLink, DeleteAddress,
-    DeleteCable, DeleteInterface, DeletePrefix, DeleteWirelessLink, PlanStep, SetPrimaryIp,
-    Target, UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLink,
+    CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreatePrefix,
+    CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
+    DeleteWirelessLink, PlanStep, SetPrimaryIp, Target, UpdateInterface, UpdatePort,
+    UpdatePortVlan, UpdateWirelessLink,
 };
 pub use write::{FieldChange, NetboxUndone, NetboxWritten, undo, write};
 
@@ -73,6 +75,8 @@ pub enum Helper {
     CableTakeover(cable_takeover::CableTakeoverInput),
     /// a port out of its bridge, with its VLANs
     BridgeLeave(bridge_leave::BridgeLeaveInput),
+    /// a new device cabled to a free port of a router, for the router
+    NewDevice(new_device::NewDeviceInput),
 }
 
 impl Helper {
@@ -90,6 +94,7 @@ impl Helper {
             Helper::PortVlan(input) => port_vlan::plan(topology, input),
             Helper::CableTakeover(input) => cable_takeover::plan(topology, input).await,
             Helper::BridgeLeave(input) => bridge_leave::plan(topology, input),
+            Helper::NewDevice(input) => new_device::plan(topology, input).await,
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -133,6 +138,10 @@ impl Helper {
             Helper::BridgeLeave(input) => topology
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
+            Helper::NewDevice(input) => topology
+                .get_interface_by_id(crate::topology::InterfaceId(input.port))
+                .and_then(|interface| interface.device())
+                .ok_or(Error::UnknownInterface(input.port)),
         }
     }
 }
@@ -253,6 +262,37 @@ impl NetboxPlan {
         }
         for (index, step) in self.steps.iter().enumerate() {
             match step {
+                // the device it is cabled to as template: site, config context; its tenant
+                // is the template's own or its location's, the location isn't taken
+                PlanStep::CreateDevice(create) => {
+                    if let Some(mut new) = device(json, create.template).cloned() {
+                        new["id"] = json!(created_id(index));
+                        new["name"] = json!(create.name);
+                        new["primary_ip4"] = Value::Null;
+                        new["primary_ip6"] = Value::Null;
+                        new["role"] = json!({ "slug": create.role_slug });
+                        new["device_type"] = json!({
+                            "model": create.device_type,
+                            "manufacturer": { "slug": create.manufacturer },
+                        });
+                        new["platform"] = json!({ "name": create.platform });
+                        new["interfaces"] = json!([]);
+                        new["frontports"] = json!([]);
+                        new["rearports"] = json!([]);
+                        new["serial"] = json!("");
+                        new["location"] = Value::Null;
+                        new["custom_field_data"] = match create.wlan_group_id {
+                            Some(group) => json!({ "wlan_group": group }),
+                            None => json!({}),
+                        };
+                        if let Some(tenant) = create.tenant_id {
+                            new["tenant"] = json!({ "id": tenant.to_string() });
+                        }
+                        if let Some(devices) = json["device_list"].as_array_mut() {
+                            devices.push(new);
+                        }
+                    }
+                }
                 PlanStep::CreateInterface(create) => {
                     if let Some(interfaces) = device(json, create.device.id)
                         .and_then(|device| device["interfaces"].as_array_mut())
@@ -301,14 +341,14 @@ impl NetboxPlan {
                     }
                 }
                 PlanStep::CreateCable(create) => {
-                    let end = |interface: &InterfaceRef| {
-                        json!([{ "__typename": "InterfaceType", "id": interface.id.to_string() }])
+                    let end = |end: CableEnd, interface: &InterfaceRef| {
+                        json!([{ "__typename": end.typename(), "id": interface.id.to_string() }])
                     };
                     if let Some(cables) = json["cable_list"].as_array_mut() {
                         cables.push(json!({
                             "id": created_id(index),
-                            "a_terminations": end(&create.a),
-                            "b_terminations": end(&create.b),
+                            "a_terminations": end(create.a_end, &create.a),
+                            "b_terminations": end(CableEnd::Interface, &create.b),
                         }));
                     }
                 }
@@ -575,6 +615,7 @@ mod test {
             PlanStep::CreateCable(CreateCable {
                 a: interface_ref(&a),
                 b: interface_ref(&b),
+                a_end: CableEnd::Interface,
             }),
             PlanStep::CreatePrefix(CreatePrefix {
                 prefix: "192.0.2.0/31".into(),

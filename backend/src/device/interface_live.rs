@@ -14,10 +14,12 @@ use crate::{
         update_fallback::is_adjacent,
     },
     topology::{
-        DeviceId,
+        DeviceId, InterfaceId,
         access::device::DeviceAccess,
         findings::{DeviceRef, device_ref},
-        interfaces::{ActionHelper, ActionKind, InterfaceRow, InterfaceTask, RowAction},
+        interfaces::{
+            ActionHelper, ActionKind, InterfaceRow, InterfaceTask, RowAction, SeenDevice,
+        },
     },
 };
 use async_graphql::SimpleObject;
@@ -188,7 +190,10 @@ pub fn check(
                 })
                 .collect();
             let mut actions = Vec::<RowAction>::new();
-            for action in findings.iter().filter_map(|finding| seen_link(device, finding)) {
+            let suggestions = findings
+                .iter()
+                .filter_map(|finding| seen_link(device, finding).or_else(|| new_device(device, finding)));
+            for action in suggestions {
                 if !actions.contains(&action) {
                     actions.push(action);
                 }
@@ -254,6 +259,37 @@ fn seen_link(device: &DeviceAccess, finding: &NeighborFinding) -> Option<RowActi
         interface: Some(port.id),
         peer: Some(peer.clone()),
         vlan: None,
+        seen: None,
+    })
+}
+
+/// A new device for the one MikroTik (it reports a board) the device sees at a free port (no
+/// cable, or one ending open at a patch panel) that NetBox doesn't know („Neues Gerät“), on a
+/// router: a bridge device's ports are its radio link.
+fn new_device(device: &DeviceAccess, finding: &NeighborFinding) -> Option<RowAction> {
+    let NeighborFindingKind::NeighborsNotInNetbox(f) = &finding.kind else {
+        return None;
+    };
+    let [seen] = f.seen.as_slice() else { return None };
+    let port = f.port.interface.as_ref()?;
+    let free = device
+        .topology()
+        .get_interface_by_id(InterfaceId(port.id))
+        .is_some_and(|i| i.is_ethernet_port() && crate::helper::new_device::landing(&i).is_some());
+    if !free || seen.board.is_empty() || !device.has_routeros() || device.is_bridge_device() {
+        return None;
+    }
+    Some(RowAction {
+        kind: ActionKind::Suggestion,
+        helper: ActionHelper::NewDevice,
+        interface: Some(port.id),
+        peer: None,
+        vlan: None,
+        seen: Some(SeenDevice {
+            identity: seen.identity.clone(),
+            board: seen.board.clone(),
+            interface_name: seen.interface_name.clone(),
+        }),
     })
 }
 

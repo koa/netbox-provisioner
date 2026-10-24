@@ -180,13 +180,13 @@ die Aktionen, die auf diesem Port möglich sind, und der Helfer startet mit ihm.
 
 | Port | Aktionen |
 |---|---|
-| frei oder unbekannt (Router) | Als Kunden-Anschluss, Als Direktverbindung; an einem Ethernet-Port Als VLAN am Port, ohne Kabel zu einem Router Als Richtfunk; PoE, Flags |
+| frei oder unbekannt (Router) | Als Kunden-Anschluss, Als Direktverbindung; an einem Ethernet-Port Als VLAN am Port, ohne Kabel zu einem Router Als Richtfunk, ohne Kabel oder offen an einem Patchpanel Neues Gerät anschliessen; PoE, Flags |
 | frei oder unbekannt (Brückengerät) | Als Richtfunk; PoE, Flags |
 | Direktverbindung | Lösungsvorschlag (mit Befund), Verbindung entfernen; PoE, Flags |
 | Richtfunk | Lösungsvorschlag (unvollständig oder mit Befund), Verbindung entfernen; PoE, Flags |
 | Kunden-Anschluss | VLAN am Port (`VlanWithoutPort`), Kunden-Netz, Verbindung entfernen; PoE, Flags |
 | Port einer Bridge | PoE; in einem Kunden-Anschluss auch Aus Bridge lösen |
-| aus der Live-Prüfung | Kabel übernehmen, Verbindung mit dem gesehenen Router |
+| aus der Live-Prüfung | Kabel übernehmen, Verbindung mit dem gesehenen Router, Neues Gerät anschliessen für ein unbekanntes MikroTik an einem freien Port |
 | Uplink | keine (Z25) |
 | Loopback | Loopback, nur wo sie fehlt |
 

@@ -71,7 +71,7 @@ fragment Finding on Finding{
         ... on VlanWithoutPort{ interface{ ...Interface } vlan{ ...Vlan } }
     }
 }
-fragment Action on RowAction{ kind helper interface peer{ ...Interface } vlan }
+fragment Action on RowAction{ kind helper interface peer{ ...Interface } vlan seen{ identity board interfaceName } }
 fragment Vlan on VlanRef{ id vid name }
 fragment Device on DeviceRef{ id name site }
 fragment Address on AddressRef{ id address }

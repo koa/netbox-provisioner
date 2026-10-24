@@ -191,8 +191,60 @@ fn another_far_port_suggests_taking_over_the_cable() {
             interface: Some(link.id().0),
             peer: to_r2.interface,
             vlan: None,
+            seen: None,
         }]
     );
     let b1_port = b1.interfaces().iter().find(|i| i.radio().is_none()).unwrap().name().to_string();
     assert!(actions(seen(&b1, &b1_port)).is_empty());
+}
+
+/// r1 sees a MikroTik NetBox doesn't know at its free ether5: „Neues Gerät“ with its board and
+/// port; one without a board (not a MikroTik) gets none.
+#[test]
+fn an_unknown_mikrotik_suggests_a_new_device() {
+    let net = Net::new();
+    let ether5 = net.interface(net.r1, "ether5");
+    let topology = Arc::new(net.builder.build());
+    let r1 = topology.get_device_by_id(&net.r1).unwrap();
+    let ether5 = topology.get_interface_by_id(ether5).unwrap();
+    let actions = |board: &str| {
+        let finding = NeighborFinding {
+            severity: crate::topology::findings::Severity::Hint,
+            kind: NeighborFindingKind::NeighborsNotInNetbox(neighbors::NeighborsNotInNetbox {
+                port: neighbors::PortRef {
+                    name: "ether5".into(),
+                    interface: Some(crate::topology::findings::interface_ref(&ether5)),
+                },
+                seen: vec![SeenNeighbor {
+                    identity: "MikroTik".into(),
+                    interface_name: "ether1".into(),
+                    board: board.into(),
+                    device: None,
+                    interface: None,
+                }],
+            }),
+        };
+        let neighbors = Neighbors {
+            findings: vec![finding],
+            seen: BTreeMap::new(),
+        };
+        let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &BTreeSet::new());
+        live_row(&live, &r1, "ether5").actions.clone()
+    };
+    assert_eq!(
+        actions("RB962UiGS-5HacT2HnT"),
+        [RowAction {
+            kind: ActionKind::Suggestion,
+            helper: ActionHelper::NewDevice,
+            interface: Some(ether5.id().0),
+            peer: None,
+            vlan: None,
+            seen: Some(SeenDevice {
+                identity: "MikroTik".into(),
+                board: "RB962UiGS-5HacT2HnT".into(),
+                interface_name: "ether1".into(),
+            }),
+        }]
+    );
+    assert!(actions("").is_empty());
 }
