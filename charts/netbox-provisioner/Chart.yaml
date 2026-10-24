@@ -1,0 +1,10 @@
+apiVersion: v2
+name: netbox-provisioner
+description: Provisions a MikroTik RouterOS network from NetBox
+type: application
+# the release workflow sets both from the Git tag (vX.Y.Z)
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/koa/netbox-provisioner
+sources:
+  - https://github.com/koa/netbox-provisioner

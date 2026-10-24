@@ -22,6 +22,21 @@ and `local/lab/run-provisioner.sh` do both. `binary/build.rs` only checks that `
 rebuilds when it changes — `backend` alone does not need this and can be
 checked/tested independently.
 
+`flake.nix` builds the same with Nix (`nix build .#image`: an OCI image of the binary and the CA
+certificates, no shell; `nix flake check`: tests, the three clippy runs, no shell or interpreter
+in the closure) and is what CI runs (`.github/workflows/ci.yaml`). It takes `mikrotik-model` and
+`mikrotik-api` as flake inputs from GitHub (branch `claude-edition`) and puts them next to this
+repository, where the path dependencies find them: a change there reaches the image only after it
+is pushed and `nix flake update mikrotik-model` (or `mikrotik-api`) is committed here; locally
+`--override-input mikrotik-model path:../mikrotik-model` builds with the workspace's. A change of
+`frontend/node/package-lock.json` needs the new `npmDeps` hash in `flake.nix` (the build names
+it). The Helm chart is `charts/netbox-provisioner`: every setting of `config.yaml` is a value
+of its own (`settings`), the chart writes them to a ConfigMap without the secrets; a secret
+(`netbox_token`, `netbox_write_token`, a credential's or the proxy's `password`) is a `value` or
+a `secretKeyRef` and reaches the binary as `APP_SETTINGS__…` variable. A new setting in
+`backend/src/config.rs` belongs in `values.yaml` and `templates/configmap.yaml` (a secret one in
+`netbox-provisioner.secrets` of `_helpers.tpl`).
+
 The full architecture, current gaps, and the phased completion plan (NetBox data model, BGP/OSPF
 design, apply/diff/review pipeline, etc.) are tracked outside this repo in the project plan; see
 the `examples/` directory here for reference RouterOS configurations the generator must remain
@@ -724,7 +739,8 @@ QEMU's, the golden image's dhcp-client is bound to it).
 - Body: why the change was needed and anything non-obvious, wrapped at ~72 columns.
 - Update this file in the same commit as the change it describes.
 - Commits by Claude end with the `Co-Authored-By: Claude …` trailer, without a session link.
-- Push to `master` only when asked — once CI is set up here, a push to `master` will publish a
-  Docker image and Helm chart, so this matters more here than in the other two repos.
+- Push to `master` only when asked: a push to `master` publishes the image as a snapshot
+  (`ghcr.io/koa/netbox-provisioner:sha-<commit>`), a tag `vX.Y.Z` the release image and the Helm
+  chart (`oci://ghcr.io/koa/charts`), so this matters more here than in the other two repos.
 - Verify with `cargo clippy` in addition to `cargo check`/`cargo test` — not every pre-existing
   warning needs fixing, but a change shouldn't leave new, avoidable ones behind.

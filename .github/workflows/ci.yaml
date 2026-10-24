@@ -1,0 +1,54 @@
+# Tests, clippy and the image on every push; a push to master publishes the image as a
+# snapshot (`sha-<commit>`), a tag `vX.Y.Z` as a release together with the Helm chart
+# (docs/concepts/deployment.md).
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/netbox-provisioner
+  CHARTS: oci://ghcr.io/${{ github.repository_owner }}/charts
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      # tests (without the `#[ignore]` CHR tests), the three clippy runs, no shell in the image
+      - name: checks
+        run: nix flake check -L
+      - name: image
+        run: nix build -L .#image --out-link image.tar.gz
+      - name: chart
+        run: |
+          nix shell nixpkgs#kubernetes-helm -c \
+            helm lint charts/netbox-provisioner -f charts/netbox-provisioner/ci/lint-values.yaml
+
+      - name: publish snapshot
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          nix shell nixpkgs#skopeo -c skopeo copy \
+            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+            docker-archive:image.tar.gz "docker://$IMAGE:sha-${GITHUB_SHA::7}"
+
+      - name: publish release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          nix shell nixpkgs#skopeo -c skopeo copy \
+            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+            docker-archive:image.tar.gz "docker://$IMAGE:$version"
+          nix shell nixpkgs#kubernetes-helm -c sh -c "
+            echo '${{ secrets.GITHUB_TOKEN }}' |
+              helm registry login ghcr.io -u '${{ github.actor }}' --password-stdin &&
+            helm package charts/netbox-provisioner --version '$version' --app-version '$version' &&
+            helm push 'netbox-provisioner-$version.tgz' '$CHARTS'"

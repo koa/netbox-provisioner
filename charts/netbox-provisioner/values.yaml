@@ -1,0 +1,106 @@
+image:
+  repository: ghcr.io/koa/netbox-provisioner
+  # defaults to the chart's appVersion; a snapshot is `sha-<commit>`
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# The provisioner's `config.yaml` (`settings` of backend/src/config.rs), one value each. The
+# chart writes it to a ConfigMap without the secrets; a secret is given either
+#   value: "..."                         the chart keeps it in a Secret of its own
+#   secretKeyRef: {name: ..., key: ...}  a key of a Secret of the operator
+# and reaches the provisioner as `APP_SETTINGS__...` environment variable.
+settings:
+  # --- login (docs/login.md): the OIDC provider and client of the frontend
+  auth_issuer: ""
+  auth_client_id: ""
+  # space separated; empty: "openid profile email offline_access"
+  auth_scopes: ""
+  # the users (`preferred_username`) allowed in
+  auth_users: []
+
+  # --- NetBox
+  netbox_url: ""
+  # read-only token
+  netbox_token:
+    value: ""
+    secretKeyRef: {}
+  # writing to NetBox (the helpers), only with `netbox_write_token`
+  allow_netbox_write: false
+  netbox_write_token:
+    value: ""
+    secretKeyRef: {}
+
+  # --- devices
+  # by name, as a tenant's custom field `mikrotik_credentials` names them; a name with a
+  # secret password must be lowercase (environment variables arrive lowercase)
+  #   lab:
+  #     user: admin            # empty: admin
+  #     password:
+  #       secretKeyRef: {name: mikrotik, key: lab}
+  mikrotik_credentials: {}
+  # the device every other device is reached through (`/ip socks`); empty `device`: none
+  management_proxy:
+    # its name in NetBox
+    device: ""
+    # host:port of its SOCKS5 proxy, as the pod reaches it
+    address: ""
+    user: ""
+    password:
+      value: ""
+      secretKeyRef: {}
+  # writing to devices; the diff removes everything NetBox doesn't know of
+  allow_apply: false
+  # long-term (empty), stable, testing or development
+  routeros_channel: ""
+  # seconds after the apply script to reach the device again (empty: 90)
+  apply_fallback_seconds: ""
+  # seconds after an update's boot to reach the device again (empty: 900)
+  update_fallback_seconds: ""
+
+  # --- server; the container ports follow
+  # empty: 8080
+  server_port: ""
+  # empty: server_port + 1000; `/metrics` (Prometheus) and `/health`
+  server_mgmt_port: ""
+  # empty: all addresses
+  server_bind_address: ""
+
+# more environment variables, e.g. RUST_LOG
+env: []
+envFrom: []
+
+service:
+  type: ClusterIP
+  port: 80
+  mgmtPort: 9080
+
+# Gateway API: an HTTPRoute to the service; the Gateway itself is the operator's
+httpRoute:
+  enabled: false
+  annotations: {}
+  # e.g. - name: public, namespace: gateway, sectionName: https
+  parentRefs: []
+  # the OIDC callback goes to this host (docs/login.md)
+  hostnames: []
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+
+# the backend loads the OIDC discovery at start and doesn't start without it
+startupProbe:
+  periodSeconds: 5
+  failureThreshold: 60
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+podLabels: {}
+
+# jobs, leases and cancelling live in the process (docs/concepts/deployment.md): never two pods,
+# so one replica, replaced with `Recreate`, and time for a running job to come to its end
+terminationGracePeriodSeconds: 60

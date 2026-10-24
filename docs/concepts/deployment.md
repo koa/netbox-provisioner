@@ -1,6 +1,7 @@
 # Konzept: Container, Helm-Chart und CI
 
-Status: Konzept, nicht umgesetzt. Offener Punkt „Provisionierung“ aus
+Status: umgesetzt bis auf das Aufräumen der Snapshots und rustls (2026-10-23, siehe
+[Umsetzung](#umsetzung)). Offener Punkt „Provisionierung“ aus
 [pending.md](../pending.md#provisionierung).
 
 ## Ausgangslage
@@ -85,10 +86,10 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
 - `Deployment` mit **einer** Replik: Jobs, Leases (`device/power.rs`) und das Abbrechen leben im
   Prozess. Zwei Repliken würden dasselbe Gerät gleichzeitig anwenden. Strategie `Recreate`, damit
   beim Update nie zwei laufen.
-- `config.yaml` als **Secret** (enthält Tokens und Passwörter), eingebunden als Datei. Einzelne
-  Werte können aus weiteren Secrets kommen, als Umgebungsvariable `APP_SETTINGS__…`.
+- `config.yaml` aus einzelnen Werten, die Geheimnisse als Umgebungsvariable `APP_SETTINGS__…`
+  aus Secrets (siehe [Umsetzung](#umsetzung)).
 - `Service` für 8080, ein zweiter für 9080 (Metriken), `ServiceMonitor` optional.
-- `Ingress` mit TLS vor 8080; OIDC-Callback-URL = Ingress-Host ([Login](../login.md)).
+- `HTTPRoute` (Gateway API) vor 8080; OIDC-Callback-URL = ihr Host ([Login](../login.md)).
 - Probes auf `health` am Management-Port. Achtung: Das Backend lädt beim Start die
   OIDC-Discovery und startet ohne sie nicht ([Login](../login.md)); die Startup-Probe braucht
   dafür Geduld.
@@ -131,3 +132,28 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
 - Das Image baut **Nix**.
 - Der Provisioner liefert **Image und Helm-Chart**; die Konfiguration des Clusters (Argo CD,
   Secrets, Ingress) macht der Betreiber von Hand.
+
+## Umsetzung
+
+- **`flake.nix`:** `packages.image` (Nix, `buildLayeredImage`, Arbeitsverzeichnis `/config`,
+  Benutzer 65532), `packages.provisioner` (das Binary als `netbox-provisioner`), `checks` (Tests
+  ohne CHR, die drei Clippy-Läufe mit `-D warnings`, `no-shell` über die Closure), eine
+  `devShell`. `mikrotik-model` und `mikrotik-api` sind Flake-Inputs (GitHub, Zweig
+  `claude-edition`), der Build legt sie neben das Repository, wo die Pfad-Abhängigkeiten sie
+  finden; `Cargo.toml` bleibt dabei, wie es ist.
+- **`.github/workflows/ci.yaml`:** bei jedem Push `nix flake check`, das Image und `helm lint`;
+  ein Push auf `master` schiebt `ghcr.io/koa/netbox-provisioner:sha-<kurz>`, ein Tag `vX.Y.Z` das
+  Image als `X.Y.Z` und das Chart nach `oci://ghcr.io/koa/charts` (mit `skopeo`, ohne Docker).
+- **`charts/netbox-provisioner`:** eine Replik mit `Recreate`. Jedes Setting von `config.yaml`
+  ist ein eigener Wert unter `settings`; das Chart schreibt sie ohne die Geheimnisse in eine
+  ConfigMap. Ein Geheimnis (`netbox_token`, `netbox_write_token`, das `password` einer
+  Zugangsangabe oder des Proxys) ist entweder `value` (das Chart legt es in ein eigenes Secret)
+  oder `secretKeyRef` auf ein Secret des Betreibers und kommt als `APP_SETTINGS__…` an. Der Name
+  einer Zugangsangabe mit geheimem Passwort muss klein geschrieben sein (Umgebungsvariablen
+  kommen klein an), sonst bricht das Chart ab. Die Container-Ports folgen `server_port` und
+  `server_mgmt_port`. Statt Ingress eine `HTTPRoute` (Gateway API) an ein Gateway des
+  Betreibers, `ServiceMonitor` optional, Probes auf `/health`, nur lesbares Dateisystem ohne
+  Rechte; eine geänderte Konfiguration startet den Pod neu (Prüfsummen-Annotation).
+- **Offen:** das Aufräumen alter Snapshots (ein Release-Image teilt sich den Digest mit seinem
+  Snapshot; ein Aufräumen nach Tag muss das berücksichtigen), rustls statt OpenSSL, das Image in
+  einem Cluster laufen lassen.

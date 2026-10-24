@@ -1,0 +1,35 @@
+# every kind of setting once, for helm lint in CI (.github/workflows/ci.yaml)
+settings:
+  auth_issuer: https://id.example.org
+  auth_client_id: provisioner
+  auth_users: [koa]
+  netbox_url: https://netbox.example.org
+  netbox_token:
+    secretKeyRef: {name: netbox, key: token}
+  netbox_write_token:
+    value: write-secret
+  mikrotik_credentials:
+    lab:
+      user: admin
+      password:
+        secretKeyRef: {name: mikrotik, key: lab}
+    prod:
+      password:
+        value: prod-secret
+    nopw:
+      user: reader
+  management_proxy:
+    device: core
+    address: 10.0.0.1:1080
+    user: prov
+    password:
+      value: proxy-secret
+  allow_apply: true
+  routeros_channel: stable
+  apply_fallback_seconds: 120
+httpRoute:
+  enabled: true
+  parentRefs: [{name: public, namespace: gateway, sectionName: https}]
+  hostnames: [prov.example.org]
+serviceMonitor:
+  enabled: true

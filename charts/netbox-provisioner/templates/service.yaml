@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "netbox-provisioner.fullname" . }}
+  labels:
+    {{- include "netbox-provisioner.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "netbox-provisioner.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+---
+# `/metrics` and `/health`, kept off the Ingress
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "netbox-provisioner.fullname" . }}-mgmt
+  labels:
+    {{- include "netbox-provisioner.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mgmt
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "netbox-provisioner.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: mgmt
+      port: {{ .Values.service.mgmtPort }}
+      targetPort: mgmt

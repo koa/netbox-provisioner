@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "netbox-provisioner.fullname" . }}
+  labels:
+    {{- include "netbox-provisioner.labels" . | nindent 4 }}
+spec:
+  # jobs and leases live in the process: two pods would apply to one device at once
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "netbox-provisioner.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # a changed config.yaml or secret value restarts the pod
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "netbox-provisioner.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: netbox-provisioner
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: {{ include "netbox-provisioner.httpPort" . }}
+            - name: mgmt
+              containerPort: {{ include "netbox-provisioner.mgmtPort" . }}
+          env:
+            {{- range (include "netbox-provisioner.secrets" . | fromJsonArray) }}
+            - name: {{ .env }}
+              valueFrom:
+                secretKeyRef:
+                  {{- if .secret.value }}
+                  name: {{ include "netbox-provisioner.fullname" $ }}
+                  key: {{ .key }}
+                  {{- else }}
+                  name: {{ .secret.secretKeyRef.name }}
+                  key: {{ required (printf "%s: secretKeyRef.key" .key) .secret.secretKeyRef.key }}
+                  {{- end }}
+            {{- end }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: mgmt
+            periodSeconds: {{ .Values.startupProbe.periodSeconds }}
+            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: mgmt
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: mgmt
+            periodSeconds: 10
+          volumeMounts:
+            # the image's working directory, where it reads config.yaml
+            - name: config
+              mountPath: /config/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "netbox-provisioner.fullname" . }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

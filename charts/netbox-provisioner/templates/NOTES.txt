@@ -1,0 +1,6 @@
+netbox-provisioner {{ .Values.image.tag | default .Chart.AppVersion }}
+{{- if .Values.httpRoute.enabled }}
+UI: {{ range .Values.httpRoute.hostnames }}https://{{ . }}/ {{ end }}(the OIDC client needs this callback URL, docs/login.md)
+{{- else }}
+UI: kubectl port-forward svc/{{ include "netbox-provisioner.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}

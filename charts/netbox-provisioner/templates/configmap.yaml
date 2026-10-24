@@ -1,0 +1,51 @@
+{{- $s := .Values.settings -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "netbox-provisioner.fullname" . }}
+  labels:
+    {{- include "netbox-provisioner.labels" . | nindent 4 }}
+data:
+  # without the secrets: they come as environment variables (templates/secret.yaml)
+  config.yaml: |
+    settings:
+      auth_issuer: {{ required "settings.auth_issuer" $s.auth_issuer | quote }}
+      auth_client_id: {{ required "settings.auth_client_id" $s.auth_client_id | quote }}
+      {{- with $s.auth_scopes }}
+      auth_scopes: {{ . | quote }}
+      {{- end }}
+      auth_users: {{ $s.auth_users | toJson }}
+      netbox_url: {{ required "settings.netbox_url" $s.netbox_url | quote }}
+      allow_netbox_write: {{ $s.allow_netbox_write }}
+      mikrotik_credentials:
+        {{- range $name, $c := $s.mikrotik_credentials }}
+        {{ $name | quote }}:
+          {{- with $c.user }}
+          user: {{ . | quote }}
+          {{- else }} {}
+          {{- end }}
+        {{- else }} {}
+        {{- end }}
+      {{- with $s.management_proxy }}
+      {{- if .device }}
+      management_proxy:
+        device: {{ .device | quote }}
+        address: {{ required "settings.management_proxy.address" .address | quote }}
+        user: {{ required "settings.management_proxy.user" .user | quote }}
+      {{- end }}
+      {{- end }}
+      allow_apply: {{ $s.allow_apply }}
+      {{- with $s.routeros_channel }}
+      routeros_channel: {{ . | quote }}
+      {{- end }}
+      {{- with $s.apply_fallback_seconds }}
+      apply_fallback_seconds: {{ . | int }}
+      {{- end }}
+      {{- with $s.update_fallback_seconds }}
+      update_fallback_seconds: {{ . | int }}
+      {{- end }}
+      server_port: {{ include "netbox-provisioner.httpPort" . }}
+      server_mgmt_port: {{ include "netbox-provisioner.mgmtPort" . }}
+      {{- with $s.server_bind_address }}
+      server_bind_address: {{ . | quote }}
+      {{- end }}
