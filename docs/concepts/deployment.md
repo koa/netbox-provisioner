@@ -160,7 +160,8 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
   oder `secretKeyRef` auf ein Secret des Betreibers und kommt als `APP_SETTINGS__…` an. Der Name
   einer Zugangsangabe mit geheimem Passwort muss klein geschrieben sein (Umgebungsvariablen
   kommen klein an), sonst bricht das Chart ab. Die Container-Ports folgen `server_port` und
-  `server_mgmt_port`. Statt Ingress eine `HTTPRoute` (Gateway API) an ein Gateway des
+  `server_mgmt_port`. `logLevel` (Vorgabe `info`) wird `LOG_LEVEL`, mit Stufen pro Modul nach
+  env_logger (`info,backend::device=debug`); ohne sie loggt das Binary alles ab `debug`. Statt Ingress eine `HTTPRoute` (Gateway API) an ein Gateway des
   Betreibers, `ServiceMonitor` optional, Probes auf `/health`, nur lesbares Dateisystem ohne
   Rechte; eine geänderte Konfiguration startet den Pod neu (Prüfsummen-Annotation).
 - **Offen:** rustls statt OpenSSL, das Image in einem Cluster laufen lassen; beide Workflows

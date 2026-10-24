@@ -66,7 +66,12 @@ settings:
   # empty: all addresses
   server_bind_address: ""
 
-# more environment variables, e.g. RUST_LOG
+# what the provisioner logs (`LOG_LEVEL`, env_logger's syntax): a level (error, warn, info,
+# debug, trace) and levels per module, e.g. "info,backend::device=debug"; without it the binary
+# logs everything at debug
+logLevel: info
+
+# more environment variables
 env: []
 envFrom: []
 
