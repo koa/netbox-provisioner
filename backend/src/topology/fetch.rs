@@ -402,6 +402,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             vlan_groups.insert(
                 vlan_group_id,
                 VlanGroupData {
+                    name: vlan_group.name.into_boxed_str(),
                     vlans: Box::from_iter(vlan_ids),
                 },
             );

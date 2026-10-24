@@ -15,6 +15,7 @@ pub mod flags;
 pub mod loopback;
 mod plan;
 pub mod poe;
+pub mod port_vlan;
 pub mod radio_bridge;
 pub mod radio_disconnect;
 pub mod routes;
@@ -64,6 +65,8 @@ pub enum Helper {
     RadioDisconnect(radio_disconnect::RadioDisconnectInput),
     /// a customer port's network and VLANs out of NetBox
     CustomerDisconnect(customer_disconnect::CustomerDisconnectInput),
+    /// a VLAN untagged on a port of the device
+    PortVlan(port_vlan::PortVlanInput),
 }
 
 impl Helper {
@@ -78,6 +81,7 @@ impl Helper {
             Helper::RadioBridge(input) => radio_bridge::plan(topology, input).await,
             Helper::RadioDisconnect(input) => radio_disconnect::plan(topology, input),
             Helper::CustomerDisconnect(input) => customer_disconnect::plan(topology, input),
+            Helper::PortVlan(input) => port_vlan::plan(topology, input),
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -109,6 +113,9 @@ impl Helper {
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
             Helper::CustomerDisconnect(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
+            Helper::PortVlan(input) => topology
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
         }

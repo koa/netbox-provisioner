@@ -68,6 +68,7 @@ impl Net {
         builder.vlan_groups.insert(
             group,
             VlanGroupData {
+                name: "clients".into(),
                 vlans: Box::new([VlanId(10)]),
             },
         );
@@ -113,6 +114,46 @@ impl Net {
             b2,
             link,
         }
+    }
+    /// A local VLAN 20 („guests“, a group without VNI) with its network on r1's VLAN interface
+    /// `vlan-guests` and on no port.
+    pub(crate) fn guests(&mut self) -> (InterfaceId, VlanId) {
+        let builder = &mut self.builder;
+        let group = VlanGroupId(2);
+        let vlan = VlanId(20);
+        builder.vlan_groups.insert(
+            group,
+            VlanGroupData {
+                name: "guests".into(),
+                vlans: Box::new([vlan]),
+            },
+        );
+        builder.vlans.insert(
+            vlan,
+            VlanData {
+                name: "guests".into(),
+                vlan_id: 20,
+                group,
+                terminations: Box::new([]),
+                vxlan: None,
+                wlans: Box::new([]),
+            },
+        );
+        let interface = virtual_interface(builder, self.r1, "vlan-guests", PortType::Ethernet);
+        let address = address(builder, "10.20.0.1/24");
+        let data = builder.interfaces.get_mut(&interface).unwrap();
+        data.port_type = None;
+        data.ips = Box::new([address]);
+        data.vlan = Some(vlan);
+        (interface, vlan)
+    }
+    pub(crate) fn interface(&self, device: DeviceId, name: &str) -> InterfaceId {
+        self.builder
+            .interfaces
+            .iter()
+            .find(|(_, i)| i.device == device && &*i.name == name)
+            .map(|(id, _)| *id)
+            .unwrap_or_else(|| panic!("{name}"))
     }
     fn view(self, device: DeviceId) -> InterfaceView {
         let topology = Arc::new(self.builder.build());
@@ -462,8 +503,10 @@ fn rows_offer_the_helpers_that_fit() {
         [
             (ActionKind::AssignRole, ActionHelper::CustomerNet),
             (ActionKind::AssignRole, ActionHelper::Connection),
+            (ActionKind::AssignRole, ActionHelper::PortVlan),
         ]
     );
+    assert_eq!(row(&view, "ether5").actions[2].interface, Some(ether5.0));
     // the router's end of a complete radio link without findings: only taking it out
     assert_eq!(
         helpers(row(&view, "ether3")),
@@ -521,4 +564,38 @@ fn a_radio_link_offers_funkbruecke_from_the_router_port() {
         radio.actions[0].peer.as_ref().map(|p| (&*p.device.name, &*p.name)),
         Some(("b1", "ether1"))
     );
+}
+
+/// A network on a VLAN no port has reaches nobody: a finding on its row, and „VLAN am Port“ with
+/// the VLAN; once a port has it, neither.
+#[test]
+fn a_vlan_on_no_port_offers_vlan_am_port() {
+    let mut net = Net::new();
+    let r1 = net.r1;
+    let (_, vlan) = net.guests();
+    let topology = Arc::new(net.builder.clone().build());
+    let view = topology.get_device_by_id(&r1).unwrap().interface_view();
+    let guests = row(&view, "vlan-guests");
+    assert_eq!(guests.task, InterfaceTask::Customer);
+    assert!(
+        guests
+            .findings
+            .iter()
+            .any(|f| matches!(&f.kind, FindingKind::VlanWithoutPort(f) if f.vlan.vid == 20)),
+        "{:?}",
+        guests.findings
+    );
+    let action = &guests.actions[0];
+    assert_eq!(
+        (action.kind, action.helper, action.interface, action.vlan),
+        (ActionKind::Suggestion, ActionHelper::PortVlan, None, Some(vlan.0))
+    );
+
+    let ether5 = net.interface(r1, "ether5");
+    net.builder.interfaces.get_mut(&ether5).unwrap().vlan = Some(vlan);
+    let topology = Arc::new(net.builder.build());
+    let view = topology.get_device_by_id(&r1).unwrap().interface_view();
+    let guests = row(&view, "vlan-guests");
+    assert!(guests.findings.is_empty(), "{:?}", guests.findings);
+    assert!(!helpers(guests).contains(&(ActionKind::Suggestion, ActionHelper::PortVlan)));
 }

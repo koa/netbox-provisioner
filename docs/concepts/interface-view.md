@@ -391,6 +391,14 @@ prüfen“ fragt neu. Ist das Gerät nicht erreichbar, stehen die Live-Prüfunge
      `mode: null` zum Entfernen des Modes (4.7.1, im Lab an einem Test-Interface geprüft). Im
      Lab mit Anwenden geprüft: lab-np2 `lan` abgeräumt und mit „Kunden-Netz“ neu angelegt,
      lab-wap `ether2` (nur das VLAN) abgeräumt und per Rückgängig wiederhergestellt.
+   - VLAN am Port, erledigt 2026-10-24: Helfer `port_vlan` (siehe
+     [Config-Helper](config-helper.md#vlan-am-port)). „Fehlt nur L2“ ist ein neuer Befund,
+     `VlanWithoutPort` (Warnung): ein VLAN-Interface mit Adresse, dessen VLAN kein anderes
+     Interface des Geräts führt, in keinem WLAN liegt und dessen Bereich (`vlan_domain`) nur das
+     Gerät umfasst; das Netz erreicht niemanden. Auf seiner Kunden-Zeile ist „VLAN am Port“ der
+     Lösungsvorschlag mit dem VLAN; auf einer unbekannten Zeile eines Ethernet-Ports kommt es zu
+     „Rolle zuweisen“ dazu, mit dem Port. Freie Ports erreicht man über „Weitere Helfer“. Im
+     gespeicherten Export kommt der Befund nicht vor.
 
 ## Entschieden (2026-10-23)
 

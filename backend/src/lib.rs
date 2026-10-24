@@ -176,6 +176,19 @@ pub enum Error {
     /// an interface (`device interface`) without address, `dhcp` or VLAN
     #[error("{0} has no customer network to take out of NetBox")]
     NoCustomerNet(Box<str>),
+    /// another VLAN of the device (`vlan` of `group`) has the VID
+    #[error("VLAN {vlan} of {group} has VID {vid} on the device already")]
+    VlanIdTaken { vid: u16, vlan: Box<str>, group: Box<str> },
+    /// the VXLAN of `group` is in `bridge` on the device (`None`: the default bridge), the port
+    /// would be in another one
+    #[error("The VXLAN of {group} is in bridge {bridge:?} on the device")]
+    VxlanInBridge { group: Box<str>, bridge: Option<Box<str>> },
+    /// a port (`device port`) with `dhcp-client` or `nat`
+    #[error("{0} is an uplink")]
+    PortUplink(Box<str>),
+    /// a port (`device port`) with this VLAN untagged and none tagged already
+    #[error("{port} has VLAN {vlan} already")]
+    PortHasVlan { port: Box<str>, vlan: u16 },
     #[error("{0} has no site")]
     NoSite(Box<str>),
     /// not a prefix of the device's site

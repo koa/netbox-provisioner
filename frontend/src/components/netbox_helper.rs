@@ -10,7 +10,8 @@
 //! both ports (`poeOptions`), or takes them from what the device reports feeding
 //! (`access.poeObserved`). „Funkbrücke“ runs on a bridge's page: its role, the other bridge
 //! (from its wireless link), and only where they aren't cabled the router ports
-//! (`radioBridgeCandidates`, `linkPorts`).
+//! (`radioBridgeCandidates`, `linkPorts`). „VLAN am Port“ chooses a port and a VLAN
+//! (`portVlanOptions`).
 use crate::{
     components::{
         adjust_target::SelectedTarget, findings::finding_list, job::JobView, menu::popup::Select,
@@ -19,7 +20,8 @@ use crate::{
     graphql::{
         authenticated::{
             CustomerNetOptions, FlagInterfaces, Findings, HelperJobs, customer_net_options, LinkPorts, NetboxPlan, NetboxPlanPreview,
-            PoeObserved, PoeOptions, RadioBridgeCandidates, UndoNetboxWrite, WriteNetboxPlan,
+            PoeObserved, PoeOptions, PortVlanOptions, RadioBridgeCandidates, UndoNetboxWrite,
+            WriteNetboxPlan, port_vlan_options,
             flag_interfaces, radio_bridge_candidates,
             poe_observed, poe_options::{self, PoePortFields},
             findings::{self, FindingsTopologyFindings},
@@ -83,6 +85,8 @@ pub enum HelperPreset {
     RadioDisconnect(u32),
     /// „Kunden-Anschluss abräumen“ of this interface
     CustomerDisconnect(u32),
+    /// „VLAN am Port“ with this port or VLAN, or both
+    PortVlan { port: Option<u32>, vlan: Option<u32> },
 }
 
 /// „Funkbrücke“ from a router port: the helper is the bridge device's, its router side set.
@@ -170,6 +174,18 @@ pub enum HelperChoice {
         wireless_link: bool,
     },
     CustomerDisconnect(u32),
+    PortVlan {
+        port: u32,
+        vlan: u32,
+    },
+}
+
+/// What „VLAN am Port“ is choosing: the group first, then a VLAN of it.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PortVlanChoice {
+    port: Option<u32>,
+    group: Option<u32>,
+    vlan: Option<u32>,
 }
 
 /// What „Funkbrücke“ is choosing: whether this bridge is the AP, the other bridge, and per side
@@ -370,6 +386,13 @@ macro_rules! helper_input {
                     interface: interface as i64,
                 })
             }
+            HelperChoice::PortVlan { port, vlan } => {
+                $module::Helper::PortVlan($module::PortVlanInput {
+                    device: $id as i64,
+                    port: port as i64,
+                    vlan: vlan as i64,
+                })
+            }
         }
     };
 }
@@ -388,14 +411,16 @@ pub enum HelperKind {
     RadioDisconnect,
     /// only from a customer row: it needs the row's interface
     CustomerDisconnect,
+    PortVlan,
 }
 
 impl HelperKind {
-    pub const ALL: [HelperKind; 7] = [
+    pub const ALL: [HelperKind; 8] = [
         HelperKind::Loopback,
         HelperKind::Connection,
         HelperKind::Disconnect,
         HelperKind::CustomerNet,
+        HelperKind::PortVlan,
         HelperKind::RadioBridge,
         HelperKind::Poe,
         HelperKind::Flags,
@@ -421,6 +446,7 @@ impl Display for HelperKind {
             HelperKind::RadioBridge => t::RADIO_BRIDGE,
             HelperKind::RadioDisconnect => t::RADIO_DISCONNECT,
             HelperKind::CustomerDisconnect => t::CUSTOMER_DISCONNECT,
+            HelperKind::PortVlan => t::PORT_VLAN,
         })
     }
 }
@@ -467,6 +493,8 @@ pub struct NetboxHelper {
     flag_findings: Option<FlagFindings>,
     net: NetChoice,
     net_options: Option<Result<NetOptions, FrontendError>>,
+    port_vlan: PortVlanChoice,
+    port_vlan_options: Option<Result<PortVlanOptionsData, FrontendError>>,
     poe: PoeChoice,
     poe_options: Option<Result<PoeOptionsData, FrontendError>>,
     /// what the device reports feeding, once asked
@@ -515,6 +543,10 @@ pub enum NetboxHelperMsg {
     NetParentV6(Option<u32>),
     NetLength(String),
     NetDhcp(bool),
+    PortVlanOptions(Result<PortVlanOptionsData, FrontendError>),
+    PortVlanPort(u32),
+    PortVlanGroup(u32),
+    PortVlanVlan(u32),
     PoeOptions(Result<PoeOptionsData, FrontendError>),
     PoeFeeds(bool),
     PoePort(Choice),
@@ -557,6 +589,7 @@ impl Component for NetboxHelper {
         let mut radio = RadioChoice::default();
         let mut radio_disconnect = None;
         let mut customer_disconnect = None;
+        let mut port_vlan = PortVlanChoice::default();
         let kind = match &ctx.props().preset {
             None => HelperKind::Loopback,
             Some(HelperPreset::Kind(kind)) => *kind,
@@ -594,6 +627,14 @@ impl Component for NetboxHelper {
                 customer_disconnect = Some(*interface);
                 HelperKind::CustomerDisconnect
             }
+            Some(HelperPreset::PortVlan { port, vlan }) => {
+                port_vlan = PortVlanChoice {
+                    port: *port,
+                    group: None,
+                    vlan: *vlan,
+                };
+                HelperKind::PortVlan
+            }
         };
         last_write(ctx.link().clone(), ctx.props().id);
         let mut helper = Self {
@@ -610,6 +651,8 @@ impl Component for NetboxHelper {
             flag_findings: None,
             net,
             net_options: None,
+            port_vlan,
+            port_vlan_options: None,
             poe: PoeChoice::default(),
             poe_options: None,
             poe_observed: None,
@@ -660,6 +703,37 @@ impl Component for NetboxHelper {
             }
             NetboxHelperMsg::NetDhcp(dhcp) => {
                 self.net.dhcp = dhcp;
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::PortVlanOptions(options) => {
+                // the group of the VLAN given, else the one the backend starts with
+                if let Ok(options) = &options
+                    && self.port_vlan.group.is_none()
+                {
+                    self.port_vlan.group = self
+                        .port_vlan
+                        .vlan
+                        .and_then(|vlan| {
+                            options.groups.iter().find(|g| g.vlans.iter().any(|v| v.id as u32 == vlan))
+                        })
+                        .map(|g| g.id as u32)
+                        .or(options.group.map(|g| g as u32));
+                }
+                self.port_vlan_options = Some(options);
+            }
+            NetboxHelperMsg::PortVlanGroup(group) => {
+                if self.port_vlan.group != Some(group) {
+                    self.port_vlan.group = Some(group);
+                    self.port_vlan.vlan = None;
+                    self.choose(ctx);
+                }
+            }
+            NetboxHelperMsg::PortVlanPort(port) => {
+                self.port_vlan.port = Some(port);
+                self.choose(ctx);
+            }
+            NetboxHelperMsg::PortVlanVlan(vlan) => {
+                self.port_vlan.vlan = Some(vlan);
                 self.choose(ctx);
             }
             NetboxHelperMsg::PoeOptions(options) => self.poe_options = Some(options),
@@ -925,6 +999,12 @@ impl Component for NetboxHelper {
                     fetch_net_options(ctx.link().clone(), ctx.props().id);
                     self.choose(ctx);
                 }
+                // the port has its VLAN now
+                if self.port_vlan_options.is_some() {
+                    self.port_vlan = PortVlanChoice::default();
+                    fetch_port_vlan_options(ctx.link().clone(), ctx.props().id);
+                    self.choose(ctx);
+                }
                 // the bridges have their links and addresses now
                 if self.radio_options.is_some() {
                     fetch_radio_options(ctx.link().clone(), ctx.props().id);
@@ -967,6 +1047,7 @@ impl Component for NetboxHelper {
             (None, _) if self.kind == HelperKind::CustomerDisconnect => {
                 html!(<p>{t::CHOOSE_CUSTOMER_DISCONNECT}</p>)
             }
+            (None, _) if self.kind == HelperKind::PortVlan => html!(<p>{t::CHOOSE_PORT_VLAN}</p>),
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),
             (_, None) if self.removed => html!(),
             (_, None) => html!(<Spinner size={SpinnerSize::Md}/>),
@@ -1049,6 +1130,7 @@ impl Component for NetboxHelper {
             HelperKind::RadioBridge => t::RADIO_BRIDGE_HINT,
             HelperKind::RadioDisconnect => t::RADIO_DISCONNECT_HINT,
             HelperKind::CustomerDisconnect => t::CUSTOMER_DISCONNECT_HINT,
+            HelperKind::PortVlan => t::PORT_VLAN_HINT,
         };
         let content = html! {<>
                     {error}
@@ -1064,6 +1146,7 @@ impl Component for NetboxHelper {
                                 HelperKind::Disconnect,
                                 HelperKind::Flags,
                                 HelperKind::CustomerNet,
+                                HelperKind::PortVlan,
                                 HelperKind::Poe,
                                 HelperKind::RadioBridge,
                             ]}
@@ -1083,6 +1166,9 @@ impl Component for NetboxHelper {
                     }
                     if self.kind == HelperKind::CustomerNet {
                         { self.net_form(ctx) }
+                    }
+                    if self.kind == HelperKind::PortVlan {
+                        { self.port_vlan_form(ctx) }
                     }
                     if self.kind == HelperKind::Poe {
                         { self.poe_form(ctx) }
@@ -1131,6 +1217,9 @@ impl NetboxHelper {
         if kind == HelperKind::CustomerNet && self.net_options.is_none() {
             fetch_net_options(ctx.link().clone(), ctx.props().id);
         }
+        if kind == HelperKind::PortVlan && self.port_vlan_options.is_none() {
+            fetch_port_vlan_options(ctx.link().clone(), ctx.props().id);
+        }
         if kind == HelperKind::Poe && self.poe_options.is_none() {
             fetch_poe_options(ctx.link().clone(), ctx.props().id);
         }
@@ -1172,6 +1261,10 @@ impl NetboxHelper {
             HelperKind::CustomerDisconnect => {
                 Some(HelperChoice::CustomerDisconnect(self.customer_disconnect?))
             }
+            HelperKind::PortVlan => Some(HelperChoice::PortVlan {
+                port: self.port_vlan.port?,
+                vlan: self.port_vlan.vlan?,
+            }),
             HelperKind::RadioDisconnect => Some(HelperChoice::RadioDisconnect {
                 radio: self.radio_disconnect?,
                 wireless_link: self.radio_disconnect_link,
@@ -1600,6 +1693,86 @@ impl NetboxHelper {
                         {" "}{t::DHCP_SERVER}
                     </label>
                 </FormGroup>
+            </Form>
+        }
+    }
+    fn port_vlan_form(&self, ctx: &Context<Self>) -> Html {
+        let options = match &self.port_vlan_options {
+            None => return html!(<Spinner size={SpinnerSize::Md}/>),
+            Some(Err(error)) => return error.to_html(),
+            Some(Ok(options)) => options,
+        };
+        let ports: Vec<Choice> = options
+            .ports
+            .iter()
+            .map(|port| Choice {
+                id: port.id as u32,
+                text: t::port_vlan_port(
+                    &port.name,
+                    port.label.as_deref(),
+                    port.vlan.as_ref().map(|vlan| (vlan.vid, vlan.name.as_str())),
+                ),
+            })
+            .collect();
+        let groups: Vec<Choice> = options
+            .groups
+            .iter()
+            .map(|group| Choice {
+                id: group.id as u32,
+                text: t::port_vlan_group(&group.name, group.vxlan),
+            })
+            .collect();
+        let vlans: Vec<Choice> = options
+            .groups
+            .iter()
+            .filter(|group| Some(group.id as u32) == self.port_vlan.group)
+            .flat_map(|group| &group.vlans)
+            .map(|vlan| Choice {
+                id: vlan.id as u32,
+                text: t::port_vlan_vlan(vlan.vid, &vlan.name),
+            })
+            .collect();
+        let port = ports.iter().find(|c| Some(c.id) == self.port_vlan.port).cloned();
+        let group = groups.iter().find(|c| Some(c.id) == self.port_vlan.group).cloned();
+        let vlan = vlans.iter().find(|c| Some(c.id) == self.port_vlan.vlan).cloned();
+        html! {
+            <Form>
+                <FormGroup label={t::PORT_VLAN_PORT}>
+                    if ports.is_empty() {
+                        <p>{t::NO_PORT_VLAN_PORTS}</p>
+                    } else {
+                        <Select<Choice>
+                            placeholder={t::CHOOSE_PORT_VLAN_PORT}
+                            selected={port}
+                            entries={ports}
+                            onselect={ctx.link().callback(|choice: Choice| NetboxHelperMsg::PortVlanPort(choice.id))}
+                        />
+                    }
+                </FormGroup>
+                if groups.is_empty() {
+                    <FormGroup label={t::PORT_VLAN_VLAN}>
+                        <p>{t::NO_PORT_VLAN_VLANS}</p>
+                    </FormGroup>
+                } else {
+                    <FormGroup label={t::PORT_VLAN_GROUP}>
+                        <Select<Choice>
+                            placeholder={t::CHOOSE_PORT_VLAN_GROUP}
+                            selected={group}
+                            entries={groups}
+                            onselect={ctx.link().callback(|choice: Choice| NetboxHelperMsg::PortVlanGroup(choice.id))}
+                        />
+                    </FormGroup>
+                    if self.port_vlan.group.is_some() {
+                        <FormGroup label={t::PORT_VLAN_VLAN}>
+                            <Select<Choice>
+                                placeholder={t::CHOOSE_PORT_VLAN_VLAN}
+                                selected={vlan}
+                                entries={vlans}
+                                onselect={ctx.link().callback(|choice: Choice| NetboxHelperMsg::PortVlanVlan(choice.id))}
+                            />
+                        </FormGroup>
+                    }
+                }
             </Form>
         }
     }
@@ -2092,6 +2265,25 @@ fn fetch_net_options(scope: Scope<NetboxHelper>, id: u32) {
     });
 }
 
+fn fetch_port_vlan_options(scope: Scope<NetboxHelper>, id: u32) {
+    spawn_local(async move {
+        let options = query_authenticated::<PortVlanOptions, _>(
+            scope.clone(),
+            port_vlan_options::Variables { id: id as i64 },
+        )
+        .await
+        .map(|data| match data.topology.device_by_id {
+            Some(device) => device.port_vlan_options,
+            None => PortVlanOptionsData {
+                ports: Vec::new(),
+                groups: Vec::new(),
+                group: None,
+            },
+        });
+        scope.send_message(NetboxHelperMsg::PortVlanOptions(options));
+    });
+}
+
 fn fetch_radio_options(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
         let options = query_authenticated::<RadioBridgeCandidates, _>(
@@ -2297,6 +2489,8 @@ fn tag_slug(tag: &impl TagSlug) -> &str {
 type NetOptions = customer_net_options::CustomerNetOptionsTopologyDeviceByIdCustomerNetOptions;
 
 type PoeOptionsData = poe_options::PoeOptionsTopologyDeviceByIdPoeOptions;
+
+type PortVlanOptionsData = port_vlan_options::PortVlanOptionsTopologyDeviceByIdPortVlanOptions;
 
 type Observed = poe_observed::PoeObservedTopologyDeviceByIdAccessPoeObserved;
 

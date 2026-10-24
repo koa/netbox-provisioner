@@ -199,6 +199,25 @@ impl From<&Error> for ErrorInfo {
             Error::NoCustomerNet(interface) => {
                 ("NO_CUSTOMER_NET", vec![("interface", interface.to_string())])
             }
+            Error::VlanIdTaken { vid, vlan, group } => (
+                "VLAN_ID_TAKEN",
+                vec![
+                    ("vid", vid.to_string()),
+                    ("vlan", vlan.to_string()),
+                    ("group", group.to_string()),
+                ],
+            ),
+            Error::VxlanInBridge { group, bridge } => (
+                "VXLAN_IN_BRIDGE",
+                std::iter::once(("group", group.to_string()))
+                    .chain(bridge.iter().map(|bridge| ("bridge", bridge.to_string())))
+                    .collect(),
+            ),
+            Error::PortUplink(port) => ("PORT_UPLINK", vec![("port", port.to_string())]),
+            Error::PortHasVlan { port, vlan } => (
+                "PORT_HAS_VLAN",
+                vec![("port", port.to_string()), ("vlan", vlan.to_string())],
+            ),
             Error::NoSite(device) => ("NO_SITE", vec![("device", device.to_string())]),
             Error::UnknownPrefix(id) => ("UNKNOWN_PREFIX", vec![("id", id.to_string())]),
             Error::UnknownVlan(id) => ("UNKNOWN_VLAN", vec![("id", id.to_string())]),

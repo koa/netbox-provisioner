@@ -61,6 +61,7 @@ pub enum FindingKind {
     TaggedVlanOnPort(TaggedVlanOnPort),
     RadioPathIncomplete(RadioPathIncomplete),
     LabelNotFarEnd(LabelNotFarEnd),
+    VlanWithoutPort(VlanWithoutPort),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
@@ -234,6 +235,14 @@ pub struct VlanWithoutGateway {
 pub struct TaggedVlanOnPort {
     pub interface: InterfaceRef,
     pub vlans: Vec<VlanRef>,
+}
+/// A VLAN interface with a network whose VLAN reaches nobody: no other interface of the device
+/// carries it (port, bridge), no WLAN has it, and no VXLAN or cable joins another device with it.
+/// „VLAN am Port“ puts it on a port.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct VlanWithoutPort {
+    pub interface: InterfaceRef,
+    pub vlan: VlanRef,
 }
 /// A part of a radio link NetBox doesn't have.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
@@ -659,6 +668,26 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
                     interface: interface_ref(interface),
                     label: interface.label().map(Into::into),
                     far_end: interface_ref(&far_end),
+                }),
+            );
+        }
+        if port_type(interface).is_none()
+            && !interface.is_bridge()
+            && !interface.ips().is_empty()
+            && let Some(vlan) = interface.untagged_vlan()
+            && let Some(vlan_ref) = vlan_ref(&vlan)
+            && vlan.wlan().next().is_none()
+            && !interfaces.iter().any(|other| {
+                other.id() != interface.id() && other.carried_vlans().iter().any(|v| v.id == vlan.id)
+            })
+            && vlan_domain::domain_of(&vlan, device).len() <= 1
+        {
+            push(
+                Severity::Warning,
+                &this,
+                FindingKind::VlanWithoutPort(VlanWithoutPort {
+                    interface: interface_ref(interface),
+                    vlan: vlan_ref,
                 }),
             );
         }

@@ -258,6 +258,9 @@ impl Links<'_> {
                 f.label.as_deref(),
                 self.device(&f.far_end.device),
             ),
+            Kind::VlanWithoutPort(f) => {
+                t::vlan_without_port(self.interface(&f.interface), self.vlan(&f.vlan))
+            }
         }
     }
 }

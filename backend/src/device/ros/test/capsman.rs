@@ -73,6 +73,7 @@ async fn wlan_group() -> (DeviceAccess, DeviceAccess, DeviceAccess) {
     builder.vlan_groups.insert(
         vlan_group,
         VlanGroupData {
+            name: "group".into(),
             vlans: Box::new([vlan]),
         },
     );

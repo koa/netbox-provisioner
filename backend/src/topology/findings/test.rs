@@ -312,7 +312,7 @@ fn a_wlan_without_vlan_is_an_error() {
     let (group, vlan_group) = (builder.wlan_groups.next_id(), builder.vlan_groups.next_id());
     let vlan = builder.vlans.next_id();
     let (with, without) = (builder.wlans.next_id(), builder.wlans.next_id());
-    builder.vlan_groups.insert(vlan_group, VlanGroupData { vlans: Box::new([vlan]) });
+    builder.vlan_groups.insert(vlan_group, VlanGroupData { name: "group".into(), vlans: Box::new([vlan]) });
     builder.vlans.insert(
         vlan,
         VlanData {
@@ -502,7 +502,7 @@ fn new_vlan(net: &mut Net, vid: u16, vxlan: bool) -> VlanId {
     use crate::topology::{VlanData, VlanGroupData, VxlanData};
     let builder = &mut net.builder;
     let (id, group) = (builder.vlans.next_id(), builder.vlan_groups.next_id());
-    builder.vlan_groups.insert(group, VlanGroupData { vlans: Box::new([id]) });
+    builder.vlan_groups.insert(group, VlanGroupData { name: "group".into(), vlans: Box::new([id]) });
     let vxlan = vxlan.then(|| {
         let vxlan = builder.vxlans.next_id();
         builder.vxlans.insert(

@@ -67,6 +67,7 @@ fragment Finding on Finding{
         ... on TaggedVlanOnPort{ interface{ ...Interface } vlans{ ...Vlan } }
         ... on RadioPathIncomplete{ radio{ ...Interface } missing }
         ... on LabelNotFarEnd{ interface{ ...Interface } label farEnd{ ...Interface } }
+        ... on VlanWithoutPort{ interface{ ...Interface } vlan{ ...Vlan } }
     }
 }
 fragment Action on RowAction{ kind helper interface peer{ ...Interface } vlan }

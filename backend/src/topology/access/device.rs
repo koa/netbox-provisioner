@@ -393,6 +393,11 @@ impl DeviceAccess {
     async fn customer_net_options(&self) -> crate::helper::customer_net::CustomerNetOptions {
         crate::helper::customer_net::options(self)
     }
+    /// What „VLAN am Port“ can choose from: the ports that can take a customer's VLAN and the
+    /// VLANs they can have.
+    async fn port_vlan_options(&self) -> crate::helper::port_vlan::PortVlanOptions {
+        crate::helper::port_vlan::options(self)
+    }
     /// What the helper „PoE“ can choose from.
     async fn poe_options(&self) -> crate::helper::poe::PoeOptions {
         crate::helper::poe::options(self)

@@ -384,6 +384,7 @@ async fn test_scenario_switch_multi_vlan() -> Result<(), Box<dyn Error>> {
     builder.vlan_groups.insert(
         vlan_group,
         VlanGroupData {
+            name: "group".into(),
             vlans: vlan_ids.clone().into_boxed_slice(),
         },
     );
@@ -465,6 +466,7 @@ async fn test_scenario_dhcp_household() -> Result<(), Box<dyn Error>> {
     builder.vlan_groups.insert(
         vlan_group,
         VlanGroupData {
+            name: "group".into(),
             vlans: Box::new([vlan_id]),
         },
     );
@@ -594,6 +596,7 @@ async fn build_tunnel_topology(
     builder.vlan_groups.insert(
         vlan_group,
         VlanGroupData {
+            name: "group".into(),
             vlans: Box::new([vlan]),
         },
     );
@@ -1209,6 +1212,7 @@ async fn create_default_bridge_device(explicit_bridge: bool) -> DeviceAccess {
     builder.vlan_groups.insert(
         vlan_group,
         VlanGroupData {
+            name: "group".into(),
             vlans: Box::new([vlan]),
         },
     );
@@ -1542,6 +1546,7 @@ async fn create_device_with_ports(
         builder.vlan_groups.insert(
             vlan_group,
             VlanGroupData {
+                name: "group".into(),
                 vlans: vlans.clone().into_boxed_slice(),
             },
         );

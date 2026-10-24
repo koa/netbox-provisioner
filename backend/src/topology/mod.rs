@@ -287,6 +287,7 @@ pub struct WlanGroupData {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VlanGroupData {
+    pub name: Box<str>,
     pub vlans: Box<[VlanId]>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -74,6 +74,7 @@ async fn wlan_group_with(vlan_ids: &[u16], controller_is_ap: bool) -> [DeviceAcc
     builder.vlan_groups.insert(
         vlan_group,
         VlanGroupData {
+            name: "group".into(),
             vlans: vlans.clone().into(),
         },
     );

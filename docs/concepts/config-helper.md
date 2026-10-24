@@ -400,6 +400,39 @@ kein Kabel zu einem RouterOS-Gerät). Ein VLAN-Interface, das sonst nichts hat (
 Adressen). Das VLAN selbst bleibt, andere Geräte können es haben. Ein Port, dessen L3 anderswo
 liegt, verliert nur sein VLAN.
 
+### VLAN am Port
+
+Legt ein VLAN untagged an einen Port des Geräts (Mode access), für einen Kunden: das Netz eines
+VLAN-Interfaces, dessen VLAN noch an keinem Port liegt (Befund `VlanWithoutPort`, von der
+Kunden-Zeile aus mit dem VLAN vorbelegt), oder einen Port, dessen Netz auf einem anderen Gerät
+liegt und über das VXLAN der VLAN-Gruppe kommt (aus „Rolle zuweisen“ einer unbekannten Zeile mit
+dem Port vorbelegt, sonst aus „Weitere Helfer“).
+
+Plan (`helper::port_vlan`): ein Schritt `UpdatePortVlan`, tagged VLANs am Port fallen weg (Z26).
+Zur Wahl stehen (`portVlanOptions`) die Ethernet-Ports ohne Bridge, Adresse, Uplink
+(`dhcp-client`, `nat`) und Kabel zu einem RouterOS-Gerät, auch einer mit einem VLAN (das dann
+ersetzt wird), und die VLANs, die das Gerät schon hat, oder aus einer Gruppe mit `vxlan_vni`: ein
+lokales VLAN eines anderen Geräts erreichte den Port nicht. Gewählt wird in zwei Stufen, erst die
+VLAN-Gruppe, dann ihr VLAN. Vorbelegt ist die Gruppe des vorbelegten VLANs, sonst die eines VLANs,
+das das Gerät schon hat, die eines WLANs zuerst.
+
+VLANs aus verschiedenen Gruppen dürfen auf einem Gerät liegen. Weggelassen und im Plan abgelehnt
+wird, was der Generator nicht aufsetzen könnte:
+
+- eine VID, die auf dem Gerät schon ein anderes VLAN hat (`VLAN_ID_TAKEN`, im Generator
+  `AmbiguousVlanIds`): RouterOS kennt nur die Nummer, nicht die Gruppe. Das VLAN, das der Port
+  selbst hat, zählt nicht, er bekommt ja das neue.
+- ein getunneltes VLAN einer Gruppe, deren VXLAN auf dem Gerät in einer anderen Bridge hängt, als
+  der Port käme (`VXLAN_IN_BRIDGE`, im Generator `PortInMultipleBridges`). Der Port kommt in die
+  modellierte Bridge, die sein VLAN schon führt, sonst in die Standard-Bridge
+  ([L2](../l2-generation.md#schritt-2-nach-root-gruppieren-root-lose-ebenen-zusammenführen)).
+
+Was diese Regeln nicht fassen, fängt der Plan ab: Er setzt auf seiner Vorschau L2 auf wie der
+Generator und lehnt mit dessen Fehler ab, wenn das Gerät vorher ging und danach nicht mehr. Hat
+der Port das VLAN schon (und kein tagged), lehnt der Plan ab (`PORT_HAS_VLAN`). Im Lab geprüft:
+lab-wap `ether2` von VLAN 104 auf 105, Vorschau (`pvid=105` an seinem Bridge-Port), Schreiben und
+Rückgängig; die Gruppe `lab-wlan` war vorbelegt.
+
 ### Brückengeräte mit fester Adresse
 
 Heute holen sich die Brückengeräte ihre Adresse per DHCP-Client von einem der beiden Router

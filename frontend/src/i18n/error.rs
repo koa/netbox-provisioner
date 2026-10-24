@@ -216,6 +216,24 @@ pub fn server(problem: &ServerProblem) -> String {
             "{} hat in NetBox kein Kunden-Netz mehr: keine Adresse, kein dhcp und kein VLAN",
             p("interface")
         ),
+        "VLAN_ID_TAKEN" => format!(
+            "VID {} hat auf dem Gerät schon VLAN {} der Gruppe {}: RouterOS kennt nur die Nummer",
+            p("vid"),
+            p("vlan"),
+            p("group")
+        ),
+        "VXLAN_IN_BRIDGE" => {
+            let bridge = match p("bridge") {
+                "" => "der Standard-Bridge".to_string(),
+                bridge => format!("Bridge {bridge}"),
+            };
+            format!(
+                "Das VXLAN der Gruppe {} hängt auf dem Gerät an {bridge}, der Port käme in eine andere: ein VXLAN kann nur in einer Bridge sein",
+                p("group")
+            )
+        }
+        "PORT_UPLINK" => format!("{} ist ein Uplink (dhcp-client oder nat)", p("port")),
+        "PORT_HAS_VLAN" => format!("{} hat VLAN {} schon, untagged und ohne weitere", p("port"), p("vlan")),
         "NO_SITE" => format!("{} hat in NetBox keine Site", p("device")),
         "UNKNOWN_PREFIX" => format!("Prefix {} ist keines der Site des Geräts", p("id")),
         "UNKNOWN_VLAN" => format!("VLAN {} hat das Gerät nicht", p("id")),

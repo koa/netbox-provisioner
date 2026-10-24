@@ -101,6 +101,9 @@ pub fn label_not_far_end(interface: Html, label: Option<&str>, far_device: Html)
         {far_device}{". Das Label geht in den Portnamen auf dem Gerät ein („e02-ap1“), „Verbindung“ setzt es so."}
     </>}
 }
+pub fn vlan_without_port(interface: Html, vlan: Html) -> Html {
+    html!(<>{"Das Netz an "}{interface}{" erreicht niemanden: "}{vlan}{" liegt an keinem Port des Geräts, in keinem WLAN und geht nicht über VXLAN weiter. „VLAN am Port“ legt es an einen Port."}</>)
+}
 pub fn wlan_without_vlan(wlan: Html, group: Html) -> Html {
     html!(<>{"Das WLAN "}{wlan}{" der Gruppe "}{group}{" hat keine VLAN: Die APs legen seine Clients in keine Bridge und haben kein VXLAN dafür, die Clients verbinden sich und erreichen nichts."}</>)
 }

@@ -132,4 +132,15 @@ query CustomerNetOptions($id: Int!){
         }
     }
 }
+query PortVlanOptions($id: Int!){
+    topology{
+        deviceById(id: $id){
+            portVlanOptions{
+                ports{ id name label vlan{ ...PlanVlan } }
+                groups{ id name vxlan vlans{ id vid name } }
+                group
+            }
+        }
+    }
+}
 fragment PlanVlan on VlanRef{ vid name }

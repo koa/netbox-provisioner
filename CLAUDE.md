@@ -141,7 +141,12 @@ The device page shows them in `components::interfaces`, each row with its action
 another device's helper: „Funkbrücke“ from a router port is the cabled bridge device's,
 `HelperPreset::RadioFrom`, so `HelperFlow` embeds that device's helper; „Richtfunk abräumen“,
 `helper::radio_disconnect`, starts from the row's radio only, „Kunden-Anschluss abräumen“,
-`helper::customer_disconnect`, from the row's interface); its query
+`helper::customer_disconnect`, from the row's interface; „VLAN am Port“, `helper::port_vlan`, is
+the suggestion of a customer row with `VlanWithoutPort`, a VLAN interface with a network whose
+VLAN no port, WLAN or VXLAN carries anywhere, and a role for an unknown Ethernet port; it offers
+the VLANs by group, without those the L2 setup would refuse on the port: a VID another VLAN of
+the device has, a tunneled group whose VXLAN is in another bridge than the port would be in, and
+its plan runs `L2Setup` on the preview for the rest); its query
 hands the findings on to the type of `Findings` by serializing them (`rows::findings`), so
 `components::findings` words them. The live checks of the rows are `device/interface_live.rs`
 (`AccessibleDevice.interfaceLive`, a query of its own after the view, grouped onto the same

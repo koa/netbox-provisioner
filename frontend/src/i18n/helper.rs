@@ -229,7 +229,10 @@ pub fn update_port_vlan(
 ) -> String {
     let name = |(vid, name): (i64, &str)| format!("VLAN {vid} ({name})");
     let mut text = match (vlan, before) {
-        (Some(vlan), _) => format!("{} {}: untagged {}", port.0, port.1, name(vlan)),
+        (Some(vlan), Some(before)) => {
+            format!("{} {}: untagged {} statt {}", port.0, port.1, name(vlan), name(before))
+        }
+        (Some(vlan), None) => format!("{} {}: untagged {}", port.0, port.1, name(vlan)),
         (None, Some(before)) => format!("{} {}: {} weg", port.0, port.1, name(before)),
         (None, None) => format!("{} {}:", port.0, port.1),
     };
@@ -249,6 +252,43 @@ pub const CUSTOMER_DISCONNECT_HINT: &str = "Nimmt das Netz eines Kunden-Anschlus
     mit seinem VLAN). Ein VLAN-Interface, das sonst nichts hat, wird gelöscht. Das VLAN selbst \
     bleibt.";
 pub const CHOOSE_CUSTOMER_DISCONNECT: &str = "Über die Kunden-Zeile der Interfaces starten.";
+pub const PORT_VLAN: &str = "VLAN am Port";
+pub const PORT_VLAN_HINT: &str = "Legt ein VLAN untagged an einen Port (Mode access), für einen \
+    Kunden: das Netz eines VLAN-Interfaces an einen Port, oder ein VLAN, dessen Netz auf einem \
+    anderen Gerät liegt und über VXLAN kommt. Tagged VLANs am Port fallen weg.";
+pub const CHOOSE_PORT_VLAN: &str = "Port und VLAN wählen.";
+pub const PORT_VLAN_PORT: &str = "Port";
+pub const PORT_VLAN_GROUP: &str = "VLAN-Gruppe";
+pub const PORT_VLAN_VLAN: &str = "VLAN";
+pub const CHOOSE_PORT_VLAN_PORT: &str = "Port wählen";
+pub const CHOOSE_PORT_VLAN_GROUP: &str = "Gruppe wählen";
+pub const CHOOSE_PORT_VLAN_VLAN: &str = "VLAN wählen";
+pub fn port_vlan_group(name: &str, vxlan: bool) -> String {
+    if vxlan {
+        format!("{name} (über VXLAN)")
+    } else {
+        format!("{name} (lokal)")
+    }
+}
+pub const NO_PORT_VLAN_PORTS: &str = "Kein Port frei: nur Ethernet-Ports ohne Bridge, Adresse, \
+    Uplink und Kabel zu einem Router.";
+pub const NO_PORT_VLAN_VLANS: &str = "Kein VLAN, das ein Port erreicht: eines des Geräts oder \
+    eines aus einer VLAN-Gruppe mit vxlan_vni. Weggelassen sind VLANs mit einer VID, die auf dem \
+    Gerät schon ein anderes hat, und VLANs einer Gruppe, deren VXLAN auf dem Gerät an einer \
+    anderen Bridge hängt.";
+pub fn port_vlan_port(name: &str, label: Option<&str>, vlan: Option<(i64, &str)>) -> String {
+    let mut text = match label {
+        Some(label) => format!("{name} ({label})"),
+        None => name.to_string(),
+    };
+    if let Some((vid, vlan)) = vlan {
+        text.push_str(&format!(", jetzt VLAN {vid} ({vlan})"));
+    }
+    text
+}
+pub fn port_vlan_vlan(vid: i64, name: &str) -> String {
+    format!("VLAN {vid} ({name})")
+}
 pub const RADIO_DISCONNECT: &str = "Richtfunk abräumen";
 pub const RADIO_DISCONNECT_HINT: &str = "Nimmt das Netz einer Richtfunk-Strecke aus NetBox: \
     die IPv4-Adressen des Segments an den beiden Router-Ports und den beiden Bridges, sein Prefix, \

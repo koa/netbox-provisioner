@@ -74,6 +74,8 @@ pub enum ActionHelper {
     RadioDisconnect,
     /// „Kunden-Anschluss abräumen“ of the row's interface
     CustomerDisconnect,
+    /// „VLAN am Port“: a VLAN untagged on a port (`interface`, `vlan`, either may be open)
+    PortVlan,
 }
 
 /// An action of a row: the helper and what it starts with. The frontend hands it on to the
@@ -329,9 +331,8 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
     (row, ids)
 }
 
-/// What the helpers can do for `row`: a suggestion where something is missing, taking a
-/// direct link out, a task for an unknown interface. No helper for uplinks; taking a radio link
-/// or a customer port out, and the radio bridge from the router's side, come with new helpers.
+/// What the helpers can do for `row`: a suggestion where something is missing, taking the link
+/// or network out, a task for an unknown interface. No helper for uplinks.
 fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) -> Vec<RowAction> {
     let action = |kind, helper, interface: Option<u32>, peer: Option<InterfaceRef>, vlan| RowAction {
         kind,
@@ -432,6 +433,21 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
         }
         InterfaceTask::Customer => {
             // with its L3 elsewhere a second gateway would be wrong
+            // its VLAN on a port: the network reaches nobody yet
+            if let Some(FindingKind::VlanWithoutPort(f)) = row
+                .findings
+                .iter()
+                .map(|finding| &finding.kind)
+                .find(|kind| matches!(kind, FindingKind::VlanWithoutPort(_)))
+            {
+                actions.push(action(
+                    ActionKind::Suggestion,
+                    ActionHelper::PortVlan,
+                    None,
+                    None,
+                    Some(f.vlan.id),
+                ));
+            }
             if row.gateways.is_empty() && !(has_v4 && has_v6) {
                 actions.push(customer_net());
             }
@@ -461,6 +477,19 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
                         ActionKind::AssignRole,
                         ActionHelper::RadioBridge,
                         None,
+                        None,
+                        None,
+                    ));
+                }
+                // a customer's VLAN on the port, its network elsewhere
+                if topology
+                    .get_interface_by_id(InterfaceId(row.interface.id))
+                    .is_some_and(|i| i.is_ethernet_port())
+                {
+                    actions.push(action(
+                        ActionKind::AssignRole,
+                        ActionHelper::PortVlan,
+                        own,
                         None,
                         None,
                     ));
@@ -601,6 +630,7 @@ impl FindingKind {
             FindingKind::TaggedVlanOnPort(f) => vec![f.interface.id],
             FindingKind::RadioPathIncomplete(f) => vec![f.radio.id],
             FindingKind::LabelNotFarEnd(f) => vec![f.interface.id],
+            FindingKind::VlanWithoutPort(f) => vec![f.interface.id],
         }
     }
 }

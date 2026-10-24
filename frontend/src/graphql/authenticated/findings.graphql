@@ -30,6 +30,7 @@ query Findings($site: Int, $device: Int, $after: Helper){
                 ... on TaggedVlanOnPort{ interface{ ...Interface } vlans{ ...Vlan } }
                 ... on RadioPathIncomplete{ radio{ ...Interface } missing }
                 ... on LabelNotFarEnd{ interface{ ...Interface } label farEnd{ ...Interface } }
+                ... on VlanWithoutPort{ interface{ ...Interface } vlan{ ...Vlan } }
             }
         }
     }

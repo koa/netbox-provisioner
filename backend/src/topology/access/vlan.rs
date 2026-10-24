@@ -1,5 +1,5 @@
 use crate::topology::{
-    Topology, VlanData, VlanId,
+    InterfaceId, Topology, VlanData, VlanGroupId, VlanId,
     access::{AccessTopology, device::DeviceAccess, vxlan::VxlanAccess, wlan::WlanAccess},
 };
 use async_graphql::Object;
@@ -54,13 +54,25 @@ impl VlanAccess {
     pub fn tunnel(&self) -> Option<VxlanAccess> {
         self.vxlan().filter(|_| self.devices().len() > 1)
     }
+    /// Its VLAN group, by id and name.
+    pub fn group(&self) -> Option<(VlanGroupId, &str)> {
+        let group = self.data()?.group;
+        let data = self.topology.vlan_groups.get(&group)?;
+        Some((group, data.name.as_ref()))
+    }
     /// Every device this VLAN is used on: carried by one of its interfaces, or a
     /// WLAN or management VLAN of the WLAN group it is an AP or the controller of.
     pub fn devices(&self) -> Box<[DeviceAccess]> {
+        self.devices_but(None)
+    }
+    /// [`Self::devices`] as if `interface` didn't carry it (a port about to get another VLAN).
+    pub fn devices_but(&self, interface: Option<InterfaceId>) -> Box<[DeviceAccess]> {
         let topology = &self.topology;
         let mut devices = topology
             .interfaces
-            .values()
+            .iter()
+            .filter(|(id, _)| Some(**id) != interface)
+            .map(|(_, i)| i)
             .filter(|i| i.vlan == Some(self.id) || i.tagged_vlans.contains(&self.id))
             .map(|i| i.device)
             .collect::<BTreeSet<_>>();
