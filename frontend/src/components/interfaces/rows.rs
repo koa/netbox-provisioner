@@ -158,6 +158,7 @@ impl Action {
     pub fn label(&self) -> String {
         match &self.preset {
             HelperPreset::AddressTakeover { address, .. } => t::address_takeover(address),
+            HelperPreset::LeaseTakeover { address, .. } => t::lease_takeover(address),
             _ => t::action(self.kind, self.helper),
         }
     }
@@ -315,6 +316,17 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
         ),
         ActionHelper::POE => (HelperKind::Poe, HelperPreset::Poe(interface?)),
         ActionHelper::BRIDGE_LEAVE => (HelperKind::BridgeLeave, HelperPreset::BridgeLeave(interface?)),
+        ActionHelper::LEASE_TAKEOVER => {
+            let lease = action.lease?;
+            (
+                HelperKind::LeaseTakeover,
+                HelperPreset::LeaseTakeover {
+                    address: action.address?,
+                    mac: lease.mac,
+                    name: lease.name,
+                },
+            )
+        }
         ActionHelper::ADDRESS_TAKEOVER => (
             HelperKind::AddressTakeover,
             HelperPreset::AddressTakeover {

@@ -256,6 +256,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
                 kind: "virtual".into(),
                 vlan: Some(vlan.id.0),
                 tags: dhcp.into_iter().collect(),
+                mac: None,
             }));
             (Target::Step(plan.steps.len() - 1), name)
         }
@@ -407,6 +408,7 @@ mod test {
                 kind: "virtual".into(),
                 vlan: Some(vlan.id.0),
                 tags: vec![InterfaceTag::Dhcp],
+                mac: None,
             }),
             PlanStep::CreatePrefix(CreatePrefix {
                 prefix: "198.51.100.0/24".into(),

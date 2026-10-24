@@ -208,6 +208,10 @@ impl From<&Error> for ErrorInfo {
             Error::InvalidAddress(address) => {
                 ("INVALID_ADDRESS", vec![("address", address.to_string())])
             }
+            Error::InvalidMac(mac) => ("INVALID_MAC", vec![("mac", mac.to_string())]),
+            Error::NoDhcpNetwork(address) => {
+                ("NO_DHCP_NETWORK", vec![("address", address.to_string())])
+            }
             Error::VlanIdTaken { vid, vlan, group } => (
                 "VLAN_ID_TAKEN",
                 vec![

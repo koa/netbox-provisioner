@@ -39,6 +39,9 @@ pub enum HelperPreset {
     NewDevice { port: u32, seen: Option<SeenPreset> },
     /// „Adresse übernehmen“: this address, which only the device has, on this interface
     AddressTakeover { interface: u32, address: String },
+    /// „Lease übernehmen“: this static lease, which only the device has, as a client device;
+    /// the name is the one the client sent, if any
+    LeaseTakeover { address: String, mac: String, name: Option<String> },
 }
 
 /// „Funkbrücke“ from a router port: the helper is the bridge device's, its router side set.
@@ -69,7 +72,8 @@ impl HelperPreset {
             | HelperPreset::CustomerDisconnect(_)
             | HelperPreset::CableTakeover { .. }
             | HelperPreset::BridgeLeave(_)
-            | HelperPreset::AddressTakeover { .. } => false,
+            | HelperPreset::AddressTakeover { .. }
+            | HelperPreset::LeaseTakeover { .. } => false,
         }
     }
     /// The device whose helper it is, `page` where it isn't another one's.
@@ -148,6 +152,13 @@ pub enum HelperChoice {
     AddressTakeover {
         interface: u32,
         address: String,
+    },
+    LeaseTakeover {
+        address: String,
+        mac: String,
+        name: String,
+        device_type: u32,
+        role: u32,
     },
 }
 
@@ -294,6 +305,20 @@ macro_rules! helper_input {
                 far_port,
                 wlan_group: wlan_group.map(i64::from),
             }),
+            HelperChoice::LeaseTakeover {
+                address,
+                mac,
+                name,
+                device_type,
+                role,
+            } => $module::Helper::LeaseTakeover($module::LeaseTakeoverInput {
+                device: $id as i64,
+                address,
+                mac,
+                name,
+                device_type: device_type as i64,
+                role: role as i64,
+            }),
             HelperChoice::AddressTakeover { interface, address } => {
                 $module::Helper::AddressTakeover($module::AddressTakeoverInput {
                     device: $id as i64,
@@ -328,6 +353,8 @@ pub enum HelperKind {
     NewDevice,
     /// only from a live check: it needs the address the device has
     AddressTakeover,
+    /// only from a live check: it needs the lease the device has
+    LeaseTakeover,
 }
 
 impl HelperKind {
@@ -357,6 +384,7 @@ impl Display for HelperKind {
             HelperKind::BridgeLeave => t::BRIDGE_LEAVE,
             HelperKind::NewDevice => t::NEW_DEVICE,
             HelperKind::AddressTakeover => t::ADDRESS_TAKEOVER,
+            HelperKind::LeaseTakeover => t::LEASE_TAKEOVER,
         })
     }
 }

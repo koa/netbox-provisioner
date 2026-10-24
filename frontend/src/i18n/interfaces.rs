@@ -109,6 +109,10 @@ pub const CHANGED_TEXT: &str = "Das Gerät hat die Änderung noch nicht.";
 pub const UNDO: &str = "Rückgängig";
 pub const APPLY: &str = "Anwenden";
 
+/// the button of a static lease only the device has
+pub fn lease_takeover(address: &str) -> String {
+    format!("Lease {address} übernehmen")
+}
 /// the button of an address only the device has
 pub fn address_takeover(address: &str) -> String {
     format!("{address} übernehmen")
@@ -163,6 +167,19 @@ pub fn device_only(address: &str, interface: &str, disabled: bool) -> String {
 }
 pub const DEVICE_ONLY_ELSEWHERE: &str = "– NetBox hat sie an";
 pub const DEVICE_ONLY_UNASSIGNED: &str = "– NetBox hat sie an keinem Interface";
+pub const LEASES_DEVICE_ONLY: &str = "Leases nur auf dem Gerät";
+/// a static lease only the device has: the next apply removes it
+pub fn device_only_lease(address: &str, client: &str, name: Option<&str>, disabled: bool) -> String {
+    let name = name.map(|name| format!(" „{name}“")).unwrap_or_default();
+    let disabled = if disabled { ", deaktiviert" } else { "" };
+    format!("{address} für {client}{name}{disabled}: das nächste Anwenden entfernt ihn")
+}
+/// what NetBox can't hold of a lease
+pub fn lease_settings_lost(settings: &[String]) -> String {
+    format!("– übernommen gehen verloren: {}", settings.join(", "))
+}
+pub const LEASE_BY_CLIENT_ID: &str = "– per Client-ID, NetBox kann ihn nicht halten";
+pub const OTHER_LEASES: &str = "Leases nur auf dem Gerät, von Servern ohne Zeile";
 pub const OTHER_ADDRESSES: &str = "Adressen nur auf dem Gerät, an Interfaces ohne Zeile";
 pub const BRIDGE_NO_ADDRESS: &str = "ohne Primary IPv4, nicht gefragt";
 /// an OSPF neighbor's state in its instance (`default-v2`)

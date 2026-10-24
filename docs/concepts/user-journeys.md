@@ -39,6 +39,7 @@ Knopf), die der Reihe nach durch Loopback, Verbindung usw. führt, ohne Wizard z
 | NetBox in sich (fehlende Loopback, Prefix, `ospf` an einem Ende, MTU …) | Befunde auf Site- und Geräteseite | Generatorfehler gesammelt als Befund, PoE-Prüfung, WLAN-Gruppen |
 | Kabel | „Nachbarn lesen“ (MNDP/LLDP gegen NetBox) | |
 | Adressen auf dem Gerät, die NetBox nicht kennt | Live-Prüfung der Interfaces: „Nur auf dem Gerät“ an der Zeile, mit „<Adresse> übernehmen“ ([Config-Helper](config-helper.md#adresse-übernehmen)); in der Übersicht der Site als entfernte Adressen | |
+| Statische DHCP-Leases, die NetBox nicht kennt | Live-Prüfung der Interfaces: „Leases nur auf dem Gerät“ an der Zeile des Servers, mit „Lease <Adresse> übernehmen“ ([Config-Helper](config-helper.md#lease-übernehmen)); in der Übersicht der Site als entfernte statische Leases | |
 | PoE | „Vom Gerät ablesen“ im Helfer PoE | als Befund für alle Geräte einer Site |
 | Konfiguration allgemein | Diff auf der Geräteseite; „Abweichung von NetBox“ auf der Site-Seite: je Gerät die Änderungen eines Anwendens nach Menü | Diff in Worten |
 

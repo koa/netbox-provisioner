@@ -244,6 +244,14 @@ fn read_view(read: &Read) -> Html {
             if addresses > 0 {
                 closer_look.push(t::removes_addresses(addresses));
             }
+            let leases = menus
+                .iter()
+                .filter(|menu| menu.menu == "ip/dhcp-server/lease")
+                .map(|menu| menu.removed)
+                .sum::<i64>();
+            if leases > 0 {
+                closer_look.push(t::removes_leases(leases));
+            }
             if menus.iter().any(|menu| menu.menu.starts_with("routing/ospf")) {
                 closer_look.push(t::TOUCHES_OSPF.to_string());
             }

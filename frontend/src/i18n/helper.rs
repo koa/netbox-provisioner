@@ -260,6 +260,17 @@ pub const BRIDGE_LEAVE: &str = "Aus Bridge lösen";
 pub const BRIDGE_LEAVE_HINT: &str = "Nimmt den Port aus seiner Bridge, mit den VLANs des Ports \
     selbst: danach ist er frei. Sein Kabel bleibt, die Bridge mit ihrem Netz auch.";
 pub const CHOOSE_BRIDGE_LEAVE: &str = "Über den Port der Bridge in den Interfaces starten.";
+pub const LEASE_TAKEOVER: &str = "Lease übernehmen";
+pub const LEASE_TAKEOVER_HINT: &str = "Trägt den Client eines statischen DHCP-Leases, den nur der \
+    Router hat, in NetBox ein: ein Gerät mit Interface eth0, seiner MAC und der Adresse, damit das \
+    nächste Anwenden den Lease schreibt statt entfernt.";
+pub const CHOOSE_LEASE_TAKEOVER: &str = "Über den Lease in der Live-Prüfung der Interfaces starten.";
+pub const LEASE_NAME: &str = "Name des Clients";
+pub const LEASE_NAME_PLACEHOLDER: &str = "drucker-buero";
+pub const LEASE_ROLE_PLACEHOLDER: &str = "Rolle wählen";
+pub fn lease_seen(address: &str, mac: &str) -> String {
+    format!("Lease {address} für {mac}")
+}
 pub const ADDRESS_TAKEOVER: &str = "Adresse übernehmen";
 pub const ADDRESS_TAKEOVER_HINT: &str = "Trägt eine Adresse, die nur das Gerät hat, in NetBox an \
     ihrem Interface ein, damit das nächste Anwenden sie nicht entfernt. Ihr Netz wird ein Prefix, \
@@ -427,15 +438,15 @@ pub fn create_device(name: &str, device_type: &str, role: &str, site: &str, wlan
         None => format!("Gerät {name} anlegen ({device_type}, Rolle {role}, Site {site})"),
     }
 }
-pub fn create_interface(device: &str, name: &str, kind: &str, tags: &[&str]) -> String {
-    match tags {
-        [] => format!("Interface {device} {name} ({kind}) anlegen"),
-        tags => format!(
-            "Interface {device} {name} ({kind}, {} {}) anlegen",
-            tags_word(tags),
-            tags.join(", ")
-        ),
+pub fn create_interface(device: &str, name: &str, kind: &str, tags: &[&str], mac: Option<&str>) -> String {
+    let mut what = vec![kind.to_string()];
+    if !tags.is_empty() {
+        what.push(format!("{} {}", tags_word(tags), tags.join(", ")));
     }
+    if let Some(mac) = mac {
+        what.push(format!("MAC {mac}"));
+    }
+    format!("Interface {device} {name} ({}) anlegen", what.join(", "))
 }
 pub fn create_address(address: &str, device: &str, interface: &str, prefix: &str) -> String {
     format!("Adresse {address} auf {device} {interface} anlegen (aus {prefix})")

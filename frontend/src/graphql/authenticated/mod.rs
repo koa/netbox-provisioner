@@ -264,6 +264,14 @@ pub struct NewDeviceOptions;
     query_path = "src/graphql/authenticated/netbox-helper.graphql",
     response_derives = "Debug, Clone, PartialEq"
 )]
+pub struct LeaseTakeoverOptions;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/netbox-helper.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
 pub struct NewDeviceDevices;
 
 #[derive(GraphQLQuery)]

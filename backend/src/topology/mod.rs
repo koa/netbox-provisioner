@@ -412,6 +412,8 @@ pub struct Interface {
     pub wireless_link: Option<WirelessLinkEnd>,
     /// NetBox type 802.11ad or ay: a 60 GHz radio, `wlan60-<N>` on RouterOS.
     pub sixty_ghz: bool,
+    /// its primary MAC address, in upper case: a lease client's (`device::ros::dhcp`)
+    pub mac: Option<Box<str>>,
 }
 
 /// An interface's end of a NetBox wireless link.

@@ -1902,6 +1902,92 @@ async fn dhcp_server_name_counts_ipv4_addresses_only() {
     );
 }
 
+/// A device without RouterOS whose interface has a MAC and an address in a DHCP network is a
+/// static lease of that network's server, named after it; one without MAC or a RouterOS device
+/// is none. The lease's address isn't in the pool.
+#[tokio::test]
+async fn a_client_with_a_mac_is_a_static_lease() {
+    let mut builder = TopologyBuilder::default();
+    let router = builder.devices.next_id();
+    let gateway = add_ip(&mut builder, [192, 168, 105, 1], 24);
+    let port = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        port,
+        Interface {
+            name: "ether1".into(),
+            device: router,
+            external: Some(PhysicalPortId::Ethernet(1)),
+            ips: Box::new([gateway]),
+            enable_dhcp_server: true,
+            ..Default::default()
+        },
+    );
+    builder.devices.insert(
+        router,
+        Device {
+            name: "router".into(),
+            has_routeros: true,
+            ..Default::default()
+        },
+    );
+    for (name, address, mac, routeros) in [
+        ("drucker", 50, Some("AA:BB:CC:DD:EE:01"), false),
+        ("ohne-mac", 51, None, false),
+        ("ap", 52, Some("AA:BB:CC:DD:EE:03"), true),
+    ] {
+        let client = builder.devices.next_id();
+        builder.devices.insert(
+            client,
+            Device {
+                name: name.into(),
+                has_routeros: routeros,
+                ..Default::default()
+            },
+        );
+        let ip = add_ip(&mut builder, [192, 168, 105, address], 24);
+        let interface = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            interface,
+            Interface {
+                name: "eth0".into(),
+                device: client,
+                ips: Box::new([ip]),
+                mac: mac.map(Box::from),
+                ..Default::default()
+            },
+        );
+    }
+    let device = Into::<TopologyHolder>::into(builder)
+        .devices_by_id(router)
+        .await
+        .expect("device not found");
+    let (mut target, current) = setup_testdata(b"CRS326-24G-2S+").unwrap();
+    target.generate_from(&device, KeepNameGenerator).unwrap();
+    dump_mutations(&target, &current).unwrap();
+    let leases = target
+        .dhcp_v_4_lease
+        .values()
+        .map(|lease| {
+            (
+                lease.address.to_string(),
+                lease.mac_address.map(|mac| mac.to_string()),
+                lease.server.as_ref().map(|s| s.to_string()),
+                lease.comment.as_ref().map(|c| c.to_string()),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        leases,
+        [(
+            "192.168.105.50".to_string(),
+            Some("AA:BB:CC:DD:EE:01".to_string()),
+            Some("dhcp-ether1".to_string()),
+            Some("drucker".to_string())
+        )]
+    );
+    let pool = &target.ipv_4_pool[&AsciiString::from("dhcp-ether1")].0.ranges;
+    assert!(!pool.iter().any(|range| range.to_string().contains("192.168.105.50")), "{pool:?}");
+}
 
 /// Ports renamed in the same apply (a label that moved: `e12-buero-neben-tuere` became
 /// `e11-buero-neben-tuere`) stay in their bridge ports: RouterOS' port follows the rename.

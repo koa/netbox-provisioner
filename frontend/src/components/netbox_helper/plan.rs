@@ -77,6 +77,7 @@ pub(super) fn describe(step: &Step) -> String {
             &create.name,
             &create.kind,
             &create.tags.iter().map(tag_slug).collect::<Vec<_>>(),
+            create.mac.as_deref(),
         ),
         Step::CreateAddress(create) => {
             t::create_address(&create.address, &create.device.name, &create.interface, &create.prefix)

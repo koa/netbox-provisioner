@@ -341,6 +341,14 @@ tragen.
   sind die aus dem Config Context `dns_servers`. Ohne diesen ist es ebenfalls die eigene Adresse,
   und der Router beantwortet DNS-Anfragen (`allow-remote-requests=yes`). Hat er selbst keinen
   `dhcp-client`, lernt er keinen DNS-Server und fragt die Loopbacks der Router mit `nat`-Uplink.
+- **Statische DHCP-Leases:** ein Gerät ohne RouterOS (Device Type beliebig, z.B. „Generic“,
+  Rolle z.B. „Client“) mit einem Interface, das eine **primäre MAC-Adresse** und eine IPv4 im
+  Prefix eines `dhcp`-Interfaces hat, ist ein statischer Lease dieses Servers: Adresse und MAC
+  aus NetBox, der Gerätename als Kommentar, sonst RouterOS' Vorgaben. Die Adresse fällt aus dem
+  automatischen Pool. Der Provisioner verwaltet die statischen Leases ganz: einer, den NetBox
+  nicht kennt, wird beim Anwenden entfernt; dynamische bleiben. Die Live-Prüfung der Interfaces
+  zeigt solche vorher, mit „Lease übernehmen“ ([Config-Helper](concepts/config-helper.md#lease-übernehmen)).
+  MikroTik-Geräte selbst werden nie über eine MAC in NetBox erkannt.
 
 ## Rezept: Router
 

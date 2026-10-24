@@ -86,6 +86,12 @@ impl QueryAuthenticated {
         let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
         Ok(helper::new_device::options(&topology).await?)
     }
+    /// The device types and roles the helper „Lease übernehmen“ offers for the client.
+    async fn lease_takeover_options(
+        &self,
+    ) -> Result<helper::lease_takeover::LeaseTakeoverOptions, ApiError> {
+        Ok(helper::lease_takeover::options().await?)
+    }
     async fn job(&self, id: u32) -> Option<Arc<Job>> {
         job::get(id)
     }

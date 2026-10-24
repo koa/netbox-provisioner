@@ -11,6 +11,7 @@ mod choice;
 mod flags;
 mod link;
 mod net;
+mod lease;
 mod new_device;
 mod plan;
 mod poe;
@@ -24,6 +25,7 @@ use choice::{Choice, HelperChoice, NetEntry};
 use flags::{Flag, FlagFindings, FlagInterface, FlagsMsg, fetch_flag_interfaces};
 use link::{LinkChoice, LinkMsg, fetch_ports};
 use net::{NetChoice, NetMsg, NetOptions, fetch_net_options};
+use lease::{LeaseChoice, LeaseMsg, fetch_lease_options};
 use new_device::{
     NewDeviceChoice, NewDeviceMsg, fetch_new_device_options, fetch_written_device,
 };
@@ -36,7 +38,8 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            UndoNetboxWrite, WriteNetboxPlan, link_ports, netbox_plan, new_device_options,
+            UndoNetboxWrite, WriteNetboxPlan, lease_takeover_options, link_ports, netbox_plan,
+            new_device_options,
             undo_netbox_write, write_netbox_plan,
         },
         query_authenticated,
@@ -124,6 +127,9 @@ pub struct NetboxHelper {
     radio_options: Option<Result<Vec<Candidate>, FrontendError>>,
     new_device: NewDeviceChoice,
     new_device_options: Option<Result<new_device_options::ResponseData, FrontendError>>,
+    /// „Lease übernehmen“: the lease and the client chosen
+    lease: LeaseChoice,
+    lease_options: Option<Result<lease_takeover_options::ResponseData, FrontendError>>,
     /// what the plan shown was computed for
     planned: Option<HelperChoice>,
     plan: Option<Result<netbox_plan::ResponseData, FrontendError>>,
@@ -151,6 +157,7 @@ pub enum NetboxHelperMsg {
     Poe(PoeMsg),
     Radio(RadioMsg),
     NewDevice(NewDeviceMsg),
+    Lease(LeaseMsg),
     RadioDisconnectLink(bool),
     Plan(HelperChoice, Result<netbox_plan::ResponseData, FrontendError>),
     LoadPreview,
@@ -183,7 +190,8 @@ helper_msg!(
     PortVlan(PortVlanMsg),
     Poe(PoeMsg),
     Radio(RadioMsg),
-    NewDevice(NewDeviceMsg)
+    NewDevice(NewDeviceMsg),
+    Lease(LeaseMsg)
 );
 
 impl Component for NetboxHelper {
@@ -204,6 +212,7 @@ impl Component for NetboxHelper {
         let mut poe = PoeChoice::default();
         let mut flags_of = None;
         let mut new_device = NewDeviceChoice::default();
+        let mut lease = LeaseChoice::default();
         let kind = match &ctx.props().preset {
             None => HelperKind::Loopback,
             Some(HelperPreset::Kind(kind)) => *kind,
@@ -269,6 +278,10 @@ impl Component for NetboxHelper {
                 new_device = NewDeviceChoice::new(*port, seen.clone());
                 HelperKind::NewDevice
             }
+            Some(HelperPreset::LeaseTakeover { address, mac, name }) => {
+                lease = LeaseChoice::new(address.clone(), mac.clone(), name.clone());
+                HelperKind::LeaseTakeover
+            }
             Some(HelperPreset::AddressTakeover { interface, address }) => {
                 address_takeover = Some((*interface, address.clone()));
                 HelperKind::AddressTakeover
@@ -306,6 +319,8 @@ impl Component for NetboxHelper {
             radio_options: None,
             new_device,
             new_device_options: None,
+            lease,
+            lease_options: None,
             planned: None,
             plan: None,
             removed: false,
@@ -430,6 +445,7 @@ impl Component for NetboxHelper {
                             | HelperKind::BridgeLeave
                             | HelperKind::NewDevice
                             | HelperKind::AddressTakeover
+                            | HelperKind::LeaseTakeover
                     );
                 self.removed = removed;
                 if removed {
@@ -481,6 +497,7 @@ impl Component for NetboxHelper {
             NetboxHelperMsg::Poe(msg) => return self.update_poe(ctx, msg),
             NetboxHelperMsg::Radio(msg) => return self.update_radio(ctx, msg),
             NetboxHelperMsg::NewDevice(msg) => return self.update_new_device(ctx, msg),
+            NetboxHelperMsg::Lease(msg) => return self.update_lease(ctx, msg),
         }
         true
     }
@@ -514,6 +531,7 @@ impl Component for NetboxHelper {
             HelperKind::BridgeLeave => t::BRIDGE_LEAVE_HINT,
             HelperKind::NewDevice => t::NEW_DEVICE_HINT,
             HelperKind::AddressTakeover => t::ADDRESS_TAKEOVER_HINT,
+            HelperKind::LeaseTakeover => t::LEASE_TAKEOVER_HINT,
             HelperKind::PortVlan => t::PORT_VLAN_HINT,
             HelperKind::CableTakeover => t::CABLE_TAKEOVER_HINT,
         };
@@ -545,6 +563,9 @@ impl Component for NetboxHelper {
                     }
                     if self.kind == HelperKind::NewDevice {
                         { self.new_device_form(ctx) }
+                    }
+                    if self.kind == HelperKind::LeaseTakeover {
+                        { self.lease_form(ctx) }
                     }
                     if self.kind == HelperKind::RadioDisconnect {
                         <Form>
@@ -599,6 +620,9 @@ impl NetboxHelper {
         if kind == HelperKind::NewDevice && self.new_device_options.is_none() {
             fetch_new_device_options(ctx.link().clone());
         }
+        if kind == HelperKind::LeaseTakeover && self.lease_options.is_none() {
+            fetch_lease_options(ctx.link().clone());
+        }
         if kind == HelperKind::Flags {
             if self.flag_interfaces.is_none() {
                 fetch_flag_interfaces(ctx.link().clone(), ctx.props().id);
@@ -635,6 +659,18 @@ impl NetboxHelper {
             HelperKind::AddressTakeover => {
                 let (interface, address) = self.address_takeover.clone()?;
                 Some(HelperChoice::AddressTakeover { interface, address })
+            }
+            HelperKind::LeaseTakeover => {
+                let choice = &self.lease;
+                let name = choice.planned_name.trim();
+                (!name.is_empty()).then_some(())?;
+                Some(HelperChoice::LeaseTakeover {
+                    address: choice.address.clone(),
+                    mac: choice.mac.clone(),
+                    name: name.to_string(),
+                    device_type: choice.device_type?,
+                    role: choice.role?,
+                })
             }
             HelperKind::NewDevice => {
                 let choice = &self.new_device;

@@ -15,6 +15,7 @@ pub mod customer_disconnect;
 pub mod customer_net;
 pub mod disconnect;
 pub mod flags;
+pub mod lease_takeover;
 pub mod loopback;
 pub mod new_device;
 mod plan;
@@ -80,6 +81,8 @@ pub enum Helper {
     NewDevice(new_device::NewDeviceInput),
     /// an address only the device has on its NetBox interface, for the device
     AddressTakeover(address_takeover::AddressTakeoverInput),
+    /// a static DHCP lease only the router has as a client device, for the router
+    LeaseTakeover(lease_takeover::LeaseTakeoverInput),
 }
 
 impl Helper {
@@ -99,6 +102,7 @@ impl Helper {
             Helper::BridgeLeave(input) => bridge_leave::plan(topology, input),
             Helper::NewDevice(input) => new_device::plan(topology, input).await,
             Helper::AddressTakeover(input) => address_takeover::plan(topology, input),
+            Helper::LeaseTakeover(input) => lease_takeover::plan(topology, input).await,
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -147,6 +151,9 @@ impl Helper {
                 .and_then(|interface| interface.device())
                 .ok_or(Error::UnknownInterface(input.port)),
             Helper::AddressTakeover(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
+            Helper::LeaseTakeover(input) => topology
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
         }
@@ -282,7 +289,10 @@ impl NetboxPlan {
                             "model": create.device_type,
                             "manufacturer": { "slug": create.manufacturer },
                         });
-                        new["platform"] = json!({ "name": create.platform });
+                        new["platform"] = match &create.platform {
+                            Some(platform) => json!({ "name": platform }),
+                            None => Value::Null,
+                        };
                         new["interfaces"] = json!([]);
                         new["frontports"] = json!([]);
                         new["rearports"] = json!([]);
@@ -292,9 +302,10 @@ impl NetboxPlan {
                             Some(group) => json!({ "wlan_group": group }),
                             None => json!({}),
                         };
-                        if let Some(tenant) = create.tenant_id {
-                            new["tenant"] = json!({ "id": tenant.to_string() });
-                        }
+                        new["tenant"] = match create.tenant_id {
+                            Some(tenant) => json!({ "id": tenant.to_string() }),
+                            None => Value::Null,
+                        };
                         if let Some(devices) = json["device_list"].as_array_mut() {
                             devices.push(new);
                         }
@@ -322,6 +333,7 @@ impl NetboxPlan {
                             "rf_channel_width": null,
                             "tx_power": null,
                             "wireless_link": null,
+                            "primary_mac_address": create.mac.as_ref().map(|mac| json!({ "mac_address": mac })),
                         }));
                     }
                 }
@@ -543,6 +555,7 @@ mod test {
                 kind: "virtual".into(),
                 vlan: None,
                 tags: Vec::new(),
+                mac: None,
             }),
             PlanStep::CreateAddress(CreateAddress {
                 address: "192.0.2.1/32".into(),

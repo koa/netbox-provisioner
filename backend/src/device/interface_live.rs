@@ -11,6 +11,7 @@ use crate::{
     device::{
         neighbors::{self, NeighborFinding, NeighborFindingKind, SeenNeighbor, port_named},
         raw::{Row, answering, field, rows},
+        ros::dhcp::static_leases,
         update_fallback::is_adjacent,
     },
     topology::{
@@ -18,7 +19,8 @@ use crate::{
         access::device::DeviceAccess,
         findings::{DeviceRef, device_ref},
         interfaces::{
-            ActionHelper, ActionKind, InterfaceRow, InterfaceTask, RowAction, SeenDevice,
+            ActionHelper, ActionKind, InterfaceRow, InterfaceTask, LeaseSeen, RowAction,
+            SeenDevice,
         },
     },
 };
@@ -34,6 +36,8 @@ pub struct InterfaceLive {
     pub other_findings: Vec<NeighborFinding>,
     /// the addresses only the device has on an interface of no row
     pub other_addresses: Vec<DeviceOnlyAddress>,
+    /// the static leases only the device has of a server on no row
+    pub other_leases: Vec<DeviceOnlyLease>,
 }
 
 /// What the device shows at a row.
@@ -54,9 +58,33 @@ pub struct LiveRow {
     /// the addresses the device has at the row's interfaces and NetBox doesn't: the next apply
     /// removes them
     pub device_only_addresses: Vec<DeviceOnlyAddress>,
+    /// the static DHCP leases of the row's server that NetBox has no client for: the next
+    /// apply removes them
+    pub device_only_leases: Vec<DeviceOnlyLease>,
     /// what the findings suggest: the link to the router the device sees at a port, an
     /// address to take over
     pub actions: Vec<RowAction>,
+}
+
+/// A static lease of `/ip/dhcp-server/lease` NetBox has no client for (`device::ros::dhcp`:
+/// a device without RouterOS whose interface has a MAC and the address).
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct DeviceOnlyLease {
+    pub address: Box<str>,
+    /// none for a lease by client ID, which NetBox can't hold
+    pub mac: Option<Box<str>>,
+    pub client_id: Option<Box<str>>,
+    /// its server; none for one of all servers
+    pub server: Option<Box<str>>,
+    /// the host name its client sent, else its comment
+    pub name: Option<Box<str>>,
+    pub disabled: bool,
+    /// its settings NetBox doesn't hold and a takeover loses (`block-access`, `rate-limit` …)
+    pub settings: Vec<Box<str>>,
+    /// NetBox has the address on this device, which isn't a lease client (RouterOS, no MAC)
+    pub elsewhere: Option<DeviceRef>,
+    /// NetBox has the address on no interface
+    pub unassigned: bool,
 }
 
 /// A static address of `/ip/address` or `/ipv6/address` (no link-local one) that NetBox
@@ -104,6 +132,10 @@ pub async fn read(client: &RawDevice<SimpleResult>, device: &DeviceAccess) -> Re
     let ospf = rows(client, "/routing/ospf/neighbor/print").await?;
     let mut addresses = rows(client, "/ip/address/print").await?;
     addresses.extend(rows(client, "/ipv6/address/print").await?);
+    let dhcp = Dhcp {
+        servers: rows(client, "/ip/dhcp-server/print").await?,
+        leases: rows(client, "/ip/dhcp-server/lease/print").await?,
+    };
     let rows = device.interface_rows();
     let bridges = rows
         .iter()
@@ -114,7 +146,14 @@ pub async fn read(client: &RawDevice<SimpleResult>, device: &DeviceAccess) -> Re
         .filter_map(|id| device.topology().get_device_by_id(&DeviceId(*id))?.primary_ip_v4()?.addr())
         .collect::<Vec<_>>();
     let answering = answering(client, &loopbacks).await;
-    Ok(check(device, &rows, neighbors, &ospf, &addresses, &answering))
+    Ok(check(device, &rows, neighbors, &ospf, &addresses, &dhcp, &answering))
+}
+
+/// What the device answers about DHCP: its servers and leases.
+#[derive(Debug, Default)]
+pub struct Dhcp {
+    pub servers: Vec<Row>,
+    pub leases: Vec<Row>,
 }
 
 /// [`read`] on what the device answered.
@@ -124,6 +163,7 @@ pub fn check(
     neighbors: neighbors::Neighbors,
     ospf: &[Row],
     addresses: &[Row],
+    dhcp: &Dhcp,
     answering: &BTreeSet<IpAddr>,
 ) -> InterfaceLive {
     let topology = device.topology();
@@ -160,6 +200,25 @@ pub fn check(
     };
     let device_only = device_only_addresses(device, addresses, netbox_interface);
     let mut taken = vec![false; device_only.len()];
+    let leases = device_only_leases(device, dhcp);
+    let mut leases_taken = vec![false; leases.len()];
+    // a lease's row: its server's interface, else the interface with its network
+    let lease_interface = |lease: &DeviceOnlyLease| {
+        lease
+            .server
+            .as_deref()
+            .and_then(|server| dhcp.servers.iter().find(|row| field(row, "name") == Some(server)))
+            .and_then(|row| field(row, "interface"))
+            .and_then(netbox_interface)
+            .or_else(|| {
+                let address = lease.address.parse::<IpAddr>().ok()?;
+                device
+                    .interfaces()
+                    .iter()
+                    .find(|i| i.ips().iter().any(|ip| ip.net().is_some_and(|net| net.contains(&address))))
+                    .map(|i| i.id().0)
+            })
+    };
     let mut placed = vec![false; neighbors.findings.len()];
     let live_rows = rows
         .iter()
@@ -235,6 +294,20 @@ pub fn check(
                 })
                 .collect::<Vec<_>>();
             actions.extend(device_only_addresses.iter().filter_map(address_takeover));
+            let device_only_leases = leases
+                .iter()
+                .zip(leases_taken.iter_mut())
+                .filter(|(lease, _)| lease_interface(lease).is_some_and(|id| members.contains(&id)))
+                .map(|(lease, taken)| {
+                    *taken = true;
+                    lease.clone()
+                })
+                .collect::<Vec<_>>();
+            actions.extend(
+                device_only_leases
+                    .iter()
+                    .filter_map(|lease| lease_takeover(lease, row.interface.id)),
+            );
             LiveRow {
                 interface: row.interface.id,
                 seen,
@@ -243,6 +316,7 @@ pub fn check(
                 bridges,
                 findings,
                 device_only_addresses,
+                device_only_leases,
                 actions,
             }
         })
@@ -260,11 +334,117 @@ pub fn check(
         .filter(|(_, taken)| !taken)
         .map(|(address, _)| address)
         .collect();
+    let other_leases = leases
+        .into_iter()
+        .zip(leases_taken)
+        .filter(|(_, taken)| !taken)
+        .map(|(lease, _)| lease)
+        .collect();
     InterfaceLive {
         rows: live_rows,
         other_findings,
         other_addresses,
+        other_leases,
     }
+}
+
+/// The settings of a lease row NetBox doesn't hold, by their RouterOS names.
+/// The host name a DHCP client sent, up to its first control character: RouterOS reports it as
+/// sent, and a client padding a fixed field sends NUL bytes after it (a Tinkerforge brick's
+/// `Tinkerforge5093BA` came with a row of them).
+fn client_name(name: &str) -> Option<Box<str>> {
+    let name = name
+        .split(|c: char| c.is_control() || c == char::REPLACEMENT_CHARACTER)
+        .next()
+        .unwrap_or_default()
+        .trim();
+    (!name.is_empty()).then(|| name.into())
+}
+
+const LEASE_SETTINGS: &[&str] = &[
+    "address-lists",
+    "allow-dual-stack-queue",
+    "always-broadcast",
+    "block-access",
+    "dhcp-option",
+    "dhcp-option-set",
+    "insert-queue-before",
+    "lease-time",
+    "queue-type",
+    "rate-limit",
+    "routes",
+    "use-src-mac",
+];
+
+/// The static leases of the device (`/ip/dhcp-server/lease` rows) its NetBox target doesn't
+/// have: the addresses of no lease client in its DHCP networks (`device::ros::dhcp`).
+fn device_only_leases(device: &DeviceAccess, dhcp: &Dhcp) -> Vec<DeviceOnlyLease> {
+    let topology = device.topology();
+    let expected = device
+        .interfaces()
+        .iter()
+        .filter(|i| i.is_enable_dhcp_server())
+        .flat_map(|i| i.ips())
+        .filter_map(|ip| ip.prefix())
+        .flat_map(|prefix| static_leases(&prefix))
+        .map(|lease| IpAddr::V4(lease.address))
+        .collect::<BTreeSet<_>>();
+    let set = |row: &Row, name: &str| {
+        field(row, name).is_some_and(|value| !value.is_empty() && !matches!(value, "false" | "none" | "0s"))
+    };
+    dhcp.leases
+        .iter()
+        .filter(|row| field(row, "dynamic") != Some("true"))
+        .filter_map(|row| {
+            let address = field(row, "address")?.parse::<IpAddr>().ok()?;
+            if expected.contains(&address) {
+                return None;
+            }
+            let text = |name: &str| field(row, name).filter(|v| !v.is_empty()).map(Box::from);
+            let netbox = topology.ip_address_with_host(address);
+            Some(DeviceOnlyLease {
+                address: address.to_string().into(),
+                mac: text("mac-address"),
+                client_id: text("client-id"),
+                server: text("server"),
+                name: text("host-name")
+                    .and_then(|name| client_name(&name))
+                    .or_else(|| text("comment")),
+                disabled: field(row, "disabled") == Some("true"),
+                settings: LEASE_SETTINGS
+                    .iter()
+                    .filter(|name| set(row, name))
+                    .map(|name| Box::from(*name))
+                    .collect(),
+                elsewhere: netbox
+                    .and_then(|ip| topology.get_interface_by_id(ip.interface?)?.device())
+                    .as_ref()
+                    .map(device_ref),
+                unassigned: netbox.is_some_and(|ip| ip.interface.is_none()),
+            })
+        })
+        .collect()
+}
+
+/// „Lease übernehmen“ for a lease by MAC whose address NetBox has nowhere, from the row of its
+/// server (`interface`).
+fn lease_takeover(lease: &DeviceOnlyLease, interface: u32) -> Option<RowAction> {
+    if lease.elsewhere.is_some() || lease.unassigned {
+        return None;
+    }
+    Some(RowAction {
+        kind: ActionKind::Suggestion,
+        helper: ActionHelper::LeaseTakeover,
+        interface: Some(interface),
+        peer: None,
+        vlan: None,
+        seen: None,
+        address: Some(lease.address.clone()),
+        lease: Some(LeaseSeen {
+            mac: lease.mac.clone()?,
+            name: lease.name.clone(),
+        }),
+    })
 }
 
 /// The static addresses of the device (`/ip/address` and `/ipv6/address` rows) that NetBox
@@ -324,6 +504,7 @@ fn address_takeover(address: &DeviceOnlyAddress) -> Option<RowAction> {
         vlan: None,
         seen: None,
         address: Some(address.address.clone()),
+        lease: None,
     })
 }
 
@@ -366,6 +547,7 @@ fn seen_link(device: &DeviceAccess, finding: &NeighborFinding) -> Option<RowActi
         vlan: None,
         seen: None,
         address: None,
+        lease: None,
     })
 }
 
@@ -397,6 +579,7 @@ fn new_device(device: &DeviceAccess, finding: &NeighborFinding) -> Option<RowAct
             interface_name: seen.interface_name.clone(),
         }),
         address: None,
+        lease: None,
     })
 }
 

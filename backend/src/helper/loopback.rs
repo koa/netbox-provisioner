@@ -46,6 +46,7 @@ pub(crate) async fn add_to(
                 kind: "virtual".into(),
                 vlan: None,
                 tags: Vec::new(),
+                mac: None,
             }));
             Target::Step(plan.steps.len() - 1)
         }

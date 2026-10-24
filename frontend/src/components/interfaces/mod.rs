@@ -262,9 +262,13 @@ impl Interfaces {
             .map(|task| self.section(ctx, *task, view, &netbox))
             .collect::<Vec<_>>();
         let empty = sections.iter().all(Option::is_none);
-        let (live_findings, live_addresses) = match &self.live {
-            Live::Checked(checked) => (checked.other_findings.clone(), checked.other_addresses.clone()),
-            _ => (Vec::new(), Vec::new()),
+        let (live_findings, live_addresses, live_leases) = match &self.live {
+            Live::Checked(checked) => (
+                checked.other_findings.clone(),
+                checked.other_addresses.clone(),
+                checked.other_leases.clone(),
+            ),
+            _ => (Vec::new(), Vec::new(), Vec::new()),
         };
         let unchecked = match &self.live {
             Live::Unchecked(message) => Some(html! {
@@ -281,7 +285,10 @@ impl Interfaces {
             if empty {
                 <p>{t::NONE_WITH_FINDINGS}</p>
             }
-            if (!view.other_findings.is_empty() || !live_findings.is_empty() || !live_addresses.is_empty())
+            if (!view.other_findings.is_empty()
+                || !live_findings.is_empty()
+                || !live_addresses.is_empty()
+                || !live_leases.is_empty())
                 && self.filter.is_none()
             {
                 <section class="interfaces-section">
@@ -295,6 +302,10 @@ impl Interfaces {
                     if !live_addresses.is_empty() {
                         <p>{t::OTHER_ADDRESSES}</p>
                         {live::device_only_list(&live_addresses, table::device)}
+                    }
+                    if !live_leases.is_empty() {
+                        <p>{t::OTHER_LEASES}</p>
+                        {live::device_only_lease_list(&live_leases, table::device)}
                     }
                 </section>
             }

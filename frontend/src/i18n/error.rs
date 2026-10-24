@@ -221,6 +221,8 @@ pub fn server(problem: &ServerProblem) -> String {
         "NO_BRIDGE" => format!("{} ist in keiner Bridge", p("port")),
         "ADDRESS_IN_NETBOX" => format!("NetBox hat {} schon", p("address")),
         "INVALID_ADDRESS" => format!("{} ist keine Adresse mit Länge", p("address")),
+        "INVALID_MAC" => format!("{} ist keine MAC-Adresse", p("mac")),
+        "NO_DHCP_NETWORK" => format!("{} liegt in keinem DHCP-Netz des Routers", p("address")),
         "NO_CUSTOMER_NET" => format!(
             "{} hat in NetBox kein Kunden-Netz mehr: keine Adresse, kein dhcp und kein VLAN",
             p("interface")

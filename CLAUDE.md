@@ -164,7 +164,14 @@ their NetBox interface, by port name or another address there, else `other_addre
 only when NetBox has the IP nowhere; `helper::address_takeover`: `CreateAddress` on that
 interface, before it `CreatePrefix` of its network when NetBox has neither that prefix nor an
 address in it and the length isn't a host's, within the smallest prefix holding it, scoped to
-the device's site unless that one is a pool's). Each row with its actions (one may be
+the device's site unless that one is a pool's); a static DHCP lease only the router has
+„Lease <address> übernehmen“ (`interface_live::device_only_leases`: static rows of
+`/ip/dhcp-server/lease` whose address isn't a lease NetBox gives the router, at the row of the
+server's interface, else the one whose network holds it, else `other_leases`; offered for a
+lease with a MAC whose address NetBox has nowhere; the name is `host-name` up to its first
+control character, `client_name`: a Tinkerforge brick pads it with NULs; `helper::lease_takeover`:
+`CreateDevice` without platform, `CreateInterface` `eth0` with the MAC, written as
+`dcim/mac-addresses` and the interface's `primary_mac_address`, `CreateAddress`). Each row with its actions (one may be
 another device's helper: „Funkbrücke“ from a router port is the cabled bridge device's,
 `HelperPreset::RadioFrom`, so `HelperFlow` embeds that device's helper; „Richtfunk abräumen“,
 `helper::radio_disconnect`, starts from the row's radio only, „Kunden-Anschluss abräumen“,
@@ -561,6 +568,14 @@ the board must advertise it there. The model keeps a device's `speed` where none
 `BaseDeviceDataTarget::generate_from` (which only tests use): a step added to one must be in the
 other too. PoE out (`setup_poe`) was only in the latter, so the real path never set it before.
 
+A DHCP server's static leases come from NetBox (`device::ros::dhcp::static_leases`): every
+device without RouterOS with an interface whose primary MAC (`Interface.mac`, upper case) and
+IPv4 are in the server's prefix, the device's name as comment, the rest at RouterOS' defaults
+(`lease-time=0s`, `parent-queue=none`, the flags `no`). The provisioner owns the static
+leases: one NetBox doesn't know is removed, a dynamic one is left (`dynamic` is ro, so the
+model never reads it as an entry). The address is left out of the pool like any other NetBox
+address there. Only `primary_mac_address` is fetched: the stored export lacks
+`mac_addresses`. The site overview counts removed leases (`removes_leases`) like addresses.
 A `dhcp-client` on an `ospf` interface takes no default route (`add-default-route=no`; RouterOS
 then hides `default-route-distance` and can't clear it, so it gets RouterOS' default 1, which
 mikrotik-model reads for the hidden field): the default comes over OSPF, and one from DHCP

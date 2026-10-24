@@ -129,10 +129,11 @@ pub struct CreateDevice {
     pub role_id: u32,
     #[graphql(skip)]
     pub role_slug: Box<str>,
+    /// RouterOS for a device of the provisioner, none for a lease client
     #[graphql(skip)]
-    pub platform_id: u32,
+    pub platform_id: Option<u32>,
     #[graphql(skip)]
-    pub platform: Box<str>,
+    pub platform: Option<Box<str>>,
     #[graphql(skip)]
     pub tenant_id: Option<u32>,
     /// the WLAN group of an access point (custom field `wlan_group`)
@@ -144,7 +145,7 @@ pub struct CreateDevice {
 }
 
 /// A new interface `name` of NetBox type `kind` (`virtual`) on `device`, with an untagged
-/// VLAN (802.1Q mode access) and tags.
+/// VLAN (802.1Q mode access), tags and, for a lease client, its primary MAC address.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct CreateInterface {
     pub device: DeviceRef,
@@ -153,6 +154,7 @@ pub struct CreateInterface {
     #[graphql(skip)]
     pub vlan: Option<u32>,
     pub tags: Vec<flags::InterfaceTag>,
+    pub mac: Option<Box<str>>,
 }
 
 /// A new IP address on `interface` (its name; it may be one the plan creates), the next free

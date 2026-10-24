@@ -188,6 +188,10 @@ impl InterfaceAccess {
             .is_some_and(|d| d.port_type == Some(PortType::Bridge))
     }
     /// The L3 MTU NetBox gives the port, `None` for RouterOS's 1500.
+    /// its MAC address (upper case), which only a lease client has in NetBox
+    pub fn mac(&self) -> Option<&str> {
+        self.data().and_then(|d| d.mac.as_deref())
+    }
     pub fn mtu(&self) -> Option<u16> {
         self.data().and_then(|d| d.mtu)
     }

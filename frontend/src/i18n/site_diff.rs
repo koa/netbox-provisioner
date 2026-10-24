@@ -41,6 +41,12 @@ pub fn removes_addresses(count: i64) -> String {
         count => format!("entfernt {count} Adressen"),
     }
 }
+pub fn removes_leases(count: i64) -> String {
+    match count {
+        1 => "entfernt 1 statischen Lease".into(),
+        count => format!("entfernt {count} statische Leases"),
+    }
+}
 pub const TOUCHES_OSPF: &str = "ändert OSPF";
 pub const TOUCHES_BRIDGE_PORTS: &str = "ändert Bridge-Ports";
 pub fn unreadable(error: &str) -> String {

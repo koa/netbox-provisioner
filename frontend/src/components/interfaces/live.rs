@@ -47,6 +47,8 @@ pub struct Checked {
     pub other_findings: Vec<NeighborFinding>,
     /// the addresses only the device has on an interface of no row
     pub other_addresses: Vec<DeviceOnly>,
+    /// the static leases only the device has of a server on no row
+    pub other_leases: Vec<DeviceOnlyLease>,
 }
 
 /// What a row's live checks say.
@@ -66,6 +68,8 @@ pub struct LiveRow {
     pub findings: Vec<NeighborFinding>,
     /// the addresses only the device has there: the next apply removes them
     pub device_only: Vec<DeviceOnly>,
+    /// the static leases only the device has there: the next apply removes them
+    pub device_only_leases: Vec<DeviceOnlyLease>,
     /// what the findings suggest, as the row's actions
     pub actions: Vec<Action>,
 }
@@ -85,6 +89,19 @@ pub struct DeviceOnly {
     pub address: String,
     pub interface_name: String,
     pub disabled: bool,
+    pub elsewhere: Option<Device>,
+    pub unassigned: bool,
+}
+
+/// A static lease only the device has, NetBox the address elsewhere or on no interface.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceOnlyLease {
+    pub address: String,
+    pub mac: Option<String>,
+    pub client_id: Option<String>,
+    pub name: Option<String>,
+    pub disabled: bool,
+    pub settings: Vec<String>,
     pub elsewhere: Option<Device>,
     pub unassigned: bool,
 }
@@ -113,7 +130,7 @@ impl Live {
 
 impl LiveRow {
     /// Its failures as severities: the neighbor findings, a missing OSPF neighbor and a bridge
-    /// device not answering are errors, an address only the device has a warning.
+    /// device not answering are errors, an address or lease only the device has a warning.
     pub fn severities(&self) -> Vec<Severity> {
         self.findings
             .iter()
@@ -130,6 +147,7 @@ impl LiveRow {
                     .map(|_| Severity::ERROR),
             )
             .chain(self.device_only.iter().map(|_| Severity::WARNING))
+            .chain(self.device_only_leases.iter().map(|_| Severity::WARNING))
             .collect()
     }
 }
@@ -197,6 +215,10 @@ pub fn details(netbox: &str, live: &RowLive, device: impl Fn(&Device) -> Html) -
                 <dt>{t::DEVICE_ONLY}</dt>
                 <dd>{device_only_list(&row.device_only, &device)}</dd>
             }
+            if !row.device_only_leases.is_empty() {
+                <dt>{t::LEASES_DEVICE_ONLY}</dt>
+                <dd>{device_only_lease_list(&row.device_only_leases, &device)}</dd>
+            }
         </dl>
         if !row.findings.is_empty() {
             {neighbor_finding_list(netbox, &row.findings)}
@@ -215,6 +237,34 @@ pub fn device_only_list(addresses: &[DeviceOnly], device: impl Fn(&Device) -> Ht
                     {" "}{t::DEVICE_ONLY_ELSEWHERE}{" "}{device(elsewhere)}
                 } else if a.unassigned {
                     {" "}{t::DEVICE_ONLY_UNASSIGNED}
+                }
+            </div>
+        }) }
+    }
+}
+
+/// Static leases only the device has, each with what a takeover can't keep and where NetBox
+/// has the address instead.
+pub fn device_only_lease_list(leases: &[DeviceOnlyLease], device: impl Fn(&Device) -> Html) -> Html {
+    html! {
+        { for leases.iter().map(|l| html! {
+            <div>
+                <span class="live-failed">{Icon::ExclamationTriangle}</span>{" "}
+                {t::device_only_lease(
+                    &l.address,
+                    l.mac.as_deref().or(l.client_id.as_deref()).unwrap_or_default(),
+                    l.name.as_deref(),
+                    l.disabled,
+                )}
+                if !l.settings.is_empty() {
+                    {" "}{t::lease_settings_lost(&l.settings)}
+                }
+                if let Some(elsewhere) = &l.elsewhere {
+                    {" "}{t::DEVICE_ONLY_ELSEWHERE}{" "}{device(elsewhere)}
+                } else if l.unassigned {
+                    {" "}{t::DEVICE_ONLY_UNASSIGNED}
+                } else if l.mac.is_none() {
+                    {" "}{t::LEASE_BY_CLIENT_ID}
                 }
             </div>
         }) }
@@ -292,6 +342,7 @@ impl Checked {
                         .collect(),
                     findings: convert(&row.findings)?,
                     device_only: row.device_only_addresses.into_iter().map(device_only).collect(),
+                    device_only_leases: row.device_only_leases.into_iter().map(device_only_lease).collect(),
                     actions: convert::<_, interface_view::Action>(&row.actions)?
                         .into_iter()
                         .filter_map(|action| rows::action(action, device_id))
@@ -304,6 +355,7 @@ impl Checked {
             rows,
             other_findings: convert(&live.other_findings)?,
             other_addresses: live.other_addresses.into_iter().map(device_only).collect(),
+            other_leases: live.other_leases.into_iter().map(device_only_lease).collect(),
         }))
     }
 }
@@ -323,6 +375,19 @@ fn device_only(address: interface_live::DeviceOnly) -> DeviceOnly {
         disabled: address.disabled,
         elsewhere: address.elsewhere.map(device),
         unassigned: address.unassigned,
+    }
+}
+
+fn device_only_lease(lease: interface_live::DeviceOnlyLease) -> DeviceOnlyLease {
+    DeviceOnlyLease {
+        address: lease.address,
+        mac: lease.mac,
+        client_id: lease.client_id,
+        name: lease.name,
+        disabled: lease.disabled,
+        settings: lease.settings,
+        elsewhere: lease.elsewhere.map(device),
+        unassigned: lease.unassigned,
     }
 }
 

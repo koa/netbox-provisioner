@@ -2,6 +2,7 @@
 
 use crate::topology::access::ip_prefix::IpPrefixAccess;
 use ipnet::{IpNet, Ipv4Net};
+use mikrotik_model::MacAddress;
 use std::{
     net::{IpAddr, Ipv4Addr},
     ops::{Range, RangeInclusive},
@@ -35,6 +36,41 @@ pub(crate) fn dhcp_pool_v4(prefix: &IpPrefixAccess, net: Ipv4Net) -> Vec<Range<I
         }
     }
     gap_finder.find_gaps_ipv4(net).collect()
+}
+
+/// A static lease of a DHCP server: a NetBox device that isn't a RouterOS one, with an
+/// interface that has a MAC and an IPv4 address of the server's prefix (`docs/netbox-modeling.md`,
+/// „Statische DHCP-Leases“).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StaticLease {
+    pub address: Ipv4Addr,
+    pub mac: MacAddress,
+    /// the client device's name, the lease's comment
+    pub name: Box<str>,
+}
+
+/// The static leases in `prefix` for its DHCP server, by address (the router itself runs
+/// RouterOS, so its own address is none).
+pub(crate) fn static_leases(prefix: &IpPrefixAccess) -> Vec<StaticLease> {
+    let mut leases = prefix
+        .ips()
+        .iter()
+        .filter_map(|ip| {
+            let Some(IpAddr::V4(address)) = ip.addr() else { return None };
+            let interface = ip.interface()?;
+            let device = interface.device()?;
+            if device.has_routeros() {
+                return None;
+            }
+            Some(StaticLease {
+                address,
+                mac: interface.mac()?.parse().ok()?,
+                name: device.name().into(),
+            })
+        })
+        .collect::<Vec<_>>();
+    leases.sort_by_key(|lease| lease.address);
+    leases
 }
 
 /// A pool range (`end` included) as RouterOS reports it: one address alone, a range covering

@@ -63,7 +63,7 @@ fn rows_get_their_neighbors_ospf_and_bridges() {
     ];
     let answering = BTreeSet::from(["172.16.1.4".parse().unwrap()]);
     let rows = r1.interface_rows();
-    let live = check(&r1, &rows, neighbors, &ospf, &[], &answering);
+    let live = check(&r1, &rows, neighbors, &ospf, &[], &Dhcp::default(), &answering);
 
     let direct = live_row(&live, &r1, "ether1");
     assert_eq!(direct.seen, [seen]);
@@ -115,7 +115,7 @@ fn findings_go_to_the_row_of_their_port() {
         ],
         seen: BTreeMap::new(),
     };
-    let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &BTreeSet::new());
+    let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &Dhcp::default(), &BTreeSet::new());
     assert_eq!(live_row(&live, &r1, "ether1").findings.len(), 1);
     assert!(matches!(
         live.other_findings.as_slice(),
@@ -135,7 +135,7 @@ fn an_ospf_neighbor_goes_to_the_interface_with_the_address() {
     // L2 names the customer bridge otherwise than NetBox
     let ospf = [ospf("bridge-clients-10", "172.16.1.2", "10.10.0.2", "Full")];
     let addresses = [row(&[("address", "10.10.0.1/24"), ("interface", "bridge-clients-10")])];
-    let live = check(&r1, &r1.interface_rows(), neighbors, &ospf, &addresses, &BTreeSet::new());
+    let live = check(&r1, &r1.interface_rows(), neighbors, &ospf, &addresses, &Dhcp::default(), &BTreeSet::new());
     let customer = live_row(&live, &r1, "bridge-clients");
     assert_eq!(customer.ospf.len(), 1);
     assert_eq!(customer.ospf[0].device.as_ref().map(|d| &*d.name), Some("r2"));
@@ -179,7 +179,7 @@ fn another_far_port_suggests_taking_over_the_cable() {
             findings: vec![finding(seen)],
             seen: BTreeMap::new(),
         };
-        let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &BTreeSet::new());
+        let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &Dhcp::default(), &BTreeSet::new());
         live_row(&live, &r1, "ether1").actions.clone()
     };
     let to_r2 = seen(&r2, "ether3");
@@ -193,6 +193,7 @@ fn another_far_port_suggests_taking_over_the_cable() {
             vlan: None,
             seen: None,
             address: None,
+            lease: None,
         }]
     );
     let b1_port = b1.interfaces().iter().find(|i| i.radio().is_none()).unwrap().name().to_string();
@@ -229,7 +230,7 @@ fn an_unknown_mikrotik_suggests_a_new_device() {
             findings: vec![finding],
             seen: BTreeMap::new(),
         };
-        let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &BTreeSet::new());
+        let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &Dhcp::default(), &BTreeSet::new());
         live_row(&live, &r1, "ether5").actions.clone()
     };
     assert_eq!(
@@ -246,6 +247,7 @@ fn an_unknown_mikrotik_suggests_a_new_device() {
                 interface_name: "ether1".into(),
             }),
             address: None,
+            lease: None,
         }]
     );
     assert!(actions("").is_empty());
@@ -274,7 +276,7 @@ fn device_only_addresses_go_to_their_row() {
         findings: Vec::new(),
         seen: BTreeMap::new(),
     };
-    let live = check(&r1, &r1.interface_rows(), neighbors, &[], &addresses, &BTreeSet::new());
+    let live = check(&r1, &r1.interface_rows(), neighbors, &[], &addresses, &Dhcp::default(), &BTreeSet::new());
     let shown = |row: &LiveRow| {
         row.device_only_addresses
             .iter()
@@ -300,4 +302,69 @@ fn device_only_addresses_go_to_their_row() {
         live.other_addresses.iter().map(|a| &*a.address).collect::<Vec<_>>(),
         ["192.168.9.1/24"]
     );
+}
+
+/// A static lease NetBox has no client for goes to the row of its server's interface, with
+/// what NetBox can't hold; a lease by client ID and one of an address NetBox has elsewhere get
+/// no action, a dynamic one isn't shown.
+#[test]
+fn device_only_leases_go_to_the_row_of_their_server() {
+    let net = Net::new();
+    let topology = Arc::new(net.builder.build());
+    let r1 = topology.get_device_by_id(&net.r1).unwrap();
+    let lease = |fields: &[(&str, &str)]| {
+        let mut all = vec![("dynamic", "false"), ("disabled", "false"), ("address-lists", ""), ("dhcp-option", "")];
+        all.extend_from_slice(fields);
+        row(&all)
+    };
+    let dhcp = Dhcp {
+        servers: vec![row(&[("name", "dhcp-bridge-clients"), ("interface", "bridge-clients")])],
+        leases: vec![
+            lease(&[("address", "10.10.0.50"), ("mac-address", "AA:BB:CC:DD:EE:01"), ("server", "dhcp-bridge-clients"), ("host-name", "drucker"), ("block-access", "true")]),
+            lease(&[("address", "10.10.0.51"), ("client-id", "1:aa:bb:cc:dd:ee:02"), ("server", "dhcp-bridge-clients")]),
+            // of all servers: by its network
+            lease(&[("address", "10.10.0.52"), ("mac-address", "AA:BB:CC:DD:EE:03"), ("comment", "kamera")]),
+            row(&[("address", "10.10.0.53"), ("mac-address", "AA:BB:CC:DD:EE:04"), ("dynamic", "true")]),
+            lease(&[("address", "172.17.1.10"), ("mac-address", "AA:BB:CC:DD:EE:05")]),
+        ],
+    };
+    let neighbors = Neighbors {
+        findings: Vec::new(),
+        seen: BTreeMap::new(),
+    };
+    let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &dhcp, &BTreeSet::new());
+    let customer = live_row(&live, &r1, "bridge-clients");
+    assert_eq!(
+        customer
+            .device_only_leases
+            .iter()
+            .map(|l| (&*l.address, l.name.as_deref(), l.settings.iter().map(|s| &**s).collect::<Vec<_>>()))
+            .collect::<Vec<_>>(),
+        [
+            ("10.10.0.50", Some("drucker"), vec!["block-access"]),
+            ("10.10.0.51", None, vec![]),
+            ("10.10.0.52", Some("kamera"), vec![]),
+        ]
+    );
+    assert_eq!(
+        customer
+            .actions
+            .iter()
+            .filter(|a| a.helper == ActionHelper::LeaseTakeover)
+            .map(|a| (a.address.as_deref(), a.lease.as_ref().map(|l| &*l.mac)))
+            .collect::<Vec<_>>(),
+        [(Some("10.10.0.50"), Some("AA:BB:CC:DD:EE:01")), (Some("10.10.0.52"), Some("AA:BB:CC:DD:EE:03"))]
+    );
+    // the radio link's network: NetBox has the address on r2
+    let radio = live_row(&live, &r1, "ether3");
+    assert_eq!(radio.device_only_leases.iter().map(|l| l.elsewhere.as_ref().map(|d| &*d.name)).collect::<Vec<_>>(), [Some("r2")]);
+    assert!(radio.actions.iter().all(|a| a.helper != ActionHelper::LeaseTakeover));
+}
+
+/// A host name padded with NUL bytes is cut at the first; one of only padding is none.
+#[test]
+fn a_padded_host_name_is_cut() {
+    assert_eq!(client_name("Tinkerforge5093BA\0\0\0").as_deref(), Some("Tinkerforge5093BA"));
+    assert_eq!(client_name("\0\0"), None);
+    assert_eq!(client_name("drucker"), Some("drucker".into()));
 }

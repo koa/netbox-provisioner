@@ -91,6 +91,17 @@ pub enum ActionHelper {
     NewDevice,
     /// „Adresse übernehmen“: the `address`, which only the device has, on `interface` in NetBox
     AddressTakeover,
+    /// „Lease übernehmen“: the static DHCP lease of `address` (`lease`), which only the
+    /// device has, as a client device in NetBox
+    LeaseTakeover,
+}
+
+/// A static DHCP lease the device has, for its client device in NetBox.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct LeaseSeen {
+    pub mac: Box<str>,
+    /// its host name or comment, for the client's name
+    pub name: Option<Box<str>>,
 }
 
 /// A MikroTik the device sees at a port that NetBox doesn't know: its identity, board and port
@@ -116,8 +127,10 @@ pub struct RowAction {
     pub vlan: Option<u32>,
     /// the device seen at the port, for a new one
     pub seen: Option<SeenDevice>,
-    /// an address only the device has, to take over
+    /// an address only the device has, to take over, or a static lease's
     pub address: Option<Box<str>>,
+    /// a static lease only the device has, to take over
+    pub lease: Option<LeaseSeen>,
 }
 
 /// An L3 interface, a bridge with its ports.
@@ -255,6 +268,7 @@ impl DeviceAccess {
                         vlan: None,
                         seen: None,
                         address: None,
+                        lease: None,
                     });
                 }
             }
@@ -279,6 +293,7 @@ impl DeviceAccess {
                 vlan: None,
                 seen: None,
                 address: None,
+                lease: None,
             })
             .into_iter()
             .collect();
@@ -410,6 +425,7 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
         vlan,
         seen: None,
         address: None,
+        lease: None,
     };
     // the port (the row's interface or one of its bridge ports) cabled to a router, and that
     // router's port
@@ -608,6 +624,7 @@ fn port_actions(topology: &Arc<Topology>, port: &InterfaceRef) -> Vec<RowAction>
             vlan: None,
             seen: None,
             address: None,
+            lease: None,
         })
         .into_iter()
         .collect()

@@ -258,6 +258,7 @@ fn side(
                 kind: "bridge".into(),
                 vlan: None,
                 tags: vec![InterfaceTag::Ospf],
+                mac: None,
             }));
             (Target::Step(plan.steps.len() - 1), Box::from("bridge"))
         }

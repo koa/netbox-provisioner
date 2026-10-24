@@ -186,7 +186,7 @@ die Aktionen, die auf diesem Port möglich sind, und der Helfer startet mit ihm.
 | Richtfunk | Lösungsvorschlag (unvollständig oder mit Befund), Verbindung entfernen; PoE, Flags |
 | Kunden-Anschluss | VLAN am Port (`VlanWithoutPort`), Kunden-Netz, Verbindung entfernen; PoE, Flags |
 | Port einer Bridge | PoE; in einem Kunden-Anschluss auch Aus Bridge lösen |
-| aus der Live-Prüfung | Kabel übernehmen, Verbindung mit dem gesehenen Router, Neues Gerät anschliessen für ein unbekanntes MikroTik an einem freien Port, Adresse übernehmen für eine, die nur auf dem Gerät steht ([Config-Helper](config-helper.md#adresse-übernehmen)) |
+| aus der Live-Prüfung | Kabel übernehmen, Verbindung mit dem gesehenen Router, Neues Gerät anschliessen für ein unbekanntes MikroTik an einem freien Port, Adresse übernehmen für eine, die nur auf dem Gerät steht ([Config-Helper](config-helper.md#adresse-übernehmen)), Lease übernehmen für einen statischen DHCP-Lease, den nur der Router hat ([Config-Helper](config-helper.md#lease-übernehmen)) |
 | Uplink | keine (Z25) |
 | Loopback | Loopback, nur wo sie fehlt |
 

@@ -300,8 +300,8 @@ pub(crate) fn base(
         manufacturer: facts.manufacturer.clone(),
         role_id: input.role,
         role_slug: facts.role_slug.clone(),
-        platform_id: facts.platform_id,
-        platform: facts.platform.clone(),
+        platform_id: Some(facts.platform_id),
+        platform: Some(facts.platform.clone()),
         tenant_id: facts.tenant_id,
         wlan_group: wlan_group.as_ref().and_then(|g| g.name()).map(Box::from),
         wlan_group_id: wlan_group.as_ref().map(|g| g.id().0),
@@ -318,6 +318,7 @@ pub(crate) fn base(
         kind: port_type(far_port).into(),
         vlan: None,
         tags: Vec::new(),
+        mac: None,
     }));
     let new_port = InterfaceRef {
         id: new_port_id(),

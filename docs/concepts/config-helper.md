@@ -475,6 +475,32 @@ wenn NetBox weder dieses Prefix noch eine Adresse darin hat und die Länge keine
 Anwenden aufs Gerät gebracht, in NetBox gelöscht; die Live-Prüfung zeigte sie, der Plan legte
 Prefix und Adresse an, danach war der Diff leer; Rückgängig und Anwenden nahmen sie wieder weg.
 
+### Lease übernehmen
+
+Trägt den Client eines statischen DHCP-Leases, den nur der Router hat, in NetBox ein, damit das
+nächste Anwenden ihn schreibt statt entfernt (Datenkorrektur, wie „Adresse übernehmen“; zum
+Modell siehe [NetBox-Modellierung](../netbox-modeling.md), „Statische DHCP-Leases“). Die
+Live-Prüfung liest `/ip/dhcp-server` und seine Leases: die statischen, deren Adresse NetBox
+nicht als Lease des Routers hat, stehen an der Zeile des Server-Interfaces (bei einem Lease für
+alle Server die Zeile, deren Netz die Adresse enthält) unter „Leases nur auf dem Gerät“, als
+Warnung, mit dem, was NetBox nicht halten kann (`block-access`, `rate-limit`, Lease-Zeit, …)
+und dem Hinweis, wenn NetBox die Adresse an einem anderen Gerät hat. Der Knopf „Lease
+<Adresse> übernehmen“ kommt nur für einen Lease mit MAC (nicht per Client-ID), dessen Adresse
+NetBox nirgends hat.
+
+Das Formular nimmt den Namen, den der Client geschickt hat (`host-name` bis zum ersten
+Steuerzeichen: ein Tinkerforge-Brick füllt sein Feld mit Nullbytes auf), sonst den Kommentar;
+Device Type und Rolle aus NetBox, „Generic“ und `client` vorgewählt, wo es sie gibt. Plan
+(`helper::lease_takeover`): `CreateDevice` an der Site des Routers ohne Plattform,
+`CreateInterface` `eth0` mit der MAC als primärer (`dcim/mac-addresses`, dann
+`primary_mac_address` am Interface), `CreateAddress` mit der Länge des DHCP-Netzes. Abgelehnt
+wird eine Adresse in keinem DHCP-Netz des Routers (`NO_DHCP_NETWORK`), eine, die NetBox schon
+hat, eine ungültige MAC (`INVALID_MAC`) und ein vergebener Name. Die Übersicht der Site hebt
+entfernte statische Leases hervor. Im Lab geprüft an lab-np2 `lan`: ein Client mit MAC über
+NetBox und Anwenden als Lease aufs Gerät gebracht (danach leerer Diff), in NetBox gelöscht; die
+Live-Prüfung zeigte ihn mit Name und MAC, der Plan legte Gerät, Interface und Adresse an,
+danach war der Diff leer.
+
 ### VLAN am Port
 
 Legt ein VLAN untagged an einen Port des Geräts (Mode access), für einen Kunden: das Netz eines

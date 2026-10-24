@@ -11,10 +11,12 @@ query InterfaceLive($id: Int!, $target: String, $credentialName: String, $adhocC
                         bridges{ device{ ...Device } address answers }
                         findings{ ...NeighborFinding }
                         deviceOnlyAddresses{ ...DeviceOnly }
-                        actions{ kind helper interface peer{ ...Interface } vlan seen{ identity board interfaceName } address }
+                        deviceOnlyLeases{ ...DeviceOnlyLease }
+                        actions{ kind helper interface peer{ ...Interface } vlan seen{ identity board interfaceName } address lease{ mac name } }
                     }
                     otherFindings{ ...NeighborFinding }
                     otherAddresses{ ...DeviceOnly }
+                    otherLeases{ ...DeviceOnlyLease }
                 }
             }
         }
@@ -33,6 +35,7 @@ fragment NeighborFinding on NeighborFinding{
     }
 }
 fragment DeviceOnly on DeviceOnlyAddress{ address interfaceName disabled elsewhere{ ...Device } unassigned }
+fragment DeviceOnlyLease on DeviceOnlyLease{ address mac clientId server name disabled settings elsewhere{ ...Device } unassigned }
 fragment Device on DeviceRef{ id name site }
 fragment Interface on InterfaceRef{ id name device{ ...Device } }
 fragment Port on PortRef{ name interface{ ...Interface } }

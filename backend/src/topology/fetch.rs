@@ -243,6 +243,9 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                                 .and_then(|power| i8::try_from(power).ok()),
                             link: wireless_link.as_ref().map(|end| end.link.clone()),
                         });
+                    let mac = interface
+                        .primary_mac_address
+                        .map(|mac| mac.mac_address.to_ascii_uppercase().into_boxed_str());
                     interfaces.insert(
                         id,
                         Interface {
@@ -272,6 +275,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             radio,
                             wireless_link,
                             sixty_ghz,
+                            mac,
                         },
                     );
                     if let Some(vlan_id) = vlan {

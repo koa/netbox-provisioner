@@ -11,7 +11,7 @@ use crate::{
         management::ManagementTree,
     },
 };
-use dhcp::pool_range;
+use dhcp::{pool_range, static_leases};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use mikrotik_model::{
     MacAddress, MikrotikDevice,
@@ -22,7 +22,8 @@ use mikrotik_model::{
         InterfaceEthernetByDefaultName, InterfaceEthernetCfg, InterfaceEthernetPoeOut,
         InterfaceListByName, InterfaceListCfg, InterfaceListMemberCfg, InterfaceVlanByName,
         InterfaceVlanCfg, InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress,
-        IpAddressCfg, IpDhcpClientCfg, IpDhcpClientDhcpOptions, IpFirewallFilterAction,
+        IpAddressCfg, IpDhcpClientCfg, IpDhcpClientDhcpOptions, IpDhcpServerLeaseCfg,
+        IpFirewallFilterAction,
         IpFirewallFilterCfg, IpFirewallNatAction, IpFirewallNatCfg,
         IpNeighborDiscoverySettingsCfg, IpSocksAuthMethod, IpSocksUsersByName, IpSocksUsersCfg,
         IpSshCfg, IpSshForwardingEnabled, Ipv6AddressByAddress, Ipv6AddressCfg,
@@ -35,6 +36,7 @@ use mikrotik_model::{
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     net::IpAddr,
+    time::Duration,
 };
 
 pub(crate) mod dhcp;
@@ -97,6 +99,7 @@ mikrotik_model!(
         ipv6_nd(by_key(path = "ipv6/nd", key = interface)),
         dhcp_v4_server(by_key(path = "ip/dhcp-server", key = name)),
         dhcp_v4_server_network(by_key(path = "ip/dhcp-server/network", key = address)),
+        dhcp_v4_lease(by_id(path = "ip/dhcp-server/lease", keys(address))),
         ipv4_pool(by_key(path = "ip/pool", key = name)),
         socks(single = "ip/socks"),
         socks_users(by_key(path = "ip/socks/users", key = name)),
@@ -431,6 +434,7 @@ impl BaseDeviceDataTarget {
             ipv_6_nd: Default::default(),
             dhcp_v_4_server: Default::default(),
             dhcp_v_4_server_network: Default::default(),
+            dhcp_v_4_lease: Default::default(),
             ipv_4_pool: Default::default(),
             socks: Default::default(),
             socks_users: Default::default(),
@@ -1194,6 +1198,34 @@ impl BaseDeviceDataTarget {
                                 .copied()
                                 .chain([v4.addr()])
                                 .collect();
+                        }
+                        for lease in static_leases(&prefix) {
+                            self.dhcp_v_4_lease.insert(
+                                (IpAddr::V4(lease.address),),
+                                IpDhcpServerLeaseCfg {
+                                    address: IpAddr::V4(lease.address),
+                                    mac_address: Some(lease.mac),
+                                    server: Some(server_name.clone()),
+                                    comment: Some(lease.name.as_bytes().into()),
+                                    // the rest RouterOS's own: a lease taken over has only
+                                    // its client, name, MAC and address in NetBox
+                                    address_lists: Default::default(),
+                                    allow_dual_stack_queue: false,
+                                    always_broadcast: false,
+                                    block_access: false,
+                                    client_id: None,
+                                    dhcp_option: None,
+                                    dhcp_option_set: None,
+                                    disabled: false,
+                                    insert_queue_before: None,
+                                    lease_time: Duration::ZERO,
+                                    parent_queue: value::HasNone::NoneValue,
+                                    queue_type: None,
+                                    rate_limit: None,
+                                    routes: None,
+                                    use_src_mac: false,
+                                },
+                            );
                         }
                         self.ipv_4_pool.entry(server_name).or_default().0.ranges =
                             dhcp_ranges

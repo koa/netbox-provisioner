@@ -144,7 +144,28 @@ pub async fn write(
                     body["tags"] = Value::Array(tag_ids(&rest, &create.tags).await?);
                 }
                 let object = rest.create("dcim/interfaces/", body).await?;
-                Some(logged_create(log, "dcim/interfaces", &object)?)
+                let interface = logged_create(log, "dcim/interfaces", &object)?;
+                // its own object, assigned to the interface, then its primary one; an undo
+                // deletes it before the interface, which then has none again
+                if let Some(mac) = &create.mac {
+                    let mac = rest
+                        .create(
+                            "dcim/mac-addresses/",
+                            json!({
+                                "mac_address": mac,
+                                "assigned_object_type": "dcim.interface",
+                                "assigned_object_id": interface,
+                            }),
+                        )
+                        .await?;
+                    let mac_id = logged_create(log, "dcim/mac-addresses", &mac)?;
+                    rest.update(
+                        &format!("dcim/interfaces/{interface}/"),
+                        json!({ "primary_mac_address": mac_id }),
+                    )
+                    .await?;
+                }
+                Some(interface)
             }
             PlanStep::CreateAddress(create) => {
                 let interface = resolve(&created, create.on)

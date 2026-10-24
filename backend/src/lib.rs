@@ -191,6 +191,12 @@ pub enum Error {
     /// an address to take over that isn't one (`address/length`)
     #[error("{0} is no address with its length")]
     InvalidAddress(Box<str>),
+    /// a lease's MAC address that isn't one
+    #[error("{0} is no MAC address")]
+    InvalidMac(Box<str>),
+    /// a lease's address in no DHCP network of the router (`router address`)
+    #[error("{0} is in no DHCP network of the router")]
+    NoDhcpNetwork(Box<str>),
     /// another VLAN of the device (`vlan` of `group`) has the VID
     #[error("VLAN {vlan} of {group} has VID {vid} on the device already")]
     VlanIdTaken { vid: u16, vlan: Box<str>, group: Box<str> },
