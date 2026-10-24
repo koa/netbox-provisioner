@@ -16,7 +16,8 @@ serde_json = "1.0.139"
 log = "0.4"
 wasm-logger = "0.2.0"
 web-sys = { version = "0.3.77", features = ["Document",
-    "Element", "HtmlElement", "Location", "Node", "NodeList", "Storage", "Window"] }
+    "Element", "HtmlElement", "Location", "Node", "NodeList", "ScrollIntoViewOptions",
+    "ScrollLogicalPosition", "Storage", "Window"] }
 thiserror = "2.0.11"
 yew-oauth2 = { version = "0.14", features = ["openid"] }
 console_error_panic_hook = "0.1.7"

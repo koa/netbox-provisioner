@@ -2,7 +2,7 @@ use crate::pages::routes::AppRoute;
 use patternfly_yew::prelude::{Divider, Icon, MenuToggle, MenuToggleVariant};
 use std::fmt::Display;
 use wasm_bindgen::JsCast;
-use web_sys::{Element, HtmlElement, Node};
+use web_sys::{Element, HtmlElement, Node, ScrollIntoViewOptions, ScrollLogicalPosition};
 use yew::events::{FocusEvent, KeyboardEvent, MouseEvent};
 use yew::{
     AttrValue, Callback, Component, Context, ContextHandle, ContextProvider, Html, NodeRef,
@@ -137,6 +137,11 @@ impl Component for PopupMenu {
         if std::mem::take(&mut self.focus_on_render)
             && let Some(menu) = self.menu_ref.cast::<Element>()
         {
+            // The whole menu in sight: in a helper's modal its body scrolls, and a menu opened
+            // near its end lay past it, the device types after the first three out of view.
+            let options = ScrollIntoViewOptions::new();
+            options.set_block(ScrollLogicalPosition::Nearest);
+            menu.scroll_into_view_with_scroll_into_view_options(&options);
             let target = menu_items(&menu, ".pf-v6-c-menu__item.pf-m-selected")
                 .pop()
                 .unwrap_or(menu);
@@ -262,7 +267,8 @@ pub struct SelectProps<T: Clone + PartialEq + Display + 'static> {
 /// A select on a `PopupMenu`, used instead of patternfly-yew's `SimpleSelect`: that one's menu is
 /// a popper with `position: fixed`, which the page doesn't grow for and which moves along when
 /// it scrolls, so a list longer than the window below the toggle (all devices, all ports) had
-/// entries out of reach. This menu scrolls in itself (`pf-m-scrollable`) and lies in the page.
+/// entries out of reach. This menu scrolls in itself (`pf-m-scrollable`) and lies in the page,
+/// which scrolls it into view when it opens.
 #[function_component]
 pub fn Select<T: Clone + PartialEq + Display + 'static>(props: &SelectProps<T>) -> Html {
     let text = props
