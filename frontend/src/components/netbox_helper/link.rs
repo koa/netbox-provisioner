@@ -124,6 +124,10 @@ impl NetboxHelper {
             .collect()
     }
     pub(super) fn disconnect_form(&self, ctx: &Context<Self>) -> Html {
+        // the port's row gave it: nothing to choose
+        if self.fixed_port {
+            return Html::default();
+        }
         let ports = match &self.ports {
             None => return html!(<Spinner size={SpinnerSize::Md}/>),
             Some(Err(error)) => return error.to_html(),
@@ -228,14 +232,16 @@ impl NetboxHelper {
         let in_the_way = self.in_the_way();
         html! {
             <Form>
-                <FormGroup label={t::PORT}>
-                    <Select<Choice>
-                        placeholder={t::CHOOSE_PORT}
-                        selected={selected(&own, self.link.port)}
-                        entries={own.clone()}
-                        onselect={ctx.link().callback(LinkMsg::Port)}
-                    />
-                </FormGroup>
+                if !self.fixed_port {
+                    <FormGroup label={t::PORT}>
+                        <Select<Choice>
+                            placeholder={t::CHOOSE_PORT}
+                            selected={selected(&own, self.link.port)}
+                            entries={own.clone()}
+                            onselect={ctx.link().callback(LinkMsg::Port)}
+                        />
+                    </FormGroup>
+                }
                 <FormGroup label={t::PEER_DEVICE}>
                     <Select<Choice>
                         placeholder={t::CHOOSE_DEVICE}

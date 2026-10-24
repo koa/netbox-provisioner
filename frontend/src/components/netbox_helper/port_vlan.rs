@@ -104,6 +104,7 @@ impl NetboxHelper {
         let vlan = vlans.iter().find(|c| Some(c.id) == self.port_vlan.vlan).cloned();
         html! {
             <Form>
+                if !self.fixed_port {
                 <FormGroup label={t::PORT_VLAN_PORT}>
                     if ports.is_empty() {
                         <p>{t::NO_PORT_VLAN_PORTS}</p>
@@ -116,6 +117,7 @@ impl NetboxHelper {
                         />
                     }
                 </FormGroup>
+                }
                 if groups.is_empty() {
                     <FormGroup label={t::PORT_VLAN_VLAN}>
                         <p>{t::NO_PORT_VLAN_VLANS}</p>

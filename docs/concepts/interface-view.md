@@ -205,6 +205,13 @@ die Aktionen, die auf diesem Port möglich sind, und der Helfer startet mit ihm.
   vom verkabelten Router-Port im Job des Brückengeräts.
 - Die andere Brücke und ihr Router werden weiter im Dialog gewählt: sie liegen auf anderen
   Geräten.
+- **Die Dialoge** fragen den Port, von dem sie starten, nicht mehr (2026-10-24): er steht im
+  Titel. Übrig bleibt bei Verbindung die Gegenseite und ihr Port mit der MTU, bei Verbindung
+  entfernen nichts, bei Kunden-Netz Prefixe, Länge und DHCP, bei VLAN am Port Gruppe und VLAN,
+  bei PoE Richtung und Gegenseite („Vom Gerät ablesen“ zeigt nur diesen Port), bei der
+  Funkbrücke vom Router-Port her alles ausser Router und Router-Port der eigenen Seite. Von der
+  Seite eines Brückengeräts und für VLAN am Port von einem VLAN-Interface her bleibt die
+  Auswahl, dort ist kein Port gegeben (`HelperPreset::fixes_port`).
 
 ## Oberfläche (PatternFly, patternfly-yew 0.8)
 

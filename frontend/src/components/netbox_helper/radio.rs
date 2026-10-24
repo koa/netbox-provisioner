@@ -191,8 +191,11 @@ impl NetboxHelper {
                 .map(|b| t::radio_side(&b.device.name, ap))
                 .unwrap_or_default();
             let port_entries = router_ports(index);
+            // from the router port: router and port are given
+            let fixed = index == 0 && self.fixed_port;
             html! {<>
                 <h4>{title}</h4>
+                if !fixed {
                 <FormGroup label={t::ROUTER_DEVICE}>
                     <Select<Choice>
                         placeholder={placeholder}
@@ -210,6 +213,7 @@ impl NetboxHelper {
                             onselect={ctx.link().callback(move |c| RadioMsg::RouterPort(index, c))}
                         />
                     </FormGroup>
+                }
                 }
                 <FormGroup label={t::BRIDGE_ADDRESS}>
                     <TextInput

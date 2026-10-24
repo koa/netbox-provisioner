@@ -46,6 +46,26 @@ pub struct RadioPreset {
 }
 
 impl HelperPreset {
+    /// Whether it gives the port the helper starts from, which the form then doesn't offer.
+    pub(super) fn fixes_port(&self) -> bool {
+        match self {
+            HelperPreset::Link(_)
+            | HelperPreset::LinkFrom(_)
+            | HelperPreset::Disconnect(_)
+            | HelperPreset::CustomerNet(_)
+            | HelperPreset::RadioFrom(_)
+            | HelperPreset::RadioChoose { .. }
+            | HelperPreset::Poe(_)
+            | HelperPreset::PortVlan { port: Some(_), .. } => true,
+            HelperPreset::Kind(_)
+            | HelperPreset::PortVlan { port: None, .. }
+            | HelperPreset::Flags(_)
+            | HelperPreset::RadioDisconnect(_)
+            | HelperPreset::CustomerDisconnect(_)
+            | HelperPreset::CableTakeover { .. }
+            | HelperPreset::BridgeLeave(_) => false,
+        }
+    }
     /// The device whose helper it is, `page` where it isn't another one's.
     pub fn device(&self, page: u32) -> u32 {
         match self {

@@ -112,18 +112,20 @@ impl NetboxHelper {
         let dhcp = self.net.dhcp;
         html! {
             <Form>
-                <FormGroup label={t::NET_TARGET}>
-                    if targets.is_empty() {
-                        <p>{t::NO_NET_TARGETS}</p>
-                    } else {
-                        <Select<NetEntry<NetTarget>>
-                            placeholder={t::CHOOSE_NET_TARGET}
-                            selected={target}
-                            entries={targets}
-                            onselect={ctx.link().callback(|entry: NetEntry<NetTarget>| NetMsg::Target(entry.value))}
-                        />
-                    }
-                </FormGroup>
+                if !self.fixed_port {
+                    <FormGroup label={t::NET_TARGET}>
+                        if targets.is_empty() {
+                            <p>{t::NO_NET_TARGETS}</p>
+                        } else {
+                            <Select<NetEntry<NetTarget>>
+                                placeholder={t::CHOOSE_NET_TARGET}
+                                selected={target}
+                                entries={targets}
+                                onselect={ctx.link().callback(|entry: NetEntry<NetTarget>| NetMsg::Target(entry.value))}
+                            />
+                        }
+                    </FormGroup>
+                }
                 <FormGroup label={t::PARENT}>
                     if parents.is_empty() {
                         <p>{t::NO_PARENTS}</p>

@@ -38,6 +38,8 @@ pub const LENGTH: &str = "Länge";
 pub const LENGTH_PLACEHOLDER: &str = "24";
 pub const DHCP_SERVER: &str = "DHCP-Server (Tag dhcp)";
 pub const CHOOSE_NET: &str = "Port oder VLAN und ein IPv4- oder IPv6-Prefix wählen.";
+/// the port given by its row
+pub const CHOOSE_NET_PREFIX: &str = "Ein IPv4- oder IPv6-Prefix wählen.";
 pub fn net_vlan(name: &str, vid: i64, interface: Option<&str>) -> String {
     match interface {
         Some(interface) => format!("VLAN {name} ({vid}), an {interface}"),
@@ -53,9 +55,10 @@ pub fn net_port(name: &str, label: Option<&str>) -> String {
 pub const POE: &str = "PoE";
 pub const POE_HINT: &str = "Hält fest, wer wen über PoE speist: der speisende Port bekommt \
     PoE-Modus PSE, der gespeiste PD, und das Kabel dazwischen, falls es fehlt. Die Ports \
-    von Hand wählen oder vom Gerät ablesen, welche Ports gerade speisen. Ob das Board am \
+    von Hand wählen oder vom Gerät ablesen, ob er gerade speist. Ob das Board am \
     Port PoE-out hat, weiss NetBox nicht; ohne setzt der Generator dort nichts.";
 pub const CHOOSE_POE: &str = "Richtung und beide Ports wählen.";
+pub const CHOOSE_POE_PEER: &str = "Richtung und Port der Gegenseite wählen.";
 pub const POE_DIRECTION: &str = "Richtung";
 pub const POE_FEEDS: &str = "Dieses Gerät speist die Gegenseite";
 pub const POE_FED: &str = "Dieses Gerät wird von der Gegenseite gespeist";
@@ -275,6 +278,7 @@ pub const PORT_VLAN_HINT: &str = "Legt ein VLAN untagged an einen Port (Mode acc
     Kunden: das Netz eines VLAN-Interfaces an einen Port, oder ein VLAN, dessen Netz auf einem \
     anderen Gerät liegt und über VXLAN kommt. Tagged VLANs am Port fallen weg.";
 pub const CHOOSE_PORT_VLAN: &str = "Port und VLAN wählen.";
+pub const CHOOSE_PORT_VLAN_GROUP_VLAN: &str = "VLAN-Gruppe und VLAN wählen.";
 pub const PORT_VLAN_PORT: &str = "Port";
 pub const PORT_VLAN_GROUP: &str = "VLAN-Gruppe";
 pub const PORT_VLAN_VLAN: &str = "VLAN";
@@ -319,6 +323,7 @@ pub fn delete_prefix(prefix: &str) -> String {
     format!("Prefix {prefix} löschen")
 }
 pub const CHOOSE_PORTS: &str = "Beide Ports wählen.";
+pub const CHOOSE_PEER: &str = "Gegenseite und ihren Port wählen.";
 pub const COMPLETE: &str = "NetBox hat schon alles dafür.";
 pub const PORT: &str = "Port";
 pub const PEER_DEVICE: &str = "Gegenseite";

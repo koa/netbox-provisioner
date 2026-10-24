@@ -97,6 +97,9 @@ pub struct NetboxHelper {
     flags: BTreeMap<(u32, Flag), bool>,
     /// „Flags“ of this interface only
     flags_of: Option<u32>,
+    /// the preset gave the port the helper starts from (a port's row): the form doesn't offer
+    /// it to choose
+    fixed_port: bool,
     /// the device's findings after the switches, with NetBox' address: for these
     flag_findings: Option<FlagFindings>,
     net: NetChoice,
@@ -266,6 +269,7 @@ impl Component for NetboxHelper {
             flag_interfaces: None,
             flags: BTreeMap::new(),
             flags_of,
+            fixed_port: ctx.props().preset.as_ref().is_some_and(HelperPreset::fixes_port),
             flag_findings: None,
             net,
             net_options: None,

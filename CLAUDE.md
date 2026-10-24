@@ -145,7 +145,8 @@ without a router on its cable also „Als Richtfunk“ (`HelperPreset::RadioChoo
 for a bridge device with one radio and no cable to a router first, then embeds its helper as
 `RadioFrom`), every port but loopback and uplink „PoE“ and „Flags“ (`ActionKind::Edit`,
 `HelperPreset::Poe`/`Flags`: the PoE form with the port and its cable's far end, the flags of
-that interface only); a customer bridge's port „Aus Bridge lösen“ (`helper::bridge_leave`:
+that interface only; a form doesn't offer the port its preset gives, `HelperPreset::fixes_port`,
+the modal's title names it); a customer bridge's port „Aus Bridge lösen“ (`helper::bridge_leave`:
 `UpdatePort` with `leaves_bridge`, its own VLANs with it; the bridge stays, named in
 `NetboxPlan.emptied_bridge` when it was the last port). Each row with its actions (one may be
 another device's helper: „Funkbrücke“ from a router port is the cabled bridge device's,

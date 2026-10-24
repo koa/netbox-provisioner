@@ -258,7 +258,14 @@ impl NetboxHelper {
                 html!(<p>{t::CHOOSE_DISCONNECT_PORT}</p>)
             }
             (None, _) if self.kind == HelperKind::Flags => html!(<p>{t::CHOOSE_FLAGS}</p>),
+            // a port's row gave the port: only the rest is left to choose
+            (None, _) if self.kind == HelperKind::CustomerNet && self.fixed_port => {
+                html!(<p>{t::CHOOSE_NET_PREFIX}</p>)
+            }
             (None, _) if self.kind == HelperKind::CustomerNet => html!(<p>{t::CHOOSE_NET}</p>),
+            (None, _) if self.kind == HelperKind::Poe && self.fixed_port => {
+                html!(<p>{t::CHOOSE_POE_PEER}</p>)
+            }
             (None, _) if self.kind == HelperKind::Poe => html!(<p>{t::CHOOSE_POE}</p>),
             (None, _) if self.kind == HelperKind::RadioBridge => {
                 html!(<p>{t::CHOOSE_RADIO_BRIDGE}</p>)
@@ -269,10 +276,14 @@ impl NetboxHelper {
             (None, _) if self.kind == HelperKind::CustomerDisconnect => {
                 html!(<p>{t::CHOOSE_CUSTOMER_DISCONNECT}</p>)
             }
+            (None, _) if self.kind == HelperKind::PortVlan && self.fixed_port => {
+                html!(<p>{t::CHOOSE_PORT_VLAN_GROUP_VLAN}</p>)
+            }
             (None, _) if self.kind == HelperKind::PortVlan => html!(<p>{t::CHOOSE_PORT_VLAN}</p>),
             (None, _) if self.kind == HelperKind::BridgeLeave => {
                 html!(<p>{t::CHOOSE_BRIDGE_LEAVE}</p>)
             }
+            (None, _) if self.fixed_port => html!(<p>{t::CHOOSE_PEER}</p>),
             (None, _) => html!(<p>{t::CHOOSE_PORTS}</p>),
             (_, None) if self.removed => html!(),
             (_, None) => html!(<Spinner size={SpinnerSize::Md}/>),

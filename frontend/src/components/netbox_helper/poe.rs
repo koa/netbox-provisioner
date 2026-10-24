@@ -165,7 +165,19 @@ impl NetboxHelper {
         let selected = |entries: &[Choice], id: Option<u32>| {
             id.and_then(|id| entries.iter().find(|entry| entry.id == id).cloned())
         };
-        let observed = match &self.poe_observed {
+        // from a port's row: what the device feeds at that port only
+        let shown = self.poe_observed.as_ref().map(|observed| {
+            observed.as_ref().map(|observed| {
+                observed
+                    .iter()
+                    .filter(|o| {
+                        !self.fixed_port
+                            || o.port.interface.as_ref().map(|port| port.id as u32) == self.poe.port
+                    })
+                    .collect::<Vec<_>>()
+            })
+        });
+        let observed = match &shown {
             _ if self.poe_observing => html!(<Spinner size={SpinnerSize::Md}/>),
             None => Html::default(),
             Some(Err(error)) => error.to_html(),
@@ -221,14 +233,16 @@ impl NetboxHelper {
                         onselect={ctx.link().callback(|entry: NetEntry<bool>| PoeMsg::Feeds(entry.value))}
                     />
                 </FormGroup>
-                <FormGroup label={t::PORT}>
-                    <Select<Choice>
-                        placeholder={t::CHOOSE_PORT}
-                        selected={selected(&own, self.poe.port)}
-                        entries={own.clone()}
-                        onselect={ctx.link().callback(PoeMsg::Port)}
-                    />
-                </FormGroup>
+                if !self.fixed_port {
+                    <FormGroup label={t::PORT}>
+                        <Select<Choice>
+                            placeholder={t::CHOOSE_PORT}
+                            selected={selected(&own, self.poe.port)}
+                            entries={own.clone()}
+                            onselect={ctx.link().callback(PoeMsg::Port)}
+                        />
+                    </FormGroup>
+                }
                 <FormGroup label={t::PEER_DEVICE}>
                     <Select<Choice>
                         placeholder={t::CHOOSE_DEVICE}

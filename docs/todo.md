@@ -11,8 +11,7 @@ Status: **offen**, **in Arbeit**.
 
 ## Reihenfolge
 
-1. D6
-2. D1-D5
+1. D1-D5
 
 Dann schauen wir weiter
 
@@ -96,4 +95,3 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | D3 | Update-Fallback Stufe 2: Rettung über mac-telnet (M), Downgrade auf Knopfdruck (S–M), Bestätigung für ein Update ohne Fallback (Z23, S); das selbständige Zurückschalten im Lab testen (S) | [Update-Fallback](concepts/update-fallback.md) | M | in Arbeit |
 | D4 | Geräteseite: Bereich für Liegengebliebenes auf dem Gerät und Befunde | [Geräteseite](concepts/device-page.md) | S–M | in Arbeit |
 | D5 | Jobs: Events speichern (`state_dir`, M), geordnetes Beenden (S), Liegengebliebenes anzeigen (S) | [Jobs](concepts/job-polling.md) | M | in Arbeit |
-| D6 | Helfer vom Port aus: die Dialoge ohne Wahl des Start-Ports (Verbindung, Verbindung abräumen, Kunden-Netz, VLAN am Port, PoE), „Vom Gerät ablesen“ nur für diesen Port | [Interfaces nach Aufgabe](concepts/interface-view.md#aktionen-pro-port) | S–M | in Arbeit |
