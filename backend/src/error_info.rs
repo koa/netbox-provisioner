@@ -145,6 +145,7 @@ impl From<&Error> for ErrorInfo {
                 "UPDATE_ROLLED_BACK",
                 vec![("partition", partition.to_string()), ("version", version.to_string())],
             ),
+            Error::NoUpdateFallback(device) => ("NO_UPDATE_FALLBACK", vec![("device", device.to_string())]),
             Error::OspfNeighborsMissing(neighbors) => {
                 ("OSPF_NEIGHBORS_MISSING", vec![("neighbors", neighbors.to_string())])
             }

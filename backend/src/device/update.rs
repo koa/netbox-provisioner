@@ -579,13 +579,15 @@ pub async fn reboot(link: &impl DeviceLink, power: &PowerChain, log: &Log) -> Re
 /// `allow_apply`, that is up to the caller (`WritesAllowed`). `power` says which devices' updates
 /// and reboots it has to wait for. On a device with two partitions the RouterOS from before
 /// stays on the other one, and the device switches back to it `fallback` after a boot unless
-/// the provisioner reaches it ([`update_fallback`]).
+/// the provisioner reaches it ([`update_fallback`]); a device without has to have a neighbor
+/// in `way_back`, or updating it without one confirmed.
 pub async fn update(
     link: &impl DeviceLink,
     power: &PowerChain,
     target: &Version,
     wanted: &[Box<str>],
     fallback: Duration,
+    way_back: &update_fallback::WayBack,
     log: &Log,
 ) -> Result<(), Error> {
     let mut state = read_state(&link.api().await?).await?;
@@ -609,8 +611,11 @@ pub async fn update(
         let ospf = update_fallback::ospf_up(&device).await?;
         // RouterOS 6 has no partitions to copy to with this menu
         let armed = match state.version.major() >= 7 {
-            true => update_fallback::arm(&device, fallback, log).await?,
-            false => None,
+            true => update_fallback::arm(&device, fallback, way_back, log).await?,
+            false => {
+                update_fallback::arm_v6(way_back, log)?;
+                None
+            }
         };
         drop(device);
         let wait = match armed {

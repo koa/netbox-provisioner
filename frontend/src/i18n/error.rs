@@ -131,6 +131,11 @@ pub fn server(problem: &ServerProblem) -> String {
             p("version"),
             p("partition")
         ),
+        "NO_UPDATE_FALLBACK" => format!(
+            "{} hätte nach einem Update keinen Weg zurück (keine zweite Partition, kein Nachbar, \
+             über den es erreichbar bleibt). Nur mit Bestätigung auf der Geräteseite",
+            p("device")
+        ),
         "OSPF_NEIGHBORS_MISSING" => format!(
             "Nach dem Update fehlen OSPF-Nachbarn, mit denen das Gerät vorher benachbart war: {}. \
              Zurück geht es auf der Geräteseite unter Partitionen",

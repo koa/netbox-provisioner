@@ -327,6 +327,12 @@ impl DeviceAccess {
     async fn bootstrap_problem(&self) -> Option<ErrorInfo> {
         bootstrap::plan(self).err().map(|error| ErrorInfo::from(&error))
     }
+    /// The neighbors this device stays reachable through when an update leaves it without
+    /// OSPF (`device::update_fallback::neighbors`): its way back where it has no two
+    /// partitions; without either, an update needs `updateRouteros(withoutFallback:)`.
+    async fn update_neighbors(&self) -> Vec<Box<str>> {
+        crate::device::update_fallback::neighbors(self).into()
+    }
     /// The watchdogs that may fire while this device updates (`device::watchdog::watchers`):
     /// of the devices powering it, which cut its power mid-install, and of the ones reaching
     /// the network through it (`updateRouteros(suspendWatchdogs:)`). Only those watching

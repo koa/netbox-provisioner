@@ -123,6 +123,10 @@ pub enum Error {
     /// the OSPF neighbors adjacent before the update that aren't after it (`<instance> <router-id>`)
     #[error("OSPF neighbors missing after the update: {0}")]
     OspfNeighborsMissing(Box<str>),
+    /// An update of this device would have no way back (no second partition, no neighbor to
+    /// reach it through) and wasn't confirmed so (`updateRouteros(withoutFallback:)`).
+    #[error("{0} has no way back from an update; confirm updating it without one")]
+    NoUpdateFallback(Box<str>),
     #[error("{0} runs a job already")]
     Busy(Box<str>),
     #[error("No job {0}")]

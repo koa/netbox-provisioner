@@ -485,7 +485,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             e::update_fallback_armed(&armed.partition, &armed.version, seconds(armed.delay) / 60)
         }
         Event::UpdateFallbackDisarmed(disarmed) => e::update_fallback_disarmed(&disarmed.partition),
-        Event::UpdateWithoutFallback(without) => e::update_without_fallback(without.partitions),
+        Event::UpdateWithoutFallback(without) => e::update_without_fallback(without.partitions, &without.neighbors),
         Event::OspfNeighborsBack(back) => e::ospf_neighbors_back(&back.neighbors),
         Event::WatchdogSuspended(suspended) => e::watchdog_suspended(
             &suspended.device,

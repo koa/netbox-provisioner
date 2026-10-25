@@ -363,11 +363,16 @@ pub mod event {
     pub fn update_fallback_disarmed(partition: &str) -> String {
         format!("Gerät erreicht, es schaltet nicht mehr selbst zurück; {partition} bleibt als Weg zurück")
     }
-    pub fn update_without_fallback(partitions: i64) -> String {
-        match partitions {
-            0 => "Ohne Weg zurück: Das Gerät hat keine Partitionen".into(),
-            n => format!(
-                "Ohne Weg zurück: {n} Partition(en), es braucht zwei (Partitionen auf der Geräteseite)"
+    pub fn update_without_fallback(partitions: i64, neighbors: &[String]) -> String {
+        let partitions = match partitions {
+            0 => "Ohne zweite Partition (das Gerät hat keine)".to_string(),
+            n => format!("Ohne zweite Partition ({n}, es braucht zwei: Partitionen auf der Geräteseite)"),
+        };
+        match neighbors {
+            [] => format!("{partitions} und ohne Nachbarn, der es erreicht: ohne Weg zurück, so bestätigt"),
+            neighbors => format!(
+                "{partitions}; findet es nicht ins Netz zurück, erreicht der Provisioner es über {}",
+                neighbors.join(", ")
             ),
         }
     }

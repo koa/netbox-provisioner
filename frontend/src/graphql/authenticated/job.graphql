@@ -52,7 +52,7 @@ query JobEvents($id: Int!, $after: Int){
                 ... on PartitionRunning { name version }
                 ... on UpdateFallbackArmed { partition version delay }
                 ... on UpdateFallbackDisarmed { partition }
-                ... on UpdateWithoutFallback { partitions }
+                ... on UpdateWithoutFallback { partitions neighbors }
                 ... on OspfNeighborsBack { neighbors }
                 ... on WatchdogSuspended { device watching { watchAddress poePings { port address } } safetyNet }
                 ... on WatchdogRestored { device watching { watchAddress poePings { port address } } }

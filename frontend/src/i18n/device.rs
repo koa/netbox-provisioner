@@ -25,6 +25,11 @@ pub const LOCKED_AFTER: &str = " in der config.yaml des Provisioners frei.";
 
 pub const ADJUST_PACKAGES: &str = "Pakete anpassen";
 pub const UP_TO_DATE: &str = " aktuell";
+pub const NO_WAY_BACK_TITLE: &str = "Kein Weg zurück nach einem Update";
+pub const NO_WAY_BACK: &str = "Das Gerät hat keine zweite Partition mit dem laufenden RouterOS, \
+    und kein Nachbar erreicht es, wenn es nach dem Update nicht ins Netz zurückfindet. Geht dabei \
+    etwas schief, muss jemand vor Ort hin.";
+pub const UPDATE_WITHOUT_WAY_BACK: &str = "Trotzdem ohne Weg zurück aktualisieren";
 pub const WATCHDOG_TITLE: &str = "Watchdogs, die während des Updates auslösen können";
 /// a device watching an address the update may cut off; `supplier`: it powers this one
 pub fn watchdog_watching(device: &str, supplier: bool, address: &str) -> String {

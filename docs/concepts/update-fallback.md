@@ -3,8 +3,8 @@
 Status: Stufe 1 ist umgesetzt: Device-Mode anpassen (siehe unten), in zwei Partitionen
 aufteilen und der Ablauf beim Update. Von Stufe 2 ist das Erreichen über den Tunnel zum Nachbarn
 da (`connect` fällt auf die Adresse am Kabel zurück, wenn die Primary IP nicht antwortet, siehe
-unten), ebenso der MAC-Server auf den Wartungs-Ports; offen sind mac-telnet zur Rettung und der
-Knopf für den Downgrade. Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
+unten), ebenso der MAC-Server auf den Wartungs-Ports und die Bestätigung für ein Update ganz
+ohne Weg zurück; offen sind mac-telnet zur Rettung und der Knopf für den Downgrade. Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
 noch einen Fallback Mechanismus für Updates“).
 
 ## Ausgangslage
@@ -128,6 +128,17 @@ Grenzen: Das hilft nicht, wenn der Provisioner gar keinen Nachbarn erreicht (bei
 Management-Proxys selbst) und nicht, wenn das Kabel zum Nachbarn das Problem ist. Für diese Fälle
 bleibt der Scheduler aus Stufe 1, und für 16-MiB-Geräte ohne erreichbaren Nachbarn gibt es keinen
 Fallback. Das UI zeigt das vor dem Update an und verlangt eine Bestätigung.
+
+*Umgesetzt* (Z23): `DeviceAccess.updateNeighbors` sind die Nachbarn der Ersteinrichtungs-Pläne
+(`bootstrap::plans`: ein Port mit IPv4, dessen Kabel zu einem erreichbaren Gerät im selben Netz
+geht), beim Gerät des Management-Proxys keine. Hat das Gerät keine zwei Partitionen mit dem
+laufenden RouterOS und keinen solchen Nachbarn, zeigt die Geräteseite „Kein Weg zurück nach
+einem Update“, und Update und „Pakete anpassen“ gehen erst, wenn „Trotzdem ohne Weg zurück
+aktualisieren“ angekreuzt ist (`updateRouteros(withoutFallback: true)`). Der Job prüft dasselbe
+selbst, bevor er etwas herunterlädt, und bricht sonst mit `NO_UPDATE_FALLBACK` ab;
+`UpdateWithoutFallback` nennt die Nachbarn, über die es weitergeht. Geprüft auf CHR
+(`update_older_chr_to_current`): ohne Nachbarn und Bestätigung abgelehnt, ohne dass ein Paket
+geladen wurde, mit dem Nachbarn `entry` aktualisiert.
 
 ### Voraussetzung: MAC-Server
 

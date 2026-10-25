@@ -6,6 +6,7 @@ use crate::{
         AccessibleDevice, Connecting, bootstrap, device_mode, partitions,
         power::PowerChain,
         update::{self, DeviceLink},
+        update_fallback,
         watchdog,
     },
     context::UserInfo,
@@ -249,7 +250,9 @@ impl MutationAuthenticated {
     /// `channel` it only brings the packages in line, at the version the device runs. Target
     /// and credentials as for `DeviceAccess.access`. With `suspendWatchdogs` the watchdogs that
     /// may fire while it is away (`DeviceAccess.watchdogs`) are suspended for the update and
-    /// restored afterwards. The job's events tell how far it got.
+    /// restored afterwards. A device without two partitions and without a neighbor to reach it
+    /// through (`DeviceAccess.updateNeighbors`) is only updated with `withoutFallback`
+    /// (`NO_UPDATE_FALLBACK`). The job's events tell how far it got.
     #[graphql(guard = "WritesAllowed")]
     #[allow(clippy::too_many_arguments)]
     async fn update_routeros(
@@ -260,9 +263,11 @@ impl MutationAuthenticated {
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
         suspend_watchdogs: Option<bool>,
+        without_fallback: Option<bool>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
+        let way_back = update_fallback::WayBack::of(&device, without_fallback == Some(true));
         let watchers = match suspend_watchdogs {
             Some(true) => watchdog::watchers(&device, &management_tree(&device)),
             _ => Vec::new(),
@@ -294,7 +299,8 @@ impl MutationAuthenticated {
             }
             let suspended = watchdog::suspend_all(links, &log).await?;
             let updated =
-                update::update(&device, &power, &version, &wanted, CONFIG.update_fallback(), &log).await;
+                update::update(&device, &power, &version, &wanted, CONFIG.update_fallback(), &way_back, &log)
+                    .await;
             watchdog::restore_all(suspended, &log).await;
             updated
         })?)

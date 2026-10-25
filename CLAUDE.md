@@ -757,7 +757,10 @@ sees the device. Then the OSPF neighbors it was adjacent with before have to be 
 segment (`update_fallback::adjacent`), since two DROthers stay there and a reboot elects anew
 (berghof-stall-haus, 7.23.8: a v3 neighbor `Full` as DR before stayed `TwoWay`). The way back is the device page's "Von partN starten"
 (`bootPartition`), never automatic. A device without two partitions updates as before and gets
-an `UpdateWithoutFallback` event. Checked on lab-core (7.23.8 → 7.24.5 and back, both ways):
+an `UpdateWithoutFallback` event naming the neighbors it stays reachable through
+(`update_fallback::WayBack`, `DeviceAccess.updateNeighbors`: those of `bootstrap::plans`, none
+for the management proxy's device); without any, the update needs `withoutFallback: true`
+(the device page's checkbox) and stops with `NO_UPDATE_FALLBACK` before downloading anything. Checked on lab-core (7.23.8 → 7.24.5 and back, both ways):
 `copy-to` ends by itself after about 7 s. Booting `part1` brings back the old version with its
 configuration and without the scheduler. The scheduler switching back by itself is untested.
 

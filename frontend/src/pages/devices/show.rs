@@ -61,6 +61,8 @@ pub struct ShowDevice {
     show_target: bool,
     /// suspend the watchdogs that may fire while this one updates
     suspend_watchdogs: bool,
+    /// update although nothing brings the device back (no two partitions, no neighbor)
+    without_fallback: bool,
     /// counts the jobs over (NetBox written, the device changed): the interfaces are read again
     jobs_finished: u32,
     /// the job running is an apply (alone or in a batch)
@@ -99,6 +101,8 @@ pub struct ShowDeviceData {
     /// the watchdogs that may fire while this one updates, of the devices powering it and of
     /// those reaching the network through it
     watchdogs: Vec<Watchdog>,
+    /// the neighbors it stays reachable through after an update that cut it off from OSPF
+    update_neighbors: Vec<String>,
     /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
     allow_apply: bool,
 }
@@ -140,6 +144,7 @@ pub enum ShowDeviceMessage {
     /// open or close the form for another address or other credentials
     ShowTarget(bool),
     SuspendWatchdogs(bool),
+    WithoutFallback(bool),
     JobStarted(Result<i64, FrontendError>),
     JobFinished,
     /// „Anwenden“ of the interfaces: to the card „Änderungen“
@@ -171,6 +176,7 @@ impl Component for ShowDevice {
             confirm_boot: None,
             show_target: false,
             suspend_watchdogs: true,
+            without_fallback: false,
             jobs_finished: 0,
             applying: false,
             applied: 0,
@@ -216,17 +222,23 @@ impl Component for ShowDevice {
                 };
                 self.job_running = true;
                 let suspend = self.suspend();
-                update(ctx.link().clone(), self.id, Some(channel), suspend, self.alternate_target.clone());
+                let without = self.without_fallback;
+                update(ctx.link().clone(), self.id, Some(channel), suspend, without, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::AdjustPackages => {
                 self.job_running = true;
                 let suspend = self.suspend();
-                update(ctx.link().clone(), self.id, None, suspend, self.alternate_target.clone());
+                let without = self.without_fallback;
+                update(ctx.link().clone(), self.id, None, suspend, without, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::SuspendWatchdogs(suspend) => {
                 self.suspend_watchdogs = suspend;
+                true
+            }
+            ShowDeviceMessage::WithoutFallback(without) => {
+                self.without_fallback = without;
                 true
             }
             ShowDeviceMessage::ConfirmReboot(confirm) => {
@@ -393,7 +405,9 @@ impl Component for ShowDevice {
             let warnings = cfg_update.map(|cfg| cfg.warnings.as_slice()).unwrap_or_default();
             let cfg_update = cfg_update.map(|cfg| cfg.script.as_ref()).unwrap_or_default();
             let nothing_to_do = cfg_update.trim().is_empty();
-            let update_running = running;
+            // nothing brings the device back from an update: only once confirmed
+            let no_way_back = self.no_way_back(data);
+            let update_locked = no_way_back && !self.without_fallback;
             let routeros = data.routeros.as_ref().map(|routeros| {
                 let selected = routeros
                     .channels
@@ -426,7 +440,7 @@ impl Component for ShowDevice {
                             <Button
                                 variant={ButtonVariant::Secondary}
                                 label={action}
-                                disabled={update_running || running}
+                                disabled={update_locked || running}
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::Update)}
                             />
                         } else if !adjust_packages {
@@ -437,11 +451,14 @@ impl Component for ShowDevice {
                             <Button
                                 variant={ButtonVariant::Secondary}
                                 label={t::ADJUST_PACKAGES}
-                                disabled={update_running || running}
+                                disabled={update_locked || running}
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::AdjustPackages)}
                             />
                         }
                     </div>
+                    if no_way_back {
+                        { self.no_way_back_view(ctx) }
+                    }
                     { self.watchdogs_view(ctx, &data.watchdogs) }
                     <div class="device-reboot">
                         if self.confirm_reboot {
@@ -733,7 +750,7 @@ impl Component for ShowDevice {
                             <Button
                                 variant={ButtonVariant::Primary}
                                 label={t::APPLY}
-                                disabled={nothing_to_do || running || update_running}
+                                disabled={nothing_to_do || running}
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::Apply)}
                             />
                             <BatchApply
@@ -769,6 +786,30 @@ impl Component for ShowDevice {
 }
 
 impl ShowDevice {
+    /// Whether an update would leave the device without a way back: no second partition with
+    /// the running RouterOS to switch back to, and no neighbor reaching it (also when the
+    /// partitions couldn't be read, as the backend then finds none either).
+    fn no_way_back(&self, data: &ShowDeviceData) -> bool {
+        let partitions = data.partitions.as_ref().map(|p| p.partitions.as_slice()).unwrap_or_default();
+        let two = matches!(partitions, [a, b] if (a.running && a.active) || (b.running && b.active));
+        !two && data.update_neighbors.is_empty()
+    }
+    fn no_way_back_view(&self, ctx: &Context<Self>) -> Html {
+        let without = self.without_fallback;
+        html! {
+            <Alert inline=true title={t::NO_WAY_BACK_TITLE} r#type={AlertType::Danger}>
+                <p>{t::NO_WAY_BACK}</p>
+                <label class="suspend-watchdogs">
+                    <input
+                        type="checkbox"
+                        checked={without}
+                        onchange={ctx.link().callback(move |_| ShowDeviceMessage::WithoutFallback(!without))}
+                    />
+                    {" "}{t::UPDATE_WITHOUT_WAY_BACK}
+                </label>
+            </Alert>
+        }
+    }
     /// Whether an update suspends the watchdogs: asked for, and one watches something.
     fn suspend(&self) -> bool {
         self.suspend_watchdogs
@@ -880,6 +921,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                             bootstrap_plan: d.bootstrap_plan,
                             bootstrap_problem: d.bootstrap_problem,
                             watchdogs: d.watchdogs,
+                            update_neighbors: d.update_neighbors,
                             allow_apply: data.allow_apply,
                         })
                         .unwrap_or_default();
@@ -975,6 +1017,7 @@ fn update(
     id: u32,
     channel: Option<device_overview::Channel>,
     suspend: bool,
+    without_fallback: bool,
     target: SelectedTarget,
 ) {
     spawn_local(async move {
@@ -998,6 +1041,7 @@ fn update(
                 credential_name,
                 adhoc_credentials,
                 suspend_watchdogs: suspend.then_some(true),
+                without_fallback: without_fallback.then_some(true),
             },
         )
         .await

@@ -6,16 +6,22 @@
 //! added after the copy, so the old partition doesn't carry it. A partition that doesn't boot
 //! at all RouterBOOT leaves by itself (`fallback-to=next`).
 //!
+//! Without two partitions, the way back is a neighbor the device stays reachable through
+//! (stage 2, [`WayBack`]); a device with neither is only updated when that was confirmed.
+//!
 //! The update counts as done when the device is back with the version and the OSPF neighbors
 //! it was adjacent with before are again ([`ospf_up`], [`missing`]).
 use crate::{
     Error,
+    config::CONFIG,
     device::{
+        bootstrap,
         partitions::{self, Partition},
         raw::{Row, command, field, rows},
     },
     graphql::scalars::ScalarDuration,
     job::Log,
+    topology::access::device::DeviceAccess,
 };
 use async_graphql::{SimpleObject, futures_util::StreamExt};
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
@@ -45,11 +51,66 @@ pub struct UpdateFallbackDisarmed {
     pub partition: Box<str>,
 }
 
-/// The device updates without a way back: it has no second partition, or the device mode
-/// doesn't allow partitions.
+/// The device updates without a second partition to switch back to: it has `partitions`
+/// (none or one). `neighbors` are those it stays reachable through (empty: confirmed without).
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct UpdateWithoutFallback {
     pub partitions: u32,
+    pub neighbors: Box<[Box<str>]>,
+}
+
+/// The way back of an update besides partitions: the neighbors on its cables that reach the
+/// device through a tunnel when OSPF doesn't come up after it, and whether updating without
+/// any was confirmed.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct WayBack {
+    pub device: Box<str>,
+    pub neighbors: Box<[Box<str>]>,
+    pub confirmed: bool,
+}
+
+impl WayBack {
+    pub fn of(device: &DeviceAccess, confirmed: bool) -> Self {
+        Self {
+            device: device.name().into(),
+            neighbors: neighbors(device),
+            confirmed,
+        }
+    }
+    /// The update goes on without partitions to switch back to: there is a neighbor, or it
+    /// was confirmed.
+    fn without_partitions(&self, partitions: u32, log: &Log) -> Result<(), Error> {
+        if self.neighbors.is_empty() && !self.confirmed {
+            return Err(Error::NoUpdateFallback(self.device.clone()));
+        }
+        log.emit(UpdateWithoutFallback {
+            partitions,
+            neighbors: self.neighbors.clone(),
+        });
+        Ok(())
+    }
+}
+
+/// The neighbors `device` stays reachable through when its primary IP doesn't answer (those of
+/// its [`bootstrap::plans`]); none for the management proxy's device, through which the
+/// provisioner reaches every other.
+pub fn neighbors(device: &DeviceAccess) -> Box<[Box<str>]> {
+    let proxy = CONFIG.management_proxy.as_ref().map(|proxy| proxy.device.as_ref());
+    if proxy == Some(device.name()) {
+        return Box::new([]);
+    }
+    let mut neighbors = bootstrap::plans(device)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|plan| plan.neighbor.into_boxed_str())
+        .collect::<Vec<_>>();
+    neighbors.dedup();
+    neighbors.into()
+}
+
+/// An update of RouterOS 6, which has no partitions in this menu.
+pub fn arm_v6(way_back: &WayBack, log: &Log) -> Result<(), Error> {
+    way_back.without_partitions(0, log)
 }
 
 /// The OSPF neighbors this device was adjacent with before the update are again.
@@ -68,17 +129,17 @@ fn other(partitions: &[Partition]) -> Option<&Partition> {
 }
 
 /// Copies the running RouterOS to the other partition and schedules switching to it, where
-/// the device has two partitions; `None` (and [`UpdateWithoutFallback`]) where not.
+/// the device has two partitions; `None` (and [`UpdateWithoutFallback`]) where not, or
+/// [`Error::NoUpdateFallback`] without `way_back` either, before anything changes.
 pub async fn arm(
     device: &RawDevice<SimpleResult>,
     delay: Duration,
+    way_back: &WayBack,
     log: &Log,
 ) -> Result<Option<Box<str>>, Error> {
     let list = partitions::list(device).await;
     let Some(target) = other(&list).map(|p| p.name.clone()) else {
-        log.emit(UpdateWithoutFallback {
-            partitions: list.len() as u32,
-        });
+        way_back.without_partitions(list.len() as u32, log)?;
         return Ok(None);
     };
     // an entry left from an update the provisioner didn't see to the end
