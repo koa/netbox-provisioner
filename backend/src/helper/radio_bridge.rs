@@ -128,6 +128,7 @@ fn labels(plan: &mut NetboxPlan, sides: &[Side]) {
                     tags_removed: Vec::new(),
                     poe: None,
                     poe_before: None,
+                    poe_removed: false,
                 })),
             }
         }
@@ -521,6 +522,7 @@ async fn segment(
                 tags_removed: Vec::new(),
                 poe: None,
                 poe_before: None,
+                poe_removed: false,
             }));
         }
     }

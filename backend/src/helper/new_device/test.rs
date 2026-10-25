@@ -82,6 +82,27 @@ fn a_bridge_device_is_cabled() {
     assert_eq!(far, Some(("bridge-neu".into(), "ether1".into())));
 }
 
+/// At a port with PoE on (`pse`, no device yet) the new device's port is the one fed.
+#[test]
+fn a_device_at_poe_is_fed() {
+    let topology = example_topology();
+    let (_, port) = free_port(&topology);
+    let plan = base(&topology, &input(&port, "ap-neu"), &facts("router")).expect("plan");
+    assert!(!plan.steps.iter().any(|s| matches!(s, PlanStep::UpdateInterface(_))));
+    let on = crate::helper::poe::plan(
+        &topology,
+        &crate::helper::poe::PoeInput { device: port.device().unwrap().id().0, pse: port.id().0, pd: None },
+    )
+    .expect("poe")
+    .preview_topology()
+    .expect("preview");
+    let port = on.get_interface_by_id(port.id()).expect("the port");
+    let plan = base(&on, &input(&port, "ap-neu"), &facts("router")).expect("plan");
+    let after = plan.preview_topology().expect("preview");
+    let device = after.get_device_by_id(&DeviceId(u32::MAX)).expect("the new device");
+    assert_eq!(device.interfaces()[0].poe(), Some(PoeMode::Pd));
+}
+
 /// A name NetBox has (in any case), an empty one and a port cabled to an interface are refused.
 #[test]
 fn a_taken_name_and_a_cabled_port_are_refused() {

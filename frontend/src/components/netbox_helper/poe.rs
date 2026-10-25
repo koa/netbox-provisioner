@@ -17,7 +17,7 @@ use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 
 pub enum PoeMsg {
     Options(Result<PoeOptionsData, FrontendError>),
-    Feeds(bool),
+    Direction(PoeDirection),
     Port(Choice),
     PeerDevice(Choice),
     Peer(Choice),
@@ -27,24 +27,23 @@ pub enum PoeMsg {
     Take(u32, Option<(u32, u32)>),
 }
 
-/// What „PoE“ is choosing: whether the device feeds (else it is fed), its port, the other end.
-#[derive(Debug, Clone, PartialEq)]
+/// Whether the device feeds at its port, is fed there, or the port has no PoE.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PoeDirection {
+    #[default]
+    Feeds,
+    Fed,
+    /// the port's mode goes, and its counterpart at the far end (`PoeRemove`)
+    Off,
+}
+
+/// What „PoE“ is choosing: the direction, the device's port, the other end (not with `Off`).
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct PoeChoice {
-    pub(super) feeds: bool,
+    pub(super) direction: PoeDirection,
     pub(super) port: Option<u32>,
     pub(super) peer_device: Option<u32>,
     pub(super) peer: Option<u32>,
-}
-
-impl Default for PoeChoice {
-    fn default() -> Self {
-        Self {
-            feeds: true,
-            port: None,
-            peer_device: None,
-            peer: None,
-        }
-    }
 }
 
 impl NetboxHelper {
@@ -65,8 +64,8 @@ impl NetboxHelper {
                     self.choose(ctx);
                 }
             }
-            PoeMsg::Feeds(feeds) => {
-                self.poe.feeds = feeds;
+            PoeMsg::Direction(direction) => {
+                self.poe.direction = direction;
                 self.choose(ctx);
             }
             PoeMsg::Port(port) => {
@@ -103,7 +102,7 @@ impl NetboxHelper {
             }
             PoeMsg::Take(port, far) => {
                 self.poe = PoeChoice {
-                    feeds: true,
+                    direction: PoeDirection::Feeds,
                     port: Some(port),
                     peer_device: far.map(|(device, _)| device),
                     peer: far.map(|(_, port)| port),
@@ -146,10 +145,12 @@ impl NetboxHelper {
                 .collect()
         };
         let directions = vec![
-            NetEntry { value: true, text: t::POE_FEEDS.to_string() },
-            NetEntry { value: false, text: t::POE_FED.to_string() },
+            NetEntry { value: PoeDirection::Feeds, text: t::POE_FEEDS.to_string() },
+            NetEntry { value: PoeDirection::Fed, text: t::POE_FED.to_string() },
+            NetEntry { value: PoeDirection::Off, text: t::POE_OFF.to_string() },
         ];
-        let direction = directions.iter().find(|d| d.value == self.poe.feeds).cloned();
+        let direction = directions.iter().find(|d| d.value == self.poe.direction).cloned();
+        let off = self.poe.direction == PoeDirection::Off;
         let own = choices(&options.ports);
         let devices: Vec<Choice> = options
             .peers
@@ -227,12 +228,17 @@ impl NetboxHelper {
             {observed}
             <Form>
                 <FormGroup label={t::POE_DIRECTION}>
-                    <Select<NetEntry<bool>>
+                    <Select<NetEntry<PoeDirection>>
                         selected={direction}
                         entries={directions}
-                        onselect={ctx.link().callback(|entry: NetEntry<bool>| PoeMsg::Feeds(entry.value))}
+                        onselect={ctx.link().callback(|entry: NetEntry<PoeDirection>| PoeMsg::Direction(entry.value))}
                     />
                 </FormGroup>
+                if off {
+                    <p>{t::POE_OFF_HINT}</p>
+                } else if self.poe.direction == PoeDirection::Feeds {
+                    <p>{t::POE_PEER_LATER}</p>
+                }
                 if !self.fixed_port {
                     <FormGroup label={t::PORT}>
                         <Select<Choice>
@@ -243,22 +249,24 @@ impl NetboxHelper {
                         />
                     </FormGroup>
                 }
-                <FormGroup label={t::PEER_DEVICE}>
-                    <Select<Choice>
-                        placeholder={t::CHOOSE_DEVICE}
-                        selected={selected(&devices, self.poe.peer_device)}
-                        entries={devices.clone()}
-                        onselect={ctx.link().callback(PoeMsg::PeerDevice)}
-                    />
-                </FormGroup>
-                <FormGroup label={t::PEER_PORT}>
-                    <Select<Choice>
-                        placeholder={t::CHOOSE_PEER_PORT}
-                        selected={selected(&peer_ports, self.poe.peer)}
-                        entries={peer_ports.clone()}
-                        onselect={ctx.link().callback(PoeMsg::Peer)}
-                    />
-                </FormGroup>
+                if !off {
+                    <FormGroup label={t::PEER_DEVICE}>
+                        <Select<Choice>
+                            placeholder={t::CHOOSE_DEVICE}
+                            selected={selected(&devices, self.poe.peer_device)}
+                            entries={devices.clone()}
+                            onselect={ctx.link().callback(PoeMsg::PeerDevice)}
+                        />
+                    </FormGroup>
+                    <FormGroup label={t::PEER_PORT}>
+                        <Select<Choice>
+                            placeholder={t::CHOOSE_PEER_PORT}
+                            selected={selected(&peer_ports, self.poe.peer)}
+                            entries={peer_ports.clone()}
+                            onselect={ctx.link().callback(PoeMsg::Peer)}
+                        />
+                    </FormGroup>
+                }
             </Form>
         </>}
     }

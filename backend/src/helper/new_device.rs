@@ -10,7 +10,7 @@
 //! types are named as MikroTik sells them („hAP ac“), so the operator chooses, the frontend
 //! preselects one whose model or part number is the board.
 use super::{
-    CableEnd, CreateCable, CreateDevice, CreateInterface, NetboxPlan, PlanStep,
+    CableEnd, CreateCable, CreateDevice, CreateInterface, NetboxPlan, PlanStep, UpdateInterface,
     connection::{self, ConnectionInput},
     loopback,
 };
@@ -18,7 +18,7 @@ use crate::{
     Error,
     netbox::rest::NetboxRest,
     topology::{
-        CablePort, DeviceId, DeviceRole, InterfaceId, Topology,
+        CablePort, DeviceId, DeviceRole, InterfaceId, PoeMode, Topology,
         access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess},
         findings::{DeviceRef, InterfaceRef, device_ref, interface_ref},
     },
@@ -328,15 +328,30 @@ pub(crate) fn base(
     match landing(&port) {
         Some(Landing::Panel(a_end, panel)) => plan.steps.push(PlanStep::CreateCable(CreateCable {
             a: panel,
-            b: new_port,
+            b: new_port.clone(),
             a_end,
         })),
         _ if is_bridge(facts) => plan.steps.push(PlanStep::CreateCable(CreateCable {
             a: interface_ref(&port),
-            b: new_port,
+            b: new_port.clone(),
             a_end: CableEnd::Interface,
         })),
         _ => {}
+    }
+    // PoE switched on before the device was known: it is the one fed there
+    if port.enable_poe() {
+        plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
+            interface: new_port,
+            label: None,
+            label_before: None,
+            mtu: None,
+            mtu_before: None,
+            tags_added: Vec::new(),
+            tags_removed: Vec::new(),
+            poe: Some(PoeMode::Pd),
+            poe_before: None,
+            poe_removed: false,
+        }));
     }
     Ok(plan)
 }

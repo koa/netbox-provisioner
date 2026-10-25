@@ -291,6 +291,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
             tags_removed: Vec::new(),
             poe: None,
             poe_before: None,
+            poe_removed: false,
         }));
     }
     Ok(plan)

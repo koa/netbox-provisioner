@@ -1,6 +1,7 @@
 //! The live checks of the interface view (`docs/concepts/interface-view.md`): who the device
 //! sees at each row's ports (`/ip/neighbor`, as „Nachbarn lesen“), its OSPF neighbors there, and
-//! whether the bridge devices of a radio link answer a ping at their loopback. Read only; the
+//! whether the bridge devices of a radio link answer a ping at their loopback, and where the
+//! device contradicts NetBox's PoE modes (`helper::poe::mismatches`). Read only; the
 //! rows are those of `topology::interfaces`, so the frontend joins both by the row's interface.
 //!
 //! An OSPF neighbor names the interface as RouterOS calls it: a port by its short name and label
@@ -14,6 +15,7 @@ use crate::{
         ros::dhcp::static_leases,
         update_fallback::is_adjacent,
     },
+    helper::poe::{self, PoeMismatch, PoeProblem},
     topology::{
         DeviceId, InterfaceId,
         access::device::DeviceAccess,
@@ -61,6 +63,8 @@ pub struct LiveRow {
     /// the static DHCP leases of the row's server that NetBox has no client for: the next
     /// apply removes them
     pub device_only_leases: Vec<DeviceOnlyLease>,
+    /// the row's ports whose PoE mode in NetBox the device contradicts
+    pub poe: Vec<PoeMismatch>,
     /// what the findings suggest: the link to the router the device sees at a port, an
     /// address to take over
     pub actions: Vec<RowAction>,
@@ -146,7 +150,38 @@ pub async fn read(client: &RawDevice<SimpleResult>, device: &DeviceAccess) -> Re
         .filter_map(|id| device.topology().get_device_by_id(&DeviceId(*id))?.primary_ip_v4()?.addr())
         .collect::<Vec<_>>();
     let answering = answering(client, &loopbacks).await;
-    Ok(check(device, &rows, neighbors, &ospf, &addresses, &dhcp, &answering))
+    let poe = poe::mismatches(device, &poe::read_ports(client).await?);
+    let mut live = check(device, &rows, neighbors, &ospf, &addresses, &dhcp, &answering);
+    place_poe(&mut live, &rows, poe);
+    Ok(live)
+}
+
+/// Puts each PoE mismatch on the row of its port, with „PoE-Eintrag entfernen“, or „PoE
+/// vervollständigen“ (`PdMissing`: „PoE“ from the port, the far end from its cable).
+pub fn place_poe(live: &mut InterfaceLive, rows: &[(InterfaceRow, BTreeSet<u32>)], poe: Vec<PoeMismatch>) {
+    for mismatch in poe {
+        let Some(row) = rows
+            .iter()
+            .position(|(_, members)| members.contains(&mismatch.port.id))
+            .and_then(|index| live.rows.get_mut(index))
+        else {
+            continue;
+        };
+        row.actions.push(RowAction {
+            kind: ActionKind::Suggestion,
+            helper: match mismatch.problem {
+                PoeProblem::PdMissing => ActionHelper::Poe,
+                _ => ActionHelper::PoeRemove,
+            },
+            interface: Some(mismatch.port.id),
+            peer: None,
+            vlan: None,
+            seen: None,
+            address: None,
+            lease: None,
+        });
+        row.poe.push(mismatch);
+    }
 }
 
 /// What the device answers about DHCP: its servers and leases.
@@ -317,6 +352,7 @@ pub fn check(
                 findings,
                 device_only_addresses,
                 device_only_leases,
+                poe: Vec::new(),
                 actions,
             }
         })

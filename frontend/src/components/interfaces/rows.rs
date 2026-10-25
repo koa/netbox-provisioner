@@ -159,6 +159,8 @@ impl Action {
         match &self.preset {
             HelperPreset::AddressTakeover { address, .. } => t::address_takeover(address),
             HelperPreset::LeaseTakeover { address, .. } => t::lease_takeover(address),
+            HelperPreset::PoeRemove(_) => t::POE_REMOVE.to_string(),
+            HelperPreset::Poe(_) if self.kind == Kind::Suggestion => t::POE_COMPLETE.to_string(),
             _ => t::action(self.kind, self.helper),
         }
     }
@@ -315,6 +317,7 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
             },
         ),
         ActionHelper::POE => (HelperKind::Poe, HelperPreset::Poe(interface?)),
+        ActionHelper::POE_REMOVE => (HelperKind::Poe, HelperPreset::PoeRemove(interface?)),
         ActionHelper::BRIDGE_LEAVE => (HelperKind::BridgeLeave, HelperPreset::BridgeLeave(interface?)),
         ActionHelper::LEASE_TAKEOVER => {
             let lease = action.lease?;

@@ -65,6 +65,8 @@ pub enum Helper {
     CustomerNet(customer_net::CustomerNetInput),
     /// a port feeding another one over PoE
     Poe(poe::PoeInput),
+    /// a port's PoE mode out of NetBox, with its counterpart at the far end
+    PoeRemove(poe::PoeRemoveInput),
     /// two radio bridge devices between two routers, for the AP's device
     RadioBridge(radio_bridge::RadioBridgeInput),
     /// a radio link's network out of NetBox, the wireless link if asked
@@ -94,6 +96,7 @@ impl Helper {
             Helper::Flags(input) => flags::plan(topology, input),
             Helper::CustomerNet(input) => customer_net::plan(topology, input).await,
             Helper::Poe(input) => poe::plan(topology, input),
+            Helper::PoeRemove(input) => poe::plan_remove(topology, input),
             Helper::RadioBridge(input) => radio_bridge::plan(topology, input).await,
             Helper::RadioDisconnect(input) => radio_disconnect::plan(topology, input),
             Helper::CustomerDisconnect(input) => customer_disconnect::plan(topology, input),
@@ -125,6 +128,9 @@ impl Helper {
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
             Helper::Poe(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
+            Helper::PoeRemove(input) => topology
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
             Helper::RadioBridge(input) => topology
@@ -485,6 +491,9 @@ impl NetboxPlan {
                         if let Some(poe) = update.poe {
                             interface["poe_mode"] = json!(poe.value());
                         }
+                        if update.poe_removed {
+                            interface["poe_mode"] = Value::Null;
+                        }
                         if let Some(tags) = interface["tags"].as_array_mut() {
                             for tag in &update.tags_removed {
                                 tags.retain(|t| t["slug"] != tag.slug());
@@ -620,6 +629,7 @@ mod test {
                 tags_removed: Vec::new(),
                 poe: None,
                 poe_before: None,
+                poe_removed: false,
             })
         };
         let address = |end: &InterfaceAccess, address: &str| {

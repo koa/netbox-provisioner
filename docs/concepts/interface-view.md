@@ -196,8 +196,10 @@ die Aktionen, die auf diesem Port möglich sind, und der Helfer startet mit ihm.
   [Config-Helper](config-helper.md#aus-bridge-lösen)); die Ports der Bridge eines Brückengeräts
   bleiben, ohne sie gibt es keinen Richtfunk.
 - **PoE** gibt es an jedem Ethernet-Port, mit dem Port vorbelegt und der Gegenseite aus dem
-  Kabel. Ob das Board dort PoE-out hat, weiss NetBox nicht (siehe
-  [Config-Helper](config-helper.md#poe)).
+  Kabel, auch ohne Gegenseite (nur `PSE`, das Gerät dort kommt später) und zum Entfernen
+  („Kein PoE“). Ob das Board dort PoE-out hat, weiss NetBox nicht;
+  die Live-Prüfung vergleicht den Modus mit dem Gerät und schlägt bei einem Widerspruch
+  „PoE-Eintrag entfernen“ am Port vor (siehe [Config-Helper](config-helper.md#poe)).
 - **Flags** zeigt nur die vier Schalter dieses Interfaces, die Befunde danach wie bisher.
 - **Als Richtfunk** von einem freien Router-Port fragt zuerst nach dem Brückengerät (genau ein
   Radio, kein Kabel zu einem Router) und bettet dann dessen Helfer ein, mit Router und

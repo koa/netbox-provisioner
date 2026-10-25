@@ -82,6 +82,8 @@ pub enum ActionHelper {
     CableTakeover,
     /// „PoE“ of the port `interface`
     Poe,
+    /// „PoE-Eintrag entfernen“: the PoE mode of `interface`, which the device contradicts
+    PoeRemove,
     /// „Flags“: the tags of `interface`
     Flags,
     /// „Aus Bridge lösen“: the port `interface` out of its bridge

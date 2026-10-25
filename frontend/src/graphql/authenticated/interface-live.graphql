@@ -12,6 +12,7 @@ query InterfaceLive($id: Int!, $target: String, $credentialName: String, $adhocC
                         findings{ ...NeighborFinding }
                         deviceOnlyAddresses{ ...DeviceOnly }
                         deviceOnlyLeases{ ...DeviceOnlyLease }
+                        poe{ port{ ...Interface } problem status }
                         actions{ kind helper interface peer{ ...Interface } vlan seen{ identity board interfaceName } address lease{ mac name } }
                     }
                     otherFindings{ ...NeighborFinding }

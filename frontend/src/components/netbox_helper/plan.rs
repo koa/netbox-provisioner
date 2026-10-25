@@ -98,7 +98,11 @@ pub(super) fn describe(step: &Step) -> String {
             update.mtu.map(|mtu| (mtu, update.mtu_before)),
             &update.tags_added.iter().map(tag_slug).collect::<Vec<_>>(),
             &update.tags_removed.iter().map(tag_slug).collect::<Vec<_>>(),
-            update.poe.as_ref().map(|poe| (plan_poe_mode(poe), update.poe_before.as_ref().map(plan_poe_mode))),
+            match (&update.poe, update.poe_removed) {
+                (Some(poe), _) => Some((Some(plan_poe_mode(poe)), update.poe_before.as_ref().map(plan_poe_mode))),
+                (None, true) => Some((None, update.poe_before.as_ref().map(plan_poe_mode))),
+                (None, false) => None,
+            },
         ),
         Step::DeleteCable(delete) => t::delete_cable(
             (&delete.port.device.name, &delete.port.name),

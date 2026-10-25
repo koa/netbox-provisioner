@@ -239,7 +239,8 @@ pub struct CreatePrefix {
 }
 
 /// Changes of an interface: a new label (empty to take it off), a new MTU, a PoE mode (each
-/// none to keep it) and tags added or taken off. `poe_before` is checked only with `poe`.
+/// none to keep it; `poe_removed` takes the mode off) and tags added or taken off. `poe_before`
+/// is checked only with `poe` or `poe_removed`.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct UpdateInterface {
     pub interface: InterfaceRef,
@@ -251,6 +252,7 @@ pub struct UpdateInterface {
     pub tags_removed: Vec<flags::InterfaceTag>,
     pub poe: Option<PoeMode>,
     pub poe_before: Option<PoeMode>,
+    pub poe_removed: bool,
 }
 
 /// Changes of a port: a new name, an RF role, the bridge it becomes a port of (each none to keep

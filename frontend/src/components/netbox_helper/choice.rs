@@ -23,6 +23,8 @@ pub enum HelperPreset {
     RadioChoose { router_device: u32, router_port: u32 },
     /// „PoE“ of this port
     Poe(u32),
+    /// „PoE-Eintrag entfernen“: „PoE“ of this port with „Kein PoE“ chosen
+    PoeRemove(u32),
     /// „Flags“ of this interface
     Flags(u32),
     /// „Richtfunk abräumen“ from this radio of the link
@@ -63,6 +65,7 @@ impl HelperPreset {
             | HelperPreset::RadioFrom(_)
             | HelperPreset::RadioChoose { .. }
             | HelperPreset::Poe(_)
+            | HelperPreset::PoeRemove(_)
             | HelperPreset::NewDevice { .. }
             | HelperPreset::PortVlan { port: Some(_), .. } => true,
             HelperPreset::Kind(_)
@@ -116,7 +119,11 @@ pub enum HelperChoice {
     },
     Poe {
         pse: u32,
-        pd: u32,
+        /// none: PoE on at `pse` alone, the other end not known yet
+        pd: Option<u32>,
+    },
+    PoeRemove {
+        port: u32,
     },
     RadioBridge {
         ap: u32,
@@ -238,7 +245,11 @@ macro_rules! helper_input {
             HelperChoice::Poe { pse, pd } => $module::Helper::Poe($module::PoeInput {
                 device: $id as i64,
                 pse: pse as i64,
-                pd: pd as i64,
+                pd: pd.map(i64::from),
+            }),
+            HelperChoice::PoeRemove { port } => $module::Helper::PoeRemove($module::PoeRemoveInput {
+                device: $id as i64,
+                port: port as i64,
             }),
             HelperChoice::RadioBridge {
                 ap,

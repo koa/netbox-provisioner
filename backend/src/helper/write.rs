@@ -570,7 +570,7 @@ async fn update_interface(
     };
     if label != update.label_before.as_deref()
         || mtu != update.mtu_before
-        || (update.poe.is_some() && poe != update.poe_before)
+        || ((update.poe.is_some() || update.poe_removed) && poe != update.poe_before)
         || update.tags_added.iter().any(has)
         || !update.tags_removed.iter().all(has)
     {
@@ -607,6 +607,26 @@ async fn update_interface(
             value: Some(new.value().into()),
             previous: poe.map(|poe| poe.value().into()),
         });
+    }
+    if update.poe_removed {
+        change.insert("poe_mode".into(), json!(""));
+        before.insert("poe_mode".into(), json!(poe.map(PoeMode::value).unwrap_or_default()));
+        changes.push(FieldChange {
+            field: "poe_mode".into(),
+            value: None,
+            previous: poe.map(|poe| poe.value().into()),
+        });
+        // NetBox refuses a PoE type without a mode ("Must specify PoE mode when designating
+        // a PoE type"), so it goes too; undoing sets both again
+        if let Some(poe_type) = current["poe_type"]["value"].as_str().filter(|t| !t.is_empty()) {
+            change.insert("poe_type".into(), json!(""));
+            before.insert("poe_type".into(), json!(poe_type));
+            changes.push(FieldChange {
+                field: "poe_type".into(),
+                value: None,
+                previous: Some(poe_type.into()),
+            });
+        }
     }
     if !update.tags_added.is_empty() || !update.tags_removed.is_empty() {
         let mut ids: Vec<Value> = tags

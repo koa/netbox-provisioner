@@ -168,6 +168,38 @@ pub fn device_only(address: &str, interface: &str, disabled: bool) -> String {
 pub const DEVICE_ONLY_ELSEWHERE: &str = "– NetBox hat sie an";
 pub const DEVICE_ONLY_UNASSIGNED: &str = "– NetBox hat sie an keinem Interface";
 pub const LEASES_DEVICE_ONLY: &str = "Leases nur auf dem Gerät";
+pub const POE: &str = "PoE";
+pub const POE_REMOVE: &str = "PoE-Eintrag entfernen";
+pub const POE_COMPLETE: &str = "PoE vervollständigen";
+
+/// Where the device contradicts NetBox's PoE mode of a port (`PoeProblem`).
+pub enum PoeMismatch {
+    NoPoeOut,
+    NoLoad,
+    PdMissing,
+    FeedsInstead,
+    Other,
+}
+/// `status`: `poe-out-status` as the device reports it
+pub fn poe_mismatch(port: &str, problem: PoeMismatch, status: Option<&str>) -> String {
+    let status = status.map(|s| format!(" ({s})")).unwrap_or_default();
+    match problem {
+        PoeMismatch::NoPoeOut => {
+            format!("{port}: in NetBox speisend, das Gerät hat an diesem Port kein PoE-Out")
+        }
+        PoeMismatch::NoLoad => format!(
+            "{port}: in NetBox speisend, aber am anderen Ende bezieht nichts Strom{status}: das \
+             Gerät dort kann kein PoE, hat ein eigenes Netzteil oder ist aus"
+        ),
+        PoeMismatch::PdMissing => format!(
+            "{port}: speist{status}, in NetBox ist die Gegenseite aber nicht als gespeist erfasst"
+        ),
+        PoeMismatch::FeedsInstead => {
+            format!("{port}: in NetBox gespeist, das Gerät speist an diesem Port aber selbst{status}")
+        }
+        PoeMismatch::Other => format!("{port}: PoE stimmt nicht mit NetBox überein{status}"),
+    }
+}
 /// a static lease only the device has: the next apply removes it
 pub fn device_only_lease(address: &str, client: &str, name: Option<&str>, disabled: bool) -> String {
     let name = name.map(|name| format!(" „{name}“")).unwrap_or_default();

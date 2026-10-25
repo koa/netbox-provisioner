@@ -207,6 +207,7 @@ fn update(updates: &mut Vec<UpdateInterface>, interface: &InterfaceAccess) -> us
         tags_removed: Vec::new(),
         poe: None,
         poe_before: None,
+        poe_removed: false,
     });
     updates.len() - 1
 }

@@ -55,13 +55,20 @@ pub fn net_port(name: &str, label: Option<&str>) -> String {
 pub const POE: &str = "PoE";
 pub const POE_HINT: &str = "Hält fest, wer wen über PoE speist: der speisende Port bekommt \
     PoE-Modus PSE, der gespeiste PD, und das Kabel dazwischen, falls es fehlt. Die Ports \
-    von Hand wählen oder vom Gerät ablesen, ob er gerade speist. Ob das Board am \
-    Port PoE-out hat, weiss NetBox nicht; ohne setzt der Generator dort nichts.";
+    von Hand wählen oder vom Gerät ablesen, ob er gerade speist. „Kein PoE“ nimmt einen \
+    Eintrag wieder heraus. Ob das Board am Port PoE-out hat, weiss NetBox nicht; die \
+    Live-Prüfung der Interfaces vergleicht es mit dem Gerät.";
 pub const CHOOSE_POE: &str = "Richtung und beide Ports wählen.";
 pub const CHOOSE_POE_PEER: &str = "Richtung und Port der Gegenseite wählen.";
 pub const POE_DIRECTION: &str = "Richtung";
 pub const POE_FEEDS: &str = "Dieses Gerät speist die Gegenseite";
 pub const POE_FED: &str = "Dieses Gerät wird von der Gegenseite gespeist";
+pub const POE_OFF: &str = "Kein PoE an diesem Port";
+pub const POE_PEER_LATER: &str = "Die Gegenseite kann offen bleiben: dann wird nur PoE am Port \
+    eingeschaltet. Kommt das Gerät dort online, erfasst „Neues Gerät anschliessen“ es als \
+    gespeist, oder „PoE vervollständigen“ ergänzt die Gegenseite.";
+pub const POE_OFF_HINT: &str = "Nimmt den PoE-Eintrag des Ports aus NetBox, und am anderen Ende \
+    des Kabels den passenden (wer von hier gespeist wird oder hierher speist).";
 pub const POE_OBSERVE: &str = "Vom Gerät ablesen";
 pub const POE_OBSERVED_NONE: &str = "Das Gerät speist an keinem Port etwas.";
 pub const POE_TAKE: &str = "Übernehmen";
@@ -469,13 +476,15 @@ pub fn update_interface(
     mtu: Option<(i64, Option<i64>)>,
     tags_added: &[&str],
     tags_removed: &[&str],
-    poe: Option<(&str, Option<&str>)>,
+    poe: Option<(Option<&str>, Option<&str>)>,
 ) -> String {
     let mut changes = Vec::new();
     if let Some((poe, before)) = poe {
-        changes.push(match before {
-            Some(before) => format!("PoE {poe} (vorher {before})"),
-            None => format!("PoE {poe}"),
+        changes.push(match (poe, before) {
+            (Some(poe), Some(before)) => format!("PoE {poe} (vorher {before})"),
+            (Some(poe), None) => format!("PoE {poe}"),
+            (None, Some(before)) => format!("kein PoE mehr (vorher {before})"),
+            (None, None) => "kein PoE".to_string(),
         });
     }
     if let Some((label, before)) = label {

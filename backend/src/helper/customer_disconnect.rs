@@ -81,6 +81,7 @@ pub fn plan(topology: &Arc<Topology>, input: &CustomerDisconnectInput) -> Result
             tags_removed: vec![InterfaceTag::Dhcp],
             poe: None,
             poe_before: None,
+            poe_removed: false,
         }));
     }
 

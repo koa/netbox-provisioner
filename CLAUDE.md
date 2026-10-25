@@ -238,7 +238,17 @@ Either family may come alone, so a client network (`dhcp`) with IPv4 but no IPv6
 `pd` on two Ethernet ports (`is_ethernet`, any device; `Interface.poe`, `UpdateInterface.poe`),
 cabling them if both are free; `poeOptions` offers the device's ports and the site's devices,
 `AccessibleDevice.poeObserved` what the device feeds now (`poe/monitor` `powered-on`, the far
-end by NetBox's cable, else `/ip/neighbor`). `helper::radio_bridge` completes a radio bridge
+end by NetBox's cable, else `/ip/neighbor`). Without the port fed (`PoeInput.pd` none) the
+feeding port alone gets `pse`, PoE on before the far device is in NetBox; „Neues Gerät“ at a
+`pse` port gives the new device's port `pd`. „Kein PoE“ (`Helper.poeRemove`,
+`poe::plan_remove`, `UpdateInterface.poe_removed`, written as `poe_mode: ""`) takes a port's mode
+off and the counterpart at its cable's far end. The live check of the rows compares the modes
+with the device (`poe::mismatches`, `LiveRow.poe`, port by `default-name`): `pse` without
+`poe-out`, `pse` with a cable and `waiting-for-load` (without one it waits for its device), `pd`
+where it feeds; each port gets „PoE-Eintrag entfernen“ (`ActionHelper::PoeRemove`, shown at that
+port only). A `pse` port feeding (`powered-on`) whose cabled far end isn't `pd` gets „PoE
+vervollständigen“ instead (`PdMissing`, `ActionHelper::Poe` as a suggestion). PoE in isn't reported per
+port, and devices without RouterOS aren't checked. `helper::radio_bridge` completes a radio bridge
 between two routers on two existing devices (`radioBridgeCandidates`: one radio each): cable to
 the router port where none goes to a router, bridge with ether and radio as ports
 (`UpdatePort`: name, RF role, bridge; `leaves_bridge` takes it out of one), the RouterOS radio name, `lo` (`loopback::add_to`), the

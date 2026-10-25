@@ -7,6 +7,7 @@ use crate::{
     components::{
         findings::finding_list,
         menu::popup::{MenuActionItem, MenuGroup, PopupMenu},
+        netbox_helper::HelperKind,
     },
     graphql::authenticated::findings::Severity,
     i18n::interfaces as t,
@@ -121,7 +122,14 @@ impl Entry {
             Some(port) => &port.actions,
             None => &self.row.actions,
         };
-        let mut actions = live.to_vec();
+        // „PoE-Eintrag entfernen“ only at its port
+        let here = self.port.as_ref().map_or(self.row.interface.id, |p| p.interface.id) as u32;
+        let live = live
+            .iter()
+            .filter(|a| a.helper != HelperKind::Poe || a.interface == Some(here))
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut actions = live.clone();
         actions.extend(
             own.iter()
                 .filter(|a| !live.iter().any(|l| (l.kind, l.helper) == (a.kind, a.helper)))

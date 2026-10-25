@@ -30,7 +30,7 @@ use new_device::{
     NewDeviceChoice, NewDeviceMsg, fetch_new_device_options, fetch_written_device,
 };
 use plan::{Preview, fetch_plan, fetch_preview, last_write};
-use poe::{Observed, PoeChoice, PoeMsg, PoeOptionsData, fetch_poe_options};
+use poe::{Observed, PoeChoice, PoeDirection, PoeMsg, PoeOptionsData, fetch_poe_options};
 use port_vlan::{PortVlanChoice, PortVlanMsg, PortVlanOptionsData, fetch_port_vlan_options};
 use radio::{Candidate, RadioChoice, RadioMsg, fetch_radio_options};
 use crate::{
@@ -268,6 +268,11 @@ impl Component for NetboxHelper {
             }
             Some(HelperPreset::Poe(port)) => {
                 poe.port = Some(*port);
+                HelperKind::Poe
+            }
+            Some(HelperPreset::PoeRemove(port)) => {
+                poe.port = Some(*port);
+                poe.direction = PoeDirection::Off;
                 HelperKind::Poe
             }
             Some(HelperPreset::Flags(interface)) => {
@@ -712,11 +717,11 @@ impl NetboxHelper {
                     parent_v6: self.net.parent_v6,
                     dhcp: self.net.dhcp,
                 }),
-            HelperKind::Poe => {
-                let (own, peer) = (self.poe.port?, self.poe.peer?);
-                let (pse, pd) = if self.poe.feeds { (own, peer) } else { (peer, own) };
-                Some(HelperChoice::Poe { pse, pd })
-            }
+            HelperKind::Poe => match self.poe.direction {
+                PoeDirection::Off => Some(HelperChoice::PoeRemove { port: self.poe.port? }),
+                PoeDirection::Feeds => Some(HelperChoice::Poe { pse: self.poe.port?, pd: self.poe.peer }),
+                PoeDirection::Fed => Some(HelperChoice::Poe { pse: self.poe.peer?, pd: Some(self.poe.port?) }),
+            },
             HelperKind::RadioBridge => {
                 let radio = &self.radio;
                 let (own, peer) = (self.own_candidate()?.device.id as u32, radio.peer?);

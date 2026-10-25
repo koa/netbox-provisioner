@@ -9,8 +9,8 @@ die Verbindung „Direkt“ (`/31`), „Kabel aus Befund übernehmen“ und „V
 Schritt 5 die OSPF-/DHCP-Flags und das Kunden-Netz (IPv4 und IPv6, ohne IP-Range), von Schritt 6
 „PoE“ und Schritt 7 „Funkbrücke“ (samt Loopback und fester Adresse der Brückengeräte, mit
 „gemeinsam anwenden“ bei geänderter Funkstrecke). Offen sind „Neues Gerät“, die IP-Range des
-Kunden-Netzes, OSPF-Priorität 0 der Brückengeräte und von Schritt 2 Adressen und PoE gegen das
-Gerät. Offener Punkt „Config-Helper“ aus [pending.md](../pending.md).
+Kunden-Netzes, OSPF-Priorität 0 der Brückengeräte und von Schritt 2 Adressen gegen das Gerät
+(PoE gegen das Gerät ist in der Live-Prüfung der Interfaces umgesetzt, siehe [PoE](#poe)). Offener Punkt „Config-Helper“ aus [pending.md](../pending.md).
 
 ## Ausgangslage
 
@@ -354,6 +354,35 @@ Generator setzt `poe-out` ohnehin nur, wo das Board es hat. Im Lab geprüft an l
 weg. Ein gespeistes Gerät meldet seine Quelle nicht; abgelesen wird deshalb am speisenden.
 Von einem Port der Interface-Ansicht her ist er vorbelegt, die Gegenseite mit dem Ende seines
 Kabels.
+
+Speist das Gerät, darf die Gegenseite offen bleiben (`PoeInput.pd` leer): dann bekommt nur der
+Port `PSE`, und der Generator schaltet dort PoE-out ein (`setup_poe` braucht kein Kabel). So
+läuft PoE, bevor das Gerät am anderen Ende in NetBox ist. Kommt es online, sieht die
+Live-Prüfung es am Port, und „Neues Gerät anschliessen“ legt es an. An einem `PSE`-Port bekommt
+dabei sein Port gleich `PD` (`new_device`). Ist das Gerät schon erfasst und verkabelt, schlägt die
+Live-Prüfung „PoE vervollständigen“ vor, sobald der Port laut Gerät speist (`powered-on`) und am
+Gegenüber `PD` fehlt (`PoeProblem::PdMissing`). „PoE“ ist dann mit dem Port und dem Kabelende
+vorbelegt. Im Lab geprüft: lab-core `ether1` allein auf `PSE` geschrieben und zurückgenommen.
+
+Die dritte Richtung „Kein PoE an diesem Port“ nimmt einen Eintrag wieder heraus
+(`Helper.poeRemove`, `helper::poe::plan_remove`, `UpdateInterface.poeRemoved`): den Modus des
+Ports und am anderen Kabelende den passenden (`PD` gegenüber einem `PSE` und umgekehrt), denn ein
+Ende allein sagt nichts. Ein Gegenüber mit demselben oder keinem Modus bleibt. Vorher liess sich
+ein Port nur auf `PSE` oder `PD` stellen, nie zurück, auch wo eines der Geräte gar kein PoE hat.
+
+Geprüft gegen das Gerät wird in der Live-Prüfung der Interfaces (`helper::poe::mismatches`,
+`LiveRow.poe`), an jedem Port eines RouterOS-Geräts mit Modus in NetBox:
+- `PSE`, aber der Port hat kein `poe-out` (`/interface/ethernet`): das Board kann dort nicht
+  speisen.
+- `PSE` mit Kabel, aber `poe-out-status=waiting-for-load`: am anderen Ende bezieht nichts Strom.
+  Das Gerät dort kann kein PoE, hat ein eigenes Netzteil oder ist aus. Im Lab so bei lab-np2
+  `ether3` zu lab-ap2, das bewusst ohne Strom ist. Ohne Kabel ist das kein Befund: Der Port
+  wartet auf sein Gerät (lab-np2 `ether4`).
+- `PD`, aber das Gerät speist dort selbst (`powered-on`).
+Jeder dieser Ports bekommt den Vorschlag „PoE-Eintrag entfernen“: „PoE“ mit „Kein PoE“
+vorbelegt. Nicht prüfbar: ob ein Port PoE annimmt (RouterOS meldet es nicht pro Port), und alles
+an Geräten ohne RouterOS; deren Einträge lassen sich nur von Hand entfernen. Im Lab geprüft:
+`ether4` von lab-np2 entfernt (NetBox nimmt `poe_mode` leer an), Rückgängig setzte `PSE` wieder.
 
 ### Funkbrücke
 

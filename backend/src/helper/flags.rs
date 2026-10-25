@@ -155,6 +155,7 @@ pub fn plan(topology: &Arc<Topology>, input: &FlagsInput) -> Result<NetboxPlan, 
             tags_removed: removed,
             poe: None,
             poe_before: None,
+            poe_removed: false,
         }));
     }
     Ok(plan)

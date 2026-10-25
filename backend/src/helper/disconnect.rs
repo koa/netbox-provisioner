@@ -99,6 +99,7 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
                     tags_removed: end.use_ospf().then_some(InterfaceTag::Ospf).into_iter().collect(),
                     poe: None,
                     poe_before: None,
+                    poe_removed: false,
                 }));
             }
         }

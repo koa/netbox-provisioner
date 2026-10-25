@@ -16,7 +16,7 @@ use crate::{
         authenticated::{
             InterfaceLive,
             findings::Severity,
-            interface_live, interface_view,
+            interface_live::{self, PoeProblem}, interface_view,
             neighbor_findings::{
                 NeighborFindingsTopologyDeviceByIdAccessNeighborFindings as NeighborFinding, Seen,
                 Severity as NeighborSeverity,
@@ -70,6 +70,8 @@ pub struct LiveRow {
     pub device_only: Vec<DeviceOnly>,
     /// the static leases only the device has there: the next apply removes them
     pub device_only_leases: Vec<DeviceOnlyLease>,
+    /// its ports whose PoE mode in NetBox the device contradicts
+    pub poe: Vec<PoeMismatch>,
     /// what the findings suggest, as the row's actions
     pub actions: Vec<Action>,
 }
@@ -106,6 +108,14 @@ pub struct DeviceOnlyLease {
     pub unassigned: bool,
 }
 
+/// A port whose PoE mode in NetBox the device contradicts.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PoeMismatch {
+    pub port: String,
+    pub problem: PoeProblem,
+    pub status: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bridge {
     pub device: Device,
@@ -130,7 +140,8 @@ impl Live {
 
 impl LiveRow {
     /// Its failures as severities: the neighbor findings, a missing OSPF neighbor and a bridge
-    /// device not answering are errors, an address or lease only the device has a warning.
+    /// device not answering are errors, an address or lease only the device has and a PoE mode
+    /// it contradicts a warning.
     pub fn severities(&self) -> Vec<Severity> {
         self.findings
             .iter()
@@ -148,6 +159,7 @@ impl LiveRow {
             )
             .chain(self.device_only.iter().map(|_| Severity::WARNING))
             .chain(self.device_only_leases.iter().map(|_| Severity::WARNING))
+            .chain(self.poe.iter().map(|_| Severity::WARNING))
             .collect()
     }
 }
@@ -218,6 +230,27 @@ pub fn details(netbox: &str, live: &RowLive, device: impl Fn(&Device) -> Html) -
             if !row.device_only_leases.is_empty() {
                 <dt>{t::LEASES_DEVICE_ONLY}</dt>
                 <dd>{device_only_lease_list(&row.device_only_leases, &device)}</dd>
+            }
+            if !row.poe.is_empty() {
+                <dt>{t::POE}</dt>
+                <dd>
+                    { for row.poe.iter().map(|m| html! {
+                        <div>
+                            <span class="live-failed">{Icon::ExclamationTriangle}</span>{" "}
+                            {t::poe_mismatch(
+                                &m.port,
+                                match m.problem {
+                                    PoeProblem::NO_POE_OUT => t::PoeMismatch::NoPoeOut,
+                                    PoeProblem::NO_LOAD => t::PoeMismatch::NoLoad,
+                                    PoeProblem::PD_MISSING => t::PoeMismatch::PdMissing,
+                                    PoeProblem::FEEDS_INSTEAD => t::PoeMismatch::FeedsInstead,
+                                    PoeProblem::Other(_) => t::PoeMismatch::Other,
+                                },
+                                m.status.as_deref(),
+                            )}
+                        </div>
+                    }) }
+                </dd>
             }
         </dl>
         if !row.findings.is_empty() {
@@ -343,6 +376,15 @@ impl Checked {
                     findings: convert(&row.findings)?,
                     device_only: row.device_only_addresses.into_iter().map(device_only).collect(),
                     device_only_leases: row.device_only_leases.into_iter().map(device_only_lease).collect(),
+                    poe: row
+                        .poe
+                        .into_iter()
+                        .map(|m| PoeMismatch {
+                            port: m.port.name,
+                            problem: m.problem,
+                            status: m.status,
+                        })
+                        .collect(),
                     actions: convert::<_, interface_view::Action>(&row.actions)?
                         .into_iter()
                         .filter_map(|action| rows::action(action, device_id))
