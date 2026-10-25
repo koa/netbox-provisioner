@@ -5,6 +5,17 @@ query JobEvents($id: Int!, $after: Int){
         state
         error { ...Problem }
         took
+        phase {
+            __typename
+            ... on ApplyPhase { apply: state }
+            ... on UpdatePhase { update: state }
+            ... on RebootPhase { reboot: state }
+            ... on PowerCyclePhase { powerCycle: state }
+            ... on DeviceModePhase { deviceMode: state }
+            ... on BootstrapPhase { bootstrap: state }
+            ... on CleanupPhase { cleanup: state }
+            ... on NetboxPhase { netbox: state }
+        }
         events(after: $after){
             index
             at

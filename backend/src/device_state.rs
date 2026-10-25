@@ -5,6 +5,7 @@
 //!
 //! Ending is no state: a job may end in any of them (done, failed, cancelled), and the state
 //! it ended in stays with it.
+use async_graphql::{Enum, SimpleObject, Union};
 use std::fmt::Debug;
 
 /// What cancelling does in a state.
@@ -39,7 +40,7 @@ pub trait States: Copy + Eq + Debug + 'static {
 }
 
 /// An apply, alone or in a batch (`DeviceCfg::apply`, `device::batch`).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
 pub enum ApplyState {
     /// reading the device and NetBox, rendering the script
     Planning,
@@ -105,7 +106,7 @@ impl States for ApplyState {
 
 /// An update or a downgrade of RouterOS (`device::update`); a downgrade has no fallback and no
 /// firmware, and goes back to the packages' version in one step.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
 pub enum UpdateState {
     /// connecting, reading the device and the version to go to
     Reading,
@@ -187,7 +188,7 @@ impl States for UpdateState {
 }
 
 /// A reboot, a repartition or a boot from another partition (`update::reboot`, `partitions`).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
 pub enum RebootState {
     /// connecting, reading what the reboot needs (the partitions)
     Reading,
@@ -222,7 +223,7 @@ impl States for RebootState {
 }
 
 /// A supplier cutting the power of a device it feeds (`power_cycle`): a job of the supplier.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
 pub enum PowerCycleState {
     /// connecting to the supplier
     Reading,
@@ -260,7 +261,7 @@ impl States for PowerCycleState {
 }
 
 /// A change of the device mode (`device_mode::change`).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
 pub enum DeviceModeState {
     /// connecting, reading which features are off
     Reading,
@@ -302,7 +303,7 @@ impl States for DeviceModeState {
 }
 
 /// A setup over mac-telnet from a neighbor (`bootstrap`), which keeps the neighbor busy.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
 pub enum BootstrapState {
     /// the neighbor allows SSH forwarding and has the port
     CheckingNeighbor,
@@ -337,7 +338,7 @@ impl States for BootstrapState {
 }
 
 /// Taking away what a job left on the device (`leftovers::clear`).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
 pub enum CleanupState {
     /// the leftover chosen goes
     Clearing,
@@ -371,7 +372,7 @@ impl States for CleanupState {
 }
 
 /// Writing a helper's plan to NetBox, or taking such a write back (`helper::write`, `undo`).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
 pub enum NetboxState {
     /// the plan computed again and checked against the one shown
     Planning,
@@ -406,10 +407,10 @@ impl States for NetboxState {
     }
 }
 
-/// [`JobPhase`] over the kinds' state types: one variant each, `From`, and the checks handed
-/// on to the kind.
+/// [`JobPhase`] over the kinds' state types: one variant each, `From`, the checks handed on to
+/// the kind, and for GraphQL [`JobPhaseObject`] with an object per kind.
 macro_rules! job_phase {
-    ($($variant:ident($state:ty)),* $(,)?) => {
+    ($($variant:ident($state:ty, $object:ident)),* $(,)?) => {
         /// The state of a job, of whichever kind.
         #[derive(Debug, Copy, Clone, PartialEq, Eq)]
         pub enum JobPhase {
@@ -421,6 +422,28 @@ macro_rules! job_phase {
                 JobPhase::$variant(state)
             }
         })*
+
+        $(
+            /// The state of a job of this kind.
+            #[derive(Debug, Clone, Copy, PartialEq, SimpleObject)]
+            pub struct $object {
+                pub state: $state,
+            }
+        )*
+
+        /// [`JobPhase`] for GraphQL: a union needs an object per kind.
+        #[derive(Debug, Clone, Copy, PartialEq, Union)]
+        pub enum JobPhaseObject {
+            $($variant($object),)*
+        }
+
+        impl From<JobPhase> for JobPhaseObject {
+            fn from(phase: JobPhase) -> Self {
+                match phase {
+                    $(JobPhase::$variant(state) => JobPhaseObject::$variant($object { state }),)*
+                }
+            }
+        }
 
         impl JobPhase {
             /// Whether a job in `before` (`None`: just started) may enter `self`.
@@ -454,14 +477,14 @@ macro_rules! job_phase {
 }
 
 job_phase!(
-    Apply(ApplyState),
-    Update(UpdateState),
-    Reboot(RebootState),
-    PowerCycle(PowerCycleState),
-    DeviceMode(DeviceModeState),
-    Bootstrap(BootstrapState),
-    Cleanup(CleanupState),
-    Netbox(NetboxState),
+    Apply(ApplyState, ApplyPhase),
+    Update(UpdateState, UpdatePhase),
+    Reboot(RebootState, RebootPhase),
+    PowerCycle(PowerCycleState, PowerCyclePhase),
+    DeviceMode(DeviceModeState, DeviceModePhase),
+    Bootstrap(BootstrapState, BootstrapPhase),
+    Cleanup(CleanupState, CleanupPhase),
+    Netbox(NetboxState, NetboxPhase),
 );
 
 #[cfg(test)]

@@ -668,7 +668,8 @@ Zustand verweist nie auf ihn.
 1. Dieses Konzept abstimmen: zuerst die State-Machines, dann Speicher und Protokoll.
 2. Typen der Teilzustände und Übergänge in `backend::device_state`, rein (ohne Gerät), mit Tests der
    Übergangstabellen. Die heutigen Jobs melden ihre Zustände daran, ohne ihren Ablauf zu ändern.
-   *Umgesetzt* für alle Arten; die Geräteseite zeigt die Zustände noch nicht.
+   *Umgesetzt* für alle Arten; die Job-Ansicht zeigt den Zustand (`Job.phase`): „Stand: …“
+   während er läuft, „Endete in: …“ nach einem Fehler oder Abbruch.
 3. Speicher (`state_dir`), Einlesen beim Start, Ende als unterbrochen.
 4. Teilzustand **Selbstauslöser** an `leftovers` anschliessen (Soll gegen Ist), Geräteseite zeigt
    die Teilzustände.

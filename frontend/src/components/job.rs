@@ -8,7 +8,8 @@ use crate::{
             CancelJob, JobEvents, cancel_job,
             job_events::{
                 self, FallbackLeftReason, JobEventsJob, JobEventsJobEvents,
-                JobEventsJobEventsEvent as Event, JobKind, JobState, PowerWait, RebootReason,
+                JobEventsJobEventsEvent as Event, JobEventsJobPhase as Phase, JobKind, JobState,
+                PowerWait, RebootReason,
             },
         },
         query_authenticated,
@@ -140,6 +141,7 @@ impl Component for JobView {
                 {error}
                 {lost}
                 if let Some(error) = &job.error { <p>{ problem(error) }</p> }
+                if let Some(phase) = phase_line(job, running) { <p class="job-phase">{phase}</p> }
                 <ul class="job-events">
                     { for items(&job.events) }
                 </ul>
@@ -264,6 +266,96 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         JobState::CANCELLED => (t::cancelled(what), AlertType::Warning),
         JobState::Other(other) => (t::other_state(what, other), AlertType::Warning),
     }
+}
+
+/// The state the job is in while it runs, or ended in when it didn't get through; nothing
+/// once done (its last state says nothing then).
+fn phase_line(job: &JobEventsJob, running: bool) -> Option<String> {
+    use job_events::{
+        ApplyState as A, BootstrapState as B, CleanupState as C, DeviceModeState as D, NetboxState as N,
+        PowerCycleState as P, RebootState as R, UpdateState as U,
+    };
+    use t::phase as p;
+    if job.state == JobState::DONE {
+        return None;
+    }
+    let other = |other: &str| other.to_string();
+    let state = match job.phase.as_ref()? {
+        Phase::ApplyPhase(phase) => match &phase.apply {
+            A::PLANNING => p::PLANNING.into(),
+            A::SUSPENDING_WATCHDOGS => p::SUSPENDING_WATCHDOGS.into(),
+            A::ARMING_FALLBACK => p::ARMING_FALLBACK.into(),
+            A::WRITING_SCRIPT => p::WRITING_SCRIPT.into(),
+            A::STARTING_SCRIPT => p::STARTING_SCRIPT.into(),
+            A::SCRIPT_RUNNING => p::SCRIPT_RUNNING.into(),
+            A::TAKING_BACK => p::TAKING_BACK.into(),
+            A::STOPPING_FALLBACK => p::STOPPING_FALLBACK.into(),
+            A::NOT_REACHED => p::NOT_REACHED.into(),
+            A::CHECKING => p::CHECKING.into(),
+            A::FINISHING => p::FINISHING.into(),
+            A::Other(o) => other(o),
+        },
+        Phase::UpdatePhase(phase) => match &phase.update {
+            U::READING => p::READING.into(),
+            U::SUSPENDING_WATCHDOGS => p::SUSPENDING_WATCHDOGS.into(),
+            U::WAITING_FOR_CHAIN => p::WAITING_FOR_CHAIN.into(),
+            U::REMEMBERING_NEIGHBORS => p::REMEMBERING_NEIGHBORS.into(),
+            U::ARMING_FALLBACK => p::ARMING_FALLBACK.into(),
+            U::DOWNLOADING => p::DOWNLOADING.into(),
+            U::UPLOADING => p::UPLOADING.into(),
+            U::WAITING_TO_REBOOT => p::WAITING_TO_REBOOT.into(),
+            U::REBOOTING => p::REBOOTING.into(),
+            U::NOT_UPDATED => p::NOT_UPDATED.into(),
+            U::STOPPING_FALLBACK => p::STOPPING_FALLBACK.into(),
+            U::WAITING_FOR_NEIGHBORS => p::WAITING_FOR_NEIGHBORS.into(),
+            U::FIRMWARE => p::FIRMWARE.into(),
+            U::WAITING_TO_REBOOT_FIRMWARE => p::WAITING_TO_REBOOT_FIRMWARE.into(),
+            U::REBOOTING_FIRMWARE => p::REBOOTING_FIRMWARE.into(),
+            U::RESTORING_WATCHDOGS => p::RESTORING_WATCHDOGS.into(),
+            U::Other(o) => other(o),
+        },
+        Phase::RebootPhase(phase) => match &phase.reboot {
+            R::READING => p::READING.into(),
+            R::WAITING_FOR_CHAIN => p::WAITING_FOR_CHAIN.into(),
+            R::REBOOTING => p::REBOOTING.into(),
+            R::Other(o) => other(o),
+        },
+        Phase::PowerCyclePhase(phase) => match &phase.power_cycle {
+            P::READING => p::READING.into(),
+            P::WAITING_FOR_CHAIN => p::WAITING_FOR_CHAIN.into(),
+            P::CUTTING => p::CUTTING.into(),
+            P::WAITING_FOR_DEVICE => p::WAITING_FOR_DEVICE.into(),
+            P::Other(o) => other(o),
+        },
+        Phase::DeviceModePhase(phase) => match &phase.device_mode {
+            D::READING => p::READING.into(),
+            D::WAITING_FOR_CHAIN => p::WAITING_FOR_CHAIN.into(),
+            D::REQUESTING => p::REQUESTING.into(),
+            D::WAITING_FOR_CONFIRMATION => p::WAITING_FOR_CONFIRMATION.into(),
+            D::REBOOTING => p::REBOOTING.into(),
+            D::Other(o) => other(o),
+        },
+        Phase::BootstrapPhase(phase) => match &phase.bootstrap {
+            B::CHECKING_NEIGHBOR => p::CHECKING_NEIGHBOR.into(),
+            B::CONSOLE => p::CONSOLE.into(),
+            B::WAITING_FOR_API => p::WAITING_FOR_API.into(),
+            B::Other(o) => other(o),
+        },
+        Phase::CleanupPhase(phase) => match &phase.cleanup {
+            C::CLEARING => p::CLEARING.into(),
+            C::WAITING_FOR_CHAIN => p::WAITING_FOR_CHAIN.into(),
+            C::REBOOTING => p::REBOOTING.into(),
+            C::Other(o) => other(o),
+        },
+        Phase::NetboxPhase(phase) => match &phase.netbox {
+            N::PLANNING => p::PLANNING.into(),
+            N::WRITING => p::WRITING.into(),
+            N::UNDOING => p::UNDOING.into(),
+            N::REFETCHING => p::REFETCHING.into(),
+            N::Other(o) => other(o),
+        },
+    };
+    Some(if running { p::running(&state) } else { p::ended(&state) })
 }
 
 /// `m:ss` since the start of the job.

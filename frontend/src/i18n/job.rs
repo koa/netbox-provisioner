@@ -532,3 +532,55 @@ pub mod event {
         }
     }
 }
+
+/// The state a job is in (`device_state`), named as in `docs/concepts/device-state.md`.
+pub mod phase {
+    pub fn running(state: &str) -> String {
+        format!("Stand: {state}")
+    }
+    pub fn ended(state: &str) -> String {
+        format!("Endete in: {state}")
+    }
+
+    pub const PLANNING: &str = "Planen";
+    pub const SUSPENDING_WATCHDOGS: &str = "Watchdogs aussetzen";
+    pub const ARMING_FALLBACK: &str = "Fallback setzen";
+    pub const WRITING_SCRIPT: &str = "Skript schreiben";
+    pub const STARTING_SCRIPT: &str = "Skript starten";
+    pub const SCRIPT_RUNNING: &str = "Skript läuft";
+    pub const TAKING_BACK: &str = "Zurücknehmen";
+    pub const STOPPING_FALLBACK: &str = "Fallback wegnehmen";
+    pub const NOT_REACHED: &str = "Nicht erreicht, Fallback bleibt";
+    pub const CHECKING: &str = "Nachprüfen";
+    pub const FINISHING: &str = "Nacharbeit";
+
+    pub const READING: &str = "Lesen";
+    pub const WAITING_FOR_CHAIN: &str = "Wartet auf die PoE-Kette";
+    pub const REMEMBERING_NEIGHBORS: &str = "OSPF-Nachbarn merken";
+    pub const DOWNLOADING: &str = "Pakete laden";
+    pub const UPLOADING: &str = "Pakete hochladen";
+    pub const WAITING_TO_REBOOT: &str = "Wartet auf den Neustart";
+    pub const REBOOTING: &str = "Neustart";
+    pub const NOT_UPDATED: &str = "Nicht aktualisiert";
+    pub const WAITING_FOR_NEIGHBORS: &str = "Wartet auf die OSPF-Nachbarn";
+    pub const FIRMWARE: &str = "Firmware";
+    pub const WAITING_TO_REBOOT_FIRMWARE: &str = "Wartet auf den Neustart für die Firmware";
+    pub const REBOOTING_FIRMWARE: &str = "Neustart für die Firmware";
+    pub const RESTORING_WATCHDOGS: &str = "Watchdogs zurück";
+
+    pub const CUTTING: &str = "Strom aus";
+    pub const WAITING_FOR_DEVICE: &str = "Wartet auf das Gerät";
+
+    pub const REQUESTING: &str = "Änderung anfordern";
+    pub const WAITING_FOR_CONFIRMATION: &str = "Wartet auf die Bestätigung am Gerät";
+
+    pub const CHECKING_NEIGHBOR: &str = "Nachbar prüfen";
+    pub const CONSOLE: &str = "Konsole";
+    pub const WAITING_FOR_API: &str = "Wartet auf die API";
+
+    pub const CLEARING: &str = "Wegräumen";
+
+    pub const WRITING: &str = "Schreiben";
+    pub const UNDOING: &str = "Zurücknehmen";
+    pub const REFETCHING: &str = "NetBox neu lesen";
+}

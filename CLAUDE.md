@@ -557,7 +557,10 @@ repartition and a partition boot `RebootState`, a NetBox write and its undo `Net
 each state it enters (`Log::enter`), a transition the table doesn't allow is logged as
 `unexpected state` and kept (`Log::unexpected`, asserted empty in the batch tests and the CHR
 update, device mode and leftovers tests) while the job goes on unchanged. Report the state before the
-step that has an effect, and keep the table in line when a flow changes.
+step that has an effect, and keep the table in line when a flow changes. `Job.phase` gives the
+state as a union with an object per kind (`JobPhaseObject`, `ApplyPhase { state }`, …); the job
+view shows „Stand: …“ while it runs and „Endete in: …“ when it failed or was cancelled
+(`components/job.rs` `phase_line`, names as in the concept, `i18n::job::phase`).
 A job says where it is before anything slow: `graphql::connect_for_job` reports `Connecting`
 and `Connected` (address, the neighbor's tunnel, the identity) for the device and each supplier,
 the update its `UpdateTarget` and `WatchdogNotSet` for a watcher without one, and an upload

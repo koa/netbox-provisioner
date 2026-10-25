@@ -636,6 +636,11 @@ impl Job {
     async fn error(&self) -> Option<ErrorInfo> {
         self.outcome.lock().unwrap_or_else(PoisonError::into_inner).1.clone()
     }
+    /// the state it is in (`device_state`), or ended in; `null` before its first and for a
+    /// site's job
+    async fn phase(&self) -> Option<crate::device_state::JobPhaseObject> {
+        self.log.phase().map(Into::into)
+    }
     /// how long it ran; `None` while it runs
     async fn took(&self) -> Option<ScalarDuration> {
         self.took.lock().unwrap_or_else(PoisonError::into_inner).map(ScalarDuration::from)
