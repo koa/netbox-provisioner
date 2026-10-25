@@ -44,7 +44,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                 leftovers {
                     applyFallback { nextRun }
                     updateFallback { nextRun }
-                    watchdogs { nextRun watching { watchAddress poePings { port address } } }
+                    watchdogs { nextRun watching { watchAddress poePings { port address } } heldBy { job device } }
                     applyScriptRunning
                     packages { file size }
                 }

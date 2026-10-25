@@ -289,6 +289,16 @@ pub mod leftovers {
     }
     pub const RESTORE_WATCHDOGS: &str = "Jetzt wiederherstellen";
 
+    pub const WATCHDOGS_HELD_TITLE: &str = "Watchdogs von einem laufenden Auftrag ausgesetzt";
+    /// `watching`: what the job sets again, already worded
+    pub fn watchdogs_held(watching: &[String], device: &str, job: u32) -> String {
+        format!(
+            "Der Auftrag #{job} auf {device} läuft noch und setzt {} an seinem Ende wieder; bis \
+            dahin würde ein Watchdog dieses Gerät neu starten, solange {device} weg ist.",
+            watching.join(", ")
+        )
+    }
+
     pub const APPLY_SCRIPT_RUNNING: &str = "Das Skript eines Anwendens läuft noch; es endet von \
         selbst, danach zeigt die Seite, was es geändert hat.";
 

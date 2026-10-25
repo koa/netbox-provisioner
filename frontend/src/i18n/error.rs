@@ -134,6 +134,11 @@ pub fn server(problem: &ServerProblem) -> String {
         "NO_POWER_SUPPLY" => format!("Kein Gerät speist {} über PoE (NetBox)", p("device")),
         "POE_PORT_NOT_FOUND" => format!("{} hat keinen Port {}, an dem es PoE schalten kann", p("device"), p("port")),
         "LEFTOVER_GONE" => format!("Auf {} liegt das nicht mehr, die Seite ist neu geladen", p("device")),
+        "LEFTOVER_HELD" => format!(
+            "Die Watchdogs von {} hält der laufende Auftrag #{} ausgesetzt; er setzt sie an seinem Ende wieder",
+            p("device"),
+            p("job")
+        ),
         "NO_DOWNGRADE" => format!(
             "Kein Downgrade von RouterOS {} auf {}: nur auf eine ältere Version von RouterOS 7",
             p("running"),

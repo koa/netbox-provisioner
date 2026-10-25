@@ -372,6 +372,8 @@ impl MutationAuthenticated {
     }
     /// Starts taking care of something a job left on device `id` (`AccessibleDevice.leftovers`;
     /// `allow_apply` must be set). Target and credentials as for `DeviceAccess.access`.
+    /// Watchdogs a running job of another device holds suspended aren't restored
+    /// (`LEFTOVER_HELD`): that job does it at its end.
     #[graphql(guard = "WritesAllowed")]
     async fn clear_leftover(
         &self,
@@ -383,6 +385,11 @@ impl MutationAuthenticated {
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let name: Box<str> = device.name().into();
+        if action == crate::device::leftovers::LeftoverAction::RestoreWatchdogs
+            && let Some(held) = job::holding_watchdogs(&name)
+        {
+            return Err(Error::LeftoverHeld { device: name, job: held.job }.into());
+        }
         Ok(job::start(&device.clone(), JobKind::Cleanup, |log| async move {
             let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             crate::device::leftovers::clear(&link, &name, action, &log).await

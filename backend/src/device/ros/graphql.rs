@@ -1496,7 +1496,11 @@ impl AccessibleDevice {
             return None;
         }
         let read = async { crate::device::leftovers::read(&self.connect_again().await?).await };
-        nullable(ctx, read.await).filter(|left| !left.is_empty())
+        let mut left = nullable(ctx, read.await).filter(|left| !left.is_empty())?;
+        if let Some(watchdogs) = &mut left.watchdogs {
+            watchdogs.held_by = crate::job::holding_watchdogs(self.device_config.name());
+        }
+        Some(left)
     }
     /// The newest `last` entries of the device's log (`/log`, kept in its memory until a
     /// reboot), oldest first: what happened, after an update that went wrong. Without the

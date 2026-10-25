@@ -130,6 +130,9 @@ pub enum Error {
     /// what the device page offered to clear on this device isn't there anymore
     #[error("{0} has no such leftover anymore")]
     LeftoverGone(Box<str>),
+    /// the watchdogs of `device` are held suspended by the running job `job` of another device
+    #[error("The watchdogs of {device} are suspended by job {job}, which restores them")]
+    LeftoverHeld { device: Box<str>, job: u32 },
     /// a downgrade goes from RouterOS 7 to an older RouterOS 7
     #[error("No downgrade from RouterOS {running} to {target}")]
     NoDowngrade { running: Box<str>, target: Box<str> },

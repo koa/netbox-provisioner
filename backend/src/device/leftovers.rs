@@ -58,6 +58,9 @@ pub struct ScheduledLeft {
 pub struct WatchdogsLeft {
     pub next_run: Option<Box<str>>,
     pub watching: watchdog::Watching,
+    /// a running job of another device suspended them and restores them at its end; they
+    /// aren't a leftover then, and can't be restored meanwhile (`LEFTOVER_HELD`)
+    pub held_by: Option<crate::job::WatchdogsHeld>,
 }
 
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -100,6 +103,7 @@ pub async fn read(device: &RawDevice<SimpleResult>) -> Result<Leftovers, Error> 
         Some(entry) => watchdog::pending(device).await?.map(|watching| WatchdogsLeft {
             next_run: entry.next_run,
             watching,
+            held_by: None,
         }),
         None => None,
     };

@@ -575,7 +575,10 @@ device unreached) the device page shows under its head (`device::leftovers`,
 `AccessibleDevice.leftovers`, `components::leftovers`; `null` while a job of the device runs):
 the apply fallback's entry („Fallback stoppen“, „Jetzt zurück“: its `on-event` run with
 `/execute`, then waiting for the device), the update fallback's, the watchdogs' safety net
-(„Jetzt wiederherstellen“), `.npk` files, and the apply script only while it runs (it stays
+(„Jetzt wiederherstellen“; while a running job of another device holds them suspended, e.g.
+the update of the device they watch, they show apart as `heldBy` without a button and
+`clearLeftover` refuses with `LEFTOVER_HELD`: restoring them could reboot this device while the
+other is away), `.npk` files, and the apply script only while it runs (it stays
 after every apply, the next replaces it). Each action is a `Cleanup` job (`clearLeftover`);
 nothing is cleared by itself (CHR test `leftovers_are_found_and_cleared`). In
 `/system/script/job` the API session is a job too: never remove those wholesale.

@@ -95,7 +95,10 @@ Punkten:
 - Eine Device-Mode-Änderung bleibt nie liegen: RouterOS bricht sie ab, wenn die Verbindung ihres
   Jobs schliesst.
 - Der Eintrag des Sicherheitsnetzes der Watchdogs hat „Jetzt wiederherstellen“ (`watchdog::restore`
-  mit dem, was der Eintrag setzen würde).
+  mit dem, was der Eintrag setzen würde). Hält ihn der laufende Auftrag eines anderen Geräts (das
+  Update des überwachten Geräts, ein Anwenden mit Funkänderung), ist er kein Rest: Die Seite zeigt
+  ihn getrennt mit diesem Auftrag und ohne Knopf (`heldBy`), und `clearLeftover` lehnt ab
+  (`LEFTOVER_HELD`), denn der Watchdog würde das Gerät neu starten, solange das andere weg ist.
 
 „Jetzt zurück“ führt das Skript des Fallback-Eintrags aus (`/execute`: Eintrag weg, Backup laden)
 und wartet, bis das Gerät zurück ist. Die verbleibende Zeit ist `next-run`, wie das Gerät es

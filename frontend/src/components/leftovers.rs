@@ -1,7 +1,11 @@
 //! What a job left on the device (`AccessibleDevice.leftovers`), each with what the operator
-//! can do about it; nothing is cleared by itself.
+//! can do about it; nothing is cleared by itself. Watchdogs a running job of another device
+//! holds suspended are no leftover: they are shown apart, without a button.
 use crate::{
-    graphql::authenticated::device_overview::DeviceOverviewTopologyDeviceByIdAccessLeftovers as Left,
+    graphql::authenticated::device_overview::{
+        DeviceOverviewTopologyDeviceByIdAccessLeftovers as Left,
+        DeviceOverviewTopologyDeviceByIdAccessLeftoversWatchdogs as Watchdogs,
+    },
     i18n::{common::CANCEL, device::leftovers as t},
 };
 use patternfly_yew::prelude::{Alert, AlertType, Button, ButtonVariant};
@@ -67,7 +71,29 @@ impl Component for Leftovers {
                 />
             }
         };
-        html! {
+        let watching = |watchdogs: &Watchdogs| {
+            watchdogs
+                .watching
+                .watch_address
+                .iter()
+                .map(|address| t::watch_address(address))
+                .chain(watchdogs.watching.poe_pings.iter().map(|ping| t::poe_ping(&ping.port, &ping.address)))
+                .collect::<Vec<_>>()
+        };
+        let held = left.watchdogs.as_ref().and_then(|w| w.held_by.as_ref().map(|by| (w, by)));
+        let watchdogs = left.watchdogs.as_ref().filter(|w| w.held_by.is_none());
+        let any_left = left.apply_fallback.is_some()
+            || left.update_fallback.is_some()
+            || watchdogs.is_some()
+            || left.apply_script_running
+            || !left.packages.is_empty();
+        html! {<>
+            if let Some((held, by)) = held {
+                <Alert inline=true title={t::WATCHDOGS_HELD_TITLE} r#type={AlertType::Info}>
+                    <p>{t::watchdogs_held(&watching(held), &by.device, by.job as u32)}</p>
+                </Alert>
+            }
+            if any_left {
             <Alert inline=true title={t::TITLE} r#type={AlertType::Warning}>
                 <p>{t::TEXT}</p>
                 <ul class="device-leftovers">
@@ -108,18 +134,9 @@ impl Component for Leftovers {
                             <div>{button(t::STOP_UPDATE_FALLBACK, Leftover::StopUpdateFallback)}</div>
                         </li>
                     }
-                    if let Some(watchdogs) = &left.watchdogs {
+                    if let Some(watchdogs) = watchdogs {
                         <li>
-                            {t::watchdogs(
-                                &watchdogs
-                                    .watching
-                                    .watch_address
-                                    .iter()
-                                    .map(|address| t::watch_address(address))
-                                    .chain(watchdogs.watching.poe_pings.iter().map(|ping| t::poe_ping(&ping.port, &ping.address)))
-                                    .collect::<Vec<_>>(),
-                                watchdogs.next_run.as_deref(),
-                            )}
+                            {t::watchdogs(&watching(watchdogs), watchdogs.next_run.as_deref())}
                             <div>{button(t::RESTORE_WATCHDOGS, Leftover::RestoreWatchdogs)}</div>
                         </li>
                     }
@@ -134,6 +151,7 @@ impl Component for Leftovers {
                     }
                 </ul>
             </Alert>
-        }
+            }
+        </>}
     }
 }

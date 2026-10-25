@@ -477,6 +477,37 @@ pub fn list(subject: Option<JobSubject>) -> Vec<Arc<Job>> {
         .collect()
 }
 
+/// The running job of another device (an update, an apply changing a radio) that holds the
+/// watchdogs of `device` suspended: restoring them meanwhile could reboot `device` while the
+/// other one is away.
+pub fn holding_watchdogs(device: &str) -> Option<WatchdogsHeld> {
+    list(None)
+        .into_iter()
+        .filter(|job| job.is_running())
+        .find(|job| holds_watchdogs(&job.log.events(), device))
+        .map(|job| WatchdogsHeld { job: job.id, device: job.name.clone() })
+}
+
+/// Whether `events` suspended the watchdogs of `device` and didn't restore them yet (the job
+/// does at its end, or leaves them to the safety net).
+fn holds_watchdogs(events: &[Event], device: &str) -> bool {
+    events.iter().fold(false, |held, event| match event {
+        Event::WatchdogSuspended(suspended) if *suspended.device == *device => true,
+        Event::WatchdogRestored(restored) if *restored.device == *device => false,
+        Event::WatchdogNotRestored(failed) if *failed.device == *device => false,
+        Event::WatchdogKept(kept) if *kept.device == *device => false,
+        _ => held,
+    })
+}
+
+/// The job holding a device's watchdogs suspended (`holding_watchdogs`).
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct WatchdogsHeld {
+    pub job: u32,
+    /// the device the job works on
+    pub device: Box<str>,
+}
+
 /// The RouterOS `device` ran before the newest update of this run that brought another
 /// version, for a downgrade back to it.
 pub fn version_before_update(device: DeviceId) -> Option<Box<str>> {
@@ -548,9 +579,12 @@ impl Job {
 
 #[cfg(test)]
 mod tests {
-    use super::{Event, JobKind, JobState, Log, cancel, get, start};
+    use super::{Event, JobKind, JobState, Log, cancel, get, holds_watchdogs, start};
     use crate::{
-        device::update::{Reboot, RebootReason},
+        device::{
+            update::{Reboot, RebootReason},
+            watchdog::{WatchdogRestored, WatchdogSuspended, Watching},
+        },
         topology::{Device, TopologyHolder, builder::TopologyBuilder},
     };
     use std::time::Duration;
@@ -656,5 +690,25 @@ mod tests {
         assert!(error.message.contains("Send command failed"), "{}", error.message);
         let after = start(&device, JobKind::Update, |_| async { Ok(()) }).unwrap();
         wait_for(after.id, JobState::Done).await;
+    }
+
+    #[test]
+    fn watchdogs_are_held_from_suspended_to_restored() {
+        let watching = Watching { watch_address: Some("10.0.0.1".into()), poe_pings: Vec::new() };
+        let suspended = |device: &str| {
+            Event::WatchdogSuspended(WatchdogSuspended {
+                device: device.into(),
+                watching: watching.clone(),
+                safety_net: Duration::from_secs(7200).into(),
+            })
+        };
+        let restored = |device: &str| {
+            Event::WatchdogRestored(WatchdogRestored { device: device.into(), watching: watching.clone() })
+        };
+        assert!(!holds_watchdogs(&[], "sw1"));
+        assert!(holds_watchdogs(&[reboot(), suspended("sw1")], "sw1"));
+        assert!(!holds_watchdogs(&[suspended("sw2")], "sw1"));
+        assert!(!holds_watchdogs(&[suspended("sw1"), restored("sw1")], "sw1"));
+        assert!(holds_watchdogs(&[suspended("sw1"), suspended("sw2"), restored("sw2")], "sw1"));
     }
 }

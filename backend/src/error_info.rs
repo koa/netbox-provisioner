@@ -151,6 +151,10 @@ impl From<&Error> for ErrorInfo {
                 vec![("device", device.to_string()), ("port", port.to_string())],
             ),
             Error::LeftoverGone(device) => ("LEFTOVER_GONE", vec![("device", device.to_string())]),
+            Error::LeftoverHeld { device, job } => (
+                "LEFTOVER_HELD",
+                vec![("device", device.to_string()), ("job", job.to_string())],
+            ),
             Error::NoDowngrade { running, target } => (
                 "NO_DOWNGRADE",
                 vec![("running", running.to_string()), ("target", target.to_string())],
