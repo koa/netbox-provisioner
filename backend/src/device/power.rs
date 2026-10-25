@@ -117,23 +117,37 @@ impl PowerChain {
     }
     /// Waits until no consumer updates, then marks the device as rebooting.
     pub async fn rebooting(&self, log: &Log) -> RebootLease {
-        let device = self.device.clone();
-        acquire(log, |leases| {
-            let blocking = blocking(&leases.updating, &self.consumers);
-            if blocking.is_empty() {
-                leases.rebooting.push(device.clone());
-            }
-            blocking
-                .into_iter()
-                .map(|device| WaitingForPower {
-                    device,
-                    reason: PowerWait::ConsumerUpdating,
-                })
-                .collect()
-        })
-        .await;
-        RebootLease(self.device.clone())
+        reboot_lease(&self.device, &self.consumers, log).await
     }
+    /// Waits until neither the device nor a consumer updates, then marks `supplier`, which
+    /// feeds it, as rebooting: its power is cut (`power_cycle`), which bricks a device
+    /// installing packages as well, and an update of it (or of one it powers) waits for the
+    /// lease like for a supplier's reboot.
+    pub async fn power_cut(&self, supplier: &str, log: &Log) -> RebootLease {
+        let mut cut = self.consumers.clone();
+        cut.insert(self.device.clone());
+        reboot_lease(supplier, &cut, log).await
+    }
+}
+
+/// Waits until none of `waiting_for` updates, then marks `device` as rebooting.
+async fn reboot_lease(device: &str, waiting_for: &BTreeSet<Box<str>>, log: &Log) -> RebootLease {
+    let device: Box<str> = device.into();
+    acquire(log, |leases| {
+        let blocking = blocking(&leases.updating, waiting_for);
+        if blocking.is_empty() {
+            leases.rebooting.push(device.clone());
+        }
+        blocking
+            .into_iter()
+            .map(|device| WaitingForPower {
+                device,
+                reason: PowerWait::ConsumerUpdating,
+            })
+            .collect()
+    })
+    .await;
+    RebootLease(device)
 }
 
 /// The devices powering `device`, directly or further up.
@@ -270,6 +284,33 @@ mod tests {
                 reason: PowerWait::ConsumerUpdating,
             })]
         );
+    }
+
+    /// Cutting a device's power waits for its own update, and its next update waits for the
+    /// power to be back.
+    #[tokio::test]
+    async fn a_power_cut_waits_for_the_update_of_the_device() {
+        let ap = PowerChain::new("t4-ap", &["t4-switch"], &[]);
+        let log = Log::new("t4");
+        let update = ap.updating(&log).await;
+        let cut_log = Log::new("t4");
+        let cut = ap.power_cut("t4-switch", &cut_log);
+        tokio::pin!(cut);
+        assert!(timeout(Duration::from_millis(100), cut.as_mut()).await.is_err());
+        drop(update);
+        let cut = timeout(Duration::from_secs(1), cut).await.expect("cut after the update");
+        assert_eq!(
+            cut_log.events(),
+            [Event::WaitingForPower(WaitingForPower {
+                device: "t4-ap".into(),
+                reason: PowerWait::ConsumerUpdating,
+            })]
+        );
+        let update = ap.updating(&log);
+        tokio::pin!(update);
+        assert!(timeout(Duration::from_millis(100), update.as_mut()).await.is_err());
+        drop(cut);
+        let _update = timeout(Duration::from_secs(1), update).await.expect("update after the cut");
     }
 
     #[tokio::test]

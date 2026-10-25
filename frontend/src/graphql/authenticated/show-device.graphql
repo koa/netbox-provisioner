@@ -11,6 +11,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
             }
             bootstrapProblem { ...Problem }
             updateNeighbors
+            powerSupply { device { id name } port }
             watchdogs { device supplier watching { watchAddress poePings { port address } } problem { ...Problem } }
             access(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
                 connected { address neighbor identity sameName }
@@ -79,6 +80,11 @@ query BootstrapCandidates($id: Int!){
 }
 mutation BootstrapDevice($id: Int!, $mac: ScalarMac!){
     bootstrap(id: $id, mac: $mac){
+        id
+    }
+}
+mutation PowerCycle($id: Int!){
+    powerCycle(id: $id){
         id
     }
 }

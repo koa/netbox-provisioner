@@ -23,6 +23,7 @@ query JobEvents($id: Int!, $after: Int){
                 ... on PackageUploading { file bytes total }
                 ... on PackageUploaded { file }
                 ... on Reboot { reason timeout }
+                ... on PowerCycled { supplier port device seconds }
                 ... on RouterOsRunning { version }
                 ... on FirmwareUpgrade { current upgrade running }
                 ... on UpdateDone { from to }

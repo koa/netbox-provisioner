@@ -131,6 +131,8 @@ pub fn server(problem: &ServerProblem) -> String {
             p("version"),
             p("partition")
         ),
+        "NO_POWER_SUPPLY" => format!("Kein Gerät speist {} über PoE (NetBox)", p("device")),
+        "POE_PORT_NOT_FOUND" => format!("{} hat keinen Port {}, an dem es PoE schalten kann", p("device"), p("port")),
         "NO_UPDATE_FALLBACK" => format!(
             "{} hätte nach einem Update keinen Weg zurück (keine zweite Partition, kein Nachbar, \
              über den es erreichbar bleibt). Nur mit Bestätigung auf der Geräteseite",

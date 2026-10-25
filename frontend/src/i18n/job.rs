@@ -17,6 +17,7 @@ pub const UPDATE: &str = "RouterOS-Update";
 pub const APPLY: &str = "Anwenden";
 pub const BOOTSTRAP: &str = "Ersteinrichtung";
 pub const REBOOT: &str = "Neustart";
+pub const POWER_CYCLE: &str = "Strom aus und ein";
 pub const DEVICE_MODE: &str = "Device-Mode-Änderung";
 pub const REPARTITION: &str = "Aufteilen des Flash";
 pub const BOOT_PARTITION: &str = "Start von einer anderen Partition";
@@ -350,6 +351,9 @@ pub mod event {
             "Jetzt am Gerät bestätigen: den Knopf (Reset oder Mode) drücken oder den Strom kurz unterbrechen, innerhalb von {minutes} min. Schaltet ein: {}",
             features.join(", ")
         )
+    }
+    pub fn power_cycled(supplier: &str, port: &str, device: &str, seconds: i64) -> String {
+        format!("{supplier} hat PoE an {port} für {seconds} s ausgeschaltet: {device} startet kalt")
     }
     pub fn partition_running(name: &str, version: &str) -> String {
         format!("Läuft von {name}: {version}")

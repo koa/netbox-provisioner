@@ -15,7 +15,7 @@ use crate::{
     graphql::{
         authenticated::{
             ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, ChangeDeviceMode, DeviceJobs,
-            BootPartition, DeviceOverview, RebootDevice, RepartitionDevice, UpdateRouteros, apply_device_cfg,
+            BootPartition, DeviceOverview, PowerCycle, RebootDevice, power_cycle, RepartitionDevice, UpdateRouteros, apply_device_cfg,
             reboot_device, bootstrap_candidates, bootstrap_device, change_device_mode, device_jobs,
             boot_partition, device_overview, repartition_device, update_routeros,
         },
@@ -50,6 +50,10 @@ pub struct ShowDevice {
     channel: Option<device_overview::Channel>,
     /// "Neu starten" was clicked, waiting for the confirmation
     confirm_reboot: bool,
+    /// "Strom aus und ein" was clicked, waiting for the confirmation
+    confirm_power_cycle: bool,
+    /// the supplier's job switching the power off and on, next to this device's own
+    power_job: Option<i64>,
     /// "Device-Mode anpassen" was clicked, waiting for the confirmation
     confirm_device_mode: bool,
     /// "In zwei Partitionen aufteilen" was clicked, waiting for the confirmation
@@ -103,6 +107,8 @@ pub struct ShowDeviceData {
     watchdogs: Vec<Watchdog>,
     /// the neighbors it stays reachable through after an update that cut it off from OSPF
     update_neighbors: Vec<String>,
+    /// the device feeding it over PoE and its port: a cold boot is possible
+    power_supply: Option<device_overview::DeviceOverviewTopologyDeviceByIdPowerSupply>,
     /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
     allow_apply: bool,
 }
@@ -132,6 +138,9 @@ pub enum ShowDeviceMessage {
     /// ask before rebooting (`true`), or not anymore
     ConfirmReboot(bool),
     Reboot,
+    ConfirmPowerCycle(bool),
+    PowerCycle,
+    PowerCycleStarted(Result<i64, FrontendError>),
     /// ask before changing the device mode (`true`), or not anymore
     ConfirmDeviceMode(bool),
     ChangeDeviceMode,
@@ -171,6 +180,8 @@ impl Component for ShowDevice {
             manual_mac: String::new(),
             channel: None,
             confirm_reboot: false,
+            confirm_power_cycle: false,
+            power_job: None,
             confirm_device_mode: false,
             confirm_repartition: false,
             confirm_boot: None,
@@ -249,6 +260,22 @@ impl Component for ShowDevice {
                 self.confirm_reboot = false;
                 self.job_running = true;
                 reboot(ctx.link().clone(), self.id, self.alternate_target.clone());
+                true
+            }
+            ShowDeviceMessage::ConfirmPowerCycle(confirm) => {
+                self.confirm_power_cycle = confirm;
+                true
+            }
+            ShowDeviceMessage::PowerCycle => {
+                self.confirm_power_cycle = false;
+                cut_power(ctx.link().clone(), self.id);
+                true
+            }
+            ShowDeviceMessage::PowerCycleStarted(result) => {
+                match result {
+                    Ok(id) => self.power_job = Some(id),
+                    Err(error) => self.error = Some(error),
+                }
                 true
             }
             ShowDeviceMessage::ConfirmDeviceMode(confirm) => {
@@ -482,6 +509,10 @@ impl Component for ShowDevice {
                                 disabled={running}
                                 onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmReboot(true))}
                             />
+                        }
+                        if let Some(supply) = &data.power_supply {
+                            {" "}
+                            { self.power_cycle_view(ctx, supply, data.allow_apply) }
                         }
                     </div>
                 </dd>
@@ -786,6 +817,43 @@ impl Component for ShowDevice {
 }
 
 impl ShowDevice {
+    /// „Strom aus und ein“ over the device feeding it, asked before; also while the device's
+    /// own job runs (a device mode change waits for it), and the supplier's job below it.
+    fn power_cycle_view(
+        &self,
+        ctx: &Context<Self>,
+        supply: &device_overview::DeviceOverviewTopologyDeviceByIdPowerSupply,
+        allow_apply: bool,
+    ) -> Html {
+        let job = self.power_job.map(|id| html! {
+            <JobView key={id} id={id} on_finished={yew::Callback::noop()}/>
+        });
+        html! {<>
+            if self.confirm_power_cycle {
+                {t::power_cycle_confirm(&supply.device.name, &supply.port)}
+                <Button
+                    variant={ButtonVariant::Danger}
+                    label={t::POWER_CYCLE_NOW}
+                    disabled={!allow_apply}
+                    onclick={ctx.link().callback(|_| ShowDeviceMessage::PowerCycle)}
+                />
+                {" "}
+                <Button
+                    variant={ButtonVariant::Link}
+                    label={CANCEL}
+                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmPowerCycle(false))}
+                />
+            } else {
+                <Button
+                    variant={ButtonVariant::Secondary}
+                    label={t::POWER_CYCLE}
+                    disabled={!allow_apply}
+                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmPowerCycle(true))}
+                />
+            }
+            {job}
+        </>}
+    }
     /// Whether an update would leave the device without a way back: no second partition with
     /// the running RouterOS to switch back to, and no neighbor reaching it (also when the
     /// partitions couldn't be read, as the backend then finds none either).
@@ -922,6 +990,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                             bootstrap_problem: d.bootstrap_problem,
                             watchdogs: d.watchdogs,
                             update_neighbors: d.update_neighbors,
+                            power_supply: d.power_supply,
                             allow_apply: data.allow_apply,
                         })
                         .unwrap_or_default();
@@ -1070,6 +1139,16 @@ fn reboot(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
         .await
         .map(|data| data.reboot_device.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
+    });
+}
+
+/// Switches the PoE of the device feeding it off and on: a job of that device.
+fn cut_power(scope: Scope<ShowDevice>, id: u32) {
+    spawn_local(async move {
+        let result = query_authenticated::<PowerCycle, _>(scope.clone(), power_cycle::Variables { id: id as i64 })
+            .await
+            .map(|data| data.power_cycle.id);
+        scope.send_message(ShowDeviceMessage::PowerCycleStarted(result));
     });
 }
 

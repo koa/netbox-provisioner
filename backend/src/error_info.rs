@@ -145,6 +145,11 @@ impl From<&Error> for ErrorInfo {
                 "UPDATE_ROLLED_BACK",
                 vec![("partition", partition.to_string()), ("version", version.to_string())],
             ),
+            Error::NoPowerSupply(device) => ("NO_POWER_SUPPLY", vec![("device", device.to_string())]),
+            Error::PoePortNotFound { device, port } => (
+                "POE_PORT_NOT_FOUND",
+                vec![("device", device.to_string()), ("port", port.to_string())],
+            ),
             Error::NoUpdateFallback(device) => ("NO_UPDATE_FALLBACK", vec![("device", device.to_string())]),
             Error::OspfNeighborsMissing(neighbors) => {
                 ("OSPF_NEIGHBORS_MISSING", vec![("neighbors", neighbors.to_string())])

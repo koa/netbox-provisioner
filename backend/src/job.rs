@@ -14,7 +14,7 @@ use crate::{
     error_info::ErrorInfo,
     Error,
     device::{
-        self, batch, bootstrap, device_mode, partitions, power, ros::graphql as apply, terminal, update,
+        self, batch, bootstrap, device_mode, partitions, power, power_cycle, ros::graphql as apply, terminal, update,
         radio_hold, update_fallback, watchdog,
     },
     graphql::scalars::ScalarDuration,
@@ -53,6 +53,7 @@ pub enum Event {
     PackageUploading(update::PackageUploading),
     PackageUploaded(update::PackageUploaded),
     Reboot(update::Reboot),
+    PowerCycled(power_cycle::PowerCycled),
     RouterOsRunning(update::RouterOsRunning),
     FirmwareUpgrade(update::FirmwareUpgrade),
     UpdateDone(update::UpdateDone),
@@ -184,6 +185,8 @@ pub enum JobKind {
     Bootstrap,
     /// a reboot asked for on the device page (`rebootDevice`)
     Reboot,
+    /// PoE switched off and on for the device it feeds (`powerCycle`), a job of the supplier
+    PowerCycle,
     /// features turned on in the device mode (`changeDeviceMode`)
     DeviceMode,
     /// the flash split in partitions (`repartitionDevice`)

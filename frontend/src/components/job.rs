@@ -213,6 +213,7 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         JobKind::APPLY => t::APPLY,
         JobKind::BOOTSTRAP => t::BOOTSTRAP,
         JobKind::REBOOT => t::REBOOT,
+        JobKind::POWER_CYCLE => t::POWER_CYCLE,
         JobKind::DEVICE_MODE => t::DEVICE_MODE,
         JobKind::REPARTITION => t::REPARTITION,
         JobKind::BOOT_PARTITION => t::BOOT_PARTITION,
@@ -480,6 +481,9 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             &features(confirm.changes.iter().map(|c| (c.feature.as_str(), &c.reason))),
             confirm.timeout / 60_000_000_000,
         ),
+        Event::PowerCycled(cycled) => {
+            e::power_cycled(&cycled.supplier, &cycled.port, &cycled.device, cycled.seconds)
+        }
         Event::PartitionRunning(running) => e::partition_running(&running.name, &running.version),
         Event::UpdateFallbackArmed(armed) => {
             e::update_fallback_armed(&armed.partition, &armed.version, seconds(armed.delay) / 60)

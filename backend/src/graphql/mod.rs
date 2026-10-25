@@ -305,6 +305,24 @@ impl MutationAuthenticated {
             updated
         })?)
     }
+    /// Starts switching off and on the PoE of the device feeding device `id`
+    /// (`DeviceAccess.powerSupply`; `allow_apply` must be set): a cold boot, which confirms a
+    /// device mode change. A job of the supplier, so it runs next to one of the device (the
+    /// device mode waiting for its confirmation); it waits while the device or one it powers
+    /// updates.
+    #[graphql(guard = "WritesAllowed")]
+    async fn power_cycle(&self, id: u32) -> Result<Arc<Job>, ApiError> {
+        let device = self.device(id).await?;
+        let (supplier, supply, factory) = crate::device::power_cycle::supply(&device)
+            .ok_or_else(|| Error::NoPowerSupply(device.name().into()))?;
+        let power = PowerChain::of(&device);
+        let name: Box<str> = device.name().into();
+        Ok(job::start(&supplier.clone(), JobKind::PowerCycle, |log| async move {
+            let link = connect_for_job(&supplier, None, None, None, &log).await?;
+            crate::device::power_cycle::power_cycle(&link.api().await?, &supply, &factory, &power, &name, &log)
+                .await
+        })?)
+    }
     /// Starts a reboot of a device (`allow_apply` must be set) and waits until it is back.
     /// Target and credentials as for `DeviceAccess.access`.
     #[graphql(guard = "WritesAllowed")]

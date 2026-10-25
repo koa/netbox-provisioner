@@ -26,6 +26,7 @@ pub mod interface_live;
 pub mod neighbors;
 pub mod partitions;
 pub mod power;
+pub mod power_cycle;
 pub(crate) mod radio_hold;
 pub(crate) mod raw;
 pub mod ros;

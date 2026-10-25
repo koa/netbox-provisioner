@@ -127,6 +127,12 @@ pub enum Error {
     /// reach it through) and wasn't confirmed so (`updateRouteros(withoutFallback:)`).
     #[error("{0} has no way back from an update; confirm updating it without one")]
     NoUpdateFallback(Box<str>),
+    /// no RouterOS device feeds this one over PoE (a `pse` port cabled to it in NetBox)
+    #[error("No device powers {0} over PoE")]
+    NoPowerSupply(Box<str>),
+    /// the supplier has no Ethernet port with the factory name of NetBox's `port`
+    #[error("{device} has no port {port} to switch PoE on")]
+    PoePortNotFound { device: Box<str>, port: Box<str> },
     #[error("{0} runs a job already")]
     Busy(Box<str>),
     #[error("No job {0}")]

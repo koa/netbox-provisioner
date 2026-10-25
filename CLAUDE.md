@@ -549,6 +549,13 @@ script, or after it while it waits, leaving the fallback, which brings the confi
 back. A setup stops before or after its console session (whose output streams as
 `ConsoleOutput`, `Terminal::stream_to`), not within it. A reboot (`update::reboot`, "Neu starten" on the
 device page, asked to confirm) takes the reboot lease like an update's and waits the same way.
+"Strom aus und ein" (`device::power_cycle`, `powerCycle`, asked to confirm) cold boots a device
+fed over PoE: the RouterOS device whose `pse` port is cabled to it (`DeviceAccess.powerSupply`)
+runs `/interface/ethernet/poe/power-cycle` on that port (found by its factory name) for 5 s. It
+is a job of the supplier, so it runs next to the device's own job (a device mode change
+waiting for its confirmation, which a warm reboot doesn't give), and it waits while the device
+or one it powers updates (`PowerChain::power_cut`, a reboot lease of the supplier, so their
+next update waits for it too). Never started by the provisioner itself.
 
 NetBox's interface `mtu` is the L3 MTU of an Ethernet port or `wlan` radio (`setup_mtu`, and the
 wireless target); `l2mtu` is raised to carry it with a VLAN tag, other interface types refuse
@@ -762,7 +769,9 @@ an `UpdateWithoutFallback` event naming the neighbors it stays reachable through
 for the management proxy's device); without any, the update needs `withoutFallback: true`
 (the device page's checkbox) and stops with `NO_UPDATE_FALLBACK` before downloading anything. Checked on lab-core (7.23.8 → 7.24.5 and back, both ways):
 `copy-to` ends by itself after about 7 s. Booting `part1` brings back the old version with its
-configuration and without the scheduler. The scheduler switching back by itself is untested.
+configuration and without the scheduler. The scheduler switching back by itself was checked on
+lab-ap1 (provisioner stopped during the update's reboot: back on the old partition with its
+configuration, the watchers' watchdogs restored by their safety net).
 
 `local/` runs the lab: `netbox/` (NetBox + `seed-lab.py`), `keycloak/` (realm `lab` on
 `localhost:8180`, admin/admin), `lab/make-config.sh` (the lab devices' password comes from the

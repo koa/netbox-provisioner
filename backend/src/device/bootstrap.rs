@@ -298,7 +298,7 @@ async fn check_neighbor(plan: &BootstrapPlan) -> Result<String, Error> {
 
 /// The name the neighbor gives its Ethernet port with the factory name `factory_name`, if it
 /// has one.
-async fn port_name(
+pub(crate) async fn port_name(
     neighbor: &RawDevice<SimpleResult>,
     factory_name: &str,
 ) -> Result<Option<String>, Error> {

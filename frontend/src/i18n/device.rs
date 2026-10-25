@@ -64,6 +64,15 @@ pub const REBOOT_NOW: &str = "Jetzt neu starten";
 pub const REBOOT_CONFIRM: &str =
     "Das Gerät und was es über PoE versorgt, ist während des Neustarts weg. ";
 
+pub const POWER_CYCLE: &str = "Strom aus und ein";
+pub const POWER_CYCLE_NOW: &str = "Jetzt Strom aus und ein";
+pub fn power_cycle_confirm(supplier: &str, port: &str) -> String {
+    format!(
+        "{supplier} schaltet PoE an {port} für einige Sekunden aus: ein Kaltstart dieses Geräts \
+         und von allem, was es weiter versorgt. "
+    )
+}
+
 pub const DEVICE_MODE: &str = "Device-Mode";
 pub const PARTITIONS: &str = "Partitionen";
 pub const PARTITIONS_SPLIT: &str = "In zwei Partitionen aufteilen";

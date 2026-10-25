@@ -79,8 +79,12 @@ Im Lab geprüft (lab-core, 2026-10-15), über die UI:
   OSPF-Nachbarn waren `Full`, und auf `part1` war kein Scheduler, weil er erst nach der Kopie
   angelegt wird.
 - **„Von part0 starten“:** wieder 7.24.5, OSPF `Full`.
-- **Nicht ausgelöst:** das Zurückschalten durch den Scheduler. Dafür müsste das Gerät nach einem
-  Update unerreichbar sein.
+- **Zurückschalten durch den Scheduler** (lab-ap1, 2026-10-24): Partitionen per Kaltstart über
+  PoE freigeschaltet, in zwei aufgeteilt (95 s, keine Datei verloren), dann das Update 7.23.8 →
+  7.25 gestartet und den Provisioner beendet, als das Gerät zum Installieren neu startete. Das
+  Gerät lief danach von `part1` mit 7.23.8 (aktiv), `part0` hielt 7.25. Konfiguration ohne Diff,
+  die ausgesetzten Watchdogs von lab-np1 waren durch den Scheduler des Sicherheitsnetzes wieder
+  da.
 - **Nebenbei gefunden:** RouterOS 7.24.5 meldet in `/system/routerboard` kein
   `factory-firmware` mehr (dafür `minimum-firmware`). In mikrotik-model ist das Feld jetzt
   optional. Davor galt lab-core nach dem Update als nicht erreichbar.
@@ -207,6 +211,14 @@ verbindet.
   Das Gerät startet neu (Verbindung weg nach etwa 50 s), ist nach rund 70 s mit
   `partitions=true` zurück, und die Konfiguration und alle OSPF-Nachbarn sind wieder da. Auf der
   CHR geht nur der Kaltstart.
+- **Kaltstart über PoE** (*umgesetzt*, `backend/src/device/power_cycle.rs`): Wird das Gerät
+  von einem RouterOS-Gerät über PoE gespeist (`pse` am Port mit dem Kabel zu ihm), bietet die
+  Geräteseite „Strom aus und ein“ an, mit Rückfrage, auch während der Device-Mode-Job auf die
+  Bestätigung wartet. Ein Job des speisenden Geräts schaltet PoE an diesem Port für 5 s aus
+  (`/interface/ethernet/poe/power-cycle`). Er wartet, solange das Gerät oder eines, das es
+  weiter speist, ein Update hat; deren nächstes Update wartet auf ihn. Im Lab geprüft (lab-ap1
+  an lab-np1 `ether2`, 2026-10-24): Der Kaltstart bestätigte die Device-Mode-Änderung, nach
+  rund 2 min war `partitions` an.
 
 ## Entschieden (2026-10-23)
 

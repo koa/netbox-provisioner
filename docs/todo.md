@@ -83,13 +83,12 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | C8 | Überwachung: Collector, Prometheus-Metriken (Alarme dort, Z13), Ping zum Uplink-Gateway (Z14), Zustandsseite, Ansicht für Anwohner | [Überwachung](concepts/monitoring.md) | L | offen |
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | offen |
-| C11 | Kaltstart eines PoE-gespeisten Geräts auf Knopfdruck: PoE am speisenden Port aus und wieder ein, mit Bestätigung (Z22); für Device-Mode und Rettung nach einem Update | [Update-Fallback](concepts/update-fallback.md) | S–M | offen |
 | C14 | Metriken des mikrotik-metrik-exporter im Provisioner (erster Teil von C8): Funk-Clients mit DHCP-Hostname, Health, PoE, dazu System, Interfaces und DHCP-Leases; Labels `device` und `site` aus NetBox, Dashboards im Repo angepasst; danach weder Exporter noch `prometheus`-Benutzer nötig | [Überwachung](concepts/monitoring.md) | M–L | offen |
 
 ## D. In Arbeit, Rest offen
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
-| D3 | Update-Fallback Stufe 2: Rettung über mac-telnet (M), Downgrade auf Knopfdruck (S–M); das selbständige Zurückschalten im Lab testen (S) | [Update-Fallback](concepts/update-fallback.md) | M | in Arbeit |
+| D3 | Update-Fallback Stufe 2: Rettung über mac-telnet (M), Downgrade auf Knopfdruck (S–M) | [Update-Fallback](concepts/update-fallback.md) | M | in Arbeit |
 | D4 | Geräteseite: Bereich für Liegengebliebenes auf dem Gerät und Befunde | [Geräteseite](concepts/device-page.md) | S–M | in Arbeit |
 | D5 | Jobs: Events speichern (`state_dir`, M), geordnetes Beenden (S), Liegengebliebenes anzeigen (S) | [Jobs](concepts/job-polling.md) | M | in Arbeit |

@@ -327,6 +327,11 @@ impl DeviceAccess {
     async fn bootstrap_problem(&self) -> Option<ErrorInfo> {
         bootstrap::plan(self).err().map(|error| ErrorInfo::from(&error))
     }
+    /// The RouterOS device feeding this one over PoE and its port: a cold boot
+    /// (`Mutation.powerCycle`) is possible.
+    async fn power_supply(&self) -> Option<crate::device::power_cycle::PowerSupply> {
+        crate::device::power_cycle::supply(self).map(|(_, supply, _)| supply)
+    }
     /// The neighbors this device stays reachable through when an update leaves it without
     /// OSPF (`device::update_fallback::neighbors`): its way back where it has no two
     /// partitions; without either, an update needs `updateRouteros(withoutFallback:)`.
