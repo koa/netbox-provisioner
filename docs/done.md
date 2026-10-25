@@ -13,9 +13,13 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 |---|---|---|---|
 | Z8 | Nix-Image oder Containerfile? | Nix (2026-10-23) | C6 |
 | Z9 | Welcher Cluster? | nur Image und Helm-Chart; die Cluster-Konfiguration macht der Betreiber von Hand (2026-10-23) | C6 |
+| Z21 | Diff aller Geräte einer Site live oder als Job? | Job mit Zwischenstand (2026-10-23) | D2 |
 | Z22 | Kaltstart PoE-gespeister Geräte selbst auslösen? | ja, auf Knopfdruck mit Bestätigung, nie von selbst (2026-10-23) | C11 |
 | Z23 | Updates ganz ohne Fallback? | nur mit ausdrücklicher Bestätigung (2026-10-23) | D3 |
 | Z24 | Welche OSPF-Nachbarn müssen nach einem Update `Full` sein? | die vorher benachbart waren (`Full`, oder `TwoWay` zwischen zwei DROther, nach berghof-stall-haus) (2026-10-23) | D3 |
+| Z25 | Uplinks in der Interface-Ansicht? | eigene Aufgabe, nur angezeigt und geprüft; modelliert ganz in NetBox, keine Helfer (2026-10-23) | C12 |
+| Z26 | Tagged VLANs an physischen Ports (Trunk zu AP/Switch)? | nicht vorgesehen: L2 zu anderen Geräten über VXLAN, eigene APs und Switches über eine Direktverbindung; zurück auf den Tisch, wenn sich echte Nachteile zeigen (2026-10-23) | C12 |
+| Z27 | Ein L3-Übergang pro VLAN: Fehler oder Warnung, auch für Switches? | Fehler, auch für Switches: ein Switch mit dem VLAN nur auf L2 hat darin keine Adresse und ist nur über den Router des VLANs erreichbar (2026-10-23) | C12 |
 
 ## B. Bereinigungen
 

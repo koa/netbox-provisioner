@@ -42,10 +42,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z18 | Pilot eines Netz-Updates? | Vorschlag des Provisioners, im Plan änderbar (2026-10-23) | C10 |
 | Z19 | Wartungsfenster? | vorerst nicht (2026-10-23) | C10 |
 | Z20 | Netz-Update pro Site oder über mehrere? | mehrere Sites, frei gewählt (2026-10-23) | C10 |
-| Z21 | Diff aller Geräte einer Site live oder als Job? | Job mit Zwischenstand (2026-10-23) | D2 |
-| Z25 | Uplinks in der Interface-Ansicht? | eigene Aufgabe, nur angezeigt und geprüft; modelliert ganz in NetBox, keine Helfer (2026-10-23) | C12 |
-| Z26 | Tagged VLANs an physischen Ports (Trunk zu AP/Switch)? | nicht vorgesehen: L2 zu anderen Geräten über VXLAN, eigene APs und Switches über eine Direktverbindung; zurück auf den Tisch, wenn sich echte Nachteile zeigen (2026-10-23) | C12 |
-| Z27 | Ein L3-Übergang pro VLAN: Fehler oder Warnung, auch für Switches? | Fehler, auch für Switches: ein Switch mit dem VLAN nur auf L2 hat darin keine Adresse und ist nur über den Router des VLANs erreichbar (2026-10-23) | C12 |
 | Z28 | Die andere Partition nach jedem Anwenden nachziehen (E14) überschreibt das RouterOS von vor einem Update, den Weg zurück über „Von partN starten“. Immer kopieren, nur bei gleicher Version, oder erst eine Weile nach einem Update? | immer kopieren: Eine Partition mit alter Konfiguration ist eine Falle, die später zu einem Ausfall führen kann. Bei gleicher Version nur die Konfiguration, sonst alles (2026-10-25) | E14 |
 
 ## A. Sicherheit
