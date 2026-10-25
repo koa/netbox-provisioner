@@ -540,7 +540,7 @@ pub mod event {
     }
 }
 
-/// The state a job is in (`device_state`), named as in `docs/concepts/device-state.md`.
+/// The state a job is in (`device_state`), named as in `docs/jobs.md`.
 pub mod phase {
     pub fn running(state: &str) -> String {
         format!("Stand: {state}")

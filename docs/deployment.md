@@ -16,8 +16,8 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   `settings.netbox_token` (Schlüssel kommen kleingeschrieben an). In der Datei stehen
   Geheimnisse: NetBox-Tokens, `mikrotik_credentials`, das Passwort des Management-Proxys.
 - **Zustand:** nur die weiterführbaren Aufträge in `state_dir` (Vorgabe `state` neben
-  `config.yaml`, mit Sperrdatei gegen eine zweite Instanz; [Gerätezustand](concepts/device-state.md),
-  „Speicher“). Alle anderen Jobs leben im Prozess.
+  `config.yaml`, mit Sperrdatei gegen eine zweite Instanz;
+  [Jobs](jobs.md#weiterführen-nach-einem-neustart)). Alle anderen Jobs leben im Prozess.
 - **TLS:** Das Binary linkt OpenSSL (`openssl-sys`, über `native-tls`), nicht nur rustls.
 - Zur Laufzeit startet der Provisioner keine Programme (`Command::new` nur in Tests; SSH über
   `russh`).

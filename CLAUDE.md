@@ -550,7 +550,7 @@ token over a websocket. A device runs one job at a time, the device page picks u
 before gets `null`: it shows the job as interrupted (`components/job.rs`, `JobMessage::Lost`) and
 frees the page. While asking fails (server away) it shows one line and asks again, less often. A panic in a job's work ends it as
 failed with `PANIC` and its message, rather than leaving it running forever (`job::start`).
-Each kind of job has a state machine in `device_state` (`docs/concepts/device-state.md`; an apply
+Each kind of job has a state machine in `device_state` (`docs/jobs.md`; an apply
 alone or in a batch shares `ApplyState`, an update and a downgrade `UpdateState`, a reboot, a
 repartition and a partition boot `RebootState`, a NetBox write and its undo `NetboxState`;
 `JobPhase` over them comes from the `job_phase!` macro): the work reports

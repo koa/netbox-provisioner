@@ -1,4 +1,4 @@
-//! The states of a job, one state machine per kind (`docs/concepts/device-state.md`). A job
+//! The states of a job, one state machine per kind (`docs/jobs.md`). A job
 //! reports each state it enters ([`crate::job::Log::enter`]); the tables here say which may
 //! follow which, whether cancelling ends a state right away, and what a restart of the server
 //! does to a job in it. Pure: nothing here talks to a device.
@@ -20,7 +20,7 @@ pub enum Cancel {
 
 /// What becomes of a job in a state when the server restarts. Only where ending would take a
 /// change that went well back (a fallback firing) is it saved and continued; everything else
-/// waits or reads and may as well end (`docs/concepts/device-state.md`, „Speicher“).
+/// waits or reads and may as well end (`docs/jobs.md`, „Weiterführen nach einem Neustart“).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Restart {
     /// saved on entering the state, continued after a restart

@@ -81,7 +81,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | offen |
 | C14 | Metriken des mikrotik-metrik-exporter im Provisioner (erster Teil von C8): Funk-Clients mit DHCP-Hostname, Health, PoE, dazu System, Interfaces und DHCP-Leases; Labels `device` und `site` aus NetBox, Dashboards im Repo angepasst; danach weder Exporter noch `prometheus`-Benutzer nötig | [Überwachung](concepts/monitoring.md) | M–L | offen |
-| C15 | Protokoll: was geschehen ist (Ende jedes Auftrags mit Zustand und Events, ausgelöster Selbstauslöser mit den Marken, teilweise geschriebener Plan, `Fremd`-Eintrag beim Start), wie es aussieht, wo es liegt, wie lange es bleibt; ein Übergang schreibt einen Eintrag, der Zustand verweist nie darauf | [Gerätezustand](concepts/device-state.md#protokoll) | M | offen |
+| C15 | Protokoll: was geschehen ist (Ende jedes Auftrags mit Zustand und Events, ausgelöster Selbstauslöser mit den Marken, teilweise geschriebener Plan, `Fremd`-Eintrag beim Start), wie es aussieht, wo es liegt, wie lange es bleibt; ein Übergang schreibt einen Eintrag, der Zustand verweist nie darauf | [Protokoll](concepts/protocol.md) | M | offen |
 
 ## D. In Arbeit, Rest offen
 
@@ -95,3 +95,4 @@ Zurzeit keine.
 | E2 | Die Ersteinrichtung setzt den PoE-Ping des Speisers aus wie ein Update, damit ein ersetztes gespeistes Gerät im Werkszustand nicht alle 5 min stromlos wird | [Watchdog](watchdog.md#grenzen) | S | offen |
 | E3 | Das Image in einem Cluster ausrollen und die beiden Workflows (CI, Aufräumen) auf GitHub einmal laufen lassen | [Deployment](deployment.md#noch-nicht-geprüft) | S | offen |
 | E4 | rustls statt OpenSSL, dann musl und ein Image nur aus Binary und Zertifikaten | [Deployment](deployment.md#noch-nicht-geprüft) | M | offen |
+| E5 | Job-Ansicht bei abgelaufenem Token (`401`/`403`): einmal neu anmelden lassen und weiterfragen, statt bei jedem Versuch denselben Fehler zu zeigen | [Jobs](jobs.md#verfolgen-im-browser) | S | offen |

@@ -1,112 +1,72 @@
-# Konzept: Zustand eines Geräts als State-Machine
+# Jobs und Gerätezustand
 
-Status: Entwurf, nichts davon umgesetzt. Beginn von D5 (Jobs über Neustarts, geordnetes Beenden);
-ersetzt dort den Teil „Events speichern“ von [Jobs](job-polling.md#vorschlag).
+Ein Update, ein Anwenden, eine Ersteinrichtung, ein Neustart und die übrigen Aufträge an ein Gerät
+laufen als **Jobs** (`backend::job`): Die Mutation gibt den Job sofort zurück, die Arbeit läuft im
+Hintergrund und meldet typisierte Events (`job::Event`), die das Frontend auf Deutsch zeigt
+(`components/job.rs`, `i18n::job`). Ein Gerät hat höchstens einen Job zur Zeit; ein Job einer
+Site (`SiteDiff`) liest nur und sperrt keines ihrer Geräte. Jede Art hat eine State-Machine
+(`backend::device_state`), die sagt, welcher Zustand auf welchen folgen darf, was Abbrechen in
+einem Zustand tut und was ein Neustart des Servers mit dem Job macht.
 
-## Warum
+## Verfolgen im Browser
 
-Was der Provisioner über ein Gerät weiss, liegt heute an vier Stellen, und keine davon überlebt
-einen Neustart des Servers:
-
-- **Jobs** im Speicher (`job::JOBS`): was läuft, mit seinen Events. Nach einem Neustart weg.
-- **Leases** in `device::power` (Update, Neustart, Strom aus und ein): wer auf wen wartet. Im
-  Speicher.
-- **Rückgängig** eines NetBox-Schreibens (`NetboxWritten.before`): im Event des Jobs, also auch
-  im Speicher.
-- **Was auf dem Gerät von selbst auslöst** (Fallbacks, Sicherheitsnetz der Watchdogs, Pakete): nur auf
-  dem Gerät. `device::leftovers` findet es erst, wenn jemand die Seite öffnet, und weiss nicht,
-  welcher Auftrag es hinterlassen hat und warum.
-
-Der Ablauf eines Auftrags steckt im Code des Jobs (`update.rs`, `apply`, `batch.rs`), als Folge
-von `await`s. Wo er gerade steht, sieht man nur an seinen Events. Bricht der Prozess ab, ist auch
-das weg.
-
-Ziel: Pro Gerät **ein Zustand**, der ausdrücklich modelliert ist, gespeichert wird und den nur
-klar benannte Übergänge ändern. Ein Job ist dann der Treiber, der Übergänge auslöst, nicht mehr
-der Ort, an dem der Zustand lebt.
+- `components/job.rs` fragt jede Sekunde `job(id) { events(after) }` (POST mit dem Bearer-Token;
+  eine Subscription bräuchte das Token über einen Websocket). Die Geräteseite nimmt einen
+  laufenden Job auf (`jobs(deviceId)`).
+- **Server weg:** Schlägt die Abfrage fehl, zeigt die Ansicht eine Zeile und fragt seltener
+  weiter (`RETRY`), statt jede Sekunde einen neuen Fehler zu zeigen.
+- **Server neu gestartet:** Die Nummern der Jobs beginnen pro Lauf neu bei 1000 je Sekunde des
+  Startzeitpunkts (`job::first_id`, modulo 1 000 000 Sekunden, passt in GraphQL' `Int`). Eine
+  Nummer aus einem früheren Lauf findet so keinen fremden Job, sondern `null`: Die Ansicht zeigt
+  den Job als unterbrochen (`JobMessage::Lost`, bei Anwenden und Update mit dem Hinweis auf den
+  Fallback) und gibt die Seite frei.
+- Ein Panic in der Arbeit eines Jobs beendet ihn als fehlgeschlagen mit `PANIC`.
+- `cancelJob` setzt ein Flag, das die Arbeit zwischen den Schritten (`Log::check`) und beim Warten
+  (`Log::unless_cancelled`) prüft.
+- Die Ansicht zeigt den Zustand (`Job.phase`): „Stand: …“, solange der Job läuft, „Endete in: …“
+  nach einem Fehler oder Abbruch, mit den Namen dieser Datei (`i18n::job::phase`).
 
 ## Grundsätze
 
-1. **Kein Eintrag heisst Ruhe.** Ein Gerät ohne gespeicherten Zustand ist im Grundzustand: Kein
-   Auftrag läuft, auf dem Gerät wartet kein Selbstauslöser des Provisioners, nichts ist in NetBox
-   geschrieben und noch nicht angewendet. Das ist der Normalfall für fast alle Geräte.
-2. **Ein Eintrag bleibt, solange etwas offen ist.** Er wird erst gelöscht, wenn jeder Teilzustand (siehe
-   unten) wieder im Grundzustand ist. Ein Auftrag, der fertig ist, aber einen Fallback auf dem
-   Gerät hinterlässt, ist nicht fertig im Sinn des Zustands.
-3. **Übergänge nur durch Eingaben.** Es gibt genau zwei Quellen:
-   - **Bedienung**: ein Mensch startet, bricht ab oder räumt auf.
-   - **Beobachtung**: der Provisioner liest am Gerät (oder an NetBox), was ist: erreichbar, Uptime
-     gesunken, Marke des Skripts, Scheduler-Eintrag weg, Version, OSPF-Nachbarn.
+1. **Beobachten ist automatisch, Reparieren nicht.** Der Provisioner darf jederzeit lesen. Etwas
+   am Gerät ändern darf nur ein Mensch oder der Auftrag, den ein Mensch gestartet hat, auch wenn er
+   nach einem Neustart weiterläuft.
+2. **Übergänge kommen von Bedienung, Beobachtung oder Zeit.** In den Diagrammen steht die Quelle:
+   **(B)** Bedienung, **(G)** Beobachtung am Gerät, **(Z)** Frist abgelaufen. Eine Bedingung über
+   andere Geräte steht in eckigen Klammern, z.B. `[kein Speisendes startet neu]`.
+3. **Den Zustand melden, bevor die Wirkung beginnt:** erst „Fallback wird gesetzt“, dann den
+   Scheduler anlegen. Die Arbeit meldet jeden Zustand (`Log::enter`); ein Übergang, den die Tabelle
+   nicht erlaubt, wird als `unexpected state` geloggt und behalten (`Log::unexpected`, in den
+   Batch- und CHR-Tests leer verlangt), der Job läuft unverändert weiter.
 
-   Dazu kommen zwei Ereignisse des Servers selbst: **Start** (gespeicherte Zustände einlesen) und
-   **Ablauf einer Frist** (z.B. „nach 25 s keine Antwort“). Beide sind Beobachtungen der Zeit.
-4. **Beobachten ist automatisch, Reparieren nicht.** Der Provisioner darf jederzeit lesen und den
-   Zustand nachführen. Etwas am Gerät ändern darf nur ein Übergang, den ein Mensch ausgelöst hat,
-   oder der laufende Auftrag, den ein Mensch gestartet hat (siehe
-   [Speicher](#speicher-nur-fürs-weiterführen) zum Weiterführen nach einem Neustart).
-5. **Was geschehen ist, steht im Protokoll, nicht im Zustand.** Der Zustand sagt nur, was noch
-   läuft oder noch wirken kann. Das Ende eines Auftrags (fertig, fehlgeschlagen, abgebrochen,
-   unterbrochen), ein ausgelöster Fallback oder ein teilweise geschriebener Plan sind
-   [Protokoll](#protokoll)-Einträge; der Zustand ist danach wieder im Grundzustand.
-6. **Gespeichert wird bei jedem Übergang**, bevor die Wirkung beginnt: Erst „Fallback wird
-   gesetzt“ schreiben, dann den Scheduler anlegen. So weiss der Server nach einem Absturz,
-   dass dort vielleicht ein Scheduler liegt, und schaut nach.
+## Zustände eines Jobs
 
-## Teilzustände
-
-Ein Gerät hat drei Dinge, die unabhängig voneinander laufen: Ein Selbstauslöser bleibt, wenn der
-Auftrag, der ihn gesetzt hat, längst zu Ende ist, und liegt manchmal auf einem anderen Gerät; was
-in NetBox geschrieben ist, wartet auf ein Anwenden, das vielleicht nie kommt. Statt eines Zustands
-mit allen Kombinationen hat es **Teilzustände**, jeder mit einer eigenen kleinen State-Machine (in UML
-heissen sie orthogonale Regionen). Der Eintrag ist leer, wenn alle Teilzustände im
-Grundzustand sind.
-
-| Teilzustand | Grundzustand | Worum es geht |
-|---|---|---|
-| **Auftrag** | `Frei` | was der Provisioner gerade auf dem Gerät tut |
-| **Selbstauslöser** | leer | was auf dem Gerät von selbst handelt, wenn niemand es vorher wegnimmt: Apply-Fallback, Update-Fallback, Sicherheitsnetz der Watchdogs, hochgeladene Pakete |
-| **NetBox** | `Gleich` | in NetBox geschrieben, aber noch nicht angewendet, mit den Daten für Rückgängig |
-
-Die Teilzustände sprechen sich nur über Ereignisse ab: Der Auftrag „Anwenden“ legt im Zustand
-`FallbackSetzen` einen Eintrag in **Selbstauslöser** an; der Auftrag endet, der Eintrag bleibt, bis eine
-Beobachtung ihn wegnimmt.
-
-Nicht unabhängig sind die Leases der PoE-Kette (heute `device::power`) und das gemeinsame
-Anwenden: Sie folgen aus den Aufträgen mehrerer Geräte und sind deshalb **Bedingungen an
-Übergängen**, kein eigener Teilzustand (siehe [Bedingungen über Geräte
-hinweg](#bedingungen-über-geräte-hinweg)).
-
-## Teilzustand „Auftrag“
-
-Höchstens ein Auftrag pro Gerät (wie heute). Ein Auftrag einer Site (`SiteDiff`) liest nur und hat
-keinen Gerätezustand. Jede Art (`JobKind`) ist eine **eigene State-Machine**: Die Zustände eines
-Updates haben mit denen eines Anwendens nichts gemein. Gemeinsam ist nur der Rahmen.
-
-### Rahmen
+Jede Art (`JobKind`) ist eine eigene State-Machine; gemeinsam ist nur der Rahmen:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Frei
-    Frei --> Art: Start (B)
+    [*] --> Art: Start (B)
     state Art {
         [*] --> erster_Zustand
         erster_Zustand --> letzter_Zustand: je Art, siehe unten
     }
-    Art --> Frei: Ende (fertig, fehlgeschlagen, abgebrochen)
+    Art --> [*]: Ende (fertig, fehlgeschlagen, abgebrochen)
 ```
 
 Für jede Art gilt:
 - **Start** ist immer eine Bedienung (B). Was beim Start schon entschieden ist, gehört zum Start
   und ist kein Zustand: die Version eines Updates, „ohne Weg zurück bestätigt“ (Z23), die MAC der
   Ersteinrichtung.
-- **Ende** ist einer von drei Ausgängen (fertig, fehlgeschlagen, abgebrochen) und schreibt einen
-  Protokoll-Eintrag mit dem Zustand, in dem der Auftrag endete. Danach ist er `Frei`.
+- **Ende** ist einer von drei Ausgängen (fertig, fehlgeschlagen, abgebrochen); der Zustand, in
+  dem der Auftrag endete, bleibt bei ihm.
 - **Abbrechen** (B) wirkt nur in Zuständen, die es erlauben (in den Diagrammen *abbrechbar*); in
   den anderen läuft der Zustand zu Ende, dann gilt der Abbruch.
 - **Server gestartet**: Für jeden Zustand steht fest, was dann geschieht: *weiterführen* (nur
   wo das Ende eine gelungene Änderung zurücknähme, siehe
-  [Speicher](#speicher-nur-fürs-weiterführen)) oder *unterbrochen* (Ende, die Selbstauslöser
-  bleiben auf dem Gerät).
+  [Weiterführen](#weiterführen-nach-einem-neustart)) oder *unterbrochen* (Ende; was der Auftrag
+  auf dem Gerät gesetzt hat, bleibt dort).
+- **Auf dem Gerät** sagt die Tabelle jeder Art, was ein Zustand dort hinterlegt (+) oder
+  wegnimmt (−) und was von selbst wirkt, wenn niemand es vorher wegnimmt.
 
 Die Übergänge sind mit ihrer Quelle bezeichnet: **(B)** Bedienung, **(G)** Beobachtung am Gerät,
 **(Z)** Frist abgelaufen. Eine Bedingung über andere Geräte steht in eckigen Klammern, z.B.
@@ -141,8 +101,9 @@ Die Übergänge sind mit ihrer Quelle bezeichnet: **(B)** Bedienung, **(G)** Beo
 - Die Reihenfolge eines Rollouts (vom Management-Proxy nach aussen, z.B. bei MTU) ist Sache des
   Menschen, nicht des Auftrags.
 
-Umgesetzt als `device_state::ApplyState` (Name im Code in Klammern); das einzelne und das
-gemeinsame Anwenden melden ihre Zustände daran.
+`device_state::ApplyState` (Name im Code in Klammern); das einzelne und das gemeinsame
+Anwenden melden ihre Zustände daran. Die Watchdogs werden **vor** dem Fallback ausgesetzt;
+„zurückgeladen“ ist kein Zustand, sondern ein Ende (der Auftrag liest die Marken und endet).
 
 ```mermaid
 stateDiagram-v2
@@ -161,17 +122,17 @@ stateDiagram-v2
     SkriptLäuft --> FallbackWegnehmen: Marke Ende oder Fehler, erreicht (G)
     SkriptLäuft --> Nachprüfen: dito, ohne Fallback
     SkriptLäuft --> NichtErreicht: Frist bis Fallback (Z)
-    SkriptLäuft --> [*]: Fallback-Eintrag weg (G) → fertig, Protokoll „Fallback ausgelöst“ mit Marken
+    SkriptLäuft --> [*]: Fallback-Eintrag weg (G) → fertig, Event „Fallback ausgelöst“ mit Marken
     FallbackWegnehmen --> Nachprüfen: entfernt (G)
     FallbackWegnehmen --> SkriptLäuft: noch nicht entfernt, oder schon ausgelöst (G)
     FallbackWegnehmen --> NichtErreicht: fällig in < 10 s, oder bis zur Frist nicht entfernt (G, Z)
-    NichtErreicht --> [*]: Fallback ausgelöst und zurück (G) → fertig, Protokoll mit Marken
+    NichtErreicht --> [*]: Fallback ausgelöst und zurück (G) → fertig, mit Marken
     NichtErreicht --> [*]: nicht zurück nach der Frist (Z) → fertig, Fallback bleibt
     Nachprüfen --> Nacharbeit: Diff gelesen (G)
     Nacharbeit --> [*]: CAPs neu provisioniert, Watchdogs gesetzt → fertig
 ```
 
-| Zustand | abbrechbar | Server gestartet | Selbstauslöser |
+| Zustand | abbrechbar | Server gestartet | auf dem Gerät |
 |---|---|---|---|
 | `Planen` (`Planning`) | ja, Ende | unterbrochen | – |
 | `WatchdogsAussetzen` (`SuspendingWatchdogs`) | ja, Watchdogs zurück | unterbrochen | + Sicherheitsnetz (bei den Überwachenden) |
@@ -184,9 +145,6 @@ stateDiagram-v2
 | `NichtErreicht` (`NotReached`) | ja, Fallback bleibt | unterbrochen | – |
 | `Nachprüfen` (`Checking`) | ja, Ende | unterbrochen | – |
 | `Nacharbeit` (`Finishing`) | nach dem Zustand | unterbrochen | − Sicherheitsnetz |
-
-Beim Umsetzen korrigiert: Die Watchdogs werden **vor** dem Fallback ausgesetzt, nicht danach;
-„zurückgeladen“ ist kein Zustand, sondern ein Ende (der Auftrag liest die Marken und endet).
 
 **Gemeinsam anwenden** ist ein Anwenden pro Gerät, deren Machines über Bedingungen aufeinander
 warten (siehe [Bedingungen über Geräte hinweg](#bedingungen-über-geräte-hinweg)).
@@ -220,8 +178,7 @@ NetBox braucht, und danach die RouterBOARD-Firmware (`updateRouteros`).
   beim Start (Z23).
 - Updates, die nicht dieser Provisioner startet, sieht die PoE-Kette nicht.
 
-Umgesetzt als `device_state::UpdateState`, zusammen mit dem Downgrade (Name im Code in
-Klammern).
+`device_state::UpdateState`, zusammen mit dem Downgrade (Name im Code in Klammern).
 
 ```mermaid
 stateDiagram-v2
@@ -258,7 +215,7 @@ Nach jedem Zustand, auch nach einem Fehler: `WatchdogsZurück` (`RestoringWatchd
 welche ausgesetzt sind. Ohne Fallback (kein Weg zurück) gibt es `NichtAktualisiert` nicht: Ein
 Fehler endet direkt.
 
-| Zustand | abbrechbar | Server gestartet | Selbstauslöser |
+| Zustand | abbrechbar | Server gestartet | auf dem Gerät |
 |---|---|---|---|
 | `Lesen` (`Reading`) | ja, Ende | unterbrochen | – |
 | `WatchdogsAussetzen` (`SuspendingWatchdogs`) | nach dem Zustand | unterbrochen | + Sicherheitsnetz (bei den Überwachenden) |
@@ -274,14 +231,10 @@ Fehler endet direkt.
 | `WartetAufFirmwareNeustart` (`WaitingToRebootFirmware`) | ja, Ende | unterbrochen | – |
 | `WatchdogsZurück` (`RestoringWatchdogs`) | nach dem Zustand | unterbrochen | − Sicherheitsnetz |
 
-Beim Umsetzen korrigiert: Die Watchdogs werden vor dem Warten auf die Kette ausgesetzt; der
-Fehler mit gesetztem Fallback ist ein eigener Zustand (`not_updated`: zurückgerollt erkennen
-oder den Fallback wegnehmen), nicht nur „alte Partition läuft“.
-
-Die Watchdogs, die das Gerät überwachen, setzt der Auftrag vor dem Update auf den **anderen**
-Geräten aus (`Watchers`) und danach wieder; deren Sicherheitsnetz ist ein Selbstauslöser bei
-**jenen** Geräten, mit Verweis auf diesen Auftrag. Ein Fehler mit gesetztem Fallback, bei dem die
-alte Partition nicht läuft, nimmt den Fallback weg (`not_updated`).
+Die Watchdogs, die das Gerät überwachen, setzt der Auftrag vor dem Warten auf die Kette auf den
+**anderen** Geräten aus (`Watchers`) und danach wieder; ihr Sicherheitsnetz liegt bei **jenen**
+Geräten. Ein Fehler mit gesetztem Fallback ist ein eigener Zustand (`not_updated`): Er erkennt,
+ob das Gerät zurückgerollt ist, und nimmt sonst den Fallback weg.
 
 ### Downgrade
 
@@ -315,7 +268,7 @@ stateDiagram-v2
     NachbarnWarten --> [*]: Nachbarn da (G) → fertig
 ```
 
-Selbstauslöser: Pakete ab `Hochladen`, weg mit dem `Neustart`.
+Auf dem Gerät: Pakete ab `Hochladen`, weg mit dem `Neustart`.
 
 ### Neustart, Partitionieren, Partition booten
 
@@ -332,7 +285,7 @@ Uptime.
 
 **Bewusst nicht:** ein Kaltstart; dafür gibt es „Strom aus und ein“.
 
-Umgesetzt als `device_state::RebootState`:
+`device_state::RebootState`:
 
 ```mermaid
 stateDiagram-v2
@@ -364,7 +317,7 @@ Ein Auftrag des **Speisenden**, der den Strom eines anderen Geräts schneidet. B
 Gerät ist dafür kein eigener Zustand nötig: Ob ihm gerade der Strom geschnitten wird, folgt aus
 dem Auftrag seines Speisenden.
 
-Umgesetzt als `device_state::PowerCycleState`:
+`device_state::PowerCycleState`:
 
 ```mermaid
 stateDiagram-v2
@@ -377,7 +330,7 @@ stateDiagram-v2
 ```
 
 Die Bedingung `[kein Speisendes startet neu]` gilt für das Gespeiste bis zum Ende von
-`WartetAufGerät`, nicht nur bis zum Befehl (beim Umsetzen gefunden und behoben).
+`WartetAufGerät`, nicht nur bis zum Befehl: Der Port ist noch aus, wenn der Befehl zurückkommt.
 
 ### Device-Mode
 
@@ -393,7 +346,7 @@ Management-Proxys, `partitions` für den Update-Fallback.
 
 **Bewusst nicht:** andere Features des Device-Mode.
 
-Umgesetzt als `device_state::DeviceModeState`:
+`device_state::DeviceModeState`:
 
 ```mermaid
 stateDiagram-v2
@@ -410,8 +363,8 @@ stateDiagram-v2
 
 Die Bestätigung ist eine Bedienung **am Gerät**, nicht im Provisioner; der Auftrag beobachtet nur,
 dass das Gerät weggeht. `WartetAufTaste` hält die Verbindung offen, sonst bricht RouterOS ab:
-Nach einem Start des Servers ist die Änderung deshalb sicher weg, also *unterbrochen*, ohne
-Selbstauslöser. Auch `Neustart` endet als unterbrochen: er liest nur.
+Nach einem Start des Servers ist die Änderung deshalb sicher weg, also *unterbrochen*, und
+nichts bleibt liegen. Auch `Neustart` endet als unterbrochen: er liest nur.
 
 ### Ersteinrichtung
 
@@ -435,7 +388,7 @@ eine Firewall-Freigabe.
 
 **Bewusst nicht:** die eigentliche Konfiguration; die bringt das erste Anwenden.
 
-Umgesetzt als `device_state::BootstrapState`:
+`device_state::BootstrapState`:
 
 ```mermaid
 stateDiagram-v2
@@ -451,13 +404,15 @@ stateDiagram-v2
 Läuft über ein anderes Gerät (den Nachbarn), das solange keinen eigenen Auftrag annimmt
 (`job::start_through`): eine Bedingung über Geräte hinweg, und umgekehrt kein Auftrag des
 Nachbarn, solange die Ersteinrichtung läuft. In `Konsole` nicht abbrechbar; nach einem Start des
-Servers ist die Sitzung weg, also *unterbrochen*. Sie hinterlässt beim Nachbarn nichts, was
-selbst auslöst (die Befehle tun dort nichts, `netboxProvisionerNeighbor`).
+Servers ist die Sitzung weg, also *unterbrochen*. Beim Nachbarn bleibt danach nur die globale
+Variable `netboxProvisionerNeighbor` stehen, bis zur nächsten Ersteinrichtung über ihn oder
+seinem nächsten Neustart; sie wirkt nur auf die Befehle der Einrichtung.
 
 ### Aufräumen
 
-**Wofür:** nimmt einen Selbstauslöser weg, den ein Auftrag nicht zu Ende gebracht hat
-(`clearLeftover`): Fallback stoppen oder jetzt laden, Update-Fallback stoppen, Watchdogs jetzt
+**Wofür:** räumt weg, was ein Auftrag auf dem Gerät liegen gelassen hat
+([Liegengebliebenes](#was-auf-dem-gerät-liegen-bleibt),
+`clearLeftover`): Fallback stoppen oder jetzt laden, Update-Fallback stoppen, Watchdogs jetzt
 wiederherstellen, Pakete entfernen.
 
 **Beachtet:** Nichts davon geschieht von selbst; ein schon weggeräumter Eintrag ist ein Fehler
@@ -466,11 +421,9 @@ wiederherstellen, Pakete entfernen.
 **Bewusst nicht:** das Apply-Skript, solange es läuft (es endet selbst), und eine
 Device-Mode-Änderung (die bleibt nie liegen).
 
-Umgesetzt als `device_state::CleanupState`: `Wegräumen` (`Clearing`), dann Ende; „Jetzt
-zurück“ hat danach `Neustart` (`Rebooting`), bis das Gerät mit der Konfiguration von vorher
-zurück ist; davor `WartetAufKette` (`WaitingForChain`), `[kein Gespeistes aktualisiert]` wie bei
-jedem Neustart (beim Umsetzen gefunden und behoben). Wirkt auf **Selbstauslöser** (der gewählte
-Eintrag weg).
+`device_state::CleanupState`: `Wegräumen` (`Clearing`), dann Ende; „Jetzt zurück“ hat danach
+`Neustart` (`Rebooting`), bis das Gerät mit der Konfiguration von vorher zurück ist, und davor
+`WartetAufKette` (`WaitingForChain`), `[kein Gespeistes aktualisiert]` wie bei jedem Neustart.
 
 ### NetBox schreiben, zurücknehmen
 
@@ -488,23 +441,21 @@ Schreiben zurück (`undoNetboxWrite`).
 **Bewusst nicht:** eine Transaktion. NetBox hat keine über mehrere Objekte, ein Fehler mitten im
 Plan lässt den Teil davor geschrieben (`poe_type` an koenig-hegglin).
 
-Umgesetzt als `device_state::NetboxState`: `Planen` (`Planning`, Plan neu berechnet und mit
-dem gezeigten verglichen), `Schreiben` (`Writing`, Schritt um Schritt) bzw. `Zurücknehmen`
-(`Undoing`), danach in jedem Fall `NeuLesen` (`Refetching`, die Topologie). Wirkt auf **NetBox**:
-Jeder geschriebene Schritt kommt sofort dazu, auch wenn ein späterer fehlschlägt. Nach einem Start
-des Servers: unterbrochen, `Geschrieben` hält, was durchging.
+`device_state::NetboxState`: `Planen` (`Planning`, Plan neu berechnet und mit dem gezeigten
+verglichen), `Schreiben` (`Writing`, Schritt um Schritt) bzw. `Zurücknehmen` (`Undoing`), danach
+in jedem Fall `NeuLesen` (`Refetching`, die Topologie). Nach einem Start des Servers:
+unterbrochen; was durchging, bleibt in NetBox, das Rückgängig dazu ist weg (es lebt in den Events
+des Jobs).
 
 ## Bedingungen über Geräte hinweg
 
 Zwei Dinge hängen an den Aufträgen **mehrerer** Geräte. Sie sind keine Zustände, sondern
-Bedingungen, die ein Übergang über die Auftrag-Zustände der anderen prüft. Gespeichert werden
-muss dafür nichts Eigenes: Nach einem Neustart des Servers folgen sie aus den gespeicherten
-Aufträgen.
+Bedingungen an Übergängen, in eckigen Klammern in den Diagrammen.
 
 ### PoE-Kette
 
-Ein Gerät, das gerade Pakete auf dem Flash hat, kann ein Stromausfall unbrauchbar machen. Heute
-schützen das die Leases in `device::power`; als Bedingungen:
+Ein Gerät, das gerade Pakete auf dem Flash hat, kann ein Stromausfall unbrauchbar machen. Das
+verhindern die Leases in `device::power` (nur im Prozess); als Bedingungen:
 
 | Bedingung | wahr, wenn kein Gerät der Kette … |
 |---|---|
@@ -513,8 +464,9 @@ schützen das die Leases in `device::power`; als Bedingungen:
 | `[weder das Gespeiste noch eines, das es speist, aktualisiert]` | … ab dem gespeisten Gerät abwärts in einem Update oder Downgrade nach `WartetAufKette` ist |
 
 Wer auf eine Bedingung wartet, bleibt im Zustand `WartetAuf…`; der Übergang geschieht, sobald ein
-anderes Gerät seinen Zustand ändert. Prüfen und Übergang geschehen unter einer Sperre, damit sich
-zwei Geräte nicht kreuzen (wie heute `acquire`).
+anderes Gerät seinen Lease freigibt. Prüfen und Nehmen geschehen unter einer Sperre, damit sich
+zwei Geräte nicht kreuzen. Die Leases halten nur Neustarts zurück, die der Provisioner sendet,
+nicht einen Watchdog ([Watchdog](watchdog.md#updates)).
 
 ### Gemeinsam anwenden
 
@@ -542,98 +494,14 @@ die Gruppe:
 | `SkriptSchreiben → SkriptStarten` | `[alle haben ihr Skript geschrieben]`, dann starten alle gleichzeitig |
 | `SkriptLäuft → FallbackWegnehmen` | `[alle sind durch, erreicht und in Reihe]`, sonst gehen alle nach `NichtErreicht` (`BatchIncomplete`) und der Auftrag endet dort, ohne auf den Fallback zu warten. Nachgeprüft wird schon in `SkriptLäuft`, nach `FallbackWegnehmen` folgt direkt `Nacharbeit` |
 
-Ein Fehler eines Geräts vor dem Start nimmt bei allen den Fallback weg (`BatchStopped`); jedes
-schreibt seinen Protokoll-Eintrag.
+Ein Fehler eines Geräts vor dem Start nimmt bei allen den Fallback weg (`BatchStopped`).
 
-## Teilzustand „Selbstauslöser“
+## Weiterführen nach einem Neustart
 
-Ein Selbstauslöser ist etwas, das der Provisioner auf dem Gerät hinterlegt und das **von selbst
-wirkt, wenn niemand es vorher wegnimmt**: Der Provisioner muss nichts mehr tun, damit es
-geschieht. Gerade deshalb muss der Zustand es kennen. Der Teilzustand ist eine Menge solcher Einträge,
-jeder mit eigener kleiner Machine (`Gesetzt`, `Unbekannt`, und kurz `Ausgelöst`, bis das
-Protokoll es festhält). Leer ist der
-Grundzustand.
-
-```mermaid
-stateDiagram-v2
-    [*] --> Gesetzt: Auftrag legt an
-    Gesetzt --> [*]: weggenommen (Auftrag oder Aufräumen)
-    Gesetzt --> Ausgelöst: Beobachtung — Eintrag weg, Uptime gesunken
-    Gesetzt --> Unbekannt: Gerät nicht erreichbar
-    Unbekannt --> Gesetzt: erreicht, Eintrag da
-    Unbekannt --> Ausgelöst: erreicht, Eintrag weg, Uptime gesunken
-    Unbekannt --> [*]: erreicht, Eintrag weg, kein Neustart
-    Ausgelöst --> [*]: Protokoll-Eintrag geschrieben
-```
-
-| Eintrag | Wird angelegt von | Fällig | Weggenommen von | Ausgelöst heisst |
-|---|---|---|---|---|
-| Apply-Fallback | Anwenden `FallbackSetzen` | Uptime aus der Marke + Frist | Anwenden `FallbackWegnehmen`; Aufräumen „Fallback stoppen“ / „Jetzt zurück“ | Konfiguration von vorher geladen |
-| Update-Fallback | Update `FallbackSetzen` | nach `update_fallback_seconds` | Update `FallbackWegnehmen`; Aufräumen | alte Partition gebootet |
-| Sicherheitsnetz | Update vor `Lesen`, Anwenden `WatchdogsAussetzen` (bei den überwachenden Geräten) | 2 h | Ende des Auftrags; Aufräumen „Jetzt wiederherstellen“ | Watchdogs vom Gerät selbst gesetzt |
-| Pakete | Update, Downgrade `Hochladen` | nächster Neustart | Neustart (installiert), Abbruch, Aufräumen | beim nächsten Neustart installiert |
-| Apply-Skript läuft | Anwenden `SkriptStarten` | endet selbst | Beobachtung: Job weg | – |
-
-Ein Eintrag, den der Server nach einem Neustart auf dem Gerät findet, **ohne** dass der Zustand
-ihn kennt (andere Instanz, älterer Stand), heisst `Fremd` und wird wie heute in
-„Liegengebliebenes“ gezeigt. Ein Eintrag, den der Zustand kennt, das Gerät aber nicht mehr hat,
-wird durch die Beobachtung entfernt, nach einem Neustart des Geräts mit Protokoll-Eintrag
-„ausgelöst“.
-
-`device::leftovers::read` bleibt die Beobachtung dieses Teilzustands: Es vergleicht nicht mehr nur mit
-„leer“, sondern mit dem gespeicherten Soll.
-
-## Teilzustand „NetBox“
-
-```mermaid
-stateDiagram-v2
-    [*] --> Gleich
-    Gleich --> Geschrieben: Helfer schreibt (Bedienung)
-    Geschrieben --> Geschrieben: weiterer Helfer schreibt
-    Geschrieben --> Gleich: Rückgängig (Bedienung)
-    Geschrieben --> Gleich: Anwenden fertig, Diff leer (Beobachtung)
-```
-
-`Geschrieben` hält je Schreiben, was vorher in NetBox stand (`NetboxWritten.before`), damit
-Rückgängig einen Neustart überlebt. Heute geht es dabei verloren (CLAUDE.md: „lost on a server
-restart“). Ein fehlgeschlagenes Schreiben mitten im Plan (wie bei `poe_type` an koenig-hegglin)
-ist `Geschrieben` mit dem Teil, der durchging, und einem Protokoll-Eintrag.
-
-## Protokoll
-
-Was geschehen ist, gehört nicht zum Zustand, sondern ins Protokoll: das Ende jedes Auftrags (mit
-dem Zustand, in dem er endete, und seinen Events), ein ausgelöster Selbstauslöser (beim Apply mit
-den Marken des Skripts), ein teilweise geschriebener Plan, ein beim Start gefundener `Fremd`-Eintrag.
-Wie es aussieht, wo es liegt und wie lange es bleibt, beschreibt ein eigenes Konzept (noch zu
-schreiben). Dieses Konzept braucht davon nur: Ein Übergang kann einen Eintrag schreiben, und der
-Zustand verweist nie auf ihn.
-
-## Eingaben
-
-| Eingabe | Quelle | Wirkt auf |
-|---|---|---|
-| Start (Anwenden, Update, …) | Bedienung | Auftrag `Frei` → erster Zustand der Art |
-| Abbrechen | Bedienung | Auftrag: Ende in einem abbrechbaren Zustand, sonst nach dem laufenden |
-| Aufräumen (Fallback stoppen, Jetzt zurück, …) | Bedienung | Selbstauslöser: Eintrag weg |
-| NetBox schreiben, Rückgängig | Bedienung | NetBox |
-| erreichbar / nicht erreichbar | Beobachtung | Selbstauslöser `↔ Unbekannt`, Zustand des Auftrags |
-| Uptime gesunken | Beobachtung | Neustart erkannt; Selbstauslöser `Ausgelöst`, Protokoll |
-| anderes Gerät ändert seinen Auftrag-Zustand | Beobachtung | Übergänge, die auf eine Bedingung warten |
-| Marke des Skripts | Beobachtung | Anwenden `SkriptLäuft` |
-| Scheduler-Eintrag da / weg | Beobachtung | Selbstauslöser |
-| Version, OSPF-Nachbarn | Beobachtung | Update `Neustart`, `NachbarnWarten` |
-| Frist abgelaufen | Zeit | der Zustand des Auftrags, der auf etwas wartet |
-| Taste oder Kaltstart am Gerät | Bedienung am Gerät | Device-Mode `WartetAufTaste` (beobachtet: Gerät geht weg) |
-| Server startet | Server | gespeicherte Aufträge weiterführen, alle anderen sind weg |
-| Server wird beendet | Server | Aufträge mit Datei bleiben, alle anderen abbrechen, Frist 20 s |
-
-## Speicher: nur fürs Weiterführen
-
-*Entschieden 2026-10-25:* Gespeichert wird nur, was ein Auftrag braucht, um nach einem Neustart
-des Servers weiterzulaufen. Alles andere – die übrigen Aufträge, die Teilzustände
-**Selbstauslöser** und **NetBox** samt Rückgängig, die Events – lebt nur im Speicher des
-Prozesses. Nach einem Neustart findet „Liegengebliebenes“ die Selbstauslöser wie bisher auf dem
-Gerät.
+Gespeichert wird nur, was ein Auftrag braucht, um nach einem Neustart des Servers weiterzulaufen.
+Alles andere – die übrigen Aufträge, ihre Events, das Rückgängig eines NetBox-Schreibens – lebt nur
+im Speicher des Prozesses. Was ein unterbrochener Auftrag auf dem Gerät gelassen hat, findet die
+Geräteseite danach [dort](#was-auf-dem-gerät-liegen-bleibt).
 
 Weitergeführt werden nur die Zustände, in denen das Unterbrechen eine gelungene Änderung
 zurücknähme. Alle anderen warten oder lesen nur und enden als unterbrochen (`Restart`):
@@ -673,68 +541,64 @@ Beim Start:
    sofort mit `REBOOT_NOT_SENT` statt erst nach der Frist. Pakete und Update-Fallback bleiben
    auf dem Gerät für die Geräteseite; der Auftrag startet das Gerät nicht selbst neu.
 
-## Was sich für die Bedienung ändert
+Im Code (`backend::saved_job`): Ein Job gibt seinem `Log` mit, was die Datei braucht
+(`Log::keep`); `Log::enter` schreibt sie in einem weiterführbaren Zustand und entfernt sie in jedem
+anderen, das Ende des Jobs ebenso. Dateien, die kein Job aufnimmt, zeigt die Site-Auswahl
+(`savedJobs`, `discardSavedJob`). Ein weitergeführter Job beginnt mit dem Event `Resumed` und darf
+seinen gespeicherten Zustand einmal neu betreten (`Log::resume_in`).
 
-- Die Geräteseite zeigt alle Teilzustände statt nur des laufenden Jobs: „Update wartet
-  auf die Nachbarn“, „Apply-Fallback gesetzt, löst laut Gerät in 40 s aus“, „In NetBox geschrieben, noch nicht
-  angewendet“.
-- „Liegengebliebenes“ wird zum Teilzustand **Selbstauslöser**: Jeder Eintrag weiss, welcher Auftrag ihn
-  angelegt hat. Ein Fund ohne Eintrag heisst `Fremd`.
-- Nach einem Neustart des Servers steht im Protokoll jedes betroffenen Geräts „unterbrochen in
-  X“ mit den Events bis dahin, statt eines leeren Jobs.
-- Die Site-Übersicht kann zeigen, welche Geräte einen Eintrag haben (alle anderen sind ruhig).
+- **Anwenden** (`SavedApply`: Zugangsdaten nach Name, `ScriptRun`, gehaltene Watchdogs): verbindet,
+  bis das Gerät antwortet (bis zur Frist für die Rückkehr nach dem Fallback), hält die Watchdogs
+  wieder (`WatchdogSuspended` erneut, nicht erreichte bleiben dem Scheduler) und schaut auf die
+  Marken wie vorher (`watch_script`). Mit Zugangsdaten ad hoc wird nichts gespeichert: Das Passwort
+  gehört nicht in die Datei.
+- **Gemeinsam anwenden** (`SavedBatch`: Geräte, Verzögerung der Fallbacks): weitergeführt nur, wenn
+  alle Geräte gespeichert und in NetBox sind, dann zusammen nach denselben Regeln (`batch::watch`,
+  jedes Gerät wieder erreicht, sobald es antwortet); sonst wartet jede Datei mit dem Grund
+  (`HeldBack`), und die Fallbacks nehmen alles zurück.
+- **Update** (`UpdateRun`, übergeben von `update::update_keeping`): wartet auf den Neustart, gezählt
+  seit dem Eintritt in `Neustart`, prüft Version und Partition und macht wie sonst weiter (weitere
+  Schritte, Fallback weg, Nachbarn, Firmware); in `NichtAktualisiert` entscheidet er über den
+  Fallback erneut (`UPDATE_FAILED_BEFORE`). Die Watchdogs anderer Geräte meldet er gleich wieder als
+  ausgesetzt und stellt sie am Ende wieder her.
 
-## Entschieden
+## Beenden
 
-1. **Weiterführen nach einem Neustart:** ja, aber nur in den Zuständen unter
-   [Speicher](#speicher-nur-fürs-weiterführen); gespeichert wird nur dafür (2026-10-25).
-2. **Mehrere Server:** eine Sperrdatei im `state_dir` verhindert den Start einer zweiten Instanz.
-3. **Gerät aus NetBox gelöscht:** sein gespeicherter Auftrag bleibt und wird gezeigt, bis jemand
-   ihn verwirft.
+Sobald die Server nach SIGTERM oder SIGINT keine Anfragen mehr nehmen (actix bis 30 s), ruft
+`binary` `job::shutdown`: Ein Job mit geschriebener Datei bleibt, wie er ist (der Prozess endet
+mitten im Warten, der Job geht nach dem Start weiter). Jeder andere wird abgebrochen und hat bis zu
+20 s, zu enden oder einen weiterführbaren Zustand zu erreichen; endet er dabei in einem solchen
+(ein Anwenden, abgebrochen beim Starten des Skripts), bleibt seine Datei. Die Jobs laufen dafür auf
+einer eigenen Laufzeit (`job::RUNTIME`), nicht auf der von actix, die beim Beenden mit allem darauf
+wegfällt. Die Gnadenfrist des Charts ist 60 s ([Deployment](deployment.md)).
 
-## Reihenfolge
+## Was auf dem Gerät liegen bleibt
 
-1. Dieses Konzept abstimmen: zuerst die State-Machines, dann Speicher und Protokoll.
-2. Typen der Teilzustände und Übergänge in `backend::device_state`, rein (ohne Gerät), mit Tests der
-   Übergangstabellen. Die heutigen Jobs melden ihre Zustände daran, ohne ihren Ablauf zu ändern.
-   *Umgesetzt* für alle Arten; die Job-Ansicht zeigt den Zustand (`Job.phase`): „Stand: …“
-   während er läuft, „Endete in: …“ nach einem Fehler oder Abbruch.
-3. `state_dir` mit Sperrdatei, die Dateien der weiterführbaren Aufträge, Einlesen beim Start.
-   *Umgesetzt* als `backend::saved_job` (`savedJobs`, `discardSavedJob`, die Site-Auswahl zeigt
-   sie); geschrieben wird erst mit dem Weiterführen.
-4. Anwenden weiterführen (einzeln, dann gemeinsam).
-   *Umgesetzt* für das einzelne: `Log::keep` hält, was die Datei braucht (`SavedApply`:
-   Zugangsdaten nach Name, `ScriptRun`, gehaltene Watchdogs), `Log::enter` schreibt sie in
-   `SkriptLäuft`/`FallbackWegnehmen` und entfernt sie sonst, das Ende des Jobs ebenso. Beim
-   Start geht ein Job im Zustand `SkriptLäuft` weiter (Event `Resumed`), verbindet, bis das
-   Gerät antwortet (bis zur Frist für die Rückkehr nach dem Fallback), hält die Watchdogs
-   wieder (`WatchdogSuspended` erneut, nicht erreichte bleiben dem Scheduler) und schaut auf
-   die Marken wie vorher (`watch_script`). Mit Zugangsdaten ad hoc wird nichts gespeichert:
-   das Passwort gehört nicht in die Datei.
-   *Umgesetzt* für das gemeinsame: jede Datei nennt die ganze Gruppe (`SavedBatch`: Geräte,
-   Verzögerung der Fallbacks). Weitergeführt wird die Gruppe nur, wenn alle ihre Geräte
-   gespeichert und in NetBox sind, dann zusammen nach denselben Regeln (`batch::watch`, jedes
-   Gerät wieder erreicht, sobald es antwortet); sonst wartet jede Datei mit dem Grund
-   (`HeldBack`) in „Gespeicherte Aufträge“, und die Fallbacks nehmen alles zurück.
-5. Update weiterführen.
-   *Umgesetzt:* `update::update_keeping` übergibt vor `Neustart` (mit der Version des
-   Schritts), `FallbackWegnehmen` und `NichtAktualisiert` (mit der Meldung des Fehlers), was
-   die Datei braucht (`UpdateRun`: Versionen, Pakete, Partition, Wartezeit, OSPF-Nachbarn),
-   die Mutation die ausgesetzten Watchdogs dazu. Beim Start geht ein Job in seinem Zustand
-   weiter (`update::resume`): verbindet, bis das Gerät antwortet oder die Wartezeit um ist,
-   wartet auf den Neustart (laufend seit dem Eintritt in `Neustart`), prüft Version und
-   Partition und macht wie sonst weiter (weitere Schritte, Fallback weg, Nachbarn, Firmware);
-   in `NichtAktualisiert` entscheidet er über den Fallback erneut (`UPDATE_FAILED_BEFORE`).
-   Die Watchdogs anderer Geräte meldet er gleich wieder als ausgesetzt und stellt sie am Ende
-   wieder her. Ein Neustart, der vor dem Neustart des Provisioners nicht mehr gesendet wurde,
-   endet als „nicht zurück“, Fallback und Pakete bleiben für „Liegengebliebenes“.
-6. Geordnetes Beenden: weiterführbare Aufträge halten an einer sicheren Stelle an und lassen ihre
-   Datei liegen, alle anderen werden abgebrochen.
-   *Umgesetzt* als `job::shutdown`, sobald die Server nach SIGTERM/SIGINT keine Anfragen mehr
-   nehmen: ein Job mit geschriebener Datei bleibt, wie er ist (der Prozess endet mitten im
-   Warten, der Job geht nach dem Start weiter); jeder andere wird abgebrochen und hat bis zu
-   20 s, zu enden oder einen weiterführbaren Zustand zu erreichen. Endet ein Job während des
-   Beendens in einem solchen Zustand (ein Anwenden, abgebrochen beim Starten des Skripts),
-   bleibt seine Datei.
+Was ein Job nicht zu Ende gesehen hat (abgebrochen, der Provisioner neu gestartet, das Gerät nicht
+erreicht), zeigt die Geräteseite unter ihrem Kopf (`device::leftovers`,
+`AccessibleDevice.leftovers`, `components::leftovers`; `null`, solange ein Job des Geräts läuft),
+mit Knöpfen, die der Mensch auslöst. Jede Aktion ist ein Job `Cleanup` (`clearLeftover`); nichts
+wird von selbst weggeräumt.
 
-Entfallen (2026-10-25): Selbstauslöser und NetBox über Neustarts speichern.
+| Rest | von | Knöpfe |
+|---|---|---|
+| Apply-Fallback (Scheduler und Backup), mit der verbleibenden Zeit „laut Gerät“ (`next-run`; nach einem Sprung seiner Uhr stimmt sie nicht) | Anwenden, auch auf jedem Gerät eines gemeinsamen | „Fallback stoppen“ (die Änderung bleibt), „Jetzt zurück“ (das Skript des Eintrags mit `/execute`, dann warten, bis das Gerät zurück ist) |
+| Update-Fallback (`netbox-provisioner-update-fallback`) | Update | „Fallback stoppen“ (das neue RouterOS bleibt) |
+| Sicherheitsnetz der Watchdogs (`netbox-provisioner-watchdog`, setzt ausgesetzte Watchdogs nach 2 h selbst wieder; [Watchdog](watchdog.md)) | Update, Anwenden mit Funkänderung | „Jetzt wiederherstellen“ (`watchdog::restore` mit dem, was der Eintrag setzen würde) |
+| `.npk`-Dateien im Root | Update, Downgrade | „Hochgeladene Pakete entfernen“ |
+| das Skript `netbox-provisioner-apply`, nur solange es läuft | Anwenden | keiner, es endet von selbst |
+
+- Das Apply-Skript bleibt nach jedem Anwenden liegen, das nächste ersetzt es; ein Rest ist es nur,
+  solange es läuft.
+- Hält den Eintrag des Sicherheitsnetzes der laufende Auftrag eines anderen Geräts (das Update des
+  überwachten Geräts, ein Anwenden mit Funkänderung), ist er kein Rest: Die Seite zeigt ihn getrennt
+  mit diesem Auftrag und ohne Knopf (`heldBy`), und `clearLeftover` lehnt ab (`LEFTOVER_HELD`), denn
+  der Watchdog würde das Gerät neu starten, solange das andere weg ist.
+- Eine Device-Mode-Änderung bleibt nie liegen: RouterOS bricht sie ab, wenn die Verbindung ihres
+  Jobs schliesst.
+- Ein schon weggeräumter Rest ergibt `LEFTOVER_GONE`, kein stilles Nichtstun.
+- Geprüft auf CHR (`leftovers_are_found_and_cleared`): Jeder Rest wird gefunden und weggeräumt, und
+  nach „Jetzt zurück“ hat das Gerät die Identity von vorher.
+
+Was geschehen ist (das Ende eines Auftrags über einen Neustart hinweg, ein ausgelöster Fallback),
+hält noch nichts fest; das beschreibt das Konzept [Protokoll](concepts/protocol.md) (C15).

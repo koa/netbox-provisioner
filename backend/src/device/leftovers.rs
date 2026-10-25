@@ -3,7 +3,7 @@
 //! the update fallback and the watchdogs' safety net, the apply's script still running and
 //! uploaded packages, which install at the next boot. The script itself stays after every
 //! apply (the next one replaces it), so only a running one counts, and it ends by itself. The device page shows them, each with what the operator can
-//! do about it (`docs/concepts/job-polling.md`); nothing is cleared by itself.
+//! do about it (`docs/jobs.md`); nothing is cleared by itself.
 //!
 //! A device mode change waiting for its confirmation is no leftover: RouterOS cancels it when
 //! the connection of its job closes.

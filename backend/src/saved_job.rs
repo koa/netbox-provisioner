@@ -1,8 +1,8 @@
-//! The jobs that go on after a restart of the provisioner (`docs/concepts/device-state.md`,
-//! „Speicher“): only an apply whose script runs or whose fallback is being taken away, and an
-//! update with its fallback set while it reboots or decides about that fallback. Ending
-//! those would let a fallback take back a change that went well; every other job ends as
-//! interrupted and is never written down.
+//! The jobs that go on after a restart of the provisioner (`docs/jobs.md`,
+//! „Weiterführen nach einem Neustart“): only an apply whose script runs or whose fallback is
+//! being taken away, and an update with its fallback set while it reboots or decides about
+//! that fallback. Ending those would let a fallback take back a change that went well; every
+//! other job ends as interrupted and is never written down.
 //!
 //! One file per device, `state_dir/jobs/<netbox-id>.json`, written on entering such a state
 //! (to a temporary file first, then renamed, so a crash leaves the old one or the new one) and

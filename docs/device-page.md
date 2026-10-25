@@ -19,7 +19,7 @@ Von oben nach unten:
    Apply-Skript, hochgeladene Pakete. Jeder Rest hat seinen Knopf, nichts wird von selbst
    weggeräumt. Während ein Job auf dem Gerät läuft, sind die Knöpfe gesperrt; Watchdogs, die ein
    laufender Auftrag ausgesetzt hält, gelten nicht als liegengeblieben
-   ([Jobs](concepts/job-polling.md#was-auf-dem-gerät-liegen-geblieben-ist)).
+   ([Jobs](jobs.md#was-auf-dem-gerät-liegen-bleibt)).
 4. **Job:** der laufende oder letzte Job des Geräts mit seinem Zustand und seinen Events.
 5. **Interfaces:** die [Interfaces nach Aufgabe](interface-view.md) mit Prüfungen, Befunden und
    den Helfern pro Port. Die Befunde des Geräts stehen dort an den Zeilen, die sie betreffen (die

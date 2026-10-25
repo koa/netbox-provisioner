@@ -24,7 +24,7 @@ gut gehen. Die übrigen Journeys haben eigene Konzepte: [Überwachung](monitorin
 **Telefon:** Die Geräteseite ist auf schmalen Bildschirmen einspaltig ([Geräteseite](../device-page.md)).
 Offen ist, die Helfer-Formulare und die Vorschau dort zu prüfen (lange Skripte, Selects). Ein
 Telefon im Feld hat oft schlechtes Netz: Jobs laufen im Server weiter, auch wenn die Seite
-zwischendurch weg ist ([Jobs](job-polling.md)).
+zwischendurch weg ist ([Jobs](../jobs.md)).
 
 **Fehlt am meisten:** eine Ansicht „Was fehlt diesem Gerät noch“ (Befunde des Geräts mit den Helfern als
 Knopf), die der Reihe nach durch Loopback, Verbindung usw. führt, ohne Wizard zu sein.

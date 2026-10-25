@@ -73,7 +73,7 @@ bietet „Von partN starten“ an (Job `BootPartition`: `activate` und Neustart)
 
 Die Frist des Schedulers ist länger als die Wartezeit des Provisioners (`REBOOT_TIMEOUT`, 10 min),
 sonst nähme das Gerät ein langsames, aber gutes Update zurück. Ein Neustart des Provisioners
-während des Updates führt es weiter ([Jobs und Gerätezustand](concepts/device-state.md)).
+während des Updates führt es weiter ([Jobs und Gerätezustand](jobs.md)).
 
 Im Lab geprüft: lab-core 7.23.8 → 7.24.5 (`copy-to` etwa 7 s, zurück nach rund 80 s, alle sechs
 OSPF-Nachbarn sofort `Full`), „Von partN starten“ in beide Richtungen, und das Zurückschalten durch

@@ -694,11 +694,10 @@ pub fn version_before_update(device: DeviceId) -> Option<Box<str>> {
 /// The server shuts down ([`shutdown`]).
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
-/// Lets the server shut down in order (`docs/concepts/device-state.md`, „Geordnetes
-/// Beenden“): a job whose file is written stays as it is and goes on after the restart; every
-/// other is cancelled, and gets up to `wait` to come to its end, or to a state that goes on
-/// (an apply cancelled while it starts its script). Called once the server takes no more
-/// requests.
+/// Lets the server shut down in order (`docs/jobs.md`, „Beenden“): a job whose file is written
+/// stays as it is and goes on after the restart; every other is cancelled, and gets up to
+/// `wait` to come to its end, or to a state that goes on (an apply cancelled while it starts
+/// its script). Called once the server takes no more requests.
 pub async fn shutdown(wait: Duration) {
     SHUTTING_DOWN.store(true, Ordering::SeqCst);
     let running: Vec<Arc<Job>> = JOBS
