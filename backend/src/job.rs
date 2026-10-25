@@ -17,6 +17,7 @@ use crate::{
         self, batch, bootstrap, device_mode, leftovers, partitions, power, power_cycle, ros::graphql as apply, terminal, update,
         radio_hold, update_fallback, watchdog,
     },
+    device_state::JobPhase,
     graphql::scalars::ScalarDuration,
     helper,
     topology::{
@@ -25,7 +26,7 @@ use crate::{
     },
 };
 use async_graphql::{Enum, Object, SimpleObject, Union};
-use log::info;
+use log::{info, warn};
 use std::{
     sync::{
         Arc, LazyLock, Mutex, PoisonError,
@@ -116,6 +117,14 @@ pub struct Log {
     started: Instant,
     events: Arc<Mutex<Vec<Logged>>>,
     cancelled: Arc<(AtomicBool, Notify)>,
+    phase: Arc<Mutex<Phases>>,
+}
+
+/// The state a job is in (`device_state`), and the transitions its tables don't allow.
+#[derive(Debug, Default)]
+struct Phases {
+    current: Option<JobPhase>,
+    unexpected: Vec<(Option<JobPhase>, JobPhase)>,
 }
 
 impl Log {
@@ -126,7 +135,28 @@ impl Log {
             started: Instant::now(),
             events: Default::default(),
             cancelled: Default::default(),
+            phase: Default::default(),
         }
+    }
+    /// The job enters `phase`. One its kind's table doesn't allow after the current one is
+    /// logged and kept ([`Self::unexpected`]), the job goes on as before.
+    pub fn enter(&self, phase: impl Into<JobPhase>) {
+        let phase = phase.into();
+        let mut phases = self.phase.lock().unwrap_or_else(PoisonError::into_inner);
+        if !phase.may_follow(phases.current) {
+            warn!("{}: unexpected state {phase:?} after {:?}", self.label, phases.current);
+            let before = phases.current;
+            phases.unexpected.push((before, phase));
+        }
+        phases.current = Some(phase);
+    }
+    /// The state the job is in, or ended in; `None` before its first.
+    pub fn phase(&self) -> Option<JobPhase> {
+        self.phase.lock().unwrap_or_else(PoisonError::into_inner).current
+    }
+    /// The transitions the tables didn't allow, from (`None`: none yet) and to.
+    pub fn unexpected(&self) -> Vec<(Option<JobPhase>, JobPhase)> {
+        self.phase.lock().unwrap_or_else(PoisonError::into_inner).unexpected.clone()
     }
     /// Asks the work to stop ([`cancel`] for a job).
     pub fn cancel(&self) {

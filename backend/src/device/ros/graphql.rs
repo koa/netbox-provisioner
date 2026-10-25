@@ -7,6 +7,7 @@ use crate::device::ros::{
 use crate::{
     Error,
     config::CONFIG,
+    device_state::ApplyState,
     error_info::{ApiError, ErrorInfo},
     device::{
         AccessibleDevice, GraphqlSystemRouterboard, PingResult, neighbors,
@@ -807,6 +808,7 @@ impl AccessibleDevice {
     /// config from before. Writes without asking for `allow_apply`, that is up to the caller
     /// (`WritesAllowed`).
     pub async fn apply(&self, log: &Log) -> Result<(), Error> {
+        log.enter(ApplyState::Planning);
         let mut planned = self.plan_apply(log).await?;
         if planned.is_empty() {
             return Ok(());
@@ -814,6 +816,7 @@ impl AccessibleDevice {
         log.check()?;
         let hold = match planned.radio_wait() {
             Some(_) => {
+                log.enter(ApplyState::SuspendingWatchdogs);
                 let applied = BTreeSet::from([self.device_config.id()]);
                 Some(RadioHold::take(self, &mut planned, &applied, &Default::default(), log).await?)
             }
@@ -845,12 +848,15 @@ impl AccessibleDevice {
             Ok(raw) => raw,
             Err(error) => return (Err(error), true),
         };
+        log.enter(ApplyState::ArmingFallback);
         let armed = match arm_fallback_on(&raw, delay, window, radio_wait, log).await {
             Ok(armed) => armed,
             Err(error) => return (Err(error), true),
         };
         let started = async {
+            log.enter(ApplyState::WritingScript);
             let run = write_script(&raw, planned, SINGLE_LEAD, armed.then_some(window), None).await?;
+            log.enter(ApplyState::StartingScript);
             let mut runs = start_script(&raw).await?;
             let seen = Instant::now() + SINGLE_LEAD;
             while !runs && Instant::now() < seen {
@@ -865,6 +871,7 @@ impl AccessibleDevice {
             Ok(run) => run,
             Err(error) => {
                 // nothing applied: the fallback has nothing to bring back
+                log.enter(ApplyState::TakingBack);
                 if armed && let Ok(raw) = self.connect_again::<SimpleResult>().await {
                     let _ = fallback::disarm(&raw).await;
                 }
@@ -879,6 +886,7 @@ impl AccessibleDevice {
             timeout: window.into(),
             error: None,
         });
+        log.enter(ApplyState::ScriptRunning);
 
         // cancelled from here on, the fallback stays
         let mut left = false;
@@ -909,6 +917,7 @@ impl AccessibleDevice {
                 Err(error) => {
                     let now = Instant::now();
                     if !left && now >= give_up {
+                        log.enter(ApplyState::NotReached);
                         emit_checked(log, &Err(error));
                         if armed {
                             fallback_left(log, fires, FallbackLeftReason::NotReached, None);
@@ -952,24 +961,31 @@ impl AccessibleDevice {
                     Ok(raw) => raw,
                     Err(_) => continue,
                 };
+                log.enter(ApplyState::StoppingFallback);
                 match fallback::disarm_unless_due(&raw, seen.as_ref().and_then(Progress::rearm)).await {
                     Ok(Disarmed::Stopped) => log.emit(FallbackStopped {
                         after: armed_at.elapsed().into(),
                     }),
                     Ok(Disarmed::Due(fires_in)) => {
+                        log.enter(ApplyState::NotReached);
                         fallback_left(log, Instant::now() + fires_in, FallbackLeftReason::Due, None);
                         left = true;
                         continue;
                     }
                     // it fired: the next look finds the device without it, or back
-                    Ok(Disarmed::Gone) => continue,
+                    Ok(Disarmed::Gone) => {
+                        log.enter(ApplyState::ScriptRunning);
+                        continue;
+                    }
                     Err(error) if Instant::now() >= give_up => {
+                        log.enter(ApplyState::NotReached);
                         fallback_left(log, fires, FallbackLeftReason::NotStopped, Some(&error));
                         left = true;
                         continue;
                     }
                     Err(error) => {
                         info!("{}: fallback not stopped yet: {error}", self.device_config.name());
+                        log.enter(ApplyState::ScriptRunning);
                         continue;
                     }
                 }
@@ -977,6 +993,7 @@ impl AccessibleDevice {
             if let Some(progress) = &seen {
                 log.emit(ScriptProgress::of(progress, false));
             }
+            log.enter(ApplyState::Checking);
             let settled = Instant::now() + SETTLE;
             let remaining = loop {
                 match self.check_applied(settled).await {
@@ -989,6 +1006,7 @@ impl AccessibleDevice {
                 }
             };
             emit_checked(log, &remaining);
+            log.enter(ApplyState::Finishing);
             return (self.after_apply(planned, log).await, true);
         }
     }

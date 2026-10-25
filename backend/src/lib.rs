@@ -7,6 +7,7 @@ use thiserror::Error;
 pub mod config;
 pub mod context;
 pub mod device;
+pub mod device_state;
 pub mod error_info;
 pub mod graphql;
 pub mod helper;

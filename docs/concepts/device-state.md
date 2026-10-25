@@ -141,40 +141,52 @@ Die Übergänge sind mit ihrer Quelle bezeichnet: **(B)** Bedienung, **(G)** Beo
 - Die Reihenfolge eines Rollouts (vom Management-Proxy nach aussen, z.B. bei MTU) ist Sache des
   Menschen, nicht des Auftrags.
 
+Umgesetzt als `device_state::ApplyState` (Name im Code in Klammern); das einzelne und das
+gemeinsame Anwenden melden ihre Zustände daran.
+
 ```mermaid
 stateDiagram-v2
     [*] --> Planen
     Planen --> [*]: Diff leer → fertig
-    Planen --> FallbackSetzen: Plan steht
-    FallbackSetzen --> WatchdogsAussetzen: Backup und Scheduler da (G)
-    FallbackSetzen --> WatchdogsAussetzen: Scheduler gesperrt (Device-Mode), ohne Fallback
-    WatchdogsAussetzen --> SkriptStarten: nur bei Funkänderung, sonst direkt
+    Planen --> WatchdogsAussetzen: Funkänderung
+    Planen --> FallbackSetzen: sonst
+    WatchdogsAussetzen --> FallbackSetzen: ausgesetzt (G)
+    FallbackSetzen --> SkriptSchreiben: Backup und Scheduler da, oder gesperrt (Device-Mode) ohne Fallback (G)
+    SkriptSchreiben --> SkriptStarten: Skript auf dem Gerät (G)
     SkriptStarten --> SkriptLäuft: im Script-Job gesehen (G)
-    SkriptStarten --> [*]: nach 10 s nicht gesehen (Z) → Fallback weg, fehlgeschlagen
+    SkriptSchreiben --> Zurücknehmen: Fehler
+    SkriptStarten --> Zurücknehmen: nach 10 s nicht gesehen (Z)
+    Zurücknehmen --> [*]: Skript und Fallback weg → fehlgeschlagen
     SkriptLäuft --> SkriptLäuft: Marke gelesen (G)
     SkriptLäuft --> FallbackWegnehmen: Marke Ende oder Fehler, erreicht (G)
+    SkriptLäuft --> Nachprüfen: dito, ohne Fallback
     SkriptLäuft --> NichtErreicht: Frist bis Fallback (Z)
-    SkriptLäuft --> ZurückGeladen: Fallback-Eintrag weg (G)
+    SkriptLäuft --> [*]: Fallback-Eintrag weg (G) → fertig, Protokoll „Fallback ausgelöst“ mit Marken
     FallbackWegnehmen --> Nachprüfen: entfernt (G)
-    FallbackWegnehmen --> NichtErreicht: fällig in < 10 s, bleibt (G)
-    NichtErreicht --> ZurückGeladen: erreicht, Eintrag weg, Uptime gesunken (G)
-    NichtErreicht --> [*]: nicht zurück nach der Frist (Z) → fehlgeschlagen
-    ZurückGeladen --> [*]: fertig, Protokoll „Fallback ausgelöst“ mit Marken
+    FallbackWegnehmen --> SkriptLäuft: noch nicht entfernt, oder schon ausgelöst (G)
+    FallbackWegnehmen --> NichtErreicht: fällig in < 10 s, oder bis zur Frist nicht entfernt (G, Z)
+    NichtErreicht --> [*]: Fallback ausgelöst und zurück (G) → fertig, Protokoll mit Marken
+    NichtErreicht --> [*]: nicht zurück nach der Frist (Z) → fertig, Fallback bleibt
     Nachprüfen --> Nacharbeit: Diff gelesen (G)
-    Nacharbeit --> [*]: Watchdogs gesetzt, CAPs neu provisioniert → fertig
+    Nacharbeit --> [*]: CAPs neu provisioniert, Watchdogs gesetzt → fertig
 ```
 
 | Zustand | abbrechbar | Server gestartet | Selbstauslöser |
 |---|---|---|---|
-| `Planen` | ja, Ende | unterbrochen | – |
-| `FallbackSetzen` | ja, Fallback weg | unterbrochen, Fallback beobachten | + Apply-Fallback |
-| `WatchdogsAussetzen` | ja, Fallback weg | unterbrochen | + Sicherheitsnetz (bei den Überwachenden) |
-| `SkriptStarten` | nein | unterbrochen | + Apply-Skript |
-| `SkriptLäuft` | ja, Fallback bleibt | weiterführen | – |
-| `FallbackWegnehmen` | nein | weiterführen | − Apply-Fallback |
-| `NichtErreicht` | ja, Fallback bleibt | weiterführen | – |
-| `ZurückGeladen` | – | weiterführen | − Apply-Fallback (ausgelöst) |
-| `Nachprüfen`, `Nacharbeit` | nein | weiterführen | − Sicherheitsnetz |
+| `Planen` (`Planning`) | ja, Ende | unterbrochen | – |
+| `WatchdogsAussetzen` (`SuspendingWatchdogs`) | ja, Watchdogs zurück | unterbrochen | + Sicherheitsnetz (bei den Überwachenden) |
+| `FallbackSetzen` (`ArmingFallback`) | ja, Fallback weg | unterbrochen, Fallback beobachten | + Apply-Fallback |
+| `SkriptSchreiben` (`WritingScript`) | ja, Fallback weg | unterbrochen | – |
+| `SkriptStarten` (`StartingScript`) | nach dem Zustand | unterbrochen | + Apply-Skript |
+| `Zurücknehmen` (`TakingBack`) | nach dem Zustand | unterbrochen | − Apply-Fallback |
+| `SkriptLäuft` (`ScriptRunning`) | ja, Fallback bleibt | weiterführen | – |
+| `FallbackWegnehmen` (`StoppingFallback`) | nach dem Zustand | weiterführen | − Apply-Fallback |
+| `NichtErreicht` (`NotReached`) | ja, Fallback bleibt | weiterführen | – |
+| `Nachprüfen` (`Checking`) | ja, Ende | weiterführen | – |
+| `Nacharbeit` (`Finishing`) | nach dem Zustand | weiterführen | − Sicherheitsnetz |
+
+Beim Umsetzen korrigiert: Die Watchdogs werden **vor** dem Fallback ausgesetzt, nicht danach;
+„zurückgeladen“ ist kein Zustand, sondern ein Ende (der Auftrag liest die Marken und endet).
 
 **Gemeinsam anwenden** ist ein Anwenden pro Gerät, deren Machines über Bedingungen aufeinander
 warten (siehe [Bedingungen über Geräte hinweg](#bedingungen-über-geräte-hinweg)).
@@ -480,9 +492,9 @@ die Gruppe:
 
 | Übergang | Bedingung |
 |---|---|
-| `Planen → FallbackSetzen` | `[alle Geräte der Gruppe haben geplant]` |
-| `SkriptStarten` (der Start selbst) | `[alle haben ihr Skript geschrieben]`, dann starten alle gleichzeitig |
-| `SkriptLäuft → FallbackWegnehmen` | `[alle sind durch, erreicht und in Reihe]`, sonst gehen alle nach `NichtErreicht` (`BatchIncomplete`) |
+| `Planen → FallbackSetzen` (oder `WatchdogsAussetzen`) | `[alle Geräte der Gruppe haben geplant]`; das Aussetzen geschieht eins nach dem anderen |
+| `SkriptSchreiben → SkriptStarten` | `[alle haben ihr Skript geschrieben]`, dann starten alle gleichzeitig |
+| `SkriptLäuft → FallbackWegnehmen` | `[alle sind durch, erreicht und in Reihe]`, sonst gehen alle nach `NichtErreicht` (`BatchIncomplete`) und der Auftrag endet dort, ohne auf den Fallback zu warten. Nachgeprüft wird schon in `SkriptLäuft`, nach `FallbackWegnehmen` folgt direkt `Nacharbeit` |
 
 Ein Fehler eines Geräts vor dem Start nimmt bei allen den Fallback weg (`BatchStopped`); jedes
 schreibt seinen Protokoll-Eintrag.
@@ -608,6 +620,7 @@ Zustand verweist nie auf ihn.
 1. Dieses Konzept abstimmen: zuerst die State-Machines, dann Speicher und Protokoll.
 2. Typen der Teilzustände und Übergänge in `backend::device_state`, rein (ohne Gerät), mit Tests der
    Übergangstabellen. Die heutigen Jobs melden ihre Zustände daran, ohne ihren Ablauf zu ändern.
+   *Begonnen:* Anwenden (einzeln und gemeinsam); die anderen Arten folgen.
 3. Speicher (`state_dir`), Einlesen beim Start, Ende als unterbrochen.
 4. Teilzustand **Selbstauslöser** an `leftovers` anschliessen (Soll gegen Ist), Geräteseite zeigt
    die Teilzustände.

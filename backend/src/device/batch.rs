@@ -22,6 +22,7 @@
 use crate::{
     Error,
     config::CONFIG,
+    device_state::{ApplyState, JobPhase},
     error_info::ErrorInfo,
     device::{
         AccessibleDevice,
@@ -414,6 +415,7 @@ pub(crate) async fn run<M: Applying>(
     let mut members = members;
     let planned = join_all(members.iter_mut().zip(&logs).map(|(member, log)| async move {
         log.check()?;
+        log.enter(ApplyState::Planning);
         member.plan(log).await
     }))
     .await;
@@ -451,7 +453,12 @@ pub(crate) async fn run<M: Applying>(
     for index in 0..running.len() {
         let m = &mut running[index];
         let held = match cancelled(&logs) {
-            Ok(()) => m.member.hold(&m.log).await,
+            Ok(()) => {
+                if m.member.radio_wait().is_some() {
+                    m.log.enter(ApplyState::SuspendingWatchdogs);
+                }
+                m.member.hold(&m.log).await
+            }
             Err(error) => Err(error),
         };
         if let Err(error) = held {
@@ -471,6 +478,7 @@ pub(crate) async fn run<M: Applying>(
     let prepared = join_all(running.iter().map(|m| async {
         let armed = async {
             cancelled(&logs)?;
+            m.log.enter(ApplyState::ArmingFallback);
             m.member
                 .arm(fires.saturating_duration_since(Instant::now()), window, radio_wait, &m.log)
                 .await
@@ -479,6 +487,7 @@ pub(crate) async fn run<M: Applying>(
         match armed {
             Ok(fallback) => {
                 let rearm = fallback.then_some(window);
+                m.log.enter(ApplyState::WritingScript);
                 (Some(fallback), m.member.write(timing.lead, rearm, &m.log).await)
             }
             Err(error) => (None, Err(error)),
@@ -507,6 +516,7 @@ pub(crate) async fn run<M: Applying>(
     }
     let start = Instant::now();
     join_all(running.iter().map(|m| async move {
+        m.log.enter(ApplyState::StartingScript);
         let started = tokio::time::timeout(timing.start, async {
             let mut runs = m.member.start().await?;
             while !runs {
@@ -521,6 +531,7 @@ pub(crate) async fn run<M: Applying>(
             starts_in: timing.lead.saturating_sub(start.elapsed()).into(),
             error: started.err().map(|error| ErrorInfo::from(&error)),
         });
+        m.log.enter(ApplyState::ScriptRunning);
     }))
     .await;
     // from here on the scripts apply without the provisioner: cancelled, the fallbacks stay
@@ -602,11 +613,17 @@ pub(crate) async fn run<M: Applying>(
     if unreached.is_empty() && not_applied.is_empty() {
         let stopped = join_all(running.iter().map(|m| async {
             let stopped = match m.fallback {
-                true => m.member.stop(fires, delay, &m.log).await,
+                true => {
+                    m.log.enter(ApplyState::StoppingFallback);
+                    m.member.stop(fires, delay, &m.log).await
+                }
                 false => Ok(()),
             };
             match stopped {
-                Ok(()) => m.member.after(&m.log).await,
+                Ok(()) => {
+                    m.log.enter(ApplyState::Finishing);
+                    m.member.after(&m.log).await
+                }
                 Err(error) => Err(error),
             }
         }))
@@ -629,6 +646,7 @@ pub(crate) async fn run<M: Applying>(
             .into();
         release_all(&running, false).await;
         for member in &running {
+            member.log.enter(ApplyState::NotReached);
             member.log.emit(event.clone());
             let reason = if member.checked.is_none() {
                 FallbackLeftReason::NotReached
@@ -650,6 +668,10 @@ pub(crate) async fn run<M: Applying>(
 /// away, on all at once.
 async fn take_back<M: Applying>(running: &[Running<M>], armed: &[bool], fires: Instant, delay: Duration) {
     join_all(running.iter().zip(armed).map(|(m, &armed)| async move {
+        // one cancelled before it armed has nothing on the device yet
+        if !matches!(m.log.phase(), Some(JobPhase::Apply(ApplyState::Planning | ApplyState::SuspendingWatchdogs))) {
+            m.log.enter(ApplyState::TakingBack);
+        }
         if let Err(error) = m.member.remove().await {
             info!("{}: script not taken away: {error}", m.name);
         }

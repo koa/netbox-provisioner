@@ -134,6 +134,10 @@ async fn batch(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>, V
         },
     )
     .await;
+    // every path of the batch keeps to the apply's state machine
+    for log in &logs {
+        assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
+    }
     let calls = calls.lock().unwrap().clone();
     (calls, results, logs)
 }
