@@ -86,8 +86,7 @@ entscheidet der Mensch: „In NetBox übernehmen“ (Helfer) oder „Gerät anpa
 - **Adressen und Leases**, die nur auf dem Gerät stehen: in der Live-Prüfung, mit [Adresse
   übernehmen](#adresse-übernehmen) und [Lease übernehmen](#lease-übernehmen).
 - **PoE**, das NetBox anders hat als das Gerät: in der Live-Prüfung, siehe [PoE](#poe).
-- **Die ganze Site** (Abweichung von NetBox, `device/site_diff.rs`): ein Job der Site liest ihre
-  RouterOS-Geräte, vier zugleich, und meldet pro Gerät die Änderungen eines Anwendens nach Menü.
+- **Die ganze Site:** siehe [Abweichung von NetBox](#abweichung-von-netbox).
 
 Was dabei gelernt wurde:
 
@@ -103,7 +102,23 @@ Was dabei gelernt wurde:
   niemanden“. Der Generator setzt sie jetzt auf die Interface-Liste `maintenance` (die Ports zu
   eigenen Geräten und die freien Ports, dieselbe wie für mac-telnet), nicht auf Kunden-Ports.
 
-## 2. Helfer
+### Abweichung von NetBox
+
+Am Anfang und nach Arbeiten von Hand gilt für jedes Gerät dieselbe Schleife: den Diff ansehen,
+was davon gewollt ist (dann NetBox korrigieren, etwa mit „Adresse übernehmen“) und was falsch
+(dann anwenden). Den Überblick gibt „Abweichung von NetBox“ auf der Site-Seite (`diffSite`,
+`device/site_diff.rs`, `components::site_diff`): Ein Job der Site liest ihre RouterOS-Geräte,
+vier zugleich, und meldet je Gerät, was ein Anwenden je Menü hinzufügt, ändert und entfernt (wie
+das Skript: Updates ohne Felder zählen nicht), oder warum es nicht lesbar war. Die Karte zeigt
+den Zwischenstand, die meisten Änderungen zuerst, hebt entfernte Adressen, statische Leases, OSPF
+und Bridge-Ports hervor und zählt, wer schon „entspricht NetBox“. Der Job sperrt kein Gerät, ein
+Anwenden daneben geht; ein zweiter Start gibt den laufenden zurück, und die Seite übernimmt beim
+Öffnen den letzten Job der Site.
+
+Historische Reste in echten Konfigurationen (deaktivierte oder verwaiste Einträge) sind nicht
+automatisch Anforderungen; der Mensch entscheidet beim Übernehmen.
+
+## Helfer
 
 Jeder Helfer ist ein kurzes Formular, das einen Plan erzeugt (`backend/src/helper/`, im Frontend
 `components/netbox_helper/`, ein Modul pro Helfer).

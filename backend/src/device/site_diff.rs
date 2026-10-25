@@ -1,5 +1,5 @@
-//! How far each device of a site is from NetBox (`diffSite`, the user journey „Datenkorrektur“
-//! in `docs/concepts/user-journeys.md`): a job of the site reads its RouterOS devices, a few at
+//! How far each device of a site is from NetBox (`diffSite`, „Abweichung von NetBox“ in
+//! `docs/config-helper.md`): a job of the site reads its RouterOS devices, a few at
 //! a time, and reports for each, as it is read, what an apply would change by menu, or why it
 //! couldn't be read. It only reads, so its devices stay free for jobs of their own.
 use crate::{
