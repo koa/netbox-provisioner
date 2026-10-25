@@ -174,7 +174,7 @@ impl Log {
         }
         phases.current = Some(phase);
         drop(phases);
-        self.save_for(phase);
+        self.save_for(phase, true);
     }
     /// A job going on after a restart starts in the state it was saved in, whatever its kind's
     /// first states are; its work may enter that state again.
@@ -184,7 +184,7 @@ impl Log {
         phases.current = Some(phase);
         phases.resumed = true;
         drop(phases);
-        self.save_for(phase);
+        self.save_for(phase, false);
     }
     /// Keeps what the job needs to go on after a restart (`saved_job`), from the next state it
     /// enters on: written whenever it enters a state that goes on (`Restart::Continue`), with
@@ -192,14 +192,18 @@ impl Log {
     pub fn keep(&self, job: SavedJob) {
         self.saving.lock().unwrap_or_else(PoisonError::into_inner).job = Some(job);
     }
-    fn save_for(&self, phase: JobPhase) {
+    /// Writes or removes the file for `phase`; `entered` now, else entered before a restart: the
+    /// update counts its reboot from then (`saved_at`).
+    fn save_for(&self, phase: JobPhase, entered: bool) {
         let mut saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
         let Saving { job, written } = &mut *saving;
         let Some(job) = job else {
             return;
         };
         if phase.restart() == Restart::Continue && job.work.set_phase(phase) {
-            job.saved_at = SystemTime::now();
+            if entered {
+                job.saved_at = SystemTime::now();
+            }
             saved_job::save(job);
             *written = true;
         } else if *written {
@@ -841,10 +845,14 @@ mod tests {
         assert_eq!(state(&log), None);
         assert!(log.unexpected().is_empty());
 
+        // saved before the restart: written again as entered then
         let resumed = Log::new("lab-ap1");
-        resumed.keep(log.saving.lock().unwrap().job.clone().unwrap());
+        let mut before = log.saving.lock().unwrap().job.clone().unwrap();
+        before.saved_at = SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_000);
+        resumed.keep(before.clone());
         resumed.resume_in(ApplyState::ScriptRunning);
         assert_eq!(state(&resumed), Some(JobPhase::Apply(ApplyState::ScriptRunning)));
+        assert_eq!(resumed.saved().map(|saved| saved.saved_at), Some(before.saved_at));
         resumed.ended();
         assert_eq!(state(&resumed), None);
     }
