@@ -1,5 +1,5 @@
 //! The ping watchdogs an apply suspends while a radio it changes stays off
-//! (`docs/concepts/watchdog.md`). On a DFS channel the AP listens for radar 10 minutes or longer
+//! (`docs/watchdog.md`). On a DFS channel the AP listens for radar 10 minutes or longer
 //! after a change ([`RADIO_RESTART`](super::ros::graphql::RADIO_RESTART)), as long as
 //! `ping-timeout`: the station, and whoever reaches its parent through the link, would reboot
 //! meanwhile, and the fallback of a rebooted device counts its delay anew.

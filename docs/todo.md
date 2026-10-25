@@ -86,3 +86,10 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 ## D. In Arbeit, Rest offen
 
 Zurzeit keine.
+
+## E. Erweiterungen umgesetzter Teile
+
+| # | Aufgabe | Doku | Aufwand | Status |
+|---|---|---|---|---|
+| E1 | Watchdog-Befunde: kein Weg zu einer Wurzel (kein Watchdog möglich) als Warnung; ein Custom Field für Sonderfälle (aus, oder eine feste Adresse) | [Watchdog](watchdog.md) | S–M | offen |
+| E2 | Die Ersteinrichtung setzt den PoE-Ping des Speisers aus wie ein Update, damit ein ersetztes gespeistes Gerät im Werkszustand nicht alle 5 min stromlos wird | [Watchdog](watchdog.md#grenzen) | S | offen |

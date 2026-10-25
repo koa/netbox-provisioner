@@ -1,4 +1,4 @@
-//! The watchdogs that may fire while a device updates (`docs/concepts/watchdog.md`). A device
+//! The watchdogs that may fire while a device updates (`docs/watchdog.md`). A device
 //! with `/system/watchdog watch-address` reboots when that address stops answering for
 //! `ping-timeout`; a PoE port with `power-cycle-ping` cuts the power of a device that stops
 //! answering. An update cuts the device off while it installs its packages, so:

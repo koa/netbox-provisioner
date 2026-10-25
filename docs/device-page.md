@@ -27,7 +27,7 @@ Von oben nach unten:
 6. **Gerät** und **Änderungen**, nebeneinander:
    - **Gerät:** RouterOS (Version, Pakete, Kanal, „Aktualisieren“, „Downgrade“, vor einem Update
      die Warnung zu den Watchdogs, die währenddessen auslösen könnten, siehe
-     [Watchdog](concepts/watchdog.md#updates)), Device-Mode, Partitionen, „Neu starten“ und „Strom aus und
+     [Watchdog](watchdog.md#updates)), Device-Mode, Partitionen, „Neu starten“ und „Strom aus und
      ein“ ([Update-Fallback](update-fallback.md)). Seltene oder gefährliche Aktionen
      (Partitionieren, Device-Mode anpassen, von einer Partition starten) brauchen eine
      Bestätigung.

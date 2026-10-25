@@ -750,7 +750,7 @@ way back would fail. The hidden delimiter is RouterOS's `\r\n` once in CEF:
 `syslog::after_switch_to_cef` makes the diff see that, so the target's `""` goes in the same
 `set` (CHR 7.24.5: a second diff after either apply is empty).
 
-Every device gets watchdogs (`docs/concepts/watchdog.md`, `device::ros::watchdog`): the
+Every device gets watchdogs (`docs/watchdog.md`, `device::ros::watchdog`): the
 hardware one, a ping watchdog on its parent's primary IPv4 and, on a `pse` port powering a
 RouterOS device, `power-cycle-ping` on that device. The parent comes from
 `topology::management::ManagementTree`: roots are the `propagate_default_route` devices and

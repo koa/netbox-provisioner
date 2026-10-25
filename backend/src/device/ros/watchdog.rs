@@ -1,4 +1,4 @@
-//! The watchdogs every device gets (`docs/concepts/watchdog.md`): the hardware watchdog,
+//! The watchdogs every device gets (`docs/watchdog.md`): the hardware watchdog,
 //! which reboots a hung device, and the ping watchdog on its parent on the way to the
 //! management roots (`topology::management`), which reboots a device that runs but can't
 //! reach the network anymore. A port powering a RouterOS device power cycles it when it

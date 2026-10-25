@@ -1,7 +1,8 @@
-# Konzept: Watchdog auf jedem Router
+# Watchdog auf jedem Router
 
-Status: umgesetzt (Variante A bei Neustart-Schleifen, siehe unten). Ziel: Bei einem Crash
-oder einem hängenden Router soll niemand manuell eingreifen müssen.
+Bei einem Crash oder einem hängenden Router soll niemand manuell eingreifen müssen. Dafür setzt
+die generierte Konfiguration auf jedem Gerät Watchdogs, deren Ziele aus der Topologie kommen,
+und Updates und Anwenden setzen sie aus, solange sie ein Gerät absichtlich abschneiden.
 
 ## Drei Mechanismen
 
@@ -118,26 +119,21 @@ mit Funkänderung seine eigene und die der Abhängigen ausserhalb des Batches, j
 Ein Gerät im Batch ohne eigene Funkänderung, das von einem anderen abhängt, wird nicht
 ausgesetzt.
 
-## Neustart-Schleifen
+## Grenzen
 
-Fällt eine Verbindung dauerhaft aus (Funkstrecke bei Schnee), startet ein Gerät, das seinen
-Parent über sie erreicht, alle `ping-start-after-boot` + `ping-timeout` + Bootzeit neu, also
-etwa alle 26 min. Jedes Mal bricht sein lokales Netz kurz weg.
-
-- **Variante A (umgesetzt):** akzeptieren. Das ist einfach und bleibt in RouterOS.
-- **Variante B:** ein vom Provisioner verwaltetes Scheduler-Skript mit wachsenden Abständen
-  statt `watch-address` (z.B. 20 min, 1 h, 6 h). Der Zähler steht in einer Datei, und ein
-  erfolgreicher Ping setzt ihn zurück. Nur bauen, wenn die Schleifen tatsächlich stören.
-
-## Offen
-
-- **Befunde:** kein Weg zu einer Wurzel (kein Watchdog möglich) als Warnung; ein
-  Custom Field für Sonderfälle (aus, oder eine feste Adresse).
-- **Ersatz eines gespeisten Geräts:** Der Port des Speisers pingt weiter die Adresse des
-  alten Geräts. Das neue im Werkszustand antwortet nicht und wird alle 5 min stromlos
-  geschaltet, bis die Ersteinrichtung ihm die Adresse am Kabel gibt. Die Ersteinrichtung
-  könnte den PoE-Ping des Speisers aussetzen wie ein Update.
+- **Neustart-Schleifen:** Fällt eine Verbindung dauerhaft aus (Funkstrecke bei Schnee), startet
+  ein Gerät, das seinen Parent über sie erreicht, alle `ping-start-after-boot` + `ping-timeout` +
+  Bootzeit neu, also etwa alle 26 min. Jedes Mal bricht sein lokales Netz kurz weg. Das ist
+  bewusst so, es ist einfach und bleibt in RouterOS. Stören die Schleifen, ginge ein vom
+  Provisioner verwaltetes Scheduler-Skript mit wachsenden Abständen statt `watch-address`
+  (z.B. 20 min, 1 h, 6 h; der Zähler in einer Datei, ein erfolgreicher Ping setzt ihn zurück).
 - **Neustart und Partitionswechsel** setzen nichts aus: Ein Neustart dauert etwa 1 min, kürzer
   als jede Frist.
 - **L2-only-Funkbrücken** ohne Adresse und `ospf` sind keine Nachbarn im Baum. Ein Update von
   ihnen setzt nur ihre Speiser aus, nicht die Geräte jenseits der Funkstrecke.
+- **Ein neu eingerichtetes Gerät** bekommt seinen Ping-Watchdog erst mit dem zweiten Anwenden:
+  Beim ersten steht sein OSPF noch nicht, wenn das Anwenden prüft, ob der Parent antwortet
+  (lab-wap, 2026-10-25).
+- **Ersatz eines gespeisten Geräts:** Der Port des Speisers pingt weiter die Adresse des alten
+  Geräts. Das neue im Werkszustand antwortet nicht und wird alle 5 min stromlos geschaltet, bis
+  die Ersteinrichtung ihm die Adresse am Kabel gibt (E2).
