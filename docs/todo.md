@@ -11,7 +11,7 @@ Status: **offen**, **in Arbeit**.
 
 ## Reihenfolge
 
-1. D5
+1. C15
 
 Dann schauen wir weiter
 
@@ -81,9 +81,8 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | offen |
 | C14 | Metriken des mikrotik-metrik-exporter im Provisioner (erster Teil von C8): Funk-Clients mit DHCP-Hostname, Health, PoE, dazu System, Interfaces und DHCP-Leases; Labels `device` und `site` aus NetBox, Dashboards im Repo angepasst; danach weder Exporter noch `prometheus`-Benutzer nötig | [Überwachung](concepts/monitoring.md) | M–L | offen |
+| C15 | Protokoll: was geschehen ist (Ende jedes Auftrags mit Zustand und Events, ausgelöster Selbstauslöser mit den Marken, teilweise geschriebener Plan, `Fremd`-Eintrag beim Start), wie es aussieht, wo es liegt, wie lange es bleibt; ein Übergang schreibt einen Eintrag, der Zustand verweist nie darauf | [Gerätezustand](concepts/device-state.md#protokoll) | M | offen |
 
 ## D. In Arbeit, Rest offen
 
-| # | Aufgabe | Konzept | Aufwand | Status |
-|---|---|---|---|---|
-| D5 | Jobs: Zustand pro Gerät als State-Machine, gespeichert in `state_dir` (M–L), geordnetes Beenden (S) | [Gerätezustand](concepts/device-state.md), [Jobs](concepts/job-polling.md) | M | in Arbeit |
+Zurzeit keine.
