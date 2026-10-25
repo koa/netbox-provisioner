@@ -119,6 +119,10 @@ pub enum Error {
     },
     #[error("Not back after the reboot")]
     NotBackAfterReboot,
+    /// an update saved in `Rebooting` found the device not booted since: the provisioner
+    /// restarted before it sent the reboot
+    #[error("The reboot wasn't sent before the restart of the provisioner")]
+    RebootNotSent,
     /// an update with its fallback set failed with this (its message) before a restart of the
     /// provisioner
     #[error("The update failed before the restart: {0}")]

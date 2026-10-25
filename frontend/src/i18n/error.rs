@@ -125,6 +125,10 @@ pub fn server(problem: &ServerProblem) -> String {
             ),
         },
         "NOT_BACK_AFTER_REBOOT" => "Das Gerät ist nach dem Neustart nicht zurück".into(),
+        "REBOOT_NOT_SENT" => "Der Provisioner wurde neu gestartet, bevor er das Gerät neu startete: \
+                              Die hochgeladenen Pakete und der Fallback des Updates liegen noch \
+                              auf dem Gerät (siehe Geräteseite)"
+            .into(),
         "UPDATE_FAILED_BEFORE" => format!("Das Update schlug vor dem Neustart des Provisioners fehl: {}", p("message")),
         "PANIC" => format!("Interner Fehler im Provisioner (bitte melden): {}", p("message")),
         "UPDATE_ROLLED_BACK" => format!(

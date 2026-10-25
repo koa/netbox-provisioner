@@ -667,6 +667,11 @@ Beim Start:
    (beim Update auch die Firmware). Kennt NetBox es nicht mehr, bleibt die Datei; die
    Site-Auswahl zeigt sie, bis jemand sie verwirft (B). Ebenso eine Datei, die sich nicht lesen
    lässt.
+3. Ein Update in `Neustart` schaut zuerst, ob das Gerät seit dem Eintritt gebootet hat
+   (frühestens 30 s danach, ein eben gesendeter Neustart braucht so lange). Antwortet es mit
+   älterer Uptime, kam der Server nicht mehr dazu, den Neustart zu senden: Der Auftrag endet
+   sofort mit `REBOOT_NOT_SENT` statt erst nach der Frist. Pakete und Update-Fallback bleiben
+   auf dem Gerät für die Geräteseite; der Auftrag startet das Gerät nicht selbst neu.
 
 ## Was sich für die Bedienung ändert
 

@@ -34,6 +34,8 @@ const DOWNLOAD_URL: &str = "https://download.mikrotik.com/routeros";
 const NEWEST_URL: &str = "https://upgrade.mikrotik.com/routeros/NEWEST";
 /// Booting a package update takes a few minutes on small devices.
 pub const REBOOT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// How long after `/system/reboot` a device may still answer with its old uptime.
+const REBOOT_SENT_SETTLES: Duration = Duration::from_secs(30);
 
 /// What the update needs of a device; implemented by
 /// [`AccessibleDevice`](crate::device::AccessibleDevice) (through the management proxy) and by
@@ -715,8 +717,9 @@ pub async fn update_keeping(
 /// Goes on with an update saved before a restart of the provisioner (`saved_job`), once
 /// `link` reaches the device, in `state` (the job entered it with `Log::resume_in`): waits
 /// for the reboot entered at `rebooting_since` and goes on with the steps, or decides about
-/// the fallback, then as [`update`]. A reboot that was never sent before the restart ends
-/// as not back, the fallback and the packages left for the device page.
+/// the fallback, then as [`update`]. A reboot that was never sent before the restart (the
+/// device answers, not booted since) ends as such at once, the fallback and the packages left
+/// for the device page.
 pub async fn resume(
     link: &impl DeviceLink,
     power: &PowerChain,
@@ -734,6 +737,15 @@ pub async fn resume(
         UpdateState::Rebooting => {
             async {
                 let expected = version(run.expected.as_deref().unwrap_or_default())?;
+                // a reboot sent just before the restart may still be shutting the device down
+                let settled = (rebooting_since + REBOOT_SENT_SETTLES).saturating_duration_since(Instant::now());
+                log.unless_cancelled(sleep(settled)).await?;
+                if let Ok(Ok(device)) = timeout(Duration::from_secs(30), link.api()).await
+                    && let Ok(now) = read_state(&device).await
+                    && now.uptime + Duration::from_secs(5) >= rebooting_since.elapsed()
+                {
+                    return Err(Error::RebootNotSent);
+                }
                 let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
                 let wait = (rebooting_since + run.wait).saturating_duration_since(Instant::now());
                 // up for less than since entering `Rebooting`: booted since
@@ -1071,7 +1083,8 @@ async fn put_packages(
 /// so the device doesn't switch back by itself (the device page offers that). Unreached, the
 /// scheduler stays and does its job.
 async fn not_updated(link: &impl DeviceLink, partition: &str, error: Error, log: &Log) -> Error {
-    if matches!(error, Error::NotBackAfterReboot | Error::UpdateRolledBack { .. }) {
+    // the fallback stays: not reached, back on it, or the packages installing at the next boot
+    if matches!(error, Error::NotBackAfterReboot | Error::RebootNotSent | Error::UpdateRolledBack { .. }) {
         return error;
     }
     let device = match timeout(Duration::from_secs(30), link.api()).await {

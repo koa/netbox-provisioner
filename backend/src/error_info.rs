@@ -142,6 +142,7 @@ impl From<&Error> for ErrorInfo {
                     .collect(),
             ),
             Error::NotBackAfterReboot => ("NOT_BACK_AFTER_REBOOT", vec![]),
+            Error::RebootNotSent => ("REBOOT_NOT_SENT", vec![]),
             Error::UpdateFailedBefore(message) => ("UPDATE_FAILED_BEFORE", vec![("message", message.to_string())]),
             Error::UpdateRolledBack { partition, version } => (
                 "UPDATE_ROLLED_BACK",
