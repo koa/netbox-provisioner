@@ -21,7 +21,7 @@ gut gehen. Die übrigen Journeys haben eigene Konzepte: [Überwachung](monitorin
 | RouterOS aktuell | Update mit Fallback (Partitionen) | [Updates im ganzen Netz](network-update.md) |
 | Testen | Geräteseite: erreichbar, Konfiguration „entspricht NetBox“, OSPF-Nachbarn im Job | ein kurzer Test „Strecke ok“ (Ping/Bandbreite zum Nachbarn), Ansicht der Strecke |
 
-**Telefon:** Die Geräteseite ist auf schmalen Bildschirmen einspaltig ([Geräteseite](device-page.md)).
+**Telefon:** Die Geräteseite ist auf schmalen Bildschirmen einspaltig ([Geräteseite](../device-page.md)).
 Offen ist, die Helfer-Formulare und die Vorschau dort zu prüfen (lange Skripte, Selects). Ein
 Telefon im Feld hat oft schlechtes Netz: Jobs laufen im Server weiter, auch wenn die Seite
 zwischendurch weg ist ([Jobs](job-polling.md)).

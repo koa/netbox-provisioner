@@ -2,7 +2,7 @@
 
 Status: Schritte 1 bis 3 umgesetzt (Zuordnung und Ansicht, `topology/interfaces.rs`,
 `components/interfaces/`; die Helfer im Modal, `components/helper_flow.rs`; die
-Live-Prüfungen, `device/interface_live.rs`), der Rest offen. Ersetzt auf der [Geräteseite](device-page.md) die Karte
+Live-Prüfungen, `device/interface_live.rs`), der Rest offen. Ersetzt auf der [Geräteseite](../device-page.md) die Karte
 „NetBox ergänzen“ mit ihrer Auswahl einzelner Helfer ([Config-Helper](config-helper.md)). Die
 Helfer selbst (Plan, Vorschau, Schreiben, Rückgängig) bleiben, sie werden nur anders aufgerufen.
 

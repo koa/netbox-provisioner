@@ -10,6 +10,13 @@ steht in [netbox-modeling.md](netbox-modeling.md); die dafür nötigen Custom Fi
 [custom-fields.md](custom-fields.md). Wie der Login (OIDC, z.B. Pocket-ID) in `config.yaml`
 eingerichtet wird, steht in [login.md](login.md).
 
+Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
+
+- [Geräteseite](device-page.md): Aufbau der Seite eines Geräts, Zugang, Ersteinrichtung.
+
+Was noch nicht umgesetzt ist, steht als Konzept in [concepts/](concepts/), die Aufgaben dazu in
+[todo.md](todo.md).
+
 ## Die Pipeline (`device/ros/graphql.rs::DeviceCfg`)
 
 1. **Fetch**: `DeviceCfg::fetch`/`fetch_with_board_model` liest den **Ist-Zustand** direkt vom
