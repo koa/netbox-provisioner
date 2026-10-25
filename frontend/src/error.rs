@@ -59,6 +59,18 @@ impl ServerProblem {
     }
 }
 
+impl t::Problem for ServerProblem {
+    fn code(&self) -> &str {
+        &self.code
+    }
+    fn param(&self, name: &str) -> &str {
+        ServerProblem::param(self, name)
+    }
+    fn message(&self) -> &str {
+        &self.message
+    }
+}
+
 /// `ServerProblem` from the `Problem` fragment, which every query module has a type of.
 macro_rules! problem_from {
     ($($fragment:ty),*) => {$(

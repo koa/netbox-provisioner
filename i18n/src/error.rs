@@ -1,4 +1,12 @@
-use crate::error::ServerProblem;
+/// An error the backend reports (`backend::error_info::ErrorInfo`): what [`server`] words.
+pub trait Problem {
+    /// e.g. `DEVICE_API`
+    fn code(&self) -> &str;
+    /// the value of param `name`, empty without it
+    fn param(&self, name: &str) -> &str;
+    /// the backend's English text, for a code not worded here yet
+    fn message(&self) -> &str;
+}
 
 pub const BROWSER: &str = "Fehler im Browser";
 pub const UNREADABLE: &str = "Antwort des Servers nicht lesbar";
@@ -17,7 +25,7 @@ pub fn at(message: &str, path: &str) -> String {
 /// here yet shows the backend's English `message`.
 /// `PORT_IN_BRIDGES`: a port (the VXLAN of a VLAN group) whose VLANs NetBox puts in
 /// different bridges, each VLAN with its bridge (`vlans`, `vlanNames`, `bridges`: a line each).
-fn port_in_bridges(problem: &ServerProblem) -> String {
+fn port_in_bridges(problem: &impl Problem) -> String {
     let lines = |name| problem.param(name).split('\n');
     let vlans = lines("vlans")
         .zip(lines("vlanNames"))
@@ -42,9 +50,9 @@ fn port_in_bridges(problem: &ServerProblem) -> String {
     )
 }
 
-pub fn server(problem: &ServerProblem) -> String {
+pub fn server(problem: &impl Problem) -> String {
     let p = |name| problem.param(name);
-    match problem.code.as_str() {
+    match problem.code() {
         "DEVICE_API" => format!("Zugriff auf das Gerät fehlgeschlagen: {}", p("cause")),
         "MISSING_CREDENTIALS" => "Keine Zugangsdaten für das Gerät".into(),
         "APPLY_NOT_ALLOWED" => "Schreiben auf Geräte ist gesperrt (allow_apply)".into(),
@@ -200,7 +208,7 @@ pub fn server(problem: &ServerProblem) -> String {
             p("what")
         ),
         "NO_PREVIEW" | "PREVIEW" => {
-            format!("Vorschau nicht möglich: {}", problem.message)
+            format!("Vorschau nicht möglich: {}", problem.message())
         }
         "NO_FREE_ADDRESS" => format!(
             "Im Pool {} ist keine IPv{}-Adresse mehr frei",
@@ -388,7 +396,7 @@ pub fn server(problem: &ServerProblem) -> String {
             "{} hat in NetBox eine MTU, die nur Ethernet-Ports und wlan-Radios bekommen",
             p("port")
         ),
-        _ => problem.message.clone(),
+        _ => problem.message().into(),
     }
 }
 

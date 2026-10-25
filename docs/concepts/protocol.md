@@ -1,7 +1,7 @@
 # Konzept: Protokoll im NetBox-Journal
 
-Status: Konzept, nicht umgesetzt. Aufgabe C15 in [todo.md](../todo.md), vorher B11 (gemeinsames
-i18n-Crate). Entscheidungen vom 2026-10-25 eingearbeitet (Z29 bis Z33).
+Status: Konzept, nicht umgesetzt. Aufgabe C15 in [todo.md](../todo.md). Entscheidungen vom
+2026-10-25 eingearbeitet (Z29 bis Z33).
 
 ## Warum
 
@@ -83,8 +83,7 @@ Der Provisioner fragt keine Geräte ab, die niemand anschaut.
 
 ## Sprache
 
-*Entschieden 2026-10-25 (Z32):* Die deutschen Texte kommen aus einem gemeinsamen Crate `i18n`,
-das Frontend und Backend nutzen (B11). Die heutigen Module unter `frontend/src/i18n/` nehmen fast
-nur einfache Werte (`&str`, Zahlen) und ziehen dorthin um; was `yew::Html` baut oder Typen des
-Frontends kennt (`adjust_target`, `error`), bleibt im Frontend oder wird geteilt. Das Backend
-formuliert damit weiterhin nichts selbst: Es nimmt die Texte aus dem Crate, wie das Frontend.
+*Entschieden 2026-10-25 (Z32):* Die deutschen Texte kommen aus dem gemeinsamen Crate `i18n`
+(B11, erledigt), das Frontend und Backend nutzen. Es nimmt nur einfache Werte; einen Fehler als
+`i18n::error::Problem`, den das Backend für `ErrorInfo` umsetzt. Das Backend formuliert damit
+weiterhin nichts selbst: Es nimmt die Texte aus dem Crate, wie das Frontend.

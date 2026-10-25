@@ -1983,6 +1983,7 @@ dependencies = [
  "console_error_panic_hook",
  "gloo",
  "graphql_client",
+ "i18n",
  "log",
  "patternfly-yew",
  "reqwest 0.12.23",
@@ -2858,6 +2859,10 @@ dependencies = [
  "tracing",
  "windows-registry",
 ]
+
+[[package]]
+name = "i18n"
+version = "0.1.0"
 
 [[package]]
 name = "iana-time-zone"

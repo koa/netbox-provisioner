@@ -11,8 +11,7 @@ Status: **offen**, **in Arbeit**.
 
 ## Reihenfolge
 
-1. B11
-2. C15
+1. C15
 
 Dann schauen wir weiter
 
@@ -68,7 +67,6 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B11 | Gemeinsames Crate `i18n` für Frontend und Backend: die Module aus `frontend/src/i18n/` ziehen um, soweit sie nur einfache Werte nehmen; was `yew::Html` baut oder Frontend-Typen kennt, bleibt im Frontend (Z32) | [Protokoll](concepts/protocol.md#sprache) | M | offen |
 
 ## C. Konzepte zum Umsetzen
 
@@ -84,7 +82,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | offen |
 | C14 | Metriken des mikrotik-metrik-exporter im Provisioner (erster Teil von C8): Funk-Clients mit DHCP-Hostname, Health, PoE, dazu System, Interfaces und DHCP-Leases; Labels `device` und `site` aus NetBox, Dashboards im Repo angepasst; danach weder Exporter noch `prometheus`-Benutzer nötig | [Überwachung](concepts/monitoring.md) | M–L | offen |
-| C15 | Protokoll im NetBox-Journal: ein Eintrag pro Job und Gerät, beim Start angelegt und bei jedem Zustandswechsel nachgeführt, Tag `netbox-provisioner` und Custom Field `provisioner_job`; nach einem Neustart laufende Einträge auf „unterbrochen“; die letzten 20 pro Gerät; Verlauf auf der Geräteseite; Beobachtungen ohne Job (Rest ohne Erklärung, ausgelöster Fallback). Braucht B11 | [Protokoll](concepts/protocol.md) | L | offen |
+| C15 | Protokoll im NetBox-Journal: ein Eintrag pro Job und Gerät, beim Start angelegt und bei jedem Zustandswechsel nachgeführt, Tag `netbox-provisioner` und Custom Field `provisioner_job`; nach einem Neustart laufende Einträge auf „unterbrochen“; die letzten 20 pro Gerät; Verlauf auf der Geräteseite; Beobachtungen ohne Job (Rest ohne Erklärung, ausgelöster Fallback). | [Protokoll](concepts/protocol.md) | L | offen |
 
 ## D. In Arbeit, Rest offen
 

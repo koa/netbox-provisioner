@@ -57,7 +57,7 @@ pub fn other_state(what: &str, state: &str) -> String {
 
 /// The events, one sentence each.
 pub mod event {
-    use crate::i18n::common::list;
+    use crate::common::list;
 
     pub const NOTHING_TO_DO: &str = "Nichts zu tun: das Gerät entspricht NetBox";
     pub const IN_LINE: &str = "Das Gerät entspricht NetBox";

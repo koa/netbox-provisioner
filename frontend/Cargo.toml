@@ -22,6 +22,7 @@ thiserror = "2.0.11"
 yew-oauth2 = { version = "0.14", features = ["openid"] }
 console_error_panic_hook = "0.1.7"
 gloo = "0.11.0"
+i18n = { path = "../i18n" }
 
 [build-dependencies]
 backend = { path = "../backend" }

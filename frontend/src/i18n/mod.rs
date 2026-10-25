@@ -1,24 +1,11 @@
-//! Every text the UI shows, in German, by the page or component showing it. Components take
-//! their texts from here and write none inline; the backend sends data, which is worded here
-//! (job events, warnings). A second language replaces these functions, or makes them choose
-//! by language, without touching the components. Names RouterOS or NetBox use themselves
-//! (`RouterOS`, `Board`, `long-term`) stay as they are.
+//! Every text the UI shows, in German. Most come from the crate `i18n`, shared with the
+//! backend, and are passed on here, so components keep writing `crate::i18n::…`; the modules
+//! below build `Html` or word the frontend's own types, so they stay here. Components write no
+//! text inline.
 
-/// Texts used in several places.
-pub mod common;
-
-/// `crate::error::FrontendError` as the user reads it.
-pub mod error;
-
-pub mod login;
-
-/// The breadcrumb of dropdowns (`components::menu`).
-pub mod menu;
-
-pub mod pages;
-
-/// Jobs saved before a restart that didn't go on (`components::saved_jobs`).
-pub mod saved_jobs;
+pub use ::i18n::{
+    batch, common, device, error, helper, helper_flow, job, login, menu, pages, saved_jobs, site_diff,
+};
 
 /// What NetBox lacks or what doesn't fit together (`components::findings`). The objects come in
 /// as links to NetBox.
@@ -27,26 +14,8 @@ pub mod findings;
 /// What the devices see at their ports against NetBox's cables (`components::neighbor_check`).
 pub mod neighbors;
 
-/// How far each device of a site is from NetBox (`components::site_diff`).
-pub mod site_diff;
-
 /// Choosing another address or other credentials (`components::adjust_target`).
 pub mod target;
-
-/// The device page (`pages::devices::show`).
-pub mod device;
-
-/// Applying together with other devices (`components::batch_apply`).
-pub mod batch;
-
-/// A job and its events (`components::job`), as the backend reports them.
-pub mod job;
-
-/// The helpers that write to NetBox (`components::netbox_helper`).
-pub mod helper;
-
-/// A helper in a modal with its steps (`components::helper_flow`).
-pub mod helper_flow;
 
 /// The device's interfaces by task (`components::interfaces`).
 pub mod interfaces;

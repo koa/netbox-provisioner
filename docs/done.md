@@ -34,6 +34,7 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 | B7 | Grosse Dateien aufteilen: `device/ros/mod.rs` (2067 Zeilen), `frontend/src/i18n.rs` (1609), `helper/mod.rs` (1391) | M | 2026-10-23: „split the radios and the DHCP pool off the generator“ (1247 Zeilen, Radios in `radio/`, Pool in `dhcp.rs`), „give each part of the UI texts a file“ (`i18n/`, eine Datei pro Modul), „split the plan steps and the writing off the helpers“ (541 Zeilen, `plan.rs`, `write.rs`); 2026-10-24: „split the netbox helper into a module per helper“ (`components/netbox_helper/`, `mod.rs` 660 Zeilen) |
 | B8 | mikrotik-model: Der Generator gibt die Enums jedes Mal in anderer Reihenfolge aus (HashMap); Diffs des erzeugten Codes unlesbar, vermutlich unnötiges Neukompilieren | S | 2026-10-23 (mikrotik-model „generate the same code on every build“) |
 | B10 | `graphql_client` 0.16 von crates.io statt des Forks (`Chrisss93/graphql-client`, Branch `reqwest-upgrade`) prüfen; nur als Übergang, bis C4 den Fork ablöst (Z6) | S | 2026-10-23 („take graphql_client from crates.io“): ohne Features, `json` direkt an reqwest; Topologie aus der Lab-NetBox und Site-Seite im Browser geprüft |
+| B11 | Gemeinsames Crate `i18n` für Frontend und Backend: die Module mit einfachen Werten zogen um, Fehler als Trait `i18n::error::Problem`; `findings`, `neighbors`, `target`, `interfaces` bleiben im Frontend (Z32) | M | 2026-10-25 („move the texts into a crate shared with the backend“) |
 
 ## C. Konzepte
 
