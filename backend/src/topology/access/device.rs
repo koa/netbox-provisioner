@@ -327,6 +327,11 @@ impl DeviceAccess {
     async fn bootstrap_problem(&self) -> Option<ErrorInfo> {
         bootstrap::plan(self).err().map(|error| ErrorInfo::from(&error))
     }
+    /// The provisioner's entries in the device's journal in NetBox, newest first: what its
+    /// jobs did (`crate::journal`, the device page's „Verlauf“).
+    async fn journal(&self) -> Result<Vec<crate::journal::JournalEntry>, crate::error_info::ApiError> {
+        Ok(crate::journal::entries(self.id).await.map_err(Error::Netbox)?)
+    }
     /// The RouterOS device feeding this one over PoE and its port: a cold boot
     /// (`Mutation.powerCycle`) is possible.
     async fn power_supply(&self) -> Option<crate::device::power_cycle::PowerSupply> {

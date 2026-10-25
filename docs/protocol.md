@@ -62,7 +62,18 @@ Provisioners, die noch laufen (`kind` `info`, `outcome` `Running`), setzt der St
 Ende von `resume_saved_jobs`); der Zustand („Stand: …“) und was auf dem Gerät bleibt, stehen
 weiter darin.
 
+## Verlauf auf der Geräteseite
+
+Die Geräteseite zeigt zuunterst den **Verlauf** (`components::history`,
+`DeviceAccess.journal`, gelesen mit `netbox_token`): die Einträge des Provisioners, neueste
+zuerst, mit Art und Ausgang, Zeitpunkt (wie NetBox ihn gibt, in seiner Zeitzone), wer gestartet
+hat, dem Zustand (nicht bei fertig), was auf dem Gerät bleibt, und dem Link auf den Eintrag in
+NetBox. Der Rand zeigt den Ausgang (grün fertig, gelb nicht alles, abgebrochen oder
+unterbrochen, rot fehlgeschlagen, blau läuft). Gelesen wird aus `provisioner_job`, nicht aus dem
+Text; ein Eintrag mit dem Tag ohne lesbares Feld fehlt. Nach jedem Job der Seite wird er neu
+gelesen. „Auftrag unterbrochen“ in der Job-Ansicht verweist auf ihn.
+
 ## Noch offen
 
-Der Verlauf auf der Geräteseite und Beobachtungen ohne Job: Konzept
+Beobachtungen ohne Job: Konzept
 [Protokoll](concepts/protocol.md), Aufgabe C15 in [todo.md](todo.md).

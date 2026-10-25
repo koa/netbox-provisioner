@@ -14,14 +14,8 @@ von selbst gewirkt hat (ein ausgelöster Fallback), erfährt niemand, wenn kein 
 
 Ein Eintrag pro Job und Gerät im Journal des Geräts, nachgeführt bei jedem Zustand, mit Tag
 `netbox-provisioner` und Custom Field `provisioner_job`, die letzten 20 pro Gerät, geschrieben mit
-`netbox_write_token` (Z29, Z30, Z32, Z33), und laufende Einträge nach einem Neustart:
-[Protokoll](../protocol.md). Offen ist der Rest unten.
-
-## Verlauf auf der Geräteseite
-
-Die Geräteseite zeigt unter den Jobs den **Verlauf**: die letzten Einträge aus dem Journal, mit
-Link nach NetBox. Die Job-Ansicht eines unbekannten Jobs verweist auf den Eintrag statt nur
-„unterbrochen“ zu sagen.
+`netbox_write_token` (Z29, Z30, Z32, Z33), laufende Einträge nach einem Neustart und der
+Verlauf auf der Geräteseite: [Protokoll](../protocol.md). Offen ist der Rest unten.
 
 ## Beobachtungen ohne Job
 

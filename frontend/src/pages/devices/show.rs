@@ -2,6 +2,7 @@ use crate::{
     components::{
         adjust_target::{AdjustTarget, SelectedTarget},
         batch_apply::{BatchApply, BatchJob},
+        history::History,
         interfaces::Interfaces,
         job::JobView,
         leftovers::{Leftover, Leftovers},
@@ -879,6 +880,7 @@ impl Component for ShowDevice {
                     </CardBody>
                 </Card>
             }
+            <History id={self.id} refresh={self.jobs_finished}/>
             </>}
         });
         html! {

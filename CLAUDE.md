@@ -635,7 +635,7 @@ out when NetBox is slow), tag `netbox-provisioner`, what the provisioner reads b
 field `provisioner_job` (JSON), the text in German from `i18n::journal`. Who started it comes
 with the start (`journal::Started`: the login's name, or `Resumed`). A failed write never stops
 the job (`JournalNotWritten`, once per run of failures); after the end only the newest 20 of the
-provisioner's entries on the device stay. A site's job (`SiteDiff`) writes none. A resumed job writes on in its entry (`SavedJob::journal_entry`), every other entry still running is set to interrupted at the start (`journal::close_interrupted`).
+provisioner's entries on the device stay. A site's job (`SiteDiff`) writes none. A resumed job writes on in its entry (`SavedJob::journal_entry`), every other entry still running is set to interrupted at the start (`journal::close_interrupted`). The device page's „Verlauf“ (`components::history`) reads them back from `provisioner_job` (`DeviceAccess.journal`, typed: `JournalOutcome`, `JournalLeft`) and words them like the journal.
 
 What a job didn't see to the end leaves on a device (cancelled, the provisioner restarted, the
 device unreached) the device page shows under its head (`device::leftovers`,

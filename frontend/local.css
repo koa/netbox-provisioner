@@ -502,3 +502,18 @@ div.pf-v6-c-backdrop.helper-flow {
         border-radius: 0;
     }
 }
+
+/* the device page's „Verlauf“: a line per journal entry, its border by how the job ended */
+ul.device-history {
+    list-style: none;
+    padding: 0;
+    & > li {
+        border-inline-start: 3px solid var(--pf-t--global--border--color--default, #d2d2d2);
+        padding-inline-start: var(--pf-t--global--spacer--sm);
+        margin-block-end: var(--pf-t--global--spacer--sm);
+        &.done { border-color: var(--pf-t--global--color--status--success--default); }
+        &.warning { border-color: var(--pf-t--global--color--status--warning--default); }
+        &.failed { border-color: var(--pf-t--global--color--status--danger--default); }
+        &.running { border-color: var(--pf-t--global--color--status--info--default); }
+    }
+}

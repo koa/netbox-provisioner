@@ -1,4 +1,4 @@
-use super::{Entry, Started, interrupted, outcome, phase_name};
+use super::{Entry, JournalLeft, JournalOutcome, Started, interrupted, outcome, parse, phase_name};
 use crate::{
     device::{batch::BatchApply, ros::graphql as apply, update::UpdateDone},
     device_state::{ApplyState, UpdateState},
@@ -147,4 +147,27 @@ fn an_interrupted_entry_keeps_its_state() {
     assert_eq!(record["outcome"], "Interrupted");
     assert_eq!(record["state"], "SCRIPT_RUNNING");
     assert_eq!(record["left"], serde_json::json!(["ApplyFallback"]));
+}
+
+#[test]
+fn an_entry_is_read_from_its_record() {
+    let entry = serde_json::json!({
+        "id": 3,
+        "created": "2026-10-25T13:04:30.123456+00:00",
+        "kind": { "value": "warning", "label": "Warning" },
+        "custom_fields": { "provisioner_job": {
+            "job": "Reboot", "outcome": "Interrupted", "state": "REBOOTING",
+            "left": ["UpdateFallback", "Unknown"], "by": "Lab Admin", "at": 1792938293
+        }}
+    });
+    let read = parse(&entry, "https://netbox/").unwrap();
+    assert_eq!(read.url, "https://netbox/extras/journal-entries/3/");
+    assert_eq!(read.id, 3);
+    assert_eq!(read.kind, JobKind::Reboot);
+    assert_eq!(read.outcome, JournalOutcome::Interrupted);
+    assert_eq!(read.state.as_deref(), Some("REBOOTING"));
+    assert_eq!(read.left, vec![JournalLeft::UpdateFallback]);
+    assert_eq!(read.by.as_deref(), Some("Lab Admin"));
+    // an entry with the tag but no record (written by hand) is left out
+    assert_eq!(parse(&serde_json::json!({ "id": 4, "created": "x", "custom_fields": {} }), "https://netbox/"), None);
 }

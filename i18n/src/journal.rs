@@ -17,15 +17,19 @@ pub enum Outcome {
 
 /// The first line: what and how it stands, e.g. „**Anwenden** abgeschlossen“.
 pub fn heading(what: &str, outcome: Outcome) -> String {
-    let how = match outcome {
+    format!("**{what}** {}", how(outcome))
+}
+
+/// How the job stands or ended, after its kind.
+pub fn how(outcome: Outcome) -> &'static str {
+    match outcome {
         Outcome::Running => "läuft",
         Outcome::Done => "abgeschlossen",
         Outcome::Incomplete => "abgeschlossen, aber nicht alles angewendet",
         Outcome::Failed => "fehlgeschlagen",
         Outcome::Cancelled => "abgebrochen",
         Outcome::Interrupted => "unterbrochen: der Provisioner wurde neu gestartet",
-    };
-    format!("**{what}** {how}")
+    }
 }
 
 pub fn started_by(user: &str) -> String {
@@ -92,4 +96,14 @@ pub fn left(left: &[Left]) -> String {
         })
         .collect();
     format!("Bleibt auf dem Gerät: {}", crate::common::list(&items))
+}
+
+/// The device page's „Verlauf“ (`components::history`): the entries from the journal.
+pub mod history {
+    pub const TITLE: &str = "Verlauf";
+    pub const NONE: &str = "Noch keine Einträge des Provisioners im Journal des Geräts in NetBox.";
+    pub const IN_NETBOX: &str = "im Journal in NetBox";
+    pub fn by(user: &str) -> String {
+        format!("von {user}")
+    }
 }

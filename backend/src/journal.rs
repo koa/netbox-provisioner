@@ -10,10 +10,10 @@ use crate::{
     device_state::JobPhase,
     error_info::ErrorInfo,
     job::{Event, Job, JobKind, JobState},
-    netbox::{NetboxError, rest::NetboxRest},
+    netbox::{NetboxError, rest::NetboxRest, web_url},
     topology::DeviceId,
 };
-use async_graphql::SimpleObject;
+use async_graphql::{Enum, SimpleObject};
 use i18n::journal::{Left, Outcome};
 use log::warn;
 use serde_json::{Value, json};
@@ -135,6 +135,101 @@ async fn prune(rest: &NetboxRest, device: DeviceId) -> Result<(), NetboxError> {
     Ok(())
 }
 
+/// An entry of the provisioner in a device's journal, as the device page's „Verlauf“ shows it
+/// (`DeviceAccess.journal`), from its `provisioner_job`.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct JournalEntry {
+    pub id: u32,
+    /// when NetBox created it, as NetBox gives it (ISO 8601, its time zone)
+    pub created: Box<str>,
+    pub kind: JobKind,
+    pub outcome: JournalOutcome,
+    /// the state it is in or ended in, by its GraphQL name (`SCRIPT_RUNNING`)
+    pub state: Option<Box<str>>,
+    pub left: Vec<JournalLeft>,
+    /// who started it; none for a job that went on after a restart
+    pub by: Option<Box<str>>,
+    /// the entry in NetBox' web UI
+    pub url: String,
+}
+
+/// How the job of an entry stands or ended (`i18n::journal::Outcome`).
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
+pub enum JournalOutcome {
+    Running,
+    Done,
+    /// done, but not all of it applied
+    Incomplete,
+    Failed,
+    Cancelled,
+    /// the provisioner restarted before it ended
+    Interrupted,
+}
+
+/// What the job of an entry left on the device (`i18n::journal::Left`).
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
+pub enum JournalLeft {
+    ApplyFallback,
+    UpdateFallback,
+    WatchdogSafetyNet,
+}
+
+/// The provisioner's entries on `device`, newest first.
+pub async fn entries(device: DeviceId) -> Result<Vec<JournalEntry>, NetboxError> {
+    let entries = NetboxRest::reader()?
+        .get(&format!(
+            "extras/journal-entries/?assigned_object_type=dcim.device&assigned_object_id={}&tag={TAG}\
+             &ordering=-created&limit={KEEP}",
+            device.0
+        ))
+        .await?;
+    let web = web_url();
+    Ok(entries["results"].as_array().into_iter().flatten().filter_map(|entry| parse(entry, &web)).collect())
+}
+
+/// An entry as NetBox gives it, `web` NetBox' web UI; `None` without a readable
+/// `provisioner_job`.
+fn parse(entry: &Value, web: &str) -> Option<JournalEntry> {
+    let record = &entry["custom_fields"]["provisioner_job"];
+    let named = |value: &Value| value.as_str().map(str::to_string);
+    let id = entry["id"].as_u64()? as u32;
+    Some(JournalEntry {
+        id,
+        created: entry["created"].as_str()?.into(),
+        kind: kind_named(record["job"].as_str()?)?,
+        outcome: by_name(
+            &[
+                JournalOutcome::Running,
+                JournalOutcome::Done,
+                JournalOutcome::Incomplete,
+                JournalOutcome::Failed,
+                JournalOutcome::Cancelled,
+                JournalOutcome::Interrupted,
+            ],
+            record["outcome"].as_str()?,
+        )?,
+        state: named(&record["state"]).map(Into::into),
+        left: record["left"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|left| {
+                by_name(
+                    &[JournalLeft::ApplyFallback, JournalLeft::UpdateFallback, JournalLeft::WatchdogSafetyNet],
+                    left.as_str()?,
+                )
+            })
+            .collect(),
+        by: named(&record["by"]).map(Into::into),
+        url: format!("{web}extras/journal-entries/{id}/"),
+    })
+}
+
+/// The one of `all` whose `Debug` is `name`.
+fn by_name<T: Copy + std::fmt::Debug>(all: &[T], name: &str) -> Option<T> {
+    all.iter().copied().find(|value| format!("{value:?}") == name)
+}
+
 /// Sets the provisioner's entries still running from before this start to interrupted, but
 /// those of the jobs that went on (`resumed`), which write on in theirs. The state they were
 /// in stays, as „Stand“.
@@ -250,6 +345,10 @@ impl Entry {
             "outcome": format!("{:?}", self.outcome),
             "state": self.phase.map(phase_name),
             "left": self.left().iter().map(|left| format!("{left:?}")).collect::<Vec<_>>(),
+            "by": match &self.started {
+                Started::By(user) => Some(user),
+                Started::Resumed { .. } => None,
+            },
             "at": SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
         })
     }
@@ -372,9 +471,10 @@ fn left(events: &[Event]) -> Vec<Left> {
 /// The kind by its name in `provisioner_job` (`Apply`).
 fn kind_named(name: &str) -> Option<JobKind> {
     use JobKind::*;
-    [Update, Downgrade, Apply, Cleanup, Bootstrap, Reboot, PowerCycle, DeviceMode, Repartition, BootPartition, NetboxWrite, NetboxUndo, SiteDiff]
-        .into_iter()
-        .find(|kind| format!("{kind:?}") == name)
+    by_name(
+        &[Update, Downgrade, Apply, Cleanup, Bootstrap, Reboot, PowerCycle, DeviceMode, Repartition, BootPartition, NetboxWrite, NetboxUndo, SiteDiff],
+        name,
+    )
 }
 
 fn kind_name(kind: JobKind) -> &'static str {

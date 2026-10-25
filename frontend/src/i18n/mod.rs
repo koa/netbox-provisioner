@@ -4,7 +4,7 @@
 //! text inline.
 
 pub use ::i18n::{
-    batch, common, device, error, helper, helper_flow, job, login, menu, pages, saved_jobs, site_diff,
+    batch, common, device, error, helper, helper_flow, job, journal, login, menu, pages, saved_jobs, site_diff,
 };
 
 /// What NetBox lacks or what doesn't fit together (`components::findings`). The objects come in

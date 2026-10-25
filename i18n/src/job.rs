@@ -1,7 +1,8 @@
 pub const CANCELLING: &str = "Wird abgebrochen …";
 pub const LOST: &str = "Auftrag unterbrochen";
 pub const LOST_TEXT: &str = "Der Provisioner wurde neu gestartet und kennt den Auftrag nicht \
-    mehr. Was der Auftrag auf dem Gerät begonnen hat, läuft dort weiter.";
+    mehr. Was der Auftrag auf dem Gerät begonnen hat, läuft dort weiter. Wie weit er kam, steht \
+    im Verlauf unten (Journal in NetBox).";
 /// after LOST_TEXT for an apply or an update, whose fallback is still armed on the device
 pub const LOST_FALLBACK: &str = " Ein Fallback, den er scharf gemacht hat, setzt das Gerät nach \
     Ablauf seiner Frist zurück und startet es neu.";

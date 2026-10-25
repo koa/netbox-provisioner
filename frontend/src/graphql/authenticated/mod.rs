@@ -377,3 +377,11 @@ pub struct SavedJobs;
     response_derives = "Debug"
 )]
 pub struct DiscardSavedJob;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/history.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct DeviceJournal;

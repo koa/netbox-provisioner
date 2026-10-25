@@ -1,0 +1,7 @@
+query DeviceJournal($device: Int!){
+    topology{
+        deviceById(id: $device){
+            journal{ id created kind outcome state left by url }
+        }
+    }
+}
