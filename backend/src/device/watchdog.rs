@@ -34,7 +34,7 @@ pub(crate) const NAME: &str = "netbox-provisioner-watchdog";
 pub const SAFETY_NET: Duration = Duration::from_secs(2 * 60 * 60);
 
 /// A PoE port power cycling what it powers when that stops answering.
-#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject, serde::Serialize, serde::Deserialize)]
 pub struct PoePing {
     pub port: Box<str>,
     pub address: Box<str>,
@@ -43,7 +43,7 @@ pub struct PoePing {
 }
 
 /// What a device's watchdogs watch, of what an update may cut off.
-#[derive(Debug, Clone, PartialEq, Eq, Default, SimpleObject)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, SimpleObject, serde::Serialize, serde::Deserialize)]
 pub struct Watching {
     /// the address `/system/watchdog` watches, if any
     pub watch_address: Option<Box<str>>,

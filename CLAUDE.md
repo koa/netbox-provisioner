@@ -571,7 +571,14 @@ the start wait in `saved_job::waiting` until their job takes them up; one no job
 device gone from NetBox, unreadable) is shown on the site selection (`savedJobs`,
 `components::saved_jobs`) until discarded (`discardSavedJob`). Times in them are the server's
 clock, never an `Instant`. Without `saved_job::open` (tests, the CHR harness) nothing is
-written.
+written. A job hands what it needs to its `Log` (`Log::keep`); `Log::enter` writes the file
+in a state that goes on (with that state) and removes it in any other, the job's end too.
+`graphql::resume_saved_jobs` (at the start, after the topology) starts a job per file of a
+device NetBox has, beginning with `Resumed` and `Log::resume_in`: an apply
+(`SavedApply`: credentials by name, `ScriptRun`, the held watchdogs) connects until its
+device answers and goes on watching its script (`AccessibleDevice::watch_script`, the part of
+`apply_planned` after the start), holding the watchdogs again (`RadioHold::resumed`). An
+apply with ad hoc credentials saves nothing; a saved update is dropped (not continued yet).
 A job says where it is before anything slow: `graphql::connect_for_job` reports `Connecting`
 and `Connected` (address, the neighbor's tunnel, the identity) for the device and each supplier,
 the update its `UpdateTarget` and `WatchdogNotSet` for a watcher without one, and an upload

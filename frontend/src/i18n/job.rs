@@ -514,6 +514,13 @@ pub mod event {
             der Scheduler auf {device} stellt {watching} nach {safety_net_minutes} min wieder her"
         )
     }
+    pub fn resumed(seconds_ago: u64) -> String {
+        format!(
+            "Geht nach einem Neustart des Provisioners weiter, gespeichert vor {} min {} s",
+            seconds_ago / 60,
+            seconds_ago % 60
+        )
+    }
     pub fn repartition_started(count: i64, files: i64) -> String {
         format!("Teilt den Flash in {count} Partitionen auf ({files} Dateien vorher)")
     }

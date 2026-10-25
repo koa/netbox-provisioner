@@ -29,6 +29,24 @@ fn a_saved_job_is_read_back() {
     let mut again = saved(7);
     again.work = SavedWork::Apply {
         state: ApplyState::StoppingFallback,
+        apply: SavedApply {
+            credentials: Some("lab".into()),
+            script: ScriptRun {
+                run: "a1b2c3d4".into(),
+                armed: true,
+                armed_at: SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_000),
+                fires: SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_210),
+                unmarked: SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_090),
+                reprovision: vec!["/interface/wifi/radio".into()],
+            },
+            hold: Some(SavedHold {
+                own: Some(Watching {
+                    watch_address: Some("192.168.100.1".into()),
+                    poe_pings: Vec::new(),
+                }),
+                others: vec![("lab-np1".into(), Watching::default())],
+            }),
+        },
     };
     write(&jobs, &again).expect("write again");
     fs::write(jobs.join("8.json.tmp"), "{").expect("temporary");

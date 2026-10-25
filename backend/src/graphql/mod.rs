@@ -15,13 +15,14 @@ use crate::{
     helper::{self, Helper, NetboxPlan},
     job::{self, Job, JobKind, JobSubject, Log},
     netbox,
+    saved_job::{self, SavedWork},
     topology::{
         DeviceId, SiteId, TopologyHolder,
         access::{AdhocCredentials, device::DeviceAccess, site::SiteAccess},
         management::ManagementTree,
     },
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::SystemTime};
 use async_graphql::{
     Context, EmptyMutation, EmptySubscription, Guard, Object, Schema, SimpleObject,
 };
@@ -225,6 +226,74 @@ pub(crate) async fn connect_for_job(
     log.emit(link.connected_device());
     Ok(link)
 }
+
+/// Goes on with the jobs saved before this start whose device NetBox has (`saved_job`), each
+/// as a job of its own; the others stay in `savedJobs`. Called once, after the topology is
+/// read.
+pub async fn resume_saved_jobs(topology: &TopologyHolder) {
+    for waiting in saved_job::waiting() {
+        if waiting.saved.is_err() {
+            continue;
+        }
+        let Some(device) = topology.devices_by_id(waiting.device).await else {
+            continue;
+        };
+        let Some(Ok(saved)) = saved_job::take(waiting.device).map(|waiting| waiting.saved) else {
+            continue;
+        };
+        let after = SystemTime::now().duration_since(saved.saved_at).unwrap_or_default();
+        let started = match saved.work.clone() {
+            SavedWork::Apply { apply, .. } => job::start(&device.clone(), JobKind::Apply, |log| async move {
+                log.emit(job::Resumed { after: after.into() });
+                log.keep(saved);
+                // saved taking the fallback away too: that only follows a look at the marks,
+                // which comes first again
+                log.resume_in(crate::device_state::ApplyState::ScriptRunning);
+                resume_apply(&device, &apply, &log).await
+            }),
+            // the update goes on in a later step; until then it ends as before
+            SavedWork::Update { .. } => {
+                saved_job::remove(waiting.device);
+                continue;
+            }
+        };
+        if let Err(error) = started {
+            log::warn!("Cannot go on with the job of device {}: {error}", waiting.device.0);
+        }
+    }
+}
+
+/// An apply saved before the restart ([`resume_saved_jobs`]): connects until the device
+/// answers, the script may have cut it off for a while. Not back before the fallback would
+/// have brought it back, it ends as an apply not reached does, the fallback left.
+async fn resume_apply(device: &DeviceAccess, saved: &saved_job::SavedApply, log: &Log) -> Result<(), Error> {
+    use crate::device::ros::graphql::{COME_BACK, FallbackLeftReason, fallback_left, give_up};
+    let fires = saved_job::instant(saved.script.fires);
+    let come_back = fires + COME_BACK;
+    let link = loop {
+        match connect_for_job(device, None, saved.credentials.clone(), None, log).await {
+            Ok(link) => break link,
+            Err(Error::Cancelled) => return Err(Error::Cancelled),
+            Err(_) if std::time::Instant::now() < come_back => {
+                log.unless_cancelled(tokio::time::sleep(RESUME_RETRY)).await?;
+            }
+            Err(error) => {
+                log.enter(crate::device_state::ApplyState::NotReached);
+                if saved.script.armed && std::time::Instant::now() < give_up(fires) {
+                    fallback_left(log, fires, FallbackLeftReason::NotReached, None);
+                }
+                if let Some(hold) = &saved.hold {
+                    crate::device::radio_hold::RadioHold::leave_saved(device.name(), hold, log);
+                }
+                return Err(error);
+            }
+        }
+    };
+    link.resume_apply(saved, log).await
+}
+
+/// How often a job going on after a restart tries to reach its device.
+const RESUME_RETRY: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// The way of `device`'s watchdogs to the management roots, the management proxy's device
 /// among them (`topology::management`).

@@ -29,6 +29,7 @@ use crate::{
     Error,
     graphql::{connect_for_job, scalars::ScalarDuration},
     job::Log,
+    saved_job::SavedHold,
     topology::{DeviceId, access::device::DeviceAccess, natural::naturalize},
 };
 use async_graphql::SimpleObject;
@@ -150,6 +151,78 @@ impl RadioHold {
             }
         }
         watchdog::restore_all(self.others, log).await;
+    }
+
+    /// What it holds, to hold it again after a restart (`saved_job`).
+    pub(crate) fn saved(&self) -> SavedHold {
+        SavedHold {
+            own: self.own.clone(),
+            others: self.others.iter().map(|s| (s.device.clone(), s.watching.clone())).collect(),
+        }
+    }
+
+    /// Holds again what an apply saved before a restart held: suspended still (says
+    /// `WatchdogSuspended` again, so the other devices' pages show them held), each other
+    /// device connected again for restoring it; one not reached is left to its scheduler
+    /// entry (`WatchdogKept`).
+    pub(crate) async fn resumed(link: &AccessibleDevice, saved: &SavedHold, log: &Log) -> RadioHold {
+        let device: Box<str> = link.device_config.name().into();
+        if let Some(watching) = &saved.own {
+            link.hold_watchdog(true);
+            if !watching.is_empty() {
+                log.emit(WatchdogSuspended {
+                    device: device.clone(),
+                    watching: watching.clone(),
+                    safety_net: SAFETY_NET.into(),
+                });
+            }
+        }
+        let topology = link.device_config.topology();
+        let mut others = Vec::new();
+        for (name, watching) in &saved.others {
+            let reached = match topology.list_devices().find(|d| d.name() == &**name) {
+                Some(watcher) => connect_for_job(&watcher, None, None, None, log).await.ok(),
+                None => None,
+            };
+            match reached {
+                Some(watcher) => {
+                    log.emit(WatchdogSuspended {
+                        device: name.clone(),
+                        watching: watching.clone(),
+                        safety_net: SAFETY_NET.into(),
+                    });
+                    others.push(Suspended {
+                        device: name.clone(),
+                        link: watcher,
+                        watching: watching.clone(),
+                    });
+                }
+                None => log.emit(WatchdogKept {
+                    device: name.clone(),
+                    watching: watching.clone(),
+                    safety_net: SAFETY_NET.into(),
+                }),
+            }
+        }
+        RadioHold {
+            device,
+            own: saved.own.clone(),
+            others,
+        }
+    }
+
+    /// Leaves what an apply saved before a restart held to the scheduler entries
+    /// (`WatchdogKept`), the device not reached again.
+    pub(crate) fn leave_saved(device: &str, saved: &SavedHold, log: &Log) {
+        let own = saved.own.iter().filter(|watching| !watching.is_empty()).map(|watching| (device.into(), watching));
+        let others = saved.others.iter().map(|(device, watching)| (device.clone(), watching));
+        for (device, watching) in own.chain(others) {
+            log.emit(WatchdogKept {
+                device,
+                watching: watching.clone(),
+                safety_net: SAFETY_NET.into(),
+            });
+        }
     }
 
     /// Leaves what [`Self::take`] suspended to the scheduler entries (`WatchdogKept`).

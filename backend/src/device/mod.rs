@@ -44,6 +44,16 @@ pub enum Credentials {
         password: Option<Box<str>>,
     },
 }
+impl Credentials {
+    /// the name of credentials by name (`mikrotik_credentials`)
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            Credentials::Named(name) => Some(name),
+            Credentials::Adhoc { .. } => None,
+        }
+    }
+}
+
 /// How a device is reached.
 #[derive(Clone)]
 pub enum Path {

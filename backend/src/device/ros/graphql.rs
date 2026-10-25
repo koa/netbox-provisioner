@@ -24,9 +24,13 @@ use crate::{
         radio_hold::RadioHold,
         watchdog::Watching,
     },
-    topology::{PhysicalPortId, access::device::DeviceAccess},
+    topology::{PhysicalPortId, access::{AccessTopology, device::DeviceAccess}},
 };
-use crate::{graphql::scalars::ScalarDuration, job::Log};
+use crate::{
+    graphql::scalars::ScalarDuration,
+    job::Log,
+    saved_job::{self, SavedApply, SavedJob, SavedWork, ScriptRun},
+};
 use async_graphql::{Context, Enum, Object, SimpleObject};
 use log::info;
 use rand::{Rng, distr::Alphanumeric};
@@ -46,7 +50,7 @@ use mikrotik_model::{
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     sync::atomic::Ordering,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 pub struct GraphqlDeviceType(DeviceType);
@@ -592,7 +596,7 @@ const SINGLE_LEAD: Duration = Duration::from_secs(1);
 const SETTLE: Duration = Duration::from_secs(30);
 /// How long after its fallback fires at the latest the apply waits for the device to be back,
 /// to read the marks of its script.
-const COME_BACK: Duration = Duration::from_secs(4 * 60);
+pub(crate) const COME_BACK: Duration = Duration::from_secs(4 * 60);
 
 /// The fallback's window: how long after the end of the script the provisioner has to reach
 /// the device, longer by `radio_wait` for a radio to come back.
@@ -760,6 +764,13 @@ impl PlannedApply {
         }
         Ok(())
     }
+    /// The radios to provision again after it (`reprovisioned_menus`).
+    pub(crate) fn reprovisioned(&self) -> Vec<Box<str>> {
+        self.cfg
+            .sorted_mutations()
+            .map(|mutations| reprovisioned_menus(&mutations).into_iter().map(Box::from).collect())
+            .unwrap_or_default()
+    }
     /// The device is in line already.
     pub(crate) fn is_empty(&self) -> bool {
         self.script.trim().is_empty()
@@ -822,7 +833,44 @@ impl AccessibleDevice {
             }
             None => None,
         };
-        let (applied, back) = self.apply_planned(&planned, log).await;
+        let keep = |script: &ScriptRun| {
+            // without credentials by name (ad hoc ones) it can't connect again after a restart
+            let Some(credentials) = self.credentials.name() else {
+                return;
+            };
+            log.keep(SavedJob {
+                device: self.device_config.id(),
+                device_name: self.device_config.name().into(),
+                site: self.device_config.site().map(|site| site.id()),
+                saved_at: SystemTime::now(),
+                work: SavedWork::Apply {
+                    state: ApplyState::ScriptRunning,
+                    apply: SavedApply {
+                        credentials: Some(credentials.into()),
+                        script: script.clone(),
+                        hold: hold.as_ref().map(RadioHold::saved),
+                    },
+                },
+            });
+        };
+        let (applied, back) = self.apply_planned(&planned, keep, log).await;
+        match hold {
+            Some(hold) if back => hold.release(self, log).await,
+            Some(hold) => hold.leave(log),
+            None => {}
+        }
+        applied
+    }
+    /// Goes on with an apply saved before a restart of the provisioner (`saved_job`), once the
+    /// device answers again: both states it may be saved in watch the script
+    /// ([`Self::watch_script`]), which takes the fallback away once through and reached. The
+    /// watchdogs it held are held again.
+    pub(crate) async fn resume_apply(&self, saved: &SavedApply, log: &Log) -> Result<(), Error> {
+        let hold = match &saved.hold {
+            Some(hold) => Some(RadioHold::resumed(self, hold, log).await),
+            None => None,
+        };
+        let (applied, back) = self.watch_script(&saved.script, log).await;
         match hold {
             Some(hold) if back => hold.release(self, log).await,
             Some(hold) => hold.leave(log),
@@ -838,7 +886,15 @@ impl AccessibleDevice {
     /// reached, it takes the fallback away and diffs. Not reached, it waits for the fallback
     /// to fire and the device to come back, and shows the marks then: they say where the
     /// script cut the device off.
-    async fn apply_planned(&self, planned: &PlannedApply, log: &Log) -> (Result<(), Error>, bool) {
+    ///
+    /// `keep` gets what the apply needs to go on after a restart once the script runs, before
+    /// it enters `ScriptRunning` ([`Log::keep`]).
+    async fn apply_planned(
+        &self,
+        planned: &PlannedApply,
+        keep: impl FnOnce(&ScriptRun),
+        log: &Log,
+    ) -> (Result<(), Error>, bool) {
         let radio_wait = planned.radio_wait();
         let window = fallback_window(radio_wait);
         let delay = SCRIPT_LIMIT + window;
@@ -886,8 +942,29 @@ impl AccessibleDevice {
             timeout: window.into(),
             error: None,
         });
+        let script = ScriptRun {
+            run,
+            armed,
+            armed_at: saved_job::system_time(armed_at),
+            fires: saved_job::system_time(fires),
+            // a device without the marks (a file it couldn't write) counts as through after
+            // this, as before them
+            unmarked: SystemTime::now() + APPLY_TIMEOUT,
+            reprovision: planned.reprovisioned(),
+        };
+        keep(&script);
         log.enter(ApplyState::ScriptRunning);
-
+        self.watch_script(&script, log).await
+    }
+    /// [`Self::apply_planned`] once the script runs, also after a restart of the provisioner
+    /// (`saved_job`): looks at the marks until the script is through and the device reached,
+    /// takes the fallback away and diffs, or waits for the fallback to fire. `true` along with
+    /// it where the fallback won't fire.
+    pub(crate) async fn watch_script(&self, script: &ScriptRun, log: &Log) -> (Result<(), Error>, bool) {
+        let armed = script.armed;
+        let armed_at = saved_job::instant(script.armed_at);
+        let fires = saved_job::instant(script.fires);
+        let run = &script.run;
         // cancelled from here on, the fallback stays
         let mut left = false;
         let wait = async |time, left: bool| {
@@ -899,16 +976,14 @@ impl AccessibleDevice {
         };
         let give_up = give_up(fires);
         let come_back = fires + COME_BACK;
-        // a device without the marks (a file it couldn't write) counts as through after this,
-        // as before them
-        let unmarked = Instant::now() + APPLY_TIMEOUT;
+        let unmarked = saved_job::instant(script.unmarked);
         let mut seen: Option<Progress> = None;
         loop {
             if let Err(error) = wait(Duration::from_secs(3), left).await {
                 return (Err(error), false);
             }
             let look = tokio::time::timeout(CHECK_TIMEOUT, async {
-                look_on(&self.connect_again::<SimpleResult>().await?, &run).await
+                look_on(&self.connect_again::<SimpleResult>().await?, run).await
             })
             .await
             .unwrap_or(Err(Error::Timeout(self.address)));
@@ -1007,7 +1082,7 @@ impl AccessibleDevice {
             };
             emit_checked(log, &remaining);
             log.enter(ApplyState::Finishing);
-            return (self.after_apply(planned, log).await, true);
+            return (self.after_script(&script.reprovision, log).await, true);
         }
     }
     /// The diff to apply, planned (`ApplyPlanned`); an empty one is nothing to do.
@@ -1076,16 +1151,19 @@ impl AccessibleDevice {
     }
     /// What follows an apply: a controller provisions its CAPs' radios again.
     pub(crate) async fn after_apply(&self, planned: &PlannedApply, log: &Log) -> Result<(), Error> {
+        self.after_script(&planned.reprovisioned(), log).await
+    }
+    /// [`Self::after_apply`] with the radios to provision again (`reprovisioned_menus`).
+    async fn after_script(&self, reprovision: &[Box<str>], log: &Log) -> Result<(), Error> {
         if self.device_config.wlan_controller_of().is_some() {
             log.check()?;
-            let mutations = planned.cfg.sorted_mutations()?;
-            self.reprovision(reprovisioned_menus(&mutations), log).await;
+            self.reprovision(reprovision, log).await;
         }
         Ok(())
     }
     /// Provisions the radios of `menus` (`reprovisioned_menus`) again, which reconnects the
     /// CAPs' clients.
-    async fn reprovision(&self, menus: Vec<&'static str>, log: &Log) {
+    async fn reprovision(&self, menus: &[Box<str>], log: &Log) {
         if menus.is_empty() {
             return;
         }
@@ -1096,13 +1174,13 @@ impl AccessibleDevice {
         };
         let raw = match self.connect_again::<SimpleResult>().await {
             Ok(raw) => raw,
-            Err(error) => return log.emit(failed(menus[0], error)),
+            Err(error) => return log.emit(failed(&menus[0], error)),
         };
         for menu in menus {
             match provision_radios(&raw, menu).await {
                 Ok(0) => {}
                 Ok(count) => log.emit(RadiosReprovisioned {
-                    menu: menu.into(),
+                    menu: menu.clone(),
                     count: count as u32,
                     error: None,
                 }),

@@ -11,6 +11,7 @@
 //! job takes them up again, or someone discards them (a device NetBox doesn't know anymore).
 //! Without [`open`] (tests, the CHR harness) nothing is written.
 use crate::{
+    device::watchdog::Watching,
     device_state::{ApplyState, JobPhase, JobPhaseObject, UpdateState},
     graphql::scalars::ScalarDuration,
     topology::{DeviceId, SiteId},
@@ -24,7 +25,7 @@ use std::{
     io,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock, PoisonError},
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 #[cfg(test)]
@@ -47,16 +48,85 @@ pub struct SavedJob {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum SavedWork {
-    Apply { state: ApplyState },
+    Apply {
+        state: ApplyState,
+        #[serde(flatten)]
+        apply: SavedApply,
+    },
     Update { state: UpdateState },
 }
 
 impl SavedWork {
     pub fn phase(&self) -> JobPhase {
         match self {
-            SavedWork::Apply { state } => (*state).into(),
+            SavedWork::Apply { state, .. } => (*state).into(),
             SavedWork::Update { state } => (*state).into(),
         }
+    }
+    /// Takes `phase` as the state to save; `false` for another kind's.
+    pub fn set_phase(&mut self, phase: JobPhase) -> bool {
+        match (self, phase) {
+            (SavedWork::Apply { state, .. }, JobPhase::Apply(phase)) => *state = phase,
+            (SavedWork::Update { state }, JobPhase::Update(phase)) => *state = phase,
+            _ => return false,
+        }
+        true
+    }
+}
+
+/// An apply whose script runs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SavedApply {
+    /// the credentials it was reached with, by name (`mikrotik_credentials`); it goes on
+    /// connecting as for a job without target
+    pub credentials: Option<Box<str>>,
+    pub script: ScriptRun,
+    /// the watchdogs it suspended for a radio it changes (`RadioHold`)
+    pub hold: Option<SavedHold>,
+}
+
+/// What an apply knows once its script runs, enough to watch it to the end.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScriptRun {
+    /// the run's mark in the progress file
+    pub run: Box<str>,
+    /// a fallback is set
+    pub armed: bool,
+    #[serde(with = "unix_seconds")]
+    pub armed_at: SystemTime,
+    /// when the fallback fires, by the provisioner's count
+    #[serde(with = "unix_seconds")]
+    pub fires: SystemTime,
+    /// a device without marks counts as through after this
+    #[serde(with = "unix_seconds")]
+    pub unmarked: SystemTime,
+    /// the radios provisioned again after it (`reprovisioned_menus`)
+    pub reprovision: Vec<Box<str>>,
+}
+
+/// The watchdogs an apply holds suspended: the device's own (as it was), and others' by name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SavedHold {
+    pub own: Option<Watching>,
+    pub others: Vec<(Box<str>, Watching)>,
+}
+
+/// `at`, by the server's clock, as an `Instant` of this run.
+pub fn instant(at: SystemTime) -> Instant {
+    let now = Instant::now();
+    match at.duration_since(SystemTime::now()) {
+        Ok(ahead) => now + ahead,
+        Err(behind) => now.checked_sub(behind.duration()).unwrap_or(now),
+    }
+}
+
+/// `at`, an `Instant` of this run, by the server's clock.
+pub fn system_time(at: Instant) -> SystemTime {
+    let now = SystemTime::now();
+    let instant_now = Instant::now();
+    match at.checked_duration_since(instant_now) {
+        Some(ahead) => now + ahead,
+        None => now - instant_now.duration_since(at),
     }
 }
 

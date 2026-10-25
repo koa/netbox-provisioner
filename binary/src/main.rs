@@ -183,6 +183,7 @@ async fn main() -> Result<(), BackendError> {
     let topology = TopologyHolder::default();
     // ensure initial fetch
     topology.fetch().await?;
+    backend::graphql::resume_saved_jobs(&topology).await;
 
     let schema = create_schema(topology.clone());
     let anonymous_schema = create_anonymous_schema();

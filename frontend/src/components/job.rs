@@ -619,6 +619,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             &watching!(kept.watching),
             seconds(kept.safety_net) / 60,
         ),
+        Event::Resumed(resumed) => e::resumed(seconds(resumed.after)),
         Event::NetboxWritten(written) if written.deleted => e::netbox_deleted(&written.display),
         Event::NetboxWritten(written) if written.changes.is_empty() => {
             e::netbox_created(&written.display, &written.path)

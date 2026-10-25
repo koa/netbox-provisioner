@@ -17,7 +17,8 @@ use crate::{
         self, batch, bootstrap, device_mode, leftovers, partitions, power, power_cycle, ros::graphql as apply, terminal, update,
         radio_hold, update_fallback, watchdog,
     },
-    device_state::JobPhase,
+    device_state::{JobPhase, Restart},
+    saved_job::{self, SavedJob},
     graphql::scalars::ScalarDuration,
     helper,
     topology::{
@@ -94,10 +95,18 @@ pub enum Event {
     WatchdogNotRestored(watchdog::WatchdogNotRestored),
     WatchdogLeft(watchdog::WatchdogLeft),
     WatchdogKept(radio_hold::WatchdogKept),
+    Resumed(Resumed),
     NetboxWritten(helper::NetboxWritten),
     NetboxUndone(helper::NetboxUndone),
     SiteDiffStarted(device::site_diff::SiteDiffStarted),
     DeviceDiffed(device::site_diff::DeviceDiffed),
+}
+
+/// The job goes on after a restart of the provisioner, in the state it was saved in
+/// (`saved_job`), `after` it was saved.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct Resumed {
+    pub after: ScalarDuration,
 }
 
 /// An event and when it happened, counted from the start of the job.
@@ -118,6 +127,15 @@ pub struct Log {
     events: Arc<Mutex<Vec<Logged>>>,
     cancelled: Arc<(AtomicBool, Notify)>,
     phase: Arc<Mutex<Phases>>,
+    saving: Arc<Mutex<Saving>>,
+}
+
+/// What the job keeps for going on after a restart ([`Log::keep`]), and whether its file is
+/// written now.
+#[derive(Debug, Default)]
+struct Saving {
+    job: Option<SavedJob>,
+    written: bool,
 }
 
 /// The state a job is in (`device_state`), and the transitions its tables don't allow.
@@ -136,6 +154,7 @@ impl Log {
             events: Default::default(),
             cancelled: Default::default(),
             phase: Default::default(),
+            saving: Default::default(),
         }
     }
     /// The job enters `phase`. One its kind's table doesn't allow after the current one is
@@ -149,6 +168,55 @@ impl Log {
             phases.unexpected.push((before, phase));
         }
         phases.current = Some(phase);
+        drop(phases);
+        self.save_for(phase);
+    }
+    /// A job going on after a restart starts in the state it was saved in, whatever its kind's
+    /// first states are.
+    pub fn resume_in(&self, phase: impl Into<JobPhase>) {
+        let phase = phase.into();
+        self.phase.lock().unwrap_or_else(PoisonError::into_inner).current = Some(phase);
+        self.save_for(phase);
+    }
+    /// Keeps what the job needs to go on after a restart (`saved_job`): written whenever it
+    /// enters a state that goes on (`Restart::Continue`), with that state, and removed when it
+    /// enters any other or ends.
+    pub fn keep(&self, job: SavedJob) {
+        self.saving.lock().unwrap_or_else(PoisonError::into_inner).job = Some(job);
+        if let Some(phase) = self.phase() {
+            self.save_for(phase);
+        }
+    }
+    fn save_for(&self, phase: JobPhase) {
+        let mut saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
+        let Saving { job, written } = &mut *saving;
+        let Some(job) = job else {
+            return;
+        };
+        if phase.restart() == Restart::Continue && job.work.set_phase(phase) {
+            job.saved_at = SystemTime::now();
+            saved_job::save(job);
+            *written = true;
+        } else if *written {
+            saved_job::remove(job.device);
+            *written = false;
+        }
+    }
+    /// What the file holds now, `None` while there is none.
+    #[cfg(test)]
+    fn saved(&self) -> Option<SavedJob> {
+        let saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
+        saving.job.clone().filter(|_| saving.written)
+    }
+    /// The job ended: what it kept for a restart goes.
+    fn ended(&self) {
+        let mut saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(job) = saving.job.take()
+            && saving.written
+        {
+            saved_job::remove(job.device);
+        }
+        saving.written = false;
     }
     /// The state the job is in, or ended in; `None` before its first.
     pub fn phase(&self) -> Option<JobPhase> {
@@ -408,6 +476,7 @@ where
 {
     tokio::spawn(async move {
         let result = run(work).await;
+        job.log.ended();
         job.finish_with(result);
     });
 }
@@ -433,7 +502,9 @@ where
     let jobs = register(&members, None, kind)?;
     let running = jobs.clone();
     tokio::spawn(async move {
-        match run(async move { Ok(work.await) }).await {
+        let result = run(async move { Ok(work.await) }).await;
+        running.iter().for_each(|job| job.log.ended());
+        match result {
             Ok(results) => {
                 let mut results = results.into_iter();
                 for job in &running {
@@ -669,6 +740,64 @@ mod tests {
             reason: RebootReason::Packages,
             timeout: Duration::from_secs(1).into(),
         })
+    }
+
+    /// What an apply keeps is in its file only while it is in a state that goes on after a
+    /// restart, with that state; the job's end removes it.
+    #[test]
+    fn a_job_is_saved_only_in_states_that_go_on() {
+        use crate::{
+            device_state::{ApplyState, JobPhase},
+            saved_job::{SavedApply, SavedJob, SavedWork, ScriptRun},
+        };
+        use std::time::SystemTime;
+        let log = Log::new("lab-ap1");
+        let state = |log: &Log| log.saved().map(|saved| saved.work.phase());
+        log.enter(ApplyState::Planning);
+        log.enter(ApplyState::ArmingFallback);
+        log.enter(ApplyState::WritingScript);
+        log.enter(ApplyState::StartingScript);
+        log.keep(SavedJob {
+            device: DeviceId(7),
+            device_name: "lab-ap1".into(),
+            site: None,
+            saved_at: SystemTime::now(),
+            work: SavedWork::Apply {
+                state: ApplyState::ScriptRunning,
+                apply: SavedApply {
+                    credentials: Some("lab".into()),
+                    script: ScriptRun {
+                        run: "a1b2c3d4".into(),
+                        armed: true,
+                        armed_at: SystemTime::now(),
+                        fires: SystemTime::now(),
+                        unmarked: SystemTime::now(),
+                        reprovision: Vec::new(),
+                    },
+                    hold: None,
+                },
+            },
+        });
+        assert_eq!(state(&log), None);
+        log.enter(ApplyState::ScriptRunning);
+        assert_eq!(state(&log), Some(JobPhase::Apply(ApplyState::ScriptRunning)));
+        log.enter(ApplyState::StoppingFallback);
+        assert_eq!(state(&log), Some(JobPhase::Apply(ApplyState::StoppingFallback)));
+        log.enter(ApplyState::ScriptRunning);
+        assert_eq!(state(&log), Some(JobPhase::Apply(ApplyState::ScriptRunning)));
+        log.enter(ApplyState::StoppingFallback);
+        log.enter(ApplyState::Checking);
+        assert_eq!(state(&log), None);
+        log.enter(ApplyState::Finishing);
+        assert_eq!(state(&log), None);
+        assert!(log.unexpected().is_empty());
+
+        let resumed = Log::new("lab-ap1");
+        resumed.keep(log.saving.lock().unwrap().job.clone().unwrap());
+        resumed.resume_in(ApplyState::ScriptRunning);
+        assert_eq!(state(&resumed), Some(JobPhase::Apply(ApplyState::ScriptRunning)));
+        resumed.ended();
+        assert_eq!(state(&resumed), None);
     }
 
     #[test]

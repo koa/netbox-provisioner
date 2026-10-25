@@ -698,6 +698,14 @@ Beim Start:
    *Umgesetzt* als `backend::saved_job` (`savedJobs`, `discardSavedJob`, die Site-Auswahl zeigt
    sie); geschrieben wird erst mit dem Weiterführen.
 4. Anwenden weiterführen (einzeln, dann gemeinsam).
+   *Umgesetzt* für das einzelne: `Log::keep` hält, was die Datei braucht (`SavedApply`:
+   Zugangsdaten nach Name, `ScriptRun`, gehaltene Watchdogs), `Log::enter` schreibt sie in
+   `SkriptLäuft`/`FallbackWegnehmen` und entfernt sie sonst, das Ende des Jobs ebenso. Beim
+   Start geht ein Job im Zustand `SkriptLäuft` weiter (Event `Resumed`), verbindet, bis das
+   Gerät antwortet (bis zur Frist für die Rückkehr nach dem Fallback), hält die Watchdogs
+   wieder (`WatchdogSuspended` erneut, nicht erreichte bleiben dem Scheduler) und schaut auf
+   die Marken wie vorher (`watch_script`). Mit Zugangsdaten ad hoc wird nichts gespeichert:
+   das Passwort gehört nicht in die Datei.
 5. Update weiterführen.
 6. Geordnetes Beenden: weiterführbare Aufträge halten an einer sicheren Stelle an und lassen ihre
    Datei liegen, alle anderen werden abgebrochen.
