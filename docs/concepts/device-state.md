@@ -220,42 +220,63 @@ NetBox braucht, und danach die RouterBOARD-Firmware (`updateRouteros`).
   beim Start (Z23).
 - Updates, die nicht dieser Provisioner startet, sieht die PoE-Kette nicht.
 
+Umgesetzt als `device_state::UpdateState`, zusammen mit dem Downgrade (Name im Code in
+Klammern).
+
 ```mermaid
 stateDiagram-v2
     [*] --> Lesen
-    Lesen --> WartetAufKette
+    Lesen --> WatchdogsAussetzen: Überwachende vorhanden, bestätigt
+    Lesen --> WartetAufKette: sonst
+    WatchdogsAussetzen --> WartetAufKette
     WartetAufKette --> NachbarnMerken: [kein Speisendes startet neu], Schritt nötig
-    WartetAufKette --> Firmware: [kein Speisendes startet neu], RouterOS und Pakete stimmen
+    WartetAufKette --> Firmware: [kein Speisendes startet neu], RouterOS und Pakete stimmen, Firmware alt
+    WartetAufKette --> [*]: dito, Firmware aktuell → fertig
     NachbarnMerken --> FallbackSetzen
-    FallbackSetzen --> Laden: alte Partition kopiert, Scheduler da (G)
-    FallbackSetzen --> Laden: ohne Weg zurück (beim Start bestätigt)
-    Laden --> Hochladen: Pakete heruntergeladen
+    FallbackSetzen --> Laden: alte Partition kopiert, Scheduler da, oder ohne Weg zurück bestätigt (G)
+    Laden --> Hochladen: alle Pakete des Schritts heruntergeladen
     Hochladen --> WartetAufNeustart: alle Pakete auf dem Gerät (G)
     WartetAufNeustart --> Neustart: [kein Gespeistes aktualisiert]
-    Neustart --> Laden: Version richtig, weiterer Schritt (v6 → v7)
+    Neustart --> Laden: Version richtig, weiterer Schritt (v6 → v7) (G)
     Neustart --> FallbackWegnehmen: Version richtig, letzter Schritt (G)
-    Neustart --> AltePartition: alte Partition läuft (G)
-    Neustart --> [*]: nicht zurück (Z) → fehlgeschlagen
-    AltePartition --> [*]: fehlgeschlagen, Protokoll „Update zurückgerollt“
+    Neustart --> NachbarnWarten: dito, ohne Fallback (RouterOS 6)
+    FallbackSetzen --> NichtAktualisiert: Fehler
+    Laden --> NichtAktualisiert: Fehler, Abbruch
+    Hochladen --> NichtAktualisiert: Fehler, Abbruch → Pakete weg
+    WartetAufNeustart --> NichtAktualisiert: Abbruch → Pakete weg
+    Neustart --> NichtAktualisiert: alte Partition läuft, nicht zurück (Z), andere Version (G)
+    NichtAktualisiert --> [*]: fehlgeschlagen; zurückgerollt, oder erreicht und Fallback weg
     FallbackWegnehmen --> NachbarnWarten
-    NachbarnWarten --> Firmware: alle gemerkten Nachbarn benachbart (G)
-    NachbarnWarten --> [*]: Frist (Z) → fehlgeschlagen, fehlende Nachbarn
-    Firmware --> [*]: Firmware aktuell → fertig
+    NachbarnWarten --> Firmware: alle gemerkten Nachbarn benachbart, Firmware alt (G)
+    NachbarnWarten --> [*]: dito, Firmware aktuell → fertig; Frist (Z) → fehlgeschlagen
     Firmware --> WartetAufFirmwareNeustart: Upgrade gesetzt
     WartetAufFirmwareNeustart --> FirmwareNeustart: [kein Gespeistes aktualisiert]
     FirmwareNeustart --> [*]: neue Firmware läuft (G) → fertig
 ```
 
+Nach jedem Zustand, auch nach einem Fehler: `WatchdogsZurück` (`RestoringWatchdogs`), wo
+welche ausgesetzt sind. Ohne Fallback (kein Weg zurück) gibt es `NichtAktualisiert` nicht: Ein
+Fehler endet direkt.
+
 | Zustand | abbrechbar | Server gestartet | Selbstauslöser |
 |---|---|---|---|
-| `Lesen`, `WartetAufKette`, `NachbarnMerken` | ja, Ende | unterbrochen | – |
-| `FallbackSetzen` | nein | unterbrochen, Fallback beobachten | + Update-Fallback |
-| `Laden`, `Hochladen` | ja, Pakete weg | unterbrochen, Pakete beobachten | + Pakete |
-| `WartetAufNeustart` | ja, Pakete weg | unterbrochen | – |
-| `Neustart` | nein | weiterführen (wartet auf Uptime) | − Pakete (installiert) |
-| `FallbackWegnehmen` | nein | weiterführen | − Update-Fallback |
-| `NachbarnWarten` | ja, Ende | weiterführen | – |
-| `Firmware`, `WartetAufFirmwareNeustart`, `FirmwareNeustart` | nein | weiterführen | – |
+| `Lesen` (`Reading`) | ja, Ende | unterbrochen | – |
+| `WatchdogsAussetzen` (`SuspendingWatchdogs`) | nach dem Zustand | unterbrochen | + Sicherheitsnetz (bei den Überwachenden) |
+| `WartetAufKette` (`WaitingForChain`), `NachbarnMerken` (`RememberingNeighbors`) | ja, Ende | unterbrochen | – |
+| `FallbackSetzen` (`ArmingFallback`) | nach dem Zustand | unterbrochen, Fallback beobachten | + Update-Fallback |
+| `Laden` (`Downloading`) | ja, Fallback weg | unterbrochen | – |
+| `Hochladen` (`Uploading`), `WartetAufNeustart` (`WaitingToReboot`) | ja, Pakete und Fallback weg | unterbrochen, Pakete beobachten | + Pakete |
+| `Neustart` (`Rebooting`) | nach dem Zustand | weiterführen (wartet auf Uptime) | − Pakete (installiert) |
+| `NichtAktualisiert` (`NotUpdated`) | nach dem Zustand | weiterführen | − Update-Fallback, wenn erreicht |
+| `FallbackWegnehmen` (`StoppingFallback`) | nach dem Zustand | weiterführen | − Update-Fallback |
+| `NachbarnWarten` (`WaitingForNeighbors`) | ja, Ende | weiterführen | – |
+| `Firmware`, `FirmwareNeustart` (`RebootingFirmware`) | nach dem Zustand | weiterführen | – |
+| `WartetAufFirmwareNeustart` (`WaitingToRebootFirmware`) | ja, Ende | weiterführen | – |
+| `WatchdogsZurück` (`RestoringWatchdogs`) | nach dem Zustand | weiterführen | − Sicherheitsnetz |
+
+Beim Umsetzen korrigiert: Die Watchdogs werden vor dem Warten auf die Kette ausgesetzt; der
+Fehler mit gesetztem Fallback ist ein eigener Zustand (`not_updated`: zurückgerollt erkennen
+oder den Fallback wegnehmen), nicht nur „alte Partition läuft“.
 
 Die Watchdogs, die das Gerät überwachen, setzt der Auftrag vor dem Update auf den **anderen**
 Geräten aus (`Watchers`) und danach wieder; deren Sicherheitsnetz ist ein Selbstauslöser bei
@@ -274,21 +295,27 @@ in einer älteren Version (`downgradeRouteros`), vorbelegt mit der Version vor d
 
 **Bewusst nicht:** die Firmware zurückstellen.
 
+Dieselbe Machine wie das Update, ohne Fallback und Firmware:
+
 ```mermaid
 stateDiagram-v2
-    [*] --> Prüfen
-    Prüfen --> [*]: kein Weg zurück → fehlgeschlagen
-    Prüfen --> WartetAufKette: zweite Partition oder bestätigt
-    WartetAufKette --> Laden: [kein Speisendes startet neu]
+    [*] --> Lesen
+    Lesen --> WatchdogsAussetzen: Überwachende vorhanden, bestätigt
+    Lesen --> WartetAufKette: sonst
+    Lesen --> [*]: keine ältere Version von RouterOS 7 → fehlgeschlagen
+    WatchdogsAussetzen --> WartetAufKette
+    WartetAufKette --> NachbarnMerken: [kein Speisendes startet neu]
+    NachbarnMerken --> Laden: zweite Partition, Nachbar oder bestätigt
+    NachbarnMerken --> [*]: kein Weg zurück → fehlgeschlagen
     Laden --> Hochladen
     Hochladen --> WartetAufNeustart: Pakete auf dem Gerät (G)
     WartetAufNeustart --> Neustart: [kein Gespeistes aktualisiert], Downgrade ausgelöst
     Neustart --> NachbarnWarten: ältere Version läuft (G)
-    Neustart --> [*]: nicht zurück (Z) → fehlgeschlagen
+    Neustart --> [*]: abgelehnt → Pakete weg; nicht zurück (Z) → fehlgeschlagen
     NachbarnWarten --> [*]: Nachbarn da (G) → fertig
 ```
 
-Wie das Update ohne Fallback: + Pakete beim `Hochladen`, − beim `Neustart`.
+Selbstauslöser: Pakete ab `Hochladen`, weg mit dem `Neustart`.
 
 ### Neustart, Partitionieren, Partition booten
 
@@ -620,7 +647,7 @@ Zustand verweist nie auf ihn.
 1. Dieses Konzept abstimmen: zuerst die State-Machines, dann Speicher und Protokoll.
 2. Typen der Teilzustände und Übergänge in `backend::device_state`, rein (ohne Gerät), mit Tests der
    Übergangstabellen. Die heutigen Jobs melden ihre Zustände daran, ohne ihren Ablauf zu ändern.
-   *Begonnen:* Anwenden (einzeln und gemeinsam); die anderen Arten folgen.
+   *Begonnen:* Anwenden (einzeln und gemeinsam), Update und Downgrade; die anderen Arten folgen.
 3. Speicher (`state_dir`), Einlesen beim Start, Ende als unterbrochen.
 4. Teilzustand **Selbstauslöser** an `leftovers` anschliessen (Soll gegen Ist), Geräteseite zeigt
    die Teilzustände.

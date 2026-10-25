@@ -29,6 +29,9 @@ pub enum Restart {
 pub trait States: Copy + Eq + Debug + 'static {
     /// the states a job of the kind starts in
     const FIRST: &'static [Self];
+    /// the states that may follow any other, whatever the job ended: undoing what it did to
+    /// other devices
+    const FROM_ANY: &'static [Self] = &[];
     /// the states that may follow `self`
     fn next(self) -> &'static [Self];
     fn cancel(self) -> Cancel;
@@ -100,15 +103,105 @@ impl States for ApplyState {
     }
 }
 
+/// An update or a downgrade of RouterOS (`device::update`); a downgrade has no fallback and no
+/// firmware, and goes back to the packages' version in one step.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum UpdateState {
+    /// connecting, reading the device and the version to go to
+    Reading,
+    /// the watchdogs of the devices that would miss this one, suspended on those
+    SuspendingWatchdogs,
+    /// waiting until no device powering this one reboots (`PowerChain::updating`)
+    WaitingForChain,
+    /// the OSPF neighbors up now, to be back after the update
+    RememberingNeighbors,
+    /// the partition from before copied, its scheduler entry set (`update_fallback::arm`)
+    ArmingFallback,
+    /// downloading a step's packages, all before the first upload
+    Downloading,
+    /// uploading them; from here they install at the next boot
+    Uploading,
+    /// waiting until no device this one powers updates (`PowerChain::rebooting`)
+    WaitingToReboot,
+    /// packages not wanted uninstalled, rebooting, waiting for the version expected
+    Rebooting,
+    /// failed with the fallback set: back on the old partition, or its entry taken away
+    NotUpdated,
+    /// all steps through: the fallback's entry goes
+    StoppingFallback,
+    /// until the OSPF neighbors from before are back
+    WaitingForNeighbors,
+    /// the RouterBOARD firmware upgrade set
+    Firmware,
+    /// waiting until no device this one powers updates
+    WaitingToRebootFirmware,
+    /// rebooting into the new firmware
+    RebootingFirmware,
+    /// the watchdogs suspended on the others set again
+    RestoringWatchdogs,
+}
+
+impl States for UpdateState {
+    const FIRST: &'static [Self] = &[UpdateState::Reading];
+    const FROM_ANY: &'static [Self] = &[UpdateState::RestoringWatchdogs];
+    fn next(self) -> &'static [Self] {
+        use UpdateState::*;
+        match self {
+            Reading => &[SuspendingWatchdogs, WaitingForChain],
+            SuspendingWatchdogs => &[WaitingForChain],
+            // RouterOS and the packages in line: only the firmware, if at all
+            WaitingForChain => &[RememberingNeighbors, Firmware],
+            // a downgrade sets no fallback
+            RememberingNeighbors => &[ArmingFallback, Downloading],
+            ArmingFallback => &[Downloading, NotUpdated],
+            Downloading => &[Uploading, NotUpdated],
+            Uploading => &[WaitingToReboot, NotUpdated],
+            WaitingToReboot => &[Rebooting, NotUpdated],
+            // the next step (RouterOS 6 to 7), or through; without a fallback straight on
+            Rebooting => &[Downloading, StoppingFallback, WaitingForNeighbors, NotUpdated],
+            NotUpdated => &[],
+            StoppingFallback => &[WaitingForNeighbors],
+            WaitingForNeighbors => &[Firmware],
+            Firmware => &[WaitingToRebootFirmware],
+            WaitingToRebootFirmware => &[RebootingFirmware],
+            RebootingFirmware => &[],
+            RestoringWatchdogs => &[],
+        }
+    }
+    fn cancel(self) -> Cancel {
+        use UpdateState::*;
+        match self {
+            Reading | WaitingForChain | RememberingNeighbors | Downloading | Uploading | WaitingToReboot
+            | WaitingForNeighbors | WaitingToRebootFirmware => Cancel::Ends,
+            _ => Cancel::AfterState,
+        }
+    }
+    fn restart(self) -> Restart {
+        use UpdateState::*;
+        match self {
+            Rebooting | NotUpdated | StoppingFallback | WaitingForNeighbors | Firmware
+            | WaitingToRebootFirmware | RebootingFirmware | RestoringWatchdogs => Restart::Continue,
+            _ => Restart::Interrupted,
+        }
+    }
+}
+
 /// The state of a job, of whichever kind.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum JobPhase {
     Apply(ApplyState),
+    Update(UpdateState),
 }
 
 impl From<ApplyState> for JobPhase {
     fn from(state: ApplyState) -> Self {
         JobPhase::Apply(state)
+    }
+}
+
+impl From<UpdateState> for JobPhase {
+    fn from(state: UpdateState) -> Self {
+        JobPhase::Update(state)
     }
 }
 
@@ -118,29 +211,35 @@ impl JobPhase {
         fn check<S: States>(before: Option<S>, after: S) -> bool {
             match before {
                 None => S::FIRST.contains(&after),
-                Some(before) => before.next().contains(&after),
+                Some(before) => before.next().contains(&after) || S::FROM_ANY.contains(&after),
             }
         }
         match (before, self) {
             (None, JobPhase::Apply(after)) => check(None, after),
+            (None, JobPhase::Update(after)) => check(None, after),
             (Some(JobPhase::Apply(before)), JobPhase::Apply(after)) => check(Some(before), after),
+            (Some(JobPhase::Update(before)), JobPhase::Update(after)) => check(Some(before), after),
+            // another kind's state
+            (Some(_), _) => false,
         }
     }
     pub fn cancel(self) -> Cancel {
         match self {
             JobPhase::Apply(state) => state.cancel(),
+            JobPhase::Update(state) => state.cancel(),
         }
     }
     pub fn restart(self) -> Restart {
         match self {
             JobPhase::Apply(state) => state.restart(),
+            JobPhase::Update(state) => state.restart(),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ApplyState, JobPhase, States};
+    use super::{ApplyState, JobPhase, States, UpdateState};
     use std::collections::BTreeSet;
 
     /// Every state of `all` can be reached from a first one.
@@ -158,10 +257,10 @@ mod tests {
         assert!(missing.is_empty(), "not reachable: {missing:?}");
     }
 
-    fn path(states: &[ApplyState]) -> bool {
+    fn path<S: Copy + Into<JobPhase>>(states: &[S]) -> bool {
         let mut before = None;
         states.iter().all(|&state| {
-            let phase = JobPhase::from(state);
+            let phase: JobPhase = state.into();
             let ok = phase.may_follow(before);
             before = Some(phase);
             ok
@@ -201,5 +300,49 @@ mod tests {
         assert!(!path(&[Planning, WritingScript]));
         // started in the middle
         assert!(!path(&[ScriptRunning]));
+    }
+
+    #[test]
+    fn update_states_are_reachable() {
+        use UpdateState::*;
+        all_reachable(&[
+            Reading,
+            SuspendingWatchdogs,
+            WaitingForChain,
+            RememberingNeighbors,
+            ArmingFallback,
+            Downloading,
+            Uploading,
+            WaitingToReboot,
+            Rebooting,
+            NotUpdated,
+            StoppingFallback,
+            WaitingForNeighbors,
+            Firmware,
+            WaitingToRebootFirmware,
+            RebootingFirmware,
+        ]);
+    }
+
+    #[test]
+    fn update_paths() {
+        use UpdateState::*;
+        // RouterOS 6 to 7 with the firmware, watchdogs suspended
+        assert!(path(&[
+            Reading, SuspendingWatchdogs, WaitingForChain, RememberingNeighbors, ArmingFallback,
+            Downloading, Uploading, WaitingToReboot, Rebooting, Downloading, Uploading, WaitingToReboot,
+            Rebooting, StoppingFallback, WaitingForNeighbors, Firmware, WaitingToRebootFirmware,
+            RebootingFirmware, RestoringWatchdogs,
+        ]));
+        // a downgrade
+        assert!(path(&[Reading, WaitingForChain, RememberingNeighbors, Downloading, Uploading, WaitingToReboot, Rebooting, WaitingForNeighbors]));
+        // rolled back, the watchdogs set again
+        assert!(path(&[Reading, WaitingForChain, RememberingNeighbors, ArmingFallback, Downloading, Uploading, WaitingToReboot, Rebooting, NotUpdated, RestoringWatchdogs]));
+        // only the firmware
+        assert!(path(&[Reading, WaitingForChain, Firmware, WaitingToRebootFirmware, RebootingFirmware]));
+        // no reboot without the packages up
+        assert!(!path(&[Reading, WaitingForChain, RememberingNeighbors, ArmingFallback, Downloading, Rebooting]));
+        // an apply's state in an update
+        assert!(!JobPhase::from(ApplyState::Planning).may_follow(Some(UpdateState::Reading.into())));
     }
 }

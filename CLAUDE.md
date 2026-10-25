@@ -551,9 +551,10 @@ before gets `null`: it shows the job as interrupted (`components/job.rs`, `JobMe
 frees the page. While asking fails (server away) it shows one line and asks again, less often. A panic in a job's work ends it as
 failed with `PANIC` and its message, rather than leaving it running forever (`job::start`).
 Each kind of job has a state machine in `device_state` (`docs/concepts/device-state.md`; so far
-`ApplyState`, alone and in a batch): the work reports each state it enters (`Log::enter`), a
-transition the table doesn't allow is logged as `unexpected state` and kept (`Log::unexpected`,
-asserted empty in the batch tests) while the job goes on unchanged. Report the state before the
+`ApplyState` alone and in a batch, `UpdateState` for update and downgrade): the work reports
+each state it enters (`Log::enter`), a transition the table doesn't allow is logged as
+`unexpected state` and kept (`Log::unexpected`, asserted empty in the batch tests and the CHR
+update tests) while the job goes on unchanged. Report the state before the
 step that has an effect, and keep the table in line when a flow changes.
 A job says where it is before anything slow: `graphql::connect_for_job` reports `Connecting`
 and `Connected` (address, the neighbor's tunnel, the identity) for the device and each supplier,

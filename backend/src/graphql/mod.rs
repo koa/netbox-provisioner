@@ -1,6 +1,7 @@
 use crate::{
     Error,
     config::CONFIG,
+    device_state::UpdateState,
     error_info::ApiError,
     device::{
         AccessibleDevice, Connecting, bootstrap, device_mode, partitions,
@@ -126,6 +127,9 @@ impl Watchers {
     }
     /// Connects to each and suspends its watchdogs.
     async fn suspend(self, log: &Log) -> Result<Vec<watchdog::Suspended<AccessibleDevice>>, Error> {
+        if !self.watchers.is_empty() {
+            log.enter(UpdateState::SuspendingWatchdogs);
+        }
         let mut links = Vec::new();
         for watchdog::Watcher { device, supplier } in self.watchers {
             let link = connect_for_job(&device, None, None, None, log).await;
@@ -141,6 +145,14 @@ impl Watchers {
         }
         watchdog::suspend_all(links, log).await
     }
+}
+
+/// Sets the watchdogs [`Watchers::suspend`] suspended again, whatever the job came to.
+async fn restore_watchdogs(suspended: Vec<watchdog::Suspended<AccessibleDevice>>, log: &Log) {
+    if !suspended.is_empty() {
+        log.enter(UpdateState::RestoringWatchdogs);
+    }
+    watchdog::restore_all(suspended, log).await;
 }
 
 /// Fetches the topology after a write to NetBox, so the next page shows it.
@@ -310,6 +322,7 @@ impl MutationAuthenticated {
         let way_back = update_fallback::WayBack::of(&device, without_fallback == Some(true));
         let watchers = Watchers::of(&device, suspend_watchdogs == Some(true));
         Ok(job::start(&device.clone(), JobKind::Update, |log| async move {
+            log.enter(UpdateState::Reading);
             let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             let wanted = device.wanted_packages().await?;
             let version = match channel {
@@ -324,7 +337,7 @@ impl MutationAuthenticated {
             let updated =
                 update::update(&device, &power, &version, &wanted, CONFIG.update_fallback(), &way_back, &log)
                     .await;
-            watchdog::restore_all(suspended, &log).await;
+            restore_watchdogs(suspended, &log).await;
             updated
         })?)
     }
@@ -349,10 +362,11 @@ impl MutationAuthenticated {
         let way_back = update_fallback::WayBack::of(&device, without_fallback == Some(true));
         let watchers = Watchers::of(&device, suspend_watchdogs == Some(true));
         Ok(job::start(&device.clone(), JobKind::Downgrade, |log| async move {
+            log.enter(UpdateState::Reading);
             let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             let suspended = watchers.suspend(&log).await?;
             let downgraded = update::downgrade(&device, &power, &version, &way_back, &log).await;
-            watchdog::restore_all(suspended, &log).await;
+            restore_watchdogs(suspended, &log).await;
             downgraded
         })?)
     }

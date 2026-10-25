@@ -10,6 +10,7 @@
 //! way back ([`update_fallback`]), and the update is done when the OSPF neighbors are back.
 use crate::{
     Error,
+    device_state::UpdateState,
     device::{
         power::{PowerChain, RebootLease},
         raw::{command, field, rows},
@@ -653,11 +654,14 @@ pub async fn update(
     };
     let newest_v6 = newest_v6.as_ref().unwrap_or(target);
     // from the upload on a power loss can brick the device: it installs at the next boot
+    log.enter(UpdateState::WaitingForChain);
     let _updating = log.unless_cancelled(power.updating(log)).await?;
     if next_step(&state, target, newest_v6, wanted).is_some() {
         log.check()?;
+        log.enter(UpdateState::RememberingNeighbors);
         let device = link.api().await?;
         let ospf = update_fallback::ospf_up(&device).await?;
+        log.enter(UpdateState::ArmingFallback);
         // RouterOS 6 has no partitions to copy to with this menu
         let armed = match state.version.major() >= 7 {
             true => update_fallback::arm(&device, fallback, way_back, log).await?,
@@ -674,13 +678,18 @@ pub async fn update(
         let stepped = steps(link, power, state, target, newest_v6, wanted, armed.as_deref(), wait, log).await;
         state = match (stepped, armed) {
             (Ok(state), Some(partition)) => {
+                log.enter(UpdateState::StoppingFallback);
                 update_fallback::disarm(&link.api().await?, &partition, log).await?;
                 state
             }
             (Ok(state), None) => state,
-            (Err(error), Some(partition)) => return Err(not_updated(link, &partition, error, log).await),
+            (Err(error), Some(partition)) => {
+                log.enter(UpdateState::NotUpdated);
+                return Err(not_updated(link, &partition, error, log).await);
+            }
             (Err(error), None) => return Err(error),
         };
+        log.enter(UpdateState::WaitingForNeighbors);
         let missing = update_fallback::wait_for_ospf(&link.api().await?, &ospf, log).await?;
         if !missing.is_empty() {
             return Err(Error::OspfNeighborsMissing(missing.join(", ").into()));
@@ -700,10 +709,13 @@ pub async fn update(
             running,
         };
         log.check()?;
+        log.enter(UpdateState::Firmware);
         log.emit(upgrade_event(false));
         // the firmware loads at the next boot, whenever that is
         rows(&link.api().await?, "/system/routerboard/upgrade").await?;
+        log.enter(UpdateState::WaitingToRebootFirmware);
         let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
+        log.enter(UpdateState::RebootingFirmware);
         reboot_and_wait(link, rebooting, log, RebootReason::Firmware, REBOOT_TIMEOUT, |state| {
             state
                 .firmware
@@ -741,7 +753,9 @@ pub async fn downgrade(
         packages: state.packages.clone(),
     });
     let step = downgrade_step(&state, target)?;
+    log.enter(UpdateState::WaitingForChain);
     let _updating = log.unless_cancelled(power.updating(log)).await?;
+    log.enter(UpdateState::RememberingNeighbors);
     let device = link.api().await?;
     let ospf = update_fallback::ospf_up(&device).await?;
     update_fallback::check_downgrade(&device, way_back, log).await?;
@@ -752,6 +766,7 @@ pub async fn downgrade(
         uninstall: step.uninstall.clone(),
     });
     let rebooting = put_packages(link, power, &step, log).await?;
+    log.enter(UpdateState::Rebooting);
     let path = "/system/package/downgrade";
     let restarted = restart_and_wait(link, rebooting, log, RebootReason::Downgrade, REBOOT_TIMEOUT, path, |state| {
         (state.version == *target).then(|| state.clone())
@@ -771,6 +786,7 @@ pub async fn downgrade(
     log.emit(RouterOsRunning {
         version: state.version.to_string().into(),
     });
+    log.enter(UpdateState::WaitingForNeighbors);
     let missing = update_fallback::wait_for_ospf(&link.api().await?, &ospf, log).await?;
     if !missing.is_empty() {
         return Err(Error::OspfNeighborsMissing(missing.join(", ").into()));
@@ -810,6 +826,7 @@ async fn steps(
             uninstall: step.uninstall.clone(),
         });
         let rebooting = put_packages(link, power, &step, log).await?;
+        log.enter(UpdateState::Rebooting);
         uninstall(&link.api().await?, &step.uninstall).await?;
         let expected = step.version.clone();
         state = reboot_and_wait(link, rebooting, log, RebootReason::Packages, wait, |state| {
@@ -843,6 +860,7 @@ async fn put_packages(
     log: &Log,
 ) -> Result<RebootLease, Error> {
     // all before the first upload: a part of the packages must not install
+    log.enter(UpdateState::Downloading);
     let mut packages = Vec::new();
     for file in &step.files {
         let data = log.unless_cancelled(download(&step.version, file)).await??;
@@ -853,6 +871,7 @@ async fn put_packages(
         packages.push((file, data));
     }
     log.check()?;
+    log.enter(UpdateState::Uploading);
     let relaxed = allow_password_login(&link.api().await?, log).await?;
     let uploaded = async {
         for &(file, ref data) in &packages {
@@ -906,7 +925,10 @@ async fn put_packages(
     }
     // what is uploaded installs at the next boot, also when the update stops before it
     let rebooting = match uploaded {
-        Ok(()) => log.unless_cancelled(power.rebooting(log)).await,
+        Ok(()) => {
+            log.enter(UpdateState::WaitingToReboot);
+            log.unless_cancelled(power.rebooting(log)).await
+        }
         Err(error) => Err(error),
     };
     match rebooting {

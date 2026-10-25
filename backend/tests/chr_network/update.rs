@@ -13,6 +13,7 @@ use backend::device::power::PowerChain;
 use backend::device::terminal::{Terminal, Tunnel, upload};
 use backend::device::update::{DeviceLink, Downgraded, UpdateDone, Version, downgrade, read_state, update};
 use backend::device::update_fallback::{UpdateWithoutFallback, WayBack};
+use backend::device_state::UpdateState;
 use backend::job::{Event, Log};
 use encoding_rs::mem::encode_latin1_lossy;
 use mikrotik_api::prelude::MikrotikDevice;
@@ -22,6 +23,18 @@ use tokio::net::TcpStream;
 use tokio_stream::StreamExt;
 
 const PASSWORD: &str = "Updated-1";
+
+/// A job's log as the mutation hands it on: past `Reading` (`device_state::UpdateState`).
+fn reading() -> Log {
+    let log = Log::new("chr");
+    log.enter(UpdateState::Reading);
+    log
+}
+
+/// The job kept to the update's state machine.
+fn kept_to_states(log: &Log) {
+    assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
+}
 
 /// Straight to a node's forwarded ports, with the harness's password.
 struct DirectLink {
@@ -159,7 +172,7 @@ async fn update_older_chr_to_current() {
     let target = Version::parse(CHR.version).unwrap();
 
     // cancelled once the package is downloaded: it is uploaded, then removed again
-    let log = Log::new("chr");
+    let log = reading();
     let cancel = async {
         while !log.events().iter().any(|e| matches!(e, Event::PackageDownloaded(_))) {
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -176,7 +189,7 @@ async fn update_older_chr_to_current() {
     };
 
     // neither partitions nor a neighbor nor confirmed: refused before anything is downloaded
-    let alone = Log::new("chr");
+    let alone = reading();
     let without = WayBack {
         neighbors: [].into(),
         ..way_back.clone()
@@ -189,6 +202,7 @@ async fn update_older_chr_to_current() {
         tokio::join!(update(&link, &power, &target, &[], fallback, &way_back, &log), cancel);
     eprintln!("--- cancelled update log ---\n{:#?}", log.events());
     assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
+    kept_to_states(&log);
     assert!(log.events().iter().any(|e| matches!(e, Event::PackageUploaded(_))));
     let api = link.api().await.unwrap();
     let mut files = api.send_simple_command(b"/file/print".as_slice(), ()).await;
@@ -201,10 +215,11 @@ async fn update_older_chr_to_current() {
     drop(api);
     assert_eq!(read_state(&link.api().await.unwrap()).await.unwrap().version, before.version);
 
-    let log = Log::new("chr");
+    let log = reading();
     let result = update(&link, &power, &target, &[], fallback, &way_back, &log).await;
     eprintln!("--- update log ---\n{:#?}", log.events());
     result.expect("update");
+    kept_to_states(&log);
     // a CHR has no partitions to fall back to
     assert!(log.events().contains(&Event::UpdateWithoutFallback(UpdateWithoutFallback {
         partitions: 0,
@@ -252,17 +267,18 @@ async fn downgrade_chr_to_older() {
     };
 
     // only to an older version: refused before anything is downloaded
-    let log = Log::new("chr");
+    let log = reading();
     let newer = Version::parse("7.99").unwrap();
     let result = downgrade(&link, &power, &newer, &way_back, &log).await;
     assert!(matches!(result, Err(Error::NoDowngrade { .. })), "{result:?}");
     assert!(!log.events().iter().any(|e| matches!(e, Event::PackageDownloaded(_))));
 
     let older = Version::parse(CHR_OLDER.version).unwrap();
-    let log = Log::new("chr");
+    let log = reading();
     let result = downgrade(&link, &power, &older, &way_back, &log).await;
     eprintln!("--- downgrade log ---\n{:#?}", log.events());
     result.expect("downgrade");
+    kept_to_states(&log);
     assert_eq!(
         log.events().last(),
         Some(&Event::Downgraded(Downgraded {
