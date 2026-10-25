@@ -1,4 +1,4 @@
-//! The interfaces of a device by their task (`docs/concepts/interface-view.md`): loopback,
+//! The interfaces of a device by their task (`docs/interface-view.md`): loopback,
 //! uplink, direct link, radio link, customer port, unknown. Each row is an L3 interface, a
 //! bridge with its ports in the same row, with the findings about it; the findings are the
 //! ones of `findings.rs`, grouped, not computed again. Computed from NetBox alone; the

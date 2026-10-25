@@ -131,11 +131,11 @@ loopback only. A port cabled to a RouterOS device whose label doesn't name it (w
 punctuation, either containing the other) is a hint (`LabelNotFarEnd`); the export has many.
 
 `topology/interfaces.rs` sorts a device's interfaces by task (`DeviceAccess.interfaceView`,
-`docs/concepts/interface-view.md`): loopback, uplink, radio link, customer, direct, unknown, one
+`docs/interface-view.md`): loopback, uplink, radio link, customer, direct, unknown, one
 row per L3 interface with a bridge's ports in it, the findings of `findings.rs` grouped onto the
 rows by the interfaces they name (those about the device as a whole go with the loopback), never
 computed again; a new check is a new finding. The order of the rules and what a bridge device is
-(`DeviceAccess::is_bridge_device`) come from the stored export and the lab, see the concept;
+(`DeviceAccess::is_bridge_device`) come from the stored export and the lab, see `docs/interface-view.md`;
 `interfaces_of_netbox_example` writes the export's rows to `target/netbox-example/interfaces.txt`.
 The device page shows them in `components::interfaces`, every port with a row of its own (a
 bridge's ports below it, `InterfaceRow.portRows`, with PoE only; the free ones in a section

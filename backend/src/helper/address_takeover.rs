@@ -1,6 +1,6 @@
 //! Helper „Adresse übernehmen“: an address only the device has (the interface view's live
 //! check, `LiveRow.device_only_addresses`) on its NetBox interface, so the next apply keeps it
-//! instead of removing it (`docs/concepts/interface-view.md`). Its network becomes a prefix
+//! instead of removing it (`docs/interface-view.md`). Its network becomes a prefix
 //! when NetBox has none of it and nothing in it, within the smallest one holding it; a host
 //! length (`/32`, `/128`) stays in that one.
 use super::{CreateAddress, CreatePrefix, NetboxPlan, PlanStep, Target};

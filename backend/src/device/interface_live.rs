@@ -1,4 +1,4 @@
-//! The live checks of the interface view (`docs/concepts/interface-view.md`): who the device
+//! The live checks of the interface view (`docs/interface-view.md`): who the device
 //! sees at each row's ports (`/ip/neighbor`, as „Nachbarn lesen“), its OSPF neighbors there, and
 //! whether the bridge devices of a radio link answer a ping at their loopback, and where the
 //! device contradicts NetBox's PoE modes (`helper::poe::mismatches`). Read only; the

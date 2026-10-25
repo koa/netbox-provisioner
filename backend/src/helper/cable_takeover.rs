@@ -1,5 +1,5 @@
 //! Helper „Kabel übernehmen“: the device sees another router at a port than NetBox has there
-//! (`docs/concepts/interface-view.md`); NetBox takes over what the device sees. One plan of
+//! (`docs/interface-view.md`); NetBox takes over what the device sees. One plan of
 //! „Verbindung abräumen“ for each end whose link goes elsewhere in NetBox, then „Verbindung“
 //! between the two, computed on NetBox as the clearing leaves it. A cable over a patch panel is
 //! refused: the new cable is a direct one, the panels in NetBox document the building.

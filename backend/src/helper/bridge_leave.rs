@@ -1,5 +1,5 @@
 //! Helper „Aus Bridge lösen“: takes a port out of its bridge in NetBox, with the VLANs of the
-//! port itself, so it is free again (`docs/concepts/interface-view.md`). Its cable stays. The
+//! port itself, so it is free again (`docs/interface-view.md`). Its cable stays. The
 //! bridge stays too: its last port gone, the plan names it (`NetboxPlan.emptied_bridge`), its
 //! network then reaches nobody; „Kunden-Anschluss abräumen“ on its row takes that out.
 use super::{NetboxPlan, PlanStep, UpdatePort, UpdatePortVlan, port_name};

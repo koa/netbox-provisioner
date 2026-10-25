@@ -1,5 +1,5 @@
 //! Helper „Kunden-Anschluss abräumen“: takes a customer port's network out of NetBox, the
-//! inverse of „Kunden-Netz“ (`docs/concepts/interface-view.md`). From the row's interface (a
+//! inverse of „Kunden-Netz“ (`docs/interface-view.md`). From the row's interface (a
 //! port, a bridge or a VLAN interface): its addresses, each network's prefix once nothing else
 //! is in it, `dhcp`, and the VLANs of the port: of the interface and the ports of its bridge, of
 //! a VLAN interface the device's customer ports with its VLAN. A VLAN interface left with

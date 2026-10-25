@@ -65,7 +65,7 @@ impl Column {
     }
 }
 
-/// The columns of a task (`docs/concepts/interface-view.md`); the loopback has none, it is a
+/// The columns of a task (`docs/interface-view.md`); the loopback has none, it is a
 /// description list.
 fn columns(task: Task) -> &'static [Column] {
     match task {

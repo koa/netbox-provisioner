@@ -2,7 +2,7 @@
 //! VNI on its group (`vxlan_vni`) every RouterOS device with the VLAN, which the VXLAN joins;
 //! without, the RouterOS devices with the VLAN that cables carrying it join (a VLAN used on
 //! one device alone stays local there). The rule „one L3 gateway per VLAN“ of
-//! `docs/concepts/interface-view.md` counts per domain; `topology::findings` tests it.
+//! `docs/interface-view.md` counts per domain; `topology::findings` tests it.
 use crate::topology::{
     DeviceId,
     access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess, vlan::VlanAccess},

@@ -1,5 +1,5 @@
 //! The device's interfaces by task (`DeviceAccess.interfaceView`,
-//! `docs/concepts/interface-view.md`): a section per task, each with a table whose rows open to
+//! `docs/interface-view.md`): a section per task, each with a table whose rows open to
 //! their findings. What NetBox has comes first; the live checks (`live.rs`) follow in a query
 //! of their own and mark a row too, „Live prüfen“ asks again. Every port has its row: a bridge's
 //! ports below it, the free ones in a section that opens. A row's actions, the ones possible on

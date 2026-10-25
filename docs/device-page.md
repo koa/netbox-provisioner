@@ -21,7 +21,7 @@ Von oben nach unten:
    laufender Auftrag ausgesetzt hält, gelten nicht als liegengeblieben
    ([Jobs](concepts/job-polling.md#was-auf-dem-gerät-liegen-geblieben-ist)).
 4. **Job:** der laufende oder letzte Job des Geräts mit seinem Zustand und seinen Events.
-5. **Interfaces:** die [Interfaces nach Aufgabe](concepts/interface-view.md) mit Prüfungen, Befunden und
+5. **Interfaces:** die [Interfaces nach Aufgabe](interface-view.md) mit Prüfungen, Befunden und
    den Helfern pro Port. Die Befunde des Geräts stehen dort an den Zeilen, die sie betreffen (die
    über das ganze Gerät beim Loopback), nicht in einer eigenen Liste.
 6. **Gerät** und **Änderungen**, nebeneinander:

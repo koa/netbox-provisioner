@@ -1,5 +1,5 @@
 //! Helper „Richtfunk abräumen“: takes a radio link's network out of NetBox, so „Funkbrücke“ or
-//! another link can take its place (`docs/concepts/interface-view.md`). From one radio of the
+//! another link can take its place (`docs/interface-view.md`). From one radio of the
 //! link, its L3 ends are the bridges of both bridge devices and the router ports (or their
 //! bridge) cabled to them. Of these it takes the IPv4 addresses in the segment's networks (any
 //! on a bridge device's bridge, in the transfer pool, or at two ends at least), each network's

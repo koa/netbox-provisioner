@@ -1,5 +1,5 @@
 //! Helper „VLAN am Port“: a VLAN untagged on a port of the device (802.1Q mode access,
-//! `docs/concepts/interface-view.md`): the port of a customer network on a VLAN that reaches no
+//! `docs/interface-view.md`): the port of a customer network on a VLAN that reaches no
 //! port yet (`VlanWithoutPort`), or a customer's port whose network is on another device, over
 //! the VLAN group's VXLAN. Tagged VLANs on the port go (Z26).
 //!
