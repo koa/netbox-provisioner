@@ -625,7 +625,7 @@ Zustand verweist nie auf ihn.
 | Frist abgelaufen | Zeit | der Zustand des Auftrags, der auf etwas wartet |
 | Taste oder Kaltstart am Gerät | Bedienung am Gerät | Device-Mode `WartetAufTaste` (beobachtet: Gerät geht weg) |
 | Server startet | Server | gespeicherte Aufträge weiterführen, alle anderen sind weg |
-| Server wird beendet | Server | Abbrechen aller Aufträge, Frist 60 s, dann speichern |
+| Server wird beendet | Server | Aufträge mit Datei bleiben, alle anderen abbrechen, Frist 20 s |
 
 ## Speicher: nur fürs Weiterführen
 

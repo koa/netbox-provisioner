@@ -100,8 +100,8 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
 - **Netz:** Der Pod muss die Geräte erreichen, direkt oder über den Management-Proxy
   (`management_proxy`, SOCKS5 auf einem Router). Mit Proxy reicht ausgehend TCP zum Proxy, zu
   NetBox und zum OIDC-Provider; eine `NetworkPolicy` kann genau das erlauben.
-- `terminationGracePeriodSeconds` länger als die Frist für geordnetes Beenden, sobald es das gibt
-  ([Jobs](job-polling.md)).
+- `terminationGracePeriodSeconds` (60 s) länger als das geordnete Beenden: bis 30 s für offene
+  Anfragen (actix), dann bis 20 s für die abgebrochenen Aufträge ([Jobs](job-polling.md)).
 
 ## GitHub Actions
 
