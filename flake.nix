@@ -133,7 +133,7 @@
         default = provisioner;
         inherit provisioner;
         # an OCI image of the binary and the CA certificates, nothing else: no shell, no
-        # coreutils (`docs/concepts/deployment.md`)
+        # coreutils (`docs/deployment.md`)
         image = pkgs.dockerTools.buildLayeredImage {
           name = "netbox-provisioner";
           tag = self.shortRev or "dirty";

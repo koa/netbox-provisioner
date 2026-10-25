@@ -15,6 +15,7 @@ Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
 - [Geräteseite](device-page.md): Aufbau der Seite eines Geräts, Zugang, Ersteinrichtung.
 - [Update-Fallback](update-fallback.md): Partitionen, Rettung über den Nachbarn, Downgrade, Device-Mode, Strom aus und ein.
 - [Watchdog](watchdog.md): Hardware-, Ping- und PoE-Watchdog, ihre Ziele aus der Topologie, das Aussetzen bei Update und Funkänderung.
+- [Deployment](deployment.md): Binary, Image mit Nix, Helm-Chart, GitHub Actions.
 
 Was noch nicht umgesetzt ist, steht als Konzept in [concepts/](concepts/), die Aufgaben dazu in
 [todo.md](todo.md).

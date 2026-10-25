@@ -1,6 +1,6 @@
 # Tests, clippy and the image on every push; a push to master publishes image and chart as a
 # snapshot (image `sha-<commit>`), a tag `vX.Y.Z` as the release X.Y.Z; cleanup.yaml removes
-# old snapshots (docs/concepts/deployment.md).
+# old snapshots (docs/deployment.md).
 name: ci
 
 on:

@@ -122,6 +122,6 @@ persistence:
   # a PersistentVolumeClaim of a few MB, ReadWriteOnce
   existingClaim: ""
 
-# jobs, leases and cancelling live in the process (docs/concepts/deployment.md): never two pods,
+# jobs, leases and cancelling live in the process (docs/deployment.md): never two pods,
 # so one replica, replaced with `Recreate`, and time for a running job to come to its end
 terminationGracePeriodSeconds: 60
