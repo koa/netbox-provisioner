@@ -17,12 +17,14 @@ pub enum Cancel {
     AfterState,
 }
 
-/// What becomes of a job in a state when the server restarts.
+/// What becomes of a job in a state when the server restarts. Only where ending would take a
+/// change that went well back (a fallback firing) is it saved and continued; everything else
+/// waits or reads and may as well end (`docs/concepts/device-state.md`, „Speicher“).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Restart {
-    /// the state only reads and takes away the job's own self-triggers: it may be continued
+    /// saved on entering the state, continued after a restart
     Continue,
-    /// the job ends as interrupted; what it left on the device stays and is watched
+    /// the job ends as interrupted; what it left on the device stays
     Interrupted,
 }
 
@@ -98,7 +100,7 @@ impl States for ApplyState {
     fn restart(self) -> Restart {
         use ApplyState::*;
         match self {
-            ScriptRunning | StoppingFallback | NotReached | Checking | Finishing => Restart::Continue,
+            ScriptRunning | StoppingFallback => Restart::Continue,
             _ => Restart::Interrupted,
         }
     }
@@ -180,11 +182,12 @@ impl States for UpdateState {
     fn restart(self) -> Restart {
         use UpdateState::*;
         match self {
-            Rebooting | NotUpdated | StoppingFallback | WaitingForNeighbors | Firmware
-            | WaitingToRebootFirmware | RebootingFirmware | RestoringWatchdogs => Restart::Continue,
+            // with the fallback set; without one Rebooting ends harmlessly as well
+            Rebooting | NotUpdated | StoppingFallback => Restart::Continue,
             _ => Restart::Interrupted,
         }
     }
+
 }
 
 /// A reboot, a repartition or a boot from another partition (`update::reboot`, `partitions`).
@@ -215,11 +218,9 @@ impl States for RebootState {
         }
     }
     fn restart(self) -> Restart {
-        match self {
-            RebootState::Rebooting => Restart::Continue,
-            _ => Restart::Interrupted,
-        }
+        Restart::Interrupted
     }
+
 }
 
 /// A supplier cutting the power of a device it feeds (`power_cycle`): a job of the supplier.
@@ -253,11 +254,9 @@ impl States for PowerCycleState {
         }
     }
     fn restart(self) -> Restart {
-        match self {
-            PowerCycleState::WaitingForDevice => Restart::Continue,
-            _ => Restart::Interrupted,
-        }
+        Restart::Interrupted
     }
+
 }
 
 /// A change of the device mode (`device_mode::change`).
@@ -295,11 +294,9 @@ impl States for DeviceModeState {
         }
     }
     fn restart(self) -> Restart {
-        match self {
-            DeviceModeState::Rebooting => Restart::Continue,
-            _ => Restart::Interrupted,
-        }
+        Restart::Interrupted
     }
+
 }
 
 /// A setup over mac-telnet from a neighbor (`bootstrap`), which keeps the neighbor busy.
@@ -330,11 +327,9 @@ impl States for BootstrapState {
         }
     }
     fn restart(self) -> Restart {
-        match self {
-            BootstrapState::WaitingForApi => Restart::Continue,
-            _ => Restart::Interrupted,
-        }
+        Restart::Interrupted
     }
+
 }
 
 /// Taking away what a job left on the device (`leftovers::clear`).
@@ -364,11 +359,9 @@ impl States for CleanupState {
         }
     }
     fn restart(self) -> Restart {
-        match self {
-            CleanupState::Clearing | CleanupState::WaitingForChain => Restart::Interrupted,
-            CleanupState::Rebooting => Restart::Continue,
-        }
+        Restart::Interrupted
     }
+
 }
 
 /// Writing a helper's plan to NetBox, or taking such a write back (`helper::write`, `undo`).
@@ -400,11 +393,9 @@ impl States for NetboxState {
         }
     }
     fn restart(self) -> Restart {
-        match self {
-            NetboxState::Refetching => Restart::Continue,
-            _ => Restart::Interrupted,
-        }
+        Restart::Interrupted
     }
+
 }
 
 /// [`JobPhase`] over the kinds' state types: one variant each, `From`, the checks handed on to

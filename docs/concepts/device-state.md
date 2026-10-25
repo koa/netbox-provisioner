@@ -43,7 +43,7 @@ der Ort, an dem der Zustand lebt.
 4. **Beobachten ist automatisch, Reparieren nicht.** Der Provisioner darf jederzeit lesen und den
    Zustand nachführen. Etwas am Gerät ändern darf nur ein Übergang, den ein Mensch ausgelöst hat,
    oder der laufende Auftrag, den ein Mensch gestartet hat (siehe
-   [Offene Fragen](#offene-fragen) zum Weiterführen nach einem Neustart).
+   [Speicher](#speicher-nur-fürs-weiterführen) zum Weiterführen nach einem Neustart).
 5. **Was geschehen ist, steht im Protokoll, nicht im Zustand.** Der Zustand sagt nur, was noch
    läuft oder noch wirken kann. Das Ende eines Auftrags (fertig, fehlgeschlagen, abgebrochen,
    unterbrochen), ein ausgelöster Fallback oder ein teilweise geschriebener Plan sind
@@ -103,10 +103,10 @@ Für jede Art gilt:
   Protokoll-Eintrag mit dem Zustand, in dem der Auftrag endete. Danach ist er `Frei`.
 - **Abbrechen** (B) wirkt nur in Zuständen, die es erlauben (in den Diagrammen *abbrechbar*); in
   den anderen läuft der Zustand zu Ende, dann gilt der Abbruch.
-- **Server gestartet**: Für jeden Zustand steht fest, was dann geschieht: *weiterführen* (der
-  Zustand liest nur und nimmt höchstens den eigenen Selbstauslöser weg) oder *unterbrochen*
-  (Ende mit Protokoll-Eintrag, die Selbstauslöser bleiben und werden beobachtet). Siehe
-  [Offene Fragen](#offene-fragen), Frage 1.
+- **Server gestartet**: Für jeden Zustand steht fest, was dann geschieht: *weiterführen* (nur
+  wo das Ende eine gelungene Änderung zurücknähme, siehe
+  [Speicher](#speicher-nur-fürs-weiterführen)) oder *unterbrochen* (Ende, die Selbstauslöser
+  bleiben auf dem Gerät).
 
 Die Übergänge sind mit ihrer Quelle bezeichnet: **(B)** Bedienung, **(G)** Beobachtung am Gerät,
 **(Z)** Frist abgelaufen. Eine Bedingung über andere Geräte steht in eckigen Klammern, z.B.
@@ -181,9 +181,9 @@ stateDiagram-v2
 | `Zurücknehmen` (`TakingBack`) | nach dem Zustand | unterbrochen | − Apply-Fallback |
 | `SkriptLäuft` (`ScriptRunning`) | ja, Fallback bleibt | weiterführen | – |
 | `FallbackWegnehmen` (`StoppingFallback`) | nach dem Zustand | weiterführen | − Apply-Fallback |
-| `NichtErreicht` (`NotReached`) | ja, Fallback bleibt | weiterführen | – |
-| `Nachprüfen` (`Checking`) | ja, Ende | weiterführen | – |
-| `Nacharbeit` (`Finishing`) | nach dem Zustand | weiterführen | − Sicherheitsnetz |
+| `NichtErreicht` (`NotReached`) | ja, Fallback bleibt | unterbrochen | – |
+| `Nachprüfen` (`Checking`) | ja, Ende | unterbrochen | – |
+| `Nacharbeit` (`Finishing`) | nach dem Zustand | unterbrochen | − Sicherheitsnetz |
 
 Beim Umsetzen korrigiert: Die Watchdogs werden **vor** dem Fallback ausgesetzt, nicht danach;
 „zurückgeladen“ ist kein Zustand, sondern ein Ende (der Auftrag liest die Marken und endet).
@@ -266,13 +266,13 @@ Fehler endet direkt.
 | `FallbackSetzen` (`ArmingFallback`) | nach dem Zustand | unterbrochen, Fallback beobachten | + Update-Fallback |
 | `Laden` (`Downloading`) | ja, Fallback weg | unterbrochen | – |
 | `Hochladen` (`Uploading`), `WartetAufNeustart` (`WaitingToReboot`) | ja, Pakete und Fallback weg | unterbrochen, Pakete beobachten | + Pakete |
-| `Neustart` (`Rebooting`) | nach dem Zustand | weiterführen (wartet auf Uptime) | − Pakete (installiert) |
+| `Neustart` (`Rebooting`) | nach dem Zustand | weiterführen, wenn ein Fallback gesetzt ist | − Pakete (installiert) |
 | `NichtAktualisiert` (`NotUpdated`) | nach dem Zustand | weiterführen | − Update-Fallback, wenn erreicht |
 | `FallbackWegnehmen` (`StoppingFallback`) | nach dem Zustand | weiterführen | − Update-Fallback |
-| `NachbarnWarten` (`WaitingForNeighbors`) | ja, Ende | weiterführen | – |
-| `Firmware`, `FirmwareNeustart` (`RebootingFirmware`) | nach dem Zustand | weiterführen | – |
-| `WartetAufFirmwareNeustart` (`WaitingToRebootFirmware`) | ja, Ende | weiterführen | – |
-| `WatchdogsZurück` (`RestoringWatchdogs`) | nach dem Zustand | weiterführen | − Sicherheitsnetz |
+| `NachbarnWarten` (`WaitingForNeighbors`) | ja, Ende | unterbrochen | – |
+| `Firmware`, `FirmwareNeustart` (`RebootingFirmware`) | nach dem Zustand | unterbrochen | – |
+| `WartetAufFirmwareNeustart` (`WaitingToRebootFirmware`) | ja, Ende | unterbrochen | – |
+| `WatchdogsZurück` (`RestoringWatchdogs`) | nach dem Zustand | unterbrochen | − Sicherheitsnetz |
 
 Beim Umsetzen korrigiert: Die Watchdogs werden vor dem Warten auf die Kette ausgesetzt; der
 Fehler mit gesetztem Fallback ist ein eigener Zustand (`not_updated`: zurückgerollt erkennen
@@ -345,8 +345,7 @@ stateDiagram-v2
 ```
 
 „Erwartet“ heisst beim Partitionieren zwei Partitionen und dieselbe Identity, beim Booten die
-gewählte Partition. Abbrechbar bis `WartetAufKette`; nach einem Start des Servers in `Neustart`:
-weiterführen.
+gewählte Partition. Abbrechbar bis `WartetAufKette`; nach einem Start des Servers: unterbrochen.
 
 ### Strom aus und ein
 
@@ -412,7 +411,7 @@ stateDiagram-v2
 Die Bestätigung ist eine Bedienung **am Gerät**, nicht im Provisioner; der Auftrag beobachtet nur,
 dass das Gerät weggeht. `WartetAufTaste` hält die Verbindung offen, sonst bricht RouterOS ab:
 Nach einem Start des Servers ist die Änderung deshalb sicher weg, also *unterbrochen*, ohne
-Selbstauslöser. `Neustart` liest nur und wird weitergeführt.
+Selbstauslöser. Auch `Neustart` endet als unterbrochen: er liest nur.
 
 ### Ersteinrichtung
 
@@ -453,8 +452,7 @@ Läuft über ein anderes Gerät (den Nachbarn), das solange keinen eigenen Auftr
 (`job::start_through`): eine Bedingung über Geräte hinweg, und umgekehrt kein Auftrag des
 Nachbarn, solange die Ersteinrichtung läuft. In `Konsole` nicht abbrechbar; nach einem Start des
 Servers ist die Sitzung weg, also *unterbrochen*. Sie hinterlässt beim Nachbarn nichts, was
-selbst auslöst (die Befehle tun dort nichts, `netboxProvisionerNeighbor`). `WartetAufApi` liest
-nur und wird weitergeführt.
+selbst auslöst (die Befehle tun dort nichts, `netboxProvisionerNeighbor`).
 
 ### Aufräumen
 
@@ -626,16 +624,48 @@ Zustand verweist nie auf ihn.
 | Version, OSPF-Nachbarn | Beobachtung | Update `Neustart`, `NachbarnWarten` |
 | Frist abgelaufen | Zeit | der Zustand des Auftrags, der auf etwas wartet |
 | Taste oder Kaltstart am Gerät | Bedienung am Gerät | Device-Mode `WartetAufTaste` (beobachtet: Gerät geht weg) |
-| Server startet | Server | Auftrag je Zustand weiterführen oder unterbrochen, alle Teilzustände nachprüfen |
+| Server startet | Server | gespeicherte Aufträge weiterführen, alle anderen sind weg |
 | Server wird beendet | Server | Abbrechen aller Aufträge, Frist 60 s, dann speichern |
 
-## Speicher
+## Speicher: nur fürs Weiterführen
 
-- Ein Verzeichnis `state_dir` (Vorgabe neben `config.yaml`, im Helm-Chart ein Volume).
-- Pro Gerät mit Eintrag eine Datei `devices/<netbox-id>.json` mit allen Teilzuständen. Geschrieben bei
-  jedem Übergang (temporär schreiben, dann umbenennen). Gelöscht, wenn alle Teilzustände im
-  Grundzustand sind.
-- Die Events der Aufträge gehören zum Protokoll (eigenes Konzept).
+*Entschieden 2026-10-25:* Gespeichert wird nur, was ein Auftrag braucht, um nach einem Neustart
+des Servers weiterzulaufen. Alles andere – die übrigen Aufträge, die Teilzustände
+**Selbstauslöser** und **NetBox** samt Rückgängig, die Events – lebt nur im Speicher des
+Prozesses. Nach einem Neustart findet „Liegengebliebenes“ die Selbstauslöser wie bisher auf dem
+Gerät.
+
+Weitergeführt werden nur die Zustände, in denen das Unterbrechen eine gelungene Änderung
+zurücknähme. Alle anderen warten oder lesen nur und enden als unterbrochen (`Restart`):
+
+| Art | Zustände | was ohne Weiterführen geschähe |
+|---|---|---|
+| Anwenden, einzeln und gemeinsam | `SkriptLäuft`, `FallbackWegnehmen` | der Apply-Fallback lädt die Konfiguration von vorher |
+| Update mit Fallback | `Neustart`, `NichtAktualisiert`, `FallbackWegnehmen` | der Update-Fallback bootet die alte Partition |
+
+Pro weiterführbarem Auftrag eine Datei `state_dir/jobs/<netbox-id>.json`, geschrieben beim
+Eintritt in einen dieser Zustände (temporär schreiben, dann umbenennen) und gelöscht, sobald der
+Auftrag sie verlässt oder endet. Sie hält:
+
+- **Anwenden:** Gerät, Zustand, ob ein Fallback gesetzt ist, den Lauf des Skripts (für die
+  Marken), die Fristen (Aufgeben, Rückkehr nach dem Fallback) als Uhrzeit des Servers, die Menüs,
+  deren CAPs neu provisioniert werden, und die ausgesetzten Watchdogs anderer Geräte (Gerät und
+  was sie überwachen). Beim gemeinsamen Anwenden hat jedes Gerät seine Datei mit den Ids der
+  ganzen Gruppe; weitergeführt wird die Gruppe zusammen.
+- **Update:** Gerät, Zustand, Zielversion, Version vorher, die gewünschten Pakete, die Partition
+  des Fallbacks, die gemerkten OSPF-Nachbarn, die Uptime vor dem Neustart mit der Uhrzeit des
+  Befehls, und die ausgesetzten Watchdogs anderer Geräte.
+
+Fristen sind Uhrzeiten des Servers: ein `Instant` gilt über einen Neustart nicht. Die Uhr des
+Geräts bleibt aussen vor (sie springt nach einem Neustart, siehe 1og-sw1).
+
+Beim Start:
+1. Der Server hält `state_dir/lock`, solange er läuft; eine zweite Instanz mit demselben
+   `state_dir` startet nicht.
+2. Für jede Datei: Kennt NetBox das Gerät, startet ein Auftrag derselben Art im gespeicherten
+   Zustand und meldet, dass er nach einem Neustart weiterläuft; von dort an läuft er wie sonst
+   (beim Update auch die Firmware). Kennt NetBox es nicht mehr, bleibt die Datei; die
+   Geräteliste zeigt sie, bis jemand sie verwirft (B).
 
 ## Was sich für die Bedienung ändert
 
@@ -648,20 +678,13 @@ Zustand verweist nie auf ihn.
   X“ mit den Events bis dahin, statt eines leeren Jobs.
 - Die Site-Übersicht kann zeigen, welche Geräte einen Eintrag haben (alle anderen sind ruhig).
 
-## Offene Fragen
+## Entschieden
 
-1. **Weiterführen nach einem Neustart.** Ein Anwenden in `SkriptLäuft` oder ein Update in
-   `NachbarnWarten` könnte der Server nach dem Start weiterführen: Er hat alles, was er braucht
-   (Zustand, Fristen in Uptime). Das ist kein Reparieren, sondern der Auftrag, den ein Mensch
-   gestartet hat. Ohne Weiterführen lädt der Apply-Fallback auch eine gute Konfiguration zurück,
-   wenn der Server in diesem Moment neu startet. Vorschlag: weiterführen nur in Zuständen, die
-   nur noch lesen und den eigenen Selbstauslöser wegnehmen (in den Tabellen „weiterführen“),
-   alle anderen enden als unterbrochen.
-2. **Mehrere Server.** Zwei Instanzen mit demselben `state_dir` sind nicht vorgesehen. Eine
-   Sperrdatei verhindert den Start der zweiten.
-3. **Gerät aus NetBox gelöscht.** Ein Eintrag zu einer Id, die NetBox nicht mehr kennt, kann
-   nicht mehr beobachtet werden (keine Adresse). Vorschlag: Er bleibt und wird auf der
-   Site-Übersicht gezeigt, bis jemand ihn verwirft (B); das Verwerfen kommt ins Protokoll.
+1. **Weiterführen nach einem Neustart:** ja, aber nur in den Zuständen unter
+   [Speicher](#speicher-nur-fürs-weiterführen); gespeichert wird nur dafür (2026-10-25).
+2. **Mehrere Server:** eine Sperrdatei im `state_dir` verhindert den Start einer zweiten Instanz.
+3. **Gerät aus NetBox gelöscht:** sein gespeicherter Auftrag bleibt und wird gezeigt, bis jemand
+   ihn verwirft.
 
 ## Reihenfolge
 
@@ -670,9 +693,10 @@ Zustand verweist nie auf ihn.
    Übergangstabellen. Die heutigen Jobs melden ihre Zustände daran, ohne ihren Ablauf zu ändern.
    *Umgesetzt* für alle Arten; die Job-Ansicht zeigt den Zustand (`Job.phase`): „Stand: …“
    während er läuft, „Endete in: …“ nach einem Fehler oder Abbruch.
-3. Speicher (`state_dir`), Einlesen beim Start, Ende als unterbrochen.
-4. Teilzustand **Selbstauslöser** an `leftovers` anschliessen (Soll gegen Ist), Geräteseite zeigt
-   die Teilzustände.
-5. **NetBox** und Rückgängig über Neustarts.
-6. Geordnetes Beenden.
-7. Je nach Antwort auf Frage 1: Weiterführen nach dem Start.
+3. `state_dir` mit Sperrdatei, die Dateien der weiterführbaren Aufträge, Einlesen beim Start.
+4. Anwenden weiterführen (einzeln, dann gemeinsam).
+5. Update weiterführen.
+6. Geordnetes Beenden: weiterführbare Aufträge halten an einer sicheren Stelle an und lassen ihre
+   Datei liegen, alle anderen werden abgebrochen.
+
+Entfallen (2026-10-25): Selbstauslöser und NetBox über Neustarts speichern.
