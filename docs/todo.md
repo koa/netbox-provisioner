@@ -11,7 +11,7 @@ Status: **offen**, **in Arbeit**.
 
 ## Reihenfolge
 
-1. D3-D5
+1. D4-D5
 
 Dann schauen wir weiter
 
@@ -44,9 +44,6 @@ keine.
 | Z19 | Wartungsfenster? | vorerst nicht (2026-10-23) | C10 |
 | Z20 | Netz-Update pro Site oder über mehrere? | mehrere Sites, frei gewählt (2026-10-23) | C10 |
 | Z21 | Diff aller Geräte einer Site live oder als Job? | Job mit Zwischenstand (2026-10-23) | D2 |
-| Z22 | Kaltstart PoE-gespeister Geräte selbst auslösen? | ja, auf Knopfdruck mit Bestätigung, nie von selbst (2026-10-23) | C11 |
-| Z23 | Updates ganz ohne Fallback? | nur mit ausdrücklicher Bestätigung (2026-10-23) | D3 |
-| Z24 | Welche OSPF-Nachbarn müssen nach einem Update `Full` sein? | die vorher benachbart waren (`Full`, oder `TwoWay` zwischen zwei DROther, nach berghof-stall-haus) (2026-10-23) | D3 |
 | Z25 | Uplinks in der Interface-Ansicht? | eigene Aufgabe, nur angezeigt und geprüft; modelliert ganz in NetBox, keine Helfer (2026-10-23) | C12 |
 | Z26 | Tagged VLANs an physischen Ports (Trunk zu AP/Switch)? | nicht vorgesehen: L2 zu anderen Geräten über VXLAN, eigene APs und Switches über eine Direktverbindung; zurück auf den Tisch, wenn sich echte Nachteile zeigen (2026-10-23) | C12 |
 | Z27 | Ein L3-Übergang pro VLAN: Fehler oder Warnung, auch für Switches? | Fehler, auch für Switches: ein Switch mit dem VLAN nur auf L2 hat darin keine Adresse und ist nur über den Router des VLANs erreichbar (2026-10-23) | C12 |
@@ -89,6 +86,5 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
-| D3 | Update-Fallback Stufe 2: Rettung über mac-telnet (M) | [Update-Fallback](concepts/update-fallback.md) | M | in Arbeit |
 | D4 | Geräteseite: Bereich für Liegengebliebenes auf dem Gerät und Befunde | [Geräteseite](concepts/device-page.md) | S–M | in Arbeit |
 | D5 | Jobs: Events speichern (`state_dir`, M), geordnetes Beenden (S), Liegengebliebenes anzeigen (S) | [Jobs](concepts/job-polling.md) | M | in Arbeit |

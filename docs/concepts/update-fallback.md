@@ -1,11 +1,11 @@
 # Konzept: Fallback für RouterOS-Updates
 
-Status: Stufe 1 ist umgesetzt: Device-Mode anpassen (siehe unten), in zwei Partitionen
-aufteilen und der Ablauf beim Update. Von Stufe 2 ist das Erreichen über den Tunnel zum Nachbarn
-da (`connect` fällt auf die Adresse am Kabel zurück, wenn die Primary IP nicht antwortet, siehe
-unten), ebenso der MAC-Server auf den Wartungs-Ports und die Bestätigung für ein Update ganz
-ohne Weg zurück und der Downgrade auf Knopfdruck; offen ist mac-telnet zur Rettung. Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
-noch einen Fallback Mechanismus für Updates“).
+Status: umgesetzt. Stufe 1: Device-Mode anpassen (siehe unten), in zwei Partitionen aufteilen
+und der Ablauf beim Update. Stufe 2: das Erreichen über den Tunnel zum Nachbarn (`connect` fällt
+auf die Adresse am Kabel zurück, wenn die Primary IP nicht antwortet, siehe unten), der
+MAC-Server auf den Wartungs-Ports, die Rettung über mac-telnet, die Bestätigung für ein Update
+ganz ohne Weg zurück und der Downgrade auf Knopfdruck. Offener Punkt aus
+[pending.md](../pending.md#fallback) („Es braucht noch einen Fallback Mechanismus für Updates“).
 
 ## Ausgangslage
 
@@ -143,6 +143,22 @@ selbst, bevor er etwas herunterlädt, und bricht sonst mit `NO_UPDATE_FALLBACK` 
 `UpdateWithoutFallback` nennt die Nachbarn, über die es weitergeht. Geprüft auf CHR
 (`update_older_chr_to_current`): ohne Nachbarn und Bestätigung abgelehnt, ohne dass ein Paket
 geladen wurde, mit dem Nachbarn `entry` aktualisiert.
+
+*Umgesetzt* (Rettung über mac-telnet): Das ist die Ersteinrichtung (`device::bootstrap`).
+Die Geräteseite bietet sie an, sobald das Gerät nicht erreichbar ist, und sagt jetzt dazu, dass
+sie auch der Rettung dient. Nach dem Werkslogin (abgewiesen bei einem konfigurierten Gerät)
+meldet sie sich mit den Zugangsdaten aus der Konfiguration an. Dann setzt sie die Adresse aus
+NetBox auf den Port, öffnet die API und legt eine Firewall-Regel für den Nachbarn an. Die CAP
+schaltet sie nur nach einem Werkslogin ab (Reset in den CAPs-Modus), ein konfigurierter AP
+bedient seine Clients weiter. Danach erreicht `connect` das Gerät über den Tunnel zum Nachbarn,
+und die Geräteseite zeigt, was los ist: die Interfaces mit ihren OSPF-Nachbarn und das Log des
+Geräts (`AccessibleDevice.log`, die letzten 30 Einträge ohne die Logins, die des Provisioners
+verdrängten den Rest). Von dort geht es mit dem Downgrade
+oder „Von partN starten“ zurück, dann mit Anwenden. Geprüft auf CHR
+(`three_node_ospf_chain_apply_via_entry`): `target` verliert nach dem Apply seine Adresse am
+Kabel, `a` rettet es über mac-telnet, danach antwortet es über einen Tunnel zu `a`, der Rest der
+Konfiguration ist geblieben. Im Lab nicht geprüft, denn dazu müsste ein Gerät ausserhalb des
+Provisioners seine Adresse verlieren.
 
 *Umgesetzt* (Downgrade, `update::downgrade`): Auf der Geräteseite steht unter dem Update ein
 Feld für eine ältere Version, vorbelegt mit der, die das Gerät vor einem Update dieses Laufs

@@ -41,6 +41,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                     partitions { name version sizeMib active running }
                     canSplit
                 }
+                log { time topics message }
                 routeros {
                     version
                     packages

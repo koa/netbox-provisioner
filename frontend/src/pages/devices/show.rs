@@ -100,6 +100,8 @@ pub struct ShowDeviceData {
     /// why it couldn't be reached
     access_problem: Option<Box<str>>,
     routeros: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessRouteros>,
+    /// the newest entries of the device's log, oldest first
+    log: Vec<device_overview::DeviceOverviewTopologyDeviceByIdAccessLog>,
     /// `None` before RouterOS 7.17, or when it couldn't be read
     device_mode: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessDeviceMode>,
     /// `None` without partitions (16 MiB of flash), or when they couldn't be read
@@ -702,6 +704,7 @@ impl Component for ShowDevice {
                         let manual = self.manual_mac.clone();
                         html! {<>
                             <p>{setup::plan(&plan.neighbor, &plan.neighbor_port, &plan.port, &plan.address)}</p>
+                            <p>{setup::RESCUE}</p>
                             {candidates}
                             <div class="bootstrap-manual">
                                 <TextInput
@@ -828,6 +831,21 @@ impl Component for ShowDevice {
                     </CardBody>
                 </Card>
             </div>
+            if !data.log.is_empty() {
+                <Card class="device-log">
+                    <CardHeader><CardTitle>{t::LOG}</CardTitle></CardHeader>
+                    <CardBody>
+                        <details>
+                            <summary>{t::log_entries(data.log.len())}</summary>
+                            <CodeBlock>
+                                <CodeBlockCode>
+                                    { for data.log.iter().map(|entry| format!("{} {} {}\n", entry.time, entry.topics, entry.message)) }
+                                </CodeBlockCode>
+                            </CodeBlock>
+                        </details>
+                    </CardBody>
+                </Card>
+            }
             </>}
         });
         html! {
@@ -1054,6 +1072,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                             connected: d.access.as_ref().map(|a| a.connected.clone()),
                             access_problem,
                             routeros: d.access.as_mut().and_then(|a| a.routeros.take()),
+                            log: d.access.as_mut().and_then(|a| a.log.take()).unwrap_or_default(),
                             device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
                             partitions: d.access.as_mut().and_then(|a| a.partitions.take()),
                             access: d.access.map(|a| {

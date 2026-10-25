@@ -15,7 +15,8 @@ use crate::chr_network::vm::{RunningNode, mac_of};
 use crate::chr_network::wait::wait_for_ospf_full;
 use backend::device::ros::graphql::DeviceCfg;
 use backend::device::ros::l2::KeepNameGenerator;
-use backend::device::terminal::Terminal;
+use backend::device::bootstrap::{MacTelnetSetup, set_up};
+use backend::device::terminal::{Terminal, Tunnel};
 use backend::topology::builder::TopologyBuilder;
 use backend::topology::{
     Cable, CablePort, Device, DeviceId, Interface, IpAddressData, PhysicalPortId, TopologyHolder,
@@ -494,4 +495,119 @@ async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
         found,
         "config applied via entry's SOCKS proxy through a's OSPF route was not found on target"
     );
+
+    // The rescue of the update fallback: target lost its address on the cable (an update gone
+    // wrong) and with it OSPF. a logs in to it over mac-telnet with its credentials and puts
+    // NetBox's address back, after that it is reached through a tunnel to a (its loopback
+    // comes back with OSPF; the provisioner then reaches it there).
+    let (a_address, target_address) = match link_len {
+        31 => ("10.0.22.0", "10.0.22.1/31"),
+        _ => ("10.0.22.1", "10.0.22.2/24"),
+    };
+    run(&target_simple, "/ip/address/remove", &[("numbers", &address_id(&target_simple, target_address).await)]).await;
+    drop(target_simple);
+    let mut terminal = Terminal::connect(
+        ([127, 0, 0, 1], nodes[&a].ssh_port).into(),
+        "admin",
+        Some(crate::TEST_PASSWORD),
+    )
+    .await
+    .expect("ssh to a");
+    let setup = MacTelnetSetup {
+        macs: [mac_of(nodes[&target].index, 1)].into(),
+        port: "ether2".into(),
+        address: target_address.parse().unwrap(),
+        on_bridge: false,
+        neighbor_port: Some("ether3".into()),
+        neighbor_address: a_address.parse().unwrap(),
+    };
+    let result = set_up(&mut terminal, &setup, "admin", crate::TEST_PASSWORD).await;
+    eprintln!("--- rescue transcript ---\n{}", terminal.transcript());
+    result.expect("rescue over mac-telnet");
+    terminal.close().await;
+    let ssh = tokio::net::TcpStream::connect(("127.0.0.1", nodes[&a].ssh_port))
+        .await
+        .expect("ssh to a");
+    let tunnel = Tunnel::connect_with_stream(ssh, "admin", Some(crate::TEST_PASSWORD))
+        .await
+        .expect("tunnel to a");
+    let target_ip: IpAddr = target_address.split('/').next().unwrap().parse().unwrap();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
+    let rescued = loop {
+        let attempt = async {
+            let stream = tunnel.open(target_ip, 8728).await.map_err(|e| e.to_string())?;
+            mikrotik_api::prelude::MikrotikDevice::<mikrotik_api::simple::SimpleResult>::connect_with_stream(
+                stream,
+                b"admin",
+                Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
+            )
+            .await
+            .map_err(|e| e.to_string())
+        };
+        match tokio::time::timeout(Duration::from_secs(15), attempt).await {
+            Ok(Ok(device)) => break device,
+            result if tokio::time::Instant::now() > deadline => panic!("target not reached through a: {result:?}"),
+            _ => tokio::time::sleep(Duration::from_secs(2)).await,
+        }
+    };
+    let mut s = rescued.send_simple_command(b"/system/identity/print".as_slice(), ()).await;
+    while let Some(r) = s.next().await {
+        eprintln!("rescued target: {r:?}");
+    }
+    // the rest of its config stays: the bridge applied before is still there
+    let mut stream = rescued
+        .send_command(
+            b"/interface/bridge/print".as_slice(),
+            |cmd| cmd.query_equal(b"name".as_slice(), b"applied-via-ospf-chain".as_slice()),
+            (),
+        )
+        .await;
+    let mut kept = false;
+    while let Some(result) = stream.next().await {
+        kept |= matches!(result, mikrotik_api::simple::SimpleResult::Sentence(_));
+    }
+    assert!(kept, "the rescue changed more than the address");
+}
+
+/// The `.id` of `address` in `/ip/address`.
+async fn address_id(
+    device: &mikrotik_api::prelude::MikrotikDevice<mikrotik_api::simple::SimpleResult>,
+    address: &str,
+) -> String {
+    let mut s = device
+        .send_command(
+            b"/ip/address/print".as_slice(),
+            |cmd| cmd.query_equal(b"address".as_slice(), address.as_bytes()),
+            (),
+        )
+        .await;
+    let mut id = None;
+    while let Some(r) = s.next().await {
+        if let mikrotik_api::simple::SimpleResult::Sentence(row) = r {
+            id = row.get(".id").cloned().flatten();
+        }
+    }
+    id.unwrap_or_else(|| panic!("no address {address}")).to_string()
+}
+
+/// Runs `command` with `attributes`, printing the answers.
+async fn run(
+    device: &mikrotik_api::prelude::MikrotikDevice<mikrotik_api::simple::SimpleResult>,
+    command: &str,
+    attributes: &[(&str, &str)],
+) {
+    let mut s = device
+        .send_command(
+            command.as_bytes(),
+            |cmd| {
+                attributes
+                    .iter()
+                    .fold(cmd, |cmd, (key, value)| cmd.attribute(key.as_bytes(), value.as_bytes()))
+            },
+            (),
+        )
+        .await;
+    while let Some(r) = s.next().await {
+        eprintln!("{command}: {r:?}");
+    }
 }

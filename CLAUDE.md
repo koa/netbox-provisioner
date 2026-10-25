@@ -473,7 +473,10 @@ bridge once `/user active` has no mac-telnet session left, not after a delay. A 
 factory ether1 is WAN (firewall, no MAC server or discovery there), so it is set up after a reset
 to CAPs mode (`docs/netbox-modeling.md`); `set_up` turns the CAP that mode enables off again
 (`:parse`, the menus depend on the packages), since CAPsMAN refuses the first apply renaming the
-radios.
+radios. Only after a factory login: a device logging in with its credentials (one that lost
+its address after an update, the update fallback's rescue) keeps the rest of its config, its CAP
+included, and its log is on the device page (`AccessibleDevice.log`, the newest 30 entries without the
+logins, topic `account`: the provisioner's own drowned the rest).
 
 Nothing waits on a device or the way to it without a limit: over a radio link a connection can
 stall for good without ending (jobs hung at the setup, before the upload, after it). Opening a

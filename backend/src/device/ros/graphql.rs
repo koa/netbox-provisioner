@@ -1487,6 +1487,41 @@ impl AccessibleDevice {
         };
         nullable(ctx, versions.await)
     }
+    /// The newest `last` entries of the device's log (`/log`, kept in its memory until a
+    /// reboot), oldest first: what happened, after an update that went wrong. Without the
+    /// logins (topic `account`): the provisioner's own, several per page, drowned the rest.
+    async fn log(&self, ctx: &Context<'_>, #[graphql(default = 30)] last: u32) -> Option<Vec<LogEntry>> {
+        let read = async {
+            let rows = raw::rows(&self.connect_again().await?, "/log/print").await?;
+            let rows: Vec<_> = rows
+                .into_iter()
+                .filter(|row| !raw::field(row, "topics").unwrap_or_default().split(',').any(|t| t == "account"))
+                .collect();
+            let skip = rows.len().saturating_sub(last as usize);
+            let text = |row: &raw::Row, name| Box::<str>::from(raw::field(row, name).unwrap_or_default());
+            Ok::<_, Error>(
+                rows[skip..]
+                    .iter()
+                    .map(|row| LogEntry {
+                        time: text(row, "time"),
+                        topics: text(row, "topics"),
+                        message: text(row, "message"),
+                    })
+                    .collect(),
+            )
+        };
+        nullable(ctx, read.await)
+    }
+}
+
+/// An entry of the device's log, as RouterOS reports it.
+#[derive(SimpleObject)]
+pub struct LogEntry {
+    /// `10:04:12`, or with the date for an older one
+    time: Box<str>,
+    /// `system,info`
+    topics: Box<str>,
+    message: Box<str>,
 }
 
 /// A field error that leaves the field `null` instead of its parent: async-graphql passes an

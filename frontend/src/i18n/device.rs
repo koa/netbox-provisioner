@@ -123,6 +123,11 @@ pub fn update_to(version: &str) -> String {
     format!("Auf {version} aktualisieren")
 }
 
+pub const LOG: &str = "Log des Geräts";
+pub fn log_entries(count: usize) -> String {
+    format!("Die letzten {count} Einträge")
+}
+
 pub const DOWNGRADE: &str = "Downgrade";
 pub const DOWNGRADE_PLACEHOLDER: &str = "ältere Version, z. B. 7.20.8";
 pub const DOWNGRADE_NOW: &str = "Jetzt downgraden";
@@ -161,6 +166,10 @@ pub mod setup {
             "Ersteinrichtung: {neighbor} öffnet an {neighbor_port} MAC-Telnet zum gewählten Gerät, meldet sich an, setzt das Passwort und gibt dessen {port} die Adresse {address}."
         )
     }
+
+    pub const RESCUE: &str = "Auch zur Rettung eines Geräts, das nach einem Update seine Adresse \
+        verloren hat: Es meldet sich mit seinen Zugangsdaten an, bekommt nur die Adresse, die API \
+        und eine Firewall-Regel für den Nachbarn, der Rest seiner Konfiguration bleibt.";
 
     pub fn searching(neighbor: &str, port: &str) -> String {
         format!(" {neighbor} sucht Geräte an {port} …")

@@ -473,8 +473,8 @@ async fn set_up_marked(
     // that is up they run from the start, until all of them are through in one session.
     let deadline = Instant::now() + LOGIN_TIMEOUT;
     loop {
-        let (login_user, how, mac) = log_in(terminal, setup, user, password, deadline).await?;
-        let commands = setup_commands(setup, user, password, login_user, how, mac);
+        let (login_user, how, mac, factory) = log_in(terminal, setup, user, password, deadline).await?;
+        let commands = setup_commands(setup, user, password, login_user, how, mac, factory);
         match run_in_session(terminal, &commands, password).await? {
             None => return Ok(()),
             Some(ended_before) if Instant::now() > deadline => {
@@ -491,14 +491,15 @@ async fn set_up_marked(
 /// else as `user` with `password`, for a device that has them already but no address yet.
 /// Only a session that is up decides: RouterOS also says "incorrect username or password"
 /// when the device answered too late, so every pair of credentials and MAC is tried again
-/// until `deadline`, and counts as refused only if its last try was.
+/// until `deadline`, and counts as refused only if its last try was. `true` at the end: logged
+/// in with the factory settings.
 async fn log_in<'a>(
     terminal: &mut Terminal,
     setup: &'a MacTelnetSetup,
     user: &'a str,
     password: &str,
     deadline: Instant,
-) -> Result<(&'a str, LoggedIn, &'a MacAddress), Error> {
+) -> Result<(&'a str, LoggedIn, &'a MacAddress, bool), Error> {
     let mut attempts = vec![("admin", "")];
     if !password.is_empty() || user != "admin" {
         attempts.push((user, password));
@@ -522,7 +523,7 @@ async fn log_in<'a>(
                     match login(terminal, mac, interface, login_user, login_password, password)
                         .await?
                     {
-                        Login::Done(how) => return Ok((login_user, how, mac)),
+                        Login::Done(how) => return Ok((login_user, how, mac, login_password.is_empty())),
                         Login::Refused => {
                             refused.insert((attempt, index));
                             answered[index] = Some(interface);
@@ -547,7 +548,8 @@ async fn log_in<'a>(
 
 /// What the device needs, logged in as `login_user` at `mac`: `user` with `password`, the
 /// address on the port and the API open to the neighbor. Each command does nothing where it
-/// is done already.
+/// is done already. Not `factory`: a device with its credentials, which lost its address (an
+/// update gone wrong, the rescue of the update fallback), keeps the rest of its config.
 fn setup_commands(
     setup: &MacTelnetSetup,
     user: &str,
@@ -555,6 +557,7 @@ fn setup_commands(
     login_user: &str,
     how: LoggedIn,
     mac: &MacAddress,
+    factory: bool,
 ) -> Vec<String> {
     // the port under the name the device has for it: a device with an old config has its
     // ports renamed (berghof-hansueli: no `ether1`, "input does not match any value of
@@ -608,11 +611,13 @@ fn setup_commands(
     commands.push("/ip service set api disabled=no".into());
     // A device reset to CAPs mode manages its radios by CAPsMAN, which refuses the first apply
     // to rename them; the apply turns the CAP on again where NetBox wants one. `:parse`, since
-    // a menu is missing without its package.
-    commands.push(
-        ":foreach m in=(\"/interface wireless cap set enabled=no\",\"/interface wifi cap set enabled=no\") do={:do {:local f [:parse $m]; $f} on-error={}}"
-            .into(),
-    );
+    // a menu is missing without its package. A configured CAP keeps serving its clients.
+    if factory {
+        commands.push(
+            ":foreach m in=(\"/interface wireless cap set enabled=no\",\"/interface wifi cap set enabled=no\") do={:do {:local f [:parse $m]; $f} on-error={}}"
+                .into(),
+        );
+    }
     if !setup.on_bridge {
         // A factory bridge takes the port's traffic before the address sees it. Taking the port
         // out may cut this session, so it happens in the background once no mac-telnet session
