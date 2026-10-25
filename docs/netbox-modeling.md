@@ -25,8 +25,8 @@ Die Slugs müssen exakt so heißen:
 |               | (mit `ospf` ohne Default-Route: die kommt dann über OSPF)     |
 | `nat`         | Uplink, dessen Netz nicht zurückroutet: ausgehend maskieren   |
 
-An Prefixen markieren zwei Tags, woraus der Config-Helper Adressen vergeben soll
-([Konzept](concepts/config-helper.md#prefixe)). Die Config ändern sie nicht; die Befunde melden
+An Prefixen markieren zwei Tags, woraus der Config-Helper Adressen vergibt
+([Config-Helper](config-helper.md#prefixe)). Die Config ändern sie nicht; die Befunde melden
 einen fehlenden oder fast vollen Pool (unter 10 % frei):
 
 | Tag-Slug   | Bedeutung, wenn am Prefix gesetzt                                   |
@@ -347,7 +347,7 @@ tragen.
   aus NetBox, der Gerätename als Kommentar, sonst RouterOS' Vorgaben. Die Adresse fällt aus dem
   automatischen Pool. Der Provisioner verwaltet die statischen Leases ganz: einer, den NetBox
   nicht kennt, wird beim Anwenden entfernt; dynamische bleiben. Die Live-Prüfung der Interfaces
-  zeigt solche vorher, mit „Lease übernehmen“ ([Config-Helper](concepts/config-helper.md#lease-übernehmen)).
+  zeigt solche vorher, mit „Lease übernehmen“ ([Config-Helper](config-helper.md#lease-übernehmen)).
   MikroTik-Geräte selbst werden nie über eine MAC in NetBox erkannt.
 
 ## Rezept: Router
@@ -503,7 +503,7 @@ für den Normalfall.
 
 Der Helfer **Funkbrücke** (Karte „NetBox ergänzen“ auf der Seite einer Brücke) trägt das alles
 ein, was fehlt: Kabel, Bridge, Namen, RF Role, Wireless Link mit PSK, Loopback, Adressen und
-`ospf` ([config-helper.md](concepts/config-helper.md#funkbrücke)).
+`ospf` ([config-helper.md](config-helper.md#funkbrücke)).
 
 Was daraus generiert wird und worauf beim Ausrollen zu achten ist:
 [radio-bridge-generation.md](radio-bridge-generation.md).

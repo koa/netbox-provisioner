@@ -1,5 +1,5 @@
 //! Helper „Neues Gerät“: a RouterOS device for NetBox, cabled to a free port of a router whose
-//! page asks (`docs/concepts/config-helper.md#neues-gerät`): one without cable, or one whose
+//! page asks (`docs/config-helper.md#neues-gerät`): one without cable, or one whose
 //! cable ends open at a patch panel (`landing`), the new cable then starts there. One plan: the device (device type
 //! and role chosen, the router's tenant, whose credentials the initial setup uses, platform
 //! RouterOS), the port its cable lands on (NetBox's from the device type where it has it, see

@@ -140,7 +140,7 @@ impl std::fmt::Debug for Source {
 
 impl Topology {
     /// The prefixes of `pool` for IPv6 or IPv4, in the order they are filled: ascending
-    /// (`docs/concepts/config-helper.md`, Pools).
+    /// (`docs/config-helper.md`, Pools).
     /// The hosts of the IP addresses NetBox has in `net`.
     pub(crate) fn addresses_in(&self, net: IpNet) -> Vec<std::net::IpAddr> {
         self.ip_addresses
@@ -341,7 +341,7 @@ pub struct IpPrefixData {
     pub site: Option<SiteId>,
 }
 /// What a prefix with one of the tags `loopback` or `transfer` hands out: all prefixes with
-/// the same tag and IP version form one pool (`docs/concepts/config-helper.md`).
+/// the same tag and IP version form one pool (`docs/config-helper.md`).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, async_graphql::Enum)]
 pub enum PrefixPool {
     /// `/32` and `/128` on `lo`

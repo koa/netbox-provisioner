@@ -1,6 +1,6 @@
 //! Helper „Lease übernehmen“: a static DHCP lease only the router has (the interface view's live
 //! check, `LiveRow.device_only_leases`) as its client in NetBox, so the next apply keeps it
-//! instead of removing it (`docs/concepts/config-helper.md#lease-übernehmen`). A lease is a
+//! instead of removing it (`docs/config-helper.md#lease-übernehmen`). A lease is a
 //! device without RouterOS whose interface has a MAC and an address of the router's DHCP
 //! network (`device::ros::dhcp::static_leases`): the plan creates the device (any device type
 //! and role, the router's site, no platform), its interface `eth0` with the MAC as primary one,

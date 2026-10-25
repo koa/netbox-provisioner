@@ -2,7 +2,7 @@
 
 Die Karte „Interfaces“ auf der [Geräteseite](device-page.md) zeigt die Interfaces eines Geräts,
 sortiert nach ihrer Aufgabe. Jedes sagt, was geprüft ist und was nicht passt, und von jedem Port
-aus geht es mit einem Klick zum passenden Helfer ([Config-Helper](concepts/config-helper.md)).
+aus geht es mit einem Klick zum passenden Helfer ([Config-Helper](config-helper.md)).
 Die Helfer selbst (Plan, Vorschau, Schreiben, Rückgängig) sind dieselben wie anderswo.
 
 Code: `topology/interfaces.rs` (Zuordnung, Zeilen, Aktionen), `device/interface_live.rs`

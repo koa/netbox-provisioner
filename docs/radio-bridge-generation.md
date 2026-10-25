@@ -24,7 +24,7 @@ Erreichbar ist eine Brücke auf zwei Arten:
 Eine Loopback ohne `ospf` an irgendeinem Interface hebt das reine L2 auf (kein DHCP-Client mehr),
 ohne dass jemand sie ankündigt: das Gerät ist danach nicht erreichbar (schopf-burri). Der Befund
 `LoopbackWithoutOspf` meldet das als Fehler. Der Helfer „Funkbrücke“ trägt beides in NetBox ein
-([config-helper.md](concepts/config-helper.md#funkbrücke)).
+([config-helper.md](config-helper.md#funkbrücke)).
 
 Zwei RouterOS-Funktypen kommen vor, je nach Hardware:
 

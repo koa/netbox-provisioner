@@ -1,4 +1,4 @@
-//! The helpers of `docs/concepts/config-helper.md`: for a standard case, a plan of the NetBox
+//! The helpers of `docs/config-helper.md`: for a standard case, a plan of the NetBox
 //! objects to create or change, shown with its effect (`NetboxPlan.preview`) before it is
 //! written. They write to NetBox only, never to a device; the device gets it by applying its
 //! config as always.

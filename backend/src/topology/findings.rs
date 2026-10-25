@@ -1,5 +1,5 @@
 //! What is missing in NetBox or doesn't fit together, computed from the topology alone (the
-//! Befund „NetBox in sich“ of `docs/concepts/config-helper.md`). Only the devices with RouterOS
+//! Befund „NetBox in sich“ of `docs/config-helper.md`). Only the devices with RouterOS
 //! are looked at, the ones the provisioner manages. Data only: the frontend words it and links
 //! each object to NetBox.
 use crate::{

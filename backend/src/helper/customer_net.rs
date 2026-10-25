@@ -1,5 +1,5 @@
 //! Helper „Kunden-Netz“: a network for a port or a VLAN of a device, out of a prefix of its
-//! site chosen by hand (`docs/concepts/config-helper.md`). The next free network of the chosen
+//! site chosen by hand (`docs/config-helper.md`). The next free network of the chosen
 //! length in it, scoped to the site, its first address as gateway on the port or on a virtual
 //! interface of the VLAN (a new one named like the VLAN, `docs/netbox-modeling.md`), and the
 //! tag `dhcp` if wanted. Without an IP range the DHCP pool is the rest of the network.

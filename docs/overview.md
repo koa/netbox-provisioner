@@ -15,6 +15,7 @@ Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
 - [Geräteseite](device-page.md): Aufbau der Seite eines Geräts, Zugang, Ersteinrichtung.
 - [Jobs und Gerätezustand](jobs.md): Jobs, ihre State-Machines, Weiterführen nach einem Neustart, Liegengebliebenes.
 - [Interfaces nach Aufgabe](interface-view.md): die Karte „Interfaces“, Aufgaben, Prüfungen, Aktionen pro Port.
+- [Config-Helper](config-helper.md): Befunde über NetBox und gegen das Gerät, die Helfer, die NetBox ergänzen, Pools.
 - [Update-Fallback](update-fallback.md): Partitionen, Rettung über den Nachbarn, Downgrade, Device-Mode, Strom aus und ein.
 - [Watchdog](watchdog.md): Hardware-, Ping- und PoE-Watchdog, ihre Ziele aus der Topologie, das Aussetzen bei Update und Funkänderung.
 - [Deployment](deployment.md): Binary, Image mit Nix, Helm-Chart, GitHub Actions.

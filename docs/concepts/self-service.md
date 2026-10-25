@@ -82,7 +82,7 @@ Guards „darf schreiben“ bekommt jede Mutation die Frage „darf dieser Benut
   Ferne zurückzusetzen;
 - `leases(vlan)`: lesen, nur seine Netze.
 
-Jede schreibt nach NetBox (Plan, Vorschau, Rückgängig wie bei den [Helfern](config-helper.md)) und
+Jede schreibt nach NetBox (Plan, Vorschau, Rückgängig wie bei den [Helfern](../config-helper.md)) und
 wendet danach **nur die betroffenen Geräte** an (für ein WLAN: der Controller der Gruppe). Ein
 Anwohner sieht die Vorschau als Liste in Worten („SSID auf allen 3 APs ändern“), nicht als Skript.
 

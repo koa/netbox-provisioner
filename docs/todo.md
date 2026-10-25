@@ -96,3 +96,7 @@ Zurzeit keine.
 | E3 | Das Image in einem Cluster ausrollen und die beiden Workflows (CI, Aufräumen) auf GitHub einmal laufen lassen | [Deployment](deployment.md#noch-nicht-geprüft) | S | offen |
 | E4 | rustls statt OpenSSL, dann musl und ein Image nur aus Binary und Zertifikaten | [Deployment](deployment.md#noch-nicht-geprüft) | M | offen |
 | E5 | Job-Ansicht bei abgelaufenem Token (`401`/`403`): einmal neu anmelden lassen und weiterfragen, statt bei jedem Versuch denselben Fehler zu zeigen | [Jobs](jobs.md#verfolgen-im-browser) | S | offen |
+| E6 | Kunden-Netz: optional eine IP-Range mit Rolle `dhcp` anlegen (heute ist der DHCP-Pool der freie Rest des Netzes) | [Config-Helper](config-helper.md#kunden-netz) | S | offen |
+| E7 | OSPF-Priorität 0 auf Brückengeräten (nie DR/BDR): Regel im Generator (`priority` kennt mikrotik-model), vorher auf CHR vier OSPF-Sprecher in einem Segment, Strecke getrennt und wieder verbunden | [Config-Helper](config-helper.md#brückengeräte-mit-fester-adresse) | M | offen |
+| E8 | Weitere Befunde: WLAN-Gruppe ohne Controller, Region ohne Land, die Fehler des Generators gesammelt pro Site; gegen das Gerät ein OSPF-Nachbar `Full` über einen Port ohne `ospf` und das gemeldete Board gegen den Device Type | [Config-Helper](config-helper.md#befunde) | M | offen |
+| E9 | Automatischer Test der Helfer gegen das Lab-NetBox: ausführen, Vorschau mit dem Ergebnis vergleichen, zurücknehmen | [Config-Helper](config-helper.md#technik) | M | offen |

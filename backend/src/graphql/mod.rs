@@ -194,8 +194,8 @@ impl Guard for WritesAllowed {
 }
 
 /// Lets a helper's write to NetBox through only with `allow_netbox_write` and
-/// `netbox_write_token`. Who may use which helper (the permission classes of
-/// `docs/concepts/config-helper.md`) isn't told apart yet: every user of `auth_users` may.
+/// `netbox_write_token`. Who may use which helper isn't told apart yet (`docs/config-helper.md`,
+/// the roles of `docs/concepts/self-service.md`): every user of `auth_users` may.
 struct NetboxWritesAllowed;
 impl Guard for NetboxWritesAllowed {
     async fn check(&self, _ctx: &Context<'_>) -> async_graphql::Result<()> {

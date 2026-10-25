@@ -1,48 +1,20 @@
-# Konzept: Config-Helper
+# Config-Helper
 
-Status: Schritt 1 (Befund „NetBox in sich“) umgesetzt (`topology/findings.rs`, Befunde oben auf der
-Site-Seite, Netz-Befunde auf der Site-Übersicht, Anzahl an den Karten), ohne die PoE-Prüfung, WLAN-Gruppen,
-Regionen und die gesammelten Generatorfehler. Von Schritt 2 („NetBox gegen Gerät“) die Nachbarn
-→ Kabel (`device/neighbors.rs`, „Nachbarn lesen“ auf der Site-Seite). Schritt 3 mit dem Helfer
-„Loopback“ (`backend/src/helper/`, Karte „NetBox ergänzen“ auf der Geräteseite), von Schritt 4
-die Verbindung „Direkt“ (`/31`), „Kabel aus Befund übernehmen“ und „Verbindung abräumen“, von
-Schritt 5 die OSPF-/DHCP-Flags und das Kunden-Netz (IPv4 und IPv6, ohne IP-Range), von Schritt 6
-„PoE“ und Schritt 7 „Funkbrücke“ (samt Loopback und fester Adresse der Brückengeräte, mit
-„gemeinsam anwenden“ bei geänderter Funkstrecke). Offen sind „Neues Gerät“, die IP-Range des
-Kunden-Netzes, OSPF-Priorität 0 der Brückengeräte und von Schritt 2 Adressen gegen das Gerät
-(PoE gegen das Gerät ist in der Live-Prüfung der Interfaces umgesetzt, siehe [PoE](#poe)). Offener Punkt „Config-Helper“ aus [pending.md](../pending.md).
+NetBox ist die Quelle der Wahrheit, aber die Daten waren in schlechtem Zustand: In der
+gespeicherten Produktionsantwort hatten von 41 RouterOS-Geräten 15 keine Primary IPv4 und 14 kein
+`lo`, von 201 Adressen 73 kein Prefix gleicher Länge, 167 Ports kein Kabel. Der Generator erzeugt
+trotzdem für alle etwas; die Lücken fallen nicht als Fehler auf, sondern als Konfiguration, die
+etwas anderes tut als das Netz. Die Regeln, wie man richtig modelliert
+([netbox-modeling.md](netbox-modeling.md)), verteilen sich über viele NetBox-Formulare. Darum hat
+der Provisioner zwei Werkzeuge:
 
-## Ausgangslage
+1. **Befunde:** was in NetBox fehlt oder nicht zusammenpasst und, wo er es lesen kann, was das
+   Gerät anders macht. Nur lesen.
+2. **Helfer:** für die Standardfälle ein kurzer Ablauf, der die nötigen NetBox-Objekte anlegt oder
+   ändert. Ein Helfer schreibt nur in NetBox, nie auf ein Gerät; dorthin kommt es über „Anwenden“.
 
-NetBox ist die Quelle der Wahrheit, aber die Daten sind in schlechtem Zustand. In der
-gespeicherten Produktionsantwort (`docs/netbox-response-example.json`, Stand des letzten Exports):
-
-| Befund | Anzahl |
-|---|---|
-| RouterOS-Geräte | 41 |
-| davon ohne Primary IPv4 (also ohne OSPF, ohne VTEP) | 15 |
-| davon ohne Loopback `lo` | 14 |
-| Adressen an Interfaces | 201 |
-| davon ohne Prefix gleicher Länge (für DHCP Pflicht) | 73 |
-| physische Ports ohne Kabel | 167 |
-| verkabelte Ports mit IP, aber ohne `ospf` | 9 |
-
-Der Generator erzeugt für alle 41 Geräte etwas (`KNOWN_FAILURES` ist leer). Die Lücken fallen
-also nicht als Fehler auf, sondern als Konfiguration, die etwas anderes tut als das Netz heute:
-fehlende OSPF-Router-ID, ein DHCP-Server, der nicht entsteht, ein Port ohne sprechenden Namen.
-Die Regeln, wie man richtig modelliert, stehen in [netbox-modeling.md](../netbox-modeling.md).
-Sie sind zahlreich und verteilen sich über viele NetBox-Formulare. Das von Hand richtig zu machen,
-ist der Engpass.
-
-## Ziel
-
-Zwei Dinge im Provisioner, in dieser Reihenfolge:
-
-1. **Befund:** pro Site eine Liste, was in NetBox fehlt oder nicht zusammenpasst. Dazu, wo der
-   Provisioner es lesen kann, was das echte Gerät anders macht. Nur lesen, sofort nützlich.
-2. **Helfer:** für die Standardfälle ein kurzer Ablauf im UI, der die nötigen NetBox-Objekte
-   anlegt oder ändert. Der Provisioner schreibt dabei nur in NetBox, nie auf ein Gerät. Auf das
-   Gerät kommt es wie heute über die Geräteseite („Anwenden“).
+Aufgerufen werden die Helfer vom Port aus, in der [Interface-Ansicht](interface-view.md) der
+Geräteseite.
 
 ## Grundsätze
 
@@ -61,81 +33,61 @@ Zwei Dinge im Provisioner, in dieser Reihenfolge:
 - **Board-Wissen bleibt in `hw_facts.rs`.** Welche Ports ein Board hat, wo PoE-out ist, welches
   Funkpaket es braucht: Der Helfer fragt `hw_facts.rs`, statt eine zweite Tabelle zu führen.
 
-## 1. Befund
+## Befunde
 
-Eine neue Seite pro Site (und eine Spalte „Befunde“ in der Geräteliste). Zwei Quellen:
+Die Befunde stehen oben auf der Site-Seite, die Netz-Befunde auf der Site-Übersicht, ihre Anzahl
+an den Gerätekarten, und auf der Geräteseite gruppiert an den Zeilen der Interface-Ansicht.
 
 ### NetBox in sich
 
-Prüfungen, die nur NetBox brauchen. Sie lassen sich aus der Topologie rechnen, die der
-Provisioner ohnehin lädt. Fast jede Regel aus `netbox-modeling.md` wird eine Prüfung:
+Prüfungen, die nur NetBox brauchen (`topology/findings.rs`), einmal pro geladener Topologie
+gerechnet. Jeder Befund hat eine Schwere (Fehler: Generator scheitert oder macht etwas Falsches;
+Warnung; Hinweis) und die Objekte mit Link nach NetBox. Fast jede Regel aus `netbox-modeling.md`
+ist eine Prüfung:
 
-- Gerät mit Platform `routeros` ohne `lo`, ohne Primary IPv4, oder Primary IPv4 nicht auf `lo`.
-- Adresse ohne Prefix gleicher Länge, Prefix ohne Prefix-Rolle (siehe unten).
-- Kabel, dessen Enden nicht im selben Netz liegen, nur ein Ende `ospf` hat oder ungleiche MTU.
-- Verkabelter Port eines RouterOS-Geräts mit IP, aber ohne `ospf` (Hinweis, kein Fehler: es gibt
-  Kunden-Ports).
-- PoE: `PSE` an einem Port, dessen Board dort kein PoE-out hat (`hw_facts.rs`), oder am anderen
-  Kabelende kein Gerät.
-- Interface-Namen, die wie ein Port aussehen, aber keiner sind (`ether3-alt`, `qsfpplus1`).
-- VLAN ohne VLAN-Gruppe, WLAN-Gruppe ohne Controller, Site ohne Land in der Region.
-- Alles, woran der Generator scheitert, gesammelt über alle Geräte, statt eines Fehlers pro
-  Seitenaufruf.
+- Gerät mit Platform `routeros` ohne `lo` (`NoLoopback`), ohne Primary IPv4 (`NoPrimaryIpv4`: ein
+  Fehler, wo das Gerät `ospf` hat, sonst eine Warnung) oder mit Primary IPv4 nicht auf `lo`.
+- Eine Primary IPv4 auf `lo` ohne `ospf` an irgendeinem Interface (`LoopbackWithoutOspf`, Fehler):
+  Niemand kündigt sie an, der Provisioner erreicht das Gerät dort nicht.
+- Adresse ohne Prefix gleicher Länge (`AddressWithoutPrefix`); `dhcp` an einem Interface, in dessen
+  Prefix keine Adresse für einen Pool frei ist (`DhcpPoolEmpty`, ein /30 mit beiden Hosts belegt,
+  ein /31): Der Generator setzt dort keinen DHCP-Server auf, ohne Fehler, und der Befund rechnet
+  den Pool wie er (`dhcp_pool_v4`).
+- Kabel, dessen Enden nicht im selben Netz liegen (`NoCommonSubnet`), nur ein Ende `ospf` hat
+  (`OspfOnOneEnd`) oder ungleiche MTU (`MtuMismatch`). Netz und `ospf` nur, wenn beide Enden (der
+  Port oder seine Bridge) IPv4 haben: Ein Brückengerät ohne Adresse arbeitet nur auf L2, das OSPF
+  des Routers geht hindurch.
+- Verkabelter Port eines RouterOS-Geräts mit IP, aber ohne `ospf` (`AddressWithoutOspf`, Hinweis:
+  es gibt Kunden-Ports).
+- Interface-Namen, die wie ein Port aussehen, aber keiner sind (`PortLikeName`, `ether3-alt`).
+- VLAN ohne VLAN-Gruppe (`VlanWithoutGroup`); WLAN ohne VLAN (`WlanWithoutVlan`, Fehler am
+  Controller und an den APs ihrer Gruppe: Die Clients verbinden sich und erreichen nichts).
+- Ein Ende eines Wireless Links ohne RF-Rolle (`RadioWithoutRole`, Warnung): Das Radio behält seine
+  Konfiguration, die Funkbrücke wird nicht eingerichtet.
+- Pool fehlt oder ist fast voll (`PoolMissing`, `PoolNearlyFull`, siehe [Pools](#pools)).
+- Die Befunde der Interface-Ansicht (ein L3-Übergang pro VLAN, tagged VLAN am Port, Strecke
+  unvollständig, Label, VLAN ohne Port), siehe [dort](interface-view.md#was-geprüft-wird).
 
-Jeder Befund hat Schwere (Fehler: Generator scheitert oder macht etwas Falsches / Warnung /
-Hinweis), Objekt mit Link nach NetBox und, wenn es dafür einen Helfer gibt, den Knopf dazu.
-
-Umgesetzt und abweichend vom Entwurf oben:
-
-- `ospf` nur an einem Ende und „verschiedene Netze“ werden nur geprüft, wenn beide Enden (der Port
-  oder seine Bridge) IPv4 haben. Ein Brückengerät ohne Adresse arbeitet nur auf L2, das OSPF des
-  Routers geht hindurch zum Router auf der anderen Seite. Im Export waren das zehn falsche Treffer.
-- Ohne Primary IPv4 ist ein Fehler, wo das Gerät `ospf` hat (Router-ID), sonst eine Warnung.
-- „Prefix ohne Prefix-Rolle“ entfällt, die Pools kommen über Tags.
-- Dazu gekommen: eine Primary IPv4 auf `lo` ohne `ospf` an irgendeinem Interface, als Fehler:
-  niemand kündigt sie an, der Provisioner erreicht das Gerät dort nicht.
-- Dazu gekommen: ein Ende eines Wireless Links ohne RF-Rolle, als Warnung. Ohne Rolle richtet
-  der Provisioner die Funkbrücke nicht ein, das Radio behält seine Konfiguration.
-- Dazu gekommen: eine WLAN ohne VLAN, als Fehler am Controller und an den APs ihrer Gruppe. Die
-  CAPs legen ihre Clients in die Bridge der WLAN-VLAN und tragen sie über deren VXLAN weiter;
-  ohne VLAN bekommen sie weder Bridge noch VXLAN, die Clients verbinden sich und erreichen nichts.
-- Dazu gekommen: `dhcp` an einem Interface, in dessen Prefix keine Adresse für einen Pool frei
-  ist (ein /30 mit beiden Hosts belegt, ein /31). Der Generator setzt dort keinen DHCP-Server auf,
-  ohne Fehler; der Befund rechnet den Pool wie er (`dhcp_pool_v4`).
-
-Im gespeicherten Export, mit gesetzten Tags `loopback`/`transfer`: 16 Geräte ohne Primary IPv4 und 14 ohne
-`lo` (die Brückengeräte, ein AP, ein Switch-Paar), eine Adresse ohne Prefix, ein Hinweis auf eine
-Verbindung ohne `ospf` (`lkw-switch-20`–`lte-16`). Den Stand schreibt der Test
-`findings_of_netbox_example` nach `target/netbox-example/findings.txt`.
+Den Stand des gespeicherten Exports schreibt der Test `findings_of_netbox_example` nach
+`target/netbox-example/findings.txt`.
 
 ### NetBox gegen Gerät
 
-Für erreichbare Geräte liest der Provisioner das Gerät nur (wie heute `fetch_config`) und
-vergleicht:
+Für erreichbare Geräte liest der Provisioner das Gerät nur und vergleicht. Das Gerät ist die
+Wahrheit über das, was *ist*, NetBox über das, was *sein soll*; welche Seite recht hat,
+entscheidet der Mensch: „In NetBox übernehmen“ (Helfer) oder „Gerät anpassen“ (Anwenden).
 
-- **Nachbarn → Kabel.** `/ip/neighbor` (MNDP/LLDP) sagt, welches Gerät an welchem Port hängt. Fehlt
-  das Kabel in NetBox oder geht es anderswohin, wird das ein Befund mit Vorschlag „Kabel
-  anlegen“. Das ist der grösste Hebel bei 167 Ports ohne Kabel. Die Nachbarschaft wird über den
-  Namen des Nachbarn (Identity = NetBox-Name) und seinen Port zugeordnet, nicht über die MAC.
-- **Adressen.** Eine Adresse auf dem Gerät, die in NetBox fehlt, oder umgekehrt.
-- **OSPF.** Ein Nachbar, der auf dem Gerät `Full` ist, über einen Port ohne `ospf` in NetBox.
-- **PoE.** Ein Port, der laut Gerät gerade speist (`poe-out-status=powered-on`), in NetBox aber
-  nicht `PSE` ist.
-- **Board.** Das gemeldete Board gegen den Device Type in NetBox.
-
-Wie der Generator heute schon das Board live liest, ist das Gerät hier die Wahrheit über das,
-was *ist*. NetBox ist die Wahrheit über das, was *sein soll*. Der Befund zeigt beides
-nebeneinander. Welche Seite recht hat, entscheidet der Mensch: „In NetBox übernehmen“ (Helfer)
-oder „Gerät anpassen“ (Anwenden).
-
-Das Lesen kostet pro Gerät ein paar Sekunden über den Management-Proxy. Der Befund einer Site
-läuft deshalb als Job (Events pro Gerät), nicht als einzelne Abfrage.
-
-Umgesetzt ist es zunächst ohne Job: „Nachbarn lesen“ auf der Site-Seite fragt jedes Gerät mit
-einer eigenen Abfrage (`access.neighborFindings`), alle gleichzeitig, und zeigt jedes, sobald es
-antwortet, wie heute schon den Ping der Gerätekarten. Das gibt dieselbe Rückmeldung pro Gerät
-ohne Jobs, die zu einer Site statt einem Gerät gehören. Ein Job lohnt sich, sobald der Befund
-Geräte nacheinander lesen oder Ergebnisse aufheben muss.
+- **Nachbarn → Kabel** (`device/neighbors.rs`): `/ip/neighbor` (MNDP/LLDP) sagt, welches Gerät an
+  welchem Port hängt. Fehlt das Kabel in NetBox oder geht es anderswohin, ist das ein Befund, mit
+  „Kabel übernehmen“ bzw. „Verbindung“. Zugeordnet wird über den Namen des Nachbarn (Identity =
+  NetBox-Name) und seinen Port, nicht über die MAC. „Nachbarn lesen“ auf der Site-Seite fragt jedes
+  Gerät mit einer eigenen Abfrage (`access.neighborFindings`), alle gleichzeitig, und zeigt jedes,
+  sobald es antwortet; die Geräteseite zeigt es in der Live-Prüfung der Interfaces.
+- **Adressen und Leases**, die nur auf dem Gerät stehen: in der Live-Prüfung, mit [Adresse
+  übernehmen](#adresse-übernehmen) und [Lease übernehmen](#lease-übernehmen).
+- **PoE**, das NetBox anders hat als das Gerät: in der Live-Prüfung, siehe [PoE](#poe).
+- **Die ganze Site** (Abweichung von NetBox, `device/site_diff.rs`): ein Job der Site liest ihre
+  RouterOS-Geräte, vier zugleich, und meldet pro Gerät die Änderungen eines Anwendens nach Menü.
 
 Was dabei gelernt wurde:
 
@@ -153,7 +105,8 @@ Was dabei gelernt wurde:
 
 ## 2. Helfer
 
-Die Fälle aus `pending.md`. Jeder ist ein kurzes Formular, das einen Plan erzeugt.
+Jeder Helfer ist ein kurzes Formular, das einen Plan erzeugt (`backend/src/helper/`, im Frontend
+`components/netbox_helper/`, ein Modul pro Helfer).
 
 ### Neues Gerät
 
@@ -201,7 +154,7 @@ Nächste freie `/32` aus dem Loopback-Pool (siehe [Pools](#pools)), auf `lo`, al
 Primary IPv4, dazu eine `/128` aus dem IPv6-Loopback-Pool als Primary IPv6. Was schon da ist,
 bleibt: ein `lo`, eine Adresse der IP-Version darauf, eine Primary IP, die diese Adresse ist.
 
-Umgesetzt: `POST …/available-ips/` legt die Adresse mit der Länge des Prefixes an (`/26`), nicht
+`POST …/available-ips/` legt die Adresse mit der Länge des Prefixes an (`/26`), nicht
 als `/32`. Der Plan liest deshalb die erste freie Adresse (`GET …/available-ips/?limit=1`) und
 legt sie beim Schreiben als `/32` bzw. `/128` an, nachdem er geprüft hat, dass sie noch frei ist.
 Hat sie inzwischen jemand, bricht er ab (siehe Gleichzeitige Änderungen).
@@ -231,29 +184,22 @@ oder eingeben) und als Label je dem Namen der Gegenseite:
   Plan: ein `/29` mit festen Adressen für die beiden Router und die beiden Brückengeräte, siehe
   [Brückengeräte mit fester Adresse](#brückengeräte-mit-fester-adresse).
 
-Bevor der Helfer `/31` vergibt, ist auf einer CHR zu prüfen, dass RouterOS damit tut, was es soll:
-Adresse, OSPF-Nachbarschaft und Ersteinrichtung über einen Nachbarn im `/31`. Ebenso, dass der
-Generator damit umgehen kann (Ersteinrichtung sucht den Nachbarn „im selben Netz“, der DHCP-Pool
-rechnet freie Adressen).
 Geprüft (CHR 7.24.5): `three_node_ospf_chain_over_31` (Kette über zwei `/31`, OSPF mit dem
 generierten `type=broadcast` auf beiden Hops `Full`, Anwenden über den Nachbarn) und
 `mac_telnet_setup_over_31` (Ersteinrichtung und Tunnel über den Nachbarn im `/31`). Der
 Generator vergleicht bei der Ersteinrichtung nur Netze, der DHCP-Pool betrifft nur `dhcp`-Netze.
 
-Umgesetzt ist „Direkt“ (`helper/connection.rs`): Auf der Geräteseite in „NetBox ergänzen“
-„Verbindung“ wählen, dann den eigenen Port, Gegenseite und deren Port (`linkPorts`; ein Port mit
-Kabel zu einem Router bringt die Gegenseite mit) und optional die MTU (sonst die grössere der
+„Direkt“ (`helper/connection.rs`): vom eigenen Port aus die Gegenseite und deren Port wählen
+(`linkPorts`; ein Port mit Kabel zu einem Router bringt die Gegenseite mit) und optional die MTU (sonst die grössere der
 beiden Ports). Was schon da ist, bleibt: ein Kabel zwischen den beiden, Adressen in einem
 gemeinsamen Netz. Abgelehnt wird ein Port mit Kabel woandershin, in einer Bridge oder mit einer
 IPv4 ausserhalb des Netzes der Gegenseite. Das `/31` ist das erste aus `available-prefixes` des
 Pools, in dem NetBox auch keine Adresse hat (ältere Verbindungen haben oft Adressen ohne Prefix)
 und das kein Router routet (wie bei Loopback). Das neue Prefix bekommt kein Tag, als
 Beschreibung die beiden Geräte. Ports und Geräte stehen in der Auswahl in NetBox' Reihenfolge
-(`topology/natural.rs`, wie NetBox' `naturalize_interface`). „Kabel aus Befund übernehmen“: Meldet
-der Vergleich mit den Geräten an einem Port, den NetBox hat, „kein Kabel“ und sieht das Gerät
-dort genau einen Nachbarn, dessen Port NetBox auch hat, öffnet „Als Verbindung übernehmen“ den
-Helfer darunter mit diesen beiden Enden. Im Lab geprüft (Kabel lab-np2 – lab-wap in NetBox
-vorübergehend gelöscht, nach dem Test wieder angelegt). Den Helfer selbst im Lab geprüft: Plan, Vorschau, Schreiben und Rückgängig mit zwei
+(`topology/natural.rs`, wie NetBox' `naturalize_interface`). Meldet der Vergleich mit den Geräten an einem Port, den NetBox hat, „kein Kabel“ und sieht das
+Gerät dort genau einen Nachbarn, dessen Port NetBox auch hat, öffnet „Verbindung“ mit diesen beiden
+Enden. Den Helfer selbst im Lab geprüft: Plan, Vorschau, Schreiben und Rückgängig mit zwei
 vorübergehenden Ports `sfp-sfpplus2` an lab-np1 und lab-np2 (danach gelöscht); das Lab-NetBox hat
 dafür den Transfer-Pool `192.168.101.0/24`.
 
@@ -287,15 +233,15 @@ lab-wap als abgeschnitten genannt), Schreiben, Rückgängig, danach das Kabel zu
 
 ### Kunden-Netz
 
-Ein Port oder ein VLAN wählen, dann das **Parent-Prefix**: Der Helfer bietet die Prefixe der Site
+Für einen Port oder ein VLAN das **Parent-Prefix** wählen: Der Helfer bietet die Prefixe der Site
 des Geräts an (Kunden-Netze gehören zum Standort), gewählt wird von Hand, nicht automatisch.
-Plan: nächstes freies Netz darin (Länge wählbar, Vorgabe `/24`), Gateway-Adresse (erste Adresse) am Port bzw. an einem neuen virtuellen
-VLAN-Interface, `dhcp`, optional eine IP-Range mit Rolle `dhcp`. Dazu oder allein ein
+Plan: nächstes freies Netz darin (Länge wählbar, Vorgabe `/24`), Gateway-Adresse (erste Adresse)
+am Port bzw. an einem neuen virtuellen VLAN-Interface, `dhcp`. Dazu oder allein ein
 **IPv6-Prefix** der Site: das nächste freie `/64` mit `::1` als Gateway am selben Interface, das
-`dhcp` per SLAAC ankündigt.
+`dhcp` per SLAAC ankündigt. Der DHCP-Pool ist der freie Rest des Netzes; eine IP-Range mit Rolle
+`dhcp` legt der Helfer nicht an (E6).
 
-Umgesetzt (`helper/customer_net.rs`, „Kunden-Netz“ in „NetBox ergänzen“), noch ohne IP-Range: Der
-DHCP-Pool ist dann der freie Rest des Netzes, wie ohne Range üblich.
+`helper/customer_net.rs`:
 - **Auswahl:** freie Ports und Bridges (ohne IPv4, oder ein Kunden-Netz mit `dhcp` ohne IPv6;
   nicht in einer Bridge, ohne VLAN, nicht zu einem Router verkabelt) und die VLANs des Geräts
   ebenso. Jede Familie ist wahlfrei („keins“), mindestens eine muss es sein; so bekommt ein
@@ -319,11 +265,9 @@ IPv6 ebenso an `ether9` mit `fd99:1ab::/48` (Scope Lab): beide Familien zusammen
 
 ### OSPF- und DHCP-Flags
 
-Eine Tabelle aller Interfaces eines Geräts mit den Tags `ospf`, `dhcp`, `dhcp-client`, `nat` als
-Schalter. Die Prüfungen von oben laufen live mit, etwa „`ospf` nur an einem Kabelende“.
-
-Umgesetzt (`helper/flags.rs`, „Flags“ in „NetBox ergänzen“): Die Tabelle zeigt die Interfaces des
-Geräts in NetBox' Reihenfolge mit Adressen, Kabel und Bridge. Ports einer Bridge fehlen, weil dort
+Die Tags `ospf`, `dhcp`, `dhcp-client`, `nat` eines Interfaces als Schalter (`helper/flags.rs`).
+Die Tabelle zeigt die Interfaces des Geräts in NetBox' Reihenfolge mit Adressen, Kabel und
+Bridge. Ports einer Bridge fehlen, weil dort
 die Tags der Bridge zählen; einer mit eigenem Tag steht trotzdem da, damit es sich entfernen lässt.
 Ein umgestellter Schalter ist markiert, der Plan ändert je Interface die Tags in einem Schritt.
 Von einem Port der Interface-Ansicht her zeigt die Tabelle nur dieses Interface.
@@ -335,12 +279,7 @@ den Befund, `nat` an `ether2` zeigt in der Vorschau die `srcnat`-Regel; Schreibe
 
 ### PoE
 
-Die PoE-Ketten der Site als Baum (wie `PowerChain` sie heute schon für Updates rechnet): wer
-speist wen. Ändern heisst `PSE` am speisenden und `PD` am gespeisten Port setzen. Erlaubt ist das
-nur, wo das Board PoE-out hat und das Kabel existiert. Der Befund „Gerät speist hier, NetBox weiss
-es nicht“ führt direkt hierher.
-
-Umgesetzt und abweichend vom Entwurf: kein Baum, sondern eine Beziehung zwischen zwei Ports. Die
+Eine Beziehung zwischen zwei Ports (`helper::poe`): `PSE` am speisenden, `PD` am gespeisten. Die
 Karte wählt die Richtung (das Gerät speist oder wird gespeist), seinen Port und Gerät und Port der
 Gegenseite (die Geräte der Site und die, zu denen seine Kabel gehen; alle Ethernet-Ports, auch von
 Geräten ohne RouterOS). „Vom Gerät ablesen“ liest `/interface/ethernet/poe/monitor` und zeigt die
@@ -367,8 +306,7 @@ vorbelegt. Im Lab geprüft: lab-core `ether1` allein auf `PSE` geschrieben und z
 Die dritte Richtung „Kein PoE an diesem Port“ nimmt einen Eintrag wieder heraus
 (`Helper.poeRemove`, `helper::poe::plan_remove`, `UpdateInterface.poeRemoved`): den Modus des
 Ports und am anderen Kabelende den passenden (`PD` gegenüber einem `PSE` und umgekehrt), denn ein
-Ende allein sagt nichts. Ein Gegenüber mit demselben oder keinem Modus bleibt. Vorher liess sich
-ein Port nur auf `PSE` oder `PD` stellen, nie zurück, auch wo eines der Geräte gar kein PoE hat.
+Ende allein sagt nichts. Ein Gegenüber mit demselben oder keinem Modus bleibt.
 
 Geprüft gegen das Gerät wird in der Live-Prüfung der Interfaces (`helper::poe::mismatches`,
 `LiveRow.poe`), an jedem Port eines RouterOS-Geräts mit Modus in NetBox:
@@ -488,7 +426,7 @@ dem Hinweis, geschrieben, Rückgängig brachte ihn zurück in `lan`.
 ### Adresse übernehmen
 
 Trägt eine Adresse, die nur auf dem Gerät steht, in NetBox an ihrem Interface ein, damit das
-nächste Anwenden sie nicht entfernt (Datenkorrektur, [User Journeys](user-journeys.md#datenkorrektur)).
+nächste Anwenden sie nicht entfernt (Datenkorrektur).
 Die Live-Prüfung der Interfaces findet sie: statische Einträge von `/ip/address` und
 `/ipv6/address` (ohne link-local), deren IP keines der NetBox-Interfaces des Geräts hat. Sie
 stehen an der Zeile ihres NetBox-Interfaces (über den Port-Namen oder eine andere Adresse, die
@@ -508,7 +446,7 @@ Prefix und Adresse an, danach war der Diff leer; Rückgängig und Anwenden nahme
 
 Trägt den Client eines statischen DHCP-Leases, den nur der Router hat, in NetBox ein, damit das
 nächste Anwenden ihn schreibt statt entfernt (Datenkorrektur, wie „Adresse übernehmen“; zum
-Modell siehe [NetBox-Modellierung](../netbox-modeling.md), „Statische DHCP-Leases“). Die
+Modell siehe [NetBox-Modellierung](netbox-modeling.md), „Statische DHCP-Leases“). Die
 Live-Prüfung liest `/ip/dhcp-server` und seine Leases: die statischen, deren Adresse NetBox
 nicht als Lease des Routers hat, stehen an der Zeile des Server-Interfaces (bei einem Lease für
 alle Server die Zeile, deren Netz die Adresse enthält) unter „Leases nur auf dem Gerät“, als
@@ -555,7 +493,7 @@ wird, was der Generator nicht aufsetzen könnte:
 - ein getunneltes VLAN einer Gruppe, deren VXLAN auf dem Gerät in einer anderen Bridge hängt, als
   der Port käme (`VXLAN_IN_BRIDGE`, im Generator `PortInMultipleBridges`). Der Port kommt in die
   modellierte Bridge, die sein VLAN schon führt, sonst in die Standard-Bridge
-  ([L2](../l2-generation.md#schritt-2-nach-root-gruppieren-root-lose-ebenen-zusammenführen)).
+  ([L2](l2-generation.md#schritt-2-nach-root-gruppieren-root-lose-ebenen-zusammenführen)).
 
 Was diese Regeln nicht fassen, fängt der Plan ab: Er setzt auf seiner Vorschau L2 auf wie der
 Generator und lehnt mit dessen Fehler ab, wenn das Gerät vorher ging und danach nicht mehr. Hat
@@ -565,22 +503,16 @@ Rückgängig; die Gruppe `lab-wlan` war vorbelegt.
 
 ### Brückengeräte mit fester Adresse
 
-Heute holen sich die Brückengeräte ihre Adresse per DHCP-Client von einem der beiden Router
-([netbox-modeling.md](../netbox-modeling.md#funkbrücke)). Funktioniert dieser Router nicht
-richtig, bekommen sie keine Adresse mehr und sind gerade dann nicht erreichbar, wenn man sie
-zur Fehlersuche braucht.
-
-Der Helfer legt die Brückengeräte deshalb wie Router an, nur ohne Routing der Nutzdaten:
+Ohne feste Adresse holte sich ein Brückengerät seine per DHCP-Client von einem der beiden Router
+([netbox-modeling.md](netbox-modeling.md#funkbrücke)); funktionierte dieser Router nicht richtig,
+war es gerade dann nicht erreichbar, wenn man es zur Fehlersuche brauchte. Der Helfer
+[Funkbrücke](#funkbrücke) legt die Brückengeräte deshalb wie Router an, nur ohne Routing der
+Nutzdaten:
 
 - **Loopback** `/32` und `/128` aus den Loopback-Pools als Primary IPv4 (Router-ID) und
   Primary IPv6 (Management-Adresse).
 - **Feste Adresse im `/29`** auf der Bridge des Brückengeräts, Tag `ospf` an der Bridge.
-- **OSPF-Priorität 0** auf dem Brückengerät: Es wird nie DR oder BDR, die Rolle bleibt bei den
-  Routern. Das braucht eine neue Regel im Generator. Das Feld `priority` von
-  `/routing/ospf/interface-template` kennt `mikrotik-model` schon.
-
-Loopback, feste Adresse und `ospf` trägt der Helfer [Funkbrücke](#funkbrücke) ein; die
-Priorität 0 fehlt noch.
+- OSPF-Priorität 0, damit ein Brückengerät nie DR oder BDR wird, fehlt noch (E7).
 
 Warum das hilft:
 
@@ -593,14 +525,11 @@ Warum das hilft:
   dringendsten braucht.
 
 Die Nutzdaten bleiben auf L2: Die beiden Router sind im selben `/29` direkt Nachbarn und schicken
-sich ihre Pakete direkt zu. Die Bridge des Brückengeräts leitet sie weiter wie heute. Zur CPU des
+sich ihre Pakete direkt zu. Die Bridge des Brückengeräts leitet sie nur weiter. Zur CPU des
 Brückengeräts kommt nur, was an seine eigenen Adressen geht (Management, OSPF-Hellos). Das
 Brückengerät hat nur ein L3-Interface und kann deshalb keinen Transit-Verkehr routen. Weiterhin
 gilt: Die Bridge darf keine IP-Firewall für gebridgten Verkehr einschalten (`use-ip-firewall=no`,
 der Standard).
-
-Zu prüfen auf CHR, bevor der Helfer das anlegt: vier OSPF-Sprecher in einem Segment, Priorität 0,
-die Strecke getrennt (Loopback von jeder Seite erreichbar) und wieder verbunden.
 
 ## Prefixe
 
@@ -615,12 +544,12 @@ Link-Local-Adressen der Ports.
 
 Loopback und Transfer vergibt der Helfer automatisch. Die Prefixe dafür tragen die **Tags**
 `loopback` (für IPv4 und IPv6) bzw. `transfer` (wie `ospf`/`dhcp` an Interfaces, Import:
-[3-tags.yaml](../netbox-import/3-tags.yaml)). Die Abfrage liest Tags und Scope der Prefixe.
+[3-tags.yaml](netbox-import/3-tags.yaml)). Die Abfrage liest Tags und Scope der Prefixe.
 Kunden-Netze brauchen kein Tag: Angeboten werden die Prefixe mit Scope der Site des Geräts.
 
 ### Pools
 
-Alle Prefixe mit demselben Tag und derselben IP-Version bilden einen **Pool**. Heute sind das
+Alle Prefixe mit demselben Tag und derselben IP-Version bilden einen **Pool**. In Produktion sind das
 für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `loopback`
 `172.16.1.0/24` und `2a02:16a:fe00:ffff:ffff:ffff:ffff:ff00/120`.
 
@@ -633,79 +562,38 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
 - **Reihenfolge im Pool.** Die Prefixe werden nacheinander gefüllt (aufsteigend nach Adresse).
   Ist eines voll, kommt das nächste dran. Ein neues Prefix mit dem Tag erweitert den Pool, ohne
   dass sich am Provisioner etwas ändert.
-- **Pro Standort oder Mandant (später).** Ein Prefix mit dem Tag kann einen Scope (Location,
-  Site, Region) haben. Für ein Gerät gilt dann der Pool mit dem nächstgelegenen Scope: zuerst
-  Prefixe seiner Location, dann seiner Site, dann seiner Regionen nach oben, zuletzt die ohne
-  Scope. Ebenso später der Tenant des Prefixes. Für eine Verbindung zwischen zwei Standorten
-  gilt der Pool, der für beide Geräte am nächsten liegt (gemeinsame Region, sonst ohne Scope).
-  Umgesetzt wird zuerst nur „ohne Scope“. Die Reihenfolge ist aber so gewählt, dass sie mit den
-  heutigen netzweiten Prefixen übereinstimmt.
-- **Befund.** Gibt es für eine IP-Version keinen Pool oder ist
-  ein Pool fast voll (Vorschlag: unter 10 % frei), meldet das der Befund. Der Helfer vergibt dann
-  nur, was noch geht.
+- **Netzweit.** Die Pools haben keinen Scope; Pools pro Standort oder Mandant gehören zum
+  [Self-Service](concepts/self-service.md).
+- **Befund.** Gibt es für eine IP-Version keinen Pool oder ist ein Pool fast voll, meldet das der
+  Befund (`PoolMissing`, `PoolNearlyFull`). Der Helfer vergibt dann nur, was noch geht.
 
 ## Technik
 
-- **Schreiben über die REST-API.** NetBox' GraphQL kann nur lesen. Das Modul
-  `backend/src/netbox/rest.rs` (reqwest, wie die Abfrage) liest und schreibt allgemein unter
-  `api/`; die Helfer (`backend/src/helper/`) brauchen davon nach und nach: `dcim/devices`, `dcim/interfaces`, `dcim/cables`, `ipam/ip-addresses`,
-  `ipam/prefixes/{id}/available-ips|available-prefixes`, `ipam/ip-ranges`,
-  `wireless/wireless-links`, Tags.
+- **Schreiben über die REST-API.** NetBox' GraphQL kann nur lesen. `backend/src/netbox/rest.rs`
+  (reqwest) liest und schreibt unter `api/`; GraphQL kann auch keine freien Adressen auflisten.
 - **Eigene Freigabe.** `allow_netbox_write` (wie `allow_apply`) und ein eigenes Token
-  `netbox_write_token` mit Schreibrechten. Ohne beide läuft der Provisioner nur lesend, der Befund
-  geht trotzdem.
-- **Berechtigungen vorbereitet, noch nicht unterschieden.** Heute darf jeder angemeldete Benutzer
-  NetBox ändern, so wie in NetBox selbst. Später soll es abgestuft werden: Self-Service für
-  Nutzer, den Systemzustand sehen für alle, Systemänderungen nur für Admins. Damit das ohne Umbau
-  geht, gehört jede Helfer-Aktion (und jede bestehende Mutation) schon jetzt zu einer Klasse, etwa
-  `read`, `self_service`, `network`, `admin`. Geprüft wird an einer Stelle (wie heute
-  `WritesAllowed` für `allow_apply`). Vorerst lässt diese Prüfung alle Klassen für alle durch.
-  Später kommen die Klassen aus einem Claim des OIDC-Tokens (z.B. `groups`).
-- **Wer war es.** NetBox 4.7 nimmt `changelog_message` bei jedem Schreiben an. Der Helfer setzt
-  dort Aktion und Benutzer aus dem OIDC-Token (z.B. „Verbindung np1–np2 (koa)“). Im Changelog
-  von NetBox steht so, wer im Provisioner was ausgelöst hat, auch wenn alle Änderungen mit
-  demselben Token laufen.
-- **Keine Transaktion, aber Reihenfolge und Rückweg.** NetBox' REST-API hat keine Transaktion
-  über mehrere Objekte. Der Plan schreibt in einer Reihenfolge, nach der jeder Zwischenstand gültig
-  ist (erst Prefix, dann Adressen, dann Primary IP). Er merkt sich, was angelegt wurde und welche
-  Werte vorher galten. Bricht er ab, zeigt das UI, was geschrieben ist, und bietet „Rückgängig“
-  an: Angelegtes löschen, alte Werte zurück. Läuft als Job mit Events, wie Anwenden.
-  Umgesetzt: Was geschrieben ist, steht in den Events des Jobs (`NetboxWritten`, mit den alten
-  Werten); „Rückgängig“ ist ein eigener Job, der diese Events rückwärts abarbeitet. Ein wieder
-  angelegtes Interface bekommt eine neue Id; was danach zurückkommt (die Adressen eines gelöschten
-  VLAN-Interfaces, ein Kabel, ein Wireless Link, `bridge`/`parent` eines Ports), verweist auf die
-  neue. Die Geräteseite
-  findet den letzten Schreib-Job wieder, solange der Server ihn kennt: nach einem Neustart des
-  Provisioners geht „Rückgängig“ nicht mehr, dann bleibt NetBox' Changelog.
-- **Gleichzeitige Änderungen.** Vor dem Schreiben vergleicht der Plan `last_updated` der Objekte,
-  die er ändert, mit dem Stand der Vorschau. Hat jemand inzwischen in NetBox geändert, bricht er
-  ab, statt zu überschreiben.
-  Umgesetzt anders: Statt `last_updated` rechnet der Schreib-Job den Plan neu und vergleicht ihn mit
-  dem gezeigten (`fingerprint`). Vor jedem Schritt prüft er dann den Wert, auf dem der Schritt
-  aufbaut: `lo` fehlt noch, die Adresse ist noch frei, die Primary IP ist noch die alte. Das
-  erkennt genau die Änderungen, die der Plan überschreiben würde, und nicht jede andere an
-  denselben Objekten.
-- **Danach neu laden.** Nach dem Schreiben lädt der Provisioner die Topologie neu. Die Geräteseite
-  zeigt dann das neue Skript.
-- **Testen** gegen das Lab-NetBox (`local/lab/`): Jede Helfer-Aktion bekommt einen Test, der sie
-  dort ausführt, die Vorschau mit dem Ergebnis vergleicht und alles wieder zurücknimmt.
-  Bisher: Die Vorschau prüft ein Test auf dem gespeicherten Export
-  (`helper::test::preview_has_what_the_plan_creates`). Der Loopback-Helfer ist im Lab von Hand
-  geprüft, mit einem Testgerät ohne `lo`: Schreiben und Rückgängig über die Oberfläche, dann
-  das Gerät gelöscht; die Verbindung ebenso (siehe dort). Den Plan der Verbindung prüfen Tests
-  auf dem Export (`helper::connection::test`), ihre Vorschau
-  `helper::test::preview_has_the_new_link`. Ein automatischer Lab-Test fehlt noch.
-
-## Reihenfolge
-
-1. **Befund „NetBox in sich“.** Nur lesen, keine neue Berechtigung, sofort ein Überblick über die
-   Datenlage. Klein, weil es auf der vorhandenen Topologie rechnet.
-2. **Befund „NetBox gegen Gerät“**, zuerst Nachbarn → Kabel.
-3. **Schreib-Infrastruktur** (Plan, Vorschau mit Generator, Changelog, Rückgängig) mit dem
-   einfachsten Helfer: **Loopback**.
-4. **Verbindung**, „Kabel aus Befund übernehmen“ und „Verbindung abräumen“.
-5. **OSPF-/DHCP-Flags**, **Kunden-Netz**.
-6. **Neues Gerät**, **PoE**.
-7. **Funkbrücke**.
-
-Schritte 1 und 2 helfen auch dann, wenn jemand weiter von Hand in NetBox pflegt.
+  `netbox_write_token` mit Schreibrechten (`NetboxWritesAllowed`). Ohne beide läuft der
+  Provisioner nur lesend, die Befunde gehen trotzdem. Jeder angemeldete Benutzer darf schreiben,
+  wie in NetBox selbst; Abstufungen gehören zum [Self-Service](concepts/self-service.md).
+- **Wer war es.** Jedes Schreiben trägt `changelog_message` mit Aktion und Benutzer aus dem
+  OIDC-Token (z.B. „Verbindung np1–np2 (koa)“). Im Changelog von NetBox steht so, wer im
+  Provisioner was ausgelöst hat, auch wenn alle Änderungen mit demselben Token laufen.
+- **Keine Transaktion, aber Reihenfolge und Rückweg.** NetBox' REST-API hat keine Transaktion über
+  mehrere Objekte. Der Plan schreibt in einer Reihenfolge, nach der jeder Zwischenstand gültig ist
+  (erst Prefix, dann Adressen, dann Primary IP). Das Schreiben ist ein Job; was geschrieben ist,
+  steht in seinen Events (`NetboxWritten`, mit den alten Werten), und „Rückgängig“ ist ein eigener
+  Job, der sie rückwärts abarbeitet: Angelegtes löschen, alte Werte zurück, Gelöschtes aus dem
+  JSON wieder anlegen, das NetBox vorher hatte. Ein wieder angelegtes Objekt bekommt eine neue Id;
+  was danach zurückkommt (die Adressen eines gelöschten VLAN-Interfaces, ein Kabel, ein Wireless
+  Link, `bridge`/`parent` eines Ports), verweist auf die neue. Nach einem Neustart des
+  Provisioners geht „Rückgängig“ nicht mehr, dann bleibt NetBox' Changelog. Bricht ein Plan
+  mittendrin ab, sagt der Helfer „Nur teilweise geschrieben“.
+- **Gleichzeitige Änderungen.** Der Schreib-Job rechnet den Plan neu und vergleicht ihn mit dem
+  gezeigten (`fingerprint`). Vor jedem Schritt prüft er den Wert, auf dem der Schritt aufbaut:
+  `lo` fehlt noch, die Adresse ist noch frei, die Primary IP ist noch die alte. Das erkennt genau
+  die Änderungen, die der Plan überschreiben würde, und nicht jede andere an denselben Objekten.
+- **Danach neu laden.** Nach dem Schreiben oder Rückgängig lädt der Provisioner die Topologie neu.
+- **Tests:** die Vorschau auf dem gespeicherten Export
+  (`helper::test::preview_has_what_the_plan_creates`, `preview_has_the_new_link`), die Pläne pro
+  Helfer (`helper::connection::test`, …); im Lab-NetBox (`local/lab/`) von Hand, wie bei jedem
+  Helfer oben beschrieben. Ein automatischer Lab-Test fehlt (E9).

@@ -1,5 +1,5 @@
 //! What a device sees at its ports (`/ip/neighbor`: MNDP, LLDP, CDP) against the cables NetBox
-//! has there (the Befund „NetBox gegen Gerät“ of `docs/concepts/config-helper.md`, neighbors →
+//! has there (the Befund „NetBox gegen Gerät“ of `docs/config-helper.md`, neighbors →
 //! cables). Read-only. A neighbor is matched by its identity (the NetBox name the generated
 //! config gives it) and the name of its port, never by MAC.
 //!

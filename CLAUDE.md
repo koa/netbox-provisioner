@@ -96,8 +96,8 @@ NetBox' trace does, so a fiber between buildings connects the devices at both en
 exports lack `circuit_list` and the ids of the circuit ends; `example_topology` drops those
 ends, so their cables end there as before.
 
-`topology/findings.rs` computes the findings about NetBox itself (config-helper concept, Befund
-„NetBox in sich“) once per built topology (`Topology::with_findings`, called by
+`topology/findings.rs` computes the findings about NetBox itself (`docs/config-helper.md`,
+Befund „NetBox in sich“) once per built topology (`Topology::with_findings`, called by
 `build_topology_from` and `TopologyBuilder::build`; a test changing the topology after `build`
 calls it again). Only RouterOS devices are checked; each finding is a typed variant of the union
 `FindingKind` with refs (id + name) the frontend links into NetBox (`netboxUrl`, the web UI
@@ -215,7 +215,7 @@ that doesn't exist (`*2000011`, the factory `LAN` an apply removed) means discov
 generator sets it to `maintenance` now.
 
 `helper/` holds the helpers that write to NetBox (`mod.rs` the plan and its preview,
-`plan.rs` its steps, `write.rs` writing and undoing them; config-helper concept, steps 3 to 5:
+`plan.rs` its steps, `write.rs` writing and undoing them; `docs/config-helper.md`:
 `helper::loopback`, `helper::connection` for a direct link between two routers: cable if
 missing, the next free `/31` of the transfer pool as a new prefix, an address at each end,
 `ospf`, MTU, the far device as label), `helper::disconnect` taking a wrong link out of NetBox
