@@ -46,6 +46,11 @@ OSPF, VXLAN, WLAN/CAPsMAN, point-to-point radio bridges) - read it before changi
 `device/ros/`. There `mod.rs` has the `mikrotik_model!` definitions and the base config
 (`BaseDeviceDataTarget`), `radio/` the radios (`wireless`, `w60g`, `wifi`, `capsman`, shared
 helpers in `radio/mod.rs`), `dhcp.rs` the DHCP pool, `l2/` the bridges and VLANs.
+What the provisioner does beyond generating has a doc of its own in `docs/` too (device page,
+jobs, interface view, config helper, update fallback, watchdog, deployment; listed in
+`docs/overview.md`), in German, describing what is built; update it with the code.
+`docs/concepts/` holds only what isn't built yet; once a concept is, it moves to `docs/` as a
+plain description and its open parts become tasks.
 `docs/todo.md` lists the open tasks of all three repos (numbered, with effort and status);
 the commit that finishes one moves it to `docs/done.md`, with date and commit subject, keeping
 its number (a finished part likewise, the rest stays in `todo.md`).
