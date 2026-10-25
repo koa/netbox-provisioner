@@ -86,4 +86,4 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
-| D5 | Jobs: Events speichern (`state_dir`, M), geordnetes Beenden (S) | [Jobs](concepts/job-polling.md) | M | in Arbeit |
+| D5 | Jobs: Zustand pro Gerät als State-Machine, gespeichert in `state_dir` (M–L), geordnetes Beenden (S) | [Gerätezustand](concepts/device-state.md), [Jobs](concepts/job-polling.md) | M | in Arbeit |

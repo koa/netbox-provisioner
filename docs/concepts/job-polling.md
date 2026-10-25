@@ -1,7 +1,8 @@
 # Konzept: Jobs über Fehler und Neustarts hinweg verfolgen
 
 Status: Schritte 1 bis 3 umgesetzt (Ende bei unbekanntem Job, Back-off, Job-Nummern pro Lauf,
-Liegengebliebenes auf der Geräteseite), Schritt 4 offen. Offener Punkt „Polling verbessern“ aus [pending.md](../pending.md).
+Liegengebliebenes auf der Geräteseite), Schritt 4 offen; dessen Entwurf ist jetzt der Zustand
+pro Gerät ([Gerätezustand](device-state.md)). Offener Punkt „Polling verbessern“ aus [pending.md](../pending.md).
 Auslöser: „Wenn ich den Server neustarte hängt alles.“
 
 ## Was heute passiert
