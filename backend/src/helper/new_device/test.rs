@@ -2,16 +2,22 @@ use super::*;
 use crate::topology::test::example_topology;
 
 /// A router of the stored export with a free Ethernet port, and the router's tenant.
+/// The same each run (the devices are in a hash map), and without PoE: at a PSE port the new
+/// device gets a PD step too.
 fn free_port(topology: &Arc<Topology>) -> (DeviceAccess, InterfaceAccess) {
-    topology
+    let mut devices: Vec<_> = topology
         .list_devices()
         .filter(|d| d.has_routeros() && d.credentials().is_some() && d.site().is_some())
+        .collect();
+    devices.sort_by_key(|d| d.id().0);
+    devices
+        .into_iter()
         .find_map(|d| {
             let port = d
                 .interfaces()
                 .into_vec()
                 .into_iter()
-                .find(|i| i.is_ethernet_port() && i.cable().is_none())?;
+                .find(|i| i.is_ethernet_port() && i.cable().is_none() && i.poe().is_none())?;
             Some((d, port))
         })
         .expect("a router with a free port")
