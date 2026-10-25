@@ -114,7 +114,9 @@ pub async fn wait_for_fed(device: &DeviceAccess, log: &Log) -> Result<(), Error>
     // the port is off a while yet: an answer before is the device not cut yet
     log.unless_cancelled(sleep(Duration::from_secs(u64::from(OFF_SECONDS) + 5))).await?;
     loop {
-        if let Ok(Ok(Some(link))) = timeout(Duration::from_secs(30), device.connect(None, None, None)).await {
+        // a cancel doesn't wait for the try to end
+        let tried = log.unless_cancelled(timeout(Duration::from_secs(30), device.connect(None, None, None))).await?;
+        if let Ok(Ok(Some(link))) = tried {
             log.emit(link.connected_device());
             return Ok(());
         }

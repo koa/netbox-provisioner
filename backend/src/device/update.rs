@@ -592,7 +592,8 @@ where
     let deadline = Instant::now() + wait;
     loop {
         log.unless_cancelled(sleep(Duration::from_secs(5))).await?;
-        let state = match timeout(Duration::from_secs(30), link.api()).await {
+        // a cancel doesn't wait for the try to end
+        let state = match log.unless_cancelled(timeout(Duration::from_secs(30), link.api())).await? {
             Ok(Ok(device)) => read_state(&device).await.ok(),
             _ => None,
         };
