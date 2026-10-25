@@ -253,7 +253,7 @@ pub async fn resume_saved_jobs(topology: &TopologyHolder) {
             SavedWork::Apply { apply, .. } => {
                 let (saved, apply) = (saved.clone(), apply.clone());
                 saved_job::take(entry.device);
-                job::start(&device.clone(), JobKind::Apply, Started::Resumed, |log| async move {
+                job::start(&device.clone(), JobKind::Apply, Started::Resumed { entry: saved.journal_entry }, |log| async move {
                     log.emit(job::Resumed { after: after.into() });
                     if let Some(hold) = &apply.hold {
                         crate::device::radio_hold::RadioHold::announce_saved(device.name(), hold, &log);
@@ -268,7 +268,7 @@ pub async fn resume_saved_jobs(topology: &TopologyHolder) {
             SavedWork::Update { state, update } => {
                 let (saved, state, update) = (saved.clone(), *state, update.clone());
                 saved_job::take(entry.device);
-                job::start(&device.clone(), JobKind::Update, Started::Resumed, |log| async move {
+                job::start(&device.clone(), JobKind::Update, Started::Resumed { entry: saved.journal_entry }, |log| async move {
                     log.emit(job::Resumed { after: after.into() });
                     for (device, watching) in &update.watchers {
                         log.emit(watchdog::WatchdogSuspended {
@@ -291,6 +291,14 @@ pub async fn resume_saved_jobs(topology: &TopologyHolder) {
     for batch in batches {
         resume_batch(topology, &waiting, &batch).await;
     }
+    // what is still waiting didn't go on: its entry is closed with the others
+    let still_waiting: Vec<DeviceId> = saved_job::waiting().iter().map(|entry| entry.device).collect();
+    let resumed: Vec<u64> = waiting
+        .iter()
+        .filter(|entry| !still_waiting.contains(&entry.device))
+        .filter_map(|entry| entry.saved.as_ref().ok()?.journal_entry)
+        .collect();
+    crate::journal::close_interrupted(&resumed).await;
 }
 
 /// A batch saved before the restart, its devices `batch` ([`resume_saved_jobs`]): all of
@@ -326,7 +334,8 @@ async fn resume_batch(topology: &TopologyHolder, waiting: &[saved_job::Waiting],
         saved_job::take(*id);
     }
     let devices: Vec<DeviceAccess> = members.iter().map(|(device, _, _)| device.clone()).collect();
-    let started = job::start_all(&devices, JobKind::Apply, Started::Resumed, |logs| async move {
+    let entries: Vec<Option<u64>> = members.iter().map(|(_, saved, _)| saved.journal_entry).collect();
+    let started = job::start_all(&devices, JobKind::Apply, |index| Started::Resumed { entry: entries[index] }, |logs| async move {
         for (log, (device, saved, apply)) in logs.iter().zip(&members) {
             let after = SystemTime::now().duration_since(saved.saved_at).unwrap_or_default();
             log.emit(job::Resumed { after: after.into() });
@@ -357,6 +366,7 @@ fn saved_update(
         device_name: device.name().into(),
         site: device.site().map(|site| site.id()),
         saved_at: SystemTime::now(),
+        journal_entry: None,
         work: SavedWork::Update {
             state: UpdateState::Rebooting,
             update: Box::new(saved_job::SavedUpdate {
@@ -797,7 +807,8 @@ impl MutationAuthenticated {
             }
         }
         let members = devices.clone();
-        Ok(job::start_all(&devices, JobKind::Apply, Started::By(user_label(ctx)), |logs| {
+        let user = user_label(ctx);
+        Ok(job::start_all(&devices, JobKind::Apply, |_| Started::By(user.clone()), |logs| {
             crate::device::batch::apply(members, logs)
         })?)
     }

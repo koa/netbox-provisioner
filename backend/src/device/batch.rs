@@ -259,6 +259,7 @@ impl Applying for Linked {
             device_name: self.device.name().into(),
             site: self.device.site().map(|site| site.id()),
             saved_at: now,
+            journal_entry: None,
             work: SavedWork::Apply {
                 state: ApplyState::ScriptRunning,
                 apply: Box::new(SavedApply {

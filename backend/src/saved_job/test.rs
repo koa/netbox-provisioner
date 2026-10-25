@@ -14,6 +14,7 @@ fn saved(device: u32) -> SavedJob {
         device_name: "lab-ap1".into(),
         site: Some(SiteId(3)),
         saved_at: SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_000),
+        journal_entry: None,
         work: SavedWork::Update {
             state: UpdateState::Rebooting,
             update: Box::new(SavedUpdate {

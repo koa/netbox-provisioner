@@ -1,4 +1,4 @@
-use super::{Entry, Started, outcome, phase_name};
+use super::{Entry, Started, interrupted, outcome, phase_name};
 use crate::{
     device::{batch::BatchApply, ros::graphql as apply, update::UpdateDone},
     device_state::{ApplyState, UpdateState},
@@ -93,7 +93,7 @@ fn a_finished_entry_has_its_results() {
             checked(""),
         ],
     );
-    done.started = Started::Resumed;
+    done.started = Started::Resumed { entry: Some(7) };
     done.phase = Some(ApplyState::Finishing.into());
     done.took = Some(75);
     assert_eq!(
@@ -127,4 +127,24 @@ fn a_failed_entry_words_its_error() {
          Fehler: Keine Antwort von 192.168.100.3\n\n\
          RouterOS 7.23.8 → 7.24.5"
     );
+}
+
+#[test]
+fn an_interrupted_entry_keeps_its_state() {
+    let mut running = entry(JobKind::Apply, Outcome::Running, vec![armed()]);
+    running.phase = Some(ApplyState::ScriptRunning.into());
+    let record = running.record().as_object().unwrap().clone();
+    let fields = interrupted(&running.comments(), record);
+    assert_eq!(fields["kind"], "warning");
+    assert_eq!(
+        fields["comments"],
+        "**Anwenden** unterbrochen: der Provisioner wurde neu gestartet\n\n\
+         Gestartet von koa\n\n\
+         Stand: Skript läuft\n\n\
+         Bleibt auf dem Gerät: der Fallback des Anwendens (lädt die Konfiguration von vorher)"
+    );
+    let record = &fields["custom_fields"]["provisioner_job"];
+    assert_eq!(record["outcome"], "Interrupted");
+    assert_eq!(record["state"], "SCRIPT_RUNNING");
+    assert_eq!(record["left"], serde_json::json!(["ApplyFallback"]));
 }

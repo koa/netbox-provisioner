@@ -53,7 +53,16 @@ Der Text ist Deutsch aus dem Crate `i18n`, das auch das Frontend nutzt (Z32): di
 der Job-Arten und Zustände wie in der Job-Ansicht, Fehler über `i18n::error::server`
 (`ErrorInfo` setzt `i18n::error::Problem` um). Das Backend baut keinen Satz selbst.
 
+## Nach einem Neustart
+
+Ein weitergeführter Job schreibt in seinem Eintrag von vorher weiter (`SavedJob::journal_entry`,
+`Started::Resumed`); ist der in NetBox gelöscht, legt er einen neuen an. Alle anderen Einträge des
+Provisioners, die noch laufen (`kind` `info`, `outcome` `Running`), setzt der Start auf
+„unterbrochen: der Provisioner wurde neu gestartet“ (`warning`, `journal::close_interrupted`, am
+Ende von `resume_saved_jobs`); der Zustand („Stand: …“) und was auf dem Gerät bleibt, stehen
+weiter darin.
+
 ## Noch offen
 
-Laufende Einträge nach einem Neustart, der Verlauf auf der Geräteseite und Beobachtungen ohne
-Job: Konzept [Protokoll](concepts/protocol.md), Aufgabe C15 in [todo.md](todo.md).
+Der Verlauf auf der Geräteseite und Beobachtungen ohne Job: Konzept
+[Protokoll](concepts/protocol.md), Aufgabe C15 in [todo.md](todo.md).

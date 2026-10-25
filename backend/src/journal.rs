@@ -33,8 +33,8 @@ pub const KEEP: usize = 20;
 pub enum Started {
     /// the name or email of the login
     By(Box<str>),
-    /// went on after a restart of the provisioner
-    Resumed,
+    /// went on after a restart of the provisioner, writing on in its entry from before
+    Resumed { entry: Option<u64> },
 }
 
 /// The job's entry in NetBox' journal couldn't be written; the next state tries again.
@@ -55,12 +55,20 @@ pub async fn follow(job: Arc<Job>, device: DeviceId, started: Started, mut chang
         Ok(rest) => rest,
         Err(error) => return not_written(&job, error),
     };
-    let mut id = None;
+    let mut id = match started {
+        Started::Resumed { entry } => {
+            if let Some(entry) = entry {
+                job.log().journal_entry_is(entry);
+            }
+            entry
+        }
+        Started::By(_) => None,
+    };
     let mut failing = false;
     loop {
         changes.borrow_and_update();
         let entry = Entry::of(&job, &started);
-        match save(&rest, device, &mut id, &entry).await {
+        match save(&job, &rest, device, &mut id, &entry).await {
             Ok(()) => failing = false,
             Err(error) => {
                 if !failing {
@@ -87,16 +95,25 @@ fn not_written(job: &Job, error: NetboxError) {
     });
 }
 
-async fn save(rest: &NetboxRest, device: DeviceId, id: &mut Option<u64>, entry: &Entry) -> Result<(), NetboxError> {
-    match id {
-        Some(id) => rest.update(&format!("extras/journal-entries/{id}/"), entry.fields()).await.map(|_| ()),
-        None => {
+/// Updates the entry `id`, or creates it; a resumed job's entry deleted meanwhile anew.
+async fn save(job: &Job, rest: &NetboxRest, device: DeviceId, id: &mut Option<u64>, entry: &Entry) -> Result<(), NetboxError> {
+    if let Some(existing) = *id {
+        match rest.update(&format!("extras/journal-entries/{existing}/"), entry.fields()).await {
+            Err(NetboxError::Rest { status, .. }) if status == reqwest::StatusCode::NOT_FOUND => *id = None,
+            result => return result.map(|_| ()),
+        }
+    }
+    {
+        {
             let mut fields = entry.fields();
             fields["assigned_object_type"] = json!("dcim.device");
             fields["assigned_object_id"] = json!(device.0);
             fields["tags"] = json!([{ "slug": TAG }]);
             let created = rest.create("extras/journal-entries/", fields).await?;
             *id = created["id"].as_u64();
+            if let Some(id) = *id {
+                job.log().journal_entry_is(id);
+            }
             Ok(())
         }
     }
@@ -116,6 +133,59 @@ async fn prune(rest: &NetboxRest, device: DeviceId) -> Result<(), NetboxError> {
         rest.delete(&format!("extras/journal-entries/{id}/")).await?;
     }
     Ok(())
+}
+
+/// Sets the provisioner's entries still running from before this start to interrupted, but
+/// those of the jobs that went on (`resumed`), which write on in theirs. The state they were
+/// in stays, as „Stand“.
+pub async fn close_interrupted(resumed: &[u64]) {
+    if !enabled() {
+        return;
+    }
+    let result = async {
+        let rest = NetboxRest::journal("netbox-provisioner restarted")?;
+        let entries = rest
+            .get(&format!("extras/journal-entries/?tag={TAG}&kind=info&limit=1000"))
+            .await?;
+        for entry in entries["results"].as_array().into_iter().flatten() {
+            let (Some(id), Some(record)) = (entry["id"].as_u64(), entry["custom_fields"]["provisioner_job"].as_object())
+            else {
+                continue;
+            };
+            if record.get("outcome").and_then(Value::as_str) != Some("Running") || resumed.contains(&id) {
+                continue;
+            }
+            let fields = interrupted(entry["comments"].as_str().unwrap_or_default(), record.clone());
+            rest.update(&format!("extras/journal-entries/{id}/"), fields).await?;
+        }
+        Ok::<_, NetboxError>(())
+    }
+    .await;
+    if let Err(error) = result {
+        warn!("journal entries of jobs before the restart not closed: {error}");
+    }
+}
+
+/// The fields of an entry whose job the restart interrupted: its heading says so, the rest
+/// stays.
+fn interrupted(comments: &str, mut record: serde_json::Map<String, Value>) -> Value {
+    let kind = record.get("job").and_then(Value::as_str).and_then(kind_named);
+    let rest = comments.split_once("\n\n").map_or("", |(_, rest)| rest);
+    let heading = kind.map_or_else(
+        || comments.split_once("\n\n").map_or(comments, |(heading, _)| heading).to_string(),
+        |kind| i18n::journal::heading(kind_name(kind), Outcome::Interrupted),
+    );
+    record.insert("outcome".into(), json!(format!("{:?}", Outcome::Interrupted)));
+    record.insert("at".into(), json!(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()));
+    let comments = match rest {
+        "" => heading,
+        rest => format!("{heading}\n\n{rest}"),
+    };
+    json!({
+        "kind": "warning",
+        "comments": comments,
+        "custom_fields": { "provisioner_job": record },
+    })
 }
 
 /// What an entry says, taken from the job as it is now.
@@ -190,7 +260,7 @@ impl Entry {
         let mut lines = vec![t::heading(kind_name(self.kind), self.outcome)];
         lines.push(match &self.started {
             Started::By(user) => t::started_by(user),
-            Started::Resumed => t::RESUMED.into(),
+            Started::Resumed { .. } => t::RESUMED.into(),
         });
         if self.outcome != Outcome::Done
             && let Some(phase) = self.phase
@@ -297,6 +367,14 @@ fn left(events: &[Event]) -> Vec<Left> {
         .into_iter()
         .filter_map(|(is, left)| is.then_some(left))
         .collect()
+}
+
+/// The kind by its name in `provisioner_job` (`Apply`).
+fn kind_named(name: &str) -> Option<JobKind> {
+    use JobKind::*;
+    [Update, Downgrade, Apply, Cleanup, Bootstrap, Reboot, PowerCycle, DeviceMode, Repartition, BootPartition, NetboxWrite, NetboxUndo, SiteDiff]
+        .into_iter()
+        .find(|kind| format!("{kind:?}") == name)
 }
 
 fn kind_name(kind: JobKind) -> &'static str {

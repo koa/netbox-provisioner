@@ -132,6 +132,8 @@ pub struct Log {
     saving: Arc<Mutex<Saving>>,
     /// ticks the job's journal entry to be written again (`crate::journal`), unset without one
     journal: Arc<OnceLock<watch::Sender<()>>>,
+    /// that entry's id in NetBox once created, saved with the job (`SavedJob::journal_entry`)
+    journal_entry: Arc<OnceLock<u64>>,
 }
 
 /// What the job keeps for going on after a restart ([`Log::keep`]), and whether its file is
@@ -163,6 +165,7 @@ impl Log {
             phase: Default::default(),
             saving: Default::default(),
             journal: Default::default(),
+            journal_entry: Default::default(),
         }
     }
     /// The job enters `phase`. One its kind's table doesn't allow after the current one is
@@ -192,6 +195,10 @@ impl Log {
         drop(phases);
         self.save_for(phase, false);
     }
+    /// The job's journal entry is `id` in NetBox.
+    pub fn journal_entry_is(&self, id: u64) {
+        let _ = self.journal_entry.set(id);
+    }
     /// Has the job's journal entry written again.
     fn changed(&self) {
         if let Some(journal) = self.journal.get() {
@@ -216,6 +223,7 @@ impl Log {
             if entered {
                 job.saved_at = SystemTime::now();
             }
+            job.journal_entry = self.journal_entry.get().copied().or(job.journal_entry);
             saved_job::save(job);
             *written = true;
         } else if *written {
@@ -562,13 +570,13 @@ fn subject_of(device: &DeviceAccess) -> (JobSubject, &str) {
     (JobSubject::Device(device.id()), device.name())
 }
 
-/// Starts `work` for all of `devices` together (a batch), each with a job of its own, unless
-/// one of them runs a job already. `work` gets their logs in the order of `devices` and gives
+/// Starts `work` for all of `devices` together (a batch), each with a job of its own (`started`:
+/// who started the one of the device at that index), unless one of them runs a job already. `work` gets their logs in the order of `devices` and gives
 /// back each job's outcome in that order.
 pub fn start_all<F>(
     devices: &[DeviceAccess],
     kind: JobKind,
-    started: Started,
+    started: impl Fn(usize) -> Started,
     work: impl FnOnce(Vec<Log>) -> F,
 ) -> Result<Vec<Arc<Job>>, Error>
 where
@@ -578,7 +586,7 @@ where
     let work = work(logs.clone());
     let members: Vec<_> = devices.iter().map(subject_of).zip(logs).collect();
     let jobs = register(&members, None, kind)?;
-    jobs.iter().for_each(|job| write_journal(job, &started));
+    jobs.iter().enumerate().for_each(|(index, job)| write_journal(job, &started(index)));
     let running = jobs.clone();
     RUNTIME.spawn(async move {
         let result = run(async move { Ok(work.await) }).await;
@@ -880,6 +888,7 @@ mod tests {
             device_name: "lab-ap1".into(),
             site: None,
             saved_at: SystemTime::now(),
+            journal_entry: None,
             work: SavedWork::Apply {
                 state: ApplyState::ScriptRunning,
                 apply: Box::new(SavedApply {

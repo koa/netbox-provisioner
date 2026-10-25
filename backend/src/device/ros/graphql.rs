@@ -843,6 +843,7 @@ impl AccessibleDevice {
                 device_name: self.device_config.name().into(),
                 site: self.device_config.site().map(|site| site.id()),
                 saved_at: SystemTime::now(),
+                journal_entry: None,
                 work: SavedWork::Apply {
                     state: ApplyState::ScriptRunning,
                     apply: Box::new(SavedApply {
