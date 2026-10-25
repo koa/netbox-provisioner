@@ -39,6 +39,19 @@ pub struct Leftovers {
 }
 
 impl Leftovers {
+    /// What of it the journal follows (`crate::journal::observe`): the fallbacks, and the
+    /// watchdogs' safety net unless a job of another device holds them.
+    pub fn journal_left(&self) -> Vec<i18n::journal::Left> {
+        use i18n::journal::Left;
+        [
+            (self.apply_fallback.is_some(), Left::ApplyFallback),
+            (self.update_fallback.is_some(), Left::UpdateFallback),
+            (self.watchdogs.as_ref().is_some_and(|w| w.held_by.is_none()), Left::WatchdogSafetyNet),
+        ]
+        .into_iter()
+        .filter_map(|(is, left)| is.then_some(left))
+        .collect()
+    }
     pub fn is_empty(&self) -> bool {
         self.apply_fallback.is_none()
             && self.update_fallback.is_none()

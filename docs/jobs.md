@@ -600,6 +600,5 @@ wird von selbst weggeräumt.
 - Geprüft auf CHR (`leftovers_are_found_and_cleared`): Jeder Rest wird gefunden und weggeräumt, und
   nach „Jetzt zurück“ hat das Gerät die Identity von vorher.
 
-Was ein Job getan hat und wie weit er kam, steht im Journal des Geräts in NetBox
-([Protokoll](protocol.md)). Laufende Einträge nach einem Neustart und ein Fallback, der ohne Job
-ausgelöst hat, sind noch offen (Konzept [Protokoll](concepts/protocol.md), C15).
+Was ein Job getan hat und wie weit er kam, steht im Journal des Geräts in NetBox, ebenso ein Rest
+ohne Erklärung oder ein Fallback, der ohne Job ausgelöst hat ([Protokoll](protocol.md)).

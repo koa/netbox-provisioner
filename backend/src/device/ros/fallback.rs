@@ -134,7 +134,7 @@ pub async fn pending(raw: &RawDevice<SimpleResult>, rearmed: Option<Rearmed>) ->
 }
 
 /// The device's uptime (`/system/resource`).
-async fn uptime(raw: &RawDevice<SimpleResult>) -> Result<Option<Duration>, Error> {
+pub(crate) async fn uptime(raw: &RawDevice<SimpleResult>) -> Result<Option<Duration>, Error> {
     Ok(rows(raw, "/system/resource/print")
         .await?
         .first()

@@ -1,4 +1,4 @@
-use super::{Entry, JournalLeft, JournalOutcome, Started, interrupted, outcome, parse, phase_name};
+use super::{Entry, JournalLeft, JournalOutcome, Observation, Started, expected, interrupted, observation, outcome, parse, phase_name};
 use crate::{
     device::{batch::BatchApply, ros::graphql as apply, update::UpdateDone},
     device_state::{ApplyState, UpdateState},
@@ -163,11 +163,46 @@ fn an_entry_is_read_from_its_record() {
     let read = parse(&entry, "https://netbox/").unwrap();
     assert_eq!(read.url, "https://netbox/extras/journal-entries/3/");
     assert_eq!(read.id, 3);
-    assert_eq!(read.kind, JobKind::Reboot);
+    assert_eq!(read.kind, Some(JobKind::Reboot));
+    assert_eq!(read.observation, None);
     assert_eq!(read.outcome, JournalOutcome::Interrupted);
     assert_eq!(read.state.as_deref(), Some("REBOOTING"));
     assert_eq!(read.left, vec![JournalLeft::UpdateFallback]);
     assert_eq!(read.by.as_deref(), Some("Lab Admin"));
     // an entry with the tag but no record (written by hand) is left out
     assert_eq!(parse(&serde_json::json!({ "id": 4, "created": "x", "custom_fields": {} }), "https://netbox/"), None);
+}
+
+fn record(outcome: &str, left: &[&str], touched: &[&str], at: u64) -> serde_json::Value {
+    serde_json::json!({ "job": "Apply", "outcome": outcome, "left": left, "touched": touched, "at": at })
+}
+
+#[test]
+fn what_the_entries_left_counts_until_a_job_touches_it() {
+    let apply = record("Incomplete", &["ApplyFallback"], &["ApplyFallback"], 100);
+    let update = record("Done", &[], &["UpdateFallback", "WatchdogSafetyNet"], 200);
+    assert_eq!(expected(&[&apply, &update]), Some(vec![(Left::ApplyFallback, 100)]));
+    let cleanup = record("Done", &[], &["ApplyFallback"], 300);
+    assert_eq!(expected(&[&apply, &update, &cleanup]), Some(vec![]));
+    // nothing to compare while a job runs
+    let running = record("Running", &[], &[], 400);
+    assert_eq!(expected(&[&apply, &running]), None);
+}
+
+#[test]
+fn a_fallback_gone_after_a_reboot_fired() {
+    let expected = [(Left::ApplyFallback, 1000)];
+    let seen = observation(&expected, &[], Some(Duration::from_secs(60)), 1300).unwrap();
+    assert_eq!(seen, Observation { fired: vec![Left::ApplyFallback], ..Default::default() });
+    // up longer than since the entry: taken away by hand
+    let seen = observation(&expected, &[], Some(Duration::from_secs(600)), 1300).unwrap();
+    assert_eq!(seen, Observation { removed: vec![Left::ApplyFallback], ..Default::default() });
+    // still there: nothing to say
+    assert_eq!(observation(&expected, &[Left::ApplyFallback], None, 1300), None);
+}
+
+#[test]
+fn a_leftover_no_entry_names_is_found() {
+    let seen = observation(&[], &[Left::UpdateFallback], None, 1300).unwrap();
+    assert_eq!(seen, Observation { found: vec![Left::UpdateFallback], ..Default::default() });
 }

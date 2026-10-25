@@ -73,7 +73,28 @@ unterbrochen, rot fehlgeschlagen, blau läuft). Gelesen wird aus `provisioner_jo
 Text; ein Eintrag mit dem Tag ohne lesbares Feld fehlt. Nach jedem Job der Seite wird er neu
 gelesen. „Auftrag unterbrochen“ in der Job-Ansicht verweist auf ihn.
 
-## Noch offen
+## Beobachtungen ohne Job
 
-Beobachtungen ohne Job: Konzept
-[Protokoll](concepts/protocol.md), Aufgabe C15 in [todo.md](todo.md).
+Was auf dem Gerät ohne Job geschieht, hält die Geräteseite fest (Z31), wenn sie die Reste liest
+(`AccessibleDevice.leftovers`, während kein Job des Provisioners auf dem Gerät läuft;
+`journal::observe`, im Hintergrund). Der Provisioner fragt keine Geräte ab, die niemand
+anschaut.
+
+- **Was liegen sollte:** aus den Einträgen des Provisioners, ältester zuerst. Jeder Job-Eintrag
+  nennt, was er liegen lässt (`left`) und welche Arten er angefasst hat (`touched`: einen Fallback
+  gesetzt, Watchdogs ausgesetzt, einen Rest weggeräumt); was ein Job anfasst, zählt danach nur
+  noch, soweit er es liegen lässt. Läuft der neueste Eintrag noch, wird nichts verglichen.
+- **Rest gefunden** (`warning`): auf dem Gerät, ohne dass ein Eintrag ihn nennt (eine andere
+  Instanz, ein älterer Stand, von Hand).
+- **Ausgelöst** (`danger`): ein Apply- oder Update-Fallback, den ein Eintrag als liegend nennt,
+  ist weg, und die Uptime ist kürzer als die Zeit seit diesem Eintrag.
+- **Nicht mehr da** (`info`): weg ohne Neustart seither (von Hand entfernt; das Sicherheitsnetz
+  der Watchdogs hat sie wiederhergestellt).
+
+Ein solcher Eintrag (`provisioner_job.observation` mit `found`, `fired`, `removed`) nennt, was
+jetzt auf dem Gerät liegt, und gilt als Stand: Das nächste Lesen findet nichts Neues und schreibt
+keinen zweiten. Zwei Lesungen zugleich schreiben einen. Der Verlauf zeigt ihn als „Beobachtung auf
+dem Gerät, ohne Job“. Geprüft im Lab mit einem Eintrag, der einen Fallback von vor dem Neustart
+von lab-wap als liegend nannte: ein Eintrag „ausgelöst“, beim zweiten Lesen keiner mehr.
+
+Noch nicht dabei sind die Marken des Skripts eines ausgelösten Apply-Fallbacks (E16).

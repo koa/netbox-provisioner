@@ -11,9 +11,7 @@ Status: **offen**, **in Arbeit**.
 
 ## Reihenfolge
 
-1. C15
-
-Dann schauen wir weiter
+Zurzeit keine; dann schauen wir weiter
 
 ## Entscheidungen
 
@@ -43,11 +41,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z19 | Wartungsfenster? | vorerst nicht (2026-10-23) | C10 |
 | Z20 | Netz-Update pro Site oder über mehrere? | mehrere Sites, frei gewählt (2026-10-23) | C10 |
 | Z28 | Die andere Partition nach jedem Anwenden nachziehen (E14) überschreibt das RouterOS von vor einem Update, den Weg zurück über „Von partN starten“. Immer kopieren, nur bei gleicher Version, oder erst eine Weile nach einem Update? | immer kopieren: Eine Partition mit alter Konfiguration ist eine Falle, die später zu einem Ausfall führen kann. Bei gleicher Version nur die Konfiguration, sonst alles (2026-10-25) | E14 |
-| Z29 | Wo liegt das Protokoll? | im Journal des Geräts in NetBox, ein Eintrag pro Job, nachgeführt bei jedem Zustandswechsel (2026-10-25) | C15 |
-| Z30 | Wie lange bleiben Einträge? | die letzten 20 Einträge des Provisioners pro Gerät (2026-10-25) | C15 |
-| Z31 | Auch festhalten, was ohne Job geschieht? | ja: ein Rest ohne Erklärung und ein ausgelöster Fallback, beobachtet beim Lesen der Geräteseite (2026-10-25) | C15 |
-| Z32 | In welcher Sprache schreibt das Backend ins Journal? | Deutsch aus einem gemeinsamen Crate `i18n` für Frontend und Backend (2026-10-25) | B11, C15 |
-| Z33 | Wann schreibt der Provisioner ins Journal? | immer, wenn `netbox_write_token` gesetzt ist, unabhängig von `allow_netbox_write`; ein Fehler dabei bricht keinen Job ab (2026-10-25) | C15 |
 
 ## A. Sicherheit
 
@@ -82,7 +75,6 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | offen |
 | C14 | Metriken des mikrotik-metrik-exporter im Provisioner (erster Teil von C8): Funk-Clients mit DHCP-Hostname, Health, PoE, dazu System, Interfaces und DHCP-Leases; Labels `device` und `site` aus NetBox, Dashboards im Repo angepasst; danach weder Exporter noch `prometheus`-Benutzer nötig | [Überwachung](concepts/monitoring.md) | M–L | offen |
-| C15 | Protokoll im NetBox-Journal, Rest (Eintrag pro Job, Neustart und Verlauf sind erledigt): Beobachtungen ohne Job (Rest ohne Erklärung, ausgelöster Fallback). | [Protokoll](concepts/protocol.md) | M | offen |
 
 ## D. In Arbeit, Rest offen
 
@@ -107,3 +99,4 @@ Zurzeit keine.
 | E13 | Diff in Worten neben dem Skript („entfernt 2 Adressen, ändert die SSID“), die heiklen Teile hervorgehoben (Adressen, OSPF, Bridge-Ports) | [Geräteseite](device-page.md) | M | offen |
 | E14 | Zwei Partitionen: nach jedem gelungenen Anwenden (Fallback weg, Diff geprüft; im Batch erst, wenn alle durch sind) die andere Partition nachziehen, auch wenn sie das RouterOS von vor einem Update hält (Z28). Bei instabilem Strom bootet RouterOS manchmal von selbst die andere Partition, weil es fälschlich ein Boot-Problem erkennt, und liefe dann mit alter Konfiguration. Gleiche Version: nur die Konfiguration (`/partitions save-config-to`, im Lab zu prüfen, CHR hat keine Partitionen); andere Version: alles (`copy-to`) | [Update-Fallback](update-fallback.md#zwei-partitionen) | M | offen |
 | E15 | Port angeschlossener Geräte ohne RouterOS erkennen: Für ein Gerät mit dokumentierter IPv4 oder IPv6 über ARP, IPv6-Nachbarn und die Host-Tabelle der Bridge finden, an welchem Port des Routers oder Switches es hängt, und in der Live-Prüfung der Interfaces ein fehlendes oder anders gelegtes Kabel melden, mit einem Helfer, der es in NetBox anlegt (Plan, Vorschau, Rückgängig). Zuordnung über die IP, nie über MACs aus NetBox; mehrere MACs an einem Port (Switch ohne RouterOS dahinter) machen ihn mehrdeutig | [Config-Helper](config-helper.md#netbox-gegen-gerät) | M–L | offen |
+| E16 | Protokoll: ein ausgelöster Apply-Fallback (Beobachtung ohne Job) nennt die Marken des Skripts, die noch auf dem Gerät liegen (`device::ros::progress`) | [Protokoll](protocol.md#beobachtungen-ohne-job) | S | offen |

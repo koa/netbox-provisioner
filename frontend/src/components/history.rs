@@ -90,6 +90,35 @@ impl Component for History {
 }
 
 fn entry(entry: &Entry) -> Html {
+    // NetBox gives `2026-10-25T13:04:30.123456+00:00`, in its own time zone
+    let created = entry.created.get(..16).unwrap_or(&entry.created).replace('T', " ");
+    let link = html! {
+        <div><a href={entry.url.clone()} target="_blank" rel="noopener">{h::IN_NETBOX}</a></div>
+    };
+    if let Some(seen) = &entry.observation {
+        let lefts = |list: &[JournalLeft]| list.iter().filter_map(left).collect::<Vec<_>>();
+        let (fired, found, removed) = (lefts(&seen.fired), lefts(&seen.found), lefts(&seen.removed));
+        let class = match (fired.is_empty(), found.is_empty()) {
+            (false, _) => "failed",
+            (true, false) => "warning",
+            (true, true) => "",
+        };
+        return html! {
+            <li class={class}>
+                <strong>{h::OBSERVED}</strong>{" · "}{created}
+                if !fired.is_empty() {
+                    <div>{t::fired(&fired)}</div>
+                }
+                if !found.is_empty() {
+                    <div>{t::found(&found)}</div>
+                }
+                if !removed.is_empty() {
+                    <div>{t::removed(&removed)}</div>
+                }
+                {link}
+            </li>
+        };
+    }
     let outcome = outcome(&entry.outcome);
     let class = match outcome {
         Outcome::Running => "running",
@@ -97,8 +126,6 @@ fn entry(entry: &Entry) -> Html {
         Outcome::Incomplete | Outcome::Cancelled | Outcome::Interrupted => "warning",
         Outcome::Failed => "failed",
     };
-    // NetBox gives `2026-10-25T13:04:30.123456+00:00`, in its own time zone
-    let created = entry.created.get(..16).unwrap_or(&entry.created).replace('T', " ");
     let state = entry
         .state
         .as_deref()
@@ -107,7 +134,7 @@ fn entry(entry: &Entry) -> Html {
     let left: Vec<Left> = entry.left.iter().filter_map(left).collect();
     html! {
         <li class={class}>
-            <strong>{kind(&entry.kind)}</strong>{" "}{t::how(outcome)}
+            <strong>{entry.kind.as_ref().map_or("", kind)}</strong>{" "}{t::how(outcome)}
             {" · "}{created}
             if let Some(by) = &entry.by {
                 {" · "}{h::by(by)}
@@ -118,7 +145,7 @@ fn entry(entry: &Entry) -> Html {
             if !left.is_empty() {
                 <div>{t::left(&left)}</div>
             }
-            <div><a href={entry.url.clone()} target="_blank" rel="noopener">{h::IN_NETBOX}</a></div>
+            {link}
         </li>
     }
 }

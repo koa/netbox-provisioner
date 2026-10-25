@@ -78,24 +78,44 @@ pub fn netbox_written(objects: usize) -> String {
 pub enum Left {
     ApplyFallback,
     UpdateFallback,
-    Packages,
     WatchdogSafetyNet,
 }
 
+fn what(left: Left) -> &'static str {
+    match left {
+        Left::ApplyFallback => "der Fallback des Anwendens (lädt die Konfiguration von vorher)",
+        Left::UpdateFallback => "der Fallback des Updates (bootet die alte Partition)",
+        Left::WatchdogSafetyNet => "das Sicherheitsnetz der Watchdogs (stellt sie nach 2 h selbst wieder her)",
+    }
+}
+
 pub fn left(left: &[Left]) -> String {
-    let items: Vec<String> = left
-        .iter()
-        .map(|left| {
-            match left {
-                Left::ApplyFallback => "der Fallback des Anwendens (lädt die Konfiguration von vorher)",
-                Left::UpdateFallback => "der Fallback des Updates (bootet die alte Partition)",
-                Left::Packages => "hochgeladene Pakete (installieren beim nächsten Neustart)",
-                Left::WatchdogSafetyNet => "das Sicherheitsnetz der Watchdogs (stellt sie nach 2 h selbst wieder her)",
-            }
-            .to_string()
-        })
-        .collect();
-    format!("Bleibt auf dem Gerät: {}", crate::common::list(&items))
+    format!("Bleibt auf dem Gerät: {}", items(left))
+}
+
+/// The heading of an entry the device page wrote without a job (`backend::journal::observe`).
+pub const OBSERVED: &str = "**Beobachtung** auf dem Gerät, ohne Job";
+
+fn items(left: &[Left]) -> String {
+    let items: Vec<String> = left.iter().map(|left| what(*left).to_string()).collect();
+    crate::common::list(&items)
+}
+
+/// a fallback a job left is gone and the device booted since
+pub fn fired(left: &[Left]) -> String {
+    format!("Ausgelöst, ohne dass ein Job es sah (das Gerät ist seither neu gestartet): {}", items(left))
+}
+/// on the device, but no job left it
+pub fn found(left: &[Left]) -> String {
+    format!(
+        "Auf dem Gerät, ohne dass ein Eintrag es nennt (eine andere Instanz, ein älterer Stand oder \
+         von Hand): {}",
+        items(left)
+    )
+}
+/// a job left it, it is gone without a reboot since
+pub fn removed(left: &[Left]) -> String {
+    format!("Nicht mehr da, ohne Neustart seither (von Hand entfernt oder abgelaufen): {}", items(left))
 }
 
 /// The device page's „Verlauf“ (`components::history`): the entries from the journal.
@@ -103,6 +123,7 @@ pub mod history {
     pub const TITLE: &str = "Verlauf";
     pub const NONE: &str = "Noch keine Einträge des Provisioners im Journal des Geräts in NetBox.";
     pub const IN_NETBOX: &str = "im Journal in NetBox";
+    pub const OBSERVED: &str = "Beobachtung auf dem Gerät, ohne Job";
     pub fn by(user: &str) -> String {
         format!("von {user}")
     }

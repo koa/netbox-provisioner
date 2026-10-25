@@ -142,7 +142,10 @@ pub struct JournalEntry {
     pub id: u32,
     /// when NetBox created it, as NetBox gives it (ISO 8601, its time zone)
     pub created: Box<str>,
-    pub kind: JobKind,
+    /// the job's kind; none for an observation
+    pub kind: Option<JobKind>,
+    /// what the device page found without a job
+    pub observation: Option<JournalObservation>,
     pub outcome: JournalOutcome,
     /// the state it is in or ended in, by its GraphQL name (`SCRIPT_RUNNING`)
     pub state: Option<Box<str>>,
@@ -196,7 +199,12 @@ fn parse(entry: &Value, web: &str) -> Option<JournalEntry> {
     Some(JournalEntry {
         id,
         created: entry["created"].as_str()?.into(),
-        kind: kind_named(record["job"].as_str()?)?,
+        kind: record["job"].as_str().and_then(kind_named),
+        observation: record["observation"].is_object().then(|| JournalObservation {
+            found: journal_lefts(&record["observation"]["found"]),
+            fired: journal_lefts(&record["observation"]["fired"]),
+            removed: journal_lefts(&record["observation"]["removed"]),
+        }),
         outcome: by_name(
             &[
                 JournalOutcome::Running,
@@ -209,20 +217,35 @@ fn parse(entry: &Value, web: &str) -> Option<JournalEntry> {
             record["outcome"].as_str()?,
         )?,
         state: named(&record["state"]).map(Into::into),
-        left: record["left"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|left| {
-                by_name(
-                    &[JournalLeft::ApplyFallback, JournalLeft::UpdateFallback, JournalLeft::WatchdogSafetyNet],
-                    left.as_str()?,
-                )
-            })
-            .collect(),
+        left: journal_lefts(&record["left"]),
         by: named(&record["by"]).map(Into::into),
         url: format!("{web}extras/journal-entries/{id}/"),
     })
+}
+
+fn journal_lefts(value: &Value) -> Vec<JournalLeft> {
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|left| {
+            by_name(
+                &[JournalLeft::ApplyFallback, JournalLeft::UpdateFallback, JournalLeft::WatchdogSafetyNet],
+                left.as_str()?,
+            )
+        })
+        .collect()
+}
+
+/// What the device page found without a job ([`observe`]).
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct JournalObservation {
+    /// on the device, no entry left it
+    pub found: Vec<JournalLeft>,
+    /// a fallback an entry left fired: gone, and the device booted since
+    pub fired: Vec<JournalLeft>,
+    /// gone without a reboot since
+    pub removed: Vec<JournalLeft>,
 }
 
 /// The one of `all` whose `Debug` is `name`.
@@ -344,7 +367,8 @@ impl Entry {
             "job": format!("{:?}", self.kind),
             "outcome": format!("{:?}", self.outcome),
             "state": self.phase.map(phase_name),
-            "left": self.left().iter().map(|left| format!("{left:?}")).collect::<Vec<_>>(),
+            "left": names(&self.left()),
+            "touched": names(&touched(&self.events)),
             "by": match &self.started {
                 Started::By(user) => Some(user),
                 Started::Resumed { .. } => None,
@@ -444,6 +468,200 @@ fn outcome(state: JobState, events: &[Event]) -> Outcome {
             }
         }
     }
+}
+
+/// What of the kinds of [`Left`] `events` set up or took away (armed, suspended, cleared): what
+/// the device had of them before doesn't count after the job, only what it left.
+fn touched(events: &[Event]) -> Vec<Left> {
+    use crate::device::leftovers::LeftoverAction as A;
+    let mut touched = Vec::new();
+    for event in events {
+        let kind = match event {
+            Event::FallbackArmed(_) => Left::ApplyFallback,
+            Event::UpdateFallbackArmed(_) => Left::UpdateFallback,
+            Event::WatchdogSuspended(_) => Left::WatchdogSafetyNet,
+            Event::LeftoverCleared(cleared) => match cleared.action {
+                A::StopApplyFallback | A::ApplyFallbackNow => Left::ApplyFallback,
+                A::StopUpdateFallback => Left::UpdateFallback,
+                A::RestoreWatchdogs => Left::WatchdogSafetyNet,
+                A::RemovePackages => continue,
+            },
+            _ => continue,
+        };
+        if !touched.contains(&kind) {
+            touched.push(kind);
+        }
+    }
+    touched
+}
+
+fn names(left: &[Left]) -> Vec<String> {
+    left.iter().map(|left| format!("{left:?}")).collect()
+}
+
+const ALL_LEFT: [Left; 3] = [Left::ApplyFallback, Left::UpdateFallback, Left::WatchdogSafetyNet];
+
+fn lefts(value: &Value) -> Vec<Left> {
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|name| by_name(&ALL_LEFT, name.as_str()?))
+        .collect()
+}
+
+/// What the device should have of the kinds of [`Left`] by the provisioner's entries
+/// (`records`, their `provisioner_job`, oldest first), each with when the entry that left it
+/// was written; `None` while the newest is still running.
+fn expected(records: &[&Value]) -> Option<Vec<(Left, u64)>> {
+    let mut expected: Vec<(Left, u64)> = Vec::new();
+    for record in records {
+        let at = record["at"].as_u64().unwrap_or_default();
+        let touched = lefts(&record["touched"]);
+        expected.retain(|(left, _)| !touched.contains(left));
+        for left in lefts(&record["left"]) {
+            if !expected.iter().any(|(known, _)| *known == left) {
+                expected.push((left, at));
+            }
+        }
+    }
+    match records.last() {
+        Some(newest) if newest["outcome"].as_str() == Some("Running") => None,
+        _ => Some(expected),
+    }
+}
+
+/// What the device page found against what the entries say ([`observe`]).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Observation {
+    /// on the device, but no entry left it
+    pub found: Vec<Left>,
+    /// an entry left a fallback, it is gone and the device booted since: it fired
+    pub fired: Vec<Left>,
+    /// an entry left it, it is gone without a reboot since (taken away by hand, or the
+    /// watchdogs' safety net ran)
+    pub removed: Vec<Left>,
+}
+
+/// Compares `now` (what is on the device, its `uptime`) with `expected` at `at` (seconds).
+fn observation(expected: &[(Left, u64)], now: &[Left], uptime: Option<Duration>, at: u64) -> Option<Observation> {
+    let mut seen = Observation::default();
+    for left in now {
+        if !expected.iter().any(|(known, _)| known == left) {
+            seen.found.push(*left);
+        }
+    }
+    for (left, since) in expected {
+        if now.contains(left) {
+            continue;
+        }
+        let booted_since = uptime.is_some_and(|uptime| uptime.as_secs() < at.saturating_sub(*since));
+        match left {
+            Left::ApplyFallback | Left::UpdateFallback if booted_since => seen.fired.push(*left),
+            _ => seen.removed.push(*left),
+        }
+    }
+    (seen != Observation::default()).then_some(seen)
+}
+
+impl Observation {
+    fn netbox_kind(&self) -> &'static str {
+        match (self.fired.is_empty(), self.found.is_empty()) {
+            (false, _) => "danger",
+            (true, false) => "warning",
+            (true, true) => "info",
+        }
+    }
+    fn comments(&self, now: &[Left]) -> String {
+        use i18n::journal as t;
+        let mut lines = vec![t::OBSERVED.to_string()];
+        if !self.fired.is_empty() {
+            lines.push(t::fired(&self.fired));
+        }
+        if !self.found.is_empty() {
+            lines.push(t::found(&self.found));
+        }
+        if !self.removed.is_empty() {
+            lines.push(t::removed(&self.removed));
+        }
+        if !now.is_empty() {
+            lines.push(t::left(now));
+        }
+        lines.join("\n\n")
+    }
+    fn fields(&self, now: &[Left], at: u64) -> Value {
+        json!({
+            "kind": self.netbox_kind(),
+            "comments": self.comments(now),
+            "custom_fields": { "provisioner_job": {
+                "observation": {
+                    "found": names(&self.found),
+                    "fired": names(&self.fired),
+                    "removed": names(&self.removed),
+                },
+                "outcome": "Done",
+                "left": names(now),
+                // a snapshot: what was left before doesn't count after it
+                "touched": names(&ALL_LEFT),
+                "at": at,
+            }},
+        })
+    }
+}
+
+/// Devices whose observation is being written, so two reads at once write one.
+static OBSERVING: std::sync::Mutex<Vec<DeviceId>> = std::sync::Mutex::new(Vec::new());
+
+/// Writes an entry when what the device page read on `device` (`now`, its `uptime`) isn't
+/// what the provisioner's entries say it left there (Z31): a leftover no entry explains, a
+/// fallback that fired or one taken away. Called with the leftovers read while no job of
+/// this provisioner runs on the device; nothing while the newest entry still runs.
+pub async fn observe(device: DeviceId, now: Vec<Left>, uptime: Option<Duration>) {
+    if !enabled() {
+        return;
+    }
+    {
+        let mut observing = OBSERVING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if observing.contains(&device) {
+            return;
+        }
+        observing.push(device);
+    }
+    let result = async {
+        let rest = NetboxRest::journal("netbox-provisioner observation")?;
+        let entries = rest
+            .get(&format!(
+                "extras/journal-entries/?assigned_object_type=dcim.device&assigned_object_id={}&tag={TAG}\
+                 &ordering=created&limit={KEEP}",
+                device.0
+            ))
+            .await?;
+        let records: Vec<&Value> = entries["results"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|entry| &entry["custom_fields"]["provisioner_job"])
+            .filter(|record| record.is_object())
+            .collect();
+        let at = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        let Some(seen) = expected(&records).and_then(|expected| observation(&expected, &now, uptime, at)) else {
+            return Ok(());
+        };
+        let mut fields = seen.fields(&now, at);
+        fields["assigned_object_type"] = json!("dcim.device");
+        fields["assigned_object_id"] = json!(device.0);
+        fields["tags"] = json!([{ "slug": TAG }]);
+        rest.create("extras/journal-entries/", fields).await?;
+        prune(&rest, device).await
+    }
+    .await;
+    if let Err(error) = result {
+        warn!("observation of device {} not written to its journal: {error}", device.0);
+    }
+    OBSERVING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .retain(|observed| *observed != device);
 }
 
 /// What `events` leave on the device: a fallback armed and neither stopped nor fired, the

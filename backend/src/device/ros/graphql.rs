@@ -1597,12 +1597,20 @@ impl AccessibleDevice {
         if crate::job::list(Some(subject)).iter().any(|job| job.is_running()) {
             return None;
         }
-        let read = async { crate::device::leftovers::read(&self.connect_again().await?).await };
-        let mut left = nullable(ctx, read.await).filter(|left| !left.is_empty())?;
-        if let Some(watchdogs) = &mut left.watchdogs {
-            watchdogs.held_by = crate::job::holding_watchdogs(self.device_config.name());
-        }
-        Some(left)
+        let read = async {
+            let raw = self.connect_again().await?;
+            let mut left = crate::device::leftovers::read(&raw).await?;
+            if let Some(watchdogs) = &mut left.watchdogs {
+                watchdogs.held_by = crate::job::holding_watchdogs(self.device_config.name());
+            }
+            if crate::journal::enabled() {
+                // what no job of this provisioner explains goes into the journal (Z31)
+                let uptime = fallback::uptime(&raw).await.ok().flatten();
+                tokio::spawn(crate::journal::observe(self.device_config.id(), left.journal_left(), uptime));
+            }
+            Ok::<_, Error>(left)
+        };
+        nullable(ctx, read.await).filter(|left| !left.is_empty())
     }
     /// The newest `last` entries of the device's log (`/log`, kept in its memory until a
     /// reboot), oldest first: what happened, after an update that went wrong. Without the
