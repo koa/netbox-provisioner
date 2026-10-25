@@ -11,7 +11,8 @@ Status: **offen**, **in Arbeit**.
 
 ## Reihenfolge
 
-1. C15
+1. B11
+2. C15
 
 Dann schauen wir weiter
 
@@ -43,6 +44,11 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z19 | Wartungsfenster? | vorerst nicht (2026-10-23) | C10 |
 | Z20 | Netz-Update pro Site oder über mehrere? | mehrere Sites, frei gewählt (2026-10-23) | C10 |
 | Z28 | Die andere Partition nach jedem Anwenden nachziehen (E14) überschreibt das RouterOS von vor einem Update, den Weg zurück über „Von partN starten“. Immer kopieren, nur bei gleicher Version, oder erst eine Weile nach einem Update? | immer kopieren: Eine Partition mit alter Konfiguration ist eine Falle, die später zu einem Ausfall führen kann. Bei gleicher Version nur die Konfiguration, sonst alles (2026-10-25) | E14 |
+| Z29 | Wo liegt das Protokoll? | im Journal des Geräts in NetBox, ein Eintrag pro Job, nachgeführt bei jedem Zustandswechsel (2026-10-25) | C15 |
+| Z30 | Wie lange bleiben Einträge? | die letzten 20 Einträge des Provisioners pro Gerät (2026-10-25) | C15 |
+| Z31 | Auch festhalten, was ohne Job geschieht? | ja: ein Rest ohne Erklärung und ein ausgelöster Fallback, beobachtet beim Lesen der Geräteseite (2026-10-25) | C15 |
+| Z32 | In welcher Sprache schreibt das Backend ins Journal? | Deutsch aus einem gemeinsamen Crate `i18n` für Frontend und Backend (2026-10-25) | B11, C15 |
+| Z33 | Wann schreibt der Provisioner ins Journal? | immer, wenn `netbox_write_token` gesetzt ist, unabhängig von `allow_netbox_write`; ein Fehler dabei bricht keinen Job ab (2026-10-25) | C15 |
 
 ## A. Sicherheit
 
@@ -62,6 +68,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
+| B11 | Gemeinsames Crate `i18n` für Frontend und Backend: die Module aus `frontend/src/i18n/` ziehen um, soweit sie nur einfache Werte nehmen; was `yew::Html` baut oder Frontend-Typen kennt, bleibt im Frontend (Z32) | [Protokoll](concepts/protocol.md#sprache) | M | offen |
 
 ## C. Konzepte zum Umsetzen
 
@@ -77,7 +84,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | offen |
 | C14 | Metriken des mikrotik-metrik-exporter im Provisioner (erster Teil von C8): Funk-Clients mit DHCP-Hostname, Health, PoE, dazu System, Interfaces und DHCP-Leases; Labels `device` und `site` aus NetBox, Dashboards im Repo angepasst; danach weder Exporter noch `prometheus`-Benutzer nötig | [Überwachung](concepts/monitoring.md) | M–L | offen |
-| C15 | Protokoll: was geschehen ist (Ende jedes Auftrags mit Zustand und Events, ausgelöster Selbstauslöser mit den Marken, teilweise geschriebener Plan, `Fremd`-Eintrag beim Start), wie es aussieht, wo es liegt, wie lange es bleibt; ein Übergang schreibt einen Eintrag, der Zustand verweist nie darauf | [Protokoll](concepts/protocol.md) | M | offen |
+| C15 | Protokoll im NetBox-Journal: ein Eintrag pro Job und Gerät, beim Start angelegt und bei jedem Zustandswechsel nachgeführt, Tag `netbox-provisioner` und Custom Field `provisioner_job`; nach einem Neustart laufende Einträge auf „unterbrochen“; die letzten 20 pro Gerät; Verlauf auf der Geräteseite; Beobachtungen ohne Job (Rest ohne Erklärung, ausgelöster Fallback). Braucht B11 | [Protokoll](concepts/protocol.md) | L | offen |
 
 ## D. In Arbeit, Rest offen
 
