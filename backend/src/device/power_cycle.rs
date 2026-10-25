@@ -1,4 +1,4 @@
-//! „Strom aus und ein“: a cold boot of a device powered over PoE (`docs/concepts/update-fallback.md`,
+//! „Strom aus und ein“: a cold boot of a device powered over PoE (`docs/update-fallback.md`,
 //! decided 2026-10-23): the device feeding it switches PoE on the port cabled to it off and on
 //! again (`/interface/ethernet/poe/power-cycle`). Only on a click, with a confirmation, never by
 //! itself. It confirms a device mode change (a warm reboot doesn't) and brings back a device

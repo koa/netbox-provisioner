@@ -1,4 +1,4 @@
-//! The way back from a RouterOS update (`docs/concepts/update-fallback.md`, stage 1): on a
+//! The way back from a RouterOS update (`docs/update-fallback.md`, stage 1): on a
 //! device with two [`partitions`](super::partitions), the running RouterOS is copied to the
 //! other one with its configuration (`/partitions copy-to`) before the update. A scheduler run
 //! at every boot then waits [`Settings::update_fallback`](crate::config::Settings) and, unless

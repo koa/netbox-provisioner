@@ -844,7 +844,7 @@ impl BaseDeviceDataTarget {
     /// mac-telnet for remote maintenance, on the ports to own devices and the free ones:
     /// - ports cabled to a device with RouterOS in NetBox, and radios of a wireless link: a
     ///   neighbor reaching a device that lost its addresses or routes
-    ///   (`docs/concepts/update-fallback.md`);
+    ///   (`docs/update-fallback.md`);
     /// - Ethernet ports NetBox doesn't use (not there, or without cable, address, VLAN and
     ///   bridge): a notebook plugged into a free port on site.
     ///

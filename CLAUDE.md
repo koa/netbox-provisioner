@@ -812,7 +812,7 @@ off) until the generator set it too.
 The device mode (`/system/device-mode`, RouterOS 7.17+) locks features the provisioner needs
 (`device::device_mode::wanted`: `scheduler` for the apply fallback, `socks` on the management
 proxy's device, `partitions` where `/partitions` reports 128 MiB or more for the planned update
-fallback, `docs/concepts/update-fallback.md`). A change needs a confirmation at the device
+fallback, `docs/update-fallback.md`). A change needs a confirmation at the device
 (button, or a cold boot) while `/system/device-mode/update` counts down; closing its connection
 cancels it and a warm reboot doesn't confirm (CHR 7.24.5), so the `DeviceMode` job holds the
 connection until the device goes down, sends only features that are off (an update changing

@@ -2,7 +2,7 @@
 
 Status: Konzept, nicht umgesetzt. Offener Punkt aus [pending.md](../pending.md#konzept-für-updates-im-ganzen-netz).
 Baut auf dem Server-Log (Events, Jobs) auf, das erledigt ist, und profitiert vom
-[Update-Fallback](update-fallback.md).
+[Update-Fallback](../update-fallback.md).
 
 ## Ziel
 
@@ -91,7 +91,7 @@ Pro Gerät, parallel:
 
 - erreichbar, Version und Architektur (`read_state`), Ziel-Schritte (`next_step`);
 - freier Speicher reicht für die Pakete (`free-hdd-space`; im Lab haben die 16-MB-Geräte 1–3 MB);
-- Fallback möglich oder nicht (siehe [update-fallback.md](update-fallback.md));
+- Fallback möglich oder nicht (siehe [update-fallback.md](../update-fallback.md));
 - übrig gebliebener Apply- oder Update-Fallback auf dem Gerät (Scheduler `netbox-provisioner-*`):
   Das Gerät wird nicht aktualisiert, bis der Benutzer das geklärt hat.
 

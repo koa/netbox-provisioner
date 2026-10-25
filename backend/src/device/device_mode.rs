@@ -43,7 +43,7 @@ pub enum DeviceModeReason {
     ApplyFallback,
     /// `/ip socks` on the device of the management proxy
     ManagementProxy,
-    /// two partitions for the fallback of an update (`docs/concepts/update-fallback.md`), on a
+    /// two partitions for the fallback of an update (`docs/update-fallback.md`), on a
     /// device whose flash can take them
     UpdateFallback,
 }

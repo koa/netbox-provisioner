@@ -13,6 +13,7 @@ eingerichtet wird, steht in [login.md](login.md).
 Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
 
 - [Geräteseite](device-page.md): Aufbau der Seite eines Geräts, Zugang, Ersteinrichtung.
+- [Update-Fallback](update-fallback.md): Partitionen, Rettung über den Nachbarn, Downgrade, Device-Mode, Strom aus und ein.
 
 Was noch nicht umgesetzt ist, steht als Konzept in [concepts/](concepts/), die Aufgaben dazu in
 [todo.md](todo.md).
