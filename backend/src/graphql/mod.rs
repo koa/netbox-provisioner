@@ -97,7 +97,8 @@ impl QueryAuthenticated {
         job::get(id)
     }
     /// The jobs of a device or a site (all without either), newest first; those still running
-    /// and the last finished ones.
+    /// and the last finished ones. A device's include those working through it (a setup over
+    /// it as the neighbor, `deviceId` the device set up).
     async fn jobs(&self, device_id: Option<u32>, site_id: Option<u32>) -> Vec<Arc<Job>> {
         job::list(
             device_id
@@ -271,13 +272,16 @@ impl MutationAuthenticated {
     /// Starts the initial setup over mac-telnet from a neighbor along
     /// `DeviceAccess.bootstrapPlan`, for a device that can't be reached over IP yet
     /// (`allow_apply` must be set). `mac` is the physical device that gets this NetBox
-    /// device's config, usually one of `bootstrapPlan.discovered`.
+    /// device's config, usually one of `bootstrapPlan.discovered`. The neighbor runs no job of
+    /// its own meanwhile (`BUSY` either way): an apply or a reboot of it would cut the session,
+    /// and its commands would land on the neighbor's console.
     #[graphql(guard = "WritesAllowed")]
     async fn bootstrap(&self, id: u32, mac: ScalarMac) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let mut plan = bootstrap::plan(&device)?;
         plan.setup.macs = [mac.0].into();
-        Ok(job::start(&device.clone(), JobKind::Bootstrap, |log| async move {
+        let neighbor = plan.neighbor_device().clone();
+        Ok(job::start_through(&device.clone(), &neighbor, JobKind::Bootstrap, |log| async move {
             bootstrap::bootstrap(&device, &plan, &log).await
         })?)
     }

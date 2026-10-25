@@ -394,7 +394,10 @@ stateDiagram-v2
     WartetAufApi --> [*]: Frist (Z) → fehlgeschlagen
 ```
 
-Läuft über ein anderes Gerät (den Nachbarn). In `Konsole` nicht abbrechbar; nach einem Start des
+Läuft über ein anderes Gerät (den Nachbarn), das solange keinen eigenen Auftrag annimmt
+(`job::start_through`): eine Bedingung über Geräte hinweg, `[Nachbar ohne Auftrag]` vor
+`NachbarPrüfen`, und umgekehrt kein Auftrag des Nachbarn, solange die Ersteinrichtung läuft.
+In `Konsole` nicht abbrechbar; nach einem Start des
 Servers ist die Sitzung weg, also *unterbrochen*. Sie hinterlässt beim Nachbarn nichts, was
 selbst auslöst (die Befehle tun dort nichts, `netboxProvisionerNeighbor`).
 

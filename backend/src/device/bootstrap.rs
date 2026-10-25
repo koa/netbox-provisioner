@@ -62,6 +62,13 @@ pub struct BootstrapPlan {
     neighbor_address: IpAddr,
 }
 
+impl BootstrapPlan {
+    /// The device running `/tool mac-telnet`: busy for the setup's length.
+    pub fn neighbor_device(&self) -> &DeviceAccess {
+        &self.neighbor_device
+    }
+}
+
 #[ComplexObject]
 impl BootstrapPlan {
     /// the port of the device being set up, by its factory name

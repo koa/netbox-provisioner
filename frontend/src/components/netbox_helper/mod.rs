@@ -142,8 +142,12 @@ pub struct NetboxHelper {
     job_running: bool,
     /// the write job whose objects "Rückgängig" deletes or sets back
     written: Option<i64>,
+    /// the write job started here, also when it wrote nothing
+    write_job: Option<i64>,
     /// how the write job of this session ended
     write_done: Option<bool>,
+    /// `written` failed midway: only the steps before are in NetBox
+    written_partly: bool,
     /// the phase told last (`on_phase`)
     reported: Option<Phase>,
     error: Option<FrontendError>,
@@ -168,8 +172,9 @@ pub enum NetboxHelperMsg {
     JobStarted(Result<i64, FrontendError>, bool),
     /// `true`: done
     JobFinished(bool),
-    /// the last write job of the device the server still knows, done and not taken back
-    LastWrite(i64),
+    /// the last write job of the device the server still knows, not taken back: whether it got
+    /// through, and whether it wrote anything
+    LastWrite { id: i64, complete: bool, wrote: bool },
 }
 
 /// A helper's own message is one of the component: its forms' callbacks give it as is.
@@ -335,6 +340,8 @@ impl Component for NetboxHelper {
             job_running: false,
             written: None,
             write_done: None,
+            written_partly: false,
+            write_job: None,
             reported: None,
             error: None,
         };
@@ -419,6 +426,8 @@ impl Component for NetboxHelper {
                 Ok(id) => {
                     self.job = Some(id);
                     self.written = write.then_some(id);
+                    self.write_job = write.then_some(id);
+                    self.written_partly = false;
                     self.write_done = None;
                 }
                 Err(error) => {
@@ -426,15 +435,22 @@ impl Component for NetboxHelper {
                     self.error = Some(error);
                 }
             },
-            NetboxHelperMsg::LastWrite(id) => {
-                if self.job.is_none() {
-                    self.written = Some(id);
+            NetboxHelperMsg::LastWrite { id, complete, wrote } => {
+                // on opening, or the write job of this helper being over
+                if self.job.is_none() || self.job == Some(id) {
+                    self.written = wrote.then_some(id);
+                    self.written_partly = !complete;
                 }
             }
             NetboxHelperMsg::JobFinished(done) => {
                 self.job_running = false;
-                if self.written.is_some() && self.written == self.job {
+                if self.write_job.is_some() && self.write_job == self.job {
                     self.write_done = Some(done);
+                    // failed midway: what got through, if anything
+                    self.written_partly = !done;
+                    if !done {
+                        last_write(ctx.link().clone(), ctx.props().id);
+                    }
                 }
                 self.preview = None;
                 // a written removal took what it was chosen for: planned again it finds nothing;
@@ -515,7 +531,7 @@ impl Component for NetboxHelper {
         let plan = self.plan_view(ctx);
         let undo = self.written.filter(|_| !self.job_running).map(|_| html! {
             <div class="helper-actions">
-                <p>{t::WRITTEN}</p>
+                <p>{if self.written_partly { t::WRITTEN_PARTLY } else { t::WRITTEN }}</p>
                 <Button
                     variant={ButtonVariant::Secondary}
                     label={t::UNDO}
@@ -636,7 +652,7 @@ impl NetboxHelper {
         }
     }
     fn phase(&self) -> Phase {
-        let writing = self.written.is_some() && self.written == self.job;
+        let writing = self.write_job.is_some() && self.write_job == self.job;
         if writing && self.job_running {
             Phase::Writing
         } else if writing && self.write_done == Some(true) {

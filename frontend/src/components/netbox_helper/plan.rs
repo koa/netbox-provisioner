@@ -166,8 +166,9 @@ pub(super) fn describe(step: &Step) -> String {
     }
 }
 
-/// The newest helper job of the device, if it is a finished write: it can still be taken back
-/// (until the server restarts, which forgets its jobs).
+/// The newest helper job of the device, if it is a finished write that wrote something: it can
+/// still be taken back (until the server restarts, which forgets its jobs). One that failed
+/// midway wrote only the steps before.
 pub(super) fn last_write(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
         let Ok(data) = query_authenticated::<HelperJobs, _>(
@@ -184,9 +185,13 @@ pub(super) fn last_write(scope: Scope<NetboxHelper>, id: u32) {
             .find(|job| matches!(job.kind, JobKind::NETBOX_WRITE | JobKind::NETBOX_UNDO));
         if let Some(job) = last
             && matches!(job.kind, JobKind::NETBOX_WRITE)
-            && matches!(job.state, JobState::DONE)
+            && !matches!(job.state, JobState::RUNNING)
         {
-            scope.send_message(NetboxHelperMsg::LastWrite(job.id));
+            scope.send_message(NetboxHelperMsg::LastWrite {
+                id: job.id,
+                complete: matches!(job.state, JobState::DONE),
+                wrote: job.netbox_written_count > 0,
+            });
         }
     });
 }

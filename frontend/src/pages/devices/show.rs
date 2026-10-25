@@ -38,6 +38,8 @@ pub struct ShowDevice {
     alternate_target: SelectedTarget,
     /// the job shown (an update, an apply, a setup), started here or running when the page was opened
     job: Option<i64>,
+    /// the device `job` works on when it isn't this one: a setup over this device as the neighbor
+    job_through: Option<String>,
     job_running: bool,
     /// the jobs of a batch started here (this device first), shown side by side instead of `job`
     batch_jobs: Vec<BatchJob>,
@@ -170,6 +172,8 @@ pub enum ShowDeviceMessage {
     SuspendWatchdogs(bool),
     WithoutFallback(bool),
     JobStarted(Result<i64, FrontendError>),
+    /// a job of another device running through this one (its id and that device)
+    JobThrough(i64, String),
     JobFinished,
     /// „Anwenden“ of the interfaces: to the card „Änderungen“
     ShowChanges,
@@ -188,6 +192,7 @@ impl Component for ShowDevice {
             data: None,
             alternate_target: Default::default(),
             job: None,
+            job_through: None,
             job_running: false,
             batch_jobs: Vec::new(),
             batch_finished: 0,
@@ -356,10 +361,18 @@ impl Component for ShowDevice {
                 self.show_target = show;
                 true
             }
+            ShowDeviceMessage::JobThrough(id, device) => {
+                self.job = Some(id);
+                self.job_through = Some(device);
+                self.job_running = true;
+                self.batch_jobs.clear();
+                true
+            }
             ShowDeviceMessage::JobStarted(result) => {
                 match result {
                     Ok(id) => {
                         self.job = Some(id);
+                        self.job_through = None;
                         self.job_running = true;
                         self.batch_jobs.clear();
                     }
@@ -433,9 +446,12 @@ impl Component for ShowDevice {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let error = self.error.as_ref().map(|e| e.to_html());
         let job = if self.batch_jobs.is_empty() {
-            self.job.map(|id| html! {
+            self.job.map(|id| html! {<>
+                if let Some(device) = &self.job_through {
+                    <p>{t::job_through(device)}</p>
+                }
                 <JobView key={id} id={id} on_finished={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}/>
-            })
+            </>})
         } else {
             Some(html! {
                 <div class="batch-jobs">
@@ -1420,7 +1436,13 @@ fn running_job(scope: Scope<ShowDevice>, id: u32) {
             .into_iter()
             .find(|job| matches!(job.state, device_jobs::JobState::RUNNING))
         {
-            scope.send_message(ShowDeviceMessage::JobStarted(Ok(job.id)));
+            match job.device_id.zip(job.device_name) {
+                // a setup over this device as the neighbor
+                Some((device, name)) if device != id as i64 => {
+                    scope.send_message(ShowDeviceMessage::JobThrough(job.id, name))
+                }
+                _ => scope.send_message(ShowDeviceMessage::JobStarted(Ok(job.id))),
+            }
         }
     });
 }

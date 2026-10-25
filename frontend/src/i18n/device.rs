@@ -14,6 +14,14 @@ pub fn other_identity(identity: &str, name: &str) -> String {
     )
 }
 pub const ROUTEROS: &str = "RouterOS";
+
+/// a job of `device` working through this one
+pub fn job_through(device: &str) -> String {
+    format!(
+        "Die Ersteinrichtung von {device} läuft über dieses Gerät; bis sie endet, nimmt es keinen \
+        Auftrag an."
+    )
+}
 pub const CHANGES: &str = "Änderungen";
 /// the card with RouterOS, device mode and partitions
 pub const DEVICE: &str = "Gerät";

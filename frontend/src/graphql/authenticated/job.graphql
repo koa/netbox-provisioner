@@ -72,6 +72,8 @@ query DeviceJobs($deviceId: Int!){
     jobs(deviceId: $deviceId){
         id
         state
+        deviceId
+        deviceName
     }
 }
 mutation CancelJob($id: Int!){

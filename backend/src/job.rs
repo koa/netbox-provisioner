@@ -229,6 +229,9 @@ pub struct Job {
     /// the device's or the site's name
     name: Box<str>,
     kind: JobKind,
+    /// another device the job works through and keeps from jobs of its own meanwhile: a
+    /// setup's neighbor, whose console runs `/tool mac-telnet`
+    through: Option<JobSubject>,
     log: Log,
     outcome: Mutex<(JobState, Option<ErrorInfo>)>,
     took: Mutex<Option<Duration>>,
@@ -272,6 +275,10 @@ impl Job {
     pub fn is_running(&self) -> bool {
         self.state() == JobState::Running
     }
+    /// Whether the job works on `subject` or through it.
+    fn occupies(&self, subject: JobSubject) -> bool {
+        self.subject == subject || self.through == Some(subject)
+    }
     /// What the job wrote to NetBox (a `NetboxWrite` job), for taking it back.
     pub fn netbox_written(&self) -> Vec<helper::NetboxWritten> {
         self.log
@@ -314,7 +321,25 @@ where
 {
     let log = Log::new(device.name());
     let work = work(log.clone());
-    let job = register(&[(subject_of(device), log)], kind)?.swap_remove(0);
+    let job = register(&[(subject_of(device), log)], None, kind)?.swap_remove(0);
+    spawn(job.clone(), work);
+    Ok(job)
+}
+
+/// Like [`start`], working through `through` as well (a setup over its neighbor): neither
+/// device may run a job meanwhile, and `through`'s page lists it as its own.
+pub fn start_through<F>(
+    device: &DeviceAccess,
+    through: &DeviceAccess,
+    kind: JobKind,
+    work: impl FnOnce(Log) -> F,
+) -> Result<Arc<Job>, Error>
+where
+    F: Future<Output = Result<(), Error>> + Send + 'static,
+{
+    let log = Log::new(device.name());
+    let work = work(log.clone());
+    let job = register(&[(subject_of(device), log)], Some(subject_of(through)), kind)?.swap_remove(0);
     spawn(job.clone(), work);
     Ok(job)
 }
@@ -341,7 +366,7 @@ where
     }
     let log = Log::new(site.name());
     let work = work(log.clone());
-    let job = add(&mut jobs, subject, site.name(), kind, log);
+    let job = add(&mut jobs, subject, None, site.name(), kind, log);
     drop(jobs);
     spawn(job.clone(), work);
     job
@@ -375,7 +400,7 @@ where
     let logs: Vec<Log> = devices.iter().map(|device| Log::new(device.name())).collect();
     let work = work(logs.clone());
     let members: Vec<_> = devices.iter().map(subject_of).zip(logs).collect();
-    let jobs = register(&members, kind)?;
+    let jobs = register(&members, None, kind)?;
     let running = jobs.clone();
     tokio::spawn(async move {
         match run(async move { Ok(work.await) }).await {
@@ -398,31 +423,40 @@ where
 }
 
 /// Adds a running job for each of `members`, none if one of their devices runs a job already.
-fn register(members: &[((JobSubject, &str), Log)], kind: JobKind) -> Result<Vec<Arc<Job>>, Error> {
+fn register(
+    members: &[((JobSubject, &str), Log)],
+    through: Option<(JobSubject, &str)>,
+    kind: JobKind,
+) -> Result<Vec<Arc<Job>>, Error> {
     let mut jobs = JOBS.lock().unwrap_or_else(PoisonError::into_inner);
-    for ((subject, name), _) in members {
-        if jobs
-            .jobs
-            .iter()
-            .any(|job| job.subject == *subject && job.state() == JobState::Running)
-        {
-            return Err(Error::Busy((*name).into()));
+    for (subject, name) in members.iter().map(|(member, _)| *member).chain(through) {
+        if jobs.jobs.iter().any(|job| job.occupies(subject) && job.is_running()) {
+            return Err(Error::Busy(name.into()));
         }
     }
+    let through = through.map(|(subject, _)| subject);
     Ok(members
         .iter()
-        .map(|((subject, name), log)| add(&mut jobs, *subject, name, kind, log.clone()))
+        .map(|((subject, name), log)| add(&mut jobs, *subject, through, name, kind, log.clone()))
         .collect())
 }
 
 /// Adds a running job, dropping the oldest finished one beyond [`KEEP`].
-fn add(jobs: &mut Jobs, subject: JobSubject, name: &str, kind: JobKind, log: Log) -> Arc<Job> {
+fn add(
+    jobs: &mut Jobs,
+    subject: JobSubject,
+    through: Option<JobSubject>,
+    name: &str,
+    kind: JobKind,
+    log: Log,
+) -> Arc<Job> {
     jobs.next += 1;
     let job = Arc::new(Job {
         id: jobs.next,
         subject,
         name: name.into(),
         kind,
+        through,
         log,
         outcome: Mutex::new((JobState::Running, None)),
         took: Mutex::new(None),
@@ -465,14 +499,14 @@ pub fn get(id: u32) -> Option<Arc<Job>> {
         .cloned()
 }
 
-/// The jobs of `subject` (all without), newest first.
+/// The jobs of `subject` (all without), newest first, with those working through it.
 pub fn list(subject: Option<JobSubject>) -> Vec<Arc<Job>> {
     JOBS.lock()
         .unwrap_or_else(PoisonError::into_inner)
         .jobs
         .iter()
         .rev()
-        .filter(|job| subject.is_none_or(|subject| job.subject == subject))
+        .filter(|job| subject.is_none_or(|subject| job.occupies(subject)))
         .cloned()
         .collect()
 }
@@ -559,6 +593,11 @@ impl Job {
     async fn site_name(&self) -> Option<&str> {
         matches!(self.subject, JobSubject::Site(_)).then_some(&*self.name)
     }
+    /// How many NetBox objects it wrote (a `NETBOX_WRITE`): what `undoNetboxWrite` takes back.
+    /// One that failed midway has written the steps before.
+    async fn netbox_written_count(&self) -> usize {
+        self.netbox_written().len()
+    }
     #[graphql(name = "state")]
     async fn graphql_state(&self) -> JobState {
         self.state()
@@ -579,13 +618,13 @@ impl Job {
 
 #[cfg(test)]
 mod tests {
-    use super::{Event, JobKind, JobState, Log, cancel, get, holds_watchdogs, start};
+    use super::{Event, JobKind, JobState, Log, cancel, get, holds_watchdogs, list, start, start_through};
     use crate::{
         device::{
             update::{Reboot, RebootReason},
             watchdog::{WatchdogRestored, WatchdogSuspended, Watching},
         },
-        topology::{Device, TopologyHolder, builder::TopologyBuilder},
+        topology::{Device, DeviceId, TopologyHolder, builder::TopologyBuilder},
     };
     use std::time::Duration;
     use tokio::time::{sleep, timeout};
@@ -710,5 +749,32 @@ mod tests {
         assert!(!holds_watchdogs(&[suspended("sw2")], "sw1"));
         assert!(!holds_watchdogs(&[suspended("sw1"), restored("sw1")], "sw1"));
         assert!(holds_watchdogs(&[suspended("sw1"), suspended("sw2"), restored("sw2")], "sw1"));
+    }
+
+    #[tokio::test]
+    async fn a_setup_keeps_its_neighbor_busy() {
+        let mut builder = TopologyBuilder::default();
+        // apart from the other tests' devices: the jobs are global
+        let ids = [DeviceId(9001), DeviceId(9002)];
+        for (id, name) in ids.into_iter().zip(["setup-new", "setup-neighbor"]) {
+            builder.devices.insert(id, Device { name: name.into(), ..Default::default() });
+        }
+        let topology: TopologyHolder = builder.into();
+        let new = topology.devices_by_id(ids[0]).await.unwrap();
+        let neighbor = topology.devices_by_id(ids[1]).await.unwrap();
+
+        let job = start_through(&new, &neighbor, JobKind::Bootstrap, |log| async move {
+            log.unless_cancelled(sleep(Duration::from_secs(60))).await?;
+            Ok(())
+        })
+        .unwrap();
+        assert!(start(&neighbor, JobKind::Apply, |_| async { Ok(()) }).is_err());
+        assert!(start(&new, JobKind::Apply, |_| async { Ok(()) }).is_err());
+        // the neighbor's page finds it
+        let subject = super::subject_of(&neighbor).0;
+        assert!(list(Some(subject)).iter().any(|listed| listed.id == job.id));
+        cancel(job.id);
+        wait_for(job.id, JobState::Cancelled).await;
+        start(&neighbor, JobKind::Apply, |_| async { Ok(()) }).unwrap();
     }
 }

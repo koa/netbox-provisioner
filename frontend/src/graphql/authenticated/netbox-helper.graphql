@@ -51,7 +51,7 @@ mutation UndoNetboxWrite($jobId: Int!){
     undoNetboxWrite(jobId: $jobId){ id }
 }
 query HelperJobs($deviceId: Int!){
-    jobs(deviceId: $deviceId){ id kind state }
+    jobs(deviceId: $deviceId){ id kind state netboxWrittenCount }
 }
 query LinkPorts($id: Int!){
     topology{

@@ -402,6 +402,9 @@ pub const UNDO: &str = "Rückgängig";
 pub const LOCKED: &str = "Schreiben in NetBox gibt erst allow_netbox_write: true mit \
     netbox_write_token in der config.yaml frei.";
 pub const WRITTEN: &str = "Geschrieben. Das Gerät bekommt es erst mit Anwenden.";
+pub const WRITTEN_PARTLY: &str = "Nur teilweise geschrieben: Was vor dem Fehler durchging, steht \
+    im Auftrag unter „In NetBox geändert“. Rückgängig nimmt es zurück, sonst den Rest von Hand \
+    nachtragen.";
 
 /// a finding by its kind (`__typename`), short
 pub fn finding_kind(kind: String) -> String {

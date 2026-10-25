@@ -264,7 +264,10 @@ makes it an enum; its queries need `skip_serializing_none`), naming the device o
 the device page opens them in a modal (`components::helper_flow`, a stepper over the embedded
 `NetboxHelper`, `embedded`/`preset`/`on_phase`) from a row of the interfaces card, which the
 backend gives its actions (`InterfaceRow.actions`, `InterfaceView.loopbackActions`: kind, helper,
-preset ports or VLAN); "Rückgängig" is the device's last write.
+preset ports or VLAN); "Rückgängig" is the device's last write that wrote something, also one
+that failed midway (`Job.netboxWrittenCount`): NetBox has no transaction across objects, so the
+steps before the failure stay, and the helper says "Nur teilweise geschrieben" instead of
+"Geschrieben".
 `components::netbox_helper` keeps the component and what all helpers share in `mod.rs` and
 `choice.rs` (presets, `HelperKind`, `HelperChoice`, `helper_input!`), the plan and preview in
 `plan.rs`, and gives each helper with a form a module with its choice, form, queries and its
@@ -469,7 +472,10 @@ Don't go back to static return routes on the device: with
 `redistribute=static` they go out as /32s that beat the neighbors' connected networks. When the
 mac-telnet session ends early, the following lines land on the neighbor's own console (this
 once left setup routes on lab-np1), so every setup command is wrapped to do nothing where the
-global `netboxProvisionerNeighbor` is set, which `set_up` sets on the neighbor only. Nothing
+global `netboxProvisionerNeighbor` is set, which `set_up` sets on the neighbor only. The
+setup's job keeps the neighbor busy too (`job::start_through`): an apply or a reboot of it would
+cut the session, so neither starts meanwhile (`BUSY`), and the neighbor's page lists the job
+(`jobs(deviceId:)` with the device set up as its `deviceId`). Nothing
 in a console session waits a fixed time or takes a prompt for the end of a command (one is in
 the echo of `[find]] > 0`): `Terminal::sync` types a numbered `:put ("in" . "sync" . n)` and
 waits for `insyncn`, which comes after everything typed before. A device answering late (busy,
