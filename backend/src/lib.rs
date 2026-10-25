@@ -13,6 +13,7 @@ pub mod graphql;
 pub mod helper;
 pub mod job;
 pub mod netbox;
+pub mod saved_job;
 pub mod topology;
 
 #[derive(Error, Debug)]
@@ -150,6 +151,9 @@ pub enum Error {
     Busy(Box<str>),
     #[error("No job {0}")]
     UnknownJob(u32),
+    /// no job saved before the restart waits for this device
+    #[error("No saved job of device {0}")]
+    NoSavedJob(u32),
     #[error("Cancelled")]
     Cancelled,
     /// a bug: the job's work panicked with this message

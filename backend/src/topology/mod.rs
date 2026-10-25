@@ -679,9 +679,9 @@ impl Display for PhysicalPortId {
 
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct InterfaceId(pub u32);
-#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct DeviceId(pub u32);
-#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SiteId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct VxlanId(pub u32);

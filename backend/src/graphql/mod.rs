@@ -107,6 +107,11 @@ impl QueryAuthenticated {
                 .or(site_id.map(|id| JobSubject::Site(SiteId(id)))),
         )
     }
+    /// The jobs saved before the restart that didn't go on: their device is gone from NetBox,
+    /// or the file couldn't be read. They stay until discarded (`discardSavedJob`).
+    async fn saved_jobs(&self) -> Vec<crate::saved_job::Waiting> {
+        crate::saved_job::waiting()
+    }
 }
 /// The watchdogs of others that may fire while a device updates (`suspendWatchdogs`), and
 /// the addresses its suppliers' PoE ports ping.
@@ -505,6 +510,15 @@ impl MutationAuthenticated {
     /// reboot before it is sent, or while it is waited for.
     async fn cancel_job(&self, id: u32) -> Result<Arc<Job>, ApiError> {
         Ok(job::cancel(id).ok_or(Error::UnknownJob(id))?)
+    }
+    /// Removes the file of a job saved before the restart that didn't go on (`savedJobs`);
+    /// what it left on the device stays, `leftovers` finds it.
+    #[graphql(guard = "WritesAllowed")]
+    async fn discard_saved_job(&self, device_id: u32) -> Result<bool, ApiError> {
+        match crate::saved_job::discard(DeviceId(device_id)) {
+            true => Ok(true),
+            false => Err(Error::NoSavedJob(device_id).into()),
+        }
     }
     /// Starts applying the generated config to `ids` together (`allow_apply` must be set),
     /// each with its NetBox address and credentials: one job per device, with one fallback

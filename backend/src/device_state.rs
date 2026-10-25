@@ -6,6 +6,7 @@
 //! Ending is no state: a job may end in any of them (done, failed, cancelled), and the state
 //! it ended in stays with it.
 use async_graphql::{Enum, SimpleObject, Union};
+use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
 /// What cancelling does in a state.
@@ -42,7 +43,7 @@ pub trait States: Copy + Eq + Debug + 'static {
 }
 
 /// An apply, alone or in a batch (`DeviceCfg::apply`, `device::batch`).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum, Serialize, Deserialize)]
 pub enum ApplyState {
     /// reading the device and NetBox, rendering the script
     Planning,
@@ -108,7 +109,7 @@ impl States for ApplyState {
 
 /// An update or a downgrade of RouterOS (`device::update`); a downgrade has no fallback and no
 /// firmware, and goes back to the packages' version in one step.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum, Serialize, Deserialize)]
 pub enum UpdateState {
     /// connecting, reading the device and the version to go to
     Reading,

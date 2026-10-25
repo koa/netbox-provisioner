@@ -1,0 +1,19 @@
+query SavedJobs {
+    allowApply
+    savedJobs {
+        deviceId
+        deviceName
+        kind
+        age
+        unreadable
+        phase {
+            __typename
+            ... on ApplyPhase { apply: state }
+            ... on UpdatePhase { update: state }
+        }
+    }
+}
+
+mutation DiscardSavedJob($deviceId: Int!) {
+    discardSavedJob(deviceId: $deviceId)
+}

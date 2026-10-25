@@ -1,6 +1,9 @@
 use crate::{
     i18n,
-    components::findings::{self, FindingsList},
+    components::{
+        findings::{self, FindingsList},
+        saved_jobs::SavedJobs,
+    },
     error::FrontendError,
     graphql::{
         authenticated::{ListSites, list_sites},
@@ -67,6 +70,7 @@ impl Component for Sites {
         };
         html! {
             <>
+                <SavedJobs/>
                 <FindingsList site={None::<u32>}/>
                 <div class="site-list">{content}</div>
             </>

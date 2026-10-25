@@ -114,6 +114,14 @@ affinity: {}
 podAnnotations: {}
 podLabels: {}
 
+# the jobs that go on after a restart (an apply whose script runs, an update rebooting with its
+# fallback set), saved under `state_dir`; without a claim an emptyDir, which outlasts a restart
+# of the container but not a new pod (an upgrade, a moved node): those jobs then end there and
+# their fallbacks take the change back
+persistence:
+  # a PersistentVolumeClaim of a few MB, ReadWriteOnce
+  existingClaim: ""
+
 # jobs, leases and cancelling live in the process (docs/concepts/deployment.md): never two pods,
 # so one replica, replaced with `Recreate`, and time for a running job to come to its end
 terminationGracePeriodSeconds: 60

@@ -153,6 +153,8 @@ enum BackendError {
     OidcValidationError(#[from] OIDCValidationError),
     #[error("Error from netbox {0}")]
     Netbox(#[from] NetboxError),
+    #[error("State directory: {0}")]
+    StateDir(#[from] backend::saved_job::StoreError),
 }
 
 #[actix_web::main]
@@ -176,6 +178,8 @@ async fn main() -> Result<(), BackendError> {
 
     let registry = prometheus.registry.clone();
     registry.register(Box::new(graphql_request_histogram.clone()))?;
+    // before anything else: a second provisioner on the same state_dir stops here
+    backend::saved_job::open(CONFIG.state_dir())?;
     let topology = TopologyHolder::default();
     // ensure initial fetch
     topology.fetch().await?;

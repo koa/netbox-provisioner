@@ -17,6 +17,9 @@ pub mod menu;
 
 pub mod pages;
 
+/// Jobs saved before a restart that didn't go on (`components::saved_jobs`).
+pub mod saved_jobs;
+
 /// What NetBox lacks or what doesn't fit together (`components::findings`). The objects come in
 /// as links to NetBox.
 pub mod findings;

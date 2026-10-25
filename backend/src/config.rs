@@ -51,6 +51,9 @@ pub struct Settings {
     /// The syslog server every device logs to, in CEF; without it the devices log only
     /// locally (RouterOS's own rules).
     pub device_syslog: Option<DeviceSyslog>,
+    /// Where the jobs that go on after a restart are saved (`saved_job`), and the lock that
+    /// keeps a second provisioner off them (default `state`, next to `config.yaml`).
+    state_dir: Option<std::path::PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -108,6 +111,9 @@ impl Settings {
     }
     pub fn update_fallback(&self) -> std::time::Duration {
         std::time::Duration::from_secs(self.update_fallback_seconds.unwrap_or(900))
+    }
+    pub fn state_dir(&self) -> &std::path::Path {
+        self.state_dir.as_deref().unwrap_or(std::path::Path::new("state"))
     }
     pub fn auth_client_id(&self) -> &str {
         &self.auth_client_id

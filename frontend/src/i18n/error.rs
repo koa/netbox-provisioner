@@ -179,6 +179,7 @@ pub fn server(problem: &ServerProblem) -> String {
         ),
         "SCRIPT_NOT_STARTED" => format!("Skript läuft nicht innerhalb von {} s nach dem Start", p("seconds")),
         "UNKNOWN_JOB" => format!("Auftrag {} gibt es nicht (mehr)", p("id")),
+        "NO_SAVED_JOB" => format!("Für Gerät {} wartet kein gespeicherter Auftrag (mehr)", p("device")),
         "CANCELLED" => "Abgebrochen".into(),
         "PING" => format!("Ping fehlgeschlagen: {}", p("cause")),
         "NETBOX_WRITE_NOT_ALLOWED" => "Schreiben in NetBox ist gesperrt (allow_netbox_write, \

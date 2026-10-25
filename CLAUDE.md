@@ -561,6 +561,17 @@ step that has an effect, and keep the table in line when a flow changes. `Job.ph
 state as a union with an object per kind (`JobPhaseObject`, `ApplyPhase { state }`, …); the job
 view shows „Stand: …“ while it runs and „Endete in: …“ when it failed or was cancelled
 (`components/job.rs` `phase_line`, names as in the concept, `i18n::job::phase`).
+Only the states that go on after a restart (`Restart::Continue`: an apply's `ScriptRunning`
+and `StoppingFallback`, an update's `Rebooting`, `NotUpdated` and `StoppingFallback` with its
+fallback set) are saved, one file per device in `state_dir/jobs/<netbox-id>.json`
+(`saved_job`: written to a temporary file and renamed, removed on leaving them; `state_dir`
+defaults to `state` next to `config.yaml`, the chart mounts the volume `state` there). The
+server holds `state_dir/lock`, a second one on the same directory doesn't start. Files read at
+the start wait in `saved_job::waiting` until their job takes them up; one no job takes up (its
+device gone from NetBox, unreadable) is shown on the site selection (`savedJobs`,
+`components::saved_jobs`) until discarded (`discardSavedJob`). Times in them are the server's
+clock, never an `Instant`. Without `saved_job::open` (tests, the CHR harness) nothing is
+written.
 A job says where it is before anything slow: `graphql::connect_for_job` reports `Connecting`
 and `Connected` (address, the neighbor's tunnel, the identity) for the device and each supplier,
 the update its `UpdateTarget` and `WatchdogNotSet` for a watcher without one, and an upload

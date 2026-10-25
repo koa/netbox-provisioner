@@ -56,6 +56,8 @@ data:
         {{- end }}
       {{- end }}
       {{- end }}
+      # the volume `state` (templates/deployment.yaml)
+      state_dir: /state
       server_port: {{ include "netbox-provisioner.httpPort" . }}
       server_mgmt_port: {{ include "netbox-provisioner.mgmtPort" . }}
       {{- with $s.server_bind_address }}

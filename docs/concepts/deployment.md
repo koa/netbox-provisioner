@@ -16,8 +16,9 @@ Status: umgesetzt bis auf rustls (2026-10-24, siehe
   `settings.netbox_token` (seit 2026-10-23; Schlüssel kommen kleingeschrieben an). In der Datei
   stehen Geheimnisse: NetBox-Tokens, `mikrotik_credentials`, das Passwort des
   Management-Proxys.
-- **Zustand:** keiner auf der Platte. Jobs leben im Prozess ([Jobs](job-polling.md) schlägt ein
-  `state_dir` vor).
+- **Zustand:** nur die weiterführbaren Aufträge in `state_dir` (Vorgabe `state` neben
+  `config.yaml`, mit Sperrdatei gegen eine zweite Instanz; [Gerätezustand](device-state.md),
+  „Speicher“). Alle anderen Jobs leben im Prozess.
 - **TLS:** Das Binary linkt OpenSSL (`openssl-sys`, über `native-tls`), nicht nur rustls.
 - `build.sh` endet mit `podman build .`, aber im Repository gibt es kein Containerfile.
 
@@ -85,7 +86,9 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
 
 - `Deployment` mit **einer** Replik: Jobs, Leases (`device/power.rs`) und das Abbrechen leben im
   Prozess. Zwei Repliken würden dasselbe Gerät gleichzeitig anwenden. Strategie `Recreate`, damit
-  beim Update nie zwei laufen.
+  beim Update nie zwei laufen. `state_dir` ist das Volume `state` unter `/state`:
+  `persistence.existingClaim`, sonst ein `emptyDir`, das einen Neustart des Containers
+  übersteht, aber keinen neuen Pod.
 - `config.yaml` aus einzelnen Werten, die Geheimnisse als Umgebungsvariable `APP_SETTINGS__…`
   aus Secrets (siehe [Umsetzung](#umsetzung)).
 - `Service` für 8080, ein zweiter für 9080 (Metriken), `ServiceMonitor` optional.

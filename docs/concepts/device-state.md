@@ -665,7 +665,8 @@ Beim Start:
 2. Für jede Datei: Kennt NetBox das Gerät, startet ein Auftrag derselben Art im gespeicherten
    Zustand und meldet, dass er nach einem Neustart weiterläuft; von dort an läuft er wie sonst
    (beim Update auch die Firmware). Kennt NetBox es nicht mehr, bleibt die Datei; die
-   Geräteliste zeigt sie, bis jemand sie verwirft (B).
+   Site-Auswahl zeigt sie, bis jemand sie verwirft (B). Ebenso eine Datei, die sich nicht lesen
+   lässt.
 
 ## Was sich für die Bedienung ändert
 
@@ -694,6 +695,8 @@ Beim Start:
    *Umgesetzt* für alle Arten; die Job-Ansicht zeigt den Zustand (`Job.phase`): „Stand: …“
    während er läuft, „Endete in: …“ nach einem Fehler oder Abbruch.
 3. `state_dir` mit Sperrdatei, die Dateien der weiterführbaren Aufträge, Einlesen beim Start.
+   *Umgesetzt* als `backend::saved_job` (`savedJobs`, `discardSavedJob`, die Site-Auswahl zeigt
+   sie); geschrieben wird erst mit dem Weiterführen.
 4. Anwenden weiterführen (einzeln, dann gemeinsam).
 5. Update weiterführen.
 6. Geordnetes Beenden: weiterführbare Aufträge halten an einer sicheren Stelle an und lassen ihre
