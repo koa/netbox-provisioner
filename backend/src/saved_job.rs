@@ -20,7 +20,7 @@ use async_graphql::{Enum, Object};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::{self, File},
     io,
     path::{Path, PathBuf},
@@ -53,21 +53,25 @@ pub enum SavedWork {
         #[serde(flatten)]
         apply: Box<SavedApply>,
     },
-    Update { state: UpdateState },
+    Update {
+        state: UpdateState,
+        #[serde(flatten)]
+        update: Box<SavedUpdate>,
+    },
 }
 
 impl SavedWork {
     pub fn phase(&self) -> JobPhase {
         match self {
             SavedWork::Apply { state, .. } => (*state).into(),
-            SavedWork::Update { state } => (*state).into(),
+            SavedWork::Update { state, .. } => (*state).into(),
         }
     }
     /// Takes `phase` as the state to save; `false` for another kind's.
     pub fn set_phase(&mut self, phase: JobPhase) -> bool {
         match (self, phase) {
             (SavedWork::Apply { state, .. }, JobPhase::Apply(phase)) => *state = phase,
-            (SavedWork::Update { state }, JobPhase::Update(phase)) => *state = phase,
+            (SavedWork::Update { state, .. }, JobPhase::Update(phase)) => *state = phase,
             _ => return false,
         }
         true
@@ -86,6 +90,38 @@ pub struct SavedApply {
     /// applied together with other devices (`device::batch`): they go on together
     #[serde(default)]
     pub batch: Option<SavedBatch>,
+}
+
+/// An update with its fallback set, rebooting or deciding about the fallback.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SavedUpdate {
+    /// the credentials it was reached with, by name, as for an apply
+    pub credentials: Option<Box<str>>,
+    /// the watchdogs of other devices it suspended (`suspendWatchdogs`), by device
+    pub watchers: Vec<(Box<str>, Watching)>,
+    #[serde(flatten)]
+    pub run: UpdateRun,
+}
+
+/// What the update itself (`device::update`) needs to go on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UpdateRun {
+    /// the version it started from
+    pub from: Box<str>,
+    pub target: Box<str>,
+    /// the newest RouterOS 6, a step on the way from 6 (the target where it started on 7)
+    pub newest_v6: Box<str>,
+    pub wanted: Vec<Box<str>>,
+    /// the partition the fallback switches back to
+    pub partition: Box<str>,
+    /// how long a reboot is waited for, counted from entering `Rebooting`
+    pub wait: Duration,
+    /// the OSPF neighbors adjacent before, to be back after it
+    pub ospf: BTreeSet<Box<str>>,
+    /// the version the reboot brings
+    pub expected: Option<Box<str>>,
+    /// why it failed, in `NotUpdated` (the error's message)
+    pub failed: Option<Box<str>>,
 }
 
 /// The batch an apply was part of.

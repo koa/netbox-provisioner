@@ -16,6 +16,21 @@ fn saved(device: u32) -> SavedJob {
         saved_at: SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_000),
         work: SavedWork::Update {
             state: UpdateState::Rebooting,
+            update: Box::new(SavedUpdate {
+                credentials: Some("lab".into()),
+                watchers: vec![("lab-np1".into(), Watching::default())],
+                run: UpdateRun {
+                    from: "7.23.8".into(),
+                    target: "7.24.5".into(),
+                    newest_v6: "7.24.5".into(),
+                    wanted: vec!["wifi-qcom".into()],
+                    partition: "part0".into(),
+                    wait: Duration::from_secs(1500),
+                    ospf: ["default-v2 192.168.100.1".into()].into(),
+                    expected: Some("7.24.5".into()),
+                    failed: None,
+                },
+            }),
         },
     }
 }

@@ -712,6 +712,17 @@ Beim Start:
    Gerät wieder erreicht, sobald es antwortet); sonst wartet jede Datei mit dem Grund
    (`HeldBack`) in „Gespeicherte Aufträge“, und die Fallbacks nehmen alles zurück.
 5. Update weiterführen.
+   *Umgesetzt:* `update::update_keeping` übergibt vor `Neustart` (mit der Version des
+   Schritts), `FallbackWegnehmen` und `NichtAktualisiert` (mit der Meldung des Fehlers), was
+   die Datei braucht (`UpdateRun`: Versionen, Pakete, Partition, Wartezeit, OSPF-Nachbarn),
+   die Mutation die ausgesetzten Watchdogs dazu. Beim Start geht ein Job in seinem Zustand
+   weiter (`update::resume`): verbindet, bis das Gerät antwortet oder die Wartezeit um ist,
+   wartet auf den Neustart (laufend seit dem Eintritt in `Neustart`), prüft Version und
+   Partition und macht wie sonst weiter (weitere Schritte, Fallback weg, Nachbarn, Firmware);
+   in `NichtAktualisiert` entscheidet er über den Fallback erneut (`UPDATE_FAILED_BEFORE`).
+   Die Watchdogs anderer Geräte meldet er gleich wieder als ausgesetzt und stellt sie am Ende
+   wieder her. Ein Neustart, der vor dem Neustart des Provisioners nicht mehr gesendet wurde,
+   endet als „nicht zurück“, Fallback und Pakete bleiben für „Liegengebliebenes“.
 6. Geordnetes Beenden: weiterführbare Aufträge halten an einer sicheren Stelle an und lassen ihre
    Datei liegen, alle anderen werden abgebrochen.
 

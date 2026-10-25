@@ -66,6 +66,7 @@ impl From<&Error> for ErrorInfo {
             ),
             Error::ApplyNotAllowed => ("APPLY_NOT_ALLOWED", vec![]),
             Error::UnknownDevice(id) => ("UNKNOWN_DEVICE", vec![("id", id.to_string())]),
+            Error::UnknownDeviceName(name) => ("UNKNOWN_DEVICE_NAME", vec![("device", name.to_string())]),
             Error::UnknownSite(id) => ("UNKNOWN_SITE", vec![("id", id.to_string())]),
             Error::UnknownInterface(id) => ("UNKNOWN_INTERFACE", vec![("id", id.to_string())]),
             Error::NoTopology => ("NO_TOPOLOGY", vec![]),
@@ -141,6 +142,7 @@ impl From<&Error> for ErrorInfo {
                     .collect(),
             ),
             Error::NotBackAfterReboot => ("NOT_BACK_AFTER_REBOOT", vec![]),
+            Error::UpdateFailedBefore(message) => ("UPDATE_FAILED_BEFORE", vec![("message", message.to_string())]),
             Error::UpdateRolledBack { partition, version } => (
                 "UPDATE_ROLLED_BACK",
                 vec![("partition", partition.to_string()), ("version", version.to_string())],

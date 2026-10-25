@@ -50,6 +50,9 @@ pub enum Error {
     ApplyNotAllowed,
     #[error("No device {0}")]
     UnknownDevice(u32),
+    /// no device in NetBox has this name (anymore)
+    #[error("No device {0}")]
+    UnknownDeviceName(Box<str>),
     #[error("No site {0}")]
     UnknownSite(u32),
     #[error("No interface {0}")]
@@ -116,6 +119,10 @@ pub enum Error {
     },
     #[error("Not back after the reboot")]
     NotBackAfterReboot,
+    /// an update with its fallback set failed with this (its message) before a restart of the
+    /// provisioner
+    #[error("The update failed before the restart: {0}")]
+    UpdateFailedBefore(Box<str>),
     /// the device switched back to the partition with the RouterOS from before the update
     #[error("The update was rolled back: the device runs RouterOS {version} from {partition}")]
     UpdateRolledBack {

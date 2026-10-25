@@ -49,6 +49,7 @@ pub fn server(problem: &ServerProblem) -> String {
         "MISSING_CREDENTIALS" => "Keine Zugangsdaten für das Gerät".into(),
         "APPLY_NOT_ALLOWED" => "Schreiben auf Geräte ist gesperrt (allow_apply)".into(),
         "UNKNOWN_DEVICE" => format!("Gerät {} gibt es in NetBox nicht", p("id")),
+        "UNKNOWN_DEVICE_NAME" => format!("Gerät {} gibt es in NetBox nicht (mehr)", p("device")),
         "UNKNOWN_SITE" => format!("Site {} gibt es in NetBox nicht", p("id")),
         "UNKNOWN_INTERFACE" => format!("Interface {} gibt es in NetBox nicht", p("id")),
         "NO_TOPOLOGY" => "NetBox liess sich nicht lesen".into(),
@@ -124,6 +125,7 @@ pub fn server(problem: &ServerProblem) -> String {
             ),
         },
         "NOT_BACK_AFTER_REBOOT" => "Das Gerät ist nach dem Neustart nicht zurück".into(),
+        "UPDATE_FAILED_BEFORE" => format!("Das Update schlug vor dem Neustart des Provisioners fehl: {}", p("message")),
         "PANIC" => format!("Interner Fehler im Provisioner (bitte melden): {}", p("message")),
         "UPDATE_ROLLED_BACK" => format!(
             "Update zurückgenommen: Das Gerät war nach dem Update nicht erreichbar und läuft \

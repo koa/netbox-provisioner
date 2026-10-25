@@ -142,6 +142,9 @@ struct Saving {
 #[derive(Debug, Default)]
 struct Phases {
     current: Option<JobPhase>,
+    /// `current` is the state a job going on after a restart was saved in: entering it again
+    /// once is no transition ([`Log::resume_in`])
+    resumed: bool,
     unexpected: Vec<(Option<JobPhase>, JobPhase)>,
 }
 
@@ -162,7 +165,9 @@ impl Log {
     pub fn enter(&self, phase: impl Into<JobPhase>) {
         let phase = phase.into();
         let mut phases = self.phase.lock().unwrap_or_else(PoisonError::into_inner);
-        if !phase.may_follow(phases.current) {
+        let again = phases.resumed && phases.current == Some(phase);
+        phases.resumed = false;
+        if !again && !phase.may_follow(phases.current) {
             warn!("{}: unexpected state {phase:?} after {:?}", self.label, phases.current);
             let before = phases.current;
             phases.unexpected.push((before, phase));
@@ -172,20 +177,20 @@ impl Log {
         self.save_for(phase);
     }
     /// A job going on after a restart starts in the state it was saved in, whatever its kind's
-    /// first states are.
+    /// first states are; its work may enter that state again.
     pub fn resume_in(&self, phase: impl Into<JobPhase>) {
         let phase = phase.into();
-        self.phase.lock().unwrap_or_else(PoisonError::into_inner).current = Some(phase);
+        let mut phases = self.phase.lock().unwrap_or_else(PoisonError::into_inner);
+        phases.current = Some(phase);
+        phases.resumed = true;
+        drop(phases);
         self.save_for(phase);
     }
-    /// Keeps what the job needs to go on after a restart (`saved_job`): written whenever it
-    /// enters a state that goes on (`Restart::Continue`), with that state, and removed when it
-    /// enters any other or ends.
+    /// Keeps what the job needs to go on after a restart (`saved_job`), from the next state it
+    /// enters on: written whenever it enters a state that goes on (`Restart::Continue`), with
+    /// that state, and removed when it enters any other or ends.
     pub fn keep(&self, job: SavedJob) {
         self.saving.lock().unwrap_or_else(PoisonError::into_inner).job = Some(job);
-        if let Some(phase) = self.phase() {
-            self.save_for(phase);
-        }
     }
     fn save_for(&self, phase: JobPhase) {
         let mut saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
@@ -799,6 +804,23 @@ mod tests {
         assert_eq!(state(&resumed), Some(JobPhase::Apply(ApplyState::ScriptRunning)));
         resumed.ended();
         assert_eq!(state(&resumed), None);
+    }
+
+    /// A job going on after a restart may enter the state it was saved in once more (an update
+    /// saved in `NotUpdated` decides about its fallback again), but no other self-loop.
+    #[test]
+    fn a_resumed_job_enters_its_state_again() {
+        use crate::device_state::UpdateState;
+        let log = Log::new("lab-ap1");
+        log.resume_in(UpdateState::NotUpdated);
+        log.enter(UpdateState::NotUpdated);
+        assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
+        let log = Log::new("lab-ap1");
+        log.resume_in(UpdateState::StoppingFallback);
+        log.enter(UpdateState::StoppingFallback);
+        log.enter(UpdateState::WaitingForNeighbors);
+        log.enter(UpdateState::WaitingForNeighbors);
+        assert_eq!(log.unexpected().len(), 1);
     }
 
     #[test]

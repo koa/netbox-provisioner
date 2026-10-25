@@ -18,13 +18,14 @@ use crate::{
     },
     graphql::scalars::ScalarDuration,
     job::Log,
+    saved_job::UpdateRun,
 };
 use async_graphql::{Enum, SimpleObject};
 use log::warn;
 use serde::Deserialize;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::value::{ParseRosValueResult, RosValue};
-use std::{cmp::Ordering, time::Duration};
+use std::{cmp::Ordering, collections::BTreeSet, time::Duration};
 use tokio::time::{Instant, sleep, timeout};
 use async_graphql::futures_util::StreamExt;
 
@@ -642,6 +643,22 @@ pub async fn update(
     way_back: &update_fallback::WayBack,
     log: &Log,
 ) -> Result<(), Error> {
+    update_keeping(link, power, target, wanted, fallback, way_back, &|_| {}, log).await
+}
+
+/// [`update`], handing what going on after a restart needs (`saved_job`) to `keep` before
+/// each state that goes on, where the fallback is set.
+#[allow(clippy::too_many_arguments)]
+pub async fn update_keeping(
+    link: &impl DeviceLink,
+    power: &PowerChain,
+    target: &Version,
+    wanted: &[Box<str>],
+    fallback: Duration,
+    way_back: &update_fallback::WayBack,
+    keep: &(dyn Fn(&UpdateRun) + Sync),
+    log: &Log,
+) -> Result<(), Error> {
     let mut state = read_state(&link.api().await?).await?;
     let from: Box<str> = state.version.to_string().into();
     log.emit(UpdateStart {
@@ -677,31 +694,127 @@ pub async fn update(
             Some(_) => fallback + REBOOT_TIMEOUT,
             None => REBOOT_TIMEOUT,
         };
-        let stepped = steps(link, power, state, target, newest_v6, wanted, armed.as_deref(), wait, log).await;
-        state = match (stepped, armed) {
-            (Ok(state), Some(partition)) => {
-                log.enter(UpdateState::StoppingFallback);
-                update_fallback::disarm(&link.api().await?, &partition, log).await?;
-                state
-            }
-            (Ok(state), None) => state,
-            (Err(error), Some(partition)) => {
-                log.enter(UpdateState::NotUpdated);
-                return Err(not_updated(link, &partition, error, log).await);
-            }
-            (Err(error), None) => return Err(error),
-        };
-        log.enter(UpdateState::WaitingForNeighbors);
-        let missing = update_fallback::wait_for_ospf(&link.api().await?, &ospf, log).await?;
-        if !missing.is_empty() {
-            return Err(Error::OspfNeighborsMissing(missing.join(", ").into()));
-        }
-        if !ospf.is_empty() {
-            log.emit(update_fallback::OspfNeighborsBack {
-                neighbors: ospf.into_iter().collect(),
-            });
-        }
+        let run = armed.as_ref().map(|partition| UpdateRun {
+            from: from.clone(),
+            target: target.to_string().into(),
+            newest_v6: newest_v6.to_string().into(),
+            wanted: wanted.to_vec(),
+            partition: partition.clone(),
+            wait,
+            ospf: ospf.clone(),
+            expected: None,
+            failed: None,
+        });
+        let stepped =
+            steps(link, power, state, target, newest_v6, wanted, armed.as_deref(), wait, run.as_ref(), keep, log).await;
+        state = after_steps(link, stepped, run.as_ref(), keep, &ospf, log).await?;
     }
+    firmware_and_done(link, power, state, from, log).await
+}
+
+/// Goes on with an update saved before a restart of the provisioner (`saved_job`), once
+/// `link` reaches the device, in `state` (the job entered it with `Log::resume_in`): waits
+/// for the reboot entered at `rebooting_since` and goes on with the steps, or decides about
+/// the fallback, then as [`update`]. A reboot that was never sent before the restart ends
+/// as not back, the fallback and the packages left for the device page.
+pub async fn resume(
+    link: &impl DeviceLink,
+    power: &PowerChain,
+    state: UpdateState,
+    run: &UpdateRun,
+    rebooting_since: Instant,
+    keep: &(dyn Fn(&UpdateRun) + Sync),
+    log: &Log,
+) -> Result<(), Error> {
+    let version = |text: &str| Version::parse(text).ok_or_else(|| Error::NoVersion(text.into()));
+    let target = version(&run.target)?;
+    let newest_v6 = version(&run.newest_v6)?;
+    let _updating = log.unless_cancelled(power.updating(log)).await?;
+    let stepped = match state {
+        UpdateState::Rebooting => {
+            async {
+                let expected = version(run.expected.as_deref().unwrap_or_default())?;
+                let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
+                let wait = (rebooting_since + run.wait).saturating_duration_since(Instant::now());
+                // up for less than since entering `Rebooting`: booted since
+                let state = wait_until_back(link, log, Duration::ZERO, rebooting_since, wait, |state| {
+                    (state.version == expected).then(|| state.clone())
+                })
+                .await?;
+                drop(rebooting);
+                if update_fallback::running(&link.api().await?).await.as_deref() == Some(&*run.partition) {
+                    return Err(Error::UpdateRolledBack {
+                        partition: run.partition.clone(),
+                        version: state.version.to_string().into(),
+                    });
+                }
+                log.emit(RouterOsRunning {
+                    version: state.version.to_string().into(),
+                });
+                let wanted = &run.wanted;
+                let partition = Some(&*run.partition);
+                steps(link, power, state, &target, &newest_v6, wanted, partition, run.wait, Some(run), keep, log).await
+            }
+            .await
+        }
+        UpdateState::NotUpdated => Err(Error::UpdateFailedBefore(run.failed.clone().unwrap_or_default())),
+        _ => read_state(&link.api().await?).await,
+    };
+    let state = after_steps(link, stepped, Some(run), keep, &run.ospf, log).await?;
+    firmware_and_done(link, power, state, run.from.clone(), log).await
+}
+
+/// After the steps (`stepped`): with the fallback set (`run`) its entry goes, or the update
+/// failed and the fallback decides ([`not_updated`]); then the OSPF neighbors from before
+/// (`ospf`) have to be back.
+async fn after_steps(
+    link: &impl DeviceLink,
+    stepped: Result<DeviceState, Error>,
+    run: Option<&UpdateRun>,
+    keep: &(dyn Fn(&UpdateRun) + Sync),
+    ospf: &BTreeSet<Box<str>>,
+    log: &Log,
+) -> Result<DeviceState, Error> {
+    let state = match (stepped, run) {
+        (Ok(state), Some(run)) => {
+            keep(&UpdateRun { expected: None, ..run.clone() });
+            log.enter(UpdateState::StoppingFallback);
+            update_fallback::disarm(&link.api().await?, &run.partition, log).await?;
+            state
+        }
+        (Ok(state), None) => state,
+        (Err(error), Some(run)) => {
+            keep(&UpdateRun {
+                expected: None,
+                failed: Some(error.to_string().into()),
+                ..run.clone()
+            });
+            log.enter(UpdateState::NotUpdated);
+            return Err(not_updated(link, &run.partition, error, log).await);
+        }
+        (Err(error), None) => return Err(error),
+    };
+    log.enter(UpdateState::WaitingForNeighbors);
+    let missing = update_fallback::wait_for_ospf(&link.api().await?, ospf, log).await?;
+    if !missing.is_empty() {
+        return Err(Error::OspfNeighborsMissing(missing.join(", ").into()));
+    }
+    if !ospf.is_empty() {
+        log.emit(update_fallback::OspfNeighborsBack {
+            neighbors: ospf.iter().cloned().collect(),
+        });
+    }
+    Ok(state)
+}
+
+/// The RouterBOARD firmware where an upgrade is there, then `UpdateDone` from `from`.
+async fn firmware_and_done(
+    link: &impl DeviceLink,
+    power: &PowerChain,
+    state: DeviceState,
+    from: Box<str>,
+    log: &Log,
+) -> Result<(), Error> {
     if let Some((current, upgrade)) = &state.firmware
         && current != upgrade
     {
@@ -807,7 +920,8 @@ pub async fn downgrade(
 
 /// The update steps from `state`; `armed`: the partition the device switches back to, where it
 /// has one ([`update_fallback`]); `wait`: how long a reboot is waited for (with the fallback,
-/// until the device would be back from it).
+/// until the device would be back from it); `run` handed to `keep` with each step's version
+/// before its reboot.
 #[allow(clippy::too_many_arguments)]
 async fn steps(
     link: &impl DeviceLink,
@@ -818,6 +932,8 @@ async fn steps(
     wanted: &[Box<str>],
     armed: Option<&str>,
     wait: Duration,
+    run: Option<&UpdateRun>,
+    keep: &(dyn Fn(&UpdateRun) + Sync),
     log: &Log,
 ) -> Result<DeviceState, Error> {
     while let Some(step) = next_step(&state, target, newest_v6, wanted) {
@@ -828,6 +944,12 @@ async fn steps(
             uninstall: step.uninstall.clone(),
         });
         let rebooting = put_packages(link, power, &step, log).await?;
+        if let Some(run) = run {
+            keep(&UpdateRun {
+                expected: Some(step.version.to_string().into()),
+                ..run.clone()
+            });
+        }
         log.enter(UpdateState::Rebooting);
         uninstall(&link.api().await?, &step.uninstall).await?;
         let expected = step.version.clone();

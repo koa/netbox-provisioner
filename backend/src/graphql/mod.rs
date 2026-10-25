@@ -264,11 +264,23 @@ pub async fn resume_saved_jobs(topology: &TopologyHolder) {
                     resume_apply(&device, &apply, &log).await
                 })
             }
-            // the update goes on in a later step; until then it ends as before
-            SavedWork::Update { .. } => {
+            SavedWork::Update { state, update } => {
+                let (saved, state, update) = (saved.clone(), *state, update.clone());
                 saved_job::take(entry.device);
-                saved_job::remove(entry.device);
-                continue;
+                job::start(&device.clone(), JobKind::Update, |log| async move {
+                    log.emit(job::Resumed { after: after.into() });
+                    for (device, watching) in &update.watchers {
+                        log.emit(watchdog::WatchdogSuspended {
+                            device: device.clone(),
+                            watching: watching.clone(),
+                            safety_net: watchdog::SAFETY_NET.into(),
+                        });
+                    }
+                    let rebooting_since = saved_job::instant(saved.saved_at);
+                    log.keep(saved);
+                    log.resume_in(state);
+                    resume_update(&device, state, &update, rebooting_since, &log).await
+                })
             }
         };
         if let Err(error) = started {
@@ -331,33 +343,122 @@ async fn resume_batch(topology: &TopologyHolder, waiting: &[saved_job::Waiting],
     }
 }
 
+/// What an update with its fallback set saves (`update::update_keeping`).
+fn saved_update(
+    device: &DeviceAccess,
+    credentials: &str,
+    watchers: &[(Box<str>, watchdog::Watching)],
+    run: &saved_job::UpdateRun,
+) -> saved_job::SavedJob {
+    use crate::topology::access::AccessTopology;
+    saved_job::SavedJob {
+        device: device.id(),
+        device_name: device.name().into(),
+        site: device.site().map(|site| site.id()),
+        saved_at: SystemTime::now(),
+        work: SavedWork::Update {
+            state: UpdateState::Rebooting,
+            update: Box::new(saved_job::SavedUpdate {
+                credentials: Some(credentials.into()),
+                watchers: watchers.to_vec(),
+                run: run.clone(),
+            }),
+        },
+    }
+}
+
+/// Connects to `device` until it answers or `until` passes, quietly between the tries (it may
+/// be cut off or rebooting): `Connecting` once, `Connected` when it answers.
+async fn connect_until(
+    device: &DeviceAccess,
+    credentials: Option<Box<str>>,
+    until: std::time::Instant,
+    log: &Log,
+) -> Result<AccessibleDevice, Error> {
+    log.emit(Connecting {
+        device: device.name().into(),
+    });
+    loop {
+        let reached = log.unless_cancelled(device.connect(None, credentials.clone(), None)).await?;
+        match reached {
+            Ok(Some(link)) => {
+                log.emit(link.connected_device());
+                return Ok(link);
+            }
+            Ok(None) => return Err(Error::MissingCredentials),
+            Err(_) if std::time::Instant::now() < until => {
+                log.unless_cancelled(tokio::time::sleep(RESUME_RETRY)).await?;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 /// An apply saved before the restart ([`resume_saved_jobs`]): connects until the device
 /// answers, the script may have cut it off for a while. Not back before the fallback would
 /// have brought it back, it ends as an apply not reached does, the fallback left.
 async fn resume_apply(device: &DeviceAccess, saved: &saved_job::SavedApply, log: &Log) -> Result<(), Error> {
     use crate::device::ros::graphql::{COME_BACK, FallbackLeftReason, fallback_left, give_up};
     let fires = saved_job::instant(saved.script.fires);
-    let come_back = fires + COME_BACK;
-    let link = loop {
-        match connect_for_job(device, None, saved.credentials.clone(), None, log).await {
-            Ok(link) => break link,
-            Err(Error::Cancelled) => return Err(Error::Cancelled),
-            Err(_) if std::time::Instant::now() < come_back => {
-                log.unless_cancelled(tokio::time::sleep(RESUME_RETRY)).await?;
+    let link = match connect_until(device, saved.credentials.clone(), fires + COME_BACK, log).await {
+        Ok(link) => link,
+        Err(Error::Cancelled) => return Err(Error::Cancelled),
+        Err(error) => {
+            log.enter(crate::device_state::ApplyState::NotReached);
+            if saved.script.armed && std::time::Instant::now() < give_up(fires) {
+                fallback_left(log, fires, FallbackLeftReason::NotReached, None);
             }
-            Err(error) => {
-                log.enter(crate::device_state::ApplyState::NotReached);
-                if saved.script.armed && std::time::Instant::now() < give_up(fires) {
-                    fallback_left(log, fires, FallbackLeftReason::NotReached, None);
-                }
-                if let Some(hold) = &saved.hold {
-                    crate::device::radio_hold::RadioHold::leave_saved(device.name(), hold, log);
-                }
-                return Err(error);
+            if let Some(hold) = &saved.hold {
+                crate::device::radio_hold::RadioHold::leave_saved(device.name(), hold, log);
             }
+            return Err(error);
         }
     };
     link.resume_apply(saved, log).await
+}
+
+/// An update saved before the restart ([`resume_saved_jobs`]): connects until the device
+/// answers (it may be rebooting) or the reboot's wait is over, connects again to the devices
+/// whose watchdogs it suspended, goes on ([`update::resume`]) and restores those at its end
+/// (one not reached is left to its scheduler entry).
+async fn resume_update(
+    device: &DeviceAccess,
+    state: UpdateState,
+    saved: &saved_job::SavedUpdate,
+    rebooting_since: std::time::Instant,
+    log: &Log,
+) -> Result<(), Error> {
+    let mut suspended = Vec::new();
+    for (name, watching) in &saved.watchers {
+        let reached = match device.topology().list_devices().find(|d| d.name() == &**name) {
+            Some(watcher) => connect_for_job(&watcher, None, None, None, log).await,
+            None => Err(Error::UnknownDeviceName(name.clone())),
+        };
+        match reached {
+            Ok(link) => suspended.push(watchdog::Suspended {
+                device: name.clone(),
+                link,
+                watching: watching.clone(),
+            }),
+            Err(error) => log.emit(watchdog::WatchdogNotRestored {
+                device: name.clone(),
+                watching: watching.clone(),
+                error: (&error).into(),
+            }),
+        }
+    }
+    let power = PowerChain::of(device);
+    let until = rebooting_since + saved.run.wait;
+    let resumed = async {
+        let link = connect_until(device, saved.credentials.clone(), until, log).await?;
+        let credentials = saved.credentials.clone().unwrap_or_default();
+        let keep = |run: &saved_job::UpdateRun| log.keep(saved_update(device, &credentials, &saved.watchers, run));
+        let since = tokio::time::Instant::from_std(rebooting_since);
+        update::resume(&link, &power, state, &saved.run, since, &keep, log).await
+    }
+    .await;
+    restore_watchdogs(suspended, log).await;
+    resumed
 }
 
 /// How often a job going on after a restart tries to reach its device.
@@ -467,6 +568,7 @@ impl MutationAuthenticated {
         let watchers = Watchers::of(&device, suspend_watchdogs == Some(true));
         Ok(job::start(&device.clone(), JobKind::Update, |log| async move {
             log.enter(UpdateState::Reading);
+            let access = device.clone();
             let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             let wanted = device.wanted_packages().await?;
             let version = match channel {
@@ -478,9 +580,17 @@ impl MutationAuthenticated {
                 channel: channel.map(|channel| channel.name().into()),
             });
             let suspended = watchers.suspend(&log).await?;
+            let watching: Vec<_> = suspended.iter().map(|s| (s.device.clone(), s.watching.clone())).collect();
+            let credentials = device.credentials_name().map(Box::from);
+            // without credentials by name (ad hoc ones) it can't connect again after a restart
+            let keep = |run: &saved_job::UpdateRun| {
+                if let Some(credentials) = &credentials {
+                    log.keep(saved_update(&access, credentials, &watching, run));
+                }
+            };
+            let fallback = CONFIG.update_fallback();
             let updated =
-                update::update(&device, &power, &version, &wanted, CONFIG.update_fallback(), &way_back, &log)
-                    .await;
+                update::update_keeping(&device, &power, &version, &wanted, fallback, &way_back, &keep, &log).await;
             restore_watchdogs(suspended, &log).await;
             updated
         })?)
