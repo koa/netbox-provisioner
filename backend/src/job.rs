@@ -487,11 +487,22 @@ where
     job
 }
 
+/// The runtime the jobs run on. Started from a request, a job spawned on the runtime at hand
+/// would run on the worker's, which ends with the server: dropped there, it would neither come
+/// to its end nor to a state that goes on at the [`shutdown`].
+static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
+        .thread_name("jobs")
+        .enable_all()
+        .build()
+        .expect("the jobs' runtime")
+});
+
 fn spawn<F>(job: Arc<Job>, work: F)
 where
     F: Future<Output = Result<(), Error>> + Send + 'static,
 {
-    tokio::spawn(async move {
+    RUNTIME.spawn(async move {
         let result = run(work).await;
         job.log.ended();
         job.finish_with(result);
@@ -518,7 +529,7 @@ where
     let members: Vec<_> = devices.iter().map(subject_of).zip(logs).collect();
     let jobs = register(&members, None, kind)?;
     let running = jobs.clone();
-    tokio::spawn(async move {
+    RUNTIME.spawn(async move {
         let result = run(async move { Ok(work.await) }).await;
         running.iter().for_each(|job| job.log.ended());
         match result {
