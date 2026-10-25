@@ -88,7 +88,8 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
   Prozess. Zwei Repliken würden dasselbe Gerät gleichzeitig anwenden. Strategie `Recreate`, damit
   beim Update nie zwei laufen. `state_dir` ist das Volume `state` unter `/state`:
   `persistence.existingClaim`, sonst ein `emptyDir`, das einen Neustart des Containers
-  übersteht, aber keinen neuen Pod.
+  übersteht, aber keinen neuen Pod. Beim Beenden lässt der Server weiterführbare Aufträge
+  liegen und bricht die anderen ab (bis 20 s innerhalb der 60 s Gnadenfrist).
 - `config.yaml` aus einzelnen Werten, die Geheimnisse als Umgebungsvariable `APP_SETTINGS__…`
   aus Secrets (siehe [Umsetzung](#umsetzung)).
 - `Service` für 8080, ein zweiter für 9080 (Metriken), `ServiceMonitor` optional.

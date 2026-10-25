@@ -213,8 +213,12 @@ impl Log {
         let saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
         saving.job.clone().filter(|_| saving.written)
     }
-    /// The job ended: what it kept for a restart goes.
+    /// The job ended: what it kept for a restart goes, but while the server shuts down
+    /// ([`shutdown`]) in a state that goes on.
     fn ended(&self) {
+        if SHUTTING_DOWN.load(Ordering::SeqCst) && self.goes_on() {
+            return;
+        }
         let mut saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(job) = saving.job.take()
             && saving.written
@@ -222,6 +226,10 @@ impl Log {
             saved_job::remove(job.device);
         }
         saving.written = false;
+    }
+    /// Its file is written: it goes on after a restart.
+    fn goes_on(&self) -> bool {
+        self.saving.lock().unwrap_or_else(PoisonError::into_inner).written
     }
     /// The state the job is in, or ended in; `None` before its first.
     pub fn phase(&self) -> Option<JobPhase> {
@@ -668,6 +676,41 @@ pub fn version_before_update(device: DeviceId) -> Option<Box<str>> {
 }
 
 /// Asks the job to stop; its state turns `CANCELLED` once it got to a point where it can.
+/// The server shuts down ([`shutdown`]).
+static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+
+/// Lets the server shut down in order (`docs/concepts/device-state.md`, „Geordnetes
+/// Beenden“): a job whose file is written stays as it is and goes on after the restart; every
+/// other is cancelled, and gets up to `wait` to come to its end, or to a state that goes on
+/// (an apply cancelled while it starts its script). Called once the server takes no more
+/// requests.
+pub async fn shutdown(wait: Duration) {
+    SHUTTING_DOWN.store(true, Ordering::SeqCst);
+    let running: Vec<Arc<Job>> = JOBS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .jobs
+        .iter()
+        .filter(|job| job.state() == JobState::Running)
+        .cloned()
+        .collect();
+    for job in running.iter().filter(|job| !job.log.goes_on()) {
+        info!("{}: job {} cancelled for the shutdown", job.name, job.id);
+        job.log.cancel();
+    }
+    let deadline = Instant::now() + wait;
+    let settled = || running.iter().all(|job| job.state() != JobState::Running || job.log.goes_on());
+    while !settled() && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    for job in running.iter().filter(|job| job.state() == JobState::Running) {
+        match job.log.goes_on() {
+            true => info!("{}: job {} goes on after the restart", job.name, job.id),
+            false => warn!("{}: job {} still running at the shutdown", job.name, job.id),
+        }
+    }
+}
+
 pub fn cancel(id: u32) -> Option<Arc<Job>> {
     let job = get(id)?;
     job.log.cancel();

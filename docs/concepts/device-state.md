@@ -725,5 +725,11 @@ Beim Start:
    endet als „nicht zurück“, Fallback und Pakete bleiben für „Liegengebliebenes“.
 6. Geordnetes Beenden: weiterführbare Aufträge halten an einer sicheren Stelle an und lassen ihre
    Datei liegen, alle anderen werden abgebrochen.
+   *Umgesetzt* als `job::shutdown`, sobald die Server nach SIGTERM/SIGINT keine Anfragen mehr
+   nehmen: ein Job mit geschriebener Datei bleibt, wie er ist (der Prozess endet mitten im
+   Warten, der Job geht nach dem Start weiter); jeder andere wird abgebrochen und hat bis zu
+   20 s, zu enden oder einen weiterführbaren Zustand zu erreichen. Endet ein Job während des
+   Beendens in einem solchen Zustand (ein Anwenden, abgebrochen beim Starten des Skripts),
+   bleibt seine Datei.
 
 Entfallen (2026-10-25): Selbstauslöser und NetBox über Neustarts speichern.

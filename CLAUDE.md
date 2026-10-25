@@ -583,7 +583,10 @@ apply with ad hoc credentials saves nothing. An update with its fallback set han
 tests use it) before `Rebooting`, `StoppingFallback` and `NotUpdated`; resumed
 (`update::resume`, `graphql::resume_update`) it waits for the reboot counted from entering
 `Rebooting` and goes on as before. A resumed job may enter its saved state once more
-(`Log::resume_in`).
+(`Log::resume_in`). Once the servers stop (SIGTERM, SIGINT) `binary` calls `job::shutdown`:
+a job with its file written is left as it is, every other one cancelled and given 20 s (the
+chart's grace period is 60 s, actix's own shutdown up to 30 s of it); one ending meanwhile
+in a state that goes on keeps its file.
 A batch member's file names the whole batch (`SavedBatch`); the batch goes on together
 (`batch::resume`, `Rejoined` members connecting once they answer, then `batch::watch`, the part
 of `batch::run` after the scripts start) only with every member saved and in NetBox, else each

@@ -232,12 +232,11 @@ async fn main() -> Result<(), BackendError> {
         .bind((bind_addr, mgmt_port))?
         .workers(2)
         .run();
-    if let Some(e) = join_all(vec![main_server, mgmt_server])
-        .await
-        .into_iter()
-        .flat_map(|r| r.err())
-        .next()
-    {
+    let served = join_all(vec![main_server, mgmt_server]).await;
+    // the servers stopped (SIGTERM, SIGINT): jobs that go on after a restart stay, the
+    // others are cancelled, within the chart's termination grace period
+    backend::job::shutdown(std::time::Duration::from_secs(20)).await;
+    if let Some(e) = served.into_iter().flat_map(|r| r.err()).next() {
         return Err(e.into());
     }
     Ok(())
