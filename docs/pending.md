@@ -230,4 +230,9 @@ Er kann:
 Konfiguration mit 2 Partitionen
 ===============================
 
-Wenn ein Gerät 2 Partitionen hat, muss nach einer erfolgreichen Konfigurationsänderung die 2. Partition auch nachgezogen werden (Bei einer instabilen Stromversorgung schaltet Mikrotik manchmal automatisch auf die 2. Partition weil es fälschlicherweise ein Boot-Problem erkannt hat) 
+Wenn ein Gerät 2 Partitionen hat, muss nach einer erfolgreichen Konfigurationsänderung die 2. Partition auch nachgezogen werden (Bei einer instabilen Stromversorgung schaltet Mikrotik manchmal automatisch auf die 2. Partition weil es fälschlicherweise ein Boot-Problem erkannt hat)
+
+Port der Angeschlossenen Nicht-Mikrotik Geräte erkennen
+=======================================================
+
+Wenn ein Gerät eine Dokumentierte IPV4- oder IPv6-Adresse hat, ist es möglich über ARP, Neighborhood und Bridge forwarding tabellen festzustellen an welchem Port diese angeschlossen sind. Daraus sollen fehlende Kabelverbindungen erkannt und in Netbox nachgetragen werden.
