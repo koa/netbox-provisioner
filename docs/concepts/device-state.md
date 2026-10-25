@@ -706,6 +706,11 @@ Beim Start:
    wieder (`WatchdogSuspended` erneut, nicht erreichte bleiben dem Scheduler) und schaut auf
    die Marken wie vorher (`watch_script`). Mit Zugangsdaten ad hoc wird nichts gespeichert:
    das Passwort gehört nicht in die Datei.
+   *Umgesetzt* für das gemeinsame: jede Datei nennt die ganze Gruppe (`SavedBatch`: Geräte,
+   Verzögerung der Fallbacks). Weitergeführt wird die Gruppe nur, wenn alle ihre Geräte
+   gespeichert und in NetBox sind, dann zusammen nach denselben Regeln (`batch::watch`, jedes
+   Gerät wieder erreicht, sobald es antwortet); sonst wartet jede Datei mit dem Grund
+   (`HeldBack`) in „Gespeicherte Aufträge“, und die Fallbacks nehmen alles zurück.
 5. Update weiterführen.
 6. Geordnetes Beenden: weiterführbare Aufträge halten an einer sicheren Stelle an und lassen ihre
    Datei liegen, alle anderen werden abgebrochen.

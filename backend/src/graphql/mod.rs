@@ -228,38 +228,106 @@ pub(crate) async fn connect_for_job(
 }
 
 /// Goes on with the jobs saved before this start whose device NetBox has (`saved_job`), each
-/// as a job of its own; the others stay in `savedJobs`. Called once, after the topology is
-/// read.
+/// as a job of its own, a batch's devices together; the others stay in `savedJobs`. Called
+/// once, after the topology is read.
 pub async fn resume_saved_jobs(topology: &TopologyHolder) {
-    for waiting in saved_job::waiting() {
-        if waiting.saved.is_err() {
-            continue;
-        }
-        let Some(device) = topology.devices_by_id(waiting.device).await else {
+    let waiting = saved_job::waiting();
+    let mut batches = std::collections::BTreeSet::new();
+    for entry in &waiting {
+        let Ok(saved) = &entry.saved else {
             continue;
         };
-        let Some(Ok(saved)) = saved_job::take(waiting.device).map(|waiting| waiting.saved) else {
+        let Some(device) = topology.devices_by_id(entry.device).await else {
+            saved_job::hold_back(entry.device, saved_job::HeldBack::DeviceGone);
             continue;
         };
         let after = SystemTime::now().duration_since(saved.saved_at).unwrap_or_default();
-        let started = match saved.work.clone() {
-            SavedWork::Apply { apply, .. } => job::start(&device.clone(), JobKind::Apply, |log| async move {
-                log.emit(job::Resumed { after: after.into() });
-                log.keep(saved);
-                // saved taking the fallback away too: that only follows a look at the marks,
-                // which comes first again
-                log.resume_in(crate::device_state::ApplyState::ScriptRunning);
-                resume_apply(&device, &apply, &log).await
-            }),
+        let started = match &saved.work {
+            SavedWork::Apply { apply, .. } if apply.batch.is_some() => {
+                if let Some(batch) = &apply.batch {
+                    batches.insert(batch.devices.clone());
+                }
+                continue;
+            }
+            SavedWork::Apply { apply, .. } => {
+                let (saved, apply) = (saved.clone(), apply.clone());
+                saved_job::take(entry.device);
+                job::start(&device.clone(), JobKind::Apply, |log| async move {
+                    log.emit(job::Resumed { after: after.into() });
+                    if let Some(hold) = &apply.hold {
+                        crate::device::radio_hold::RadioHold::announce_saved(device.name(), hold, &log);
+                    }
+                    log.keep(saved);
+                    // saved taking the fallback away too: that only follows a look at the
+                    // marks, which comes first again
+                    log.resume_in(crate::device_state::ApplyState::ScriptRunning);
+                    resume_apply(&device, &apply, &log).await
+                })
+            }
             // the update goes on in a later step; until then it ends as before
             SavedWork::Update { .. } => {
-                saved_job::remove(waiting.device);
+                saved_job::take(entry.device);
+                saved_job::remove(entry.device);
                 continue;
             }
         };
         if let Err(error) = started {
-            log::warn!("Cannot go on with the job of device {}: {error}", waiting.device.0);
+            log::warn!("Cannot go on with the job of device {}: {error}", entry.device.0);
         }
+    }
+    for batch in batches {
+        resume_batch(topology, &waiting, &batch).await;
+    }
+}
+
+/// A batch saved before the restart, its devices `batch` ([`resume_saved_jobs`]): all of
+/// them saved and in NetBox, they go on together; else none does, and their fallbacks take
+/// all of it back.
+async fn resume_batch(topology: &TopologyHolder, waiting: &[saved_job::Waiting], batch: &[DeviceId]) {
+    let mut members = Vec::new();
+    for id in batch {
+        let saved = waiting.iter().find(|entry| entry.device == *id).and_then(|entry| entry.saved.as_ref().ok());
+        let apply = saved.and_then(|saved| match &saved.work {
+            SavedWork::Apply { apply, .. } if apply.batch.as_ref().is_some_and(|b| b.devices == batch) => Some(apply),
+            _ => None,
+        });
+        match (saved, apply, topology.devices_by_id(*id).await) {
+            (Some(saved), Some(apply), Some(device)) => members.push((device, saved.clone(), (**apply).clone())),
+            _ => {
+                for id in batch {
+                    saved_job::hold_back(*id, saved_job::HeldBack::BatchIncomplete);
+                }
+                return;
+            }
+        }
+    }
+    let Some(delay) = members.first().and_then(|(_, _, apply)| apply.batch.as_ref()).map(|batch| batch.delay) else {
+        return;
+    };
+    let fires = members
+        .iter()
+        .map(|(_, _, apply)| saved_job::instant(apply.script.fires))
+        .min()
+        .unwrap_or_else(std::time::Instant::now);
+    for id in batch {
+        saved_job::take(*id);
+    }
+    let devices: Vec<DeviceAccess> = members.iter().map(|(device, _, _)| device.clone()).collect();
+    let started = job::start_all(&devices, JobKind::Apply, |logs| async move {
+        for (log, (device, saved, apply)) in logs.iter().zip(&members) {
+            let after = SystemTime::now().duration_since(saved.saved_at).unwrap_or_default();
+            log.emit(job::Resumed { after: after.into() });
+            if let Some(hold) = &apply.hold {
+                crate::device::radio_hold::RadioHold::announce_saved(device.name(), hold, log);
+            }
+            log.keep(saved.clone());
+            log.resume_in(crate::device_state::ApplyState::ScriptRunning);
+        }
+        let members = members.into_iter().map(|(device, _, apply)| (device, apply)).collect();
+        crate::device::batch::resume(members, logs, fires, delay).await
+    });
+    if let Err(error) = started {
+        log::warn!("Cannot go on with the batch of devices {batch:?}: {error}");
     }
 }
 

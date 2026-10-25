@@ -579,6 +579,11 @@ device NetBox has, beginning with `Resumed` and `Log::resume_in`: an apply
 device answers and goes on watching its script (`AccessibleDevice::watch_script`, the part of
 `apply_planned` after the start), holding the watchdogs again (`RadioHold::resumed`). An
 apply with ad hoc credentials saves nothing; a saved update is dropped (not continued yet).
+A batch member's file names the whole batch (`SavedBatch`); the batch goes on together
+(`batch::resume`, `Rejoined` members connecting once they answer, then `batch::watch`, the part
+of `batch::run` after the scripts start) only with every member saved and in NetBox, else each
+file waits with its reason (`HeldBack`) and the fallbacks take it all back. Held watchdogs are
+announced again at the resumed job's start (`RadioHold::announce_saved`).
 A job says where it is before anything slow: `graphql::connect_for_job` reports `Connecting`
 and `Connected` (address, the neighbor's tunnel, the identity) for the device and each supplier,
 the update its `UpdateTarget` and `WatchdogNotSet` for a watcher without one, and an upload

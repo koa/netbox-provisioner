@@ -6,6 +6,7 @@ query SavedJobs {
         kind
         age
         unreadable
+        heldBack
         phase {
             __typename
             ... on ApplyPhase { apply: state }

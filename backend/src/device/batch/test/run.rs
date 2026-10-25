@@ -1,5 +1,5 @@
 //! The rules of a batch, with stand-ins for the devices.
-use crate::device::batch::{Applying, Timing, run};
+use crate::device::batch::{Applying, Running, Timing, Watched, run, watch};
 use crate::{
     Error,
     device::ros::{fallback::Pending, graphql::FallbackLeftReason},
@@ -58,11 +58,6 @@ impl Applying for Fake {
         }
         Ok(())
     }
-    async fn release(&self, back: bool, _log: &Log) {
-        if self.radio {
-            self.call(if back { "release" } else { "keep" });
-        }
-    }
     async fn arm(
         &self,
         delay: Duration,
@@ -90,6 +85,14 @@ impl Applying for Fake {
     async fn remove(&self) -> Result<(), Error> {
         self.call("remove");
         Ok(())
+    }
+}
+
+impl Watched for Fake {
+    async fn release(&self, back: bool, _log: &Log) {
+        if self.radio {
+            self.call(if back { "release" } else { "keep" });
+        }
     }
     async fn check(&self, _settled: Instant) -> Option<Result<Box<str>, Error>> {
         // a script not started leaves its device as it was
@@ -121,6 +124,7 @@ async fn batch(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>, V
     let logs = vec![Log::new("near"), Log::new("far")];
     let results = run(
         vec![near, far],
+        vec![crate::topology::DeviceId(1), crate::topology::DeviceId(2)],
         vec!["near".into(), "far".into()],
         logs.clone(),
         Timing {
@@ -226,6 +230,7 @@ async fn a_radio_change_lengthens_every_fallback() {
     let far = Fake { name: "far", delays: delays.clone(), ..Fake::default() };
     let results = run(
         vec![near, far],
+        vec![crate::topology::DeviceId(1), crate::topology::DeviceId(2)],
         vec!["near".into(), "far".into()],
         vec![Log::new("near"), Log::new("far")],
         Timing {
@@ -334,4 +339,58 @@ async fn a_fallback_brought_forward_bounds_the_wait() {
     assert!(started.elapsed() < Duration::from_millis(250), "{:?}", started.elapsed());
     assert!(!calls.iter().any(|call| call.starts_with("stop")), "{calls:?}");
     assert!(results.iter().all(Result::is_err));
+}
+
+/// A batch going on after a restart, its scripts running: `near` and `far`, the calls and the
+/// outcomes.
+async fn resumed(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>, Vec<Log>) {
+    use crate::device_state::ApplyState;
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let logs = vec![Log::new("near"), Log::new("far")];
+    let running = [Fake { name: "near", calls: calls.clone(), ..near }, Fake { name: "far", calls: calls.clone(), ..far }]
+        .into_iter()
+        .zip(&logs)
+        .enumerate()
+        .map(|(index, (member, log))| {
+            log.resume_in(ApplyState::ScriptRunning);
+            Running {
+                index,
+                name: member.name.into(),
+                log: log.clone(),
+                fallback: !member.no_scheduler,
+                member,
+                checked: None,
+            }
+        })
+        .collect();
+    let timing = Timing {
+        delay: Duration::from_millis(300),
+        window: Duration::from_millis(100),
+        lead: Duration::from_millis(5),
+        start: Duration::from_millis(100),
+        poll: Duration::from_millis(10),
+        settle: Duration::ZERO,
+        margin: Duration::ZERO,
+    };
+    let fires = Instant::now() + Duration::from_millis(300);
+    let results = watch(running, &logs, &timing, fires, timing.delay, vec![None, None]).await;
+    for log in &logs {
+        assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
+    }
+    let calls = calls.lock().unwrap().clone();
+    (calls, results, logs)
+}
+
+/// After a restart the batch goes on where its scripts run: all back, every fallback goes;
+/// one not back, none does.
+#[tokio::test]
+async fn a_resumed_batch_keeps_its_rules() {
+    let (calls, results, _) = resumed(Fake::default(), Fake::default()).await;
+    assert_eq!(calls, ["stop near", "stop far"]);
+    assert!(results.iter().all(Result::is_ok), "{results:?}");
+    let (calls, results, logs) = resumed(Fake::default(), Fake { lost: true, ..Fake::default() }).await;
+    assert!(calls.is_empty(), "{calls:?}");
+    assert!(results.iter().all(|r| matches!(r, Err(Error::BatchIncomplete(_)))), "{results:?}");
+    assert_eq!(left(&logs[0]), [FallbackLeftReason::BatchIncomplete]);
+    assert_eq!(left(&logs[1]), [FallbackLeftReason::NotReached]);
 }

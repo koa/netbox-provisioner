@@ -764,7 +764,7 @@ mod tests {
             saved_at: SystemTime::now(),
             work: SavedWork::Apply {
                 state: ApplyState::ScriptRunning,
-                apply: SavedApply {
+                apply: Box::new(SavedApply {
                     credentials: Some("lab".into()),
                     script: ScriptRun {
                         run: "a1b2c3d4".into(),
@@ -775,7 +775,8 @@ mod tests {
                         reprovision: Vec::new(),
                     },
                     hold: None,
-                },
+                    batch: None,
+                }),
             },
         });
         assert_eq!(state(&log), None);

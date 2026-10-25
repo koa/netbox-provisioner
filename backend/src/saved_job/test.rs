@@ -29,7 +29,7 @@ fn a_saved_job_is_read_back() {
     let mut again = saved(7);
     again.work = SavedWork::Apply {
         state: ApplyState::StoppingFallback,
-        apply: SavedApply {
+        apply: Box::new(SavedApply {
             credentials: Some("lab".into()),
             script: ScriptRun {
                 run: "a1b2c3d4".into(),
@@ -46,7 +46,11 @@ fn a_saved_job_is_read_back() {
                 }),
                 others: vec![("lab-np1".into(), Watching::default())],
             }),
-        },
+            batch: Some(SavedBatch {
+                devices: vec![DeviceId(7), DeviceId(8)],
+                delay: Duration::from_secs(265),
+            }),
+        }),
     };
     write(&jobs, &again).expect("write again");
     fs::write(jobs.join("8.json.tmp"), "{").expect("temporary");

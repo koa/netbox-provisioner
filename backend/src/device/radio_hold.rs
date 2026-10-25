@@ -161,21 +161,27 @@ impl RadioHold {
         }
     }
 
-    /// Holds again what an apply saved before a restart held: suspended still (says
-    /// `WatchdogSuspended` again, so the other devices' pages show them held), each other
-    /// device connected again for restoring it; one not reached is left to its scheduler
-    /// entry (`WatchdogKept`).
+    /// Says again what an apply saved before a restart holds suspended (`WatchdogSuspended`),
+    /// as soon as its job goes on: the other devices' pages show them held, not as leftovers.
+    pub(crate) fn announce_saved(device: &str, saved: &SavedHold, log: &Log) {
+        let own = saved.own.iter().filter(|watching| !watching.is_empty()).map(|watching| (device.into(), watching));
+        let others = saved.others.iter().map(|(device, watching)| (device.clone(), watching));
+        for (device, watching) in own.chain(others) {
+            log.emit(WatchdogSuspended {
+                device,
+                watching: watching.clone(),
+                safety_net: SAFETY_NET.into(),
+            });
+        }
+    }
+
+    /// Holds again what an apply saved before a restart held ([`Self::announce_saved`]), once
+    /// the device answers: each other device connected again for restoring it, one not
+    /// reached left to its scheduler entry (`WatchdogKept`).
     pub(crate) async fn resumed(link: &AccessibleDevice, saved: &SavedHold, log: &Log) -> RadioHold {
         let device: Box<str> = link.device_config.name().into();
-        if let Some(watching) = &saved.own {
+        if saved.own.is_some() {
             link.hold_watchdog(true);
-            if !watching.is_empty() {
-                log.emit(WatchdogSuspended {
-                    device: device.clone(),
-                    watching: watching.clone(),
-                    safety_net: SAFETY_NET.into(),
-                });
-            }
         }
         let topology = link.device_config.topology();
         let mut others = Vec::new();
@@ -186,11 +192,6 @@ impl RadioHold {
             };
             match reached {
                 Some(watcher) => {
-                    log.emit(WatchdogSuspended {
-                        device: name.clone(),
-                        watching: watching.clone(),
-                        safety_net: SAFETY_NET.into(),
-                    });
                     others.push(Suspended {
                         device: name.clone(),
                         link: watcher,

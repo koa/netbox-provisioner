@@ -6,7 +6,7 @@ use crate::{
     graphql::{
         authenticated::{
             DiscardSavedJob, SavedJobs as SavedJobsQuery, discard_saved_job,
-            saved_jobs::{self, ApplyState as A, SavedJobKind, SavedJobsSavedJobs as Saved, SavedJobsSavedJobsPhase as Phase, UpdateState as U},
+            saved_jobs::{self, ApplyState as A, HeldBack, SavedJobKind, SavedJobsSavedJobs as Saved, SavedJobsSavedJobsPhase as Phase, UpdateState as U},
         },
         query_authenticated,
     },
@@ -97,9 +97,17 @@ impl Component for SavedJobs {
                     saved.age.unwrap_or_default() / 1_000_000_000,
                 ),
             };
+            let why = match saved.held_back {
+                Some(HeldBack::DEVICE_GONE) => Some(t::DEVICE_GONE),
+                Some(HeldBack::BATCH_INCOMPLETE) => Some(t::BATCH_INCOMPLETE),
+                _ => None,
+            };
             html! {
                 <Alert inline=true r#type={AlertType::Warning} {title}>
                     <p>{text}</p>
+                    if let Some(why) = why {
+                        <p>{why}</p>
+                    }
                     <p>{t::LEFT_ON_DEVICE}</p>
                     <Button
                         variant={ButtonVariant::Secondary}

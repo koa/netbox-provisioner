@@ -835,7 +835,7 @@ impl AccessibleDevice {
         };
         let keep = |script: &ScriptRun| {
             // without credentials by name (ad hoc ones) it can't connect again after a restart
-            let Some(credentials) = self.credentials.name() else {
+            let Some(credentials) = self.credentials_name() else {
                 return;
             };
             log.keep(SavedJob {
@@ -845,11 +845,12 @@ impl AccessibleDevice {
                 saved_at: SystemTime::now(),
                 work: SavedWork::Apply {
                     state: ApplyState::ScriptRunning,
-                    apply: SavedApply {
+                    apply: Box::new(SavedApply {
                         credentials: Some(credentials.into()),
                         script: script.clone(),
                         hold: hold.as_ref().map(RadioHold::saved),
-                    },
+                        batch: None,
+                    }),
                 },
             });
         };
@@ -860,6 +861,10 @@ impl AccessibleDevice {
             None => {}
         }
         applied
+    }
+    /// The credentials it was reached with, by name; `None` for ad hoc ones.
+    pub(crate) fn credentials_name(&self) -> Option<&str> {
+        self.credentials.name()
     }
     /// Goes on with an apply saved before a restart of the provisioner (`saved_job`), once the
     /// device answers again: both states it may be saved in watch the script
@@ -1154,7 +1159,7 @@ impl AccessibleDevice {
         self.after_script(&planned.reprovisioned(), log).await
     }
     /// [`Self::after_apply`] with the radios to provision again (`reprovisioned_menus`).
-    async fn after_script(&self, reprovision: &[Box<str>], log: &Log) -> Result<(), Error> {
+    pub(crate) async fn after_script(&self, reprovision: &[Box<str>], log: &Log) -> Result<(), Error> {
         if self.device_config.wlan_controller_of().is_some() {
             log.check()?;
             self.reprovision(reprovision, log).await;

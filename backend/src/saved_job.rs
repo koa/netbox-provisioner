@@ -51,7 +51,7 @@ pub enum SavedWork {
     Apply {
         state: ApplyState,
         #[serde(flatten)]
-        apply: SavedApply,
+        apply: Box<SavedApply>,
     },
     Update { state: UpdateState },
 }
@@ -83,6 +83,18 @@ pub struct SavedApply {
     pub script: ScriptRun,
     /// the watchdogs it suspended for a radio it changes (`RadioHold`)
     pub hold: Option<SavedHold>,
+    /// applied together with other devices (`device::batch`): they go on together
+    #[serde(default)]
+    pub batch: Option<SavedBatch>,
+}
+
+/// The batch an apply was part of.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SavedBatch {
+    /// all its devices, this one among them
+    pub devices: Vec<DeviceId>,
+    /// the delay of its fallbacks, firing together
+    pub delay: Duration,
 }
 
 /// What an apply knows once its script runs, enough to watch it to the end.
@@ -168,6 +180,25 @@ pub struct Waiting {
     pub device: DeviceId,
     /// what it holds, or why it couldn't be read
     pub saved: Result<SavedJob, Box<str>>,
+    /// why no job went on with it, once the start looked at it
+    pub held_back: Option<HeldBack>,
+}
+
+/// Why a saved job didn't go on.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
+pub enum HeldBack {
+    /// NetBox doesn't have its device anymore
+    DeviceGone,
+    /// a batch whose other devices aren't all saved or known: their fallbacks take all of it
+    /// back
+    BatchIncomplete,
+}
+
+/// Leaves the file of `device` waiting, saying why.
+pub fn hold_back(device: DeviceId, why: HeldBack) {
+    if let Some(waiting) = WAITING.lock().unwrap_or_else(PoisonError::into_inner).get_mut(&device) {
+        waiting.held_back = Some(why);
+    }
 }
 
 /// Takes `dir` for this server: holds its lock, reads the jobs saved there (they wait in
@@ -224,7 +255,11 @@ fn read_all(jobs: &Path) -> io::Result<Vec<Waiting>> {
                 true => Ok(saved),
                 false => Err(format!("saved for device {}", saved.device.0).into()),
             });
-        read.push(Waiting { device, saved });
+        read.push(Waiting {
+            device,
+            saved,
+            held_back: None,
+        });
     }
     read.sort_by_key(|waiting| waiting.device);
     Ok(read)
@@ -324,6 +359,10 @@ impl Waiting {
             .as_ref()
             .ok()
             .map(|saved| SystemTime::now().duration_since(saved.saved_at).unwrap_or(Duration::ZERO).into())
+    }
+    /// why it didn't go on; `null` with `unreadable`
+    async fn held_back(&self) -> Option<HeldBack> {
+        self.held_back
     }
     /// why the file couldn't be read (as serde or the file system said)
     async fn unreadable(&self) -> Option<&str> {
