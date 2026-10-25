@@ -1,6 +1,6 @@
 # Custom Fields in NetBox
 
-Der Provisioner liest acht Custom Fields. Alle sind optional: Ein Feld, das in NetBox fehlt oder
+Der Provisioner liest acht Custom Fields und schreibt eines (`provisioner_job`). Alle sind optional: Ein Feld, das in NetBox fehlt oder
 leer ist, schaltet nur die jeweilige Funktion ab, die Generierung bricht deswegen nicht ab. Wo ein
 leeres Feld trotzdem zu einem Fehler führt, steht es unten beim Feld.
 
@@ -20,6 +20,7 @@ werden, beschreibt [netbox-modeling.md](netbox-modeling.md).
 | `vxlan_vni`            | VLAN Group         | Integer                         | VLANs der Gruppe über VXLAN verbinden       |
 | `rf_country`           | Wireless Link      | Text                            | Land einer Funkbrücke übersteuern           |
 | `rf_frequency_mode`    | Wireless Link      | Selection                       | Frequency Mode einer Funkbrücke übersteuern |
+| `provisioner_job`      | Journal Entry      | JSON                            | Stand eines Jobs, vom Provisioner geschrieben |
 
 ## Anlegen
 
@@ -141,3 +142,13 @@ gedacht, nicht für den Normalfall.
 
 Beispiel `hegglin-bachmann`: `rf_country` = `etsi 5.5-5.7 outdoor`, `rf_frequency_mode` =
 `manual-txpower`.
+
+### `provisioner_job` (Journal Entry, JSON)
+
+Schreibt der Provisioner selbst, in jeden seiner Einträge im Journal eines Geräts
+([Protokoll](protocol.md)): die Art des Jobs (`job`), wie er steht oder endete (`outcome`:
+`Running`, `Done`, `Incomplete`, `Failed`, `Cancelled`, `Interrupted`), der Zustand, in dem er
+ist oder endete (`state`, z.B. `SCRIPT_RUNNING`), was er auf dem Gerät lässt (`left`:
+`ApplyFallback`, `UpdateFallback`, `WatchdogSafetyNet`) und wann der Eintrag geschrieben wurde
+(`at`, Unix-Sekunden). Von Hand nichts eintragen. Fehlt das Feld in NetBox, lehnt NetBox jeden
+Eintrag ab, und jeder Job meldet „Eintrag im NetBox-Journal nicht geschrieben“.

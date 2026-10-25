@@ -48,6 +48,22 @@ impl std::fmt::Display for BootstrapObstacle {
     }
 }
 
+/// For wording it in German (the journal, `crate::journal`).
+impl i18n::error::Problem for ErrorInfo {
+    fn code(&self) -> &str {
+        self.code
+    }
+    fn param(&self, name: &str) -> &str {
+        self.params
+            .iter()
+            .find(|param| param.name == name)
+            .map_or("", |param| &param.value)
+    }
+    fn message(&self) -> &str {
+        &self.message
+    }
+}
+
 impl From<&Error> for ErrorInfo {
     fn from(error: &Error) -> Self {
         let cause = |cause: &dyn std::fmt::Display| vec![("cause", cause.to_string())];

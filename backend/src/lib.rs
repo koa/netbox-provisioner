@@ -12,6 +12,7 @@ pub mod error_info;
 pub mod graphql;
 pub mod helper;
 pub mod job;
+pub mod journal;
 pub mod netbox;
 pub mod saved_job;
 pub mod topology;

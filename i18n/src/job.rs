@@ -514,6 +514,10 @@ pub mod event {
             der Scheduler auf {device} stellt {watching} nach {safety_net_minutes} min wieder her"
         )
     }
+    /// the job's entry in NetBox' journal couldn't be written; the next state tries again
+    pub fn journal_not_written(error: &str) -> String {
+        format!("Eintrag im NetBox-Journal nicht geschrieben, der nächste Stand versucht es wieder: {error}")
+    }
     pub fn resumed(seconds_ago: u64) -> String {
         format!(
             "Geht nach einem Neustart des Provisioners weiter, gespeichert vor {} min {} s",
@@ -590,4 +594,47 @@ pub mod phase {
     pub const WRITING: &str = "Schreiben";
     pub const UNDOING: &str = "Zurücknehmen";
     pub const REFETCHING: &str = "NetBox neu lesen";
+
+    /// A state by its GraphQL name (`SCRIPT_RUNNING`), as the backend names it; `None` for one
+    /// not worded here yet.
+    pub fn of(name: &str) -> Option<&'static str> {
+        Some(match name {
+            "PLANNING" => PLANNING,
+            "SUSPENDING_WATCHDOGS" => SUSPENDING_WATCHDOGS,
+            "ARMING_FALLBACK" => ARMING_FALLBACK,
+            "WRITING_SCRIPT" => WRITING_SCRIPT,
+            "STARTING_SCRIPT" => STARTING_SCRIPT,
+            "SCRIPT_RUNNING" => SCRIPT_RUNNING,
+            "TAKING_BACK" => TAKING_BACK,
+            "STOPPING_FALLBACK" => STOPPING_FALLBACK,
+            "NOT_REACHED" => NOT_REACHED,
+            "CHECKING" => CHECKING,
+            "FINISHING" => FINISHING,
+            "READING" => READING,
+            "WAITING_FOR_CHAIN" => WAITING_FOR_CHAIN,
+            "REMEMBERING_NEIGHBORS" => REMEMBERING_NEIGHBORS,
+            "DOWNLOADING" => DOWNLOADING,
+            "UPLOADING" => UPLOADING,
+            "WAITING_TO_REBOOT" => WAITING_TO_REBOOT,
+            "REBOOTING" => REBOOTING,
+            "NOT_UPDATED" => NOT_UPDATED,
+            "WAITING_FOR_NEIGHBORS" => WAITING_FOR_NEIGHBORS,
+            "FIRMWARE" => FIRMWARE,
+            "WAITING_TO_REBOOT_FIRMWARE" => WAITING_TO_REBOOT_FIRMWARE,
+            "REBOOTING_FIRMWARE" => REBOOTING_FIRMWARE,
+            "RESTORING_WATCHDOGS" => RESTORING_WATCHDOGS,
+            "CUTTING" => CUTTING,
+            "WAITING_FOR_DEVICE" => WAITING_FOR_DEVICE,
+            "REQUESTING" => REQUESTING,
+            "WAITING_FOR_CONFIRMATION" => WAITING_FOR_CONFIRMATION,
+            "CHECKING_NEIGHBOR" => CHECKING_NEIGHBOR,
+            "CONSOLE" => CONSOLE,
+            "WAITING_FOR_API" => WAITING_FOR_API,
+            "CLEARING" => CLEARING,
+            "WRITING" => WRITING,
+            "UNDOING" => UNDOING,
+            "REFETCHING" => REFETCHING,
+            _ => return None,
+        })
+    }
 }

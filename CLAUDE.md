@@ -627,6 +627,16 @@ the port is still off when the command returns, and the device boots after. Neve
 the provisioner itself. "Jetzt zurück" of the apply fallback waits for the chain like a reboot
 (`leftovers::clear` takes a `PowerChain`).
 
+Every job of a device writes an entry into the device's journal in NetBox (`backend::journal`,
+`docs/protocol.md`), whenever `netbox_write_token` is set (not `allow_netbox_write`, that's the
+helpers'): created at the start (`job::write_journal`, a task per job on the jobs' runtime),
+written again at each `Log::enter` and at the end (a `watch` tick, so only the newest state goes
+out when NetBox is slow), tag `netbox-provisioner`, what the provisioner reads back in the custom
+field `provisioner_job` (JSON), the text in German from `i18n::journal`. Who started it comes
+with the start (`journal::Started`: the login's name, or `Resumed`). A failed write never stops
+the job (`JournalNotWritten`, once per run of failures); after the end only the newest 20 of the
+provisioner's entries on the device stay. A site's job (`SiteDiff`) writes none.
+
 What a job didn't see to the end leaves on a device (cancelled, the provisioner restarted, the
 device unreached) the device page shows under its head (`device::leftovers`,
 `AccessibleDevice.leftovers`, `components::leftovers`; `null` while a job of the device runs):
@@ -889,7 +899,7 @@ QEMU's, the golden image's dhcp-client is bound to it).
   field) goes through `device::raw` (`command`, `rows`, `field`), which turns a `!trap` into
   `Error::Refused` naming the command; don't write another loop over `SimpleResult`.
 - The backend sends data, the frontend words it: no sentence for the user is built in the
-  backend (no German there at all). What the UI shows is a typed GraphQL object or union with
+  backend (no German there at all; the journal takes its text from the crate `i18n`). What the UI shows is a typed GraphQL object or union with
   the values the text needs (`job::Event`, `ApplyWarning`), an enum for a case to tell apart
   (`FallbackLeftReason`), never a placeholder string or an `Option` whose `None` means a case.
 - Errors reach the UI as `error_info::ErrorInfo` (`code`, `params`, English `message`): a

@@ -88,3 +88,13 @@ required: false
 search_weight: 1000
 filter_logic: loose
 weight: 100
+---
+name: provisioner_job
+label: Provisioner job
+type: json
+object_types: extras.journalentry
+description: The job's state as the provisioner reads it back; written by the provisioner
+required: false
+search_weight: 0
+filter_logic: disabled
+weight: 100

@@ -715,6 +715,7 @@ dependencies = [
  "encoding_rs",
  "env_logger",
  "graphql_client",
+ "i18n",
  "ipnet",
  "log",
  "mikrotik-api",

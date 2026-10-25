@@ -21,6 +21,7 @@ use crate::{
     saved_job::{self, SavedJob},
     graphql::scalars::ScalarDuration,
     helper,
+    journal::{self, Started},
     topology::{
         DeviceId, SiteId,
         access::{AccessTopology, device::DeviceAccess, site::SiteAccess},
@@ -30,12 +31,12 @@ use async_graphql::{Enum, Object, SimpleObject, Union};
 use log::{info, warn};
 use std::{
     sync::{
-        Arc, LazyLock, Mutex, PoisonError,
+        Arc, LazyLock, Mutex, OnceLock, PoisonError,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::Notify;
+use tokio::sync::{Notify, watch};
 
 /// How many finished jobs are kept.
 const KEEP: usize = 50;
@@ -95,6 +96,7 @@ pub enum Event {
     WatchdogNotRestored(watchdog::WatchdogNotRestored),
     WatchdogLeft(watchdog::WatchdogLeft),
     WatchdogKept(radio_hold::WatchdogKept),
+    JournalNotWritten(journal::JournalNotWritten),
     Resumed(Resumed),
     NetboxWritten(helper::NetboxWritten),
     NetboxUndone(helper::NetboxUndone),
@@ -128,6 +130,8 @@ pub struct Log {
     cancelled: Arc<(AtomicBool, Notify)>,
     phase: Arc<Mutex<Phases>>,
     saving: Arc<Mutex<Saving>>,
+    /// ticks the job's journal entry to be written again (`crate::journal`), unset without one
+    journal: Arc<OnceLock<watch::Sender<()>>>,
 }
 
 /// What the job keeps for going on after a restart ([`Log::keep`]), and whether its file is
@@ -158,6 +162,7 @@ impl Log {
             cancelled: Default::default(),
             phase: Default::default(),
             saving: Default::default(),
+            journal: Default::default(),
         }
     }
     /// The job enters `phase`. One its kind's table doesn't allow after the current one is
@@ -175,6 +180,7 @@ impl Log {
         phases.current = Some(phase);
         drop(phases);
         self.save_for(phase, true);
+        self.changed();
     }
     /// A job going on after a restart starts in the state it was saved in, whatever its kind's
     /// first states are; its work may enter that state again.
@@ -185,6 +191,12 @@ impl Log {
         phases.resumed = true;
         drop(phases);
         self.save_for(phase, false);
+    }
+    /// Has the job's journal entry written again.
+    fn changed(&self) {
+        if let Some(journal) = self.journal.get() {
+            journal.send_replace(());
+        }
     }
     /// Keeps what the job needs to go on after a restart (`saved_job`), from the next state it
     /// enters on: written whenever it enters a state that goes on (`Restart::Continue`), with
@@ -422,6 +434,25 @@ impl Job {
             None => info!("{}: job {} {state:?}", self.name, self.id),
         }
         *self.outcome.lock().unwrap_or_else(PoisonError::into_inner) = (state, error);
+        self.log.changed();
+    }
+    pub fn job_id(&self) -> u32 {
+        self.id
+    }
+    /// the device's or the site's name
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn log(&self) -> &Log {
+        &self.log
+    }
+    /// how it stands or ended, with the error it failed with
+    pub fn outcome(&self) -> (JobState, Option<ErrorInfo>) {
+        self.outcome.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+    /// how long it ran, once ended
+    pub fn ran_for(&self) -> Option<Duration> {
+        *self.took.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -429,6 +460,7 @@ impl Job {
 pub fn start<F>(
     device: &DeviceAccess,
     kind: JobKind,
+    started: Started,
     work: impl FnOnce(Log) -> F,
 ) -> Result<Arc<Job>, Error>
 where
@@ -437,6 +469,7 @@ where
     let log = Log::new(device.name());
     let work = work(log.clone());
     let job = register(&[(subject_of(device), log)], None, kind)?.swap_remove(0);
+    write_journal(&job, &started);
     spawn(job.clone(), work);
     Ok(job)
 }
@@ -447,6 +480,7 @@ pub fn start_through<F>(
     device: &DeviceAccess,
     through: &DeviceAccess,
     kind: JobKind,
+    started: Started,
     work: impl FnOnce(Log) -> F,
 ) -> Result<Arc<Job>, Error>
 where
@@ -455,6 +489,7 @@ where
     let log = Log::new(device.name());
     let work = work(log.clone());
     let job = register(&[(subject_of(device), log)], Some(subject_of(through)), kind)?.swap_remove(0);
+    write_journal(&job, &started);
     spawn(job.clone(), work);
     Ok(job)
 }
@@ -509,6 +544,20 @@ where
     });
 }
 
+/// Has the journal entry of a device's job written from now on, if entries are written.
+fn write_journal(job: &Arc<Job>, started: &Started) {
+    let JobSubject::Device(device) = job.subject else {
+        return;
+    };
+    if !journal::enabled() {
+        return;
+    }
+    let (changes, receiver) = watch::channel(());
+    if job.log.journal.set(changes).is_ok() {
+        RUNTIME.spawn(journal::follow(job.clone(), device, started.clone(), receiver));
+    }
+}
+
 fn subject_of(device: &DeviceAccess) -> (JobSubject, &str) {
     (JobSubject::Device(device.id()), device.name())
 }
@@ -519,6 +568,7 @@ fn subject_of(device: &DeviceAccess) -> (JobSubject, &str) {
 pub fn start_all<F>(
     devices: &[DeviceAccess],
     kind: JobKind,
+    started: Started,
     work: impl FnOnce(Vec<Log>) -> F,
 ) -> Result<Vec<Arc<Job>>, Error>
 where
@@ -528,6 +578,7 @@ where
     let work = work(logs.clone());
     let members: Vec<_> = devices.iter().map(subject_of).zip(logs).collect();
     let jobs = register(&members, None, kind)?;
+    jobs.iter().for_each(|job| write_journal(job, &started));
     let running = jobs.clone();
     RUNTIME.spawn(async move {
         let result = run(async move { Ok(work.await) }).await;
@@ -787,6 +838,11 @@ impl Job {
 #[cfg(test)]
 mod tests {
     use super::{Event, JobKind, JobState, Log, cancel, get, holds_watchdogs, list, start, start_through};
+    use crate::journal::Started;
+
+    fn by() -> Started {
+        Started::By("test".into())
+    }
     use crate::{
         device::{
             update::{Reboot, RebootReason},
@@ -945,13 +1001,13 @@ mod tests {
         let topology: TopologyHolder = builder.into();
         let device = topology.devices_by_id(device).await.unwrap();
 
-        let job = start(&device, JobKind::Update, |log| async move {
+        let job = start(&device, JobKind::Update, by(), |log| async move {
             log.emit(reboot());
             log.unless_cancelled(sleep(Duration::from_secs(60))).await?;
             Ok(())
         })
         .unwrap();
-        assert!(start(&device, JobKind::Update, |_| async { Ok(()) }).is_err());
+        assert!(start(&device, JobKind::Update, by(), |_| async { Ok(()) }).is_err());
         // cancelled while it waits
         while job.log.events().is_empty() {
             sleep(Duration::from_millis(10)).await;
@@ -960,11 +1016,11 @@ mod tests {
         wait_for(job.id, JobState::Cancelled).await;
         assert_eq!(job.log.events(), [reboot()]);
 
-        let done = start(&device, JobKind::Update, |_| async { Ok(()) }).unwrap();
+        let done = start(&device, JobKind::Update, by(), |_| async { Ok(()) }).unwrap();
         wait_for(done.id, JobState::Done).await;
 
         // a bug in the work: failed with the panic's message, and the device is free again
-        let panicked = start(&device, JobKind::Apply, |_| async {
+        let panicked = start(&device, JobKind::Apply, by(), |_| async {
             if true {
                 panic!("Send command failed");
             }
@@ -975,7 +1031,7 @@ mod tests {
         let error = panicked.outcome.lock().unwrap().1.clone().expect("error");
         assert_eq!(error.code, "PANIC");
         assert!(error.message.contains("Send command failed"), "{}", error.message);
-        let after = start(&device, JobKind::Update, |_| async { Ok(()) }).unwrap();
+        let after = start(&device, JobKind::Update, by(), |_| async { Ok(()) }).unwrap();
         wait_for(after.id, JobState::Done).await;
     }
 
@@ -1011,18 +1067,18 @@ mod tests {
         let new = topology.devices_by_id(ids[0]).await.unwrap();
         let neighbor = topology.devices_by_id(ids[1]).await.unwrap();
 
-        let job = start_through(&new, &neighbor, JobKind::Bootstrap, |log| async move {
+        let job = start_through(&new, &neighbor, JobKind::Bootstrap, by(), |log| async move {
             log.unless_cancelled(sleep(Duration::from_secs(60))).await?;
             Ok(())
         })
         .unwrap();
-        assert!(start(&neighbor, JobKind::Apply, |_| async { Ok(()) }).is_err());
-        assert!(start(&new, JobKind::Apply, |_| async { Ok(()) }).is_err());
+        assert!(start(&neighbor, JobKind::Apply, by(), |_| async { Ok(()) }).is_err());
+        assert!(start(&new, JobKind::Apply, by(), |_| async { Ok(()) }).is_err());
         // the neighbor's page finds it
         let subject = super::subject_of(&neighbor).0;
         assert!(list(Some(subject)).iter().any(|listed| listed.id == job.id));
         cancel(job.id);
         wait_for(job.id, JobState::Cancelled).await;
-        start(&neighbor, JobKind::Apply, |_| async { Ok(()) }).unwrap();
+        start(&neighbor, JobKind::Apply, by(), |_| async { Ok(()) }).unwrap();
     }
 }

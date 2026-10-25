@@ -11,6 +11,12 @@ impl From<Duration> for ScalarDuration {
     }
 }
 
+impl From<ScalarDuration> for Duration {
+    fn from(duration: ScalarDuration) -> Self {
+        duration.0
+    }
+}
+
 #[Scalar]
 impl ScalarType for ScalarDuration {
     fn parse(value: Value) -> InputValueResult<Self> {

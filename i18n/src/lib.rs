@@ -36,6 +36,9 @@ pub mod batch;
 /// A job and its events (`components::job`), as the backend reports them.
 pub mod job;
 
+/// A job's entry in the device's journal in NetBox (`backend::journal`).
+pub mod journal;
+
 /// The helpers that write to NetBox (`components::netbox_helper`).
 pub mod helper;
 

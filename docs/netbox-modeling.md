@@ -34,7 +34,10 @@ einen fehlenden oder fast vollen Pool (unter 10 % frei):
 | `loopback` | daraus kommen die Loopback-Adressen (je ein Prefix für IPv4 und IPv6) |
 | `transfer` | daraus kommen die Transfernetze zwischen Routern (nur IPv4)          |
 
-Alle sechs Tags lassen sich mit [netbox-import/3-tags.yaml](netbox-import/3-tags.yaml) anlegen
+An Journal-Einträgen erkennt der Provisioner seine eigenen am Tag `netbox-provisioner`
+([Protokoll](protocol.md)); er setzt ihn selbst.
+
+Alle sieben Tags lassen sich mit [netbox-import/3-tags.yaml](netbox-import/3-tags.yaml) anlegen
 (Customization > Tags > Import, YAML).
 
 `nat` erzeugt `srcnat action=masquerade out-interface=<Uplink>`. Beantwortet der Router selbst
@@ -65,6 +68,7 @@ nur auf Geräten mit Client-Netz. Jedes Gerät fragt die Server auch selbst
 | VLAN Group          | `vxlan_vni`            | Integer                      | VLANs der Gruppe über VXLAN verbinden         |
 | Wireless Link       | `rf_country`           | Text                         | Land beider Enden einer Funkbrücke übersteuern |
 | Wireless Link       | `rf_frequency_mode`    | Selection                    | Frequency Mode beider Enden übersteuern       |
+| Journal Entry       | `provisioner_job`      | JSON                         | Stand eines Jobs, vom Provisioner geschrieben |
 
 Die Namen müssen exakt stimmen. Anlegen, Werte und Wirkung im Einzelnen:
 [custom-fields.md](custom-fields.md).

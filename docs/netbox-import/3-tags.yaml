@@ -43,3 +43,10 @@ color: 673ab7
 description: The prefix the transfer networks between routers are taken from (/31, /29 across a bridge)
 weight: 1000
 object_types: ipam.prefix
+---
+name: netbox-provisioner
+slug: netbox-provisioner
+color: 607d8b
+description: Journal entry the provisioner writes for a job (see ../protocol.md)
+weight: 1000
+object_types: extras.journalentry

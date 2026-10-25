@@ -32,6 +32,12 @@ impl NetboxRest {
             .ok_or(NetboxError::WriteNotAllowed)?;
         Self::with_token(token, Some(changelog_message.into()))
     }
+    /// For the jobs' journal entries (`crate::journal`), with `netbox_write_token`, whatever
+    /// `allow_netbox_write` says: that one lets the helpers write.
+    pub fn journal(changelog_message: impl Into<Box<str>>) -> Result<Self, NetboxError> {
+        let token = CONFIG.netbox_write_token.as_deref().ok_or(NetboxError::WriteNotAllowed)?;
+        Self::with_token(token, Some(changelog_message.into()))
+    }
     fn with_token(token: &str, changelog_message: Option<Box<str>>) -> Result<Self, NetboxError> {
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, authorization_header(token).parse()?);

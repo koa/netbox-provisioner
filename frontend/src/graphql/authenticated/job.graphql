@@ -74,6 +74,7 @@ query JobEvents($id: Int!, $after: Int){
                 ... on WatchdogLeft { device error { ...Problem } }
                 ... on Resumed { after }
                 ... on WatchdogKept { device watching { watchAddress poePings { port address } } safetyNet }
+                ... on JournalNotWritten { error { ...Problem } }
                 ... on NetboxWritten { path display deleted changes { field value previous } }
                 ... on NetboxUndone { path display deleted recreated }
             }

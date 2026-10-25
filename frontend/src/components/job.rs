@@ -614,6 +614,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             &problem(&failed.error),
         ),
         Event::WatchdogLeft(left) => e::watchdog_left(&left.device, &problem(&left.error)),
+        Event::JournalNotWritten(failed) => e::journal_not_written(&problem(&failed.error)),
         Event::WatchdogKept(kept) => e::watchdog_kept(
             &kept.device,
             &watching!(kept.watching),
