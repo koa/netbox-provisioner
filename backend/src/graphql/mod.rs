@@ -1,7 +1,7 @@
 use crate::{
     Error,
     config::CONFIG,
-    device_state::UpdateState,
+    device_state::{DeviceModeState, NetboxState, PowerCycleState, RebootState, UpdateState},
     error_info::ApiError,
     device::{
         AccessibleDevice, Connecting, bootstrap, device_mode, partitions,
@@ -256,6 +256,7 @@ impl MutationAuthenticated {
         let topology = self.topology.clone();
         Ok(job::start(&device, JobKind::NetboxWrite, |log| async move {
             let result = helper::write(&helper, &current, &fingerprint, &user, &log).await;
+            log.enter(NetboxState::Refetching);
             refetch(&topology).await;
             result
         })?)
@@ -277,6 +278,7 @@ impl MutationAuthenticated {
         let topology = self.topology.clone();
         Ok(job::start(&device, JobKind::NetboxUndo, |log| async move {
             let result = helper::undo(job_id, &objects, &user, &log).await;
+            log.enter(NetboxState::Refetching);
             refetch(&topology).await;
             result
         })?)
@@ -383,6 +385,7 @@ impl MutationAuthenticated {
         let power = PowerChain::of(&device);
         let name: Box<str> = device.name().into();
         Ok(job::start(&supplier.clone(), JobKind::PowerCycle, |log| async move {
+            log.enter(PowerCycleState::Reading);
             let link = connect_for_job(&supplier, None, None, None, &log).await?;
             crate::device::power_cycle::power_cycle(&link.api().await?, &supply, &factory, &power, &name, &log)
                 .await
@@ -426,6 +429,7 @@ impl MutationAuthenticated {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
         Ok(job::start(&device.clone(), JobKind::Reboot, |log| async move {
+            log.enter(RebootState::Reading);
             let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             update::reboot(&device, &power, &log).await
         })?)
@@ -445,6 +449,7 @@ impl MutationAuthenticated {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
         Ok(job::start(&device.clone(), JobKind::DeviceMode, |log| async move {
+            log.enter(DeviceModeState::Reading);
             let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             device_mode::change(&link, &device, &power, &log).await
         })?)
@@ -463,6 +468,7 @@ impl MutationAuthenticated {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
         Ok(job::start(&device.clone(), JobKind::Repartition, |log| async move {
+            log.enter(RebootState::Reading);
             let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             partitions::repartition(&link, &power, &log).await
         })?)
@@ -482,6 +488,7 @@ impl MutationAuthenticated {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
         Ok(job::start(&device.clone(), JobKind::BootPartition, |log| async move {
+            log.enter(RebootState::Reading);
             let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             partitions::boot_from(&link, &power, &partition, &log).await
         })?)

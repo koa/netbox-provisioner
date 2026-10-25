@@ -6,6 +6,7 @@
 //! installs can brick it ([`PowerChain::power_cut`]).
 use crate::{
     Error,
+    device_state::PowerCycleState,
     device::{bootstrap, power::PowerChain, raw::command},
     job::Log,
     topology::{
@@ -68,10 +69,12 @@ pub async fn power_cycle(
     device: &str,
     log: &Log,
 ) -> Result<(), Error> {
+    log.enter(PowerCycleState::WaitingForChain);
     let _cut = log
         .unless_cancelled(power.power_cut(&supply.device.name, log))
         .await?;
     log.check()?;
+    log.enter(PowerCycleState::Cutting);
     let port = bootstrap::port_name(supplier, factory)
         .await?
         .ok_or_else(|| Error::PoePortNotFound {

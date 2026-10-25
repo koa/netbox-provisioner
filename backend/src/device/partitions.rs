@@ -10,6 +10,7 @@
 //! went missing.
 use crate::{
     Error,
+    device_state::RebootState,
     device::{
         power::PowerChain,
         raw::{Row, command, field, rows},
@@ -159,7 +160,9 @@ pub async fn repartition(link: &impl DeviceLink, power: &PowerChain, log: &Log) 
     }
     let before_files = files(&device).await?;
     let before_identity = identity(&device).await?;
+    log.enter(RebootState::WaitingForChain);
     let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
+    log.enter(RebootState::Rebooting);
     let uptime = read_state(&device).await?.uptime;
     log.emit(RepartitionStarted {
         count: COUNT as u32,
@@ -235,7 +238,9 @@ pub async fn boot_from(
         });
         return Ok(());
     }
+    log.enter(RebootState::WaitingForChain);
     let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
+    log.enter(RebootState::Rebooting);
     let uptime = read_state(&device).await?.uptime;
     let id = id_of(&device, name).await?;
     command(&device, "/partitions/activate", &[("number", &id)]).await?;

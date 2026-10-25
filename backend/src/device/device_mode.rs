@@ -15,6 +15,7 @@
 //! the user for the confirmation and checks the result afterwards.
 use crate::{
     Error,
+    device_state::DeviceModeState,
     config::CONFIG,
     device::{
         power::PowerChain,
@@ -182,7 +183,9 @@ pub async fn change_to(
         return Ok(());
     }
     // what the device powers goes down with it
+    log.enter(DeviceModeState::WaitingForChain);
     let _rebooting = log.unless_cancelled(power.rebooting(log)).await?;
+    log.enter(DeviceModeState::Requesting);
     let confirm_timeout = format!("{}s", CONFIRM_TIMEOUT.as_secs());
     // the countdown has its own deadline below, not the API's limit without a reply
     let mut countdown = device
@@ -209,6 +212,7 @@ pub async fn change_to(
         changes: changes.clone(),
         timeout: CONFIRM_TIMEOUT.into(),
     });
+    log.enter(DeviceModeState::WaitingForConfirmation);
     // until the device goes down for the confirmation; cancelling drops the connection, which
     // cancels the change on the device
     let deadline = Instant::now() + CONFIRM_TIMEOUT + Duration::from_secs(30);
@@ -228,6 +232,7 @@ pub async fn change_to(
     }
     drop(countdown);
     drop(device);
+    log.enter(DeviceModeState::Rebooting);
     log.emit(Reboot {
         reason: RebootReason::DeviceMode,
         timeout: REBOOT_TIMEOUT.into(),

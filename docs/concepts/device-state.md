@@ -332,16 +332,20 @@ Uptime.
 
 **Bewusst nicht:** ein Kaltstart; dafür gibt es „Strom aus und ein“.
 
+Umgesetzt als `device_state::RebootState`:
+
 ```mermaid
 stateDiagram-v2
-    [*] --> WartetAufKette
-    WartetAufKette --> Ausgelöst: [kein Gespeistes aktualisiert]
-    Ausgelöst --> [*]: Uptime gesunken, erwartet (G) → fertig
-    Ausgelöst --> [*]: nicht zurück (Z) → fehlgeschlagen
+    [*] --> Lesen
+    Lesen --> [*]: Partition läuft schon, nicht teilbar → fertig oder fehlgeschlagen
+    Lesen --> WartetAufKette
+    WartetAufKette --> Neustart: [kein Gespeistes aktualisiert], Befehl abgesetzt
+    Neustart --> [*]: Uptime gesunken, erwartet (G) → fertig
+    Neustart --> [*]: nicht zurück (Z), anders als erwartet (G) → fehlgeschlagen
 ```
 
-Partitionieren und Partition booten setzen vor `Ausgelöst` ihren Befehl ab; „erwartet“ heisst dann
-zwei Partitionen bzw. die gewählte läuft. Nach einem Start des Servers in `Ausgelöst`:
+„Erwartet“ heisst beim Partitionieren zwei Partitionen und dieselbe Identity, beim Booten die
+gewählte Partition. Abbrechbar bis `WartetAufKette`; nach einem Start des Servers in `Neustart`:
 weiterführen.
 
 ### Strom aus und ein
@@ -361,14 +365,20 @@ Ein Auftrag des **Speisenden**, der den Strom eines anderen Geräts schneidet. B
 Gerät ist dafür kein eigener Zustand nötig: Ob ihm gerade der Strom geschnitten wird, folgt aus
 dem Auftrag seines Speisenden.
 
+Umgesetzt als `device_state::PowerCycleState`:
+
 ```mermaid
 stateDiagram-v2
-    [*] --> WartetAufKette
+    [*] --> Lesen
+    Lesen --> WartetAufKette: Speisender erreicht
     WartetAufKette --> Aus: [weder das Gespeiste noch eines, das es speist, aktualisiert]
-    Aus --> WartetAufGerät: Port 5 s aus und wieder ein (G)
-    WartetAufGerät --> [*]: Gespeistes antwortet (G) → fertig
-    WartetAufGerät --> [*]: Frist (Z) → fehlgeschlagen
+    Aus --> [*]: Port für 5 s aus, das Gerät schaltet ihn selbst wieder ein → fertig
 ```
+
+Beim Umsetzen gefunden: Der Auftrag wartet nicht, bis das Gespeiste wieder antwortet, und gibt
+die Bedingung mit dem Befehl frei, obwohl der Port noch 5 s aus ist und das Gespeiste danach erst
+startet. Ein Update des Gespeisten könnte in dieser Zeit beginnen (siehe
+[Lücken](#lücken-beim-umsetzen-gefunden)).
 
 ### Device-Mode
 
@@ -384,21 +394,25 @@ Management-Proxys, `partitions` für den Update-Fallback.
 
 **Bewusst nicht:** andere Features des Device-Mode.
 
+Umgesetzt als `device_state::DeviceModeState`:
+
 ```mermaid
 stateDiagram-v2
     [*] --> Lesen
     Lesen --> [*]: alles schon an → fertig
     Lesen --> WartetAufKette: Features fehlen
-    WartetAufKette --> WartetAufTaste: [kein Gespeistes aktualisiert], Update gesendet, Gerät zählt (G)
+    WartetAufKette --> Anfordern: [kein Gespeistes aktualisiert]
+    Anfordern --> WartetAufTaste: Update gesendet, Gerät zählt (G)
+    Anfordern --> [*]: abgelehnt (G) → fehlgeschlagen
     WartetAufTaste --> Neustart: Gerät geht weg (G) — Taste oder Kaltstart (B am Gerät)
     WartetAufTaste --> [*]: „update canceled“ nach 10 min (Z) → fehlgeschlagen
-    Neustart --> [*]: Features an (G) → fertig
+    Neustart --> [*]: Features an (G) → fertig; Frist (Z) → fehlgeschlagen
 ```
 
 Die Bestätigung ist eine Bedienung **am Gerät**, nicht im Provisioner; der Auftrag beobachtet nur,
 dass das Gerät weggeht. `WartetAufTaste` hält die Verbindung offen, sonst bricht RouterOS ab:
 Nach einem Start des Servers ist die Änderung deshalb sicher weg, also *unterbrochen*, ohne
-Selbstauslöser.
+Selbstauslöser. `Neustart` liest nur und wird weitergeführt.
 
 ### Ersteinrichtung
 
@@ -422,23 +436,25 @@ eine Firewall-Freigabe.
 
 **Bewusst nicht:** die eigentliche Konfiguration; die bringt das erste Anwenden.
 
+Umgesetzt als `device_state::BootstrapState`:
+
 ```mermaid
 stateDiagram-v2
-    [*] --> NachbarPrüfen
+    [*] --> NachbarPrüfen: [Nachbar ohne Auftrag]
     NachbarPrüfen --> [*]: Weiterleitung aus → fehlgeschlagen
     NachbarPrüfen --> Konsole: SSH zum Nachbarn, mac-telnet (G)
-    Konsole --> Konsole: Login versucht (G), bis Frist
-    Konsole --> WartetAufApi: Einrichtung durch (G)
+    Konsole --> WartetAufApi: Einrichtung durch (G); Logins bis zur Frist wiederholt
+    Konsole --> [*]: kein Login bis zur Frist (Z) → fehlgeschlagen
     WartetAufApi --> [*]: API antwortet (G) → fertig
     WartetAufApi --> [*]: Frist (Z) → fehlgeschlagen
 ```
 
 Läuft über ein anderes Gerät (den Nachbarn), das solange keinen eigenen Auftrag annimmt
-(`job::start_through`): eine Bedingung über Geräte hinweg, `[Nachbar ohne Auftrag]` vor
-`NachbarPrüfen`, und umgekehrt kein Auftrag des Nachbarn, solange die Ersteinrichtung läuft.
-In `Konsole` nicht abbrechbar; nach einem Start des
+(`job::start_through`): eine Bedingung über Geräte hinweg, und umgekehrt kein Auftrag des
+Nachbarn, solange die Ersteinrichtung läuft. In `Konsole` nicht abbrechbar; nach einem Start des
 Servers ist die Sitzung weg, also *unterbrochen*. Sie hinterlässt beim Nachbarn nichts, was
-selbst auslöst (die Befehle tun dort nichts, `netboxProvisionerNeighbor`).
+selbst auslöst (die Befehle tun dort nichts, `netboxProvisionerNeighbor`). `WartetAufApi` liest
+nur und wird weitergeführt.
 
 ### Aufräumen
 
@@ -452,8 +468,11 @@ wiederherstellen, Pakete entfernen.
 **Bewusst nicht:** das Apply-Skript, solange es läuft (es endet selbst), und eine
 Device-Mode-Änderung (die bleibt nie liegen).
 
-Ein Zustand `Aufräumen`, dann Ende. „Jetzt zurück“ hat zusätzlich `WartetAufGerät` wie ein
-Neustart. Wirkt auf **Selbstauslöser** (der gewählte Eintrag weg).
+Umgesetzt als `device_state::CleanupState`: `Wegräumen` (`Clearing`), dann Ende; „Jetzt
+zurück“ hat danach `Neustart` (`Rebooting`), bis das Gerät mit der Konfiguration von vorher
+zurück ist. Wirkt auf **Selbstauslöser** (der gewählte Eintrag weg). Beim Umsetzen gefunden:
+„Jetzt zurück“ startet das Gerät neu, ohne `[kein Gespeistes aktualisiert]` zu prüfen (siehe
+[Lücken](#lücken-beim-umsetzen-gefunden)).
 
 ### NetBox schreiben, zurücknehmen
 
@@ -471,9 +490,18 @@ Schreiben zurück (`undoNetboxWrite`).
 **Bewusst nicht:** eine Transaktion. NetBox hat keine über mehrere Objekte, ein Fehler mitten im
 Plan lässt den Teil davor geschrieben (`poe_type` an koenig-hegglin).
 
-Ein Zustand pro Schritt des Plans (`Schritt n von m`), dann Ende. Wirkt auf **NetBox**: Jeder
-geschriebene Schritt kommt sofort dazu, auch wenn ein späterer fehlschlägt. Nach einem Start des
-Servers: unterbrochen, `Geschrieben` hält, was durchging.
+Umgesetzt als `device_state::NetboxState`: `Planen` (`Planning`, Plan neu berechnet und mit
+dem gezeigten verglichen), `Schreiben` (`Writing`, Schritt um Schritt) bzw. `Zurücknehmen`
+(`Undoing`), danach in jedem Fall `NeuLesen` (`Refetching`, die Topologie). Wirkt auf **NetBox**:
+Jeder geschriebene Schritt kommt sofort dazu, auch wenn ein späterer fehlschlägt. Nach einem Start
+des Servers: unterbrochen, `Geschrieben` hält, was durchging.
+
+### Lücken, beim Umsetzen gefunden
+
+- **Strom aus und ein** gibt `[kein Speisendes startet neu]` für das Gespeiste frei, sobald der
+  Befehl abgesetzt ist; der Port ist dann noch 5 s aus und das Gespeiste startet erst danach.
+- **Aufräumen „Jetzt zurück“** startet das Gerät neu, ohne auf `[kein Gespeistes aktualisiert]`
+  zu warten.
 
 ## Bedingungen über Geräte hinweg
 
@@ -647,7 +675,7 @@ Zustand verweist nie auf ihn.
 1. Dieses Konzept abstimmen: zuerst die State-Machines, dann Speicher und Protokoll.
 2. Typen der Teilzustände und Übergänge in `backend::device_state`, rein (ohne Gerät), mit Tests der
    Übergangstabellen. Die heutigen Jobs melden ihre Zustände daran, ohne ihren Ablauf zu ändern.
-   *Begonnen:* Anwenden (einzeln und gemeinsam), Update und Downgrade; die anderen Arten folgen.
+   *Umgesetzt* für alle Arten; die Geräteseite zeigt die Zustände noch nicht.
 3. Speicher (`state_dir`), Einlesen beim Start, Ende als unterbrochen.
 4. Teilzustand **Selbstauslöser** an `leftovers` anschliessen (Soll gegen Ist), Geräteseite zeigt
    die Teilzustände.

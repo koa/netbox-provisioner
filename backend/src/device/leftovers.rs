@@ -9,6 +9,7 @@
 //! the connection of its job closes.
 use crate::{
     Error,
+    device_state::CleanupState,
     device::{
         raw::{Row, command, field, rows},
         ros::{fallback, graphql::APPLY_SCRIPT},
@@ -141,6 +142,7 @@ async fn packages(device: &RawDevice<SimpleResult>) -> Result<Vec<Row>, Error> {
 
 /// Does `action` on the device `link` reaches (`name` for the errors).
 pub async fn clear(link: &impl DeviceLink, name: &str, action: LeftoverAction, log: &Log) -> Result<(), Error> {
+    log.enter(CleanupState::Clearing);
     let device = link.api().await?;
     let gone = || Error::LeftoverGone(name.into());
     match action {
@@ -157,6 +159,7 @@ pub async fn clear(link: &impl DeviceLink, name: &str, action: LeftoverAction, l
             let sent = Instant::now();
             command(&device, "/execute", &[("script", &on_event)]).await?;
             drop(device);
+            log.enter(CleanupState::Rebooting);
             log.emit(Reboot {
                 reason: RebootReason::ApplyFallback,
                 timeout: REBOOT_TIMEOUT.into(),

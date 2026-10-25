@@ -9,6 +9,7 @@ use backend::Error;
 use backend::device::device_mode::{DeviceModeChanged, DeviceModeReason, change_to};
 use backend::device::power::PowerChain;
 use backend::device::update::{DeviceLink, Reboot, RebootReason};
+use backend::device_state::DeviceModeState;
 use backend::job::{Event, Log};
 use encoding_rs::mem::encode_latin1_lossy;
 use mikrotik_api::prelude::MikrotikDevice;
@@ -63,6 +64,13 @@ async fn confirm_asked(log: &Log) {
     .expect("no confirmation asked for");
 }
 
+/// A job's log as the mutation hands it on: past `Reading` (`device_state::DeviceModeState`).
+fn reading() -> Log {
+    let log = Log::new("mode");
+    log.enter(DeviceModeState::Reading);
+    log
+}
+
 #[tokio::test]
 #[ignore]
 async fn device_mode_change_confirmed_by_a_cold_boot() {
@@ -84,7 +92,7 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     assert_eq!(feature(&node, "partitions").await, "false");
 
     // cancelled while it waits: a power cut afterwards changes nothing
-    let log = Log::new("mode");
+    let log = reading();
     let job = tokio::spawn({
         let log = log.clone();
         let (link, power) = (Direct(node.api_port), power.clone());
@@ -94,12 +102,13 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     log.cancel();
     let result = job.await.expect("job");
     assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
+    assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     tokio::time::sleep(Duration::from_secs(2)).await;
     node.power_cycle().await.expect("power cycle");
     assert_eq!(feature(&node, "partitions").await, "false");
 
     // confirmed by cutting the power while it counts down
-    let log = Log::new("mode");
+    let log = reading();
     let job = tokio::spawn({
         let log = log.clone();
         let power = power.clone();
@@ -108,6 +117,7 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     confirm_asked(&log).await;
     node.power_cycle().await.expect("power cycle");
     job.await.expect("job").expect("device-mode change");
+    assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     assert_eq!(feature(&node, "partitions").await, "true");
     let events = log.events();
     assert!(
@@ -123,7 +133,7 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     );
 
     // on already: nothing to confirm
-    let log = Log::new("mode");
+    let log = reading();
     change_to(&Direct(node.api_port), &wanted, &power, &log)
         .await
         .expect("nothing to change");

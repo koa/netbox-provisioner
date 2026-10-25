@@ -7,6 +7,7 @@ use super::{
 };
 use crate::{
     Error,
+    device_state::NetboxState,
     job::{Event, Log},
     netbox::rest::NetboxRest,
     topology::{
@@ -64,10 +65,12 @@ pub async fn write(
     user: &str,
     log: &Log,
 ) -> Result<(), Error> {
+    log.enter(NetboxState::Planning);
     let plan = helper.plan(topology).await?;
     if plan.fingerprint_value() != fingerprint {
         return Err(Error::PlanOutdated);
     }
+    log.enter(NetboxState::Writing);
     let rest = NetboxRest::writer(format!("{} ({user})", plan.description))?;
     let mut created = Vec::<Option<u32>>::with_capacity(plan.steps.len());
     let resolve = |created: &[Option<u32>], target: Target| match target {
@@ -456,6 +459,7 @@ pub async fn undo(
     user: &str,
     log: &Log,
 ) -> Result<(), Error> {
+    log.enter(NetboxState::Undoing);
     let rest = NetboxRest::writer(format!("Undo of provisioner job {job} ({user})"))?;
     let mut recreated = Recreated::default();
     for object in written.iter().rev() {

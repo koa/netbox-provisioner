@@ -13,6 +13,7 @@
 //! session, so it runs on the neighbor's console over SSH ([`Terminal`]).
 use crate::{
     Error,
+    device_state::BootstrapState,
     config::{CONFIG, MikrotikCredentials},
     error_info::{ApiError, BootstrapObstacle},
     device::{
@@ -348,9 +349,11 @@ pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -
         plan.neighbor_port,
         macs(&plan.setup.macs)
     );
+    log.enter(BootstrapState::CheckingNeighbor);
     log.check()?;
     let mut setup = plan.setup.clone();
     setup.neighbor_port = Some(check_neighbor(plan).await?);
+    log.enter(BootstrapState::Console);
     log.emit(SetupStarted {
         neighbor: plan.neighbor.as_str().into(),
         neighbor_port: plan.neighbor_port.as_str().into(),
@@ -378,6 +381,7 @@ pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -
     }
     result?;
     let address = plan.port_address();
+    log.enter(BootstrapState::WaitingForApi);
     log.emit(WaitingForApi {
         address: address.to_string().into(),
         timeout: API_TIMEOUT.into(),

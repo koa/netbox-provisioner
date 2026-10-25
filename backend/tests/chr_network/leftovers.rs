@@ -118,6 +118,7 @@ async fn leftovers_are_found_and_cleared() {
         let log = Log::new("leftovers");
         clear(&link, "leftovers", action, &log).await.unwrap_or_else(|e| panic!("{action:?}: {e}"));
         assert_eq!(log.events(), [Event::LeftoverCleared(LeftoverCleared { action })]);
+        assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     }
     let left = read(&device).await.unwrap();
     assert!(left.is_empty(), "{left:?}");
@@ -150,6 +151,7 @@ async fn leftovers_are_found_and_cleared() {
     drop(device);
     let log = Log::new("leftovers");
     clear(&link, "leftovers", LeftoverAction::ApplyFallbackNow, &log).await.expect("apply fallback now");
+    assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     eprintln!("{:#?}", log.events());
     let device = link.api().await.unwrap();
     assert_eq!(identity(&device).await, before);

@@ -10,7 +10,7 @@
 //! way back ([`update_fallback`]), and the update is done when the OSPF neighbors are back.
 use crate::{
     Error,
-    device_state::UpdateState,
+    device_state::{RebootState, UpdateState},
     device::{
         power::{PowerChain, RebootLease},
         raw::{command, field, rows},
@@ -613,7 +613,9 @@ where
 /// Reboots the device and waits until it is back, as an update does (`power` as for
 /// [`update`]: not while a device it powers updates).
 pub async fn reboot(link: &impl DeviceLink, power: &PowerChain, log: &Log) -> Result<(), Error> {
+    log.enter(RebootState::WaitingForChain);
     let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
+    log.enter(RebootState::Rebooting);
     let state = reboot_and_wait(link, rebooting, log, RebootReason::Requested, REBOOT_TIMEOUT, |state| {
         Some(state.clone())
     })
