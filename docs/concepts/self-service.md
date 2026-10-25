@@ -1,7 +1,7 @@
 # Konzept: Self-Service für Anwohner
 
-Status: Konzept, nicht umgesetzt; Entscheidungen vom 2026-10-23 eingearbeitet. User Journey „Self-Service“ und Personas aus
-[pending.md](../pending.md#self-service).
+Status: Konzept, nicht umgesetzt; Entscheidungen vom 2026-10-23 eingearbeitet. Aufgabe C7 in
+[todo.md](../todo.md).
 
 ## Ausgangslage
 

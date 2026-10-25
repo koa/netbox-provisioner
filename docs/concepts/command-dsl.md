@@ -1,7 +1,6 @@
 # Konzept: RouterOS-Befehle ohne Strings
 
-Status: Konzept, nicht umgesetzt. Offener Punkt „DSL für Mikrotik Kommandos“ aus
-[pending.md](../pending.md#dsl-für-mikrotik-kommandos).
+Status: Konzept, nicht umgesetzt. Aufgabe C5 in [todo.md](../todo.md).
 
 ## Ausgangslage
 

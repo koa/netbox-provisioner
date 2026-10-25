@@ -1,6 +1,6 @@
 # Konzept: Updates im ganzen Netz
 
-Status: Konzept, nicht umgesetzt. Offener Punkt aus [pending.md](../pending.md#konzept-für-updates-im-ganzen-netz).
+Status: Konzept, nicht umgesetzt. Aufgabe C10 in [todo.md](../todo.md).
 Baut auf dem Server-Log (Events, Jobs) auf, das erledigt ist, und profitiert vom
 [Update-Fallback](../update-fallback.md).
 

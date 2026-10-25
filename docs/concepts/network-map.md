@@ -1,6 +1,6 @@
 # Konzept: Netz-Ansicht (Ist-Zustand, Health, PoE)
 
-Status: Konzept, nicht umgesetzt. Offener Punkt aus [pending.md](../pending.md#visualisierung-netz-zustand).
+Status: Konzept, nicht umgesetzt. Aufgabe C9 in [todo.md](../todo.md).
 
 Eine Seite pro Site: das Netz als Graph, Soll aus NetBox, Ist live aus dem Netz. Knoten sind
 Geräte, Kanten Kabel und Funkbrücken. Farben zeigen den Zustand, ein Klick auf einen Knoten zeigt
@@ -75,8 +75,8 @@ Die OSPFv3-Router-LSAs nennen keine Adressen, sondern `neighbor-router-id` und `
 lässt sich nur „Router X ist Nachbar von Router Y“ zuordnen. Zwei parallele Kabel zwischen
 denselben Geräten lassen sich nicht unterscheiden. Darum ist v2 die Grundlage, und v3 dient als
 Gegenprobe: Kante oben in v2, aber nicht in v3, heisst orange. Das hätte den Fall von lab-ap1 mit
-abgeschaltetem IPv6 sofort gezeigt (`docs/ospf-generation.md`). Der Wunsch „wahlweise v2 oder v3“
-aus `pending.md` wird so zu „v2 für die Zuordnung, v3 als Prüfung“. Ein Umschalter ist trotzdem
+abgeschaltetem IPv6 sofort gezeigt (`docs/ospf-generation.md`). Der ursprüngliche Wunsch „wahlweise v2
+oder v3“ wird so zu „v2 für die Zuordnung, v3 als Prüfung“. Ein Umschalter ist trotzdem
 möglich.
 
 ### Router ausserhalb von NetBox
@@ -162,7 +162,7 @@ auch ein absichtlich nicht angeschlossenes Netzteil (`psu1-state=fail` auf lab-c
 
 ## Alternative: Log-Aggregator (spätere Stufe)
 
-Die Idee aus `pending.md`: Alle Router schicken ihre OSPF-Meldungen per Syslog
+Die ursprüngliche Idee: Alle Router schicken ihre OSPF-Meldungen per Syslog
 (`/system/logging action` mit `remote`, Topic `ospf`) an den Provisioner. Vorteil: Ereignisse im
 Moment, in dem sie passieren, und eine Historie („Funkbrücke 3-mal in der letzten Stunde
 weggefallen“). Nachteile: Logging muss in die generierte Konfiguration jedes Geräts, Syslog über

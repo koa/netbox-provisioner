@@ -1,7 +1,7 @@
 # Konzept: Eine Datei pro GraphQL-Abfrage
 
-Status: Konzept, nicht umgesetzt; cynic als Alternative im Spike geprüft. Offener Punkt „Graphql Files“ aus
-[pending.md](../pending.md#graphql-files).
+Status: Konzept, nicht umgesetzt; cynic als Alternative im Spike geprüft. Aufgabe C4 in
+[todo.md](../todo.md).
 
 ## Ausgangslage
 

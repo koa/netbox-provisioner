@@ -1,7 +1,6 @@
 # Konzept: Überwachung
 
-Status: Konzept, nicht umgesetzt. User Journey „Überwachung“ aus
-[pending.md](../pending.md#überwachung). Baut auf der [Netz-Karte](network-map.md) auf.
+Status: Konzept, nicht umgesetzt. Aufgaben C8 und C14 in [todo.md](../todo.md). Baut auf der [Netz-Karte](network-map.md) auf.
 
 ## Ziel
 

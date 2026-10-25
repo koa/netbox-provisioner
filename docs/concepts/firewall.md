@@ -1,7 +1,6 @@
 # Konzept: Firewall aus NetBox
 
-Status: Konzept, nicht umgesetzt. User Journey „Firewall“ aus
-[pending.md](../pending.md#firewall).
+Status: Konzept, nicht umgesetzt. Aufgaben C1 bis C3 in [todo.md](../todo.md).
 
 ## Zwei Arten
 
