@@ -372,13 +372,13 @@ stateDiagram-v2
     [*] --> Lesen
     Lesen --> WartetAufKette: Speisender erreicht
     WartetAufKette --> Aus: [weder das Gespeiste noch eines, das es speist, aktualisiert]
-    Aus --> [*]: Port für 5 s aus, das Gerät schaltet ihn selbst wieder ein → fertig
+    Aus --> WartetAufGerät: Port für 5 s aus, das Gerät schaltet ihn selbst wieder ein
+    WartetAufGerät --> [*]: Gespeistes antwortet (G) → fertig
+    WartetAufGerät --> [*]: Frist (Z) → fehlgeschlagen
 ```
 
-Beim Umsetzen gefunden: Der Auftrag wartet nicht, bis das Gespeiste wieder antwortet, und gibt
-die Bedingung mit dem Befehl frei, obwohl der Port noch 5 s aus ist und das Gespeiste danach erst
-startet. Ein Update des Gespeisten könnte in dieser Zeit beginnen (siehe
-[Lücken](#lücken-beim-umsetzen-gefunden)).
+Die Bedingung `[kein Speisendes startet neu]` gilt für das Gespeiste bis zum Ende von
+`WartetAufGerät`, nicht nur bis zum Befehl (beim Umsetzen gefunden und behoben).
 
 ### Device-Mode
 
@@ -470,9 +470,9 @@ Device-Mode-Änderung (die bleibt nie liegen).
 
 Umgesetzt als `device_state::CleanupState`: `Wegräumen` (`Clearing`), dann Ende; „Jetzt
 zurück“ hat danach `Neustart` (`Rebooting`), bis das Gerät mit der Konfiguration von vorher
-zurück ist. Wirkt auf **Selbstauslöser** (der gewählte Eintrag weg). Beim Umsetzen gefunden:
-„Jetzt zurück“ startet das Gerät neu, ohne `[kein Gespeistes aktualisiert]` zu prüfen (siehe
-[Lücken](#lücken-beim-umsetzen-gefunden)).
+zurück ist; davor `WartetAufKette` (`WaitingForChain`), `[kein Gespeistes aktualisiert]` wie bei
+jedem Neustart (beim Umsetzen gefunden und behoben). Wirkt auf **Selbstauslöser** (der gewählte
+Eintrag weg).
 
 ### NetBox schreiben, zurücknehmen
 
@@ -495,13 +495,6 @@ dem gezeigten verglichen), `Schreiben` (`Writing`, Schritt um Schritt) bzw. `Zur
 (`Undoing`), danach in jedem Fall `NeuLesen` (`Refetching`, die Topologie). Wirkt auf **NetBox**:
 Jeder geschriebene Schritt kommt sofort dazu, auch wenn ein späterer fehlschlägt. Nach einem Start
 des Servers: unterbrochen, `Geschrieben` hält, was durchging.
-
-### Lücken, beim Umsetzen gefunden
-
-- **Strom aus und ein** gibt `[kein Speisendes startet neu]` für das Gespeiste frei, sobald der
-  Befehl abgesetzt ist; der Port ist dann noch 5 s aus und das Gespeiste startet erst danach.
-- **Aufräumen „Jetzt zurück“** startet das Gerät neu, ohne auf `[kein Gespeistes aktualisiert]`
-  zu warten.
 
 ## Bedingungen über Geräte hinweg
 

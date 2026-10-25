@@ -13,6 +13,7 @@ use crate::{
     device::{
         raw::{Row, command, field, rows},
         ros::{fallback, graphql::APPLY_SCRIPT},
+        power::PowerChain,
         update::{self, DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason, read_state},
         update_fallback, watchdog,
     },
@@ -140,8 +141,15 @@ async fn packages(device: &RawDevice<SimpleResult>) -> Result<Vec<Row>, Error> {
         .collect())
 }
 
-/// Does `action` on the device `link` reaches (`name` for the errors).
-pub async fn clear(link: &impl DeviceLink, name: &str, action: LeftoverAction, log: &Log) -> Result<(), Error> {
+/// Does `action` on the device `link` reaches (`name` for the errors). Loading the fallback now
+/// reboots the device, so it waits as a reboot does for the devices it powers (`power`).
+pub async fn clear(
+    link: &impl DeviceLink,
+    name: &str,
+    action: LeftoverAction,
+    power: &PowerChain,
+    log: &Log,
+) -> Result<(), Error> {
     log.enter(CleanupState::Clearing);
     let device = link.api().await?;
     let gone = || Error::LeftoverGone(name.into());
@@ -155,6 +163,9 @@ pub async fn clear(link: &impl DeviceLink, name: &str, action: LeftoverAction, l
                 .find(|row| field(row, "name") == Some(fallback::NAME))
                 .and_then(|row| field(row, "on-event").map(String::from))
                 .ok_or_else(gone)?;
+            // what the device powers goes down with it
+            log.enter(CleanupState::WaitingForChain);
+            let _rebooting = log.unless_cancelled(power.rebooting(log)).await?;
             let before = read_state(&device).await?.uptime;
             let sent = Instant::now();
             command(&device, "/execute", &[("script", &on_event)]).await?;

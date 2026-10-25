@@ -582,7 +582,11 @@ runs `/interface/ethernet/poe/power-cycle` on that port (found by its factory na
 is a job of the supplier, so it runs next to the device's own job (a device mode change
 waiting for its confirmation, which a warm reboot doesn't give), and it waits while the device
 or one it powers updates (`PowerChain::power_cut`, a reboot lease of the supplier, so their
-next update waits for it too). Never started by the provisioner itself.
+next update waits for it too). It keeps that lease until the device answers again
+(`power_cycle::wait_for_fed`, `Connected`; `NOT_BACK_AFTER_REBOOT` after the reboot timeout):
+the port is still off when the command returns, and the device boots after. Never started by
+the provisioner itself. "Jetzt zurück" of the apply fallback waits for the chain like a reboot
+(`leftovers::clear` takes a `PowerChain`).
 
 What a job didn't see to the end leaves on a device (cancelled, the provisioner restarted, the
 device unreached) the device page shows under its head (`device::leftovers`,

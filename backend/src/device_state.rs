@@ -230,6 +230,8 @@ pub enum PowerCycleState {
     WaitingForChain,
     /// the port switched off for a few seconds and on again
     Cutting,
+    /// until the fed device answers again; it boots meanwhile
+    WaitingForDevice,
 }
 
 impl States for PowerCycleState {
@@ -239,7 +241,8 @@ impl States for PowerCycleState {
         match self {
             Reading => &[WaitingForChain],
             WaitingForChain => &[Cutting],
-            Cutting => &[],
+            Cutting => &[WaitingForDevice],
+            WaitingForDevice => &[],
         }
     }
     fn cancel(self) -> Cancel {
@@ -249,7 +252,10 @@ impl States for PowerCycleState {
         }
     }
     fn restart(self) -> Restart {
-        Restart::Interrupted
+        match self {
+            PowerCycleState::WaitingForDevice => Restart::Continue,
+            _ => Restart::Interrupted,
+        }
     }
 }
 
@@ -335,7 +341,9 @@ impl States for BootstrapState {
 pub enum CleanupState {
     /// the leftover chosen goes
     Clearing,
-    /// "Jetzt zurück": the backup loads, waiting for the device to be back
+    /// "Jetzt zurück": waiting until no device this one powers updates
+    WaitingForChain,
+    /// the backup loads, waiting for the device to be back
     Rebooting,
 }
 
@@ -343,19 +351,20 @@ impl States for CleanupState {
     const FIRST: &'static [Self] = &[CleanupState::Clearing];
     fn next(self) -> &'static [Self] {
         match self {
-            CleanupState::Clearing => &[CleanupState::Rebooting],
+            CleanupState::Clearing => &[CleanupState::WaitingForChain],
+            CleanupState::WaitingForChain => &[CleanupState::Rebooting],
             CleanupState::Rebooting => &[],
         }
     }
     fn cancel(self) -> Cancel {
         match self {
             CleanupState::Clearing => Cancel::AfterState,
-            CleanupState::Rebooting => Cancel::Ends,
+            CleanupState::WaitingForChain | CleanupState::Rebooting => Cancel::Ends,
         }
     }
     fn restart(self) -> Restart {
         match self {
-            CleanupState::Clearing => Restart::Interrupted,
+            CleanupState::Clearing | CleanupState::WaitingForChain => Restart::Interrupted,
             CleanupState::Rebooting => Restart::Continue,
         }
     }
@@ -575,7 +584,12 @@ mod tests {
         all_reachable(&[Reading, WaitingForChain, Rebooting]);
         assert!(path(&[Reading, WaitingForChain, Rebooting]));
         assert!(!path(&[Reading, Rebooting]));
-        all_reachable(&[PowerCycleState::Reading, PowerCycleState::WaitingForChain, PowerCycleState::Cutting]);
+        all_reachable(&[
+            PowerCycleState::Reading,
+            PowerCycleState::WaitingForChain,
+            PowerCycleState::Cutting,
+            PowerCycleState::WaitingForDevice,
+        ]);
         all_reachable(&[
             DeviceModeState::Reading,
             DeviceModeState::WaitingForChain,
@@ -584,7 +598,7 @@ mod tests {
             DeviceModeState::Rebooting,
         ]);
         all_reachable(&[BootstrapState::CheckingNeighbor, BootstrapState::Console, BootstrapState::WaitingForApi]);
-        all_reachable(&[CleanupState::Clearing, CleanupState::Rebooting]);
+        all_reachable(&[CleanupState::Clearing, CleanupState::WaitingForChain, CleanupState::Rebooting]);
         all_reachable(&[NetboxState::Planning, NetboxState::Writing, NetboxState::Undoing, NetboxState::Refetching]);
         // the topology read again after a failed write too
         assert!(path(&[NetboxState::Planning, NetboxState::Refetching]));

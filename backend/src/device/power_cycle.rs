@@ -3,11 +3,17 @@
 //! again (`/interface/ethernet/poe/power-cycle`). Only on a click, with a confirmation, never by
 //! itself. It confirms a device mode change (a warm reboot doesn't) and brings back a device
 //! that hangs. It waits while the device or one it powers updates: losing power while it
-//! installs can brick it ([`PowerChain::power_cut`]).
+//! installs can brick it ([`PowerChain::power_cut`]), and keeps the chain until the device
+//! answers again ([`wait_for_fed`]): until then it boots.
 use crate::{
     Error,
     device_state::PowerCycleState,
-    device::{bootstrap, power::PowerChain, raw::command},
+    device::{
+        bootstrap,
+        power::{PowerChain, RebootLease},
+        raw::command,
+        update::REBOOT_TIMEOUT,
+    },
     job::Log,
     topology::{
         access::{AccessTopology, device::DeviceAccess},
@@ -16,6 +22,8 @@ use crate::{
 };
 use async_graphql::SimpleObject;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use std::time::Duration;
+use tokio::time::{Instant, sleep, timeout};
 
 /// How long the port stays without power.
 pub const OFF_SECONDS: u32 = 5;
@@ -60,7 +68,8 @@ pub fn supply(device: &DeviceAccess) -> Option<(DeviceAccess, PowerSupply, Box<s
 }
 
 /// Switches the power on the supplier's port with `factory` name off and on again, once
-/// neither `power`'s device nor one it powers updates.
+/// neither `power`'s device nor one it powers updates; the lease keeps them from updating
+/// until it is dropped.
 pub async fn power_cycle(
     supplier: &RawDevice<SimpleResult>,
     supply: &PowerSupply,
@@ -68,9 +77,9 @@ pub async fn power_cycle(
     power: &PowerChain,
     device: &str,
     log: &Log,
-) -> Result<(), Error> {
+) -> Result<RebootLease, Error> {
     log.enter(PowerCycleState::WaitingForChain);
-    let _cut = log
+    let cut = log
         .unless_cancelled(power.power_cut(&supply.device.name, log))
         .await?;
     log.check()?;
@@ -93,5 +102,25 @@ pub async fn power_cycle(
         device: device.into(),
         seconds: OFF_SECONDS,
     });
-    Ok(())
+    Ok(cut)
+}
+
+/// Waits until `device`, whose power was cut, answers again (`Connected`), up to
+/// [`REBOOT_TIMEOUT`]: until then it boots, and an update of it or of one it powers must not
+/// start.
+pub async fn wait_for_fed(device: &DeviceAccess, log: &Log) -> Result<(), Error> {
+    log.enter(PowerCycleState::WaitingForDevice);
+    let deadline = Instant::now() + REBOOT_TIMEOUT;
+    // the port is off a while yet: an answer before is the device not cut yet
+    log.unless_cancelled(sleep(Duration::from_secs(u64::from(OFF_SECONDS) + 5))).await?;
+    loop {
+        if let Ok(Ok(Some(link))) = timeout(Duration::from_secs(30), device.connect(None, None, None)).await {
+            log.emit(link.connected_device());
+            return Ok(());
+        }
+        if Instant::now() > deadline {
+            return Err(Error::NotBackAfterReboot);
+        }
+        log.unless_cancelled(sleep(Duration::from_secs(5))).await?;
+    }
 }

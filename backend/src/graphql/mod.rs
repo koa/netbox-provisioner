@@ -376,7 +376,7 @@ impl MutationAuthenticated {
     /// (`DeviceAccess.powerSupply`; `allow_apply` must be set): a cold boot, which confirms a
     /// device mode change. A job of the supplier, so it runs next to one of the device (the
     /// device mode waiting for its confirmation); it waits while the device or one it powers
-    /// updates.
+    /// updates, and keeps them from updating until the device answers again.
     #[graphql(guard = "WritesAllowed")]
     async fn power_cycle(&self, id: u32) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
@@ -387,8 +387,12 @@ impl MutationAuthenticated {
         Ok(job::start(&supplier.clone(), JobKind::PowerCycle, |log| async move {
             log.enter(PowerCycleState::Reading);
             let link = connect_for_job(&supplier, None, None, None, &log).await?;
-            crate::device::power_cycle::power_cycle(&link.api().await?, &supply, &factory, &power, &name, &log)
-                .await
+            let cut =
+                crate::device::power_cycle::power_cycle(&link.api().await?, &supply, &factory, &power, &name, &log)
+                    .await?;
+            let back = crate::device::power_cycle::wait_for_fed(&device, &log).await;
+            drop(cut);
+            back
         })?)
     }
     /// Starts taking care of something a job left on device `id` (`AccessibleDevice.leftovers`;
@@ -406,6 +410,7 @@ impl MutationAuthenticated {
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let name: Box<str> = device.name().into();
+        let power = PowerChain::of(&device);
         if action == crate::device::leftovers::LeftoverAction::RestoreWatchdogs
             && let Some(held) = job::holding_watchdogs(&name)
         {
@@ -413,7 +418,7 @@ impl MutationAuthenticated {
         }
         Ok(job::start(&device.clone(), JobKind::Cleanup, |log| async move {
             let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
-            crate::device::leftovers::clear(&link, &name, action, &log).await
+            crate::device::leftovers::clear(&link, &name, action, &power, &log).await
         })?)
     }
     /// Starts a reboot of a device (`allow_apply` must be set) and waits until it is back.

@@ -7,6 +7,7 @@ use crate::chr_network::qemu::nix_unavailable;
 use crate::chr_network::vm::boot_node;
 use backend::Error;
 use backend::device::leftovers::{LeftoverAction, LeftoverCleared, clear, read};
+use backend::device::power::PowerChain;
 use backend::device::ros::fallback;
 use backend::device::update::DeviceLink;
 use backend::device::watchdog::{Watching, suspend};
@@ -56,6 +57,10 @@ async fn run(device: &MikrotikDevice<SimpleResult>, command: &str, attributes: &
             panic!("{command}: {message}");
         }
     }
+}
+
+fn unpowered() -> PowerChain {
+    PowerChain::unpowered("leftovers")
 }
 
 async fn identity(device: &MikrotikDevice<SimpleResult>) -> String {
@@ -116,7 +121,7 @@ async fn leftovers_are_found_and_cleared() {
         LeftoverAction::RemovePackages,
     ] {
         let log = Log::new("leftovers");
-        clear(&link, "leftovers", action, &log).await.unwrap_or_else(|e| panic!("{action:?}: {e}"));
+        clear(&link, "leftovers", action, &unpowered(), &log).await.unwrap_or_else(|e| panic!("{action:?}: {e}"));
         assert_eq!(log.events(), [Event::LeftoverCleared(LeftoverCleared { action })]);
         assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     }
@@ -141,7 +146,7 @@ async fn leftovers_are_found_and_cleared() {
         run(&device, "/system/script/job/remove", &[(".id", &id)]).await;
     }
     // a leftover cleared elsewhere in the meantime
-    let result = clear(&link, "leftovers", LeftoverAction::RestoreWatchdogs, &Log::new("leftovers")).await;
+    let result = clear(&link, "leftovers", LeftoverAction::RestoreWatchdogs, &unpowered(), &Log::new("leftovers")).await;
     assert!(matches!(result, Err(Error::LeftoverGone(_))), "{result:?}");
 
     // "Jetzt zurück": the identity set after the backup is gone after it
@@ -150,7 +155,7 @@ async fn leftovers_are_found_and_cleared() {
     run(&device, "/system/identity/set", &[("name", "after-the-apply")]).await;
     drop(device);
     let log = Log::new("leftovers");
-    clear(&link, "leftovers", LeftoverAction::ApplyFallbackNow, &log).await.expect("apply fallback now");
+    clear(&link, "leftovers", LeftoverAction::ApplyFallbackNow, &unpowered(), &log).await.expect("apply fallback now");
     assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     eprintln!("{:#?}", log.events());
     let device = link.api().await.unwrap();
