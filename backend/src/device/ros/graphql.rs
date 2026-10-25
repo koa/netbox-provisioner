@@ -573,7 +573,7 @@ async fn provision_radios(
 }
 
 /// The name of the `/system/script` entry the config is applied with.
-const APPLY_SCRIPT: &str = "netbox-provisioner-apply";
+pub(crate) const APPLY_SCRIPT: &str = "netbox-provisioner-apply";
 /// How long a batch's device may take to be in line once its script is through; reachable
 /// but not in line after that, the script stopped at an error.
 pub(crate) const APPLY_TIMEOUT: Duration = Duration::from_secs(90);
@@ -1486,6 +1486,17 @@ impl AccessibleDevice {
             })
         };
         nullable(ctx, versions.await)
+    }
+    /// What a job that didn't see its work to the end left on the device, with what can be
+    /// done about it; `null` with nothing left, and while a job of this provisioner runs on
+    /// the device (what it set up isn't left over).
+    async fn leftovers(&self, ctx: &Context<'_>) -> Option<crate::device::leftovers::Leftovers> {
+        let subject = crate::job::JobSubject::Device(self.device_config.id());
+        if crate::job::list(Some(subject)).iter().any(|job| job.is_running()) {
+            return None;
+        }
+        let read = async { crate::device::leftovers::read(&self.connect_again().await?).await };
+        nullable(ctx, read.await).filter(|left| !left.is_empty())
     }
     /// The newest `last` entries of the device's log (`/log`, kept in its memory until a
     /// reboot), oldest first: what happened, after an update that went wrong. Without the

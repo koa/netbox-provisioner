@@ -244,3 +244,59 @@ pub mod warning {
         )
     }
 }
+
+/// What a job left on the device (`components::leftovers`).
+pub mod leftovers {
+    pub const TITLE: &str = "Auf dem Gerät liegt noch etwas von einem früheren Auftrag";
+    pub const TEXT: &str = "Ein Auftrag ist nicht zu Ende gekommen (abgebrochen, Provisioner neu \
+        gestartet, Gerät nicht erreicht). Was er auf dem Gerät vorbereitet hat, wirkt weiter, bis \
+        es weggeräumt ist.";
+
+    /// `next_run`: as the device reports it
+    fn next(next_run: Option<&str>) -> String {
+        next_run.map(|run| format!(" Nächster Lauf laut Gerät: {run}.")).unwrap_or_default()
+    }
+    pub fn apply_fallback(next_run: Option<&str>) -> String {
+        format!(
+            "Fallback des Anwendens: lädt die Konfiguration von vor dem Anwenden und startet neu.{}",
+            next(next_run)
+        )
+    }
+    pub const STOP_APPLY_FALLBACK: &str = "Fallback stoppen (Konfiguration bleibt)";
+    pub const APPLY_FALLBACK_NOW: &str = "Jetzt zurück";
+    pub const APPLY_FALLBACK_CONFIRM: &str =
+        "Die Konfiguration von vor dem Anwenden wird geladen, das Gerät startet neu. ";
+    pub const APPLY_FALLBACK_NOW_CONFIRMED: &str = "Jetzt zurück laden";
+
+    pub const UPDATE_FALLBACK: &str = "Fallback des Updates: startet nach Ablauf seiner Frist die \
+        Partition von vor dem Update. Erst stoppen, wenn RouterOS und die OSPF-Nachbarn auf dieser \
+        Seite stimmen.";
+    pub const STOP_UPDATE_FALLBACK: &str = "Fallback stoppen (RouterOS bleibt)";
+
+    /// `watching`: what the safety net sets again, already worded
+    pub fn watchdogs(watching: &[String], next_run: Option<&str>) -> String {
+        format!(
+            "Ausgesetzte Watchdogs: das Sicherheitsnetz setzt {} wieder.{}",
+            watching.join(", "),
+            next(next_run)
+        )
+    }
+    pub fn watch_address(address: &str) -> String {
+        format!("die Watch-Address {address}")
+    }
+    pub fn poe_ping(port: &str, address: &str) -> String {
+        format!("den PoE-Ping an {port} auf {address}")
+    }
+    pub const RESTORE_WATCHDOGS: &str = "Jetzt wiederherstellen";
+
+    pub const APPLY_SCRIPT_RUNNING: &str = "Das Skript eines Anwendens läuft noch; es endet von \
+        selbst, danach zeigt die Seite, was es geändert hat.";
+
+    pub fn packages(files: &[String]) -> String {
+        format!(
+            "Hochgeladene Pakete, die beim nächsten Neustart installiert werden: {}",
+            files.join(", ")
+        )
+    }
+    pub const REMOVE_PACKAGES: &str = "Pakete entfernen";
+}

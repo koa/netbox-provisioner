@@ -4,6 +4,7 @@ use crate::{
         batch_apply::{BatchApply, BatchJob},
         interfaces::Interfaces,
         job::JobView,
+        leftovers::{Leftover, Leftovers},
         menu::popup::Select,
     },
     error::{FrontendError, ServerProblem},
@@ -15,7 +16,7 @@ use crate::{
     graphql::{
         authenticated::{
             ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, ChangeDeviceMode, DeviceJobs,
-            BootPartition, DeviceOverview, DowngradeRouteros, downgrade_routeros, PowerCycle, RebootDevice, power_cycle, RepartitionDevice, UpdateRouteros, apply_device_cfg,
+            BootPartition, ClearLeftover, clear_leftover, DeviceOverview, DowngradeRouteros, downgrade_routeros, PowerCycle, RebootDevice, power_cycle, RepartitionDevice, UpdateRouteros, apply_device_cfg,
             reboot_device, bootstrap_candidates, bootstrap_device, change_device_mode, device_jobs,
             boot_partition, device_overview, repartition_device, update_routeros,
         },
@@ -100,6 +101,8 @@ pub struct ShowDeviceData {
     /// why it couldn't be reached
     access_problem: Option<Box<str>>,
     routeros: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessRouteros>,
+    /// what a job that didn't see its work to the end left on the device
+    leftovers: Option<device_overview::DeviceOverviewTopologyDeviceByIdAccessLeftovers>,
     /// the newest entries of the device's log, oldest first
     log: Vec<device_overview::DeviceOverviewTopologyDeviceByIdAccessLog>,
     /// `None` before RouterOS 7.17, or when it couldn't be read
@@ -141,6 +144,8 @@ pub enum ShowDeviceMessage {
     Update,
     /// bring the packages in line at the running version
     AdjustPackages,
+    /// take care of something a job left on the device
+    ClearLeftover(Leftover),
     DowngradeVersion(String),
     /// ask before downgrading (`true`), or not anymore
     ConfirmDowngrade(bool),
@@ -267,6 +272,11 @@ impl Component for ShowDevice {
             }
             ShowDeviceMessage::WithoutFallback(without) => {
                 self.without_fallback = without;
+                true
+            }
+            ShowDeviceMessage::ClearLeftover(leftover) => {
+                self.job_running = true;
+                clear(ctx.link().clone(), self.id, leftover, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::DowngradeVersion(version) => {
@@ -800,6 +810,13 @@ impl Component for ShowDevice {
             html! {<>
             {locked}
             {head}
+            if let Some(left) = &data.leftovers {
+                <Leftovers
+                    left={left.clone()}
+                    disabled={running}
+                    on_clear={ctx.link().callback(ShowDeviceMessage::ClearLeftover)}
+                />
+            }
             {job}
             <Interfaces
                 id={self.id}
@@ -1073,6 +1090,7 @@ fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
                             access_problem,
                             routeros: d.access.as_mut().and_then(|a| a.routeros.take()),
                             log: d.access.as_mut().and_then(|a| a.log.take()).unwrap_or_default(),
+                            leftovers: d.access.as_mut().and_then(|a| a.leftovers.take()),
                             device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
                             partitions: d.access.as_mut().and_then(|a| a.partitions.take()),
                             access: d.access.map(|a| {
@@ -1246,6 +1264,38 @@ fn downgrade(
         )
         .await
         .map(|data| data.downgrade_routeros.id);
+        scope.send_message(ShowDeviceMessage::JobStarted(result));
+    });
+}
+
+/// Takes care of something a job left on the device.
+fn clear(scope: Scope<ShowDevice>, id: u32, leftover: Leftover, target: SelectedTarget) {
+    use clear_leftover::LeftoverAction as A;
+    let action = match leftover {
+        Leftover::StopApplyFallback => A::STOP_APPLY_FALLBACK,
+        Leftover::ApplyFallbackNow => A::APPLY_FALLBACK_NOW,
+        Leftover::StopUpdateFallback => A::STOP_UPDATE_FALLBACK,
+        Leftover::RestoreWatchdogs => A::RESTORE_WATCHDOGS,
+        Leftover::RemovePackages => A::REMOVE_PACKAGES,
+    };
+    spawn_local(async move {
+        let (credential_name, adhoc_credentials) =
+            target.credentials.variables(|username, password| clear_leftover::AdhocCredentials {
+                username,
+                password,
+            });
+        let result = query_authenticated::<ClearLeftover, _>(
+            scope.clone(),
+            clear_leftover::Variables {
+                id: id as i64,
+                action,
+                target: target.address.map(|a| a.to_string()),
+                credential_name,
+                adhoc_credentials,
+            },
+        )
+        .await
+        .map(|data| data.clear_leftover.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }

@@ -28,6 +28,7 @@ query JobEvents($id: Int!, $after: Int){
                 ... on FirmwareUpgrade { current upgrade running }
                 ... on UpdateDone { from to }
                 ... on Downgraded { from to }
+                ... on LeftoverCleared { action }
                 ... on ApplyPlanned { script }
                 ... on FallbackArmed { delay window radioWait }
                 ... on FallbackUnavailable { deviceMode }

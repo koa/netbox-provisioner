@@ -128,6 +128,8 @@ pub enum RebootReason {
     Partition,
     /// `/system/package/downgrade` installs the uploaded older packages
     Downgrade,
+    /// the apply fallback left on the device loads the config from before, asked for
+    ApplyFallback,
 }
 
 /// The device is back with this RouterOS.

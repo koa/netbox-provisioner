@@ -560,6 +560,16 @@ waiting for its confirmation, which a warm reboot doesn't give), and it waits wh
 or one it powers updates (`PowerChain::power_cut`, a reboot lease of the supplier, so their
 next update waits for it too). Never started by the provisioner itself.
 
+What a job didn't see to the end leaves on a device (cancelled, the provisioner restarted, the
+device unreached) the device page shows under its head (`device::leftovers`,
+`AccessibleDevice.leftovers`, `components::leftovers`; `null` while a job of the device runs):
+the apply fallback's entry („Fallback stoppen“, „Jetzt zurück“: its `on-event` run with
+`/execute`, then waiting for the device), the update fallback's, the watchdogs' safety net
+(„Jetzt wiederherstellen“), `.npk` files, and the apply script only while it runs (it stays
+after every apply, the next replaces it). Each action is a `Cleanup` job (`clearLeftover`);
+nothing is cleared by itself (CHR test `leftovers_are_found_and_cleared`). In
+`/system/script/job` the API session is a job too: never remove those wholesale.
+
 NetBox's interface `mtu` is the L3 MTU of an Ethernet port or `wlan` radio (`setup_mtu`, and the
 wireless target); `l2mtu` is raised to carry it with a VLAN tag, other interface types refuse
 one. Both ends of a cable need the same (`port_mtu`): RouterOS 7's OSPF stays in ExStart/Exchange

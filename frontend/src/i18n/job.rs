@@ -15,6 +15,7 @@ pub const REMAINING: &str = "Noch offen:";
 
 pub const UPDATE: &str = "RouterOS-Update";
 pub const DOWNGRADE: &str = "RouterOS-Downgrade";
+pub const CLEANUP: &str = "Aufräumen";
 pub const APPLY: &str = "Anwenden";
 pub const BOOTSTRAP: &str = "Ersteinrichtung";
 pub const REBOOT: &str = "Neustart";
@@ -321,6 +322,7 @@ pub mod event {
         Repartition,
         Partition,
         Downgrade,
+        ApplyFallback,
         Other(&'a str),
     }
     pub fn reboot(reason: Reboot, minutes: u64) -> String {
@@ -332,6 +334,7 @@ pub mod event {
             Reboot::Repartition => "zum Aufteilen des Flash",
             Reboot::Partition => "von der anderen Partition",
             Reboot::Downgrade => "zum Downgrade auf die hochgeladenen Pakete",
+            Reboot::ApplyFallback => "mit der Konfiguration von vor dem Anwenden",
             Reboot::Other(other) => other,
         };
         format!("Neustart {reason}, wartet bis zu {minutes} min, bis das Gerät zurück ist")
@@ -347,6 +350,25 @@ pub mod event {
     }
     pub fn update_done(from: &str, to: &str) -> String {
         format!("Fertig: RouterOS {from} → {to}")
+    }
+    /// What clearing a leftover did (`LeftoverAction`).
+    pub enum Cleared<'a> {
+        StopApplyFallback,
+        ApplyFallbackNow,
+        StopUpdateFallback,
+        RestoreWatchdogs,
+        RemovePackages,
+        Other(&'a str),
+    }
+    pub fn leftover_cleared(cleared: Cleared) -> String {
+        match cleared {
+            Cleared::StopApplyFallback => "Fallback des Anwendens gestoppt, die Konfiguration bleibt".into(),
+            Cleared::ApplyFallbackNow => "Konfiguration von vor dem Anwenden geladen".into(),
+            Cleared::StopUpdateFallback => "Fallback des Updates gestoppt, das laufende RouterOS bleibt".into(),
+            Cleared::RestoreWatchdogs => "Watchdogs wiederhergestellt".into(),
+            Cleared::RemovePackages => "Hochgeladene Pakete entfernt".into(),
+            Cleared::Other(other) => format!("Aufgeräumt: {other}"),
+        }
     }
     pub fn downgraded(from: &str, to: &str) -> String {
         format!("Fertig: RouterOS {from} zurück auf {to}")

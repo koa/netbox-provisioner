@@ -127,6 +127,9 @@ pub enum Error {
     /// reach it through) and wasn't confirmed so (`updateRouteros(withoutFallback:)`).
     #[error("{0} has no way back from an update; confirm updating it without one")]
     NoUpdateFallback(Box<str>),
+    /// what the device page offered to clear on this device isn't there anymore
+    #[error("{0} has no such leftover anymore")]
+    LeftoverGone(Box<str>),
     /// a downgrade goes from RouterOS 7 to an older RouterOS 7
     #[error("No downgrade from RouterOS {running} to {target}")]
     NoDowngrade { running: Box<str>, target: Box<str> },

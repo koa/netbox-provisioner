@@ -41,6 +41,13 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                     partitions { name version sizeMib active running }
                     canSplit
                 }
+                leftovers {
+                    applyFallback { nextRun }
+                    updateFallback { nextRun }
+                    watchdogs { nextRun watching { watchAddress poePings { port address } } }
+                    applyScriptRunning
+                    packages { file size }
+                }
                 log { time topics message }
                 routeros {
                     version
@@ -102,6 +109,11 @@ mutation UpdateRouteros($id: Int!, $channel: Channel, $target: String, $credenti
 }
 mutation DowngradeRouteros($id: Int!, $version: String!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials, $suspendWatchdogs: Boolean, $withoutFallback: Boolean){
     downgradeRouteros(id: $id, version: $version, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials, suspendWatchdogs: $suspendWatchdogs, withoutFallback: $withoutFallback){
+        id
+    }
+}
+mutation ClearLeftover($id: Int!, $action: LeftoverAction!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+    clearLeftover(id: $id, action: $action, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
         id
     }
 }

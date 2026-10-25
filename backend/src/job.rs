@@ -14,7 +14,7 @@ use crate::{
     error_info::ErrorInfo,
     Error,
     device::{
-        self, batch, bootstrap, device_mode, partitions, power, power_cycle, ros::graphql as apply, terminal, update,
+        self, batch, bootstrap, device_mode, leftovers, partitions, power, power_cycle, ros::graphql as apply, terminal, update,
         radio_hold, update_fallback, watchdog,
     },
     graphql::scalars::ScalarDuration,
@@ -58,6 +58,7 @@ pub enum Event {
     FirmwareUpgrade(update::FirmwareUpgrade),
     UpdateDone(update::UpdateDone),
     Downgraded(update::Downgraded),
+    LeftoverCleared(leftovers::LeftoverCleared),
     ApplyPlanned(apply::ApplyPlanned),
     FallbackArmed(apply::FallbackArmed),
     FallbackUnavailable(apply::FallbackUnavailable),
@@ -184,6 +185,8 @@ pub enum JobKind {
     Downgrade,
     /// the generated config (`applyCfg`)
     Apply,
+    /// something a job left on the device taken care of (`clearLeftover`)
+    Cleanup,
     /// initial setup over mac-telnet (`bootstrap`)
     Bootstrap,
     /// a reboot asked for on the device page (`rebootDevice`)

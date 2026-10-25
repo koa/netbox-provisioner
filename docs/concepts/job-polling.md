@@ -1,7 +1,7 @@
 # Konzept: Jobs über Fehler und Neustarts hinweg verfolgen
 
-Status: Schritte 1 und 2 umgesetzt (Ende bei unbekanntem Job, Back-off, Job-Nummern pro Lauf),
-Schritte 3 und 4 offen. Offener Punkt „Polling verbessern“ aus [pending.md](../pending.md).
+Status: Schritte 1 bis 3 umgesetzt (Ende bei unbekanntem Job, Back-off, Job-Nummern pro Lauf,
+Liegengebliebenes auf der Geräteseite), Schritt 4 offen. Offener Punkt „Polling verbessern“ aus [pending.md](../pending.md).
 Auslöser: „Wenn ich den Server neustarte hängt alles.“
 
 ## Was heute passiert
@@ -85,6 +85,23 @@ Reparatur:
 
 Damit wird ein Neustart des Servers zu einem sichtbaren Zustand statt zu einer Überraschung eine
 Viertelstunde später.
+
+*Umgesetzt* (`device::leftovers`, Job `Cleanup` über `clearLeftover`), anders als oben in drei
+Punkten:
+- Das Skript `netbox-provisioner-apply` bleibt nach jedem Anwenden liegen, das nächste ersetzt
+  es (im Lab auf allen Geräten). Ein Rest ist es nur, solange es läuft; dann steht ein Hinweis da,
+  ohne Knopf, denn es endet von selbst.
+- Eine Device-Mode-Änderung bleibt nie liegen: RouterOS bricht sie ab, wenn die Verbindung ihres
+  Jobs schliesst.
+- Der Eintrag des Sicherheitsnetzes der Watchdogs hat „Jetzt wiederherstellen“ (`watchdog::restore`
+  mit dem, was der Eintrag setzen würde).
+
+„Jetzt zurück“ führt das Skript des Fallback-Eintrags aus (`/execute`: Eintrag weg, Backup laden)
+und wartet, bis das Gerät zurück ist. Die verbleibende Zeit ist `next-run`, wie das Gerät es
+meldet; nach einem Sprung seiner Uhr stimmt sie nicht, deshalb heisst sie „laut Gerät“. Geprüft
+auf CHR (`leftovers_are_found_and_cleared`): Jeder Rest wird gefunden und weggeräumt, ein schon
+weggeräumter ergibt `LEFTOVER_GONE`, und nach „Jetzt zurück“ hat das Gerät die Identity von
+vorher.
 
 ## Reihenfolge
 

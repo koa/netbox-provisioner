@@ -13,6 +13,7 @@ mod chr_network {
     pub mod device_mode;
     pub mod fallback;
     pub mod golden_image;
+    pub mod leftovers;
     pub mod mac_telnet;
     pub mod ospf_chain;
     pub mod qemu;

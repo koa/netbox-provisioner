@@ -150,6 +150,7 @@ impl From<&Error> for ErrorInfo {
                 "POE_PORT_NOT_FOUND",
                 vec![("device", device.to_string()), ("port", port.to_string())],
             ),
+            Error::LeftoverGone(device) => ("LEFTOVER_GONE", vec![("device", device.to_string())]),
             Error::NoDowngrade { running, target } => (
                 "NO_DOWNGRADE",
                 vec![("running", running.to_string()), ("target", target.to_string())],

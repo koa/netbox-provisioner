@@ -211,6 +211,7 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
     let what = match &job.kind {
         JobKind::UPDATE => t::UPDATE,
         JobKind::DOWNGRADE => t::DOWNGRADE,
+        JobKind::CLEANUP => t::CLEANUP,
         JobKind::APPLY => t::APPLY,
         JobKind::BOOTSTRAP => t::BOOTSTRAP,
         JobKind::REBOOT => t::REBOOT,
@@ -472,6 +473,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
                 RebootReason::REPARTITION => e::Reboot::Repartition,
                 RebootReason::PARTITION => e::Reboot::Partition,
                 RebootReason::DOWNGRADE => e::Reboot::Downgrade,
+                RebootReason::APPLY_FALLBACK => e::Reboot::ApplyFallback,
                 RebootReason::Other(other) => e::Reboot::Other(other),
             },
             reboot.timeout / 60_000_000_000,
@@ -481,6 +483,17 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::FirmwareUpgrade(firmware) => e::firmware_upgrade(&firmware.current, &firmware.upgrade),
         Event::UpdateDone(done) => e::update_done(&done.from, &done.to),
         Event::Downgraded(done) => e::downgraded(&done.from, &done.to),
+        Event::LeftoverCleared(cleared) => e::leftover_cleared({
+            use crate::graphql::authenticated::job_events::LeftoverAction as A;
+            match &cleared.action {
+                A::STOP_APPLY_FALLBACK => e::Cleared::StopApplyFallback,
+                A::APPLY_FALLBACK_NOW => e::Cleared::ApplyFallbackNow,
+                A::STOP_UPDATE_FALLBACK => e::Cleared::StopUpdateFallback,
+                A::RESTORE_WATCHDOGS => e::Cleared::RestoreWatchdogs,
+                A::REMOVE_PACKAGES => e::Cleared::RemovePackages,
+                A::Other(other) => e::Cleared::Other(other),
+            }
+        }),
         Event::DeviceModeConfirm(confirm) => e::device_mode_confirm(
             &features(confirm.changes.iter().map(|c| (c.feature.as_str(), &c.reason))),
             confirm.timeout / 60_000_000_000,

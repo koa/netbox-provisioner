@@ -28,7 +28,7 @@ use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use std::{collections::BTreeSet, net::IpAddr, time::Duration};
 
 /// The name of the scheduler entry restoring the watchdogs.
-const NAME: &str = "netbox-provisioner-watchdog";
+pub(crate) const NAME: &str = "netbox-provisioner-watchdog";
 /// Longer than any update takes: two steps (RouterOS 6 to 7), each with the update fallback's
 /// wait, then the firmware.
 pub const SAFETY_NET: Duration = Duration::from_secs(2 * 60 * 60);
@@ -292,7 +292,8 @@ fn restored_by(script: &str) -> Option<Watching> {
     (!watching.is_empty()).then_some(watching)
 }
 
-async fn pending(device: &RawDevice<SimpleResult>) -> Result<Option<Watching>, Error> {
+/// What a scheduler entry left from a suspend would restore, if there is one.
+pub(crate) async fn pending(device: &RawDevice<SimpleResult>) -> Result<Option<Watching>, Error> {
     Ok(entries(device)
         .await?
         .iter()

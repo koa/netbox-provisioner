@@ -29,7 +29,7 @@ use std::{collections::BTreeSet, time::Duration};
 use tokio::time::{Instant, sleep, timeout};
 
 /// The name of the scheduler entry.
-const NAME: &str = "netbox-provisioner-update-fallback";
+pub(crate) const NAME: &str = "netbox-provisioner-update-fallback";
 /// Copying RouterOS between partitions: a few tens of MiB on NAND.
 const COPY_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// OSPF takes its dead interval and the exchange to get adjacent after a boot.
@@ -237,7 +237,7 @@ pub async fn disarm(device: &RawDevice<SimpleResult>, partition: &str, log: &Log
     Ok(())
 }
 
-async fn remove_scheduler(device: &RawDevice<SimpleResult>) -> Result<(), Error> {
+pub(crate) async fn remove_scheduler(device: &RawDevice<SimpleResult>) -> Result<(), Error> {
     let ids = rows(device, "/system/scheduler/print")
         .await?
         .iter()

@@ -23,6 +23,7 @@ pub mod batch;
 pub mod bootstrap;
 pub mod device_mode;
 pub mod interface_live;
+pub mod leftovers;
 pub mod neighbors;
 pub mod partitions;
 pub mod power;

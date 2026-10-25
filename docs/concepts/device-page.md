@@ -1,7 +1,7 @@
 # Konzept: Geräteseite
 
-Status: Schritte 1 und 2 umgesetzt (Karten und Raster, „Ziel ändern“ als „Zugang“ im Kopf und in
-der Meldung „nicht erreichbar“), Schritt 3 offen. Seither dazugekommen: die Karte „NetBox
+Status: umgesetzt (Karten und Raster, „Ziel ändern“ als „Zugang“ im Kopf und in der Meldung
+„nicht erreichbar“, Bereich 2 mit dem Liegengebliebenen, siehe unten). Seither dazugekommen: die Karte „NetBox
 ergänzen“ (die Helfer des [Config-Helpers](config-helper.md)) zwischen „Gerät“ und
 „Änderungen“, in „Änderungen“ „Gemeinsam anwenden“ und vor einem Update die Warnung zu den
 Watchdogs, die währenddessen auslösen könnten ([Watchdog](watchdog.md)). Offener Punkt „Device-Darstellung“ aus [pending.md](../pending.md).
@@ -65,3 +65,16 @@ Passwort niemand im Provisioner hinterlegt hat.
    breit.
 2. „Ziel ändern“ in die Meldung „nicht erreichbar“ und den Kopf.
 3. Bereich 2, sobald es Liegengebliebenes und Befunde gibt.
+
+## Umgesetzt: Bereich 2
+
+Unter dem Kopf, vor dem Job, steht eine Warnung, wenn ein Auftrag etwas auf dem Gerät
+zurückgelassen hat (`components::leftovers`, `AccessibleDevice.leftovers`, siehe
+[Jobs](job-polling.md#was-auf-dem-gerät-liegen-geblieben-ist)). Jeder Rest hat seinen Knopf,
+nichts wird von selbst weggeräumt. Während ein Job des Provisioners auf dem Gerät läuft, zeigt die
+Seite nichts davon: Was er aufgebaut hat, ist nicht liegengeblieben.
+
+Die Befunde stehen nicht in diesem Bereich. Seit der [Interface-Ansicht](interface-view.md)
+hängen sie an den Zeilen der Interface-Karte, die sie betreffen (die über das ganze Gerät beim
+Loopback). Eine zweite Liste oben würde sie nur wiederholen.
+

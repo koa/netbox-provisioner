@@ -370,6 +370,24 @@ impl MutationAuthenticated {
                 .await
         })?)
     }
+    /// Starts taking care of something a job left on device `id` (`AccessibleDevice.leftovers`;
+    /// `allow_apply` must be set). Target and credentials as for `DeviceAccess.access`.
+    #[graphql(guard = "WritesAllowed")]
+    async fn clear_leftover(
+        &self,
+        id: u32,
+        action: crate::device::leftovers::LeftoverAction,
+        target: Option<String>,
+        credential_name: Option<Box<str>>,
+        adhoc_credentials: Option<AdhocCredentials>,
+    ) -> Result<Arc<Job>, ApiError> {
+        let device = self.device(id).await?;
+        let name: Box<str> = device.name().into();
+        Ok(job::start(&device.clone(), JobKind::Cleanup, |log| async move {
+            let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
+            crate::device::leftovers::clear(&link, &name, action, &log).await
+        })?)
+    }
     /// Starts a reboot of a device (`allow_apply` must be set) and waits until it is back.
     /// Target and credentials as for `DeviceAccess.access`.
     #[graphql(guard = "WritesAllowed")]
