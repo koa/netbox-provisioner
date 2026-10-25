@@ -123,6 +123,20 @@ pub fn update_to(version: &str) -> String {
     format!("Auf {version} aktualisieren")
 }
 
+pub const DOWNGRADE: &str = "Downgrade";
+pub const DOWNGRADE_PLACEHOLDER: &str = "ältere Version, z. B. 7.20.8";
+pub const DOWNGRADE_NOW: &str = "Jetzt downgraden";
+pub fn downgrade_to(version: &str) -> String {
+    format!("Auf {version} downgraden")
+}
+pub fn downgrade_confirm(version: &str) -> String {
+    format!(
+        "Die Pakete von RouterOS {version} werden hochgeladen, dann startet das Gerät damit neu; \
+         es und was es über PoE versorgt, ist dabei weg. Die Konfiguration bleibt, was erst neuere \
+         Versionen kennen, kann {version} verwerfen. "
+    )
+}
+
 pub fn packages(installed: &[String], wanted: &[String]) -> String {
     format!(" (Pakete: {}; nach dem Update: {})", installed.join(", "), wanted.join(", "))
 }

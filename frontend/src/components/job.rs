@@ -210,6 +210,7 @@ fn poll(scope: Scope<JobView>, id: i64, alive: Rc<Cell<bool>>) {
 fn title(job: &JobEventsJob) -> (String, AlertType) {
     let what = match &job.kind {
         JobKind::UPDATE => t::UPDATE,
+        JobKind::DOWNGRADE => t::DOWNGRADE,
         JobKind::APPLY => t::APPLY,
         JobKind::BOOTSTRAP => t::BOOTSTRAP,
         JobKind::REBOOT => t::REBOOT,
@@ -253,6 +254,7 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         JobState::DONE => {
             let update = events().find_map(|event| match event {
                 Event::UpdateDone(done) => Some((done.from.as_str(), done.to.as_str())),
+                Event::Downgraded(done) => Some((done.from.as_str(), done.to.as_str())),
                 _ => None,
             });
             (t::done(what, update), AlertType::Success)
@@ -469,6 +471,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
                 RebootReason::DEVICE_MODE => e::Reboot::DeviceMode,
                 RebootReason::REPARTITION => e::Reboot::Repartition,
                 RebootReason::PARTITION => e::Reboot::Partition,
+                RebootReason::DOWNGRADE => e::Reboot::Downgrade,
                 RebootReason::Other(other) => e::Reboot::Other(other),
             },
             reboot.timeout / 60_000_000_000,
@@ -477,6 +480,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::FirmwareUpgrade(firmware) if firmware.running => e::firmware_running(&firmware.upgrade),
         Event::FirmwareUpgrade(firmware) => e::firmware_upgrade(&firmware.current, &firmware.upgrade),
         Event::UpdateDone(done) => e::update_done(&done.from, &done.to),
+        Event::Downgraded(done) => e::downgraded(&done.from, &done.to),
         Event::DeviceModeConfirm(confirm) => e::device_mode_confirm(
             &features(confirm.changes.iter().map(|c| (c.feature.as_str(), &c.reason))),
             confirm.timeout / 60_000_000_000,

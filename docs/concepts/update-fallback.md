@@ -4,7 +4,7 @@ Status: Stufe 1 ist umgesetzt: Device-Mode anpassen (siehe unten), in zwei Parti
 aufteilen und der Ablauf beim Update. Von Stufe 2 ist das Erreichen über den Tunnel zum Nachbarn
 da (`connect` fällt auf die Adresse am Kabel zurück, wenn die Primary IP nicht antwortet, siehe
 unten), ebenso der MAC-Server auf den Wartungs-Ports und die Bestätigung für ein Update ganz
-ohne Weg zurück; offen sind mac-telnet zur Rettung und der Knopf für den Downgrade. Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
+ohne Weg zurück und der Downgrade auf Knopfdruck; offen ist mac-telnet zur Rettung. Offener Punkt aus [pending.md](../pending.md#fallback) („Es braucht
 noch einen Fallback Mechanismus für Updates“).
 
 ## Ausgangslage
@@ -143,6 +143,19 @@ selbst, bevor er etwas herunterlädt, und bricht sonst mit `NO_UPDATE_FALLBACK` 
 `UpdateWithoutFallback` nennt die Nachbarn, über die es weitergeht. Geprüft auf CHR
 (`update_older_chr_to_current`): ohne Nachbarn und Bestätigung abgelehnt, ohne dass ein Paket
 geladen wurde, mit dem Nachbarn `entry` aktualisiert.
+
+*Umgesetzt* (Downgrade, `update::downgrade`): Auf der Geräteseite steht unter dem Update ein
+Feld für eine ältere Version, vorbelegt mit der, die das Gerät vor einem Update dieses Laufs
+des Provisioners hatte (`RouterOsVersions.previous`, aus den Jobs, die nur im Prozess leben).
+„Auf … downgraden“ fragt nach und startet den Job `Downgrade` (`downgradeRouteros`): die
+Pakete, die das Gerät hat, in der älteren Version hochladen wie beim Update, dann
+`/system/package/downgrade`, das neu startet. Nur RouterOS 7 auf ein älteres RouterOS 7
+(`NO_DOWNGRADE`). Er kopiert nichts auf die andere Partition, die die alte Version halten
+kann; ohne zwei Partitionen gilt derselbe Weg zurück wie beim Update (Nachbar oder
+Bestätigung). Watchdogs aussetzen und die OSPF-Nachbarn danach wie beim Update; die Firmware
+bleibt. Geprüft auf CHR (`downgrade_chr_to_older`, 7.24.5 → 7.23.8) und im Lab (lab-np2,
+16 MiB, 2026-10-25): Update 7.23.8 → 7.25, danach war 7.23.8 vorbelegt; der Downgrade brauchte
+rund 4,5 min für den Neustart, die OSPF-Nachbarn waren gleich zurück, kein Diff.
 
 ### Voraussetzung: MAC-Server
 

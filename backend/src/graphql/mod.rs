@@ -106,6 +106,42 @@ impl QueryAuthenticated {
         )
     }
 }
+/// The watchdogs of others that may fire while a device updates (`suspendWatchdogs`), and
+/// the addresses its suppliers' PoE ports ping.
+struct Watchers {
+    watchers: Vec<watchdog::Watcher>,
+    powered: Vec<std::net::IpAddr>,
+}
+
+impl Watchers {
+    fn of(device: &DeviceAccess, suspend: bool) -> Self {
+        Self {
+            watchers: match suspend {
+                true => watchdog::watchers(device, &management_tree(device)),
+                false => Vec::new(),
+            },
+            powered: watchdog::addresses(device),
+        }
+    }
+    /// Connects to each and suspends its watchdogs.
+    async fn suspend(self, log: &Log) -> Result<Vec<watchdog::Suspended<AccessibleDevice>>, Error> {
+        let mut links = Vec::new();
+        for watchdog::Watcher { device, supplier } in self.watchers {
+            let link = connect_for_job(&device, None, None, None, log).await;
+            if matches!(link, Err(Error::Cancelled)) {
+                return Err(Error::Cancelled);
+            }
+            links.push(watchdog::WatcherLink {
+                device: device.name().into(),
+                supplier,
+                powered: self.powered.clone(),
+                link,
+            });
+        }
+        watchdog::suspend_all(links, log).await
+    }
+}
+
 /// Fetches the topology after a write to NetBox, so the next page shows it.
 async fn refetch(topology: &TopologyHolder) {
     if let Err(error) = topology.fetch().await {
@@ -268,11 +304,7 @@ impl MutationAuthenticated {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
         let way_back = update_fallback::WayBack::of(&device, without_fallback == Some(true));
-        let watchers = match suspend_watchdogs {
-            Some(true) => watchdog::watchers(&device, &management_tree(&device)),
-            _ => Vec::new(),
-        };
-        let powered = watchdog::addresses(&device);
+        let watchers = Watchers::of(&device, suspend_watchdogs == Some(true));
         Ok(job::start(&device.clone(), JobKind::Update, |log| async move {
             let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
             let wanted = device.wanted_packages().await?;
@@ -284,25 +316,40 @@ impl MutationAuthenticated {
                 version: version.to_string().into(),
                 channel: channel.map(|channel| channel.name().into()),
             });
-            let mut links = Vec::new();
-            for watchdog::Watcher { device, supplier } in watchers {
-                let link = connect_for_job(&device, None, None, None, &log).await;
-                if matches!(link, Err(Error::Cancelled)) {
-                    return Err(Error::Cancelled);
-                }
-                links.push(watchdog::WatcherLink {
-                    device: device.name().into(),
-                    supplier,
-                    powered: powered.clone(),
-                    link,
-                });
-            }
-            let suspended = watchdog::suspend_all(links, &log).await?;
+            let suspended = watchers.suspend(&log).await?;
             let updated =
                 update::update(&device, &power, &version, &wanted, CONFIG.update_fallback(), &way_back, &log)
                     .await;
             watchdog::restore_all(suspended, &log).await;
             updated
+        })?)
+    }
+    /// Starts taking RouterOS 7 on device `id` back to the older `version` (`allow_apply` must
+    /// be set): the packages it runs, of that version, then `/system/package/downgrade`. The
+    /// rest as for `updateRouteros`, without a channel.
+    #[graphql(guard = "WritesAllowed")]
+    #[allow(clippy::too_many_arguments)]
+    async fn downgrade_routeros(
+        &self,
+        id: u32,
+        version: String,
+        target: Option<String>,
+        credential_name: Option<Box<str>>,
+        adhoc_credentials: Option<AdhocCredentials>,
+        suspend_watchdogs: Option<bool>,
+        without_fallback: Option<bool>,
+    ) -> Result<Arc<Job>, ApiError> {
+        let device = self.device(id).await?;
+        let version = update::Version::parse(&version).ok_or_else(|| Error::NoVersion(version.into()))?;
+        let power = PowerChain::of(&device);
+        let way_back = update_fallback::WayBack::of(&device, without_fallback == Some(true));
+        let watchers = Watchers::of(&device, suspend_watchdogs == Some(true));
+        Ok(job::start(&device.clone(), JobKind::Downgrade, |log| async move {
+            let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
+            let suspended = watchers.suspend(&log).await?;
+            let downgraded = update::downgrade(&device, &power, &version, &way_back, &log).await;
+            watchdog::restore_all(suspended, &log).await;
+            downgraded
         })?)
     }
     /// Starts switching off and on the PoE of the device feeding device `id`

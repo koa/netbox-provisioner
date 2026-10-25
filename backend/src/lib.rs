@@ -127,6 +127,12 @@ pub enum Error {
     /// reach it through) and wasn't confirmed so (`updateRouteros(withoutFallback:)`).
     #[error("{0} has no way back from an update; confirm updating it without one")]
     NoUpdateFallback(Box<str>),
+    /// a downgrade goes from RouterOS 7 to an older RouterOS 7
+    #[error("No downgrade from RouterOS {running} to {target}")]
+    NoDowngrade { running: Box<str>, target: Box<str> },
+    /// the version asked for isn't one (`downgradeRouteros(version:)`)
+    #[error("{0} is no RouterOS version")]
+    NoVersion(Box<str>),
     /// no RouterOS device feeds this one over PoE (a `pse` port cabled to it in NetBox)
     #[error("No device powers {0} over PoE")]
     NoPowerSupply(Box<str>),

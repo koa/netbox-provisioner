@@ -126,6 +126,8 @@ pub enum RebootReason {
     Repartition,
     /// to boot from another partition (`bootPartition`)
     Partition,
+    /// `/system/package/downgrade` installs the uploaded older packages
+    Downgrade,
 }
 
 /// The device is back with this RouterOS.
@@ -146,6 +148,13 @@ pub struct FirmwareUpgrade {
 /// The device is up to date.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct UpdateDone {
+    pub from: Box<str>,
+    pub to: Box<str>,
+}
+
+/// The device runs the older RouterOS it was downgraded to.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct Downgraded {
     pub from: Box<str>,
     pub to: Box<str>,
 }
@@ -343,6 +352,25 @@ pub fn next_step(
     })
 }
 
+/// The packages of `target` replacing those the device runs, for a downgrade: RouterOS 7 to an
+/// older RouterOS 7, the same packages (a package `target` lacks fails its download, before
+/// anything is uploaded).
+pub fn downgrade_step(state: &DeviceState, target: &Version) -> Result<UpdateStep, Error> {
+    if state.version.major() < 7 || target.major() < 7 || *target >= state.version {
+        return Err(Error::NoDowngrade {
+            running: state.version.to_string().into(),
+            target: target.to_string().into(),
+        });
+    }
+    let others: Box<[Box<str>]> = state
+        .packages
+        .iter()
+        .filter(|p| p.as_ref() != "routeros")
+        .cloned()
+        .collect();
+    Ok(v7_step(&others, &state.architecture, target, [].into()))
+}
+
 fn v7_step(wanted: &[Box<str>], arch: &str, version: &Version, uninstall: Box<[Box<str>]>) -> UpdateStep {
     // x86 packages carry no architecture
     let suffix = if arch.starts_with("x86") {
@@ -498,7 +526,7 @@ async fn download(version: &Version, file: &str) -> Result<Vec<u8>, Error> {
 /// firmware); the lease is held until the device is back.
 async fn reboot_and_wait<T, F>(
     link: &impl DeviceLink,
-    _rebooting: RebootLease,
+    rebooting: RebootLease,
     log: &Log,
     reason: RebootReason,
     wait: Duration,
@@ -507,12 +535,31 @@ async fn reboot_and_wait<T, F>(
 where
     F: Fn(&DeviceState) -> Option<T>,
 {
+    restart_and_wait(link, rebooting, log, reason, wait, "/system/reboot", check).await
+}
+
+/// [`reboot_and_wait`] with `path` as the command that reboots (`/system/package/downgrade`).
+async fn restart_and_wait<T, F>(
+    link: &impl DeviceLink,
+    _rebooting: RebootLease,
+    log: &Log,
+    reason: RebootReason,
+    wait: Duration,
+    path: &str,
+    check: F,
+) -> Result<T, Error>
+where
+    F: Fn(&DeviceState) -> Option<T>,
+{
     let device = link.api().await?;
     let before = read_state(&device).await?.uptime;
     let sent = Instant::now();
-    let mut answer = device.send_simple_command(b"/system/reboot".as_slice(), ()).await;
+    let mut answer = device.send_simple_command(path.as_bytes(), ()).await;
     // the answer, or the connection breaking with the reboot
-    let _ = timeout(Duration::from_secs(10), answer.next()).await;
+    if let Ok(Some(SimpleResult::Trap { message, .. })) = timeout(Duration::from_secs(10), answer.next()).await {
+        return Err(Error::Refused(format!("{path}: {message}").into()));
+    }
+    drop(answer);
     drop(device);
     log.emit(Reboot {
         reason,
@@ -672,6 +719,71 @@ pub async fn update(
     Ok(())
 }
 
+/// Downgrades RouterOS 7 to the older `target` (the device page's rescue after an update):
+/// the packages the device runs, of `target`, uploaded like for an update, then
+/// `/system/package/downgrade`, which reboots. Nothing is copied to another partition: that
+/// one may hold the RouterOS to go back to. A device without two partitions needs a way back
+/// as for an update ([`update_fallback::check_downgrade`]). The firmware stays as it is.
+pub async fn downgrade(
+    link: &impl DeviceLink,
+    power: &PowerChain,
+    target: &Version,
+    way_back: &update_fallback::WayBack,
+    log: &Log,
+) -> Result<(), Error> {
+    let state = read_state(&link.api().await?).await?;
+    let from: Box<str> = state.version.to_string().into();
+    log.emit(UpdateStart {
+        version: from.clone(),
+        architecture: state.architecture.clone(),
+        packages: state.packages.clone(),
+    });
+    let step = downgrade_step(&state, target)?;
+    let _updating = log.unless_cancelled(power.updating(log)).await?;
+    let device = link.api().await?;
+    let ospf = update_fallback::ospf_up(&device).await?;
+    update_fallback::check_downgrade(&device, way_back, log).await?;
+    drop(device);
+    log.emit(UpdateStepPlanned {
+        version: step.version.to_string().into(),
+        files: step.files.clone(),
+        uninstall: step.uninstall.clone(),
+    });
+    let rebooting = put_packages(link, power, &step, log).await?;
+    let path = "/system/package/downgrade";
+    let restarted = restart_and_wait(link, rebooting, log, RebootReason::Downgrade, REBOOT_TIMEOUT, path, |state| {
+        (state.version == *target).then(|| state.clone())
+    })
+    .await;
+    let state = match restarted {
+        Ok(state) => state,
+        Err(error @ Error::Refused(_)) => {
+            // refused before the reboot: the packages must not install at some later boot
+            if let Err(remove) = remove_files(&link.api().await?, &step.files).await {
+                warn!("uploaded packages not removed: {remove}");
+            }
+            return Err(error);
+        }
+        Err(error) => return Err(error),
+    };
+    log.emit(RouterOsRunning {
+        version: state.version.to_string().into(),
+    });
+    let missing = update_fallback::wait_for_ospf(&link.api().await?, &ospf, log).await?;
+    if !missing.is_empty() {
+        return Err(Error::OspfNeighborsMissing(missing.join(", ").into()));
+    }
+    if !ospf.is_empty() {
+        log.emit(update_fallback::OspfNeighborsBack {
+            neighbors: ospf.into_iter().collect(),
+        });
+    }
+    log.emit(Downgraded {
+        from,
+        to: state.version.to_string().into(),
+    });
+    Ok(())
+}
 
 /// The update steps from `state`; `armed`: the partition the device switches back to, where it
 /// has one ([`update_fallback`]); `wait`: how long a reboot is waited for (with the fallback,
@@ -695,82 +807,7 @@ async fn steps(
             files: step.files.clone(),
             uninstall: step.uninstall.clone(),
         });
-        // all before the first upload: a part of the packages must not install
-        let mut packages = Vec::new();
-        for file in &step.files {
-            let data = log.unless_cancelled(download(&step.version, file)).await??;
-            log.emit(PackageDownloaded {
-                file: file.clone(),
-                bytes: data.len() as u64,
-            });
-            packages.push((file, data));
-        }
-        log.check()?;
-        let relaxed = allow_password_login(&link.api().await?, log).await?;
-        let uploaded = async {
-            for &(file, ref data) in &packages {
-                let total = data.len() as u64;
-                let progress = |sent: usize| {
-                    log.emit(PackageUploading {
-                        file: file.clone(),
-                        bytes: sent as u64,
-                        total,
-                    })
-                };
-                link.upload(file, data, &progress).await?;
-                // the size shows up while the file is still being written out (on 16 MB devices the
-                // root directory is in RAM, there it settles within seconds)
-                let device = link.api().await?;
-                let expected = data.len().to_string();
-                let deadline = Instant::now() + Duration::from_secs(60);
-                loop {
-                    let size = rows(&device, "/file/print")
-                        .await?
-                        .iter()
-                        .find(|row| field(row, "name") == Some(file))
-                        .and_then(|row| field(row, "size").map(String::from));
-                    if size.as_deref() == Some(&expected) {
-                        break;
-                    }
-                    if Instant::now() > deadline {
-                        return Err(match size {
-                            Some(size) => Error::UploadIncomplete {
-                                file: file.clone(),
-                                size: size.into(),
-                                expected: data.len(),
-                            },
-                            None => Error::UploadMissing(file.clone()),
-                        });
-                    }
-                    sleep(Duration::from_secs(2)).await;
-                }
-                log.emit(PackageUploaded { file: file.clone() });
-            }
-            Ok::<_, Error>(())
-        }
-        .await;
-        if let Some((setting, value)) = relaxed {
-            set_ssh(&link.api().await?, setting, value).await?;
-            log.emit(SshPasswordLogin {
-                setting: setting.into(),
-                value: value.into(),
-                restored: true,
-            });
-        }
-        // what is uploaded installs at the next boot, also when the update stops before it
-        let rebooting = match uploaded {
-            Ok(()) => log.unless_cancelled(power.rebooting(log)).await,
-            Err(error) => Err(error),
-        };
-        let rebooting = match rebooting {
-            Ok(rebooting) => rebooting,
-            Err(error) => {
-                if let Err(remove) = remove_files(&link.api().await?, &step.files).await {
-                    warn!("uploaded packages not removed: {remove}");
-                }
-                return Err(error);
-            }
-        };
+        let rebooting = put_packages(link, power, &step, log).await?;
         uninstall(&link.api().await?, &step.uninstall).await?;
         let expected = step.version.clone();
         state = reboot_and_wait(link, rebooting, log, RebootReason::Packages, wait, |state| {
@@ -792,6 +829,93 @@ async fn steps(
     }
 
     Ok(state)
+}
+
+/// Downloads the packages of `step` and uploads them; once all are on the device, waits for
+/// the lease to reboot. Where it stops before, the uploaded packages are removed again: what is
+/// uploaded installs at the next boot.
+async fn put_packages(
+    link: &impl DeviceLink,
+    power: &PowerChain,
+    step: &UpdateStep,
+    log: &Log,
+) -> Result<RebootLease, Error> {
+    // all before the first upload: a part of the packages must not install
+    let mut packages = Vec::new();
+    for file in &step.files {
+        let data = log.unless_cancelled(download(&step.version, file)).await??;
+        log.emit(PackageDownloaded {
+            file: file.clone(),
+            bytes: data.len() as u64,
+        });
+        packages.push((file, data));
+    }
+    log.check()?;
+    let relaxed = allow_password_login(&link.api().await?, log).await?;
+    let uploaded = async {
+        for &(file, ref data) in &packages {
+            let total = data.len() as u64;
+            let progress = |sent: usize| {
+                log.emit(PackageUploading {
+                    file: file.clone(),
+                    bytes: sent as u64,
+                    total,
+                })
+            };
+            link.upload(file, data, &progress).await?;
+            // the size shows up while the file is still being written out (on 16 MB devices the
+            // root directory is in RAM, there it settles within seconds)
+            let device = link.api().await?;
+            let expected = data.len().to_string();
+            let deadline = Instant::now() + Duration::from_secs(60);
+            loop {
+                let size = rows(&device, "/file/print")
+                    .await?
+                    .iter()
+                    .find(|row| field(row, "name") == Some(file))
+                    .and_then(|row| field(row, "size").map(String::from));
+                if size.as_deref() == Some(&expected) {
+                    break;
+                }
+                if Instant::now() > deadline {
+                    return Err(match size {
+                        Some(size) => Error::UploadIncomplete {
+                            file: file.clone(),
+                            size: size.into(),
+                            expected: data.len(),
+                        },
+                        None => Error::UploadMissing(file.clone()),
+                    });
+                }
+                sleep(Duration::from_secs(2)).await;
+            }
+            log.emit(PackageUploaded { file: file.clone() });
+        }
+        Ok::<_, Error>(())
+    }
+    .await;
+    if let Some((setting, value)) = relaxed {
+        set_ssh(&link.api().await?, setting, value).await?;
+        log.emit(SshPasswordLogin {
+            setting: setting.into(),
+            value: value.into(),
+            restored: true,
+        });
+    }
+    // what is uploaded installs at the next boot, also when the update stops before it
+    let rebooting = match uploaded {
+        Ok(()) => log.unless_cancelled(power.rebooting(log)).await,
+        Err(error) => Err(error),
+    };
+    match rebooting {
+        Ok(rebooting) => Ok(rebooting),
+        Err(error) => {
+            if let Err(remove) = remove_files(&link.api().await?, &step.files).await {
+                warn!("uploaded packages not removed: {remove}");
+            }
+            Err(error)
+        }
+    }
 }
 
 /// The update failed with `error` while the device can switch back to `partition`: back on it
@@ -821,7 +945,8 @@ async fn not_updated(link: &impl DeviceLink, partition: &str, error: Error, log:
 
 #[cfg(test)]
 mod tests {
-    use super::{DeviceState, UpdateStep, Version, next_step};
+    use super::{DeviceState, UpdateStep, Version, downgrade_step, next_step};
+    use crate::Error;
     use std::time::Duration;
 
     fn v(text: &str) -> Version {
@@ -922,5 +1047,28 @@ mod tests {
             next_step(&state("7.20.8", "arm", &["routeros", "wifi-qcom-ac"]), &target, &v6, &wifi),
             None
         );
+    }
+
+    #[test]
+    fn a_downgrade_takes_the_packages_the_device_runs() {
+        assert_eq!(
+            downgrade_step(&state("7.25", "arm", &["routeros", "wifi-qcom-ac"]), &v("7.23.8")).unwrap(),
+            UpdateStep {
+                version: v("7.23.8"),
+                files: names(&["routeros-7.23.8-arm.npk", "wifi-qcom-ac-7.23.8-arm.npk"]),
+                uninstall: names(&[]),
+            }
+        );
+        assert_eq!(
+            downgrade_step(&state("7.24.5", "x86_64", &["routeros"]), &v("7.23.8")).unwrap().files,
+            names(&["routeros-7.23.8.npk"])
+        );
+        // only to an older RouterOS 7
+        for (running, target) in [("7.23.8", "7.23.8"), ("7.23.8", "7.25"), ("7.20.8", "6.49.19"), ("6.49.18", "6.48")] {
+            assert!(
+                matches!(downgrade_step(&state(running, "arm", &["routeros"]), &v(target)), Err(Error::NoDowngrade { .. })),
+                "{running} to {target}"
+            );
+        }
     }
 }

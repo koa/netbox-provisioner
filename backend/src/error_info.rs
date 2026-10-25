@@ -150,6 +150,11 @@ impl From<&Error> for ErrorInfo {
                 "POE_PORT_NOT_FOUND",
                 vec![("device", device.to_string()), ("port", port.to_string())],
             ),
+            Error::NoDowngrade { running, target } => (
+                "NO_DOWNGRADE",
+                vec![("running", running.to_string()), ("target", target.to_string())],
+            ),
+            Error::NoVersion(version) => ("NO_VERSION", vec![("version", version.to_string())]),
             Error::NoUpdateFallback(device) => ("NO_UPDATE_FALLBACK", vec![("device", device.to_string())]),
             Error::OspfNeighborsMissing(neighbors) => {
                 ("OSPF_NEIGHBORS_MISSING", vec![("neighbors", neighbors.to_string())])

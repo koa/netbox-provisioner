@@ -14,6 +14,7 @@ pub const SCRIPT: &str = "Skript:";
 pub const REMAINING: &str = "Noch offen:";
 
 pub const UPDATE: &str = "RouterOS-Update";
+pub const DOWNGRADE: &str = "RouterOS-Downgrade";
 pub const APPLY: &str = "Anwenden";
 pub const BOOTSTRAP: &str = "Ersteinrichtung";
 pub const REBOOT: &str = "Neustart";
@@ -319,6 +320,7 @@ pub mod event {
         DeviceMode,
         Repartition,
         Partition,
+        Downgrade,
         Other(&'a str),
     }
     pub fn reboot(reason: Reboot, minutes: u64) -> String {
@@ -329,6 +331,7 @@ pub mod event {
             Reboot::DeviceMode => "nach der Bestätigung",
             Reboot::Repartition => "zum Aufteilen des Flash",
             Reboot::Partition => "von der anderen Partition",
+            Reboot::Downgrade => "zum Downgrade auf die hochgeladenen Pakete",
             Reboot::Other(other) => other,
         };
         format!("Neustart {reason}, wartet bis zu {minutes} min, bis das Gerät zurück ist")
@@ -344,6 +347,9 @@ pub mod event {
     }
     pub fn update_done(from: &str, to: &str) -> String {
         format!("Fertig: RouterOS {from} → {to}")
+    }
+    pub fn downgraded(from: &str, to: &str) -> String {
+        format!("Fertig: RouterOS {from} zurück auf {to}")
     }
 
     pub fn device_mode_confirm(features: &[String], minutes: u64) -> String {

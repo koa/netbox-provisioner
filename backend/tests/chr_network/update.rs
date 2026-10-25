@@ -11,7 +11,7 @@ use backend::Error;
 use backend::device::bootstrap::{MacTelnetSetup, set_up};
 use backend::device::power::PowerChain;
 use backend::device::terminal::{Terminal, Tunnel, upload};
-use backend::device::update::{DeviceLink, UpdateDone, Version, read_state, update};
+use backend::device::update::{DeviceLink, Downgraded, UpdateDone, Version, downgrade, read_state, update};
 use backend::device::update_fallback::{UpdateWithoutFallback, WayBack};
 use backend::job::{Event, Log};
 use encoding_rs::mem::encode_latin1_lossy;
@@ -22,6 +22,32 @@ use tokio::net::TcpStream;
 use tokio_stream::StreamExt;
 
 const PASSWORD: &str = "Updated-1";
+
+/// Straight to a node's forwarded ports, with the harness's password.
+struct DirectLink {
+    api_port: u16,
+    ssh_port: u16,
+}
+
+impl DeviceLink for DirectLink {
+    async fn api(&self) -> Result<MikrotikDevice<SimpleResult>, Error> {
+        Ok(MikrotikDevice::connect(
+            ("127.0.0.1", self.api_port),
+            b"admin",
+            Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
+        )
+        .await?)
+    }
+    async fn upload(
+        &self,
+        name: &str,
+        data: &[u8],
+        progress: &(dyn Fn(usize) + Sync),
+    ) -> Result<(), Error> {
+        let stream = TcpStream::connect(("127.0.0.1", self.ssh_port)).await.expect("ssh to the node");
+        Ok(upload(stream, "admin", Some(crate::TEST_PASSWORD), name, data, progress).await?)
+    }
+}
 
 /// Through a tunnel to the entry: the node at its new address, which it has no route back from.
 struct TunnelLink {
@@ -193,4 +219,56 @@ async fn update_older_chr_to_current() {
     );
     let after = read_state(&link.api().await.unwrap()).await.unwrap();
     assert_eq!(after.version, target);
+}
+
+/// The current release taken back to the older one with `/system/package/downgrade`: the
+/// device page's rescue after an update.
+#[tokio::test]
+#[ignore]
+async fn downgrade_chr_to_older() {
+    if nix_unavailable() {
+        eprintln!("skipping: `nix` is not available in this environment");
+        return;
+    }
+    let golden = ensure_golden_image(&crate::cache_dir(), crate::TEST_PASSWORD)
+        .await
+        .expect("golden image build failed");
+    let work_dir = std::env::temp_dir().join("chr-network-downgrade-test");
+    let node = boot_node(&golden, &work_dir, "current", &[], crate::TEST_PASSWORD)
+        .await
+        .expect("boot failed");
+    let link = DirectLink {
+        api_port: node.api_port,
+        ssh_port: node.ssh_port,
+    };
+    let before = read_state(&link.api().await.unwrap()).await.unwrap();
+    assert_eq!(before.version, Version::parse(CHR.version).unwrap());
+    let power = PowerChain::unpowered("chr");
+    // no neighbor here, updating without a way back confirmed
+    let way_back = WayBack {
+        device: "chr".into(),
+        neighbors: [].into(),
+        confirmed: true,
+    };
+
+    // only to an older version: refused before anything is downloaded
+    let log = Log::new("chr");
+    let newer = Version::parse("7.99").unwrap();
+    let result = downgrade(&link, &power, &newer, &way_back, &log).await;
+    assert!(matches!(result, Err(Error::NoDowngrade { .. })), "{result:?}");
+    assert!(!log.events().iter().any(|e| matches!(e, Event::PackageDownloaded(_))));
+
+    let older = Version::parse(CHR_OLDER.version).unwrap();
+    let log = Log::new("chr");
+    let result = downgrade(&link, &power, &older, &way_back, &log).await;
+    eprintln!("--- downgrade log ---\n{:#?}", log.events());
+    result.expect("downgrade");
+    assert_eq!(
+        log.events().last(),
+        Some(&Event::Downgraded(Downgraded {
+            from: CHR.version.into(),
+            to: CHR_OLDER.version.into(),
+        }))
+    );
+    assert_eq!(read_state(&link.api().await.unwrap()).await.unwrap().version, older);
 }

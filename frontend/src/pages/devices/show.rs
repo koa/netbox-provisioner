@@ -15,7 +15,7 @@ use crate::{
     graphql::{
         authenticated::{
             ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, ChangeDeviceMode, DeviceJobs,
-            BootPartition, DeviceOverview, PowerCycle, RebootDevice, power_cycle, RepartitionDevice, UpdateRouteros, apply_device_cfg,
+            BootPartition, DeviceOverview, DowngradeRouteros, downgrade_routeros, PowerCycle, RebootDevice, power_cycle, RepartitionDevice, UpdateRouteros, apply_device_cfg,
             reboot_device, bootstrap_candidates, bootstrap_device, change_device_mode, device_jobs,
             boot_partition, device_overview, repartition_device, update_routeros,
         },
@@ -48,6 +48,10 @@ pub struct ShowDevice {
     manual_mac: String,
     /// the RouterOS channel to update in; `None` until the device's default is known
     channel: Option<device_overview::Channel>,
+    /// the older version to downgrade to, typed or the one before an update of this run
+    downgrade_version: String,
+    /// "Auf … downgraden" was clicked, waiting for the confirmation
+    confirm_downgrade: bool,
     /// "Neu starten" was clicked, waiting for the confirmation
     confirm_reboot: bool,
     /// "Strom aus und ein" was clicked, waiting for the confirmation
@@ -135,6 +139,10 @@ pub enum ShowDeviceMessage {
     Update,
     /// bring the packages in line at the running version
     AdjustPackages,
+    DowngradeVersion(String),
+    /// ask before downgrading (`true`), or not anymore
+    ConfirmDowngrade(bool),
+    Downgrade,
     /// ask before rebooting (`true`), or not anymore
     ConfirmReboot(bool),
     Reboot,
@@ -179,6 +187,8 @@ impl Component for ShowDevice {
             candidates: None,
             manual_mac: String::new(),
             channel: None,
+            downgrade_version: String::new(),
+            confirm_downgrade: false,
             confirm_reboot: false,
             confirm_power_cycle: false,
             power_job: None,
@@ -207,6 +217,11 @@ impl Component for ShowDevice {
                 }
                 if self.channel.is_none() {
                     self.channel = data.routeros.as_ref().map(|r| r.default_channel.clone());
+                }
+                if self.downgrade_version.is_empty()
+                    && let Some(previous) = data.routeros.as_ref().and_then(|r| r.previous.clone())
+                {
+                    self.downgrade_version = previous;
                 }
                 self.data = Some(*data);
                 self.error = error;
@@ -250,6 +265,23 @@ impl Component for ShowDevice {
             }
             ShowDeviceMessage::WithoutFallback(without) => {
                 self.without_fallback = without;
+                true
+            }
+            ShowDeviceMessage::DowngradeVersion(version) => {
+                self.downgrade_version = version;
+                true
+            }
+            ShowDeviceMessage::ConfirmDowngrade(confirm) => {
+                self.confirm_downgrade = confirm;
+                true
+            }
+            ShowDeviceMessage::Downgrade => {
+                self.confirm_downgrade = false;
+                self.job_running = true;
+                let version = self.downgrade_version.trim().to_string();
+                let suspend = self.suspend();
+                let without = self.without_fallback;
+                downgrade(ctx.link().clone(), self.id, version, suspend, without, self.alternate_target.clone());
                 true
             }
             ShowDeviceMessage::ConfirmReboot(confirm) => {
@@ -483,6 +515,9 @@ impl Component for ShowDevice {
                             />
                         }
                     </div>
+                    if !routeros.version.starts_with("6.") {
+                        { self.downgrade_view(ctx, update_locked || running) }
+                    }
                     if no_way_back {
                         { self.no_way_back_view(ctx) }
                     }
@@ -817,6 +852,50 @@ impl Component for ShowDevice {
 }
 
 impl ShowDevice {
+    /// A version to type (or the one before an update of this run) and „Auf … downgraden“,
+    /// asked to confirm.
+    fn downgrade_view(&self, ctx: &Context<Self>, disabled: bool) -> Html {
+        let version = self.downgrade_version.trim();
+        if self.confirm_downgrade {
+            return html! {
+                <div class="routeros-downgrade">
+                    {t::downgrade_confirm(version)}
+                    <Button
+                        variant={ButtonVariant::Danger}
+                        label={t::DOWNGRADE_NOW}
+                        disabled={disabled}
+                        onclick={ctx.link().callback(|_| ShowDeviceMessage::Downgrade)}
+                    />
+                    {" "}
+                    <Button
+                        variant={ButtonVariant::Link}
+                        label={CANCEL}
+                        onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmDowngrade(false))}
+                    />
+                </div>
+            };
+        }
+        let label = match version.is_empty() {
+            true => t::DOWNGRADE.to_string(),
+            false => t::downgrade_to(version),
+        };
+        html! {
+            <div class="routeros-downgrade">
+                <TextInput
+                    value={self.downgrade_version.clone()}
+                    placeholder={t::DOWNGRADE_PLACEHOLDER}
+                    onchange={ctx.link().callback(ShowDeviceMessage::DowngradeVersion)}
+                />
+                {" "}
+                <Button
+                    variant={ButtonVariant::Secondary}
+                    label={label}
+                    disabled={disabled || version.is_empty()}
+                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmDowngrade(true))}
+                />
+            </div>
+        }
+    }
     /// „Strom aus und ein“ over the device feeding it, asked before; also while the device's
     /// own job runs (a device mode change waits for it), and the supplier's job below it.
     fn power_cycle_view(
@@ -1115,6 +1194,39 @@ fn update(
         )
         .await
         .map(|data| data.update_routeros.id);
+        scope.send_message(ShowDeviceMessage::JobStarted(result));
+    });
+}
+
+/// Takes RouterOS back to the older `version`; `suspend`, `without_fallback` as for [`update`].
+fn downgrade(
+    scope: Scope<ShowDevice>,
+    id: u32,
+    version: String,
+    suspend: bool,
+    without_fallback: bool,
+    target: SelectedTarget,
+) {
+    spawn_local(async move {
+        let (credential_name, adhoc_credentials) =
+            target.credentials.variables(|username, password| downgrade_routeros::AdhocCredentials {
+                username,
+                password,
+            });
+        let result = query_authenticated::<DowngradeRouteros, _>(
+            scope.clone(),
+            downgrade_routeros::Variables {
+                id: id as i64,
+                version,
+                target: target.address.map(|a| a.to_string()),
+                credential_name,
+                adhoc_credentials,
+                suspend_watchdogs: suspend.then_some(true),
+                without_fallback: without_fallback.then_some(true),
+            },
+        )
+        .await
+        .map(|data| data.downgrade_routeros.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }

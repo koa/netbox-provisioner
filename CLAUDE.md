@@ -767,7 +767,14 @@ segment (`update_fallback::adjacent`), since two DROthers stay there and a reboo
 an `UpdateWithoutFallback` event naming the neighbors it stays reachable through
 (`update_fallback::WayBack`, `DeviceAccess.updateNeighbors`: those of `bootstrap::plans`, none
 for the management proxy's device); without any, the update needs `withoutFallback: true`
-(the device page's checkbox) and stops with `NO_UPDATE_FALLBACK` before downloading anything. Checked on lab-core (7.23.8 → 7.24.5 and back, both ways):
+(the device page's checkbox) and stops with `NO_UPDATE_FALLBACK` before downloading anything.
+`downgradeRouteros` (`update::downgrade`, the device page's version field, prefilled with
+`RouterOsVersions.previous`: the version before an update of this run, from the in-process
+jobs) takes RouterOS 7 back to an older 7 (`NO_DOWNGRADE` otherwise): the packages it runs, of
+that version, uploaded as for an update, then `/system/package/downgrade`, which reboots
+(refused, the packages are removed again). It copies nothing to the other partition, which may
+hold the version to go back to; without two partitions it needs the same way back as an
+update. Watchdogs and OSPF neighbors as for an update, the firmware stays. Checked on lab-core (7.23.8 → 7.24.5 and back, both ways):
 `copy-to` ends by itself after about 7 s. Booting `part1` brings back the old version with its
 configuration and without the scheduler. The scheduler switching back by itself was checked on
 lab-ap1 (provisioner stopped during the update's reboot: back on the old partition with its

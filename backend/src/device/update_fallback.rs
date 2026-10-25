@@ -113,6 +113,16 @@ pub fn arm_v6(way_back: &WayBack, log: &Log) -> Result<(), Error> {
     way_back.without_partitions(0, log)
 }
 
+/// A downgrade copies nothing to the other partition, which may hold the RouterOS to go back
+/// to; without two partitions its way back is as for an update ([`WayBack`]).
+pub async fn check_downgrade(device: &RawDevice<SimpleResult>, way_back: &WayBack, log: &Log) -> Result<(), Error> {
+    let list = partitions::list(device).await;
+    if other(&list).is_none() {
+        way_back.without_partitions(list.len() as u32, log)?;
+    }
+    Ok(())
+}
+
 /// The OSPF neighbors this device was adjacent with before the update are again.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct OspfNeighborsBack {

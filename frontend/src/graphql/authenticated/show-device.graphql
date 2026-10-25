@@ -47,6 +47,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                     wanted
                     defaultChannel
                     adjustPackages
+                    previous
                     channels {
                         channel
                         newest
@@ -95,6 +96,11 @@ mutation RebootDevice($id: Int!, $target: String, $credentialName: String, $adho
 }
 mutation UpdateRouteros($id: Int!, $channel: Channel, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials, $suspendWatchdogs: Boolean, $withoutFallback: Boolean){
     updateRouteros(id: $id, channel: $channel, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials, suspendWatchdogs: $suspendWatchdogs, withoutFallback: $withoutFallback){
+        id
+    }
+}
+mutation DowngradeRouteros($id: Int!, $version: String!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials, $suspendWatchdogs: Boolean, $withoutFallback: Boolean){
+    downgradeRouteros(id: $id, version: $version, target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials, suspendWatchdogs: $suspendWatchdogs, withoutFallback: $withoutFallback){
         id
     }
 }

@@ -133,6 +133,12 @@ pub fn server(problem: &ServerProblem) -> String {
         ),
         "NO_POWER_SUPPLY" => format!("Kein Gerät speist {} über PoE (NetBox)", p("device")),
         "POE_PORT_NOT_FOUND" => format!("{} hat keinen Port {}, an dem es PoE schalten kann", p("device"), p("port")),
+        "NO_DOWNGRADE" => format!(
+            "Kein Downgrade von RouterOS {} auf {}: nur auf eine ältere Version von RouterOS 7",
+            p("running"),
+            p("target")
+        ),
+        "NO_VERSION" => format!("„{}“ ist keine RouterOS-Version", p("version")),
         "NO_UPDATE_FALLBACK" => format!(
             "{} hätte nach einem Update keinen Weg zurück (keine zweite Partition, kein Nachbar, \
              über den es erreichbar bleibt). Nur mit Bestätigung auf der Geräteseite",

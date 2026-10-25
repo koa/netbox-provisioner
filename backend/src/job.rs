@@ -57,6 +57,7 @@ pub enum Event {
     RouterOsRunning(update::RouterOsRunning),
     FirmwareUpgrade(update::FirmwareUpgrade),
     UpdateDone(update::UpdateDone),
+    Downgraded(update::Downgraded),
     ApplyPlanned(apply::ApplyPlanned),
     FallbackArmed(apply::FallbackArmed),
     FallbackUnavailable(apply::FallbackUnavailable),
@@ -179,6 +180,8 @@ impl Log {
 pub enum JobKind {
     /// RouterOS and firmware update (`updateRouteros`)
     Update,
+    /// RouterOS taken back to an older version (`downgradeRouteros`)
+    Downgrade,
     /// the generated config (`applyCfg`)
     Apply,
     /// initial setup over mac-telnet (`bootstrap`)
@@ -469,6 +472,25 @@ pub fn list(subject: Option<JobSubject>) -> Vec<Arc<Job>> {
         .filter(|job| subject.is_none_or(|subject| job.subject == subject))
         .cloned()
         .collect()
+}
+
+/// The RouterOS `device` ran before the newest update of this run that brought another
+/// version, for a downgrade back to it.
+pub fn version_before_update(device: DeviceId) -> Option<Box<str>> {
+    list(Some(JobSubject::Device(device)))
+        .into_iter()
+        .filter(|job| job.kind == JobKind::Update)
+        .find_map(|job| {
+            let events = job.log.events();
+            let from = events.iter().find_map(|event| match event {
+                Event::UpdateStart(start) => Some(start.version.clone()),
+                _ => None,
+            })?;
+            events
+                .iter()
+                .any(|event| matches!(event, Event::RouterOsRunning(running) if running.version != from))
+                .then_some(from)
+        })
 }
 
 /// Asks the job to stop; its state turns `CANCELLED` once it got to a point where it can.

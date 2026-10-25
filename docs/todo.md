@@ -89,6 +89,6 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
-| D3 | Update-Fallback Stufe 2: Rettung über mac-telnet (M), Downgrade auf Knopfdruck (S–M) | [Update-Fallback](concepts/update-fallback.md) | M | in Arbeit |
+| D3 | Update-Fallback Stufe 2: Rettung über mac-telnet (M) | [Update-Fallback](concepts/update-fallback.md) | M | in Arbeit |
 | D4 | Geräteseite: Bereich für Liegengebliebenes auf dem Gerät und Befunde | [Geräteseite](concepts/device-page.md) | S–M | in Arbeit |
 | D5 | Jobs: Events speichern (`state_dir`, M), geordnetes Beenden (S), Liegengebliebenes anzeigen (S) | [Jobs](concepts/job-polling.md) | M | in Arbeit |
