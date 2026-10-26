@@ -52,7 +52,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | A1 | Firewall-Abgleich: nur eigene Regeln verwalten (Kommentar-Präfix, Z1), fremde stehen lassen, eigene vor den fremden; Reihenfolge der Regeln beachten. Heute paart `generate_add_update_remove_by_id` die Regeln, schreibt sie um und entfernt den Rest | M | offen |
 | A2 | `/ip/service` ins Modell: telnet, ftp, www aus; API nur aus den eigenen Netzen bzw. api-ssl; für alle Geräte | S–M | offen |
 | A3 | SOCKS des Management-Proxys nur von der Adresse des Provisioners annehmen (heute auf allen Interfaces, nur mit Passwort) | S | offen |
-| A4 | Abhängigkeiten (`cargo audit`: 34 Hinweise, 12 Warnungen): `actix-4-jwt-auth` 1.2.5 → 1.2.9 (rustls 0.20, ring 0.16), `prometheus` 0.13 → 0.14 und Ersatz für `actix-web-prometheus` (protobuf 2.28), Subscriptions-Feature von `async-graphql-actix-web` weglassen (`actix-web-actors`, crossbeam-channel), `cargo update` (h2, openssl, quinn-proto, rsa, bincode) | S–M | offen |
+| A6 | h2 0.3 loswerden (RUSTSEC-2026-0258, DoS über leere DATA-Frames, nur über HTTP/2): `actix-4-jwt-auth` bindet actix-web mit den Default-Features, damit `http2`; upstream ohne Default-Features oder Fork, dann `async-graphql-actix-web` ohne `http2` | S | offen |
 | A5 | Prüfen, ob schon ein Router mit eigener Firewall angewendet wurde; falls ja, seine Firewall kontrollieren (Betreiber) | – | offen |
 
 ## B. Bereinigungen

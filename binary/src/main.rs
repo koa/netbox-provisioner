@@ -11,14 +11,13 @@ use actix_web::{
     middleware::{Logger, Next, from_fn},
     web::{Data, resource},
 };
-use actix_web_prometheus::PrometheusMetricsBuilder;
+use actix_web_prom::PrometheusMetricsBuilder;
 use actix_web_static_files::{ResourceFiles, deps::static_files::Resource};
 use async_graphql::futures_util::future::join_all;
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 use env_logger::Env;
 use include_dir::{Dir, include_dir};
 use log::{error, trace, warn};
-use mime_db::lookup;
 use prometheus::{HistogramVec, histogram_opts};
 use std::{collections::HashMap, ffi::OsStr};
 use thiserror::Error;
@@ -50,7 +49,7 @@ fn walk_resources(target: &mut HashMap<&'static str, Resource>, dir: &'static Di
             path.as_os_str().to_str(),
             path.extension()
                 .and_then(OsStr::to_str)
-                .and_then(|e| lookup(e)),
+                .and_then(|e| mime_guess::from_ext(e).first_raw()),
         ) {
             target.insert(
                 filename,
@@ -147,8 +146,9 @@ enum BackendError {
     IO(#[from] std::io::Error),
     #[error("An Error from prometheus {0}")]
     Prometheus(#[from] prometheus::Error),
-    #[error("An Error from prometheus {0}")]
-    ActixWebPrometheus(#[from] actix_web_prometheus::error::Error),
+    /// `actix_web_prom`'s builder gives its errors boxed
+    #[error("An Error from the prometheus middleware {0}")]
+    PrometheusMiddleware(#[from] Box<dyn std::error::Error + Send + Sync>),
     #[error("Error on OIDC Validation {0}")]
     OidcValidationError(#[from] OIDCValidationError),
     #[error("Error from netbox {0}")]
