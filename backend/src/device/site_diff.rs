@@ -99,21 +99,22 @@ async fn changes_of(device: DeviceAccess) -> Result<Vec<MenuChanges>, Error> {
 }
 
 /// The mutations counted by menu and kind, the menus in alphabetical order. Like the script,
-/// it leaves out what has no fields but a removal: the diff has an update for every entry,
-/// most of them without a change.
+/// it leaves out what has no fields but a removal or a move: the diff has an update for every
+/// entry, most of them without a change. A move of the firewall rules counts as one change.
 pub fn menu_changes(mutations: &[ResourceMutation<'_>]) -> Vec<MenuChanges> {
     let mut menus = BTreeMap::<&[u8], (u32, u32, u32)>::new();
     let in_script = mutations.iter().filter(|mutation| {
-        matches!(mutation.operation, ResourceMutationOperation::RemoveByKey(_)) || !mutation.fields.is_empty()
+        matches!(mutation.operation, ResourceMutationOperation::RemoveByKey(_) | ResourceMutationOperation::Move { .. })
+            || !mutation.fields.is_empty()
     });
     for mutation in in_script {
         let (added, changed, removed) = menus.entry(mutation.resource).or_default();
         match mutation.operation {
             ResourceMutationOperation::Add => *added += 1,
             ResourceMutationOperation::RemoveByKey(_) => *removed += 1,
-            ResourceMutationOperation::UpdateSingle | ResourceMutationOperation::UpdateByKey(_) => {
-                *changed += 1
-            }
+            ResourceMutationOperation::UpdateSingle
+            | ResourceMutationOperation::UpdateByKey(_)
+            | ResourceMutationOperation::Move { .. } => *changed += 1,
         }
     }
     menus

@@ -1,6 +1,7 @@
 # Konzept: Firewall aus NetBox
 
-Status: Konzept, nicht umgesetzt. Aufgaben C1 bis C3 in [todo.md](../todo.md).
+Status: Konzept; umgesetzt ist der erste Schritt der [Reihenfolge](#reihenfolge), nur eigene
+Regeln verwalten (A1). Aufgaben C1 bis C3 in [todo.md](../todo.md).
 
 ## Zwei Arten
 
@@ -31,7 +32,9 @@ Konzept.
 
 **Heutiger Stand, gemessen** (2026-10-19, Lab und Code):
 
-- Die Firewall-Tabellen werden nach `.id` abgeglichen (`generate_add_update_remove_by_id`):
+- ~~Die Firewall-Tabellen werden nach `.id` abgeglichen~~ (behoben mit A1, 2026-10-26: nur
+  noch Einträge mit dem Kommentar-Präfix `netbox-provisioner:` sind die des Provisioners, die
+  übrigen bleiben; die eigenen stehen vorne. Vorher: `generate_add_update_remove_by_id`):
   Einträge auf dem Gerät werden mit den Zielen gepaart, die wenigsten geänderten Felder zuerst,
   und **umgeschrieben**; was übrig bleibt, wird **entfernt**. Ein Apply auf einen Router mit
   eigener Firewall (die Werks-Firewall eines hEX, oder die von Hand gepflegten Regeln der
@@ -146,10 +149,13 @@ IPv6 des Netzes zusammen.
 
 ## Reihenfolge
 
-1. Nur eigene Regeln verwalten: Jede generierte Regel trägt einen Kommentar mit festem Präfix,
-   nur solche ändert oder entfernt der Provisioner; fremde bleiben stehen. Die eigenen stehen
-   vor den fremden. Das kommt vor allem anderen (heute werden fremde Regeln entfernt, siehe
-   oben).
+1. ~~Nur eigene Regeln verwalten~~ (A1, erledigt 2026-10-26): Jede generierte Regel trägt
+   einen Kommentar mit dem Präfix `netbox-provisioner:`, eindeutig in ihrer Tabelle; nur solche
+   ändert oder entfernt der Provisioner, fremde bleiben stehen. Die eigenen stehen vor den
+   fremden, in der Reihenfolge des Ziels (`move … destination=<erste fremde>`). Eine Regel
+   ohne Kommentar, die bis auf ihn einer eigenen gleicht, wird übernommen (die Regeln älterer
+   Versionen). Die Reihenfolge des Ziels ist heute die der Schlüssel; braucht die
+   Perimeter-Firewall eine eigene, wird das Ziel eine Liste.
 2. Perimeter-Firewall (`internet`): Grundregeln, SSH mit Bruteforce-Schutz, Zugang des
    Provisioners. CHR-Test mit Uplink, Router und Client, auch: das Apply sperrt sich nicht aus.
 3. Port-Forwarding IPv4 und IPv6-Freigaben aus Services.

@@ -11,6 +11,7 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 
 | # | Frage | Entscheidung | betrifft |
 |---|---|---|---|
+| Z1 | Woran erkennt der Provisioner seine eigenen Firewall-Regeln? | Kommentar-Präfix; fremde Regeln bleiben stehen (2026-10-23) | A1 |
 | Z8 | Nix-Image oder Containerfile? | Nix (2026-10-23) | C6 |
 | Z9 | Welcher Cluster? | nur Image und Helm-Chart; die Cluster-Konfiguration macht der Betreiber von Hand (2026-10-23) | C6 |
 | Z21 | Diff aller Geräte einer Site live oder als Job? | Job mit Zwischenstand (2026-10-23) | D2 |
@@ -30,6 +31,7 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 
 | # | Aufgabe | Aufwand | Erledigt |
 |---|---|---|---|
+| A1 | Firewall-Abgleich: in den Firewall-Tabellen nur die Einträge mit dem Kommentar-Präfix `netbox-provisioner:` (Z1, `owned` im Makro, `generate_owned_by_id`); fremde bleiben, eigene vorne in der Reihenfolge des Ziels (`move … destination=`, nur wenn nötig); eine unkommentierte Kopie einer eigenen Regel wird übernommen. Geprüft im Lab (lab-np2 mit `nat` an `lan`: hinzugefügt und vorne, Rest leer; wieder entfernt) und auf der CHR (fremde Regeln, Übernahme, Reihenfolge) | M | 2026-10-26 („reconcile only the provisioner's own firewall rules“) |
 | A4 | Abhängigkeiten: `cargo update`; `actix-4-jwt-auth` 1.2.9 mit rustls 0.23 (native roots, `SSL_CERT_FILE` des Images) statt rustls 0.20/ring 0.16; `actix-web-prom` 0.10 mit prometheus 0.14 statt `actix-web-prometheus` (protobuf 2.28); `mime_guess` statt `mime-db` (zog reqwest 0.11 mit). `cargo audit` von 32 Schwachstellen und 14 Warnungen auf 4 und 3. Bleiben: h2 0.3 (A6); `rsa` (Marvin, nur Operationen mit dem privaten Schlüssel; im Frontend über `yew-oauth2`/`openidconnect` und in russh nur öffentliche) und `crypto-bigint` 0.5 (Frontend), ohne Fix; unmaintained `bincode`, `proc-macro-error` (yew) und `unsafe-libyaml` (Build von mikrotik-model). Die Subscriptions lassen sich nicht weglassen: `async-graphql-actix-web` 7.2 hängt fest an `actix-web-actors` | S–M | 2026-10-26 („update the dependencies cargo audit flags“) |
 
 ## B. Bereinigungen

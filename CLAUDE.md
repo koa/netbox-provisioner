@@ -695,9 +695,13 @@ every device asks them itself, and none resolves for others. Without the context
 a DHCP server answers DNS (its networks get its own address, DNS dropped on `input` from a `nat`
 uplink), and one without a `dhcp-client` forwards to the loopbacks of the `nat` routers.
 `mu; ordered` makes a list field a `Box<[V]>` whose order counts (`dns-server`, `servers`).
-An uplink tagged `nat` gets a masquerade rule. The provisioner owns
-`/ip/firewall/filter` and `nat` completely (rules it doesn't generate are removed) and doesn't
-reorder rules yet.
+An uplink tagged `nat` gets a masquerade rule. In the firewall menus (`/ip/firewall/filter`,
+`nat`, `/ipv6/firewall/filter`, `address-list`) only the entries whose comment starts with
+`netbox-provisioner:` are the provisioner's (`owned` in `mikrotik_model!`, Z1); every other
+entry stays. Its rules come first, in the target's order (the key order of the map), before
+the others (`ordered`: a `move [find comment=…] destination=<first other>`), so each own
+comment is unique in its menu (`firewall_comment`). A rule without a comment that is an own one
+but for it is taken over: the rules of the versions before had none.
 
 A WLAN with a VLAN ends where NetBox puts its network (e.g. the controller, over the VLAN
 group's VXLAN). A tagged bridge whose only way to other bridges is one VXLAN (a CAP's

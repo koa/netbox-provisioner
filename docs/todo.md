@@ -22,7 +22,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Frage | Entscheidung | betrifft |
 |---|---|---|---|
-| Z1 | Woran erkennt der Provisioner seine eigenen Firewall-Regeln? | Kommentar-Präfix; fremde Regeln bleiben stehen (2026-10-23) | A1 |
 | Z2 | Neues Tag `internet` oder genügt `nat`? | neues Tag `internet`; `nat` setzt es voraus (2026-10-23) | C1 |
 | Z3 | Woher kommt der äussere Port eines Port-Forwardings? | aussen immer derselbe Port wie innen, kein Umsetzen (2026-10-23) | C2 |
 | Z4 | Freigaben der internen Firewall: Custom Fields am Interface oder Prefix-Tags? | Custom Fields am Interface (2026-10-23) | C3 |
@@ -49,7 +48,6 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
-| A1 | Firewall-Abgleich: nur eigene Regeln verwalten (Kommentar-Präfix, Z1), fremde stehen lassen, eigene vor den fremden; Reihenfolge der Regeln beachten. Heute paart `generate_add_update_remove_by_id` die Regeln, schreibt sie um und entfernt den Rest | M | offen |
 | A2 | `/ip/service` ins Modell: telnet, ftp, www aus; API nur aus den eigenen Netzen bzw. api-ssl; für alle Geräte | S–M | offen |
 | A3 | SOCKS des Management-Proxys nur von der Adresse des Provisioners annehmen (heute auf allen Interfaces, nur mit Passwort) | S | offen |
 | A6 | h2 0.3 loswerden (RUSTSEC-2026-0258, DoS über leere DATA-Frames, nur über HTTP/2): `actix-4-jwt-auth` bindet actix-web mit den Default-Features, damit `http2`; upstream ohne Default-Features oder Fork, dann `async-graphql-actix-web` ohne `http2` | S | offen |

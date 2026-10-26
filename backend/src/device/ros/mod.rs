@@ -85,16 +85,25 @@ mikrotik_model!(
         ospf_area(by_key(path = "routing/ospf/area", key = name)),
         ospf_interface(by_id(path = "routing/ospf/interface-template", keys(area))),
         dhcp_v4_client(by_id(path = "ip/dhcp-client", keys(interface))),
+        // the firewall's own entries carry `FIREWALL_PREFIX` in their comment, the others stay
         ipv6_firewall_address_list(by_id(
             path = "ipv6/firewall/address-list",
-            keys(address, list)
+            keys(address, list),
+            owned = "netbox-provisioner:"
         )),
-        ipv6_firewall_filter(by_id(path = "ipv6/firewall/filter", keys())),
+        ipv6_firewall_filter(by_id(path = "ipv6/firewall/filter", keys(), owned = "netbox-provisioner:", ordered)),
         ip_firewall_filter(by_id(
             path = "ip/firewall/filter",
-            keys(chain, in_interface, protocol, dst_port)
+            keys(chain, in_interface, protocol, dst_port),
+            owned = "netbox-provisioner:",
+            ordered
         )),
-        ip_firewall_nat(by_id(path = "ip/firewall/nat", keys(chain, out_interface))),
+        ip_firewall_nat(by_id(
+            path = "ip/firewall/nat",
+            keys(chain, out_interface),
+            owned = "netbox-provisioner:",
+            ordered
+        )),
         dns(single = "ip/dns"),
         ipv6_nd(by_key(path = "ipv6/nd", key = interface)),
         dhcp_v4_server(by_key(path = "ip/dhcp-server", key = name)),
@@ -1313,7 +1322,7 @@ impl BaseDeviceDataTarget {
             IpFirewallNatCfg {
                 action: IpFirewallNatAction::Masquerade,
                 chain: b"srcnat".into(),
-                comment: None,
+                comment: Some(firewall_comment(&["masquerade", &if_name.to_string()])),
                 disabled: false,
                 dst_address: None,
                 dst_port: None,
@@ -1344,7 +1353,7 @@ impl BaseDeviceDataTarget {
                 IpFirewallFilterCfg {
                     action: IpFirewallFilterAction::Drop,
                     chain: b"input".into(),
-                    comment: None,
+                    comment: Some(firewall_comment(&["close-dns", &if_name.to_string(), &protocol.to_string()])),
                     connection_state: None,
                     disabled: false,
                     dst_address: None,
@@ -1360,4 +1369,14 @@ impl BaseDeviceDataTarget {
             );
         }
     }
+}
+
+/// What the generator's firewall entries begin their comment with: only those are the
+/// provisioner's, the others on the device stay (the `owned` firewall menus of the model).
+const FIREWALL_PREFIX: &str = "netbox-provisioner:";
+
+/// The comment of a firewall entry: the prefix and what the entry is, unique in its menu, as
+/// the order of the rules finds them by it (`move [find comment=…]`).
+fn firewall_comment(parts: &[&str]) -> AsciiString {
+    AsciiString::from(format!("{FIREWALL_PREFIX} {}", parts.join(" ")).as_str())
 }
