@@ -703,6 +703,17 @@ the others (`ordered`: a `move [find comment=…] destination=<first other>`), s
 comment is unique in its menu (`firewall_comment`). A rule without a comment that is an own one
 but for it is taken over: the rules of the versions before had none.
 
+`/ip/service` (`setup_services`, in `generate_for`) starts from the device's services, so what
+an operator set stays, and turns telnet, ftp and www off (A2; packages go up by SCP over SSH).
+With `api_networks` the plain API answers only those, written as `address`, which RouterOS
+7.24 still takes for its `available-from`, unless the device reports `available-from` already
+(an open service reports neither). `generate_live` reads the API's open connections (dynamic
+`api` entries with `remote`) and leaves the API as it is, with `ApiClientsOutside`, where one
+is outside the list: the provisioner comes from the management proxy's address towards the
+device, over IPv6 where the device has one. RouterOS writes `remote` with the port and an IPv6
+one without brackets (`2a02:610:7501:1000::201:0`), so the address is what is before the last
+colon (`remote_address`).
+
 A WLAN with a VLAN ends where NetBox puts its network (e.g. the controller, over the VLAN
 group's VXLAN). A tagged bridge whose only way to other bridges is one VXLAN (a CAP's
 `bridge-caps`; radios don't count) runs no STP: it closes no loop, and MSTP over the VXLAN,

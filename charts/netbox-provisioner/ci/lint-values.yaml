@@ -27,6 +27,7 @@ settings:
   allow_apply: true
   routeros_channel: stable
   apply_fallback_seconds: 120
+  api_networks: [192.168.0.0/16, "2a02:16a:fe00:8000::/50"]
   device_syslog:
     remote: "2a02:16a:fe00:1a0::10:8"
     topics: [info, warning, error, critical]

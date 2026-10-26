@@ -13,7 +13,7 @@ reqwest = { version = "0.12.15", features = ["json"] }
 thiserror = "2.0.12"
 tokio = { version = "1.44.1", features = ["sync", "rt", "time", "macros"] }
 log = "0.4.26"
-ipnet = "2.11.0"
+ipnet = { version = "2.11.0", features = ["serde"] }
 regex = "1.11.1"
 surge-ping = "0.8.2"
 #encoding_rs = "0.8.35"

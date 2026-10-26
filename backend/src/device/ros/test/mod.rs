@@ -4,6 +4,7 @@ mod mtu;
 mod netbox_example;
 mod poe;
 mod radio;
+mod service;
 mod speed;
 mod syslog;
 mod watchdog;
@@ -211,6 +212,7 @@ pub(crate) fn empty_current(target: &BaseDeviceDataTarget) -> BaseDeviceDataCurr
         ipv_4_pool: Box::new([]),
         socks: Default::default(),
         socks_users: Box::new([]),
+        ip_service: Box::new([]),
         ssh: Default::default(),
         ipv_6_settings: Default::default(),
         mac_server: Default::default(),

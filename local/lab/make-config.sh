@@ -16,6 +16,8 @@ if [ ! -s "$root/.lab-netbox/device-password" ]; then
   exit 1
 fi
 device_password="$(cat "$root/.lab-netbox/device-password")"
+# the address lab-core sees this machine at; the devices behind it see lab-core's
+own_address="$(python3 -c 'import socket; s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("172.17.1.82", 9)); print(s.getsockname()[0])')"
 cat >"$out/config.yaml" <<YAML
 settings:
   auth_client_id: netbox-provisioner
@@ -37,6 +39,9 @@ settings:
   allow_apply: true
   # the channel the update preselects
   routeros_channel: stable
+  # the plain API answers only the provisioner: directly at lab-core, through its SOCKS behind it
+  # (over IPv6 if the device has an address there)
+  api_networks: [192.168.0.0/16, "2a02:16a:fe00:8000::/50", "$own_address/32"]
   mikrotik_credentials:
     lab:
       user: admin

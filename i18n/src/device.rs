@@ -251,6 +251,16 @@ pub mod warning {
              Anwenden hat noch keine Loopback)."
         )
     }
+
+    /// clients of the plain API outside `api_networks`, connected now
+    pub fn api_clients_outside(clients: &[impl AsRef<str>]) -> String {
+        let clients = clients.iter().map(AsRef::as_ref).collect::<Vec<_>>().join(", ");
+        format!(
+            "Die API (Port 8728) soll nur noch aus api_networks antworten, aber gerade ist sie \
+             auch mit {clients} verbunden, darunter vielleicht der Provisioner selbst: sie bleibt, \
+             wie sie ist, bis api_networks diese Adressen enthält."
+        )
+    }
 }
 
 /// What a job left on the device (`components::leftovers`).

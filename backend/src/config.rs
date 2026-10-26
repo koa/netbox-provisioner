@@ -51,6 +51,11 @@ pub struct Settings {
     /// The syslog server every device logs to, in CEF; without it the devices log only
     /// locally (RouterOS's own rules).
     pub device_syslog: Option<DeviceSyslog>,
+    /// The networks the plain API (`/ip/service api`, port 8728) of every device answers;
+    /// unset or empty: the device's own setting stays (RouterOS's: all). It must hold the
+    /// address the provisioner comes from on each device (its own, or the management proxy's
+    /// towards the device), or the apply locks it out and the fallback takes the apply back.
+    pub api_networks: Option<Box<[ipnet::IpNet]>>,
     /// Where the jobs that go on after a restart are saved (`saved_job`), and the lock that
     /// keeps a second provisioner off them (default `state`, next to `config.yaml`).
     state_dir: Option<std::path::PathBuf>,
@@ -209,6 +214,15 @@ settings:
         assert_eq!(settings.server_port(), 9000);
         let lab = &settings.mikrotik_credentials["lab"];
         assert_eq!((lab.user(), lab.password()), ("admin", Some("0123")));
+    }
+
+    #[test]
+    fn api_networks_are_prefixes() {
+        let yaml = format!("{YAML}  api_networks: [192.168.0.0/16, \"2a02:16a:fe00:8000::/50\"]\n");
+        let settings = settings_from(File::from_str(&yaml, FileFormat::Yaml), environment()).unwrap();
+        let networks = settings.api_networks.expect("api_networks");
+        assert_eq!(networks.len(), 2);
+        assert_eq!(networks[1].to_string(), "2a02:16a:fe00:8000::/50");
     }
 
     /// Without `topics` the devices send what they sent before the provisioner.

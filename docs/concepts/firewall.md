@@ -41,8 +41,8 @@ Konzept.
   Internet-Router) lässt nur `close_dns` übrig. Die Reihenfolge der Regeln spielt beim Paaren
   keine Rolle, für RouterOS aber schon.
 - Die Lab-Geräte haben nach dem Anwenden **keine einzige Filter-Regel** (IPv4 und IPv6).
-- `/ip/service` verwaltet der Generator nicht: ftp, telnet, www, winbox, api (ohne TLS) bleiben
-  auf allen Geräten an, auf allen Adressen.
+- ~~`/ip/service` verwaltet der Generator nicht~~ (A2, 2026-10-26: telnet, ftp, www aus, die
+  API mit `api_networks` nur aus diesen Netzen; winbox und ssh bleiben, wie sie sind).
 - `/ip/socks` des Management-Proxys lauscht auf allen Interfaces (`setup_management_proxy`:
   „reachable from wherever the device is“), geschützt nur durch das Passwort.
 
@@ -69,8 +69,9 @@ Schalter; ein Interface mit `nat` ohne `internet` ist ein Befund.
     Provisioner beim Anwenden selbst aus; der Fallback holt das Gerät zurück, aber ohne
     Änderung;
   - der Rest wird verworfen: API, Winbox, DNS (das heutige `close_dns` geht darin auf).
-- **Dienste:** `/ip/service` ins Modell; telnet, ftp, www aus, API nur von den eigenen Netzen
-  (`address=`), besser api-ssl. Das gilt für alle Geräte, nicht nur am Perimeter.
+- **Dienste** (erledigt mit A2): telnet, ftp, www aus, API nur aus `api_networks` (Config);
+  api-ssl nicht, da der Provisioner die API ohne TLS spricht. Das gilt für alle Geräte, nicht
+  nur am Perimeter.
 - `forward` vom Internet:
   - IPv4 nur, was ein Port-Forwarding hereinlässt (`connection-nat-state=dstnat`);
   - IPv6 nur die Freigaben;

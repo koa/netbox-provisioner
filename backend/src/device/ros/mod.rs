@@ -3,7 +3,7 @@ use crate::{
     device::ros::{
         hw_facts::{RadioPackage, build_ethernet_ports},
         l2::{L2Port, L2Setup, NameGenerator, SimpleBridgePort},
-        warning::{ApplyWarning, PoeCut},
+        warning::{ApiClientsOutside, ApplyWarning, PoeCut},
     },
     topology::{
         IpPrefixId, PhysicalPortId,
@@ -25,7 +25,7 @@ use mikrotik_model::{
         IpAddressCfg, IpDhcpClientCfg, IpDhcpClientDhcpOptions, IpDhcpServerLeaseCfg,
         IpFirewallFilterAction,
         IpFirewallFilterCfg, IpFirewallNatAction, IpFirewallNatCfg,
-        IpNeighborDiscoverySettingsCfg, IpSocksAuthMethod, IpSocksUsersByName, IpSocksUsersCfg,
+        IpNeighborDiscoverySettingsCfg, IpSocksAuthMethod, IpServiceByName, IpSocksUsersByName, IpSocksUsersCfg,
         IpSshCfg, IpSshForwardingEnabled, Ipv6AddressByAddress, Ipv6AddressCfg,
         Ipv6NdAdvertiseDns, Ipv6NdByInterface, Ipv6NdCfg, RoutingOriginateDefault,
         RoutingOspfInstanceByName, RoutingOspfInstanceCfg, RoutingOspfInstanceVersion,
@@ -112,6 +112,7 @@ mikrotik_model!(
         ipv4_pool(by_key(path = "ip/pool", key = name)),
         socks(single = "ip/socks"),
         socks_users(by_key(path = "ip/socks/users", key = name)),
+        ip_service(by_key(path = "ip/service", key = name)),
         ssh(single = "ip/ssh"),
         ipv6_settings(single = "ipv6/settings"),
         mac_server(single = "tool/mac-server"),
@@ -447,6 +448,7 @@ impl BaseDeviceDataTarget {
             ipv_4_pool: Default::default(),
             socks: Default::default(),
             socks_users: Default::default(),
+            ip_service: Default::default(),
             // any device may be the neighbor a new one is set up from: the provisioner reaches
             // the new device through an SSH tunnel to it (`device::bootstrap`)
             ssh: IpSshCfg {
@@ -497,6 +499,57 @@ impl BaseDeviceDataTarget {
                 disabled: false,
             }),
         );
+    }
+    /// `/ip/service`: RouterOS's services as the device has them (`current`), with telnet, ftp
+    /// and www off (A2) and, with `api_networks`, the plain API only from those. Written as
+    /// `address`, which RouterOS 7.24 still takes for `available-from`, unless the device
+    /// reports `available-from` already: an open service reports neither.
+    pub fn setup_services(&mut self, current: &[IpServiceByName], api_networks: Option<&[IpNet]>) {
+        let api_networks = api_networks.filter(|networks| !networks.is_empty()).map(|networks| {
+            let list = networks.iter().map(|net| net.trunc().to_string()).collect::<Vec<_>>();
+            AsciiString::from(list.join(",").as_str())
+        });
+        self.ip_service = current.iter().map(|service| (service.name.clone(), service.data.clone())).collect();
+        for (name, service) in &mut self.ip_service {
+            match &**name {
+                b"telnet" | b"ftp" | b"www" => service.disabled = true,
+                b"api" => {
+                    if let Some(networks) = &api_networks {
+                        if service.available_from.is_some() {
+                            service.available_from = Some(networks.clone());
+                        } else {
+                            service.address = Some(networks.clone());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    /// The API restriction of [`Self::setup_services`] only where it locks none of `clients`
+    /// (the API's open connections) out: otherwise the API stays as in `current`, with a
+    /// warning naming those outside `networks`.
+    pub fn keep_api_open_for(
+        &mut self,
+        current: &[IpServiceByName],
+        clients: &[IpAddr],
+        networks: &[IpNet],
+    ) -> Option<ApplyWarning> {
+        let outside = clients
+            .iter()
+            .filter(|client| !networks.iter().any(|net| net.contains(*client)))
+            .map(|client| client.to_string().into())
+            .collect::<Vec<Box<str>>>();
+        if outside.is_empty() {
+            return None;
+        }
+        let name = AsciiString::from("api");
+        if let (Some(target), Some(current)) =
+            (self.ip_service.get_mut(&name), current.iter().find(|service| service.name == name))
+        {
+            *target = current.data.clone();
+        }
+        Some(ApplyWarning::ApiClientsOutside(ApiClientsOutside { clients: outside }))
     }
     fn set_identity(&mut self, name: impl Into<AsciiString>) {
         self.identity.name = name.into();

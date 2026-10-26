@@ -49,6 +49,7 @@ use mikrotik_model::{
 };
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
+    net::IpAddr,
     sync::atomic::Ordering,
     time::{Duration, Instant, SystemTime},
 };
@@ -97,8 +98,9 @@ pub struct DeviceCfg {
     wifi_warnings: Vec<ApplyWarning>,
     /// the board's radios NetBox leaves alone, with the CAP off (`CapOffOutsideWlanGroup`)
     idle_radios: Option<RadioPackage>,
-    /// the addresses a watchdog would watch that don't answer (`generate_live`)
-    watchdog_warnings: Vec<ApplyWarning>,
+    /// what `generate_live` found at the device: the addresses a watchdog would watch that
+    /// don't answer, the API clients the restriction would lock out
+    live_warnings: Vec<ApplyWarning>,
 }
 
 impl DeviceCfg {
@@ -187,6 +189,8 @@ impl DeviceCfg {
         if let Some(syslog) = &CONFIG.device_syslog {
             self.base_target.setup_syslog(syslog);
         }
+        self.base_target
+            .setup_services(&self.base_current.ip_service, CONFIG.api_networks.as_deref());
         Ok(())
     }
     pub fn generate_mutations(&self) -> Result<Box<[ResourceMutation<'_>]>, Error> {
@@ -237,7 +241,9 @@ impl DeviceCfg {
     }
     /// [`Self::generate_for`] with the watchdogs only on addresses that answer from the device,
     /// asked over `raw` (`keep_silent_watchdogs`): the plan and every check after the apply
-    /// see the same, since a silent address keeps what the device has.
+    /// see the same, since a silent address keeps what the device has. Likewise the API is
+    /// restricted only where its open connections stay inside `api_networks`
+    /// (`keep_api_open_for`).
     pub async fn generate_live(
         &mut self,
         device: &DeviceAccess,
@@ -247,7 +253,7 @@ impl DeviceCfg {
         let addresses = self.base_target.watched_addresses();
         let answering = raw::answering(raw, &addresses).await;
         let topology = device.topology().clone();
-        self.watchdog_warnings = self.base_target.keep_silent_watchdogs(
+        self.live_warnings = self.base_target.keep_silent_watchdogs(
             &self.base_current,
             &answering,
             |address| {
@@ -258,6 +264,19 @@ impl DeviceCfg {
                     .unwrap_or_default()
             },
         );
+        if let Some(networks) = CONFIG.api_networks.as_deref().filter(|networks| !networks.is_empty()) {
+            let clients = raw::rows(raw, "/ip/service/print")
+                .await?
+                .iter()
+                .filter(|row| raw::field(row, "name") == Some("api"))
+                .filter_map(|row| raw::field(row, "remote").and_then(remote_address))
+                .collect::<Vec<_>>();
+            self.live_warnings.extend(self.base_target.keep_api_open_for(
+                &self.base_current.ip_service,
+                &clients,
+                networks,
+            ));
+        }
         Ok(())
     }
     /// The diff from [`Self::generate_mutations`] in an order where everything a command
@@ -286,7 +305,7 @@ impl DeviceCfg {
     ) -> Vec<ApplyWarning> {
         let ports = self.base_target.poe_switched_off(&self.base_current);
         if ports.is_empty() {
-            return [self.wifi_warnings.clone(), self.watchdog_warnings.clone()].concat();
+            return [self.wifi_warnings.clone(), self.live_warnings.clone()].concat();
         }
         let names = ports.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>();
         let powered = match raw().await {
@@ -300,7 +319,7 @@ impl DeviceCfg {
         });
         let mut warnings = self.wifi_warnings.clone();
         warnings.extend(self.base_target.poe_warnings(&self.base_current, &powered));
-        warnings.extend(self.watchdog_warnings.iter().cloned());
+        warnings.extend(self.live_warnings.iter().cloned());
         warnings
     }
 }
@@ -1446,7 +1465,7 @@ impl DeviceCfg {
             bound_radios,
             wifi_warnings: Vec::new(),
             idle_radios,
-            watchdog_warnings: Vec::new(),
+            live_warnings: Vec::new(),
         })
     }
 }
@@ -1690,4 +1709,12 @@ pub struct ChannelUpdate {
     upgrade: bool,
     /// whether an update changes anything (version or packages)
     update: bool,
+}
+
+/// The address of a connection's `remote` in `/ip/service`: always with the port, an IPv6 one
+/// without brackets (`10.0.2.2:40374`, CHR 7.24.5; `2a02:610:7501:1000::201:0`, lab-wap 7.23.8),
+/// so the part before the last colon, whatever the whole would parse as.
+pub(super) fn remote_address(remote: &str) -> Option<IpAddr> {
+    let (address, _port) = remote.rsplit_once(':')?;
+    address.trim_start_matches('[').trim_end_matches(']').parse().ok()
 }

@@ -44,6 +44,9 @@ data:
       {{- with $s.update_fallback_seconds }}
       update_fallback_seconds: {{ . | int }}
       {{- end }}
+      {{- with $s.api_networks }}
+      api_networks: {{ . | toJson }}
+      {{- end }}
       {{- with $s.device_syslog }}
       {{- if .remote }}
       device_syslog:

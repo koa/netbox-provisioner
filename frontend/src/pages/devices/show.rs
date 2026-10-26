@@ -1463,5 +1463,6 @@ fn describe_warning(warning: &Warning) -> String {
         Warning::WatchTargetSilent(silent) => {
             t::warning::watch_target_silent(&silent.address, silent.port.as_deref(), &silent.device)
         }
+        Warning::ApiClientsOutside(outside) => t::warning::api_clients_outside(&outside.clients),
     }
 }

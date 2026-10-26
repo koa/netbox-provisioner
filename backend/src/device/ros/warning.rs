@@ -9,6 +9,16 @@ pub enum ApplyWarning {
     LegacyRadioManaged(LegacyRadioManaged),
     CapOffOutsideWlanGroup(CapOffOutsideWlanGroup),
     WatchTargetSilent(WatchTargetSilent),
+    ApiClientsOutside(ApiClientsOutside),
+}
+
+/// Clients connected to the plain API right now (the provisioner among them) whose address
+/// `api_networks` doesn't hold: the API stays as the device has it, as the restriction would
+/// lock them out (the provisioner reaches lab-wap over IPv6, which a list of IPv4 networks
+/// misses).
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
+pub struct ApiClientsOutside {
+    pub clients: Vec<Box<str>>,
 }
 
 /// A watchdog would watch `address` (on the PoE port `port`, else `/system/watchdog`), but it
