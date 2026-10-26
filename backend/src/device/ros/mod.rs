@@ -594,6 +594,9 @@ impl BaseDeviceDataTarget {
             let bridge_cfg = self.bridge.entry(bridge.name.clone()).or_default();
             bridge_cfg.0.vlan_filtering = false;
             bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Rstp;
+            // without it Android and ChromeOS got no IPv6 address in the WLAN behind
+            // srv-router-berg (SLAAC only), a PC on the LAN did
+            bridge_cfg.0.snoop_multicast();
             // Without vlan filtering RouterOS accepts the vlan fields but never reports them,
             // so a value here would be a diff forever; mvrp is reported by some versions
             // (7.20), not by others (7.24), and keeps whatever it is.
@@ -636,6 +639,8 @@ impl BaseDeviceDataTarget {
             let bridge_cfg = self.bridge.entry(bridge.name.clone()).or_default();
             bridge_cfg.0.vlan_filtering = true;
             bridge_cfg.0.mvrp = Some(false);
+            // as above: the WLAN's SLAAC clients got no IPv6 address without it
+            bridge_cfg.0.snoop_multicast();
             bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
             // A bridge whose only way to other bridges is one VXLAN (a CAP's `bridge-caps`;
             // its radios are clients) closes no loop, and STP over the VXLAN, a segment it

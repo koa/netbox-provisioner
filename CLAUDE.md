@@ -714,6 +714,10 @@ device, over IPv6 where the device has one. RouterOS writes `remote` with the po
 one without brackets (`2a02:610:7501:1000::201:0`), so the address is what is before the last
 colon (`remote_address`).
 
+Every bridge snoops IGMP/MLD (`snoop_multicast`, without a querier): without it Android and
+ChromeOS, which take IPv6 by SLAAC only, got no address in a WLAN behind srv-router-berg while a
+PC on the LAN did, and turning it on at the router's bridge fixed it (2026-10-26).
+
 A WLAN with a VLAN ends where NetBox puts its network (e.g. the controller, over the VLAN
 group's VXLAN). A tagged bridge whose only way to other bridges is one VXLAN (a CAP's
 `bridge-caps`; radios don't count) runs no STP: it closes no loop, and MSTP over the VXLAN,
