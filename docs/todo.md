@@ -50,7 +50,6 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 |---|---|---|---|
 | A3 | SOCKS des Management-Proxys nur von der Adresse des Provisioners annehmen (heute auf allen Interfaces, nur mit Passwort) | S | offen |
 | A6 | h2 0.3 loswerden (RUSTSEC-2026-0258, DoS über leere DATA-Frames, nur über HTTP/2): `actix-4-jwt-auth` bindet actix-web mit den Default-Features, damit `http2`; upstream ohne Default-Features oder Fork, dann `async-graphql-actix-web` ohne `http2` | S | offen |
-| A5 | Prüfen, ob schon ein Router mit eigener Firewall angewendet wurde; falls ja, seine Firewall kontrollieren (Betreiber) | – | offen |
 
 ## B. Bereinigungen
 
