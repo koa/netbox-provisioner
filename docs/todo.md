@@ -71,6 +71,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | offen |
 | C14 | Metriken des mikrotik-metrik-exporter im Provisioner (erster Teil von C8): Funk-Clients mit DHCP-Hostname, Health, PoE, dazu System, Interfaces und DHCP-Leases; Labels `device` und `site` aus NetBox, Dashboards im Repo angepasst; danach weder Exporter noch `prometheus`-Benutzer nötig | [Überwachung](concepts/monitoring.md) | M–L | offen |
+| C16 | Funkbrücke ohne RouterOS (zwei UISP Wave Nano, von Hand eingerichtet): statische `/32` bzw. `/128` auf die Management-IP eines fremden Geräts im Netz eines Router-Ports, über den Port, an dem es per Kabel hängt, von OSPF verteilt; `/ip/route` nur mit eigenen Einträgen. Wartet auf die Wave Nanos im Lab (ICMP-Redirects, Ausfall der Strecke) | [Funkbrücke ohne RouterOS](concepts/foreign-radio-bridge.md) | M | offen |
 
 ## D. In Arbeit, Rest offen
 
