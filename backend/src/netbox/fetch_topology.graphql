@@ -42,6 +42,7 @@ query FetchTopology{
                 id
             }
             poe_mode
+            poe_type
             # a lease client's (`device::ros::dhcp`); the MikroTiks' aren't kept in NetBox
             primary_mac_address {
                 mac_address

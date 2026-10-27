@@ -79,3 +79,40 @@ async fn no_warning_where_poe_is_already_off() {
 async fn no_warning_where_poe_powers_nothing() {
     assert!(warnings(InterfaceEthernetPoeOut::AutoOn, &["ether1"]).await.is_empty());
 }
+
+/// A `pse` port gets `auto-on`, with a passive `poe_type` `forced-on` (a UISP Wave Nano isn't
+/// detected as a load), a port without PoE mode `off`.
+#[tokio::test]
+async fn a_passive_port_feeds_without_detecting() {
+    let mut builder = TopologyBuilder::default();
+    let device = builder.devices.next_id();
+    builder.devices.insert(
+        device,
+        Device {
+            name: "np".into(),
+            ..Default::default()
+        },
+    );
+    for (port, poe, passive_poe) in [(1, true, false), (2, true, true), (3, false, true)] {
+        let id = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            id,
+            Interface {
+                name: format!("ether{port}").into(),
+                device,
+                external: Some(PhysicalPortId::Ethernet(port)),
+                poe: poe.then_some(crate::topology::PoeMode::Pse),
+                passive_poe,
+                ..Default::default()
+            },
+        );
+    }
+    let topology: TopologyHolder = builder.into();
+    let device = topology.devices_by_id(device).await.unwrap();
+    let mut target = BaseDeviceDataTarget::new(b"CRS318-16P-2S+").unwrap();
+    target.generate_from(&device, KeepNameGenerator).unwrap();
+    let poe_out = |port: &str| target.ethernet[&AsciiString::from(port)].poe_out;
+    assert_eq!(poe_out("ether1"), Some(InterfaceEthernetPoeOut::AutoOn));
+    assert_eq!(poe_out("ether2"), Some(InterfaceEthernetPoeOut::ForcedOn));
+    assert_eq!(poe_out("ether3"), Some(InterfaceEthernetPoeOut::Off));
+}

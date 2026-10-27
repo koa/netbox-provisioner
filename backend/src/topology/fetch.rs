@@ -264,6 +264,10 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             bridge,
                             cable: None,
                             poe,
+                            passive_poe: interface
+                                .poe_type
+                                .as_deref()
+                                .is_some_and(|poe_type| poe_type.starts_with("passive-")),
                             mtu: interface.mtu.and_then(|mtu| u16::try_from(mtu).ok()),
                             speed: interface.speed.and_then(|speed| speed.kbits()),
                             duplex: match interface.duplex.as_deref() {

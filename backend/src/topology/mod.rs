@@ -400,6 +400,8 @@ pub struct Interface {
     pub cable: Option<CableId>,
     /// NetBox `poe_mode`: `Pse` feeds the device at the other end of its cable
     pub poe: Option<PoeMode>,
+    /// NetBox `poe_type` `passive-…`: a `pse` port feeds without detecting a load first
+    pub passive_poe: bool,
     /// NetBox `mtu`: the L3 MTU of a physical port, for both ends of its cable
     pub mtu: Option<u16>,
     /// NetBox `speed` (kbit/s) and `duplex`: the port runs at it, without auto-negotiation

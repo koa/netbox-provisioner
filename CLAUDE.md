@@ -819,7 +819,10 @@ scheduler entries (`WatchdogKept`). In a batch each radio-changing member holds 
 dependents outside the batch, each once; a member without a radio change depending on one
 isn't held.
 
-A modeled port of a PoE board without `pse` gets `poe-out=off`, which cuts what it feeds and
+A `pse` port gets `poe-out=auto-on`, with a NetBox `poe_type` `passive-…` `forced-on`
+(`setup_poe`): `auto-on` feeds only a load RouterOS detects, which a UISP Wave Nano isn't
+(lab-np1 `e08`, 7.23.8: `waiting-for-load`; `forced-on` reports `powered-on` like `auto-on`, so
+the PoE checks hold). A modeled port of a PoE board without `pse` gets `poe-out=off`, which cuts what it feeds and
 which the script alone doesn't make obvious, so `generateCfg` returns `warnings` next to the
 script (`device::ros::warning::ApplyWarning`, a union `i18n::device::warning` words; `PoeCut` from
 `BaseDeviceDataTarget::poe_warnings`: on at the device, off in the target, and

@@ -208,6 +208,10 @@ impl InterfaceAccess {
     pub fn poe(&self) -> Option<PoeMode> {
         self.data().and_then(|d| d.poe)
     }
+    /// NetBox `poe_type` `passive-…`
+    pub fn passive_poe(&self) -> bool {
+        self.data().is_some_and(|d| d.passive_poe)
+    }
     /// An end of a NetBox wireless link.
     pub fn has_wireless_link(&self) -> bool {
         self.wireless_link().is_some()

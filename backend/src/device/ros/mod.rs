@@ -960,7 +960,11 @@ impl BaseDeviceDataTarget {
         }
     }
 
-    /// PoE out of every port NetBox has: `auto-on` with `poe_mode=pse`, else `off`.
+    /// PoE out of every port NetBox has: `auto-on` with `poe_mode=pse`, `forced-on` if its
+    /// `poe_type` is passive as well, else `off`. `auto-on` feeds only a load it detects, which
+    /// a UISP Wave Nano, passive PoE only, isn't (lab-np1 `e08`: `waiting-for-load`, with
+    /// `forced-on` `powered-on` at 23.5 V, 7.23.8). `forced-on` puts the voltage on the port
+    /// without asking, so only where NetBox says the device at the other end takes it.
     fn setup_poe(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
         for port in device.interfaces() {
             if let Some(port_id) = port.external_port()
@@ -973,10 +977,10 @@ impl BaseDeviceDataTarget {
                 // whole `/interface/ethernet/set` call with "bad parameter
                 // poe-out" - breaking the rename bundled into the same call.
                 if ethernet_port.poe_out.is_some() {
-                    ethernet_port.poe_out = Some(if port.enable_poe() {
-                        InterfaceEthernetPoeOut::AutoOn
-                    } else {
-                        InterfaceEthernetPoeOut::Off
+                    ethernet_port.poe_out = Some(match (port.enable_poe(), port.passive_poe()) {
+                        (true, true) => InterfaceEthernetPoeOut::ForcedOn,
+                        (true, false) => InterfaceEthernetPoeOut::AutoOn,
+                        (false, _) => InterfaceEthernetPoeOut::Off,
                     });
                 }
             }
