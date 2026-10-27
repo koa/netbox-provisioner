@@ -1,6 +1,8 @@
 # Konzept: Funkbrücke ohne RouterOS
 
-Status: Konzept, warten auf die Wave Nanos im Lab. Aufgabe C16 in [todo.md](../todo.md).
+Status: Konzept mit zwei Varianten, [Routen](#variante-1-routen-auf-die-wave-nanos) und
+[DHCP](#variante-2-dhcp-je-seite), die im Lab gegeneinander getestet werden, sobald die Wave
+Nanos da sind. Aufgabe C16 in [todo.md](../todo.md).
 
 Eine Funkstrecke aus zwei Geräten ohne RouterOS (geplant: zwei UISP Wave Nano, 60 GHz) zwischen
 zwei MikroTiks, L2-transparent, ohne VLANs. Der Provisioner konfiguriert die Funkgeräte nicht,
@@ -13,13 +15,16 @@ Die Wave Nanos werden von Hand eingerichtet (Weboberfläche oder Bluetooth-App, 
 
 - PtP ab Wave-Firmware 3.2.0: eine Seite PtP-AP, die andere Station.
 - Bridge-Modus; der Router-Modus macht aus der Strecke einen NAT-Router ohne dynamisches Routing.
-- Eine feste IPv4 im Netz der Strecke, als Gateway der MikroTik **der eigenen Seite**.
+- Variante 1: eine feste IPv4 im Netz der Strecke, als Gateway der MikroTik **der eigenen
+  Seite**. Variante 2: DHCP-Client.
 
 Nicht möglich (Datenblatt, Stand 2026-10-27): OSPF oder sonst ein Routing-Protokoll, eine
 dokumentierte lokale API, SNMP mit Schreibzugriff. SNMP liest nur, taugt also fürs Monitoring
 (Funkverbindung, Signal, Kapazität), nicht zum Konfigurieren.
 
-## In NetBox
+## Variante 1: Routen auf die Wave Nanos
+
+### In NetBox
 
 - Ein IPv4-/29 für die Strecke, wie ein Router-Port-Netz: die beiden MikroTik-Ports (Tag `ospf`)
   und die beiden Wave Nanos.
@@ -28,7 +33,7 @@ dokumentierte lokale API, SNMP mit Schreibzugriff. SNMP liest nur, taugt also f�
 - IPv6 auf den MikroTik-Ports bleibt Link-Local (OSPFv3). IPv6 für die Wave Nanos nur mit einem
   eigenen /64 auf der Strecke; ob die Firmware IPv6-Management kann, ist offen.
 
-## Routing
+### Routing
 
 Jeder MikroTik kündigt die Wave Nano seiner Seite an: eine statische Route auf ihre IP (`/32`,
 bei IPv6 `/128`) über den Port, an dem sie hängt. OSPF verteilt sie schon heute
@@ -48,7 +53,10 @@ Verworfen:
   anderen Seite auch von ihrem eigenen MikroTik aus nur noch mit dessen Adresse im `/29` als
   Absender erreichbar, nicht mehr aus dem Netz.
 
-## Generator
+Fällt ein MikroTik aus, ist die Wave Nano seiner Seite nicht mehr erreichbar: Ihr fester
+Gateway fehlt.
+
+### Generator
 
 Die Route kommt ganz aus NetBox, ohne neue Felder: Ein Gerät ohne `routeros` mit einer IP in
 einem Netz eines Router-Ports, per Kabel an einem Port eines MikroTiks, gibt diesem MikroTik eine
@@ -56,7 +64,7 @@ statische Route auf diese IP über diesen Port. Dazu kommt `/ip/route` (und `/ip
 Ziel, wie die Firewall nur mit den eigenen Einträgen (Kommentar-Präfix `netbox-provisioner:`),
 damit Routen von Hand bleiben.
 
-## Im Lab zu prüfen
+### Im Lab zu prüfen
 
 - Folgt die Wave-Firmware einem ICMP-Redirect? Für eine Verbindung von A zu Wave B schickt
   MikroTik B die Antwort über denselben Port zurück, über den sie von Wave B kam, und RouterOS
@@ -67,3 +75,41 @@ damit Routen von Hand bleiben.
   Kabelpfad über eine fremde Funkstrecke meldet.
 - Die OSPF-Nachbarschaft über die Strecke, und dass die `/32` bei einer gestörten Strecke über
   einen anderen Weg erreichbar bleibt.
+
+## Variante 2: DHCP je Seite
+
+Jeder MikroTik hat auf dem Port zur Strecke ein eigenes /29 mit DHCP-Server und kurzer Lease
+(1–2 min); jede Wave Nano nimmt das Angebot, das zuerst kommt. Jedes /29 kündigt nur sein
+MikroTik an, so sind Hin- und Rückweg gleich, ohne zusätzliche Routen und ohne die Frage der
+ICMP-Redirects.
+
+Fällt eine Seite weg (MikroTik aus oder Strecke gestört), verlängert die Wave Nano ihre Adresse
+nicht mehr: Ab etwa 87,5 % der Lease fragt sie jeden Server, der verbliebene lehnt die fremde
+Adresse ab (RouterOS ist standardmässig `authoritative`), und sie holt sich eine aus seinem Netz.
+Bei gestörter Strecke landet so jede Wave Nano bei ihrem lokalen MikroTik, bei einem
+ausgefallenen MikroTik beide beim anderen. Bis dahin vergeht höchstens eine Lease.
+
+Kosten:
+
+- Die IPs wechseln; wo welche Wave Nano ist, steht in den Leases der beiden MikroTiks, nicht in
+  NetBox. Der Provisioner könnte sie an der Strecke anzeigen.
+- OSPFv2 bildet auf einem Broadcast-Segment nur Nachbarschaften im selben Subnetz: Die beiden
+  Ports brauchen zusätzlich ein gemeinsames Transfernetz, auf dem Segment liegen dann drei Netze.
+  OSPFv3 über Link-Local betrifft das nicht.
+- Zwei DHCP-Server auf einem Segment.
+
+Möglicherweise ohne neuen Code: DHCP-Server aus NetBox kann der Provisioner schon, Transfernetz
+und eigenes /29 sind zwei Prefixe am selben Port.
+
+### Im Lab zu prüfen
+
+- Ob die Generierung zwei Netze an einem Port mit DHCP nur auf einem davon sauber erzeugt.
+- Ob die beiden DHCP-Server sich nicht stören, besonders nach einem Neustart einer Wave Nano
+  (sie fragt dann ohne Server-ID nach ihrer alten Adresse).
+- Wie lange der Wechsel tatsächlich dauert.
+
+## Vergleich im Lab
+
+Beide Varianten mit denselben Fällen: Strecke gestört, ein MikroTik aus, Neustart einer Wave
+Nano. Entscheiden nach der Zeit und Zuverlässigkeit des Wechsels und danach, wie lästig die
+wechselnden IPs von Variante 2 im Alltag sind.
