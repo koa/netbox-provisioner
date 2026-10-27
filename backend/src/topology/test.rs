@@ -117,8 +117,8 @@ pub(crate) fn example_topology() -> Arc<Topology> {
                 .or_insert_with(|| serde_json::json!({}));
         }
     }
-    // Exports from before prefixes were queried with tags, scope and description, and devices
-    // with their device type, lack them; treat those as empty.
+    // Exports from before prefixes were queried with tags, scope, description and custom
+    // fields, and devices with their device type, lack them; treat those as empty.
     for prefix in raw["data"]["prefix_list"]
         .as_array_mut()
         .into_iter()
@@ -127,6 +127,7 @@ pub(crate) fn example_topology() -> Arc<Topology> {
         if let Some(prefix) = prefix.as_object_mut() {
             prefix.entry("tags").or_insert_with(|| serde_json::json!([]));
             prefix.entry("description").or_insert_with(|| serde_json::json!(""));
+            prefix.entry("custom_field_data").or_insert_with(|| serde_json::json!({}));
         }
     }
     for device in raw["data"]["device_list"]

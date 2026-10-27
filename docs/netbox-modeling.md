@@ -66,6 +66,7 @@ nur auf Geräten mit Client-Netz. Jedes Gerät fragt die Server auch selbst
 | Wireless LAN Group  | `controller`           | Objekt → Device              | CAPsMAN-Controller der Gruppe                 |
 | Wireless LAN Group  | `wlan_mgmt`            | Objekt → VLAN                | Management-VLAN der Gruppe                    |
 | VLAN Group          | `vxlan_vni`            | Integer                      | VLANs der Gruppe über VXLAN verbinden         |
+| Prefix              | `dhcp_lease_time`      | Integer (Sekunden)           | Lease-Zeit des DHCP-Servers dieses Netzes     |
 | Wireless Link       | `rf_country`           | Text                         | Land beider Enden einer Funkbrücke übersteuern |
 | Wireless Link       | `rf_frequency_mode`    | Selection                    | Frequency Mode beider Enden übersteuern       |
 | Journal Entry       | `provisioner_job`      | JSON                         | Stand eines Jobs, vom Provisioner geschrieben |
@@ -339,10 +340,13 @@ tragen.
   müssen im selben Prefix liegen.
 - **DHCP-Pool automatisch:** ohne `dhcp`-Range nimmt der Provisioner den gesamten freien Rest des
   Prefixes, abzüglich aller dort vergebenen IP-Adressen, Kind-Prefixe und anderen Ranges.
+- **Lease-Zeit:** Custom Field `dhcp_lease_time` am Prefix, in Sekunden; leer (oder 0) bleibt
+  es bei RouterOS' 30 min. Eine kurze Lease braucht ein Netz, dessen Clients bei einem Ausfall
+  schnell zu einem anderen Server wechseln sollen (Funkbrücke mit zwei DHCP-Seiten).
 - **Mehrere IPv4-Netze an einem Interface mit `dhcp`:** RouterOS nimmt nur einen DHCP-Server pro
   Interface. Das erste Netz mit freien Adressen legt ihn an, jedes weitere hängt seine Adressen an
   dessen Pool und bekommt einen eigenen Netz-Eintrag (Gateway, DNS). Welches Netz ein Client
-  bekommt, lässt sich nicht steuern. Ein Netz ohne freie Adresse (ein Transfernetz, dessen
+  bekommt, lässt sich nicht steuern; die Lease-Zeit ist die kürzeste der Netze. Ein Netz ohne freie Adresse (ein Transfernetz, dessen
   Adressen alle vergeben sind) bekommt nichts.
 - Ein IPv6-/64 an einem Interface mit `dhcp` wird per Router Advertisement angekündigt
   (`advertise=yes`, SLAAC). Andere IPv6-Adressen nicht.

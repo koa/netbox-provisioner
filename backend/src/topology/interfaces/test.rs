@@ -295,6 +295,7 @@ fn pool(builder: &mut TopologyBuilder, prefix: &str, pool: PrefixPool) {
             ranges: Box::new([]),
             pool: Some(pool),
             site: None,
+            dhcp_lease_time: None,
         },
     );
 }

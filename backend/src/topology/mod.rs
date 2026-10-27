@@ -339,6 +339,9 @@ pub struct IpPrefixData {
     pub pool: Option<PrefixPool>,
     /// its scope, if that is a site: a customer network's parent
     pub site: Option<SiteId>,
+    /// custom field `dhcp_lease_time` (seconds): the lease time of its DHCP server, else
+    /// RouterOS's 30 min
+    pub dhcp_lease_time: Option<Duration>,
 }
 /// What a prefix with one of the tags `loopback` or `transfer` hands out: all prefixes with
 /// the same tag and IP version form one pool (`docs/config-helper.md`).

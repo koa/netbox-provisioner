@@ -384,6 +384,7 @@ impl NetboxPlan {
                             "prefix": create.prefix,
                             "description": create.description,
                             "tags": [],
+                            "custom_field_data": {},
                             "scope": create.site.map(|site| json!({ "__typename": "SiteType", "id": site.to_string() })),
                         }));
                     }

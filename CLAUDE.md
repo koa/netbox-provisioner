@@ -113,7 +113,9 @@ what the stored export has to `target/netbox-example/findings.txt`. RouterOS tak
 (CHR 7.24.5: "server or relay with such interface already exists"), so the IPv4 networks of a
 `dhcp` interface share one: the first with a pool creates it under the name it always had
 (`dhcp-<interface>[-<n>]`), a further one adds its ranges to that pool and gets a network entry
-of its own. A `dhcp` interface whose prefix leaves no
+of its own. The server's lease time is the prefix's custom field `dhcp_lease_time` (seconds;
+the shortest of the port's networks, none or 0 RouterOS's 30 min); mikrotik-model reads it as a
+`Duration`, since RouterOS reports `120s` as `2m`. A `dhcp` interface whose prefix leaves no
 address for a pool gets no DHCP server, silently; `DhcpPoolEmpty` says so, computing the pool
 with the generator's `device::ros::dhcp_pool_v4` (a single free address is a pool of one, it
 once was lost, so a /30 customer port got no server). A /32 with `dhcp` (router-stall-burri's

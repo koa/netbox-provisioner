@@ -32,6 +32,10 @@ impl AccessTopology for IpPrefixAccess {
     }
 }
 impl IpPrefixAccess {
+    /// custom field `dhcp_lease_time`
+    pub fn dhcp_lease_time(&self) -> Option<std::time::Duration> {
+        self.data().and_then(|d| d.dhcp_lease_time)
+    }
     pub fn parent(&self) -> Option<IpPrefixAccess> {
         self.data().and_then(|d| d.parent).map(self.create_access())
     }

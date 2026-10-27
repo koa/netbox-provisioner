@@ -502,6 +502,7 @@ async fn test_scenario_dhcp_household() -> Result<(), Box<dyn Error>> {
             ranges: Box::new([]),
             pool: None,
             site: None,
+            dhcp_lease_time: None,
         },
     );
     let range_id = builder.ip_ranges.next_id();
@@ -1204,6 +1205,7 @@ async fn create_default_bridge_device(explicit_bridge: bool) -> DeviceAccess {
             ranges: Box::new([]),
             pool: None,
             site: None,
+            dhcp_lease_time: None,
         },
     );
     let gateway_ip = builder.ip_addresses.next_id();
@@ -1925,6 +1927,79 @@ async fn dhcp_networks_of_a_port_share_its_server() {
     assert_eq!(
         target.dhcp_v_4_server_network.keys().map(|net| net.to_string()).collect::<Vec<_>>(),
         ["192.168.101.48/29", "192.168.105.0/29"]
+    );
+}
+
+/// A port's DHCP server takes the lease time of its prefix (custom field `dhcp_lease_time`), the
+/// shortest of its networks; without one RouterOS's 30 min.
+#[tokio::test]
+async fn dhcp_lease_time_comes_from_the_prefix() {
+    async fn lease_time(networks: &[(&str, Option<u64>)]) -> Option<std::time::Duration> {
+        let mut builder = TopologyBuilder::default();
+        let device = builder.devices.next_id();
+        let mut ips = Vec::new();
+        for (address, lease_secs) in networks {
+            let ip: IpNet = address.parse().unwrap();
+            let prefix = builder.ip_prefixes.next_id();
+            builder.ip_prefixes.insert(
+                prefix,
+                IpPrefixData {
+                    prefix: ip.trunc(),
+                    addresses: Box::new([]),
+                    children: Box::new([]),
+                    parent: None,
+                    ranges: Box::new([]),
+                    pool: None,
+                    site: None,
+                    dhcp_lease_time: lease_secs.map(std::time::Duration::from_secs),
+                },
+            );
+            let id = builder.ip_addresses.next_id();
+            builder.ip_addresses.insert(
+                id,
+                IpAddressData {
+                    ip,
+                    interface: None,
+                    prefix: Some(prefix),
+                },
+            );
+            ips.push(id);
+        }
+        let port = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            port,
+            Interface {
+                name: "ether1".into(),
+                device,
+                external: Some(PhysicalPortId::Ethernet(1)),
+                ips: ips.into(),
+                enable_dhcp_server: true,
+                ..Default::default()
+            },
+        );
+        builder.devices.insert(
+            device,
+            Device {
+                name: "router".into(),
+                ..Default::default()
+            },
+        );
+        let device = Into::<TopologyHolder>::into(builder).devices_by_id(device).await.unwrap();
+        let (mut target, _) = setup_testdata(b"CRS326-24G-2S+").unwrap();
+        target.generate_from(&device, KeepNameGenerator).unwrap();
+        target.dhcp_v_4_server[&AsciiString::from("dhcp-ether1")].0.lease_time
+    }
+    let secs = |secs| Some(std::time::Duration::from_secs(secs));
+    assert_eq!(lease_time(&[("192.168.101.49/29", None)]).await, secs(30 * 60));
+    assert_eq!(lease_time(&[("192.168.101.49/29", Some(120))]).await, secs(120));
+    assert_eq!(
+        lease_time(&[
+            ("192.168.101.49/29", Some(120)),
+            ("192.168.105.1/29", None),
+            ("192.168.106.1/29", Some(60)),
+        ])
+        .await,
+        secs(60)
     );
 }
 

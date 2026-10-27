@@ -166,6 +166,7 @@ impl TopologyBuilder {
                         ranges: Box::new([]),
                         pool: None,
                         site: None,
+                        dhcp_lease_time: None,
                     },
                 );
                 prefix_id
@@ -197,6 +198,7 @@ impl TopologyBuilder {
                         ranges: Box::new([]),
                         pool: None,
                         site: None,
+                        dhcp_lease_time: None,
                     },
                 );
                 prefix_id

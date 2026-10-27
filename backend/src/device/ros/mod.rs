@@ -1213,6 +1213,8 @@ impl BaseDeviceDataTarget {
                 // hand out creates it, a further one adds its ranges to its pool and a network
                 // entry of its own
                 let mut port_server: Option<AsciiString> = None;
+                // the shortest lease time of the port's networks: one server has one
+                let mut port_lease_time: Option<Duration> = None;
                 for (ip_idx, (ip, ip_address)) in ips.iter().enumerate() {
                     self.set_ip_address(*ip, if_name.clone());
                     // a client network (`dhcp`) gets its IPv6 /64 announced for SLAAC
@@ -1272,6 +1274,11 @@ impl BaseDeviceDataTarget {
                             .0;
                         server.interface = if_name.clone();
                         server.address_pool = server_name.clone();
+                        if let Some(lease_time) = prefix.dhcp_lease_time() {
+                            let shortest = port_lease_time.map_or(lease_time, |t| t.min(lease_time));
+                            port_lease_time = Some(shortest);
+                            server.lease_time = Some(shortest);
+                        }
                         let network =
                             &mut self.dhcp_v_4_server_network.entry(net).or_default().0;
                         network.gateway.insert(v4.addr());

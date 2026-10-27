@@ -491,6 +491,11 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                 "transfer" => Some(PrefixPool::Transfer),
                 _ => None,
             });
+            let dhcp_lease_time = prefix_data
+                .custom_field_data
+                .dhcp_lease_time
+                .filter(|secs| *secs > 0)
+                .map(|secs| std::time::Duration::from_secs(secs.into()));
             let site = prefix_data.scope.as_ref().and_then(|scope| match scope {
                 fetch_topology::FetchTopologyPrefixListScope::SiteType(site) => {
                     site.id.parse().ok().map(SiteId)
@@ -507,6 +512,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     ranges: Box::new([]),
                     pool,
                     site,
+                    dhcp_lease_time,
                 },
             );
         }

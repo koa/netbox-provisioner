@@ -157,6 +157,7 @@ query FetchTopology{
         id
         prefix
         description
+        custom_field_data
         tags{
             slug
         }
