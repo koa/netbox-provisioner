@@ -71,7 +71,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | offen |
 | C14 | Metriken des mikrotik-metrik-exporter im Provisioner (erster Teil von C8): Funk-Clients mit DHCP-Hostname, Health, PoE, dazu System, Interfaces und DHCP-Leases; Labels `device` und `site` aus NetBox, Dashboards im Repo angepasst; danach weder Exporter noch `prometheus`-Benutzer nötig | [Überwachung](concepts/monitoring.md) | M–L | offen |
-| C16 | Funkbrücke ohne RouterOS (zwei UISP Wave Nano, von Hand eingerichtet), Management von beiden Seiten erreichbar. Zwei Varianten im Lab gegeneinander testen: statische `/32` bzw. `/128` auf die feste IP jeder Wave Nano über den MikroTik ihrer Seite (neuer Code: `/ip/route` nur mit eigenen Einträgen), oder je Seite ein eigenes /29 mit DHCP und kurzer Lease (vielleicht ohne neuen Code). Wartet auf die Wave Nanos im Lab | [Funkbrücke ohne RouterOS](concepts/foreign-radio-bridge.md) | M | offen |
+| C16 | Funkbrücke ohne RouterOS (zwei UISP Wave Nano, von Hand eingerichtet), Management von beiden Seiten erreichbar. Im Lab aufgebaut mit DHCP: je Seite ein eigenes /29, Transfernetz /31 für OSPF. Offen: kurze Lease-Zeit aus NetBox, dann die Ausfall-Tests (Strecke gestört, ein MikroTik aus, Neustart einer Wave Nano) | [Funkbrücke ohne RouterOS](concepts/foreign-radio-bridge.md) | M | offen |
 
 ## D. In Arbeit, Rest offen
 

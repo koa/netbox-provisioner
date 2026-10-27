@@ -1,8 +1,9 @@
 # Konzept: Funkbrücke ohne RouterOS
 
-Status: Konzept mit zwei Varianten, [Routen](#variante-1-routen-auf-die-wave-nanos) und
-[DHCP](#variante-2-dhcp-je-seite), die im Lab gegeneinander getestet werden, sobald die Wave
-Nanos da sind. Aufgabe C16 in [todo.md](../todo.md).
+Status: Konzept; im Lab aufgebaut ist [Variante 2, DHCP](#variante-2-dhcp-je-seite)
+(2026-10-27). [Variante 1](#variante-1-routen-auf-die-wave-nanos) fällt weg: In der UISP-App
+lässt sich bei fester IP kein Gateway setzen (ob die Weboberfläche es kann, ist ungeprüft).
+Aufgabe C16 in [todo.md](../todo.md).
 
 Eine Funkstrecke aus zwei Geräten ohne RouterOS (geplant: zwei UISP Wave Nano, 60 GHz) zwischen
 zwei MikroTiks, L2-transparent, ohne VLANs. Der Provisioner konfiguriert die Funkgeräte nicht,
@@ -94,16 +95,22 @@ Kosten:
 - Die IPs wechseln; wo welche Wave Nano ist, steht in den Leases der beiden MikroTiks, nicht in
   NetBox. Der Provisioner könnte sie an der Strecke anzeigen.
 - OSPFv2 bildet auf einem Broadcast-Segment nur Nachbarschaften im selben Subnetz: Die beiden
-  Ports brauchen zusätzlich ein gemeinsames Transfernetz, auf dem Segment liegen dann drei Netze.
-  OSPFv3 über Link-Local betrifft das nicht.
-- Zwei DHCP-Server auf einem Segment.
+  Ports brauchen zusätzlich ein gemeinsames Transfernetz, ein /31; auf dem Segment liegen dann
+  drei Netze. OSPFv3 über Link-Local betrifft das nicht.
+- Je ein DHCP-Server auf beiden MikroTiks im selben Segment. Pro Port ist es einer: Das /31
+  lässt keine Adresse frei und bekommt nichts, der Server gehört dem /29.
 
-Möglicherweise ohne neuen Code: DHCP-Server aus NetBox kann der Provisioner schon, Transfernetz
-und eigenes /29 sind zwei Prefixe am selben Port.
+Aufbau im Lab (lab-np1 und lab-np2, `ether8`, Tags `ospf` und `dhcp`): Transfernetz
+`192.168.101.40/31`, Management `192.168.101.48/29` an lab-np1 und `192.168.101.56/29` an
+lab-np2. Dafür nötig waren passives PoE (`forced-on`) und ein DHCP-Server pro Port für alle
+seine Netze; mehr Code nicht. OSPFv2 und OSPFv3 laufen über die Strecke (`Full`). Beide Wave
+Nanos nahmen ihre Lease zuerst von lab-np1 und sind von lab-np1, lab-np2 und lab-core aus
+erreichbar.
+
+Noch fehlt eine kurze Lease: heute fest 30 min.
 
 ### Im Lab zu prüfen
 
-- Ob die Generierung zwei Netze an einem Port mit DHCP nur auf einem davon sauber erzeugt.
 - Ob die beiden DHCP-Server sich nicht stören, besonders nach einem Neustart einer Wave Nano
   (sie fragt dann ohne Server-ID nach ihrer alten Adresse).
 - Wie lange der Wechsel tatsächlich dauert.
