@@ -1902,6 +1902,32 @@ async fn dhcp_server_name_counts_ipv4_addresses_only() {
     );
 }
 
+/// Two DHCP networks on one port share its one DHCP server (RouterOS takes no second one on
+/// the interface): one pool with the ranges of both, a network entry for each.
+#[tokio::test]
+async fn dhcp_networks_of_a_port_share_its_server() {
+    let (mut target, _) = setup_testdata(b"CRS326-24G-2S+").unwrap();
+    let device = dhcp_server_on(&["192.168.101.49/29", "192.168.105.1/29"]).await;
+    target.generate_from(&device, KeepNameGenerator).unwrap();
+    assert_eq!(
+        target.dhcp_v_4_server.keys().map(|name| name.to_string()).collect::<Vec<_>>(),
+        ["dhcp-ether1"]
+    );
+    assert_eq!(
+        target.ipv_4_pool[&AsciiString::from("dhcp-ether1")]
+            .0
+            .ranges
+            .iter()
+            .map(|range| range.to_string())
+            .collect::<Vec<_>>(),
+        ["192.168.101.50-192.168.101.54", "192.168.105.2-192.168.105.6"]
+    );
+    assert_eq!(
+        target.dhcp_v_4_server_network.keys().map(|net| net.to_string()).collect::<Vec<_>>(),
+        ["192.168.101.48/29", "192.168.105.0/29"]
+    );
+}
+
 /// A device without RouterOS whose interface has a MAC and an address in a DHCP network is a
 /// static lease of that network's server, named after it; one without MAC or a RouterOS device
 /// is none. The lease's address isn't in the pool.

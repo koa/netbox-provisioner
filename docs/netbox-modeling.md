@@ -339,6 +339,11 @@ tragen.
   müssen im selben Prefix liegen.
 - **DHCP-Pool automatisch:** ohne `dhcp`-Range nimmt der Provisioner den gesamten freien Rest des
   Prefixes, abzüglich aller dort vergebenen IP-Adressen, Kind-Prefixe und anderen Ranges.
+- **Mehrere IPv4-Netze an einem Interface mit `dhcp`:** RouterOS nimmt nur einen DHCP-Server pro
+  Interface. Das erste Netz mit freien Adressen legt ihn an, jedes weitere hängt seine Adressen an
+  dessen Pool und bekommt einen eigenen Netz-Eintrag (Gateway, DNS). Welches Netz ein Client
+  bekommt, lässt sich nicht steuern. Ein Netz ohne freie Adresse (ein Transfernetz, dessen
+  Adressen alle vergeben sind) bekommt nichts.
 - Ein IPv6-/64 an einem Interface mit `dhcp` wird per Router Advertisement angekündigt
   (`advertise=yes`, SLAAC). Andere IPv6-Adressen nicht.
 - Gateway des DHCP-Netzes ist die eigene Adresse des Routers auf diesem Interface. DNS-Server

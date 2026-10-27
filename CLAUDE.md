@@ -109,7 +109,11 @@ calls it again). Only RouterOS devices are checked; each finding is a typed vari
 derived from `netbox_url`) and words in `i18n::findings`. Of a cable, the MTU is compared at the
 ports; `ospf` on one end and a common subnet at the port's bridge where it has one, and only when
 both ends have IPv4: a radio bridge device's end is L2 only. `findings_of_netbox_example` writes
-what the stored export has to `target/netbox-example/findings.txt`. A `dhcp` interface whose prefix leaves no
+what the stored export has to `target/netbox-example/findings.txt`. RouterOS takes one DHCP server per interface
+(CHR 7.24.5: "server or relay with such interface already exists"), so the IPv4 networks of a
+`dhcp` interface share one: the first with a pool creates it under the name it always had
+(`dhcp-<interface>[-<n>]`), a further one adds its ranges to that pool and gets a network entry
+of its own. A `dhcp` interface whose prefix leaves no
 address for a pool gets no DHCP server, silently; `DhcpPoolEmpty` says so, computing the pool
 with the generator's `device::ros::dhcp_pool_v4` (a single free address is a pool of one, it
 once was lost, so a /30 customer port got no server). A /32 with `dhcp` (router-stall-burri's
