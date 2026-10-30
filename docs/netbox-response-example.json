@@ -1144,20 +1144,32 @@
           {
             "id": "24",
             "name": "ether13",
-            "label": "",
-            "ip_addresses": [],
+            "label": "berg-schmidrueti",
+            "ip_addresses": [
+              {
+                "id": "626"
+              },
+              {
+                "id": "628"
+              }
+            ],
             "enabled": true,
             "type": "1000base-t",
             "mtu": null,
             "speed": null,
             "duplex": null,
-            "bridge": {
-              "id": "415"
-            },
-            "tags": [],
+            "bridge": null,
+            "tags": [
+              {
+                "slug": "dhcp"
+              },
+              {
+                "slug": "ospf"
+              }
+            ],
             "untagged_vlan": null,
             "tagged_vlans": [],
-            "poe_mode": null,
+            "poe_mode": "",
             "poe_type": null,
             "primary_mac_address": null,
             "rf_role": null,
@@ -4317,7 +4329,7 @@
           {
             "id": "847",
             "name": "eth0",
-            "label": "",
+            "label": "1og-sw2",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -4328,8 +4340,8 @@
             "tags": [],
             "untagged_vlan": null,
             "tagged_vlans": [],
-            "poe_mode": "pd",
-            "poe_type": "passive-48v-4pair",
+            "poe_mode": "",
+            "poe_type": "",
             "primary_mac_address": null,
             "rf_role": "",
             "rf_channel_frequency": null,
@@ -4354,7 +4366,7 @@
             "poe_mode": "",
             "poe_type": "",
             "primary_mac_address": null,
-            "rf_role": "",
+            "rf_role": "ap",
             "rf_channel_frequency": null,
             "rf_channel_width": null,
             "tx_power": null,
@@ -4366,7 +4378,7 @@
               "interface_b": {
                 "id": "845"
               },
-              "ssid": "",
+              "ssid": "berg-schmidrueti",
               "auth_type": null,
               "auth_psk": "",
               "custom_field_data": {
@@ -4392,7 +4404,7 @@
             "poe_mode": "",
             "poe_type": "",
             "primary_mac_address": null,
-            "rf_role": "",
+            "rf_role": "ap",
             "rf_channel_frequency": null,
             "rf_channel_width": null,
             "tx_power": null,
@@ -4404,7 +4416,7 @@
               "interface_b": {
                 "id": "846"
               },
-              "ssid": "",
+              "ssid": "berg-schmidrueti",
               "auth_type": null,
               "auth_psk": "",
               "custom_field_data": {
@@ -16617,33 +16629,6 @@
             "wireless_link": null
           },
           {
-            "id": "258",
-            "name": "ovpn",
-            "label": "",
-            "ip_addresses": [
-              {
-                "id": "29"
-              }
-            ],
-            "enabled": true,
-            "type": "virtual",
-            "mtu": null,
-            "speed": null,
-            "duplex": null,
-            "bridge": null,
-            "tags": [],
-            "untagged_vlan": null,
-            "tagged_vlans": [],
-            "poe_mode": null,
-            "poe_type": null,
-            "primary_mac_address": null,
-            "rf_role": null,
-            "rf_channel_frequency": null,
-            "rf_channel_width": null,
-            "tx_power": null,
-            "wireless_link": null
-          },
-          {
             "id": "255",
             "name": "sfp-sfpplus1",
             "label": "uplink-fiber7",
@@ -19185,7 +19170,7 @@
           {
             "id": "844",
             "name": "eth0",
-            "label": "",
+            "label": "switch-schmidrueti",
             "ip_addresses": [],
             "enabled": true,
             "type": "1000base-t",
@@ -19222,7 +19207,7 @@
             "poe_mode": "",
             "poe_type": "",
             "primary_mac_address": null,
-            "rf_role": "",
+            "rf_role": "station",
             "rf_channel_frequency": null,
             "rf_channel_width": null,
             "tx_power": null,
@@ -19234,7 +19219,7 @@
               "interface_b": {
                 "id": "845"
               },
-              "ssid": "",
+              "ssid": "berg-schmidrueti",
               "auth_type": null,
               "auth_psk": "",
               "custom_field_data": {
@@ -19260,7 +19245,7 @@
             "poe_mode": "",
             "poe_type": "",
             "primary_mac_address": null,
-            "rf_role": "",
+            "rf_role": "station",
             "rf_channel_frequency": null,
             "rf_channel_width": null,
             "tx_power": null,
@@ -19272,7 +19257,7 @@
               "interface_b": {
                 "id": "846"
               },
-              "ssid": "",
+              "ssid": "berg-schmidrueti",
               "auth_type": null,
               "auth_psk": "",
               "custom_field_data": {
@@ -22784,18 +22769,32 @@
           {
             "id": "824",
             "name": "ether1",
-            "label": "",
-            "ip_addresses": [],
+            "label": "schmidrueti-berg",
+            "ip_addresses": [
+              {
+                "id": "627"
+              },
+              {
+                "id": "629"
+              }
+            ],
             "enabled": true,
             "type": "1000base-t",
             "mtu": null,
             "speed": null,
             "duplex": null,
             "bridge": null,
-            "tags": [],
+            "tags": [
+              {
+                "slug": "dhcp"
+              },
+              {
+                "slug": "ospf"
+              }
+            ],
             "untagged_vlan": null,
             "tagged_vlans": [],
-            "poe_mode": null,
+            "poe_mode": "pse",
             "poe_type": null,
             "primary_mac_address": null,
             "rf_role": null,
@@ -31329,10 +31328,6 @@
         "address": "10.195.0.1/24"
       },
       {
-        "id": "29",
-        "address": "10.195.16.1/24"
-      },
-      {
         "id": "36",
         "address": "10.195.251.1/24"
       },
@@ -31819,6 +31814,22 @@
       {
         "id": "625",
         "address": "172.17.0.79/31"
+      },
+      {
+        "id": "626",
+        "address": "172.17.0.80/31"
+      },
+      {
+        "id": "627",
+        "address": "172.17.0.81/31"
+      },
+      {
+        "id": "628",
+        "address": "172.17.0.89/29"
+      },
+      {
+        "id": "629",
+        "address": "172.17.0.97/29"
       },
       {
         "id": "111",
@@ -33534,6 +33545,34 @@
         "prefix": "172.17.0.78/31",
         "description": "router-schmidrueti – switch-schmidrueti",
         "custom_field_data": {},
+        "tags": [],
+        "scope": null
+      },
+      {
+        "id": "688",
+        "prefix": "172.17.0.80/31",
+        "description": "1og-sw2 – switch-schmidrueti",
+        "custom_field_data": {},
+        "tags": [],
+        "scope": null
+      },
+      {
+        "id": "689",
+        "prefix": "172.17.0.88/29",
+        "description": "1og-sw2 – berg-schmidrueti (DHCP)",
+        "custom_field_data": {
+          "dhcp_lease_time": 120
+        },
+        "tags": [],
+        "scope": null
+      },
+      {
+        "id": "690",
+        "prefix": "172.17.0.96/29",
+        "description": "switch-schmidrueti – schmidrueti-berg (DHCP)",
+        "custom_field_data": {
+          "dhcp_lease_time": 120
+        },
         "tags": [],
         "scope": null
       },
