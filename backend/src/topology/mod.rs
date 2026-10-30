@@ -584,6 +584,14 @@ static WLAN_PORT_PATTERN: LazyLock<Regex> =
 static W60G_PORT_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^wlan60-([0-9]+)$").unwrap());
 impl PhysicalPortId {
+    /// Whether it is a radio (`wifi<N>`, `wlan<N>`, `wlan60-<N>`), not a port of the switch
+    /// chip.
+    pub fn is_radio(&self) -> bool {
+        matches!(
+            self,
+            PhysicalPortId::Wifi(_) | PhysicalPortId::Wlan(_) | PhysicalPortId::W60g(_)
+        )
+    }
     pub fn short_name(&self) -> AsciiString {
         AsciiString::from(match self {
             PhysicalPortId::Ethernet(id) => format!("e{id:02}"),

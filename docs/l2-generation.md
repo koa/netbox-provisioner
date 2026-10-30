@@ -120,13 +120,35 @@ er versklavt ist — die L3-Präsenz einer VLAN muss daher immer entweder auf de
 VLAN) oder auf einer eigenen VLAN-Sub-Schnittstelle sitzen, nie auf dem Namen eines einzelnen
 Mitgliedsports, egal wie viele physische Ports diese VLAN tragen.
 
-### Eine Bridge auf einem CRS3xx (`L2Setup::into_one_bridge`)
+### Nach dem Switch-Chip (`L2Setup::for_switch_chips`)
 
-Der Switch-Chip eines CRS3xx übernimmt nur **eine** Bridge in Hardware; jede weitere läuft auf
-der CPU. VLAN-Filtering dagegen bleibt dort in Hardware. Auf einem solchen Board
-(`hw_facts::filters_vlans_in_hardware`, heute alle Modelle `CRS3…`) legt `DeviceCfg::generate_from`
-deshalb alle Bridges nach Schritt 4 zu einer VLAN-Filtering-Bridge zusammen, sobald es mehr als
-eine gibt:
+Was ein Switch-Chip in Hardware übernimmt, steht in `hw_facts::SwitchChip`, nach MikroTiks
+Handbuch („Bridge Hardware Offloading“ und die Board-Tabelle von „Switch Chip Features“,
+2026-10-30). `hw_facts::SwitchChips` ordnet die Ports eines Boards seinen Chips zu: Ein Board
+kann mehrere Chips haben (RB2011: Atheros8327 an `ether1`–`ether5` und `sfp1`, Atheros8227 an
+`ether6`–`ether10`), und manche Ports hängen an keinem, sondern direkt an der CPU (`sfp1` eines
+hAP ac, `ether1` eines L009, beim CCR1009-8G alles ausser `ether1`–`ether4`). Entschieden wird
+deshalb pro Bridge nach den Chips ihrer Ports; Funk-Ports und Ports der CPU laufen ohnehin in
+Software. Ein Board, das die Tabelle nicht nennt (CCR1009-7G-1C-1S+), hat keine Chips und
+behält, was jedes Board bekommt.
+
+| Chip | Boards (Beispiele) | VLAN-Filtering | IGMP-Snooping |
+|---|---|---|---|
+| Marvell Prestera | CRS3xx/4xx/5xx/8xx, CCR2116, CCR2216 | ✓ | ✓ |
+| 88E6393X, 88E6191X, 88E6190 | RB5009, L009, CCR2004-16G-2S+ | ✓ | ✓ |
+| MT7621, MT7531, EN7523, RTL8367 | hEX, hEX S, RB4011 | ✓ | ✗ |
+| CRS1xx/2xx | CRS109 | ✗ | ✓ |
+| QCA8337, Atheros8327/8316 | hAP ac, hEX PoE, wAP ac, CCR1009-8G | ✗ | ✗ |
+| Atheros8227/7240 | hAP lite, hEX lite | ✗ | ✗ |
+| IPQ-PPE, QCA8386, 98PX1012 | hAP ax², cAP ax, CCR2004-1G-12S+2XS | nichts in Hardware | |
+
+Was ein Chip nicht übernimmt, schaltet die Hardware für die ganze Bridge ab. Ausser CRS1xx/2xx
+übernimmt jeder Chip nur **eine** Bridge.
+
+**Eine Bridge.** Die Bridges, deren Switch-Ports alle an Chips mit VLAN-Filtering in Hardware
+hängen, werden eine VLAN-Filtering-Bridge, sobald es mehr als eine ist
+(`L2Setup::into_one_bridge`). Die übrigen bleiben, wie sie sind, ebenso eine Bridge, die
+snoopen muss, auf einem Chip, der das nicht in Hardware kann: Sie läuft so oder so auf der CPU.
 
 - Die VLANs der getaggten Bridges bleiben, wie sie sind (dieselbe VLAN-ID in zwei Bridges ist
   schon `AmbiguousVlanIds`).
@@ -136,11 +158,24 @@ eine gibt:
   Bridge, die sonst eine synthetische ID ab 60000 hätte.
 - Hat ein solches VLAN eine Adresse, bekommt es ein `/interface/vlan`, benannt nach der Bridge,
   die es war (`vlan-switch-clients-4094`); Adresse, DHCP-Server und OSPF ziehen dorthin um.
-- Die Bridge heisst `bridge` (`bridge-caps` auf einem CAP, falls es sie gibt).
+- Die Bridge heisst `bridge` (`bridge-caps` auf einem CAP, falls es sie gibt; `bridge-switch`,
+  wenn eine Bridge ausserhalb schon `bridge` heisst).
 
 Auf einem bestehenden Gerät heisst das beim ersten Apply: Bridges umbenannt, Ports umgehängt,
-ein kurzer Unterbruch auf allen Bridge-Ports. Andere Boards behalten ihre Bridges: Ohne
-Switch-Chip-Unterstützung kostet VLAN-Filtering dort die Hardware-Beschleunigung.
+ein kurzer Unterbruch auf allen Bridge-Ports.
+
+**IGMP/MLD-Snooping** (`L2Setup::snoops_multicast`). Ohne Snooping bekamen Android und ChromeOS
+(IPv6 nur per SLAAC) im WLAN hinter srv-router-berg keine Adresse; das WLAN kam dort über ein
+VXLAN in die Bridge des Routers. Eine Bridge mit Funk-Port, VXLAN oder CAPsMAN-Anbindung snoopt
+deshalb immer. Vorher snoopte keine Bridge, und die Clients am Kabel bekamen ihre Adresse; eine
+andere Bridge snoopt deshalb nur dann nicht, wenn ein Chip ihrer Ports sie ohne Snooping in
+Hardware nähme und mit nicht (MT7621-Familie, QCA8337-Familie und Atheros8227 bei einer flachen
+Bridge). Wird Snooping abgeschaltet, meldet RouterOS die Multicast-Felder nicht mehr (CHR
+7.24.5), es bleibt also kein Diff.
+
+Nicht ausgenutzt: Auf einem CRS1xx/2xx liessen sich VLANs im Switch-Menü
+(`/interface/ethernet/switch`) in Hardware bauen; eine VLAN-Filtering-Bridge läuft dort auf der
+CPU.
 
 ## Schritt 5: Realisierung als RouterOS-Config (`BaseDeviceDataTarget::setup_l2`)
 

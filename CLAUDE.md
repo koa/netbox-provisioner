@@ -45,11 +45,12 @@ NetBox-to-RouterOS config generation itself works (interface naming, L2/bridge/V
 OSPF, VXLAN, WLAN/CAPsMAN, point-to-point radio bridges) - read it before changing anything under
 `device/ros/`. There `mod.rs` has the `mikrotik_model!` definitions and the base config
 (`BaseDeviceDataTarget`), `radio/` the radios (`wireless`, `w60g`, `wifi`, `capsman`, shared
-helpers in `radio/mod.rs`), `dhcp.rs` the DHCP pool, `l2/` the bridges and VLANs. A CRS3xx
-offloads only one bridge to its switch chip, so there `DeviceCfg::generate_from` turns all
-bridges into VLANs of one VLAN-filtering bridge (`L2Setup::into_one_bridge`,
-`hw_facts::filters_vlans_in_hardware`); the generated examples don't know the board and keep
-their bridges.
+helpers in `radio/mod.rs`), `dhcp.rs` the DHCP pool, `l2/` the bridges and VLANs. What a
+board's switch chips offload, port by port, is in `hw_facts::SwitchChips` (from MikroTik's
+manual; every chip but a CRS1xx/2xx's offloads one bridge only). `L2Setup::for_switch_chips`
+turns the bridges on chips that filter VLANs in hardware into VLANs of one bridge
+(`into_one_bridge`) and `snoops_multicast` leaves snooping off where it would cost the
+hardware; the generated examples don't know the board and keep their bridges.
 What the provisioner does beyond generating has a doc of its own in `docs/` too (device page,
 jobs, interface view, config helper, update fallback, watchdog, deployment; listed in
 `docs/overview.md`), in German, describing what is built; update it with the code.
@@ -726,9 +727,11 @@ device, over IPv6 where the device has one. RouterOS writes `remote` with the po
 one without brackets (`2a02:610:7501:1000::201:0`), so the address is what is before the last
 colon (`remote_address`).
 
-Every bridge snoops IGMP/MLD (`snoop_multicast`, without a querier): without it Android and
+A bridge snoops IGMP/MLD (`snoop_multicast`, without a querier): without it Android and
 ChromeOS, which take IPv6 by SLAAC only, got no address in a WLAN behind srv-router-berg while a
-PC on the LAN did, and turning it on at the router's bridge fixed it (2026-10-26).
+PC on the LAN did, and turning it on at the router's bridge fixed it (2026-10-26). Only a bridge
+without radio, VXLAN or CAPsMAN leaves it off, where a chip of its ports would offload it
+without snooping but not with it (`L2Setup::snoops_multicast`).
 
 A WLAN with a VLAN ends where NetBox puts its network (e.g. the controller, over the VLAN
 group's VXLAN). A tagged bridge whose only way to other bridges is one VXLAN (a CAP's

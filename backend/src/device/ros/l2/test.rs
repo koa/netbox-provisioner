@@ -28,6 +28,7 @@ use std::{
 };
 
 use super::{EndpointNameGenerator, KeepNameGenerator, L2Port, L2Setup, SimpleBridgePort};
+use crate::device::ros::hw_facts::SwitchChips;
 
 #[tokio::test]
 async fn test_l2_one_vlan() {
@@ -2129,9 +2130,10 @@ async fn test_renamed_ports_keep_their_bridge_ports() -> Result<(), Box<dyn Erro
     Ok(())
 }
 
-/// A switch with two flat bridges in NetBox (as 1og-sw2: `switch-clients`, `switch-tinkerforge`),
-/// each with an address.
-async fn switch_with_two_bridges() -> DeviceAccess {
+/// A switch with two flat bridges in NetBox (as 1og-sw2: `switch-clients` on ether1-3,
+/// `switch-tinkerforge` on ether4-5), each with an address; with `radio`, `wlan1` is in
+/// `switch-clients` too.
+async fn switch_with_two_bridges(radio: bool) -> DeviceAccess {
     let mut builder = TopologyBuilder::default();
     let device = builder.devices.next_id();
     for (bridge_name, ports, address) in [
@@ -2151,14 +2153,19 @@ async fn switch_with_two_bridges() -> DeviceAccess {
                 ..Default::default()
             },
         );
-        for &port in ports {
+        let radio = (radio && bridge_name == "switch-clients").then_some(PhysicalPortId::Wlan(1));
+        for port in ports
+            .iter()
+            .map(|&port| PhysicalPortId::Ethernet(port))
+            .chain(radio)
+        {
             let id = builder.interfaces.next_id();
             builder.interfaces.insert(
                 id,
                 Interface {
-                    name: format!("ether{port}").into(),
+                    name: port.to_string().into(),
                     device,
-                    external: Some(PhysicalPortId::Ethernet(port)),
+                    external: Some(port),
                     bridge: Some(bridge),
                     ..Default::default()
                 },
@@ -2178,14 +2185,33 @@ async fn switch_with_two_bridges() -> DeviceAccess {
         .expect("device not found")
 }
 
-/// On a board that filters VLANs in hardware for one bridge only (a CRS3xx), the two bridges
-/// become two VLANs of one VLAN-filtering bridge, with IDs local to the device from 4094 down;
-/// their addresses and the DHCP server move to the VLAN interfaces.
+/// Whether each bridge of the setup snoops IGMP, by name.
+fn snooping<N: super::NameGenerator>(l2: &L2Setup<N>) -> Vec<(String, bool)> {
+    let simple = l2.simple_bridges.iter().map(|bridge| {
+        (
+            bridge.name.to_string(),
+            l2.snoops_multicast(bridge.switch_ports(), bridge.carries_radio(), false),
+        )
+    });
+    let tagged = l2.tagged_bridges.iter().map(|bridge| {
+        (
+            bridge.name.to_string(),
+            l2.snoops_multicast(bridge.switch_ports(), bridge.carries_radio(), true),
+        )
+    });
+    simple.chain(tagged).collect()
+}
+
+/// On a CRS3xx (Prestera: one bridge in hardware, VLAN filtering and IGMP snooping too), the two
+/// bridges become two VLANs of one VLAN-filtering bridge, with IDs local to the device from
+/// 4094 down; their addresses and the DHCP server move to the VLAN interfaces. It snoops.
 #[tokio::test]
 async fn bridges_of_a_crs3xx_become_vlans_of_one() {
-    let device = switch_with_two_bridges().await;
+    let device = switch_with_two_bridges(false).await;
     let (mut target, current) = setup_testdata(b"CRS326-24G-2S+").unwrap();
-    let l2 = L2Setup::new(&device, EndpointNameGenerator).unwrap().into_one_bridge();
+    let l2 = L2Setup::new(&device, EndpointNameGenerator)
+        .unwrap()
+        .for_switch_chips(SwitchChips::of(b"CRS326-24G-2S+"));
     target.setup_addressing(&device, &l2).unwrap();
     target.setup_ports(&device, &l2, None).unwrap();
     dump_mutations(&target, &current).unwrap();
@@ -2193,7 +2219,9 @@ async fn bridges_of_a_crs3xx_become_vlans_of_one() {
         target.bridge.keys().map(ToString::to_string).collect::<Vec<_>>(),
         ["bridge"]
     );
-    assert!(target.bridge[&AsciiString::from("bridge")].0.vlan_filtering);
+    let bridge = &target.bridge[&AsciiString::from("bridge")].0;
+    assert!(bridge.vlan_filtering);
+    assert!(bridge.igmp_snooping);
     let pvids = target
         .bridge_port
         .iter()
@@ -2243,17 +2271,87 @@ async fn bridges_of_a_crs3xx_become_vlans_of_one() {
     );
 }
 
-/// Elsewhere, and with one bridge, the flat bridges stay as they are.
+/// A hEX (MT7621) filters VLANs in hardware but doesn't snoop there: the bridges become one,
+/// which doesn't snoop.
 #[tokio::test]
-async fn one_bridge_stays_flat() {
-    let device = switch_with_two_bridges().await;
-    let l2 = L2Setup::new(&device, EndpointNameGenerator).unwrap();
-    assert_eq!(l2.simple_bridges.len(), 2);
-    let mut one = l2.clone();
-    one.simple_bridges = Box::new([l2.simple_bridges[0].clone()]);
-    let one = one.into_one_bridge();
-    assert_eq!(one.simple_bridges.len(), 1);
-    assert!(one.tagged_bridges.is_empty());
-    assert!(crate::device::ros::hw_facts::filters_vlans_in_hardware(b"CRS318-16P-2S+"));
-    assert!(!crate::device::ros::hw_facts::filters_vlans_in_hardware(b"RB750Gr3"));
+async fn bridges_of_a_hex_become_one_without_snooping() {
+    let device = switch_with_two_bridges(false).await;
+    let (mut target, _) = setup_testdata(b"RB750Gr3").unwrap();
+    let l2 = L2Setup::new(&device, EndpointNameGenerator)
+        .unwrap()
+        .for_switch_chips(SwitchChips::of(b"RB750Gr3"));
+    assert_eq!(snooping(&l2), [("bridge".into(), false)]);
+    target.setup_addressing(&device, &l2).unwrap();
+    target.setup_ports(&device, &l2, None).unwrap();
+    let bridge = &target.bridge[&AsciiString::from("bridge")].0;
+    assert!(bridge.vlan_filtering);
+    assert!(!bridge.igmp_snooping);
+    assert_eq!(bridge.igmp_version, None);
+}
+
+/// On a hEX a bridge with a radio snoops for its WLAN clients and runs on the CPU, so it stays
+/// out; the other one alone stays as it is, in hardware without snooping.
+#[tokio::test]
+async fn a_snooping_bridge_of_a_hex_stays_out() {
+    let device = switch_with_two_bridges(true).await;
+    let l2 = L2Setup::new(&device, EndpointNameGenerator)
+        .unwrap()
+        .for_switch_chips(SwitchChips::of(b"RB750Gr3"));
+    assert_eq!(
+        snooping(&l2),
+        [
+            ("bridge-switch-clients".into(), true),
+            ("bridge-switch-tinkerforge".into(), false)
+        ]
+    );
+}
+
+/// A hAP ac (QCA8337) doesn't filter VLANs in hardware: the flat bridges stay, without
+/// snooping, which would cost the hardware too.
+#[tokio::test]
+async fn bridges_of_a_hap_ac_stay_flat_without_snooping() {
+    let device = switch_with_two_bridges(false).await;
+    let l2 = L2Setup::new(&device, EndpointNameGenerator)
+        .unwrap()
+        .for_switch_chips(SwitchChips::of(b"RB962UiGS-5HacT2HnT"));
+    assert_eq!(
+        snooping(&l2),
+        [
+            ("bridge-switch-clients".into(), false),
+            ("bridge-switch-tinkerforge".into(), false)
+        ]
+    );
+}
+
+/// A board the table doesn't list keeps what every board gets: its bridges, snooping.
+#[tokio::test]
+async fn an_unknown_board_keeps_its_bridges_snooping() {
+    let device = switch_with_two_bridges(false).await;
+    let l2 = L2Setup::new(&device, EndpointNameGenerator)
+        .unwrap()
+        .for_switch_chips(SwitchChips::of(b"CCR1009-7G-1C-1S+"));
+    assert_eq!(
+        snooping(&l2),
+        [
+            ("bridge-switch-clients".into(), true),
+            ("bridge-switch-tinkerforge".into(), true)
+        ]
+    );
+}
+
+/// The ports of a board's switch chips, as MikroTik's table lists them.
+#[test]
+fn ports_are_on_their_chip() {
+    use crate::device::ros::hw_facts::SwitchChip;
+    let chip = |model: &[u8], port| SwitchChips::of(model).chip_of(port);
+    assert_eq!(chip(b"CRS318-16P-2S+", PhysicalPortId::SfpSfpPlus(1)), Some(SwitchChip::Prestera));
+    assert_eq!(chip(b"RB962UiGS-5HacT2HnT", PhysicalPortId::Ethernet(5)), Some(SwitchChip::Qca8337));
+    // on the CPU
+    assert_eq!(chip(b"RB962UiGS-5HacT2HnT", PhysicalPortId::Sfp(1)), None);
+    assert_eq!(chip(b"L009UiGS-2HaxD", PhysicalPortId::Ethernet(1)), None);
+    assert_eq!(chip(b"L009UiGS-2HaxD", PhysicalPortId::Sfp(1)), Some(SwitchChip::Marvell88E6));
+    assert_eq!(chip(b"RB2011UiAS-2HnD", PhysicalPortId::Ethernet(6)), Some(SwitchChip::Atheros8227));
+    assert_eq!(chip(b"RB2011UiAS-2HnD", PhysicalPortId::Sfp(1)), Some(SwitchChip::Qca8337));
+    assert_eq!(chip(b"CRS109-8G-1S-2HnD", PhysicalPortId::Wlan(1)), None);
+    assert_eq!(chip(b"SXT G-5HPacD r2", PhysicalPortId::Ethernet(1)), None);
 }

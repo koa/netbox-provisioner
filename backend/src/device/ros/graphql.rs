@@ -16,7 +16,7 @@ use crate::{
             progress::{self, Instrument, Progress},
             BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent,
             W60GDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
-            hw_facts::{RadioPackage, build_w60g_ports, radio_package},
+            hw_facts::{RadioPackage, SwitchChips, build_w60g_ports, radio_package},
             needed_radio_package,
             warning::{ApplyWarning, CapOffOutsideWlanGroup},
         },
@@ -86,9 +86,8 @@ pub struct DeviceCfg {
     capsman_certificates: Box<[AsciiString]>,
     /// the package of the radios, if NetBox uses them (`needed_radio_package`)
     radio_package: Option<RadioPackage>,
-    /// all L2 in one bridge: the board's switch chip filters VLANs in hardware for one
-    /// (`hw_facts::filters_vlans_in_hardware`)
-    one_bridge: bool,
+    /// the board's switch chips, for what they offload (`L2Setup::for_switch_chips`)
+    switch_chips: SwitchChips,
     w60g_current: Option<W60GDeviceDataCurrent>,
     w60g_target: Option<W60GDeviceDataTarget>,
     /// the legacy CAPsMAN, on a controller with CAPs of it
@@ -138,8 +137,8 @@ impl DeviceCfg {
                 inner: name_generator,
                 kept,
             },
-        )?;
-        let l2 = if self.one_bridge { l2.into_one_bridge() } else { l2 };
+        )?
+        .for_switch_chips(self.switch_chips);
         let mut warnings = Vec::new();
 
         self.base_target.setup_addressing(device, &l2)?;
@@ -1462,7 +1461,7 @@ impl DeviceCfg {
             wifi_target,
             capsman_certificates,
             radio_package: needed,
-            one_bridge: super::hw_facts::filters_vlans_in_hardware(model),
+            switch_chips: SwitchChips::of(model),
             w60g_current,
             w60g_target,
             capsman_current,

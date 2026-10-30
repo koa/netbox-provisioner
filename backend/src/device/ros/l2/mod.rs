@@ -1,4 +1,4 @@
-use crate::device::ros::{CAPS_BRIDGE_NAME, SetupError, VlanOnBridge};
+use crate::device::ros::{CAPS_BRIDGE_NAME, SetupError, VlanOnBridge, hw_facts::SwitchChips};
 use crate::topology::access::AccessTopology;
 use crate::topology::access::ip_addresses::IpAddressAccess;
 use crate::topology::access::vxlan::VxlanAccess;
@@ -66,6 +66,8 @@ pub struct L2Setup<N: NameGenerator> {
     pub single_ports: Box<[SingleInterfaceEntry]>,
     pub simple_bridges: Box<[SimpleBridge]>,
     pub tagged_bridges: Box<[TaggedBridge]>,
+    /// the board's switch chips (`for_switch_chips`), none if unknown
+    pub switch_chips: SwitchChips,
 }
 
 /// One physical port used standalone, with no RouterOS bridge interface created for
@@ -105,6 +107,56 @@ pub struct TaggedBridgeEntry {
     pub ports: BTreeSet<L2Port>,
     pub vlan: Option<VlanAccess>,
     pub if_name: AsciiString,
+}
+
+impl SimpleBridge {
+    /// Its ports that are no radio.
+    pub fn switch_ports(&self) -> impl Iterator<Item = PhysicalPortId> + '_ {
+        self.ports.iter().filter_map(|port| match port {
+            SimpleBridgePort::Ethernet { port, .. } if !port.is_radio() => Some(*port),
+            _ => None,
+        })
+    }
+    /// Whether a radio is one of its ports.
+    pub fn carries_radio(&self) -> bool {
+        self.ports.iter().any(|port| {
+            matches!(
+                port,
+                SimpleBridgePort::Ethernet { port, .. } if port.is_radio()
+            )
+        })
+    }
+}
+
+impl TaggedBridge {
+    /// Its ports that are no radio.
+    pub fn switch_ports(&self) -> impl Iterator<Item = PhysicalPortId> + '_ {
+        self.ports
+            .values()
+            .flat_map(|entry| &entry.ports)
+            .filter_map(|port| match port {
+                L2Port::TaggedEthernet { port, .. } | L2Port::UntaggedEthernet { port, .. }
+                    if !port.is_radio() =>
+                {
+                    Some(*port)
+                }
+                _ => None,
+            })
+    }
+    /// Whether a radio, a VXLAN or a CAPsMAN attachment is one of its ports.
+    pub fn carries_radio(&self) -> bool {
+        self.ports.values().flat_map(|entry| &entry.ports).any(|port| match port {
+            L2Port::TaggedEthernet { port, .. } | L2Port::UntaggedEthernet { port, .. } => {
+                port.is_radio()
+            }
+            L2Port::VxLan { .. }
+            | L2Port::CapsMan { .. }
+            | L2Port::Cap { .. }
+            | L2Port::CapsManMgmt
+            | L2Port::CapMgmt => true,
+            L2Port::Ip { .. } => false,
+        })
+    }
 }
 
 impl TaggedBridgeEntry {
@@ -699,23 +751,84 @@ impl<G: NameGenerator> L2Setup<G> {
             single_ports: single_ports.into_boxed_slice(),
             simple_bridges: simple_bridges.into_boxed_slice(),
             tagged_bridges: tagged_bridges.into_boxed_slice(),
+            switch_chips: SwitchChips::default(),
         })
     }
 
-    /// All bridges as one VLAN-filtering bridge, for a board whose switch chip offloads only
-    /// one bridge but filters VLANs in hardware (`hw_facts::filters_vlans_in_hardware`): there
-    /// a second bridge runs on the CPU. With one bridge or none nothing changes. Each flat
+    /// The setup for a board with these switch chips (`hw_facts::SwitchChips`), with as much
+    /// as they can in hardware. Every chip but a CRS1xx/2xx's offloads only one bridge, so the
+    /// bridges whose switch ports are all on chips that keep VLAN filtering in hardware become
+    /// one (`into_one_bridge`); a port of the CPU in such a bridge runs in software either way.
+    /// A bridge that snoops IGMP (`snoops_multicast`) on a chip that can't offload snooping
+    /// stays out: it runs on the CPU anyway.
+    pub fn for_switch_chips(mut self, chips: SwitchChips) -> Self {
+        self.switch_chips = chips;
+        let mergeable = |ports: &mut dyn Iterator<Item = PhysicalPortId>, carries_radio: bool| {
+            let mut on_chips = ports.filter_map(|port| chips.chip_of(port)).peekable();
+            on_chips.peek().is_some()
+                && on_chips.all(|chip| {
+                    chip.offloads_vlan_filtering()
+                        && (chip.offloads_igmp_snooping() || !carries_radio)
+                })
+        };
+        self.into_one_bridge(
+            |bridge| mergeable(&mut bridge.switch_ports(), bridge.carries_radio()),
+            |bridge| mergeable(&mut bridge.switch_ports(), bridge.carries_radio()),
+        )
+    }
+
+    /// Whether a bridge with these ports snoops IGMP/MLD. Without it Android and ChromeOS got
+    /// no IPv6 address in the WLAN behind srv-router-berg (SLAAC only, the WLAN on a VXLAN in
+    /// the router's bridge), so a bridge with a radio, VXLAN or CAPsMAN attachment snoops
+    /// always; before that no bridge snooped and the clients on cable got their addresses. Any
+    /// other bridge snoops too, but where a chip of its ports would offload the bridge without
+    /// snooping and not with it.
+    pub fn snoops_multicast(
+        &self,
+        ports: impl Iterator<Item = PhysicalPortId>,
+        carries_radio: bool,
+        vlan_filtering: bool,
+    ) -> bool {
+        carries_radio
+            || !ports
+                .filter_map(|port| self.switch_chips.chip_of(port))
+                .any(|chip| {
+                    chip.offloads_bridges()
+                        && !chip.offloads_igmp_snooping()
+                        && (!vlan_filtering || chip.offloads_vlan_filtering())
+                })
+    }
+
+    /// The bridges `merge_simple` and `merge_tagged` pick as one VLAN-filtering bridge; the
+    /// others stay as they are. With one bridge or none to merge nothing changes. Each flat
     /// bridge becomes a VLAN of its own, with an ID local to the device from 4094 down that no
-    /// VLAN here has; it is never tagged towards another device, its ports are access ports. A
-    /// VLAN entry without a VLAN ID of RouterOS's range (the native entry of a tagged bridge)
+    /// merged VLAN has; it is never tagged towards another device, its ports are access ports.
+    /// A VLAN entry without a VLAN ID of RouterOS's range (the native entry of a tagged bridge)
     /// gets one the same way. A VLAN with an address gets a VLAN interface, named after the
-    /// bridge it was (`vlan-switch-clients-4094`).
-    pub fn into_one_bridge(mut self) -> Self {
-        if self.simple_bridges.len() + self.tagged_bridges.len() <= 1 {
+    /// bridge it was (`vlan-switch-clients-4094`). The bridge is `bridge-caps` if that is one
+    /// of them, else the main bridge (`bridge`, `bridge-switch` if a bridge left out has that
+    /// name).
+    pub fn into_one_bridge(
+        mut self,
+        merge_simple: impl Fn(&SimpleBridge) -> bool,
+        merge_tagged: impl Fn(&TaggedBridge) -> bool,
+    ) -> Self {
+        let (merged_simple, mut kept_simple): (Vec<_>, Vec<_>) =
+            std::mem::take(&mut self.simple_bridges)
+                .into_iter()
+                .partition(&merge_simple);
+        let (merged_tagged, mut kept_tagged): (Vec<_>, Vec<_>) =
+            std::mem::take(&mut self.tagged_bridges)
+                .into_iter()
+                .partition(&merge_tagged);
+        if merged_simple.len() + merged_tagged.len() <= 1 {
+            kept_simple.extend(merged_simple);
+            kept_tagged.extend(merged_tagged);
+            self.simple_bridges = kept_simple.into_boxed_slice();
+            self.tagged_bridges = kept_tagged.into_boxed_slice();
             return self;
         }
-        let mut used = self
-            .tagged_bridges
+        let mut used = merged_tagged
             .iter()
             .flat_map(|bridge| bridge.ports.keys().copied())
             .filter(|id| *id <= MAX_VLAN_ID)
@@ -727,13 +840,20 @@ impl<G: NameGenerator> L2Setup<G> {
             }
             candidate
         };
-        let name = self
-            .tagged_bridges
+        let main = AsciiString::from(self.name_generator.generate_main_bridge(None).as_ref());
+        let name = merged_tagged
             .iter()
             .find(|bridge| *bridge.name == CAPS_BRIDGE_NAME[..])
             .map(|bridge| bridge.name.clone())
             .unwrap_or_else(|| {
-                AsciiString::from(self.name_generator.generate_main_bridge(None).as_ref())
+                // a bridge left out may carry the name already
+                if kept_tagged.iter().any(|bridge| bridge.name == main)
+                    || kept_simple.iter().any(|bridge| bridge.name == main)
+                {
+                    AsciiString::from(format!("{main}-switch").as_str())
+                } else {
+                    main
+                }
             });
         let local_vlan_name = |bridge: &AsciiString, id: u16| {
             let bridge = bridge.to_string();
@@ -741,7 +861,7 @@ impl<G: NameGenerator> L2Setup<G> {
             AsciiString::from(format!("vlan-{part}-{id}").as_str())
         };
         let mut entries = BTreeMap::new();
-        for bridge in std::mem::take(&mut self.tagged_bridges) {
+        for bridge in merged_tagged {
             for (id, mut entry) in bridge.ports {
                 let id = if id <= MAX_VLAN_ID {
                     id
@@ -753,7 +873,7 @@ impl<G: NameGenerator> L2Setup<G> {
                 entries.insert(id, entry);
             }
         }
-        for bridge in std::mem::take(&mut self.simple_bridges) {
+        for bridge in merged_simple {
             let id = next_local_id();
             let owner = bridge.ports.iter().find_map(|port| match port {
                 SimpleBridgePort::Ethernet { root, .. } => Some(root.clone()),
@@ -781,10 +901,12 @@ impl<G: NameGenerator> L2Setup<G> {
                 },
             );
         }
-        self.tagged_bridges = Box::new([TaggedBridge {
+        kept_tagged.push(TaggedBridge {
             name,
             ports: entries,
-        }]);
+        });
+        self.tagged_bridges = kept_tagged.into_boxed_slice();
+        self.simple_bridges = kept_simple.into_boxed_slice();
         self
     }
 
