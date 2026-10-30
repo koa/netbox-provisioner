@@ -414,8 +414,10 @@ Wireless Link, den einer hat, sonst über den gleichen Namen; einer ohne Gegenst
   setzt.
   Ein vorhandener bekommt keinen: Seine Geräte laufen mit einem Schlüssel, den NetBox nicht kennt.
   Nichts in `apply_together`, die Funkgeräte wendet der Provisioner nicht an.
-- Ein `/31` aus dem Transfer-Pool zwischen den beiden Router-Ports (bzw. ihren Bridges) für
-  OSPFv2, das Nachbarn nur im selben Subnetz bildet.
+- Ein `/31` aus dem Transfer-Pool zwischen den beiden Router-Ports für OSPFv2, das Nachbarn nur
+  im selben Subnetz bildet. Ein Router-Port in einer Bridge ist `PortInBridge`: Netze, `dhcp`
+  und `ospf` kämen auf die Bridge und alle ihre Ports (1og-sw2 `ether13` steckt in seiner
+  Client-Bridge); „Aus Bridge lösen“ macht ihn vorher frei.
 - An jedem Router-Port ein eigenes `/29` aus dem Transfer-Pool, die erste freie Adresse darin am
   Port, mit `dhcp_lease_time` 120 s (`LEASE_SECONDS`): Eine Wave Nano nimmt das erste Angebot und
   wechselt innerhalb einer Lease zum anderen Router, wenn ihrer oder die Strecke ausfällt.

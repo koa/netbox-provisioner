@@ -14,7 +14,8 @@
 //!   offer and, that router or the link gone, one of the router left within a lease, so each
 //!   bridge stays reachable through a router.
 //!
-//! Each router port gets `ospf` and `dhcp`, its addresses go on its bridge where it is in one.
+//! Each router port gets `ospf` and `dhcp`. A router port in a bridge is refused
+//! (`PortInBridge`): its networks would go on the bridge and all its ports.
 //! What is there stays: the network both router ports have is the transfer network, the one
 //! only a port has its DHCP network; another one stops the helper with an error naming it.
 use super::{
@@ -79,6 +80,14 @@ pub(super) async fn plan_with(
     ] {
         let (ether, router_port) =
             radio_bridge::router_cable(topology, &mut plan, device, other, router_port)?;
+        // its networks, `dhcp` and `ospf` would go on the bridge and all its ports (1og-sw2
+        // ether13 in its client bridge): the port leaves it first („Aus Bridge lösen“)
+        if let Some(bridge) = router_port.bridge() {
+            return Err(Error::PortInBridge {
+                port: port_name(&router_port),
+                bridge: bridge.name().into(),
+            });
+        }
         sides.push(Side {
             device: device.clone(),
             ether,
@@ -186,9 +195,7 @@ async fn networks(
     sides: &[Side],
     routes: &mut Option<Routes>,
 ) -> Result<(), Error> {
-    // a router port in a bridge has its addresses on the bridge
-    let l3 = |port: &InterfaceAccess| port.bridge().unwrap_or_else(|| port.clone());
-    let ends = [l3(&sides[0].router_port), l3(&sides[1].router_port)];
+    let ends = [sides[0].router_port.clone(), sides[1].router_port.clone()];
     let nets = ends.each_ref().map(ipv4s);
     let shared = nets[0]
         .iter()
@@ -540,9 +547,10 @@ mod test {
     /// schmidrueti-berg – berg-schmidrueti as in the export: Wave Nanos with the 60 GHz
     /// `wlan0` and the 5 GHz backup `wlan1`, each linked to the other's, without SSID. Both are
     /// candidates by their `wlan0`, the radios pair by their links, and switch-schmidrueti's
-    /// port to one is a radio link the helper is suggested for.
-    #[test]
-    fn the_wave_nanos_of_the_export_pair_their_radios() {
+    /// port to one is a radio link the helper is suggested for. The plan stops at 1og-sw2's
+    /// port, which is in its client bridge.
+    #[tokio::test]
+    async fn the_wave_nanos_of_the_export_pair_their_radios() {
         use crate::topology::{
             interfaces::{ActionHelper, ActionKind, InterfaceTask},
             test::example_topology,
@@ -576,6 +584,24 @@ mod test {
                 .expect("a router port");
             assert_eq!(&*port_name(&port), router_port);
         }
+        let input = RadioBridgeInput {
+            ap: ap.id().0,
+            station: station.id().0,
+            ap_router_port: None,
+            station_router_port: None,
+            ap_address: None,
+            station_address: None,
+            ssid: None,
+        };
+        let mut routes = Some(Routes::none("test"));
+        let Err(error) = radio_bridge::plan_with(&topology, &input, &mut routes).await else {
+            panic!("1og-sw2 ether13 is in its client bridge")
+        };
+        assert!(
+            matches!(&error, Error::PortInBridge { port, bridge }
+                if &**port == "1og-sw2 ether13" && &**bridge == "switch-clients"),
+            "{error:?}"
+        );
         let pairs = pairs(&ap, &station)
             .expect("pairs")
             .iter()
