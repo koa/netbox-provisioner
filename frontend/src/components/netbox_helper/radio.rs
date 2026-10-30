@@ -1,5 +1,7 @@
 //! „Funkbrücke“ on a bridge's page: its role, the other bridge (from its wireless link), and
-//! only where they aren't cabled the router ports (`radioBridgeCandidates`, `linkPorts`).
+//! only where they aren't cabled the router ports (`radioBridgeCandidates`, `linkPorts`). The
+//! other bridge is of the same kind, with RouterOS or without; one without has no address of
+//! its own (it takes a lease of its router's DHCP network).
 use super::{Choice, NetEntry, NetboxHelper, t};
 use crate::{
     components::menu::popup::Select,
@@ -130,7 +132,7 @@ impl NetboxHelper {
         let role = roles.iter().find(|r| r.value == self.radio.own_ap).cloned();
         let peers: Vec<Choice> = candidates
             .iter()
-            .filter(|c| c.device.id != own.device.id)
+            .filter(|c| c.device.id != own.device.id && c.routeros == own.routeros)
             .map(|c| Choice {
                 id: c.device.id as u32,
                 text: t::radio_candidate(
@@ -215,6 +217,7 @@ impl NetboxHelper {
                     </FormGroup>
                 }
                 }
+                if own.routeros {
                 <FormGroup label={t::BRIDGE_ADDRESS}>
                     <TextInput
                         value={self.radio.address[index].clone()}
@@ -222,6 +225,7 @@ impl NetboxHelper {
                         onchange={ctx.link().callback(move |a| RadioMsg::Address(index, a))}
                     />
                 </FormGroup>
+                }
             </>}
         };
         html! {

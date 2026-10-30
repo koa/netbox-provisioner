@@ -21,6 +21,7 @@ pub mod new_device;
 mod plan;
 pub mod poe;
 pub mod port_vlan;
+pub mod foreign_radio_bridge;
 pub mod radio_bridge;
 pub mod radio_disconnect;
 pub mod routes;
@@ -384,7 +385,7 @@ impl NetboxPlan {
                             "prefix": create.prefix,
                             "description": create.description,
                             "tags": [],
-                            "custom_field_data": {},
+                            "custom_field_data": { "dhcp_lease_time": create.dhcp_lease_time },
                             "scope": create.site.map(|site| json!({ "__typename": "SiteType", "id": site.to_string() })),
                         }));
                     }
@@ -654,6 +655,7 @@ mod test {
                 description: "test".into(),
                 site: None,
                 vlan: None,
+                dhcp_lease_time: None,
             }),
             address(&a, "192.0.2.0/31"),
             address(&b, "192.0.2.1/31"),

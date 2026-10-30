@@ -169,7 +169,7 @@ Entscheidung, was ein Vorschlag tut, im Backend.
 - **Funkbrücke vom Router-Port:** Die Richtfunk-Zeile eines Routers bettet den Helfer des
   verkabelten Brückengeräts ein (`HelperPreset::RadioFrom`, Router und Router-Port vorbelegt).
   „Als Richtfunk“ von einem freien Router-Port fragt zuerst nach dem Brückengerät (genau ein Radio,
-  kein Kabel zu einem Router; `HelperPreset::RadioChoose`). Die andere Brücke und ihr Router
+  kein Kabel zu einem Router, auch ohne RouterOS; `HelperPreset::RadioChoose`). Die andere Brücke und ihr Router
   werden im Dialog gewählt, sie liegen auf anderen Geräten.
 - **Die Dialoge** fragen den Port, von dem sie starten, nicht: Er steht im Titel. Von der Seite
   eines Brückengeräts und für VLAN am Port von einem VLAN-Interface her bleibt die Auswahl, dort

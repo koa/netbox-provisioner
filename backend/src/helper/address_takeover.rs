@@ -56,6 +56,7 @@ pub fn plan(topology: &Arc<Topology>, input: &AddressTakeoverInput) -> Result<Ne
                 .then(|| device_ref(&device).site)
                 .flatten(),
             vlan: None,
+            dhcp_lease_time: None,
         }));
         network
     } else {

@@ -273,6 +273,9 @@ pub async fn write(
                 if let Some(vlan) = create.vlan {
                     body["vlan"] = json!(vlan);
                 }
+                if let Some(seconds) = create.dhcp_lease_time {
+                    body["custom_fields"] = json!({ "dhcp_lease_time": seconds });
+                }
                 let object = rest.create("ipam/prefixes/", body).await?;
                 Some(logged_create(log, "ipam/prefixes", &object)?)
             }

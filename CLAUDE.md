@@ -273,7 +273,13 @@ wireless link (`CreateWirelessLink`/`UpdateWirelessLink`: SSID, WPA with a PSK g
 where none is; the PSK is never in the fingerprint, a step's `Debug` or the log), and the
 segment's IPv4 (the router port's network, else a new `/29` of the transfer pool) with an
 address and `ospf` on each router port and bridge; IPv6 stays link-local, the bridges are
-reached at their loopback. Topology carries the link's id and peer (`Interface.wireless_link`,
+reached at their loopback. Two bridges without RouterOS (UISP Wave Nano, set up by hand with a
+DHCP client; `RadioBridgeCandidate.routeros`, an Ethernet port by NetBox type) get
+`helper::foreign_radio_bridge` instead: cables, labels, RF roles, the wireless link (a PSK only
+for a new one), a `/31` of the transfer pool between the router ports for OSPFv2 and on each
+router port a `/29` with `dhcp` and `dhcp_lease_time` 120 s (`CreatePrefix.dhcp_lease_time`),
+`ospf` and `dhcp` there; the preview generates for the AP side's router (`NetboxPlan.device`).
+`next_free_network` skips the prefixes the plan creates already. Topology carries the link's id and peer (`Interface.wireless_link`,
 `WirelessLinkEnd`); `example_topology` makes up both for an export lacking them. Deleting is undone by creating the object again from the
 JSON NetBox had (`NetboxWritten.recreate`, `helper::write::recreate`; it gets a new id): undoing an
 older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (graphql_client

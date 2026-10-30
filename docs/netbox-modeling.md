@@ -347,7 +347,8 @@ tragen.
   Prefixes, abzüglich aller dort vergebenen IP-Adressen, Kind-Prefixe und anderen Ranges.
 - **Lease-Zeit:** Custom Field `dhcp_lease_time` am Prefix, in Sekunden; leer (oder 0) bleibt
   es bei RouterOS' 30 min. Eine kurze Lease braucht ein Netz, dessen Clients bei einem Ausfall
-  schnell zu einem anderen Server wechseln sollen (Funkbrücke mit zwei DHCP-Seiten).
+  schnell zu einem anderen Server wechseln sollen (Funkbrücke mit zwei DHCP-Seiten, der Helfer
+  setzt dort 120 s).
 - **Mehrere IPv4-Netze an einem Interface mit `dhcp`:** RouterOS nimmt nur einen DHCP-Server pro
   Interface. Das erste Netz mit freien Adressen legt ihn an, jedes weitere hängt seine Adressen an
   dessen Pool und bekommt einen eigenen Netz-Eintrag (Gateway, DNS). Welches Netz ein Client
@@ -525,6 +526,12 @@ ein, was fehlt: Kabel, Bridge, Namen, RF Role, Wireless Link mit PSK, Loopback, 
 
 Was daraus generiert wird und worauf beim Ausrollen zu achten ist:
 [radio-bridge-generation.md](radio-bridge-generation.md).
+
+Brückengeräte ohne RouterOS (UISP Wave Nano) sind Geräte ohne Platform mit einem Ethernet- und
+einem Funk-Interface (NetBox-Typ, Namen beliebig), Kabel zum Router-Port und Wireless Link. Die
+Router-Ports haben ein gemeinsames `/31` und je ein eigenes Netz mit `dhcp` und kurzer
+`dhcp_lease_time`; die Wave Nanos haben keine Adresse in NetBox. Der Helfer trägt auch das ein
+([config-helper.md](config-helper.md#brückengeräte-ohne-routeros)).
 
 ## WLAN
 

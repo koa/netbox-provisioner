@@ -14,7 +14,7 @@ query NetboxPlan($helper: Helper!){
             ... on CreateAddress{ address device{ name } interface prefix }
             ... on SetPrimaryIp{ version address before device{ name } }
             ... on CreateCable{ a{ name device{ name } } b{ name device{ name } } }
-            ... on CreatePrefix{ prefix pool description }
+            ... on CreatePrefix{ prefix pool description dhcpLeaseTime }
             ... on UpdateInterface{ interface{ name device{ name } } label labelBefore mtu mtuBefore tagsAdded tagsRemoved poe poeBefore poeRemoved }
             ... on DeleteCable{ port{ name device{ name } } far{ name device{ name } } }
             ... on DeleteAddress{ address interface{ name device{ name } } }
@@ -113,6 +113,7 @@ query RadioBridgeCandidates($id: Int!){
         deviceById(id: $id){
             radioBridgeCandidates{
                 device{ id name }
+                routeros
                 radio{ id name }
                 role
                 peer{ id name }

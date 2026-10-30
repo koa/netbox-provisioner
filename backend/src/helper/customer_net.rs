@@ -268,6 +268,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
             description: what.clone().into(),
             site: Some(site.id().0),
             vlan: vlan.as_ref().map(|vlan| vlan.id.0),
+            dhcp_lease_time: None,
         }));
         plan.steps.push(PlanStep::CreateAddress(CreateAddress {
             address: gateway(net).to_string().into(),
@@ -417,6 +418,7 @@ mod test {
                 description: "test".into(),
                 site: Some(site.0),
                 vlan: Some(vlan.id.0),
+                dhcp_lease_time: None,
             }),
             PlanStep::CreateAddress(CreateAddress {
                 address: "198.51.100.1/24".into(),

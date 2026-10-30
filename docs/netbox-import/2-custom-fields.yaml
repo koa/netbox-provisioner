@@ -68,6 +68,17 @@ weight: 100
 validation_minimum: 1
 validation_maximum: 16777215
 ---
+name: dhcp_lease_time
+label: DHCP Lease Time (s)
+type: integer
+object_types: ipam.prefix
+description: Lease time of the DHCP server in the network, in seconds (empty for 30 min)
+required: false
+search_weight: 1000
+filter_logic: loose
+weight: 100
+validation_minimum: 1
+---
 name: rf_country
 label: RF country
 type: text

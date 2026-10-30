@@ -342,8 +342,9 @@ an Geräten ohne RouterOS; deren Einträge lassen sich nur von Hand entfernen. I
 ### Funkbrücke
 
 Vervollständigt oder korrigiert eine Brücke zwischen zwei Routern, deren beide Geräte in NetBox
-schon existieren (anlegen ist Teil von „Neues Gerät“). Aufgerufen auf der Seite einer der beiden
-Brücken (`radioBridgeCandidates`: RouterOS-Geräte mit genau einem Funk-Port) oder vom Router-Port
+schon existieren (anlegen ist Teil von „Neues Gerät“); Brückengeräte ohne RouterOS siehe
+[unten](#brückengeräte-ohne-routeros). Aufgerufen auf der Seite einer der beiden
+Brücken (`radioBridgeCandidates`: Geräte mit genau einem Funk-Port) oder vom Router-Port
 einer Richtfunk-Zeile der Interface-Ansicht her, dann für das dort verkabelte Brückengerät mit
 diesem Router-Port vorbelegt. Von einem freien Router-Port her („Als Richtfunk“) wählt man zuerst
 das Brückengerät (genau ein Funk-Port, kein Kabel zu einem Router), dann ebenso. Eingabe: ob diese
@@ -394,6 +395,36 @@ die Bridge-Adresse von `lab-sxt-b` plante der Helfer `192.168.101.12/29` (diesel
 sie; ohne RF Role an `lab-sxt-b wlan1` setzte er `station`. Anlegen des Links, Umbenennen und
 Verkabeln sind nur mit Unit-Tests geprüft (`schopf_burri_gets_its_addresses` am Produktions-Export:
 drei Adressen in `172.17.0.40/29`, `ospf` auf beiden Bridges).
+
+#### Brückengeräte ohne RouterOS
+
+Zwei Brückengeräte ohne Platform `routeros` (zwei UISP Wave Nano,
+[Konzept](concepts/foreign-radio-bridge.md), Variante 2) richtet man von Hand ein, als L2-Brücke
+mit DHCP-Client. Sie sind Kandidaten wie die mit RouterOS (`radioBridgeCandidates.routeros`),
+ein Ethernet-Port nach dem NetBox-Typ, und die andere Brücke ist von derselben Art (eine mit
+RouterOS gegenüber einer ohne: `NoRouterOs`). Das Formular hat keine Adressen. Der Plan
+(`helper::foreign_radio_bridge`) ist die Seite von NetBox und den Routern:
+
+- Kabel und Labels wie oben, die RF Role an jedem Funk-Port (`UpdatePort` ohne Bridge).
+- Der Wireless Link mit SSID; ein neuer mit erzeugtem PSK, den man auf den Funkgeräten setzt.
+  Ein vorhandener bekommt keinen: Seine Geräte laufen mit einem Schlüssel, den NetBox nicht kennt.
+  Nichts in `apply_together`, die Funkgeräte wendet der Provisioner nicht an.
+- Ein `/31` aus dem Transfer-Pool zwischen den beiden Router-Ports (bzw. ihren Bridges) für
+  OSPFv2, das Nachbarn nur im selben Subnetz bildet.
+- An jedem Router-Port ein eigenes `/29` aus dem Transfer-Pool, die erste freie Adresse darin am
+  Port, mit `dhcp_lease_time` 120 s (`LEASE_SECONDS`): Eine Wave Nano nimmt das erste Angebot und
+  wechselt innerhalb einer Lease zum anderen Router, wenn ihrer oder die Strecke ausfällt.
+- `ospf` und `dhcp` an beiden Router-Ports.
+
+Vorhandenes bleibt: Das Netz, das beide Router-Ports haben, ist das Transfernetz, eins, das nur
+ein Port hat, sein DHCP-Netz; ein zweites eigenes (oder ein eigenes `/31`) ist `PortAddressed`.
+Die beiden Netze des Plans liegen nicht übereinander (`next_free_network` lässt die schon
+geplanten Prefixe aus). Die Vorschau generiert für den Router auf der AP-Seite.
+
+Im Lab geprüft: `lab-wave-a`/`lab-wave-b`, von Hand so eingerichtet, ergaben nur RF Roles und
+Labels. Zwei vorübergehende Wave-Geräte zwischen `lab-core ether1` und `lab-np2 ether9` (nur
+geplant, nicht geschrieben) bekamen `192.168.101.28/31` und die beiden `/29` `.64` und `.72`; die
+Vorschau von lab-core hatte den DHCP-Server mit `lease-time=120s`.
 
 ### Richtfunk abräumen
 

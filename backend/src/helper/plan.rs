@@ -236,6 +236,9 @@ pub struct CreatePrefix {
     pub site: Option<u32>,
     #[graphql(skip)]
     pub vlan: Option<u32>,
+    /// the custom field `dhcp_lease_time` (seconds), for a network whose DHCP server has to
+    /// hand out short leases
+    pub dhcp_lease_time: Option<u32>,
 }
 
 /// Changes of an interface: a new label (empty to take it off), a new MTU, a PoE mode (each

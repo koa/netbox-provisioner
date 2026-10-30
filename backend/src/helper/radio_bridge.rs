@@ -91,21 +91,35 @@ pub(crate) async fn plan_with(
     input: &RadioBridgeInput,
     routes: &mut Option<Routes>,
 ) -> Result<NetboxPlan, Error> {
+    let ap = topology
+        .get_device_by_id(&DeviceId(input.ap))
+        .ok_or(Error::UnknownDevice(input.ap))?;
+    if !ap.has_routeros() {
+        return super::foreign_radio_bridge::plan_with(topology, input, routes).await;
+    }
     let (mut plan, sides) = link_plan(topology, input)?;
     for side in &sides {
         loopback::add_to(&mut plan, &side.device, routes).await?;
     }
     segment(topology, &mut plan, &sides, routes).await?;
-    labels(&mut plan, &sides);
+    let ends = sides
+        .iter()
+        .map(|side| (side.router_port.clone(), side.ether.clone(), side.device.clone()))
+        .collect::<Vec<_>>();
+    labels(&mut plan, &ends);
     Ok(plan)
 }
 
 /// Each cable end's label the name of the device at the other end, in the interface's update
-/// where the plan has one already (a second one would find the label changed).
-fn labels(plan: &mut NetboxPlan, sides: &[Side]) {
-    for side in sides {
-        let Some(router) = side.router_port.device() else { continue };
-        for (end, far) in [(&side.router_port, &side.device), (&side.ether, &router)] {
+/// where the plan has one already (a second one would find the label changed); per cable the
+/// router port, the bridge's Ethernet port and the bridge device.
+pub(super) fn labels(
+    plan: &mut NetboxPlan,
+    cables: &[(InterfaceAccess, InterfaceAccess, DeviceAccess)],
+) {
+    for (router_port, ether, device) in cables {
+        let Some(router) = router_port.device() else { continue };
+        for (end, far) in [(router_port, device), (ether, &router)] {
             if end.label().is_some_and(|label| names(label, far.name())) {
                 continue;
             }
@@ -167,7 +181,14 @@ fn link_plan(
     ] {
         sides.push(side(topology, &mut plan, device, role, router_port, address, other)?);
     }
-    radios(&mut plan, &sides, input.ssid.as_deref())?;
+    let ends = sides
+        .iter()
+        .map(|side| (&side.radio, &side.device))
+        .collect::<Vec<_>>();
+    // the station only hears the AP again once both have the new radio settings
+    if radios(&mut plan, [ends[0], ends[1]], input.ssid.as_deref(), true)? {
+        plan.apply_together = vec![device_ref(&ap), device_ref(&station)];
+    }
     Ok((plan, sides))
 }
 
@@ -190,51 +211,7 @@ fn side(
     let [radio] = radios[..] else {
         return Err(Error::NoSingleRadio(device.name().into()));
     };
-    let ethernet = || interfaces.iter().filter(|i| i.is_ethernet_port());
-    let to_router = |port: &InterfaceAccess| {
-        port.connected_interfaces().into_iter().find(|far| {
-            far.device()
-                .is_some_and(|d| d.has_routeros() && d.id() != other.id() && d.id() != device.id())
-        })
-    };
-    let (ether, router_port) = match router_port {
-        Some(id) => {
-            let router_port = topology
-                .get_interface_by_id(crate::topology::InterfaceId(id))
-                .ok_or(Error::UnknownInterface(id))?;
-            let router = router_port.device().ok_or(Error::UnknownInterface(id))?;
-            if !router.has_routeros() {
-                return Err(Error::NoRouterOs(router.name().into()));
-            }
-            let cabled = ethernet().find(|port| {
-                port.connected_interfaces().iter().any(|far| far.id() == router_port.id())
-            });
-            let ether = match cabled {
-                Some(port) => port.clone(),
-                None => {
-                    let free = ethernet()
-                        .find(|port| port.cable().is_none())
-                        .ok_or_else(|| Error::NoRouterPort(device.name().into()))?;
-                    if router_port.cable().is_some() {
-                        return Err(Error::PortCabled {
-                            port: port_name(&router_port),
-                            far: router_port.connected_interfaces().first().map(port_name),
-                        });
-                    }
-                    plan.steps.push(PlanStep::CreateCable(CreateCable {
-                        a: interface_ref(&router_port),
-                        b: interface_ref(free),
-                        a_end: super::CableEnd::Interface,
-                    }));
-                    free.clone()
-                }
-            };
-            (ether, router_port)
-        }
-        None => ethernet()
-            .find_map(|port| to_router(port).map(|far| (port.clone(), far)))
-            .ok_or_else(|| Error::NoRouterPort(device.name().into()))?,
-    };
+    let (ether, router_port) = router_cable(topology, plan, device, other, router_port)?;
 
     let existing = interfaces
         .iter()
@@ -307,6 +284,70 @@ fn side(
     })
 }
 
+/// The Ethernet port of the bridge `device` cabled to a router and that router's port: the
+/// one given (`router_port`, cabled to a free Ethernet port where no cable goes there), else the
+/// RouterOS device an Ethernet port is cabled to that is neither `device` nor `other`.
+pub(super) fn router_cable(
+    topology: &Arc<Topology>,
+    plan: &mut NetboxPlan,
+    device: &DeviceAccess,
+    other: &DeviceAccess,
+    router_port: Option<u32>,
+) -> Result<(InterfaceAccess, InterfaceAccess), Error> {
+    let interfaces = device.interfaces();
+    let ethernet = || interfaces.iter().filter(|i| is_ethernet(device, i));
+    let to_router = |port: &InterfaceAccess| {
+        port.connected_interfaces().into_iter().find(|far| {
+            far.device()
+                .is_some_and(|d| d.has_routeros() && d.id() != other.id() && d.id() != device.id())
+        })
+    };
+    match router_port {
+        Some(id) => {
+            let router_port = topology
+                .get_interface_by_id(crate::topology::InterfaceId(id))
+                .ok_or(Error::UnknownInterface(id))?;
+            let router = router_port.device().ok_or(Error::UnknownInterface(id))?;
+            if !router.has_routeros() {
+                return Err(Error::NoRouterOs(router.name().into()));
+            }
+            let cabled = ethernet().find(|port| {
+                port.connected_interfaces().iter().any(|far| far.id() == router_port.id())
+            });
+            let ether = match cabled {
+                Some(port) => port.clone(),
+                None => {
+                    let free = ethernet()
+                        .find(|port| port.cable().is_none())
+                        .ok_or_else(|| Error::NoRouterPort(device.name().into()))?;
+                    if router_port.cable().is_some() {
+                        return Err(Error::PortCabled {
+                            port: port_name(&router_port),
+                            far: router_port.connected_interfaces().first().map(port_name),
+                        });
+                    }
+                    plan.steps.push(PlanStep::CreateCable(CreateCable {
+                        a: interface_ref(&router_port),
+                        b: interface_ref(free),
+                        a_end: super::CableEnd::Interface,
+                    }));
+                    free.clone()
+                }
+            };
+            Ok((ether, router_port))
+        }
+        None => ethernet()
+            .find_map(|port| to_router(port).map(|far| (port.clone(), far)))
+            .ok_or_else(|| Error::NoRouterPort(device.name().into())),
+    }
+}
+
+/// An Ethernet port of `device`: by its RouterOS name, without RouterOS by its NetBox type
+/// (a Wave Nano's `eth0`).
+fn is_ethernet(device: &DeviceAccess, interface: &InterfaceAccess) -> bool {
+    interface.is_ethernet_port() || (!device.has_routeros() && interface.is_ethernet())
+}
+
 /// The name the radio must get to be the one RouterOS has; none if it has it.
 fn routeros_name(radio: &InterfaceAccess) -> Option<&'static str> {
     match (radio.is_sixty_ghz(), radio.external_port()) {
@@ -318,7 +359,7 @@ fn routeros_name(radio: &InterfaceAccess) -> Option<&'static str> {
 }
 
 /// A radio port: NetBox type wireless, or a RouterOS radio name.
-fn is_radio(interface: &InterfaceAccess) -> bool {
+pub(super) fn is_radio(interface: &InterfaceAccess) -> bool {
     interface.data().and_then(|d| d.port_type) == Some(PortType::Wireless)
         || matches!(
             interface.external_port(),
@@ -326,44 +367,51 @@ fn is_radio(interface: &InterfaceAccess) -> bool {
         )
 }
 
-/// The wireless link between the two radios: created, or given what it lacks.
-fn radios(plan: &mut NetboxPlan, sides: &[Side], ssid: Option<&str>) -> Result<(), Error> {
-    let (ap, station) = (&sides[0], &sides[1]);
-    for (side, other) in [(ap, station), (station, ap)] {
-        if let Some(link) = side.radio.wireless_link()
-            && link.peer != Some(other.radio.id())
+/// The wireless link between the two radios (AP first, each with its device): created, or
+/// given what it lacks; a PSK only with `add_psk` (radios set up by hand run with a key NetBox
+/// doesn't know). Whether the radios change, by it or by an earlier step of the plan.
+pub(super) fn radios(
+    plan: &mut NetboxPlan,
+    [(ap, ap_device), (station, _)]: [(&InterfaceAccess, &DeviceAccess); 2],
+    ssid: Option<&str>,
+    add_psk: bool,
+) -> Result<bool, Error> {
+    for (radio, other) in [(ap, station), (station, ap)] {
+        if let Some(link) = radio.wireless_link()
+            && link.peer != Some(other.id())
         {
             return Err(Error::WirelessLinkElsewhere {
-                port: port_name(&side.radio),
-                far: side.radio.wireless_peer().as_ref().map(port_name),
+                port: port_name(radio),
+                far: radio.wireless_peer().as_ref().map(port_name),
             });
         }
     }
     let wanted = ssid.filter(|ssid| !ssid.is_empty());
     let mut changed = plan.steps.iter().any(|step| {
         matches!(step, PlanStep::UpdatePort(update)
-            if (update.interface.id == ap.radio.id().0 || update.interface.id == station.radio.id().0)
+            if (update.interface.id == ap.id().0 || update.interface.id == station.id().0)
                 && (update.rf_role.is_some() || update.name.is_some()))
     });
-    match ap.radio.wireless_link() {
+    match ap.wireless_link() {
         Some(end) => {
             let link = &end.link;
             let ssid = match wanted {
                 Some(wanted) if wanted != &*link.ssid => Some(wanted.into()),
-                None if link.ssid.is_empty() => Some(ap.device.name().into()),
+                None if link.ssid.is_empty() => Some(ap_device.name().into()),
                 _ => None,
             };
             let psk = match (&link.psk, link.encrypted) {
                 (Some(_), _) => None,
-                (None, true) => return Err(Error::PskUnreadable(port_name(&ap.radio))),
-                (None, false) => Some(new_psk()),
+                (None, true) if add_psk => return Err(Error::PskUnreadable(port_name(ap))),
+                (None, false) if add_psk => Some(new_psk()),
+                (None, _) => None,
             };
             if ssid.is_some() || psk.is_some() {
                 changed = true;
                 plan.steps.push(PlanStep::UpdateWirelessLink(UpdateWirelessLink {
                     id: end.id,
-                    a: interface_ref(&ap.radio),
-                    b: interface_ref(&station.radio),
+                    a: interface_ref(ap),
+                    b: interface_ref(station),
                     ssid,
                     ssid_before: link.ssid.clone(),
                     psk_set: psk.is_some(),
@@ -374,18 +422,14 @@ fn radios(plan: &mut NetboxPlan, sides: &[Side], ssid: Option<&str>) -> Result<(
         None => {
             changed = true;
             plan.steps.push(PlanStep::CreateWirelessLink(CreateWirelessLink {
-                a: interface_ref(&ap.radio),
-                b: interface_ref(&station.radio),
-                ssid: wanted.unwrap_or(ap.device.name()).into(),
+                a: interface_ref(ap),
+                b: interface_ref(station),
+                ssid: wanted.unwrap_or(ap_device.name()).into(),
                 psk: new_psk(),
             }));
         }
     }
-    // the station only hears the AP again once both have the new radio settings
-    if changed {
-        plan.apply_together = vec![device_ref(&ap.device), device_ref(&station.device)];
-    }
-    Ok(())
+    Ok(changed)
 }
 
 /// The segment's IPv4 network and an address in it with `ospf` for each router port and bridge.
@@ -443,7 +487,7 @@ async fn segment(
         Some(net) => (net, net.to_string()),
         None => {
             let routes = read(topology, plan, routes).await?;
-            let (pool, net) = next_free_network(topology, routes, plan).await?;
+            let (pool, net) = next_free_network(topology, routes, plan, SEGMENT_LENGTH).await?;
             plan.steps.push(PlanStep::CreatePrefix(CreatePrefix {
                 prefix: net.to_string().into(),
                 pool: pool.to_string().into(),
@@ -455,6 +499,7 @@ async fn segment(
                 .into(),
                 site: None,
                 vlan: None,
+                dhcp_lease_time: None,
             }));
             (net, net.to_string())
         }
@@ -533,7 +578,7 @@ fn end_name(end: &End) -> Box<str> {
     format!("{} {}", end.device.name(), end.name).into()
 }
 
-fn ipv4(interface: &InterfaceAccess) -> Option<IpNet> {
+pub(super) fn ipv4(interface: &InterfaceAccess) -> Option<IpNet> {
     interface
         .ips()
         .iter()
@@ -541,7 +586,7 @@ fn ipv4(interface: &InterfaceAccess) -> Option<IpNet> {
         .find(|net| matches!(net, IpNet::V4(_)))
 }
 
-async fn read<'r>(
+pub(super) async fn read<'r>(
     topology: &Arc<Topology>,
     plan: &mut NetboxPlan,
     routes: &'r mut Option<Routes>,
@@ -570,7 +615,7 @@ fn taken(topology: &Topology, plan: &NetboxPlan, net: IpNet) -> Vec<IpAddr> {
 }
 
 /// The first host of `net` neither NetBox nor the plan has and the network doesn't route.
-fn next_host(
+pub(super) fn next_host(
     topology: &Topology,
     plan: &mut NetboxPlan,
     routes: &Routes,
@@ -604,13 +649,23 @@ const SEGMENT_LENGTH: u8 = 29;
 /// How many free networks of the pool are looked at, as `connection::CANDIDATES`.
 const CANDIDATES: usize = 32;
 
-/// The first `/29` of the transfer pool NetBox has free, without addresses in it, that the
-/// network doesn't route, and the pool prefix it is in.
-async fn next_free_network(
+/// The first network of `length` in the transfer pool NetBox has free, without addresses in
+/// it, that neither the network routes nor the plan creates already, and the pool prefix it is
+/// in.
+pub(super) async fn next_free_network(
     topology: &Arc<Topology>,
     routes: &Routes,
     plan: &mut NetboxPlan,
+    length: u8,
 ) -> Result<(IpNet, IpNet), Error> {
+    let planned = plan
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            PlanStep::CreatePrefix(create) => create.prefix.parse::<IpNet>().ok(),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     let rest = NetboxRest::reader()?;
     let mut looked_at = 0;
     for (id, pool) in topology.pool_prefixes(PrefixPool::Transfer, false) {
@@ -620,9 +675,15 @@ async fn next_free_network(
         let mut candidates = Vec::new();
         for block in free.as_array().into_iter().flatten() {
             if let Some(Ok(block)) = block["prefix"].as_str().map(str::parse::<IpNet>)
-                && let Ok(subnets) = block.subnets(SEGMENT_LENGTH)
+                && let Ok(subnets) = block.subnets(length)
             {
-                candidates.extend(subnets.take(CANDIDATES));
+                candidates.extend(
+                    subnets
+                        .filter(|net| {
+                            !planned.iter().any(|p| p.contains(net) || net.contains(p))
+                        })
+                        .take(CANDIDATES),
+                );
             }
         }
         for net in candidates {
@@ -651,6 +712,9 @@ async fn next_free_network(
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct RadioBridgeCandidate {
     pub device: DeviceRef,
+    /// a bridge with RouterOS; one without (a UISP Wave Nano) is set up by hand, the helper
+    /// plans the routers' side only (`helper::foreign_radio_bridge`)
+    pub routeros: bool,
     pub radio: InterfaceRef,
     pub role: Option<RadioRole>,
     /// the device at the other end of the radio's wireless link
@@ -661,18 +725,17 @@ pub struct RadioBridgeCandidate {
     pub address: Option<Box<str>>,
 }
 
-/// The devices with RouterOS and a single radio, by name: the bridges to choose from.
+/// The devices with a single radio, by name: the bridges to choose from.
 pub fn candidates(topology: &Arc<Topology>) -> Vec<RadioBridgeCandidate> {
     let mut found = topology
         .list_devices()
-        .filter(DeviceAccess::has_routeros)
         .filter_map(|device| {
             let interfaces = device.interfaces();
             let radios = interfaces.iter().filter(|i| is_radio(i)).collect::<Vec<_>>();
             let [radio] = radios[..] else { return None };
             let router_port = interfaces
                 .iter()
-                .filter(|i| i.is_ethernet_port())
+                .filter(|i| is_ethernet(&device, i))
                 .flat_map(|port| port.connected_interfaces())
                 .find(|far| far.device().is_some_and(|d| d.has_routeros()));
             let address = interfaces
@@ -682,6 +745,7 @@ pub fn candidates(topology: &Arc<Topology>) -> Vec<RadioBridgeCandidate> {
                 .map(|net| net.to_string().into());
             Some(RadioBridgeCandidate {
                 device: device_ref(&device),
+                routeros: device.has_routeros(),
                 radio: interface_ref(radio),
                 role: radio.data().and_then(|d| d.radio.as_ref()).map(|r| r.role),
                 peer: radio

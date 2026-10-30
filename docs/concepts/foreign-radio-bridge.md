@@ -1,7 +1,8 @@
 # Konzept: Funkbrücke ohne RouterOS
 
 Status: Konzept; im Lab aufgebaut ist [Variante 2, DHCP](#variante-2-dhcp-je-seite)
-(2026-10-27). [Variante 1](#variante-1-routen-auf-die-wave-nanos) fällt weg: In der UISP-App
+(2026-10-27), und der Helfer „Funkbrücke“ trägt sie in NetBox ein
+([config-helper.md](../config-helper.md#brückengeräte-ohne-routeros)). Offen sind die Ausfall-Tests. [Variante 1](#variante-1-routen-auf-die-wave-nanos) fällt weg: In der UISP-App
 lässt sich bei fester IP kein Gateway setzen (ob die Weboberfläche es kann, ist ungeprüft).
 Aufgabe C16 in [todo.md](../todo.md).
 
@@ -107,7 +108,7 @@ seine Netze; mehr Code nicht. OSPFv2 und OSPFv3 laufen über die Strecke (`Full`
 Nanos nahmen ihre Lease zuerst von lab-np1 und sind von lab-np1, lab-np2 und lab-core aus
 erreichbar.
 
-Noch fehlt eine kurze Lease: heute fest 30 min.
+Die kurze Lease ist das Custom Field `dhcp_lease_time` am Prefix; der Helfer setzt 120 s.
 
 ### Im Lab zu prüfen
 

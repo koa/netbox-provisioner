@@ -87,7 +87,7 @@ pub(super) fn describe(step: &Step) -> String {
             (&create.b.device.name, &create.b.name),
         ),
         Step::CreatePrefix(create) => {
-            t::create_prefix(&create.prefix, &create.pool, &create.description)
+            t::create_prefix(&create.prefix, &create.pool, &create.description, create.dhcp_lease_time)
         }
         Step::UpdateInterface(update) => t::update_interface(
             (&update.interface.device.name, &update.interface.name),

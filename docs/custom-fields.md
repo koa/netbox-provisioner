@@ -1,6 +1,6 @@
 # Custom Fields in NetBox
 
-Der Provisioner liest acht Custom Fields und schreibt eines (`provisioner_job`). Alle sind optional: Ein Feld, das in NetBox fehlt oder
+Der Provisioner liest neun Custom Fields und schreibt eines (`provisioner_job`). Alle sind optional: Ein Feld, das in NetBox fehlt oder
 leer ist, schaltet nur die jeweilige Funktion ab, die Generierung bricht deswegen nicht ab. Wo ein
 leeres Feld trotzdem zu einem Fehler führt, steht es unten beim Feld.
 
@@ -18,6 +18,7 @@ werden, beschreibt [netbox-modeling.md](netbox-modeling.md).
 | `controller`           | Wireless LAN Group | Object → Device                 | CAPsMAN-Controller der Gruppe               |
 | `wlan_mgmt`            | Wireless LAN Group | Object → VLAN                   | Management-VLAN der Gruppe                  |
 | `vxlan_vni`            | VLAN Group         | Integer                         | VLANs der Gruppe über VXLAN verbinden       |
+| `dhcp_lease_time`      | Prefix             | Integer                         | Lease-Zeit des DHCP-Servers im Netz (s)     |
 | `rf_country`           | Wireless Link      | Text                            | Land einer Funkbrücke übersteuern           |
 | `rf_frequency_mode`    | Wireless Link      | Selection                       | Frequency Mode einer Funkbrücke übersteuern |
 | `provisioner_job`      | Journal Entry      | JSON                            | Stand eines Jobs, vom Provisioner geschrieben |
@@ -102,6 +103,15 @@ Das VLAN, über das die Access Points der Gruppe ihren Controller erreichen. Opt
 Die VNI des VXLAN, über das die VLANs dieser Gruppe zwischen Geräten getunnelt werden, z.B. `1`.
 VLANs aus Gruppen ohne `vxlan_vni` bleiben lokal, auch wenn
 sie auf mehreren Geräten vorkommen. Details: [VXLAN](netbox-modeling.md#vxlan).
+
+### `dhcp_lease_time` (Prefix, Integer)
+
+Die Lease-Zeit des DHCP-Servers für dieses Netz, in Sekunden, z.B. `120`. Leer oder `0` bleibt es
+bei RouterOS' 30 min; hat ein Interface mehrere Netze mit `dhcp`, gilt die kürzeste. Gedacht für
+Netze, deren Clients bei einem Ausfall schnell zu einem anderen Server wechseln sollen; der Helfer
+„Funkbrücke“ setzt sie an den DHCP-Netzen einer Funkbrücke ohne RouterOS
+([config-helper.md](config-helper.md#brückengeräte-ohne-routeros)). Details:
+[IP-Adressen, Prefixe und DHCP](netbox-modeling.md#ip-adressen-prefixe-und-dhcp).
 
 ### `rf_country` (Wireless Link, Text)
 

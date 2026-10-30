@@ -464,12 +464,17 @@ pub fn create_address(address: &str, device: &str, interface: &str, prefix: &str
 pub fn create_cable(a: (&str, &str), b: (&str, &str)) -> String {
     format!("Kabel {} {} – {} {} anlegen", a.0, a.1, b.0, b.1)
 }
-pub fn create_prefix(prefix: &str, pool: &str, description: &str) -> String {
-    if pool.is_empty() {
+/// with the DHCP lease time in seconds, where the prefix gets one
+pub fn create_prefix(prefix: &str, pool: &str, description: &str, lease: Option<i64>) -> String {
+    let created = if pool.is_empty() {
         // a network NetBox has no prefix around (`helper::address_takeover`)
         format!("Prefix {prefix} „{description}“ anlegen")
     } else {
         format!("Prefix {prefix} „{description}“ anlegen (aus {pool})")
+    };
+    match lease {
+        Some(seconds) => format!("{created}, DHCP-Lease {seconds} s"),
+        None => created,
     }
 }
 /// the new label and MTU, each with the one before, and whether `ospf` is added
