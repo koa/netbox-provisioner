@@ -96,7 +96,7 @@ Was dabei gelernt wurde:
   die ein Nachbar meldet. Zugeordnet wird über den NetBox-Namen (Default-Name) oder das Kürzel
   vor dem ersten `-` (`s01` ist `sfp-sfpplus1`).
 - Über eine Funkbrücke sieht ein Router den Router der Gegenseite, nicht das Brückengerät. Ein
-  Kabel zu einem Brückengerät (Rolle `wlan-bridge` oder ein Port mit RF-Rolle) gilt deshalb als
+  Kabel zu einem Brückengerät (Rolle `wireless-bridge` oder ein Port mit RF-Rolle) gilt deshalb als
   erfüllt, solange das Gerät dort nur bekannte Geräte sieht, die NetBox anderswo hat.
 - Im Lab hatten `lab-ap1`, `lab-sxt-a` und `lab-sxt-b` `discover-interface-list=*2000011`: Die
   Discovery verweist auf eine Interface-Liste, die ein Apply entfernt hat (die Factory-Liste
@@ -155,7 +155,7 @@ Ein Plan (entschieden 2026-10-24):
    oder das Gerät ein Brückengerät ist (sonst legt es „Verbindung“ an). Legt NetBox ihn mit dem Device Type schon an, übernimmt
    der Schreib-Job diesen. Weitere Ports legt der Helfer nicht an: die des Device Types kommen
    von NetBox, ein Port, den NetBox nicht hat, ist für den Generator frei.
-3. „Loopback“ und, ausser für ein Brückengerät (Rolle `wlan-bridge`), „Verbindung“ zum Port
+3. „Loopback“ und, ausser für ein Brückengerät (Rolle `wireless-bridge`), „Verbindung“ zum Port
    (/31, `ospf`, Labels), beide auf der Vorschau des Geräts gerechnet. Ein Brückengerät bekommt
    nur das Kabel; seinen Richtfunk macht danach „Funkbrücke“.
 

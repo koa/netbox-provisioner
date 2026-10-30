@@ -172,7 +172,7 @@ patch panel, `new_device::landing`: the new cable starts at that front or rear p
 check sees an unknown MikroTik there: `CreateDevice` with the router's site and tenant, platform
 `routeros`, the device type and role chosen from `Query.newDeviceOptions`, the WLAN group of an
 AP; the cabled port, which the write takes from the device type when NetBox made it; then
-„Loopback“ and, but for a `wlan-bridge`, „Verbindung“ planned on the preview, whose steps refer
+„Loopback“ and, but for a `wireless-bridge`, „Verbindung“ planned on the preview, whose steps refer
 to the new objects by their preview ids from `u32::MAX` down, `PlanStep::with_real_ids` in the
 write); an address the live check finds only on the device „<address> übernehmen“
 (`interface_live`: the static rows of `/ip/address` and `/ipv6/address` but link-local ones

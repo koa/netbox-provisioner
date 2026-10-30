@@ -576,7 +576,9 @@ reicht also nicht, sie zu setzen:
 
 - **Interface `enabled`**: wird abgefragt, aber ignoriert. Ein in NetBox deaktiviertes Interface
   wird trotzdem konfiguriert.
-- **Device Role** (`router`, `switch`, `wlan-bridge`): wird gelesen, aber nirgends verwendet.
+- **Device Role** (`router`, `switch`, `wireless-bridge`): `wireless-bridge` macht ein Gerät zum
+  Brückengerät (Interface-Ansicht, „Neues Gerät“ ohne „Verbindung“); die anderen werden gelesen,
+  aber nirgends verwendet.
   Router und Switch unterscheiden sich nur durch ihre Interfaces.
 - **Device Type**: wird gelesen (für den Config-Helper), das Board kommt aber live vom Gerät.
 - **Prefixe**: Beschreibung und Scope (Site) werden gelesen, aber noch nicht ausgewertet; die

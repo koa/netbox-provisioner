@@ -263,7 +263,7 @@ impl DeviceRole {
         match slug {
             "router" => Some(DeviceRole::Router),
             "switch" => Some(DeviceRole::Switch),
-            "wlan-bridge" => Some(DeviceRole::WlanBridge),
+            "wireless-bridge" => Some(DeviceRole::WlanBridge),
             _ => None,
         }
     }

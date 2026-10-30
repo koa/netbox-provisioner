@@ -77,7 +77,7 @@ fn the_preview_has_the_device_with_its_port() {
 fn a_bridge_device_is_cabled() {
     let topology = example_topology();
     let (_, port) = free_port(&topology);
-    let plan = base(&topology, &input(&port, "bridge-neu"), &facts("wlan-bridge")).expect("plan");
+    let plan = base(&topology, &input(&port, "bridge-neu"), &facts("wireless-bridge")).expect("plan");
     let after = plan.preview_topology().expect("preview");
     let far = after
         .get_interface_by_id(InterfaceId(port.id().0))

@@ -194,7 +194,7 @@ pub struct RadioPath {
 }
 
 impl DeviceAccess {
-    /// A radio bridge device: role `wlan-bridge`, or exactly one radio that has an RF role or a
+    /// A radio bridge device: role `wireless-bridge`, or exactly one radio that has an RF role or a
     /// wireless link (the lab's have role `router`, many link ends of the stored export no RF
     /// role).
     pub fn is_bridge_device(&self) -> bool {
