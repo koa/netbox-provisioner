@@ -103,7 +103,8 @@ pub enum SwitchChip {
     Marvell88E6,
     /// MT7621, MT7531, EN7523, RTL8367: hEX, hEX S, hAP ax lite, RB4011, RB1100AHx4
     MediaTek,
-    /// the switch of a CRS1xx/2xx, configured under `/interface/ethernet/switch`
+    /// the switch of a CRS1xx/2xx, configured under `/interface/ethernet/switch`; a
+    /// CRS109-8G-1S-2HnD reports `QCA-8513L` with all ports but the radio
     Crs1xx,
     /// QCA8337, Atheros8327, Atheros8316: hAP ac, hEX PoE, wAP ac, CCR1009-8G; a wAP ac and a
     /// wAP 60G report `Atheros-8327`
@@ -226,6 +227,8 @@ impl SwitchChips {
                 b"cAPGi-5HaxD2HaxD" => &[(IpqPpe, Ether(1, 2))],
                 b"MA53UG+HbeH" => &[(IpqPpe, Ether(2, 5))],
                 b"CCR2004-1G-12S+2XS" => &[(IpqPpe, All)],
+                // no switch chip: every port on the CPU (srv-router-berg, 7.23.8)
+                b"CCR1009-7G-1C-1S+" => &[],
                 _ => &[],
             }
         })

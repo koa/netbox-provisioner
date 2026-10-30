@@ -2323,7 +2323,7 @@ async fn bridges_of_a_hap_ac_stay_flat_without_snooping() {
     );
 }
 
-/// A board the table doesn't list keeps what every board gets: its bridges, snooping.
+/// A board without switch chip keeps what every board gets: its bridges, snooping.
 #[tokio::test]
 async fn an_unknown_board_keeps_its_bridges_snooping() {
     let device = switch_with_two_bridges(false).await;

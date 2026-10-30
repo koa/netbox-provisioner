@@ -129,8 +129,8 @@ kann mehrere Chips haben (RB2011: Atheros8327 an `ether1`–`ether5` und `sfp1`,
 `ether6`–`ether10`), und manche Ports hängen an keinem, sondern direkt an der CPU (`sfp1` eines
 hAP ac, `ether1` eines L009, beim CCR1009-8G alles ausser `ether1`–`ether4`). Entschieden wird
 deshalb pro Bridge nach den Chips ihrer Ports; Funk-Ports und Ports der CPU laufen ohnehin in
-Software. Ein Board, das die Tabelle nicht nennt (CCR1009-7G-1C-1S+), hat keine Chips und
-behält, was jedes Board bekommt.
+Software. Ein Board ohne Switch-Chip (CCR1009-7G-1C-1S+: alle Ports an der CPU, srv-router-berg
+meldet keinen) oder eines, das die Tabelle nicht nennt, behält, was jedes Board bekommt.
 
 | Chip | Boards (Beispiele) | VLAN-Filtering | IGMP-Snooping |
 |---|---|---|---|
@@ -175,7 +175,7 @@ Bridge). Wird Snooping abgeschaltet, meldet RouterOS die Multicast-Felder nicht 
 
 Nicht ausgenutzt: Auf einem CRS1xx/2xx liessen sich VLANs im Switch-Menü
 (`/interface/ethernet/switch`) in Hardware bauen; eine VLAN-Filtering-Bridge läuft dort auf der
-CPU.
+CPU (E17 in [todo.md](todo.md)).
 
 ## Schritt 5: Realisierung als RouterOS-Config (`BaseDeviceDataTarget::setup_l2`)
 
