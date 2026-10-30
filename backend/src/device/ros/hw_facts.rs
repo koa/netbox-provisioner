@@ -20,7 +20,7 @@ use mikrotik_model::{
     },
     value::{Auto, HasNone, PossibleRangeDash},
 };
-use std::{collections::BTreeSet, iter::repeat_n, time::Duration};
+use std::{collections::BTreeSet, iter::repeat_n, ops::RangeInclusive, time::Duration};
 
 /// The RouterOS 7 package a board's radios need: `wireless` for the 802.11 radios of the old
 /// stack (`/interface/wireless`) and the 60 GHz ones (`/interface/w60g`), `wifi-qcom` or
@@ -139,23 +139,23 @@ impl SwitchChip {
 
 /// The ports of a board on one switch chip; a port on none (`sfp1` of a hAP ac, `ether1` of
 /// an L009) goes to the CPU and is never offloaded.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ChipPorts {
     /// every port that isn't a radio
     All,
-    /// `ether<from>`..`ether<to>`
-    Ether(u16, u16),
-    /// `ether<from>`..`ether<to>` and `sfp1`
-    EtherAndSfp1(u16, u16),
+    /// the `ether<N>` of these numbers
+    Ether(RangeInclusive<u16>),
+    /// the `ether<N>` of these numbers and `sfp1`
+    EtherAndSfp1(RangeInclusive<u16>),
 }
 
 impl ChipPorts {
-    fn contains(self, port: PhysicalPortId) -> bool {
+    fn contains(&self, port: PhysicalPortId) -> bool {
         match (self, port) {
             (_, port) if port.is_radio() || port == PhysicalPortId::Loopback => false,
             (ChipPorts::All, _) => true,
-            (ChipPorts::Ether(from, to) | ChipPorts::EtherAndSfp1(from, to), PhysicalPortId::Ethernet(n)) => {
-                (from..=to).contains(&n)
+            (ChipPorts::Ether(numbers) | ChipPorts::EtherAndSfp1(numbers), PhysicalPortId::Ethernet(n)) => {
+                numbers.contains(&n)
             }
             (ChipPorts::EtherAndSfp1(..), PhysicalPortId::Sfp(1)) => true,
             _ => false,
@@ -183,49 +183,49 @@ impl SwitchChips {
         } else if prefixed(&[b"RB5009"]) {
             &[(Marvell88E6, All)]
         } else if prefixed(&[b"L009"]) {
-            &[(Marvell88E6, EtherAndSfp1(2, 8))]
+            &[(Marvell88E6, EtherAndSfp1(2..=8))]
         } else if prefixed(&[b"RB3011"]) {
-            &[(Qca8337, Ether(1, 10))]
+            &[(Qca8337, Ether(1..=10))]
         } else if prefixed(&[b"RB2011"]) {
-            &[(Qca8337, EtherAndSfp1(1, 5)), (Atheros8227, Ether(6, 10))]
+            &[(Qca8337, EtherAndSfp1(1..=5)), (Atheros8227, Ether(6..=10))]
         } else {
             match model {
-                b"CCR2004-16G-2S+" => &[(Marvell88E6, Ether(1, 16))],
-                b"RB750Gr3" => &[(MediaTek, Ether(1, 5))],
-                b"RB760iGS" => &[(MediaTek, Ether(1, 5))],
-                b"RBM33G" => &[(MediaTek, Ether(1, 3))],
-                b"L41G-2axD" => &[(MediaTek, Ether(1, 4))],
-                b"E50UG" => &[(MediaTek, Ether(2, 5))],
-                b"RB4011iGS+" => &[(MediaTek, Ether(1, 10))],
-                b"RB1100AHx4" => &[(MediaTek, Ether(1, 13))],
+                b"CCR2004-16G-2S+" => &[(Marvell88E6, Ether(1..=16))],
+                b"RB750Gr3" => &[(MediaTek, Ether(1..=5))],
+                b"RB760iGS" => &[(MediaTek, Ether(1..=5))],
+                b"RBM33G" => &[(MediaTek, Ether(1..=3))],
+                b"L41G-2axD" => &[(MediaTek, Ether(1..=4))],
+                b"E50UG" => &[(MediaTek, Ether(2..=5))],
+                b"RB4011iGS+" => &[(MediaTek, Ether(1..=10))],
+                b"RB1100AHx4" => &[(MediaTek, Ether(1..=13))],
                 b"RB750Gr2" | b"RB962UiGS-5HacT2HnT" | b"RB960PGS" | b"RB960PGS-PB" | b"RB750GL"
                 | b"RB751G-2HnD" | b"RB951G-2HnD" | b"RBD52G-5HacD2HnD" | b"RBD53iG-5HacD2HnD"
                 | b"RB850Gx2" | b"RB450G" | b"RB450Gx4" | b"RB750G" | b"RB1200" => {
-                    &[(Qca8337, Ether(1, 5))]
+                    &[(Qca8337, Ether(1..=5))]
                 }
                 b"RBcAPGi-5acD2nD" | b"RBwAPGR-5HacD2HnD" | b"RBwAPG-5HacD2HnD"
-                | b"RBD25G-5HPacQD2HPnD" => &[(Qca8337, Ether(1, 2))],
+                | b"RBD25G-5HPacQD2HPnD" => &[(Qca8337, Ether(1..=2))],
                 // not in the table, but reports `Atheros-8327` (7.23.8)
-                b"RBwAPG-60ad" => &[(Qca8337, Ether(1, 1))],
-                b"RB953GS" => &[(Qca8337, EtherAndSfp1(1, 3))],
-                b"RBD22UGS-5HPacD2HnD" => &[(Qca8337, EtherAndSfp1(1, 1))],
-                b"RB1100AH" | b"RB1100AHx2" | b"RB1100" => &[(Qca8337, Ether(1, 10))],
-                b"CCR1009-8G-1S-1S+" | b"CCR1009-8G-1S" => &[(Qca8337, Ether(1, 4))],
-                b"RB493G" => &[(Qca8337, Ether(1, 9))],
-                b"RB435G" | b"RB433GL" => &[(Qca8337, Ether(1, 3))],
-                b"RB941-2nD" => &[(Atheros8227, Ether(1, 4))],
+                b"RBwAPG-60ad" => &[(Qca8337, Ether(1..=1))],
+                b"RB953GS" => &[(Qca8337, EtherAndSfp1(1..=3))],
+                b"RBD22UGS-5HPacD2HnD" => &[(Qca8337, EtherAndSfp1(1..=1))],
+                b"RB1100AH" | b"RB1100AHx2" | b"RB1100" => &[(Qca8337, Ether(1..=10))],
+                b"CCR1009-8G-1S-1S+" | b"CCR1009-8G-1S" => &[(Qca8337, Ether(1..=4))],
+                b"RB493G" => &[(Qca8337, Ether(1..=9))],
+                b"RB435G" | b"RB433GL" => &[(Qca8337, Ether(1..=3))],
+                b"RB941-2nD" => &[(Atheros8227, Ether(1..=4))],
                 b"RB951Ui-2nD" | b"RB952Ui-5ac2nD" | b"RB750r2" | b"RB750UPr2" | b"RB750P-PBr2"
-                | b"RB951Ui-2HnD" => &[(Atheros8227, Ether(1, 5))],
-                b"RBwsAP-5Hac2nD" => &[(Atheros8227, Ether(1, 3))],
-                b"RBmAP2nD" | b"RBmAP2n" => &[(Atheros8227, Ether(1, 2))],
+                | b"RB951Ui-2HnD" => &[(Atheros8227, Ether(1..=5))],
+                b"RBwsAP-5Hac2nD" => &[(Atheros8227, Ether(1..=3))],
+                b"RBmAP2nD" | b"RBmAP2n" => &[(Atheros8227, Ether(1..=2))],
                 b"RB750" | b"RB750UP" | b"RB751U-2HnD" | b"RB951-2n" => {
-                    &[(Atheros8227, Ether(2, 5))]
+                    &[(Atheros8227, Ether(2..=5))]
                 }
                 b"C52iG-5HaxD2HaxD" | b"C52iG-5HaxD2HaxD-TC" | b"C53UiG+5HPaxD2HPaxD" => {
-                    &[(IpqPpe, Ether(1, 5))]
+                    &[(IpqPpe, Ether(1..=5))]
                 }
-                b"cAPGi-5HaxD2HaxD" => &[(IpqPpe, Ether(1, 2))],
-                b"MA53UG+HbeH" => &[(IpqPpe, Ether(2, 5))],
+                b"cAPGi-5HaxD2HaxD" => &[(IpqPpe, Ether(1..=2))],
+                b"MA53UG+HbeH" => &[(IpqPpe, Ether(2..=5))],
                 b"CCR2004-1G-12S+2XS" => &[(IpqPpe, All)],
                 // no switch chip: every port on the CPU (srv-router-berg, 7.23.8)
                 b"CCR1009-7G-1C-1S+" => &[],
