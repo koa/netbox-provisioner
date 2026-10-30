@@ -357,6 +357,14 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     role,
                     country,
                     dns_servers: device.config_context.dns_servers.unwrap_or_default(),
+                    ssh_stage_time: device
+                        .config_context
+                        .ssh_stage_time
+                        .map(|seconds| std::time::Duration::from_secs(seconds.into())),
+                    ssh_blacklist_time: device
+                        .config_context
+                        .ssh_blacklist_time
+                        .map(|seconds| std::time::Duration::from_secs(seconds.into())),
                     propagate_default_route: device
                         .custom_field_data
                         .propagate_default_route

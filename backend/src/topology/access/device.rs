@@ -242,6 +242,19 @@ impl DeviceAccess {
     pub fn dns_servers(&self) -> &[IpAddr] {
         self.data().map(|d| &*d.dns_servers).unwrap_or_default()
     }
+    /// How long a new SSH connection from the internet keeps its source in a stage of the
+    /// bruteforce protection (config context `ssh_stage_time`, else a minute, as MikroTik's
+    /// guide has it).
+    pub fn ssh_stage_time(&self) -> Duration {
+        self.data().and_then(|d| d.ssh_stage_time).unwrap_or(Duration::from_secs(60))
+    }
+    /// How long a source the bruteforce protection caught stays blocked (config context
+    /// `ssh_blacklist_time`, else 10 days, as MikroTik's guide has it).
+    pub fn ssh_blacklist_time(&self) -> Duration {
+        self.data()
+            .and_then(|d| d.ssh_blacklist_time)
+            .unwrap_or(Duration::from_secs(10 * 24 * 3600))
+    }
 }
 
 /// A device to apply together with another (`batchCandidates`).

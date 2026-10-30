@@ -204,9 +204,20 @@ impl DeviceCfg {
         if let Some(syslog) = &CONFIG.device_syslog {
             self.base_target.setup_syslog(syslog);
         }
-        self.base_target
-            .setup_services(&self.base_current.ip_service, CONFIG.api_networks.as_deref());
+        self.setup_services(CONFIG.api_networks.as_deref());
+        self.allow_provisioner(CONFIG.api_networks.as_deref().unwrap_or_default());
         Ok(())
+    }
+    /// `/ip/service` from the device's, the API and www only from `api_networks`
+    /// (`BaseDeviceDataTarget::setup_services`).
+    pub fn setup_services(&mut self, api_networks: Option<&[ipnet::IpNet]>) {
+        self.base_target
+            .setup_services(&self.base_current.ip_service, api_networks);
+    }
+    /// Lets the provisioner in from `networks` (`api_networks`) through the perimeter
+    /// firewall (`BaseDeviceDataTarget::allow_provisioner`).
+    pub fn allow_provisioner(&mut self, networks: &[ipnet::IpNet]) {
+        self.base_target.allow_provisioner(networks);
     }
     pub fn generate_mutations(&self) -> Result<Box<[ResourceMutation<'_>]>, Error> {
         // owned: the device as it is after the renames lives only here

@@ -243,6 +243,10 @@ pub struct Device {
     pub country: Option<Box<str>>,
     /// From the config context (`dns_servers`): the DNS servers of its client networks.
     pub dns_servers: Box<[IpAddr]>,
+    /// From the config context (`ssh_stage_time`, `ssh_blacklist_time`, seconds): the times
+    /// of the SSH bruteforce protection, where they aren't the generator's.
+    pub ssh_stage_time: Option<std::time::Duration>,
+    pub ssh_blacklist_time: Option<std::time::Duration>,
     /// Custom field `propagate_default_route`: its OSPF announces its default route.
     pub propagate_default_route: bool,
 }

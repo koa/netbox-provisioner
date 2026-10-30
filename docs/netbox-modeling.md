@@ -43,12 +43,14 @@ An Journal-Einträgen erkennt der Provisioner seine eigenen am Tag `netbox-provi
 Alle acht Tags lassen sich mit [netbox-import/3-tags.yaml](netbox-import/3-tags.yaml) anlegen
 (Customization > Tags > Import, YAML).
 
-`nat` erzeugt `srcnat action=masquerade out-interface=<Uplink>` und nimmt den Uplink in die
-Interface-Liste `uplink` auf, auf die sich von Hand gebaute Firewall-Regeln beziehen können (die
-IPv6-Firewall von router-faesigrund-keller weist ab, was dort hereinkommt). Andere Listen als
-`uplink` und `maintenance` entfernt ein Apply. Beantwortet der Router selbst
-DNS (kein Config Context `dns_servers` oder eine eigene Adresse darin, siehe unten), sperrt es zudem DNS (TCP/UDP 53) vom Uplink
-her im `input`.
+`internet` (und `nat`, das es voraussetzt; fehlt es, meldet das der Befund
+`NatWithoutInternet`) nimmt das Interface in die Interface-Liste `uplink` auf, die die
+Perimeter-Firewall schützt ([firewall.md](firewall.md)): vom Internet herein nur Antworten, ICMP,
+SSH mit Bruteforce-Schutz und der Provisioner aus `api_networks`. Auf die Liste können sich auch
+von Hand gebaute Firewall-Regeln beziehen (die IPv6-Firewall von router-faesigrund-keller); was
+sie hereinlassen, kommt weiter herein, das Verwerfen des Provisioners steht hinter ihnen. Andere
+Listen als `uplink` und `maintenance` entfernt ein Apply. `nat` erzeugt zudem `srcnat
+action=masquerade out-interface=<Uplink>`.
 
 ### Config Context `dns_servers`
 
@@ -63,7 +65,18 @@ nur auf Geräten mit Client-Netz. Jedes Gerät fragt die Server auch selbst
 (`/ip dns servers`), beantwortet aber keine DNS-Anfragen (`allow-remote-requests=no`). Steht
 eine eigene Adresse des Geräts in der Liste (im Beispiel die Loopbacks von
 router-faesigrund-keller), ist es selbst ein Resolver: Es fragt nur die übrigen Server und
-beantwortet Anfragen, ausser vom `nat`-Uplink.
+beantwortet Anfragen; die Perimeter-Firewall hält das Internet davon fern.
+
+### Config Context `ssh_stage_time`, `ssh_blacklist_time`
+
+```json
+{"ssh_stage_time": 60, "ssh_blacklist_time": 864000}
+```
+
+Die Zeiten des SSH-Bruteforce-Schutzes der Perimeter-Firewall in Sekunden
+([firewall.md](firewall.md#perimeter-firewall)): wie lange eine neue SSH-Verbindung ihre Quelle in
+einer Stufe hält (ohne: 60) und wie lange eine erwischte Quelle gesperrt bleibt (ohne: 864000,
+10 Tage).
 
 ### Custom Fields
 

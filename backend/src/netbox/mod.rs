@@ -51,6 +51,12 @@ pub struct JSON {
     /// In a device's config context: the DNS servers its client networks get, the first
     /// asked first; the device doesn't resolve for them then.
     pub dns_servers: Option<Box<[IpAddr]>>,
+    /// In a device's config context: how long (seconds) a new SSH connection from the
+    /// internet keeps its source in a stage of the bruteforce protection (`docs/firewall.md`).
+    pub ssh_stage_time: Option<u32>,
+    /// In a device's config context: how long (seconds) a source the bruteforce protection
+    /// caught stays blocked.
+    pub ssh_blacklist_time: Option<u32>,
     /// On a device: its OSPF announces the default route it has (from DHCP or static);
     /// without, none leaves it.
     pub propagate_default_route: Option<bool>,

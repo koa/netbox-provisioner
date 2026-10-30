@@ -23,8 +23,7 @@ use mikrotik_model::{
         InterfaceListByName, InterfaceListCfg, InterfaceListMemberCfg, InterfaceVlanByName,
         InterfaceVlanCfg, InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress,
         IpAddressCfg, IpDhcpClientCfg, IpDhcpClientDhcpOptions, IpDhcpServerLeaseCfg,
-        IpFirewallFilterAction,
-        IpFirewallFilterCfg, IpFirewallNatAction, IpFirewallNatCfg,
+        IpFirewallNatAction, IpFirewallNatCfg,
         IpNeighborDiscoverySettingsCfg, IpSocksAuthMethod, IpServiceByName, IpServiceCfg, IpSocksUsersByName, IpSocksUsersCfg,
         IpSshCfg, IpSshForwardingEnabled, Ipv6AddressByAddress, Ipv6AddressCfg,
         Ipv6DhcpClientByInterface, Ipv6DhcpClientCfg, Ipv6DhcpClientRequest,
@@ -42,6 +41,7 @@ use std::{
 
 pub(crate) mod dhcp;
 pub mod fallback;
+mod firewall;
 pub mod graphql;
 pub mod progress;
 pub(crate) mod hw_facts;
@@ -96,12 +96,7 @@ mikrotik_model!(
             owned = "netbox-provisioner:"
         )),
         ipv6_firewall_filter(by_id(path = "ipv6/firewall/filter", keys(), owned = "netbox-provisioner:", ordered)),
-        ip_firewall_filter(by_id(
-            path = "ip/firewall/filter",
-            keys(chain, in_interface, protocol, dst_port),
-            owned = "netbox-provisioner:",
-            ordered
-        )),
+        ip_firewall_filter(by_id(path = "ip/firewall/filter", keys(), owned = "netbox-provisioner:", ordered)),
         ip_firewall_nat(by_id(
             path = "ip/firewall/nat",
             keys(chain, out_interface),
@@ -934,6 +929,7 @@ impl BaseDeviceDataTarget {
     ) -> Result<(), SetupError> {
         self.setup_ip_addresses(l2)?;
         self.setup_dns(device);
+        self.setup_perimeter(device);
         self.setup_ospf(device, l2);
         Ok(())
     }
@@ -1305,6 +1301,9 @@ impl BaseDeviceDataTarget {
                 .collect::<Vec<_>>();
             if logical.nat {
                 self.masquerade(&if_name);
+            }
+            // `nat` needs `internet` (finding `NatWithoutInternet`): guarded all the same
+            if logical.nat || logical.internet {
                 self.add_to_uplinks(&if_name);
             }
             if ips.is_empty() {
@@ -1443,9 +1442,9 @@ impl BaseDeviceDataTarget {
     /// the IPv4 ones by DHCP, the IPv6 ones by router advertisement (RDNSS), in their
     /// order; the device asks them too and resolves for nobody. One of them its own (its
     /// loopback, router-faesigrund-keller) makes it a resolver: it asks the others, not
-    /// itself, and answers its networks but the `nat` uplinks'. Without, the DHCP networks
-    /// name the device itself, so it answers them (not from a `nat` uplink); one without a
-    /// DHCP client learns no DNS server and asks the NAT routers (NetBox tag `nat`).
+    /// itself, and answers its networks. Without, the DHCP networks name the device itself,
+    /// so it answers them; one without a DHCP client learns no DNS server and asks the NAT
+    /// routers (NetBox tag `nat`). The perimeter firewall keeps the internet out of it.
     fn setup_dns(&mut self, device: &DeviceAccess) {
         let servers = device.dns_servers();
         let nd = &mut self
@@ -1488,16 +1487,12 @@ impl BaseDeviceDataTarget {
             let resolver = servers.iter().any(|ip| own.contains(ip));
             self.dns.servers = servers.iter().filter(|ip| !own.contains(ip)).copied().collect();
             self.dns.allow_remote_requests = resolver;
-            if resolver {
-                self.close_dns_to_uplinks();
-            }
             return;
         }
         self.dns.allow_remote_requests = !self.dhcp_v_4_server_network.is_empty();
         if !self.dns.allow_remote_requests {
             return;
         }
-        self.close_dns_to_uplinks();
         let has_uplink = device
             .interfaces()
             .iter()
@@ -1512,12 +1507,13 @@ impl BaseDeviceDataTarget {
                 .collect();
         }
     }
-    /// Puts the uplink `if_name` (NetBox tag `nat`) in the list `uplink`.
+    /// Puts the uplink `if_name` (NetBox tag `internet` or `nat`) in the list `uplink`, which
+    /// the perimeter firewall guards.
     fn add_to_uplinks(&mut self, if_name: &AsciiString) {
         let list = AsciiString::from(UPLINK_LIST);
         self.interface_list.entry(list.clone()).or_insert_with(|| {
             InterfaceListByName(InterfaceListCfg {
-                comment: Some(b"uplinks with nat: for firewall rules".into()),
+                comment: Some(b"interfaces to the internet: perimeter firewall".into()),
                 exclude: Default::default(),
                 include: Default::default(),
                 name: list.clone(),
@@ -1555,52 +1551,6 @@ impl BaseDeviceDataTarget {
                 to_ports: None,
             },
         );
-    }
-    /// The resolver answers the device's own networks, not the `nat` uplinks'.
-    fn close_dns_to_uplinks(&mut self) {
-        let uplinks = self
-            .ip_firewall_nat
-            .values()
-            .filter_map(|nat| nat.out_interface.clone())
-            .collect::<Vec<_>>();
-        for uplink in uplinks {
-            self.close_dns(&uplink);
-        }
-    }
-    /// Keeps the DNS resolver closed to the uplink `if_name`.
-    fn close_dns(&mut self, if_name: &AsciiString) {
-        for protocol in [b"udp", b"tcp"] {
-            let protocol = AsciiString::from(protocol.as_slice());
-            let port = AsciiString::from(b"53".as_slice());
-            self.ip_firewall_filter.insert(
-                (
-                    b"input".into(),
-                    Some(if_name.clone()),
-                    Some(protocol.clone()),
-                    Some(port.clone()),
-                ),
-                IpFirewallFilterCfg {
-                    action: IpFirewallFilterAction::Drop,
-                    chain: b"input".into(),
-                    comment: Some(firewall_comment(&["close-dns", &if_name.to_string(), &protocol.to_string()])),
-                    address_list: None,
-                    address_list_timeout: None,
-                    connection_nat_state: None,
-                    connection_state: None,
-                    disabled: false,
-                    dst_address: None,
-                    dst_port: Some(port),
-                    in_interface: Some(if_name.clone()),
-                    in_interface_list: None,
-                    jump_target: None,
-                    out_interface: None,
-                    out_interface_list: None,
-                    protocol: Some(protocol),
-                    src_address: None,
-                    src_address_list: None,
-                },
-            );
-        }
     }
 }
 

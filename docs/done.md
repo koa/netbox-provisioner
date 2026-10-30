@@ -12,6 +12,7 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 | # | Frage | Entscheidung | betrifft |
 |---|---|---|---|
 | Z1 | Woran erkennt der Provisioner seine eigenen Firewall-Regeln? | Kommentar-Präfix; fremde Regeln bleiben stehen (2026-10-23) | A1 |
+| Z2 | Neues Tag `internet` oder genügt `nat`? | neues Tag `internet`; `nat` setzt es voraus (2026-10-23) | C1 |
 | Z8 | Nix-Image oder Containerfile? | Nix (2026-10-23) | C6 |
 | Z9 | Welcher Cluster? | nur Image und Helm-Chart; die Cluster-Konfiguration macht der Betreiber von Hand (2026-10-23) | C6 |
 | Z21 | Diff aller Geräte einer Site live oder als Job? | Job mit Zwischenstand (2026-10-23) | D2 |
@@ -55,6 +56,7 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 
 | # | Aufgabe | Konzept | Aufwand | Erledigt |
 |---|---|---|---|---|
+| C1 | Perimeter-Firewall: Tag `internet` (Z2, `nat` ohne `internet` ist der Befund `NatWithoutInternet`), Grundregeln IPv4/IPv6 von der Liste `uplink`, das Verwerfen am Ende hinter fremden Regeln (`OWNED_LAST`), SSH mit Bruteforce-Schutz (Zeiten aus dem Config Context), Zugang des Provisioners aus `api_networks`, IPv4-NAT wie bisher; CHR-Test mit Uplink, Router und Client, das Apply über den Uplink sperrt sich nicht aus | [Firewall](firewall.md) | M | 2026-10-30 („read the tag internet of an interface to the internet“, „guard the interfaces to the internet with a perimeter firewall“; mikrotik-model „let an own firewall rule go after the rules of others“, „model the address lists and nat state of ipv4 filter rules“, „let ipv6 filter rules add to address lists like ipv4 ones“) |
 | C6 | Deployment: Nix-Image (Z8), Flake, Git-Abhängigkeiten für mikrotik-model/-api, GitHub Actions, Helm-Chart; Cluster und Argo CD von Hand (Z9) | [Deployment](deployment.md) | L | 2026-10-23 (`build the image with nix and add the helm chart and ci`), 2026-10-24 (`publish snapshot charts and clean up old snapshots`) |
 | C11 | Kaltstart eines PoE-gespeisten Geräts auf Knopfdruck: PoE am speisenden Port aus und wieder ein, mit Bestätigung (Z22); für Device-Mode und Rettung nach einem Update | [Update-Fallback](update-fallback.md) | S–M | 2026-10-24 („cold boot a device over its poe supply“) |
 | C12 | Interfaces nach Aufgabe statt Helfer-Auswahl: Zuordnung, Ansicht, Lösungsvorschläge im Modal, Live-Prüfungen, neue Befunde und Helfer | [Interfaces nach Aufgabe](interface-view.md) | – | Schritt 1 2026-10-23 („show the interfaces of a device by task“), Schritt 2 2026-10-23 („open the helpers from the interface rows“), Schritt 3 2026-10-23 („check the interface rows live“), Schritt 4 2026-10-23 („find gateways, tagged ports, radio paths and labels“); aus Schritt 5: Funkbrücke vom Router-Port 2026-10-23 („open the radio bridge helper from the router port“), Richtfunk abräumen 2026-10-23 („take a radio link's network out of netbox“), Kunden-Anschluss abräumen 2026-10-23 („take a customer port's network out of netbox“), VLAN am Port 2026-10-24 („put a customer's vlan on a port“), Kabel übernehmen 2026-10-24 („take over the cable a device sees“) |

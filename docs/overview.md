@@ -45,6 +45,8 @@ Was noch nicht umgesetzt ist, steht als Konzept in [concepts/](concepts/), die A
      und müssen daher selbst nicht wissen, ob eine logische Schnittstelle ein Einzelport, eine
      flache Bridge oder ein VLAN auf einer getaggten Bridge ist. Siehe
      [ospf-generation.md](ospf-generation.md).
+   - `setup_perimeter` — die Perimeter-Firewall an den Interfaces zum Internet (Liste `uplink`),
+     siehe [firewall.md](firewall.md); den Zugang des Provisioners fügt `generate_for` dazu.
    - Funk-Ports von Funkbrücken (`WirelessDeviceDataTarget`/`W60GDeviceDataTarget`), siehe
      [radio-bridge-generation.md](radio-bridge-generation.md); Funkbrücken ohne RouterOS
      (Wave Nano) in [foreign-radio-bridge.md](foreign-radio-bridge.md).

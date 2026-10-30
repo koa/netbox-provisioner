@@ -723,18 +723,39 @@ with it off the addresses are `invalid` and OSPFv3 never comes up, while the dif
 DNS servers come from the device's NetBox config context (`dns_servers`, in priority order):
 client networks get them by DHCP (v4) and RDNSS (v6, only on devices with client networks),
 every device asks them itself, and none resolves for others, but one with an own address in the
-list (router-faesigrund-keller's loopbacks): it asks the others only and resolves, closed to its
-`nat` uplinks. Without the context, a router with
-a DHCP server answers DNS (its networks get its own address, DNS dropped on `input` from a `nat`
-uplink), and one without a `dhcp-client` forwards to the loopbacks of the `nat` routers.
+list (router-faesigrund-keller's loopbacks): it asks the others only and resolves. Without the
+context, a router with a DHCP server answers DNS (its networks get its own address), and one
+without a `dhcp-client` forwards to the loopbacks of the `nat` routers. The perimeter firewall
+keeps the internet out of the resolver (the `close_dns` rules before it went with it).
 `mu; ordered` makes a list field a `Box<[V]>` whose order counts (`dns-server`, `servers`).
 An uplink tagged `nat` gets a masquerade rule. In the firewall menus (`/ip/firewall/filter`,
 `nat`, `/ipv6/firewall/filter`, `address-list`) only the entries whose comment starts with
 `netbox-provisioner:` are the provisioner's (`owned` in `mikrotik_model!`, Z1); every other
-entry stays. Its rules come first, in the target's order (the key order of the map), before
-the others (`ordered`: a `move [find comment=…] destination=<first other>`), so each own
-comment is unique in its menu (`firewall_comment`). A rule without a comment that is an own one
-but for it is taken over: the rules of the versions before had none.
+entry stays. Its rules come first, in the target's order (the filters are lists, the order of
+the rules counts), before the others (`ordered`: a `move [find comment=…] destination=<first
+other>`), but those whose comment goes on with `last ` after the prefix, which go after all
+others (mikrotik-model `OWNED_LAST`): the drop ending a chain mustn't take what a hand-made rule
+lets in. Each own comment is unique in its menu (`firewall_comment`), and has no `_`
+(RouterOS's script escapes it). A rule without a comment that is an own one but for it is taken
+over: the rules of the versions before had none.
+
+The perimeter firewall (`device/ros/firewall.rs`, `docs/firewall.md`) guards every device with
+an interface tagged `internet` or `nat` (`nat` needs `internet`, `NatWithoutInternet`): those
+are the list `uplink`, and every rule is from `in-interface-list=uplink`, the rest of the
+network routes without any. IPv4 and IPv6 alike: established/related in, invalid out, ICMP(v6),
+the DHCPv6 client's answers (UDP 546 from `fe80::/10`), SSH through the address-list stages of
+MikroTik's bruteforce guide (from the last stage back, so a connection takes one step; times
+from the config context `ssh_stage_time`/`ssh_blacklist_time`), on `forward` IPv4's dstnat,
+then the drops. `api_networks` come right after `invalid` (`allow_provisioner`, from
+`generate_for` like `setup_services`, which tests call on `DeviceCfg` themselves): the
+provisioner's SSH must never count in the stages (an update logs in and uploads several times).
+A single IPv4 address in a rule is written without `/32` (`ros_address`): RouterOS reports it so
+and the diff never got empty; an IPv6 one keeps its `/128`. CHR test
+`perimeter_firewall_keeps_the_internet_out_but_the_provisioner`: the apply goes through the
+firewall it sets up, from the uplink's side, and a new connection after it gets in and sees an
+empty diff (the harness leaves out what the CHR's virtio ports take silently and keep: flow
+control, `l2mtu`). An IPv6 address-list entry a rule adds shows up a moment later, so the test
+waits for it.
 
 `/ip/service` (`setup_services`, in `generate_for`) starts from the device's services, so what
 an operator set stays, and turns telnet and ftp off (A2; packages go up by SCP over SSH). www

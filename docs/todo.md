@@ -22,7 +22,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Frage | Entscheidung | betrifft |
 |---|---|---|---|
-| Z2 | Neues Tag `internet` oder genügt `nat`? | neues Tag `internet`; `nat` setzt es voraus (2026-10-23) | C1 |
 | Z3 | Woher kommt der äussere Port eines Port-Forwardings? | aussen immer derselbe Port wie innen, kein Umsetzen (2026-10-23) | C2 |
 | Z4 | Freigaben der internen Firewall: Custom Fields am Interface oder Prefix-Tags? | Custom Fields am Interface (2026-10-23) | C3 |
 | Z5 | `netbox-model` entfernen oder für cynic verwenden? | entfernen (2026-10-23) | B3, C4 |
@@ -43,9 +42,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 ## A. Sicherheit
 
-Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offen, bis auf DNS
-(siehe [Firewall](concepts/firewall.md#ausgangslage)).
-
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | A3 | SOCKS des Management-Proxys nur von der Adresse des Provisioners annehmen (heute auf allen Interfaces, nur mit Passwort) | S | offen |
@@ -62,8 +58,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
-| C1 | Perimeter-Firewall: Tag `internet` (Z2), Grundregeln IPv4/IPv6, SSH mit Bruteforce-Schutz, Zugang des Provisioners, IPv4-NAT | [Firewall](concepts/firewall.md#perimeter-firewall) | M | offen |
-| C2 | Port-Forwarding IPv4 (ohne Umsetzen der Ports, Z3) und Freigaben IPv6 aus NetBox-Services (Tag `forward`) | [Firewall](concepts/firewall.md#perimeter-firewall) | M | offen |
+| C2 | Port-Forwarding IPv4 (ohne Umsetzen der Ports, Z3) und Freigaben IPv6 aus NetBox-Services (Tag `forward`); hereingelassen wird ein dstnat schon (C1) | [Firewall](concepts/firewall.md#perimeter-firewall) | M | offen |
 | C3 | Interne Firewall: `guest` und `protected` am Gateway-Interface, Freigaben als Custom Fields (Z4), nur ein Router pro Netz | [Firewall](concepts/firewall.md#interne-firewall) | M | offen |
 | C4 | cynic statt graphql_client, Abfrage für Abfrage (Spike erfolgreich) | [GraphQL-Dateien](concepts/graphql-files.md) | M–L | offen |
 | C5 | Befehle ohne Strings: Stufe 1, getypte Befehle aus dem Modell (Stufe 2 nicht geplant, Z7) | [Befehle ohne Strings](concepts/command-dsl.md) | M–L | offen |

@@ -1,5 +1,6 @@
 mod capsman;
 mod hand_made;
+mod firewall;
 mod mac_server;
 mod mtu;
 mod netbox_example;

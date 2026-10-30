@@ -1,7 +1,8 @@
 # Konzept: Firewall aus NetBox
 
-Status: Konzept; umgesetzt ist der erste Schritt der [Reihenfolge](#reihenfolge), nur eigene
-Regeln verwalten (A1). Aufgaben C1 bis C3 in [todo.md](../todo.md).
+Status: Konzept; umgesetzt sind die ersten beiden Schritte der [Reihenfolge](#reihenfolge), nur
+eigene Regeln verwalten (A1) und die Perimeter-Firewall (C1), beschrieben in
+[firewall.md](../firewall.md). Aufgaben C2 und C3 in [todo.md](../todo.md).
 
 ## Zwei Arten
 
@@ -16,86 +17,25 @@ Eine interne Firewall kostet Leistung: Ihre Regeln brauchen Connection Tracking 
 der sonst nur routet. Deshalb nur dort, wo ein Netz es verlangt, und nur auf dem Router, an dem
 das Netz hängt.
 
-## Ausgangslage
-
-Der Generator schreibt heute nur zwei Arten von Regeln, beide an Uplinks mit Tag `nat`:
-
-- `srcnat action=masquerade out-interface=<Uplink>` (`masquerade`);
-- `input` `drop` für UDP und TCP 53 vom Uplink (`close_dns`), damit der DNS-Resolver nicht offen ist.
-
-`mikrotik-model` kennt `/ip/firewall/filter`, `/ip/firewall/nat`, `/ipv6/firewall/filter` und
-`/ipv6/firewall/address-list`; das Ziel enthält sie (`ip_firewall_filter` …, nach `.id`
-abgeglichen). **Zu prüfen, bevor das hier gebaut wird:** Was die Vorschau eines der heutigen
-Firewall-Router zu seinen Regeln zeigt. Verwaltet das Ziel die ganze Tabelle, würde ein Apply
-von Hand gesetzte Regeln entfernen. Das wäre schon heute ein Risiko, nicht erst mit diesem
-Konzept.
-
-**Heutiger Stand, gemessen** (2026-10-19, Lab und Code):
-
-- ~~Die Firewall-Tabellen werden nach `.id` abgeglichen~~ (behoben mit A1, 2026-10-26: nur
-  noch Einträge mit dem Kommentar-Präfix `netbox-provisioner:` sind die des Provisioners, die
-  übrigen bleiben; die eigenen stehen vorne. Vorher: `generate_add_update_remove_by_id`):
-  Einträge auf dem Gerät werden mit den Zielen gepaart, die wenigsten geänderten Felder zuerst,
-  und **umgeschrieben**; was übrig bleibt, wird **entfernt**. Ein Apply auf einen Router mit
-  eigener Firewall (die Werks-Firewall eines hEX, oder die von Hand gepflegten Regeln der
-  Internet-Router) lässt nur `close_dns` übrig. Die Reihenfolge der Regeln spielt beim Paaren
-  keine Rolle, für RouterOS aber schon.
-- Die Lab-Geräte haben nach dem Anwenden **keine einzige Filter-Regel** (IPv4 und IPv6).
-- ~~`/ip/service` verwaltet der Generator nicht~~ (A2, 2026-10-26: telnet und ftp aus, die
-  API und www (WebFig, seit 2026-10-30 wieder an) mit `api_networks` nur aus diesen Netzen;
-  winbox und ssh bleiben, wie sie sind).
-- `/ip/socks` des Management-Proxys lauscht auf allen Interfaces (`setup_management_proxy`:
-  „reachable from wherever the device is“), geschützt nur durch das Passwort.
-
-Ein Router mit Internet-Zugang ist damit nach einem Apply von aussen offen, bis auf DNS. Die
-Perimeter-Firewall ist deshalb nicht nur eine Erweiterung, sondern behebt ein bestehendes
-Problem; und bis sie da ist, sollte kein Router mit eigener Firewall angewendet werden.
-
 ## Perimeter-Firewall
 
-**Wo:** an jedem Interface zum Internet. Heute markiert das Tag `nat` einen Uplink, dessen Netz
-nicht zurückroutet. Ein Uplink mit öffentlichem, zurückgeroutetem Netz (IPv6, oder IPv4 ohne NAT)
-braucht die Firewall genauso. Vorschlag: ein Tag `internet` für jedes Interface zum Internet;
-`nat` setzt es voraus. Weil die Perimeter-Firewall Pflicht ist, gibt es sie dort immer, ohne
-Schalter; ein Interface mit `nat` ohne `internet` ist ein Befund.
+Gebaut ist der Teil ohne NetBox-Services: Tag `internet`, die Grundregeln für IPv4 und IPv6,
+SSH mit Bruteforce-Schutz, der Zugang des Provisioners und das Masquerading; beschrieben in
+[firewall.md](../firewall.md). Offen (C2):
 
-**Regeln**, für IPv4 und IPv6 gleich aufgebaut, aus dem Generator (nicht aus NetBox):
-
-- `input` und `forward`: `established,related` annehmen, `invalid` verwerfen.
-- `input` vom Internet:
-  - ICMP bzw. ICMPv6 annehmen (IPv6 braucht ND und Path-MTU, mit Rate-Limit);
-  - SSH (22) annehmen, durch den Bruteforce-Schutz;
-  - der Zugang des Provisioners, falls er über das Internet kommt (SOCKS des
-    `management_proxy` bzw. das VPN, nur von seiner Adresse). Fehlt der, sperrt sich der
-    Provisioner beim Anwenden selbst aus; der Fallback holt das Gerät zurück, aber ohne
-    Änderung;
-  - der Rest wird verworfen: API, Winbox, DNS (das heutige `close_dns` geht darin auf).
-- **Dienste** (erledigt mit A2): telnet und ftp aus; API und www (WebFig, im Feld oft der einzige
-  Zugang) nur aus `api_networks` (Config), WebFig über HTTPS ist A7;
-  api-ssl nicht, da der Provisioner die API ohne TLS spricht. Das gilt für alle Geräte, nicht
-  nur am Perimeter.
-- `forward` vom Internet:
-  - IPv4 nur, was ein Port-Forwarding hereinlässt (`connection-nat-state=dstnat`);
-  - IPv6 nur die Freigaben;
-  - der Rest wird verworfen.
-- **Bruteforce-Schutz** für SSH nach der
-  [MikroTik-Anleitung](https://manual.mikrotik.com/docs/firewall-and-quality-of-service/user-guides/bruteforce-prevention),
-  für IPv4 und IPv6. Eine neue Verbindung kommt in die Address-List `ssh_stage1`, eine weitere
-  in kurzer Zeit nach `ssh_stage2`, `ssh_stage3`, dann `ssh_blacklist` (z.B. 10 Tage). Was auf
-  der Blacklist steht, wird am `input` verworfen. Die Zeiten als Config Context übersteuerbar.
-
-**NAT** (nur IPv4):
-
-- Masquerading ausgehend wie heute (`nat`).
 - **Port-Forwarding** aus NetBox **Services** (IPAM → Services: Protokoll, Ports, IP-Adressen,
   Gerät). Ein Service an der **inneren** IPv4 eines Geräts im Kunden-Netz, mit Tag `forward`,
   ergibt auf dem Perimeter-Router, hinter dem das Netz liegt,
-  `dstnat in-interface=<Uplink> protocol=… dst-port=<port> action=dst-nat to-addresses=<innen>`.
+  `dstnat in-interface-list=uplink protocol=… dst-port=<port> action=dst-nat to-addresses=<innen>`.
   Aussen gilt derselbe Port wie innen; ein Umsetzen von Ports gibt es nicht. Der Router ist der
   mit `nat`-Uplink auf dem Weg aus dem Netz hinaus; gibt es keinen eindeutigen, ist das ein Befund.
+  Hereingelassen wird es schon heute (`forward dstnat`).
 - **IPv6-Freigaben** aus demselben Modell: ein Service an einer IPv6-Adresse mit Tag `forward`
-  ergibt auf jedem Perimeter-Router `forward accept dst-address=<adresse> protocol=… dst-port=…`.
+  ergibt auf jedem Perimeter-Router `forward accept dst-address=<adresse> protocol=… dst-port=…`,
+  vor `last forward drop`.
 - Ein Service ohne `forward` bleibt Doku und erzeugt nichts.
+- Danach können die von Hand gebauten Freigaben von router-faesigrund-keller (Webserver, IPsec)
+  aus NetBox kommen.
 
 ## Interne Firewall
 
@@ -152,15 +92,8 @@ IPv6 des Netzes zusammen.
 
 ## Reihenfolge
 
-1. ~~Nur eigene Regeln verwalten~~ (A1, erledigt 2026-10-26): Jede generierte Regel trägt
-   einen Kommentar mit dem Präfix `netbox-provisioner:`, eindeutig in ihrer Tabelle; nur solche
-   ändert oder entfernt der Provisioner, fremde bleiben stehen. Die eigenen stehen vor den
-   fremden, in der Reihenfolge des Ziels (`move … destination=<erste fremde>`). Eine Regel
-   ohne Kommentar, die bis auf ihn einer eigenen gleicht, wird übernommen (die Regeln älterer
-   Versionen). Die Reihenfolge des Ziels ist heute die der Schlüssel; braucht die
-   Perimeter-Firewall eine eigene, wird das Ziel eine Liste.
-2. Perimeter-Firewall (`internet`): Grundregeln, SSH mit Bruteforce-Schutz, Zugang des
-   Provisioners. CHR-Test mit Uplink, Router und Client, auch: das Apply sperrt sich nicht aus.
+1. ~~Nur eigene Regeln verwalten~~ (A1, erledigt 2026-10-26).
+2. ~~Perimeter-Firewall~~ (C1, erledigt 2026-10-30).
 3. Port-Forwarding IPv4 und IPv6-Freigaben aus Services.
 4. Interne Firewall `guest`, dann `protected`, je mit CHR-Test (Gast erreicht das Internet und
    die Freigabe, sonst nichts; geschütztes Netz nur von der Freigabe).
