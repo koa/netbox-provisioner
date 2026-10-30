@@ -30,6 +30,11 @@ use std::{
 
 /// `(controller, legacy CAP, wifi CAP)`
 async fn wlan_group() -> (DeviceAccess, DeviceAccess, DeviceAccess) {
+    wlan_group_with(1).await
+}
+
+/// The same with `radios` radios at the legacy CAP (`wlan1` …).
+async fn wlan_group_with(radios: u16) -> (DeviceAccess, DeviceAccess, DeviceAccess) {
     let mut builder = TopologyBuilder::default();
     let controller = builder.devices.next_id();
     let legacy_cap = builder.devices.next_id();
@@ -119,7 +124,9 @@ async fn wlan_group() -> (DeviceAccess, DeviceAccess, DeviceAccess) {
     };
     interface(controller, "wlan", None, Some(vlan), Box::new([gateway]));
     interface(legacy_cap, "ether1", Some(PhysicalPortId::Ethernet(1)), None, Box::new([]));
-    interface(legacy_cap, "wlan1", Some(PhysicalPortId::Wlan(1)), None, Box::new([]));
+    for radio in 1..=radios {
+        interface(legacy_cap, &format!("wlan{radio}"), Some(PhysicalPortId::Wlan(radio)), None, Box::new([]));
+    }
     interface(wifi_cap, "ether1", Some(PhysicalPortId::Ethernet(1)), None, Box::new([]));
     interface(wifi_cap, "wifi1", Some(PhysicalPortId::Wifi(1)), None, Box::new([]));
     for (device, name, loopback) in [
@@ -308,4 +315,39 @@ async fn caps_bridge_runs_no_stp() {
         assert_eq!(bridge.max_message_age, defaults.max_message_age);
         assert_eq!(bridge.forward_reserved_addresses, Some(false));
     }
+}
+
+/// bachmann-keller-ap (the first wAP ac, 7.x): its radios are named after each other's default
+/// name, `wlan1` is `wlan2` and the other way round, and the CAP lists both. They stay in the
+/// CAP under their names (the plan once dropped `wlan1`: a name was taken for the other radio's
+/// default name and replaced).
+#[tokio::test]
+async fn swapped_radio_names_stay_in_the_cap() {
+    let (_, legacy_cap, _) = wlan_group_with(2).await;
+    let radio = |default_name: &str, name: &str| {
+        let mut data = mikrotik_model::hwconfig::generate_wlan(1600)(1).data;
+        data.name = name.into();
+        InterfaceWirelessByDefaultName {
+            default_name: Some(default_name.into()),
+            data,
+        }
+    };
+    let mut current = WirelessDeviceDataCurrent {
+        wireless_cap: Default::default(),
+        // in the order the device lists them
+        wireless: Box::new([radio("wlan2", "wlan1"), radio("wlan1", "wlan2")]),
+    };
+    current.wireless_cap.enabled = true;
+    current.wireless_cap.interfaces = ["wlan2".into(), "wlan1".into()].into();
+    let kept = current.managed_radios();
+    let managed = kept.keys().cloned().collect::<HashSet<_>>();
+    let setup = L2Setup::new(&legacy_cap, KeptNames { inner: EndpointNameGenerator, kept }).unwrap();
+    let mut target = WirelessDeviceDataTarget::new(b"RBwAPG-5HacT2HnD");
+    target.generate_from(&legacy_cap, &setup, Some(&current)).unwrap();
+    target.keep_managed_radios(&current, &managed);
+    assert_eq!(
+        target.wireless_cap.interfaces,
+        [AsciiString::from("wlan1"), "wlan2".into()].into()
+    );
+    assert_eq!(target.wireless[&Some("wlan1".into())].name, "wlan2".into());
 }

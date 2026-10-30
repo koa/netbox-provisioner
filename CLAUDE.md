@@ -831,6 +831,9 @@ A legacy radio (`wireless`) CAPsMAN manages refuses any change too (ap-klr-solar
 (`WirelessDeviceDataCurrent::managed_radios`) keeps its name, which L2 uses for it
 (`l2::KeptNames`, so bridge port and CAP match), and its settings
 (`keep_managed_radios`); that they differ from NetBox is no warning, CAPsMAN configures them.
+The CAP lists each radio by the name it gets (L2's, else the device's), never by swapping a default
+name for a name afterwards: on bachmann-keller-ap (first wAP ac) `wlan1` is named `wlan2` and the
+other way round, and such a swap dropped `wlan1` from the CAP (`swapped_radio_names_stay_in_the_cap`).
 Moving to `wireless` leaves the `/interface/wifi` radios inactive under their names, so without a
 wifi package they get their default names back, and `/interface/wifi` mutations come before
 `/interface/wireless` ones (the sort keeps the order within a round). "Pakete anpassen" next to the

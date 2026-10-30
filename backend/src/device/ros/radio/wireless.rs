@@ -99,7 +99,7 @@ impl WirelessDeviceDataTarget {
     }
     /// Gives the radios CAPsMAN manages (`WirelessDeviceDataCurrent::managed_radios`) and NetBox
     /// has (`managed`, by default name) back what they have, like `/interface/wifi` its bound
-    /// ones. The L2 setup already has their names (`l2::KeptNames`). That they differ from
+    /// ones. The L2 setup already has their names (`l2::KeptNames`), and so has the CAP. That they differ from
     /// NetBox is no warning: CAPsMAN configures them, as it is meant to.
     pub fn keep_managed_radios(
         &mut self,
@@ -115,10 +115,6 @@ impl WirelessDeviceDataTarget {
             }
             let key = Some(default_name.clone());
             self.wireless.insert(key, radio.data.clone());
-            // a radio L2 doesn't place joins the CAP under its default name
-            if self.wireless_cap.interfaces.remove(default_name) {
-                self.wireless_cap.interfaces.insert(radio.data.name.clone());
-            }
         }
     }
     /// A CAP of the legacy CAPsMAN (`Topology::is_legacy_cap`) with every radio NetBox has,
@@ -157,9 +153,16 @@ impl WirelessDeviceDataTarget {
             let Some(port @ PhysicalPortId::Wlan(_)) = interface.external_port() else {
                 continue;
             };
+            let default_name = AsciiString::from(port.to_string());
+            // a radio L2 doesn't place keeps the name it has (`generate_from` took it from the
+            // device): names and default names may be crossed (bachmann-keller-ap's `wlan1`
+            // is `wlan2`), so the CAP never swaps one for the other
             let name = match l2.placement_of_port(port) {
                 Some((name, _)) => name.clone(),
-                None => AsciiString::from(port.to_string()),
+                None => self
+                    .wireless
+                    .get(&Some(default_name.clone()))
+                    .map_or(default_name, |wlan| wlan.name.clone()),
             };
             cap.interfaces.insert(name);
             // `wireless` installs its radios disabled (a wAP ac coming from `wifi-qcom-ac`)
