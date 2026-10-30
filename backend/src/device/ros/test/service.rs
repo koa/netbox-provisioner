@@ -1,5 +1,5 @@
-//! `/ip/service` (`setup_services`): telnet, ftp and www off, with `api_networks` the plain
-//! API only from those; everything else as the device has it.
+//! `/ip/service` (`setup_services`): telnet and ftp off, www on, with `api_networks` the plain
+//! API and www only from those; everything else as the device has it.
 use crate::device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, test::empty_current};
 use ipnet::IpNet;
 use mikrotik_model::{
@@ -43,14 +43,27 @@ fn factory() -> Vec<IpServiceByName> {
 }
 
 #[test]
-fn telnet_ftp_and_www_go_off() {
+fn telnet_and_ftp_go_off() {
     let script = service_script(None, factory());
     assert_eq!(
         script,
         "/ip/service\n\
          set [ find name=ftp dynamic=no] disabled=yes \n\
-         set [ find name=telnet dynamic=no] disabled=yes \n\
-         set [ find name=www dynamic=no] disabled=yes \n"
+         set [ find name=telnet dynamic=no] disabled=yes \n"
+    );
+}
+
+/// WebFig is what's left in the field where Winbox isn't at hand: www goes on again where it
+/// was off (as an apply of A2's first version left it), from the networks of the API.
+#[test]
+fn webfig_answers_the_networks() {
+    let networks = ["192.168.0.0/16"].map(|n| n.parse::<IpNet>().unwrap());
+    let mut services = factory();
+    services[3] = service("www", true, None, None);
+    let script = service_script(Some(&networks), services);
+    assert!(
+        script.contains("set [ find name=www dynamic=no] disabled=no address=\"192.168.0.0/16\""),
+        "{script}"
     );
 }
 
@@ -74,8 +87,14 @@ fn the_api_answers_the_networks() {
     // as RouterOS reports it after the apply: nothing more to do
     let mut services = factory();
     for s in &mut services {
-        s.data.disabled |= matches!(&*s.name.0, b"ftp" | b"telnet" | b"www");
+        s.data.disabled |= matches!(&*s.name.0, b"ftp" | b"telnet");
     }
+    services[3] = service(
+        "www",
+        false,
+        Some("192.168.0.0/16,2a02:16a:fe00:8000::/50,172.17.1.0/24"),
+        None,
+    );
     services[6] = service(
         "api",
         false,

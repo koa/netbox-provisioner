@@ -51,7 +51,8 @@ pub struct Settings {
     /// The syslog server every device logs to, in CEF; without it the devices log only
     /// locally (RouterOS's own rules).
     pub device_syslog: Option<DeviceSyslog>,
-    /// The networks the plain API (`/ip/service api`, port 8728) of every device answers;
+    /// The networks the plain API (`/ip/service api`, port 8728) and WebFig (`www`) of every
+    /// device answer;
     /// unset or empty: the device's own setting stays (RouterOS's: all). It must hold the
     /// address the provisioner comes from on each device (its own, or the management proxy's
     /// towards the device), or the apply locks it out and the fallback takes the apply back.

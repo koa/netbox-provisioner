@@ -50,6 +50,7 @@ Heute offen: Ein Router mit Internet-Zugang ist nach einem Apply von aussen offe
 |---|---|---|---|
 | A3 | SOCKS des Management-Proxys nur von der Adresse des Provisioners annehmen (heute auf allen Interfaces, nur mit Passwort) | S | offen |
 | A6 | h2 0.3 loswerden (RUSTSEC-2026-0258, DoS über leere DATA-Frames, nur über HTTP/2): `actix-4-jwt-auth` bindet actix-web mit den Default-Features, damit `http2`; upstream ohne Default-Features oder Fork, dann `async-graphql-actix-web` ohne `http2` | S | offen |
+| A7 | WebFig über HTTPS: `www-ssl` statt `www`, mit einem Zertifikat pro Gerät, das der Provisioner anlegt (selbst signiert mit Browser-Warnung, oder von einer eigenen CA, deren Zertifikat die Admins einmal importieren); danach `www` aus. Heute geht WebFig im Klartext, nur aus `api_networks` | M | offen |
 
 ## B. Bereinigungen
 

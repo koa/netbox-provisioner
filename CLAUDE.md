@@ -710,8 +710,10 @@ comment is unique in its menu (`firewall_comment`). A rule without a comment tha
 but for it is taken over: the rules of the versions before had none.
 
 `/ip/service` (`setup_services`, in `generate_for`) starts from the device's services, so what
-an operator set stays, and turns telnet, ftp and www off (A2; packages go up by SCP over SSH).
-With `api_networks` the plain API answers only those, written as `address`, which RouterOS
+an operator set stays, and turns telnet and ftp off (A2; packages go up by SCP over SSH). www
+(WebFig over plain HTTP) stays on, turned on where it was off: in the field it is often the
+only way in, Winbox isn't at hand; www-ssl would need a certificate on every device (A7).
+With `api_networks` the plain API and www answer only those, written as `address`, which RouterOS
 7.24 still takes for its `available-from`, unless the device reports `available-from` already
 (an open service reports neither). `generate_live` reads the API's open connections (dynamic
 `api` entries with `remote`) and leaves the API as it is, with `ApiClientsOutside`, where one

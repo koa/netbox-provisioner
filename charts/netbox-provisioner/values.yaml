@@ -57,7 +57,8 @@ settings:
   apply_fallback_seconds: ""
   # seconds after an update's boot to reach the device again (empty: 900)
   update_fallback_seconds: ""
-  # the networks the plain API of every device answers (prefixes); empty: as the devices have it.
+  # the networks the plain API and WebFig (www) of every device answer (prefixes); empty: as
+  # the devices have it.
   # Must hold the provisioner's address as each device sees it (its own, or the management
   # proxy's), or an apply locks it out and the fallback takes the apply back
   api_networks: []

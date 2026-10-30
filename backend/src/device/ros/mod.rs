@@ -25,7 +25,7 @@ use mikrotik_model::{
         IpAddressCfg, IpDhcpClientCfg, IpDhcpClientDhcpOptions, IpDhcpServerLeaseCfg,
         IpFirewallFilterAction,
         IpFirewallFilterCfg, IpFirewallNatAction, IpFirewallNatCfg,
-        IpNeighborDiscoverySettingsCfg, IpSocksAuthMethod, IpServiceByName, IpSocksUsersByName, IpSocksUsersCfg,
+        IpNeighborDiscoverySettingsCfg, IpSocksAuthMethod, IpServiceByName, IpServiceCfg, IpSocksUsersByName, IpSocksUsersCfg,
         IpSshCfg, IpSshForwardingEnabled, Ipv6AddressByAddress, Ipv6AddressCfg,
         Ipv6NdAdvertiseDns, Ipv6NdByInterface, Ipv6NdCfg, RoutingOriginateDefault,
         RoutingOspfInstanceByName, RoutingOspfInstanceCfg, RoutingOspfInstanceVersion,
@@ -500,8 +500,8 @@ impl BaseDeviceDataTarget {
             }),
         );
     }
-    /// `/ip/service`: RouterOS's services as the device has them (`current`), with telnet, ftp
-    /// and www off (A2) and, with `api_networks`, the plain API only from those. Written as
+    /// `/ip/service`: RouterOS's services as the device has them (`current`), with telnet and ftp
+    /// off (A2), www (WebFig) on and, with `api_networks`, the plain API and www only from those. Written as
     /// `address`, which RouterOS 7.24 still takes for `available-from`, unless the device
     /// reports `available-from` already: an open service reports neither.
     pub fn setup_services(&mut self, current: &[IpServiceByName], api_networks: Option<&[IpNet]>) {
@@ -511,17 +511,24 @@ impl BaseDeviceDataTarget {
         });
         self.ip_service = current.iter().map(|service| (service.name.clone(), service.data.clone())).collect();
         for (name, service) in &mut self.ip_service {
-            match &**name {
-                b"telnet" | b"ftp" | b"www" => service.disabled = true,
-                b"api" => {
-                    if let Some(networks) = &api_networks {
-                        if service.available_from.is_some() {
-                            service.available_from = Some(networks.clone());
-                        } else {
-                            service.address = Some(networks.clone());
-                        }
+            let restrict = |service: &mut IpServiceCfg| {
+                if let Some(networks) = &api_networks {
+                    if service.available_from.is_some() {
+                        service.available_from = Some(networks.clone());
+                    } else {
+                        service.address = Some(networks.clone());
                     }
                 }
+            };
+            match &**name {
+                b"telnet" | b"ftp" => service.disabled = true,
+                // WebFig over plain HTTP: what's left in the field where Winbox isn't at hand,
+                // so on, from the same networks as the API (www-ssl would need a certificate)
+                b"www" => {
+                    service.disabled = false;
+                    restrict(service);
+                }
+                b"api" => restrict(service),
                 _ => {}
             }
         }
