@@ -2286,7 +2286,42 @@ async fn bridges_of_a_hex_become_one_without_snooping() {
     let bridge = &target.bridge[&AsciiString::from("bridge")].0;
     assert!(bridge.vlan_filtering);
     assert!(!bridge.igmp_snooping);
-    assert_eq!(bridge.igmp_version, None);
+}
+
+/// ap-klr-solar (hAP ac, 7.23.7): its bridge snooped, and turning snooping off cleared the
+/// multicast settings (`igmp-version=""`), which RouterOS refuses ("ambiguous value of
+/// igmp-version"). Only `igmp-snooping` changes.
+#[tokio::test]
+async fn snooping_goes_off_alone() {
+    let device = switch_with_two_bridges(false).await;
+    let (mut target, mut current) = setup_testdata(b"RB962UiGS-5HacT2HnT").unwrap();
+    let l2 = L2Setup::new(&device, EndpointNameGenerator)
+        .unwrap()
+        .for_switch_chips(SwitchChips::of(b"RB962UiGS-5HacT2HnT"));
+    target.setup_addressing(&device, &l2).unwrap();
+    target.setup_ports(&device, &l2, None).unwrap();
+    current.bridge = target
+        .bridge
+        .iter()
+        .map(|(name, bridge)| {
+            let mut bridge = bridge.clone();
+            bridge.0.name = name.clone();
+            bridge.0.snoop_multicast();
+            bridge
+        })
+        .collect();
+    let mutations = target.generate_mutations(&current).unwrap();
+    let bridges = mutations
+        .iter()
+        .filter(|m| m.resource == b"interface/bridge".as_slice())
+        .map(|m| {
+            m.fields
+                .iter()
+                .map(|f| format!("{}={}", String::from_utf8_lossy(f.key), String::from_utf8_lossy(&f.value)))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(bridges, [["igmp-snooping=no"], ["igmp-snooping=no"]]);
 }
 
 /// On a hEX a bridge with a radio snoops for its WLAN clients and runs on the CPU, so it stays
