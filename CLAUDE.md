@@ -122,7 +122,8 @@ of its own. The server's lease time is the prefix's custom field `dhcp_lease_tim
 the shortest of the port's networks, none or 0 RouterOS's 30 min); mikrotik-model reads it as a
 `Duration`, since RouterOS reports `120s` as `2m`. A `dhcp` interface whose prefix leaves no
 address for a pool gets no DHCP server, silently; `DhcpPoolEmpty` says so, computing the pool
-with the generator's `device::ros::dhcp_pool_v4` (a single free address is a pool of one, it
+with the generator's `device::ros::dhcp_pool_v4`, unless another network of the interface has a
+pool (its one server serves that; the `/31` next to a foreign radio bridge's DHCP network) (a single free address is a pool of one, it
 once was lost, so a /30 customer port got no server). A /32 with `dhcp` (router-stall-burri's
 `lo`) is the same finding without prefix and no server, not a generator error; an IPv4 with
 `dhcp` and without its prefix is `NO_PREFIX`, naming the interface. IPv6 needs no prefix

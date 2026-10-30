@@ -282,6 +282,25 @@ fn dhcp_without_a_free_address_is_an_error() {
             && d.prefix.as_ref().is_some_and(|p| &*p.prefix == "172.17.1.0/30")));
 }
 
+/// A router port to a radio bridge without RouterOS has the `/31` to the router at the other
+/// end next to the network the bridges take their leases from: the port's one DHCP server
+/// serves that one, the `/31` needs none.
+#[test]
+fn a_network_without_room_next_to_a_served_one_is_no_finding() {
+    let mut net = Net::new();
+    let r1 = net.r1;
+    let port = port(&mut net.builder, r1, "ether8", "10.200.1.0/31");
+    let served = address(&mut net.builder, "10.200.1.9/29");
+    let interface = net.interface(port);
+    interface.ips = [interface.ips[0], served].into();
+    interface.enable_dhcp_server = true;
+    let findings = net.findings();
+    assert!(
+        !findings.iter().any(|f| matches!(&f.kind, FindingKind::DhcpPoolEmpty(_))),
+        "{findings:#?}"
+    );
+}
+
 /// A /32 with the tag `dhcp` (router-stall-burri's loopback) has no address for a client
 /// and no prefix of its own: the generator makes no DHCP server there.
 #[test]

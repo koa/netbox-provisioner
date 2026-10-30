@@ -52,7 +52,9 @@ ist eine Prüfung:
 - Adresse ohne Prefix gleicher Länge (`AddressWithoutPrefix`); `dhcp` an einem Interface, in dessen
   Prefix keine Adresse für einen Pool frei ist (`DhcpPoolEmpty`, ein /30 mit beiden Hosts belegt,
   ein /31): Der Generator setzt dort keinen DHCP-Server auf, ohne Fehler, und der Befund rechnet
-  den Pool wie er (`dhcp_pool_v4`).
+  den Pool wie er (`dhcp_pool_v4`). Hat das Interface ein anderes Netz mit Pool, ist es kein
+  Befund: Sein einer DHCP-Server bedient das, und das Netz ohne Platz braucht keine Clients (das
+  /31 neben dem DHCP-Netz einer Funkbrücke ohne RouterOS).
 - Kabel, dessen Enden nicht im selben Netz liegen (`NoCommonSubnet`), nur ein Ende `ospf` hat
   (`OspfOnOneEnd`) oder ungleiche MTU (`MtuMismatch`). Netz und `ospf` nur, wenn beide Enden (der
   Port oder seine Bridge) IPv4 haben: Ein Brückengerät ohne Adresse arbeitet nur auf L2, das OSPF

@@ -565,6 +565,14 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
     let mut interfaces = interfaces.into_vec();
     interfaces.sort_by(|a, b| a.name().cmp(b.name()));
     for interface in &interfaces {
+        // the interface's one DHCP server serves the networks with a pool, a network without
+        // one (the `/31` to the router at the other end of a radio bridge without RouterOS)
+        // only needs no clients
+        let serves = interface.ips().iter().any(|address| {
+            address.prefix().is_some_and(|prefix| {
+                matches!(prefix.prefix(), Some(IpNet::V4(net)) if !dhcp_pool_v4(&prefix, net).is_empty())
+            })
+        });
         for address in interface.ips() {
             let Some(net) = address.net() else { continue };
             // a /32 or /128 (a loopback) needs no prefix of its own
@@ -585,6 +593,7 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
                 );
             }
             if interface.is_enable_dhcp_server()
+                && !serves
                 && let IpNet::V4(v4) = net
             {
                 let empty = match address.prefix() {
