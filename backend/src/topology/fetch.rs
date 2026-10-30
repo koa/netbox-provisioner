@@ -5,11 +5,11 @@ use crate::{
             CableConnectionTermination, CableConnectionTerminationOnCircuitTerminationType,
             CableConnectionTerminationOnFrontPortType,
             CableConnectionTerminationOnInterfaceType, CableConnectionTerminationOnRearPortType,
-            ResponseData,
+            FetchTopologyServiceListParent, ResponseData,
         },
     },
     topology::{
-        Cable, CableId, CablePort, Device, DeviceId, DeviceRole, FrontPort, FrontPortId, Interface,
+        Cable, CableId, CablePort, Device, DeviceId, DeviceRole, ForwardData, FrontPort, FrontPortId, Interface, ServiceId, ServicePort,
         InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
         Duplex, PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink, RadioRole, WirelessLinkEnd, RearPort, RearPortId, CircuitTermination, CircuitTerminationId, SiteData, SiteId,
         Topology,
@@ -615,6 +615,45 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             );
         }
     }
+    let services = data
+        .service_list
+        .into_iter()
+        .filter(|service| service.tags.iter().any(|tag| tag.slug == "forward"))
+        .filter_map(|service| {
+            let id = service.id.parse().map(ServiceId).ok()?;
+            let ports = service
+                .port_mappings
+                .iter()
+                .filter_map(|mapping| {
+                    let port = mapping.parse::<ServicePort>().ok();
+                    if port.is_none() {
+                        log::error!("service {}: no port mapping {mapping:?}", service.name);
+                    }
+                    port
+                })
+                .collect();
+            let device = match service.parent {
+                Some(FetchTopologyServiceListParent::DeviceType(device)) => {
+                    device.id.parse().map(DeviceId).ok()
+                }
+                _ => None,
+            };
+            let addresses = service
+                .ipaddresses
+                .iter()
+                .filter_map(|address| address.id.parse().map(IpAddressId).ok())
+                .collect();
+            Some((
+                id,
+                ForwardData {
+                    name: service.name.into(),
+                    device,
+                    addresses,
+                    ports,
+                },
+            ))
+        })
+        .collect();
     for (id, prefix) in &mut ip_prefixes {
         prefix.children = children_prefix
             .remove(id)
@@ -658,6 +697,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             .into_iter()
             .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
             .collect(),
+        services,
         findings: Box::default(),
     }
     .with_findings()

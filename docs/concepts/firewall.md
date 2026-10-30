@@ -1,8 +1,8 @@
 # Konzept: Firewall aus NetBox
 
-Status: Konzept; umgesetzt sind die ersten beiden Schritte der [Reihenfolge](#reihenfolge), nur
-eigene Regeln verwalten (A1) und die Perimeter-Firewall (C1), beschrieben in
-[firewall.md](../firewall.md). Aufgaben C2 und C3 in [todo.md](../todo.md).
+Status: Konzept; umgesetzt sind die ersten drei Schritte der [Reihenfolge](#reihenfolge), nur
+eigene Regeln verwalten (A1), die Perimeter-Firewall (C1) und die Freigaben aus Services (C2),
+beschrieben in [firewall.md](../firewall.md). Offen ist C3 in [todo.md](../todo.md).
 
 ## Zwei Arten
 
@@ -19,23 +19,8 @@ das Netz hängt.
 
 ## Perimeter-Firewall
 
-Gebaut ist der Teil ohne NetBox-Services: Tag `internet`, die Grundregeln für IPv4 und IPv6,
-SSH mit Bruteforce-Schutz, der Zugang des Provisioners und das Masquerading; beschrieben in
-[firewall.md](../firewall.md). Offen (C2):
-
-- **Port-Forwarding** aus NetBox **Services** (IPAM → Services: Protokoll, Ports, IP-Adressen,
-  Gerät). Ein Service an der **inneren** IPv4 eines Geräts im Kunden-Netz, mit Tag `forward`,
-  ergibt auf dem Perimeter-Router, hinter dem das Netz liegt,
-  `dstnat in-interface-list=uplink protocol=… dst-port=<port> action=dst-nat to-addresses=<innen>`.
-  Aussen gilt derselbe Port wie innen; ein Umsetzen von Ports gibt es nicht. Der Router ist der
-  mit `nat`-Uplink auf dem Weg aus dem Netz hinaus; gibt es keinen eindeutigen, ist das ein Befund.
-  Hereingelassen wird es schon heute (`forward dstnat`).
-- **IPv6-Freigaben** aus demselben Modell: ein Service an einer IPv6-Adresse mit Tag `forward`
-  ergibt auf jedem Perimeter-Router `forward accept dst-address=<adresse> protocol=… dst-port=…`,
-  vor `last forward drop`.
-- Ein Service ohne `forward` bleibt Doku und erzeugt nichts.
-- Danach können die von Hand gebauten Freigaben von router-faesigrund-keller (Webserver, IPsec)
-  aus NetBox kommen.
+Gebaut (C1, C2), beschrieben in [firewall.md](../firewall.md). Noch offen: Die von Hand gebauten
+Freigaben von router-faesigrund-keller (Webserver, IPsec) können jetzt aus NetBox kommen.
 
 ## Interne Firewall
 
@@ -94,7 +79,7 @@ IPv6 des Netzes zusammen.
 
 1. ~~Nur eigene Regeln verwalten~~ (A1, erledigt 2026-10-26).
 2. ~~Perimeter-Firewall~~ (C1, erledigt 2026-10-30).
-3. Port-Forwarding IPv4 und IPv6-Freigaben aus Services.
+3. ~~Port-Forwarding IPv4 und IPv6-Freigaben aus Services~~ (C2, erledigt 2026-10-30).
 4. Interne Firewall `guest`, dann `protected`, je mit CHR-Test (Gast erreicht das Internet und
    die Freigabe, sonst nichts; geschütztes Netz nur von der Freigabe).
 

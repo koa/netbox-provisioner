@@ -97,12 +97,7 @@ mikrotik_model!(
         )),
         ipv6_firewall_filter(by_id(path = "ipv6/firewall/filter", keys(), owned = "netbox-provisioner:", ordered)),
         ip_firewall_filter(by_id(path = "ip/firewall/filter", keys(), owned = "netbox-provisioner:", ordered)),
-        ip_firewall_nat(by_id(
-            path = "ip/firewall/nat",
-            keys(chain, out_interface),
-            owned = "netbox-provisioner:",
-            ordered
-        )),
+        ip_firewall_nat(by_id(path = "ip/firewall/nat", keys(), owned = "netbox-provisioner:", ordered)),
         dns(single = "ip/dns"),
         ipv6_nd(by_key(path = "ipv6/nd", key = interface)),
         dhcp_v4_server(by_key(path = "ip/dhcp-server", key = name)),
@@ -1531,8 +1526,7 @@ impl BaseDeviceDataTarget {
     }
     /// Masquerades what leaves through the uplink `if_name` (NetBox tag `nat`).
     fn masquerade(&mut self, if_name: &AsciiString) {
-        self.ip_firewall_nat.insert(
-            (b"srcnat".into(), Some(if_name.clone())),
+        self.ip_firewall_nat.push(
             IpFirewallNatCfg {
                 action: IpFirewallNatAction::Masquerade,
                 chain: b"srcnat".into(),

@@ -119,6 +119,22 @@ pub fn radio_without_role(interface: Html) -> Html {
 pub fn nat_without_internet(interface: Html) -> Html {
     html!(<>{interface}{" hat nat, aber nicht internet: Die Perimeter-Firewall schützt es trotzdem, in NetBox fehlt das Tag internet."}</>)
 }
+pub fn forward_without_router(service: Html, address: Html, routers: Option<Html>) -> Html {
+    html! {<>
+        {service}{" hat forward an "}{address}{", "}
+        { match routers {
+            None => html!({"aber seine Site hat keinen Router mit nat"}),
+            Some(routers) => html!(<>{"aber seine Site hat mehrere Router mit nat ("}{routers}{")"}</>),
+        } }
+        {": Keine Port-Weiterleitung erreicht die Adresse."}
+    </>}
+}
+pub fn forward_port_taken(service: Html, port: &str, router: Html, by: Html) -> Html {
+    html!(<>{service}{format!(" bekommt {port} auf ")}{router}{" nicht: Der Port geht dort schon an "}{by}{". Aussen gilt derselbe Port wie innen, jeder nur einmal pro Router."}</>)
+}
+pub fn forward_incomplete(service: Html) -> Html {
+    html!(<>{service}{" hat forward, aber keine Adresse oder keinen Port: Er öffnet nichts."}</>)
+}
 pub fn vlan_without_group(interface: Html, vlan: Html) -> Html {
     html!(<>{interface}{" hat ein "}{vlan}{" ohne VLAN-Gruppe: Der Provisioner liest es nicht."}</>)
 }

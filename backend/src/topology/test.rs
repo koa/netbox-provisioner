@@ -90,6 +90,8 @@ pub(crate) fn example_topology() -> Arc<Topology> {
     // the cables their id: those cables end there, as they did then.
     if let Some(data) = raw["data"].as_object_mut() {
         data.entry("circuit_list").or_insert_with(|| serde_json::json!([]));
+        // and before the services were: none forwards a port
+        data.entry("service_list").or_insert_with(|| serde_json::json!([]));
     }
     for cable in raw["data"]["cable_list"]
         .as_array_mut()

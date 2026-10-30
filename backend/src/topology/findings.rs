@@ -5,7 +5,7 @@
 use crate::{
     device::ros::{DEFAULT_MTU, dhcp_pool_v4},
     topology::{
-        DeviceId, PortType, PrefixPool, SiteId, Topology,
+        DeviceId, PortType, PrefixPool, ServiceId, SiteId, Topology,
         access::{
             AccessTopology, device::DeviceAccess, interface::InterfaceAccess,
             ip_addresses::IpAddressAccess, vlan::VlanAccess, wlan_group::WlanGroupAccess,
@@ -63,6 +63,9 @@ pub enum FindingKind {
     RadioPathIncomplete(RadioPathIncomplete),
     LabelNotFarEnd(LabelNotFarEnd),
     VlanWithoutPort(VlanWithoutPort),
+    ForwardWithoutRouter(ForwardWithoutRouter),
+    ForwardPortTaken(ForwardPortTaken),
+    ForwardIncomplete(ForwardIncomplete),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
@@ -169,6 +172,34 @@ pub struct PortLikeName {
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct RadioWithoutRole {
     pub interface: InterfaceRef,
+}
+/// A NetBox service, by id and name.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct ServiceRef {
+    pub id: u32,
+    pub name: Box<str>,
+}
+/// A service with `forward` at an IPv4 address whose site has no router with `nat`, or several
+/// (`routers`): no port forwarding reaches it.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct ForwardWithoutRouter {
+    pub service: ServiceRef,
+    pub address: AddressRef,
+    pub routers: Vec<DeviceRef>,
+}
+/// The router forwards the port (`tcp/443`) to another service (`by`) already, or to this one
+/// at another address: the service doesn't get it there.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct ForwardPortTaken {
+    pub service: ServiceRef,
+    pub port: Box<str>,
+    pub router: DeviceRef,
+    pub by: ServiceRef,
+}
+/// A service with `forward` but without an address or a port: it opens nothing.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct ForwardIncomplete {
+    pub service: ServiceRef,
 }
 /// An uplink with `nat` but without `internet`: the perimeter firewall guards it all the same
 /// (`nat` needs `internet`, Z2), but NetBox doesn't say it is one to the internet.
@@ -327,6 +358,7 @@ fn collect(topo: &Arc<Topology>) -> Box<[Finding]> {
     pools(topo, &mut findings);
     wlans(topo, &mut findings);
     vlans(topo, &mut findings);
+    forwards(topo, &mut findings);
     let mut devices = topo
         .list_devices()
         .filter(DeviceAccess::has_routeros)
@@ -389,6 +421,56 @@ fn pools(topo: &Topology, findings: &mut Vec<Finding>) {
                 }),
             });
         }
+    }
+}
+
+/// The services with `forward` that don't open what they say (`topology::forwards`), at the
+/// routers concerned and the service's device.
+fn forwards(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
+    let forwards = topo.forwards();
+    let service_ref = |id: ServiceId| ServiceRef {
+        id: id.0,
+        name: topo.services.get(&id).map(|s| s.name.clone()).unwrap_or_default(),
+    };
+    let own_device = |id: ServiceId| topo.services.get(&id).and_then(|s| s.device);
+    let device = |id: DeviceId| topo.get_device_by_id(&id);
+    for unrouted in forwards.unrouted {
+        let routers = unrouted.routers.iter().filter_map(|id| device(*id)).collect::<Vec<_>>();
+        findings.push(Finding {
+            severity: Severity::Error,
+            devices: routers
+                .iter()
+                .map(|router| router.id())
+                .chain(own_device(unrouted.service))
+                .collect(),
+            kind: FindingKind::ForwardWithoutRouter(ForwardWithoutRouter {
+                service: service_ref(unrouted.service),
+                address: address_ref(&IpAddressAccess::create(topo.clone(), unrouted.address)),
+                routers: routers.iter().map(device_ref).collect(),
+            }),
+        });
+    }
+    for taken in forwards.taken {
+        let Some(router) = device(taken.router) else { continue };
+        findings.push(Finding {
+            severity: Severity::Error,
+            devices: [taken.router].into_iter().chain(own_device(taken.service)).collect(),
+            kind: FindingKind::ForwardPortTaken(ForwardPortTaken {
+                service: service_ref(taken.service),
+                port: taken.port.to_string().into(),
+                router: device_ref(&router),
+                by: service_ref(taken.by),
+            }),
+        });
+    }
+    for service in forwards.incomplete {
+        findings.push(Finding {
+            severity: Severity::Warning,
+            devices: own_device(service).into_iter().collect(),
+            kind: FindingKind::ForwardIncomplete(ForwardIncomplete {
+                service: service_ref(service),
+            }),
+        });
     }
 }
 

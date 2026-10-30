@@ -424,6 +424,9 @@ pub fn finding_kind(kind: String) -> String {
         "NoCommonSubnet" => "kein gemeinsames Netz".into(),
         "AddressWithoutOspf" => "Adresse ohne OSPF".into(),
         "WlanWithoutVlan" => "WLAN ohne VLAN".into(),
+        "ForwardWithoutRouter" => "forward ohne nat-Router".into(),
+        "ForwardPortTaken" => "Port schon weitergeleitet".into(),
+        "ForwardIncomplete" => "forward ohne Adresse oder Port".into(),
         _ => kind,
     }
 }

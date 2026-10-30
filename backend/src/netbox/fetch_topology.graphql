@@ -176,6 +176,24 @@ query FetchTopology{
         start_address
         end_address
     }
+    # the ones with tag `forward` open their ports from the internet (`docs/firewall.md`)
+    service_list{
+        id
+        name
+        port_mappings
+        tags{
+            slug
+        }
+        ipaddresses{
+            id
+        }
+        parent{
+            __typename
+            ... on DeviceType{
+                id
+            }
+        }
+    }
 }
 fragment CableConnectionTermination on CableTerminationTerminationType{
     __typename

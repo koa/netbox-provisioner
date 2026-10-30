@@ -13,6 +13,8 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 |---|---|---|---|
 | Z1 | Woran erkennt der Provisioner seine eigenen Firewall-Regeln? | Kommentar-Präfix; fremde Regeln bleiben stehen (2026-10-23) | A1 |
 | Z2 | Neues Tag `internet` oder genügt `nat`? | neues Tag `internet`; `nat` setzt es voraus (2026-10-23) | C1 |
+| C2 | Freigaben vom Internet aus NetBox-Services mit Tag `forward`: IPv4 als Port-Forwarding auf dem Router mit `nat` der Site (derselbe Port, Z3), IPv6 als Accept auf jedem Router mit Uplink; Befunde `ForwardWithoutRouter`, `ForwardPortTaken`, `ForwardIncomplete`; CHR-Test öffnet die WebFig des Clients über IPv4 und IPv6 | [Firewall](firewall.md#freigaben) | M | 2026-10-30 („open the ports of services tagged forward from the internet“) |
+| Z3 | Woher kommt der äussere Port eines Port-Forwardings? | aussen immer derselbe Port wie innen, kein Umsetzen (2026-10-23) | C2 |
 | Z8 | Nix-Image oder Containerfile? | Nix (2026-10-23) | C6 |
 | Z9 | Welcher Cluster? | nur Image und Helm-Chart; die Cluster-Konfiguration macht der Betreiber von Hand (2026-10-23) | C6 |
 | Z21 | Diff aller Geräte einer Site live oder als Job? | Job mit Zwischenstand (2026-10-23) | D2 |

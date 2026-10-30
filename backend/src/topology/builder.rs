@@ -1,6 +1,6 @@
 use crate::topology::{
     Cable, CableId, CablePort, CircuitTermination, CircuitTerminationId, Device, DeviceId, FrontPort, FrontPortId, Interface, InterfaceId,
-    IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId, RearPort,
+    ForwardData, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId, RearPort, ServiceId,
     RearPortId, SiteData, SiteId, Topology, TopologyHolder, VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData,
     VxlanId, WlanData, WlanGroupData, WlanGroupId, WlanId,
 };
@@ -29,6 +29,7 @@ pub struct TopologyBuilder {
     pub ip_addresses: MapBuilder<IpAddressId, IpAddressData>,
     pub ip_prefixes: MapBuilder<IpPrefixId, IpPrefixData>,
     pub ip_ranges: MapBuilder<IpRangeId, IpRangeData>,
+    pub forwards: MapBuilder<ServiceId, ForwardData>,
 }
 
 #[derive(Clone)]
@@ -262,6 +263,7 @@ impl TopologyBuilder {
                 .into_iter()
                 .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
                 .collect(),
+            services: self.forwards.into(),
             findings: Box::default(),
             source: None,
         }

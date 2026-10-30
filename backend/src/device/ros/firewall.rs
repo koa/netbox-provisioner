@@ -6,18 +6,27 @@
 //! The rules come first, before those set up by hand; the drop that ends each chain comes after
 //! them (`OWNED_LAST`), so what a hand-made rule lets in (router-faesigrund-keller's web servers
 //! and VPNs) still gets in.
+//!
+//! The NetBox services with tag `forward` (`topology::forwards`) open ports through it: an
+//! IPv4 one by a port forwarding on its site's router with `nat`, which `forward dstnat` lets
+//! in, an IPv6 one by an accept on `forward` before its drop.
 use super::{BaseDeviceDataTarget, UPLINK_LIST, firewall_comment};
-use crate::topology::access::device::DeviceAccess;
+use crate::topology::{
+    ServicePort,
+    access::device::DeviceAccess,
+    forwards::PortForward,
+};
 use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
-        IpFirewallFilterAction, IpFirewallFilterCfg, IpFirewallFilterCfgBuilder,
-        Ipv6FirewallFilterAction, Ipv6FirewallFilterCfg, Ipv6FirewallFilterCfgBuilder,
+        IpFirewallFilterAction, IpFirewallFilterCfg, IpFirewallFilterCfgBuilder, IpFirewallNatAction,
+        IpFirewallNatCfg, Ipv6FirewallFilterAction, Ipv6FirewallFilterCfg,
+        Ipv6FirewallFilterCfgBuilder,
     },
     resource::{DeserializeRosBuilder, OWNED_LAST},
 };
-use std::time::Duration;
+use std::{collections::BTreeSet, net::Ipv6Addr, time::Duration};
 
 /// The address lists of the SSH bruteforce protection, each stage adding the source to the
 /// next (MikroTik's guide); what reaches the last is dropped.
@@ -47,11 +56,12 @@ struct Rule {
     last: bool,
     action: Option<Action>,
     protocol: Option<&'static str>,
-    dst_port: Option<&'static str>,
+    dst_port: Option<String>,
     connection_state: Option<&'static str>,
     connection_nat_state: Option<&'static str>,
     src_address: Option<IpNet>,
     src_address_list: Option<&'static str>,
+    dst_address: Option<IpNet>,
 }
 
 impl Rule {
@@ -88,7 +98,8 @@ impl Rule {
             comment: Some(self.comment()),
             connection_nat_state: self.connection_nat_state.map(Into::into),
             connection_state: self.connection_state.map(Into::into),
-            dst_port: self.dst_port.map(Into::into),
+            dst_address: self.dst_address.map(ros_address),
+            dst_port: self.dst_port.as_deref().map(Into::into),
             in_interface_list: Some(UPLINK_LIST.as_slice().into()),
             protocol: self.protocol.map(Into::into),
             src_address: self.src_address.map(ros_address),
@@ -114,7 +125,8 @@ impl Rule {
             comment: Some(self.comment()),
             connection_nat_state: self.connection_nat_state.map(Into::into),
             connection_state: self.connection_state.map(Into::into),
-            dst_port: self.dst_port.map(Into::into),
+            dst_address: self.dst_address.map(ros_address),
+            dst_port: self.dst_port.as_deref().map(Into::into),
             in_interface_list: Some(UPLINK_LIST.as_slice().into()),
             protocol: self.protocol.map(Into::into),
             src_address: self.src_address.map(ros_address),
@@ -171,7 +183,7 @@ fn perimeter(family: Family, stage: Duration, blacklist: Duration) -> Vec<Rule> 
                 // the answers to the DHCPv6 client of the uplink (prefix delegation)
                 rules.push(Rule {
                     protocol: Some("udp"),
-                    dst_port: Some("546"),
+                    dst_port: Some("546".into()),
                     src_address: "fe80::/10".parse().ok(),
                     ..Rule::new(chain, "dhcpv6 client", Action::Accept)
                 });
@@ -182,7 +194,7 @@ fn perimeter(family: Family, stage: Duration, blacklist: Duration) -> Vec<Rule> 
                 let time = if index + 1 == SSH_STAGES.len() { blacklist } else { stage };
                 rules.push(Rule {
                     protocol: Some("tcp"),
-                    dst_port: Some("22"),
+                    dst_port: Some("22".into()),
                     connection_state: Some("new"),
                     src_address_list: index.checked_sub(1).map(|before| SSH_STAGES[before]),
                     // the list without `ssh_`: RouterOS's script escapes `_` in a comment
@@ -195,7 +207,7 @@ fn perimeter(family: Family, stage: Duration, blacklist: Duration) -> Vec<Rule> 
             }
             rules.push(Rule {
                 protocol: Some("tcp"),
-                dst_port: Some("22"),
+                dst_port: Some("22".into()),
                 ..Rule::new(chain, "ssh", Action::Accept)
             });
         }
@@ -212,6 +224,41 @@ fn perimeter(family: Family, stage: Duration, blacklist: Duration) -> Vec<Rule> 
         });
     }
     rules
+}
+
+/// The IPv6 rules opening `port` of `address` from the internet (a service with `forward`),
+/// each once.
+fn openings(openings: &BTreeSet<(Ipv6Addr, ServicePort)>) -> Vec<Rule> {
+    openings
+        .iter()
+        .map(|(address, port)| Rule {
+            protocol: Some(port.protocol.name()),
+            dst_port: Some(port.port.to_string()),
+            dst_address: Some(IpNet::from(std::net::IpAddr::V6(*address))),
+            ..Rule::new("forward", &format!("{address} {port}"), Action::Accept)
+        })
+        .collect()
+}
+
+/// The port forwarding of `forward`: the same port outside as inside (Z3).
+fn dstnat(forward: &PortForward) -> IpFirewallNatCfg {
+    IpFirewallNatCfg {
+        action: IpFirewallNatAction::DstNat,
+        chain: b"dstnat".into(),
+        comment: Some(firewall_comment(&["dstnat", &forward.address.to_string(), &forward.port.to_string()])),
+        disabled: false,
+        dst_address: None,
+        dst_port: Some(forward.port.port.to_string().as_str().into()),
+        in_interface: None,
+        in_interface_list: Some(UPLINK_LIST.as_slice().into()),
+        jump_target: None,
+        out_interface: None,
+        out_interface_list: None,
+        protocol: Some(forward.port.protocol.name().into()),
+        src_address: None,
+        to_addresses: Some(forward.address.to_string().as_str().into()),
+        to_ports: None,
+    }
 }
 
 /// The rules letting the provisioner in from `networks` (its `api_networks`), each of
@@ -235,10 +282,21 @@ impl BaseDeviceDataTarget {
             return;
         }
         let (stage, blacklist) = (device.ssh_stage_time(), device.ssh_blacklist_time());
+        let forwards = device.topology().forwards();
         self.ip_firewall_filter
             .extend(perimeter(Family::V4, stage, blacklist).iter().map(Rule::v4));
-        self.ipv_6_firewall_filter
-            .extend(perimeter(Family::V6, stage, blacklist).iter().map(Rule::v6));
+        let mut v6 = perimeter(Family::V6, stage, blacklist);
+        let open = forwards
+            .openings
+            .iter()
+            .map(|opening| (opening.address, opening.port))
+            .collect();
+        let drop = v6.iter().rposition(|rule| rule.last).unwrap_or(v6.len());
+        v6.splice(drop..drop, openings(&open));
+        self.ipv_6_firewall_filter.extend(v6.iter().map(Rule::v6));
+        if let Some(on_device) = forwards.dstnat.get(&device.id()) {
+            self.ip_firewall_nat.extend(on_device.iter().map(dstnat));
+        }
     }
     /// Lets the provisioner in from `networks` (`api_networks`) through the perimeter, before
     /// the SSH stages: its uploads and logins never count there. Without them it reaches a

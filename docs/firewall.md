@@ -1,8 +1,8 @@
 # Firewall
 
 Was der Generator an Firewall schreibt (`device/ros/firewall.rs`, `masquerade` in
-`device/ros/mod.rs`). Port-Forwarding, die IPv6-Freigaben und die interne Firewall sind noch
-Konzept: [concepts/firewall.md](concepts/firewall.md), Aufgaben C2 und C3 in [todo.md](todo.md).
+`device/ros/mod.rs`). Die interne Firewall ist noch Konzept:
+[concepts/firewall.md](concepts/firewall.md), Aufgabe C3 in [todo.md](todo.md).
 
 ## Eigene und fremde Regeln
 
@@ -43,6 +43,7 @@ Das übrige Netz routet weiter ohne Regel. Ohne solches Interface schreibt der G
 | `forward` | `established,related` annehmen | `forward established` |
 | `forward` | `invalid` verwerfen | `forward invalid` |
 | `forward` | nur IPv4: was ein Port-Forwarding hereinlässt (`connection-nat-state=dstnat`) | `forward dstnat` |
+| `forward` | nur IPv6: die [Freigaben](#freigaben), je Adresse und Port | `forward <adresse> <protokoll>/<port>` |
 | `forward` | den Rest verwerfen | `last forward drop` |
 
 Das frühere `close_dns` (DNS am `input` vom `nat`-Uplink verwerfen) geht im letzten
@@ -67,9 +68,29 @@ Fallback holt das Gerät zurück, aber ohne Änderung. Die Netze schreibt `gener
 
 **NAT** (nur IPv4): Ein Interface mit `nat` bekommt `srcnat action=masquerade out-interface=<Uplink>`.
 
+## Freigaben
+
+Ein NetBox-Service mit Tag `forward` öffnet seine Ports vom Internet her (`topology/forwards.rs`;
+wie er in NetBox aussieht: [netbox-modeling.md](netbox-modeling.md#freigaben-vom-internet-services-mit-forward)):
+
+- **IPv4**, auf dem Router mit `nat` der Site: `dstnat action=dst-nat in-interface-list=uplink
+  protocol=<protokoll> dst-port=<port> to-addresses=<adresse>`, Kommentar `dstnat <adresse>
+  <protokoll>/<port>`. Der Port bleibt derselbe (kein `to-ports`, Z3). Herein kommt die
+  Verbindung über `forward dstnat`, die Antwort als `established`.
+- **IPv6**, auf jedem Router mit Uplink: `forward accept in-interface-list=uplink
+  dst-address=<adresse>/128 protocol=… dst-port=…`, vor `last forward drop`.
+
+Die Einträge in `/ip/firewall/nat` sind wie die Filter-Regeln geordnet, die eigenen vor den
+fremden: Eine von Hand gebaute Weiterleitung auf denselben Port bleibt stehen, greift aber nicht
+mehr. Nicht gebaut: Hairpin-NAT (ein Client im Netz erreicht den Dienst über die äussere Adresse
+nicht, nur über die innere) und ein `dst-address` am dstnat (ein Router, der weitere öffentliche
+Adressen routet, leitet den Port auch für sie weiter).
+
 **Geprüft** auf CHR 7.24.5 (`perimeter_firewall_keeps_the_internet_out_but_the_provisioner`,
 `internet -- router -- client`): Das Apply geht über den SOCKS-Proxy von `internet` an die
 Uplink-Adresse, also durch die Firewall, die es aufsetzt; eine neue Verbindung auf demselben Weg
 kommt danach herein, und der Diff ist leer. Der Client erreicht das Internet über IPv4
 (maskiert) und IPv6, das Internet erreicht ihn über IPv6 nicht; ein Fremder kommt nicht an die API
-(IPv4 und IPv6) und nach vier SSH-Verbindungen auf die Blacklist, der Provisioner nie.
+(IPv4 und IPv6) und nach vier SSH-Verbindungen auf die Blacklist, der Provisioner nie. Ein
+Service mit `forward` an den Adressen des Clients öffnet seine WebFig (`tcp/80`): vom Internet
+über die Uplink-Adresse (IPv4, weitergeleitet) und über seine eigene (IPv6); seine API bleibt zu.

@@ -25,6 +25,7 @@ use tokio::{
 pub mod access;
 pub mod fetch;
 pub mod findings;
+pub mod forwards;
 pub mod interfaces;
 pub mod vlan_domain;
 pub mod management;
@@ -115,6 +116,8 @@ pub struct Topology {
     ip_prefixes: HashMap<IpPrefixId, IpPrefixData>,
     ip_ranges: HashMap<IpRangeId, IpRangeData>,
     ip_range_idx: HashMap<IpNet, Box<[IpRangeId]>>,
+    /// the NetBox services with tag `forward` (`forwards`)
+    services: HashMap<ServiceId, ForwardData>,
     /// `findings::collect`, computed when the topology is built (`Topology::with_findings`)
     findings: Box<[findings::Finding]>,
     /// the NetBox response it is built from, which a helper's plan is tried on
@@ -326,6 +329,61 @@ pub struct IpRangeData {
     pub end: IpAddr,
     pub prefix: Option<IpPrefixId>,
 }
+/// A NetBox service with tag `forward`: its ports are open from the internet at its addresses
+/// (`docs/firewall.md#freigaben`); a service without the tag is only documentation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwardData {
+    pub name: Box<str>,
+    /// its parent, if that is a device
+    pub device: Option<DeviceId>,
+    pub addresses: Box<[IpAddressId]>,
+    pub ports: Box<[ServicePort]>,
+}
+/// One of a service's `port_mappings`, `tcp/443`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ServicePort {
+    pub protocol: ServiceProtocol,
+    pub port: u16,
+}
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, async_graphql::Enum)]
+pub enum ServiceProtocol {
+    Tcp,
+    Udp,
+    Sctp,
+}
+impl ServiceProtocol {
+    /// as NetBox and RouterOS write it
+    pub fn name(self) -> &'static str {
+        match self {
+            ServiceProtocol::Tcp => "tcp",
+            ServiceProtocol::Udp => "udp",
+            ServiceProtocol::Sctp => "sctp",
+        }
+    }
+}
+impl std::fmt::Display for ServicePort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.protocol.name(), self.port)
+    }
+}
+impl std::str::FromStr for ServicePort {
+    type Err = ();
+    /// NetBox's `port_mappings` entry: `<protocol>/<port>`
+    fn from_str(mapping: &str) -> Result<Self, ()> {
+        let (protocol, port) = mapping.split_once('/').ok_or(())?;
+        let protocol = match protocol {
+            "tcp" => ServiceProtocol::Tcp,
+            "udp" => ServiceProtocol::Udp,
+            "sctp" => ServiceProtocol::Sctp,
+            _ => return Err(()),
+        };
+        Ok(ServicePort {
+            protocol,
+            port: port.parse().map_err(|_| ())?,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IpAddressData {
     pub ip: IpNet,
@@ -727,6 +785,13 @@ pub struct IpRangeId(pub u32);
 pub struct IpAddressId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct IpPrefixId(pub u32);
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct ServiceId(pub u32);
+impl From<u32> for ServiceId {
+    fn from(value: u32) -> Self {
+        ServiceId(value)
+    }
+}
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CablePort {

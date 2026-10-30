@@ -6,7 +6,8 @@
 //! the same way must get in after it: the provisioner doesn't lock itself out.
 //!
 //! `internet` and `client` are set up by hand (addresses and routes), only the router is
-//! generated.
+//! generated. A NetBox service with `forward` opens the client's WebFig (`tcp/80`) from the
+//! internet: forwarded at the uplink over IPv4, let through to its address over IPv6.
 
 use crate::chr_network::apply::{apply_mutations_via_entry, enable_socks};
 use crate::chr_network::mac_telnet::ping;
@@ -18,7 +19,8 @@ use backend::device::ros::l2::KeepNameGenerator;
 use backend::topology::builder::TopologyBuilder;
 use backend::topology::access::device::DeviceAccess;
 use backend::topology::{
-    Cable, CablePort, Device, DeviceId, Interface, IpAddressData, PhysicalPortId, TopologyHolder,
+    Cable, CablePort, Device, DeviceId, ForwardData, Interface, IpAddressData, PhysicalPortId,
+    SiteData, TopologyHolder,
 };
 use encoding_rs::mem::encode_latin1_lossy;
 use ipnet::IpNet;
@@ -42,6 +44,7 @@ const PROVISIONER: &str = "100.64.0.1";
 const STRANGER: &str = "100.64.0.3";
 const STRANGER_V6: &str = "2001:db8:64::3";
 const CLIENT_V6: &str = "2001:db8:31::2";
+const CLIENT_V4: &str = "10.0.31.2";
 
 struct Net {
     builder: TopologyBuilder,
@@ -82,6 +85,29 @@ fn build() -> Net {
     let internet = device(&mut builder, "internet", None);
     let router = device(&mut builder, "router", Some("192.168.255.10/32"));
     let client = device(&mut builder, "client", None);
+    // the router's site, whose router with `nat` forwards to the client
+    let site = builder.sites.next_id();
+    builder.sites.insert(
+        site,
+        SiteData {
+            name: "site".into(),
+            devices: Box::new([router, client]),
+        },
+    );
+    for id in [router, client] {
+        builder.devices.get_mut(&id).unwrap().site = Some(site);
+    }
+    let addresses = [CLIENT_V4, CLIENT_V6].map(|ip| address(&mut builder, &format!("{ip}/24")));
+    let service = builder.forwards.next_id();
+    builder.forwards.insert(
+        service,
+        ForwardData {
+            name: "webfig".into(),
+            device: Some(client),
+            addresses: addresses.into(),
+            ports: Box::new(["tcp/80".parse().unwrap()]),
+        },
+    );
     let port = |builder: &mut TopologyBuilder, device, ether: u16, ips: &[&str], internet: bool| {
         let ips = ips.iter().map(|ip| address(builder, ip)).collect();
         let id = builder.interfaces.next_id();
@@ -384,7 +410,8 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
     }
 
     // the client gets out (masquerade, the answers come back as established), ICMP to the
-    // router gets in, the internet doesn't reach the client over IPv6 (no release yet, C2)
+    // router gets in, the internet doesn't reach the client over IPv6 (its service opens
+    // only `tcp/80`)
     assert!(ping(&client_api, PROVISIONER).await, "the client doesn't reach the internet (IPv4)");
     assert!(ping(&client_api, "2001:db8:64::1").await, "the client doesn't reach the internet (IPv6)");
     assert!(ping(&internet_api, UPLINK).await, "the router doesn't answer ping");
@@ -394,6 +421,14 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
     assert!(reaches(&internet_api, &format!("http://{UPLINK}:8728/"), PROVISIONER).await);
     assert!(!reaches(&internet_api, &format!("http://{UPLINK}:8728/"), STRANGER).await);
     assert!(!reaches(&internet_api, "http://[2001:db8:64::2]:8728/", STRANGER_V6).await);
+
+    // the client's service with `forward`: its WebFig from the internet at the uplink (IPv4,
+    // forwarded) and at its own address (IPv6), its API not
+    let nat = run(&router_api, "/ip/firewall/nat/print", &[]).await;
+    eprintln!("nat: {nat:#?}");
+    assert!(reaches(&internet_api, &format!("http://{UPLINK}/"), STRANGER).await, "the forward to the client (IPv4)");
+    assert!(reaches(&internet_api, &format!("http://[{CLIENT_V6}]/"), STRANGER_V6).await, "the client's WebFig (IPv6)");
+    assert!(!reaches(&internet_api, &format!("http://[{CLIENT_V6}]:8728/"), STRANGER_V6).await, "the client's API (IPv6)");
 
     // SSH: the stranger's fourth new connection within a minute puts it on the blacklist, the
     // fifth doesn't get through; the provisioner's connections never count

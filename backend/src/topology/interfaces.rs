@@ -768,7 +768,10 @@ impl FindingKind {
             | FindingKind::NoLoopback(_)
             | FindingKind::NoPrimaryIpv4(_)
             | FindingKind::LoopbackWithoutOspf(_)
-            | FindingKind::WlanWithoutVlan(_) => Vec::new(),
+            | FindingKind::WlanWithoutVlan(_)
+            | FindingKind::ForwardWithoutRouter(_)
+            | FindingKind::ForwardPortTaken(_)
+            | FindingKind::ForwardIncomplete(_) => Vec::new(),
             FindingKind::PrimaryIpv4NotOnLoopback(f) => {
                 f.interface.iter().map(|i| i.id).collect()
             }

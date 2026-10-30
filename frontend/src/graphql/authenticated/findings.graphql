@@ -32,6 +32,9 @@ query Findings($site: Int, $device: Int, $after: Helper){
                 ... on RadioPathIncomplete{ radio{ ...Interface } missing }
                 ... on LabelNotFarEnd{ interface{ ...Interface } label farEnd{ ...Interface } }
                 ... on VlanWithoutPort{ interface{ ...Interface } vlan{ ...Vlan } }
+                ... on ForwardWithoutRouter{ service{ ...Service } address{ ...Address } routers{ ...Device } }
+                ... on ForwardPortTaken{ service{ ...Service } port router{ ...Device } by{ ...Service } }
+                ... on ForwardIncomplete{ service{ ...Service } }
             }
         }
     }
@@ -39,4 +42,5 @@ query Findings($site: Int, $device: Int, $after: Helper){
 fragment Vlan on VlanRef{ id vid name }
 fragment Device on DeviceRef{ id name }
 fragment Address on AddressRef{ id address }
+fragment Service on ServiceRef{ id name }
 fragment Interface on InterfaceRef{ id name device{ ...Device } }

@@ -37,6 +37,13 @@ description: Interface to the internet, guarded by the perimeter firewall; nat n
 weight: 1000
 object_types: dcim.interface
 ---
+name: forward
+slug: forward
+color: ff5722
+description: Service open from the internet - IPv4 forwarded by the site's nat router (same port), IPv6 let through
+weight: 1000
+object_types: ipam.service
+---
 name: loopback
 slug: loopback
 color: 9c27b0

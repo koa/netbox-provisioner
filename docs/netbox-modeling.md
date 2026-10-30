@@ -37,10 +37,13 @@ einen fehlenden oder fast vollen Pool (unter 10 % frei):
 | `loopback` | daraus kommen die Loopback-Adressen (je ein Prefix für IPv4 und IPv6) |
 | `transfer` | daraus kommen die Transfernetze zwischen Routern (nur IPv4)          |
 
+An einem Service (IPAM → Services) öffnet das Tag `forward` seine Ports vom Internet her
+([Freigaben](#freigaben-vom-internet-services-mit-forward)); ein Service ohne es bleibt Doku.
+
 An Journal-Einträgen erkennt der Provisioner seine eigenen am Tag `netbox-provisioner`
 ([Protokoll](protocol.md)); er setzt ihn selbst.
 
-Alle acht Tags lassen sich mit [netbox-import/3-tags.yaml](netbox-import/3-tags.yaml) anlegen
+Alle neun Tags lassen sich mit [netbox-import/3-tags.yaml](netbox-import/3-tags.yaml) anlegen
 (Customization > Tags > Import, YAML).
 
 `internet` (und `nat`, das es voraussetzt; fehlt es, meldet das der Befund
@@ -51,6 +54,25 @@ von Hand gebaute Firewall-Regeln beziehen (die IPv6-Firewall von router-faesigru
 sie hereinlassen, kommt weiter herein, das Verwerfen des Provisioners steht hinter ihnen. Andere
 Listen als `uplink` und `maintenance` entfernt ein Apply. `nat` erzeugt zudem `srcnat
 action=masquerade out-interface=<Uplink>`.
+
+### Freigaben vom Internet: Services mit `forward`
+
+Ein Service (IPAM → Services) am Gerät, das den Dienst anbietet (ein Gerät ohne RouterOS, z.B.
+der Server mit seinem statischen Lease), mit seinen Ports (`tcp/443`, `udp/1194`; NetBox kennt
+TCP, UDP und SCTP), seinen IP-Adressen und dem Tag `forward`:
+
+- **IPv4:** Der Router mit `nat` der Site leitet jeden Port vom Uplink an die Adresse weiter,
+  aussen derselbe Port wie innen (Z3). Die Site ist die des Prefixes der Adresse (oder des
+  nächsten darüber mit Site), sonst die des Geräts. Hat die Site keinen Router mit `nat` oder
+  mehrere, ist das der Befund `ForwardWithoutRouter` (Fehler); jeder Port geht pro Router nur
+  an einen Service, der mit der kleineren NetBox-ID bekommt ihn, der andere den Befund
+  `ForwardPortTaken` (Fehler).
+- **IPv6:** Jeder Router mit einem Interface zum Internet lässt die Ports der Adresse herein
+  (die Adresse ist überall dieselbe, ein Prefix routet über jeden Uplink).
+- Ein Service mit `forward`, aber ohne Adresse oder Port, öffnet nichts: Befund
+  `ForwardIncomplete` (Warnung).
+
+Was das auf den Geräten ergibt: [firewall.md](firewall.md#freigaben).
 
 ### Config Context `dns_servers`
 

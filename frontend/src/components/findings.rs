@@ -164,6 +164,9 @@ impl Links<'_> {
             &address.address,
         )
     }
+    fn service(&self, service: &findings::Service) -> Html {
+        self.link(&format!("ipam/services/{}/", service.id), &service.name)
+    }
     fn vlan(&self, vlan: &findings::Vlan) -> Html {
         self.link(&format!("ipam/vlans/{}/", vlan.id), &t::vlan_name(vlan.vid, &vlan.name))
     }
@@ -262,6 +265,19 @@ impl Links<'_> {
             Kind::VlanWithoutPort(f) => {
                 t::vlan_without_port(self.interface(&f.interface), self.vlan(&f.vlan))
             }
+            Kind::ForwardWithoutRouter(f) => t::forward_without_router(
+                self.service(&f.service),
+                self.address(&f.address),
+                (!f.routers.is_empty())
+                    .then(|| t::list(f.routers.iter().map(|d| self.device(d)).collect())),
+            ),
+            Kind::ForwardPortTaken(f) => t::forward_port_taken(
+                self.service(&f.service),
+                &f.port,
+                self.device(&f.router),
+                self.service(&f.by),
+            ),
+            Kind::ForwardIncomplete(f) => t::forward_incomplete(self.service(&f.service)),
         }
     }
 }
