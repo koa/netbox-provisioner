@@ -294,6 +294,10 @@ eingetragen.
 - Ob daraus eine einfache Bridge, eine VLAN-Filtering-Bridge oder gar keine Bridge wird, entscheidet
   der Provisioner selbst (siehe [l2-generation.md](l2-generation.md)). Ein Port ohne Bridge und
   ohne VLAN bleibt ein eigenständiger Port.
+- Auf einem **CRS3xx** werden alle Bridges VLANs einer einzigen Bridge, damit alles in Hardware
+  bleibt; eine Bridge ohne VLAN bekommt eine lokale VLAN-ID ab 4094 abwärts
+  ([l2-generation.md](l2-generation.md#eine-bridge-auf-einem-crs3xx-l2setupinto_one_bridge)). In
+  NetBox ändert sich dafür nichts.
 - Führt eine modellierte Bridge eine VLAN, kommen bridge-lose Ports und VLAN-Interfaces mit
   derselben VLAN in diese Bridge statt in die Standard-Bridge. Ein bridge-loser Trunk-Port darf
   dadurch nicht auf zwei Bridges verteilt werden (`PortInMultipleBridges`).

@@ -45,7 +45,11 @@ NetBox-to-RouterOS config generation itself works (interface naming, L2/bridge/V
 OSPF, VXLAN, WLAN/CAPsMAN, point-to-point radio bridges) - read it before changing anything under
 `device/ros/`. There `mod.rs` has the `mikrotik_model!` definitions and the base config
 (`BaseDeviceDataTarget`), `radio/` the radios (`wireless`, `w60g`, `wifi`, `capsman`, shared
-helpers in `radio/mod.rs`), `dhcp.rs` the DHCP pool, `l2/` the bridges and VLANs.
+helpers in `radio/mod.rs`), `dhcp.rs` the DHCP pool, `l2/` the bridges and VLANs. A CRS3xx
+offloads only one bridge to its switch chip, so there `DeviceCfg::generate_from` turns all
+bridges into VLANs of one VLAN-filtering bridge (`L2Setup::into_one_bridge`,
+`hw_facts::filters_vlans_in_hardware`); the generated examples don't know the board and keep
+their bridges.
 What the provisioner does beyond generating has a doc of its own in `docs/` too (device page,
 jobs, interface view, config helper, update fallback, watchdog, deployment; listed in
 `docs/overview.md`), in German, describing what is built; update it with the code.

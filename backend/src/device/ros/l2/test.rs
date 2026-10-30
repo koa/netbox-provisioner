@@ -2128,3 +2128,132 @@ async fn test_renamed_ports_keep_their_bridge_ports() -> Result<(), Box<dyn Erro
     assert!(moved.is_empty(), "{moved:?}");
     Ok(())
 }
+
+/// A switch with two flat bridges in NetBox (as 1og-sw2: `switch-clients`, `switch-tinkerforge`),
+/// each with an address.
+async fn switch_with_two_bridges() -> DeviceAccess {
+    let mut builder = TopologyBuilder::default();
+    let device = builder.devices.next_id();
+    for (bridge_name, ports, address) in [
+        ("switch-clients", [1, 2, 3].as_slice(), [10, 0, 1, 1]),
+        ("switch-tinkerforge", [4, 5].as_slice(), [10, 0, 2, 1]),
+    ] {
+        let ip = add_ip(&mut builder, address, 24);
+        let bridge = builder.interfaces.next_id();
+        builder.interfaces.insert(
+            bridge,
+            Interface {
+                name: bridge_name.into(),
+                device,
+                port_type: Some(crate::topology::PortType::Bridge),
+                ips: Box::new([ip]),
+                enable_dhcp_server: bridge_name == "switch-clients",
+                ..Default::default()
+            },
+        );
+        for &port in ports {
+            let id = builder.interfaces.next_id();
+            builder.interfaces.insert(
+                id,
+                Interface {
+                    name: format!("ether{port}").into(),
+                    device,
+                    external: Some(PhysicalPortId::Ethernet(port)),
+                    bridge: Some(bridge),
+                    ..Default::default()
+                },
+            );
+        }
+    }
+    builder.devices.insert(
+        device,
+        Device {
+            name: "1og-sw2".into(),
+            ..Default::default()
+        },
+    );
+    Into::<TopologyHolder>::into(builder)
+        .devices_by_id(device)
+        .await
+        .expect("device not found")
+}
+
+/// On a board that filters VLANs in hardware for one bridge only (a CRS3xx), the two bridges
+/// become two VLANs of one VLAN-filtering bridge, with IDs local to the device from 4094 down;
+/// their addresses and the DHCP server move to the VLAN interfaces.
+#[tokio::test]
+async fn bridges_of_a_crs3xx_become_vlans_of_one() {
+    let device = switch_with_two_bridges().await;
+    let (mut target, current) = setup_testdata(b"CRS326-24G-2S+").unwrap();
+    let l2 = L2Setup::new(&device, EndpointNameGenerator).unwrap().into_one_bridge();
+    target.setup_addressing(&device, &l2).unwrap();
+    target.setup_ports(&device, &l2, None).unwrap();
+    dump_mutations(&target, &current).unwrap();
+    assert_eq!(
+        target.bridge.keys().map(ToString::to_string).collect::<Vec<_>>(),
+        ["bridge"]
+    );
+    assert!(target.bridge[&AsciiString::from("bridge")].0.vlan_filtering);
+    let pvids = target
+        .bridge_port
+        .iter()
+        .map(|((bridge, port), cfg)| (bridge.to_string(), port.to_string(), cfg.pvid))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        pvids,
+        [
+            ("bridge".into(), "e01".into(), 4094),
+            ("bridge".into(), "e02".into(), 4094),
+            ("bridge".into(), "e03".into(), 4094),
+            ("bridge".into(), "e04".into(), 4093),
+            ("bridge".into(), "e05".into(), 4093),
+        ]
+    );
+    let vlans = target
+        .vlan
+        .iter()
+        .map(|(name, vlan)| (name.to_string(), vlan.0.vlan_id))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        vlans,
+        [
+            ("vlan-switch-clients-4094".into(), 4094),
+            ("vlan-switch-tinkerforge-4093".into(), 4093)
+        ]
+    );
+    let addresses = target
+        .ipv_4_address
+        .iter()
+        .map(|(net, address)| (net.to_string(), address.0.interface.to_string()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        addresses,
+        [
+            ("10.0.1.1/24".into(), "vlan-switch-clients-4094".into()),
+            ("10.0.2.1/24".into(), "vlan-switch-tinkerforge-4093".into())
+        ]
+    );
+    assert_eq!(
+        target
+            .dhcp_v_4_server
+            .values()
+            .map(|server| server.0.interface.to_string())
+            .collect::<Vec<_>>(),
+        ["vlan-switch-clients-4094"]
+    );
+}
+
+/// Elsewhere, and with one bridge, the flat bridges stay as they are.
+#[tokio::test]
+async fn one_bridge_stays_flat() {
+    let device = switch_with_two_bridges().await;
+    let l2 = L2Setup::new(&device, EndpointNameGenerator).unwrap();
+    assert_eq!(l2.simple_bridges.len(), 2);
+    let mut one = l2.clone();
+    one.simple_bridges = Box::new([l2.simple_bridges[0].clone()]);
+    let one = one.into_one_bridge();
+    assert_eq!(one.simple_bridges.len(), 1);
+    assert!(one.tagged_bridges.is_empty());
+    assert!(crate::device::ros::hw_facts::filters_vlans_in_hardware(b"CRS318-16P-2S+"));
+    assert!(!crate::device::ros::hw_facts::filters_vlans_in_hardware(b"RB750Gr3"));
+}

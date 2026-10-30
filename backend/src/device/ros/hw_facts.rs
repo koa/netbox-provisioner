@@ -78,6 +78,14 @@ pub fn radio_package(model: &[u8]) -> Option<RadioPackage> {
 /// Whether the board's `wifi` radios also run with `wireless` (as `wlan<N>`), which NetBox
 /// asks for with `wlan<N>` ports (`needed_radio_package`): a wAP ac can then be a CAP of the
 /// legacy CAPsMAN, whose CAPs tag VLANs (its `wifi-qcom-ac` radios can't).
+/// Whether the board's switch chip filters VLANs in hardware, for one bridge: a CRS3xx offloads
+/// only one bridge, a second one runs on the CPU, while VLAN filtering stays in hardware. All L2
+/// of such a board goes into one VLAN-filtering bridge (`L2Setup::into_one_bridge`). Other
+/// boards lose the hardware with VLAN filtering and keep their bridges.
+pub fn filters_vlans_in_hardware(model: &[u8]) -> bool {
+    model.starts_with(b"CRS3")
+}
+
 pub fn runs_wireless(model: &[u8]) -> bool {
     matches!(model, b"RBwAPG-5HacD2HnD")
 }

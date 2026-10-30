@@ -120,6 +120,28 @@ er versklavt ist — die L3-Präsenz einer VLAN muss daher immer entweder auf de
 VLAN) oder auf einer eigenen VLAN-Sub-Schnittstelle sitzen, nie auf dem Namen eines einzelnen
 Mitgliedsports, egal wie viele physische Ports diese VLAN tragen.
 
+### Eine Bridge auf einem CRS3xx (`L2Setup::into_one_bridge`)
+
+Der Switch-Chip eines CRS3xx übernimmt nur **eine** Bridge in Hardware; jede weitere läuft auf
+der CPU. VLAN-Filtering dagegen bleibt dort in Hardware. Auf einem solchen Board
+(`hw_facts::filters_vlans_in_hardware`, heute alle Modelle `CRS3…`) legt `DeviceCfg::generate_from`
+deshalb alle Bridges nach Schritt 4 zu einer VLAN-Filtering-Bridge zusammen, sobald es mehr als
+eine gibt:
+
+- Die VLANs der getaggten Bridges bleiben, wie sie sind (dieselbe VLAN-ID in zwei Bridges ist
+  schon `AmbiguousVlanIds`).
+- Jede flache Bridge wird ein VLAN mit einer **lokalen** ID ab 4094 abwärts, die auf dem Gerät
+  frei ist; ihre Ports sind Access-Ports (`pvid`). Die ID verlässt das Gerät nie getaggt, sie
+  darf also anderswo im Netz belegt sein. Dasselbe gilt für die native Ebene einer getaggten
+  Bridge, die sonst eine synthetische ID ab 60000 hätte.
+- Hat ein solches VLAN eine Adresse, bekommt es ein `/interface/vlan`, benannt nach der Bridge,
+  die es war (`vlan-switch-clients-4094`); Adresse, DHCP-Server und OSPF ziehen dorthin um.
+- Die Bridge heisst `bridge` (`bridge-caps` auf einem CAP, falls es sie gibt).
+
+Auf einem bestehenden Gerät heisst das beim ersten Apply: Bridges umbenannt, Ports umgehängt,
+ein kurzer Unterbruch auf allen Bridge-Ports. Andere Boards behalten ihre Bridges: Ohne
+Switch-Chip-Unterstützung kostet VLAN-Filtering dort die Hardware-Beschleunigung.
+
 ## Schritt 5: Realisierung als RouterOS-Config (`BaseDeviceDataTarget::setup_l2`)
 
 Erst **nachdem** `L2Setup::new` die komplette Klassifizierung oben berechnet hat, übersetzt

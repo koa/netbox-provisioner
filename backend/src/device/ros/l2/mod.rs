@@ -19,6 +19,9 @@ use std::{
 #[cfg(test)]
 mod test;
 
+/// The highest VLAN ID RouterOS takes.
+const MAX_VLAN_ID: u16 = 4094;
+
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub enum L2Port {
     TaggedEthernet {
@@ -697,6 +700,92 @@ impl<G: NameGenerator> L2Setup<G> {
             simple_bridges: simple_bridges.into_boxed_slice(),
             tagged_bridges: tagged_bridges.into_boxed_slice(),
         })
+    }
+
+    /// All bridges as one VLAN-filtering bridge, for a board whose switch chip offloads only
+    /// one bridge but filters VLANs in hardware (`hw_facts::filters_vlans_in_hardware`): there
+    /// a second bridge runs on the CPU. With one bridge or none nothing changes. Each flat
+    /// bridge becomes a VLAN of its own, with an ID local to the device from 4094 down that no
+    /// VLAN here has; it is never tagged towards another device, its ports are access ports. A
+    /// VLAN entry without a VLAN ID of RouterOS's range (the native entry of a tagged bridge)
+    /// gets one the same way. A VLAN with an address gets a VLAN interface, named after the
+    /// bridge it was (`vlan-switch-clients-4094`).
+    pub fn into_one_bridge(mut self) -> Self {
+        if self.simple_bridges.len() + self.tagged_bridges.len() <= 1 {
+            return self;
+        }
+        let mut used = self
+            .tagged_bridges
+            .iter()
+            .flat_map(|bridge| bridge.ports.keys().copied())
+            .filter(|id| *id <= MAX_VLAN_ID)
+            .collect::<HashSet<_>>();
+        let mut next_local_id = move || {
+            let mut candidate = MAX_VLAN_ID;
+            while !used.insert(candidate) {
+                candidate -= 1;
+            }
+            candidate
+        };
+        let name = self
+            .tagged_bridges
+            .iter()
+            .find(|bridge| *bridge.name == CAPS_BRIDGE_NAME[..])
+            .map(|bridge| bridge.name.clone())
+            .unwrap_or_else(|| {
+                AsciiString::from(self.name_generator.generate_main_bridge(None).as_ref())
+            });
+        let local_vlan_name = |bridge: &AsciiString, id: u16| {
+            let bridge = bridge.to_string();
+            let part = name_part(bridge.strip_prefix("bridge-").unwrap_or(&bridge));
+            AsciiString::from(format!("vlan-{part}-{id}").as_str())
+        };
+        let mut entries = BTreeMap::new();
+        for bridge in std::mem::take(&mut self.tagged_bridges) {
+            for (id, mut entry) in bridge.ports {
+                let id = if id <= MAX_VLAN_ID {
+                    id
+                } else {
+                    let local = next_local_id();
+                    entry.if_name = local_vlan_name(&bridge.name, local);
+                    local
+                };
+                entries.insert(id, entry);
+            }
+        }
+        for bridge in std::mem::take(&mut self.simple_bridges) {
+            let id = next_local_id();
+            let owner = bridge.ports.iter().find_map(|port| match port {
+                SimpleBridgePort::Ethernet { root, .. } => Some(root.clone()),
+                SimpleBridgePort::Ip(_) => None,
+            });
+            let ports = bridge
+                .ports
+                .into_iter()
+                .filter_map(|port| match port {
+                    SimpleBridgePort::Ethernet { name, port, root } => {
+                        Some(L2Port::UntaggedEthernet { name, port, root })
+                    }
+                    SimpleBridgePort::Ip(ip) => {
+                        let owner = ip.interface().or_else(|| owner.clone())?;
+                        Some(L2Port::Ip { ip, owner })
+                    }
+                })
+                .collect();
+            entries.insert(
+                id,
+                TaggedBridgeEntry {
+                    ports,
+                    vlan: None,
+                    if_name: local_vlan_name(&bridge.name, id),
+                },
+            );
+        }
+        self.tagged_bridges = Box::new([TaggedBridge {
+            name,
+            ports: entries,
+        }]);
+        self
     }
 
     /// A unified view over every logical L3 interface this device ends up with,
