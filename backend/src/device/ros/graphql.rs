@@ -45,7 +45,7 @@ use mikrotik_model::{
         InterfaceWifiCapsmanState,
         ReferenceType, SystemIdentityCfg, SystemPackageState, SystemRouterboardState, YesNo,
     },
-    resource::{ResourceMutation, SingleResource, collect_resource},
+    resource::{ResourceMutation, ResourceMutationOperation, SingleResource, collect_resource},
 };
 use std::{
     collections::{BTreeSet, HashSet},
@@ -366,6 +366,15 @@ pub(crate) fn provided_by_routeros() -> [(ReferenceType, std::borrow::Cow<'stati
     ]
 }
 
+/// Whether the script has `mutation`: an update without fields it leaves out (the diff has one
+/// for every entry, most of them without a change), a removal or a move it has without.
+pub(crate) fn in_script(mutation: &ResourceMutation) -> bool {
+    matches!(
+        mutation.operation,
+        ResourceMutationOperation::RemoveByKey(_) | ResourceMutationOperation::Move { .. }
+    ) || !mutation.fields.is_empty()
+}
+
 fn render_script(mutations: &[ResourceMutation]) -> Result<Box<str>, Error> {
     let mut cfg = String::new();
     let mut generator = Generator::new(&mut cfg);
@@ -579,7 +588,7 @@ pub struct RadiosReprovisioned {
 /// WLAN (a slave configuration) when its radios are provisioned again.
 pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<&'static str> {
     let touches = |menu: &str| {
-        mutations.iter().any(|mutation| {
+        mutations.iter().filter(|mutation| in_script(mutation)).any(|mutation| {
             let path = mutation.resource.strip_prefix(b"/").unwrap_or(mutation.resource);
             ["configuration", "provisioning", "datapath", "security"]
                 .iter()
@@ -838,9 +847,11 @@ pub(crate) const RADIO_RESTART: Duration = Duration::from_secs(24 * 60);
 /// How long one check of a device after its apply may take.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(25);
 
-/// Whether `mutations` change a radio, which then may stay off for [`RADIO_RESTART`].
-fn restarts_radio(mutations: &[ResourceMutation<'_>]) -> bool {
-    mutations.iter().any(|m| {
+/// Whether `mutations` change a radio, which then may stay off for [`RADIO_RESTART`]; only
+/// what the script has counts (an apply of lab-core, the controller, changing its firewall
+/// only, waited for a radio and provisioned the CAPs again for the empty updates).
+pub(super) fn restarts_radio(mutations: &[ResourceMutation<'_>]) -> bool {
+    mutations.iter().filter(|m| in_script(m)).any(|m| {
         m.resource.starts_with(b"interface/wireless") || m.resource.starts_with(b"interface/wifi")
     })
 }

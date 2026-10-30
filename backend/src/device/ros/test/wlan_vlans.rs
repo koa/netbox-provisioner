@@ -6,7 +6,7 @@ use crate::{
         CapsManDeviceDataCurrent, CapsManDeviceDataTarget, SetupError, WifiDeviceDataCurrent,
         WifiDeviceDataTarget,
         WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
-        graphql::{provided_by_routeros, reprovisioned_menus},
+        graphql::{provided_by_routeros, reprovisioned_menus, restarts_radio},
         hw_facts::{RadioPackage, build_wifi_ports, build_wireless_ports},
         l2::{KeepNameGenerator, L2Setup},
         needed_radio_package,
@@ -443,6 +443,38 @@ async fn new_wlan_reprovisions_the_caps() {
         .collect::<Vec<_>>();
     assert!(!cap_only.is_empty());
     assert!(reprovisioned_menus(&cap_only).is_empty());
+}
+
+/// An update without fields isn't in the script and changes nothing: no radio waits for it, no
+/// CAP is provisioned again (every apply of lab-core, the controller, did both).
+#[test]
+fn an_empty_update_changes_no_radio() {
+    let empty = |resource: &'static [u8]| ResourceMutation {
+        resource,
+        operation: ResourceMutationOperation::UpdateByKey(mikrotik_model::value::KeyValuePair {
+            key: b"name",
+            value: std::borrow::Cow::Borrowed(b"capsman"),
+        }),
+        fields: Box::new([]),
+        depends: Box::new([]),
+        provides: Box::new([]),
+        ordering: Default::default(),
+    };
+    let mutations = [
+        empty(b"caps-man/configuration"),
+        empty(b"interface/wifi/configuration"),
+        empty(b"interface/wireless"),
+    ];
+    assert!(reprovisioned_menus(&mutations).is_empty());
+    assert!(!restarts_radio(&mutations));
+    let changed = ResourceMutation {
+        fields: Box::new([mikrotik_model::value::KeyValuePair {
+            key: b"ssid",
+            value: std::borrow::Cow::Borrowed(b"lab"),
+        }]),
+        ..empty(b"caps-man/configuration")
+    };
+    assert_eq!(reprovisioned_menus(&[changed]), ["/caps-man/radio"]);
 }
 
 /// With three WLANs the provisioning has two slaves; the sort finds each configuration

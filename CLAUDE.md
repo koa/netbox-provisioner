@@ -74,7 +74,10 @@ and their VXLAN like a CAP of `/interface/wifi`, so it is a VTEP; RouterOS hangs
 virtual radios into that bridge with the `pvid` of their WLAN (tagged members of a dynamic bridge
 VLAN entry). A CAP only gets a new WLAN when its radios are provisioned again, so an apply on a
 controller that changes a CAPsMAN's WLAN definitions provisions its CAPs' radios again after
-it (`reprovisioned_menus`, the job event `RadiosReprovisioned`; their clients reconnect). An
+it (`reprovisioned_menus`, the job event `RadiosReprovisioned`; their clients reconnect).
+Both that and the longer fallback of a radio change (`restarts_radio`) count only what the
+script has (`in_script`, as the site diff): the diff carries an update without fields for every
+entry, and lab-core's firewall-only apply provisioned its CAPs again and waited for a radio. An
 AP without radios in NetBox keeps its `/interface/wireless/cap` as it is. A wireless radio the board
 doesn't have (a miniPCIe card, `wlan2` of an RB912) is taken from the device. Anything model
 specific (ports, radio profiles, which package a board's radios need: `wireless`, `wifi-qcom`,

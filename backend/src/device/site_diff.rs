@@ -4,6 +4,7 @@
 //! couldn't be read. It only reads, so its devices stay free for jobs of their own.
 use crate::{
     Error,
+    device::ros::graphql::in_script,
     error_info::ErrorInfo,
     job::{self, Log},
     topology::{
@@ -103,11 +104,7 @@ async fn changes_of(device: DeviceAccess) -> Result<Vec<MenuChanges>, Error> {
 /// entry, most of them without a change. A move of the firewall rules counts as one change.
 pub fn menu_changes(mutations: &[ResourceMutation<'_>]) -> Vec<MenuChanges> {
     let mut menus = BTreeMap::<&[u8], (u32, u32, u32)>::new();
-    let in_script = mutations.iter().filter(|mutation| {
-        matches!(mutation.operation, ResourceMutationOperation::RemoveByKey(_) | ResourceMutationOperation::Move { .. })
-            || !mutation.fields.is_empty()
-    });
-    for mutation in in_script {
+    for mutation in mutations.iter().filter(|mutation| in_script(mutation)) {
         let (added, changed, removed) = menus.entry(mutation.resource).or_default();
         match mutation.operation {
             ResourceMutationOperation::Add => *added += 1,
