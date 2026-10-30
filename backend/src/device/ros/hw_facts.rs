@@ -433,6 +433,33 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         )
         .map(|(idx, generator)| generator(idx + 1))
         .collect(),
+        // router-faesigrund-keller (examples/02-edge-router-bgp-vpn), as its 7G sibling
+        b"CCR1009-8G-1S-1S+" => repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G_FULL, 1580, false),
+            8,
+        )
+        .enumerate()
+        .chain(
+            repeat_n(
+                generate_ethernet(EthernetNamePattern::Sfp, &ADVERTISE_1G_FULL, 1580, false),
+                1,
+            )
+            .enumerate(),
+        )
+        .chain(
+            repeat_n(
+                generate_ethernet(
+                    EthernetNamePattern::SfpSfpPlus,
+                    &ADVERTISE_10G_FULL,
+                    1580,
+                    false,
+                ),
+                1,
+            )
+            .enumerate(),
+        )
+        .map(|(idx, generator)| generator(idx + 1))
+        .collect(),
         b"CCR2004-1G-12S+2XS" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1600, false),
             1,

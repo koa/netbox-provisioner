@@ -121,7 +121,7 @@ Das **Board-Modell** kommt nicht aus NetBox (der Device Type wird nicht ausgewer
 live vom Gerät gelesen (`/system/routerboard`). Unterstützt sind nur die Modelle in
 `backend/src/device/ros/hw_facts.rs`: `RB750Gr3`, `RB960PGS`, `RB962UiGS-5HacT2HnT`,
 `RBwAPG-5HacD2HnD`, `RBwAPG-5HacT2HnD` (erster wAP ac, nur `wireless`), `C52iG-5HaxD2HaxD`, `cAPGi-5HaxD2HaxD`, `CRS109-8G-1S-2HnD`, `CRS309-1G-8S+`, `CRS318-16P-2S+`,
-`CRS326-24G-2S+`, `CRS354-48G-4S+2Q+`, `CCR1009-7G-1C-1S+`, `CCR2004-1G-12S+2XS`, dazu die Boards
+`CRS326-24G-2S+`, `CRS354-48G-4S+2Q+`, `CCR1009-7G-1C-1S+`, `CCR1009-8G-1S-1S+`, `CCR2004-1G-12S+2XS`, dazu die Boards
 der [Funkbrücken](#funkbrücke) und `RB912UAG-2HPnD`. Für jedes andere Modell bricht die
 Generierung mit `NoPortsFound` ab.
 
