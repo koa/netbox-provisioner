@@ -249,11 +249,12 @@ impl DeviceAccess {
         self.data().and_then(|d| d.ssh_stage_time).unwrap_or(Duration::from_secs(60))
     }
     /// How long a source the bruteforce protection caught stays blocked (config context
-    /// `ssh_blacklist_time`, else 10 days, as MikroTik's guide has it).
+    /// `ssh_blacklist_time`, else 10 minutes: MikroTik's guide has 10 days, which locks an
+    /// operator out that long after a few mistyped logins from outside).
     pub fn ssh_blacklist_time(&self) -> Duration {
         self.data()
             .and_then(|d| d.ssh_blacklist_time)
-            .unwrap_or(Duration::from_secs(10 * 24 * 3600))
+            .unwrap_or(Duration::from_secs(10 * 60))
     }
 }
 

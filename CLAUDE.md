@@ -748,7 +748,8 @@ are the list `uplink`, and every rule is from `in-interface-list=uplink`, the re
 network routes without any. IPv4 and IPv6 alike: established/related in, invalid out, ICMP(v6),
 the DHCPv6 client's answers (UDP 546 from `fe80::/10`), SSH through the address-list stages of
 MikroTik's bruteforce guide (from the last stage back, so a connection takes one step; times
-from the config context `ssh_stage_time`/`ssh_blacklist_time`), on `forward` IPv4's dstnat,
+from the config context `ssh_stage_time`/`ssh_blacklist_time`, else 1 min and 10 min: the
+guide's 10 days would lock an operator out that long), on `forward` IPv4's dstnat,
 then the drops. `api_networks` come right after `invalid` (`allow_provisioner`, from
 `generate_for` like `setup_services`, which tests call on `DeviceCfg` themselves): the
 provisioner's SSH must never count in the stages (an update logs in and uploads several times).

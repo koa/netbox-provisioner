@@ -96,12 +96,12 @@ async fn an_internet_uplink_gets_the_perimeter() {
         .ip_firewall_filter
         .iter()
         .all(|rule| rule.in_interface_list.as_ref().map(|l| l.to_string()).as_deref() == Some("uplink")));
-    // the stages from the end: the blacklist after the third, 10 days, the others a minute
+    // the stages from the end: the blacklist after the third, 10 minutes, the others a minute
     let blacklist = &target.ip_firewall_filter[4];
     assert_eq!(blacklist.action, IpFirewallFilterAction::AddSrcToAddressList);
     assert_eq!(blacklist.src_address_list.as_ref().map(|l| l.to_string()).as_deref(), Some("ssh_stage3"));
     assert_eq!(blacklist.address_list.as_ref().map(|l| l.to_string()).as_deref(), Some("ssh_blacklist"));
-    assert_eq!(blacklist.address_list_timeout, Some(Duration::from_secs(10 * 24 * 3600)));
+    assert_eq!(blacklist.address_list_timeout, Some(Duration::from_secs(10 * 60)));
     let first = &target.ip_firewall_filter[7];
     assert_eq!(first.src_address_list, None);
     assert_eq!(first.address_list_timeout, Some(Duration::from_secs(60)));
@@ -126,7 +126,7 @@ async fn nat_alone_gets_it_too_and_no_uplink_none() {
 async fn the_stage_time_comes_from_the_config_context() {
     let target = router(true, false, Some(Duration::from_secs(120))).await;
     assert_eq!(target.ip_firewall_filter[7].address_list_timeout, Some(Duration::from_secs(120)));
-    assert_eq!(target.ip_firewall_filter[4].address_list_timeout, Some(Duration::from_secs(10 * 24 * 3600)));
+    assert_eq!(target.ip_firewall_filter[4].address_list_timeout, Some(Duration::from_secs(10 * 60)));
 }
 
 /// The provisioner's networks come after `invalid`, before the SSH stages, each in its

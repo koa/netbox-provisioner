@@ -54,7 +54,8 @@ Eine neue SSH-Verbindung bringt ihre Quelle in `ssh_stage1`, eine weitere, solan
 nach `ssh_stage2`, dann `ssh_stage3`, dann `ssh_blacklist`. Die Regeln stehen von der letzten
 Stufe her, so geht jede Verbindung nur eine Stufe weiter: Die vierte neue Verbindung kommt noch
 durch und setzt die Quelle auf die Blacklist, die fünfte nicht mehr. Eine Stufe gilt eine Minute,
-die Blacklist 10 Tage; der Config Context übersteuert beides (`ssh_stage_time`,
+die Blacklist 10 Minuten (die Anleitung hat 10 Tage, so lange sperrte sich aus, wer sich von
+aussen ein paarmal vertippt); der Config Context übersteuert beides (`ssh_stage_time`,
 `ssh_blacklist_time`, Sekunden, siehe [netbox-modeling.md](netbox-modeling.md)). Die Einträge legt
 RouterOS selbst an (dynamisch, ohne Kommentar); der Provisioner fasst sie nicht an.
 

@@ -70,13 +70,14 @@ beantwortet Anfragen; die Perimeter-Firewall hält das Internet davon fern.
 ### Config Context `ssh_stage_time`, `ssh_blacklist_time`
 
 ```json
-{"ssh_stage_time": 60, "ssh_blacklist_time": 864000}
+{"ssh_stage_time": 60, "ssh_blacklist_time": 600}
 ```
 
 Die Zeiten des SSH-Bruteforce-Schutzes der Perimeter-Firewall in Sekunden
 ([firewall.md](firewall.md#perimeter-firewall)): wie lange eine neue SSH-Verbindung ihre Quelle in
-einer Stufe hält (ohne: 60) und wie lange eine erwischte Quelle gesperrt bleibt (ohne: 864000,
-10 Tage).
+einer Stufe hält (ohne: 60) und wie lange eine erwischte Quelle gesperrt bleibt (ohne: 600,
+10 Minuten). Länger ist riskant: Wer sich von aussen ein paarmal vertippt, sperrt sich selbst so
+lange aus.
 
 ### Custom Fields
 
