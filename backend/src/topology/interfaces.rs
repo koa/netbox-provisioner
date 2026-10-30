@@ -655,7 +655,23 @@ fn in_customer_prefix(address: &IpAddressAccess) -> bool {
     in_one
 }
 
-/// The radio of the bridge device `port` is on: the one in the same bridge, else its only one.
+/// The radio a bridge device's link goes by: its only one, else the only 60 GHz one (a Wave
+/// Nano's `wlan0`, next to its 5 GHz backup `wlan1`).
+pub fn main_radio<'a>(radios: &[&'a InterfaceAccess]) -> Option<&'a InterfaceAccess> {
+    match radios {
+        [radio] => Some(radio),
+        _ => match radios
+            .iter()
+            .filter(|radio| radio.is_sixty_ghz())
+            .collect::<Vec<_>>()[..]
+        {
+            [radio] => Some(radio),
+            _ => None,
+        },
+    }
+}
+
+/// The radio of the bridge device `port` is on: the one in the same bridge, else its main one.
 fn bridge_radio(port: &InterfaceAccess) -> Option<InterfaceAccess> {
     let device = port.device()?;
     let radios = device
@@ -668,10 +684,7 @@ fn bridge_radio(port: &InterfaceAccess) -> Option<InterfaceAccess> {
     {
         return Some(radio.clone());
     }
-    match &radios[..] {
-        [radio] => Some(radio.clone()),
-        _ => None,
-    }
+    main_radio(&radios.iter().collect::<Vec<_>>()).cloned()
 }
 
 /// The way from the router port over the bridge device's radio to the router on the other side.

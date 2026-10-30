@@ -298,6 +298,11 @@ pub fn server(problem: &impl Problem) -> String {
             "{} hat in NetBox keinen oder mehrere Funk-Ports: eine Funkbrücke hat genau einen",
             p("device")
         ),
+        "RADIO_UNPAIRED" => format!(
+            "{} hat auf der anderen Brücke kein Gegenstück: keinen Wireless Link dorthin und \
+             keinen Funk-Port gleichen Namens",
+            p("port")
+        ),
         "NO_ROUTER_PORT" => format!(
             "{} ist mit keinem Router verkabelt: den Router-Port wählen",
             p("device")

@@ -274,7 +274,9 @@ where none is; the PSK is never in the fingerprint, a step's `Debug` or the log)
 segment's IPv4 (the router port's network, else a new `/29` of the transfer pool) with an
 address and `ospf` on each router port and bridge; IPv6 stays link-local, the bridges are
 reached at their loopback. Two bridges without RouterOS (UISP Wave Nano, set up by hand with a
-DHCP client; `RadioBridgeCandidate.routeros`, an Ethernet port by NetBox type) get
+DHCP client; `RadioBridgeCandidate.routeros`, an Ethernet port by NetBox type; its 60 GHz
+`wlan0` and 5 GHz backup `wlan1` are paired with the other's by link, else by name, and shown
+by the 60 GHz one, `interfaces::main_radio`) get
 `helper::foreign_radio_bridge` instead: cables, labels, RF roles, the wireless link (a PSK only
 for a new one), a `/31` of the transfer pool between the router ports for OSPFv2 and on each
 router port a `/29` with `dhcp` and `dhcp_lease_time` 120 s (`CreatePrefix.dhcp_lease_time`),

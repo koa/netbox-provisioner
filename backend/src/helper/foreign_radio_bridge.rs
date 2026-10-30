@@ -28,6 +28,7 @@ use crate::{
         DeviceId, RadioRole, Topology,
         access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess},
         findings::interface_ref,
+        natural::naturalize_interface,
     },
 };
 use ipnet::IpNet;
@@ -42,7 +43,6 @@ const DHCP_LENGTH: u8 = 29;
 /// One bridge device of the link and what the plan found of it.
 struct Side {
     device: DeviceAccess,
-    radio: InterfaceAccess,
     /// the Ethernet port cabled to the router
     ether: InterfaceAccess,
     router_port: InterfaceAccess,
@@ -73,39 +73,35 @@ pub(super) async fn plan_with(
         format!("Funkbrücke {} – {}", ap.name(), station.name()),
     );
     let mut sides = Vec::new();
-    for (device, role, router_port, other) in [
-        (&ap, RadioRole::Ap, input.ap_router_port, &station),
-        (&station, RadioRole::Station, input.station_router_port, &ap),
+    for (device, router_port, other) in [
+        (&ap, input.ap_router_port, &station),
+        (&station, input.station_router_port, &ap),
     ] {
-        let interfaces = device.interfaces();
-        let radios = interfaces
-            .iter()
-            .filter(|i| radio_bridge::is_radio(i))
-            .collect::<Vec<_>>();
-        let [radio] = radios[..] else {
-            return Err(Error::NoSingleRadio(device.name().into()));
-        };
         let (ether, router_port) =
             radio_bridge::router_cable(topology, &mut plan, device, other, router_port)?;
-        let radio_role = radio.data().and_then(|d| d.radio.as_ref()).map(|r| r.role);
-        if radio_role != Some(role) {
-            plan.steps.push(PlanStep::UpdatePort(UpdatePort {
-                interface: interface_ref(radio),
-                name: None,
-                rf_role: Some(role),
-                rf_role_before: radio_role,
-                bridge: None,
-                bridge_id: None,
-                bridge_before: radio.bridge().map(|b| b.id().0),
-                leaves_bridge: None,
-            }));
-        }
         sides.push(Side {
             device: device.clone(),
-            radio: radio.clone(),
             ether,
             router_port,
         });
+    }
+    let pairs = pairs(&ap, &station)?;
+    for (ap_radio, station_radio) in &pairs {
+        for (radio, role) in [(ap_radio, RadioRole::Ap), (station_radio, RadioRole::Station)] {
+            let radio_role = radio.data().and_then(|d| d.radio.as_ref()).map(|r| r.role);
+            if radio_role != Some(role) {
+                plan.steps.push(PlanStep::UpdatePort(UpdatePort {
+                    interface: interface_ref(radio),
+                    name: None,
+                    rf_role: Some(role),
+                    rf_role_before: radio_role,
+                    bridge: None,
+                    bridge_id: None,
+                    bridge_before: radio.bridge().map(|b| b.id().0),
+                    leaves_bridge: None,
+                }));
+            }
+        }
     }
     let routers = sides
         .iter()
@@ -117,15 +113,14 @@ pub(super) async fn plan_with(
     // the preview generates for the AP's router: the bridge has no config to generate
     plan.device = routers[0].clone();
     // the radios are set by hand: nothing to apply together
-    radio_bridge::radios(
-        &mut plan,
-        [
-            (&sides[0].radio, &sides[0].device),
-            (&sides[1].radio, &sides[1].device),
-        ],
-        input.ssid.as_deref(),
-        false,
-    )?;
+    for (ap_radio, station_radio) in &pairs {
+        radio_bridge::radios(
+            &mut plan,
+            [(ap_radio, &ap), (station_radio, &station)],
+            input.ssid.as_deref(),
+            false,
+        )?;
+    }
     networks(topology, &mut plan, &sides, routes).await?;
     let cables = sides
         .iter()
@@ -133,6 +128,54 @@ pub(super) async fn plan_with(
         .collect::<Vec<_>>();
     radio_bridge::labels(&mut plan, &cables);
     Ok(plan)
+}
+
+/// The radios of the AP and the station that make a link: by the wireless link one has, else
+/// by name (a Wave Nano's 60 GHz `wlan0` and its 5 GHz backup `wlan1`). Each radio has one.
+fn pairs(
+    ap: &DeviceAccess,
+    station: &DeviceAccess,
+) -> Result<Vec<(InterfaceAccess, InterfaceAccess)>, Error> {
+    // in NetBox' order, so the plan's steps are too
+    let radios = |device: &DeviceAccess| {
+        let mut radios = device
+            .interfaces()
+            .into_iter()
+            .filter(radio_bridge::is_radio)
+            .collect::<Vec<_>>();
+        radios.sort_by_cached_key(|radio| naturalize_interface(radio.name()));
+        radios
+    };
+    let (ap_radios, station_radios) = (radios(ap), radios(station));
+    for (device, radios) in [(ap, &ap_radios), (station, &station_radios)] {
+        if radios.is_empty() {
+            return Err(Error::NoSingleRadio(device.name().into()));
+        }
+    }
+    let mut pairs = Vec::new();
+    for radio in &ap_radios {
+        let peer = match radio.wireless_link() {
+            Some(link) => station_radios
+                .iter()
+                .find(|peer| link.peer == Some(peer.id()))
+                .ok_or_else(|| Error::WirelessLinkElsewhere {
+                    port: port_name(radio),
+                    far: radio.wireless_peer().as_ref().map(port_name),
+                })?,
+            None => station_radios
+                .iter()
+                .find(|peer| peer.name() == radio.name() && peer.wireless_link().is_none())
+                .ok_or_else(|| Error::RadioUnpaired(port_name(radio)))?,
+        };
+        pairs.push((radio.clone(), peer.clone()));
+    }
+    if let Some(unpaired) = station_radios
+        .iter()
+        .find(|radio| !pairs.iter().any(|(_, peer)| peer.id() == radio.id()))
+    {
+        return Err(Error::RadioUnpaired(port_name(unpaired)));
+    }
+    Ok(pairs)
 }
 
 /// The transfer network between the router ports and each one's DHCP network, with an address
@@ -491,6 +534,71 @@ mod test {
         assert_eq!(
             path.bridge_port.as_ref().map(|p| &*p.device.name),
             Some("wave-a")
+        );
+    }
+
+    /// schmidrueti-berg – berg-schmidrueti as in the export: Wave Nanos with the 60 GHz
+    /// `wlan0` and the 5 GHz backup `wlan1`, each linked to the other's, without SSID. Both are
+    /// candidates by their `wlan0`, the radios pair by their links, and switch-schmidrueti's
+    /// port to one is a radio link the helper is suggested for.
+    #[test]
+    fn the_wave_nanos_of_the_export_pair_their_radios() {
+        use crate::topology::{
+            interfaces::{ActionHelper, ActionKind, InterfaceTask},
+            test::example_topology,
+        };
+        let topology = example_topology();
+        let find = |name: &str| {
+            topology
+                .list_devices()
+                .find(|d| d.name() == name)
+                .unwrap_or_else(|| panic!("{name}"))
+        };
+        let (ap, station) = (find("schmidrueti-berg"), find("berg-schmidrueti"));
+        let candidates = radio_bridge::candidates(&topology);
+        let candidate = candidates
+            .iter()
+            .find(|c| c.device.id == ap.id().0)
+            .expect("a candidate");
+        assert!(!candidate.routeros);
+        assert_eq!(&*candidate.radio.name, "wlan0");
+        assert_eq!(
+            candidate.peer.as_ref().map(|p| &*p.name),
+            Some("berg-schmidrueti")
+        );
+        // over patch panels: switch-schmidrueti at one end, 1og-sw2 at the other
+        let mut plan = NetboxPlan::new(&ap, "test");
+        for (device, other, router_port) in [
+            (&ap, &station, "switch-schmidrueti ether1"),
+            (&station, &ap, "1og-sw2 ether13"),
+        ] {
+            let (_, port) = radio_bridge::router_cable(&topology, &mut plan, device, other, None)
+                .expect("a router port");
+            assert_eq!(&*port_name(&port), router_port);
+        }
+        let pairs = pairs(&ap, &station)
+            .expect("pairs")
+            .iter()
+            .map(|(a, b)| (a.name().to_string(), b.name().to_string()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            pairs,
+            [("wlan0".into(), "wlan0".into()), ("wlan1".into(), "wlan1".into())]
+        );
+        // over two patch panels
+        let router = find("switch-schmidrueti");
+        let view = router.interface_view();
+        let row = view
+            .rows
+            .iter()
+            .find(|row| &*row.interface.name == "ether1")
+            .expect("ether1");
+        assert_eq!(row.task, InterfaceTask::RadioLink);
+        assert!(
+            row.actions.iter().any(|action| action.kind == ActionKind::Suggestion
+                && action.helper == ActionHelper::RadioBridge),
+            "{:?}",
+            row.actions
         );
     }
 

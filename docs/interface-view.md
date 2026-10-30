@@ -26,7 +26,8 @@ passt, gilt):
 | Unbekannt | alles andere, auch freie Ports |
 
 Ein **Brückengerät** hat die Rolle `wireless-bridge` oder genau einen Funk-Port mit RF-Rolle oder
-Wireless Link. Die Rolle allein reicht nicht: Die Brückengeräte im Lab haben die Rolle `router`,
+Wireless Link. Hat es mehrere mit Wireless Link, zeigt die Zeile den einen 60-GHz-Port (eine
+Wave Nano: `wlan0` neben dem 5-GHz-Backup `wlan1`). Die Rolle allein reicht nicht: Die Brückengeräte im Lab haben die Rolle `router`,
 und im gespeicherten Export haben viele Link-Enden keine RF-Rolle (das ist dann der Befund
 `RadioWithoutRole`, die Zeile bleibt Richtfunk).
 

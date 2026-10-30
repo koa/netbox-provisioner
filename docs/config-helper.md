@@ -402,11 +402,16 @@ Zwei Brückengeräte ohne Platform `routeros` (zwei UISP Wave Nano,
 [foreign-radio-bridge.md](foreign-radio-bridge.md)) richtet man von Hand ein, als L2-Brücke
 mit DHCP-Client. Sie sind Kandidaten wie die mit RouterOS (`radioBridgeCandidates.routeros`),
 ein Ethernet-Port nach dem NetBox-Typ, und die andere Brücke ist von derselben Art (eine mit
-RouterOS gegenüber einer ohne: `NoRouterOs`). Das Formular hat keine Adressen. Der Plan
+RouterOS gegenüber einer ohne: `NoRouterOs`). Eine Wave Nano hat zwei Funk-Ports, `wlan0`
+(60 GHz) und das 5-GHz-Backup `wlan1`: Angezeigt wird sie mit dem einen 60-GHz-Port
+(`main_radio`), geplant werden alle. Die Funk-Ports der beiden Seiten bilden Paare, über den
+Wireless Link, den einer hat, sonst über den gleichen Namen; einer ohne Gegenstück ist
+`RadioUnpaired`, einer mit Link zu einem dritten Gerät `WirelessLinkElsewhere`. Das Formular hat keine Adressen. Der Plan
 (`helper::foreign_radio_bridge`) ist die Seite von NetBox und den Routern:
 
 - Kabel und Labels wie oben, die RF Role an jedem Funk-Port (`UpdatePort` ohne Bridge).
-- Der Wireless Link mit SSID; ein neuer mit erzeugtem PSK, den man auf den Funkgeräten setzt.
+- Je Paar der Wireless Link mit SSID; ein neuer mit erzeugtem PSK, den man auf den Funkgeräten
+  setzt.
   Ein vorhandener bekommt keinen: Seine Geräte laufen mit einem Schlüssel, den NetBox nicht kennt.
   Nichts in `apply_together`, die Funkgeräte wendet der Provisioner nicht an.
 - Ein `/31` aus dem Transfer-Pool zwischen den beiden Router-Ports (bzw. ihren Bridges) für

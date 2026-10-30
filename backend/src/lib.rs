@@ -280,6 +280,10 @@ pub enum Error {
     /// a device with no radio port, or several
     #[error("{0} has no single radio port")]
     NoSingleRadio(Box<str>),
+    /// a radio (`device port`) of a bridge device without RouterOS that no radio of the other
+    /// one pairs with: by its wireless link, or by name
+    #[error("{0} has no counterpart on the other bridge")]
+    RadioUnpaired(Box<str>),
     /// a radio bridge whose Ethernet ports reach no router
     #[error("{0} is cabled to no router")]
     NoRouterPort(Box<str>),

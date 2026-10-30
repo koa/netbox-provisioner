@@ -32,6 +32,7 @@ use crate::{
         DeviceId, PhysicalPortId, PortType, PrefixPool, RadioRole, Topology,
         access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess},
         findings::{DeviceRef, InterfaceRef, interface_ref, names},
+        interfaces::main_radio,
     },
 };
 use async_graphql::{InputObject, SimpleObject};
@@ -725,14 +726,20 @@ pub struct RadioBridgeCandidate {
     pub address: Option<Box<str>>,
 }
 
-/// The devices with a single radio, by name: the bridges to choose from.
+/// The devices with a single radio, without RouterOS also with a backup radio next to their
+/// main one, by name: the bridges to choose from.
 pub fn candidates(topology: &Arc<Topology>) -> Vec<RadioBridgeCandidate> {
     let mut found = topology
         .list_devices()
         .filter_map(|device| {
             let interfaces = device.interfaces();
             let radios = interfaces.iter().filter(|i| is_radio(i)).collect::<Vec<_>>();
-            let [radio] = radios[..] else { return None };
+            // one without RouterOS may have a backup radio (a Wave Nano's 5 GHz `wlan1`)
+            let radio = match radios[..] {
+                [radio] => radio,
+                _ if device.has_routeros() => return None,
+                _ => main_radio(&radios)?,
+            };
             let router_port = interfaces
                 .iter()
                 .filter(|i| is_ethernet(&device, i))

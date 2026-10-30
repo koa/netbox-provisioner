@@ -287,6 +287,7 @@ impl From<&Error> for ErrorInfo {
             ),
             Error::NotEthernet(port) => ("NOT_ETHERNET", vec![("port", port.to_string())]),
             Error::NoSingleRadio(device) => ("NO_SINGLE_RADIO", vec![("device", device.to_string())]),
+            Error::RadioUnpaired(port) => ("RADIO_UNPAIRED", vec![("port", port.to_string())]),
             Error::NoRouterPort(device) => ("NO_ROUTER_PORT", vec![("device", device.to_string())]),
             Error::WirelessLinkElsewhere { port, far } => {
                 let mut params = vec![("port", port.to_string())];
