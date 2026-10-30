@@ -24,6 +24,8 @@ Die Slugs müssen exakt so heißen:
 | `dhcp-client` | DHCP-**Client** auf diesem Interface, falls es keine IP hat   |
 |               | (mit `ospf` ohne Default-Route: die kommt dann über OSPF)     |
 | `nat`         | Uplink, dessen Netz nicht zurückroutet: ausgehend maskieren   |
+|               | (mit `dhcp-client` auch ein IPv6-DHCP-Client mit Prefix       |
+|               | Delegation, siehe Rezept unten)                               |
 
 An Prefixen markieren zwei Tags, woraus der Config-Helper Adressen vergibt
 ([Config-Helper](config-helper.md#prefixe)). Die Config ändern sie nicht; die Befunde melden
@@ -388,6 +390,11 @@ Beispiel: Core-Router mit Uplink, OSPF zu zwei Nachbarn und einem Kunden-Port.
    am Gerät `propagate_default_route` setzen, damit OSPF die Default-Route an die anderen Router
    weitergibt. Bei einem Uplink in ein Netz, das selbst eine Default-Route hat (z.B. ein Lab am
    produktiven Netz), nicht: die Default-Route ginge sonst in jenes Netz zurück.
+   Mit `dhcp-client` und `nat` bekommt der Uplink auch einen IPv6-DHCP-Client, der eine Adresse
+   und einen Prefix anfragt (`request=address,prefix`): Der Prefix kommt in den Pool
+   `pd-<Interface>` (Stücke von /64), noch nimmt kein Netz daraus; die Default-Route wie beim
+   IPv4-Client. Hat das Gerät dort schon einen Client, behält er seine übrigen Einstellungen und
+   den Namen seines Pools. Clients an anderen Interfaces bleiben, wie sie sind.
 
 ## Rezept: Switch mit Haushalts-VLANs
 

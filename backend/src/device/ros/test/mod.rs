@@ -1,4 +1,5 @@
 mod capsman;
+mod dhcp_v6_client;
 mod hand_made;
 mod mac_server;
 mod mtu;
@@ -202,6 +203,7 @@ pub(crate) fn empty_current(target: &BaseDeviceDataTarget) -> BaseDeviceDataCurr
         ipv_4_address: Box::new([]),
         vlan: Box::new([]),
         dhcp_v_4_client: Box::new([]),
+        dhcp_v_6_client: Box::new([]),
         ipv_6_firewall_filter: Box::new([]),
         ip_firewall_filter: Box::new([]),
         ip_firewall_nat: Box::new([]),

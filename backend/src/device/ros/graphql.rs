@@ -176,6 +176,8 @@ impl DeviceCfg {
             .collect::<Vec<_>>();
         self.base_target
             .keep_hand_made_addresses(&self.base_current, &radios);
+        let renamed = following_renames(&self.base_target, &self.base_current, &self.radio_renames());
+        self.base_target.keep_dhcp_v6_clients(&renamed);
         if let Some(package) = self.idle_radios {
             warnings.push(ApplyWarning::CapOffOutsideWlanGroup(CapOffOutsideWlanGroup {
                 package: package.name().into(),

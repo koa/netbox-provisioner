@@ -27,6 +27,7 @@ use mikrotik_model::{
         IpFirewallFilterCfg, IpFirewallNatAction, IpFirewallNatCfg,
         IpNeighborDiscoverySettingsCfg, IpSocksAuthMethod, IpServiceByName, IpServiceCfg, IpSocksUsersByName, IpSocksUsersCfg,
         IpSshCfg, IpSshForwardingEnabled, Ipv6AddressByAddress, Ipv6AddressCfg,
+        Ipv6DhcpClientByInterface, Ipv6DhcpClientCfg, Ipv6DhcpClientRequest,
         Ipv6NdAdvertiseDns, Ipv6NdByInterface, Ipv6NdCfg, RoutingOriginateDefault,
         RoutingOspfInstanceByName, RoutingOspfInstanceCfg, RoutingOspfInstanceVersion,
         RoutingRedistribute, ToolMacServerCfg, VlanFrameTypes, WifiChannelBand, YesNo,
@@ -85,6 +86,9 @@ mikrotik_model!(
         ospf_area(by_key(path = "routing/ospf/area", key = name)),
         ospf_interface(by_id(path = "routing/ospf/interface-template", keys(area))),
         dhcp_v4_client(by_id(path = "ip/dhcp-client", keys(interface))),
+        // one per interface; the provisioner's at the internet uplinks, the others stay
+        // (`keep_dhcp_v6_clients`)
+        dhcp_v6_client(by_key(path = "ipv6/dhcp-client", key = interface)),
         // the firewall's own entries carry `FIREWALL_PREFIX` in their comment, the others stay
         ipv6_firewall_address_list(by_id(
             path = "ipv6/firewall/address-list",
@@ -216,6 +220,9 @@ fn following_renames(
     }
     for member in current.interface_list_member.iter_mut() {
         follow(&mut member.data.interface);
+    }
+    for client in current.dhcp_v_6_client.iter_mut() {
+        follow(&mut client.0.interface);
     }
     for vlan in current.bridge_vlan.iter_mut() {
         vlan.data.tagged = vlan.data.tagged.iter().cloned().map(|mut n| { follow(&mut n); n }).collect();
@@ -429,6 +436,7 @@ impl BaseDeviceDataTarget {
             interface_list_member: Default::default(),
             ipv_4_address: Default::default(),
             ipv_6_address: Default::default(),
+            dhcp_v_6_client: Default::default(),
             vxlan: Default::default(),
             vxlan_vteps: Default::default(),
             ospf_instance: Default::default(),
@@ -1216,6 +1224,63 @@ impl BaseDeviceDataTarget {
             });
     }
 
+    /// The IPv6 client of an internet uplink: an address and a delegated prefix, which goes
+    /// into the pool `pd-<interface>` for now (no network takes from it), and like the IPv4
+    /// client a default route unless OSPF brings one. `keep_dhcp_v6_clients` merges a client the
+    /// device has there already.
+    fn enable_dhcp_v6_client(&mut self, if_name: AsciiString, use_ospf: bool) {
+        let pool = format!("pd-{if_name}");
+        self.dhcp_v_6_client.insert(
+            if_name.clone(),
+            Ipv6DhcpClientByInterface(Ipv6DhcpClientCfg {
+                interface: if_name,
+                request: [Ipv6DhcpClientRequest::Address, Ipv6DhcpClientRequest::Prefix].into(),
+                accept_prefix_without_address: true,
+                add_default_route: !use_ospf,
+                // RouterOS reports the distance only with a default route
+                default_route_distance: (!use_ospf).then_some(10),
+                default_route_tables: Some(b"default".into()),
+                allow_reconfigure: false,
+                check_gateway: Some(b"none".into()),
+                comment: None,
+                dhcp_options: None,
+                disabled: false,
+                pool_name: Some(pool.as_str().into()),
+                pool_prefix_length: Some(64),
+                prefix_address_lists: None,
+                prefix_hint: Some(b"::/0".into()),
+                script: None,
+                use_peer_dns: true,
+                validate_server_duid: true,
+            }),
+        );
+    }
+
+    /// The IPv6 clients of `current` (as after the renames): one where the target has its own
+    /// keeps what the device set by hand but the prefix delegation, the default route and an
+    /// existing pool's name, which other settings may refer to; any other stays as it is.
+    fn keep_dhcp_v6_clients(&mut self, current: &BaseDeviceDataCurrent) {
+        for client in current.dhcp_v_6_client.iter() {
+            match self.dhcp_v_6_client.get_mut(&client.0.interface) {
+                Some(own) => {
+                    let target = &own.0;
+                    own.0 = Ipv6DhcpClientCfg {
+                        request: target.request.clone(),
+                        add_default_route: target.add_default_route,
+                        default_route_distance: target.default_route_distance,
+                        pool_name: client.0.pool_name.clone().or_else(|| target.pool_name.clone()),
+                        pool_prefix_length: client.0.pool_prefix_length.or(target.pool_prefix_length),
+                        disabled: false,
+                        ..client.0.clone()
+                    };
+                }
+                None => {
+                    self.dhcp_v_6_client.insert(client.0.interface.clone(), client.clone());
+                }
+            }
+        }
+    }
+
     fn setup_ip_addresses<N: NameGenerator>(&mut self, l2: &L2Setup<N>) -> Result<(), SetupError> {
         // A device NetBox gives no address at all and no `dhcp-client` tag is pure L2
         // (a radio bridge): it is only reachable through an address from DHCP, so its
@@ -1240,6 +1305,10 @@ impl BaseDeviceDataTarget {
             }
             if ips.is_empty() {
                 if logical.enable_dhcp_client {
+                    // the internet uplink: its provider delegates an IPv6 prefix
+                    if logical.nat {
+                        self.enable_dhcp_v6_client(if_name.clone(), logical.use_ospf);
+                    }
                     self.enable_dhcp_client(if_name, logical.use_ospf);
                 }
             } else {

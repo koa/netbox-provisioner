@@ -700,6 +700,12 @@ leases: one NetBox doesn't know is removed, a dynamic one is left (`dynamic` is 
 model never reads it as an entry). The address is left out of the pool like any other NetBox
 address there. Only `primary_mac_address` is fetched: the stored export lacks
 `mac_addresses`. The site overview counts removed leases (`removes_leases`) like addresses.
+An interface with `dhcp-client` and `nat` (the internet uplink) also gets an `/ipv6/dhcp-client`
+asking for a prefix (`enable_dhcp_v6_client`: `request=address,prefix`, pool `pd-<interface>`,
+no network takes from it yet, a default route as the IPv4 client); one per interface on
+RouterOS, so one the device has there keeps its settings but those, and its pool's name
+(`keep_dhcp_v6_clients`, on `current` after the renames, which it follows), and clients
+elsewhere stay as they are.
 A `dhcp-client` on an `ospf` interface takes no default route (`add-default-route=no`; RouterOS
 then hides `default-route-distance` and can't clear it, so it gets RouterOS' default 1, which
 mikrotik-model reads for the hidden field): the default comes over OSPF, and one from DHCP
