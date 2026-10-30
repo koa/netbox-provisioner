@@ -368,3 +368,23 @@ fn a_padded_host_name_is_cut() {
     assert_eq!(client_name("\0\0"), None);
     assert_eq!(client_name("drucker"), Some("drucker".into()));
 }
+
+/// The tunnels of an uplink router and other interfaces of no managed type keep their
+/// addresses on an apply, so they aren't shown; a port, `lo` or a removed interface (`*35`,
+/// no `/interface` row) are.
+#[test]
+fn interfaces_of_another_type_are_hand_made() {
+    let interfaces = [
+        row(&[("name", "ether1"), ("type", "ether")]),
+        row(&[("name", "lo"), ("type", "loopback")]),
+        row(&[("name", "bridge"), ("type", "bridge")]),
+        row(&[("name", "gre-colab"), ("type", "gre-tunnel")]),
+        row(&[("name", "ipipv6-loch"), ("type", "ipipv6-tunnel")]),
+        row(&[("name", "pppoe-out1"), ("type", "pppoe-out")]),
+    ];
+    let hand_made = hand_made_interfaces(&interfaces);
+    assert_eq!(
+        hand_made.iter().map(|name| &**name).collect::<Vec<_>>(),
+        ["gre-colab", "ipipv6-loch", "pppoe-out1"]
+    );
+}

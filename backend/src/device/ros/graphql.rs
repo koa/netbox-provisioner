@@ -162,6 +162,20 @@ impl DeviceCfg {
         }
         self.base_target
             .setup_ports(device, &l2, self.radio_package)?;
+        // radios are interfaces the provisioner manages as well
+        let radios = self
+            .wireless_current
+            .iter()
+            .flat_map(|current| current.wireless.iter().map(|radio| radio.data.name.clone()))
+            .chain(self.wifi_current.iter().flat_map(|current| {
+                current.wifi.iter().map(|radio| radio.data.name.clone())
+            }))
+            .chain(self.w60g_current.iter().flat_map(|current| {
+                current.radio.iter().map(|radio| radio.0.name.clone())
+            }))
+            .collect::<Vec<_>>();
+        self.base_target
+            .keep_hand_made_addresses(&self.base_current, &radios);
         if let Some(package) = self.idle_radios {
             warnings.push(ApplyWarning::CapOffOutsideWlanGroup(CapOffOutsideWlanGroup {
                 package: package.name().into(),

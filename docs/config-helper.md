@@ -483,7 +483,11 @@ dem Hinweis, geschrieben, Rückgängig brachte ihn zurück in `lan`.
 Trägt eine Adresse, die nur auf dem Gerät steht, in NetBox an ihrem Interface ein, damit das
 nächste Anwenden sie nicht entfernt (Datenkorrektur).
 Die Live-Prüfung der Interfaces findet sie: statische Einträge von `/ip/address` und
-`/ipv6/address` (ohne link-local), deren IP keines der NetBox-Interfaces des Geräts hat. Sie
+`/ipv6/address` (ohne link-local), deren IP keines der NetBox-Interfaces des Geräts hat. Adressen
+an Interfaces, die der Provisioner nicht verwaltet, lässt das Anwenden stehen, wie BGP: Tunnel
+(`gre`, `ipip`, …), PPPoE-Clients und alles andere von Hand Eingerichtete; die Prüfung zeigt sie
+deshalb nicht (`/interface` vom Typ nicht `ether`, `bridge`, `vlan`, `vxlan`, `wlan`, `wifi`,
+`w60g`, `loopback`). Eine an einem gelöschten Interface (`*35`) entfernt es. Sie
 stehen an der Zeile ihres NetBox-Interfaces (über den Port-Namen oder eine andere Adresse, die
 NetBox dort hat) unter „Nur auf dem Gerät“, als Warnung, sonst unter den weiteren Befunden. Den
 Knopf „<Adresse> übernehmen“ gibt es nur, wenn NetBox die IP nirgends hat; hat sie ein anderes

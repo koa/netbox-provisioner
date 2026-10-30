@@ -136,6 +136,9 @@ pub async fn read(client: &RawDevice<SimpleResult>, device: &DeviceAccess) -> Re
     let ospf = rows(client, "/routing/ospf/neighbor/print").await?;
     let mut addresses = rows(client, "/ip/address/print").await?;
     addresses.extend(rows(client, "/ipv6/address/print").await?);
+    // an apply keeps the addresses on interfaces set up by hand: nothing to show of them
+    let hand_made = hand_made_interfaces(&rows(client, "/interface/print").await?);
+    addresses.retain(|row| !field(row, "interface").is_some_and(|name| hand_made.contains(name)));
     let dhcp = Dhcp {
         servers: rows(client, "/ip/dhcp-server/print").await?,
         leases: rows(client, "/ip/dhcp-server/lease/print").await?,
@@ -481,6 +484,20 @@ fn lease_takeover(lease: &DeviceOnlyLease, interface: u32) -> Option<RowAction> 
             name: lease.name.clone(),
         }),
     })
+}
+
+/// The RouterOS types of the interfaces the provisioner manages (`BaseDeviceDataTarget::
+/// keep_hand_made_addresses` goes by their names): ports, bridges, VLANs, VXLANs, radios, `lo`.
+const MANAGED_TYPES: [&str; 8] = ["ether", "bridge", "vlan", "vxlan", "wlan", "wifi", "w60g", "loopback"];
+
+/// The names of the interfaces of another type (`/interface` rows): tunnels, PPPoE clients and
+/// whatever else is set up by hand, whose addresses an apply keeps.
+fn hand_made_interfaces(interfaces: &[Row]) -> BTreeSet<Box<str>> {
+    interfaces
+        .iter()
+        .filter(|row| field(row, "type").is_some_and(|kind| !MANAGED_TYPES.contains(&kind)))
+        .filter_map(|row| field(row, "name").map(Box::from))
+        .collect()
 }
 
 /// The static addresses of the device (`/ip/address` and `/ipv6/address` rows) that NetBox

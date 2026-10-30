@@ -836,6 +836,34 @@ impl BaseDeviceDataTarget {
         })
     }
 
+    /// Keeps the addresses the device has on an interface the provisioner doesn't manage: a
+    /// tunnel (`gre`, `ipip`, …), a PPPoE client or any other kind set up by hand, as BGP is.
+    /// Managed are the Ethernet ports, bridges, VLANs, VXLANs, the radios (`radios`) and `lo`;
+    /// an address on one of them, or on a removed interface (`*35`), goes with NetBox.
+    fn keep_hand_made_addresses(&mut self, current: &BaseDeviceDataCurrent, radios: &[AsciiString]) {
+        let managed = current
+            .ethernet
+            .iter()
+            .map(|port| &port.data.name)
+            .chain(self.ethernet.values().map(|port| &port.name))
+            .chain(current.bridge.iter().map(|bridge| &bridge.0.name))
+            .chain(current.vlan.iter().map(|vlan| &vlan.0.name))
+            .chain(current.vxlan.iter().map(|vxlan| &vxlan.0.name))
+            .chain(radios)
+            .map(|name| name.0.as_ref())
+            .collect::<HashSet<&[u8]>>();
+        let hand_made = |interface: &AsciiString| {
+            let name: &[u8] = interface.0.as_ref();
+            !name.is_empty() && !name.starts_with(b"*") && name != b"lo" && !managed.contains(name)
+        };
+        for address in current.ipv_4_address.iter().filter(|a| hand_made(&a.0.interface)) {
+            self.ipv_4_address.entry(address.0.address).or_insert_with(|| address.clone());
+        }
+        for address in current.ipv_6_address.iter().filter(|a| hand_made(&a.0.interface)) {
+            self.ipv_6_address.entry(address.0.address).or_insert_with(|| address.clone());
+        }
+    }
+
     fn set_ip_address(&mut self, ip: IpNet, if_name: impl Into<AsciiString>) {
         match ip {
             IpNet::V4(v4_net) => {
