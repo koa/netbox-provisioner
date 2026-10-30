@@ -10,6 +10,7 @@
 
 mod chr_network {
     pub mod apply;
+    pub mod default_route;
     pub mod device_mode;
     pub mod fallback;
     pub mod golden_image;
