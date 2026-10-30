@@ -93,6 +93,12 @@ impl InterfaceAccess {
             .map(|p| p.is_ethernet())
             .unwrap_or(false)
     }
+    /// An Ethernet port by its RouterOS name, on a device without RouterOS by its NetBox type
+    /// (a Wave Nano's `eth0`).
+    pub fn is_any_ethernet_port(&self) -> bool {
+        self.is_ethernet_port()
+            || (self.is_ethernet() && self.device().is_some_and(|d| !d.has_routeros()))
+    }
 
     pub fn device(&self) -> Option<DeviceAccess> {
         self.data().map(|d| d.device).map(self.create_access())

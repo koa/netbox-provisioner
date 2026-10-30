@@ -355,7 +355,7 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
             // on the bridge device
             let bridge_port = members
                 .iter()
-                .find(|member| member.is_ethernet_port())
+                .find(|member| member.is_any_ethernet_port())
                 .map(|port| (*port).clone());
             let router_port = bridge_port
                 .iter()
@@ -699,7 +699,7 @@ fn radio_path(
         let ports = device
             .interfaces()
             .into_iter()
-            .filter(InterfaceAccess::is_ethernet_port)
+            .filter(InterfaceAccess::is_any_ethernet_port)
             .collect::<Vec<_>>();
         ports
             .iter()

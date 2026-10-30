@@ -620,6 +620,14 @@ mod test {
             .find(|row| &*row.interface.name == "ether1")
             .expect("ether1");
         assert_eq!(row.task, InterfaceTask::RadioLink);
+        // the far side too, its Wave Nano's port by NetBox type
+        let path = row.radio_path.as_ref().expect("a radio path");
+        let name = |port: &Option<crate::topology::findings::InterfaceRef>| {
+            port.as_ref()
+                .map(|port| format!("{} {}", port.device.name, port.name))
+        };
+        assert_eq!(name(&path.peer_bridge_port).as_deref(), Some("berg-schmidrueti eth0"));
+        assert_eq!(name(&path.peer_router_port).as_deref(), Some("1og-sw2 ether13"));
         assert!(
             row.actions.iter().any(|action| action.kind == ActionKind::Suggestion
                 && action.helper == ActionHelper::RadioBridge),

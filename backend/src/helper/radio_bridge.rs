@@ -296,7 +296,7 @@ pub(super) fn router_cable(
     router_port: Option<u32>,
 ) -> Result<(InterfaceAccess, InterfaceAccess), Error> {
     let interfaces = device.interfaces();
-    let ethernet = || interfaces.iter().filter(|i| is_ethernet(device, i));
+    let ethernet = || interfaces.iter().filter(|i| i.is_any_ethernet_port());
     let to_router = |port: &InterfaceAccess| {
         port.connected_interfaces().into_iter().find(|far| {
             far.device()
@@ -341,12 +341,6 @@ pub(super) fn router_cable(
             .find_map(|port| to_router(port).map(|far| (port.clone(), far)))
             .ok_or_else(|| Error::NoRouterPort(device.name().into())),
     }
-}
-
-/// An Ethernet port of `device`: by its RouterOS name, without RouterOS by its NetBox type
-/// (a Wave Nano's `eth0`).
-fn is_ethernet(device: &DeviceAccess, interface: &InterfaceAccess) -> bool {
-    interface.is_ethernet_port() || (!device.has_routeros() && interface.is_ethernet())
 }
 
 /// The name the radio must get to be the one RouterOS has; none if it has it.
@@ -742,7 +736,7 @@ pub fn candidates(topology: &Arc<Topology>) -> Vec<RadioBridgeCandidate> {
             };
             let router_port = interfaces
                 .iter()
-                .filter(|i| is_ethernet(&device, i))
+                .filter(|i| i.is_any_ethernet_port())
                 .flat_map(|port| port.connected_interfaces())
                 .find(|far| far.device().is_some_and(|d| d.has_routeros()));
             let address = interfaces
