@@ -20,11 +20,11 @@
     "mikrotik-model": {
       "flake": false,
       "locked": {
-        "lastModified": 1793362480,
-        "narHash": "sha256-IFOY5qPbsDkf98oiXs3FV6hiBqJVZsiZV2A2duYPVMA=",
+        "lastModified": 1793368143,
+        "narHash": "sha256-NxFwEhEF4FENLrIttHcoiRSZEiHC+O4IRTROGXCM51c=",
         "owner": "koa",
         "repo": "mikrotik-model",
-        "rev": "81e627ef615bad062d95b35db693aaa9bd4aac30",
+        "rev": "b6fc95fcff5540455c50d3df65b90e14b888f5c7",
         "type": "github"
       },
       "original": {
