@@ -46,7 +46,8 @@ Was noch nicht umgesetzt ist, steht als Konzept in [concepts/](concepts/), die A
      flache Bridge oder ein VLAN auf einer getaggten Bridge ist. Siehe
      [ospf-generation.md](ospf-generation.md).
    - Funk-Ports von Funkbrücken (`WirelessDeviceDataTarget`/`W60GDeviceDataTarget`), siehe
-     [radio-bridge-generation.md](radio-bridge-generation.md).
+     [radio-bridge-generation.md](radio-bridge-generation.md); Funkbrücken ohne RouterOS
+     (Wave Nano) in [foreign-radio-bridge.md](foreign-radio-bridge.md).
    - `setup_l2` — realisiert den bereits berechneten `L2Setup` als tatsächliche
      Bridge-/Bridge-Port-/Bridge-VLAN-/Interface-VLAN-Einträge und benennt dabei jeden physischen
      Ethernet-Port auf seinen generierten Namen um. Legt außerdem die geplanten VXLAN-Interfaces

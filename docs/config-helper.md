@@ -399,7 +399,7 @@ drei Adressen in `172.17.0.40/29`, `ospf` auf beiden Bridges).
 #### Brückengeräte ohne RouterOS
 
 Zwei Brückengeräte ohne Platform `routeros` (zwei UISP Wave Nano,
-[Konzept](concepts/foreign-radio-bridge.md), Variante 2) richtet man von Hand ein, als L2-Brücke
+[foreign-radio-bridge.md](foreign-radio-bridge.md)) richtet man von Hand ein, als L2-Brücke
 mit DHCP-Client. Sie sind Kandidaten wie die mit RouterOS (`radioBridgeCandidates.routeros`),
 ein Ethernet-Port nach dem NetBox-Typ, und die andere Brücke ist von derselben Art (eine mit
 RouterOS gegenüber einer ohne: `NoRouterOs`). Das Formular hat keine Adressen. Der Plan

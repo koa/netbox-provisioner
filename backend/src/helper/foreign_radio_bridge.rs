@@ -1,5 +1,5 @@
 //! Helper „Funkbrücke“ for two bridge devices without RouterOS (two UISP Wave Nano,
-//! `docs/concepts/foreign-radio-bridge.md`, Variante 2). They are set up by hand as an L2 bridge
+//! `docs/foreign-radio-bridge.md`). They are set up by hand as an L2 bridge
 //! with a DHCP client, so the plan is the NetBox side and the routers':
 //!
 //! - the cable from each router port to the bridge's Ethernet port, where it lacks, and as label
