@@ -42,7 +42,10 @@ An Journal-Einträgen erkennt der Provisioner seine eigenen am Tag `netbox-provi
 Alle sieben Tags lassen sich mit [netbox-import/3-tags.yaml](netbox-import/3-tags.yaml) anlegen
 (Customization > Tags > Import, YAML).
 
-`nat` erzeugt `srcnat action=masquerade out-interface=<Uplink>`. Beantwortet der Router selbst
+`nat` erzeugt `srcnat action=masquerade out-interface=<Uplink>` und nimmt den Uplink in die
+Interface-Liste `uplink` auf, auf die sich von Hand gebaute Firewall-Regeln beziehen können (die
+IPv6-Firewall von router-faesigrund-keller weist ab, was dort hereinkommt). Andere Listen als
+`uplink` und `maintenance` entfernt ein Apply. Beantwortet der Router selbst
 DNS (kein Config Context `dns_servers` oder eine eigene Adresse darin, siehe unten), sperrt es zudem DNS (TCP/UDP 53) vom Uplink
 her im `input`.
 

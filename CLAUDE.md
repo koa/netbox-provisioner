@@ -878,7 +878,9 @@ in NetBox, the radios of a wireless link, and every free Ethernet port: not in N
 without cable, address, VLAN and bridge, so a notebook on a free port on site can get in. It
 takes the port itself, which RouterOS honors for a bridge port too (CHR 7.24.5), so customer
 ports in the same bridge stay out. Interface lists are modeled whole: an apply removes every
-list NetBox doesn't give, the factory `LAN` included. That is what left lab devices with
+list NetBox doesn't give, the factory `LAN` included; `nat` uplinks go in `uplink`
+(`add_to_uplinks`), which hand-made firewall rules use (router-faesigrund-keller's IPv6 filter
+rejects what comes in there), so that list stays. That is what left lab devices with
 `allowed-interface-list=*2000011` before, and `discover-interface-list=*2000011` (discovery
 off) until the generator set it too.
 

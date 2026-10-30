@@ -260,6 +260,9 @@ pub(crate) const CAPS_BRIDGE_NAME: &[u8; 11] = b"bridge-caps";
 /// ([`BaseDeviceDataTarget::setup_maintenance_ports`]): `/tool mac-server` allows mac-telnet
 /// there, and the device discovers its neighbors there (`/ip/neighbor`).
 pub(crate) const MAINTENANCE_LIST: &[u8; 11] = b"maintenance";
+/// The interface list of the `nat` uplinks: firewall rules set up by hand refer to it
+/// (router-faesigrund-keller's IPv6 filter rejects what comes in there).
+pub(crate) const UPLINK_LIST: &[u8; 6] = b"uplink";
 
 #[derive(Error, Debug)]
 pub enum SetupError {
@@ -1302,6 +1305,7 @@ impl BaseDeviceDataTarget {
                 .collect::<Vec<_>>();
             if logical.nat {
                 self.masquerade(&if_name);
+                self.add_to_uplinks(&if_name);
             }
             if ips.is_empty() {
                 if logical.enable_dhcp_client {
@@ -1507,6 +1511,27 @@ impl BaseDeviceDataTarget {
                 .filter_map(|other| other.loopback_ip().and_then(|ip| ip.addr()))
                 .collect();
         }
+    }
+    /// Puts the uplink `if_name` (NetBox tag `nat`) in the list `uplink`.
+    fn add_to_uplinks(&mut self, if_name: &AsciiString) {
+        let list = AsciiString::from(UPLINK_LIST);
+        self.interface_list.entry(list.clone()).or_insert_with(|| {
+            InterfaceListByName(InterfaceListCfg {
+                comment: Some(b"uplinks with nat: for firewall rules".into()),
+                exclude: Default::default(),
+                include: Default::default(),
+                name: list.clone(),
+            })
+        });
+        self.interface_list_member.insert(
+            (if_name.clone(), list.clone()),
+            InterfaceListMemberCfg {
+                comment: None,
+                disabled: false,
+                interface: if_name.clone(),
+                list,
+            },
+        );
     }
     /// Masquerades what leaves through the uplink `if_name` (NetBox tag `nat`).
     fn masquerade(&mut self, if_name: &AsciiString) {

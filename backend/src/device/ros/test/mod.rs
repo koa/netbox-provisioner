@@ -1,5 +1,4 @@
 mod capsman;
-mod dhcp_v6_client;
 mod hand_made;
 mod mac_server;
 mod mtu;
@@ -9,6 +8,7 @@ mod radio;
 mod service;
 mod speed;
 mod syslog;
+mod uplink;
 mod watchdog;
 mod wlan_vlans;
 

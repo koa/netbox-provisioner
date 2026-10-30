@@ -1,8 +1,9 @@
-//! The IPv6 DHCP client of an internet uplink, with prefix delegation
-//! (`BaseDeviceDataTarget::enable_dhcp_v6_client`, `keep_dhcp_v6_clients`).
+//! The internet uplink (`dhcp-client`, `nat`): its IPv6 DHCP client with prefix delegation
+//! (`BaseDeviceDataTarget::enable_dhcp_v6_client`, `keep_dhcp_v6_clients`) and the list
+//! `uplink` (`add_to_uplinks`).
 use super::empty_current;
 use crate::{
-    device::ros::{BaseDeviceDataTarget, l2::KeepNameGenerator},
+    device::ros::{BaseDeviceDataTarget, UPLINK_LIST, l2::KeepNameGenerator},
     topology::{Device, Interface, PhysicalPortId, TopologyHolder, builder::TopologyBuilder},
 };
 use mikrotik_model::{
@@ -101,4 +102,19 @@ async fn a_client_set_up_by_hand_gets_prefix_delegation() {
         target.dhcp_v_6_client[&AsciiString::from("sfp-sfpplus1")],
         current.dhcp_v_6_client[1]
     );
+}
+
+/// Only the port with `nat` is in the list `uplink`, which hand-made firewall rules use.
+#[tokio::test]
+async fn the_nat_uplink_is_in_the_list_uplink() {
+    let target = uplink_router().await;
+    let list = AsciiString::from(UPLINK_LIST);
+    assert!(target.interface_list.contains_key(&list));
+    let members = target
+        .interface_list_member
+        .keys()
+        .filter(|(_, member_of)| *member_of == list)
+        .map(|(interface, _)| interface.to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(members, ["ether1"]);
 }
