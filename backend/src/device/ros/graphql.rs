@@ -48,7 +48,7 @@ use mikrotik_model::{
     resource::{ResourceMutation, SingleResource, collect_resource},
 };
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashSet},
     net::IpAddr,
     sync::atomic::Ordering,
     time::{Duration, Instant, SystemTime},
@@ -113,24 +113,20 @@ impl DeviceCfg {
     ) -> Result<(), SetupError> {
         self.base_target.set_name_and_loopback(device);
 
-        // a legacy radio CAPsMAN manages keeps its name, NetBox's is in a warning
-        let mut name_generator = name_generator;
+        // a legacy radio CAPsMAN manages keeps its name and settings, as the CAP has them
         let kept = self
             .wireless_current
             .as_ref()
             .map(WirelessDeviceDataCurrent::managed_radios)
             .unwrap_or_default();
-        let expected = device
+        let managed_in_netbox = device
             .interfaces()
             .iter()
             .filter_map(|interface| {
                 let default_name = AsciiString::from(interface.external_port()?.to_string());
-                kept.contains_key(&default_name).then(|| {
-                    let name = name_generator.generate_interface_name(interface).into();
-                    (default_name, name)
-                })
+                kept.contains_key(&default_name).then_some(default_name)
             })
-            .collect::<HashMap<_, Box<str>>>();
+            .collect::<HashSet<_>>();
         let l2 = L2Setup::new(
             device,
             KeptNames {
@@ -145,7 +141,7 @@ impl DeviceCfg {
         if let Some(wireless_target) = self.wireless_target.as_mut() {
             wireless_target.generate_from(device, &l2, self.wireless_current.as_ref())?;
             if let Some(current) = &self.wireless_current {
-                warnings.extend(wireless_target.keep_managed_radios(current, &expected));
+                wireless_target.keep_managed_radios(current, &managed_in_netbox);
             }
         }
         if let Some(w60g_target) = self.w60g_target.as_mut() {

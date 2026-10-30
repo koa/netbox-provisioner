@@ -337,7 +337,6 @@ fn describe_warning(warning: &Warning) -> String {
     match warning {
         Warning::PoeCut(cut) => w::poe_cut(&cut.port, &cut.default_name),
         Warning::RadioBound(bound) => w::radio_bound(&bound.radio, bound.configuration.as_deref(), &bound.expected),
-        Warning::LegacyRadioManaged(managed) => w::legacy_radio_managed(&managed.radio, &managed.expected),
         Warning::CapOffOutsideWlanGroup(cap) => w::cap_off_outside_wlan_group(&cap.package),
         Warning::WatchTargetSilent(silent) => {
             w::watch_target_silent(&silent.address, silent.port.as_deref(), &silent.device)

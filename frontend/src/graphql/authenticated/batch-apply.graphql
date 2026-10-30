@@ -19,7 +19,6 @@ query BatchDevice($id: Int!){
                         __typename
                         ... on PoeCut { port defaultName }
                         ... on RadioBound { radio configuration expected }
-                        ... on LegacyRadioManaged { radio expected }
                         ... on CapOffOutsideWlanGroup { package }
                         ... on WatchTargetSilent { address port device }
                         ... on ApiClientsOutside { clients }

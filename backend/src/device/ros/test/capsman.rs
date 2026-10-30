@@ -6,7 +6,6 @@ use crate::{
         hw_facts::RadioPackage,
         l2::{EndpointNameGenerator, KeepNameGenerator, KeptNames, L2Port, L2Setup, NameGenerator},
         needed_radio_package,
-        warning::{ApplyWarning, LegacyRadioManaged},
     },
     topology::{
         Device, Interface, IpAddressData, PhysicalPortId, TopologyHolder, VlanData,
@@ -25,7 +24,7 @@ use mikrotik_model::{
     value::HasNone,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr},
 };
 
@@ -284,20 +283,10 @@ async fn managed_legacy_radio_keeps_its_name() {
     target
         .generate_from(&legacy_cap, &setup, Some(&current))
         .unwrap();
-    let warnings = target.keep_managed_radios(
-        &current,
-        &HashMap::from([(wlan1.clone(), netbox_name.clone())]),
-    );
+    target.keep_managed_radios(&current, &HashSet::from([wlan1.clone()]));
 
     assert_eq!(target.wireless[&Some(wlan1.clone())], data);
     assert_eq!(target.wireless_cap.interfaces, [wlan1.clone()].into());
-    assert_eq!(
-        warnings,
-        [ApplyWarning::LegacyRadioManaged(LegacyRadioManaged {
-            radio: "wlan1".into(),
-            expected: netbox_name,
-        })]
-    );
 }
 
 /// ap-buero-1og: a CAP's `bridge-caps` reaches other bridges only through the WLAN group's

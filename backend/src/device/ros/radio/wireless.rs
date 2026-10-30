@@ -7,7 +7,6 @@ use crate::{
         hw_facts::build_wireless_ports,
         l2::{L2Setup, NameGenerator},
         l2mtu_for, port_mtu,
-        warning::{ApplyWarning, LegacyRadioManaged},
     },
     topology::{
         PhysicalPortId, Radio, RadioRole,
@@ -23,7 +22,7 @@ use mikrotik_model::{
     },
     value::{Auto, HasNone, ParseRosValueResult, RosValue},
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 impl WirelessDeviceDataCurrent {
     /// The radios CAPsMAN manages, by default name with their name on the device: those the
@@ -98,39 +97,29 @@ impl WirelessDeviceDataTarget {
         }
         self.setup_legacy_cap(device, l2, current)
     }
-    /// Gives the radios CAPsMAN manages (`WirelessDeviceDataCurrent::managed_radios`) back what
-    /// they have, like `/interface/wifi` its bound ones; `expected` is NetBox's name of each
-    /// (by default name). The L2 setup already has their names (`l2::KeptNames`), and a
-    /// different configuration is a warning.
+    /// Gives the radios CAPsMAN manages (`WirelessDeviceDataCurrent::managed_radios`) and NetBox
+    /// has (`managed`, by default name) back what they have, like `/interface/wifi` its bound
+    /// ones. The L2 setup already has their names (`l2::KeptNames`). That they differ from
+    /// NetBox is no warning: CAPsMAN configures them, as it is meant to.
     pub fn keep_managed_radios(
         &mut self,
         current: &WirelessDeviceDataCurrent,
-        expected: &HashMap<AsciiString, Box<str>>,
-    ) -> Vec<ApplyWarning> {
-        let mut warnings = Vec::new();
+        managed: &HashSet<AsciiString>,
+    ) {
         for radio in current.wireless.iter() {
             let Some(default_name) = &radio.default_name else {
                 continue;
             };
-            let Some(expected) = expected.get(default_name) else {
+            if !managed.contains(default_name) {
                 continue;
-            };
-            let key = Some(default_name.clone());
-            if self.wireless.get(&key) != Some(&radio.data)
-                || radio.data.name.to_string() != **expected
-            {
-                warnings.push(ApplyWarning::LegacyRadioManaged(LegacyRadioManaged {
-                    radio: radio.data.name.to_string().into(),
-                    expected: expected.clone(),
-                }));
             }
+            let key = Some(default_name.clone());
             self.wireless.insert(key, radio.data.clone());
             // a radio L2 doesn't place joins the CAP under its default name
             if self.wireless_cap.interfaces.remove(default_name) {
                 self.wireless_cap.interfaces.insert(radio.data.name.clone());
             }
         }
-        warnings
     }
     /// A CAP of the legacy CAPsMAN (`Topology::is_legacy_cap`) with every radio NetBox has,
     /// finding the controller at its loopback like a CAP of `/interface/wifi`. The CAP

@@ -219,13 +219,6 @@ pub mod warning {
         )
     }
 
-    pub fn legacy_radio_managed(radio: &str, expected: &str) -> String {
-        if radio == expected {
-            format!("{radio} wird von CAPsMAN verwaltet und lässt sich nicht ändern: es behält seine Einstellungen")
-        } else {
-            format!("{radio} wird von CAPsMAN verwaltet und lässt sich nicht ändern: es behält seinen Namen (NetBox: {expected}) und seine Einstellungen")
-        }
-    }
 
     /// the board's radios run with `package`
     pub fn cap_off_outside_wlan_group(package: &str) -> String {

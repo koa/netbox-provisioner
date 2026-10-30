@@ -6,7 +6,6 @@ use async_graphql::{SimpleObject, Union};
 pub enum ApplyWarning {
     PoeCut(PoeCut),
     RadioBound(RadioBound),
-    LegacyRadioManaged(LegacyRadioManaged),
     CapOffOutsideWlanGroup(CapOffOutsideWlanGroup),
     WatchTargetSilent(WatchTargetSilent),
     ApiClientsOutside(ApiClientsOutside),
@@ -48,14 +47,6 @@ pub struct PoeCut {
 pub struct RadioBound {
     pub radio: Box<str>,
     pub configuration: Option<Box<str>>,
-    pub expected: Box<str>,
-}
-
-/// CAPsMAN manages the legacy radio `radio` (its name on the device), which RouterOS then
-/// refuses to change: it keeps its name and settings, NetBox's name for it is `expected`.
-#[derive(Clone, Debug, PartialEq, SimpleObject)]
-pub struct LegacyRadioManaged {
-    pub radio: Box<str>,
     pub expected: Box<str>,
 }
 
