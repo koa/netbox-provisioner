@@ -774,6 +774,37 @@ mod test {
             .unwrap_or_else(|| panic!("{name}"))
     }
 
+    /// The export with `change` made to each of its interfaces and without the IP addresses
+    /// `removed`: the state a test plans from, since NetBox has the links whole by now.
+    fn changed(
+        topology: &Arc<Topology>,
+        removed: &[&str],
+        change: impl Fn(&mut serde_json::Value),
+    ) -> Arc<Topology> {
+        Arc::new(
+            topology
+                .rebuilt_with(|json| {
+                    if let Some(addresses) = json["ip_address_list"].as_array_mut() {
+                        addresses.retain(|address| {
+                            !removed.iter().any(|id| address["id"] == *id)
+                        });
+                    }
+                    for device in json["device_list"].as_array_mut().into_iter().flatten() {
+                        for interface in device["interfaces"].as_array_mut().into_iter().flatten() {
+                            if let Some(addresses) = interface["ip_addresses"].as_array_mut() {
+                                addresses.retain(|address| {
+                                    !removed.iter().any(|id| address["id"] == *id)
+                                });
+                            }
+                            change(interface);
+                        }
+                    }
+                })
+                .expect("the export's source")
+                .expect("rebuilt"),
+        )
+    }
+
     fn input(ap: &DeviceAccess, station: &DeviceAccess) -> RadioBridgeInput {
         RadioBridgeInput {
             ap: ap.id().0,
@@ -786,12 +817,22 @@ mod test {
         }
     }
 
-    /// schopf-burri – burri-schopf as in the export: cables, bridges, radios, link and
-    /// loopbacks are there, the bridges lack their addresses in router-schopf's network and
-    /// `ospf`, berghof-burri an IPv4 in it.
+    /// schopf-burri – burri-schopf as in an export before the helper: cables, bridges,
+    /// radios, link and loopbacks are there, the bridges lack their addresses in
+    /// router-schopf's network and `ospf`, berghof-burri an IPv4 in it, the bridges' cables
+    /// their labels.
     #[tokio::test]
     async fn schopf_burri_gets_its_addresses() {
-        let topology = example_topology();
+        // berghof-burri ether1's 172.17.0.42/29 and the bridges' .43 and .44
+        let topology = changed(&example_topology(), &["554", "555", "556"], |interface| {
+            match interface["id"].as_str() {
+                // the bridges of schopf-burri and burri-schopf
+                Some("304" | "342") => interface["tags"] = serde_json::json!([]),
+                // the bridges' ether1
+                Some("305" | "343") => interface["label"] = serde_json::json!(""),
+                _ => {}
+            }
+        });
         let (ap, station) = (find(&topology, "schopf-burri"), find(&topology, "burri-schopf"));
         let mut routes = Some(Routes::none("test"));
         let plan = plan_with(&topology, &input(&ap, &station), &mut routes)
@@ -902,7 +943,16 @@ mod test {
     /// is cut off until both ends are applied.
     #[test]
     fn a_radio_without_role_is_corrected() {
-        let topology = example_topology();
+        // the link as it was before the helper: no roles, no SSID, open
+        let topology = changed(&example_topology(), &[], |interface| {
+            if matches!(interface["id"].as_str(), Some("293" | "296")) {
+                interface["rf_role"] = serde_json::json!("");
+                let link = &mut interface["wireless_link"];
+                link["ssid"] = serde_json::json!("");
+                link["auth_type"] = serde_json::Value::Null;
+                link["auth_psk"] = serde_json::json!("");
+            }
+        });
         let (ap, station) = (find(&topology, "hegglin-schopf"), find(&topology, "schopf-hegglin"));
         // without loopbacks and segment: the export's devices lack `lo`, a new one asks NetBox
         let (plan, _) = link_plan(&topology, &input(&ap, &station)).expect("plan");

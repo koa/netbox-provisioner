@@ -22,7 +22,10 @@ use crate::{
 };
 use mikrotik_model::{
     generator::Generator,
-    hwconfig::{ADVERTISE_1G, EthernetNamePattern, generate_ethernet},
+    hwconfig::{
+        ADVERTISE_1G, ADVERTISE_1G_SFP, ADVERTISE_10G, ADVERTISE_25G, EthernetNamePattern,
+        generate_ethernet,
+    },
     model::InterfaceWirelessByDefaultName,
     resource::ResourceMutation,
 };
@@ -159,18 +162,23 @@ fn declared_ports(
         .iter()
         .filter_map(|i| i.external_port())
         .filter_map(|port| {
-            let (pattern, idx) = match port {
-                PhysicalPortId::Ethernet(n) => (EthernetNamePattern::Ether, n),
-                PhysicalPortId::SfpSfpPlus(n) => (EthernetNamePattern::SfpSfpPlus, n),
-                PhysicalPortId::Sfp28(n) => (EthernetNamePattern::Sfp28, n),
-                PhysicalPortId::Sfp(n) => (EthernetNamePattern::Sfp, n),
-                PhysicalPortId::Combo(n) => (EthernetNamePattern::Combo, n),
-                PhysicalPortId::QsfpPlus(port, lane) => {
-                    (EthernetNamePattern::QsfpPlus, (port - 1) * 4 + lane)
+            // what a cage of its kind advertises, so a speed NetBox fixes is there
+            let (pattern, idx, advertise): (_, _, &[_]) = match port {
+                PhysicalPortId::Ethernet(n) => (EthernetNamePattern::Ether, n, &ADVERTISE_1G),
+                PhysicalPortId::SfpSfpPlus(n) => {
+                    (EthernetNamePattern::SfpSfpPlus, n, &ADVERTISE_10G)
                 }
+                PhysicalPortId::Sfp28(n) => (EthernetNamePattern::Sfp28, n, &ADVERTISE_25G),
+                PhysicalPortId::Sfp(n) => (EthernetNamePattern::Sfp, n, &ADVERTISE_1G_SFP),
+                PhysicalPortId::Combo(n) => (EthernetNamePattern::Combo, n, &ADVERTISE_1G_SFP),
+                PhysicalPortId::QsfpPlus(port, lane) => (
+                    EthernetNamePattern::QsfpPlus,
+                    (port - 1) * 4 + lane,
+                    &ADVERTISE_10G,
+                ),
                 _ => return None,
             };
-            Some(generate_ethernet(pattern, &ADVERTISE_1G, 1592, false)(
+            Some(generate_ethernet(pattern, advertise, 1592, false)(
                 idx as usize,
             ))
         })
