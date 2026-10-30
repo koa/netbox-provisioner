@@ -548,7 +548,7 @@ mod test {
     /// `wlan0` and the 5 GHz backup `wlan1`, each linked to the other's, without SSID. Both are
     /// candidates by their `wlan0`, the radios pair by their links, and switch-schmidrueti's
     /// port to one is a radio link the helper is suggested for. The plan stops at 1og-sw2's
-    /// port, which is in its client bridge.
+    /// port while it is in its client bridge.
     #[tokio::test]
     async fn the_wave_nanos_of_the_export_pair_their_radios() {
         use crate::topology::{
@@ -593,8 +593,28 @@ mod test {
             station_address: None,
             ssid: None,
         };
+        // 1og-sw2 ether13 in its client bridge, whichever the export has (a plan that gets as
+        // far as the networks asks NetBox for free ones)
+        let in_bridge = Arc::new(
+                topology
+                    .rebuilt_with(|json| {
+                        for device in json["device_list"].as_array_mut().into_iter().flatten() {
+                            for interface in
+                                device["interfaces"].as_array_mut().into_iter().flatten()
+                            {
+                                if interface["id"] == "24" {
+                                    interface["bridge"] = serde_json::json!({ "id": "415" });
+                                }
+                            }
+                        }
+                    })
+                    .expect("a source")
+                    .expect("rebuilt"),
+            );
         let mut routes = Some(Routes::none("test"));
-        let Err(error) = radio_bridge::plan_with(&topology, &input, &mut routes).await else {
+        let Err(error) =
+            radio_bridge::plan_with(&in_bridge, &input, &mut routes).await
+        else {
             panic!("1og-sw2 ether13 is in its client bridge")
         };
         assert!(
