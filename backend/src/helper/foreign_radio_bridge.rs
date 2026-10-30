@@ -547,7 +547,8 @@ mod test {
     /// schmidrueti-berg – berg-schmidrueti as in the export: Wave Nanos with the 60 GHz
     /// `wlan0` and the 5 GHz backup `wlan1`, each linked to the other's, without SSID. Both are
     /// candidates by their `wlan0`, the radios pair by their links, and switch-schmidrueti's
-    /// port to one is a radio link the helper is suggested for. The plan stops at 1og-sw2's
+    /// port to one is a radio link the helper is suggested for (its removal once NetBox has the
+    /// link's networks, as by now). The plan stops at 1og-sw2's
     /// port while it is in its client bridge.
     #[tokio::test]
     async fn the_wave_nanos_of_the_export_pair_their_radios() {
@@ -648,9 +649,20 @@ mod test {
         };
         assert_eq!(name(&path.peer_bridge_port).as_deref(), Some("berg-schmidrueti eth0"));
         assert_eq!(name(&path.peer_router_port).as_deref(), Some("1og-sw2 ether13"));
+        // the helper until the link has its networks, then the removal
+        let planned = router
+            .interfaces()
+            .iter()
+            .any(|i| i.name() == "ether1" && !i.ips().is_empty());
+        let (kind, helper) = if planned {
+            (ActionKind::Remove, ActionHelper::RadioDisconnect)
+        } else {
+            (ActionKind::Suggestion, ActionHelper::RadioBridge)
+        };
         assert!(
-            row.actions.iter().any(|action| action.kind == ActionKind::Suggestion
-                && action.helper == ActionHelper::RadioBridge),
+            row.actions
+                .iter()
+                .any(|action| action.kind == kind && action.helper == helper),
             "{:?}",
             row.actions
         );
