@@ -63,6 +63,8 @@ pub fn radio_package(model: &[u8]) -> Option<RadioPackage> {
         | b"RB962UiGS-5HacT2HnT"
         // the first wAP ac (mipsbe): no `wifi-qcom-ac` for it
         | b"RBwAPG-5HacT2HnD"
+        // cAP 2n (mipsbe, 2.4 GHz 802.11n): a CAP of the legacy CAPsMAN
+        | b"RBcAP2n"
         | b"RBDynaDishG-5HacDr3"
         // RouterOS 6 reports the RB912 without `RB`
         | b"RB912UAG-2HPnD"
@@ -331,6 +333,15 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
             EthernetNamePattern::Ether,
             &ADVERTISE_1G,
             1600,
+            false,
+        )(1)]
+        .into(),
+        // cAP 2n: a single port, PoE-in only; a 10/100 port that advertises 1G all the same
+        // (bachman-wlan-dg, 7.20.4)
+        b"RBcAP2n" => [generate_ethernet(
+            EthernetNamePattern::Ether,
+            &ADVERTISE_1G,
+            1598,
             false,
         )(1)]
         .into(),

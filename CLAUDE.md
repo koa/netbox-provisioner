@@ -808,6 +808,10 @@ VLAN example; no 802.11ax device in the lab to try it); a `wifi-qcom-ac` CAP is 
 it runs `wireless` instead with `wlan<N>` in NetBox (`hw_facts::runs_wireless`, the wAP ac).
 The first wAP ac (`RBwAPG-5HacT2HnD`, mipsbe, one port) has no `wifi-qcom-ac` and only runs
 `wireless`, like the hAP ac.
+So does the cAP 2n (`RBcAP2n`, mipsbe, 2.4 GHz, one 10/100 port that advertises 1G; values as
+bachman-wlan-dg reports them on 7.20.4), a CAP of the legacy CAPsMAN; its switch chip
+(`switch1`) isn't in MikroTik's table and stays out of `SwitchChips`, which changes nothing for
+one port beside a radio.
 A CAP's radio refers to a local `/interface/wifi/configuration` (`manager=capsman`, the
 datapath; `capsman` for the first datapath, `capsman-<bridge>` for others) and keeps its
 default name (`wifi1`; L2 names it so too): CAPsMAN binds it through that configuration. A

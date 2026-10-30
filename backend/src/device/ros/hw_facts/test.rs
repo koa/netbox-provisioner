@@ -71,6 +71,18 @@ fn hap_ax2_poe_port_has_its_power_cycle_settings() {
     assert_eq!(ether2.data.power_cycle_ping_enabled, None);
 }
 
+/// As bachman-wlan-dg reports it (7.20.4): `ether1` with `l2mtu=1598`, advertising up to 1G.
+#[test]
+fn cap_2n_has_one_port_and_runs_wireless() {
+    let ports = build_ethernet_ports(b"RBcAP2n");
+    assert_eq!(ports.len(), 1);
+    assert_eq!(&*ports[0].default_name, b"ether1");
+    assert_eq!(ports[0].data.l_2_mtu, Some(1598));
+    assert_eq!(ports[0].data.advertise.len(), 6);
+    assert_eq!(ports[0].data.poe_out, None);
+    assert_eq!(radio_package(b"RBcAP2n"), Some(RadioPackage::Wireless));
+}
+
 #[test]
 fn first_wap_ac_has_one_port_and_runs_wireless() {
     let ports = build_ethernet_ports(b"RBwAPG-5HacT2HnD");
