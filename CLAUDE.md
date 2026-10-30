@@ -159,8 +159,8 @@ bridge's ports below it, `InterfaceRow.portRows`, with PoE only; the free ones i
 that opens) and on it exactly the actions possible there, the helper starting from that port:
 there is no menu of all helpers. A free or unknown port gets the roles, an Ethernet port
 without a router on its cable also „Als Richtfunk“ (`HelperPreset::RadioChoose`: the flow asks
-for a bridge device with one radio and no cable to a router first, then embeds its helper as
-`RadioFrom`), every port but loopback and uplink „PoE“ and „Flags“ (`ActionKind::Edit`,
+for a bridge device with one radio and no cable to a router but to this port first, then embeds
+its helper as `RadioFrom`), every port but loopback and uplink „PoE“ and „Flags“ (`ActionKind::Edit`,
 `HelperPreset::Poe`/`Flags`: the PoE form with the port and its cable's far end, the flags of
 that interface only; a form doesn't offer the port its preset gives, `HelperPreset::fixes_port`,
 the modal's title names it); a customer bridge's port „Aus Bridge lösen“ (`helper::bridge_leave`:

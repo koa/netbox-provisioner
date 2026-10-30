@@ -2,7 +2,7 @@
 //! the link out, a task for it, its settings): a stepper Plan → Vorschau → In NetBox schreiben →
 //! Anwenden above the helper's form, plan and preview (`NetboxHelper`, embedded). „Funkbrücke“
 //! from a free router port first asks for the bridge device to cable there (one radio, no cable
-//! to a router), then embeds that device's helper. Written, „Jetzt anwenden“ goes to the card
+//! to a router but to this port), then embeds that device's helper. Written, „Jetzt anwenden“ goes to the card
 //! „Änderungen“, „Später“ closes it.
 use crate::{
     components::{
@@ -234,10 +234,15 @@ impl HelperFlow {
     }
 }
 
-/// The bridge devices without a cable to a router.
+/// The bridge devices without a cable to a router, or with one to this router port (a Wave
+/// Nano cabled before its link was in NetBox).
 fn fetch_bridges(ctx: &Context<HelperFlow>) {
     let scope = ctx.link().clone();
     let id = ctx.props().id;
+    let from = match &ctx.props().preset {
+        HelperPreset::RadioChoose { router_port, .. } => Some(*router_port),
+        _ => None,
+    };
     spawn_local(async move {
         let bridges = query_authenticated::<RadioBridgeCandidates, _>(
             scope.clone(),
@@ -250,7 +255,12 @@ fn fetch_bridges(ctx: &Context<HelperFlow>) {
                 .map(|device| device.radio_bridge_candidates)
                 .unwrap_or_default()
                 .into_iter()
-                .filter(|candidate| candidate.router_port.is_none())
+                .filter(|candidate| {
+                    candidate
+                        .router_port
+                        .as_ref()
+                        .is_none_or(|port| Some(port.id as u32) == from)
+                })
                 .map(|candidate| Bridge {
                     id: candidate.device.id as u32,
                     text: t::bridge_device(

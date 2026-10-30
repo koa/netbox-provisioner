@@ -328,6 +328,15 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
         InterfaceTask::Uplink
     } else if radio.is_some() {
         InterfaceTask::RadioLink
+    } else if interface.untagged_vlan().is_none()
+        && far_ends
+            .iter()
+            .filter_map(InterfaceAccess::device)
+            .any(|far| !far.has_routeros() && far.is_bridge_device())
+    {
+        // a radio bridge without RouterOS (Wave Nano) takes its lease here: `dhcp` makes no
+        // customer of it
+        InterfaceTask::RadioLink
     } else if interface.untagged_vlan().is_some() || interface.is_enable_dhcp_server() {
         // before the cables: a customer bridge may have other devices on its ports
         InterfaceTask::Customer

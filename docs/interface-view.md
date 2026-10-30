@@ -18,6 +18,7 @@ passt, gilt):
 | Loopback | Name `lo` |
 | Uplink | Tag `dhcp-client` oder `nat` |
 | Richtfunk-Verbindung | das Interface oder ein Port seiner Bridge ist ein Ende eines Wireless Links |
+| Richtfunk-Verbindung | ohne untagged VLAN: Kabel zu einem Brückengerät ohne RouterOS (Wave Nano), auch mit `dhcp`, aus dem es seine Lease holt ([foreign-radio-bridge.md](foreign-radio-bridge.md)) |
 | Kunden-Anschluss | untagged VLAN am Interface, oder Tag `dhcp` |
 | Direktverbindung | Kabel (auch über Patch-Panels) zu einem Port eines anderen RouterOS-Geräts (Router, AP, Switch), das kein Brückengerät ist |
 | Richtfunk-Verbindung | Kabel zu einem Brückengerät |
@@ -169,7 +170,9 @@ Entscheidung, was ein Vorschlag tut, im Backend.
 - **Funkbrücke vom Router-Port:** Die Richtfunk-Zeile eines Routers bettet den Helfer des
   verkabelten Brückengeräts ein (`HelperPreset::RadioFrom`, Router und Router-Port vorbelegt).
   „Als Richtfunk“ von einem freien Router-Port fragt zuerst nach dem Brückengerät (genau ein Radio,
-  kein Kabel zu einem Router, auch ohne RouterOS; `HelperPreset::RadioChoose`). Die andere Brücke und ihr Router
+  kein Kabel zu einem Router oder eines zu diesem Port, auch ohne RouterOS;
+  `HelperPreset::RadioChoose`). Eine Wave Nano, die schon am Port hängt, deren Link aber noch
+  fehlt, ist noch kein Brückengerät: Die Zeile bleibt unbekannt, „Als Richtfunk“ bietet sie an. Die andere Brücke und ihr Router
   werden im Dialog gewählt, sie liegen auf anderen Geräten.
 - **Die Dialoge** fragen den Port, von dem sie starten, nicht: Er steht im Titel. Von der Seite
   eines Brückengeräts und für VLAN am Port von einem VLAN-Interface her bleibt die Auswahl, dort

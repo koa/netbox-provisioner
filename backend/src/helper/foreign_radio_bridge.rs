@@ -470,6 +470,30 @@ mod test {
         assert!(matches!(&error, Error::NoRouterOs(name) if &**name == "wave-a"), "{error:?}");
     }
 
+    /// A router port to a Wave Nano is a radio link in the interface view, also with `dhcp`
+    /// (the Wave Nano's lease), and its path names the bridge device's port.
+    #[test]
+    fn a_router_port_to_a_wave_nano_is_a_radio_link() {
+        use crate::topology::interfaces::InterfaceTask;
+        let topology = Arc::new(Lab::new().builder.build());
+        let np1 = topology
+            .list_devices()
+            .find(|d| d.name() == "np1")
+            .expect("np1");
+        let view = np1.interface_view();
+        let row = view
+            .rows
+            .iter()
+            .find(|row| &*row.interface.name == "ether8")
+            .expect("ether8");
+        assert_eq!(row.task, InterfaceTask::RadioLink);
+        let path = row.radio_path.as_ref().expect("a radio path");
+        assert_eq!(
+            path.bridge_port.as_ref().map(|p| &*p.device.name),
+            Some("wave-a")
+        );
+    }
+
     /// The Wave Nanos are candidates, without RouterOS and with the router they are cabled to.
     #[test]
     fn bridges_without_routeros_are_candidates() {
