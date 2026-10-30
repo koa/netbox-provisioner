@@ -590,6 +590,9 @@ wird von selbst weggeräumt.
 
 - Das Apply-Skript bleibt nach jedem Anwenden liegen, das nächste ersetzt es; ein Rest ist es nur,
   solange es läuft.
+- Pakete in einem Verzeichnis installiert RouterOS nicht; sie sind kein Rest und bleiben auch bei
+  „Hochgeladene Pakete entfernen“ liegen. Ein CAPsMAN-Router hält dort mit Absicht die Pakete
+  seiner CAPs (`sd1-part1/upgrade/…` auf einer SD-Karte).
 - Hält den Eintrag des Sicherheitsnetzes der laufende Auftrag eines anderen Geräts (das Update des
   überwachten Geräts, ein Anwenden mit Funkänderung), ist er kein Rest: Die Seite zeigt ihn getrennt
   mit diesem Auftrag und ohne Knopf (`heldBy`), und `clearLeftover` lehnt ab (`LEFTOVER_HELD`), denn

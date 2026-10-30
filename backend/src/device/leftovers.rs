@@ -34,7 +34,7 @@ pub struct Leftovers {
     pub watchdogs: Option<WatchdogsLeft>,
     /// the script of an apply runs (`/system/script/job`); it ends by itself
     pub apply_script_running: bool,
-    /// `.npk` files, installed at the next boot
+    /// `.npk` files in the root, installed at the next boot (`installs_at_boot`)
     pub packages: Vec<PackageLeft>,
 }
 
@@ -145,13 +145,20 @@ pub async fn read(device: &RawDevice<SimpleResult>) -> Result<Leftovers, Error> 
     })
 }
 
-/// The `.npk` files on the device.
+/// The `.npk` files on the device that install at the next boot.
 async fn packages(device: &RawDevice<SimpleResult>) -> Result<Vec<Row>, Error> {
     Ok(rows(device, "/file/print")
         .await?
         .into_iter()
-        .filter(|row| field(row, "name").is_some_and(|name| name.ends_with(".npk")))
+        .filter(|row| field(row, "name").is_some_and(installs_at_boot))
         .collect())
+}
+
+/// Whether RouterOS installs the file at the next boot: a package in the root, where an update
+/// uploads it. One in a directory stays: a CAPsMAN router keeps the packages of its CAPs there
+/// (`sd1-part1/upgrade/…`, its `upgrade-policy`), on purpose.
+fn installs_at_boot(name: &str) -> bool {
+    name.ends_with(".npk") && !name.contains('/')
 }
 
 /// Does `action` on the device `link` reaches (`name` for the errors). Loading the fallback now
@@ -205,4 +212,17 @@ pub async fn clear(
     }
     log.emit(LeftoverCleared { action });
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::installs_at_boot;
+
+    #[test]
+    fn only_a_package_in_the_root_installs() {
+        assert!(installs_at_boot("routeros-7.23.8-arm.npk"));
+        // the packages a CAPsMAN router keeps for its CAPs
+        assert!(!installs_at_boot("sd1-part1/upgrade/routeros-7.23.7-arm.npk"));
+        assert!(!installs_at_boot("routeros-7.23.8-arm.npk.txt"));
+    }
 }

@@ -63,6 +63,22 @@ fn unpowered() -> PowerChain {
     PowerChain::unpowered("leftovers")
 }
 
+/// A package for the CAPs, in a directory (`sd1-part1/upgrade/…` on a router with an SD card).
+const CAP_PACKAGE: &str = "upgrade/routeros-7.99-arm.npk";
+
+async fn files(device: &MikrotikDevice<SimpleResult>) -> Vec<String> {
+    let mut stream = device.send_simple_command(b"/file/print".as_slice(), ()).await;
+    let mut names = Vec::new();
+    while let Some(result) = stream.next().await {
+        if let SimpleResult::Sentence(row) = result
+            && let Some(Some(name)) = row.get("name")
+        {
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
 async fn identity(device: &MikrotikDevice<SimpleResult>) -> String {
     let mut stream = device.send_simple_command(b"/system/identity/print".as_slice(), ()).await;
     let mut name = String::new();
@@ -103,6 +119,9 @@ async fn leftovers_are_found_and_cleared() {
     };
     suspend(&device, &watching, Duration::from_secs(7200)).await.unwrap();
     run(&device, "/file/add", &[("name", "routeros-7.99.npk"), ("contents", "not a package")]).await;
+    // what a CAPsMAN router keeps for its CAPs, on purpose: no leftover, never removed
+    run(&device, "/file/add", &[("name", "upgrade"), ("type", "directory")]).await;
+    run(&device, "/file/add", &[("name", CAP_PACKAGE), ("contents", "not a package")]).await;
     let left = read(&device).await.unwrap();
     eprintln!("{left:#?}");
     assert!(left.apply_fallback.is_some());
@@ -127,6 +146,7 @@ async fn leftovers_are_found_and_cleared() {
     }
     let left = read(&device).await.unwrap();
     assert!(left.is_empty(), "{left:?}");
+    assert!(files(&device).await.iter().any(|name| name == CAP_PACKAGE));
     run(&device, "/execute", &[("script", "/system script run netbox-provisioner-apply")]).await;
     tokio::time::sleep(Duration::from_secs(2)).await;
     assert!(read(&device).await.unwrap().apply_script_running);
