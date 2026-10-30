@@ -758,7 +758,7 @@ bound radio is flagged dynamic and RouterOS refuses any change to it, also with 
 change but reports and uses the controller's values (router-stall-burri, also a hAP ax² on 7.23.8:
 `!datapath.vlan-id` stayed open with the controller's `.vlan-id=1`). So it stays as read
 (`bound_radios`, from `InterfaceWifiState::dynamic` or `bound`), the configuration and datapath it uses stay, and a
-different configuration than NetBox's is a warning before applying (`RadioBound`). What changes is the
+different configuration than NetBox's is no warning: bound, it runs with the controller's values. What changes is the
 configuration it uses (`datapath=`), a plain entry. A bound radio reports
 `configuration=capsman` also where no such entry is (cAP ax, 7.23.7). It needs no seed in the
 sort (`provided_by_routeros`): a kept reference isn't a dependency (`written_references`), and

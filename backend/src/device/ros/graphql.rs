@@ -148,14 +148,14 @@ impl DeviceCfg {
             w60g_target.generate_from(device, &l2, self.w60g_current.as_ref())?;
         }
         if let Some(wifi_target) = self.wifi_target.as_mut() {
-            warnings.extend(wifi_target.generate_from(
+            wifi_target.generate_from(
                 device,
                 &l2,
                 self.wifi_current.as_ref(),
                 &self.capsman_certificates,
                 self.radio_package,
                 &self.bound_radios,
-            )?);
+            )?;
         }
         if let Some(capsman_target) = self.capsman_target.as_mut() {
             capsman_target.generate_from(device)?;

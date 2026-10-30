@@ -5,7 +5,6 @@ use async_graphql::{SimpleObject, Union};
 #[derive(Clone, Debug, PartialEq, Union)]
 pub enum ApplyWarning {
     PoeCut(PoeCut),
-    RadioBound(RadioBound),
     CapOffOutsideWlanGroup(CapOffOutsideWlanGroup),
     WatchTargetSilent(WatchTargetSilent),
     ApiClientsOutside(ApiClientsOutside),
@@ -39,15 +38,6 @@ pub struct PoeCut {
     /// the name the target gives the port
     pub port: Box<str>,
     pub default_name: Box<str>,
-}
-
-/// CAPsMAN has bound `radio`, which RouterOS then refuses to change, and it uses the
-/// configuration `configuration` instead of `expected` (NetBox's).
-#[derive(Clone, Debug, PartialEq, SimpleObject)]
-pub struct RadioBound {
-    pub radio: Box<str>,
-    pub configuration: Option<Box<str>>,
-    pub expected: Box<str>,
 }
 
 /// The board has radios, but NetBox uses none of them and has the device in no Wireless LAN

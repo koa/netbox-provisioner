@@ -1453,9 +1453,6 @@ fn running_job(scope: Scope<ShowDevice>, id: u32) {
 fn describe_warning(warning: &Warning) -> String {
     match warning {
         Warning::PoeCut(cut) => t::warning::poe_cut(&cut.port, &cut.default_name),
-        Warning::RadioBound(bound) => {
-            t::warning::radio_bound(&bound.radio, bound.configuration.as_deref(), &bound.expected)
-        }
         Warning::CapOffOutsideWlanGroup(cap) => t::warning::cap_off_outside_wlan_group(&cap.package),
         Warning::WatchTargetSilent(silent) => {
             t::warning::watch_target_silent(&silent.address, silent.port.as_deref(), &silent.device)

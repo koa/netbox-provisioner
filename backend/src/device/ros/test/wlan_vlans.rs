@@ -10,7 +10,6 @@ use crate::{
         hw_facts::{RadioPackage, build_wifi_ports, build_wireless_ports},
         l2::{KeepNameGenerator, L2Setup},
         needed_radio_package,
-        warning::{ApplyWarning, RadioBound},
     },
     topology::{
         Device, Interface, IpAddressData, PhysicalPortId, TopologyHolder, VlanData,
@@ -231,8 +230,9 @@ async fn ax_cap_tags_the_vlans_of_the_controller() {
 }
 
 /// A radio CAPsMAN has bound can't be changed (7.23.8, also with the CAP off): it stays as it
-/// is, with the configuration and datapath it uses, and a different configuration is a
-/// warning. The configuration it uses is changed instead.
+/// is, with the configuration and datapath it uses; bound, it runs with the controller's
+/// values, so a different configuration is no warning. The configuration it uses is changed
+/// instead.
 #[tokio::test]
 async fn bound_radio_stays_and_its_configuration_is_changed() {
     let [_, ap_ax, ..] = wlan_group(&[104, 105]).await;
@@ -269,20 +269,11 @@ async fn bound_radio_stays_and_its_configuration_is_changed() {
     };
     let bound = [AsciiString::from("wifi1"), AsciiString::from("wifi2")];
     let mut target = WifiDeviceDataTarget::new(b"C52iG-5HaxD2HaxD");
-    let warnings = target
+    target
         .generate_from(&ap_ax, &setup, Some(&current), &[], Some(RadioPackage::WifiQcom), &bound)
         .unwrap();
     assert_eq!(target.wifi[&Some(AsciiString::from("wifi1"))], radios[0].data);
     assert_eq!(target.wifi[&Some(AsciiString::from("wifi2"))], radios[1].data);
-    assert_eq!(warnings.len(), 1, "{warnings:?}");
-    assert_eq!(
-        warnings[0],
-        ApplyWarning::RadioBound(RadioBound {
-            radio: "wifi1".into(),
-            configuration: Some("own".into()),
-            expected: "capsman".into(),
-        })
-    );
     // `capsman` gets the datapath NetBox wants, `own` stays with its datapath
     let capsman = &target.configuration[&AsciiString::from("capsman")].0;
     assert_eq!(capsman.datapath, Some("bridge-caps".into()));

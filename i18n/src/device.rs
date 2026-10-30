@@ -212,13 +212,6 @@ pub mod warning {
         format!("Soll der Strom an {port} wirklich abgeschaltet werden?")
     }
 
-    pub fn radio_bound(radio: &str, configuration: Option<&str>, expected: &str) -> String {
-        format!(
-            "{radio} ist an CAPsMAN gebunden und lässt sich nicht ändern: es verwendet die Konfiguration {} statt {expected}",
-            configuration.unwrap_or("-")
-        )
-    }
-
 
     /// the board's radios run with `package`
     pub fn cap_off_outside_wlan_group(package: &str) -> String {

@@ -6,7 +6,6 @@ use crate::{
         SetupError, WifiDeviceDataCurrent, WifiDeviceDataTarget,
         hw_facts::RadioPackage,
         l2::{L2Setup, NameGenerator},
-        warning::{ApplyWarning, RadioBound},
     },
     topology::{PhysicalPortId, WlanAuth, access::device::DeviceAccess},
 };
@@ -55,8 +54,7 @@ impl WifiDeviceDataTarget {
         capsman_certificates: &[AsciiString],
         radio_package: Option<RadioPackage>,
         bound_radios: &[AsciiString],
-    ) -> Result<Vec<ApplyWarning>, SetupError> {
-        let mut warnings = Vec::new();
+    ) -> Result<(), SetupError> {
         // without a package of `/interface/wifi`, its radios are what one left (a wAP ac on
         // `wireless` now): inactive, but keeping their names, which the `wlan<N>` need
         let drivers = radio_package.is_some_and(RadioPackage::is_wifi);
@@ -152,16 +150,10 @@ impl WifiDeviceDataTarget {
                     }
                 };
                 // A radio CAPsMAN has bound is dynamic and RouterOS refuses any change to it
-                // (7.23.8, also with the CAP off): it stays as it is, a different configuration
-                // is a warning.
+                // (7.23.8, also with the CAP off): it stays as it is. A different configuration
+                // is no warning: bound, it runs with the controller's values, and once it isn't
+                // the next apply gives it NetBox's.
                 if bound_radios.contains(&default_name) {
-                    if radio.configuration.as_ref() != Some(&configuration_name) {
-                        warnings.push(ApplyWarning::RadioBound(RadioBound {
-                            radio: default_name.to_string().into(),
-                            configuration: radio.configuration.as_ref().map(|c| c.to_string().into()),
-                            expected: configuration_name.to_string().into(),
-                        }));
-                    }
                     continue;
                 }
                 // under the name L2 gives it; the configuration has it all, which the radio
@@ -254,6 +246,6 @@ impl WifiDeviceDataTarget {
                     (!slaves.is_empty()).then(|| slaves.iter().cloned().collect());
             }
         }
-        Ok(warnings)
+        Ok(())
     }
 }
