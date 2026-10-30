@@ -71,7 +71,7 @@ fn check_port(port: &InterfaceAccess) -> Result<(), Error> {
             bridge: bridge.name().into(),
         });
     }
-    if port.is_enable_dhcp_client() || port.is_nat() {
+    if port.is_enable_dhcp_client() || port.is_nat() || port.is_internet() {
         return Err(Error::PortUplink(port_name(port)));
     }
     if let Some(address) = port.ips().first() {

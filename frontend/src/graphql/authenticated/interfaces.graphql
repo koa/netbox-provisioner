@@ -14,6 +14,7 @@ query InterfaceView($device: Int!){
                     dhcp
                     dhcpClient
                     nat
+                    internet
                     mtu
                     untaggedVlan{ ...Vlan }
                     taggedVlans{ ...Vlan }
@@ -56,6 +57,7 @@ fragment Finding on Finding{
         ... on DhcpPoolEmpty{ interface{ ...Interface } address{ ...Address } prefix{ id prefix } }
         ... on PortLikeName{ interface{ ...Interface } }
         ... on RadioWithoutRole{ interface{ ...Interface } }
+        ... on NatWithoutInternet{ interface{ ...Interface } }
         ... on LoopbackWithoutOspf{ device{ ...Device } address{ ...Address } }
         ... on VlanWithoutGroup{ interface{ ...Interface } vlan }
         ... on MtuMismatch{ interface{ ...Interface } mtu farEnd{ ...Interface } farMtu }

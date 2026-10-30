@@ -1583,6 +1583,9 @@ impl BaseDeviceDataTarget {
                     action: IpFirewallFilterAction::Drop,
                     chain: b"input".into(),
                     comment: Some(firewall_comment(&["close-dns", &if_name.to_string(), &protocol.to_string()])),
+                    address_list: None,
+                    address_list_timeout: None,
+                    connection_nat_state: None,
                     connection_state: None,
                     disabled: false,
                     dst_address: None,
@@ -1594,6 +1597,7 @@ impl BaseDeviceDataTarget {
                     out_interface_list: None,
                     protocol: Some(protocol),
                     src_address: None,
+                    src_address_list: None,
                 },
             );
         }

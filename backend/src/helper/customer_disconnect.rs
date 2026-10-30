@@ -65,6 +65,7 @@ pub fn plan(topology: &Arc<Topology>, input: &CustomerDisconnectInput) -> Result
     let keeps = |interface: &InterfaceAccess| {
         interface.use_ospf()
             || interface.is_nat()
+            || interface.is_internet()
             || interface.is_enable_dhcp_client()
             || interface.label().is_some()
             || interface.tagged_vlans().next().is_some()

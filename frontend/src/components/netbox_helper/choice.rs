@@ -220,6 +220,7 @@ macro_rules! helper_input {
                             Flag::Dhcp => $module::InterfaceTag::DHCP,
                             Flag::DhcpClient => $module::InterfaceTag::DHCP_CLIENT,
                             Flag::Nat => $module::InterfaceTag::NAT,
+                            Flag::Internet => $module::InterfaceTag::INTERNET,
                         },
                         set,
                     })

@@ -169,6 +169,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     let enable_dhcp_client = interface.tags.iter().any(|t| t.slug == "dhcp-client");
                     let enable_dhcp_server = interface.tags.iter().any(|t| t.slug == "dhcp");
                     let nat = interface.tags.iter().any(|t| t.slug == "nat");
+                    let internet = interface.tags.iter().any(|t| t.slug == "internet");
                     let external = PhysicalPortId::from_str(&interface.name).ok();
                     let sixty_ghz = matches!(interface.type_.as_str(), "ieee802.11ad" | "ieee802.11ay");
                     let port_type = match interface.type_.as_str() {
@@ -261,6 +262,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                             enable_dhcp_client,
                             enable_dhcp_server,
                             nat,
+                            internet,
                             bridge,
                             cable: None,
                             poe,

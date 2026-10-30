@@ -30,6 +30,13 @@ description: Uplink whose network doesn't route back - masquerade outgoing traff
 weight: 1000
 object_types: dcim.interface
 ---
+name: internet
+slug: internet
+color: f44336
+description: Interface to the internet, guarded by the perimeter firewall; nat needs it
+weight: 1000
+object_types: dcim.interface
+---
 name: loopback
 slug: loopback
 color: 9c27b0

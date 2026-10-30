@@ -33,9 +33,11 @@ pub enum Flag {
     Dhcp,
     DhcpClient,
     Nat,
+    Internet,
 }
 
-pub(super) const FLAGS: [Flag; 4] = [Flag::Ospf, Flag::Dhcp, Flag::DhcpClient, Flag::Nat];
+pub(super) const FLAGS: [Flag; 5] =
+    [Flag::Ospf, Flag::Dhcp, Flag::DhcpClient, Flag::Nat, Flag::Internet];
 
 impl Flag {
     pub(super) fn slug(self) -> &'static str {
@@ -44,6 +46,7 @@ impl Flag {
             Flag::Dhcp => "dhcp",
             Flag::DhcpClient => "dhcp-client",
             Flag::Nat => "nat",
+            Flag::Internet => "internet",
         }
     }
 }
@@ -234,6 +237,7 @@ macro_rules! tag_slug {
                     $module::InterfaceTag::DHCP => "dhcp",
                     $module::InterfaceTag::DHCP_CLIENT => "dhcp-client",
                     $module::InterfaceTag::NAT => "nat",
+                    $module::InterfaceTag::INTERNET => "internet",
                     $module::InterfaceTag::Other(other) => other,
                 }
             }

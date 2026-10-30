@@ -921,6 +921,7 @@ impl<G: NameGenerator> L2Setup<G> {
             enable_dhcp_client: s.root.is_enable_dhcp_client(),
             enable_dhcp_server: s.root.is_enable_dhcp_server(),
             nat: s.root.is_nat(),
+            internet: s.root.is_internet(),
         });
         let simple = self.simple_bridges.iter().map(|b| {
             let addresses = b
@@ -946,6 +947,7 @@ impl<G: NameGenerator> L2Setup<G> {
                 enable_dhcp_client: roots.iter().any(|r| r.is_enable_dhcp_client()),
                 enable_dhcp_server: roots.iter().any(|r| r.is_enable_dhcp_server()),
                 nat: roots.iter().any(|r| r.is_nat()),
+                internet: roots.iter().any(|r| r.is_internet()),
             }
         });
         let tagged = self.tagged_bridges.iter().flat_map(|b| {
@@ -979,6 +981,7 @@ impl<G: NameGenerator> L2Setup<G> {
                     enable_dhcp_client: roots.iter().any(|r| r.is_enable_dhcp_client()),
                     enable_dhcp_server: roots.iter().any(|r| r.is_enable_dhcp_server()),
                     nat: roots.iter().any(|r| r.is_nat()),
+                    internet: roots.iter().any(|r| r.is_internet()),
                 }
             })
         });
@@ -995,6 +998,7 @@ pub struct LogicalInterface<'a> {
     pub enable_dhcp_client: bool,
     pub enable_dhcp_server: bool,
     pub nat: bool,
+    pub internet: bool,
 }
 
 /// Turns free text from NetBox (labels, device and VLAN names) into one part of a

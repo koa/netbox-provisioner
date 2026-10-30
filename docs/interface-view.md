@@ -16,7 +16,7 @@ passt, gilt):
 | Aufgabe | erkannt an |
 |---|---|
 | Loopback | Name `lo` |
-| Uplink | Tag `dhcp-client` oder `nat` |
+| Uplink | Tag `dhcp-client`, `nat` oder `internet` |
 | Richtfunk-Verbindung | das Interface oder ein Port seiner Bridge ist ein Ende eines Wireless Links |
 | Richtfunk-Verbindung | ohne untagged VLAN: Kabel zu einem Brückengerät ohne RouterOS (Wave Nano), auch mit `dhcp`, aus dem es seine Lease holt ([foreign-radio-bridge.md](foreign-radio-bridge.md)) |
 | Kunden-Anschluss | untagged VLAN am Interface, oder Tag `dhcp` |
@@ -79,7 +79,8 @@ Benachbart heisst `Full`, oder `TwoWay` zwischen zwei DROther, wie nach einem Up
 
 Uplinks werden vollständig in NetBox modelliert. Der Provisioner erkennt und zeigt sie, ändert sie
 aber nicht: keine Helfer, nur „In NetBox öffnen“. Angezeigt werden Port, Adresse bzw.
-`dhcp-client` und `nat`; geprüft wie die übrigen Befunde.
+`dhcp-client`, `nat` und `internet`; geprüft wie die übrigen Befunde (`nat` ohne `internet`
+ist `NatWithoutInternet`).
 
 ### Direktverbindung
 

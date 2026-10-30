@@ -25,7 +25,8 @@ Die Slugs müssen exakt so heißen:
 |               | (mit `ospf` ohne Default-Route: die kommt dann über OSPF)     |
 | `nat`         | Uplink, dessen Netz nicht zurückroutet: ausgehend maskieren   |
 |               | (mit `dhcp-client` auch ein IPv6-DHCP-Client mit Prefix       |
-|               | Delegation, siehe Rezept unten)                               |
+|               | Delegation, siehe Rezept unten); setzt `internet` voraus      |
+| `internet`    | Interface zum Internet (Uplink, auch ohne `nat`)              |
 
 An Prefixen markieren zwei Tags, woraus der Config-Helper Adressen vergibt
 ([Config-Helper](config-helper.md#prefixe)). Die Config ändern sie nicht; die Befunde melden
@@ -39,7 +40,7 @@ einen fehlenden oder fast vollen Pool (unter 10 % frei):
 An Journal-Einträgen erkennt der Provisioner seine eigenen am Tag `netbox-provisioner`
 ([Protokoll](protocol.md)); er setzt ihn selbst.
 
-Alle sieben Tags lassen sich mit [netbox-import/3-tags.yaml](netbox-import/3-tags.yaml) anlegen
+Alle acht Tags lassen sich mit [netbox-import/3-tags.yaml](netbox-import/3-tags.yaml) anlegen
 (Customization > Tags > Import, YAML).
 
 `nat` erzeugt `srcnat action=masquerade out-interface=<Uplink>` und nimmt den Uplink in die

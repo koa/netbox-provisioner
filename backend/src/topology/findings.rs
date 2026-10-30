@@ -55,6 +55,7 @@ pub enum FindingKind {
     AddressWithoutOspf(AddressWithoutOspf),
     WlanWithoutVlan(WlanWithoutVlan),
     RadioWithoutRole(RadioWithoutRole),
+    NatWithoutInternet(NatWithoutInternet),
     LoopbackWithoutOspf(LoopbackWithoutOspf),
     VlanWithSeveralGateways(VlanWithSeveralGateways),
     VlanWithoutGateway(VlanWithoutGateway),
@@ -167,6 +168,12 @@ pub struct PortLikeName {
 /// the radio bridge, the radio keeps the configuration it has.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct RadioWithoutRole {
+    pub interface: InterfaceRef,
+}
+/// An uplink with `nat` but without `internet`: the perimeter firewall guards it all the same
+/// (`nat` needs `internet`, Z2), but NetBox doesn't say it is one to the internet.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct NatWithoutInternet {
     pub interface: InterfaceRef,
 }
 /// The interface has a VLAN (NetBox id `vlan`) that is in no VLAN group, so the provisioner
@@ -639,6 +646,15 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
                 Severity::Warning,
                 &this,
                 FindingKind::RadioWithoutRole(RadioWithoutRole {
+                    interface: interface_ref(interface),
+                }),
+            );
+        }
+        if interface.is_nat() && !interface.is_internet() {
+            push(
+                Severity::Warning,
+                &this,
+                FindingKind::NatWithoutInternet(NatWithoutInternet {
                     interface: interface_ref(interface),
                 }),
             );

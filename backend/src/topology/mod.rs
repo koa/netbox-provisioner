@@ -399,6 +399,9 @@ pub struct Interface {
     /// NetBox tag `nat`: the uplink whose network doesn't route back to the device's ones;
     /// what leaves through it is masqueraded
     pub nat: bool,
+    /// NetBox tag `internet`: an interface to the internet, which the perimeter firewall
+    /// guards (`docs/firewall.md`); `nat` needs it
+    pub internet: bool,
     pub bridge: Option<InterfaceId>,
     pub cable: Option<CableId>,
     /// NetBox `poe_mode`: `Pse` feeds the device at the other end of its cable

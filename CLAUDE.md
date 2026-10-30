@@ -130,7 +130,8 @@ once was lost, so a /30 customer port got no server). A /32 with `dhcp` (router-
 there (SLAAC). A WLAN without VLAN is an error at its
 group's controller and APs (`WlanWithoutVlan`): the CAPs bridge their clients by its VLAN and
 carry them over its VXLAN, so without one the clients reach nothing (router-walter). A wireless link end without RF role is a warning (`RadioWithoutRole`): the radio then keeps its
-configuration, no bridge is set up. A primary IPv4 on `lo` without `ospf` on any interface is an error
+configuration, no bridge is set up. `nat` without `internet` is a warning (`NatWithoutInternet`,
+Z2: `nat` needs it). A primary IPv4 on `lo` without `ospf` on any interface is an error
 (`LoopbackWithoutOspf`): nothing announces it, and it ends a radio bridge's DHCP fallback. A radio
 bridge is an OSPF router through a static address and `ospf` on its `bridge` (management only,
 forwarding stays L2). Pool ranges are written as RouterOS reports them
@@ -244,7 +245,7 @@ missing, the next free `/31` of the transfer pool as a new prefix, an address at
 link's prefix once empty, label naming the other end and `ospf`; a primary IP is refused; the
 plan names devices it cuts off, `NetboxPlan.cut_off`). „Verbindung“ offers it as a button for a
 chosen port whose link is in the way. `helper::flags` switches the tags `ospf`, `dhcp`,
-`dhcp-client`, `nat` of a device's interfaces (`flagInterfaces`: all but bridge ports, which
+`dhcp-client`, `nat`, `internet` of a device's interfaces (`flagInterfaces`: all but bridge ports, which
 come only with a tag to take off); `UpdateInterface` carries `tags_added`/`tags_removed`. Its card
 shows the device's findings after the switches live: `topology.findings(deviceId:, after:)`
 computes them on the preview of a helper's plan. `helper::customer_net` puts the next free

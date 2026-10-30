@@ -435,6 +435,25 @@ fn a_link_end_without_rf_role_is_a_warning() {
         if &*r.interface.name == "wlan60-1"));
 }
 
+/// `nat` without `internet` is a warning at the uplink; with both none (Z2).
+#[test]
+fn nat_without_internet_is_a_warning() {
+    let uplink = |internet| {
+        let mut net = Net::new();
+        let uplink = port(&mut net.builder, net.r1, "ether5", "100.64.0.2/30");
+        net.interface(uplink).nat = true;
+        net.interface(uplink).internet = internet;
+        (net.r1, net.findings())
+    };
+    let (r1, findings) = uplink(false);
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert_eq!(findings[0].severity, Severity::Warning);
+    assert_eq!(&*findings[0].devices, [r1]);
+    assert!(matches!(&findings[0].kind, FindingKind::NatWithoutInternet(f)
+        if &*f.interface.name == "ether5"));
+    assert_eq!(uplink(true).1, vec![]);
+}
+
 /// A radio of `device` with a wireless link whose other end NetBox doesn't have.
 fn lone_radio(net: &mut Net, device: DeviceId) {
     let radio = net.builder.interfaces.next_id();

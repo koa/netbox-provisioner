@@ -116,6 +116,9 @@ pub fn loopback_without_ospf(device: Html, address: Html) -> Html {
 pub fn radio_without_role(interface: Html) -> Html {
     html!(<>{interface}{" ist ein Ende eines Wireless Links, hat aber keine RF-Rolle (AP oder Station): Der Provisioner richtet die Funkbrücke nicht ein, das Radio behält seine Konfiguration."}</>)
 }
+pub fn nat_without_internet(interface: Html) -> Html {
+    html!(<>{interface}{" hat nat, aber nicht internet: Die Perimeter-Firewall schützt es trotzdem, in NetBox fehlt das Tag internet."}</>)
+}
 pub fn vlan_without_group(interface: Html, vlan: Html) -> Html {
     html!(<>{interface}{" hat ein "}{vlan}{" ohne VLAN-Gruppe: Der Provisioner liest es nicht."}</>)
 }

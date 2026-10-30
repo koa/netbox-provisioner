@@ -84,12 +84,13 @@ pub fn free_ports(count: usize) -> String {
 /// a customer port without an address here: where its VLAN has one
 pub const L3_ON: &str = "L3 auf ";
 /// a tag of an interface
-pub fn tags(ospf: bool, dhcp: bool, dhcp_client: bool, nat: bool) -> String {
+pub fn tags(ospf: bool, dhcp: bool, dhcp_client: bool, nat: bool, internet: bool) -> String {
     [
         (ospf, "ospf"),
         (dhcp, "dhcp"),
         (dhcp_client, "dhcp-client"),
         (nat, "nat"),
+        (internet, "internet"),
     ]
     .iter()
     .filter(|(set, _)| *set)

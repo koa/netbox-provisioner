@@ -416,6 +416,7 @@ pub fn finding_kind(kind: String) -> String {
         "DhcpPoolEmpty" => "DHCP ohne freie Adresse".into(),
         "PortLikeName" => "Name wie ein Port".into(),
         "RadioWithoutRole" => "Funk ohne RF-Rolle".into(),
+        "NatWithoutInternet" => "nat ohne internet".into(),
         "LoopbackWithoutOspf" => "Loopback ohne OSPF".into(),
         "VlanWithoutGroup" => "VLAN ohne Gruppe".into(),
         "MtuMismatch" => "MTU verschieden".into(),

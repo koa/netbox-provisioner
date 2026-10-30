@@ -294,7 +294,7 @@ impl TableEntryRenderer<Column> for Entry {
         } else {
             finding_list(&self.netbox, &row.findings)
         };
-        let tags = t::tags(row.ospf, row.dhcp, row.dhcp_client, row.nat);
+        let tags = t::tags(row.ospf, row.dhcp, row.dhcp_client, row.nat, row.internet);
         let changed = self.changed.as_ref().map(|undo| {
             let on_apply = self.on_apply.clone();
             html! {
@@ -488,7 +488,7 @@ fn netbox_has(row: &Row) -> Html {
     if !row.addresses.is_empty() {
         has.push(html!(<div>{addresses(&row.addresses)}</div>));
     }
-    let tags = t::tags(row.ospf, row.dhcp, row.dhcp_client, row.nat);
+    let tags = t::tags(row.ospf, row.dhcp, row.dhcp_client, row.nat, row.internet);
     if !tags.is_empty() {
         has.push(html!(<div>{tags}</div>));
     }

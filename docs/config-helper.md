@@ -66,6 +66,8 @@ ist eine Prüfung:
   Controller und an den APs ihrer Gruppe: Die Clients verbinden sich und erreichen nichts).
 - Ein Ende eines Wireless Links ohne RF-Rolle (`RadioWithoutRole`, Warnung): Das Radio behält seine
   Konfiguration, die Funkbrücke wird nicht eingerichtet.
+- Ein Uplink mit `nat` ohne `internet` (`NatWithoutInternet`, Warnung): `nat` setzt `internet`
+  voraus (Z2); in NetBox fehlt das Tag.
 - Pool fehlt oder ist fast voll (`PoolMissing`, `PoolNearlyFull`, siehe [Pools](#pools)).
 - Die Befunde der Interface-Ansicht (ein L3-Übergang pro VLAN, tagged VLAN am Port, Strecke
   unvollständig, Label, VLAN ohne Port), siehe [dort](interface-view.md#was-geprüft-wird).
@@ -282,7 +284,7 @@ IPv6 ebenso an `ether9` mit `fd99:1ab::/48` (Scope Lab): beide Familien zusammen
 
 ### OSPF- und DHCP-Flags
 
-Die Tags `ospf`, `dhcp`, `dhcp-client`, `nat` eines Interfaces als Schalter (`helper/flags.rs`).
+Die Tags `ospf`, `dhcp`, `dhcp-client`, `nat`, `internet` eines Interfaces als Schalter (`helper/flags.rs`).
 Die Tabelle zeigt die Interfaces des Geräts in NetBox' Reihenfolge mit Adressen, Kabel und
 Bridge. Ports einer Bridge fehlen, weil dort
 die Tags der Bridge zählen; einer mit eigenem Tag steht trotzdem da, damit es sich entfernen lässt.
@@ -463,7 +465,7 @@ ihr Prefix, wenn danach nichts mehr darin ist, `dhcp` und die VLANs am Port (`Up
 untagged und tagged weg, ohne Mode). Bei einer Bridge sind das die Bridge und ihre Ports, bei
 einem VLAN-Interface die Kunden-Ports des Geräts mit seinem VLAN (Ethernet, in keiner Bridge,
 kein Kabel zu einem RouterOS-Gerät). Ein VLAN-Interface, das sonst nichts hat (kein `ospf`,
-`nat`, `dhcp-client`, Label oder tagged VLAN), wird gelöscht (`DeleteInterface`, nach seinen
+`nat`, `internet`, `dhcp-client`, Label oder tagged VLAN), wird gelöscht (`DeleteInterface`, nach seinen
 Adressen). Das VLAN selbst bleibt, andere Geräte können es haben. Ein Port, dessen L3 anderswo
 liegt, verliert nur sein VLAN.
 
@@ -537,7 +539,7 @@ dem Port vorbelegt, auch einer freien).
 
 Plan (`helper::port_vlan`): ein Schritt `UpdatePortVlan`, tagged VLANs am Port fallen weg (Z26).
 Zur Wahl stehen (`portVlanOptions`) die Ethernet-Ports ohne Bridge, Adresse, Uplink
-(`dhcp-client`, `nat`) und Kabel zu einem RouterOS-Gerät, auch einer mit einem VLAN (das dann
+(`dhcp-client`, `nat`, `internet`) und Kabel zu einem RouterOS-Gerät, auch einer mit einem VLAN (das dann
 ersetzt wird), und die VLANs, die das Gerät schon hat, oder aus einer Gruppe mit `vxlan_vni`: ein
 lokales VLAN eines anderen Geräts erreichte den Port nicht. Gewählt wird in zwei Stufen, erst die
 VLAN-Gruppe, dann ihr VLAN. Vorbelegt ist die Gruppe des vorbelegten VLANs, sonst die eines VLANs,

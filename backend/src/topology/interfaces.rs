@@ -150,6 +150,7 @@ pub struct InterfaceRow {
     pub dhcp: bool,
     pub dhcp_client: bool,
     pub nat: bool,
+    pub internet: bool,
     pub mtu: Option<u16>,
     pub untagged_vlan: Option<VlanRef>,
     pub tagged_vlans: Vec<VlanRef>,
@@ -324,7 +325,7 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
     let addresses = interface.ips();
     let task = if interface.name() == "lo" {
         InterfaceTask::Loopback
-    } else if interface.is_enable_dhcp_client() || interface.is_nat() {
+    } else if interface.is_enable_dhcp_client() || interface.is_nat() || interface.is_internet() {
         InterfaceTask::Uplink
     } else if radio.is_some() {
         InterfaceTask::RadioLink
@@ -410,6 +411,7 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
         dhcp: interface.is_enable_dhcp_server(),
         dhcp_client: interface.is_enable_dhcp_client(),
         nat: interface.is_nat(),
+        internet: interface.is_internet(),
         mtu: interface.mtu(),
         untagged_vlan: interface.untagged_vlan().as_ref().and_then(vlan_ref),
         tagged_vlans: interface.tagged_vlans().filter_map(|v| vlan_ref(&v)).collect(),
@@ -774,6 +776,7 @@ impl FindingKind {
             FindingKind::DhcpPoolEmpty(f) => vec![f.interface.id],
             FindingKind::PortLikeName(f) => vec![f.interface.id],
             FindingKind::RadioWithoutRole(f) => vec![f.interface.id],
+            FindingKind::NatWithoutInternet(f) => vec![f.interface.id],
             FindingKind::VlanWithoutGroup(f) => vec![f.interface.id],
             FindingKind::MtuMismatch(f) => vec![f.interface.id, f.far_end.id],
             FindingKind::OspfOnOneEnd(f) => vec![f.interface.id, f.far_end.id],

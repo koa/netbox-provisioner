@@ -1,4 +1,4 @@
-//! Helper „Flags“: the tags `ospf`, `dhcp`, `dhcp-client` and `nat` of a device's interfaces as
+//! Helper „Flags“: the tags `ospf`, `dhcp`, `dhcp-client`, `nat` and `internet` of a device's interfaces as
 //! switches (`docs/netbox-modeling.md`, Tags). The plan sets the ones switched and takes off the
 //! ones switched off; the findings of the device after it (`Topology.findings(after:)`) show
 //! what doesn't fit then, such as `ospf` at one end of a cable only.
@@ -26,13 +26,16 @@ pub enum InterfaceTag {
     DhcpClient,
     /// an uplink whose network doesn't route back: masquerade outgoing
     Nat,
+    /// an interface to the internet: the perimeter firewall guards it
+    Internet,
 }
 
-pub const ALL_TAGS: [InterfaceTag; 4] = [
+pub const ALL_TAGS: [InterfaceTag; 5] = [
     InterfaceTag::Ospf,
     InterfaceTag::Dhcp,
     InterfaceTag::DhcpClient,
     InterfaceTag::Nat,
+    InterfaceTag::Internet,
 ];
 
 impl InterfaceTag {
@@ -42,6 +45,7 @@ impl InterfaceTag {
             InterfaceTag::Dhcp => "dhcp",
             InterfaceTag::DhcpClient => "dhcp-client",
             InterfaceTag::Nat => "nat",
+            InterfaceTag::Internet => "internet",
         }
     }
     pub fn is_set(self, interface: &InterfaceAccess) -> bool {
@@ -50,6 +54,7 @@ impl InterfaceTag {
             InterfaceTag::Dhcp => interface.is_enable_dhcp_server(),
             InterfaceTag::DhcpClient => interface.is_enable_dhcp_client(),
             InterfaceTag::Nat => interface.is_nat(),
+            InterfaceTag::Internet => interface.is_internet(),
         }
     }
 }

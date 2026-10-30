@@ -18,6 +18,7 @@ query Findings($site: Int, $device: Int, $after: Helper){
                 ... on DhcpPoolEmpty{ interface{ ...Interface } address{ ...Address } prefix{ id prefix } }
                 ... on PortLikeName{ interface{ ...Interface } }
                 ... on RadioWithoutRole{ interface{ ...Interface } }
+                ... on NatWithoutInternet{ interface{ ...Interface } }
                 ... on LoopbackWithoutOspf{ device{ ...Device } address{ ...Address } }
                 ... on VlanWithoutGroup{ interface{ ...Interface } vlan }
                 ... on MtuMismatch{ interface{ ...Interface } mtu farEnd{ ...Interface } farMtu }
