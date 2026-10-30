@@ -1437,7 +1437,9 @@ impl BaseDeviceDataTarget {
     }
     /// DNS of the client networks. With DNS servers from the config context they get these:
     /// the IPv4 ones by DHCP, the IPv6 ones by router advertisement (RDNSS), in their
-    /// order; the device asks them too and resolves for nobody. Without, the DHCP networks
+    /// order; the device asks them too and resolves for nobody. One of them its own (its
+    /// loopback, router-faesigrund-keller) makes it a resolver: it asks the others, not
+    /// itself, and answers its networks but the `nat` uplinks'. Without, the DHCP networks
     /// name the device itself, so it answers them (not from a `nat` uplink); one without a
     /// DHCP client learns no DNS server and asks the NAT routers (NetBox tag `nat`).
     fn setup_dns(&mut self, device: &DeviceAccess) {
@@ -1472,23 +1474,26 @@ impl BaseDeviceDataTarget {
             for network in self.dhcp_v_4_server_network.values_mut() {
                 network.0.dns_server = v4.clone();
             }
-            self.dns.allow_remote_requests = false;
-            self.dns.servers = servers.into();
+            let own = device
+                .interfaces()
+                .iter()
+                .flat_map(|interface| interface.ips())
+                .filter_map(|ip| ip.addr())
+                .chain(device.loopback_ip().and_then(|ip| ip.addr()))
+                .collect::<HashSet<_>>();
+            let resolver = servers.iter().any(|ip| own.contains(ip));
+            self.dns.servers = servers.iter().filter(|ip| !own.contains(ip)).copied().collect();
+            self.dns.allow_remote_requests = resolver;
+            if resolver {
+                self.close_dns_to_uplinks();
+            }
             return;
         }
         self.dns.allow_remote_requests = !self.dhcp_v_4_server_network.is_empty();
         if !self.dns.allow_remote_requests {
             return;
         }
-        // the resolver answers the device's own networks, not the uplink's
-        let uplinks = self
-            .ip_firewall_nat
-            .values()
-            .filter_map(|nat| nat.out_interface.clone())
-            .collect::<Vec<_>>();
-        for uplink in uplinks {
-            self.close_dns(&uplink);
-        }
+        self.close_dns_to_uplinks();
         let has_uplink = device
             .interfaces()
             .iter()
@@ -1525,6 +1530,17 @@ impl BaseDeviceDataTarget {
                 to_ports: None,
             },
         );
+    }
+    /// The resolver answers the device's own networks, not the `nat` uplinks'.
+    fn close_dns_to_uplinks(&mut self) {
+        let uplinks = self
+            .ip_firewall_nat
+            .values()
+            .filter_map(|nat| nat.out_interface.clone())
+            .collect::<Vec<_>>();
+        for uplink in uplinks {
+            self.close_dns(&uplink);
+        }
     }
     /// Keeps the DNS resolver closed to the uplink `if_name`.
     fn close_dns(&mut self, if_name: &AsciiString) {

@@ -43,7 +43,7 @@ Alle sieben Tags lassen sich mit [netbox-import/3-tags.yaml](netbox-import/3-tag
 (Customization > Tags > Import, YAML).
 
 `nat` erzeugt `srcnat action=masquerade out-interface=<Uplink>`. Beantwortet der Router selbst
-DNS (kein Config Context `dns_servers`, siehe unten), sperrt es zudem DNS (TCP/UDP 53) vom Uplink
+DNS (kein Config Context `dns_servers` oder eine eigene Adresse darin, siehe unten), sperrt es zudem DNS (TCP/UDP 53) vom Uplink
 her im `input`.
 
 ### Config Context `dns_servers`
@@ -56,7 +56,10 @@ Die DNS-Server der Client-Netze, der erste wird zuerst gefragt (z.B. Blocky mit 
 ein Fallback). Zuweisen wie jeder Config Context, z.B. pro Tenant oder Site. Der Provisioner
 verteilt die IPv4-Server per DHCP und die IPv6-Server per Router Advertisement (RDNSS), letzteres
 nur auf Geräten mit Client-Netz. Jedes Gerät fragt die Server auch selbst
-(`/ip dns servers`), beantwortet aber keine DNS-Anfragen (`allow-remote-requests=no`).
+(`/ip dns servers`), beantwortet aber keine DNS-Anfragen (`allow-remote-requests=no`). Steht
+eine eigene Adresse des Geräts in der Liste (im Beispiel die Loopbacks von
+router-faesigrund-keller), ist es selbst ein Resolver: Es fragt nur die übrigen Server und
+beantwortet Anfragen, ausser vom `nat`-Uplink.
 
 ### Custom Fields
 

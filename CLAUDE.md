@@ -721,7 +721,9 @@ with it off the addresses are `invalid` and OSPFv3 never comes up, while the dif
 
 DNS servers come from the device's NetBox config context (`dns_servers`, in priority order):
 client networks get them by DHCP (v4) and RDNSS (v6, only on devices with client networks),
-every device asks them itself, and none resolves for others. Without the context, a router with
+every device asks them itself, and none resolves for others, but one with an own address in the
+list (router-faesigrund-keller's loopbacks): it asks the others only and resolves, closed to its
+`nat` uplinks. Without the context, a router with
 a DHCP server answers DNS (its networks get its own address, DNS dropped on `input` from a `nat`
 uplink), and one without a `dhcp-client` forwards to the loopbacks of the `nat` routers.
 `mu; ordered` makes a list field a `Box<[V]>` whose order counts (`dns-server`, `servers`).
