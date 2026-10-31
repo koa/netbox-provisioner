@@ -18,7 +18,6 @@ use crate::{
     },
 };
 use ipnet::IpNet;
-use log::warn;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     str::FromStr,
@@ -172,18 +171,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     let internet = interface.tags.iter().any(|t| t.slug == "internet");
                     let external = PhysicalPortId::from_str(&interface.name).ok();
                     let sixty_ghz = matches!(interface.type_.as_str(), "ieee802.11ad" | "ieee802.11ay");
-                    let port_type = match interface.type_.as_str() {
-                        "10gbase-x-sfpp" | "1000base-x-sfp" | "1000base-t" | "100base-tx"
-                        | "40gbase-x-qsfpp" => Some(PortType::Ethernet),
-                        "ieee802.11a" | "ieee802.11g" | "ieee802.11n" | "ieee802.11ac"
-                        | "ieee802.11ad" | "ieee802.11ay" | "ieee802.11ax" => Some(PortType::Wireless),
-                        "bridge" => Some(PortType::Bridge),
-                        "virtual" => Some(PortType::Loopback),
-                        &_ => {
-                            warn!("Unknown interface type: {}", interface.type_);
-                            None
-                        }
-                    };
+                    let port_type = port_type(&interface.type_);
                     let vlan = interface
                         .untagged_vlan
                         .and_then(|vlan| vlan.id.parse().ok().map(VlanId));
@@ -749,4 +737,41 @@ fn country_of_region(region: &fetch_topology::RegionAncestry) -> Box<str> {
         }
     }
     slug.as_str().into()
+}
+
+/// The kind of a port by its NetBox interface type: every `…base-…` is ethernet (`2.5gbase-t`,
+/// `25gbase-x-sfp28`), the IEEE 802.11 ones are radios. Any other (`lte`, `other` of a
+/// Tinkerforge controller) is none the provisioner builds anything from, and no warning: there
+/// is nothing to change in NetBox.
+fn port_type(netbox_type: &str) -> Option<PortType> {
+    match netbox_type {
+        "bridge" => Some(PortType::Bridge),
+        "virtual" => Some(PortType::Loopback),
+        t if t.starts_with("ieee802.11") => Some(PortType::Wireless),
+        t if t.contains("base-") => Some(PortType::Ethernet),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod port_type_test {
+    use super::port_type;
+    use crate::topology::PortType;
+
+    #[test]
+    fn kinds_of_the_example_types() {
+        for (netbox_type, expected) in [
+            ("1000base-t", Some(PortType::Ethernet)),
+            ("2.5gbase-t", Some(PortType::Ethernet)),
+            ("25gbase-x-sfp28", Some(PortType::Ethernet)),
+            ("10gbase-x-sfpp", Some(PortType::Ethernet)),
+            ("ieee802.11ax", Some(PortType::Wireless)),
+            ("bridge", Some(PortType::Bridge)),
+            ("virtual", Some(PortType::Loopback)),
+            ("lte", None),
+            ("other", None),
+        ] {
+            assert_eq!(port_type(netbox_type), expected, "{netbox_type}");
+        }
+    }
 }
