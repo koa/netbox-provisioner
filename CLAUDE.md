@@ -75,6 +75,15 @@ virtual radios into that bridge with the `pvid` of their WLAN (tagged members of
 VLAN entry). A CAP only gets a new WLAN when its radios are provisioned again, so an apply on a
 controller that changes a CAPsMAN's WLAN definitions provisions its CAPs' radios again after
 it (`reprovisioned_menus`, the job event `RadiosReprovisioned`; their clients reconnect).
+A controller that is an AP of its group with radios in NetBox (`runs_own_radios`) has them run
+by its own CAPsMAN as local radios (`L` in `/interface/wifi/radio`, berghof-burri, 7.23.8): bound
+with the CAP off, even after a reboot with CAPsMAN off, dynamic and unchangeable, provisioned
+like the CAPs' radios. They have no datapath of their own, so the controller's configurations
+carry the WLANs' bridge and each WLAN's VLAN (`datapath.bridge`, checked by hand on
+berghof-burri: the local interfaces joined `bridge-caps`, a client got an address, the CAPs'
+clients kept working); the
+CAPs get the same bridge, which is theirs too (`bridge-caps`). Its CAP stays off. Setting such
+radios up locally beside CAPsMAN failed: RouterOS refuses any change to them.
 Both that and the longer fallback of a radio change (`restarts_radio`) count only what the
 script has (`in_script`, as the site diff): the diff carries an update without fields for every
 entry, and lab-core's firewall-only apply provisioned its CAPs again and waited for a radio. An

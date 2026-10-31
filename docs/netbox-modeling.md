@@ -615,6 +615,11 @@ gibt es zwei Varianten:
    (2,4 und 5 GHz) auf `wireless` als CAP des klassischen CAPsMAN; das braucht er für eine Gruppe
    mit mehreren VLANs. Nach dem Wechsel in NetBox tauscht „Pakete anpassen“ auf der Geräteseite
    die Pakete (ohne die RouterOS-Version zu ändern), danach bringt Anwenden die Konfiguration.
+   Ist der **Controller selbst AP** der Gruppe (`wlan_group` auf dem Controller, WiFi-Interfaces
+   in NetBox), betreibt sein CAPsMAN die eigenen Radios direkt als lokale Radios, sein CAP bleibt
+   aus. Die Konfigurationen der WLANs bekommen dann die Bridge des WLAN-Netzes (`bridge-caps`) und
+   die VLAN jedes WLANs, sonst senden die eigenen Radios die SSIDs, hängen aber an keiner Bridge.
+   Das gilt auch für die Radios der übrigen CAPs; deren WLAN-Bridge heisst ebenfalls `bridge-caps`.
 4. Für die Variante auf dem Controller: Die VLAN-Gruppe der WLAN-VLANs bekommt eine `vxlan_vni`
    (siehe [VXLAN](#vxlan)). Der AP bringt die Clients jedes WLANs in dessen VLAN.
 5. Das `country` der WLANs kommt aus der Region des Standorts des Controllers.

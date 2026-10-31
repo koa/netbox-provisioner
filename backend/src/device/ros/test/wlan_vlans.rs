@@ -22,7 +22,7 @@ use mikrotik_model::{
     ascii::AsciiString,
     model::{
         CapsManDatapathVlanMode, InterfaceWifiConfigurationByName, InterfaceWifiDatapathByName,
-        ReferenceType, WifiManagement,
+        ReferenceType, WifiManagement, YesNo,
     },
     resource::{ResourceMutation, ResourceMutationOperation},
     value::HasNone,
@@ -32,11 +32,16 @@ use std::net::{IpAddr, Ipv4Addr};
 /// `[controller, ax CAP, wAP ac on wifi-qcom-ac, wAP ac on wireless]`, with a WLAN per VLAN
 /// id given (SSID `wlan<vid>`), all in one VLAN group with a VXLAN.
 async fn wlan_group(vlan_ids: &[u16]) -> [DeviceAccess; 4] {
-    wlan_group_with(vlan_ids, false).await
+    wlan_group_with(vlan_ids, false, &[]).await
 }
 
-/// Like `wlan_group`, with the controller also an AP of its group if `controller_is_ap`.
-async fn wlan_group_with(vlan_ids: &[u16], controller_is_ap: bool) -> [DeviceAccess; 4] {
+/// Like `wlan_group`, with the controller also an AP of its group if `controller_is_ap`, with
+/// the radios `controller_radios`.
+async fn wlan_group_with(
+    vlan_ids: &[u16],
+    controller_is_ap: bool,
+    controller_radios: &[PhysicalPortId],
+) -> [DeviceAccess; 4] {
     let mut builder = TopologyBuilder::default();
     let devices = [(); 4].map(|_| builder.devices.next_id());
     let wlan_group = builder.wlan_groups.next_id();
@@ -44,30 +49,43 @@ async fn wlan_group_with(vlan_ids: &[u16], controller_is_ap: bool) -> [DeviceAcc
     let vlan_group = builder.vlan_groups.next_id();
     let mut vlans = Vec::new();
     let mut wlans = Vec::new();
+    let mut vlan_of_id = std::collections::HashMap::new();
     for vlan_id in vlan_ids {
-        let vlan = builder.vlans.next_id();
         let wlan = builder.wlans.next_id();
-        builder.vlans.insert(
-            vlan,
-            VlanData {
-                name: format!("vlan{vlan_id}").into(),
-                vlan_id: *vlan_id,
-                group: vlan_group,
-                terminations: Box::new([]),
-                vxlan: Some(vxlan),
-                wlans: Box::new([wlan]),
-            },
-        );
+        // a second WLAN in the same VLAN gets `-2`
+        let (vlan, ssid) = match vlan_of_id.get(vlan_id) {
+            Some(&vlan) => {
+                let data: &mut VlanData = builder.vlans.get_mut(&vlan).unwrap();
+                data.wlans = data.wlans.iter().copied().chain([wlan]).collect();
+                (vlan, format!("wlan{vlan_id}-2"))
+            }
+            None => {
+                let vlan = builder.vlans.next_id();
+                builder.vlans.insert(
+                    vlan,
+                    VlanData {
+                        name: format!("vlan{vlan_id}").into(),
+                        vlan_id: *vlan_id,
+                        group: vlan_group,
+                        terminations: Box::new([]),
+                        vxlan: Some(vxlan),
+                        wlans: Box::new([wlan]),
+                    },
+                );
+                vlan_of_id.insert(*vlan_id, vlan);
+                vlans.push(vlan);
+                (vlan, format!("wlan{vlan_id}"))
+            }
+        };
         builder.wlans.insert(
             wlan,
             WlanData {
-                ssid: format!("wlan{vlan_id}").into(),
+                ssid: ssid.into(),
                 vlan: Some(vlan),
                 wlan_auth: WlanAuth::Wpa(WlanWpaSettings::new("preshared-key")),
                 wlan_group,
             },
         );
-        vlans.push(vlan);
         wlans.push(wlan);
     }
     builder.vlan_groups.insert(
@@ -112,6 +130,9 @@ async fn wlan_group_with(vlan_ids: &[u16], controller_is_ap: bool) -> [DeviceAcc
     for vlan in &vlans {
         let id = interface(&mut builder, devices[0], "wlan", None);
         builder.interfaces.get_mut(&id).unwrap().vlan = Some(*vlan);
+    }
+    for radio in controller_radios {
+        interface(&mut builder, devices[0], &radio.to_string(), Some(*radio));
     }
     for (device, radio) in [
         (devices[1], PhysicalPortId::Wifi(1)),
@@ -332,7 +353,7 @@ async fn ac_cap_without_tagging_is_refused() {
 /// to tag: it runs `wireless` for the legacy CAPsMAN, which isn't refused.
 #[tokio::test]
 async fn controller_without_radios_as_ap_is_not_refused() {
-    let [controller, ..] = wlan_group_with(&[104, 105], true).await;
+    let [controller, ..] = wlan_group_with(&[104, 105], true, &[]).await;
     assert!(controller.wifi_cap_of().is_some());
     let package = needed_radio_package(&controller, b"CCR2004-1G-12S+2XS");
     assert_eq!(package, Some(RadioPackage::Wireless));
@@ -608,4 +629,38 @@ fn datapath_is_removed_after_the_radio_drops_it() {
             b"interface/wifi/datapath"
         ]
     );
+}
+
+/// berghof-burri (hAP ax², 7.23.8): the controller is an AP of its group, and its CAPsMAN runs
+/// its radios as local ones, with the CAP off, through the provisioning. Without a bridge in
+/// the configurations they joined none; the configurations carry the WLANs' bridge and each
+/// WLAN's VLAN, the CAP stays off and the radios are left to CAPsMAN.
+#[tokio::test]
+async fn controller_running_its_own_radios_bridges_them() {
+    for (vlans, expected) in [
+        (&[104, 105][..], &[("wlan104", 104), ("wlan105", 105)][..]),
+        (&[104][..], &[("wlan104", 104)][..]),
+    ] {
+        let [controller, ..] = wlan_group_with(vlans, true, &[PhysicalPortId::Wifi(1)]).await;
+        let target = wifi(&controller, b"C52iG-5HaxD2HaxD", RadioPackage::WifiQcom).unwrap();
+        assert!(!matches!(target.cap.enabled, YesNo::Yes), "{:?}", target.cap);
+        for (name, vlan) in expected {
+            let configuration = &target.configuration[&AsciiString::from(*name)].0;
+            assert_eq!(configuration.datapath_bridge, Some("bridge-caps".into()), "{name}");
+            assert_eq!(configuration.datapath_vlan_id, Some(HasNone::Value(*vlan)), "{name}");
+        }
+        // no CAP configuration for them, CAPsMAN binds them
+        assert!(!target.configuration.contains_key(&AsciiString::from("capsman")));
+        assert_eq!(target.wifi[&Some("wifi1".into())].configuration, None);
+    }
+}
+
+/// A controller without radios in NetBox, marked as AP, runs none: its configurations stay
+/// without bridge, the CAPs forward by their own datapath.
+#[tokio::test]
+async fn controller_without_radios_leaves_the_bridge_to_the_caps() {
+    let [controller, ..] = wlan_group_with(&[104, 105], true, &[]).await;
+    let target = wifi(&controller, b"CCR2004-1G-12S+2XS", RadioPackage::WifiQcom).unwrap();
+    let configuration = &target.configuration[&AsciiString::from("wlan104")].0;
+    assert_eq!(configuration.datapath_bridge, None);
 }

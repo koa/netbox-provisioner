@@ -18,6 +18,23 @@ use mikrotik_model::{
     value::HasNone,
 };
 
+/// Whether CAPsMAN runs the device's own radios: it is the controller of the group it is an AP
+/// of. RouterOS's CAPsMAN binds the radios of its own device as local ones (`L` in
+/// `/interface/wifi/radio`, berghof-burri, 7.23.8), with the CAP off, through the provisioning
+/// like the CAPs' radios. They have no datapath of their own then: without a bridge in the
+/// configurations they sent the SSIDs but joined no bridge. A controller marked as AP without
+/// radios in NetBox has none to run.
+pub(in crate::device::ros) fn runs_own_radios(device: &DeviceAccess) -> bool {
+    device
+        .wifi_cap_of()
+        .and_then(|group| group.controller())
+        .is_some_and(|controller| controller.id() == device.id())
+        && device
+            .interfaces()
+            .iter()
+            .any(|interface| matches!(interface.external_port(), Some(PhysicalPortId::Wifi(_))))
+}
+
 impl WifiDeviceDataTarget {
     pub(in crate::device::ros) fn new(_model: &[u8]) -> Self {
         Self {
@@ -72,7 +89,9 @@ impl WifiDeviceDataTarget {
                     .insert(certificate.0.name.clone(), certificate.clone());
             }
         }
-        if let Some(group) = device.wifi_cap_of() {
+        // the controller's own radios are its CAPsMAN's directly, its CAP stays off
+        let own_radios = runs_own_radios(device);
+        if let Some(group) = device.wifi_cap_of().filter(|_| !own_radios) {
             let controller = group
                 .controller()
                 .and_then(|controller| controller.loopback_ip())
@@ -203,7 +222,19 @@ impl WifiDeviceDataTarget {
             capsman.upgrade_policy = Some(InterfaceWifiCapsmanUpgradePolicy::SuggestSameVersion);
             capsman.require_peer_certificate = Some(false);
             let country = wifi_country(device)?;
-            let per_wlan = wlan_vlans(&group) == WlanVlans::PerWlan;
+            let wlan_vlans = wlan_vlans(&group);
+            let per_wlan = wlan_vlans == WlanVlans::PerWlan;
+            // The own radios join the WLANs' bridge through the configurations, which reach the
+            // CAPs' radios too: those forward into the bridge of the same name (`bridge-caps`),
+            // where the bridge set here is theirs as well. Each interface gets its WLAN's VLAN.
+            let tags = radio_package.is_some_and(RadioPackage::tags_vlans);
+            let own_bridge = group
+                .wlan()
+                .find_map(|wlan| l2.bridge_of_wlan(&wlan))
+                .filter(|_| own_radios);
+            if own_bridge.is_some() && !tags && wlan_vlans != WlanVlans::One(None) {
+                return Err(SetupError::WlanVlansNotTagged(device.name().into()));
+            }
             let mut names = Vec::new();
             for wlan in group.wlan() {
                 let ssid = wlan.ssid().unwrap_or_default();
@@ -217,8 +248,9 @@ impl WifiDeviceDataTarget {
                 configuration.datapath_vlan_id = wlan
                     .vlan()
                     .and_then(|vlan| vlan.vlan_id())
-                    .filter(|_| per_wlan)
+                    .filter(|_| per_wlan || own_bridge.is_some())
                     .map(HasNone::Value);
+                configuration.datapath_bridge = own_bridge.cloned();
                 match wlan.auth() {
                     Some(WlanAuth::Wpa(settings)) => {
                         configuration.security_authentication_types =
