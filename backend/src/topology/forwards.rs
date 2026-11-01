@@ -1,12 +1,18 @@
 //! What the NetBox services with tag `forward` open from the internet (`docs/firewall.md`): an
-//! IPv4 address gets a port forwarding on every router with `nat` of its site, an IPv6 one is let
-//! through on every router with an interface to the internet. Of two routers with `nat` only
-//! one is meant to be in use (a fallback): the answers go out over the default route, so a
-//! connection coming in over the other one gets no answer. The generator writes them
+//! IPv4 address gets a port forwarding on every router with `nat` of its site, or where its site
+//! has none, on every router with `nat` that announces the default route
+//! (`propagate_default_route`) and is reached from the site's routers over OSPF
+//! (`ManagementTree::roots_reached`): the answers go out there. An IPv6 one is let through on every
+//! router with an interface to the internet. Of two routers with `nat` only one is meant to be
+//! in use (a fallback): the answers go out over the default route, so a connection coming in
+//! over the other one gets no answer. The generator writes them
 //! (`device::ros::firewall`), the findings name what doesn't work out.
-use crate::topology::{DeviceId, IpAddressId, IpPrefixId, ServiceId, ServicePort, SiteId, Topology};
+use crate::topology::{
+    DeviceId, IpAddressId, IpPrefixId, ServiceId, ServicePort, SiteId, Topology, management::ManagementTree,
+};
 use ipnet::IpNet;
 use std::{
+    sync::Arc,
     collections::BTreeMap,
     net::{Ipv4Addr, Ipv6Addr},
 };
@@ -25,7 +31,8 @@ pub struct Opening {
     pub address: Ipv6Addr,
     pub port: ServicePort,
 }
-/// An IPv4 address of a service whose site has no router with `nat`: nothing forwards to it.
+/// An IPv4 address of a service whose site has no router with `nat`, and no router with `nat`
+/// announcing the default route is reached from it: nothing forwards to it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unrouted {
     pub service: ServiceId,
@@ -58,7 +65,9 @@ pub struct Forwards {
 }
 
 impl Topology {
-    pub fn forwards(&self) -> Forwards {
+    pub fn forwards(self: &Arc<Self>) -> Forwards {
+        // the OSPF neighbors, once a site needs them
+        let mut tree = None;
         let mut forwards = Forwards::default();
         let mut services = self.services.iter().collect::<Vec<_>>();
         services.sort_by_key(|(id, _)| **id);
@@ -85,7 +94,18 @@ impl Topology {
                             forwards.without_site.push((service, address_id));
                             continue;
                         };
-                        let routers = self.nat_routers(site);
+                        let mut routers = self.nat_routers(|data| data.site == Some(site));
+                        if routers.is_empty() {
+                            let tree = tree.get_or_insert_with(|| ManagementTree::of(self, None));
+                            let at_site = self
+                                .devices
+                                .iter()
+                                .filter(|(_, data)| data.site == Some(site))
+                                .map(|(id, _)| *id);
+                            let reached = tree.roots_reached(at_site);
+                            routers = self.nat_routers(|_| true);
+                            routers.retain(|router| reached.contains(router));
+                        }
                         if routers.is_empty() {
                             forwards.unrouted.push(Unrouted {
                                 service,
@@ -136,8 +156,8 @@ impl Topology {
         }
         None
     }
-    /// The routers of `site` with an interface `nat`, by id.
-    fn nat_routers(&self, site: SiteId) -> Vec<DeviceId> {
+    /// The routers with an interface `nat` that `take`, by id.
+    fn nat_routers(&self, take: impl Fn(&super::Device) -> bool) -> Vec<DeviceId> {
         let mut routers = self
             .interfaces
             .values()
@@ -146,7 +166,7 @@ impl Topology {
             .filter(|device| {
                 self.devices
                     .get(device)
-                    .is_some_and(|data| data.has_routeros && data.site == Some(site))
+                    .is_some_and(|data| data.has_routeros && take(data))
             })
             .collect::<Vec<_>>();
         routers.sort();

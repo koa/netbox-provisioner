@@ -180,8 +180,8 @@ pub struct ServiceRef {
     pub id: u32,
     pub name: Box<str>,
 }
-/// A service with `forward` at an IPv4 address whose site has no router with `nat`: no port
-/// forwarding reaches it.
+/// A service with `forward` at an IPv4 address whose site has no router with `nat`, nor reaches
+/// one announcing the default route over OSPF: no port forwarding reaches it.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct ForwardWithoutRouter {
     pub service: ServiceRef,

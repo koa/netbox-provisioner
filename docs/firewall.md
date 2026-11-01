@@ -73,7 +73,8 @@ Fallback holt das Gerät zurück, aber ohne Änderung. Die Netze schreibt `gener
 Ein NetBox-Service mit Tag `forward` öffnet seine Ports vom Internet her (`topology/forwards.rs`;
 wie er in NetBox aussieht: [netbox-modeling.md](netbox-modeling.md#freigaben-vom-internet-services-mit-forward)):
 
-- **IPv4**, auf jedem Router mit `nat` der Site: `dstnat action=dst-nat in-interface-list=uplink
+- **IPv4**, auf jedem Router mit `nat` der Site, ohne einen dort auf jedem mit `nat` und
+  `propagate_default_route`, den die Router der Site über OSPF erreichen: `dstnat action=dst-nat in-interface-list=uplink
   protocol=<protokoll> dst-port=<port> to-addresses=<adresse>`, Kommentar `dstnat <adresse>
   <protokoll>/<port>`. Der Port bleibt derselbe (kein `to-ports`, Z3). Herein kommt die
   Verbindung über `forward dstnat`, die Antwort als `established`. Die Antwort nimmt die

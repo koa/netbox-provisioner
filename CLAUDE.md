@@ -817,7 +817,8 @@ waits for it.
 
 NetBox services tagged `forward` (C2, `topology/forwards.rs`, `Topology::forwards`) open their
 ports through it: an IPv4 address gets `dstnat … to-addresses=<it>` on every router with `nat` of its
-site (the site of its prefix or the nearest above with one, else the service's device's, else
+site, without one there on every router with `nat` and `propagate_default_route` the site's
+routers reach over OSPF (`ManagementTree::roots_reached`) (the site of its prefix or the nearest above with one, else the service's device's, else
 its virtual machine's or that one's cluster's scope, a Kubernetes LoadBalancer /32 announced
 over BGP; the same port outside, Z3; of two only one is meant to be in use, the answers take
 the default route), an IPv6 one a `forward accept dst-address=<it>/128` before the drop

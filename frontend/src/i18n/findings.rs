@@ -120,7 +120,7 @@ pub fn nat_without_internet(interface: Html) -> Html {
     html!(<>{interface}{" hat nat, aber nicht internet: Die Perimeter-Firewall schützt es trotzdem, in NetBox fehlt das Tag internet."}</>)
 }
 pub fn forward_without_router(service: Html, address: Html, site: Html) -> Html {
-    html!(<>{service}{" hat forward an "}{address}{", aber seine Site "}{site}{" hat keinen Router mit nat: Keine Port-Weiterleitung erreicht die Adresse."}</>)
+    html!(<>{service}{" hat forward an "}{address}{", aber seine Site "}{site}{" hat keinen Router mit nat, und keiner mit nat, der die Default-Route verteilt, ist über OSPF mit ihr verbunden: Keine Port-Weiterleitung erreicht die Adresse."}</>)
 }
 pub fn forward_without_site(service: Html, address: Html) -> Html {
     html!(<>{service}{" hat forward an "}{address}{", aber keine Site: Weder ein Prefix um die Adresse noch das Gerät oder die VM des Service (oder ihr Cluster) hat eine. Keine Port-Weiterleitung erreicht die Adresse."}</>)

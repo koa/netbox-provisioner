@@ -63,12 +63,15 @@ Ports (`tcp/443`, `udp/1194`; NetBox kennt TCP, UDP und SCTP), seinen IP-Adresse
 `forward`:
 
 - **IPv4:** Jeder Router mit `nat` der Site leitet jeden Port vom Uplink an die Adresse weiter,
-  aussen derselbe Port wie innen (Z3). Die Site ist die des Prefixes der Adresse (oder des
+  aussen derselbe Port wie innen (Z3). Hat die Site keinen, tun es die Router mit `nat` und
+  `propagate_default_route`, die ihre Router über OSPF erreichen (Nachbarn mit `ospf` im selben
+  IPv4-Netz, über beliebig viele Hops): Dorthin gehen auch die Antworten. Die Site ist die des Prefixes der Adresse (oder des
   nächsten darüber mit Site), sonst die des Geräts des Service, sonst die seiner VM (oder die,
   auf die ihr Cluster beschränkt ist; NetBox trägt sie der VM selbst ein), sonst die des
   Geräts, dessen Interface die Adresse hat. Eine LoadBalancer-Adresse, die der Cluster als /32
   per BGP ankündigt, braucht also weder Prefix noch Interface. Ohne Site ist das der Befund
-  `ForwardWithoutSite`, ohne Router mit `nat` an ihr `ForwardWithoutRouter` (beides Fehler).
+  `ForwardWithoutSite`, ohne Router mit `nat` an ihr und ohne einen erreichten, der die
+  Default-Route verteilt, `ForwardWithoutRouter` (beides Fehler).
   Von zwei Routern mit `nat` ist nur einer gedacht in Betrieb zu sein (der andere als
   Ausweichweg): Die Antworten gehen über die Default-Route hinaus, eine Verbindung über den
   anderen bekommt keine. Jeder Port geht pro Router nur an einen Service, der mit der

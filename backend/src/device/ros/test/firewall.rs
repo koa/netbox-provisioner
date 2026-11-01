@@ -200,7 +200,7 @@ async fn the_drops_go_after_a_rule_set_up_by_hand() {
 /// Routers of one site, each with `ether1` to the internet (`nat` as given), a client device
 /// there, and its services with `forward`: (addresses, port mappings).
 fn site(nat: &[bool], services: &[(&[&str], &[&str])]) -> (TopologyHolder, Vec<DeviceId>) {
-    site_with(nat, services, Parent::Device)
+    site_with(nat, &[], services, Parent::Device)
 }
 
 /// What a service of [`site_with`] hangs at in NetBox.
@@ -213,12 +213,22 @@ enum Parent {
     MachineWithoutSite,
 }
 
-/// [`site`] with the services at `parent`.
-fn site_with(nat: &[bool], services: &[(&[&str], &[&str])], parent: Parent) -> (TopologyHolder, Vec<DeviceId>) {
+/// [`site`] with the services at `parent`, and routers with `nat` at another site, after the
+/// site's in the routers (`elsewhere`: whether each announces the default route, whether it is
+/// an OSPF neighbor of the site's routers: `ospf` in one network with them on `ether2`).
+fn site_with(
+    nat: &[bool],
+    elsewhere: &[(bool, bool)],
+    services: &[(&[&str], &[&str])],
+    parent: Parent,
+) -> (TopologyHolder, Vec<DeviceId>) {
     let mut builder = TopologyBuilder::default();
     let site = builder.sites.next_id();
+    let other_site = builder.sites.next_id();
     let mut routers = Vec::new();
-    for (index, &nat) in nat.iter().enumerate() {
+    let at_site = nat.iter().map(|&nat| (site, nat, false, true));
+    let at_other = elsewhere.iter().map(|&(propagate, connected)| (other_site, true, propagate, connected));
+    for (index, (site, nat, propagate_default_route, connected)) in at_site.chain(at_other).enumerate() {
         let router = builder.devices.next_id();
         builder.devices.insert(
             router,
@@ -226,6 +236,7 @@ fn site_with(nat: &[bool], services: &[(&[&str], &[&str])], parent: Parent) -> (
                 name: format!("router{index}").into(),
                 site: Some(site),
                 has_routeros: true,
+                propagate_default_route,
                 ..Default::default()
             },
         );
@@ -242,6 +253,29 @@ fn site_with(nat: &[bool], services: &[(&[&str], &[&str])], parent: Parent) -> (
                 ..Default::default()
             },
         );
+        if connected {
+            let address = builder.ip_addresses.next_id();
+            builder.ip_addresses.insert(
+                address,
+                IpAddressData {
+                    ip: format!("10.9.0.{}/24", index + 1).parse().unwrap(),
+                    interface: None,
+                    prefix: None,
+                },
+            );
+            let id = builder.interfaces.next_id();
+            builder.interfaces.insert(
+                id,
+                Interface {
+                    name: "ether2".into(),
+                    device: router,
+                    external: Some(PhysicalPortId::Ethernet(2)),
+                    ips: Box::new([address]),
+                    use_ospf: true,
+                    ..Default::default()
+                },
+            );
+        }
         routers.push(router);
     }
     let client = builder.devices.next_id();
@@ -257,7 +291,14 @@ fn site_with(nat: &[bool], services: &[(&[&str], &[&str])], parent: Parent) -> (
         site,
         SiteData {
             name: "site".into(),
-            devices: routers.iter().copied().chain([client]).collect(),
+            devices: routers[..nat.len()].iter().copied().chain([client]).collect(),
+        },
+    );
+    builder.sites.insert(
+        other_site,
+        SiteData {
+            name: "internet".into(),
+            devices: routers[nat.len()..].into(),
         },
     );
     for (index, (addresses, ports)) in services.iter().enumerate() {
@@ -423,14 +464,14 @@ async fn every_nat_router_forwards() {
 #[tokio::test]
 async fn a_service_of_a_virtual_machine_is_forwarded_at_its_site() {
     let services: &[(&[&str], &[&str])] = &[(&["172.31.88.3/32"], &["tcp/80", "tcp/443"])];
-    let (topology, routers) = site_with(&[true], services, Parent::MachineOfSite);
+    let (topology, routers) = site_with(&[true], &[], services, Parent::MachineOfSite);
     assert_eq!(
         dstnat_comments(&generate(&topology, routers[0]).await),
         ["dstnat 172.31.88.3 tcp/80", "dstnat 172.31.88.3 tcp/443"].map(|c| format!("netbox-provisioner: {c}"))
     );
     assert!(findings(&topology.current().await.unwrap()).is_empty());
 
-    let (topology, routers) = site_with(&[true], services, Parent::MachineWithoutSite);
+    let (topology, routers) = site_with(&[true], &[], services, Parent::MachineWithoutSite);
     assert!(dstnat_comments(&generate(&topology, routers[0]).await).is_empty());
     let found = findings(&topology.current().await.unwrap());
     assert!(
@@ -471,6 +512,35 @@ async fn a_port_is_forwarded_once() {
         matches!(&found[..], [FindingKind::ForwardPortTaken(taken), FindingKind::ForwardIncomplete(incomplete)]
             if taken.service.name.as_ref() == "service1" && taken.by.name.as_ref() == "service0"
                 && taken.port.as_ref() == "tcp/443" && incomplete.service.name.as_ref() == "service2"),
+        "{found:?}"
+    );
+}
+
+/// A site without a router with `nat` of its own (the cluster in one building, the internet in
+/// another) is forwarded to by the routers with `nat` announcing the default route that its
+/// routers reach over OSPF, where its answers go out; one that doesn't announce it, or isn't
+/// reached, forwards nothing. With none reached, the error names the site.
+#[tokio::test]
+async fn without_a_nat_router_at_its_site_the_default_routers_forward() {
+    let services: &[(&[&str], &[&str])] = &[(&["172.31.88.3/32"], &["tcp/80"])];
+    let elsewhere = [(true, true), (true, true), (false, true), (true, false)];
+    let (topology, routers) = site_with(&[false], &elsewhere, services, Parent::MachineOfSite);
+    let forwarding = [routers[1], routers[2]];
+    for router in routers {
+        let comments = dstnat_comments(&generate(&topology, router).await);
+        if forwarding.contains(&router) {
+            assert_eq!(comments, ["netbox-provisioner: dstnat 172.31.88.3 tcp/80"]);
+        } else {
+            assert!(comments.is_empty(), "{comments:?}");
+        }
+    }
+    assert!(findings(&topology.current().await.unwrap()).is_empty());
+
+    let (topology, routers) = site_with(&[false], &[(true, false)], services, Parent::MachineOfSite);
+    assert!(dstnat_comments(&generate(&topology, routers[1]).await).is_empty());
+    let found = findings(&topology.current().await.unwrap());
+    assert!(
+        matches!(&found[..], [FindingKind::ForwardWithoutRouter(f)] if f.site.name.as_ref() == "site"),
         "{found:?}"
     );
 }

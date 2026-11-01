@@ -99,6 +99,25 @@ impl ManagementTree {
             .map(|(child, _)| *child)
     }
 
+    /// The roots reached from `from` over OSPF neighbors (a network both have an `ospf`
+    /// interface in), those among `from` included.
+    pub fn roots_reached(&self, from: impl IntoIterator<Item = DeviceId>) -> BTreeSet<DeviceId> {
+        let mut seen = from
+            .into_iter()
+            .filter(|device| self.networks.contains_key(device))
+            .collect::<BTreeSet<_>>();
+        let mut todo = seen.iter().copied().collect::<VecDeque<_>>();
+        while let Some(near) = todo.pop_front() {
+            for (far, networks) in &self.networks {
+                if !seen.contains(far) && !networks.is_disjoint(&self.networks[&near]) {
+                    seen.insert(*far);
+                    todo.push_back(*far);
+                }
+            }
+        }
+        seen.intersection(&self.roots).copied().collect()
+    }
+
     /// The devices that may lose their parent while `device` is away: its children, and those
     /// reaching their parent in a network `device` is in too (the station of a radio bridge
     /// reaches the near router through the AP, all in the bridge's segment).
