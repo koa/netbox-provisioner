@@ -573,7 +573,12 @@ Nutzdaten:
 - **Loopback** `/32` und `/128` aus den Loopback-Pools als Primary IPv4 (Router-ID) und
   Primary IPv6 (Management-Adresse).
 - **Feste Adresse im `/29`** auf der Bridge des Brückengeräts, Tag `ospf` an der Bridge.
-- OSPF-Priorität 0, damit ein Brückengerät nie DR oder BDR wird, fehlt noch (E7).
+- **OSPF-Priorität 0** (v2 und v3) auf einem Brückengerät (`is_bridge_device`): Es wird nie DR
+  oder BDR seines Segments, das es mit den Routern an beiden Enden teilt; Router behalten die
+  Vorgabe von RouterOS (128). Geprüft (CHR 7.24.5, `bridge_devices_are_never_dr_or_bdr_of_their_segment`):
+  zwei Router und zwei Brückengeräte in einem `/29` hinter einer fünften CHR als Switch; die
+  Router werden DR und BDR, die Brückengeräte `dr-other`. Fällt der DR weg, übernimmt der andere
+  Router, und kein Brückengerät rückt als BDR nach; kommt er zurück, sind es wieder die Router.
 
 Warum das hilft:
 

@@ -396,6 +396,7 @@ async fn test_radio_bridge_with_a_static_address_runs_ospf() {
             name: "schopf-burri".into(),
             primary_ip_v4: Some(loopback),
             loopback_ip: Some(loopback),
+            role: Some(crate::topology::DeviceRole::WlanBridge),
             ..Default::default()
         },
     );
@@ -445,6 +446,10 @@ async fn test_radio_bridge_with_a_static_address_runs_ospf() {
     assert_eq!(on_bridge, ["172.17.0.42/29"]);
     let backbone = &target.ospf_interface[&(AsciiString::from("backbone-v2"),)];
     assert_eq!(backbone.interfaces.iter().collect::<Vec<_>>(), [&bridge]);
+    // never DR or BDR of the segment it shares with the routers (E7)
+    for area in ["backbone-v2", "backbone-v3"] {
+        assert_eq!(target.ospf_interface[&(AsciiString::from(area),)].priority, 0, "{area}");
+    }
 }
 
 #[tokio::test]

@@ -1202,18 +1202,27 @@ impl BaseDeviceDataTarget {
                 v2_area.0.instance = b"default-v2".into();
                 let v3_area = self.ospf_area.entry(b"backbone-v3".into()).or_default();
                 v3_area.0.instance = b"default-v3".into();
+                // a radio link's bridge device is never DR or BDR of its segment: it shares
+                // it with the routers at both ends and forwards nothing between them
+                let bridge_device = device.is_bridge_device();
                 let v2_backbone = self
                     .ospf_interface
                     .entry((b"backbone-v2".into(),))
                     .or_default();
                 v2_backbone.interfaces = ports.clone();
                 v2_backbone.use_bfd = Some(false);
+                if bridge_device {
+                    v2_backbone.priority = 0;
+                }
                 let v3_backbone = self
                     .ospf_interface
                     .entry((b"backbone-v3".into(),))
                     .or_default();
                 v3_backbone.interfaces = ports;
                 v3_backbone.use_bfd = Some(false);
+                if bridge_device {
+                    v3_backbone.priority = 0;
+                }
             }
         }
     }

@@ -151,7 +151,7 @@ fn on_management_port(mutation: &ResourceMutation) -> bool {
 
 /// Generates the node's config and applies it directly (the scenario's bootstrap), without
 /// what a CHR doesn't take (`bandwidth`, `disable-running-check`) and the management client.
-async fn apply_directly(node: &RunningNode, device: &backend::topology::access::device::DeviceAccess) {
+pub async fn apply_directly(node: &RunningNode, device: &backend::topology::access::device::DeviceAccess) {
     let client = mikrotik_model::MikrotikDevice::connect(
         ("127.0.0.1", node.api_port),
         b"admin",

@@ -17,6 +17,7 @@ mod chr_network {
     pub mod leftovers;
     pub mod mac_telnet;
     pub mod ospf_chain;
+    pub mod ospf_segment;
     pub mod perimeter;
     pub mod qemu;
     pub mod scenario;

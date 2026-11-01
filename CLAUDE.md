@@ -152,7 +152,10 @@ configuration, no bridge is set up. `nat` without `internet` is a warning (`NatW
 Z2: `nat` needs it). A primary IPv4 on `lo` without `ospf` on any interface is an error
 (`LoopbackWithoutOspf`): nothing announces it, and it ends a radio bridge's DHCP fallback. A radio
 bridge is an OSPF router through a static address and `ospf` on its `bridge` (management only,
-forwarding stays L2). Pool ranges are written as RouterOS reports them
+forwarding stays L2), with OSPF priority 0 (v2 and v3, `setup_ospf`) so it is never DR or BDR of
+the segment it shares with the routers (they keep RouterOS's 128); CHR test
+`bridge_devices_are_never_dr_or_bdr_of_their_segment`, a fifth CHR bridging four cables as the
+shared segment (the harness's cables are point to point). RouterOS names the state `dr-other`. Pool ranges are written as RouterOS reports them
 (`pool_range`: one address alone, a range covering exactly one network as that network, CHR
 7.24.5), else the diff never gets empty. The prefix tags
 `loopback`/`transfer` (`IpPrefixData::pool`) are only used here so far. One L3 gateway per VLAN
