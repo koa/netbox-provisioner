@@ -387,6 +387,18 @@ on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 
 ## Device access, setup and updates
 
+What is asked of devices and MikroTik goes through `facts` (`docs/concepts/device-state.md`):
+`facts::get(key, Freshness, ask)` gives a stored fact young enough for the user, joins the asking
+running already or asks, never twice at once per key, the asking spawned so a page closed leaves
+it to the others. Failures are facts too (`get_judged`: the age a stored one may have by what it
+says, a refused login 10 min, no answer 20 s). Each user says how old (`MaxAge`, `Since` for a job
+that plans from it); nothing is kept over 15 min. A job drops what its kind may change when it
+ends (`JobKind::invalidates`, raising the device's generation: what was asked meanwhile isn't
+stored); a topology changed in NetBox drops the facts worked out from it everywhere. Jobs that
+write read anew, they don't use the facts of the page. Times are `tokio::time::Instant`s, only
+ages go to the frontend. The metrics (`device_query_*`, `fact_cache_*`) go into `/metrics`
+(`facts::register`).
+
 The UI logs in over OIDC (`yew-oauth2` in the frontend, structure taken from the cable-editor);
 the backend checks the JWT against `auth_issuer` and lets only `auth_users` in, both as
 middleware of `/graphql` in `binary` (`authenticated_graphql`: `403` otherwise, and the server

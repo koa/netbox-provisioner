@@ -18,6 +18,7 @@ use crate::{
         radio_hold, update_fallback, watchdog,
     },
     device_state::{JobPhase, Restart},
+    facts::{self, FactKind},
     saved_job::{self, SavedJob},
     graphql::scalars::ScalarDuration,
     helper,
@@ -134,6 +135,9 @@ pub struct Log {
     journal: Arc<OnceLock<watch::Sender<()>>>,
     /// that entry's id in NetBox once created, saved with the job (`SavedJob::journal_entry`)
     journal_entry: Arc<OnceLock<u64>>,
+    /// the devices the job works on and through, whose pages hear of its events
+    /// (`facts::Change::Job`); unset without a job
+    devices: Arc<OnceLock<Box<[DeviceId]>>>,
 }
 
 /// What the job keeps for going on after a restart ([`Log::keep`]), and whether its file is
@@ -166,6 +170,7 @@ impl Log {
             saving: Default::default(),
             journal: Default::default(),
             journal_entry: Default::default(),
+            devices: Default::default(),
         }
     }
     /// The job enters `phase`. One its kind's table doesn't allow after the current one is
@@ -203,6 +208,13 @@ impl Log {
     fn changed(&self) {
         if let Some(journal) = self.journal.get() {
             journal.send_replace(());
+        }
+        self.announce();
+    }
+    /// Tells the subscriptions of the job's devices that it changed.
+    fn announce(&self) {
+        for device in self.devices.get().into_iter().flatten() {
+            facts::announce(facts::Change::Job(*device));
         }
     }
     /// Keeps what the job needs to go on after a restart (`saved_job`), from the next state it
@@ -301,6 +313,8 @@ impl Log {
             at: self.started.elapsed().into(),
             event,
         });
+        drop(events);
+        self.announce();
     }
     /// The events from `after` on.
     pub fn since(&self, after: u32) -> Vec<Logged> {
@@ -341,6 +355,34 @@ pub enum JobKind {
     /// how far each device of a site is from NetBox (`diffSite`), read only
     SiteDiff,
 }
+
+impl JobKind {
+    /// The facts about its device a job of the kind may change, dropped when it ends.
+    pub fn invalidates(self) -> &'static [FactKind] {
+        use FactKind::*;
+        match self {
+            JobKind::Apply => &[Login, Route, Config, Leftovers, Interfaces],
+            JobKind::Update | JobKind::Downgrade => {
+                &[Login, Route, Config, RouterosState, Leftovers, Partitions, DeviceMode, Interfaces]
+            }
+            JobKind::Cleanup => &[Login, Route, Config, RouterosState, Leftovers],
+            JobKind::Bootstrap => &[Login, Route, Config, RouterosState, Leftovers, Interfaces],
+            JobKind::Reboot => &[Login, Route, Config, Leftovers],
+            // a job of the supplier: what it sees on the port changes with the device it feeds
+            JobKind::PowerCycle => &[Login, Route, Leftovers, Neighbors],
+            JobKind::DeviceMode => &[Login, Route, Config, Leftovers, DeviceMode],
+            JobKind::Repartition | JobKind::BootPartition => {
+                &[Login, Route, Config, RouterosState, Leftovers, Partitions]
+            }
+            // NetBox changes a fact's key (addresses, cables), not what the device says
+            JobKind::NetboxWrite | JobKind::NetboxUndo | JobKind::SiteDiff => &[],
+        }
+    }
+}
+
+/// What a setup changes on the neighbor it works through: what that sees on its port, and the
+/// login the setup let through with a password for a moment.
+const THROUGH_INVALIDATES: &[FactKind] = &[FactKind::Neighbors, FactKind::Login];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
 pub enum JobState {
@@ -442,6 +484,14 @@ impl Job {
             None => info!("{}: job {} {state:?}", self.name, self.id),
         }
         *self.outcome.lock().unwrap_or_else(PoisonError::into_inner) = (state, error);
+        // what the job may have changed is asked anew; only now, what was asked while it ran
+        // isn't kept either (`facts`)
+        if let JobSubject::Device(device) = self.subject {
+            facts::invalidate(device, self.kind.invalidates());
+        }
+        if let Some(JobSubject::Device(through)) = self.through {
+            facts::invalidate(through, THROUGH_INVALIDATES);
+        }
         self.log.changed();
     }
     pub fn job_id(&self) -> u32 {
@@ -649,6 +699,16 @@ fn add(
         outcome: Mutex::new((JobState::Running, None)),
         took: Mutex::new(None),
     });
+    let devices = [Some(subject), through]
+        .into_iter()
+        .flatten()
+        .filter_map(|subject| match subject {
+            JobSubject::Device(device) => Some(device),
+            JobSubject::Site(_) => None,
+        })
+        .collect();
+    let _ = job.log.devices.set(devices);
+    job.log.announce();
     jobs.jobs.push(job.clone());
     let finished = jobs.jobs.iter().filter(|job| job.state() != JobState::Running).count();
     if finished > KEEP

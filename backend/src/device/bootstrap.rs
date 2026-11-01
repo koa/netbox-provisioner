@@ -16,6 +16,7 @@ use crate::{
     device_state::BootstrapState,
     config::{CONFIG, MikrotikCredentials},
     error_info::{ApiError, BootstrapObstacle},
+    facts::{self, FactKey, FactKind, Freshness},
     device::{
         Credentials, Path, connect, other_device_named,
         proxied_stream,
@@ -61,7 +62,7 @@ pub struct BootstrapPlan {
     neighbor_device: DeviceAccess,
     /// where the neighbor is reached (over SSH)
     #[graphql(skip)]
-    neighbor_address: IpAddr,
+    pub(crate) neighbor_address: IpAddr,
 }
 
 impl BootstrapPlan {
@@ -84,9 +85,18 @@ impl BootstrapPlan {
     /// What the neighbor discovers on its port (`/ip/neighbor`), the candidates to set up. Over
     /// a bridge (a radio link) that includes devices further away.
     async fn discovered(&self) -> Result<Vec<Discovered>, ApiError> {
-        Ok(discover(self).await?)
+        let key = FactKey::new(FactKind::Neighbors, Some(self.neighbor_device.id()), &self.neighbor_port);
+        let fact = facts::get(key, Freshness::MaxAge(DISCOVERED_AGE), discover(self.clone())).await;
+        Ok(fact.result()?.to_vec())
     }
 }
+
+/// How old what the neighbor sees on its port may be for the device page: RouterOS announces
+/// itself every 30 to 60 s, a device plugged in shows up within that anyway.
+const DISCOVERED_AGE: Duration = Duration::from_secs(10);
+/// How old the neighbor's port names may be: only an apply on the neighbor changes them, and
+/// that drops them (`facts::invalidate`).
+const PORT_NAMES_AGE: Duration = Duration::from_secs(10 * 60);
 
 /// A device the neighbor sees on its port.
 #[derive(Clone, Debug, SimpleObject)]
@@ -169,21 +179,19 @@ pub fn plan(device: &DeviceAccess) -> Result<BootstrapPlan, Error> {
 /// still, whose discovery tells why.
 pub async fn working_plan(device: &DeviceAccess) -> Result<BootstrapPlan, Error> {
     let mut plans = plans(device)?;
+    // the neighbor's login as a fact: what its own page or a page before found out
     let answers = join_all(plans.iter().map(|plan| async move {
         let Some(name) = plan.neighbor_device.credentials() else {
             return false;
         };
         let credentials = Credentials::Named(name.into());
-        let login = connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials);
-        matches!(timeout(NEIGHBOR_CHECK, login).await, Ok(Ok(_)))
+        let login = crate::device::login(&plan.neighbor_device, plan.neighbor_address, &Path::Routed, &credentials);
+        login.await.value.is_ok()
     }))
     .await;
     let index = answers.iter().position(|answered| *answered).unwrap_or(0);
     Ok(plans.swap_remove(index))
 }
-
-/// How long [`working_plan`] waits for a neighbor's login.
-const NEIGHBOR_CHECK: Duration = Duration::from_secs(10);
 
 /// Every [`plan`] of `device`, the one from the management proxy's device first: that one is
 /// reachable whatever the network does, while another neighbor may be cut off itself (an MTU
@@ -256,18 +264,13 @@ pub fn reachable_address(device: &DeviceAccess) -> Option<IpAddr> {
     }
 }
 
-async fn discover(plan: &BootstrapPlan) -> Result<Vec<Discovered>, Error> {
-    let credentials = Credentials::Named(
-        plan.neighbor_device
-            .credentials()
-            .ok_or(Error::MissingCredentials)?
-            .into(),
-    );
+async fn discover(plan: BootstrapPlan) -> Result<Vec<Discovered>, Error> {
+    let credentials = neighbor_credentials(&plan)?;
     let neighbor =
         connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await?;
     // NetBox has the factory name, `/ip/neighbor` the one the provisioner gave the port
     let mut names = vec![plan.neighbor_port.clone()];
-    names.extend(port_name(&neighbor, &plan.neighbor_port).await?);
+    names.extend(neighbor_port_name(&plan).await.result()?.as_ref().clone());
     let mut found = Vec::new();
     for row in rows(&neighbor, "/ip/neighbor/print").await? {
         let interface = field(&row, "interface").unwrap_or_default();
@@ -294,18 +297,18 @@ async fn discover(plan: &BootstrapPlan) -> Result<Vec<Discovered>, Error> {
 /// returns what it calls its port to the device, NetBox' name when that can't be read. Before
 /// the console session, so a neighbor without forwarding leaves the device untouched.
 async fn check_neighbor(plan: &BootstrapPlan) -> Result<String, Error> {
-    let credentials = Credentials::Named(
-        plan.neighbor_device
-            .credentials()
-            .ok_or(Error::MissingCredentials)?
-            .into(),
-    );
+    let credentials = neighbor_credentials(plan)?;
     let neighbor =
         match connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await {
             Ok(neighbor) => neighbor,
             Err(error) => {
                 warn!("cannot check {} over the API: {error}", plan.neighbor);
-                return Ok(plan.neighbor_port.clone());
+                // the name found out lately, e.g. while the page looked for the device
+                let key = port_names_key(plan);
+                let known = facts::peek::<Option<String>>(&key).and_then(|fact| fact.value.ok());
+                return Ok(known
+                    .and_then(|name| name.as_ref().clone())
+                    .unwrap_or_else(|| plan.neighbor_port.clone()));
             }
         };
     // RouterOS never answers a forward it doesn't allow, the tunnel would only time out
@@ -318,14 +321,38 @@ async fn check_neighbor(plan: &BootstrapPlan) -> Result<String, Error> {
             forwarding.into(),
         ));
     }
-    Ok(match port_name(&neighbor, &plan.neighbor_port).await {
-        Ok(Some(name)) => name,
-        Ok(None) => plan.neighbor_port.clone(),
+    Ok(match neighbor_port_name(plan).await.value {
+        Ok(name) => name.as_ref().clone().unwrap_or_else(|| plan.neighbor_port.clone()),
         Err(error) => {
             warn!("cannot read the port names of {}: {error}", plan.neighbor);
             plan.neighbor_port.clone()
         }
     })
+}
+
+fn neighbor_credentials(plan: &BootstrapPlan) -> Result<Credentials, Error> {
+    Ok(Credentials::Named(
+        plan.neighbor_device
+            .credentials()
+            .ok_or(Error::MissingCredentials)?
+            .into(),
+    ))
+}
+
+fn port_names_key(plan: &BootstrapPlan) -> FactKey {
+    FactKey::new(FactKind::Interfaces, Some(plan.neighbor_device.id()), &plan.neighbor_port)
+}
+
+/// What the neighbor calls its port to the device, as a fact ([`PORT_NAMES_AGE`]): the page
+/// looking for the device reads it, the setup right after takes it from there.
+async fn neighbor_port_name(plan: &BootstrapPlan) -> facts::Fact<Option<String>> {
+    let (address, factory) = (plan.neighbor_address, plan.neighbor_port.clone());
+    let credentials = neighbor_credentials(plan);
+    facts::get(port_names_key(plan), Freshness::MaxAge(PORT_NAMES_AGE), async move {
+        let neighbor = connect::<SimpleResult>(address, &Path::Routed, &credentials?).await?;
+        port_name(&neighbor, &factory).await
+    })
+    .await
 }
 
 /// The name the neighbor gives its Ethernet port with the factory name `factory_name`, if it

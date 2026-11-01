@@ -45,7 +45,18 @@ impl TopologyHolder {
         let data_ref = self.data.clone();
         match build_topology().await {
             Ok(value) => {
-                data_ref.lock().await.replace(Arc::new(value));
+                let value = Arc::new(value);
+                let before = data_ref.lock().await.replace(value.clone());
+                // what is shown from it may differ: subscriptions show it again
+                let changed = before.map(|before| before.changed_parts(&value));
+                if changed.as_ref().is_none_or(|parts| !parts.is_empty()) {
+                    if let Some(parts) = &changed {
+                        info!("Topology changed in NetBox: {}", parts.join(", "));
+                    }
+                    use crate::facts::{self, FactKind};
+                    facts::invalidate_everywhere(&[FactKind::Config, FactKind::RouterosState, FactKind::DeviceMode]);
+                    facts::announce(facts::Change::Topology);
+                }
                 Ok(())
             }
             Err(err) => Err(err),
@@ -123,6 +134,59 @@ pub struct Topology {
     /// the NetBox response it is built from, which a helper's plan is tried on
     /// (`helper::preview`); none in tests built from parts
     source: Option<Source>,
+}
+
+impl Topology {
+    /// What it holds differently from `other`, read at another time (or from another
+    /// response): none if the same.
+    fn changed_parts(&self, other: &Topology) -> Vec<&'static str> {
+        let Topology {
+            fetch_time: _,
+            devices,
+            sites,
+            interfaces,
+            front_ports,
+            rear_ports,
+            circuit_terminations,
+            cables,
+            vxlans,
+            wlan_groups,
+            wlans,
+            vlan_groups,
+            vlans,
+            ip_addresses,
+            ip_prefixes,
+            ip_ranges,
+            ip_range_idx,
+            services,
+            findings,
+            source: _,
+        } = self;
+        [
+            ("devices", *devices == other.devices),
+            ("sites", *sites == other.sites),
+            ("interfaces", *interfaces == other.interfaces),
+            ("front_ports", *front_ports == other.front_ports),
+            ("rear_ports", *rear_ports == other.rear_ports),
+            ("circuit_terminations", *circuit_terminations == other.circuit_terminations),
+            ("cables", *cables == other.cables),
+            ("vxlans", *vxlans == other.vxlans),
+            ("wlan_groups", *wlan_groups == other.wlan_groups),
+            ("wlans", *wlans == other.wlans),
+            ("vlan_groups", *vlan_groups == other.vlan_groups),
+            ("vlans", *vlans == other.vlans),
+            ("ip_addresses", *ip_addresses == other.ip_addresses),
+            ("ip_prefixes", *ip_prefixes == other.ip_prefixes),
+            ("ip_ranges", *ip_ranges == other.ip_ranges),
+            ("ip_range_idx", *ip_range_idx == other.ip_range_idx),
+            ("services", *services == other.services),
+            ("findings", *findings == other.findings),
+        ]
+        .into_iter()
+        .filter(|(_, same)| !same)
+        .map(|(part, _)| part)
+        .collect()
+    }
 }
 
 /// The NetBox response a topology is built from: compared by identity and not printed, it is

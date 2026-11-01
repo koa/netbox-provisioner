@@ -68,7 +68,9 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 ## D. In Arbeit, Rest offen
 
-Zurzeit keine.
+| # | Aufgabe | Konzept | Aufwand | Status |
+|---|---|---|---|---|
+| C15 | Gerätezustand: Cache der Erkenntnisse (`facts`), Login und Durchprobieren, Verwerfen nach Jobs, Metriken sind umgesetzt; offen: „Stand“ und „Neu laden“ im UI, Subscriptions mit derselben Auswahl wie die Queries, Grafana-Dashboard | [Gerätezustand](concepts/device-state.md) | L | in Arbeit |
 
 ## E. Erweiterungen umgesetzter Teile
 

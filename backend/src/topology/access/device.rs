@@ -4,7 +4,9 @@ use crate::{
     device::{
         AccessibleDevice, Credentials, Path,
         bootstrap::{self, BootstrapPlan},
+        login, went_lately,
     },
+    facts::{self, FactKey, FactKind, Freshness},
     topology::{
         CablePort, Device, DeviceId, DeviceRole, Topology,
         findings::Finding,
@@ -17,11 +19,13 @@ use crate::{
 use async_graphql::Object;
 use log::{error, info};
 use std::{net::IpAddr, sync::Arc, time::Duration};
-use tokio::time::timeout;
 
-/// Includes the login; through the management proxy a missing route fails at once, a host that
-/// is down only after the TCP timeout.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+/// What tells the tryings of `connect` apart: the address asked for and the credentials (only
+/// a hash of typed-in ones).
+fn route_detail(target: Option<IpAddr>, credentials: &Credentials) -> String {
+    let target = target.map_or("NetBox".into(), |t| t.to_string());
+    format!("{target} {}", credentials.fact_key())
+}
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct DeviceAccess {
@@ -92,18 +96,7 @@ impl DeviceAccess {
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
     ) -> Result<Option<AccessibleDevice>, Error> {
-        let fallbacks = if target.is_none() {
-            bootstrap::plans(self)
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|plan| Some(plan.port_address()) != self.primary_ip())
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let addr = target
-            .and_then(|ip| ip.parse().ok())
-            .or(bootstrap::reachable_address(self));
+        let target: Option<IpAddr> = target.and_then(|ip| ip.parse().ok());
         let credentials = if let Some(credential_name) = credential_name {
             Some(Credentials::Named(credential_name))
         } else if let Some(AdhocCredentials { username, password }) = adhoc_credentials {
@@ -115,58 +108,81 @@ impl DeviceAccess {
         let Some(credentials) = credentials else {
             return Ok(None);
         };
-        let first = match addr {
-            Some(address) => timeout(
-                CONNECT_TIMEOUT,
-                AccessibleDevice::create_client(
-                    self.clone(),
-                    address,
-                    Path::Routed,
-                    credentials.clone(),
-                ),
-            )
-            .await
-            .unwrap_or(Err(Error::Timeout(address))),
-            None => Err(Error::NoAddress(self.name().into())),
-        };
-        let mut error = match first {
-            Ok(device) => return Ok(Some(device)),
-            Err(Error::NoAddress(_)) if fallbacks.is_empty() => return Ok(None),
-            Err(error) => error,
-        };
-        for plan in fallbacks {
-            let address = plan.port_address();
-            info!(
-                "{} not reachable ({error}), trying {address} through {}",
-                self.name(),
-                plan.neighbor
-            );
-            // directly first: the port's address may well be routed to (berghof-stall-haus'
-            // 10.198.1.4 was, from the provisioner's own network), only the device has no
-            // route back to the provisioner on all of its sites' networks
-            match timeout(
-                CONNECT_TIMEOUT,
-                AccessibleDevice::create_client(self.clone(), address, Path::Routed, credentials.clone()),
-            )
-            .await
-            .unwrap_or(Err(Error::Timeout(address)))
-            {
-                Ok(device) => return Ok(Some(device)),
-                Err(e) => info!("{}: {address} not reachable directly ({e})", self.name()),
+        // one trying at a time: who comes meanwhile joins it (`facts`)
+        let key = FactKey::new(FactKind::Route, Some(self.id()), route_detail(target, &credentials));
+        let way = facts::get(
+            key,
+            Freshness::MaxAge(Duration::ZERO),
+            Self::find_way(self.clone(), target, credentials.clone()),
+        )
+        .await
+        .result()?;
+        match &*way {
+            Some((address, path)) => {
+                AccessibleDevice::create_client(self.clone(), *address, path.clone(), credentials)
+                    .await
+                    .map(Some)
             }
-            let credentials = credentials.clone();
-            match timeout(CONNECT_TIMEOUT, async {
-                let path = Path::Neighbor(plan.into());
-                AccessibleDevice::create_client(self.clone(), address, path, credentials).await
-            })
-            .await
-            .unwrap_or(Err(Error::Timeout(address)))
-            {
-                Ok(device) => return Ok(Some(device)),
-                Err(e) => error = e,
+            None => Ok(None),
+        }
+    }
+
+    /// The address and way `connect` reaches the device at: `target`, or else the primary IP
+    /// and the addresses of [`bootstrap::plans`] (directly, then over the neighbor). A way that
+    /// went lately goes first; logins refused or unanswered lately fail at once
+    /// ([`device::login`](crate::device::login)).
+    async fn find_way(
+        self,
+        target: Option<IpAddr>,
+        credentials: Credentials,
+    ) -> Result<Option<(IpAddr, Path)>, Error> {
+        let mut ways = Vec::new();
+        if let Some(address) = target.or(bootstrap::reachable_address(&self)) {
+            ways.push((address, Path::Routed));
+        }
+        if target.is_none() {
+            for plan in bootstrap::plans(&self).unwrap_or_default() {
+                let address = plan.port_address();
+                if Some(address) == self.primary_ip() {
+                    continue;
+                }
+                // directly first: the port's address may well be routed to (berghof-stall-haus'
+                // 10.198.1.4 was, from the provisioner's own network), only the device has no
+                // route back to the provisioner on all of its sites' networks
+                ways.push((address, Path::Routed));
+                ways.push((address, Path::Neighbor(plan.into())));
             }
         }
-        Err(error)
+        if ways.is_empty() {
+            return Ok(None);
+        }
+        // stable: otherwise in the order above
+        ways.sort_by_key(|(address, path)| !went_lately(&self, *address, path, &credentials));
+        let mut error = None;
+        for (address, path) in ways {
+            let fact = login(&self, address, &path, &credentials).await;
+            let age = fact.age();
+            match fact.value {
+                Ok(_) => return Ok(Some((address, path))),
+                Err(e) => {
+                    info!(
+                        "{}: {address} {} not reachable ({e}{})",
+                        self.name(),
+                        match &path {
+                            Path::Routed => String::new(),
+                            Path::Neighbor(plan) => format!(" through {}", plan.neighbor),
+                        },
+                        match fact.came {
+                            facts::Came::Hit => format!(", {}s ago", age.as_secs()),
+                            _ => String::new(),
+                        }
+                    );
+                    error.get_or_insert(e);
+                }
+            }
+        }
+        // the first way's error: why the primary IP doesn't answer
+        Err(Error::Shared(error.expect("a way tried")))
     }
 
     pub fn loopback_ip(&self) -> Option<IpAddressAccess> {
@@ -289,12 +305,15 @@ impl DeviceAccess {
     async fn api_serial(&self) -> Option<String> {
         self.serial().map(ToString::to_string)
     }
+    /// `maxAge`: how old, in seconds, what the device was asked may be at most (`facts`);
+    /// each field has its own otherwise, `0` asks anew.
     async fn access(
         &self,
         ctx: &async_graphql::Context<'_>,
         target: Option<String>,
         credential_name: Option<Box<str>>,
         adhoc_credentials: Option<AdhocCredentials>,
+        max_age: Option<u32>,
     ) -> Option<AccessibleDevice> {
         // the page shows why next to "unreachable" (an error at this path, which a returned
         // error would put on the whole device); `None` also without credentials or an address
@@ -302,7 +321,10 @@ impl DeviceAccess {
             .connect(target, credential_name, adhoc_credentials)
             .await
             .inspect_err(|error| error!("Cannot access device {}: {}", self.name(), error));
-        crate::device::ros::graphql::nullable(ctx, result).flatten()
+        let max_age = max_age.map(|seconds| Duration::from_secs(seconds.into()));
+        crate::device::ros::graphql::nullable(ctx, result)
+            .flatten()
+            .map(|device| device.with_max_age(max_age))
     }
     /// The devices to apply together with this one (`applyBatch`): the other ends of its
     /// wireless links (`partner`), then the RouterOS devices of its site and theirs.

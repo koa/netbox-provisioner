@@ -31,6 +31,7 @@ use crate::{
     job::Log,
     saved_job::{self, SavedApply, SavedJob, SavedWork, ScriptRun},
 };
+use crate::facts::{self, FactKey, FactKind, Freshness};
 use async_graphql::{Context, Enum, Object, SimpleObject};
 use log::info;
 use rand::{Rng, distr::Alphanumeric};
@@ -50,7 +51,7 @@ use mikrotik_model::{
 use std::{
     collections::{BTreeSet, HashSet},
     net::IpAddr,
-    sync::atomic::Ordering,
+    sync::{Arc, atomic::Ordering},
     time::{Duration, Instant, SystemTime},
 };
 
@@ -414,11 +415,23 @@ async fn powered_ports(
 
 /// The script that would bring a device in line with NetBox.
 #[derive(SimpleObject)]
+#[graphql(complex)]
 pub struct GeneratedCfg {
     /// empty if the device is in line already
     script: Box<str>,
     /// what applying it would do that the operator should know before
     warnings: Vec<ApplyWarning>,
+    /// when the device was read for it
+    #[graphql(skip)]
+    as_of: tokio::time::Instant,
+}
+
+#[async_graphql::ComplexObject]
+impl GeneratedCfg {
+    /// seconds since the device was read for it (`facts`)
+    async fn age(&self) -> u64 {
+        self.as_of.elapsed().as_secs()
+    }
 }
 
 /// The script the apply runs on the device; empty if there is nothing to do.
@@ -1561,26 +1574,32 @@ impl AccessibleDevice {
     /// The script that would bring the device in line with NetBox, and what to know before
     /// applying it; `null` with the error in the response's errors when that fails, so a
     /// device the generator fails on still shows the rest (an update may be what it needs).
-    async fn generate_cfg(&self, ctx: &Context<'_>) -> Option<GeneratedCfg> {
-        let generated = async {
-            let mut device_cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
+    async fn generate_cfg(&self, ctx: &Context<'_>) -> Option<Arc<GeneratedCfg>> {
+        let device = self.duplicate();
+        let generated = async move {
+            let as_of = tokio::time::Instant::now();
+            let mut device_cfg = DeviceCfg::fetch(&device.client, &device.device_config).await?;
             device_cfg
-                .generate_live(&self.device_config, &self.connect_again().await?)
+                .generate_live(&device.device_config, &device.connect_again().await?)
                 .await?;
             Ok(GeneratedCfg {
                 script: device_cfg.script()?,
                 warnings: device_cfg
-                    .warnings(async || self.connect_again::<SimpleResult>().await)
+                    .warnings(async || device.connect_again::<SimpleResult>().await)
                     .await,
+                as_of,
             })
         };
-        nullable(ctx, generated.await)
+        let fact = facts::get(self.fact_key(FactKind::Config), self.freshness(CONFIG_AGE), generated);
+        nullable(ctx, fact.await.result())
     }
     /// The device mode and the features the provisioner needs that are off in it; `null`
     /// before RouterOS 7.17, which has no device mode.
     async fn device_mode(&self, ctx: &Context<'_>) -> Option<device_mode::DeviceMode> {
-        let mode = async { device_mode::read(&self.connect_again().await?, &self.device_config).await };
-        nullable(ctx, mode.await).flatten()
+        let device = self.duplicate();
+        let mode = async move { device_mode::read(&device.connect_again().await?, &device.device_config).await };
+        let fact = facts::get(self.fact_key(FactKind::DeviceMode), self.freshness(DEVICE_MODE_AGE), mode);
+        nullable(ctx, fact.await.result()).and_then(|mode| (*mode).clone())
     }
     /// What the device sees at its ports against NetBox's cables there, the worst first.
     async fn neighbor_findings(&self) -> Result<Vec<neighbors::NeighborFinding>, ApiError> {
@@ -1598,16 +1617,20 @@ impl AccessibleDevice {
     }
     /// The partitions of the flash; `null` on a device without (16 MiB of flash, a CHR).
     async fn partitions(&self, ctx: &Context<'_>) -> Option<partitions::Partitions> {
-        let read = async { partitions::read(&self.connect_again().await?).await };
-        nullable(ctx, read.await).flatten()
+        let device = self.duplicate();
+        let read = async move { partitions::read(&device.connect_again().await?).await };
+        let fact = facts::get(self.fact_key(FactKind::Partitions), self.freshness(PARTITIONS_AGE), read);
+        nullable(ctx, fact.await.result()).and_then(|partitions| (*partitions).clone())
     }
     /// The running RouterOS and its packages, and what an update in each channel would do.
-    async fn routeros(&self, ctx: &Context<'_>) -> Option<RouterOsVersions> {
-        let versions = async {
-            let state = update::read_state(&self.connect_again().await?).await?;
-            let wanted = self.wanted_packages().await?;
+    async fn routeros(&self, ctx: &Context<'_>) -> Option<Arc<RouterOsVersions>> {
+        let device = self.duplicate();
+        let versions = async move {
+            let as_of = tokio::time::Instant::now();
+            let state = update::read_state(&device.connect_again().await?).await?;
+            let wanted = device.wanted_packages().await?;
             let newest_v6 = if state.version.major() < 7 {
-                Some(update::newest(6, update::Channel::LongTerm).await?)
+                Some(newest(6, update::Channel::LongTerm).await?)
             } else {
                 None
             };
@@ -1618,7 +1641,7 @@ impl AccessibleDevice {
                 update::Channel::Testing,
                 update::Channel::Development,
             ] {
-                let newest = update::newest(7, channel).await?;
+                let newest = newest(7, channel).await?;
                 let step =
                     update::next_step(&state, &newest, newest_v6.as_ref().unwrap_or(&newest), &wanted);
                 channels.push(ChannelUpdate {
@@ -1632,9 +1655,10 @@ impl AccessibleDevice {
             let adjust_packages = state.version.major() >= 7
                 && update::next_step(&state, &state.version, &state.version, &wanted).is_some();
             // an update of this run brought the running one: the way back to the one before
-            let previous = crate::job::version_before_update(self.device_config.id())
+            let previous = crate::job::version_before_update(device.device_config.id())
                 .filter(|previous| update::Version::parse(previous).is_some_and(|v| v < state.version));
             Ok::<_, Error>(RouterOsVersions {
+                as_of,
                 previous,
                 adjust_packages,
                 version: state.version.to_string().into(),
@@ -1644,7 +1668,8 @@ impl AccessibleDevice {
                 channels,
             })
         };
-        nullable(ctx, versions.await)
+        let fact = facts::get(self.fact_key(FactKind::RouterosState), self.freshness(ROUTEROS_AGE), versions);
+        nullable(ctx, fact.await.result())
     }
     /// What a job that didn't see its work to the end left on the device, with what can be
     /// done about it; `null` with nothing left, and while a job of this provisioner runs on
@@ -1654,20 +1679,24 @@ impl AccessibleDevice {
         if crate::job::list(Some(subject)).iter().any(|job| job.is_running()) {
             return None;
         }
-        let read = async {
-            let raw = self.connect_again().await?;
-            let mut left = crate::device::leftovers::read(&raw).await?;
-            if let Some(watchdogs) = &mut left.watchdogs {
-                watchdogs.held_by = crate::job::holding_watchdogs(self.device_config.name());
-            }
+        let device = self.duplicate();
+        let read = async move {
+            let raw = device.connect_again().await?;
+            let left = crate::device::leftovers::read(&raw).await?;
             if crate::journal::enabled() {
                 // what no job of this provisioner explains goes into the journal (Z31)
                 let uptime = fallback::uptime(&raw).await.ok().flatten();
-                tokio::spawn(crate::journal::observe(self.device_config.id(), left.journal_left(), uptime));
+                tokio::spawn(crate::journal::observe(device.device_config.id(), left.journal_left(), uptime));
             }
             Ok::<_, Error>(left)
         };
-        nullable(ctx, read.await).filter(|left| !left.is_empty())
+        let fact = facts::get(self.fact_key(FactKind::Leftovers), self.freshness(LEFTOVERS_AGE), read);
+        let mut left = (*nullable(ctx, fact.await.result())?).clone();
+        // which job holds them changes without the device knowing
+        if let Some(watchdogs) = &mut left.watchdogs {
+            watchdogs.held_by = crate::job::holding_watchdogs(self.device_config.name());
+        }
+        Some(left).filter(|left| !left.is_empty())
     }
     /// The newest `last` entries of the device's log (`/log`, kept in its memory until a
     /// reboot), oldest first: what happened, after an update that went wrong. Without the
@@ -1696,6 +1725,50 @@ impl AccessibleDevice {
     }
 }
 
+/// How old the generated config may be on the device page: what it showed a minute ago.
+const CONFIG_AGE: Duration = Duration::from_secs(60);
+/// How old RouterOS version and packages may be: only jobs change them, and those drop them.
+const ROUTEROS_AGE: Duration = Duration::from_secs(10 * 60);
+const PARTITIONS_AGE: Duration = Duration::from_secs(10 * 60);
+const DEVICE_MODE_AGE: Duration = Duration::from_secs(10 * 60);
+/// How old what jobs left may be: a fallback's next run moves on.
+const LEFTOVERS_AGE: Duration = Duration::from_secs(60);
+/// How old MikroTik's newest version in a channel may be: it publishes seldom.
+const NEWEST_AGE: Duration = Duration::from_secs(15 * 60);
+
+/// The newest RouterOS `major` in `channel` (`update::newest`), as a fact for every device.
+async fn newest(major: u32, channel: update::Channel) -> Result<update::Version, Error> {
+    let key = FactKey::new(FactKind::NewestVersion, None, format!("{major} {}", channel.name()));
+    let fact = facts::get(key, Freshness::MaxAge(NEWEST_AGE), update::newest(major, channel)).await;
+    Ok((*fact.result()?).clone())
+}
+
+impl AccessibleDevice {
+    /// The key of a fact about the device as this connection reads it: the credentials go in,
+    /// what typed-in ones read stays with them.
+    fn fact_key(&self, kind: FactKind) -> FactKey {
+        FactKey::new(
+            kind,
+            Some(self.device_config.id()),
+            format!(
+                "{} {}{}",
+                self.address,
+                self.credentials.fact_key(),
+                // a helper's plan: of that topology only
+                if self.preview {
+                    format!(" plan {:p}", Arc::as_ptr(self.device_config.topology()))
+                } else {
+                    String::new()
+                }
+            ),
+        )
+    }
+    /// `own`, or the younger age the request asked for (`access(maxAge:)`).
+    fn freshness(&self, own: Duration) -> Freshness {
+        Freshness::MaxAge(own).at_most(self.max_age)
+    }
+}
+
 /// An entry of the device's log, as RouterOS reports it.
 #[derive(SimpleObject)]
 pub struct LogEntry {
@@ -1721,7 +1794,11 @@ pub(crate) fn nullable<T>(ctx: &Context<'_>, result: Result<T, Error>) -> Option
 }
 
 #[derive(SimpleObject)]
+#[graphql(complex)]
 pub struct RouterOsVersions {
+    /// when the device was read for it
+    #[graphql(skip)]
+    as_of: tokio::time::Instant,
     version: Box<str>,
     /// installed packages
     packages: Box<[Box<str>]>,
@@ -1736,6 +1813,14 @@ pub struct RouterOsVersions {
     /// the older version the device ran before an update of this run of the provisioner
     /// (`downgradeRouteros` takes it back there)
     previous: Option<Box<str>>,
+}
+
+#[async_graphql::ComplexObject]
+impl RouterOsVersions {
+    /// seconds since the device was read for it (`facts`)
+    async fn age(&self) -> u64 {
+        self.as_of.elapsed().as_secs()
+    }
 }
 
 #[derive(SimpleObject)]

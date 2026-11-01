@@ -69,6 +69,7 @@ impl From<&Error> for ErrorInfo {
         let cause = |cause: &dyn std::fmt::Display| vec![("cause", cause.to_string())];
         let (code, params) = match error {
             Error::SetupError(error) => return error.into(),
+            Error::Shared(error) => return (&**error).into(),
             Error::MikrotikApi(error) => ("DEVICE_API", cause(error)),
             Error::MikrotikModel(error) => ("DEVICE_MODEL", cause(error)),
             Error::MissingCredentials => ("MISSING_CREDENTIALS", vec![]),

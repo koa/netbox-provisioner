@@ -9,6 +9,7 @@ pub mod context;
 pub mod device;
 pub mod device_state;
 pub mod error_info;
+pub mod facts;
 pub mod graphql;
 pub mod helper;
 pub mod job;
@@ -311,6 +312,19 @@ pub enum Error {
         address: Box<str>,
         other: Box<str>,
     },
+    /// an error kept as a fact (`facts`), which every user of the fact shares
+    #[error(transparent)]
+    Shared(std::sync::Arc<Error>),
+}
+
+impl Error {
+    /// The error itself, out of the [`Error::Shared`] it may be in.
+    pub fn root(&self) -> &Error {
+        match self {
+            Error::Shared(error) => error.root(),
+            error => error,
+        }
+    }
 }
 
 impl From<ResourceMutationError> for Error {
