@@ -749,10 +749,6 @@ pub fn get(id: u32) -> Option<Arc<Job>> {
 
 /// The jobs of `subject` (all without), newest first, with those working through it.
 pub fn list(subject: Option<JobSubject>) -> Vec<Arc<Job>> {
-    // a live page showing them shows them again when they change
-    if let Some(JobSubject::Device(device)) = subject {
-        facts::note_jobs(device);
-    }
     JOBS.lock()
         .unwrap_or_else(PoisonError::into_inner)
         .jobs
@@ -761,6 +757,15 @@ pub fn list(subject: Option<JobSubject>) -> Vec<Arc<Job>> {
         .filter(|job| subject.is_none_or(|subject| job.occupies(subject)))
         .cloned()
         .collect()
+}
+
+/// [`list`] for a GraphQL field: a subscription showing them answers again when they change.
+pub fn list_shown(subject: Option<JobSubject>) -> Vec<Arc<Job>> {
+    facts::note_jobs(match subject {
+        Some(JobSubject::Device(device)) => Some(device),
+        _ => None,
+    });
+    list(subject)
 }
 
 /// The running job of another device (an update, an apply changing a radio) that holds the

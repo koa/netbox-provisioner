@@ -379,6 +379,10 @@ impl DeviceAccess {
     async fn update_neighbors(&self) -> Vec<Box<str>> {
         crate::device::update_fallback::neighbors(self).into()
     }
+    /// `jobs(deviceId:)` of the query: those of this device, also those working through it.
+    async fn jobs(&self) -> Vec<std::sync::Arc<crate::job::Job>> {
+        crate::job::list_shown(Some(crate::job::JobSubject::Device(self.id)))
+    }
     /// The watchdogs that may fire while this device updates (`device::watchdog::watchers`):
     /// of the devices powering it, which cut its power mid-install, and of the ones reaching
     /// the network through it (`updateRouteros(suspendWatchdogs:)`). Only those watching

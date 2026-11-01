@@ -16,13 +16,13 @@ use crate::{
     },
     graphql::{
         authenticated::{
-            ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, ChangeDeviceMode,
+            AllowApply, allow_apply, RefreshDevice, refresh_device, ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, ChangeDeviceMode,
             BootPartition, ClearLeftover, clear_leftover, DeviceOverview, DowngradeRouteros, downgrade_routeros, PowerCycle, RebootDevice, power_cycle, RepartitionDevice, UpdateRouteros, apply_device_cfg,
             reboot_device, bootstrap_candidates, bootstrap_device, change_device_mode,
             boot_partition, device_overview, repartition_device, update_routeros,
         },
-        live::{LiveQuery, live},
-        query_authenticated, query_authenticated_response,
+        live::{Subscription, subscribe},
+        query_authenticated,
     },
 };
 use patternfly_yew::prelude::{
@@ -82,8 +82,10 @@ pub struct ShowDevice {
     applying: bool,
     /// counts the applies over: the interfaces written to are no longer changed
     applied: u32,
-    /// the overview kept live (`graphql::live`): shown again whenever the device changed
-    live: Option<LiveQuery>,
+    /// the overview subscribed to (`graphql::live`): shown again whenever the device changed
+    live: Option<Subscription>,
+    /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
+    allow_apply: bool,
 }
 type Watchdog = device_overview::DeviceOverviewTopologyDeviceByIdWatchdogs;
 type Connected = device_overview::DeviceOverviewTopologyDeviceByIdAccessConnected;
@@ -126,8 +128,6 @@ pub struct ShowDeviceData {
     update_neighbors: Vec<String>,
     /// the device feeding it over PoE and its port: a cold boot is possible
     power_supply: Option<device_overview::DeviceOverviewTopologyDeviceByIdPowerSupply>,
-    /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
-    allow_apply: bool,
     /// the job running on the device, and the device it works on when that isn't this one (a
     /// setup over this device as the neighbor): also one started elsewhere shows
     running_job: Option<(i64, Option<String>)>,
@@ -187,8 +187,9 @@ pub enum ShowDeviceMessage {
     /// a job of another device running through this one (its id and that device)
     JobThrough(i64, String),
     JobFinished,
-    /// read the device anew (`maxAge: 0`)
+    /// read the device anew (`refreshDevice`): every page showing it does
     Reload,
+    AllowApply(bool),
     /// „Anwenden“ of the interfaces: to the card „Änderungen“
     ShowChanges,
     BatchStarted(Vec<BatchJob>),
@@ -228,6 +229,7 @@ impl Component for ShowDevice {
             applying: false,
             applied: 0,
             live: None,
+            allow_apply: false,
         }
     }
 
@@ -266,8 +268,18 @@ impl Component for ShowDevice {
                 true
             }
             ShowDeviceMessage::Reload => {
-                fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone(), Some(0));
+                let (scope, id) = (ctx.link().clone(), self.id);
+                spawn_local(async move {
+                    let variables = refresh_device::Variables { id: id as i64 };
+                    if let Err(error) = query_authenticated::<RefreshDevice, _>(scope.clone(), variables).await {
+                        scope.send_message(ShowDeviceMessage::Error(error));
+                    }
+                });
                 false
+            }
+            ShowDeviceMessage::AllowApply(allow) => {
+                self.allow_apply = allow;
+                true
             }
             ShowDeviceMessage::SelectChannel(label) => {
                 self.channel = self
@@ -435,9 +447,6 @@ impl Component for ShowDevice {
                     self.applying = false;
                     self.applied += 1;
                 }
-                // the device changed: show what is left now (the live overview does too, unless
-                // its connection is away)
-                fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone(), None);
                 true
             }
             ShowDeviceMessage::ShowChanges => {
@@ -508,8 +517,8 @@ impl Component for ShowDevice {
         };
         let data = self.data.as_ref().map(|data| {
             // a job runs, or writing is locked
-            let running = self.job_running || !data.allow_apply;
-            let locked = (!data.allow_apply).then(|| html! {
+            let running = self.job_running || !self.allow_apply;
+            let locked = (!self.allow_apply).then(|| html! {
                 <Alert inline=true title={t::LOCKED} r#type={AlertType::Info}>
                     <p>{t::LOCKED_BEFORE}<code>{"allow_apply: true"}</code>{t::LOCKED_AFTER}</p>
                 </Alert>
@@ -606,7 +615,7 @@ impl Component for ShowDevice {
                         }
                         if let Some(supply) = &data.power_supply {
                             {" "}
-                            { self.power_cycle_view(ctx, supply, data.allow_apply) }
+                            { self.power_cycle_view(ctx, supply, self.allow_apply) }
                         }
                     </div>
                 </dd>
@@ -940,17 +949,25 @@ impl Component for ShowDevice {
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
             self.start_live(ctx);
+            let scope = ctx.link().clone();
+            spawn_local(async move {
+                let message = match query_authenticated::<AllowApply, _>(scope.clone(), allow_apply::Variables {}).await {
+                    Ok(data) => ShowDeviceMessage::AllowApply(data.allow_apply),
+                    Err(error) => ShowDeviceMessage::Error(error),
+                };
+                scope.send_message(message);
+            });
         }
     }
 }
 
 impl ShowDevice {
-    /// Keeps the overview live with the target chosen, ending the one kept before.
+    /// Subscribes to the overview with the target chosen, ending the subscription before.
     fn start_live(&mut self, ctx: &Context<Self>) {
         let (id, scope) = (self.id, ctx.link().clone());
-        let variables = overview_variables(id, &self.alternate_target, None);
+        let variables = overview_variables(id, &self.alternate_target);
         self.live = None;
-        self.live = Some(live::<DeviceOverview, _>(ctx.link(), variables, move |response| {
+        self.live = Some(subscribe::<DeviceOverview, _>(ctx.link(), variables, move |response| {
             scope.send_message(match response {
                 Ok(response) => overview_message(id, response),
                 Err(error) => ShowDeviceMessage::Error(error),
@@ -1122,8 +1139,8 @@ fn local_time(millis: f64) -> String {
     format!("{:02}:{:02}:{:02}", date.get_hours(), date.get_minutes(), date.get_seconds())
 }
 
-/// The variables of the overview with `target`, facts at most `max_age` seconds old.
-fn overview_variables(id: u32, target: &SelectedTarget, max_age: Option<i64>) -> device_overview::Variables {
+/// The variables of the overview with `target`.
+fn overview_variables(id: u32, target: &SelectedTarget) -> device_overview::Variables {
     let (credential_name, adhoc_credentials) =
         target.credentials.clone().variables(|username, password| device_overview::AdhocCredentials {
             username,
@@ -1134,23 +1151,10 @@ fn overview_variables(id: u32, target: &SelectedTarget, max_age: Option<i64>) ->
         target: target.address.map(|a| a.to_string()),
         credential_name,
         adhoc_credentials,
-        max_age,
     }
 }
 
-/// Reads the overview once (`max_age`: `Some(0)` reads the device anew).
-fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget, max_age: Option<i64>) {
-    spawn_local(async move {
-        let variables = overview_variables(id, &target, max_age);
-        let message = match query_authenticated_response::<DeviceOverview, _>(scope.clone(), variables).await {
-            Ok(response) => overview_message(id, response),
-            Err(e) => ShowDeviceMessage::Error(e),
-        };
-        scope.send_message(message);
-    });
-}
-
-/// What an answer of the overview shows, read once or live.
+/// What an answer of the overview shows.
 fn overview_message(id: u32, response: graphql_client::Response<device_overview::ResponseData>) -> ShowDeviceMessage {
     if let Some(data) = response.data {
         // why the device couldn't be reached goes with the warning, not the banner
@@ -1169,8 +1173,8 @@ fn overview_message(id: u32, response: graphql_client::Response<device_overview:
         let error = Some(errors)
             .filter(|e| !e.is_empty())
             .map(FrontendError::Graphql);
-        let running_job = data
-            .jobs
+        let jobs = data.topology.device_by_id.as_ref().map(|d| d.jobs.as_slice()).unwrap_or_default();
+        let running_job = jobs
             .iter()
             .find(|job| matches!(job.state, device_overview::JobState::RUNNING))
             .map(|job| {
@@ -1180,8 +1184,7 @@ fn overview_message(id: u32, response: graphql_client::Response<device_overview:
                 };
                 (job.id, through)
             });
-        let jobs_over = data
-            .jobs
+        let jobs_over = jobs
             .iter()
             .filter(|job| !matches!(job.state, device_overview::JobState::RUNNING))
             .map(|job| job.id)
@@ -1212,7 +1215,6 @@ fn overview_message(id: u32, response: graphql_client::Response<device_overview:
                 watchdogs: d.watchdogs,
                 update_neighbors: d.update_neighbors,
                 power_supply: d.power_supply,
-                allow_apply: data.allow_apply,
                 running_job,
                 jobs_over,
             })

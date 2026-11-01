@@ -1,39 +1,38 @@
-//! Queries kept live (`docs/concepts/device-state.md`): a query sent over the WebSocket is
-//! answered, then answered again whenever what it read changed: a job on a device it showed
-//! ended or logged, the topology changed in NetBox, or the youngest age it took a fact at ran
-//! out. The same query as over HTTP, with the same selection and the same resolvers, so it
-//! shows what they would. What it read is noted while it runs (`facts::reading`).
-use super::AuthenticatedGraphqlSchema;
+//! Subscriptions (`docs/concepts/device-state.md`): `SubscriptionAuthenticated` has the fields
+//! of the query with the same types, each a stream of [`rounds`]. It gives the object, the
+//! selection under it is resolved by the same resolvers as in the query, and it gives it again
+//! whenever what they read changed: a job on a device shown ended or logged, facts read were
+//! dropped, the topology changed in NetBox, or the youngest age a fact was taken at ran out.
+//! What they read is noted while the subscription's stream is polled ([`LiveExtension`]).
 use crate::{
-    context::UserInfo,
-    facts::{self, Reading},
+    facts::{self, Change, Reading},
     topology::TopologyHolder,
 };
 use async_graphql::{
-    Data, Executor, Request, Response, Variables,
-    futures_util::stream::{self, BoxStream, StreamExt},
-    parser::{parse_query, types::OperationType},
+    Response,
+    extensions::{Extension, ExtensionContext, ExtensionFactory, NextSubscribe},
+    futures_util::stream::{self, BoxStream, Stream, StreamExt},
 };
 use std::{
-    any::TypeId,
+    pin::Pin,
     sync::{
         Arc, Mutex, PoisonError,
         atomic::{AtomicUsize, Ordering},
     },
+    task::{Context, Poll},
     time::Duration,
 };
 use tokio::sync::broadcast::{Receiver, error::RecvError};
 
-/// How long a live query waits after a change for more: a job logs several events at once.
+/// How long a subscription waits after a change for more: a job logs several events at once.
 const SETTLE: Duration = Duration::from_millis(300);
-
-/// The live queries open.
-static OPEN: AtomicUsize = AtomicUsize::new(0);
-
-/// How often NetBox is read while a live query is open.
+/// How often NetBox is read while a subscription is open.
 const NETBOX_EVERY: Duration = Duration::from_secs(10);
 
-/// Reads NetBox regularly while a live query is open, so a change there shows within
+/// The subscriptions open.
+static OPEN: AtomicUsize = AtomicUsize::new(0);
+
+/// Reads NetBox regularly while a subscription is open, so a change there shows within
 /// [`NETBOX_EVERY`] (a topology that changed is announced); without, nobody would read it until
 /// what a page shows got old.
 pub fn watch_netbox(topology: TopologyHolder) {
@@ -48,7 +47,7 @@ pub fn watch_netbox(topology: TopologyHolder) {
     });
 }
 
-/// Counts a live query open while it lives.
+/// Counts a subscription open while it lives.
 struct Open;
 impl Open {
     fn new() -> Self {
@@ -62,122 +61,109 @@ impl Drop for Open {
     }
 }
 
-/// Runs queries over HTTP once and over the WebSocket live.
-#[derive(Clone)]
-pub struct LiveExecutor(pub AuthenticatedGraphqlSchema);
+/// Polls each subscription's stream noting what it reads (`facts::reading_in`): the field's
+/// stream, and the resolvers of the selection under each object it gives.
+pub struct LiveExtension;
 
-impl Executor for LiveExecutor {
-    fn execute(&self, request: Request) -> impl Future<Output = Response> + Send {
-        let schema = self.0.clone();
-        async move { schema.execute(request).await }
+impl ExtensionFactory for LiveExtension {
+    fn create(&self) -> Arc<dyn Extension> {
+        Arc::new(LiveExtension)
     }
+}
 
-    fn execute_stream(&self, request: Request, session_data: Option<Arc<Data>>) -> BoxStream<'static, Response> {
-        let user = session_data
-            .as_ref()
-            .and_then(|data| data.get(&TypeId::of::<UserInfo>()))
-            .and_then(|user| user.downcast_ref::<UserInfo>())
-            .cloned();
-        let live = Live {
-            schema: self.0.clone(),
-            query: request.query,
-            operation_name: request.operation_name,
-            variables: request.variables,
-            user,
-            changes: facts::changes(),
-            started: 0,
+impl Extension for LiveExtension {
+    fn subscribe<'s>(
+        &self,
+        ctx: &ExtensionContext<'_>,
+        stream: BoxStream<'s, Response>,
+        next: NextSubscribe<'_>,
+    ) -> BoxStream<'s, Response> {
+        Noting {
             reading: Default::default(),
-            _open: Open::new(),
-        };
-        // a mutation goes once: running it again would do it again
-        if !live.is_query() {
-            return stream::once(async move { live.schema.execute(live.request()).await }).boxed();
+            inner: next.run(ctx, stream),
         }
-        stream::unfold((live, true), |(mut live, first)| async move {
-            if !first {
-                live.wait().await;
-            }
-            let response = live.run().await;
-            Some((response, (live, false)))
-        })
         .boxed()
     }
 }
 
-struct Live {
-    schema: AuthenticatedGraphqlSchema,
-    query: String,
-    operation_name: Option<String>,
-    variables: Variables,
-    user: Option<UserInfo>,
-    /// subscribed before the first run, so no change after it is missed
-    changes: Receiver<(u64, Change)>,
-    /// the number of the last change before the latest run began
-    started: u64,
+struct Noting<'s> {
     reading: Arc<Mutex<Reading>>,
+    inner: BoxStream<'s, Response>,
+}
+
+impl Stream for Noting<'_> {
+    type Item = Response;
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Response>> {
+        let reading = self.reading.clone();
+        facts::reading_in(reading, || self.inner.poll_next_unpin(cx))
+    }
+}
+
+/// A subscription field's stream: the value `make` gives, again whenever what was read for the
+/// answer before changed (or got older than taken). Outside a subscription ([`LiveExtension`])
+/// it gives the value once.
+pub fn rounds<T, F, Fut>(make: F) -> impl Stream<Item = T> + Send
+where
+    T: Send,
+    F: FnMut() -> Fut + Send,
+    Fut: Future<Output = T> + Send,
+{
+    let state = Rounds {
+        make,
+        changes: facts::changes(),
+        started: None,
+        _open: Open::new(),
+    };
+    stream::unfold(state, |mut state| async move {
+        if let Some(started) = state.started {
+            let reading = facts::current_reading()?;
+            wait(&reading, started, &mut state.changes).await;
+        }
+        if let Some(reading) = facts::current_reading() {
+            *reading.lock().unwrap_or_else(PoisonError::into_inner) = Reading::default();
+        }
+        state.started = Some(facts::sequence());
+        let value = (state.make)().await;
+        Some((value, state))
+    })
+}
+
+struct Rounds<F> {
+    make: F,
+    /// subscribed before the first round, so no change after it is missed
+    changes: Receiver<(u64, Change)>,
+    /// the number of the last change before the latest round began, `None` before the first
+    started: Option<u64>,
     _open: Open,
 }
 
-use facts::Change;
-
-impl Live {
-    fn request(&self) -> Request {
-        let request = Request::new(self.query.clone()).variables(self.variables.clone());
-        let request = match &self.operation_name {
-            Some(name) => request.operation_name(name.clone()),
-            None => request,
-        };
-        match &self.user {
-            Some(user) => request.data(user.clone()),
-            None => request,
+/// Until something read changed (and a moment for more), or got older than it was taken.
+async fn wait(reading: &Mutex<Reading>, started: u64, changes: &mut Receiver<(u64, Change)>) {
+    let outdated = reading.lock().unwrap_or_else(PoisonError::into_inner).outdated;
+    let deadline = async {
+        match outdated {
+            Some(at) => tokio::time::sleep_until(at).await,
+            None => std::future::pending().await,
         }
-    }
-    /// Whether the operation run is a query (an unparsable one fails as a query would).
-    fn is_query(&self) -> bool {
-        let Ok(document) = parse_query(&self.query) else {
-            return true;
-        };
-        document.operations.iter().all(|(name, operation)| {
-            let chosen = match (&self.operation_name, name) {
-                (Some(wanted), Some(name)) => wanted.as_str() == name.as_str(),
-                _ => true,
-            };
-            !chosen || operation.node.ty == OperationType::Query
-        })
-    }
-    async fn run(&mut self) -> Response {
-        self.reading = Default::default();
-        self.started = facts::sequence();
-        facts::reading(self.reading.clone(), self.schema.execute(self.request())).await
-    }
-    /// Until something it read changed (and a moment for more), or got older than it was taken.
-    async fn wait(&mut self) {
-        let outdated = self.reading.lock().unwrap_or_else(PoisonError::into_inner).outdated;
-        let deadline = async {
-            match outdated {
-                Some(at) => tokio::time::sleep_until(at).await,
-                None => std::future::pending().await,
-            }
-        };
-        tokio::pin!(deadline);
-        loop {
-            tokio::select! {
-                () = &mut deadline => return,
-                change = self.changes.recv() => match change {
-                    Ok((number, change)) => {
-                        let concerns = number > self.started
-                            && self.reading.lock().unwrap_or_else(PoisonError::into_inner).concerns(&change);
-                        if concerns {
-                            break;
-                        }
+    };
+    tokio::pin!(deadline);
+    loop {
+        tokio::select! {
+            () = &mut deadline => return,
+            change = changes.recv() => match change {
+                Ok((number, change)) => {
+                    let concerns = number > started
+                        && reading.lock().unwrap_or_else(PoisonError::into_inner).concerns(&change);
+                    if concerns {
+                        break;
                     }
-                    // missed some: they may have concerned it
-                    Err(RecvError::Lagged(_)) => break,
-                    Err(RecvError::Closed) => std::future::pending::<()>().await,
-                },
-            }
+                }
+                // missed some: they may have concerned it
+                Err(RecvError::Lagged(_)) => break,
+                Err(RecvError::Closed) => std::future::pending::<()>().await,
+            },
         }
-        tokio::time::sleep(SETTLE).await;
-        while self.changes.try_recv().is_ok() {}
     }
+    tokio::time::sleep(SETTLE).await;
+    while changes.try_recv().is_ok() {}
 }

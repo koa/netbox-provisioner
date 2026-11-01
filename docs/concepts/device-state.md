@@ -236,7 +236,8 @@ GraphQL bekommt ein Argument `maxAge` (Sekunden) auf `deviceById` und an den teu
 ersetzt die Vorgabe des Resolvers, darf sie aber nur verkleinern. Jedes teure Ergebnis bekommt ein
 Feld `age` (Sekunden). Die Seite rechnet daraus die Uhrzeit der Erkenntnis und zeigt sie als
 „Stand 14:03:12“ (eine Angabe „vor 3 min“ würde ohne Ticken falsch), neben einem Knopf „Neu
-laden“ (`maxAge: 0`).
+laden“. Er verwirft die Erkenntnisse des Geräts (`refreshDevice`); jede Seite, die es zeigt,
+fragt darauf neu.
 
 ## Live-Aktualisierung
 
@@ -255,27 +256,39 @@ pub enum Change {
 Ein neu gespeicherter Wert ist keine Änderung: Wer ihn zeigt, fragt ohnehin neu, wenn er älter
 wird als gezeigt. Zwei offene Seiten würden sich sonst gegenseitig zum Neufragen bringen.
 
-### Dieselbe Query, live gehalten
+### Subscription mit denselben Typen wie die Query
 
-Eine Anzeige schickt über den WebSocket **genau die Query, die sie sonst über HTTP schickt**:
-dieselbe Wurzel, dieselben Argumente, dieselbe Auswahl. Es gibt keinen Subscription-Typ im Schema
-und keine zweite Auswahl, die man mitpflegen müsste. Ein eigener `Executor` (`LiveExecutor`)
-beantwortet sie so:
+Der Subscription-Typ `SubscriptionAuthenticated` führt die Felder der Query auf, die sich
+ändern können, mit denselben Typen: `topology: TopologyHolder!`, `jobs(deviceId, siteId)`. Nur
+der Startpunkt ist ein anderer. Eine Anzeige abonniert so genau die Auswahl, die sie sonst
+abfragt, und die Resolver darunter sind dieselben:
 
-1. Er führt die Query aus wie über HTTP, innerhalb von `facts::reading`. Dabei schreibt jedes
+```graphql
+subscription DeviceOverview($id: Int!, $target: String, ...) {
+    topology { deviceById(id: $id) { name jobs { id state } access(target: $target) { ... } } }
+}
+```
+
+Eine Subscription hat ein Wurzelfeld. Damit die Geräteseite mit `topology` auskommt, hat das
+Gerät ein Feld `jobs` (dasselbe wie `jobs(deviceId:)` der Query).
+
+Jedes Feld des Subscription-Typs ist ein Stream aus `live::rounds`:
+
+1. Er gibt das Objekt. async-graphql löst die Auswahl darunter auf, und dabei schreibt jedes
    `facts::get` seinen Schlüssel und das Alter, mit dem es den Wert nahm, in einen Sammler
-   (`Reading`). `jobs(deviceId:)` notiert das Gerät. Danach weiss er, wovon die Antwort abhing.
-2. Er wartet auf eine Änderung, die der Sammler betrifft (`Reading::concerns`): verworfene
-   Erkenntnisse, die er las, ein Job eines gelesenen Geräts, die Topologie. Oder darauf, dass die
-   jüngste gelesene Erkenntnis älter wird als erlaubt (frühestens nach 5 s; `maxAge: 0` weckt
-   nicht). Dann wartet er 300 ms auf weitere Änderungen (ein Job meldet mehrere auf einmal).
-3. Er führt die Query erneut aus. Die Resolver fragen mit ihrem `maxAge`; mehrere offene Seiten
-   hängen sich an dieselbe Abfrage.
+   (`Reading`). Das Feld `jobs` notiert das Gerät. Den Sammler setzt eine Extension
+   (`LiveExtension`) für jedes Pollen des Streams der Subscription (`facts::reading_in`).
+2. Er wartet auf eine Änderung, die den Sammler betrifft (`Reading::concerns`): verworfene
+   Erkenntnisse, die gelesen wurden, ein Job eines gelesenen Geräts, die Topologie. Oder darauf,
+   dass die jüngste gelesene Erkenntnis älter wird als erlaubt (frühestens nach 5 s; `maxAge: 0`
+   weckt nicht). Dann wartet er 300 ms auf weitere Änderungen (ein Job meldet mehrere auf
+   einmal).
+3. Er leert den Sammler und gibt das Objekt erneut. Die Resolver fragen mit ihrem `maxAge`;
+   mehrere offene Seiten hängen sich an dieselbe Abfrage.
 
-Das erste Ergebnis ist das der Query. Gefragt wird nur, weil eine Anzeige es gerade zeigt. Eine
-Mutation über den WebSocket läuft einmal.
+Das erste Ergebnis ist das der Query. Gefragt wird nur, weil eine Anzeige es gerade zeigt.
 
-Solange eine Live-Query offen ist, liest der Provisioner NetBox alle 10 s
+Solange eine Subscription offen ist, liest der Provisioner NetBox alle 10 s
 (`live::watch_netbox`). Sonst fiele eine Änderung in NetBox erst auf, wenn das Gezeigte zu alt
 wird. Das Lesen von NetBox läuft nur einmal gleichzeitig (`TopologyHolder::fetching`).
 
@@ -287,19 +300,18 @@ Binary prüft das Token wie den Header von `/graphql` (Signatur, `validation_opt
 
 ### Frontend
 
-- Eine WebSocket-Verbindung pro Tab (`frontend/src/graphql/live.rs`), für alle Live-Queries der
-  Seite. Sie öffnet sich mit der ersten und baut sich nach einem Abbruch selbst wieder auf, mit
-  der Staffel von `RETRY`, mit dem dann gültigen Token. Die offenen Queries startet sie neu; das
-  erste Ergebnis bringt jede Anzeige wieder auf den Stand.
-- `live::<Q>(scope, variables, deliver)` gibt ein `LiveQuery`; fällt es weg, endet die Query
+- Eine WebSocket-Verbindung pro Tab (`frontend/src/graphql/live.rs`), für alle Subscriptions
+  der Seite. Sie öffnet sich mit der ersten und baut sich nach einem Abbruch selbst wieder auf,
+  mit der Staffel von `RETRY`, mit dem dann gültigen Token. Die offenen Subscriptions startet sie
+  neu; das erste Ergebnis bringt jede Anzeige wieder auf den Stand.
+- `subscribe::<Q>(scope, variables, deliver)` gibt eine `Subscription`; fällt sie weg, endet sie
   (`complete`). Antworten kommen als `graphql_client::Response<Q::ResponseData>` wie über HTTP.
 - Fehler sind Erkenntnisse mit Stand wie alle anderen: „Gerät nicht erreichbar“ verschwindet, sobald
   eine neuere Erkenntnis da ist, nicht erst beim Neuladen der Seite.
 - Laufende Jobs eines Geräts erscheinen auf seiner Seite, auch wenn ein anderer Browser sie
-  gestartet hat (`jobs` in `DeviceOverview`). Endet einer, liest die Seite Verlauf und Interfaces
-  neu.
+  gestartet hat (`jobs` des Geräts). Endet einer, liest die Seite Verlauf und Interfaces neu.
 
-Betroffene Anzeigen: Geräteseite (alle Abschnitte; live ist bisher die Übersicht
+Betroffene Anzeigen: Geräteseite (alle Abschnitte; abonniert ist bisher die Übersicht
 `DeviceOverview`), Geräteliste, Interfaces und Live-Interfaces, Site-Diff, Findings, Helfer nach
 einem Schreiben in NetBox.
 
@@ -367,7 +379,7 @@ Verteilungen, nicht einzelne Quantile: Eine Verteilung zeigt zwei Gruppen (direk
 4. **Die übrigen Erkenntnisse der Tabelle,** jede mit ihren Verwendern und deren `MaxAge`, und mit
    Test für ihr Verwerfen.
 5. **`maxAge` und `age` in GraphQL,** „Stand“ und „Neu laden“ auf der Geräteseite.
-6. **Live-Queries:** Sammler der gelesenen Schlüssel, `LiveExecutor`, WebSocket im Binary,
+6. **Subscriptions:** Sammler der gelesenen Schlüssel, Stream je Feld, WebSocket im Binary,
    Verbindung im Frontend. Die Geräteseite zuerst, dann die übrigen Anzeigen.
 7. **Optional:** Job-Ereignisse über eine Subscription statt jede Sekunde abfragen.
 
@@ -396,9 +408,8 @@ Geräteseite, mit den Metriken. Abweichend vom Konzept:
 - **`maxAge`** steht an `access(maxAge:)`, **`age`** an `generateCfg` und `routeros`.
 - **Vorschau eines Helfers** (`generating_for`): Ihre Erkenntnisse haben einen eigenen Schlüssel
   und werden nicht mit denen des echten Geräts geteilt.
-- **Live über dieselbe Query statt Subscription-Typen:** siehe
-  [Dieselbe Query, live gehalten](#dieselbe-query-live-gehalten). Ein gespeicherter Wert meldet
-  keine Änderung.
+- **Ein gespeicherter Wert meldet keine Änderung,** und „Neu laden“ verwirft die Erkenntnisse
+  des Geräts, statt mit `maxAge: 0` zu fragen: So sehen es alle Seiten.
 
 ## Offene Fragen
 

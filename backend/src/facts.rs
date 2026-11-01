@@ -99,6 +99,21 @@ pub enum FactKind {
 }
 
 impl FactKind {
+    /// every kind about a device: what „Neu laden“ drops
+    pub const ABOUT_DEVICES: &[FactKind] = &[
+        FactKind::Login,
+        FactKind::Route,
+        FactKind::Config,
+        FactKind::RouterosState,
+        FactKind::Leftovers,
+        FactKind::Partitions,
+        FactKind::DeviceMode,
+        FactKind::Neighbors,
+        FactKind::Interfaces,
+    ];
+}
+
+impl FactKind {
     /// the label in the metrics
     pub fn label(self) -> &'static str {
         match self {
@@ -305,7 +320,7 @@ impl Store {
     }
 }
 
-/// Every change from now on, with its number: what live queries wait for.
+/// Every change from now on, with its number: what subscriptions wait for.
 pub fn changes() -> broadcast::Receiver<(u64, Change)> {
     CHANGES.subscribe()
 }
@@ -315,20 +330,22 @@ pub fn sequence() -> u64 {
     SEQUENCE.load(Ordering::SeqCst)
 }
 
-/// Tells live queries about `change` (also for changes outside the store: jobs, topology).
+/// Tells subscriptions about `change` (also for changes outside the store: jobs, topology).
 pub fn announce(change: Change) {
     let number = SEQUENCE.fetch_add(1, Ordering::SeqCst) + 1;
     // nobody listening is no error
     let _ = CHANGES.send((number, change));
 }
 
-/// What a live query read while it ran (`graphql::live`), so that it runs again when that
-/// changes: the facts, the devices whose jobs it saw, and when the youngest age it asked for
-/// runs out.
+/// What a subscription read for the answer it gave (`graphql::live`), so that it answers
+/// again when that changes: the facts, the devices whose jobs it saw, and when the youngest
+/// age it asked for runs out.
 #[derive(Debug, Default)]
 pub struct Reading {
     pub keys: std::collections::HashSet<FactKey>,
     pub devices: std::collections::HashSet<DeviceId>,
+    /// it saw the jobs of all devices (or of a site)
+    pub all_jobs: bool,
     /// when the first fact read gets older than its user took it
     pub outdated: Option<Instant>,
 }
@@ -341,23 +358,34 @@ impl Reading {
                 .keys
                 .iter()
                 .any(|key| key.device == Some(*device) && kinds.contains(&key.kind)),
-            Change::Job(device) => self.devices.contains(device),
+            Change::Job(device) => self.all_jobs || self.devices.contains(device),
             Change::Topology => true,
         }
     }
 }
 
 tokio::task_local! {
-    /// what the live query running in this task reads
+    /// what the subscription answering in this task reads
     static READING: Arc<Mutex<Reading>>;
 }
 
 /// Runs `work` noting what it reads into `reading` (facts asked, jobs listed).
+#[cfg(test)]
 pub async fn reading<F: Future>(reading: Arc<Mutex<Reading>>, work: F) -> F::Output {
     READING.scope(reading, work).await
 }
 
-/// Notes that the running live query (if any) read `key`, taken at `max_age` from `as_of`.
+/// Runs `poll` (a step of a subscription's stream) noting what it reads into `reading`.
+pub fn reading_in<R>(reading: Arc<Mutex<Reading>>, poll: impl FnOnce() -> R) -> R {
+    READING.sync_scope(reading, poll)
+}
+
+/// What the subscription answering in this task reads, if one does.
+pub fn current_reading() -> Option<Arc<Mutex<Reading>>> {
+    READING.try_with(Arc::clone).ok()
+}
+
+/// Notes that the subscription answering (if any) read `key`, taken at `max_age` from `as_of`.
 fn note(key: &FactKey, as_of: Instant, max_age: Option<Duration>) {
     let _ = READING.try_with(|reading| {
         let mut reading = reading.lock().unwrap_or_else(PoisonError::into_inner);
@@ -373,14 +401,20 @@ fn note(key: &FactKey, as_of: Instant, max_age: Option<Duration>) {
     });
 }
 
-/// Notes that the running live query (if any) read the jobs of `device`.
-pub fn note_jobs(device: DeviceId) {
+/// Notes that the subscription answering (if any) read the jobs of `device`, or of all devices.
+pub fn note_jobs(device: Option<DeviceId>) {
     let _ = READING.try_with(|reading| {
-        reading.lock().unwrap_or_else(PoisonError::into_inner).devices.insert(device);
+        let mut reading = reading.lock().unwrap_or_else(PoisonError::into_inner);
+        match device {
+            Some(device) => {
+                reading.devices.insert(device);
+            }
+            None => reading.all_jobs = true,
+        }
     });
 }
 
-/// The youngest age that makes a live query run again when it runs out.
+/// The youngest age that makes a subscription answer again when it runs out.
 const MIN_OUTDATED: Duration = Duration::from_secs(5);
 
 /// The fact `key` as `freshness` takes it: from the store, joining the asking running, or

@@ -28,7 +28,6 @@ use backend::{
     context::UserInfo,
     graphql::{
         AnonymousGraphqlSchema, AuthenticatedGraphqlSchema, create_anonymous_schema, create_schema,
-        live::LiveExecutor,
     },
     netbox::NetboxError,
     topology::TopologyHolder,
@@ -129,7 +128,7 @@ async fn graphql_anonymous(
     response.into()
 }
 
-/// Queries kept live over a WebSocket (`graphql-transport-ws`, `backend::graphql::live`). A
+/// Subscriptions over a WebSocket (`graphql-transport-ws`, `backend::graphql::live`). A
 /// browser can't set headers on one: the token comes in the `connection_init` payload
 /// (`{"token": …}`) and is checked as `/graphql` checks its header.
 async fn graphql_ws(
@@ -138,7 +137,7 @@ async fn graphql_ws(
     payload: actix_web::web::Payload,
 ) -> actix_web::Result<HttpResponse> {
     let oidc = request.app_data::<Oidc>().cloned();
-    GraphQLSubscription::new(LiveExecutor(context.schema.clone()))
+    GraphQLSubscription::new(context.schema.clone())
         .on_connection_init(move |init| async move {
             let token = init.get("token").and_then(|token| token.as_str()).unwrap_or_default();
             let oidc = oidc.ok_or_else(|| async_graphql::Error::new("no OIDC"))?;

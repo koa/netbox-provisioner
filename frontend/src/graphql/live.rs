@@ -1,8 +1,8 @@
-//! Queries kept live over one WebSocket per tab (`graphql-transport-ws` to `/graphql/ws`,
-//! `backend::graphql::live`): the server answers a query again whenever what it showed
-//! changed, whoever changed it. The connection is opened with the first live query and comes
-//! back by itself after it broke (with the steps of [`RETRY`]), the queries started again:
-//! their first answer brings each view up to date.
+//! Subscriptions over one WebSocket per tab (`graphql-transport-ws` to `/graphql/ws`,
+//! `backend::graphql::live`): the server answers again whenever what an answer showed changed,
+//! whoever changed it. The connection is opened with the first subscription and comes back by
+//! itself after it broke (with the steps of [`RETRY`]), the subscriptions started again: their
+//! first answer brings each view up to date.
 use crate::{components::job::RETRY, error::FrontendError, graphql::host};
 use futures::{SinkExt, StreamExt, channel::mpsc};
 use gloo::net::websocket::{Message, futures::WebSocket};
@@ -20,12 +20,12 @@ use yew::{
 };
 use yew_oauth2::prelude::{Authentication, OAuth2Context};
 
-/// A query kept live; dropping it ends it.
-pub struct LiveQuery {
+/// A subscription running; dropping it ends it.
+pub struct Subscription {
     id: u64,
 }
 
-impl Drop for LiveQuery {
+impl Drop for Subscription {
     fn drop(&mut self) {
         CONNECTION.with(|connection| {
             connection.queries.borrow_mut().remove(&self.id);
@@ -34,12 +34,12 @@ impl Drop for LiveQuery {
     }
 }
 
-/// Keeps query `Q` with `variables` live, each answer going to `deliver`, the first right away.
-pub fn live<Q: GraphQLQuery + 'static, S: Component>(
+/// Subscribes to `Q` with `variables`, each answer going to `deliver`.
+pub fn subscribe<Q: GraphQLQuery + 'static, S: Component>(
     scope: &Scope<S>,
     variables: Q::Variables,
     deliver: impl Fn(Result<Response<Q::ResponseData>, FrontendError>) + 'static,
-) -> LiveQuery {
+) -> Subscription {
     let payload = serde_json::to_value(Q::build_query(variables)).unwrap_or_default();
     let deliver: Rc<dyn Fn(Value)> = Rc::new(move |answer| {
         deliver(serde_json::from_value(answer).map_err(FrontendError::from));
@@ -49,12 +49,12 @@ pub fn live<Q: GraphQLQuery + 'static, S: Component>(
         *connection.token.borrow_mut() = Some(Rc::new(move || token(&scope)));
         let id = connection.next.get() + 1;
         connection.next.set(id);
-        connection.send(subscribe(id, &payload));
+        connection.send(subscribe_message(id, &payload));
         connection.queries.borrow_mut().insert(id, Query { payload, deliver });
         if !connection.running.replace(true) {
             spawn_local(run());
         }
-        LiveQuery { id }
+        Subscription { id }
     })
 }
 
@@ -71,7 +71,7 @@ struct Connection {
     /// to the open connection, `None` while there is none
     outgoing: RefCell<Option<mpsc::UnboundedSender<String>>>,
     /// gives the user's token as it is now (renewed while the page is open), from the
-    /// component of the latest query started
+    /// component of the latest subscription started
     token: RefCell<Option<Token>>,
     next: Cell<u64>,
     /// [`run`] keeps the connection
@@ -79,7 +79,8 @@ struct Connection {
 }
 
 impl Connection {
-    /// Sends `message` if connected; else it goes when connected (a query) or needn't (its end).
+    /// Sends `message` if connected; else it goes when connected (a subscription) or needn't
+    /// (its end).
     fn send(&self, message: Value) {
         if let Some(outgoing) = self.outgoing.borrow().as_ref() {
             let _ = outgoing.unbounded_send(message.to_string());
@@ -91,7 +92,7 @@ thread_local! {
     static CONNECTION: Rc<Connection> = Rc::default();
 }
 
-fn subscribe(id: u64, payload: &Value) -> Value {
+fn subscribe_message(id: u64, payload: &Value) -> Value {
     json!({"type": "subscribe", "id": id.to_string(), "payload": payload})
 }
 
@@ -106,7 +107,7 @@ fn token<S: Component>(scope: &Scope<S>) -> Option<String> {
     }
 }
 
-/// Keeps the connection while there are live queries, opening it again after it broke.
+/// Keeps the connection while there are subscriptions, opening it again after it broke.
 async fn run() {
     let connection = CONNECTION.with(Rc::clone);
     let mut failed = 0;
@@ -149,7 +150,7 @@ async fn session(connection: &Rc<Connection>) -> bool {
         }
     });
     for (id, query) in connection.queries.borrow().iter() {
-        let _ = outgoing.unbounded_send(subscribe(*id, &query.payload).to_string());
+        let _ = outgoing.unbounded_send(subscribe_message(*id, &query.payload).to_string());
     }
     *connection.outgoing.borrow_mut() = Some(outgoing);
     while let Some(Ok(Message::Text(text))) = read.next().await {
@@ -164,7 +165,7 @@ async fn session(connection: &Rc<Connection>) -> bool {
                     deliver(message["payload"].clone());
                 }
             }
-            // a query the server refused (not valid): as a response with its errors
+            // a subscription the server refused (not valid): as a response with its errors
             Some("error") => {
                 let id = message["id"].as_str().and_then(|id| id.parse::<u64>().ok());
                 let deliver = id.and_then(|id| connection.queries.borrow().get(&id).map(|q| q.deliver.clone()));

@@ -399,14 +399,17 @@ write read anew, they don't use the facts of the page. Times are `tokio::time::I
 ages go to the frontend. The metrics (`device_query_*`, `fact_cache_*`) go into `/metrics`
 (`facts::register`).
 
-A page is kept live by sending its ordinary query over the WebSocket `/graphql/ws`
-(`graphql-transport-ws`, the token in the `connection_init` payload, checked as the header of
-`/graphql`): `graphql::live::LiveExecutor` runs it inside `facts::reading`, which notes the facts
-and job devices it read, and runs it again on a `facts::Change` concerning them (a job, facts
-dropped, the topology) or when the youngest fact read gets older than taken. No subscription
-types in the schema: a new live view needs no backend change, only `frontend::graphql::live::live`
-instead of a one-time query. A fact stored anew is no change (two live pages would keep asking
-for each other). While a live query is open NetBox is read every 10 s (`live::watch_netbox`).
+Pages stay live over subscriptions on the WebSocket `/graphql/ws` (`graphql-transport-ws`, the
+token in the `connection_init` payload, checked as the header of `/graphql`).
+`SubscriptionAuthenticated` has the query's fields with the same types (`topology`, `jobs`), each
+a stream of `graphql::live::rounds`: it gives the object, the selection under it is resolved by
+the query's resolvers while `LiveExtension` notes the facts and job devices they read
+(`facts::reading_in`), and it gives it again on a `facts::Change` concerning them (a job, facts
+dropped, the topology) or when the youngest fact read gets older than taken. A subscription has
+one root field: what a page needs hangs under it (the device's `jobs`). A fact stored anew is
+no change (two live pages would keep asking for each other); „Neu laden“ drops the device's
+facts (`refreshDevice`), so every page showing it reads anew. While a subscription is open
+NetBox is read every 10 s (`live::watch_netbox`).
 
 The UI logs in over OIDC (`yew-oauth2` in the frontend, structure taken from the cable-editor);
 the backend checks the JWT against `auth_issuer` and lets only `auth_users` in, both as

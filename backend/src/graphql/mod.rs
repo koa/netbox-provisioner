@@ -25,18 +25,24 @@ use crate::{
 };
 use std::{sync::Arc, time::SystemTime};
 use async_graphql::{
-    Context, EmptyMutation, EmptySubscription, Guard, Object, Schema, SimpleObject,
+    Context, EmptyMutation, EmptySubscription, Guard, Object, Schema, SimpleObject, Subscription,
+    futures_util::Stream,
 };
 pub mod live;
 pub mod scalars;
 pub type AuthenticatedGraphqlSchema =
-    Schema<QueryAuthenticated, MutationAuthenticated, EmptySubscription>;
+    Schema<QueryAuthenticated, MutationAuthenticated, SubscriptionAuthenticated>;
 pub type AnonymousGraphqlSchema = Schema<QueryAnonymous, EmptyMutation, EmptySubscription>;
 
 pub struct QueryAuthenticated {
     topology: TopologyHolder,
 }
 pub struct QueryAnonymous;
+/// The fields of [`QueryAuthenticated`] worth watching, with the same types: each gives its
+/// value again whenever what the selection under it read changed (`live`).
+pub struct SubscriptionAuthenticated {
+    topology: TopologyHolder,
+}
 pub struct MutationAuthenticated {
     topology: TopologyHolder,
 }
@@ -46,9 +52,12 @@ pub fn create_schema(topology: TopologyHolder) -> AuthenticatedGraphqlSchema {
         QueryAuthenticated {
             topology: topology.clone(),
         },
-        MutationAuthenticated { topology },
-        EmptySubscription,
+        MutationAuthenticated {
+            topology: topology.clone(),
+        },
+        SubscriptionAuthenticated { topology },
     )
+    .extension(live::LiveExtension)
     .finish()
 }
 pub fn create_anonymous_schema() -> AnonymousGraphqlSchema {
@@ -104,11 +113,7 @@ impl QueryAuthenticated {
     /// and the last finished ones. A device's include those working through it (a setup over
     /// it as the neighbor, `deviceId` the device set up).
     async fn jobs(&self, device_id: Option<u32>, site_id: Option<u32>) -> Vec<Arc<Job>> {
-        job::list(
-            device_id
-                .map(|id| JobSubject::Device(DeviceId(id)))
-                .or(site_id.map(|id| JobSubject::Site(SiteId(id)))),
-        )
+        job::list_shown(job_subject(device_id, site_id))
     }
     /// The jobs saved before the restart that didn't go on: their device is gone from NetBox,
     /// or the file couldn't be read. They stay until discarded (`discardSavedJob`).
@@ -116,6 +121,26 @@ impl QueryAuthenticated {
         crate::saved_job::waiting()
     }
 }
+fn job_subject(device_id: Option<u32>, site_id: Option<u32>) -> Option<JobSubject> {
+    device_id
+        .map(|id| JobSubject::Device(DeviceId(id)))
+        .or(site_id.map(|id| JobSubject::Site(SiteId(id))))
+}
+
+#[Subscription]
+impl SubscriptionAuthenticated {
+    /// `topology` of the query, again whenever what was read under it changed.
+    async fn topology(&self) -> impl Stream<Item = TopologyHolder> + use<> {
+        let topology = self.topology.clone();
+        live::rounds(move || std::future::ready(topology.clone()))
+    }
+    /// `jobs` of the query, again whenever one of them started, logged or ended.
+    async fn jobs(&self, device_id: Option<u32>, site_id: Option<u32>) -> impl Stream<Item = Vec<Arc<Job>>> + use<> {
+        let subject = job_subject(device_id, site_id);
+        live::rounds(move || std::future::ready(job::list_shown(subject)))
+    }
+}
+
 /// The watchdogs of others that may fire while a device updates (`suspendWatchdogs`), and
 /// the addresses its suppliers' PoE ports ping.
 struct Watchers {
@@ -812,6 +837,12 @@ impl MutationAuthenticated {
         Ok(job::start_all(&devices, JobKind::Apply, |_| Started::By(user.clone()), |logs| {
             crate::device::batch::apply(members, logs)
         })?)
+    }
+    /// Drops what was asked of a device (`facts`): who shows it asks anew, a subscription
+    /// right away („Neu laden“).
+    async fn refresh_device(&self, id: u32) -> bool {
+        crate::facts::invalidate(DeviceId(id), crate::facts::FactKind::ABOUT_DEVICES);
+        true
     }
     /// Starts applying the generated config to a device (`allow_apply` must be set). Target
     /// and credentials as for `DeviceAccess.access`.
