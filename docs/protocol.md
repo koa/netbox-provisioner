@@ -97,4 +97,9 @@ keinen zweiten. Zwei Lesungen zugleich schreiben einen. Der Verlauf zeigt ihn al
 dem Gerät, ohne Job“. Geprüft im Lab mit einem Eintrag, der einen Fallback von vor dem Neustart
 von lab-wap als liegend nannte: ein Eintrag „ausgelöst“, beim zweiten Lesen keiner mehr.
 
-Noch nicht dabei sind die Marken des Skripts eines ausgelösten Apply-Fallbacks (E16).
+Bei einem ausgelösten Apply-Fallback nennt der Eintrag auch, wie weit das Skript kam: Jeder
+Job-Eintrag nennt den Lauf seines Skripts (`run`), die Geräteseite liest die Marken-Datei
+(`progress::contents`), solange kein Apply-Fallback mehr liegt, und die Beobachtung zeigt die
+Marken des Laufs, den der neueste Eintrag mit diesem Fallback nennt: wie in der Job-Ansicht in
+Worten und darunter die Marken selbst. Geprüft im Lab an lab-np2 mit einem Eintrag, der einen
+Fallback mit dem Lauf auf dem Gerät als liegend nannte (2026-11-01).

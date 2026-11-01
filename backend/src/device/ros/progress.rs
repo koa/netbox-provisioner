@@ -242,12 +242,18 @@ fn without_line(message: &str) -> String {
 
 /// The marks on the device, if there are any of `run` (in the root or under `flash/`).
 pub async fn read(raw: &RawDevice<SimpleResult>, run: &str) -> Result<Option<Progress>, Error> {
+    Ok(contents(raw).await?.iter().find_map(|text| Progress::parse(text, run)))
+}
+
+/// What the progress files on the device hold, of whichever run.
+pub async fn contents(raw: &RawDevice<SimpleResult>) -> Result<Vec<Box<str>>, Error> {
     Ok(rows(raw, "/file/print")
         .await?
         .iter()
         .filter(|row| field(row, "name").is_some_and(|name| name.trim_start_matches("flash/") == FILE))
         .filter_map(|row| field(row, "contents"))
-        .find_map(|text| Progress::parse(text, run)))
+        .map(Box::from)
+        .collect())
 }
 
 /// The provisioner's address as the device sees it: the one most of the device's API

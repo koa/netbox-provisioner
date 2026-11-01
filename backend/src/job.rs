@@ -138,6 +138,9 @@ pub struct Log {
     /// the devices the job works on and through, whose pages hear of its events
     /// (`facts::Change::Job`); unset without a job
     devices: Arc<OnceLock<Box<[DeviceId]>>>,
+    /// the run of the apply script it wrote, as its marks on the device name it; in its journal
+    /// entry, so a fallback seen fired later finds them (`journal::observe`)
+    script_run: Arc<Mutex<Option<Box<str>>>>,
 }
 
 /// What the job keeps for going on after a restart ([`Log::keep`]), and whether its file is
@@ -174,7 +177,16 @@ impl Log {
             journal: Default::default(),
             journal_entry: Default::default(),
             devices: Default::default(),
+            script_run: Default::default(),
         }
+    }
+    /// The job wrote the apply script of `run` onto the device.
+    pub fn wrote_script(&self, run: &str) {
+        *self.script_run.lock().unwrap_or_else(PoisonError::into_inner) = Some(run.into());
+    }
+    /// The run of the apply script it wrote last.
+    pub fn script_run(&self) -> Option<Box<str>> {
+        self.script_run.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
     /// The job enters `phase`. One its kind's table doesn't allow after the current one is
     /// logged and kept ([`Self::unexpected`]), the job goes on as before.

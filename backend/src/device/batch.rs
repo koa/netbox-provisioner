@@ -236,6 +236,7 @@ impl Applying for Linked {
     async fn write(&self, lead: Duration, rearm: Option<Duration>, log: &Log) -> Result<(), Error> {
         let reached = self.reached();
         let run = write_script(&reached.control, &reached.planned, lead, rearm, Some(log)).await?;
+        log.wrote_script(&run);
         *lock(&reached.run) = Some(run);
         Ok(())
     }

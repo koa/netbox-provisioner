@@ -1002,6 +1002,7 @@ impl AccessibleDevice {
         let started = async {
             log.enter(ApplyState::WritingScript);
             let run = write_script(&raw, planned, SINGLE_LEAD, armed.then_some(window), None).await?;
+            log.wrote_script(&run);
             log.enter(ApplyState::StartingScript);
             let mut runs = start_script(&raw).await?;
             let seen = Instant::now() + SINGLE_LEAD;
@@ -1695,7 +1696,12 @@ impl AccessibleDevice {
             if crate::journal::enabled() {
                 // what no job of this provisioner explains goes into the journal (Z31)
                 let uptime = fallback::uptime(&raw).await.ok().flatten();
-                tokio::spawn(crate::journal::observe(device.device_config.id(), left.journal_left(), uptime));
+                // where the apply fallback is gone, it may have fired: the marks of its script
+                let marks = match left.apply_fallback {
+                    Some(_) => Vec::new(),
+                    None => progress::contents(&raw).await.unwrap_or_default(),
+                };
+                tokio::spawn(crate::journal::observe(device.device_config.id(), left.journal_left(), uptime, marks));
             }
             Ok::<_, Error>(left)
         };

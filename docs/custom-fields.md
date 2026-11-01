@@ -161,6 +161,7 @@ Schreibt der Provisioner selbst, in jeden seiner Einträge im Journal eines Ger�
 ist oder endete (`state`, z.B. `SCRIPT_RUNNING`), was er auf dem Gerät lässt (`left`:
 `ApplyFallback`, `UpdateFallback`, `WatchdogSafetyNet`) und wann der Eintrag geschrieben wurde
 (`at`, Unix-Sekunden), welche dieser Arten der Job angefasst hat (`touched`), wer ihn gestartet
-hat (`by`) und bei einer Beobachtung ohne Job deren Befund (`observation`). Von Hand nichts
+hat (`by`), der Lauf des Apply-Skripts, das er schrieb (`run`, so heissen seine Marken auf dem
+Gerät), und bei einer Beobachtung ohne Job deren Befund (`observation`). Von Hand nichts
 eintragen. Fehlt das Feld in NetBox, lehnt NetBox jeden
 Eintrag ab, und jeder Job meldet „Eintrag im NetBox-Journal nicht geschrieben“.

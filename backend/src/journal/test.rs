@@ -1,4 +1,7 @@
-use super::{Entry, JournalLeft, JournalOutcome, Observation, Started, expected, interrupted, observation, outcome, parse, phase_name};
+use super::{
+    Entry, JournalLeft, JournalOutcome, Observation, Started, expected, fallback_run, interrupted, observation, outcome,
+    parse, phase_name, script_lines,
+};
 use crate::{
     device::{batch::BatchApply, ros::graphql as apply, update::UpdateDone},
     device_state::{ApplyState, UpdateState},
@@ -32,6 +35,7 @@ fn entry(kind: JobKind, outcome: Outcome, events: Vec<Event>) -> Entry {
         took: None,
         events,
         device: "lab-core".into(),
+        run: None,
     }
 }
 
@@ -199,6 +203,28 @@ fn a_fallback_gone_after_a_reboot_fired() {
     assert_eq!(seen, Observation { removed: vec![Left::ApplyFallback], ..Default::default() });
     // still there: nothing to say
     assert_eq!(observation(&expected, &[Left::ApplyFallback], None, 1300), None);
+}
+
+/// The marks of the script whose fallback fired are those of the run the entry leaving the
+/// fallback names; a later entry touching it without leaving it doesn't name one.
+#[test]
+fn a_fired_apply_fallback_names_the_marks_of_its_run() {
+    let mut apply = record("Incomplete", &["ApplyFallback"], &["ApplyFallback"], 100);
+    apply["run"] = "r1".into();
+    let update = record("Done", &[], &["UpdateFallback"], 200);
+    assert_eq!(fallback_run(&[&apply, &update]), Some("r1"));
+    assert_eq!(fallback_run(&[&update]), None);
+
+    let marks = "10:00:01 start 5 r1\n10:00:01 ping 10.0.2.2\n10:00:02 section 4\n10:00:03 lost 5\n";
+    let script = script_lines(&crate::device::ros::progress::Progress::parse(marks, "r1").unwrap());
+    let fired = Observation { fired: vec![Left::ApplyFallback], ..Default::default() };
+    let comments = fired.comments(&[], &script);
+    assert!(comments.contains("zuletzt begonnen ab Zeile 4 von 5"), "{comments}");
+    assert!(comments.contains("ohne Antwort nach Zeile 5"), "{comments}");
+    assert!(comments.contains("10:00:03 lost 5"), "{comments}");
+    // an update fallback has no script
+    let fired = Observation { fired: vec![Left::UpdateFallback], ..Default::default() };
+    assert!(!fired.comments(&[], &script).contains("Zeile"));
 }
 
 #[test]

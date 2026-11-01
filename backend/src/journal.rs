@@ -7,6 +7,7 @@
 use crate::{
     Error,
     config::CONFIG,
+    device::ros::{graphql::ScriptProgress, progress::Progress},
     device_state::JobPhase,
     error_info::ErrorInfo,
     job::{Event, Job, JobKind, JobState},
@@ -319,6 +320,8 @@ pub struct Entry {
     pub events: Vec<Event>,
     /// the job's device, left out of the batch it was applied with
     pub device: Box<str>,
+    /// the run of the apply script it wrote ([`crate::job::Log::script_run`])
+    pub run: Option<Box<str>>,
 }
 
 impl Entry {
@@ -334,6 +337,7 @@ impl Entry {
             took: job.ran_for().map(|took| took.as_secs()),
             events,
             device: job.name().into(),
+            run: job.log().script_run(),
         }
     }
 
@@ -369,6 +373,7 @@ impl Entry {
             "state": self.phase.map(phase_name),
             "left": names(&self.left()),
             "touched": names(&touched(&self.events)),
+            "run": self.run,
             "by": match &self.started {
                 Started::By(user) => Some(user),
                 Started::Resumed { .. } => None,
@@ -531,6 +536,37 @@ fn expected(records: &[&Value]) -> Option<Vec<(Left, u64)>> {
     }
 }
 
+/// The run of the apply script whose fallback the entries leave on the device (`records`
+/// oldest first, as [`expected`] takes them): the newest entry leaving it names it.
+fn fallback_run<'a>(records: &[&'a Value]) -> Option<&'a str> {
+    records
+        .iter()
+        .rev()
+        .find(|record| lefts(&record["left"]).contains(&Left::ApplyFallback))
+        .and_then(|record| record["run"].as_str())
+}
+
+/// How far the script of a fallback that fired got, from its marks on the device: the lines
+/// the job view shows, then the marks themselves.
+fn script_lines(progress: &Progress) -> Vec<String> {
+    let script = ScriptProgress::of(progress, true);
+    let lost: Vec<i64> = script.lost.iter().map(|&line| line.into()).collect();
+    let back: Vec<i64> = script.back.iter().map(|&line| line.into()).collect();
+    let mut lines = i18n::job::event::script_progress(i18n::job::event::Progress {
+        lines: script.lines,
+        section: script.section,
+        done: script.done,
+        error: script.error_line.zip(script.error.as_deref()),
+        probe: script.probe.as_deref().map(|probe| (probe, script.probe_answered)),
+        lost: &lost,
+        back: &back,
+        rearmed: script.rearmed.map(|rearmed| Duration::from(rearmed).as_secs()),
+        after_fallback: true,
+    });
+    lines.push(format!("{}:\n\n```\n{}\n```", i18n::job::event::MARKS, script.marks.trim_end()));
+    lines
+}
+
 /// What the device page found against what the entries say ([`observe`]).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Observation {
@@ -572,11 +608,15 @@ impl Observation {
             (true, true) => "info",
         }
     }
-    fn comments(&self, now: &[Left]) -> String {
+    /// `script`: how far the apply script of a fallback that fired got ([`script_lines`])
+    fn comments(&self, now: &[Left], script: &[String]) -> String {
         use i18n::journal as t;
         let mut lines = vec![t::OBSERVED.to_string()];
         if !self.fired.is_empty() {
             lines.push(t::fired(&self.fired));
+            if self.fired.contains(&Left::ApplyFallback) {
+                lines.extend(script.iter().cloned());
+            }
         }
         if !self.found.is_empty() {
             lines.push(t::found(&self.found));
@@ -589,10 +629,10 @@ impl Observation {
         }
         lines.join("\n\n")
     }
-    fn fields(&self, now: &[Left], at: u64) -> Value {
+    fn fields(&self, now: &[Left], at: u64, script: &[String]) -> Value {
         json!({
             "kind": self.netbox_kind(),
-            "comments": self.comments(now),
+            "comments": self.comments(now, script),
             "custom_fields": { "provisioner_job": {
                 "observation": {
                     "found": names(&self.found),
@@ -615,8 +655,9 @@ static OBSERVING: std::sync::Mutex<Vec<DeviceId>> = std::sync::Mutex::new(Vec::n
 /// Writes an entry when what the device page read on `device` (`now`, its `uptime`) isn't
 /// what the provisioner's entries say it left there (Z31): a leftover no entry explains, a
 /// fallback that fired or one taken away. Called with the leftovers read while no job of
-/// this provisioner runs on the device; nothing while the newest entry still runs.
-pub async fn observe(device: DeviceId, now: Vec<Left>, uptime: Option<Duration>) {
+/// this provisioner runs on the device; nothing while the newest entry still runs. `marks`:
+/// the progress files on the device, for an apply fallback that fired the marks of its run.
+pub async fn observe(device: DeviceId, now: Vec<Left>, uptime: Option<Duration>, marks: Vec<Box<str>>) {
     if !enabled() {
         return;
     }
@@ -647,7 +688,11 @@ pub async fn observe(device: DeviceId, now: Vec<Left>, uptime: Option<Duration>)
         let Some(seen) = expected(&records).and_then(|expected| observation(&expected, &now, uptime, at)) else {
             return Ok(());
         };
-        let mut fields = seen.fields(&now, at);
+        let script = fallback_run(&records)
+            .and_then(|run| marks.iter().find_map(|text| Progress::parse(text, run)))
+            .map(|progress| script_lines(&progress))
+            .unwrap_or_default();
+        let mut fields = seen.fields(&now, at, &script);
         fields["assigned_object_type"] = json!("dcim.device");
         fields["assigned_object_id"] = json!(device.0);
         fields["tags"] = json!([{ "slug": TAG }]);
