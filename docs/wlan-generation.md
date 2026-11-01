@@ -46,7 +46,11 @@ CAP bridged den Verkehr lokal.
   `security.passphrase`, Open als `owe`). Eine `/interface/wifi/provisioning`-Regel
   (`create-dynamic-enabled`) gibt jedem Radio das erste WLAN als Master, die übrigen als virtuelle
   Interfaces (`slave-configurations`).
+  Ohne Region des Standorts (oder mit einer, die kein bekanntes Land ist) scheitert der Generator,
+  das ist der Befund `NoCountry`.
 - **CAP** (`device.wlan_ap_of()`): `/interface/wifi/cap enabled=yes` mit der Loopback des Controllers.
+  Hat die Gruppe keinen `controller`, scheitert der Generator am CAP (`MissingController`), der
+  Befund `WlanGroupWithoutController` steht an ihm.
   Jedes Radio bekommt `configuration.manager=capsman` und einen `/interface/wifi/datapath` mit dem
   Namen und der `bridge` seiner Bridge; über `slaves-datapath` gilt der auch für die virtuellen
   Interfaces. Seine Bridge ist die, in die NetBox es legt, sonst die Bridge mit der VLAN des ersten

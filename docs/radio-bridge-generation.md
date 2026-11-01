@@ -17,7 +17,8 @@ Erreichbar ist eine Brücke auf zwei Arten:
 
 - **Als OSPF-Router** (das Ziel): das NetBox-Interface `bridge` hat eine statische Adresse im Netz
   des Router-Ports und das Tag `ospf`, `lo` die Loopback (Primary IP, Router-ID). OSPF läuft nur
-  für das Management über die Bridge, die Nutzdaten bleiben auf L2 (`test_radio_bridge_with_a_static_address_runs_ospf`).
+  für das Management über die Bridge, die Nutzdaten bleiben auf L2 (`test_radio_bridge_with_a_static_address_runs_ospf`),
+  mit OSPF-Priorität 0: nie DR oder BDR (CHR-Test `bridge_devices_are_never_dr_or_bdr_of_their_segment`).
 - **Rein L2**: ohne IP-Adresse in NetBox bekommt ihre Bridge automatisch einen DHCP-Client
   (`setup_ip_addresses`).
 

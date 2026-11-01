@@ -68,7 +68,10 @@ gar kein OSPF generiert.
 4. Beide Areas bekommen ein `routing/ospf/interface-template`, das **dieselbe** Menge von
    Schnittstellen auf beiden Instanzen aktiviert (`use_bfd = false` auf beiden). Es gibt keine
    Unterscheidung, welche Schnittstellen tatsächlich IPv6-fähig sind — `default-v3` wird also auch
-   auf rein-IPv4-Netzen mit aktiviert.
+   auf rein-IPv4-Netzen mit aktiviert. Die Priorität bleibt RouterOS' 128, ausser auf einem
+   Brückengerät einer Funkstrecke: dort 0 auf beiden Templates, damit es nie DR oder BDR des
+   Segments wird, das es mit den Routern an beiden Enden teilt
+   ([Brückengeräte](config-helper.md#brückengeräte-mit-fester-adresse)).
 5. IPv6 ist auf jedem Gerät eingeschaltet (`/ipv6/settings disable-ipv6=no`, der Werkszustand).
    Mit abgeschaltetem IPv6 sind die IPv6-Adressen `invalid` und `default-v3` findet keinen
    Nachbarn, obwohl Adressen und Instanz angewendet aussehen (so auf lab-ap1).
