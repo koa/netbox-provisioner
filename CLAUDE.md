@@ -403,7 +403,9 @@ ends (`JobKind::invalidates`, raising the device's generation: what was asked me
 stored); a topology changed in NetBox drops the facts worked out from it everywhere. Jobs that
 write read anew, they don't use the facts of the page. Times are `tokio::time::Instant`s, only
 ages go to the frontend. The metrics (`device_query_*`, `fact_cache_*`) go into `/metrics`
-(`facts::register`).
+(`facts::register`), every outcome's series created at 0 on a kind's first asking over a way
+(`increase` drops a new series' first sample); their Grafana dashboard is
+`docs/grafana/device-queries.json`.
 
 Pages stay live over subscriptions on the WebSocket `/graphql/ws` (`graphql-transport-ws`, the
 token in the `connection_init` payload, checked as the header of `/graphql`).

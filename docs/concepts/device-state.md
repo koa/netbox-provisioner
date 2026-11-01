@@ -379,7 +379,8 @@ Die Buckets sind für Heatmaps fein und logarithmisch gestuft, von 25 ms bis 60 
 
 ### Dashboard
 
-Das Dashboard kommt als JSON nach `docs/grafana/device-queries.json`. Im Zentrum stehen die
+Das Dashboard liegt als JSON in [docs/grafana/device-queries.json](../grafana/device-queries.json)
+(geprüft mit Grafana 13.3 und Prometheus 3.15 gegen den Lab-Provisioner). Im Zentrum stehen die
 Verteilungen, nicht einzelne Quantile: Eine Verteilung zeigt zwei Gruppen (direkt erreichbar und
 über einen Nachbarn, schnelle Geräte und alte RouterBOARDs), die ein p95 zu einer Zahl verwischt.
 
@@ -394,6 +395,12 @@ Verteilungen, nicht einzelne Quantile: Eine Verteilung zeigt zwei Gruppen (direk
 - **Geräte mit den meisten Fehlschlägen:** `topk(10, sum by (device, outcome) (increase(device_query_total{outcome!="ok"}[1h])))`
 - **Trefferquote des Caches:** `sum by (kind) (rate(fact_cache_requests_total{result=~"hit|joined"}[5m])) / sum by (kind) (rate(fact_cache_requests_total[5m]))`
 - **Laufende Abfragen:** `fact_queries_running` als Zeitreihe.
+
+Die Heatmaps nehmen das Farbschema Spectral, ohne Abstand zwischen den Zellen. Die Variable
+`$kind` (Mehrfachwahl, „All“) filtert alle Panels; die Heatmap pro Art wiederholt sich je Art.
+Jede Zeitreihe eines Ergebnisses (`outcome`) entsteht mit 0, sobald eine Art über einen Weg
+zum ersten Mal gefragt wird: `increase` zählt den ersten Wert einer neuen Zeitreihe nicht, und
+der erste Fehlschlag fehlte sonst.
 
 ## Schritte
 

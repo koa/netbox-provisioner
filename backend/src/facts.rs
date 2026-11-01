@@ -586,11 +586,17 @@ where
     let took = started.elapsed();
     METRICS.running.with_label_values(&[label]).dec();
     let outcome = outcome(&result);
+    let device = key.device.map(|d| d.0.to_string()).unwrap_or_default();
+    // every outcome's series is there from the first asking on, at 0: Prometheus' `increase`
+    // doesn't count the first sample of a new series, so the first failure would be lost
+    for each in OUTCOMES {
+        METRICS.duration.with_label_values(&[label, each, key.path]);
+        METRICS.total.with_label_values(&[&device, label, each]);
+    }
     METRICS
         .duration
         .with_label_values(&[label, outcome, key.path])
         .observe(took.as_secs_f64());
-    let device = key.device.map(|d| d.0.to_string()).unwrap_or_default();
     METRICS.total.with_label_values(&[&device, label, outcome]).inc();
     let value: Stored = Arc::new(result.map(Arc::new).map_err(Arc::new));
     let kept = {
@@ -726,6 +732,9 @@ pub fn forget(key: &FactKey) {
         METRICS.entries.with_label_values(&[key.kind.label()]).dec();
     }
 }
+
+/// What [`outcome`] gives.
+const OUTCOMES: [&str; 5] = ["ok", "refused", "timeout", "wrong_device", "error"];
 
 /// The few kinds of outcome the metrics tell apart.
 fn outcome<T>(result: &Result<T, Error>) -> &'static str {
