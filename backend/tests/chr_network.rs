@@ -371,6 +371,96 @@ async fn entry_socks_proxy_speaks_socks5() {
     );
 }
 
+/// `/ip/socks/access` (A3): what RouterOS does with a SOCKS client whose source address the
+/// rules allow, deny or don't name. The host reaches the VM from QEMU's 10.0.2.2.
+#[tokio::test]
+#[ignore]
+async fn socks_access_lets_only_the_allowed_sources_in() {
+    use chr_network::apply::enable_socks;
+    use mikrotik_api::simple::SimpleResult;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio_stream::StreamExt;
+
+    if nix_unavailable() {
+        eprintln!("skipping: `nix` is not available in this environment");
+        return;
+    }
+    let golden = ensure_golden_image(&cache_dir(), TEST_PASSWORD)
+        .await
+        .expect("golden image build failed");
+    let work_dir = std::env::temp_dir().join("chr-network-socks-access-test");
+    let entry = boot_node(&golden, &work_dir, "entry", &[], TEST_PASSWORD)
+        .await
+        .expect("entry boot failed");
+    let device = entry.connect_api(TEST_PASSWORD).await.expect("entry api");
+    enable_socks(&device).await.expect("enable socks failed");
+
+    let run = async |path: &str, attributes: &[(&str, &str)]| {
+        let mut stream = device
+            .send_command(
+                path.as_bytes(),
+                |cmd| {
+                    attributes.iter().fold(cmd, |cmd, (key, value)| {
+                        cmd.attribute(key.as_bytes(), value.as_bytes())
+                    })
+                },
+                (),
+            )
+            .await;
+        while let Some(result) = stream.next().await {
+            if let SimpleResult::Trap { message, .. } = result {
+                panic!("{path} {attributes:?}: {message}");
+            }
+        }
+    };
+    // a SOCKS5 greeting without authentication, then CONNECT to the VM's own API
+    // (10.0.2.15:8728): the reply's code, or None when the connection is gone. The rules
+    // apply to the CONNECT (they name the destination too): the greeting is answered always,
+    // a denied CONNECT gets 2 (not allowed by the ruleset).
+    let connect = async || -> Option<u8> {
+        let mut conn = tokio::net::TcpStream::connect(("127.0.0.1", entry.socks_port)).await.ok()?;
+        let timeout = std::time::Duration::from_secs(5);
+        conn.write_all(&[0x05, 0x01, 0x00]).await.ok()?;
+        let mut greeting = [0u8; 2];
+        tokio::time::timeout(timeout, conn.read_exact(&mut greeting)).await.ok()?.ok()?;
+        conn.write_all(&[0x05, 0x01, 0x00, 0x01, 10, 0, 2, 15, 0x22, 0x18]).await.ok()?;
+        let mut reply = [0u8; 2];
+        tokio::time::timeout(timeout, conn.read_exact(&mut reply)).await.ok()?.ok()?;
+        Some(reply[1])
+    };
+    let greeted = async || connect().await == Some(0);
+    // the rules as `.id` and what the device prints of them
+    let rules = async || {
+        let mut stream = device.send_command(b"/ip/socks/access/print".as_slice(), |cmd| cmd, ()).await;
+        let mut rules = Vec::new();
+        while let Some(result) = stream.next().await {
+            if let SimpleResult::Sentence(fields) = result {
+                rules.push(fields);
+            }
+        }
+        rules
+    };
+    let clear = async || {
+        for rule in rules().await {
+            let id = rule.get(".id").cloned().flatten().expect("a rule has an id");
+            run("/ip/socks/access/remove", &[(".id", &id)]).await;
+        }
+    };
+
+    assert!(greeted().await, "no rules: every source is let in");
+
+    run("/ip/socks/access/add", &[("action", "allow"), ("src-address", "192.0.2.1/32")]).await;
+    assert!(greeted().await, "only an allow for another source: a source no rule names is let in");
+
+    run("/ip/socks/access/add", &[("action", "deny")]).await;
+    assert!(!greeted().await, "allow for another source, then deny: the host is kept out");
+
+    clear().await;
+    run("/ip/socks/access/add", &[("action", "allow"), ("src-address", "10.0.2.0/24")]).await;
+    run("/ip/socks/access/add", &[("action", "deny")]).await;
+    assert!(greeted().await, "allow for the host's network, then deny: the host is let in");
+}
+
 /// Validates the realistic-path apply helper in isolation (SOCKS proxying +
 /// connect_with_stream + apply_mutation), on a simple directly-cabled
 /// two-node setup rather than the full OSPF chain - that's the next thing

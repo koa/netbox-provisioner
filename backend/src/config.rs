@@ -56,6 +56,7 @@ pub struct Settings {
     /// unset or empty: the device's own setting stays (RouterOS's: all). It must hold the
     /// address the provisioner comes from on each device (its own, or the management proxy's
     /// towards the device), or the apply locks it out and the fallback takes the apply back.
+    /// The management proxy's SOCKS takes only these sources too.
     pub api_networks: Option<Box<[ipnet::IpNet]>>,
     /// Where the jobs that go on after a restart are saved (`saved_job`), and the lock that
     /// keeps a second provisioner off them (default `state`, next to `config.yaml`).

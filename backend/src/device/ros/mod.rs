@@ -24,13 +24,14 @@ use mikrotik_model::{
         InterfaceVlanCfg, InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress,
         IpAddressCfg, IpDhcpClientCfg, IpDhcpClientDhcpOptions, IpDhcpServerLeaseCfg,
         IpFirewallNatAction, IpFirewallNatCfg,
-        IpNeighborDiscoverySettingsCfg, IpSocksAuthMethod, IpServiceByName, IpServiceCfg, IpSocksUsersByName, IpSocksUsersCfg,
+        IpNeighborDiscoverySettingsCfg, IpSocksAccessAction, IpSocksAccessCfg, IpSocksAuthMethod, IpServiceByName, IpServiceCfg, IpSocksUsersByName, IpSocksUsersCfg,
         IpSshCfg, IpSshForwardingEnabled, Ipv6AddressByAddress, Ipv6AddressCfg,
         Ipv6DhcpClientByInterface, Ipv6DhcpClientCfg, Ipv6DhcpClientRequest,
         Ipv6NdAdvertiseDns, Ipv6NdByInterface, Ipv6NdCfg, RoutingOriginateDefault,
         RoutingOspfInstanceByName, RoutingOspfInstanceCfg, RoutingOspfInstanceVersion,
         RoutingRedistribute, ToolMacServerCfg, VlanFrameTypes, WifiChannelBand, YesNo,
     },
+    resource::OWNED_LAST,
     value,
 };
 use std::{
@@ -106,6 +107,8 @@ mikrotik_model!(
         ipv4_pool(by_key(path = "ip/pool", key = name)),
         socks(single = "ip/socks"),
         socks_users(by_key(path = "ip/socks/users", key = name)),
+        // the proxy's own rules carry `FIREWALL_PREFIX` in their comment, the others stay
+        socks_access(by_id(path = "ip/socks/access", keys(), owned = "netbox-provisioner:", ordered)),
         ip_service(by_key(path = "ip/service", key = name)),
         ssh(single = "ip/ssh"),
         ipv6_settings(single = "ipv6/settings"),
@@ -449,6 +452,7 @@ impl BaseDeviceDataTarget {
             ipv_4_pool: Default::default(),
             socks: Default::default(),
             socks_users: Default::default(),
+            socks_access: Default::default(),
             ip_service: Default::default(),
             // any device may be the neighbor a new one is set up from: the provisioner reaches
             // the new device through an SSH tunnel to it (`device::bootstrap`)
@@ -486,8 +490,29 @@ impl BaseDeviceDataTarget {
         }
     }
     /// Makes this device the provisioner's way into the network: `/ip socks` as SOCKS5, only
-    /// for this user, since the proxy is reachable from wherever the device is.
-    pub fn setup_management_proxy(&mut self, user: &str, password: &str) {
+    /// for this user, since the proxy is reachable from wherever the device is, and with
+    /// `api_networks` only from there (A3): an allow for each, then a deny for every other
+    /// source, after the rules set up by hand (`OWNED_LAST`). RouterOS lets in a source no
+    /// rule names, and judges the rules at the CONNECT, not at the greeting (CHR 7.24.5).
+    /// Without `api_networks`, the proxy takes every source, as the API does.
+    pub fn setup_management_proxy(&mut self, user: &str, password: &str, api_networks: &[IpNet]) {
+        if !api_networks.is_empty() {
+            let rule = |action, src_address: Option<&IpNet>, comment: &[&str]| IpSocksAccessCfg {
+                action,
+                comment: Some(firewall_comment(comment)),
+                disabled: false,
+                dst_address: None,
+                dst_port: None,
+                src_address: src_address.map(|net| firewall::ros_address(net.trunc())),
+                src_port: None,
+            };
+            let last = String::from_utf8_lossy(OWNED_LAST);
+            self.socks_access = api_networks
+                .iter()
+                .map(|net| rule(IpSocksAccessAction::Allow, Some(net), &["provisioner", &net.trunc().to_string()]))
+                .chain([rule(IpSocksAccessAction::Deny, None, &[last.trim_end(), "rest"])])
+                .collect();
+        }
         self.socks.enabled = true;
         self.socks.version = 5;
         self.socks.auth_method = IpSocksAuthMethod::Password;

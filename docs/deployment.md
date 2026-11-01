@@ -89,7 +89,8 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
 - **Probes** auf `/health` am Management-Port. Das Backend lädt beim Start die OIDC-Discovery und
   startet ohne sie nicht ([Login](login.md)); die Startup-Probe braucht dafür Geduld.
 - **Netz nach aussen:** Der Pod muss die Geräte erreichen, direkt oder über den Management-Proxy
-  (`management_proxy`, SOCKS5 auf einem Router). Mit Proxy reicht ausgehend TCP zum Proxy, zu
+  (`management_proxy`, SOCKS5 auf einem Router, der nur Quellen aus `api_networks` annimmt,
+  [Firewall](firewall.md)). Mit Proxy reicht ausgehend TCP zum Proxy, zu
   NetBox und zum OIDC-Provider; eine `NetworkPolicy` kann genau das erlauben.
 - Nur lesbares Dateisystem, ohne Rechte.
 

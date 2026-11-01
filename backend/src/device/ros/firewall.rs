@@ -139,8 +139,8 @@ impl Rule {
 }
 
 /// A network as RouterOS reports it in a rule: an IPv4 host without `/32` (CHR 7.24.5; an
-/// IPv6 host keeps its `/128`).
-fn ros_address(net: IpNet) -> AsciiString {
+/// IPv6 host keeps its `/128`), in the firewall and in `/ip/socks/access` alike.
+pub(super) fn ros_address(net: IpNet) -> AsciiString {
     match net {
         IpNet::V4(v4) if v4.prefix_len() == 32 => v4.addr().to_string(),
         net => net.to_string(),

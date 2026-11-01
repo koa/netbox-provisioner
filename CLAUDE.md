@@ -443,7 +443,9 @@ NetBox site first, then one of its devices (`/sites`, `/site/<id>`, `/site/<id>/
 `menu::popup::Select` on `PopupMenu`, not patternfly-yew's `SimpleSelect`, whose fixed-position
 popper left the end of a long list out of reach. Devices are
 reached directly, or, with `management_proxy` set, all through one device's `/ip socks` (SOCKS5
-with password; `device::proxied_stream` retries the sporadic "General SOCKS server failure" of a
+with password, and with `api_networks` only from those: `/ip/socks/access` allows each, then
+denies the rest after hand-made rules, as RouterOS lets an unnamed source in and judges the
+rules at CONNECT; `device::proxied_stream` retries the sporadic "General SOCKS server failure" of a
 first connection); the proxy's own device is reached at the proxy's address
 (`bootstrap::reachable_address`), its primary IP may only exist once its config is applied.
 Nothing is written without `allow_apply`, checked by the `WritesAllowed` guard of every

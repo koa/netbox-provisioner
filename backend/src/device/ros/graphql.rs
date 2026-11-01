@@ -199,8 +199,11 @@ impl DeviceCfg {
             .as_ref()
             .filter(|p| *p.device == *device.name())
         {
-            self.base_target
-                .setup_management_proxy(&proxy.user, &proxy.password);
+            self.base_target.setup_management_proxy(
+                &proxy.user,
+                &proxy.password,
+                CONFIG.api_networks.as_deref().unwrap_or_default(),
+            );
         }
         if let Some(syslog) = &CONFIG.device_syslog {
             self.base_target.setup_syslog(syslog);

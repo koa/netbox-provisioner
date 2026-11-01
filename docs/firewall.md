@@ -66,6 +66,17 @@ vom Internet her nur noch per SSH, und ein Apply über den Uplink sperrt seine A
 Fallback holt das Gerät zurück, aber ohne Änderung. Die Netze schreibt `generate_for`
 (`allow_provisioner`), nach den übrigen Schritten.
 
+**Der Management-Proxy** (`/ip socks` auf dem Gerät von `management_proxy`) nimmt mit
+`api_networks` nur Verbindungen aus diesen Netzen an, auch von innen: je Netz eine Regel `allow`
+in `/ip/socks/access`, dahinter ein `deny` für jede andere Quelle (Kommentar
+`netbox-provisioner: last rest`), nach den Regeln, die jemand von Hand gesetzt hat; die bleiben
+stehen. RouterOS lässt eine Quelle, die keine Regel nennt, durch, und prüft die Regeln erst bei
+der Verbindungsanfrage (CONNECT), nicht schon bei der Begrüssung; ein abgewiesener Client
+bekommt „connection not allowed by ruleset“ (CHR 7.24.5, Test
+`socks_access_lets_only_the_allowed_sources_in`). Ohne `api_networks` nimmt der Proxy wie die API
+jede Quelle an, mit dem Passwort. Fehlt die Adresse des Provisioners in den Netzen, sperrt sich
+schon die API des Proxys selbst aus, und der Fallback nimmt das Apply zurück.
+
 **NAT** (nur IPv4): Ein Interface mit `nat` bekommt `srcnat action=masquerade out-interface=<Uplink>`.
 
 ## Freigaben
