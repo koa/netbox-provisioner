@@ -40,7 +40,8 @@ Von oben nach unten:
 Antwortet das Gerät nicht, steht statt der Änderungen die Meldung „Gerät nicht erreichbar“ mit
 dem Grund. Darin:
 
-- die **Ersteinrichtung** über mac-telnet vom Nachbarn, mit den MACs, die der Nachbar an seinem
+- die **Ersteinrichtung** über mac-telnet vom Nachbarn (dem ersten am Kabel, dessen API
+  antwortet), mit den MACs, die der Nachbar an seinem
   Port sieht, oder einer eingegebenen (auch zur Rettung eines Geräts, das nach einem Update seine
   Adresse verloren hat), oder warum es keine gibt;
 - das Formular für einen anderen **Zugang**.

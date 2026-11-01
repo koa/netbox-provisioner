@@ -467,8 +467,10 @@ scripts and fallbacks away again, with nothing applied (`BatchStopped`). The ste
 trait `batch::Applying`, so the rules are tested with stand-ins (`batch::test::run`).
 
 A device that doesn't answer gets its initial setup over `/tool mac-telnet` from a neighbor that
-does (`device::bootstrap`, on the device page): `plan` picks a cabled port with an IPv4 (on the
-port or its bridge) whose other end is reachable. MAC addresses are not kept in NetBox: the
+does (`device::bootstrap`, on the device page): `plans` lists the cabled ports with an IPv4 (on
+the port or its bridge) whose other end has a primary IP in NetBox, and `working_plan` takes the
+first whose neighbor logs in over the API (all tried at once): a primary IP is no proof, sat-switch's
+plan went over groove-38 behind it, not set up itself. MAC addresses are not kept in NetBox: the
 operator picks the physical device from what the neighbor's `/ip/neighbor` shows on that port
 (`BootstrapPlan.discovered`) or types its MAC; don't make anything depend on NetBox MACs.
 `set_up` drives the neighbor's console over SSH

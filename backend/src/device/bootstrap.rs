@@ -27,7 +27,7 @@ use crate::{
     job::Log,
     topology::access::{device::DeviceAccess, interface::InterfaceAccess},
 };
-use async_graphql::{ComplexObject, SimpleObject};
+use async_graphql::{ComplexObject, SimpleObject, futures_util::future::join_all};
 use ipnet::IpNet;
 use log::{info, warn};
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
@@ -155,12 +155,35 @@ impl BootstrapPlan {
 }
 
 /// Finds a cabled port of `device` with an IPv4 address in NetBox (on the port, or on the bridge
-/// it is a port of) whose far end is on a device that can be reached already (the management
-/// proxy or a device with a primary IP) and has an address in the same subnet. The address goes
+/// it is a port of) whose far end is on a device that should be reachable (the management
+/// proxy or a device with a primary IP; [`working_plan`] checks) and has an address in the same
+/// subnet. The address goes
 /// on the port itself for the setup; the apply moves it where NetBox has it.
 pub fn plan(device: &DeviceAccess) -> Result<BootstrapPlan, Error> {
     Ok(plans(device)?.swap_remove(0))
 }
+
+/// The first of [`plans`] whose neighbor logs in over the API, tried all at once: NetBox may
+/// give a neighbor a primary IP it can't be reached at (sat-switch's plan went over groove-38,
+/// behind it and not set up itself, rather than over 1og-sw2). With none answering, the first
+/// still, whose discovery tells why.
+pub async fn working_plan(device: &DeviceAccess) -> Result<BootstrapPlan, Error> {
+    let mut plans = plans(device)?;
+    let answers = join_all(plans.iter().map(|plan| async move {
+        let Some(name) = plan.neighbor_device.credentials() else {
+            return false;
+        };
+        let credentials = Credentials::Named(name.into());
+        let login = connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials);
+        matches!(timeout(NEIGHBOR_CHECK, login).await, Ok(Ok(_)))
+    }))
+    .await;
+    let index = answers.iter().position(|answered| *answered).unwrap_or(0);
+    Ok(plans.swap_remove(index))
+}
+
+/// How long [`working_plan`] waits for a neighbor's login.
+const NEIGHBOR_CHECK: Duration = Duration::from_secs(10);
 
 /// Every [`plan`] of `device`, the one from the management proxy's device first: that one is
 /// reachable whatever the network does, while another neighbor may be cut off itself (an MTU

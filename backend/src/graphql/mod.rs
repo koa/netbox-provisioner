@@ -538,7 +538,7 @@ impl MutationAuthenticated {
         })?)
     }
     /// Starts the initial setup over mac-telnet from a neighbor along
-    /// `DeviceAccess.bootstrapPlan`, for a device that can't be reached over IP yet
+    /// `DeviceAccess.bootstrapPlan` (the first neighbor that answers, checked again), for a device that can't be reached over IP yet
     /// (`allow_apply` must be set). `mac` is the physical device that gets this NetBox
     /// device's config, usually one of `bootstrapPlan.discovered`. The neighbor runs no job of
     /// its own meanwhile (`BUSY` either way): an apply or a reboot of it would cut the session,
@@ -546,7 +546,7 @@ impl MutationAuthenticated {
     #[graphql(guard = "WritesAllowed")]
     async fn bootstrap(&self, ctx: &Context<'_>, id: u32, mac: ScalarMac) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
-        let mut plan = bootstrap::plan(&device)?;
+        let mut plan = bootstrap::working_plan(&device).await?;
         plan.setup.macs = [mac.0].into();
         let neighbor = plan.neighbor_device().clone();
         Ok(job::start_through(&device.clone(), &neighbor, JobKind::Bootstrap, Started::By(user_label(ctx)), |log| async move {

@@ -335,7 +335,7 @@ impl DeviceAccess {
     /// How the device would be set up over mac-telnet, see [`MutationAuthenticated::bootstrap`].
     #[graphql(name = "bootstrapPlan")]
     async fn api_bootstrap_plan(&self) -> Option<BootstrapPlan> {
-        bootstrap::plan(self).ok()
+        bootstrap::working_plan(self).await.ok()
     }
     /// Why there is no `bootstrapPlan`.
     async fn bootstrap_problem(&self) -> Option<ErrorInfo> {
