@@ -16,7 +16,7 @@ settings:
   auth_client_id: ""
   # space separated; empty: "openid profile email offline_access"
   auth_scopes: ""
-  # the users (`preferred_username`) allowed in
+  # the users allowed in, by their `sub` claim (docs/login.md)
   auth_users: []
 
   # --- NetBox
