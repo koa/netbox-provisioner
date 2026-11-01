@@ -3,4 +3,6 @@
 //! (`edges`).
 
 pub mod edges;
+pub mod graphql;
 pub mod lsa;
+pub mod read;

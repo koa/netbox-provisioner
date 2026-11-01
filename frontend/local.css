@@ -526,3 +526,67 @@ ul.device-history {
         &.running { border-color: var(--pf-t--global--color--status--info--default); }
     }
 }
+
+/* the network map (`components::network_map`): wider than a phone, it scrolls sideways */
+.network-map {
+  overflow-x: auto;
+}
+.network-map svg {
+  max-width: none;
+}
+.map-edge {
+  stroke-width: 3;
+  stroke: var(--pf-t--global--border--color--default);
+}
+.map-edge.up {
+  stroke: var(--pf-t--global--color--status--success--default);
+}
+.map-edge.v3-down {
+  stroke: var(--pf-t--global--color--status--warning--default);
+}
+.map-edge.down {
+  stroke: var(--pf-t--global--color--status--danger--default);
+}
+.map-edge.not-ospf {
+  stroke-dasharray: 2 4;
+}
+.map-edge.radio {
+  stroke-dasharray: 8 4;
+}
+.map-edge.outside {
+  stroke-width: 1;
+  stroke-dasharray: 1 3;
+}
+.map-node {
+  cursor: pointer;
+}
+.map-node circle,
+.map-node rect {
+  stroke: var(--pf-t--global--text--color--regular);
+  stroke-width: 1.5;
+  fill: var(--pf-t--global--background--color--primary--default);
+}
+.map-node.reached circle {
+  fill: var(--pf-t--global--color--status--success--default);
+}
+.map-node.isolated circle {
+  fill: var(--pf-t--global--color--status--warning--default);
+}
+.map-node.missing circle {
+  fill: var(--pf-t--global--color--status--danger--default);
+}
+.map-node.outside {
+  cursor: default;
+}
+.map-node.outside circle {
+  stroke-dasharray: 3 2;
+}
+.map-node text {
+  text-anchor: middle;
+  font-size: 12px;
+  fill: var(--pf-t--global--text--color--regular);
+}
+.network-map-legend ul {
+  list-style: none;
+  padding: 0;
+}

@@ -11,7 +11,7 @@ use crate::{
         live::{Subscription, subscribe_data},
         query_authenticated_response,
     },
-    pages::routes::AppRoute,
+    pages::routes::{AppRoute, SiteView},
 };
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
 use std::{net::IpAddr, str::FromStr};
@@ -133,6 +133,9 @@ impl Component for Devices {
         };
         html! {
             <>
+                <p class="site-links">
+                    <Link<AppRoute> to={AppRoute::Site { id: site, view: SiteView::Map }}>{i18n::network_map::OPEN}</Link<AppRoute>>
+                </p>
                 <FindingsList site={Some(site)}/>
                 <SiteDiff {site}/>
                 {check}

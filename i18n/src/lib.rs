@@ -27,6 +27,9 @@ pub mod saved_jobs;
 /// How far each device of a site is from NetBox (`components::site_diff`).
 pub mod site_diff;
 
+/// The site's devices and edges as OSPF sees them (`components::network_map`).
+pub mod network_map;
+
 /// The device page (`pages::devices::show`).
 pub mod device;
 

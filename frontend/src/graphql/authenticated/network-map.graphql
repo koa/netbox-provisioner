@@ -1,0 +1,22 @@
+query NetworkMap($site: Int!){
+    topology{
+        siteById(id: $site){
+            networkState{
+                readFrom{ id name }
+                age
+                error
+                outside
+                outsideAt
+                nodes{ device{ id name site } routeros state }
+                edges{
+                    kind
+                    a{ id name device{ id name } }
+                    b{ id name device{ id name } }
+                    state
+                    reason
+                    reasonDevice
+                }
+            }
+        }
+    }
+}

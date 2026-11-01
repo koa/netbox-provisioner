@@ -1,4 +1,5 @@
 use crate::components::menu::Navigation;
+use crate::components::network_map::NetworkMap;
 use crate::i18n;
 use crate::pages::devices::Devices;
 use crate::pages::devices::show::ShowDevice;
@@ -7,7 +8,7 @@ use patternfly_yew::prelude::{PageSection, PageSectionType};
 use yew::{Html, html};
 use yew_nested_router::Target;
 
-/// `/sites`, `/site/<site>` (its devices), `/site/<site>/device/<device>/show`
+/// `/sites`, `/site/<site>` (its devices), `/site/<site>/map`, `/site/<site>/device/<device>/show`
 #[derive(Debug, Clone, Default, PartialEq, Eq, Target)]
 pub enum AppRoute {
     NotFound,
@@ -24,6 +25,7 @@ pub enum AppRoute {
 pub enum SiteView {
     #[target(index)]
     Devices,
+    Map,
     Device {
         id: u32,
         #[target(nested)]
@@ -82,6 +84,7 @@ impl SiteView {
         match self {
             // keyed: another site or device in the breadcrumb loads the page anew
             SiteView::Devices => html! {<Devices key={site} {site}/>},
+            SiteView::Map => html! {<NetworkMap key={site} {site}/>},
             SiteView::Device { id, view } => view.content(id),
         }
     }

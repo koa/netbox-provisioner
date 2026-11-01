@@ -98,6 +98,8 @@ pub enum FactKind {
     Interfaces,
     /// the live checks of the interface view (`interface_live::read`), against NetBox
     InterfaceLive,
+    /// the OSPF link-state database a router has (`network_state::read`)
+    Lsdb,
 }
 
 impl FactKind {
@@ -113,6 +115,7 @@ impl FactKind {
         FactKind::Neighbors,
         FactKind::Interfaces,
         FactKind::InterfaceLive,
+        FactKind::Lsdb,
     ];
 }
 
@@ -131,6 +134,7 @@ impl FactKind {
             FactKind::Neighbors => "neighbors",
             FactKind::Interfaces => "interfaces",
             FactKind::InterfaceLive => "interface_live",
+            FactKind::Lsdb => "lsdb",
         }
     }
 }

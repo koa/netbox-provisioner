@@ -84,6 +84,20 @@ impl FromIterator<Lsa> for Lsdb {
 }
 
 impl Lsdb {
+    /// The router IDs with a v2 router LSA (a router gone lately too, see [`Lsdb`]).
+    pub fn routers(&self) -> &BTreeSet<Ipv4Addr> {
+        &self.routers_v2
+    }
+    /// The routers `router` shares a v2 segment with, both linking to it.
+    pub fn segment_neighbors(&self, router: Ipv4Addr) -> BTreeSet<Ipv4Addr> {
+        self.segments_v2
+            .iter()
+            .filter(|(_, dr, routers)| routers.contains(&router) && self.transit(router, *dr))
+            .flat_map(|(_, dr, routers)| {
+                routers.iter().copied().filter(move |other| *other != router && self.transit(*other, *dr))
+            })
+            .collect()
+    }
     /// Whether `router`'s v2 router LSA has a transit link to the segment with DR `dr`.
     fn transit(&self, router: Ipv4Addr, dr: Ipv4Addr) -> bool {
         self.transit_v2.get(&router).is_some_and(|drs| drs.contains(&dr))
@@ -169,7 +183,7 @@ pub fn edges(devices: &[DeviceAccess], lsdb: &Lsdb) -> Vec<Edge> {
 
 /// An end as OSPF sees it: the router ID of its device and the IPv4 addresses (with OSPF) of
 /// the port or its bridge.
-fn ospf_end(interface: &InterfaceAccess) -> Option<(DeviceId, Ipv4Addr, Vec<Ipv4Net>)> {
+pub(crate) fn ospf_end(interface: &InterfaceAccess) -> Option<(DeviceId, Ipv4Addr, Vec<Ipv4Net>)> {
     let device = interface.device().filter(DeviceAccess::has_routeros)?;
     let Some(IpAddr::V4(router_id)) = device.primary_ip_v4().and_then(|ip| ip.addr()) else {
         return None;
