@@ -642,19 +642,16 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             ))
         })
         .collect();
+    // sorted: gathered from maps, they would come in another order on each fetch, and a
+    // topology fetched again would never be the same (`Topology::changed_parts`)
+    fn sorted<T: Ord>(mut ids: Vec<T>) -> Box<[T]> {
+        ids.sort_unstable();
+        ids.into_boxed_slice()
+    }
     for (id, prefix) in &mut ip_prefixes {
-        prefix.children = children_prefix
-            .remove(id)
-            .map(Vec::into_boxed_slice)
-            .unwrap_or_default();
-        prefix.ranges = ranges_of_prefix
-            .remove(id)
-            .map(Vec::into_boxed_slice)
-            .unwrap_or_default();
-        prefix.addresses = ip_addresses_of_prefix
-            .remove(id)
-            .map(Vec::into_boxed_slice)
-            .unwrap_or_default();
+        prefix.children = children_prefix.remove(id).map(sorted).unwrap_or_default();
+        prefix.ranges = ranges_of_prefix.remove(id).map(sorted).unwrap_or_default();
+        prefix.addresses = ip_addresses_of_prefix.remove(id).map(sorted).unwrap_or_default();
     }
 
     Topology {
