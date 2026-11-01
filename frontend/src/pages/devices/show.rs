@@ -16,11 +16,12 @@ use crate::{
     },
     graphql::{
         authenticated::{
-            ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, ChangeDeviceMode, DeviceJobs,
+            ApplyDeviceCfg, BootstrapCandidates, BootstrapDevice, ChangeDeviceMode,
             BootPartition, ClearLeftover, clear_leftover, DeviceOverview, DowngradeRouteros, downgrade_routeros, PowerCycle, RebootDevice, power_cycle, RepartitionDevice, UpdateRouteros, apply_device_cfg,
-            reboot_device, bootstrap_candidates, bootstrap_device, change_device_mode, device_jobs,
+            reboot_device, bootstrap_candidates, bootstrap_device, change_device_mode,
             boot_partition, device_overview, repartition_device, update_routeros,
         },
+        live::{LiveQuery, live},
         query_authenticated, query_authenticated_response,
     },
 };
@@ -81,6 +82,8 @@ pub struct ShowDevice {
     applying: bool,
     /// counts the applies over: the interfaces written to are no longer changed
     applied: u32,
+    /// the overview kept live (`graphql::live`): shown again whenever the device changed
+    live: Option<LiveQuery>,
 }
 type Watchdog = device_overview::DeviceOverviewTopologyDeviceByIdWatchdogs;
 type Connected = device_overview::DeviceOverviewTopologyDeviceByIdAccessConnected;
@@ -91,6 +94,8 @@ type Candidate =
 struct GeneratedCfg {
     script: Box<str>,
     warnings: Vec<Warning>,
+    /// when the device was read for it (milliseconds since the epoch, from the age it came with)
+    as_of: f64,
 }
 type Warning = device_overview::DeviceOverviewTopologyDeviceByIdAccessGenerateCfgWarnings;
 #[derive(Debug, Default)]
@@ -123,6 +128,12 @@ pub struct ShowDeviceData {
     power_supply: Option<device_overview::DeviceOverviewTopologyDeviceByIdPowerSupply>,
     /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
     allow_apply: bool,
+    /// the job running on the device, and the device it works on when that isn't this one (a
+    /// setup over this device as the neighbor): also one started elsewhere shows
+    running_job: Option<(i64, Option<String>)>,
+    /// the jobs of the device over, also those that ran elsewhere: when one more is, the
+    /// history and the interfaces are read again
+    jobs_over: Vec<i64>,
 }
 #[derive(Debug, Properties, Clone, PartialEq)]
 pub struct ShowDeviceProps {
@@ -176,6 +187,8 @@ pub enum ShowDeviceMessage {
     /// a job of another device running through this one (its id and that device)
     JobThrough(i64, String),
     JobFinished,
+    /// read the device anew (`maxAge: 0`)
+    Reload,
     /// „Anwenden“ of the interfaces: to the card „Änderungen“
     ShowChanges,
     BatchStarted(Vec<BatchJob>),
@@ -214,6 +227,7 @@ impl Component for ShowDevice {
             jobs_finished: 0,
             applying: false,
             applied: 0,
+            live: None,
         }
     }
 
@@ -236,9 +250,24 @@ impl Component for ShowDevice {
                 {
                     self.downgrade_version = previous;
                 }
+                if self.data.as_ref().is_some_and(|before| before.jobs_over != data.jobs_over) {
+                    self.jobs_finished += 1;
+                }
+                if let Some((id, through)) = data.running_job.clone()
+                    && self.job != Some(id)
+                    && self.batch_jobs.is_empty()
+                {
+                    self.job = Some(id);
+                    self.job_through = through;
+                    self.job_running = true;
+                }
                 self.data = Some(*data);
                 self.error = error;
                 true
+            }
+            ShowDeviceMessage::Reload => {
+                fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone(), Some(0));
+                false
             }
             ShowDeviceMessage::SelectChannel(label) => {
                 self.channel = self
@@ -406,8 +435,9 @@ impl Component for ShowDevice {
                     self.applying = false;
                     self.applied += 1;
                 }
-                // the device changed: show what is left now
-                fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
+                // the device changed: show what is left now (the live overview does too, unless
+                // its connection is away)
+                fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone(), None);
                 true
             }
             ShowDeviceMessage::ShowChanges => {
@@ -435,7 +465,7 @@ impl Component for ShowDevice {
             ShowDeviceMessage::AdjustTarget(t) => {
                 if self.alternate_target != t {
                     self.alternate_target = t;
-                    fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
+                    self.start_live(ctx);
                     true
                 } else {
                     false
@@ -848,6 +878,17 @@ impl Component for ShowDevice {
                 <Card class="device-cfg">
                     <CardHeader><CardTitle>{t::CHANGES}</CardTitle></CardHeader>
                     <CardBody>
+                        <p class="as-of">
+                            if let Some((_, Some(generated))) = &data.access {
+                                {t::as_of(&local_time(generated.as_of))}
+                            }
+                            <Button
+                                variant={ButtonVariant::Link}
+                                label={t::RELOAD}
+                                disabled={running}
+                                onclick={ctx.link().callback(|_| ShowDeviceMessage::Reload)}
+                            />
+                        </p>
                         {update}
                         if reachable {
                             <Button
@@ -898,13 +939,24 @@ impl Component for ShowDevice {
 
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
-            fetch_overview(ctx.link().clone(), self.id, self.alternate_target.clone());
-            running_job(ctx.link().clone(), self.id);
+            self.start_live(ctx);
         }
     }
 }
 
 impl ShowDevice {
+    /// Keeps the overview live with the target chosen, ending the one kept before.
+    fn start_live(&mut self, ctx: &Context<Self>) {
+        let (id, scope) = (self.id, ctx.link().clone());
+        let variables = overview_variables(id, &self.alternate_target, None);
+        self.live = None;
+        self.live = Some(live::<DeviceOverview, _>(ctx.link(), variables, move |response| {
+            scope.send_message(match response {
+                Ok(response) => overview_message(id, response),
+                Err(error) => ShowDeviceMessage::Error(error),
+            })
+        }));
+    }
     /// A version to type (or the one before an update of this run) and „Auf … downgraden“,
     /// asked to confirm.
     fn downgrade_view(&self, ctx: &Context<Self>, disabled: bool) -> Html {
@@ -1064,86 +1116,116 @@ impl ShowDevice {
     }
 }
 
-fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
-    spawn_local(async move {
-        let (credential_name, adhoc_credentials) =
-            target.credentials.variables(|username, password| device_overview::AdhocCredentials {
-                username,
-                password,
-            });
-        match query_authenticated_response::<DeviceOverview, _>(
-            scope.clone(),
-            device_overview::Variables {
-                id: id as i64,
-                target: target.address.map(|a| a.to_string()),
-                credential_name,
-                adhoc_credentials,
-            },
-        )
-        .await
-        {
-            Ok(response) => {
-                if let Some(data) = response.data {
-                    // why the device couldn't be reached goes with the warning, not the banner
-                    let (access_errors, errors): (Vec<_>, Vec<_>) = response
-                        .errors
-                        .unwrap_or_default()
-                        .into_iter()
-                        .partition(|e| {
-                            e.path.as_ref().is_some_and(|path| {
-                                path.iter().map(|p| p.to_string()).eq(["topology", "deviceById", "access"])
-                            })
-                        });
-                    let access_problem = access_errors
-                        .first()
-                        .map(|e| ServerProblem::of(e).text().into_boxed_str());
-                    let error = Some(errors)
-                        .filter(|e| !e.is_empty())
-                        .map(FrontendError::Graphql);
-                    let device = data.topology.device_by_id;
-                    let data = device
-                        .map(|mut d| ShowDeviceData {
-                            configured_name: d.name.into_boxed_str(),
-                            connected: d.access.as_ref().map(|a| a.connected.clone()),
-                            access_problem,
-                            routeros: d.access.as_mut().and_then(|a| a.routeros.take()),
-                            log: d.access.as_mut().and_then(|a| a.log.take()).unwrap_or_default(),
-                            leftovers: d.access.as_mut().and_then(|a| a.leftovers.take()),
-                            device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
-                            partitions: d.access.as_mut().and_then(|a| a.partitions.take()),
-                            access: d.access.map(|a| {
-                                (
-                                    a.device_stats.routerboard.device_type.into_boxed_str(),
-                                    a.generate_cfg.map(|cfg| GeneratedCfg {
-                                        script: cfg.script.into_boxed_str(),
-                                        warnings: cfg.warnings,
-                                    }),
-                                )
-                            }),
-                            bootstrap_plan: d.bootstrap_plan,
-                            bootstrap_problem: d.bootstrap_problem,
-                            watchdogs: d.watchdogs,
-                            update_neighbors: d.update_neighbors,
-                            power_supply: d.power_supply,
-                            allow_apply: data.allow_apply,
-                        })
-                        .unwrap_or_default();
+/// `HH:MM:SS` of `millis` since the epoch, in the browser's time zone.
+fn local_time(millis: f64) -> String {
+    let date = js_sys::Date::new(&millis.into());
+    format!("{:02}:{:02}:{:02}", date.get_hours(), date.get_minutes(), date.get_seconds())
+}
 
-                    scope.send_message(ShowDeviceMessage::Data {
-                        data: Box::new(data),
-                        error,
-                    });
-                } else if let Some(errors) = response.errors {
-                    scope.send_message(ShowDeviceMessage::Error(FrontendError::Graphql(errors)))
-                } else {
-                    scope.send_message(ShowDeviceMessage::Error(FrontendError::MissingData))
-                }
-            }
-            Err(e) => {
-                scope.send_message(ShowDeviceMessage::Error(e));
-            }
-        }
+/// The variables of the overview with `target`, facts at most `max_age` seconds old.
+fn overview_variables(id: u32, target: &SelectedTarget, max_age: Option<i64>) -> device_overview::Variables {
+    let (credential_name, adhoc_credentials) =
+        target.credentials.clone().variables(|username, password| device_overview::AdhocCredentials {
+            username,
+            password,
+        });
+    device_overview::Variables {
+        id: id as i64,
+        target: target.address.map(|a| a.to_string()),
+        credential_name,
+        adhoc_credentials,
+        max_age,
+    }
+}
+
+/// Reads the overview once (`max_age`: `Some(0)` reads the device anew).
+fn fetch_overview(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget, max_age: Option<i64>) {
+    spawn_local(async move {
+        let variables = overview_variables(id, &target, max_age);
+        let message = match query_authenticated_response::<DeviceOverview, _>(scope.clone(), variables).await {
+            Ok(response) => overview_message(id, response),
+            Err(e) => ShowDeviceMessage::Error(e),
+        };
+        scope.send_message(message);
     });
+}
+
+/// What an answer of the overview shows, read once or live.
+fn overview_message(id: u32, response: graphql_client::Response<device_overview::ResponseData>) -> ShowDeviceMessage {
+    if let Some(data) = response.data {
+        // why the device couldn't be reached goes with the warning, not the banner
+        let (access_errors, errors): (Vec<_>, Vec<_>) = response
+            .errors
+            .unwrap_or_default()
+            .into_iter()
+            .partition(|e| {
+                e.path.as_ref().is_some_and(|path| {
+                    path.iter().map(|p| p.to_string()).eq(["topology", "deviceById", "access"])
+                })
+            });
+        let access_problem = access_errors
+            .first()
+            .map(|e| ServerProblem::of(e).text().into_boxed_str());
+        let error = Some(errors)
+            .filter(|e| !e.is_empty())
+            .map(FrontendError::Graphql);
+        let running_job = data
+            .jobs
+            .iter()
+            .find(|job| matches!(job.state, device_overview::JobState::RUNNING))
+            .map(|job| {
+                let through = match (job.device_id, &job.device_name) {
+                    (Some(device), Some(name)) if device != id as i64 => Some(name.clone()),
+                    _ => None,
+                };
+                (job.id, through)
+            });
+        let jobs_over = data
+            .jobs
+            .iter()
+            .filter(|job| !matches!(job.state, device_overview::JobState::RUNNING))
+            .map(|job| job.id)
+            .collect();
+        let device = data.topology.device_by_id;
+        let data = device
+            .map(|mut d| ShowDeviceData {
+                configured_name: d.name.into_boxed_str(),
+                connected: d.access.as_ref().map(|a| a.connected.clone()),
+                access_problem,
+                routeros: d.access.as_mut().and_then(|a| a.routeros.take()),
+                log: d.access.as_mut().and_then(|a| a.log.take()).unwrap_or_default(),
+                leftovers: d.access.as_mut().and_then(|a| a.leftovers.take()),
+                device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
+                partitions: d.access.as_mut().and_then(|a| a.partitions.take()),
+                access: d.access.map(|a| {
+                    (
+                        a.device_stats.routerboard.device_type.into_boxed_str(),
+                        a.generate_cfg.map(|cfg| GeneratedCfg {
+                            script: cfg.script.into_boxed_str(),
+                            warnings: cfg.warnings,
+                            as_of: js_sys::Date::now() - cfg.age as f64 * 1000.0,
+                        }),
+                    )
+                }),
+                bootstrap_plan: d.bootstrap_plan,
+                bootstrap_problem: d.bootstrap_problem,
+                watchdogs: d.watchdogs,
+                update_neighbors: d.update_neighbors,
+                power_supply: d.power_supply,
+                allow_apply: data.allow_apply,
+                running_job,
+                jobs_over,
+            })
+            .unwrap_or_default();
+        ShowDeviceMessage::Data {
+            data: Box::new(data),
+            error,
+        }
+    } else if let Some(errors) = response.errors {
+        ShowDeviceMessage::Error(FrontendError::Graphql(errors))
+    } else {
+        ShowDeviceMessage::Error(FrontendError::MissingData)
+    }
 }
 
 fn apply(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
@@ -1423,32 +1505,6 @@ fn boot_from(scope: Scope<ShowDevice>, id: u32, partition: String, target: Selec
 }
 
 /// Shows the job the device runs, should one have been started before the page was opened.
-fn running_job(scope: Scope<ShowDevice>, id: u32) {
-    spawn_local(async move {
-        let Ok(data) = query_authenticated::<DeviceJobs, _>(
-            scope.clone(),
-            device_jobs::Variables { device_id: id as i64 },
-        )
-        .await
-        else {
-            return;
-        };
-        if let Some(job) = data
-            .jobs
-            .into_iter()
-            .find(|job| matches!(job.state, device_jobs::JobState::RUNNING))
-        {
-            match job.device_id.zip(job.device_name) {
-                // a setup over this device as the neighbor
-                Some((device, name)) if device != id as i64 => {
-                    scope.send_message(ShowDeviceMessage::JobThrough(job.id, name))
-                }
-                _ => scope.send_message(ShowDeviceMessage::JobStarted(Ok(job.id))),
-            }
-        }
-    });
-}
-
 /// A warning of `generateCfg`, as the operator reads it before applying.
 fn describe_warning(warning: &Warning) -> String {
     match warning {

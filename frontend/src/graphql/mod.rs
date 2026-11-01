@@ -8,6 +8,7 @@ use yew_oauth2::prelude::{Authentication, OAuth2Context};
 
 pub mod anonymous;
 pub mod authenticated;
+pub mod live;
 
 static GRAPHQL_AUTHENTICATED_URL: LazyLock<String> =
     LazyLock::new(|| format!("{}/graphql", host()));

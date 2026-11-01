@@ -1,5 +1,11 @@
-query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials, $maxAge: Int){
     allowApply
+    jobs(deviceId: $id){
+        id
+        state
+        deviceId
+        deviceName
+    }
     topology{
         deviceById(id: $id){
             name
@@ -13,7 +19,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
             updateNeighbors
             powerSupply { device { id name } port }
             watchdogs { device supplier watching { watchAddress poePings { port address } } problem { ...Problem } }
-            access(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
+            access(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials, maxAge: $maxAge){
                 connected { address neighbor identity sameName }
                 deviceStats{
                     routerboard {
@@ -23,6 +29,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                     }
                 }
                 generateCfg {
+                    age
                     script
                     warnings {
                         __typename
@@ -49,6 +56,7 @@ query DeviceOverview($id: Int!, $target: String, $credentialName: String, $adhoc
                 }
                 log { time topics message }
                 routeros {
+                    age
                     version
                     packages
                     wanted

@@ -23,6 +23,11 @@ pub fn job_through(device: &str) -> String {
     )
 }
 pub const CHANGES: &str = "Änderungen";
+pub const RELOAD: &str = "Neu laden";
+/// when the device was read for what the page shows (`generateCfg.age`, as the local time)
+pub fn as_of(time: &str) -> String {
+    format!("Stand {time}")
+}
 /// the card with RouterOS, device mode and partitions
 pub const DEVICE: &str = "Gerät";
 pub const APPLY: &str = "Anwenden";

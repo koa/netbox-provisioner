@@ -81,14 +81,6 @@ query JobEvents($id: Int!, $after: Int){
         }
     }
 }
-query DeviceJobs($deviceId: Int!){
-    jobs(deviceId: $deviceId){
-        id
-        state
-        deviceId
-        deviceName
-    }
-}
 mutation CancelJob($id: Int!){
     cancelJob(id: $id){
         id
