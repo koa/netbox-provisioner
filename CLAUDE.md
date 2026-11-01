@@ -414,7 +414,9 @@ the query's resolvers while `LiveExtension` notes the facts and job devices they
 dropped, the topology) or when the youngest fact read gets older than taken. A subscription has
 one root field: what a page needs hangs under it (the device's `jobs`). A fact stored anew
 concerns only who looked without asking (`facts::peek_newest`, e.g. the device's `knownDiff`
-that „Abweichung von NetBox“ shows over its last job's readings); for who asks it is no change
+that „Abweichung von NetBox“ shows over its last job's readings; an apply whose check found
+the device in line puts that there after its end dropped the facts, `facts::put`,
+`Job::keep_in_line`); for who asks it is no change
 (two live pages would keep asking for each other); „Neu laden“ drops the device's
 facts (`refreshDevice`), so every page showing it reads anew. While a subscription is open
 NetBox is read every 10 s (`live::watch_netbox`). Over HTTP a subscription is answered with

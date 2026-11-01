@@ -272,7 +272,11 @@ Daneben abonniert die Karte `knownDiff` der Geräte: das Neueste, was der Provis
 ohne zu fragen, und seit wann das Gelesene verworfen ist (`facts::dropped`: ein Job auf dem
 Gerät, eine Änderung in NetBox). Pro Gerät zeigt sie, was nach dem Start des Jobs gelesen wurde,
 sonst das Ergebnis des Jobs, oder „seit der Prüfung verändert“, wenn es danach verworfen wurde.
-Wendet man auf der Geräteseite an, liest diese neu, und die Karte zeigt das.
+Wendet man auf der Geräteseite an, liest diese neu, und die Karte zeigt das. Ein Apply, dessen
+Kontrolle das Gerät wie NetBox fand (ohne Fallback danach), legt das an seinem Ende als Fakt ab,
+nach dem Verwerfen (`facts::put`, `Job::keep_in_line`): Die Karte zeigt „entspricht NetBox“ auch
+ohne offene Geräteseite. Bleibt nach der Kontrolle etwas übrig, legt es nichts ab (die
+Änderungen pro Menü kennt die Kontrolle nicht), die Karte zeigt „seit der Prüfung verändert“.
 
 ### Subscription mit denselben Typen wie die Query
 

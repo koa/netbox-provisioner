@@ -688,6 +688,20 @@ pub fn dropped(kind: FactKind, device: DeviceId) -> Option<Instant> {
     about_device.into_iter().chain(everywhere).max().copied()
 }
 
+/// Stores `value` as the fact `key`, read at `as_of`: what a job saw itself at its end (an
+/// apply's check), put after its end dropped the facts about the device.
+pub fn put<T: Send + Sync + 'static>(key: FactKey, value: T, as_of: Instant) {
+    {
+        let mut store = store();
+        let value: Stored = Arc::new(Ok::<_, Arc<Error>>(Arc::new(value)));
+        let slot = store.slots.entry(key.clone()).or_default();
+        if slot.done.replace(Done { value, as_of }).is_none() {
+            METRICS.entries.with_label_values(&[key.kind.label()]).inc();
+        }
+    }
+    announce(Change::Stored(key));
+}
+
 /// Drops the one fact `key`, e.g. a connection found broken.
 pub fn forget(key: &FactKey) {
     let mut store = store();

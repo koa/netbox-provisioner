@@ -428,6 +428,19 @@ pub struct GeneratedCfg {
     as_of: tokio::time::Instant,
 }
 
+impl GeneratedCfg {
+    /// A device found in line, read at `as_of`: what an apply's check saw (no warnings, they
+    /// are about changes).
+    pub(crate) fn in_line(as_of: tokio::time::Instant) -> GeneratedCfg {
+        GeneratedCfg {
+            script: "".into(),
+            menus: Vec::new(),
+            warnings: Vec::new(),
+            as_of,
+        }
+    }
+}
+
 #[async_graphql::ComplexObject]
 impl GeneratedCfg {
     /// seconds since the device was read for it (`facts`)

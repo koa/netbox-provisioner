@@ -507,7 +507,41 @@ impl Job {
         if let Some(JobSubject::Device(through)) = self.through {
             facts::invalidate(through, THROUGH_INVALIDATES);
         }
+        if let (JobSubject::Device(device), JobState::Done) = (self.subject, state) {
+            self.keep_in_line(device);
+        }
         self.log.changed();
+    }
+    /// An apply whose check found the device in line, with no fallback left or fired after it,
+    /// keeps that as what is known of its diff (`site_diff::known`): „Abweichung von NetBox“
+    /// shows it without reading the device again.
+    fn keep_in_line(&self, device: DeviceId) {
+        if self.kind != JobKind::Apply {
+            return;
+        }
+        let checked = {
+            let events = self.log.events.lock().unwrap_or_else(PoisonError::into_inner);
+            let last = events.iter().rposition(|logged| matches!(logged.event, Event::ApplyChecked(_)));
+            last.and_then(|index| {
+                let after = &events[index + 1..];
+                let fell_back = after
+                    .iter()
+                    .any(|logged| matches!(logged.event, Event::FallbackLeft(_) | Event::FallbackFired(_)));
+                match &events[index].event {
+                    Event::ApplyChecked(checked)
+                        if checked.error.is_none() && checked.remaining.is_empty() && !fell_back =>
+                    {
+                        Some(Duration::from(events[index].at))
+                    }
+                    _ => None,
+                }
+            })
+        };
+        if let Some(at) = checked {
+            let as_of = tokio::time::Instant::from_std(self.log.started + at);
+            let key = facts::FactKey::new(FactKind::Config, Some(device), format!("checked by job {}", self.id));
+            facts::put(key, apply::GeneratedCfg::in_line(as_of), as_of);
+        }
     }
     pub fn job_id(&self) -> u32 {
         self.id
