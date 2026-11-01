@@ -65,6 +65,9 @@ pub fn radio_package(model: &[u8]) -> Option<RadioPackage> {
         | b"RBwAPG-5HacT2HnD"
         // cAP 2n (mipsbe, 2.4 GHz 802.11n): a CAP of the legacy CAPsMAN
         | b"RBcAP2n"
+        // Groove A-52HPn (mipsbe, one 802.11n radio for 2.4 or 5 GHz): a CAP of the legacy
+        // CAPsMAN as groove-38 runs it (7.14.1), RouterOS reports it with a space
+        | b"Groove A-52HPn"
         | b"RBDynaDishG-5HacDr3"
         // RouterOS 6 reports the RB912 without `RB`
         | b"RB912UAG-2HPnD"
@@ -345,6 +348,23 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
             false,
         )(1)]
         .into(),
+        // Groove A-52HPn: a single port, PoE-in only; a 10/100 port that advertises 1G all
+        // the same, no switch chip (groove-38, 7.14.1)
+        b"Groove A-52HPn" => [generate_ethernet(
+            EthernetNamePattern::Ether,
+            &ADVERTISE_1G,
+            1600,
+            false,
+        )(1)]
+        .into(),
+        // RB750GL: five ports on an Atheros-8327, ether1 PoE-in only (sat-switch, 7.23.8)
+        b"RB750GL" => repeat_n(
+            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
+            5,
+        )
+        .enumerate()
+        .map(|(idx, generator)| generator(idx + 1))
+        .collect(),
         b"RB750Gr3" => repeat_n(
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1596, false),
             5,

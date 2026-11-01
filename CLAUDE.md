@@ -820,7 +820,9 @@ The first wAP ac (`RBwAPG-5HacT2HnD`, mipsbe, one port) has no `wifi-qcom-ac` an
 So does the cAP 2n (`RBcAP2n`, mipsbe, 2.4 GHz, one 10/100 port that advertises 1G; values as
 bachman-wlan-dg reports them on 7.20.4), a CAP of the legacy CAPsMAN; its switch chip
 (`switch1`) isn't in MikroTik's table and stays out of `SwitchChips`, which changes nothing for
-one port beside a radio.
+one port beside a radio. The Groove A-52HPn (`Groove A-52HPn`, with a space, mipsbe, one 10/100
+port advertising 1G, no switch chip; groove-38, 7.14.1) is such a CAP too. The RB750GL (five
+ports on an Atheros-8327, no radio; sat-switch, 7.23.8) is a plain router.
 A CAP's radio refers to a local `/interface/wifi/configuration` (`manager=capsman`, the
 datapath; `capsman` for the first datapath, `capsman-<bridge>` for others) and keeps its
 default name (`wifi1`; L2 names it so too): CAPsMAN binds it through that configuration. A

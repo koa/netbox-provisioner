@@ -1,4 +1,5 @@
-use super::{RadioPackage, build_ethernet_ports, radio_package};
+use super::{RadioPackage, SwitchChip, SwitchChips, build_ethernet_ports, radio_package};
+use crate::topology::PhysicalPortId;
 use mikrotik_model::value::{Auto, HasNone};
 
 #[test]
@@ -81,6 +82,35 @@ fn cap_2n_has_one_port_and_runs_wireless() {
     assert_eq!(ports[0].data.advertise.len(), 6);
     assert_eq!(ports[0].data.poe_out, None);
     assert_eq!(radio_package(b"RBcAP2n"), Some(RadioPackage::Wireless));
+}
+
+/// As sat-switch reports it (7.23.8): five ports with `l2mtu=1598`, advertising up to 1G, on
+/// an Atheros-8327, no radio.
+#[test]
+fn rb750gl_has_five_ports_on_its_switch_chip() {
+    let ports = build_ethernet_ports(b"RB750GL");
+    let names: Vec<_> = ports.iter().map(|port| port.default_name.to_string()).collect();
+    assert_eq!(names, ["ether1", "ether2", "ether3", "ether4", "ether5"]);
+    assert!(ports.iter().all(|port| port.data.l_2_mtu == Some(1598)
+        && port.data.advertise.len() == 6
+        && port.data.poe_out.is_none()));
+    assert_eq!(radio_package(b"RB750GL"), None);
+    let chips = SwitchChips::of(b"RB750GL");
+    assert_eq!(chips.chip_of(PhysicalPortId::Ethernet(5)), Some(SwitchChip::Qca8337));
+}
+
+/// As groove-38 reports it (7.14.1): `ether1` with `l2mtu=1600`, advertising up to 1G, no
+/// switch chip, a radio of the legacy stack.
+#[test]
+fn groove_has_one_port_and_runs_wireless() {
+    let ports = build_ethernet_ports(b"Groove A-52HPn");
+    assert_eq!(ports.len(), 1);
+    assert_eq!(&*ports[0].default_name, b"ether1");
+    assert_eq!(ports[0].data.l_2_mtu, Some(1600));
+    assert_eq!(ports[0].data.advertise.len(), 6);
+    assert_eq!(ports[0].data.poe_out, None);
+    assert_eq!(radio_package(b"Groove A-52HPn"), Some(RadioPackage::Wireless));
+    assert_eq!(SwitchChips::of(b"Groove A-52HPn").chip_of(PhysicalPortId::Ethernet(1)), None);
 }
 
 #[test]
