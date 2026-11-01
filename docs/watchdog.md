@@ -119,6 +119,15 @@ mit Funkänderung seine eigene und die der Abhängigen ausserhalb des Batches, j
 Ein Gerät im Batch ohne eigene Funkänderung, das von einem anderen abhängt, wird nicht
 ausgesetzt.
 
+## Ersteinrichtung
+
+Ersetzt ein Gerät im Werkszustand ein gespeistes, pingt der Port des Speisers weiter die Adresse
+aus NetBox. Das neue Gerät antwortet nicht und würde alle 5 min stromlos, auch mitten in der
+Einrichtung. Die Ersteinrichtung setzt deshalb ohne Nachfrage die PoE-Pings der Speiser aus, wie
+ein Update (nur die Speiser: Das Gerät hat noch keine Adresse, über die andere es überwachen),
+und stellt sie danach wieder her, auch nach einem Fehler; dasselbe Sicherheitsnetz von 2 h. Lässt
+sich ein Speiser nicht aussetzen, beginnt die Einrichtung nicht.
+
 ## Grenzen
 
 - **Neustart-Schleifen:** Fällt eine Verbindung dauerhaft aus (Funkstrecke bei Schnee), startet
@@ -134,6 +143,3 @@ ausgesetzt.
 - **Ein neu eingerichtetes Gerät** bekommt seinen Ping-Watchdog erst mit dem zweiten Anwenden:
   Beim ersten steht sein OSPF noch nicht, wenn das Anwenden prüft, ob der Parent antwortet
   (lab-wap, 2026-10-25).
-- **Ersatz eines gespeisten Geräts:** Der Port des Speisers pingt weiter die Adresse des alten
-  Geräts. Das neue im Werkszustand antwortet nicht und wird alle 5 min stromlos geschaltet, bis
-  die Ersteinrichtung ihm die Adresse am Kabel gibt (E2).

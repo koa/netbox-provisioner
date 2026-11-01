@@ -392,7 +392,10 @@ eine Firewall-Freigabe.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> NachbarPrüfen: [Nachbar ohne Auftrag]
+    [*] --> WatchdogsAussetzen: [Nachbar ohne Auftrag], Speiser mit PoE-Ping
+    [*] --> NachbarPrüfen: [Nachbar ohne Auftrag], sonst
+    WatchdogsAussetzen --> NachbarPrüfen: ausgesetzt (G)
+    WatchdogsAussetzen --> [*]: nicht ausgesetzt → fehlgeschlagen
     NachbarPrüfen --> [*]: Weiterleitung aus → fehlgeschlagen
     NachbarPrüfen --> Konsole: SSH zum Nachbarn, mac-telnet (G)
     Konsole --> WartetAufApi: Einrichtung durch (G); Logins bis zur Frist wiederholt
@@ -400,6 +403,9 @@ stateDiagram-v2
     WartetAufApi --> [*]: API antwortet (G) → fertig
     WartetAufApi --> [*]: Frist (Z) → fehlgeschlagen
 ```
+
+Nach jedem Zustand, auch nach einem Fehler: `WatchdogsZurück` (`RestoringWatchdogs`), wo die
+PoE-Pings der Speiser ausgesetzt sind ([Watchdog](watchdog.md#ersteinrichtung)).
 
 Läuft über ein anderes Gerät (den Nachbarn), das solange keinen eigenen Auftrag annimmt
 (`job::start_through`): eine Bedingung über Geräte hinweg, und umgekehrt kein Auftrag des
@@ -584,7 +590,7 @@ wird von selbst weggeräumt.
 |---|---|---|
 | Apply-Fallback (Scheduler und Backup), mit der verbleibenden Zeit „laut Gerät“ (`next-run`; nach einem Sprung seiner Uhr stimmt sie nicht) | Anwenden, auch auf jedem Gerät eines gemeinsamen | „Fallback stoppen“ (die Änderung bleibt), „Jetzt zurück“ (das Skript des Eintrags mit `/execute`, dann warten, bis das Gerät zurück ist) |
 | Update-Fallback (`netbox-provisioner-update-fallback`) | Update | „Fallback stoppen“ (das neue RouterOS bleibt) |
-| Sicherheitsnetz der Watchdogs (`netbox-provisioner-watchdog`, setzt ausgesetzte Watchdogs nach 2 h selbst wieder; [Watchdog](watchdog.md)) | Update, Anwenden mit Funkänderung | „Jetzt wiederherstellen“ (`watchdog::restore` mit dem, was der Eintrag setzen würde) |
+| Sicherheitsnetz der Watchdogs (`netbox-provisioner-watchdog`, setzt ausgesetzte Watchdogs nach 2 h selbst wieder; [Watchdog](watchdog.md)) | Update, Anwenden mit Funkänderung, Ersteinrichtung | „Jetzt wiederherstellen“ (`watchdog::restore` mit dem, was der Eintrag setzen würde) |
 | `.npk`-Dateien im Root | Update, Downgrade | „Hochgeladene Pakete entfernen“ |
 | das Skript `netbox-provisioner-apply`, nur solange es läuft | Anwenden | keiner, es endet von selbst |
 

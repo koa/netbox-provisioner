@@ -303,28 +303,37 @@ impl States for DeviceModeState {
 /// A setup over mac-telnet from a neighbor (`bootstrap`), which keeps the neighbor busy.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
 pub enum BootstrapState {
+    /// the PoE pings of the devices powering this one, of its addresses, suspended on those:
+    /// a replaced device in factory state doesn't answer them and would lose its power
+    SuspendingWatchdogs,
     /// the neighbor allows SSH forwarding and has the port
     CheckingNeighbor,
     /// on the neighbor's console, logging in to the device and setting it up
     Console,
     /// until the device's API answers at its new address
     WaitingForApi,
+    /// the PoE pings suspended set again
+    RestoringWatchdogs,
 }
 
 impl States for BootstrapState {
-    const FIRST: &'static [Self] = &[BootstrapState::CheckingNeighbor];
+    const FIRST: &'static [Self] = &[BootstrapState::SuspendingWatchdogs, BootstrapState::CheckingNeighbor];
+    const FROM_ANY: &'static [Self] = &[BootstrapState::RestoringWatchdogs];
     fn next(self) -> &'static [Self] {
         use BootstrapState::*;
         match self {
+            SuspendingWatchdogs => &[CheckingNeighbor],
             CheckingNeighbor => &[Console],
             Console => &[WaitingForApi],
             WaitingForApi => &[],
+            RestoringWatchdogs => &[],
         }
     }
     fn cancel(self) -> Cancel {
+        use BootstrapState::*;
         match self {
-            BootstrapState::Console => Cancel::AfterState,
-            _ => Cancel::Ends,
+            Console | SuspendingWatchdogs | RestoringWatchdogs => Cancel::AfterState,
+            CheckingNeighbor | WaitingForApi => Cancel::Ends,
         }
     }
     fn restart(self) -> Restart {
@@ -612,7 +621,13 @@ mod tests {
             DeviceModeState::WaitingForConfirmation,
             DeviceModeState::Rebooting,
         ]);
-        all_reachable(&[BootstrapState::CheckingNeighbor, BootstrapState::Console, BootstrapState::WaitingForApi]);
+        all_reachable(&[
+            BootstrapState::SuspendingWatchdogs,
+            BootstrapState::CheckingNeighbor,
+            BootstrapState::Console,
+            BootstrapState::WaitingForApi,
+            BootstrapState::RestoringWatchdogs,
+        ]);
         all_reachable(&[CleanupState::Clearing, CleanupState::WaitingForChain, CleanupState::Rebooting]);
         all_reachable(&[NetboxState::Planning, NetboxState::Writing, NetboxState::Undoing, NetboxState::Refetching]);
         // the topology read again after a failed write too

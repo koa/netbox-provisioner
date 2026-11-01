@@ -1,7 +1,7 @@
 use crate::{
     Error,
     config::CONFIG,
-    device_state::{DeviceModeState, NetboxState, PowerCycleState, RebootState, UpdateState},
+    device_state::{BootstrapState, DeviceModeState, JobPhase, NetboxState, PowerCycleState, RebootState, UpdateState},
     error_info::ApiError,
     device::{
         AccessibleDevice, Connecting, bootstrap, device_mode, partitions,
@@ -141,8 +141,8 @@ impl SubscriptionAuthenticated {
     }
 }
 
-/// The watchdogs of others that may fire while a device updates (`suspendWatchdogs`), and
-/// the addresses its suppliers' PoE ports ping.
+/// The watchdogs of others that may fire while a device updates (`suspendWatchdogs`) or is set
+/// up, and the addresses its suppliers' PoE ports ping.
 struct Watchers {
     watchers: Vec<watchdog::Watcher>,
     powered: Vec<std::net::IpAddr>,
@@ -158,10 +158,22 @@ impl Watchers {
             powered: watchdog::addresses(device),
         }
     }
-    /// Connects to each and suspends its watchdogs.
-    async fn suspend(self, log: &Log) -> Result<Vec<watchdog::Suspended<AccessibleDevice>>, Error> {
+    /// Only the devices powering `device`, for its setup: a device in factory state doesn't
+    /// answer the PoE ping of its addresses in NetBox (one replacing another), and would lose
+    /// its power every few minutes, in the middle of its setup too (E2).
+    fn suppliers(device: &DeviceAccess) -> Self {
+        let mut watchers = Self::of(device, true);
+        watchers.watchers.retain(|watcher| watcher.supplier);
+        watchers
+    }
+    /// Connects to each and suspends its watchdogs, the job entering `suspending` first.
+    async fn suspend(
+        self,
+        log: &Log,
+        suspending: impl Into<JobPhase>,
+    ) -> Result<Vec<watchdog::Suspended<AccessibleDevice>>, Error> {
         if !self.watchers.is_empty() {
-            log.enter(UpdateState::SuspendingWatchdogs);
+            log.enter(suspending);
         }
         let mut links = Vec::new();
         for watchdog::Watcher { device, supplier } in self.watchers {
@@ -180,10 +192,15 @@ impl Watchers {
     }
 }
 
-/// Sets the watchdogs [`Watchers::suspend`] suspended again, whatever the job came to.
-async fn restore_watchdogs(suspended: Vec<watchdog::Suspended<AccessibleDevice>>, log: &Log) {
+/// Sets the watchdogs [`Watchers::suspend`] suspended again, whatever the job came to, the job
+/// entering `restoring` first.
+async fn restore_watchdogs(
+    suspended: Vec<watchdog::Suspended<AccessibleDevice>>,
+    log: &Log,
+    restoring: impl Into<JobPhase>,
+) {
     if !suspended.is_empty() {
-        log.enter(UpdateState::RestoringWatchdogs);
+        log.enter(restoring);
     }
     watchdog::restore_all(suspended, log).await;
 }
@@ -494,7 +511,7 @@ async fn resume_update(
         update::resume(&link, &power, state, &saved.run, since, &keep, log).await
     }
     .await;
-    restore_watchdogs(suspended, log).await;
+    restore_watchdogs(suspended, log, UpdateState::RestoringWatchdogs).await;
     resumed
 }
 
@@ -575,8 +592,12 @@ impl MutationAuthenticated {
         let mut plan = bootstrap::working_plan(&device).await?;
         plan.setup.macs = [mac.0].into();
         let neighbor = plan.neighbor_device().clone();
+        let watchers = Watchers::suppliers(&device);
         Ok(job::start_through(&device.clone(), &neighbor, JobKind::Bootstrap, Started::By(user_label(ctx)), |log| async move {
-            bootstrap::bootstrap(&device, &plan, &log).await
+            let suspended = watchers.suspend(&log, BootstrapState::SuspendingWatchdogs).await?;
+            let set_up = bootstrap::bootstrap(&device, &plan, &log).await;
+            restore_watchdogs(suspended, &log, BootstrapState::RestoringWatchdogs).await;
+            set_up
         })?)
     }
     /// Starts updating RouterOS (and the RouterBOARD firmware) to the newest release of
@@ -617,7 +638,7 @@ impl MutationAuthenticated {
                 version: version.to_string().into(),
                 channel: channel.map(|channel| channel.name().into()),
             });
-            let suspended = watchers.suspend(&log).await?;
+            let suspended = watchers.suspend(&log, UpdateState::SuspendingWatchdogs).await?;
             let watching: Vec<_> = suspended.iter().map(|s| (s.device.clone(), s.watching.clone())).collect();
             let credentials = device.credentials_name().map(Box::from);
             // without credentials by name (ad hoc ones) it can't connect again after a restart
@@ -629,7 +650,7 @@ impl MutationAuthenticated {
             let fallback = CONFIG.update_fallback();
             let updated =
                 update::update_keeping(&device, &power, &version, &wanted, fallback, &way_back, &keep, &log).await;
-            restore_watchdogs(suspended, &log).await;
+            restore_watchdogs(suspended, &log, UpdateState::RestoringWatchdogs).await;
             updated
         })?)
     }
@@ -657,9 +678,9 @@ impl MutationAuthenticated {
         Ok(job::start(&device.clone(), JobKind::Downgrade, Started::By(user_label(ctx)), |log| async move {
             log.enter(UpdateState::Reading);
             let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
-            let suspended = watchers.suspend(&log).await?;
+            let suspended = watchers.suspend(&log, UpdateState::SuspendingWatchdogs).await?;
             let downgraded = update::downgrade(&device, &power, &version, &way_back, &log).await;
-            restore_watchdogs(suspended, &log).await;
+            restore_watchdogs(suspended, &log, UpdateState::RestoringWatchdogs).await;
             downgraded
         })?)
     }

@@ -958,7 +958,10 @@ device), and `updateRouteros(suspendWatchdogs: true)` sets them to `none` and
 can't be suspended is `WatchdogLeft` and the update goes on, a supplier stops it). A scheduler
 entry on each, added before they go, restores them after `SAFETY_NET` (2 h) should the
 provisioner not (CHR test `watchdog_is_restored_or_restores_itself`); a leftover entry is
-where `read` finds them. An apply whose plan changes a radio (a DFS AP listens 10 min or longer,
+where `read` finds them. The setup (`bootstrap`) does the same without asking for the suppliers
+only (`Watchers::suppliers`, `BootstrapState::SuspendingWatchdogs`/`RestoringWatchdogs`): a
+device in factory state replacing a powered one doesn't answer the PoE ping of the old address
+and would lose its power every 5 min (lab test 2026-11-01). An apply whose plan changes a radio (a DFS AP listens 10 min or longer,
 as long as `ping-timeout`) suspends the watch address of the device and of those depending on
 it, not the PoE pings (a port only pings what is on its cable), without asking
 (`device::radio_hold`): its own makes the plan and the checks keep what the device has

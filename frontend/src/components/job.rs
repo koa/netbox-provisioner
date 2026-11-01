@@ -336,9 +336,11 @@ fn phase_line(job: &JobEventsJob, running: bool) -> Option<String> {
             D::Other(o) => other(o),
         },
         Phase::BootstrapPhase(phase) => match &phase.bootstrap {
+            B::SUSPENDING_WATCHDOGS => p::SUSPENDING_WATCHDOGS.into(),
             B::CHECKING_NEIGHBOR => p::CHECKING_NEIGHBOR.into(),
             B::CONSOLE => p::CONSOLE.into(),
             B::WAITING_FOR_API => p::WAITING_FOR_API.into(),
+            B::RESTORING_WATCHDOGS => p::RESTORING_WATCHDOGS.into(),
             B::Other(o) => other(o),
         },
         Phase::CleanupPhase(phase) => match &phase.cleanup {

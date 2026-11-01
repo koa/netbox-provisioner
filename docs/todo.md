@@ -75,7 +75,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Doku | Aufwand | Status |
 |---|---|---|---|---|
 | E1 | Watchdog-Befunde: kein Weg zu einer Wurzel (kein Watchdog möglich) als Warnung; ein Custom Field für Sonderfälle (aus, oder eine feste Adresse) | [Watchdog](watchdog.md) | S–M | offen |
-| E2 | Die Ersteinrichtung setzt den PoE-Ping des Speisers aus wie ein Update, damit ein ersetztes gespeistes Gerät im Werkszustand nicht alle 5 min stromlos wird | [Watchdog](watchdog.md#grenzen) | S | offen |
 | E3 | Das Image in einem Cluster ausrollen und die beiden Workflows (CI, Aufräumen) auf GitHub einmal laufen lassen | [Deployment](deployment.md#noch-nicht-geprüft) | S | offen |
 | E4 | rustls statt OpenSSL, dann musl und ein Image nur aus Binary und Zertifikaten | [Deployment](deployment.md#noch-nicht-geprüft) | M | offen |
 | E5 | Job-Ansicht bei abgelaufenem Token (`401`/`403`): einmal neu anmelden lassen und weiterfragen, statt bei jedem Versuch denselben Fehler zu zeigen | [Jobs](jobs.md#verfolgen-im-browser) | S | offen |
