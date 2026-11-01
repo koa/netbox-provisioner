@@ -749,6 +749,10 @@ pub fn get(id: u32) -> Option<Arc<Job>> {
 
 /// The jobs of `subject` (all without), newest first, with those working through it.
 pub fn list(subject: Option<JobSubject>) -> Vec<Arc<Job>> {
+    // a live page showing them shows them again when they change
+    if let Some(JobSubject::Device(device)) = subject {
+        facts::note_jobs(device);
+    }
     JOBS.lock()
         .unwrap_or_else(PoisonError::into_inner)
         .jobs

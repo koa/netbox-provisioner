@@ -38,6 +38,9 @@ pub(crate) mod test;
 #[derive(Debug, Default, Clone)]
 pub struct TopologyHolder {
     data: Arc<Mutex<Option<Arc<Topology>>>>,
+    /// held while NetBox is read: who finds the topology old while it is, waits for that
+    /// reading instead of starting another
+    fetching: Arc<Mutex<()>>,
 }
 
 impl TopologyHolder {
@@ -63,7 +66,7 @@ impl TopologyHolder {
         }
     }
     pub async fn topo_lock(&self) -> MutexGuard<'_, Option<Arc<Topology>>> {
-        let outdated = {
+        let outdated = || async {
             let guard = self.data.lock().await;
             if let Some(data) = &*guard {
                 let duration = data.fetch_time.elapsed();
@@ -72,7 +75,10 @@ impl TopologyHolder {
                 true
             }
         };
-        if outdated {
+        if outdated().await
+            && let _fetching = self.fetching.lock().await
+            && outdated().await
+        {
             info!("Fetch Topology");
             if let Err(e) = self.fetch().await {
                 error!("Cannot fetch topology data: {e}");

@@ -27,6 +27,7 @@ use std::{sync::Arc, time::SystemTime};
 use async_graphql::{
     Context, EmptyMutation, EmptySubscription, Guard, Object, Schema, SimpleObject,
 };
+pub mod live;
 pub mod scalars;
 pub type AuthenticatedGraphqlSchema =
     Schema<QueryAuthenticated, MutationAuthenticated, EmptySubscription>;

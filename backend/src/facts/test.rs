@@ -1,8 +1,8 @@
-use super::{Came, FactKey, FactKind, Freshness, LIMIT, get, invalidate};
+use super::{Came, Change, FactKey, FactKind, Freshness, LIMIT, Reading, get, invalidate, reading};
 use crate::{Error, topology::DeviceId};
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU32, Ordering},
     },
     time::Duration,
@@ -148,4 +148,29 @@ async fn the_asking_outlives_its_first_user() {
     sleep(10 * SECOND).await;
     let fact = get(key(9), Freshness::MaxAge(MINUTE), asker.ask(SECOND, Ok(2))).await;
     assert_eq!((*fact.value.unwrap(), fact.came), (1, Came::Hit));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_live_query_notes_what_it_read() {
+    let asker = Asker::default();
+    get(key(10), Freshness::MaxAge(MINUTE), asker.ask(SECOND, Ok(1))).await;
+    sleep(10 * SECOND).await;
+    let read = Arc::new(Mutex::<Reading>::default());
+    let now = Instant::now();
+    reading(read.clone(), async {
+        // from the store, 10 s old: outdated in 50 s
+        get(key(10), Freshness::MaxAge(MINUTE), asker.ask(SECOND, Ok(2))).await;
+        // asked now, taken at 30 s: outdated in 30 s, the sooner
+        get(key(11), Freshness::MaxAge(30 * SECOND), asker.ask(SECOND, Ok(3))).await;
+        // a moment: no running again for it
+        get(key(12), Freshness::MaxAge(Duration::ZERO), asker.ask(SECOND, Ok(4))).await;
+    })
+    .await;
+    let read = read.lock().unwrap();
+    assert_eq!(read.keys.len(), 3);
+    assert_eq!(read.outdated, Some(now + 30 * SECOND));
+    assert!(read.concerns(&Change::Job(DeviceId(11))));
+    assert!(read.concerns(&Change::Invalidated(DeviceId(10), &[FactKind::Config])));
+    assert!(!read.concerns(&Change::Invalidated(DeviceId(10), &[FactKind::Login])));
+    assert!(!read.concerns(&Change::Job(DeviceId(13))));
 }

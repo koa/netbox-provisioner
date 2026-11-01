@@ -18,7 +18,10 @@ use std::{
     any::Any,
     collections::HashMap,
     fmt::{self, Display},
-    sync::{Arc, LazyLock, Mutex, PoisonError},
+    sync::{
+        Arc, LazyLock, Mutex, PoisonError,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 use tokio::{
@@ -203,11 +206,11 @@ impl Came {
     }
 }
 
-/// What changed, on [`changes`].
+/// What changed, on [`changes`]. A fact stored anew is no change: who shows it runs again when
+/// it gets older than shown ([`Reading::outdated`]), and two live pages would otherwise keep
+/// asking for each other.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Change {
-    /// a new value of the fact is in the store
-    Stored(FactKey),
     /// the facts of these kinds about the device were dropped: a job on it ended
     Invalidated(DeviceId, &'static [FactKind]),
     /// a job of the device started, ended or logged
@@ -257,7 +260,9 @@ fn new_store() -> Mutex<Store> {
 #[cfg(not(test))]
 static STORE: LazyLock<Mutex<Store>> = LazyLock::new(new_store);
 
-static CHANGES: LazyLock<broadcast::Sender<Change>> = LazyLock::new(|| broadcast::channel(1024).0);
+static CHANGES: LazyLock<broadcast::Sender<(u64, Change)>> = LazyLock::new(|| broadcast::channel(1024).0);
+/// The number of the last change announced: who read before a number didn't see changes after it.
+static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(not(test))]
 fn store() -> std::sync::MutexGuard<'static, Store> {
@@ -300,16 +305,83 @@ impl Store {
     }
 }
 
-/// Every change from now on: what subscriptions wait for.
-pub fn changes() -> broadcast::Receiver<Change> {
+/// Every change from now on, with its number: what live queries wait for.
+pub fn changes() -> broadcast::Receiver<(u64, Change)> {
     CHANGES.subscribe()
 }
 
-/// Tells subscriptions about `change` (also for changes outside the store: jobs, topology).
-pub fn announce(change: Change) {
-    // nobody listening is no error
-    let _ = CHANGES.send(change);
+/// The number of the last change announced.
+pub fn sequence() -> u64 {
+    SEQUENCE.load(Ordering::SeqCst)
 }
+
+/// Tells live queries about `change` (also for changes outside the store: jobs, topology).
+pub fn announce(change: Change) {
+    let number = SEQUENCE.fetch_add(1, Ordering::SeqCst) + 1;
+    // nobody listening is no error
+    let _ = CHANGES.send((number, change));
+}
+
+/// What a live query read while it ran (`graphql::live`), so that it runs again when that
+/// changes: the facts, the devices whose jobs it saw, and when the youngest age it asked for
+/// runs out.
+#[derive(Debug, Default)]
+pub struct Reading {
+    pub keys: std::collections::HashSet<FactKey>,
+    pub devices: std::collections::HashSet<DeviceId>,
+    /// when the first fact read gets older than its user took it
+    pub outdated: Option<Instant>,
+}
+
+impl Reading {
+    /// Whether `change` concerns what was read.
+    pub fn concerns(&self, change: &Change) -> bool {
+        match change {
+            Change::Invalidated(device, kinds) => self
+                .keys
+                .iter()
+                .any(|key| key.device == Some(*device) && kinds.contains(&key.kind)),
+            Change::Job(device) => self.devices.contains(device),
+            Change::Topology => true,
+        }
+    }
+}
+
+tokio::task_local! {
+    /// what the live query running in this task reads
+    static READING: Arc<Mutex<Reading>>;
+}
+
+/// Runs `work` noting what it reads into `reading` (facts asked, jobs listed).
+pub async fn reading<F: Future>(reading: Arc<Mutex<Reading>>, work: F) -> F::Output {
+    READING.scope(reading, work).await
+}
+
+/// Notes that the running live query (if any) read `key`, taken at `max_age` from `as_of`.
+fn note(key: &FactKey, as_of: Instant, max_age: Option<Duration>) {
+    let _ = READING.try_with(|reading| {
+        let mut reading = reading.lock().unwrap_or_else(PoisonError::into_inner);
+        reading.keys.insert(key.clone());
+        if let Some(device) = key.device {
+            reading.devices.insert(device);
+        }
+        // an age of a moment is the moment (live views): no running again for it
+        if let Some(age) = max_age.filter(|age| *age >= MIN_OUTDATED) {
+            let outdated = as_of + age;
+            reading.outdated = Some(reading.outdated.map_or(outdated, |o| o.min(outdated)));
+        }
+    });
+}
+
+/// Notes that the running live query (if any) read the jobs of `device`.
+pub fn note_jobs(device: DeviceId) {
+    let _ = READING.try_with(|reading| {
+        reading.lock().unwrap_or_else(PoisonError::into_inner).devices.insert(device);
+    });
+}
+
+/// The youngest age that makes a live query run again when it runs out.
+const MIN_OUTDATED: Duration = Duration::from_secs(5);
 
 /// The fact `key` as `freshness` takes it: from the store, joining the asking running, or
 /// asking it with `ask`. The asking runs on its own (`tokio::spawn`): a user going away
@@ -366,6 +438,7 @@ where
             if let Some(done) = slot.done.as_ref().filter(|done| takes(done, now)) {
                 let done = done.clone();
                 drop(store);
+                note(&key, done.as_of, age_of(freshness, &done.value, &max_age));
                 return fact(&key, done.value, done.as_of, Came::Hit);
             }
             match &slot.running {
@@ -398,12 +471,26 @@ where
                         Arc::new(failed)
                     }
                 };
+                note(&key, started, age_of(freshness, &value, &max_age));
                 return fact(&key, value, started, came);
             }
             Waiting::Before(mut answer) => {
                 let _ = answer.wait_for(Option::is_some).await;
             }
         }
+    }
+}
+
+/// The age a user took a fact at: `freshness`'s, or what `max_age` says for the value.
+fn age_of<T: Send + Sync + 'static>(
+    freshness: Freshness,
+    value: &Stored,
+    max_age: &impl Fn(&Result<Arc<T>, Arc<Error>>) -> Option<Duration>,
+) -> Option<Duration> {
+    let judged = value.downcast_ref::<Result<Arc<T>, Arc<Error>>>().and_then(max_age);
+    match judged.map_or(freshness, Freshness::MaxAge) {
+        Freshness::MaxAge(age) => Some(age),
+        Freshness::Since(_) => None,
     }
 }
 
@@ -444,7 +531,7 @@ where
     let device = key.device.map(|d| d.0.to_string()).unwrap_or_default();
     METRICS.total.with_label_values(&[&device, label, outcome]).inc();
     let value: Stored = Arc::new(result.map(Arc::new).map_err(Arc::new));
-    let stored = {
+    {
         let mut store = store();
         let current = store.generation(key.device);
         let slot = store.slots.entry(key.clone()).or_default();
@@ -459,12 +546,8 @@ where
                 METRICS.entries.with_label_values(&[label]).inc();
             }
         }
-        keep
-    };
-    let _ = sender.send(Some(value));
-    if stored {
-        announce(Change::Stored(key));
     }
+    let _ = sender.send(Some(value));
 }
 
 /// The facts of `kinds` about `device` go, and nothing asked before now is stored anymore:

@@ -14,7 +14,7 @@ use actix_web::{
 use actix_web_prom::PrometheusMetricsBuilder;
 use actix_web_static_files::{ResourceFiles, deps::static_files::Resource};
 use async_graphql::futures_util::future::join_all;
-use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
+use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
 use env_logger::Env;
 use include_dir::{Dir, include_dir};
 use log::{error, trace, warn};
@@ -28,6 +28,7 @@ use backend::{
     context::UserInfo,
     graphql::{
         AnonymousGraphqlSchema, AuthenticatedGraphqlSchema, create_anonymous_schema, create_schema,
+        live::LiveExecutor,
     },
     netbox::NetboxError,
     topology::TopologyHolder,
@@ -128,6 +129,54 @@ async fn graphql_anonymous(
     response.into()
 }
 
+/// Queries kept live over a WebSocket (`graphql-transport-ws`, `backend::graphql::live`). A
+/// browser can't set headers on one: the token comes in the `connection_init` payload
+/// (`{"token": …}`) and is checked as `/graphql` checks its header.
+async fn graphql_ws(
+    context: Data<ApplicationContext>,
+    request: actix_web::HttpRequest,
+    payload: actix_web::web::Payload,
+) -> actix_web::Result<HttpResponse> {
+    let oidc = request.app_data::<Oidc>().cloned();
+    GraphQLSubscription::new(LiveExecutor(context.schema.clone()))
+        .on_connection_init(move |init| async move {
+            let token = init.get("token").and_then(|token| token.as_str()).unwrap_or_default();
+            let oidc = oidc.ok_or_else(|| async_graphql::Error::new("no OIDC"))?;
+            let user = authenticate(oidc, token)?;
+            let mut data = async_graphql::Data::default();
+            if let Some(user) = user {
+                data.insert(user);
+            }
+            Ok(data)
+        })
+        .start(&request, payload)
+}
+
+/// Checks `token` as the middleware of `/graphql` does (signature, `validation_options`,
+/// `auth_users`) and gives the user info in it. The extractor reads the token from a request's
+/// header only, so it gets a request carrying it.
+fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<Option<UserInfo>> {
+    use actix_web::FromRequest;
+    let carrier = actix_web::test::TestRequest::default()
+        .insert_header(("Authorization", format!("Bearer {token}")))
+        .app_data(oidc)
+        .to_http_request();
+    // decoding is done at once (`Ready`)
+    let info = DecodedInfo::from_request(&carrier, &mut actix_web::dev::Payload::None)
+        .into_inner()
+        .map_err(|error| async_graphql::Error::new(format!("token refused: {error}")))?;
+    if let Err(error) = info.payload.registered.validate(validation_options()) {
+        warn!("token refused on the WebSocket: {error}");
+        return Err(async_graphql::Error::new("token refused"));
+    }
+    let subject = info.payload.registered.subject.as_deref();
+    if !subject.is_some_and(|subject| CONFIG.auth_users.iter().any(|id| **id == *subject)) {
+        warn!("user refused on the WebSocket, not in auth_users: {subject:?}");
+        return Err(async_graphql::Error::new("user not in auth_users"));
+    }
+    Ok(serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok())
+}
+
 #[get("/health")]
 async fn health() -> &'static str {
     "Ok"
@@ -185,6 +234,7 @@ async fn main() -> Result<(), BackendError> {
     // ensure initial fetch
     topology.fetch().await?;
     backend::graphql::resume_saved_jobs(&topology).await;
+    backend::graphql::live::watch_netbox(topology.clone());
 
     let schema = create_schema(topology.clone());
     let anonymous_schema = create_anonymous_schema();
@@ -214,6 +264,7 @@ async fn main() -> Result<(), BackendError> {
             // `/…/`: workaround for proxy troubles
             .service(authenticated_graphql("/graphql", biscuit_validator.clone()))
             .service(authenticated_graphql("/graphql/", biscuit_validator.clone()))
+            .service(resource("/graphql/ws").guard(actix_web::guard::Get()).to(graphql_ws))
             .service(anonymous_graphql("/graphql_anonymous"))
             .service(anonymous_graphql("/graphql_anonymous/"))
             .service(ResourceFiles::new("/", resources).resolve_not_found_to_root())

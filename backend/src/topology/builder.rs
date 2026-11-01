@@ -274,6 +274,7 @@ impl From<TopologyBuilder> for TopologyHolder {
     fn from(value: TopologyBuilder) -> Self {
         TopologyHolder {
             data: Arc::new(Mutex::new(Some(Arc::new(value.build())))),
+            fetching: Default::default(),
         }
     }
 }
