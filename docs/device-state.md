@@ -301,9 +301,11 @@ sind Timeouts.
 
 ### Dashboard
 
-Das Dashboard liegt als JSON in [grafana/device-queries.json](grafana/device-queries.json)
-(Dashboards → Import, Datenquelle Prometheus wählen; geprüft mit Grafana 13.3 und Prometheus
-3.15). Im Zentrum stehen die Verteilungen, nicht einzelne Quantile: Eine Verteilung zeigt zwei
+Das Dashboard liegt als JSON im Helm-Chart,
+[dashboards/device-queries.json](../charts/netbox-provisioner/dashboards/device-queries.json).
+Mit `grafanaDashboard.enabled` legt das Chart es als ConfigMap für den Grafana-Sidecar an, und
+jedes Upgrade bringt es auf den Stand ([Deployment](deployment.md#helm-chart)); ohne Chart geht
+es über Dashboards → Import. Geprüft mit Grafana 13.3 und Prometheus 3.15. Im Zentrum stehen die Verteilungen, nicht einzelne Quantile: Eine Verteilung zeigt zwei
 Gruppen (direkt erreichbar und über einen Nachbarn, schnelle Geräte und alte RouterBOARDs), die
 ein p95 zu einer Zahl verwischt.
 

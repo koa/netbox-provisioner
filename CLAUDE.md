@@ -405,7 +405,8 @@ write read anew, they don't use the facts of the page. Times are `tokio::time::I
 ages go to the frontend. The metrics (`device_query_*`, `fact_cache_*`) go into `/metrics`
 (`facts::register`), every outcome's series created at 0 on a kind's first asking over a way
 (`increase` drops a new series' first sample); their Grafana dashboard is
-`docs/grafana/device-queries.json`.
+`charts/netbox-provisioner/dashboards/device-queries.json`, a ConfigMap for the Grafana
+sidecar with `grafanaDashboard.enabled`.
 
 Pages stay live over subscriptions on the WebSocket `/graphql/ws` (`graphql-transport-ws`, the
 token in the `connection_init` payload, checked as the header of `/graphql`).

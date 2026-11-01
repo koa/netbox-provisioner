@@ -30,7 +30,8 @@ sie, was es von NetBox unterscheidet, als RouterOS-Skript, das man prüft und da
   Vergleich der Kabel in NetBox mit dem, was die Geräte als Nachbarn sehen.
 - **Jobs**, die einen Neustart des Provisioners überstehen, ein Protokoll pro Job im Journal des
   Geräts in NetBox, Seiten, die sich live aktualisieren, und Prometheus-Metriken mit einem
-  [Grafana-Dashboard](docs/grafana/device-queries.json).
+  [Grafana-Dashboard](charts/netbox-provisioner/dashboards/device-queries.json), das das Helm-Chart
+  für den Grafana-Sidecar mitbringt.
 
 Beispiele dessen, was herauskommt, liegen in [examples/](examples/).
 

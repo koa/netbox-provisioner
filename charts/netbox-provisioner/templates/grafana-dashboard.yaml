@@ -1,0 +1,24 @@
+{{- if .Values.grafanaDashboard.enabled }}
+# The dashboards of dashboards/, for the Grafana sidecar that loads every ConfigMap with its
+# label (kube-prometheus-stack, the grafana chart: `grafana_dashboard: "1"`); an upgrade of the
+# chart brings them up to date.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "netbox-provisioner.fullname" . }}-dashboards
+  {{- with .Values.grafanaDashboard.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    {{- include "netbox-provisioner.labels" . | nindent 4 }}
+    {{- toYaml .Values.grafanaDashboard.labels | nindent 4 }}
+  {{- with .Values.grafanaDashboard.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  {{- range $path, $_ := .Files.Glob "dashboards/*.json" }}
+  netbox-provisioner-{{ base $path }}: |-
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+{{- end }}

@@ -37,3 +37,7 @@ httpRoute:
   hostnames: [prov.example.org]
 serviceMonitor:
   enabled: true
+grafanaDashboard:
+  enabled: true
+  annotations:
+    grafana_folder: netbox-provisioner

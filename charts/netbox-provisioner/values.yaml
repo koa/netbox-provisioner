@@ -107,6 +107,19 @@ serviceMonitor:
   interval: 30s
   labels: {}
 
+# The Grafana dashboards of the chart (dashboards/) as a ConfigMap for the Grafana sidecar,
+# which loads every ConfigMap carrying its label; the dashboard picks the default Prometheus
+# data source.
+grafanaDashboard:
+  enabled: false
+  # the label the sidecar looks for (`sidecar.dashboards.label`/`labelValue`)
+  labels:
+    grafana_dashboard: "1"
+  # e.g. `grafana_folder: netbox-provisioner` for a sidecar with `folderAnnotation`
+  annotations: {}
+  # where the ConfigMap goes, if the sidecar watches only some namespaces; empty: the release's
+  namespace: ""
+
 # the backend loads the OIDC discovery at start and doesn't start without it
 startupProbe:
   periodSeconds: 5

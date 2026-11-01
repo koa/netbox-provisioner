@@ -11,8 +11,9 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   mit dem Ziel `wasm32-unknown-unknown`, `trunk`, `dart-sass` und `wasm-bindgen-cli`.
 - **Ports:** API und UI auf `server_port` (Vorgabe 8080), Management auf `server_mgmt_port`
   (Vorgabe +1000, also 9080) mit `/metrics` (Prometheus) und `/health`. Das Grafana-Dashboard
-  der Geräteabfragen ([Gerätezustand](device-state.md#dashboard)) liegt in [grafana/device-queries.json](grafana/device-queries.json)
-  (Dashboards → Import, Datenquelle Prometheus wählen).
+  der Geräteabfragen ([Gerätezustand](device-state.md#dashboard)) liegt im Chart
+  ([dashboards/device-queries.json](../charts/netbox-provisioner/dashboards/device-queries.json));
+  ohne Chart über Dashboards → Import, Datenquelle Prometheus wählen.
 - **Konfiguration:** `config.yaml` im Arbeitsverzeichnis. Einzelne Werte übersteuern
   Umgebungsvariablen mit `__` als Trenner der Ebenen, etwa `APP_SETTINGS__NETBOX_TOKEN` für
   `settings.netbox_token` (Schlüssel kommen kleingeschrieben an). In der Datei stehen
@@ -70,7 +71,9 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
 - **Log:** `logLevel` (Vorgabe `info`) wird `LOG_LEVEL`, mit Stufen pro Modul nach env_logger
   (`info,backend::device=debug`); ohne sie loggt das Binary alles ab `debug`.
 - **Netz nach innen:** Die Container-Ports folgen `server_port` und `server_mgmt_port`; ein
-  `Service` für beide, `ServiceMonitor` optional. Statt Ingress eine `HTTPRoute` (Gateway API) an
+  `Service` für beide, `ServiceMonitor` optional, ebenso das Grafana-Dashboard
+  (`grafanaDashboard`: eine ConfigMap mit dem Label, nach dem der Grafana-Sidecar sucht, Vorgabe
+  `grafana_dashboard: "1"`; ein Upgrade des Charts bringt es auf den Stand). Statt Ingress eine `HTTPRoute` (Gateway API) an
   ein Gateway des Betreibers; die OIDC-Callback-URL ist ihr Host ([Login](login.md)).
 - **Probes** auf `/health` am Management-Port. Das Backend lädt beim Start die OIDC-Discovery und
   startet ohne sie nicht ([Login](login.md)); die Startup-Probe braucht dafür Geduld.
