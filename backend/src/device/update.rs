@@ -87,8 +87,9 @@ pub struct UpdateStepPlanned {
     pub uninstall: Box<[Box<str>]>,
 }
 
-/// `/ip ssh` switched for the upload (the user has SSH keys, see [`allow_password_login`]), or
-/// back afterwards (`restored`).
+/// `/ip ssh` switched for a login with the password (the user has SSH keys, see
+/// [`allow_password_login`]): for the upload, or the console and tunnel of an initial setup on
+/// its neighbor; or back afterwards (`restored`).
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct SshPasswordLogin {
     pub setting: Box<str>,
@@ -398,10 +399,12 @@ fn v7_step(wanted: &[Box<str>], arch: &str, version: &Version, uninstall: Box<[B
 /// SCP logs in with the password, which RouterOS refuses over SSH for a user with SSH keys
 /// unless `always-allow-password-login` is on (up to 7.20) or `password-authentication` is
 /// `yes` rather than `yes-if-no-key` (7.24): switched for the upload when keys are there.
-/// Returns the setting and the value to put back afterwards.
-async fn allow_password_login(
+/// The initial setup's console and tunnel on the neighbor log in with the password too
+/// (sat-switch, 7.23.8: "ssh login refused" with a key for `admin`). Returns the setting and the
+/// value to put back afterwards ([`restore_password_login`]); `log` hears of both.
+pub(crate) async fn allow_password_login(
     device: &RawDevice<SimpleResult>,
-    log: &Log,
+    log: Option<&Log>,
 ) -> Result<Option<(&'static str, &'static str)>, Error> {
     let ssh = rows(device, "/ip/ssh/print").await?;
     let Some(ssh) = ssh.first() else {
@@ -418,12 +421,34 @@ async fn allow_password_login(
         return Ok(None);
     }
     set_ssh(device, setting, on).await?;
-    log.emit(SshPasswordLogin {
-        setting: setting.into(),
-        value: on.into(),
-        restored: false,
-    });
+    if let Some(log) = log {
+        log.emit(SshPasswordLogin {
+            setting: setting.into(),
+            value: on.into(),
+            restored: false,
+        });
+    }
     Ok(Some((setting, off)))
+}
+
+/// Puts back what [`allow_password_login`] switched.
+pub(crate) async fn restore_password_login(
+    device: &RawDevice<SimpleResult>,
+    relaxed: Option<(&'static str, &'static str)>,
+    log: Option<&Log>,
+) -> Result<(), Error> {
+    let Some((setting, value)) = relaxed else {
+        return Ok(());
+    };
+    set_ssh(device, setting, value).await?;
+    if let Some(log) = log {
+        log.emit(SshPasswordLogin {
+            setting: setting.into(),
+            value: value.into(),
+            restored: true,
+        });
+    }
+    Ok(())
 }
 
 async fn set_ssh(device: &RawDevice<SimpleResult>, setting: &str, value: &str) -> Result<(), Error> {
@@ -1009,7 +1034,7 @@ async fn put_packages(
     }
     log.check()?;
     log.enter(UpdateState::Uploading);
-    let relaxed = allow_password_login(&link.api().await?, log).await?;
+    let relaxed = allow_password_login(&link.api().await?, Some(log)).await?;
     let uploaded = async {
         for &(file, ref data) in &packages {
             let total = data.len() as u64;
@@ -1052,14 +1077,7 @@ async fn put_packages(
         Ok::<_, Error>(())
     }
     .await;
-    if let Some((setting, value)) = relaxed {
-        set_ssh(&link.api().await?, setting, value).await?;
-        log.emit(SshPasswordLogin {
-            setting: setting.into(),
-            value: value.into(),
-            restored: true,
-        });
-    }
+    restore_password_login(&link.api().await?, relaxed, Some(log)).await?;
     // what is uploaded installs at the next boot, also when the update stops before it
     let rebooting = match uploaded {
         Ok(()) => {

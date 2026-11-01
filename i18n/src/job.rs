@@ -295,7 +295,7 @@ pub mod event {
         format!("SSH: {setting}={value} wieder gesetzt")
     }
     pub fn ssh_for_upload(setting: &str, value: &str) -> String {
-        format!("SSH: {setting}={value} für den Upload (der Benutzer hat SSH-Schlüssel)")
+        format!("SSH: {setting}={value} für die Anmeldung mit Passwort (der Benutzer hat SSH-Schlüssel)")
     }
     pub fn downloaded(file: &str, bytes: i64) -> String {
         format!("{file}: {:.1} MB heruntergeladen", bytes as f64 / 1_000_000.0)

@@ -579,7 +579,11 @@ rule without `disabled`, the OSPF instance an update from v6 brings without `vrf
 `diffie-hellman-group14-sha1` and a 2048 bit group exchange, so `terminal` appends those to
 russh's defaults and lowers the group minimum to 2048. A user with SSH keys can't log in over SSH
 with a password while `/ip ssh always-allow-password-login=no` (7.24:
-`password-authentication=yes-if-no-key`), so the update switches it for the upload only.
+`password-authentication=yes-if-no-key`), so the update switches it for the upload only. The
+initial setup's console and tunnel on the neighbor log in with the password as well
+(sat-switch, 7.23.8: "ssh login refused", `admin` with a key): `bootstrap::neighbor_login`
+switches it over the neighbor's API for the login only and back right after, a session that is
+up stays (CHR 7.24.5).
 
 An update, an apply, an initial setup and a reboot run as jobs (`backend::job`):
 `updateRouteros`, `applyCfg`, `bootstrap` and `rebootDevice` return the `Job` at once, the work

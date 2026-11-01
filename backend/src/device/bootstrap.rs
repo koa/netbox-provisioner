@@ -20,6 +20,7 @@ use crate::{
         Credentials, Path, connect, other_device_named,
         proxied_stream,
         raw::{field, rows},
+        update,
         terminal::{LOGIN_FLAGS, Terminal, TerminalError, Tunnel},
     },
     graphql::scalars::{ScalarDuration, ScalarMac},
@@ -359,19 +360,22 @@ pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -
         neighbor_port: plan.neighbor_port.as_str().into(),
         macs: plan.setup.macs.iter().map(|mac| mac.to_string().into()).collect(),
     });
-    let mut terminal = match proxied_stream(plan.neighbor_address, 22).await? {
-        Some(stream) => {
-            Terminal::connect_with_stream(stream, neighbor.user(), neighbor.password()).await?
-        }
-        None => {
-            Terminal::connect(
-                (plan.neighbor_address, 22).into(),
-                neighbor.user(),
-                neighbor.password(),
-            )
-            .await?
-        }
-    };
+    let mut terminal = neighbor_login(plan, Some(log), || async {
+        Ok(match proxied_stream(plan.neighbor_address, 22).await? {
+            Some(stream) => {
+                Terminal::connect_with_stream(stream, neighbor.user(), neighbor.password()).await?
+            }
+            None => {
+                Terminal::connect(
+                    (plan.neighbor_address, 22).into(),
+                    neighbor.user(),
+                    neighbor.password(),
+                )
+                .await?
+            }
+        })
+    })
+    .await?;
     terminal.hide(password);
     terminal.stream_to(log);
     let result = set_up(&mut terminal, &setup, user, password).await;
@@ -399,23 +403,63 @@ pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -
 /// which every generated config has.
 pub async fn tunnel(plan: &BootstrapPlan) -> Result<Tunnel, Error> {
     let neighbor = credentials_of(&plan.neighbor_device)?;
-    Ok(match proxied_stream(plan.neighbor_address, 22).await? {
-        Some(stream) => {
-            Tunnel::connect_with_stream(stream, neighbor.user(), neighbor.password()).await?
-        }
-        None => {
-            // without a limit, Linux gives up on an unanswered connect after about 2 min: an
-            // apply's checks of a device behind a radio link that was down came that rarely
-            let stream = timeout(
-                super::OPEN_TIMEOUT,
-                tokio::net::TcpStream::connect((plan.neighbor_address, 22)),
-            )
-            .await
-            .map_err(|_| Error::Timeout(plan.neighbor_address))?
-            .map_err(|e| TerminalError::Ssh(e.into()))?;
-            Tunnel::connect_with_stream(stream, neighbor.user(), neighbor.password()).await?
-        }
+    neighbor_login(plan, None, || async {
+        Ok(match proxied_stream(plan.neighbor_address, 22).await? {
+            Some(stream) => {
+                Tunnel::connect_with_stream(stream, neighbor.user(), neighbor.password()).await?
+            }
+            None => {
+                // without a limit, Linux gives up on an unanswered connect after about 2 min: an
+                // apply's checks of a device behind a radio link that was down came that rarely
+                let stream = timeout(
+                    super::OPEN_TIMEOUT,
+                    tokio::net::TcpStream::connect((plan.neighbor_address, 22)),
+                )
+                .await
+                .map_err(|_| Error::Timeout(plan.neighbor_address))?
+                .map_err(|e| TerminalError::Ssh(e.into()))?;
+                Tunnel::connect_with_stream(stream, neighbor.user(), neighbor.password()).await?
+            }
+        })
     })
+    .await
+}
+
+/// Logs in over SSH on `plan`'s neighbor with `login`. Refused, with the password login switched
+/// on over the neighbor's API when its user has SSH keys (sat-switch, 7.23.8), once more, and
+/// back right after: RouterOS keeps a session that is up, its forwards too (CHR 7.24.5). Only
+/// then, since the API on the way through the management proxy can take long: each try of
+/// [`wait_for_api`] opens a tunnel.
+async fn neighbor_login<T, F>(
+    plan: &BootstrapPlan,
+    log: Option<&Log>,
+    login: impl Fn() -> F,
+) -> Result<T, Error>
+where
+    F: Future<Output = Result<T, Error>>,
+{
+    let refused = match login().await {
+        Err(Error::Terminal(TerminalError::LoginRefused(user))) => user,
+        result => return result,
+    };
+    let credentials = Credentials::Named(
+        plan.neighbor_device
+            .credentials()
+            .ok_or(Error::MissingCredentials)?
+            .into(),
+    );
+    let api = connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await?;
+    let Some(relaxed) = update::allow_password_login(&api, log).await? else {
+        return Err(TerminalError::LoginRefused(refused).into());
+    };
+    let result = login().await;
+    if let Err(error) = &result {
+        warn!("ssh login on {} with the password login on: {error}", plan.neighbor);
+    }
+    if let Err(error) = update::restore_password_login(&api, Some(relaxed), log).await {
+        warn!("ssh settings of {} not put back: {error}", plan.neighbor);
+    }
+    result
 }
 
 /// How a [`login`] ended.
@@ -843,9 +887,15 @@ async fn wait_for_api(
                 });
             }
             Ok(Ok(_)) => return Ok(()),
-            Ok(Err(error)) => error,
+            Ok(Err(error)) => {
+                info!("{address}: no api over {} yet: {error}", plan.neighbor);
+                error
+            }
             // each try opens its own SSH session to the neighbor
-            Err(_) => Error::Timeout(address),
+            Err(_) => {
+                info!("{address}: no api over {} within {limit:?}", plan.neighbor);
+                Error::Timeout(address)
+            }
         };
         if Instant::now() > deadline {
             return Err(error);

@@ -263,7 +263,10 @@ const NEIGHBOR_LOGIN_TRIES: u32 = 3;
 /// unless it is the proxy, or made by the neighbor.
 async fn open_stream(address: IpAddr, path: &Path, port: u16) -> Result<Box<dyn Io>, Error> {
     Ok(match path {
-        Path::Neighbor(plan) => Box::new(bootstrap::tunnel(plan).await?.into_stream(address, port).await?),
+        // boxed: the tunnel reads the neighbor's `/ip ssh` over a routed connection first
+        Path::Neighbor(plan) => {
+            Box::new(Box::pin(bootstrap::tunnel(plan)).await?.into_stream(address, port).await?)
+        }
         Path::Routed => match proxied_stream(address, port).await? {
             Some(stream) => Box::new(stream),
             None => {
