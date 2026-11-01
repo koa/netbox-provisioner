@@ -11,7 +11,7 @@ einem Zustand tut und was ein Neustart des Servers mit dem Job macht.
 ## Verfolgen im Browser
 
 - `components/job.rs` fragt jede Sekunde `job(id) { events(after) }` (POST mit dem Bearer-Token;
-  eine Subscription bräuchte das Token über einen Websocket). Die Geräteseite nimmt einen
+  über die Subscriptions der übrigen Seiten, [Gerätezustand](device-state.md), ist E18). Die Geräteseite nimmt einen
   laufenden Job auf (`jobs(deviceId)`).
 - **Server weg:** Schlägt die Abfrage fehl, zeigt die Ansicht eine Zeile und fragt seltener
   weiter (`RETRY`), statt jede Sekunde einen neuen Fehler zu zeigen.

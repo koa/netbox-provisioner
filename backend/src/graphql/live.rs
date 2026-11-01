@@ -1,4 +1,4 @@
-//! Subscriptions (`docs/concepts/device-state.md`): `SubscriptionAuthenticated` has the fields
+//! Subscriptions (`docs/device-state.md`): `SubscriptionAuthenticated` has the fields
 //! of the query with the same types, each a stream of [`rounds`]. It gives the object, the
 //! selection under it is resolved by the same resolvers as in the query, and it gives it again
 //! whenever what they read changed: a job on a device shown ended or logged, facts read were

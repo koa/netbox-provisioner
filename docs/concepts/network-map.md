@@ -137,8 +137,9 @@ auch ein absichtlich nicht angeschlossenes Netzteil (`psu1-state=fail` auf lab-c
 - **Klick auf einen Knoten:** Seitenleiste mit Health (alle Zeilen), Ressourcen, PoE pro Port,
   Version und einem Link auf die Geräteseite.
 - **Klick auf eine Kante:** beide Ports, OSPF-Zustand v2/v3, Fehlerzähler, bei PoE die Leistung.
-- **Aktualisierung:** Die Seite fragt alle 5 s nach (wie die Job-Seite jede Sekunde). Der
-  Provisioner hat bisher keine Subscriptions (`EmptySubscription`), und Polling reicht hier.
+- **Aktualisierung:** Die Seite fragt alle 5 s nach (wie die Job-Seite jede Sekunde). Die
+  Subscriptions ([Gerätezustand](../device-state.md)) wecken nur bei Änderungen des Caches, die
+  Karte zeigt aber Zähler, die sich laufend ändern; Polling reicht hier.
 
 ### Positionen speichern
 

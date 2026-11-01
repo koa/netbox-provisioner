@@ -1,5 +1,5 @@
 //! What the provisioner found out from devices and MikroTik, kept for a while
-//! (`docs/concepts/device-state.md`).
+//! (`docs/device-state.md`).
 //!
 //! A fact is the outcome of asking something outside, a failure too, with the time the asking
 //! began. Whoever needs one says how old it may be ([`Freshness`]); one too old is asked again.

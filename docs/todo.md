@@ -70,7 +70,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
-| C15 | Gerätezustand: Cache der Erkenntnisse (`facts`), Login und Durchprobieren, Verwerfen nach Jobs, Metriken, „Stand“ und „Neu laden“, Subscriptions (dieselben Typen wie die Query) für Geräteseite, Interfaces, Befunde, Site-Listen und Abweichung sind umgesetzt; „Vergleich mit den Geräten“ gecacht und abonniert; Live-Prüfung der Interfaces mit Stand; Grafana-Dashboard; offen: das Konzept als Beschreibung nach `docs/` überführen | [Gerätezustand](concepts/device-state.md) | L | in Arbeit |
 
 ## E. Erweiterungen umgesetzter Teile
 
@@ -93,3 +92,4 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | E15 | Port angeschlossener Geräte ohne RouterOS erkennen: Für ein Gerät mit dokumentierter IPv4 oder IPv6 über ARP, IPv6-Nachbarn und die Host-Tabelle der Bridge finden, an welchem Port des Routers oder Switches es hängt, und in der Live-Prüfung der Interfaces ein fehlendes oder anders gelegtes Kabel melden, mit einem Helfer, der es in NetBox anlegt (Plan, Vorschau, Rückgängig). Zuordnung über die IP, nie über MACs aus NetBox; mehrere MACs an einem Port (Switch ohne RouterOS dahinter) machen ihn mehrdeutig | [Config-Helper](config-helper.md#netbox-gegen-gerät) | M–L | offen |
 | E16 | Protokoll: ein ausgelöster Apply-Fallback (Beobachtung ohne Job) nennt die Marken des Skripts, die noch auf dem Gerät liegen (`device::ros::progress`) | [Protokoll](protocol.md#beobachtungen-ohne-job) | S | offen |
 | E17 | VLANs auf einem CRS1xx/2xx in Hardware: dort läuft eine VLAN-Filtering-Bridge auf der CPU; die VLANs gehören ins Switch-Menü (`/interface/ethernet/switch/vlan`, `…/egress-vlan-tag`, `…/ingress-vlan-translation`, Ports als `vlan-type`), die Bridge bleibt ohne VLAN-Filtering. Für weitere CRS1xx/2xx, die heute ausser Betrieb sind; dsk-switch1 (CRS109, `QCA-8513L`) | [L2-Generierung](l2-generation.md#nach-dem-switch-chip-l2setupfor_switch_chips) | M | offen |
+| E18 | Job-Ereignisse über eine Subscription statt jede Sekunde abfragen (`components/job.rs`, `POLL`); der Job meldet seine Ereignisse schon im Änderungsstrom (`Change::Job`). | [Gerätezustand](device-state.md#live-aktualisierung) | S–M | offen |

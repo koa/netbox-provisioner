@@ -52,8 +52,8 @@ turns the bridges on chips that filter VLANs in hardware into VLANs of one bridg
 (`into_one_bridge`) and `snoops_multicast` leaves snooping off where it would cost the
 hardware; the generated examples don't know the board and keep their bridges.
 What the provisioner does beyond generating has a doc of its own in `docs/` too (device page,
-jobs, interface view, config helper, update fallback, watchdog, deployment; listed in
-`docs/overview.md`), in German, describing what is built; update it with the code.
+jobs, device state, interface view, config helper, update fallback, watchdog, deployment;
+listed in `docs/overview.md`), in German, describing what is built; update it with the code.
 `docs/concepts/` holds only what isn't built yet; once a concept is, it moves to `docs/` as a
 plain description and its open parts become tasks.
 `docs/todo.md` lists the open tasks of all three repos (numbered, with effort and status);
@@ -393,7 +393,7 @@ on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 
 ## Device access, setup and updates
 
-What is asked of devices and MikroTik goes through `facts` (`docs/concepts/device-state.md`):
+What is asked of devices and MikroTik goes through `facts` (`docs/device-state.md`):
 `facts::get(key, Freshness, ask)` gives a stored fact young enough for the user, joins the asking
 running already or asks, never twice at once per key, the asking spawned so a page closed leaves
 it to the others. Failures are facts too (`get_judged`: the age a stored one may have by what it
