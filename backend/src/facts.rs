@@ -137,13 +137,28 @@ impl FactKind {
 
 /// Which fact: its kind, the device (none for one about MikroTik) and what else changes the
 /// answer (address, way, credentials; a hash for credentials typed in).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct FactKey {
     pub kind: FactKind,
     pub device: Option<DeviceId>,
     pub detail: Box<str>,
-    /// the way it goes (`routed`, `neighbor`), a label of the metrics; empty for none
+    /// the way it goes (`routed`, `neighbor`), a label of the metrics; empty for none. Not
+    /// part of which fact it is: a key built without it finds the fact all the same.
     pub path: &'static str,
+}
+
+impl PartialEq for FactKey {
+    fn eq(&self, other: &Self) -> bool {
+        (self.kind, self.device, &self.detail) == (other.kind, other.device, &other.detail)
+    }
+}
+
+impl Eq for FactKey {}
+
+impl std::hash::Hash for FactKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (self.kind, self.device, &self.detail).hash(state);
+    }
 }
 
 impl FactKey {

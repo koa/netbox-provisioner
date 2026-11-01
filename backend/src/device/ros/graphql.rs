@@ -1821,6 +1821,7 @@ impl AccessibleDevice {
                 }
             ),
         )
+        .via(self.path.label())
     }
     /// `own`, or the younger age the request asked for (`access(maxAge:)`).
     fn freshness(&self, own: Duration) -> Freshness {

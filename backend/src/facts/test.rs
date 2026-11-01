@@ -1,5 +1,5 @@
 use super::{
-    Came, Change, FactKey, FactKind, Freshness, LIMIT, Reading, dropped, get, invalidate, peek_newest, reading,
+    Came, Change, FactKey, FactKind, Freshness, LIMIT, Reading, dropped, get, invalidate, peek, peek_newest, reading,
 };
 use crate::{Error, topology::DeviceId};
 use std::{
@@ -199,4 +199,13 @@ async fn a_peek_takes_the_newest_and_watches_the_kind() {
     invalidate(DeviceId(20), &[FactKind::Config]);
     assert_eq!(dropped(FactKind::Config, DeviceId(20)), Some(Instant::now()));
     assert!(peek_newest::<u32>(FactKind::Config, DeviceId(20), |_| true).is_none());
+}
+
+/// The way is a label of the metrics only: a key without it finds the fact asked over a way
+/// (a login that went lately is tried first, `device::went_lately`).
+#[tokio::test(start_paused = true)]
+async fn the_way_is_no_part_of_the_key() {
+    let asker = Asker::default();
+    get(key(30).via("neighbor"), Freshness::MaxAge(MINUTE), asker.ask(SECOND, Ok(3))).await;
+    assert_eq!(*peek::<u32>(&key(30)).unwrap().value.unwrap(), 3);
 }
