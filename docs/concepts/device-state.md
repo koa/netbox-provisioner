@@ -171,6 +171,7 @@ So kann es nicht veralten, wenn sich NetBox oder eine Erkenntnis ändert.
 | Partitionen, Device-Mode | Gerät | Repartition, Boot-Partition, Device-Mode, Update |
 | Nachbarn an einem Port (`/ip/neighbor`, `discovered`) | Nachbar, Port | Bootstrap, Power-Cycle des Nachbarn |
 | Interfaces des Nachbarn (Portname für mac-telnet) | Nachbar | Apply auf dem Nachbarn |
+| Was das Gerät sieht (`neighbors::read_table`: Ports, `/ip/neighbor`) | Gerät | jedem Job auf dem Gerät, Bootstrap und Power-Cycle des Nachbarn |
 
 `interfaceLive`, `log` und Ping wollen genau den Moment zeigen. Ihre Verwender fragen mit
 `MaxAge(ZERO)`. Zwei gleichzeitige Seiten teilen sich so nur dieselbe Abfrage.
@@ -227,6 +228,7 @@ Der Verwender entscheidet, je nachdem, wofür er die Antwort braucht:
 | alle | neueste Version | `MaxAge(15 min)` | MikroTik veröffentlicht selten |
 | `working_plan` | Login des Nachbarn | `MaxAge(1 min)` | |
 | Vorab-Prüfung von Batch und [Netzwerk-Update](network-update.md) | Login aller Geräte | `MaxAge(1 min)` | was die Seiten gerade gesehen haben |
+| „Vergleich mit den Geräten“ | was das Gerät sieht | `MaxAge(10 min)` | ein Kabel wandert selten; „Nochmals lesen“ verwirft (`refreshNeighbors`) |
 | Live-Interfaces, Log, Ping | | `MaxAge(ZERO)` | der Moment |
 
 Die Werte stehen beim Verwender als Konstanten mit ihrem Grund, nicht in einer zentralen
@@ -332,8 +334,12 @@ Binary prüft das Token wie den Header von `/graphql` (Signatur, `validation_opt
 Abonniert sind: die Übersicht der Geräteseite (`DeviceOverview`), ihre Interfaces
 (`InterfaceView`), die Befunde (`Findings`), die Site-Liste (`ListSites`), die Geräte einer Site
 (`SiteDevices`) und „Abweichung von NetBox“ (`SiteDiffKnown`). Was NetBox ändert, zeigen sie
-nach höchstens etwa 10 s. Offen: „Nachbarn prüfen“ (eine Momentaufnahme pro Klick) und ein
-„Stand“ für die Live-Prüfung der Interfaces.
+nach höchstens etwa 10 s. „Vergleich mit den Geräten“ (`NeighborFindings`) abonniert nach dem
+Klick jedes Gerät: Gecacht ist nur, was das Gerät antwortet, verglichen wird mit NetBox, wie es
+jetzt ist. Ein in NetBox übernommenes Kabel nimmt seinen Befund so ohne neues Lesen weg, mit dem
+„Stand“ des Lesens daneben. Was die Gegenseite eines umbenannten Ports sieht, bleibt bis zu ihrem
+nächsten Lesen alt (das Gerät meldet den neuen Namen ohnehin erst mit der nächsten Ankündigung).
+Offen: ein „Stand“ für die Live-Prüfung der Interfaces.
 
 ## Metriken für Prometheus
 

@@ -241,7 +241,11 @@ leaves out every update without fields) or the error. A job's `deviceId`/`device
 
 `device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's
 cables (`AccessibleDevice.neighborFindings`, read-only; the site page asks every device at once,
-`components::neighbor_check`). Ports on the device and the ports neighbors report carry the names
+`components::neighbor_check`). What the device answers is the fact `Neighbors`
+(`neighbors::read_table`, `neighborsAge`), compared with NetBox anew on each answer
+(`evaluate`), so the card subscribes after the click and a cable taken over in NetBox drops its
+finding; the click drops the facts first (`refreshNeighbors`), every job on a device drops its
+own. Ports on the device and the ports neighbors report carry the names
 the generated config gives them: match by NetBox's (default) name or the short name before the
 first `-` (`s01-core` is `sfp-sfpplus1`), never by MAC. A cable to a radio bridge device can't be
 seen (the router on the other side shows up instead). A `discover-interface-list` naming a list

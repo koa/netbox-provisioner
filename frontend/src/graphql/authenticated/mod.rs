@@ -202,6 +202,14 @@ pub struct NeighborFindings;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/neighbor-findings.graphql",
+    response_derives = "Debug"
+)]
+pub struct RefreshNeighbors;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/netbox-helper.graphql",
     response_derives = "Debug, Clone, PartialEq",
     skip_serializing_none

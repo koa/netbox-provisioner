@@ -1,8 +1,12 @@
-query NeighborFindings($id: Int!){
-    netboxUrl
+mutation RefreshNeighbors($ids: [Int!]!){
+    refreshNeighbors(ids: $ids)
+}
+subscription NeighborFindings($id: Int!){
     topology{
+        netboxUrl
         deviceById(id: $id){
             access{
+                neighborsAge
                 neighborFindings{
                     severity
                     kind{

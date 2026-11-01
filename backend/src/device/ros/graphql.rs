@@ -1584,9 +1584,15 @@ impl AccessibleDevice {
         let fact = facts::get(self.fact_key(FactKind::DeviceMode), self.freshness(DEVICE_MODE_AGE), mode);
         nullable(ctx, fact.await.result()).and_then(|mode| (*mode).clone())
     }
-    /// What the device sees at its ports against NetBox's cables there, the worst first.
+    /// What the device sees at its ports against NetBox's cables there, the worst first: the
+    /// device's answer kept (`neighborsAge`), against NetBox as it is now.
     async fn neighbor_findings(&self) -> Result<Vec<neighbors::NeighborFinding>, ApiError> {
-        Ok(neighbors::check(&self.connect_again().await?, &self.device_config).await?)
+        let table = self.neighbor_table().await.result()?;
+        Ok(neighbors::evaluate(&self.device_config, &table).findings)
+    }
+    /// seconds since the device was read for `neighborFindings`
+    async fn neighbors_age(&self) -> u64 {
+        self.neighbor_table().await.age().as_secs()
     }
     /// The live checks of the interface view (`DeviceAccess.interfaceView`) by row: neighbors,
     /// OSPF, the bridge devices of radio links answering.
@@ -1720,6 +1726,9 @@ pub(crate) fn of_device_as_is(key: &FactKey) -> bool {
 /// How old RouterOS version and packages may be: only jobs change them, and those drop them.
 const ROUTEROS_AGE: Duration = Duration::from_secs(10 * 60);
 const PARTITIONS_AGE: Duration = Duration::from_secs(10 * 60);
+/// How old the neighbors a device sees may be: a cable seldom moves, „Nochmals prüfen“ reads
+/// anew (`refreshNeighbors`).
+const NEIGHBORS_AGE: Duration = Duration::from_secs(10 * 60);
 const DEVICE_MODE_AGE: Duration = Duration::from_secs(10 * 60);
 /// How old what jobs left may be: a fallback's next run moves on.
 const LEFTOVERS_AGE: Duration = Duration::from_secs(60);
@@ -1758,6 +1767,12 @@ impl AccessibleDevice {
             })
         };
         facts::get(self.fact_key(FactKind::Config), freshness, generated).await
+    }
+    /// What the device answers for the neighbor check (`FactKind::Neighbors`).
+    async fn neighbor_table(&self) -> facts::Fact<neighbors::NeighborTable> {
+        let device = self.duplicate();
+        let read = async move { neighbors::read_table(&device.connect_again().await?).await };
+        facts::get(self.fact_key(FactKind::Neighbors), self.freshness(NEIGHBORS_AGE), read).await
     }
     /// The key of a fact about the device as this connection reads it: the credentials go in,
     /// what typed-in ones read stays with them.

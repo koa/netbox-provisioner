@@ -1,7 +1,9 @@
 //! What the devices of a site see at their ports against NetBox's cables there
 //! (`AccessibleDevice.neighborFindings`): read on a click, every device at once, each shown as
-//! it answers. A missing cable whose two ends NetBox has can be taken over: the helper
-//! „Verbindung“ opens below it with those ends.
+//! it answers, with when it was read. Subscribed afterwards: a cable taken over in NetBox drops
+//! its finding without reading the device again. A click again reads the devices anew
+//! (`refreshNeighbors`). A missing cable whose two ends NetBox has can be taken over: the
+//! helper „Verbindung“ opens below it with those ends.
 use crate::{
     components::{
         adjust_target::SelectedTarget,
@@ -11,16 +13,17 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            NeighborFindings,
+            NeighborFindings, RefreshNeighbors, refresh_neighbors,
             neighbor_findings::{
                 self, Interface, NeighborFindingsTopologyDeviceByIdAccessNeighborFindings as Finding,
                 NeighborFindingsTopologyDeviceByIdAccessNeighborFindingsKind as Kind, Port, Seen,
                 Severity,
             },
         },
+        live::{Subscription, local_time, read_at, same_reading, subscribe_data},
         query_authenticated,
     },
-    i18n::neighbors as t,
+    i18n::{device::as_of, neighbors as t},
 };
 use patternfly_yew::prelude::{
     Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize,
@@ -38,7 +41,12 @@ pub enum DeviceResult {
     Pending,
     Unreachable,
     Failed(FrontendError),
-    Done { netbox: String, findings: Vec<Finding> },
+    Done {
+        netbox: String,
+        findings: Vec<Finding>,
+        /// when the device was read (milliseconds since the epoch)
+        read_at: f64,
+    },
 }
 
 pub struct NeighborCheck {
@@ -46,10 +54,14 @@ pub struct NeighborCheck {
     results: Option<Vec<DeviceResult>>,
     /// the findings (device, finding) whose cable is being taken over
     taking_over: HashSet<(usize, usize)>,
+    /// per device, once started: answers again when NetBox or the device changed
+    subscriptions: Vec<Subscription>,
 }
 
 pub enum NeighborCheckMsg {
     Start,
+    /// the devices' neighbors read before are dropped: subscribe, reading them anew
+    Subscribe,
     Result(usize, DeviceResult),
     TakeOver(usize, usize),
 }
@@ -62,6 +74,7 @@ impl Component for NeighborCheck {
         Self {
             results: None,
             taking_over: HashSet::new(),
+            subscriptions: Vec::new(),
         }
     }
 
@@ -71,34 +84,52 @@ impl Component for NeighborCheck {
                 let devices = &ctx.props().devices;
                 self.results = Some(devices.iter().map(|_| DeviceResult::Pending).collect());
                 self.taking_over.clear();
-                for (index, (id, _)) in devices.iter().enumerate() {
-                    let scope = ctx.link().clone();
-                    let id = i64::from(*id);
-                    spawn_local(async move {
-                        let result = match query_authenticated::<NeighborFindings, _>(
-                            scope.clone(),
-                            neighbor_findings::Variables { id },
-                        )
-                        .await
-                        {
-                            Ok(data) => match data.topology.device_by_id.and_then(|d| d.access) {
-                                Some(access) => DeviceResult::Done {
-                                    netbox: data.netbox_url,
-                                    findings: access.neighbor_findings,
+                self.subscriptions.clear();
+                let scope = ctx.link().clone();
+                let ids = devices.iter().map(|(id, _)| i64::from(*id)).collect();
+                spawn_local(async move {
+                    let variables = refresh_neighbors::Variables { ids };
+                    let _ = query_authenticated::<RefreshNeighbors, _>(scope.clone(), variables).await;
+                    scope.send_message(NeighborCheckMsg::Subscribe);
+                });
+            }
+            NeighborCheckMsg::Subscribe => {
+                self.subscriptions = ctx
+                    .props()
+                    .devices
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (id, _))| {
+                        let scope = ctx.link().clone();
+                        let variables = neighbor_findings::Variables { id: i64::from(*id) };
+                        subscribe_data::<NeighborFindings, _>(ctx.link(), variables, move |data| {
+                            let result = match data {
+                                Ok(data) => match data.topology.device_by_id.and_then(|d| d.access) {
+                                    Some(access) => DeviceResult::Done {
+                                        netbox: data.topology.netbox_url,
+                                        findings: access.neighbor_findings,
+                                        read_at: read_at(access.neighbors_age),
+                                    },
+                                    None => DeviceResult::Unreachable,
                                 },
-                                None => DeviceResult::Unreachable,
-                            },
-                            Err(error) => DeviceResult::Failed(error),
-                        };
-                        scope.send_message(NeighborCheckMsg::Result(index, result));
-                    });
-                }
+                                Err(error) => DeviceResult::Failed(error),
+                            };
+                            scope.send_message(NeighborCheckMsg::Result(index, result));
+                        })
+                    })
+                    .collect();
+                return false;
             }
             NeighborCheckMsg::TakeOver(device, finding) => {
                 self.taking_over.insert((device, finding));
             }
-            NeighborCheckMsg::Result(index, result) => {
+            NeighborCheckMsg::Result(index, mut result) => {
                 if let Some(slot) = self.results.as_mut().and_then(|r| r.get_mut(index)) {
+                    if let (DeviceResult::Done { read_at: before, .. }, DeviceResult::Done { read_at, .. }) =
+                        (&*slot, &mut result)
+                    {
+                        *read_at = same_reading(Some(*before), *read_at);
+                    }
                     *slot = result;
                 }
             }
@@ -154,10 +185,14 @@ impl NeighborCheck {
             DeviceResult::Pending => html!(<Spinner size={SpinnerSize::Sm}/>),
             DeviceResult::Unreachable => html!({ t::UNREACHABLE }),
             DeviceResult::Failed(error) => error.to_html(),
-            DeviceResult::Done { findings, .. } if findings.is_empty() => html!({ t::IN_LINE }),
-            DeviceResult::Done { netbox, findings } => {
+            DeviceResult::Done { findings, read_at, .. } if findings.is_empty() => {
+                html!(<>{ t::IN_LINE }{" · "}{as_of(&local_time(*read_at))}</>)
+            }
+            DeviceResult::Done { netbox, findings, read_at } => {
                 let links = Links { netbox };
                 html! {
+                    <>
+                    <div>{as_of(&local_time(*read_at))}</div>
                     <ul class="finding-list">
                         { for findings.iter().enumerate().map(|(index, finding)| {
                             let preset = link_preset(&finding.kind);
@@ -181,6 +216,7 @@ impl NeighborCheck {
                             }
                         }) }
                     </ul>
+                    </>
                 }
             }
         }

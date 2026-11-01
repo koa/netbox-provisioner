@@ -358,21 +358,23 @@ pub enum JobKind {
 
 impl JobKind {
     /// The facts about its device a job of the kind may change, dropped when it ends.
+    /// What the device sees (`Neighbors`) goes with every job touching it: an apply renames its
+    /// ports and sets the discovery list, a reboot loses the neighbors for a while.
     pub fn invalidates(self) -> &'static [FactKind] {
         use FactKind::*;
         match self {
-            JobKind::Apply => &[Login, Route, Config, Leftovers, Interfaces],
-            JobKind::Update | JobKind::Downgrade => {
-                &[Login, Route, Config, RouterosState, Leftovers, Partitions, DeviceMode, Interfaces]
-            }
-            JobKind::Cleanup => &[Login, Route, Config, RouterosState, Leftovers],
-            JobKind::Bootstrap => &[Login, Route, Config, RouterosState, Leftovers, Interfaces],
-            JobKind::Reboot => &[Login, Route, Config, Leftovers],
+            JobKind::Apply => &[Login, Route, Config, Leftovers, Interfaces, Neighbors],
+            JobKind::Update | JobKind::Downgrade => &[
+                Login, Route, Config, RouterosState, Leftovers, Partitions, DeviceMode, Interfaces, Neighbors,
+            ],
+            JobKind::Cleanup => &[Login, Route, Config, RouterosState, Leftovers, Neighbors],
+            JobKind::Bootstrap => &[Login, Route, Config, RouterosState, Leftovers, Interfaces, Neighbors],
+            JobKind::Reboot => &[Login, Route, Config, Leftovers, Neighbors],
             // a job of the supplier: what it sees on the port changes with the device it feeds
             JobKind::PowerCycle => &[Login, Route, Leftovers, Neighbors],
-            JobKind::DeviceMode => &[Login, Route, Config, Leftovers, DeviceMode],
+            JobKind::DeviceMode => &[Login, Route, Config, Leftovers, DeviceMode, Neighbors],
             JobKind::Repartition | JobKind::BootPartition => {
-                &[Login, Route, Config, RouterosState, Leftovers, Partitions]
+                &[Login, Route, Config, RouterosState, Leftovers, Partitions, Neighbors]
             }
             // NetBox changes a fact's key (addresses, cables), not what the device says
             JobKind::NetboxWrite | JobKind::NetboxUndo | JobKind::SiteDiff => &[],

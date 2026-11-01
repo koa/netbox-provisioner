@@ -838,6 +838,14 @@ impl MutationAuthenticated {
             crate::device::batch::apply(members, logs)
         })?)
     }
+    /// Drops the neighbors the devices were seen to see (`neighborFindings`): who shows them
+    /// reads them anew, a subscription right away („Nochmals prüfen“).
+    async fn refresh_neighbors(&self, ids: Vec<u32>) -> bool {
+        for id in ids {
+            crate::facts::invalidate(DeviceId(id), &[crate::facts::FactKind::Neighbors]);
+        }
+        true
+    }
     /// Drops what was asked of a device (`facts`): who shows it asks anew, a subscription
     /// right away („Neu laden“).
     async fn refresh_device(&self, id: u32) -> bool {

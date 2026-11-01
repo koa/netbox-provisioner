@@ -100,22 +100,27 @@ pub struct DiscoveryOff {
     pub list: Box<str>,
 }
 
-/// Reads the device's ports and neighbors and compares them with NetBox.
-pub async fn check(
-    client: &RawDevice<SimpleResult>,
-    device: &DeviceAccess,
-) -> Result<Vec<NeighborFinding>, Error> {
-    Ok(read(client, device).await?.findings)
-}
-
 /// What [`read`] found: the findings, and who the device sees at each NetBox interface (by id).
 pub struct Neighbors {
     pub findings: Vec<NeighborFinding>,
     pub seen: BTreeMap<u32, Vec<SeenNeighbor>>,
 }
 
-/// [`check`] with who is seen where.
+/// Reads the device's ports and neighbors and compares them with NetBox: who is seen where.
 pub async fn read(client: &RawDevice<SimpleResult>, device: &DeviceAccess) -> Result<Neighbors, Error> {
+    Ok(evaluate(device, &read_table(client).await?))
+}
+
+/// What the device answers for the check, before it is compared with NetBox: a fact
+/// (`FactKind::Neighbors`), compared anew with NetBox as it is each time.
+pub struct NeighborTable {
+    /// the interface list discovery runs on, when the device doesn't have it: it sees nobody
+    discovery_off: Option<Box<str>>,
+    interfaces: Vec<Row>,
+    neighbors: Vec<Row>,
+}
+
+pub async fn read_table(client: &RawDevice<SimpleResult>) -> Result<NeighborTable, Error> {
     let settings = rows(client, "/ip/neighbor/discovery-settings/print").await?;
     let lists = rows(client, "/interface/list/print").await?;
     if let Some(list) = settings
@@ -123,27 +128,41 @@ pub async fn read(client: &RawDevice<SimpleResult>, device: &DeviceAccess) -> Re
         .and_then(|row| field(row, "discover-interface-list"))
         && !lists.iter().any(|row| field(row, "name") == Some(list))
     {
-        return Ok(Neighbors {
-            findings: vec![NeighborFinding {
-                severity: Severity::Error,
-                kind: NeighborFindingKind::DiscoveryOff(DiscoveryOff { list: list.into() }),
-            }],
-            seen: BTreeMap::new(),
+        return Ok(NeighborTable {
+            discovery_off: Some(list.into()),
+            interfaces: Vec::new(),
+            neighbors: Vec::new(),
         });
     }
-    let interfaces = rows(client, "/interface/print").await?;
-    let neighbors = rows(client, "/ip/neighbor/print").await?;
-    let (seen_at, netbox_ports) = seen_at(device, &interfaces, &neighbors);
+    Ok(NeighborTable {
+        discovery_off: None,
+        interfaces: rows(client, "/interface/print").await?,
+        neighbors: rows(client, "/ip/neighbor/print").await?,
+    })
+}
+
+/// `table` against NetBox's cables at `device`.
+pub fn evaluate(device: &DeviceAccess, table: &NeighborTable) -> Neighbors {
+    if let Some(list) = &table.discovery_off {
+        return Neighbors {
+            findings: vec![NeighborFinding {
+                severity: Severity::Error,
+                kind: NeighborFindingKind::DiscoveryOff(DiscoveryOff { list: list.clone() }),
+            }],
+            seen: BTreeMap::new(),
+        };
+    }
+    let (seen_at, netbox_ports) = seen_at(device, &table.interfaces, &table.neighbors);
     let seen = seen_at
         .iter()
         .filter_map(|(default_name, (_, seen))| {
             Some((netbox_ports.get(default_name)?.id().0, seen.clone()))
         })
         .collect();
-    Ok(Neighbors {
-        findings: compare(device, &interfaces, &neighbors),
+    Neighbors {
+        findings: compare(device, &table.interfaces, &table.neighbors),
         seen,
-    })
+    }
 }
 
 /// Who the device sees at each port, by the port's default name (its own name where it has
@@ -209,7 +228,7 @@ fn seen_at(
     (seen_at, netbox_ports)
 }
 
-/// [`check`] on what the device answered: `interfaces` from `/interface/print`, `neighbors`
+/// [`evaluate`] on what the device answered: `interfaces` from `/interface/print`, `neighbors`
 /// from `/ip/neighbor/print`.
 pub fn compare(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> Vec<NeighborFinding> {
     let (seen_at, netbox_ports) = seen_at(device, interfaces, neighbors);

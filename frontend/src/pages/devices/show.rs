@@ -21,7 +21,7 @@ use crate::{
             reboot_device, bootstrap_candidates, bootstrap_device, change_device_mode,
             boot_partition, device_overview, repartition_device, update_routeros,
         },
-        live::{Subscription, subscribe},
+        live::{Subscription, local_time, read_at, same_reading, subscribe},
         query_authenticated,
     },
 };
@@ -263,7 +263,13 @@ impl Component for ShowDevice {
                     self.job_through = through;
                     self.job_running = true;
                 }
-                self.data = Some(*data);
+                let mut data = *data;
+                let as_of = |data: &ShowDeviceData| data.access.as_ref().and_then(|(_, cfg)| cfg.as_ref()).map(|cfg| cfg.as_of);
+                let before = self.data.as_ref().and_then(as_of);
+                if let Some(cfg) = data.access.as_mut().and_then(|(_, cfg)| cfg.as_mut()) {
+                    cfg.as_of = same_reading(before, cfg.as_of);
+                }
+                self.data = Some(data);
                 self.error = error;
                 true
             }
@@ -1133,12 +1139,6 @@ impl ShowDevice {
     }
 }
 
-/// `HH:MM:SS` of `millis` since the epoch, in the browser's time zone.
-fn local_time(millis: f64) -> String {
-    let date = js_sys::Date::new(&millis.into());
-    format!("{:02}:{:02}:{:02}", date.get_hours(), date.get_minutes(), date.get_seconds())
-}
-
 /// The variables of the overview with `target`.
 fn overview_variables(id: u32, target: &SelectedTarget) -> device_overview::Variables {
     let (credential_name, adhoc_credentials) =
@@ -1206,7 +1206,7 @@ fn overview_message(id: u32, response: graphql_client::Response<device_overview:
                         a.generate_cfg.map(|cfg| GeneratedCfg {
                             script: cfg.script.into_boxed_str(),
                             warnings: cfg.warnings,
-                            as_of: js_sys::Date::now() - cfg.age as f64 * 1000.0,
+                            as_of: read_at(cfg.age),
                         }),
                     )
                 }),
