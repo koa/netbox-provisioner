@@ -319,6 +319,8 @@ JSON NetBox had (`NetboxWritten.recreate`, `helper::write::recreate`; it gets a 
 older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (graphql_client
 makes it an enum; its queries need `skip_serializing_none`), naming the device or the two ports;
 the device page opens them in a modal (`components::helper_flow`, a stepper over the embedded
+(`i18n::helper::finding_kind` names every `FindingKind`, test
+`every_finding_kind_has_a_short_name` checks it against the schema)
 `NetboxHelper`, `embedded`/`preset`/`on_phase`) from a row of the interfaces card, which the
 backend gives its actions (`InterfaceRow.actions`, `InterfaceView.loopbackActions`: kind, helper,
 preset ports or VLAN); "Rückgängig" is the device's last write that wrote something, also one

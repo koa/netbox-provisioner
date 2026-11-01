@@ -750,3 +750,19 @@ fn findings_of_netbox_example() {
     println!("{summary}");
     assert!(!counts.is_empty());
 }
+
+/// The preview of a helper names the finding kinds (`i18n::helper::finding_kind`): every kind
+/// the schema has has words there.
+#[test]
+fn every_finding_kind_has_a_short_name() {
+    let sdl = crate::graphql::create_schema(TopologyBuilder::default().into()).sdl();
+    let union = sdl
+        .lines()
+        .find_map(|line| line.strip_prefix("union FindingKind = "))
+        .expect("the union in the schema");
+    let untranslated = union
+        .split(" | ")
+        .filter(|kind| i18n::helper::finding_kind(kind.to_string()) == *kind)
+        .collect::<Vec<_>>();
+    assert!(untranslated.is_empty(), "no short name: {untranslated:?}");
+}

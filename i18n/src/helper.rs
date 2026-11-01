@@ -428,6 +428,14 @@ pub fn finding_kind(kind: String) -> String {
         "ForwardWithoutSite" => "forward ohne Site".into(),
         "ForwardPortTaken" => "Port schon weitergeleitet".into(),
         "ForwardIncomplete" => "forward ohne Adresse oder Port".into(),
+        "PoolMissing" => "Pool fehlt".into(),
+        "PoolNearlyFull" => "Pool fast voll".into(),
+        "VlanWithSeveralGateways" => "VLAN mit mehreren L3-Übergängen".into(),
+        "VlanWithoutGateway" => "VLAN ohne L3-Übergang".into(),
+        "TaggedVlanOnPort" => "tagged VLAN am Port".into(),
+        "RadioPathIncomplete" => "Richtfunk-Strecke unvollständig".into(),
+        "LabelNotFarEnd" => "Label nicht das andere Ende".into(),
+        "VlanWithoutPort" => "VLAN an keinem Port".into(),
         _ => kind,
     }
 }
