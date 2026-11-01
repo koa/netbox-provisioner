@@ -61,7 +61,10 @@ pub async fn query_authenticated_response<Q: GraphQLQuery, S: Component>(
 }
 
 /// `graphql_client`'s `post_graphql`, but a response without success (a token the server
-/// refuses: `401` or `403` with a text) is that text, not a failure to decode it as JSON.
+/// refuses: `401` or `403` with a text) is that text, not a failure to decode it as JSON. With
+/// errors, `data` may lack the fields that failed (async-graphql leaves out a non-null root
+/// field with an error, `netboxPlan` refused with `PORT_ADDRESSED`): then it is only the
+/// errors, not a failure to decode `data`.
 async fn post_graphql<Q: GraphQLQuery>(
     client: &reqwest::Client,
     url: &str,
@@ -73,7 +76,23 @@ async fn post_graphql<Q: GraphQLQuery>(
         let text = response.text().await.unwrap_or_default();
         return Err(FrontendError::Server { status: status.as_u16(), text });
     }
-    Ok(response.json().await?)
+    let Response {
+        data,
+        errors,
+        extensions,
+    } = response.json::<Response<serde_json::Value>>().await?;
+    let data = match data {
+        Some(data) if errors.as_ref().is_some_and(|errors| !errors.is_empty()) => {
+            serde_json::from_value(data).ok()
+        }
+        Some(data) => Some(serde_json::from_value(data)?),
+        None => None,
+    };
+    Ok(Response {
+        data,
+        errors,
+        extensions,
+    })
 }
 
 pub async fn query_anonymous<Q: GraphQLQuery>(

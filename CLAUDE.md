@@ -440,7 +440,8 @@ the backend checks the JWT against `auth_issuer` and lets only `auth_users` in, 
 middleware of `/graphql` in `binary` (`authenticated_graphql`: `403` otherwise, and the server
 log says why; the frontend words the status, `i18n::error::refused`; without a refresh token
 `yew-oauth2` keeps an expired token as authenticated, so the job view offers to log in again on
-`401`/`403`, `pages::start_login`) (`docs/login.md`:
+`401`/`403`, `pages::start_login`; with errors async-graphql may leave a failed non-null root
+field out of `data`, so `graphql::post_graphql` then gives only the errors) (`docs/login.md`:
 the `auth_*` settings and how to set up Pocket-ID; keep it in line with them). The UI picks a
 NetBox site first, then one of its devices (`/sites`, `/site/<id>`, `/site/<id>/device/<id>/show`,
 `pages/routes.rs`): no sidebar, a breadcrumb of dropdowns to the sibling sites and devices
