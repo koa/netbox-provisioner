@@ -39,6 +39,8 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z20 | Netz-Update pro Site oder über mehrere? | mehrere Sites, frei gewählt (2026-10-23) | C10 |
 | Z28 | Die andere Partition nach jedem Anwenden nachziehen (E14) überschreibt das RouterOS von vor einem Update, den Weg zurück über „Von partN starten“. Immer kopieren, nur bei gleicher Version, oder erst eine Weile nach einem Update? | immer kopieren: Eine Partition mit alter Konfiguration ist eine Falle, die später zu einem Ausfall führen kann. Bei gleicher Version nur die Konfiguration, sonst alles (2026-10-25) | E14 |
 | Z34 | Abgelaufene Anmeldung ohne Refresh-Token (Pocket-ID ohne `offline_access`): `yew-oauth2` hält das Token weiter für gültig, jede Seite bekommt `403`. Die Job-Ansicht bietet „Erneut anmelden“ an, wo eine HTTP-Abfrage abgelehnt wird (E5); die WebSocket-Verbindung der Live-Ansichten (seit E18 auch der Job-Ansicht) prüft das Token nur beim Aufbau und versucht es nach einer Ablehnung still weiter. Sollen alle Seiten beim Ablauf von selbst neu anmelden (Umleitung zum Provider und zurück; bei laufender Sitzung dort ohne Eingabe, aber ein offenes Formular ginge verloren), nur einen Hinweis mit Knopf oben zeigen, oder Pocket-ID mit `offline_access` betreiben (dort noch nicht getestet)? | offen | – |
+| Z35 | Kunden-Netz mit DHCP-Range (E6): Welche Grenzen soll die Range bekommen? Der ganze freie Rest wäre dasselbe wie heute ohne Range. Vorschlag: im Formular ein Häkchen „DHCP-Range anlegen“ mit Start und Ende, vorgegeben die obere Hälfte des Netzes (bei einem `/24` `.128`–`.254`), die untere bleibt für feste Adressen. Oder lieber feste Anzahl Adressen am Anfang frei (z.B. die ersten 20)? | offen | E6 |
+| Z36 | Watchdog-Befunde (E1): Geräte ohne `ospf` (APs, Switches, CAPs) haben nie einen Parent; eine Warnung „kein Weg zu einer Wurzel“ für jedes wäre Rauschen. Warnen nur bei Geräten mit `ospf`-Interface, aber ohne Weg zu einer Wurzel (und ohne `propagate_default_route`)? Und das Custom Field für Sonderfälle: am Gerät `watchdog_target` (Text: leer automatisch, `none` aus, sonst eine feste IPv4), oder lieber eine Auswahl plus ein IP-Feld? Ein neues Custom Field muss auch in die produktive NetBox importiert werden | offen | E1 |
 
 ## A. Sicherheit
 
@@ -74,10 +76,10 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Doku | Aufwand | Status |
 |---|---|---|---|---|
-| E1 | Watchdog-Befunde: kein Weg zu einer Wurzel (kein Watchdog möglich) als Warnung; ein Custom Field für Sonderfälle (aus, oder eine feste Adresse) | [Watchdog](watchdog.md) | S–M | offen |
+| E1 | Watchdog-Befunde: kein Weg zu einer Wurzel (kein Watchdog möglich) als Warnung; ein Custom Field für Sonderfälle (aus, oder eine feste Adresse) | [Watchdog](watchdog.md) | S–M | offen, wartet auf Z36 |
 | E3 | Das Image in einem Cluster ausrollen und die beiden Workflows (CI, Aufräumen) auf GitHub einmal laufen lassen | [Deployment](deployment.md#noch-nicht-geprüft) | S | offen |
 | E4 | rustls statt OpenSSL, dann musl und ein Image nur aus Binary und Zertifikaten | [Deployment](deployment.md#noch-nicht-geprüft) | M | offen |
-| E6 | Kunden-Netz: optional eine IP-Range mit Rolle `dhcp` anlegen (heute ist der DHCP-Pool der freie Rest des Netzes) | [Config-Helper](config-helper.md#kunden-netz) | S | offen |
+| E6 | Kunden-Netz: optional eine IP-Range mit Rolle `dhcp` anlegen (heute ist der DHCP-Pool der freie Rest des Netzes) | [Config-Helper](config-helper.md#kunden-netz) | S | offen, wartet auf Z35 |
 | E7 | OSPF-Priorität 0 auf Brückengeräten (nie DR/BDR): Regel im Generator (`priority` kennt mikrotik-model), vorher auf CHR vier OSPF-Sprecher in einem Segment, Strecke getrennt und wieder verbunden | [Config-Helper](config-helper.md#brückengeräte-mit-fester-adresse) | M | offen |
 | E8 | Weitere Befunde: WLAN-Gruppe ohne Controller, Region ohne Land, die Fehler des Generators gesammelt pro Site; gegen das Gerät ein OSPF-Nachbar `Full` über einen Port ohne `ospf`, das gemeldete Board gegen den Device Type und PoE als Befund für alle Geräte einer Site | [Config-Helper](config-helper.md#befunde) | M | offen |
 | E9 | Automatischer Test der Helfer gegen das Lab-NetBox: ausführen, Vorschau mit dem Ergebnis vergleichen, zurücknehmen | [Config-Helper](config-helper.md#technik) | M | offen |
