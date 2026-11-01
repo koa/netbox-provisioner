@@ -660,7 +660,9 @@ update, device mode and leftovers tests) while the job goes on unchanged. Report
 step that has an effect, and keep the table in line when a flow changes. `Job.phase` gives the
 state as a union with an object per kind (`JobPhaseObject`, `ApplyPhase { state }`, …); the job
 view shows „Stand: …“ while it runs and „Endete in: …“ when it failed or was cancelled
-(`components/job.rs` `phase_line`, names as in the concept, `i18n::job::phase`).
+(`components/job.rs` `phase_line`, names as in the concept, `i18n::job::phase`). Once over,
+`Job.phase` and the journal give the state the job's own work ended in (`Job::shown_phase`,
+`Log::ended_in`): the `FROM_ANY` states restoring watchdogs after any end don't count.
 Only the states that go on after a restart (`Restart::Continue`: an apply's `ScriptRunning`
 and `StoppingFallback`, an update's `Rebooting`, `NotUpdated` and `StoppingFallback` with its
 fallback set) are saved, one file per device in `state_dir/jobs/<netbox-id>.json`

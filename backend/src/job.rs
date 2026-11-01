@@ -152,6 +152,9 @@ struct Saving {
 #[derive(Debug, Default)]
 struct Phases {
     current: Option<JobPhase>,
+    /// the last state of the job's own work: `current`, unless that undoes for others
+    /// ([`JobPhase::undoes_for_others`], restoring watchdogs after a failure)
+    own: Option<JobPhase>,
     /// `current` is the state a job going on after a restart was saved in: entering it again
     /// once is no transition ([`Log::resume_in`])
     resumed: bool,
@@ -186,6 +189,9 @@ impl Log {
             phases.unexpected.push((before, phase));
         }
         phases.current = Some(phase);
+        if !phase.undoes_for_others() {
+            phases.own = Some(phase);
+        }
         drop(phases);
         self.save_for(phase, true);
         self.changed();
@@ -196,6 +202,9 @@ impl Log {
         let phase = phase.into();
         let mut phases = self.phase.lock().unwrap_or_else(PoisonError::into_inner);
         phases.current = Some(phase);
+        if !phase.undoes_for_others() {
+            phases.own = Some(phase);
+        }
         phases.resumed = true;
         drop(phases);
         self.save_for(phase, false);
@@ -270,6 +279,12 @@ impl Log {
     /// The state the job is in, or ended in; `None` before its first.
     pub fn phase(&self) -> Option<JobPhase> {
         self.phase.lock().unwrap_or_else(PoisonError::into_inner).current
+    }
+    /// The state the job's own work ended in: the last one before undoing for others (where it
+    /// failed, not where it restored the watchdogs afterwards); the current one without such.
+    pub fn ended_in(&self) -> Option<JobPhase> {
+        let phases = self.phase.lock().unwrap_or_else(PoisonError::into_inner);
+        phases.own.or(phases.current)
     }
     /// The transitions the tables didn't allow, from (`None`: none yet) and to.
     pub fn unexpected(&self) -> Vec<(Option<JobPhase>, JobPhase)> {
@@ -484,6 +499,14 @@ impl Job {
     }
     fn state(&self) -> JobState {
         self.outcome.lock().unwrap_or_else(PoisonError::into_inner).0
+    }
+    /// The state it is in, or once over the one its own work ended in ([`Log::ended_in`]).
+    pub fn shown_phase(&self) -> Option<JobPhase> {
+        if self.state() == JobState::Running {
+            self.log.phase()
+        } else {
+            self.log.ended_in()
+        }
     }
     fn finish_with(&self, result: Result<(), Error>) {
         match result {
@@ -951,10 +974,10 @@ impl Job {
     async fn error(&self) -> Option<ErrorInfo> {
         self.outcome.lock().unwrap_or_else(PoisonError::into_inner).1.clone()
     }
-    /// the state it is in (`device_state`), or ended in; `null` before its first and for a
-    /// site's job
+    /// the state it is in (`device_state`), or the one its own work ended in (not restoring
+    /// the watchdogs after it); `null` before its first and for a site's job
     async fn phase(&self) -> Option<crate::device_state::JobPhaseObject> {
-        self.log.phase().map(Into::into)
+        self.shown_phase().map(Into::into)
     }
     /// how long it ran; `None` while it runs
     async fn took(&self) -> Option<ScalarDuration> {
@@ -989,6 +1012,21 @@ mod tests {
             reason: RebootReason::Packages,
             timeout: Duration::from_secs(1).into(),
         })
+    }
+
+    /// A job failing before it restores the watchdogs ended in the state it failed in.
+    #[test]
+    fn a_job_ends_in_its_own_state_not_in_restoring() {
+        use crate::device_state::{BootstrapState, JobPhase};
+        let log = Log::new("test");
+        for state in [BootstrapState::SuspendingWatchdogs, BootstrapState::CheckingNeighbor, BootstrapState::Console] {
+            log.enter(state);
+        }
+        assert_eq!(log.ended_in(), Some(JobPhase::Bootstrap(BootstrapState::Console)));
+        log.enter(BootstrapState::RestoringWatchdogs);
+        assert_eq!(log.phase(), Some(JobPhase::Bootstrap(BootstrapState::RestoringWatchdogs)));
+        assert_eq!(log.ended_in(), Some(JobPhase::Bootstrap(BootstrapState::Console)));
+        assert!(log.unexpected().is_empty());
     }
 
     /// What an apply keeps is in its file only while it is in a state that goes on after a

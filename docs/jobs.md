@@ -30,7 +30,9 @@ einem Zustand tut und was ein Neustart des Servers mit dem Job macht.
 - `cancelJob` setzt ein Flag, das die Arbeit zwischen den Schritten (`Log::check`) und beim Warten
   (`Log::unless_cancelled`) prüft.
 - Die Ansicht zeigt den Zustand (`Job.phase`): „Stand: …“, solange der Job läuft, „Endete in: …“
-  nach einem Fehler oder Abbruch, mit den Namen dieser Datei (`i18n::job::phase`).
+  nach einem Fehler oder Abbruch, mit den Namen dieser Datei (`i18n::job::phase`). „Endete in“
+  ist der letzte Zustand der eigenen Arbeit (`Log::ended_in`): nicht `WatchdogsZurück`, das danach
+  bei jedem Ende kommt, sondern der Zustand davor, in dem der Job scheiterte. Ebenso im Journal.
 
 ## Grundsätze
 

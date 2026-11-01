@@ -4,7 +4,7 @@
 //! does to a job in it. Pure: nothing here talks to a device.
 //!
 //! Ending is no state: a job may end in any of them (done, failed, cancelled), and the state
-//! it ended in stays with it.
+//! its own work ended in stays with it: the one before undoing for others (`FROM_ANY`).
 use async_graphql::{Enum, SimpleObject, Union};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -471,6 +471,13 @@ macro_rules! job_phase {
             pub fn restart(self) -> Restart {
                 match self {
                     $(JobPhase::$variant(state) => state.restart(),)*
+                }
+            }
+            /// Whether it undoes what the job did to other devices ([`States::FROM_ANY`]), not
+            /// part of the job's own work.
+            pub fn undoes_for_others(self) -> bool {
+                match self {
+                    $(JobPhase::$variant(state) => <$state as States>::FROM_ANY.contains(&state),)*
                 }
             }
         }

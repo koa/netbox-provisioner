@@ -329,7 +329,7 @@ impl Entry {
             kind: job.job_kind(),
             started: started.clone(),
             outcome: outcome(state, &events),
-            phase: job.log().phase(),
+            phase: job.shown_phase(),
             error,
             took: job.ran_for().map(|took| took.as_secs()),
             events,
