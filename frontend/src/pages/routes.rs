@@ -8,12 +8,15 @@ use patternfly_yew::prelude::{PageSection, PageSectionType};
 use yew::{Html, html};
 use yew_nested_router::Target;
 
-/// `/sites`, `/site/<site>` (its devices), `/site/<site>/map`, `/site/<site>/device/<device>/show`
+/// `/sites`, `/network-map` (every site), `/site/<site>` (its devices), `/site/<site>/map`,
+/// `/site/<site>/device/<device>/show`
 #[derive(Debug, Clone, Default, PartialEq, Eq, Target)]
 pub enum AppRoute {
     NotFound,
     #[default]
     Sites,
+    #[target(rename = "network-map")]
+    NetworkMap,
     Site {
         id: u32,
         #[target(nested)]
@@ -57,10 +60,11 @@ impl AppRoute {
                 view: SiteView::Device { id: device, .. },
             } => (Some(*id), Some(*device)),
             AppRoute::Site { id, .. } => (Some(*id), None),
-            AppRoute::Sites | AppRoute::NotFound => (None, None),
+            AppRoute::Sites | AppRoute::NetworkMap | AppRoute::NotFound => (None, None),
         };
         let content = match self {
             AppRoute::Sites => html! {<Sites/>},
+            AppRoute::NetworkMap => html! {<NetworkMap site={None}/>},
             AppRoute::Site { id, view } => view.content(id),
             AppRoute::NotFound => html! {<h1>{i18n::pages::NOT_FOUND}</h1>},
         };
@@ -84,7 +88,7 @@ impl SiteView {
         match self {
             // keyed: another site or device in the breadcrumb loads the page anew
             SiteView::Devices => html! {<Devices key={site} {site}/>},
-            SiteView::Map => html! {<NetworkMap key={site} {site}/>},
+            SiteView::Map => html! {<NetworkMap key={site} site={Some(site)}/>},
             SiteView::Device { id, view } => view.content(id),
         }
     }

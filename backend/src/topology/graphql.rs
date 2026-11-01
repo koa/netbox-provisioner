@@ -104,4 +104,18 @@ impl TopologyHolder {
             None
         }
     }
+    /// The devices and edges of the site `site_id`, or without it of every site, as OSPF sees
+    /// them, for the network map; read anew after `network_state::read::LSDB_AGE`.
+    async fn network_state(&self, site_id: Option<u32>) -> crate::network_state::graphql::NetworkState {
+        let devices = self
+            .topo_lock()
+            .await
+            .as_ref()
+            .map(|topo| match site_id {
+                Some(id) => SiteAccess::create(topo.clone(), SiteId(id)).devices().collect(),
+                None => topo.list_devices().collect(),
+            })
+            .unwrap_or_default();
+        crate::network_state::graphql::network_state(devices).await
+    }
 }

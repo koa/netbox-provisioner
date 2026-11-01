@@ -1,5 +1,5 @@
-//! `Site.networkState`: the site's devices and edges with their state from the LSDB, for the
-//! network map (`docs/concepts/network-map.md`, step 2).
+//! `Query.topology.networkState`: a site's, or every site's, devices and edges with their state
+//! from the LSDB, for the network map (`docs/concepts/network-map.md`, step 2).
 
 use super::{
     edges::{DownReason, EdgeKind, EdgeState, Lsdb, edges},
@@ -14,7 +14,6 @@ use async_graphql::{Enum, SimpleObject};
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr},
-    sync::Arc,
 };
 
 #[derive(SimpleObject)]
@@ -42,8 +41,6 @@ pub enum NodeState {
     Isolated,
     /// an OSPF router of NetBox without router LSA
     Missing,
-    /// no OSPF router (no RouterOS, no primary IPv4, no `ospf`)
-    NoOspf,
 }
 
 #[derive(SimpleObject)]
@@ -92,7 +89,16 @@ fn router_id(device: &DeviceAccess) -> Option<Ipv4Addr> {
     }
 }
 
-/// The state of `devices` (a site's, with RouterOS or not) as the LSDB of one of them says.
+/// Whether `device` takes part in OSPF at all (it is the LSDB's reader, or it has RouterOS, a
+/// primary IPv4 and an `ospf` interface): devices that don't stay off the map entirely, with
+/// their edges (`network_state`).
+fn supports_ospf(device: &DeviceAccess, readers: &[DeviceAccess]) -> bool {
+    readers.iter().any(|r| r.id() == device.id())
+        || (device.has_routeros() && router_id(device).is_some() && device.interfaces().iter().any(|i| i.use_ospf()))
+}
+
+/// The state of `devices` (a site's, or every device, with RouterOS or not) as the LSDB of one
+/// of them says. Devices without OSPF, and their edges, are left out.
 pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
     let readers = readers(&devices);
     let (read_from, age, lsdb, error) = match read(&readers).await {
@@ -103,28 +109,44 @@ pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
         Ok(None) => (None, 0, None, None),
         Err(error) => (None, 0, None, Some(error.to_string())),
     };
-    let empty = Arc::new(Lsdb::default());
-    let lsdb = lsdb.unwrap_or(empty);
-    let map_edges = edges(&devices, &lsdb);
+    let lsdb = lsdb.unwrap_or_default();
+    build(&devices, &readers, &lsdb, read_from, age, error)
+}
+
+/// The synchronous part of [`network_state`], once the LSDB (or none, read-only, after a
+/// failure) is at hand: testable without a device to read from.
+fn build(
+    devices: &[DeviceAccess],
+    readers: &[DeviceAccess],
+    lsdb: &Lsdb,
+    read_from: Option<DeviceAccess>,
+    age: u32,
+    error: Option<String>,
+) -> NetworkState {
+    let map_edges = edges(devices, lsdb);
     let topology = devices.first().map(|d| d.topology().clone());
     let interface = |id| topology.as_ref().and_then(|t| t.get_interface_by_id(id));
 
-    // the devices at the edges, also those of another site
+    // the OSPF devices at the edges, also those of another site
     let mut nodes = BTreeMap::<DeviceId, DeviceAccess>::new();
-    for device in &devices {
-        nodes.insert(device.id(), device.clone());
+    for device in devices {
+        if supports_ospf(device, readers) {
+            nodes.insert(device.id(), device.clone());
+        }
     }
     let mut up = BTreeSet::new();
     let mut result_edges = Vec::new();
     for edge in &map_edges {
         let (Some(a), Some(b)) = (interface(edge.a), interface(edge.b)) else { continue };
-        for end in [&a, &b] {
-            if let Some(device) = end.device() {
-                if matches!(edge.state, EdgeState::Up | EdgeState::V3Down) {
-                    up.insert(device.id());
-                }
-                nodes.entry(device.id()).or_insert(device);
+        let (Some(device_a), Some(device_b)) = (a.device(), b.device()) else { continue };
+        if !supports_ospf(&device_a, readers) || !supports_ospf(&device_b, readers) {
+            continue;
+        }
+        for device in [device_a, device_b] {
+            if matches!(edge.state, EdgeState::Up | EdgeState::V3Down) {
+                up.insert(device.id());
             }
+            nodes.entry(device.id()).or_insert(device);
         }
         let (state, reason, reason_device) = match edge.state {
             EdgeState::Up => (MapEdgeState::Up, None, None),
@@ -154,12 +176,7 @@ pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
     let mut result_nodes = nodes
         .values()
         .map(|device| {
-            let ospf = readers.iter().any(|r| r.id() == device.id())
-                || (device.has_routeros()
-                    && router_id(device).is_some()
-                    && device.interfaces().iter().any(|i| i.use_ospf()));
             let state = match router_id(device) {
-                _ if !ospf => NodeState::NoOspf,
                 _ if Some(device.id()) == reader || up.contains(&device.id()) => NodeState::Reached,
                 Some(id) if lsdb.routers().contains(&id) => NodeState::Isolated,
                 _ => NodeState::Missing,
@@ -198,3 +215,6 @@ pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
         outside_at,
     }
 }
+
+#[cfg(test)]
+mod test;

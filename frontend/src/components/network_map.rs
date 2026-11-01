@@ -1,8 +1,9 @@
-//! The network map of a site (`Site.networkState`, `docs/concepts/network-map.md`): its
-//! devices and NetBox's cables and wireless links as an SVG, coloured by what the OSPF
-//! database of one router says. Asked anew every few seconds; reading only. The layout is
-//! fixed for now: columns by hops from the router read, the routers NetBox doesn't know as one
-//! node before the routers they come in at.
+//! The network map (`Query.topology.networkState`, `docs/concepts/network-map.md`): devices
+//! and NetBox's cables and wireless links as an SVG, coloured by what the OSPF database of one
+//! router says; devices without OSPF, and their edges, are left out. Scoped to one site, or
+//! without a site to every device of every site. Asked anew every few seconds; reading only.
+//! The layout is fixed for now: columns by hops from the router read, the routers NetBox
+//! doesn't know as one node before the routers they come in at.
 use crate::{
     components::job::RETRY,
     error::FrontendError,
@@ -10,8 +11,7 @@ use crate::{
         authenticated::{
             NetworkMap as NetworkMapQuery,
             network_map::{
-                self, MapDownReason, MapEdgeKind, MapEdgeState, NetworkMapTopologySiteByIdNetworkState as State,
-                NodeState,
+                self, MapDownReason, MapEdgeKind, MapEdgeState, NetworkMapTopologyNetworkState as State, NodeState,
             },
         },
         query_authenticated,
@@ -39,7 +39,9 @@ const OUTSIDE: i64 = -1;
 
 #[derive(Properties, PartialEq)]
 pub struct NetworkMapProps {
-    pub site: u32,
+    /// without one, every device of every site
+    #[prop_or_default]
+    pub site: Option<u32>,
 }
 
 pub struct NetworkMap {
@@ -51,10 +53,11 @@ pub struct NetworkMap {
 }
 
 pub enum NetworkMapMsg {
-    Loaded(Option<State>),
+    Loaded(State),
     Error(FrontendError),
     Router(RouterContext<AppRoute>),
-    Open(i64),
+    /// the device clicked, and its own site (it may be another one than `site`)
+    Open(i64, Option<i64>),
 }
 
 impl Component for NetworkMap {
@@ -77,17 +80,17 @@ impl Component for NetworkMap {
         }
     }
 
-    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             NetworkMapMsg::Loaded(state) => {
-                self.state = state;
+                self.state = Some(state);
                 self.error = None;
             }
             NetworkMapMsg::Error(error) => self.error = Some(error),
             NetworkMapMsg::Router(router) => self.router = Some(router),
-            NetworkMapMsg::Open(device) => {
-                if let Some(router) = &self.router {
-                    router.push(AppRoute::device(ctx.props().site, device as u32));
+            NetworkMapMsg::Open(device, site) => {
+                if let (Some(router), Some(site)) = (&self.router, site) {
+                    router.push(AppRoute::device(site as u32, device as u32));
                 }
                 return false;
             }
@@ -105,10 +108,11 @@ impl Component for NetworkMap {
             None if self.error.is_none() => html!(<Spinner/>),
             None => Html::default(),
             Some(state) => {
+                let no_router = if ctx.props().site.is_some() { t::NO_ROUTER } else { t::NO_ROUTER_ALL };
                 let source = match (&state.read_from, &state.error) {
                     (Some(device), _) => t::read_from(&device.name, state.age as u32),
                     (None, Some(error)) => t::unreadable(error),
-                    (None, None) => t::NO_ROUTER.to_string(),
+                    (None, None) => no_router.to_string(),
                 };
                 html! {
                     <>
@@ -119,11 +123,12 @@ impl Component for NetworkMap {
                 }
             }
         };
+        let intro = if ctx.props().site.is_some() { t::INTRO } else { t::INTRO_ALL };
         html! {
             <Card>
                 <CardHeader><CardTitle>{t::TITLE}</CardTitle></CardHeader>
                 <CardBody>
-                    <p>{t::INTRO}</p>
+                    <p>{intro}</p>
                     {error}
                     {body}
                 </CardBody>
@@ -132,15 +137,15 @@ impl Component for NetworkMap {
     }
 }
 
-fn poll(scope: Scope<NetworkMap>, site: u32, alive: Rc<Cell<bool>>) {
+fn poll(scope: Scope<NetworkMap>, site: Option<u32>, alive: Rc<Cell<bool>>) {
     yew::platform::spawn_local(async move {
         let mut failed = 0;
         while alive.get() {
-            let variables = network_map::Variables { site: site as i64 };
+            let variables = network_map::Variables { site: site.map(|s| s as i64) };
             match query_authenticated::<NetworkMapQuery, _>(scope.clone(), variables).await {
                 Ok(data) => {
                     failed = 0;
-                    let state = data.topology.site_by_id.map(|site| site.network_state);
+                    let state = data.topology.network_state;
                     if alive.get() {
                         scope.send_message(NetworkMapMsg::Loaded(state));
                     }
@@ -283,11 +288,11 @@ fn map(state: &State, scope: &Scope<NetworkMap>) -> Html {
         let (class, text) = match node.state {
             NodeState::REACHED => ("reached", t::NODE_REACHED),
             NodeState::ISOLATED => ("isolated", t::NODE_ISOLATED),
-            NodeState::MISSING => ("missing", t::NODE_MISSING),
-            _ => ("no-ospf", t::NODE_NO_OSPF),
+            _ => ("missing", t::NODE_MISSING),
         };
         let id = node.device.id;
-        let onclick = scope.callback(move |_| NetworkMapMsg::Open(id));
+        let site = node.device.site;
+        let onclick = scope.callback(move |_| NetworkMapMsg::Open(id, site));
         let shape = if node.routeros {
             html!(<circle cx={p.0.to_string()} cy={p.1.to_string()} r="14"/>)
         } else {
@@ -336,7 +341,6 @@ fn legend() -> Html {
                 {node("reached", t::NODE_REACHED)}
                 {node("isolated", t::NODE_ISOLATED)}
                 {node("missing", t::NODE_MISSING)}
-                {node("no-ospf", t::NODE_NO_OSPF)}
                 {edge("up", t::EDGE_UP)}
                 {edge("v3-down", t::EDGE_V3_DOWN)}
                 {edge("down", t::EDGE_DOWN)}

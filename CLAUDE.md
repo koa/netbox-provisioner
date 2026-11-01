@@ -407,12 +407,23 @@ mean the route is in the FIB yet under this harness's software-emulated (TCG, no
 realistic-path apply retries "General SOCKS server failure" against a deadline rather than failing
 on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 
-`backend/src/network_state/` is step 1 of the network map (C9, `docs/concepts/network-map.md`):
-`lsa` parses `/routing/ospf/lsa/print` rows (router and network LSAs of `default-v2`/`-v3`),
-`edges` gives each cable and wireless link of a set of devices an `EdgeState` from that LSDB. A
-router that went away leaves its LSAs for an hour, so a segment counts only for routers whose
-own router LSA links to its DR. CHR test `the_lsdb_gives_the_state_of_each_edge`. Nothing calls
-it yet (no GraphQL, no page).
+`backend/src/network_state/` is steps 1 and 2 of the network map (C9,
+`docs/concepts/network-map.md`): `lsa` parses `/routing/ospf/lsa/print` rows (router and network
+LSAs of `default-v2`/`-v3`), `edges` gives each cable and wireless link of a set of devices an
+`EdgeState` from that LSDB. A router that went away leaves its LSAs for an hour, so a segment
+counts only for routers whose own router LSA links to its DR. CHR test
+`the_lsdb_gives_the_state_of_each_edge`. `read::read` gets the LSDB from one router (the
+management proxy's device if it has OSPF, else a site's or the whole topology's OSPF routers by
+name), as the fact `FactKind::Lsdb` (`read::LSDB_AGE`, 5 s). `graphql::network_state` turns that
+into `NetworkState` (nodes, edges, the router read from, the routers outside NetBox and where
+they come in), left out for a device without OSPF (no RouterOS, no primary IPv4, or no `ospf`
+interface anywhere, `graphql::supports_ospf`; unit-tested in `graphql::test` with a hand-built
+topology, no live device needed) and its edges. `Query.topology.networkState(siteId)` serves it,
+a site's devices with `siteId`, every device of every site without it; the frontend
+(`components::network_map`) shows it as an SVG at `/site/<id>/map` and, over every site, at
+`/network-map` (linked from the devices page and the sites page), polled every 5 s with a fixed
+layout (columns by hops from the router read). A node's own site (`DeviceRef.site`, not the
+page's) opens its device page, since the all-sites map mixes devices of different sites.
 
 ## Device access, setup and updates
 

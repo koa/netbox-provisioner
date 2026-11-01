@@ -1,13 +1,16 @@
 # Konzept: Netz-Ansicht (Ist-Zustand, Health, PoE)
 
 Status: Schritt 1 und 2 der [Reihenfolge](#reihenfolge-der-umsetzung) umgesetzt (LSA-Parser,
-Zustand der Kanten und Knoten, `Site.networkState`, SVG-Karte mit festem Layout,
-`backend/src/network_state/`, `components::network_map`), der Rest ist Konzept. Aufgabe C9 in
-[todo.md](../todo.md).
+Zustand der Kanten und Knoten, `Query.topology.networkState(siteId)`, SVG-Karte mit festem
+Layout, `backend/src/network_state/`, `components::network_map`), der Rest ist Konzept. Aufgabe
+C9 in [todo.md](../todo.md).
 
-Eine Seite pro Site: das Netz als Graph, Soll aus NetBox, Ist live aus dem Netz. Knoten sind
-Geräte, Kanten Kabel und Funkbrücken. Farben zeigen den Zustand, ein Klick auf einen Knoten zeigt
-Health und PoE.
+Eine Seite pro Site, und eine über alle Sites (`/network-map`, Link auf der Sites-Seite): das
+Netz als Graph, Soll aus NetBox, Ist live aus dem Netz. Knoten sind Geräte, Kanten Kabel und
+Funkbrücken; ein Gerät ohne OSPF (`network_state::graphql::supports_ospf`: kein RouterOS, keine
+primäre IPv4 oder kein `ospf`-Interface) erscheint auf keiner der beiden Karten, mit seinen
+Kanten. Farben zeigen den Zustand, ein Klick auf einen Knoten zeigt Health und PoE und öffnet
+die Geräteseite (an der eigenen Site des Knotens, nicht der der Karte).
 
 ## Gemessen (CHR und Lab, 2026-10-15, nur lesend)
 
@@ -202,7 +205,9 @@ Historie, ergänzend.
 2. `networkState` mit Kanten und Knoten nur aus dem LSDB, SVG-Ansicht mit festem Layout.
    **Umgesetzt** (2026-11-01): Spalten nach Hops vom gelesenen Router, gegen die Lab/Produktion
    geprüft (lab-np2 liest 43 Router-LSAs v2, zeigt lab-wap als `REACHED` über die Kante
-   `ether3`–`ether1` und 41 nicht in NetBox bekannte Router als „ausserhalb“).
+   `ether3`–`ether1` und 41 nicht in NetBox bekannte Router als „ausserhalb“). Dazu eine Karte
+   über alle Sites (`siteId` weggelassen), und Geräte ohne OSPF (mit ihren Kanten) auf beiden
+   nicht dargestellt, mit Unit-Tests dafür (`network_state::graphql::test`).
 3. Gerätedaten: Health, Ressourcen, Seitenleiste.
 4. PoE-Kanten und -Budget.
 5. Verschiebbare Knoten, Positionen im Browser, Publizieren des offiziellen Layouts.

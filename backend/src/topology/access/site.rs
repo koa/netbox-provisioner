@@ -69,9 +69,4 @@ impl SiteAccess {
     async fn findings(&self) -> Vec<Finding> {
         self.topology.site_findings(self.id)
     }
-    /// Its devices and edges as OSPF sees them, for the network map; read anew after
-    /// `network_state::read::LSDB_AGE`.
-    async fn network_state(&self) -> crate::network_state::graphql::NetworkState {
-        crate::network_state::graphql::network_state(self.devices().collect()).await
-    }
 }
