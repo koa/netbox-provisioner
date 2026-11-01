@@ -407,6 +407,13 @@ mean the route is in the FIB yet under this harness's software-emulated (TCG, no
 realistic-path apply retries "General SOCKS server failure" against a deadline rather than failing
 on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 
+`backend/src/network_state/` is step 1 of the network map (C9, `docs/concepts/network-map.md`):
+`lsa` parses `/routing/ospf/lsa/print` rows (router and network LSAs of `default-v2`/`-v3`),
+`edges` gives each cable and wireless link of a set of devices an `EdgeState` from that LSDB. A
+router that went away leaves its LSAs for an hour, so a segment counts only for routers whose
+own router LSA links to its DR. CHR test `the_lsdb_gives_the_state_of_each_edge`. Nothing calls
+it yet (no GraphQL, no page).
+
 ## Device access, setup and updates
 
 What is asked of devices and MikroTik goes through `facts` (`docs/device-state.md`):

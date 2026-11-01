@@ -1,12 +1,16 @@
 # Konzept: Netz-Ansicht (Ist-Zustand, Health, PoE)
 
-Status: Konzept, nicht umgesetzt. Aufgabe C9 in [todo.md](../todo.md).
+Status: Schritt 1 der [Reihenfolge](#reihenfolge-der-umsetzung) umgesetzt (LSA-Parser und Zustand der
+Kanten, `backend/src/network_state/`), der Rest ist Konzept. Aufgabe C9 in [todo.md](../todo.md).
 
 Eine Seite pro Site: das Netz als Graph, Soll aus NetBox, Ist live aus dem Netz. Knoten sind
 Geräte, Kanten Kabel und Funkbrücken. Farben zeigen den Zustand, ein Klick auf einen Knoten zeigt
 Health und PoE.
 
 ## Gemessen (CHR und Lab, 2026-10-15, nur lesend)
+
+Das Lab ist seit 2026-10-31 kleiner (lab-np2 und lab-wap). Auf lab-np2 am 2026-11-01: 503 LSAs,
+darunter 43 Router-LSAs v2 (die Produktion über `e15`).
 
 Die Datenquellen unten sind nicht geraten. Gelesen auf einer 3-Knoten-CHR-Kette
 (`ospf_chain.rs`) und auf allen acht Lab-Geräten:
@@ -59,6 +63,24 @@ Port B):
 | grün | Die Router beider Enden stehen im selben Network-LSA, und zwar in dem, dessen Netz die Adresse von A enthält. |
 | rot | Ein Ende meldet für das Netz `stub` oder gar nichts, oder ein Router fehlt ganz im LSDB. |
 | orange | OSPFv2 ist oben, OSPFv3 nicht (siehe unten), oder Fehlerzähler oder `link-downs` des Ports steigen (Gerätedaten, siehe unten). |
+
+Umgesetzt in `network_state::edges` (`EdgeState`: `Up`, `V3Down`, `Down` mit Grund, `NotOspf`).
+Dabei gelernt:
+
+- **LSAs bleiben liegen:** Ein Router, der wegfällt, lässt seine LSAs im LSDB der anderen, bis sie
+  nach einer Stunde altern. War er DR, steht sein Network-LSA weiter mit beiden Routern da. Ein
+  Segment zählt deshalb nur, wenn die Router-LSAs beider Router einen Transit-Link zu seinem DR
+  haben (wie im SPF); in v3 entsprechend `neighbor-router-id` = DR. Fehlt das, ist die Kante unten
+  (`NoSegment` am nahen, `NotOnSegment` am fernen Ende).
+- **Wie schnell:** Ein Port, der abgeschaltet wird, ohne dass die Gegenseite den Link verliert,
+  ist erst nach dem Dead-Interval (40 s) unten.
+- RouterOS schreibt im v3-Router-LSA `neighbor-iface-if` (sic).
+- Der Parser liegt im Backend (`network_state::lsa`), nicht in mikrotik-model: Der `body` ist
+  freier Text, kein modelliertes Feld.
+
+Geprüft: Unit-Tests in `network_state` (Zeilen wie auf lab-np2 gelesen) und der CHR-Test
+`the_lsdb_gives_the_state_of_each_edge` (Kette aus drei Routern, LSDB vom ersten gelesen; Port
+des dritten ab: nur dessen Kante unten; wieder an: beide oben).
 
 Ein L2-Segment über mehrere Kabel geht auch: Im Lab steht im Network-LSA `192.168.101.12` lab-np1,
 lab-sxt-a, lab-sxt-b und lab-np2, weil die Funkbrücke auf L2 durchgeht. Alle drei Kanten der Kette
@@ -174,7 +196,7 @@ Historie, ergänzend.
 ## Reihenfolge der Umsetzung
 
 1. LSA-Parser und Zuordnung zu NetBox-Kanten, mit Unit-Tests aus den gemessenen Daten und einem
-   CHR-Test (Link abschalten → Kante rot).
+   CHR-Test (Link abschalten → Kante rot). **Umgesetzt** (2026-11-01).
 2. `networkState` mit Kanten und Knoten nur aus dem LSDB, SVG-Ansicht mit festem Layout.
 3. Gerätedaten: Health, Ressourcen, Seitenleiste.
 4. PoE-Kanten und -Budget.
