@@ -38,7 +38,18 @@ normales OCI-Image.
   `gcc-lib`/`libgcc`, OpenSSL, `libidn2`, `libunistring`, dazu `cacert`. Image rund 50 MiB
   gepackt, 133 MiB entpackt; ausführbar ist darin ausser dem Provisioner nur
   `glibc/libexec/getconf/*`.
-- **`checks`:** die Tests ohne CHR, die drei Clippy-Läufe mit `-D warnings` und `no-shell`: Taucht
+- **Gebaut mit [crane](https://crane.dev):** Die Abhängigkeiten der Crates sind eigene
+  Ableitungen, gebaut aus dem Workspace mit Attrappen statt der Quellen dieses Repositorys
+  (`mkDummySrc`); sie ändern sich nur mit einem `Cargo.toml`, `Cargo.lock` oder `flake.lock`.
+  Drei davon: nativ im Debug-Profil für Tests und Clippy, nativ im Release-Profil für das Binary,
+  wasm für das Frontend (mit den Host-Crates seines Build-Skripts). Die beiden Bibliotheken sind
+  darin ganz enthalten, weil sie sich nur mit `flake.lock` ändern. Das Frontend ist eine eigene
+  Ableitung (`packages.frontend`), einmal gebaut für das Binary und den Clippy-Lauf des Binaries.
+  Tests, Clippy und Binary übernehmen die Abhängigkeiten (`cargoArtifacts`) und bauen nur die
+  eigenen Crates. Die Bauverzeichnisse heissen gleich (`workspace`), sonst wären die Pfade
+  verschieden und Cargo baute alles neu.
+- **`checks`:** die Tests ohne CHR, die drei Clippy-Läufe mit `-D warnings` (Backend und Binary,
+  Frontend für wasm) und `no-shell`: Taucht
   in der Closure eine Shell oder ein Interpreter auf, schlägt der Check fehl. So bleibt das Image
   ohne Shell, auch wenn eine neue Abhängigkeit eine mitbrächte.
 - **Bibliotheken:** `mikrotik-model` und `mikrotik-api` sind Flake-Inputs (GitHub, Zweig
@@ -85,6 +96,10 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
 ## GitHub Actions
 
 - **`.github/workflows/ci.yaml`:** bei jedem Push `nix flake check`, das Image und `helm lint`.
+  `magic-nix-cache-action` hält den Nix-Store zwischen den Läufen im Cache von GitHub Actions,
+  Pfad für Pfad (bis 10 GB pro Repository, das älteste fällt zuerst heraus): Ein Lauf baut nur,
+  was sich geändert hat, ohne geänderte Abhängigkeiten also nur die eigenen Crates und das
+  Frontend.
   - Ein Push auf `master` veröffentlicht einen **Snapshot**: das Image
     `ghcr.io/koa/netbox-provisioner:sha-<kurz>` und das Chart in `oci://ghcr.io/koa/charts` als
     Vorabversion der nächsten Release (`version` in `Chart.yaml`), nach Zeit geordnet

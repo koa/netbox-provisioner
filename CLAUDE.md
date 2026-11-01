@@ -24,7 +24,13 @@ checked/tested independently.
 
 `flake.nix` builds the same with Nix (`nix build .#image`: an OCI image of the binary and the CA
 certificates, no shell; `nix flake check`: tests, the three clippy runs, no shell or interpreter
-in the closure) and is what CI runs (`.github/workflows/ci.yaml`). It takes `mikrotik-model` and
+in the closure) and is what CI runs (`.github/workflows/ci.yaml`, with the store kept between
+runs by `magic-nix-cache-action`). It builds with crane: the crates' dependencies are
+derivations of their own (`deps`, from `dummyWorkspace`: this repository's crates dummied, the
+two libraries whole), one for dev (tests, clippy), release (binary) and wasm (frontend), and the
+frontend is one derivation (`packages.frontend`) the binary and its clippy run copy in; a new
+check takes the fitting deps as `cargoArtifacts` and runs the same cargo command (profile,
+packages, target) the deps were built with, or cargo rebuilds them. It takes `mikrotik-model` and
 `mikrotik-api` as flake inputs from GitHub (branch `claude-edition`) and puts them next to this
 repository, where the path dependencies find them: a change there reaches the image only after it
 is pushed and `nix flake update mikrotik-model` (or `mikrotik-api`) is committed here; locally

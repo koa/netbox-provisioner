@@ -7,6 +7,8 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # builds the dependencies apart from the crates, so they come from the cache
+    crane.url = "github:ipetkov/crane";
     # the two libraries are path dependencies (`../../mikrotik-model`); the build puts them next
     # to this repository, as they are in the workspace. Locally:
     #   nix build --override-input mikrotik-model path:../mikrotik-model \
@@ -26,6 +28,7 @@
       self,
       nixpkgs,
       rust-overlay,
+      crane,
       mikrotik-model,
       mikrotik-api,
     }:
@@ -39,10 +42,7 @@
       toolchain = pkgs.rust-bin.stable.latest.default.override {
         targets = [ "wasm32-unknown-unknown" ];
       };
-      rustPlatform = pkgs.makeRustPlatform {
-        cargo = toolchain;
-        rustc = toolchain;
-      };
+      craneLib = (crane.mkLib pkgs).overrideToolchain (_: toolchain);
       # trunk runs the wasm-bindgen of the version in Cargo.lock
       wasmBindgen = pkgs.wasm-bindgen-cli_0_2_129;
 
@@ -61,48 +61,116 @@
             "config.yaml"
           ]);
       };
-      workspace = pkgs.runCommand "workspace" { } ''
-        mkdir -p $out
-        cp -r ${own} $out/netbox-provisioner
-        cp -r ${mikrotik-model} $out/mikrotik-model
-        cp -r ${mikrotik-api} $out/mikrotik-api
-        chmod -R u+w $out
-      '';
+      sideBySide =
+        name: ownSrc: modelSrc: apiSrc:
+        pkgs.runCommand name { } ''
+          mkdir -p $out
+          cp -r ${ownSrc} $out/netbox-provisioner
+          cp -r ${modelSrc} $out/mikrotik-model
+          cp -r ${apiSrc} $out/mikrotik-api
+          chmod -R u+w $out
+        '';
+      workspace = sideBySide "workspace" own mikrotik-model mikrotik-api;
+      # the same with this repository's crates dummied, for building only the dependencies: it
+      # changes only with a Cargo.toml or Cargo.lock here or with flake.lock, so the dependencies
+      # come from the cache. The two libraries stay whole: they change only with flake.lock, and
+      # mikrotik-model is the biggest crate of all. Same name as `workspace`, so both unpack to
+      # the same path and cargo takes the dependencies as fresh.
+      dummyWorkspace =
+        sideBySide "workspace" (craneLib.mkDummySrc { src = own; }) mikrotik-model
+          mikrotik-api;
 
-      # what every build of the crates shares: sources, vendored crates and npm modules, tools
+      # what every build shares: the vendored crates, cargo run in this repository's directory
       common = {
         pname = "netbox-provisioner";
         version = "0.1.0";
         src = workspace;
-        sourceRoot = "workspace/netbox-provisioner";
-        cargoLock.lockFile = ./Cargo.lock;
-        npmDeps = pkgs.fetchNpmDeps {
-          src = ./frontend/node;
-          hash = "sha256-/eB4Wl1zm8x6I+mvgVX8Np/OPggI+pkKUy+Tei+WEQU=";
-        };
-        npmRoot = "frontend/node";
-        nativeBuildInputs = [
-          pkgs.trunk
-          pkgs.dart-sass
-          wasmBindgen
-          pkgs.nodejs
-          pkgs.npmHooks.npmConfigHook
-          pkgs.pkg-config
-        ];
+        # cargo runs in this repository, next to the two libraries
+        postUnpack = ''
+          sourceRoot="$sourceRoot/netbox-provisioner"
+        '';
+        cargoVendorDir = craneLib.vendorCargoDeps { cargoLock = ./Cargo.lock; };
+        strictDeps = true;
+        nativeBuildInputs = [ pkgs.pkg-config ];
         buildInputs = [ pkgs.openssl ];
-        # the binary embeds the frontend (`binary/build.rs` only checks that `dist` is there)
-        preBuild = ''
-          (cd frontend && trunk build --release --offline)
+      };
+      # the dependencies alone, built from the dummied workspace with the commands of the
+      # builds that inherit them, so cargo finds them fresh there
+      deps =
+        name: attrs:
+        craneLib.buildDepsOnly (
+          common
+          // {
+            pname = "netbox-provisioner-${name}";
+            src = null;
+            dummySrc = dummyWorkspace;
+            doCheck = false;
+          }
+          // attrs
+        );
+
+      # the tests and the clippy runs of backend and binary (debug)
+      nativeDevDeps = deps "native-dev" {
+        CARGO_PROFILE = "dev";
+        buildPhaseCargoCommand = ''
+          cargo clippy --locked -p backend --all-targets
+          cargo clippy --locked -p binary
+          cargo test --locked -p backend --no-run
+        '';
+      };
+      # the binary (release)
+      nativeReleaseDeps = deps "native-release" {
+        buildPhaseCargoCommand = ''
+          cargo build --locked --release -p binary
+        '';
+      };
+      # the frontend (wasm, release) and its clippy run, with the build script's host crates
+      wasmDeps = deps "wasm" {
+        buildPhaseCargoCommand = ''
+          cargo build --locked --release -p frontend --target wasm32-unknown-unknown
+          cargo clippy --locked --release -p frontend --target wasm32-unknown-unknown
         '';
       };
 
-      provisioner = rustPlatform.buildRustPackage (
+      # the frontend once, embedded by the binary (`binary/build.rs` only checks that `dist` is
+      # there) and needed by the clippy run of the binary
+      frontend = craneLib.mkCargoDerivation (
         common
         // {
-          cargoBuildFlags = [
-            "-p"
-            "binary"
+          pname = "netbox-provisioner-frontend";
+          cargoArtifacts = wasmDeps;
+          npmDeps = pkgs.fetchNpmDeps {
+            src = ./frontend/node;
+            hash = "sha256-/eB4Wl1zm8x6I+mvgVX8Np/OPggI+pkKUy+Tei+WEQU=";
+          };
+          npmRoot = "frontend/node";
+          nativeBuildInputs = common.nativeBuildInputs ++ [
+            pkgs.trunk
+            pkgs.dart-sass
+            wasmBindgen
+            pkgs.nodejs
+            pkgs.npmHooks.npmConfigHook
           ];
+          buildPhaseCargoCommand = ''
+            (cd frontend && trunk build --release --offline)
+          '';
+          doInstallCargoArtifacts = false;
+          installPhaseCommand = ''
+            cp -r frontend/dist $out
+          '';
+        }
+      );
+      withFrontend = ''
+        cp -r ${frontend} frontend/dist
+        chmod -R u+w frontend/dist
+      '';
+
+      provisioner = craneLib.buildPackage (
+        common
+        // {
+          cargoArtifacts = nativeReleaseDeps;
+          cargoExtraArgs = "--locked -p binary";
+          preBuild = withFrontend;
           # the checks run them (`checks.tests`)
           doCheck = false;
           postInstall = ''
@@ -113,25 +181,21 @@
 
       # a check is a build of the workspace that runs cargo and leaves only a stamp
       check =
-        name: script:
-        rustPlatform.buildRustPackage (
+        name: artifacts: script:
+        craneLib.mkCargoDerivation (
           common
           // {
             pname = "netbox-provisioner-${name}";
-            buildPhase = ''
-              runHook preBuild
-              ${script}
-              runHook postBuild
-            '';
-            doCheck = false;
-            installPhase = "touch $out";
+            cargoArtifacts = artifacts;
+            buildPhaseCargoCommand = script;
+            doInstallCargoArtifacts = false;
           }
         );
     in
     {
       packages.${system} = {
         default = provisioner;
-        inherit provisioner;
+        inherit provisioner frontend;
         # an OCI image of the binary and the CA certificates, nothing else: no shell, no
         # coreutils (`docs/deployment.md`)
         image = pkgs.dockerTools.buildLayeredImage {
@@ -154,13 +218,16 @@
 
       checks.${system} = {
         # the CHR tests are `#[ignore]`: they boot VMs
-        tests = check "tests" ''
-          cargo test --offline -p backend
+        tests = check "tests" nativeDevDeps ''
+          cargo test --locked -p backend
         '';
-        clippy = check "clippy" ''
-          cargo clippy --offline -p backend --all-targets -- -D warnings
-          (cd frontend && cargo clippy --offline --target wasm32-unknown-unknown -- -D warnings)
-          cargo clippy --offline -p binary -- -D warnings
+        clippy = check "clippy" nativeDevDeps ''
+          cargo clippy --locked -p backend --all-targets -- -D warnings
+          ${withFrontend}
+          cargo clippy --locked -p binary -- -D warnings
+        '';
+        clippy-frontend = check "clippy-frontend" wasmDeps ''
+          cargo clippy --locked --release -p frontend --target wasm32-unknown-unknown -- -D warnings
         '';
         # the image holds no shell or interpreter, also when a new dependency would bring one
         no-shell = pkgs.runCommand "no-shell" { closure = pkgs.closureInfo { rootPaths = [ provisioner ]; }; } ''

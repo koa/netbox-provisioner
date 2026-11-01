@@ -23,6 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: cachix/install-nix-action@v31
+      # the nix store between runs, path by path in the GitHub Actions cache: with the crates'
+      # dependencies built apart (flake.nix), a run builds only what changed
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
       # tests (without the `#[ignore]` CHR tests), the three clippy runs, no shell in the image
       - name: checks
         run: nix flake check -L
