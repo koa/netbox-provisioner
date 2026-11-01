@@ -18,11 +18,11 @@ use crate::{
     i18n::helper_flow as t,
 };
 use patternfly_yew::prelude::{
-    Bullseye, Button, ButtonVariant, Form, FormGroup, Modal, ModalVariant, ProgressStepper,
+    Bullseye, Button, ButtonVariant, Form, FormGroup, Modal, ModalVariant,
     ProgressStepperStep, ProgressStepperStepStatus, Spinner, SpinnerSize,
 };
 use std::fmt::{self, Display, Formatter};
-use yew::{Callback, Component, Context, Html, Properties, html, html_nested, platform::spawn_local};
+use yew::{Callback, Component, Context, Html, Properties, html, platform::spawn_local};
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct HelperFlowProps {
@@ -149,7 +149,7 @@ impl Component for HelperFlow {
             } else {
                 ProgressStepperStepStatus::Pending
             };
-            html_nested!(<ProgressStepperStep {status} is_current={index == current}><span>{label}</span></ProgressStepperStep>)
+            html!(<ProgressStepperStep {status} is_current={index == current}><span>{label}</span></ProgressStepperStep>)
         };
         let onclose = props.onclose.clone();
         let footer = if self.phase == Phase::Written {
@@ -177,12 +177,14 @@ impl Component for HelperFlow {
                         disable_close_click_outside=true
                         {footer}
                     >
-                        <ProgressStepper>
+                        // in a row also on a phone, where `ProgressStepper` stacks the steps and
+                        // takes a third of the height
+                        <ol class="pf-v6-c-progress-stepper pf-m-horizontal">
                             { for [t::PLAN, t::PREVIEW, t::WRITE, t::APPLY]
                                 .into_iter()
                                 .enumerate()
                                 .map(|(index, label)| step(index, label)) }
-                        </ProgressStepper>
+                        </ol>
                         if matches!(props.preset, HelperPreset::RadioChoose { .. }) {
                             {self.bridge_choice(ctx)}
                         }

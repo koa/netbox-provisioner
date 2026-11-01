@@ -493,6 +493,11 @@ div.pf-v6-c-backdrop.helper-flow {
     & .pf-v6-c-progress-stepper {
         margin-block-end: var(--pf-t--global--spacer--lg);
     }
+    /* the steps keep their height, only the helper below them scrolls */
+    & .pf-v6-c-modal-box__body:has(> .pf-v6-c-progress-stepper) {
+        flex-shrink: 0;
+        overflow: visible;
+    }
     & .pf-v6-c-modal-box__footer {
         gap: var(--pf-t--global--spacer--sm);
     }

@@ -3,7 +3,10 @@
 Die Seite eines Geräts (`frontend/src/pages/devices/show.rs`) trennt, was man liest (Zustand),
 was man tun kann (Aktionen) und was gerade passiert (Job). Sie besteht aus Karten, auf breiten
 Bildschirmen teils in zwei Spalten, auf dem Telefon untereinander. Lange Werte (Pakete, OSPF-Nachbarn)
-brechen um; ein Skript scrollt in seiner Box waagrecht, die Seite selbst nie.
+brechen um; ein Skript scrollt in seiner Box waagrecht, die Seite selbst nie. Die Helfer öffnen auf
+dem Telefon über die ganze Breite, ihre Schritte stehen auch dort in einer Zeile (senkrecht nahmen
+sie ein Drittel der Höhe), und nur der Helfer darunter scrollt; die Auswahlen öffnen unter dem Feld
+in der Breite des Dialogs (im Lab bei 390 px geprüft).
 
 ## Aufbau
 
