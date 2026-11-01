@@ -194,6 +194,14 @@ pub struct InterfaceLive;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/interface-live.graphql",
+    response_derives = "Debug"
+)]
+pub struct RefreshInterfaceLive;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/neighbor-findings.graphql",
     response_derives = "Debug, Clone, PartialEq"
 )]

@@ -1595,9 +1595,13 @@ impl AccessibleDevice {
         self.neighbor_table().await.age().as_secs()
     }
     /// The live checks of the interface view (`DeviceAccess.interfaceView`) by row: neighbors,
-    /// OSPF, the bridge devices of radio links answering.
+    /// OSPF, the bridge devices of radio links answering (`interfaceLiveAge`).
     async fn interface_live(&self) -> Result<crate::device::interface_live::InterfaceLive, ApiError> {
-        Ok(crate::device::interface_live::read(&self.connect_again().await?, &self.device_config).await?)
+        Ok((*self.interface_live_fact().await.result()?).clone())
+    }
+    /// seconds since the device was read for `interfaceLive`
+    async fn interface_live_age(&self) -> u64 {
+        self.interface_live_fact().await.age().as_secs()
     }
     /// The ports the device reports feeding something over PoE, and what is at their other
     /// end (helper „PoE“).
@@ -1726,6 +1730,9 @@ pub(crate) fn of_device_as_is(key: &FactKey) -> bool {
 /// How old RouterOS version and packages may be: only jobs change them, and those drop them.
 const ROUTEROS_AGE: Duration = Duration::from_secs(10 * 60);
 const PARTITIONS_AGE: Duration = Duration::from_secs(10 * 60);
+/// How old the live checks of the interface view may be: shown with their time, „Erneut
+/// prüfen“ reads anew (`refreshInterfaceLive`), jobs on the device and NetBox changing drop them.
+const INTERFACE_LIVE_AGE: Duration = Duration::from_secs(60);
 /// How old the neighbors a device sees may be: a cable seldom moves, „Nochmals prüfen“ reads
 /// anew (`refreshNeighbors`).
 const NEIGHBORS_AGE: Duration = Duration::from_secs(10 * 60);
@@ -1767,6 +1774,15 @@ impl AccessibleDevice {
             })
         };
         facts::get(self.fact_key(FactKind::Config), freshness, generated).await
+    }
+    /// The live checks (`FactKind::InterfaceLive`): NetBox changing drops them, they compare
+    /// with it.
+    async fn interface_live_fact(&self) -> facts::Fact<crate::device::interface_live::InterfaceLive> {
+        let device = self.duplicate();
+        let read = async move {
+            crate::device::interface_live::read(&device.connect_again().await?, &device.device_config).await
+        };
+        facts::get(self.fact_key(FactKind::InterfaceLive), self.freshness(INTERFACE_LIVE_AGE), read).await
     }
     /// What the device answers for the neighbor check (`FactKind::Neighbors`).
     async fn neighbor_table(&self) -> facts::Fact<neighbors::NeighborTable> {

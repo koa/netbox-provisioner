@@ -57,7 +57,12 @@ impl TopologyHolder {
                         info!("Topology changed in NetBox: {}", parts.join(", "));
                     }
                     use crate::facts::{self, FactKind};
-                    facts::invalidate_everywhere(&[FactKind::Config, FactKind::RouterosState, FactKind::DeviceMode]);
+                    facts::invalidate_everywhere(&[
+                        FactKind::Config,
+                        FactKind::RouterosState,
+                        FactKind::DeviceMode,
+                        FactKind::InterfaceLive,
+                    ]);
                     facts::announce(facts::Change::Topology);
                 }
                 Ok(())

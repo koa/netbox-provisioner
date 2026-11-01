@@ -358,23 +358,35 @@ pub enum JobKind {
 
 impl JobKind {
     /// The facts about its device a job of the kind may change, dropped when it ends.
-    /// What the device sees (`Neighbors`) goes with every job touching it: an apply renames its
-    /// ports and sets the discovery list, a reboot loses the neighbors for a while.
+    /// What the device sees (`Neighbors`, `InterfaceLive`) goes with every job touching it: an
+    /// apply renames its ports and sets the discovery list, a reboot loses the neighbors for a
+    /// while.
     pub fn invalidates(self) -> &'static [FactKind] {
         use FactKind::*;
         match self {
-            JobKind::Apply => &[Login, Route, Config, Leftovers, Interfaces, Neighbors],
+            JobKind::Apply => &[Login, Route, Config, Leftovers, Interfaces, Neighbors, InterfaceLive],
             JobKind::Update | JobKind::Downgrade => &[
-                Login, Route, Config, RouterosState, Leftovers, Partitions, DeviceMode, Interfaces, Neighbors,
+                Login,
+                Route,
+                Config,
+                RouterosState,
+                Leftovers,
+                Partitions,
+                DeviceMode,
+                Interfaces,
+                Neighbors,
+                InterfaceLive,
             ],
-            JobKind::Cleanup => &[Login, Route, Config, RouterosState, Leftovers, Neighbors],
-            JobKind::Bootstrap => &[Login, Route, Config, RouterosState, Leftovers, Interfaces, Neighbors],
-            JobKind::Reboot => &[Login, Route, Config, Leftovers, Neighbors],
+            JobKind::Cleanup => &[Login, Route, Config, RouterosState, Leftovers, Neighbors, InterfaceLive],
+            JobKind::Bootstrap => {
+                &[Login, Route, Config, RouterosState, Leftovers, Interfaces, Neighbors, InterfaceLive]
+            }
+            JobKind::Reboot => &[Login, Route, Config, Leftovers, Neighbors, InterfaceLive],
             // a job of the supplier: what it sees on the port changes with the device it feeds
-            JobKind::PowerCycle => &[Login, Route, Leftovers, Neighbors],
-            JobKind::DeviceMode => &[Login, Route, Config, Leftovers, DeviceMode, Neighbors],
+            JobKind::PowerCycle => &[Login, Route, Leftovers, Neighbors, InterfaceLive],
+            JobKind::DeviceMode => &[Login, Route, Config, Leftovers, DeviceMode, Neighbors, InterfaceLive],
             JobKind::Repartition | JobKind::BootPartition => {
-                &[Login, Route, Config, RouterosState, Leftovers, Partitions, Neighbors]
+                &[Login, Route, Config, RouterosState, Leftovers, Partitions, Neighbors, InterfaceLive]
             }
             // NetBox changes a fact's key (addresses, cables), not what the device says
             JobKind::NetboxWrite | JobKind::NetboxUndo | JobKind::SiteDiff => &[],
@@ -384,7 +396,7 @@ impl JobKind {
 
 /// What a setup changes on the neighbor it works through: what that sees on its port, and the
 /// login the setup let through with a password for a moment.
-const THROUGH_INVALIDATES: &[FactKind] = &[FactKind::Neighbors, FactKind::Login];
+const THROUGH_INVALIDATES: &[FactKind] = &[FactKind::Neighbors, FactKind::InterfaceLive, FactKind::Login];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
 pub enum JobState {

@@ -173,8 +173,10 @@ So kann es nicht veralten, wenn sich NetBox oder eine Erkenntnis ändert.
 | Interfaces des Nachbarn (Portname für mac-telnet) | Nachbar | Apply auf dem Nachbarn |
 | Was das Gerät sieht (`neighbors::read_table`: Ports, `/ip/neighbor`) | Gerät | jedem Job auf dem Gerät, Bootstrap und Power-Cycle des Nachbarn |
 
-`interfaceLive`, `log` und Ping wollen genau den Moment zeigen. Ihre Verwender fragen mit
-`MaxAge(ZERO)`. Zwei gleichzeitige Seiten teilen sich so nur dieselbe Abfrage.
+`log` und Ping wollen genau den Moment zeigen. Ihre Verwender fragen mit
+`MaxAge(ZERO)`. Die Live-Prüfung der Interfaces (`interfaceLive`, Fakt `InterfaceLive`) darf
+1 min alt sein: Sie steht mit „Stand“ neben „Erneut prüfen“, das sie verwirft
+(`refreshInterfaceLive`), und jeder Job auf dem Gerät und jede Änderung in NetBox verwirft sie. Zwei gleichzeitige Seiten teilen sich so nur dieselbe Abfrage.
 
 Billig und daher nie gecacht: generiertes Skript und Diff (aus Live-Konfiguration plus NetBox),
 Warnungen, `bootstrap::plans`, Findings, Watchdog-Beziehungen, `wanted_packages`.
@@ -229,7 +231,8 @@ Der Verwender entscheidet, je nachdem, wofür er die Antwort braucht:
 | `working_plan` | Login des Nachbarn | `MaxAge(1 min)` | |
 | Vorab-Prüfung von Batch und [Netzwerk-Update](network-update.md) | Login aller Geräte | `MaxAge(1 min)` | was die Seiten gerade gesehen haben |
 | „Vergleich mit den Geräten“ | was das Gerät sieht | `MaxAge(10 min)` | ein Kabel wandert selten; „Nochmals lesen“ verwirft (`refreshNeighbors`) |
-| Live-Interfaces, Log, Ping | | `MaxAge(ZERO)` | der Moment |
+| Live-Prüfung der Interfaces | | `MaxAge(1 min)` | mit „Stand“; Jobs und NetBox verwerfen |
+| Log, Ping | | `MaxAge(ZERO)` | der Moment |
 
 Die Werte stehen beim Verwender als Konstanten mit ihrem Grund, nicht in einer zentralen
 Tabelle.
@@ -339,7 +342,7 @@ Klick jedes Gerät: Gecacht ist nur, was das Gerät antwortet, verglichen wird m
 jetzt ist. Ein in NetBox übernommenes Kabel nimmt seinen Befund so ohne neues Lesen weg, mit dem
 „Stand“ des Lesens daneben. Was die Gegenseite eines umbenannten Ports sieht, bleibt bis zu ihrem
 nächsten Lesen alt (das Gerät meldet den neuen Namen ohnehin erst mit der nächsten Ankündigung).
-Offen: ein „Stand“ für die Live-Prüfung der Interfaces.
+Die Live-Prüfung der Interfaces (`InterfaceLive`) ist abonniert und zeigt ihren „Stand“.
 
 ## Metriken für Prometheus
 

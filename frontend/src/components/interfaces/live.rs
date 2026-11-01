@@ -1,6 +1,7 @@
 //! The live checks of the rows (`AccessibleDevice.interfaceLive`): who the device sees at a
 //! row's ports, its OSPF neighbors there, the bridge devices of a radio link answering. Read
-//! after the view, in a query of their own; the neighbor findings come over as the type of the
+//! after the view, in a subscription of their own (a job on the device or a change in NetBox
+//! brings them anew), with the time they were read; the neighbor findings come over as the type of the
 //! query `NeighborFindings`, so `components::neighbor_check` words them.
 use super::{
     Interfaces, InterfacesMsg,
@@ -14,15 +15,16 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            InterfaceLive,
+            InterfaceLive, RefreshInterfaceLive,
             findings::Severity,
-            interface_live::{self, PoeProblem}, interface_view,
+            interface_live::{self, PoeProblem}, interface_view, refresh_interface_live,
             neighbor_findings::{
                 NeighborFindingsTopologyDeviceByIdAccessNeighborFindings as NeighborFinding, Seen,
                 Severity as NeighborSeverity,
             },
         },
-        query_authenticated_response,
+        live::{Subscription, read_at, subscribe},
+        query_authenticated,
     },
     i18n::interfaces as t,
 };
@@ -42,6 +44,8 @@ pub enum Live {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Checked {
+    /// when the device was read (milliseconds since the epoch)
+    pub read_at: f64,
     /// by the row's interface
     pub rows: HashMap<i64, Rc<LiveRow>>,
     pub other_findings: Vec<NeighborFinding>,
@@ -304,22 +308,19 @@ pub fn device_only_lease_list(leases: &[DeviceOnlyLease], device: impl Fn(&Devic
     }
 }
 
-/// Reads the live checks for the card.
-pub fn fetch(scope: Scope<Interfaces>, id: u32, target: SelectedTarget) {
-    spawn_local(async move {
-        let (credential_name, adhoc_credentials) = target
-            .credentials
-            .variables(|username, password| interface_live::AdhocCredentials { username, password });
-        let response = query_authenticated_response::<InterfaceLive, _>(
-            scope.clone(),
-            interface_live::Variables {
-                id: id as i64,
-                target: target.address.map(|a| a.to_string()),
-                credential_name,
-                adhoc_credentials,
-            },
-        )
-        .await;
+/// Subscribes to the live checks for the card.
+pub fn subscribe_live(scope: &Scope<Interfaces>, id: u32, target: SelectedTarget) -> Subscription {
+    let (credential_name, adhoc_credentials) = target
+        .credentials
+        .variables(|username, password| interface_live::AdhocCredentials { username, password });
+    let variables = interface_live::Variables {
+        id: id as i64,
+        target: target.address.map(|a| a.to_string()),
+        credential_name,
+        adhoc_credentials,
+    };
+    let to = scope.clone();
+    subscribe::<InterfaceLive, _>(scope, variables, move |response| {
         // `access` is null where the device can't be reached, the error says why
         let live = response.and_then(|response| {
             match response.data.map(|data| Checked::of(data, id)).transpose()?.flatten() {
@@ -329,20 +330,28 @@ pub fn fetch(scope: Scope<Interfaces>, id: u32, target: SelectedTarget) {
                 )),
             }
         });
-        scope.send_message(InterfacesMsg::Live(
-            live.unwrap_or_else(|error| Live::Unchecked(error.message())),
-        ));
+        to.send_message(InterfacesMsg::Live(live.unwrap_or_else(|error| Live::Unchecked(error.message()))));
+    })
+}
+
+/// Drops the device's live checks: the subscription reads them anew.
+pub fn check_again(scope: Scope<Interfaces>, id: u32) {
+    spawn_local(async move {
+        let variables = refresh_interface_live::Variables { id: id as i64 };
+        if let Err(error) = query_authenticated::<RefreshInterfaceLive, _>(scope.clone(), variables).await {
+            scope.send_message(InterfacesMsg::Live(Live::Unchecked(error.message())));
+        }
     });
 }
 
 impl Checked {
     /// `None` where the device has no access (not reachable).
     fn of(data: interface_live::ResponseData, device_id: u32) -> Result<Option<Checked>, FrontendError> {
-        let Some(live) = data
+        let Some((live, age)) = data
             .topology
             .device_by_id
             .and_then(|device| device.access)
-            .map(|access| access.interface_live)
+            .map(|access| (access.interface_live, access.interface_live_age))
         else {
             return Ok(None);
         };
@@ -394,6 +403,7 @@ impl Checked {
             })
             .collect::<Result<_, FrontendError>>()?;
         Ok(Some(Checked {
+            read_at: read_at(age),
             rows,
             other_findings: convert(&live.other_findings)?,
             other_addresses: live.other_addresses.into_iter().map(device_only).collect(),

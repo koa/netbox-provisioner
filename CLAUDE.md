@@ -217,8 +217,10 @@ the device has, a tunneled group whose VXLAN is in another bridge than the port 
 its plan runs `L2Setup` on the preview for the rest); its query
 hands the findings on to the type of `Findings` by serializing them (`rows::findings`), so
 `components::findings` words them. The live checks of the rows are `device/interface_live.rs`
-(`AccessibleDevice.interfaceLive`, a query of its own after the view, grouped onto the same
-rows, `DeviceAccess::interface_rows`): who the device sees (`neighbors::read`), its OSPF
+(`AccessibleDevice.interfaceLive`, a subscription of its own after the view, grouped onto the same
+rows, `DeviceAccess::interface_rows`; the fact `InterfaceLive`, up to 1 min old and shown with
+its time, dropped by „Erneut prüfen“ (`refreshInterfaceLive`), every job on the device and a
+topology change): who the device sees (`neighbors::read`), its OSPF
 neighbors there, and the radio link's bridge devices answering a ping (`raw::answering`). An
 OSPF neighbor's interface is RouterOS' name, which for a bridge or VLAN interface is L2's
 (`bridge-link` for NetBox' `link`), so it is matched by port name, else by the addresses

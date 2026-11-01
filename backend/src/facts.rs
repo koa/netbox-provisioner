@@ -96,6 +96,8 @@ pub enum FactKind {
     Neighbors,
     /// a device's interfaces as it names them
     Interfaces,
+    /// the live checks of the interface view (`interface_live::read`), against NetBox
+    InterfaceLive,
 }
 
 impl FactKind {
@@ -110,6 +112,7 @@ impl FactKind {
         FactKind::DeviceMode,
         FactKind::Neighbors,
         FactKind::Interfaces,
+        FactKind::InterfaceLive,
     ];
 }
 
@@ -127,6 +130,7 @@ impl FactKind {
             FactKind::DeviceMode => "device_mode",
             FactKind::Neighbors => "neighbors",
             FactKind::Interfaces => "interfaces",
+            FactKind::InterfaceLive => "interface_live",
         }
     }
 }

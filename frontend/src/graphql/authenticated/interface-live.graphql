@@ -1,7 +1,11 @@
-query InterfaceLive($id: Int!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
+mutation RefreshInterfaceLive($id: Int!){
+    refreshInterfaceLive(id: $id)
+}
+subscription InterfaceLive($id: Int!, $target: String, $credentialName: String, $adhocCredentials: AdhocCredentials){
     topology{
         deviceById(id: $id){
             access(target: $target, credentialName: $credentialName, adhocCredentials: $adhocCredentials){
+                interfaceLiveAge
                 interfaceLive{
                     rows{
                         interface

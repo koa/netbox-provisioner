@@ -21,9 +21,9 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{InterfaceView, findings::Severity, interface_view},
-        live::{Subscription, subscribe_data},
+        live::{Subscription, local_time, same_reading, subscribe_data},
     },
-    i18n::interfaces as t,
+    i18n::{device::as_of, interfaces as t},
 };
 use live::Live;
 use patternfly_yew::prelude::{
@@ -74,6 +74,8 @@ pub struct Interfaces {
     changed: BTreeMap<i64, Action>,
     /// the view subscribed to: shown again when NetBox changed
     subscription: Option<Subscription>,
+    /// the live checks subscribed to
+    live_subscription: Option<Subscription>,
 }
 
 /// A helper in the modal: what it starts with, its title, the row and action it is for.
@@ -86,7 +88,9 @@ struct Flow {
 pub enum InterfacesMsg {
     Data(Result<View, FrontendError>),
     Live(Live),
-    /// „Live prüfen“
+    /// subscribe to the live checks (the device or the way to it changed)
+    SubscribeLive,
+    /// „Erneut prüfen“: the device read anew
     CheckLive,
     Filter(Option<Task>),
     OnlyFindings(bool),
@@ -114,16 +118,28 @@ impl Component for Interfaces {
             flow: None,
             changed: BTreeMap::new(),
             subscription: None,
+            live_subscription: None,
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             InterfacesMsg::Data(view) => self.view = Some(view.map(Rc::new)),
-            InterfacesMsg::Live(live) => self.live = live,
+            InterfacesMsg::Live(mut live) => {
+                if let (Live::Checked(before), Live::Checked(checked)) = (&self.live, &mut live) {
+                    let read_at = same_reading(Some(before.read_at), checked.read_at);
+                    Rc::make_mut(checked).read_at = read_at;
+                }
+                self.live = live;
+            }
+            InterfacesMsg::SubscribeLive => {
+                self.live = Live::Pending;
+                let props = ctx.props();
+                self.live_subscription = Some(live::subscribe_live(ctx.link(), props.id, props.target.clone()));
+            }
             InterfacesMsg::CheckLive => {
                 self.live = Live::Pending;
-                live::fetch(ctx.link().clone(), ctx.props().id, ctx.props().target.clone());
+                live::check_again(ctx.link().clone(), ctx.props().id);
             }
             InterfacesMsg::Filter(filter) => {
                 self.filter = filter;
@@ -162,7 +178,7 @@ impl Component for Interfaces {
         }
         if props.id != old.id || props.refresh != old.refresh || props.target != old.target {
             self.subscription = Some(subscribe_view(ctx));
-            ctx.link().send_message(InterfacesMsg::CheckLive);
+            ctx.link().send_message(InterfacesMsg::SubscribeLive);
         }
         props.applied != old.applied || props.target != old.target
     }
@@ -186,6 +202,10 @@ impl Component for Interfaces {
                 on_apply={props.on_apply.clone()}
             />
         });
+        let as_of = match &self.live {
+            Live::Checked(checked) => html!(<span class="interfaces-as-of">{as_of(&local_time(checked.read_at))}</span>),
+            _ => html!(),
+        };
         let check_live = html! {
             <Button
                 variant={ButtonVariant::Secondary}
@@ -197,7 +217,7 @@ impl Component for Interfaces {
         };
         html! {<>
             <Card class="interfaces">
-                <CardHeader actions={CardHeaderActionsObject { actions: html!(<div class="interfaces-actions">{check_live}</div>), has_no_offset: false, class: Default::default() }}>
+                <CardHeader actions={CardHeaderActionsObject { actions: html!(<div class="interfaces-actions">{as_of}{check_live}</div>), has_no_offset: false, class: Default::default() }}>
                     <CardTitle>{t::TITLE}</CardTitle>
                 </CardHeader>
                 <CardBody>{body}</CardBody>
@@ -209,7 +229,7 @@ impl Component for Interfaces {
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
             self.subscription = Some(subscribe_view(ctx));
-            ctx.link().send_message(InterfacesMsg::CheckLive);
+            ctx.link().send_message(InterfacesMsg::SubscribeLive);
         }
     }
 }

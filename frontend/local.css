@@ -430,7 +430,11 @@ div.pf-v6-c-card.interfaces {
     & div.interfaces-actions {
         display: flex;
         flex-wrap: wrap;
+        align-items: center;
         gap: var(--pf-t--global--spacer--sm);
+    }
+    & span.interfaces-as-of {
+        color: var(--pf-t--global--text--color--subtle);
     }
     & span.live-ok {
         color: var(--pf-t--global--icon--color--status--success--default);
