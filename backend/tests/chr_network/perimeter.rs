@@ -104,6 +104,7 @@ fn build() -> Net {
         ForwardData {
             name: "webfig".into(),
             device: Some(client),
+            site: None,
             addresses: addresses.into(),
             ports: Box::new(["tcp/80".parse().unwrap()]),
         },

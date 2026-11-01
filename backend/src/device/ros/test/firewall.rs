@@ -200,6 +200,21 @@ async fn the_drops_go_after_a_rule_set_up_by_hand() {
 /// Routers of one site, each with `ether1` to the internet (`nat` as given), a client device
 /// there, and its services with `forward`: (addresses, port mappings).
 fn site(nat: &[bool], services: &[(&[&str], &[&str])]) -> (TopologyHolder, Vec<DeviceId>) {
+    site_with(nat, services, Parent::Device)
+}
+
+/// What a service of [`site_with`] hangs at in NetBox.
+enum Parent {
+    /// the client device
+    Device,
+    /// a virtual machine (a Kubernetes cluster) of the site
+    MachineOfSite,
+    /// a virtual machine of no site
+    MachineWithoutSite,
+}
+
+/// [`site`] with the services at `parent`.
+fn site_with(nat: &[bool], services: &[(&[&str], &[&str])], parent: Parent) -> (TopologyHolder, Vec<DeviceId>) {
     let mut builder = TopologyBuilder::default();
     let site = builder.sites.next_id();
     let mut routers = Vec::new();
@@ -266,7 +281,8 @@ fn site(nat: &[bool], services: &[(&[&str], &[&str])]) -> (TopologyHolder, Vec<D
             id,
             ForwardData {
                 name: format!("service{index}").into(),
-                device: Some(client),
+                device: matches!(parent, Parent::Device).then_some(client),
+                site: matches!(parent, Parent::MachineOfSite).then_some(site),
                 addresses,
                 ports: ports.iter().map(|port| port.parse().unwrap()).collect(),
             },
@@ -354,6 +370,7 @@ fn findings(topology: &crate::topology::Topology) -> Vec<FindingKind> {
             matches!(
                 kind,
                 FindingKind::ForwardWithoutRouter(_)
+                    | FindingKind::ForwardWithoutSite(_)
                     | FindingKind::ForwardPortTaken(_)
                     | FindingKind::ForwardIncomplete(_)
             )
@@ -361,25 +378,65 @@ fn findings(topology: &crate::topology::Topology) -> Vec<FindingKind> {
         .collect()
 }
 
-/// Without a router with `nat` in its site, or with two, an IPv4 forward goes nowhere (an
-/// error); the IPv6 opening is there all the same, on every router to the internet.
+/// Without a router with `nat` in its site an IPv4 forward goes nowhere (an error naming the
+/// site); the IPv6 opening is there all the same, on every router to the internet.
 #[tokio::test]
-async fn an_ipv4_forward_needs_one_nat_router() {
-    for nat in [&[false][..], &[true, true]] {
-        let (topology, routers) = site(nat, &[(&["192.168.88.10/24", "2001:db8:1::10/64"], &["tcp/443"])]);
-        for router in &routers {
-            let target = generate(&topology, *router).await;
-            assert!(!target.ip_firewall_nat.iter().any(|nat| nat.action == IpFirewallNatAction::DstNat));
-            assert!(v6_comments(&target).contains(&"netbox-provisioner: forward 2001:db8:1::10 tcp/443".to_string()));
-        }
-        let topology = topology.current().await.unwrap();
-        let found = findings(&topology);
-        assert!(
-            matches!(&found[..], [FindingKind::ForwardWithoutRouter(f)]
-                if f.service.name.as_ref() == "service0" && f.routers.len() == if nat.len() == 2 { 2 } else { 0 }),
-            "{found:?}"
+async fn an_ipv4_forward_needs_a_nat_router() {
+    let (topology, routers) = site(&[false], &[(&["192.168.88.10/24", "2001:db8:1::10/64"], &["tcp/443"])]);
+    let target = generate(&topology, routers[0]).await;
+    assert!(!target.ip_firewall_nat.iter().any(|nat| nat.action == IpFirewallNatAction::DstNat));
+    assert!(v6_comments(&target).contains(&"netbox-provisioner: forward 2001:db8:1::10 tcp/443".to_string()));
+    let found = findings(&topology.current().await.unwrap());
+    assert!(
+        matches!(&found[..], [FindingKind::ForwardWithoutRouter(f)]
+            if f.service.name.as_ref() == "service0" && f.site.name.as_ref() == "site"),
+        "{found:?}"
+    );
+}
+
+/// The comments of a router's port forwardings.
+fn dstnat_comments(target: &BaseDeviceDataTarget) -> Vec<String> {
+    target
+        .ip_firewall_nat
+        .iter()
+        .filter(|nat| nat.action == IpFirewallNatAction::DstNat)
+        .map(|nat| nat.comment.as_ref().unwrap().to_string())
+        .collect()
+}
+
+/// Two routers with `nat` (one in use, the other a fallback) both forward the ports.
+#[tokio::test]
+async fn every_nat_router_forwards() {
+    let (topology, routers) = site(&[true, true], &[(&["192.168.88.10/24"], &["tcp/80", "tcp/443"])]);
+    for router in routers {
+        assert_eq!(
+            dstnat_comments(&generate(&topology, router).await),
+            ["dstnat 192.168.88.10 tcp/80", "dstnat 192.168.88.10 tcp/443"].map(|c| format!("netbox-provisioner: {c}"))
         );
     }
+    assert!(findings(&topology.current().await.unwrap()).is_empty());
+}
+
+/// A service at a virtual machine (a Kubernetes cluster announcing its LoadBalancer address as
+/// a /32 over BGP, no prefix around it) is forwarded at the machine's site; a machine of no
+/// site is an error.
+#[tokio::test]
+async fn a_service_of_a_virtual_machine_is_forwarded_at_its_site() {
+    let services: &[(&[&str], &[&str])] = &[(&["172.31.88.3/32"], &["tcp/80", "tcp/443"])];
+    let (topology, routers) = site_with(&[true], services, Parent::MachineOfSite);
+    assert_eq!(
+        dstnat_comments(&generate(&topology, routers[0]).await),
+        ["dstnat 172.31.88.3 tcp/80", "dstnat 172.31.88.3 tcp/443"].map(|c| format!("netbox-provisioner: {c}"))
+    );
+    assert!(findings(&topology.current().await.unwrap()).is_empty());
+
+    let (topology, routers) = site_with(&[true], services, Parent::MachineWithoutSite);
+    assert!(dstnat_comments(&generate(&topology, routers[0]).await).is_empty());
+    let found = findings(&topology.current().await.unwrap());
+    assert!(
+        matches!(&found[..], [FindingKind::ForwardWithoutSite(f)] if f.address.address.as_ref() == "172.31.88.3/32"),
+        "{found:?}"
+    );
 }
 
 /// A port goes to one service per router: the one of the lower id; the other is an error. A

@@ -262,9 +262,11 @@ impl Links<'_> {
             Kind::ForwardWithoutRouter(f) => t::forward_without_router(
                 self.service(&f.service),
                 self.address(&f.address),
-                (!f.routers.is_empty())
-                    .then(|| t::list(f.routers.iter().map(|d| self.device(d)).collect())),
+                self.link(&format!("dcim/sites/{}/", f.site.id), &f.site.name),
             ),
+            Kind::ForwardWithoutSite(f) => {
+                t::forward_without_site(self.service(&f.service), self.address(&f.address))
+            }
             Kind::ForwardPortTaken(f) => t::forward_port_taken(
                 self.service(&f.service),
                 &f.port,

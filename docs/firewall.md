@@ -73,10 +73,14 @@ Fallback holt das Gerät zurück, aber ohne Änderung. Die Netze schreibt `gener
 Ein NetBox-Service mit Tag `forward` öffnet seine Ports vom Internet her (`topology/forwards.rs`;
 wie er in NetBox aussieht: [netbox-modeling.md](netbox-modeling.md#freigaben-vom-internet-services-mit-forward)):
 
-- **IPv4**, auf dem Router mit `nat` der Site: `dstnat action=dst-nat in-interface-list=uplink
+- **IPv4**, auf jedem Router mit `nat` der Site: `dstnat action=dst-nat in-interface-list=uplink
   protocol=<protokoll> dst-port=<port> to-addresses=<adresse>`, Kommentar `dstnat <adresse>
   <protokoll>/<port>`. Der Port bleibt derselbe (kein `to-ports`, Z3). Herein kommt die
-  Verbindung über `forward dstnat`, die Antwort als `established`.
+  Verbindung über `forward dstnat`, die Antwort als `established`. Die Antwort nimmt die
+  Default-Route: Über einen zweiten Router mit `nat` (Ausweichweg) kommt eine Verbindung nur
+  zustande, wenn die Default-Route gerade über ihn geht; ein Maskieren der weitergeleiteten
+  Verbindungen, das den Rückweg erzwänge, ist bewusst nicht gebaut (der Dienst sähe die
+  Adresse des Clients nicht mehr).
 - **IPv6**, auf jedem Router mit Uplink: `forward accept in-interface-list=uplink
   dst-address=<adresse>/128 protocol=… dst-port=…`, vor `last forward drop`.
 

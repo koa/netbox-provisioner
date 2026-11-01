@@ -32,7 +32,8 @@ subscription Findings($site: Int, $device: Int, $after: Helper){
                 ... on RadioPathIncomplete{ radio{ ...Interface } missing }
                 ... on LabelNotFarEnd{ interface{ ...Interface } label farEnd{ ...Interface } }
                 ... on VlanWithoutPort{ interface{ ...Interface } vlan{ ...Vlan } }
-                ... on ForwardWithoutRouter{ service{ ...Service } address{ ...Address } routers{ ...Device } }
+                ... on ForwardWithoutRouter{ service{ ...Service } address{ ...Address } site{ id name } }
+                ... on ForwardWithoutSite{ service{ ...Service } address{ ...Address } }
                 ... on ForwardPortTaken{ service{ ...Service } port router{ ...Device } by{ ...Service } }
                 ... on ForwardIncomplete{ service{ ...Service } }
             }

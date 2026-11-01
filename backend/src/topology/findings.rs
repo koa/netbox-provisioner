@@ -64,6 +64,7 @@ pub enum FindingKind {
     LabelNotFarEnd(LabelNotFarEnd),
     VlanWithoutPort(VlanWithoutPort),
     ForwardWithoutRouter(ForwardWithoutRouter),
+    ForwardWithoutSite(ForwardWithoutSite),
     ForwardPortTaken(ForwardPortTaken),
     ForwardIncomplete(ForwardIncomplete),
 }
@@ -179,13 +180,27 @@ pub struct ServiceRef {
     pub id: u32,
     pub name: Box<str>,
 }
-/// A service with `forward` at an IPv4 address whose site has no router with `nat`, or several
-/// (`routers`): no port forwarding reaches it.
+/// A service with `forward` at an IPv4 address whose site has no router with `nat`: no port
+/// forwarding reaches it.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct ForwardWithoutRouter {
     pub service: ServiceRef,
     pub address: AddressRef,
-    pub routers: Vec<DeviceRef>,
+    pub site: SiteRef,
+}
+/// A service with `forward` at an IPv4 address of no site: neither its prefix (or one above),
+/// nor the service's device or virtual machine (or its cluster), nor the device of its
+/// interface has one, so no router forwards to it.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct ForwardWithoutSite {
+    pub service: ServiceRef,
+    pub address: AddressRef,
+}
+/// A NetBox site.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct SiteRef {
+    pub id: u32,
+    pub name: Box<str>,
 }
 /// The router forwards the port (`tcp/443`) to another service (`by`) already, or to this one
 /// at another address: the service doesn't get it there.
@@ -435,18 +450,26 @@ fn forwards(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
     let own_device = |id: ServiceId| topo.services.get(&id).and_then(|s| s.device);
     let device = |id: DeviceId| topo.get_device_by_id(&id);
     for unrouted in forwards.unrouted {
-        let routers = unrouted.routers.iter().filter_map(|id| device(*id)).collect::<Vec<_>>();
         findings.push(Finding {
             severity: Severity::Error,
-            devices: routers
-                .iter()
-                .map(|router| router.id())
-                .chain(own_device(unrouted.service))
-                .collect(),
+            devices: own_device(unrouted.service).into_iter().collect(),
             kind: FindingKind::ForwardWithoutRouter(ForwardWithoutRouter {
                 service: service_ref(unrouted.service),
                 address: address_ref(&IpAddressAccess::create(topo.clone(), unrouted.address)),
-                routers: routers.iter().map(device_ref).collect(),
+                site: SiteRef {
+                    id: unrouted.site.0,
+                    name: topo.sites.get(&unrouted.site).map(|s| s.name.clone()).unwrap_or_default(),
+                },
+            }),
+        });
+    }
+    for (service, address) in forwards.without_site {
+        findings.push(Finding {
+            severity: Severity::Error,
+            devices: own_device(service).into_iter().collect(),
+            kind: FindingKind::ForwardWithoutSite(ForwardWithoutSite {
+                service: service_ref(service),
+                address: address_ref(&IpAddressAccess::create(topo.clone(), address)),
             }),
         });
     }

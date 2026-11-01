@@ -816,12 +816,14 @@ control, `l2mtu`). An IPv6 address-list entry a rule adds shows up a moment late
 waits for it.
 
 NetBox services tagged `forward` (C2, `topology/forwards.rs`, `Topology::forwards`) open their
-ports through it: an IPv4 address gets `dstnat … to-addresses=<it>` on its site's one router
-with `nat` (the site of its prefix or the nearest above with one, else the service's device's;
-the same port outside, Z3), an IPv6 one a `forward accept dst-address=<it>/128` before the drop
+ports through it: an IPv4 address gets `dstnat … to-addresses=<it>` on every router with `nat` of its
+site (the site of its prefix or the nearest above with one, else the service's device's, else
+its virtual machine's or that one's cluster's scope, a Kubernetes LoadBalancer /32 announced
+over BGP; the same port outside, Z3; of two only one is meant to be in use, the answers take
+the default route), an IPv6 one a `forward accept dst-address=<it>/128` before the drop
 on every router with an uplink. `/ip/firewall/nat` is an ordered list like the filters (comments
-`masquerade <if>`, `dstnat <addr> <proto>/<port>`). Findings `ForwardWithoutRouter` (no or
-several `nat` routers), `ForwardPortTaken` (a port per router once, lower service id wins),
+`masquerade <if>`, `dstnat <addr> <proto>/<port>`). Findings `ForwardWithoutRouter` (no `nat`
+router at its site), `ForwardWithoutSite`, `ForwardPortTaken` (a port per router once, lower service id wins),
 `ForwardIncomplete`. Older exports lack `service_list` (`example_topology` adds it empty).
 
 `/ip/service` (`setup_services`, in `generate_for`) starts from the device's services, so what

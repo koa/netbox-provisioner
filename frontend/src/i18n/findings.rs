@@ -119,15 +119,11 @@ pub fn radio_without_role(interface: Html) -> Html {
 pub fn nat_without_internet(interface: Html) -> Html {
     html!(<>{interface}{" hat nat, aber nicht internet: Die Perimeter-Firewall schützt es trotzdem, in NetBox fehlt das Tag internet."}</>)
 }
-pub fn forward_without_router(service: Html, address: Html, routers: Option<Html>) -> Html {
-    html! {<>
-        {service}{" hat forward an "}{address}{", "}
-        { match routers {
-            None => html!({"aber seine Site hat keinen Router mit nat"}),
-            Some(routers) => html!(<>{"aber seine Site hat mehrere Router mit nat ("}{routers}{")"}</>),
-        } }
-        {": Keine Port-Weiterleitung erreicht die Adresse."}
-    </>}
+pub fn forward_without_router(service: Html, address: Html, site: Html) -> Html {
+    html!(<>{service}{" hat forward an "}{address}{", aber seine Site "}{site}{" hat keinen Router mit nat: Keine Port-Weiterleitung erreicht die Adresse."}</>)
+}
+pub fn forward_without_site(service: Html, address: Html) -> Html {
+    html!(<>{service}{" hat forward an "}{address}{", aber keine Site: Weder ein Prefix um die Adresse noch das Gerät oder die VM des Service (oder ihr Cluster) hat eine. Keine Port-Weiterleitung erreicht die Adresse."}</>)
 }
 pub fn forward_port_taken(service: Html, port: &str, router: Html, by: Html) -> Html {
     html!(<>{service}{format!(" bekommt {port} auf ")}{router}{" nicht: Der Port geht dort schon an "}{by}{". Aussen gilt derselbe Port wie innen, jeder nur einmal pro Router."}</>)

@@ -770,6 +770,7 @@ impl FindingKind {
             | FindingKind::LoopbackWithoutOspf(_)
             | FindingKind::WlanWithoutVlan(_)
             | FindingKind::ForwardWithoutRouter(_)
+            | FindingKind::ForwardWithoutSite(_)
             | FindingKind::ForwardPortTaken(_)
             | FindingKind::ForwardIncomplete(_) => Vec::new(),
             FindingKind::PrimaryIpv4NotOnLoopback(f) => {

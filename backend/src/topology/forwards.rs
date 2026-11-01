@@ -1,6 +1,8 @@
 //! What the NetBox services with tag `forward` open from the internet (`docs/firewall.md`): an
-//! IPv4 address gets a port forwarding on the router with `nat` of its site, an IPv6 one is let
-//! through on every router with an interface to the internet. The generator writes them
+//! IPv4 address gets a port forwarding on every router with `nat` of its site, an IPv6 one is let
+//! through on every router with an interface to the internet. Of two routers with `nat` only
+//! one is meant to be in use (a fallback): the answers go out over the default route, so a
+//! connection coming in over the other one gets no answer. The generator writes them
 //! (`device::ros::firewall`), the findings name what doesn't work out.
 use crate::topology::{DeviceId, IpAddressId, IpPrefixId, ServiceId, ServicePort, SiteId, Topology};
 use ipnet::IpNet;
@@ -23,14 +25,12 @@ pub struct Opening {
     pub address: Ipv6Addr,
     pub port: ServicePort,
 }
-/// An IPv4 address of a service whose site has no router with `nat`, or several: nothing
-/// forwards to it.
+/// An IPv4 address of a service whose site has no router with `nat`: nothing forwards to it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unrouted {
     pub service: ServiceId,
     pub address: IpAddressId,
-    /// the routers with `nat` of its site
-    pub routers: Box<[DeviceId]>,
+    pub site: SiteId,
 }
 /// A port the router forwards to another service already: this one doesn't get it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +49,9 @@ pub struct Forwards {
     /// for every router with an interface to the internet
     pub openings: Vec<Opening>,
     pub unrouted: Vec<Unrouted>,
+    /// IPv4 addresses of services (service, address) with no site: neither their prefix, nor
+    /// the service's device or virtual machine, nor the device of their interface has one
+    pub without_site: Vec<(ServiceId, IpAddressId)>,
     pub taken: Vec<Taken>,
     /// a service with `forward` but no address or no port: it opens nothing
     pub incomplete: Vec<ServiceId>,
@@ -73,36 +76,42 @@ impl Topology {
                         let site = self
                             .site_of_prefix(address.prefix)
                             .or_else(|| data.device.and_then(|device| self.devices.get(&device)?.site))
+                            .or(data.site)
                             .or_else(|| {
                                 let interface = self.interfaces.get(&address.interface?)?;
                                 self.devices.get(&interface.device)?.site
                             });
-                        let routers = site.map(|site| self.nat_routers(site)).unwrap_or_default();
-                        let [router] = routers[..] else {
+                        let Some(site) = site else {
+                            forwards.without_site.push((service, address_id));
+                            continue;
+                        };
+                        let routers = self.nat_routers(site);
+                        if routers.is_empty() {
                             forwards.unrouted.push(Unrouted {
                                 service,
                                 address: address_id,
-                                routers: routers.into_boxed_slice(),
+                                site,
                             });
-                            continue;
-                        };
-                        let on_router = forwards.dstnat.entry(router).or_default();
-                        for &port in &data.ports {
-                            if let Some(by) = on_router.iter().find(|f| f.port == port) {
-                                // the same service at a second address: the first has it
-                                forwards.taken.push(Taken {
+                        }
+                        for router in routers {
+                            let on_router = forwards.dstnat.entry(router).or_default();
+                            for &port in &data.ports {
+                                if let Some(by) = on_router.iter().find(|f| f.port == port) {
+                                    // the same service at a second address: the first has it
+                                    forwards.taken.push(Taken {
+                                        service,
+                                        port,
+                                        router,
+                                        by: by.service,
+                                    });
+                                    continue;
+                                }
+                                on_router.push(PortForward {
                                     service,
+                                    address: v4.addr(),
                                     port,
-                                    router,
-                                    by: by.service,
                                 });
-                                continue;
                             }
-                            on_router.push(PortForward {
-                                service,
-                                address: v4.addr(),
-                                port,
-                            });
                         }
                     }
                     IpNet::V6(v6) => forwards.openings.extend(data.ports.iter().map(|&port| Opening {

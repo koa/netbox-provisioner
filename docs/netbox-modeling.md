@@ -58,15 +58,21 @@ action=masquerade out-interface=<Uplink>`.
 ### Freigaben vom Internet: Services mit `forward`
 
 Ein Service (IPAM → Services) am Gerät, das den Dienst anbietet (ein Gerät ohne RouterOS, z.B.
-der Server mit seinem statischen Lease), mit seinen Ports (`tcp/443`, `udp/1194`; NetBox kennt
-TCP, UDP und SCTP), seinen IP-Adressen und dem Tag `forward`:
+der Server mit seinem statischen Lease), oder an der VM eines Kubernetes-Clusters, mit seinen
+Ports (`tcp/443`, `udp/1194`; NetBox kennt TCP, UDP und SCTP), seinen IP-Adressen und dem Tag
+`forward`:
 
-- **IPv4:** Der Router mit `nat` der Site leitet jeden Port vom Uplink an die Adresse weiter,
+- **IPv4:** Jeder Router mit `nat` der Site leitet jeden Port vom Uplink an die Adresse weiter,
   aussen derselbe Port wie innen (Z3). Die Site ist die des Prefixes der Adresse (oder des
-  nächsten darüber mit Site), sonst die des Geräts. Hat die Site keinen Router mit `nat` oder
-  mehrere, ist das der Befund `ForwardWithoutRouter` (Fehler); jeder Port geht pro Router nur
-  an einen Service, der mit der kleineren NetBox-ID bekommt ihn, der andere den Befund
-  `ForwardPortTaken` (Fehler).
+  nächsten darüber mit Site), sonst die des Geräts des Service, sonst die seiner VM (oder die,
+  auf die ihr Cluster beschränkt ist; NetBox trägt sie der VM selbst ein), sonst die des
+  Geräts, dessen Interface die Adresse hat. Eine LoadBalancer-Adresse, die der Cluster als /32
+  per BGP ankündigt, braucht also weder Prefix noch Interface. Ohne Site ist das der Befund
+  `ForwardWithoutSite`, ohne Router mit `nat` an ihr `ForwardWithoutRouter` (beides Fehler).
+  Von zwei Routern mit `nat` ist nur einer gedacht in Betrieb zu sein (der andere als
+  Ausweichweg): Die Antworten gehen über die Default-Route hinaus, eine Verbindung über den
+  anderen bekommt keine. Jeder Port geht pro Router nur an einen Service, der mit der
+  kleineren NetBox-ID bekommt ihn, der andere den Befund `ForwardPortTaken` (Fehler).
 - **IPv6:** Jeder Router mit einem Interface zum Internet lässt die Ports der Adresse herein
   (die Adresse ist überall dieselbe, ein Prefix routet über jeden Uplink).
 - Ein Service mit `forward`, aber ohne Adresse oder Port, öffnet nichts: Befund

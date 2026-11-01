@@ -5,7 +5,8 @@ use crate::{
             CableConnectionTermination, CableConnectionTerminationOnCircuitTerminationType,
             CableConnectionTerminationOnFrontPortType,
             CableConnectionTerminationOnInterfaceType, CableConnectionTerminationOnRearPortType,
-            FetchTopologyServiceListParent, ResponseData,
+            FetchTopologyServiceListParent, FetchTopologyServiceListParentOnVirtualMachineTypeClusterScope,
+            ResponseData,
         },
     },
     topology::{
@@ -620,11 +621,19 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     port
                 })
                 .collect();
-            let device = match service.parent {
+            let (device, site) = match service.parent {
                 Some(FetchTopologyServiceListParent::DeviceType(device)) => {
-                    device.id.parse().map(DeviceId).ok()
+                    (device.id.parse().map(DeviceId).ok(), None)
                 }
-                _ => None,
+                Some(FetchTopologyServiceListParent::VirtualMachineType(machine)) => {
+                    let cluster_site = machine.cluster.and_then(|cluster| match cluster.scope? {
+                        FetchTopologyServiceListParentOnVirtualMachineTypeClusterScope::SiteType(site) => Some(site.id),
+                        _ => None,
+                    });
+                    let site = machine.site.map(|site| site.id).or(cluster_site);
+                    (None, site.and_then(|id| id.parse().ok()).map(SiteId))
+                }
+                _ => (None, None),
             };
             let addresses = service
                 .ipaddresses
@@ -636,6 +645,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                 ForwardData {
                     name: service.name.into(),
                     device,
+                    site,
                     addresses,
                     ports,
                 },

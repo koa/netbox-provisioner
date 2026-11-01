@@ -411,6 +411,9 @@ pub struct ForwardData {
     pub name: Box<str>,
     /// its parent, if that is a device
     pub device: Option<DeviceId>,
+    /// the site of its parent where that is a virtual machine (a Kubernetes cluster's
+    /// LoadBalancer address): the machine's, else the one its cluster is scoped to
+    pub site: Option<SiteId>,
     pub addresses: Box<[IpAddressId]>,
     pub ports: Box<[ServicePort]>,
 }
