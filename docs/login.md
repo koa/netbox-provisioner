@@ -38,7 +38,9 @@ settings:
   der Liste steht, bekommt bei jeder Abfrage `403` („Kein Zugriff“ im UI); das Serverlog nennt
   das `sub` (`user refused, not in auth_users`).
 - **`auth_scopes`**: `offline_access` (Refresh-Token) kennt nicht jeder Provider; dann die Scopes
-  ohne ihn angeben.
+  ohne ihn angeben. Ohne Refresh-Token erneuert das UI das Token nicht: Ist es abgelaufen,
+  antwortet der Server `403`, bis man sich neu anmeldet (die Job-Ansicht bietet das an, die
+  anderen Seiten zeigen den Fehler; Z34).
 
 ## Pocket-ID
 

@@ -11,6 +11,13 @@ pub const LOST_FALLBACK: &str = " Ein Fallback, den er scharf gemacht hat, setzt
 pub fn server_away(cause: &str) -> String {
     format!("Keine Antwort vom Provisioner, es wird weiter gefragt … ({cause})")
 }
+/// the server refuses the token (`401`/`403`), most likely it expired; the job goes on
+pub fn login_refused(cause: &str) -> String {
+    format!(
+        "Der Provisioner nimmt die Anmeldung nicht mehr an, wohl ist sie abgelaufen ({cause}). \
+         Der Auftrag läuft auf dem Server weiter; nach dem Anmelden zeigt die Seite ihn wieder."
+    )
+}
 pub const SCRIPT: &str = "Skript:";
 pub const REMAINING: &str = "Noch offen:";
 

@@ -12,7 +12,7 @@ use patternfly_yew::prelude::{
 use routes::AppRoute;
 use yew::{
     Callback, Component, Context, ContextHandle, Html, Properties, function_component, html,
-    platform::spawn_local,
+    html::Scope, platform::spawn_local,
 };
 use yew_nested_router::{Router, prelude::Switch as RouterSwitch};
 use yew_oauth2::{
@@ -151,13 +151,7 @@ impl Component for Login {
                 self.auth = Some(auth);
                 self.start_if_needed(ctx);
             }
-            LoginMsg::Start => {
-                self.start_error = ctx
-                    .link()
-                    .context::<Agent<Client>>(Callback::noop())
-                    .and_then(|(agent, _)| agent.start_login().err())
-                    .map(|error| error.to_string());
-            }
+            LoginMsg::Start => self.start_error = start_login(ctx.link()),
         }
         true
     }
@@ -183,6 +177,16 @@ impl Component for Login {
             </Bullseye>
         }
     }
+}
+
+/// Leaves for the provider's login, which comes back to the current page; the error if it
+/// can't start. Also for a session whose token the server refuses: without a refresh token
+/// (Pocket-ID without `offline_access`) `yew-oauth2` keeps an expired one as authenticated.
+pub(crate) fn start_login<C: Component>(scope: &Scope<C>) -> Option<String> {
+    scope
+        .context::<Agent<Client>>(Callback::noop())
+        .and_then(|(agent, _)| agent.start_login().err())
+        .map(|error| error.to_string())
 }
 
 impl Login {

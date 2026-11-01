@@ -2,7 +2,7 @@
 //! by `i18n::job`; with a button to cancel it.
 use crate::{
     error::{FrontendError, ServerProblem},
-    i18n::{common::CANCEL, job as t},
+    i18n::{common::CANCEL, job as t, login},
     graphql::{
         authenticated::{
             CancelJob, JobEvents, cancel_job,
@@ -14,6 +14,7 @@ use crate::{
         },
         query_authenticated,
     },
+    pages::start_login,
 };
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, CodeBlock, CodeBlockCode, Spinner, SpinnerSize,
@@ -43,6 +44,8 @@ pub struct JobView {
     /// asking stops once the component is gone
     alive: Rc<Cell<bool>>,
     cancelling: bool,
+    /// starting the login (after the server refused the token) failed
+    login_error: Option<String>,
 }
 
 #[derive(Properties, Clone, PartialEq)]
@@ -59,6 +62,8 @@ pub enum JobMessage {
     /// the server answered without the job
     Lost,
     Cancel,
+    /// log in again: the server refused the token
+    Login,
 }
 
 impl Component for JobView {
@@ -74,6 +79,7 @@ impl Component for JobView {
             lost: false,
             alive,
             cancelling: false,
+            login_error: None,
         }
     }
 
@@ -97,6 +103,7 @@ impl Component for JobView {
                 self.error = None;
                 ctx.props().on_finished.emit(false);
             }
+            JobMessage::Login => self.login_error = start_login(ctx.link()),
             JobMessage::Cancel => {
                 self.cancelling = true;
                 let scope = ctx.link().clone();
@@ -115,11 +122,21 @@ impl Component for JobView {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        // one line while the server is away, it is asked again
-        let error = self
-            .error
-            .as_ref()
-            .map(|e| html!(<p class="job-unreachable">{t::server_away(&e.message())}</p>));
+        // one line while the server is away or refuses the token, it is asked again
+        let error = self.error.as_ref().map(|e| match e {
+            FrontendError::Server { status: 401 | 403, .. } => html! {
+                <p class="job-unreachable">
+                    {t::login_refused(&e.message())}{" "}
+                    <Button
+                        variant={ButtonVariant::Secondary}
+                        label={login::AGAIN}
+                        onclick={ctx.link().callback(|_| JobMessage::Login)}
+                    />
+                    if let Some(failure) = &self.login_error { <br/>{login::failed(failure)} }
+                </p>
+            },
+            e => html!(<p class="job-unreachable">{t::server_away(&e.message())}</p>),
+        });
         let Some(job) = &self.job else {
             if self.lost {
                 return html!(<Alert inline=true title={t::LOST} r#type={AlertType::Warning}><p>{t::LOST_TEXT}{t::LOST_FALLBACK}</p></Alert>);

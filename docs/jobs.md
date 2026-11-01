@@ -15,6 +15,12 @@ einem Zustand tut und was ein Neustart des Servers mit dem Job macht.
   laufenden Job auf (`jobs(deviceId)`).
 - **Server weg:** Schlägt die Abfrage fehl, zeigt die Ansicht eine Zeile und fragt seltener
   weiter (`RETRY`), statt jede Sekunde einen neuen Fehler zu zeigen.
+- **Anmeldung abgelaufen:** Lehnt der Server das Token ab (`401`/`403`), sagt die Zeile das, mit
+  dem Knopf „Erneut anmelden“ (`pages::start_login`), und die Ansicht fragt weiter. Der Login
+  kehrt auf die Seite zurück, die den laufenden Job wieder aufnimmt. Ohne Refresh-Token (Pocket-ID
+  ohne `offline_access`) hält `yew-oauth2` ein abgelaufenes Token für gültig; der Server lehnt es
+  nach Ablauf plus 60 s Toleranz ab ([Login](login.md)). Im Lab mit Keycloak ohne Refresh-Token
+  und 10 s Laufzeit geprüft (2026-11-01).
 - **Server neu gestartet:** Die Nummern der Jobs beginnen pro Lauf neu bei 1000 je Sekunde des
   Startzeitpunkts (`job::first_id`, modulo 1 000 000 Sekunden, passt in GraphQL' `Int`). Eine
   Nummer aus einem früheren Lauf findet so keinen fremden Job, sondern `null`: Die Ansicht zeigt
