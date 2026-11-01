@@ -190,8 +190,8 @@ async fn the_drops_go_after_a_rule_set_up_by_hand() {
     assert_eq!(
         moves[12..],
         [
-            "move [find comment=\"netbox-provisioner: last input drop\" dynamic=no]",
-            "move [find comment=\"netbox-provisioner: last forward drop\" dynamic=no]",
+            "move [find comment=\"netbox-provisioner: last input drop\" dynamic!=yes]",
+            "move [find comment=\"netbox-provisioner: last forward drop\" dynamic!=yes]",
         ]
     );
     assert!(!script.contains("remove"), "{script}");

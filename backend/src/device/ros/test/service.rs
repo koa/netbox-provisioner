@@ -48,8 +48,8 @@ fn telnet_and_ftp_go_off() {
     assert_eq!(
         script,
         "/ip/service\n\
-         set [ find name=ftp dynamic=no] disabled=yes \n\
-         set [ find name=telnet dynamic=no] disabled=yes \n"
+         set [ find name=ftp dynamic!=yes] disabled=yes \n\
+         set [ find name=telnet dynamic!=yes] disabled=yes \n"
     );
 }
 
@@ -62,7 +62,7 @@ fn webfig_answers_the_networks() {
     services[3] = service("www", true, None, None);
     let script = service_script(Some(&networks), services);
     assert!(
-        script.contains("set [ find name=www dynamic=no] disabled=no address=\"192.168.0.0/16\""),
+        script.contains("set [ find name=www dynamic!=yes] disabled=no address=\"192.168.0.0/16\""),
         "{script}"
     );
 }
@@ -75,14 +75,14 @@ fn the_api_answers_the_networks() {
         .map(|n| n.parse::<IpNet>().unwrap());
     let script = service_script(Some(&networks), factory());
     assert!(
-        script.contains("set [ find name=api dynamic=no] address=\"192.168.0.0/16,2a02:16a:fe00:8000::/50,172.17.1.0/24\""),
+        script.contains("set [ find name=api dynamic!=yes] address=\"192.168.0.0/16,2a02:16a:fe00:8000::/50,172.17.1.0/24\""),
         "{script}"
     );
     let mut services = factory();
     services[6] = service("api", false, Some("10.0.0.0/8"), None);
     services[5] = service("winbox", false, Some("10.0.0.0/8"), None);
     let script = service_script(Some(&networks), services);
-    assert!(script.contains("set [ find name=api dynamic=no] available-from=\"192.168.0.0/16,"), "{script}");
+    assert!(script.contains("set [ find name=api dynamic!=yes] available-from=\"192.168.0.0/16,"), "{script}");
     assert!(!script.contains("winbox"), "{script}");
     // as RouterOS reports it after the apply: nothing more to do
     let mut services = factory();
@@ -127,8 +127,8 @@ fn the_api_stays_open_for_a_client_outside() {
     for mutation in mutations.iter().filter(|m| m.resource == b"ip/service") {
         generator.append_mutation(mutation).unwrap();
     }
-    assert!(!script.contains("name=api dynamic=no]"), "{script}");
-    assert!(script.contains("name=telnet dynamic=no] disabled=yes"), "{script}");
+    assert!(!script.contains("name=api dynamic!=yes]"), "{script}");
+    assert!(script.contains("name=telnet dynamic!=yes] disabled=yes"), "{script}");
 }
 
 #[test]
