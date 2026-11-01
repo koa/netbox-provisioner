@@ -769,6 +769,7 @@ impl FindingKind {
             | FindingKind::NoPrimaryIpv4(_)
             | FindingKind::LoopbackWithoutOspf(_)
             | FindingKind::WlanWithoutVlan(_)
+            | FindingKind::WlanGroupWithoutController(_)
             | FindingKind::ForwardWithoutRouter(_)
             | FindingKind::ForwardWithoutSite(_)
             | FindingKind::ForwardPortTaken(_)

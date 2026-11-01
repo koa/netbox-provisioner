@@ -64,6 +64,10 @@ ist eine Prüfung:
 - Interface-Namen, die wie ein Port aussehen, aber keiner sind (`PortLikeName`, `ether3-alt`).
 - VLAN ohne VLAN-Gruppe (`VlanWithoutGroup`); WLAN ohne VLAN (`WlanWithoutVlan`, Fehler am
   Controller und an den APs ihrer Gruppe: Die Clients verbinden sich und erreichen nichts).
+- WLAN-Gruppe ohne `controller`, aber mit APs (`WlanGroupWithoutController`, Fehler an den APs):
+  Der Provisioner lässt die Gruppe weg, und für ihre APs scheitert der Generator
+  (`MissingController`); ohne APs ist es kein Befund, es wird nichts daraus gebaut. Im Lab an
+  `lab-wap` in `lab-wlan` geprüft (vorübergehend, danach zurück).
 - Ein Ende eines Wireless Links ohne RF-Rolle (`RadioWithoutRole`, Warnung): Das Radio behält seine
   Konfiguration, die Funkbrücke wird nicht eingerichtet.
 - Ein Uplink mit `nat` ohne `internet` (`NatWithoutInternet`, Warnung): `nat` setzt `internet`

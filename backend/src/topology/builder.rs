@@ -19,6 +19,8 @@ pub struct TopologyBuilder {
     pub interfaces: MapBuilder<InterfaceId, Interface>,
     pub vxlans: MapBuilder<VxlanId, VxlanData>,
     pub wlan_groups: MapBuilder<WlanGroupId, WlanGroupData>,
+    /// a group without `controller` and its name (`Topology::wlan_groups_without_controller`)
+    pub wlan_groups_without_controller: HashMap<WlanGroupId, Box<str>>,
     pub wlans: MapBuilder<WlanId, WlanData>,
     pub vlan_groups: MapBuilder<VlanGroupId, VlanGroupData>,
     pub vlans: MapBuilder<VlanId, VlanData>,
@@ -253,6 +255,7 @@ impl TopologyBuilder {
             cables: self.cables.into(),
             vxlans: self.vxlans.into(),
             wlan_groups: self.wlan_groups.into(),
+            wlan_groups_without_controller: self.wlan_groups_without_controller,
             wlans: self.wlans.into(),
             vlan_groups: self.vlan_groups.into(),
             vlans: self.vlans.into(),

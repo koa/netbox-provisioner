@@ -379,6 +379,24 @@ fn a_wlan_without_vlan_is_an_error() {
         if &*w.ssid == "walter" && &*w.group.name == "Spitzwies"));
 }
 
+/// A WLAN group without controller is an error at its APs, none without APs.
+#[test]
+fn a_wlan_group_without_controller_is_an_error_at_its_aps() {
+    let mut net = Net::new();
+    let builder = &mut net.builder;
+    let (group, unused) = (crate::topology::WlanGroupId(7), crate::topology::WlanGroupId(8));
+    builder.wlan_groups_without_controller.insert(group, "Spitzwies".into());
+    builder.wlan_groups_without_controller.insert(unused, "leer".into());
+    builder.devices.get_mut(&net.r2).unwrap().wlan_ap_of = Some(group);
+    let r2 = net.r2;
+    let findings = net.findings();
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert_eq!(findings[0].severity, Severity::Error);
+    assert_eq!(&*findings[0].devices, [r2]);
+    assert!(matches!(&findings[0].kind, FindingKind::WlanGroupWithoutController(w)
+        if w.group.id == 7 && &*w.group.name == "Spitzwies"));
+}
+
 /// Of the two ends of a wireless link, the one without RF role is reported.
 #[test]
 fn a_link_end_without_rf_role_is_a_warning() {

@@ -47,6 +47,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
     let mut devices = HashMap::new();
     let mut vxlans = HashMap::new();
     let mut wlan_groups = HashMap::new();
+    let mut wlan_groups_without_controller = HashMap::new();
     let mut controllers = HashMap::new();
     let mut wlan_member_devices = HashMap::<_, Vec<_>>::new();
     let mut wlans = HashMap::new();
@@ -57,7 +58,12 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
     let mut cables = HashMap::new();
 
     for wlan_group in data.wireless_lan_group_list {
-        if let (Some(wlan_group_id), Some(controller)) = (
+        if let (Some(wlan_group_id), None) = (
+            wlan_group.id.parse().ok().map(WlanGroupId),
+            wlan_group.custom_fields.controller,
+        ) {
+            wlan_groups_without_controller.insert(wlan_group_id, wlan_group.name.into_boxed_str());
+        } else if let (Some(wlan_group_id), Some(controller)) = (
             wlan_group.id.parse().ok().map(WlanGroupId),
             wlan_group.custom_fields.controller.map(DeviceId),
         ) {
@@ -682,6 +688,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
         cables,
         vxlans,
         wlan_groups,
+        wlan_groups_without_controller,
         wlans,
         vlan_groups,
         vlans,

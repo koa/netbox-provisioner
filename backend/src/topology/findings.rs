@@ -54,6 +54,7 @@ pub enum FindingKind {
     NoCommonSubnet(NoCommonSubnet),
     AddressWithoutOspf(AddressWithoutOspf),
     WlanWithoutVlan(WlanWithoutVlan),
+    WlanGroupWithoutController(WlanGroupWithoutController),
     RadioWithoutRole(RadioWithoutRole),
     NatWithoutInternet(NatWithoutInternet),
     LoopbackWithoutOspf(LoopbackWithoutOspf),
@@ -335,6 +336,12 @@ pub struct WlanWithoutVlan {
     pub ssid: Box<str>,
     pub group: WlanGroupRef,
 }
+/// A Wireless LAN Group with APs (devices with it in `wlan_group`) but no `controller`: the
+/// provisioner leaves the group out, and generating fails for its APs (`MissingController`).
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct WlanGroupWithoutController {
+    pub group: WlanGroupRef,
+}
 /// A NetBox Wireless LAN Group.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct WlanGroupRef {
@@ -497,8 +504,32 @@ fn forwards(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
     }
 }
 
-/// The WLANs without a VLAN, at the group's controller and APs.
+/// The groups without a controller, at their APs; the WLANs without a VLAN, at the group's
+/// controller and APs.
 fn wlans(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
+    let mut without_controller = topo.wlan_groups_without_controller.iter().collect::<Vec<_>>();
+    without_controller.sort_by(|a, b| a.1.cmp(b.1));
+    for (id, name) in without_controller {
+        let mut aps = topo
+            .list_devices()
+            .filter(DeviceAccess::has_routeros)
+            .filter(|device| device.wlan_ap_of().is_some_and(|group| group.id() == *id))
+            .collect::<Vec<_>>();
+        if aps.is_empty() {
+            continue; // nothing is built from it
+        }
+        aps.sort_by(|a, b| a.name().cmp(b.name()));
+        findings.push(Finding {
+            severity: Severity::Error,
+            devices: aps.iter().map(DeviceAccess::id).collect(),
+            kind: FindingKind::WlanGroupWithoutController(WlanGroupWithoutController {
+                group: WlanGroupRef {
+                    id: id.0,
+                    name: name.clone(),
+                },
+            }),
+        });
+    }
     let mut groups = topo
         .wlan_groups
         .keys()

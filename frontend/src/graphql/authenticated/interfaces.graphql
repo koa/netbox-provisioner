@@ -69,6 +69,7 @@ fragment Finding on Finding{
         ... on VlanWithoutGateway{ vlan{ ...Vlan } interfaces{ ...Interface } }
         ... on TaggedVlanOnPort{ interface{ ...Interface } vlans{ ...Vlan } }
         ... on RadioPathIncomplete{ radio{ ...Interface } missing }
+        ... on WlanGroupWithoutController{ group{ id name } }
         ... on LabelNotFarEnd{ interface{ ...Interface } label farEnd{ ...Interface } }
         ... on VlanWithoutPort{ interface{ ...Interface } vlan{ ...Vlan } }
     }

@@ -131,6 +131,9 @@ pub struct Topology {
     cables: HashMap<CableId, Cable>,
     vxlans: HashMap<VxlanId, VxlanData>,
     wlan_groups: HashMap<WlanGroupId, WlanGroupData>,
+    /// the names of the groups without a `controller`, left out of `wlan_groups`: their APs
+    /// are a finding (`WlanGroupWithoutController`)
+    wlan_groups_without_controller: HashMap<WlanGroupId, Box<str>>,
     wlans: HashMap<WlanId, WlanData>,
     vlan_groups: HashMap<VlanGroupId, VlanGroupData>,
     vlans: HashMap<VlanId, VlanData>,
@@ -162,6 +165,7 @@ impl Topology {
             cables,
             vxlans,
             wlan_groups,
+            wlan_groups_without_controller,
             wlans,
             vlan_groups,
             vlans,
@@ -183,6 +187,10 @@ impl Topology {
             ("cables", *cables == other.cables),
             ("vxlans", *vxlans == other.vxlans),
             ("wlan_groups", *wlan_groups == other.wlan_groups),
+            (
+                "wlan_groups_without_controller",
+                *wlan_groups_without_controller == other.wlan_groups_without_controller,
+            ),
             ("wlans", *wlans == other.wlans),
             ("vlan_groups", *vlan_groups == other.vlan_groups),
             ("vlans", *vlans == other.vlans),

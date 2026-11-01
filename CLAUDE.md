@@ -149,7 +149,9 @@ there (SLAAC). A WLAN without VLAN is an error at its
 group's controller and APs (`WlanWithoutVlan`): the CAPs bridge their clients by its VLAN and
 carry them over its VXLAN, so without one the clients reach nothing (router-walter). A wireless link end without RF role is a warning (`RadioWithoutRole`): the radio then keeps its
 configuration, no bridge is set up. `nat` without `internet` is a warning (`NatWithoutInternet`,
-Z2: `nat` needs it). A primary IPv4 on `lo` without `ospf` on any interface is an error
+Z2: `nat` needs it). A WLAN group without `controller` is left out of `wlan_groups`
+(`Topology::wlan_groups_without_controller` keeps its name); with APs it is an error at them
+(`WlanGroupWithoutController`), generating fails there (`MissingController`). A primary IPv4 on `lo` without `ospf` on any interface is an error
 (`LoopbackWithoutOspf`): nothing announces it, and it ends a radio bridge's DHCP fallback. A radio
 bridge is an OSPF router through a static address and `ospf` on its `bridge` (management only,
 forwarding stays L2), with OSPF priority 0 (v2 and v3, `setup_ospf`) so it is never DR or BDR of

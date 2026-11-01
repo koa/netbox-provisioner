@@ -107,6 +107,9 @@ pub fn vlan_without_port(interface: Html, vlan: Html) -> Html {
 pub fn wlan_without_vlan(wlan: Html, group: Html) -> Html {
     html!(<>{"Das WLAN "}{wlan}{" der Gruppe "}{group}{" hat keine VLAN: Die APs legen seine Clients in keine Bridge und haben kein VXLAN dafür, die Clients verbinden sich und erreichen nichts."}</>)
 }
+pub fn wlan_group_without_controller(group: Html) -> Html {
+    html!(<>{"Die WLAN-Gruppe "}{group}{" hat keinen Controller (Custom Field „controller“): Für ihre APs lässt sich keine Konfiguration erzeugen."}</>)
+}
 pub fn port_like_name(interface: Html) -> Html {
     html!(<>{interface}{" ist ein physisches Interface, heisst aber nicht wie ein RouterOS-Port: Der Generator nimmt es nicht als Port."}</>)
 }

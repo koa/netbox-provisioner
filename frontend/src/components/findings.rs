@@ -227,6 +227,9 @@ impl Links<'_> {
                 self.link(&format!("wireless/wireless-lans/{}/", f.id), &f.ssid),
                 self.link(&format!("wireless/wireless-lan-groups/{}/", f.group.id), &f.group.name),
             ),
+            Kind::WlanGroupWithoutController(f) => t::wlan_group_without_controller(
+                self.link(&format!("wireless/wireless-lan-groups/{}/", f.group.id), &f.group.name),
+            ),
             Kind::VlanWithSeveralGateways(f) => {
                 t::vlan_with_several_gateways(self.vlan(&f.vlan), self.interfaces(&f.interfaces))
             }
