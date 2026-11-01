@@ -1,6 +1,6 @@
-query InterfaceView($device: Int!){
-    netboxUrl
+subscription InterfaceView($device: Int!){
     topology{
+        netboxUrl
         deviceById(id: $device){
             interfaceView{
                 rows{

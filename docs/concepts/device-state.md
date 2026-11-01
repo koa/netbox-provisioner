@@ -301,6 +301,11 @@ Jedes Feld des Subscription-Typs ist ein Stream aus `live::rounds`:
 
 Das erste Ergebnis ist das der Query. Gefragt wird nur, weil eine Anzeige es gerade zeigt.
 
+Über HTTP (`/graphql`) beantwortet der Provisioner eine Subscription mit ihrem ersten Ergebnis
+(`live::execute_once`). Eine Anzeige, die nur einmal fragt (der Helfer „Flags“ mit
+`findings(after:)`), nutzt so dasselbe Dokument und dieselben generierten Typen wie die, die es
+abonniert. `netboxUrl` gibt es dafür auch an `topology`.
+
 Solange eine Subscription offen ist, liest der Provisioner NetBox alle 10 s
 (`live::watch_netbox`). Sonst fiele eine Änderung in NetBox erst auf, wenn das Gezeigte zu alt
 wird. Das Lesen von NetBox läuft nur einmal gleichzeitig (`TopologyHolder::fetching`).
@@ -324,9 +329,11 @@ Binary prüft das Token wie den Header von `/graphql` (Signatur, `validation_opt
 - Laufende Jobs eines Geräts erscheinen auf seiner Seite, auch wenn ein anderer Browser sie
   gestartet hat (`jobs` des Geräts). Endet einer, liest die Seite Verlauf und Interfaces neu.
 
-Betroffene Anzeigen: Geräteseite (alle Abschnitte; abonniert ist bisher die Übersicht
-`DeviceOverview`), Geräteliste, Interfaces und Live-Interfaces, Site-Diff, Findings, Helfer nach
-einem Schreiben in NetBox.
+Abonniert sind: die Übersicht der Geräteseite (`DeviceOverview`), ihre Interfaces
+(`InterfaceView`), die Befunde (`Findings`), die Site-Liste (`ListSites`), die Geräte einer Site
+(`SiteDevices`) und „Abweichung von NetBox“ (`SiteDiffKnown`). Was NetBox ändert, zeigen sie
+nach höchstens etwa 10 s. Offen: „Nachbarn prüfen“ (eine Momentaufnahme pro Klick) und ein
+„Stand“ für die Live-Prüfung der Interfaces.
 
 ## Metriken für Prometheus
 

@@ -4,12 +4,14 @@
 //! whenever what they read changed: a job on a device shown ended or logged, facts read were
 //! dropped, the topology changed in NetBox, or the youngest age a fact was taken at ran out.
 //! What they read is noted while the subscription's stream is polled ([`LiveExtension`]).
+use super::AuthenticatedGraphqlSchema;
 use crate::{
     facts::{self, Change, Reading},
     topology::TopologyHolder,
 };
 use async_graphql::{
-    Response,
+    Request, Response,
+    parser::types::OperationType,
     extensions::{Extension, ExtensionContext, ExtensionFactory, NextSubscribe},
     futures_util::stream::{self, BoxStream, Stream, StreamExt},
 };
@@ -59,6 +61,31 @@ impl Drop for Open {
     fn drop(&mut self) {
         OPEN.fetch_sub(1, Ordering::Relaxed);
     }
+}
+
+/// Answers `request` once, as over HTTP: a subscription with its first answer, so that a view
+/// asking once shares the subscription's document (and the types generated from it) with the
+/// views keeping it live.
+pub async fn execute_once(schema: &AuthenticatedGraphqlSchema, mut request: Request) -> Response {
+    if is_subscription(&mut request) {
+        schema.execute_stream(request).next().await.unwrap_or_default()
+    } else {
+        schema.execute(request).await
+    }
+}
+
+/// Whether the operation `request` runs is a subscription (an unparsable one fails as a query).
+fn is_subscription(request: &mut Request) -> bool {
+    let name = request.operation_name.clone();
+    let Ok(document) = request.parsed_query() else {
+        return false;
+    };
+    let mut operations = document.operations.iter();
+    let operation = match &name {
+        Some(name) => operations.find(|(operation, _)| operation.is_some_and(|operation| operation.as_str() == name)),
+        None => operations.next(),
+    };
+    operation.is_some_and(|(_, operation)| operation.node.ty == OperationType::Subscription)
 }
 
 /// Polls each subscription's stream noting what it reads (`facts::reading_in`): the field's

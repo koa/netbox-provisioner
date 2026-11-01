@@ -108,7 +108,7 @@ async fn graphql(
         request
     };
 
-    let response = schema.execute(request).await;
+    let response = backend::graphql::live::execute_once(schema, request).await;
     timer.stop_and_record();
     response.into()
 }

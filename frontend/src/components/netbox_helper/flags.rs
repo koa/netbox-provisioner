@@ -210,7 +210,7 @@ pub(super) fn fetch_flag_findings(scope: Scope<NetboxHelper>, id: u32, changes: 
             },
         )
         .await
-        .map(|data| (data.netbox_url, data.topology.findings));
+        .map(|data| (data.topology.netbox_url, data.topology.findings));
         scope.send_message(FlagsMsg::Findings(changes, result));
     });
 }

@@ -186,7 +186,7 @@ impl View {
             .ok_or(FrontendError::MissingData)?
             .interface_view;
         Ok(View {
-            netbox: data.netbox_url,
+            netbox: data.topology.netbox_url,
             rows: view.rows.into_iter().map(Row::of).collect::<Result<_, _>>()?,
             device_findings: findings(&view.device_findings)?,
             other_findings: findings(&view.other_findings)?,

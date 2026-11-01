@@ -411,7 +411,9 @@ concerns only who looked without asking (`facts::peek_newest`, e.g. the device's
 that „Abweichung von NetBox“ shows over its last job's readings); for who asks it is no change
 (two live pages would keep asking for each other); „Neu laden“ drops the device's
 facts (`refreshDevice`), so every page showing it reads anew. While a subscription is open
-NetBox is read every 10 s (`live::watch_netbox`).
+NetBox is read every 10 s (`live::watch_netbox`). Over HTTP a subscription is answered with
+its first answer (`live::execute_once`): a view asking once shares the document and generated
+types with the views subscribing (`Findings`, `InterfaceView`, `SiteDevices`, `ListSites`).
 
 The UI logs in over OIDC (`yew-oauth2` in the frontend, structure taken from the cable-editor);
 the backend checks the JWT against `auth_issuer` and lets only `auth_users` in, both as

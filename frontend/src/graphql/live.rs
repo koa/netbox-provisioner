@@ -58,6 +58,21 @@ pub fn subscribe<Q: GraphQLQuery + 'static, S: Component>(
     })
 }
 
+/// [`subscribe`] taking the data as `query_authenticated` does: without data, the errors.
+pub fn subscribe_data<Q: GraphQLQuery + 'static, S: Component>(
+    scope: &Scope<S>,
+    variables: Q::Variables,
+    deliver: impl Fn(Result<Q::ResponseData, FrontendError>) + 'static,
+) -> Subscription {
+    subscribe::<Q, S>(scope, variables, move |response| {
+        deliver(response.and_then(|response| {
+            response
+                .data
+                .ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
+        }))
+    })
+}
+
 struct Query {
     payload: Value,
     deliver: Rc<dyn Fn(Value)>,

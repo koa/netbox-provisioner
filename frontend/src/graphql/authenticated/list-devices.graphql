@@ -1,4 +1,4 @@
-query ListSites{
+subscription ListSites{
     topology{
         allSites{
             id
@@ -13,7 +13,7 @@ query ListSites{
         }
     }
 }
-query SiteDevices($site: Int!){
+subscription SiteDevices($site: Int!){
     topology{
         siteById(id: $site){
             devices{

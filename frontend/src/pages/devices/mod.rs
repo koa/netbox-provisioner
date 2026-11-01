@@ -8,7 +8,8 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{PingDevice, SiteDevices, ping_device, site_devices},
-        query_authenticated, query_authenticated_response,
+        live::{Subscription, subscribe_data},
+        query_authenticated_response,
     },
     pages::routes::AppRoute,
 };
@@ -25,6 +26,8 @@ pub struct DevicesProps {
 pub struct Devices {
     state: DeviceState,
     error_state: Option<FrontendError>,
+    /// shown again when NetBox changed
+    _subscription: Subscription,
 }
 enum DeviceState {
     Loading,
@@ -49,10 +52,43 @@ impl Component for Devices {
     type Message = DevicesMsg;
     type Properties = DevicesProps;
 
-    fn create(_ctx: &Context<Self>) -> Self {
+    fn create(ctx: &Context<Self>) -> Self {
+        let scope = ctx.link().clone();
+        let site = ctx.props().site;
+        let variables = site_devices::Variables { site: site as i64 };
+        let subscription = subscribe_data::<SiteDevices, _>(ctx.link(), variables, move |data| {
+            scope.send_message(match data {
+                Ok(data) => DevicesMsg::Data(
+                    data.topology
+                        .site_by_id
+                        .map(|site| site.devices)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|device| DeviceRow {
+                            site,
+                            id: device.id as u32,
+                            name: device.name.into_boxed_str(),
+                            address: device
+                                .management_address
+                                .and_then(|ip| ip.address)
+                                .and_then(|a| IpAddr::from_str(a.ip.as_str()).ok()),
+                            serial: device.serial.map(|s| s.into_boxed_str()),
+                            findings: findings::count(
+                                device
+                                    .findings
+                                    .iter()
+                                    .map(|f| matches!(f.severity, site_devices::Severity::ERROR)),
+                            ),
+                        })
+                        .collect(),
+                ),
+                Err(error) => DevicesMsg::Error(error),
+            })
+        });
         Self {
             state: DeviceState::Loading,
             error_state: None,
+            _subscription: subscription,
         }
     }
 
@@ -108,47 +144,6 @@ impl Component for Devices {
         }
     }
 
-    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
-        if first_render {
-            let scope = ctx.link().clone();
-            let site = ctx.props().site;
-            spawn_local(async move {
-                match query_authenticated::<SiteDevices, _>(
-                    scope.clone(),
-                    site_devices::Variables { site: site as i64 },
-                )
-                .await
-                {
-                    Ok(data) => {
-                        scope.send_message(DevicesMsg::Data(
-                            data.topology
-                                .site_by_id
-                                .map(|site| site.devices)
-                                .unwrap_or_default()
-                                .into_iter()
-                                .map(|device| DeviceRow {
-                                    site,
-                                    id: device.id as u32,
-                                    name: device.name.into_boxed_str(),
-                                    address: device
-                                        .management_address
-                                        .and_then(|ip| ip.address)
-                                        .and_then(|a| IpAddr::from_str(a.ip.as_str()).ok()),
-                                    serial: device.serial.map(|s| s.into_boxed_str()),
-                                    findings: findings::count(device.findings.iter().map(|f| {
-                                        matches!(f.severity, site_devices::Severity::ERROR)
-                                    })),
-                                })
-                                .collect(),
-                        ));
-                    }
-                    Err(e) => {
-                        scope.send_message(DevicesMsg::Error(e));
-                    }
-                }
-            })
-        }
-    }
 }
 
 #[derive(Debug)]

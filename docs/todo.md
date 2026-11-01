@@ -70,7 +70,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
-| C15 | Gerätezustand: Cache der Erkenntnisse (`facts`), Login und Durchprobieren, Verwerfen nach Jobs, Metriken, „Stand“ und „Neu laden“, Subscriptions (dieselben Typen wie die Query) für die Geräteseite sind umgesetzt; offen: die übrigen Anzeigen abonnieren, Grafana-Dashboard | [Gerätezustand](concepts/device-state.md) | L | in Arbeit |
+| C15 | Gerätezustand: Cache der Erkenntnisse (`facts`), Login und Durchprobieren, Verwerfen nach Jobs, Metriken, „Stand“ und „Neu laden“, Subscriptions (dieselben Typen wie die Query) für Geräteseite, Interfaces, Befunde, Site-Listen und Abweichung sind umgesetzt; offen: „Nachbarn prüfen“ mit Stand, Stand der Live-Prüfung, Grafana-Dashboard | [Gerätezustand](concepts/device-state.md) | L | in Arbeit |
 
 ## E. Erweiterungen umgesetzter Teile
 

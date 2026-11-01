@@ -7,17 +7,19 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{ListSites, list_sites},
-        query_authenticated,
+        live::{Subscription, subscribe_data},
     },
     pages::routes::{AppRoute, SiteView},
 };
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner};
-use yew::{Component, Context, Html, html, platform::spawn_local};
+use yew::{Component, Context, Html, html};
 use yew_nested_router::components::Link;
 
 /// The sites with devices the provisioner manages, the first step to a device.
 pub struct Sites {
     sites: Option<Result<Vec<list_sites::ListSitesTopologyAllSites>, FrontendError>>,
+    /// shown again when NetBox changed
+    _subscription: Subscription,
 }
 
 pub enum SitesMsg {
@@ -28,8 +30,15 @@ impl Component for Sites {
     type Message = SitesMsg;
     type Properties = ();
 
-    fn create(_ctx: &Context<Self>) -> Self {
-        Self { sites: None }
+    fn create(ctx: &Context<Self>) -> Self {
+        let scope = ctx.link().clone();
+        let subscription = subscribe_data::<ListSites, _>(ctx.link(), list_sites::Variables {}, move |data| {
+            scope.send_message(SitesMsg::Sites(data.map(|data| data.topology.all_sites)));
+        });
+        Self {
+            sites: None,
+            _subscription: subscription,
+        }
     }
 
     fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
@@ -74,19 +83,6 @@ impl Component for Sites {
                 <FindingsList site={None::<u32>}/>
                 <div class="site-list">{content}</div>
             </>
-        }
-    }
-
-    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
-        if first_render {
-            let scope = ctx.link().clone();
-            spawn_local(async move {
-                let sites =
-                    query_authenticated::<ListSites, _>(scope.clone(), list_sites::Variables {})
-                        .await
-                        .map(|data| data.topology.all_sites);
-                scope.send_message(SitesMsg::Sites(sites));
-            });
         }
     }
 }

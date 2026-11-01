@@ -21,7 +21,7 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{InterfaceView, findings::Severity, interface_view},
-        query_authenticated,
+        live::{Subscription, subscribe_data},
     },
     i18n::interfaces as t,
 };
@@ -35,7 +35,7 @@ use rows::{Action, Row, Task, View};
 use std::{collections::BTreeMap, rc::Rc};
 use table::{Entry, TaskTable};
 use yew::{
-    Callback, Component, Context, Html, Properties, html, html_nested, platform::spawn_local,
+    Callback, Component, Context, Html, Properties, html, html_nested,
 };
 
 const FILTER_KEY: &str = "interfaces.task";
@@ -72,6 +72,8 @@ pub struct Interfaces {
     /// the rows written to NetBox since the last apply (their interface), with the action that
     /// wrote: its helper offers to take the write back
     changed: BTreeMap<i64, Action>,
+    /// the view subscribed to: shown again when NetBox changed
+    subscription: Option<Subscription>,
 }
 
 /// A helper in the modal: what it starts with, its title, the row and action it is for.
@@ -111,6 +113,7 @@ impl Component for Interfaces {
             only_findings: stored(ONLY_FINDINGS_KEY).as_deref() == Some("true"),
             flow: None,
             changed: BTreeMap::new(),
+            subscription: None,
         }
     }
 
@@ -158,7 +161,7 @@ impl Component for Interfaces {
             self.changed.clear();
         }
         if props.id != old.id || props.refresh != old.refresh || props.target != old.target {
-            fetch(ctx);
+            self.subscription = Some(subscribe_view(ctx));
             ctx.link().send_message(InterfacesMsg::CheckLive);
         }
         props.applied != old.applied || props.target != old.target
@@ -205,7 +208,7 @@ impl Component for Interfaces {
 
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
-            fetch(ctx);
+            self.subscription = Some(subscribe_view(ctx));
             ctx.link().send_message(InterfacesMsg::CheckLive);
         }
     }
@@ -405,18 +408,14 @@ fn has_error<'f>(
         .any(|f| matches!(f.severity, Severity::ERROR))
 }
 
-fn fetch(ctx: &Context<Interfaces>) {
+fn subscribe_view(ctx: &Context<Interfaces>) -> Subscription {
     let scope = ctx.link().clone();
-    let device = i64::from(ctx.props().id);
-    spawn_local(async move {
-        let data = query_authenticated::<InterfaceView, _>(
-            scope.clone(),
-            interface_view::Variables { device },
-        )
-        .await
-        .and_then(View::of);
-        scope.send_message(InterfacesMsg::Data(data));
-    });
+    let variables = interface_view::Variables {
+        device: i64::from(ctx.props().id),
+    };
+    subscribe_data::<InterfaceView, _>(ctx.link(), variables, move |data| {
+        scope.send_message(InterfacesMsg::Data(data.and_then(View::of)));
+    })
 }
 
 /// A value the browser keeps; none where it keeps nothing (a private window, blocked storage).

@@ -10,12 +10,12 @@ use crate::{
                 PrefixPool, RadioPathPart, Severity,
             },
         },
-        query_authenticated,
+        live::{Subscription, subscribe_data},
     },
     i18n::findings as t,
 };
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Color, Label, Spinner};
-use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
+use yew::{Component, Context, Html, Properties, html};
 
 #[derive(Debug, Clone, PartialEq, Properties)]
 pub struct FindingsProps {
@@ -26,6 +26,8 @@ pub struct FindingsProps {
 
 pub struct FindingsList {
     data: Option<Result<(String, Vec<FindingsTopologyFindings>), FrontendError>>,
+    /// shown again when NetBox changed
+    _subscription: Subscription,
 }
 
 pub enum FindingsMsg {
@@ -36,8 +38,21 @@ impl Component for FindingsList {
     type Message = FindingsMsg;
     type Properties = FindingsProps;
 
-    fn create(_ctx: &Context<Self>) -> Self {
-        Self { data: None }
+    fn create(ctx: &Context<Self>) -> Self {
+        let scope = ctx.link().clone();
+        let variables = findings::Variables {
+            site: ctx.props().site.map(i64::from),
+            device: None,
+            after: None,
+        };
+        let subscription = subscribe_data::<Findings, _>(ctx.link(), variables, move |data| {
+            let data = data.map(|data| (data.topology.netbox_url, data.topology.findings));
+            scope.send_message(FindingsMsg::Data(data));
+        });
+        Self {
+            data: None,
+            _subscription: subscription,
+        }
     }
 
     fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
@@ -69,27 +84,6 @@ impl Component for FindingsList {
                 <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
                 <CardBody>{body}</CardBody>
             </Card>
-        }
-    }
-
-    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
-        if first_render {
-            let scope = ctx.link().clone();
-            let site = ctx.props().site.map(i64::from);
-            spawn_local(async move {
-                let data =
-                    query_authenticated::<Findings, _>(
-                        scope.clone(),
-                        findings::Variables {
-                            site,
-                            device: None,
-                            after: None,
-                        },
-                    )
-                        .await
-                        .map(|data| (data.netbox_url, data.topology.findings));
-                scope.send_message(FindingsMsg::Data(data));
-            });
         }
     }
 }

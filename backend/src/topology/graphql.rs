@@ -14,6 +14,11 @@ struct DeviceListFilter {
 
 #[Object]
 impl TopologyHolder {
+    /// NetBox' web UI, ending in `/`, for links to its objects: as `netboxUrl` of the query,
+    /// here for a subscription, which has `topology` as its one root field.
+    async fn netbox_url(&self) -> String {
+        crate::netbox::web_url()
+    }
     /// In NetBox' order of names.
     async fn all_devices(&self, filter: Option<DeviceListFilter>) -> Box<[DeviceAccess]> {
         let mut devices: Box<[DeviceAccess]> = self
