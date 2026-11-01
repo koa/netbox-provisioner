@@ -85,7 +85,11 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
   `Service` für beide, `ServiceMonitor` optional, ebenso das Grafana-Dashboard
   (`grafanaDashboard`: eine ConfigMap mit dem Label, nach dem der Grafana-Sidecar sucht, Vorgabe
   `grafana_dashboard: "1"`; ein Upgrade des Charts bringt es auf den Stand). Statt Ingress eine `HTTPRoute` (Gateway API) an
-  ein Gateway des Betreibers; die OIDC-Callback-URL ist ihr Host ([Login](login.md)).
+  ein Gateway des Betreibers; die OIDC-Callback-URL ist ihr Host ([Login](login.md)). Der
+  Server spricht nur HTTP/1.1: HTTP/2 zum Browser macht das Gateway (bei Cilium
+  `gatewayAPI.enableAlpn`, danach den Operator neu starten), zum Pod bleibt es ohne `appProtocol`
+  im Service bei HTTP/1.1. So laufen die WebSockets, und h2 0.3 bleibt unerreichbar (A6 in
+  [done.md](done.md)).
 - **Probes** auf `/health` am Management-Port. Das Backend lädt beim Start die OIDC-Discovery und
   startet ohne sie nicht ([Login](login.md)); die Startup-Probe braucht dafür Geduld.
 - **Netz nach aussen:** Der Pod muss die Geräte erreichen, direkt oder über den Management-Proxy
