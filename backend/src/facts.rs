@@ -375,6 +375,9 @@ pub struct Reading {
     pub all_jobs: bool,
     /// when the first fact read gets older than its user took it
     pub outdated: Option<Instant>,
+    /// how many events of each job (by id) the subscription delivered; unlike the rest kept
+    /// from round to round, so each answer brings only the new ones ([`events_from`])
+    pub delivered: std::collections::HashMap<u32, u32>,
 }
 
 impl Reading {
@@ -426,6 +429,24 @@ fn note(key: &FactKey, as_of: Instant, max_age: Option<Duration>) {
             let outdated = as_of + age;
             reading.outdated = Some(reading.outdated.map_or(outdated, |o| o.min(outdated)));
         }
+    });
+}
+
+/// Where the events of `job` asked `after` start for the subscription answering: after those
+/// it delivered already; `after` itself outside a subscription.
+pub fn events_from(job: u32, after: u32) -> u32 {
+    READING
+        .try_with(|reading| {
+            let reading = reading.lock().unwrap_or_else(PoisonError::into_inner);
+            reading.delivered.get(&job).map_or(after, |delivered| after.max(*delivered))
+        })
+        .unwrap_or(after)
+}
+
+/// The subscription answering delivers the events of `job` up to `until`.
+pub fn note_delivered(job: u32, until: u32) {
+    let _ = READING.try_with(|reading| {
+        reading.lock().unwrap_or_else(PoisonError::into_inner).delivered.insert(job, until);
     });
 }
 

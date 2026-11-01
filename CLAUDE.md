@@ -642,13 +642,15 @@ up stays (CHR 7.24.5).
 An update, an apply, an initial setup and a reboot run as jobs (`backend::job`):
 `updateRouteros`, `applyCfg`, `bootstrap` and `rebootDevice` return the `Job` at once, the work
 goes on in the background and reports typed events (`job::Event`, a GraphQL union; the
-frontend words them in German, `i18n::job`, shown by `components/job.rs`). The frontend asks `job(id) { events(after)
-}` every second: the API is plain POST with the bearer token, a subscription would need the
-token over a websocket. A device runs one job at a time, the device page picks up a running one
+frontend words them in German, `i18n::job`, shown by `components/job.rs`). The job view subscribes to `job(id) { events(after)
+}` (`JobEvents`, the subscription root's `job`): each answer brings only the events not
+delivered yet (`facts::events_from`/`note_delivered`, kept in the subscription's `Reading`
+across rounds), after the connection came back it appends only those with a new `index`; a
+site's job announces nothing, so only device jobs are shown there. A device runs one job at a time, the device page picks up a running one
 (`jobs(deviceId)`); jobs are kept in the process only. Their numbers start anew per run
 (`job::first_id`, from the start time), so after a restart the page asking for a job of the run
 before gets `null`: it shows the job as interrupted (`components/job.rs`, `JobMessage::Lost`) and
-frees the page. While asking fails (server away) it shows one line and asks again, less often. A panic in a job's work ends it as
+frees the page. A panic in a job's work ends it as
 failed with `PANIC` and its message, rather than leaving it running forever (`job::start`).
 Each kind of job has a state machine in `device_state` (`docs/jobs.md`; an apply
 alone or in a batch shares `ApplyState`, an update and a downgrade `UpdateState`, a reboot, a

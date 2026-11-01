@@ -1,5 +1,5 @@
-//! A job of the backend (an update, an apply, a setup): its events while it runs, asked for every second, worded
-//! by `i18n::job`; with a button to cancel it.
+//! A job of the backend (an update, an apply, a setup): its events while it runs, subscribed to
+//! (each answer brings the new ones), worded by `i18n::job`; with a button to cancel it.
 use crate::{
     error::{FrontendError, ServerProblem},
     i18n::{common::CANCEL, job as t, login},
@@ -12,6 +12,7 @@ use crate::{
                 PowerWait, RebootReason,
             },
         },
+        live::{Subscription, subscribe_data},
         query_authenticated,
     },
     pages::start_login,
@@ -19,13 +20,10 @@ use crate::{
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, CodeBlock, CodeBlockCode, Spinner, SpinnerSize,
 };
-use std::{cell::Cell, rc::Rc, time::Duration};
-use yew::{
-    Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local,
-    platform::time::sleep,
-};
+use std::time::Duration;
+use yew::{Callback, Component, Context, Html, Properties, html, platform::spawn_local};
 
-/// How often a running job is asked for new events.
+/// How often a running job is asked for new events where it isn't subscribed to.
 pub(crate) const POLL: Duration = Duration::from_secs(1);
 /// How long to wait after the 1st, 2nd, … failed asking in a row; then the last one.
 pub(crate) const RETRY: [Duration; 4] = [
@@ -41,8 +39,8 @@ pub struct JobView {
     error: Option<FrontendError>,
     /// the server doesn't know the job (anymore): it restarted meanwhile
     lost: bool,
-    /// asking stops once the component is gone
-    alive: Rc<Cell<bool>>,
+    /// its events as they come; ends with the job, or once the component is gone
+    subscription: Option<Subscription>,
     cancelling: bool,
     /// starting the login (after the server refused the token) failed
     login_error: Option<String>,
@@ -71,13 +69,24 @@ impl Component for JobView {
     type Properties = JobViewProps;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let alive = Rc::new(Cell::new(true));
-        poll(ctx.link().clone(), ctx.props().id, alive.clone());
+        let scope = ctx.link().clone();
+        let subscription = subscribe_data::<JobEvents, _>(
+            ctx.link(),
+            job_events::Variables { id: ctx.props().id, after: Some(0) },
+            move |answer| {
+                scope.send_message(match answer {
+                    Ok(job_events::ResponseData { job: Some(job) }) => JobMessage::Loaded(job),
+                    // the backend restarted and forgot it
+                    Ok(job_events::ResponseData { job: None }) => JobMessage::Lost,
+                    Err(error) => JobMessage::Error(error),
+                })
+            },
+        );
         JobView {
             job: None,
             error: None,
             lost: false,
-            alive,
+            subscription: Some(subscription),
             cancelling: false,
             login_error: None,
         }
@@ -87,11 +96,14 @@ impl Component for JobView {
         match msg {
             JobMessage::Loaded(mut loaded) => {
                 if let Some(job) = self.job.take() {
+                    // after the connection came back the subscription starts over: only the new
+                    let next = job.events.last().map_or(0, |last| last.index + 1);
                     let mut events = job.events;
-                    events.append(&mut loaded.events);
+                    events.extend(loaded.events.into_iter().filter(|event| event.index >= next));
                     loaded.events = events;
                 }
                 if loaded.state != JobState::RUNNING {
+                    self.subscription = None;
                     ctx.props().on_finished.emit(loaded.state == JobState::DONE);
                 }
                 self.job = Some(loaded);
@@ -99,6 +111,7 @@ impl Component for JobView {
             }
             JobMessage::Error(error) => self.error = Some(error),
             JobMessage::Lost => {
+                self.subscription = None;
                 self.lost = true;
                 self.error = None;
                 ctx.props().on_finished.emit(false);
@@ -177,53 +190,6 @@ impl Component for JobView {
         }
     }
 
-    fn destroy(&mut self, _ctx: &Context<Self>) {
-        self.alive.set(false);
-    }
-}
-
-/// Asks for the job's new events until it is over, or the server doesn't know it anymore. While
-/// asking fails it asks again, less often.
-fn poll(scope: Scope<JobView>, id: i64, alive: Rc<Cell<bool>>) {
-    spawn_local(async move {
-        let mut after = 0;
-        let mut failed = 0;
-        while alive.get() {
-            match query_authenticated::<JobEvents, _>(
-                scope.clone(),
-                job_events::Variables {
-                    id,
-                    after: Some(after),
-                },
-            )
-            .await
-            {
-                Ok(job_events::ResponseData { job: Some(job) }) => {
-                    failed = 0;
-                    if let Some(last) = job.events.last() {
-                        after = last.index + 1;
-                    }
-                    let over = job.state != JobState::RUNNING;
-                    scope.send_message(JobMessage::Loaded(job));
-                    if over {
-                        return;
-                    }
-                }
-                // the backend restarted and forgot it
-                Ok(job_events::ResponseData { job: None }) => {
-                    scope.send_message(JobMessage::Lost);
-                    return;
-                }
-                Err(error) => {
-                    scope.send_message(JobMessage::Error(error));
-                    sleep(RETRY[failed.min(RETRY.len() - 1)]).await;
-                    failed += 1;
-                    continue;
-                }
-            }
-            sleep(POLL).await;
-        }
-    });
 }
 
 fn title(job: &JobEventsJob) -> (String, AlertType) {

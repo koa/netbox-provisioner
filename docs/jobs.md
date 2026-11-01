@@ -10,17 +10,24 @@ einem Zustand tut und was ein Neustart des Servers mit dem Job macht.
 
 ## Verfolgen im Browser
 
-- `components/job.rs` fragt jede Sekunde `job(id) { events(after) }` (POST mit dem Bearer-Token;
-  über die Subscriptions der übrigen Seiten, [Gerätezustand](device-state.md), ist E18). Die Geräteseite nimmt einen
-  laufenden Job auf (`jobs(deviceId)`).
-- **Server weg:** Schlägt die Abfrage fehl, zeigt die Ansicht eine Zeile und fragt seltener
-  weiter (`RETRY`), statt jede Sekunde einen neuen Fehler zu zeigen.
-- **Anmeldung abgelaufen:** Lehnt der Server das Token ab (`401`/`403`), sagt die Zeile das, mit
-  dem Knopf „Erneut anmelden“ (`pages::start_login`), und die Ansicht fragt weiter. Der Login
-  kehrt auf die Seite zurück, die den laufenden Job wieder aufnimmt. Ohne Refresh-Token (Pocket-ID
-  ohne `offline_access`) hält `yew-oauth2` ein abgelaufenes Token für gültig; der Server lehnt es
-  nach Ablauf plus 60 s Toleranz ab ([Login](login.md)). Im Lab mit Keycloak ohne Refresh-Token
-  und 10 s Laufzeit geprüft (2026-11-01).
+- `components/job.rs` abonniert `job(id) { events(after) }` über die WebSocket-Verbindung der
+  Seite ([Gerätezustand](device-state.md#live-aktualisierung)): Der Server antwortet bei jedem
+  Ereignis und am Ende, jede Antwort nur mit den neuen Ereignissen (`facts::events_from`, was die
+  Subscription schon lieferte, merkt sie über die Runden hinweg). Startet die Verbindung neu,
+  beginnt die Subscription von vorne; die Ansicht hängt nur Ereignisse mit neuem `index` an. Ein
+  Job einer Site meldet niemandem etwas und antwortet nur einmal; die Ansicht zeigt nur Jobs von
+  Geräten. Die Geräteseite nimmt einen laufenden Job auf (`jobs(deviceId)`). Im Lab an einer
+  Ersteinrichtung geprüft (2026-11-01): 284 Ereignisse, die Konsole genau wie auf dem Server, 2
+  POSTs statt etwa 130.
+- **Server weg:** Die Verbindung baut sich mit der Staffel von `RETRY` wieder auf; solange sie
+  fehlt, steht die Ansicht still.
+- **Anmeldung abgelaufen:** Die WebSocket-Verbindung prüft das Token nur beim Aufbau; solange sie
+  steht, läuft die Ansicht auch mit abgelaufenem Token weiter. Lehnt der Server ein Token über
+  HTTP ab (`401`/`403`, etwa beim Abbrechen), sagt die Zeile das, mit dem Knopf „Erneut
+  anmelden“ (`pages::start_login`); der Login kehrt auf die Seite zurück, die den laufenden Job
+  wieder aufnimmt. Baut sich die Verbindung mit einem abgelaufenen Token neu auf, lehnt der
+  Server sie ab, und sie versucht es still weiter (Z34). Ohne Refresh-Token (Pocket-ID ohne
+  `offline_access`) hält `yew-oauth2` ein abgelaufenes Token für gültig ([Login](login.md)).
 - **Server neu gestartet:** Die Nummern der Jobs beginnen pro Lauf neu bei 1000 je Sekunde des
   Startzeitpunkts (`job::first_id`, modulo 1 000 000 Sekunden, passt in GraphQL' `Int`). Eine
   Nummer aus einem früheren Lauf findet so keinen fremden Job, sondern `null`: Die Ansicht zeigt

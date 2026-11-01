@@ -1,4 +1,4 @@
-query JobEvents($id: Int!, $after: Int){
+subscription JobEvents($id: Int!, $after: Int){
     job(id: $id){
         id
         kind

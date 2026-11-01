@@ -250,8 +250,9 @@ ist nur, was das Gerät antwortet; verglichen wird mit NetBox, wie es jetzt ist.
 daneben. Was die Gegenseite eines umbenannten Ports sieht, bleibt bis zu ihrem nächsten Lesen
 alt (das Gerät meldet den neuen Namen ohnehin erst mit der nächsten Ankündigung).
 
-Die Jobs selbst fragt die Job-Ansicht weiter jede Sekunde ab (`components/job.rs`, siehe
-[Jobs](jobs.md#verfolgen-im-browser)).
+Die Job-Ansicht abonniert ihren Job (`JobEvents`, Wurzelfeld `job(id)`), jede Antwort mit den
+neuen Ereignissen ([Jobs](jobs.md#verfolgen-im-browser)). Nur „Abweichung von NetBox“ fragt die
+Ereignisse ihres Prüf-Jobs noch jede Sekunde ab (`components/site_diff.rs`).
 
 ### Abweichung von NetBox
 

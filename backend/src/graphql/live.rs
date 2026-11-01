@@ -147,7 +147,11 @@ where
             wait(&reading, started, &mut state.changes).await;
         }
         if let Some(reading) = facts::current_reading() {
-            *reading.lock().unwrap_or_else(PoisonError::into_inner) = Reading::default();
+            let mut reading = reading.lock().unwrap_or_else(PoisonError::into_inner);
+            *reading = Reading {
+                delivered: std::mem::take(&mut reading.delivered),
+                ..Reading::default()
+            };
         }
         state.started = Some(facts::sequence());
         let value = (state.make)().await;

@@ -134,6 +134,18 @@ impl SubscriptionAuthenticated {
         let topology = self.topology.clone();
         live::rounds(move || std::future::ready(topology.clone()))
     }
+    /// `job` of the query, again whenever it logs or ends, its `events` then only the new ones;
+    /// `null` once the server doesn't know it (it restarted). A site's job tells nobody: one
+    /// answer only.
+    async fn job(&self, id: u32) -> impl Stream<Item = Option<Arc<Job>>> + use<> {
+        live::rounds(move || {
+            let job = job::get(id);
+            for device in job.iter().flat_map(|job| job.log().devices()) {
+                crate::facts::note_jobs(Some(*device));
+            }
+            std::future::ready(job)
+        })
+    }
     /// `jobs` of the query, again whenever one of them started, logged or ended.
     async fn jobs(&self, device_id: Option<u32>, site_id: Option<u32>) -> impl Stream<Item = Vec<Arc<Job>>> + use<> {
         let subject = job_subject(device_id, site_id);

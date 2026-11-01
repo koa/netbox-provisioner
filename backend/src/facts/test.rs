@@ -209,3 +209,17 @@ async fn the_way_is_no_part_of_the_key() {
     get(key(30).via("neighbor"), Freshness::MaxAge(MINUTE), asker.ask(SECOND, Ok(3))).await;
     assert_eq!(*peek::<u32>(&key(30)).unwrap().value.unwrap(), 3);
 }
+
+/// A subscription's events start after those it delivered, from round to round; outside one
+/// they start where asked.
+#[test]
+fn a_subscription_gets_only_the_events_not_delivered() {
+    use super::{events_from, note_delivered, reading_in};
+    let reading = Arc::new(Mutex::new(Reading::default()));
+    assert_eq!(reading_in(reading.clone(), || events_from(7, 0)), 0);
+    reading_in(reading.clone(), || note_delivered(7, 12));
+    assert_eq!(reading_in(reading.clone(), || events_from(7, 0)), 12);
+    assert_eq!(reading_in(reading.clone(), || events_from(7, 20)), 20);
+    assert_eq!(reading_in(reading.clone(), || events_from(8, 3)), 3);
+    assert_eq!(events_from(7, 0), 0);
+}

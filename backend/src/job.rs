@@ -232,6 +232,10 @@ impl Log {
         }
         self.announce();
     }
+    /// The devices the job works on and through; none for a site's job.
+    pub fn devices(&self) -> &[DeviceId] {
+        self.devices.get().map_or(&[], |devices| devices)
+    }
     /// Tells the subscriptions of the job's devices that it changed.
     fn announce(&self) {
         for device in self.devices.get().into_iter().flatten() {
@@ -995,9 +999,13 @@ impl Job {
     async fn took(&self) -> Option<ScalarDuration> {
         self.took.lock().unwrap_or_else(PoisonError::into_inner).map(ScalarDuration::from)
     }
-    /// its events from `after` on (the `index` after the last one seen)
+    /// its events from `after` on (the `index` after the last one seen); in a subscription
+    /// each answer only those not delivered yet
     async fn events(&self, after: Option<u32>) -> Vec<Logged> {
-        self.log.since(after.unwrap_or_default())
+        let from = facts::events_from(self.id, after.unwrap_or_default());
+        let events = self.log.since(from);
+        facts::note_delivered(self.id, from + events.len() as u32);
+        events
     }
 }
 
