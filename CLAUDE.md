@@ -151,7 +151,9 @@ carry them over its VXLAN, so without one the clients reach nothing (router-walt
 configuration, no bridge is set up. `nat` without `internet` is a warning (`NatWithoutInternet`,
 Z2: `nat` needs it). A WLAN group without `controller` is left out of `wlan_groups`
 (`Topology::wlan_groups_without_controller` keeps its name); with APs it is an error at them
-(`WlanGroupWithoutController`), generating fails there (`MissingController`). A primary IPv4 on `lo` without `ospf` on any interface is an error
+(`WlanGroupWithoutController`), generating fails there (`MissingController`). A device whose
+radios need its site's country (`radio::needs_country`) without a known one is an error
+(`NoCountry`, from `radio::country_settings`). A primary IPv4 on `lo` without `ospf` on any interface is an error
 (`LoopbackWithoutOspf`): nothing announces it, and it ends a radio bridge's DHCP fallback. A radio
 bridge is an OSPF router through a static address and `ospf` on its `bridge` (management only,
 forwarding stays L2), with OSPF priority 0 (v2 and v3, `setup_ospf`) so it is never DR or BDR of

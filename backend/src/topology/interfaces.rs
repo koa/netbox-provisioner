@@ -758,6 +758,7 @@ impl FindingKind {
                 | FindingKind::NoPrimaryIpv4(_)
                 | FindingKind::PrimaryIpv4NotOnLoopback(_)
                 | FindingKind::LoopbackWithoutOspf(_)
+                | FindingKind::NoCountry(_)
         )
     }
     /// The NetBox ids of the interfaces it names.
@@ -768,6 +769,7 @@ impl FindingKind {
             | FindingKind::NoLoopback(_)
             | FindingKind::NoPrimaryIpv4(_)
             | FindingKind::LoopbackWithoutOspf(_)
+            | FindingKind::NoCountry(_)
             | FindingKind::WlanWithoutVlan(_)
             | FindingKind::WlanGroupWithoutController(_)
             | FindingKind::ForwardWithoutRouter(_)

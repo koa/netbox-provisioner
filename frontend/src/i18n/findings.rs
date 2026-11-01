@@ -38,6 +38,18 @@ pub fn pool_nearly_full(pool: Html, version: &str, free: i64, size: i64) -> Html
 pub fn no_loopback(device: Html) -> Html {
     html!(<>{device}{" hat kein Interface „lo“ (Typ Virtual) für die Loopback."}</>)
 }
+pub fn no_country(device: Html, site: Option<Html>, region: Option<&str>) -> Html {
+    let known = "ch, li, de, at, fr, it";
+    html! {<>
+        {device}{" braucht für seine Radios das Land seiner Site, "}
+        { match (site, region) {
+            (None, _) => html!({"hat aber keine Site"}),
+            (Some(site), None) => html!(<>{"aber die Site "}{site}{" hat keine Region"}</>),
+            (Some(site), Some(region)) => html!(<>{"aber die oberste Region der Site "}{site}{format!(" ist „{region}“, kein bekanntes Land ({known})")}</>),
+        } }
+        {": Für die Radios lässt sich keine Konfiguration erzeugen."}
+    </>}
+}
 pub fn no_primary_ipv4(device: Html) -> Html {
     html!(<>{device}{" hat keine Primary IPv4: keine OSPF-Router-ID, und keine Adresse aus NetBox, unter der es erreichbar ist."}</>)
 }

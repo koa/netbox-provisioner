@@ -181,6 +181,13 @@ impl Links<'_> {
             }
             Kind::NoLoopback(f) => t::no_loopback(self.device(&f.device)),
             Kind::NoPrimaryIpv4(f) => t::no_primary_ipv4(self.device(&f.device)),
+            Kind::NoCountry(f) => t::no_country(
+                self.device(&f.device),
+                f.site
+                    .as_ref()
+                    .map(|site| self.link(&format!("dcim/sites/{}/", site.id), &site.name)),
+                f.region.as_deref(),
+            ),
             Kind::PrimaryIpv4NotOnLoopback(f) => t::primary_not_on_loopback(
                 self.device(&f.device),
                 self.address(&f.address),

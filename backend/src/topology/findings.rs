@@ -58,6 +58,7 @@ pub enum FindingKind {
     RadioWithoutRole(RadioWithoutRole),
     NatWithoutInternet(NatWithoutInternet),
     LoopbackWithoutOspf(LoopbackWithoutOspf),
+    NoCountry(NoCountry),
     VlanWithSeveralGateways(VlanWithSeveralGateways),
     VlanWithoutGateway(VlanWithoutGateway),
     TaggedVlanOnPort(TaggedVlanOnPort),
@@ -112,6 +113,14 @@ pub struct PoolNearlyFull {
     pub version: IpVersion,
     pub free: u64,
     pub size: u64,
+}
+/// The device's radios need the country of its site (`radio::needs_country`), and its topmost
+/// region (`region`, none without a region) is none the generator knows: generating fails.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct NoCountry {
+    pub device: DeviceRef,
+    pub site: Option<SiteRef>,
+    pub region: Option<Box<str>>,
 }
 /// The device has no interface `lo` (type virtual) for its loopback.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -662,6 +671,24 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
             &this,
             FindingKind::NoLoopback(NoLoopback {
                 device: device_ref(device),
+            }),
+        );
+    }
+    if crate::device::ros::radio::needs_country(device)
+        && crate::device::ros::radio::country_settings(device).is_err()
+    {
+        push(
+            Severity::Error,
+            &this,
+            FindingKind::NoCountry(NoCountry {
+                device: device_ref(device),
+                site: device.data().and_then(|d| d.site).zip(device.site()).map(|(id, site)| {
+                    SiteRef {
+                        id: id.0,
+                        name: site.name().into(),
+                    }
+                }),
+                region: device.country().map(Into::into),
             }),
         );
     }

@@ -34,9 +34,23 @@ fn link_key(link: &RadioLink) -> Result<Option<&str>, SetupError> {
         .ok_or_else(|| SetupError::MissingPsk(link.ssid.clone()))
 }
 
+/// Whether generating needs the country of the device's site (`country_settings`): it is an
+/// AP or controller of a Wireless LAN Group, or one of its radios has no link with a country
+/// of its own. For the finding `NoCountry`.
+pub(crate) fn needs_country(device: &DeviceAccess) -> bool {
+    device.wlan_ap_of().is_some()
+        || device.wlan_controller_of().is_some()
+        || device.interfaces().iter().any(|interface| {
+            interface
+                .radio()
+                .is_some_and(|radio| radio.link.as_ref().is_none_or(|link| link.country.is_none()))
+        })
+}
+
 /// RouterOS's `/interface/wireless` country and `/interface/w60g` region for the
-/// country of the device's site (the ISO 3166 code of its topmost region).
-fn country_settings(
+/// country of the device's site (the ISO 3166 code of its topmost region). The text of the
+/// finding `NoCountry` lists the known codes (`frontend/src/i18n/findings.rs`).
+pub(crate) fn country_settings(
     device: &DeviceAccess,
 ) -> Result<(&'static str, InterfaceW60GRegion), SetupError> {
     use InterfaceW60GRegion::Eu;

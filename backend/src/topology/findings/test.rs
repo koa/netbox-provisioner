@@ -63,6 +63,8 @@ fn router(builder: &mut TopologyBuilder, name: &str, loopback: &str) -> DeviceId
         Device {
             name: name.into(),
             has_routeros: true,
+            // its site's, for its radios
+            country: Some("ch".into()),
             ..Device::default()
         },
     );
@@ -395,6 +397,31 @@ fn a_wlan_group_without_controller_is_an_error_at_its_aps() {
     assert_eq!(&*findings[0].devices, [r2]);
     assert!(matches!(&findings[0].kind, FindingKind::WlanGroupWithoutController(w)
         if w.group.id == 7 && &*w.group.name == "Spitzwies"));
+}
+
+/// An AP needs the country of its site: none (no region) or one the generator doesn't know is
+/// an error, a known one none.
+#[test]
+fn an_ap_without_a_known_country_is_an_error() {
+    for (country, found) in [(None, true), (Some("europe"), true), (Some("ch"), false)] {
+        let mut net = Net::new();
+        let r2 = net.builder.devices.get_mut(&net.r2).unwrap();
+        r2.wlan_ap_of = Some(crate::topology::WlanGroupId(7));
+        r2.country = country.map(Into::into);
+        let r2 = net.r2;
+        let findings = net
+            .findings()
+            .into_iter()
+            .filter(|f| matches!(f.kind, FindingKind::NoCountry(_)))
+            .collect::<Vec<_>>();
+        assert_eq!(findings.len(), usize::from(found), "{country:?}: {findings:#?}");
+        if let Some(finding) = findings.first() {
+            assert_eq!(finding.severity, Severity::Error);
+            assert_eq!(&*finding.devices, [r2]);
+            assert!(matches!(&finding.kind, FindingKind::NoCountry(f)
+                if f.region.as_deref() == country));
+        }
+    }
 }
 
 /// Of the two ends of a wireless link, the one without RF role is reported.

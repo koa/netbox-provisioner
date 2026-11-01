@@ -68,6 +68,12 @@ ist eine Prüfung:
   Der Provisioner lässt die Gruppe weg, und für ihre APs scheitert der Generator
   (`MissingController`); ohne APs ist es kein Befund, es wird nichts daraus gebaut. Im Lab an
   `lab-wap` in `lab-wlan` geprüft (vorübergehend, danach zurück).
+- Gerät, dessen Radios das Land der Site brauchen (AP oder Controller einer WLAN-Gruppe, ein
+  Radio ohne Wireless Link mit eigenem Land), dessen Site aber keine Region hat oder deren oberste
+  Region kein bekanntes Land ist (`NoCountry`, Fehler: der Generator scheitert mit
+  `MissingCountry`/`UnknownCountry`). Ein Radio nur als Port in einer Bridge braucht kein Land. Im
+  gespeicherten Export: `lte-17` (Site ohne Region); im Lab an `lab-wap` geprüft (Region der Site
+  und WLAN-Gruppe vorübergehend, danach zurück).
 - Ein Ende eines Wireless Links ohne RF-Rolle (`RadioWithoutRole`, Warnung): Das Radio behält seine
   Konfiguration, die Funkbrücke wird nicht eingerichtet.
 - Ein Uplink mit `nat` ohne `internet` (`NatWithoutInternet`, Warnung): `nat` setzt `internet`

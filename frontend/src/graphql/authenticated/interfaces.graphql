@@ -47,6 +47,7 @@ fragment Finding on Finding{
         ... on PoolMissing{ pool version }
         ... on PoolNearlyFull{ pool version free size }
         ... on NoLoopback{ device{ ...Device } }
+        ... on NoCountry{ device{ ...Device } site{ id name } region }
         ... on NoPrimaryIpv4{ device{ ...Device } }
         ... on PrimaryIpv4NotOnLoopback{
             device{ ...Device }
