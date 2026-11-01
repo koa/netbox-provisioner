@@ -477,7 +477,10 @@ operator picks the physical device from what the neighbor's `/ip/neighbor` shows
 (`device::terminal`, russh; login flags `+ct400w` so long echoes don't wrap) through the factory
 prompts (license, default-config notice, new password - each answered once, some versions print
 `new password>` twice), sets password, address, API and a firewall accept, and takes the port out
-of the factory bridge in the background. The port is found by its factory name
+of the factory bridge in the background. An API limited to some addresses gets the neighbor's
+added (sat-switch back from the lab, limited to the lab's: "Connection closed at the login");
+7.24 calls the field `available-from`, 7.23 `address`, which still sets it on 7.24 (CHR 7.24.5,
+lab-np2 7.23.8). The port is found by its factory name
 (`default-name`): a device with an old config has its ports renamed (berghof-hansueli; the
 CHR tests rename the target's port). Factory bridges answer MAC-telnet only on the bridge's
 MAC, which is also the one they announce. `/tool mac-telnet` is tried with `interface=` the

@@ -687,6 +687,16 @@ fn setup_commands(
         ":if (([:len [/ip firewall filter find]] > 0) && ([:len [/ip firewall filter find src-address={source} comment=\"{COMMENT}\"]] = 0)) do={{/ip firewall filter add chain=input src-address={source} action=accept comment=\"{COMMENT}\" place-before=[:pick [/ip firewall filter find] 0]}}"
     ));
     commands.push("/ip service set api disabled=no".into());
+    // An API limited to some addresses (an old config; sat-switch back from the lab) closes the
+    // connection at the login when the neighbor's isn't one of them; it is added, the apply
+    // puts NetBox's back. 7.24 calls the field `available-from` (`address` still sets it),
+    // 7.23 `address` and has no `available-from` (CHR 7.24.5, lab-np2 7.23.8).
+    commands.push(format!(
+        "{{:local s \"{source}/32\"; :local w [/ip service find name=api dynamic!=yes]; :local f \"available-from\"; :local a; \
+         :do {{:set a [/ip service get $w available-from]}} on-error={{:set f \"address\"; :set a [/ip service get $w address]}}; \
+         :if (([:len $a] > 0) && ([:typeof [:find $a $s]] = \"nil\")) do={{/ip service set $w address=($a, $s); \
+         :put (\"api: \" . $s . \" added to \" . $f)}}}}"
+    ));
     // A device reset to CAPs mode manages its radios by CAPsMAN, which refuses the first apply
     // to rename them; the apply turns the CAP on again where NetBox wants one. `:parse`, since
     // a menu is missing without its package. A configured CAP keeps serving its clients.
@@ -933,7 +943,7 @@ const MIN_API_ATTEMPT: Duration = Duration::from_secs(3);
 
 #[cfg(test)]
 mod tests {
-    use super::{console_error, hidden, quote};
+    use super::{LoggedIn, MacTelnetSetup, console_error, hidden, quote, setup_commands};
 
     #[test]
     fn recognizes_console_errors() {
@@ -961,5 +971,28 @@ mod tests {
         );
         let command = "/ip service set api disabled=no";
         assert_eq!(hidden(command, "").as_ref(), command);
+    }
+
+    /// sat-switch back from the lab, its API limited to the lab's addresses: the neighbor's
+    /// address joins the list, as in this script (run on a CHR 7.24.5: added once, an empty list
+    /// left open).
+    #[test]
+    fn adds_the_neighbor_to_a_limited_api() {
+        let setup = MacTelnetSetup {
+            macs: Box::new([]),
+            port: "ether5".into(),
+            address: "172.17.0.87/31".parse().unwrap(),
+            on_bridge: false,
+            neighbor_address: "172.17.0.86".parse().unwrap(),
+            neighbor_port: None,
+        };
+        let mac = "D4:CA:6D:C4:3A:18".parse().unwrap();
+        let commands = setup_commands(&setup, "admin", "pw", "admin", LoggedIn::WithPassword, &mac, false);
+        let api = commands.iter().find(|c| c.contains("available-from")).unwrap();
+        if let Ok(path) = std::env::var("SETUP_API_COMMAND") {
+            std::fs::write(path, api).unwrap();
+        }
+        assert!(api.starts_with("{:local s \"172.17.0.86/32\";"), "{api}");
+        assert!(api.contains("/ip service set $w address=($a, $s)"), "{api}");
     }
 }
