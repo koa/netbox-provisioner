@@ -247,14 +247,27 @@ Der Cache meldet auf einem `broadcast`-Kanal, nummeriert (`facts::changes`, `fac
 
 ```rust
 pub enum Change {
+    Stored(FactKey),                            // neu gespeichert
     Invalidated(DeviceId, &'static [FactKind]), // nach einem Job verworfen
     Job(DeviceId),                              // Job gestartet, neues Ereignis, Ende
     Topology,                                   // NetBox hat sich geändert
 }
 ```
 
-Ein neu gespeicherter Wert ist keine Änderung: Wer ihn zeigt, fragt ohnehin neu, wenn er älter
-wird als gezeigt. Zwei offene Seiten würden sich sonst gegenseitig zum Neufragen bringen.
+Ein neu gespeicherter Wert betrifft nur, wer ohne zu fragen nachschaut (`facts::peek_newest`).
+Wer fragt, fragt ohnehin neu, wenn der Wert älter wird als gezeigt; zwei offene Seiten würden
+sich sonst gegenseitig zum Neufragen bringen.
+
+### Abweichung von NetBox
+
+Die Karte „Abweichung von NetBox“ einer Site zeigt die Ereignisse ihres letzten Prüf-Jobs
+(`diffSite`). Der Job liest jedes Gerät über denselben Fakt wie die Geräteseite
+(`FactKind::Config`, mit `Since` seinem Start); der Fakt trägt dafür die Änderungen pro Menü.
+Daneben abonniert die Karte `knownDiff` der Geräte: das Neueste, was der Provisioner weiss,
+ohne zu fragen, und seit wann das Gelesene verworfen ist (`facts::dropped`: ein Job auf dem
+Gerät, eine Änderung in NetBox). Pro Gerät zeigt sie, was nach dem Start des Jobs gelesen wurde,
+sonst das Ergebnis des Jobs, oder „seit der Prüfung verändert“, wenn es danach verworfen wurde.
+Wendet man auf der Geräteseite an, liest diese neu, und die Karte zeigt das.
 
 ### Subscription mit denselben Typen wie die Query
 

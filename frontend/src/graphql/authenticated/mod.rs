@@ -373,6 +373,14 @@ pub struct SiteDiffEvents;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/site-diff.graphql",
+    response_derives = "Debug"
+)]
+pub struct SiteDiffKnown;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/saved-jobs.graphql",
     response_derives = "Debug, Clone, PartialEq"
 )]

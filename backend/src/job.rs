@@ -412,6 +412,7 @@ pub struct Job {
     log: Log,
     outcome: Mutex<(JobState, Option<ErrorInfo>)>,
     took: Mutex<Option<Duration>>,
+    started: tokio::time::Instant,
 }
 
 struct Jobs {
@@ -698,6 +699,7 @@ fn add(
         log,
         outcome: Mutex::new((JobState::Running, None)),
         took: Mutex::new(None),
+        started: tokio::time::Instant::now(),
     });
     let devices = [Some(subject), through]
         .into_iter()
@@ -866,6 +868,10 @@ impl Job {
     }
     async fn kind(&self) -> JobKind {
         self.kind
+    }
+    /// seconds since it started
+    async fn age(&self) -> u64 {
+        self.started.elapsed().as_secs()
     }
     /// the device it works on; `null` for a site's job
     async fn device_id(&self) -> Option<u32> {

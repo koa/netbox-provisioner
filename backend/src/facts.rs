@@ -221,11 +221,13 @@ impl Came {
     }
 }
 
-/// What changed, on [`changes`]. A fact stored anew is no change: who shows it runs again when
-/// it gets older than shown ([`Reading::outdated`]), and two live pages would otherwise keep
-/// asking for each other.
+/// What changed, on [`changes`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Change {
+    /// a fact was stored anew: of concern only to who looked without asking ([`peek_newest`]);
+    /// who asks gives it again when it gets older than shown ([`Reading::outdated`]), and two
+    /// live pages would otherwise keep asking for each other
+    Stored(FactKey),
     /// the facts of these kinds about the device were dropped: a job on it ended
     Invalidated(DeviceId, &'static [FactKind]),
     /// a job of the device started, ended or logged
@@ -256,6 +258,9 @@ struct Slot {
 
 struct Store {
     slots: HashMap<FactKey, Slot>,
+    /// when facts of a kind about a device were dropped last ([`invalidate`]; `None`:
+    /// about every device, [`invalidate_everywhere`])
+    dropped: HashMap<(Option<DeviceId>, FactKind), Instant>,
     /// per device, raised by [`invalidate`]; a fact begun under an older one isn't stored
     generations: HashMap<DeviceId, u64>,
     /// raised by [`invalidate_everywhere`], counts for every device
@@ -266,6 +271,7 @@ struct Store {
 fn new_store() -> Mutex<Store> {
     Mutex::new(Store {
         slots: HashMap::new(),
+        dropped: HashMap::new(),
         generations: HashMap::new(),
         everywhere: 0,
         swept: Instant::now(),
@@ -344,6 +350,8 @@ pub fn announce(change: Change) {
 pub struct Reading {
     pub keys: std::collections::HashSet<FactKey>,
     pub devices: std::collections::HashSet<DeviceId>,
+    /// the kinds of facts about devices it looked at without asking ([`peek_newest`])
+    pub peeked: std::collections::HashSet<(DeviceId, FactKind)>,
     /// it saw the jobs of all devices (or of a site)
     pub all_jobs: bool,
     /// when the first fact read gets older than its user took it
@@ -354,10 +362,11 @@ impl Reading {
     /// Whether `change` concerns what was read.
     pub fn concerns(&self, change: &Change) -> bool {
         match change {
-            Change::Invalidated(device, kinds) => self
-                .keys
-                .iter()
-                .any(|key| key.device == Some(*device) && kinds.contains(&key.kind)),
+            Change::Stored(key) => key.device.is_some_and(|device| self.peeked.contains(&(device, key.kind))),
+            Change::Invalidated(device, kinds) => {
+                self.keys.iter().any(|key| key.device == Some(*device) && kinds.contains(&key.kind))
+                    || kinds.iter().any(|kind| self.peeked.contains(&(*device, *kind)))
+            }
             Change::Job(device) => self.all_jobs || self.devices.contains(device),
             Change::Topology => true,
         }
@@ -565,7 +574,7 @@ where
     let device = key.device.map(|d| d.0.to_string()).unwrap_or_default();
     METRICS.total.with_label_values(&[&device, label, outcome]).inc();
     let value: Stored = Arc::new(result.map(Arc::new).map_err(Arc::new));
-    {
+    let kept = {
         let mut store = store();
         let current = store.generation(key.device);
         let slot = store.slots.entry(key.clone()).or_default();
@@ -580,8 +589,12 @@ where
                 METRICS.entries.with_label_values(&[label]).inc();
             }
         }
-    }
+        keep
+    };
     let _ = sender.send(Some(value));
+    if kept {
+        announce(Change::Stored(key));
+    }
 }
 
 /// The facts of `kinds` about `device` go, and nothing asked before now is stored anymore:
@@ -590,6 +603,10 @@ pub fn invalidate(device: DeviceId, kinds: &'static [FactKind]) {
     {
         let mut store = store();
         *store.generations.entry(device).or_default() += 1;
+        let now = Instant::now();
+        for kind in kinds {
+            store.dropped.insert((Some(device), *kind), now);
+        }
         for (key, slot) in &mut store.slots {
             if key.device == Some(device) && kinds.contains(&key.kind) && slot.done.take().is_some() {
                 METRICS.entries.with_label_values(&[key.kind.label()]).dec();
@@ -604,6 +621,10 @@ pub fn invalidate(device: DeviceId, kinds: &'static [FactKind]) {
 pub fn invalidate_everywhere(kinds: &'static [FactKind]) {
     let mut store = store();
     store.everywhere += 1;
+    let now = Instant::now();
+    for kind in kinds {
+        store.dropped.insert((None, *kind), now);
+    }
     for (key, slot) in &mut store.slots {
         if kinds.contains(&key.kind) && slot.done.take().is_some() {
             METRICS.entries.with_label_values(&[key.kind.label()]).dec();
@@ -625,6 +646,42 @@ pub fn peek<T: Send + Sync + 'static>(key: &FactKey) -> Option<Fact<T>> {
         as_of: done.as_of,
         came: Came::Hit,
     })
+}
+
+/// The youngest fact of `kind` about `device` among the keys `filter` takes, whatever its way
+/// and credentials, without asking: what the provisioner knows. A subscription reading it
+/// answers again when one is stored or dropped.
+pub fn peek_newest<T: Send + Sync + 'static>(
+    kind: FactKind,
+    device: DeviceId,
+    filter: impl Fn(&FactKey) -> bool,
+) -> Option<Fact<T>> {
+    let _ = READING.try_with(|reading| {
+        reading.lock().unwrap_or_else(PoisonError::into_inner).peeked.insert((device, kind));
+    });
+    let store = store();
+    let (_, done) = store
+        .slots
+        .iter()
+        .filter(|(key, _)| key.kind == kind && key.device == Some(device) && filter(key))
+        .filter_map(|(key, slot)| Some((key, slot.done.as_ref()?)))
+        .filter(|(_, done)| done.as_of.elapsed() <= LIMIT)
+        .max_by_key(|(_, done)| done.as_of)?;
+    let value = done.value.downcast_ref::<Result<Arc<T>, Arc<Error>>>()?.clone();
+    Some(Fact {
+        value,
+        as_of: done.as_of,
+        came: Came::Hit,
+    })
+}
+
+/// When facts of `kind` about `device` were dropped last (a job on it, NetBox changed), if
+/// they were.
+pub fn dropped(kind: FactKind, device: DeviceId) -> Option<Instant> {
+    let store = store();
+    let about_device = store.dropped.get(&(Some(device), kind));
+    let everywhere = store.dropped.get(&(None, kind));
+    about_device.into_iter().chain(everywhere).max().copied()
 }
 
 /// Drops the one fact `key`, e.g. a connection found broken.

@@ -419,6 +419,8 @@ async fn powered_ports(
 pub struct GeneratedCfg {
     /// empty if the device is in line already
     script: Box<str>,
+    /// what the script changes, by menu (`site_diff`)
+    menus: Vec<crate::device::site_diff::MenuChanges>,
     /// what applying it would do that the operator should know before
     warnings: Vec<ApplyWarning>,
     /// when the device was read for it
@@ -431,6 +433,12 @@ impl GeneratedCfg {
     /// seconds since the device was read for it (`facts`)
     async fn age(&self) -> u64 {
         self.as_of.elapsed().as_secs()
+    }
+}
+
+impl GeneratedCfg {
+    pub fn menu_changes(&self) -> &[crate::device::site_diff::MenuChanges] {
+        &self.menus
     }
 }
 
@@ -870,15 +878,6 @@ pub(super) fn restarts_radio(mutations: &[ResourceMutation<'_>]) -> bool {
 }
 
 impl AccessibleDevice {
-    /// What an apply would change, by menu: the plan `generateCfg` shows as script
-    /// (`site_diff`).
-    pub async fn menu_changes(&self) -> Result<Vec<crate::device::site_diff::MenuChanges>, Error> {
-        let mut device_cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
-        device_cfg
-            .generate_live(&self.device_config, &self.connect_again().await?)
-            .await?;
-        Ok(crate::device::site_diff::menu_changes(&device_cfg.sorted_mutations()?))
-    }
     /// Applies the generated config: the diff runs as a script on the device itself, so it
     /// completes even when it changes the path this connection takes. Then the diff is built
     /// again over a new connection; whatever is left wasn't applied (RouterOS stops a script
@@ -1575,23 +1574,7 @@ impl AccessibleDevice {
     /// applying it; `null` with the error in the response's errors when that fails, so a
     /// device the generator fails on still shows the rest (an update may be what it needs).
     async fn generate_cfg(&self, ctx: &Context<'_>) -> Option<Arc<GeneratedCfg>> {
-        let device = self.duplicate();
-        let generated = async move {
-            let as_of = tokio::time::Instant::now();
-            let mut device_cfg = DeviceCfg::fetch(&device.client, &device.device_config).await?;
-            device_cfg
-                .generate_live(&device.device_config, &device.connect_again().await?)
-                .await?;
-            Ok(GeneratedCfg {
-                script: device_cfg.script()?,
-                warnings: device_cfg
-                    .warnings(async || device.connect_again::<SimpleResult>().await)
-                    .await,
-                as_of,
-            })
-        };
-        let fact = facts::get(self.fact_key(FactKind::Config), self.freshness(CONFIG_AGE), generated);
-        nullable(ctx, fact.await.result())
+        nullable(ctx, self.generated_cfg(self.freshness(CONFIG_AGE)).await.result())
     }
     /// The device mode and the features the provisioner needs that are off in it; `null`
     /// before RouterOS 7.17, which has no device mode.
@@ -1727,6 +1710,13 @@ impl AccessibleDevice {
 
 /// How old the generated config may be on the device page: what it showed a minute ago.
 const CONFIG_AGE: Duration = Duration::from_secs(60);
+/// Marks the facts of a helper's plan (`generating_for`) in their key: not the device's own.
+const PLAN: &str = " plan";
+
+/// Whether `key` is about a device as it is, not as a helper's plan would make it.
+pub(crate) fn of_device_as_is(key: &FactKey) -> bool {
+    !key.detail.contains(PLAN)
+}
 /// How old RouterOS version and packages may be: only jobs change them, and those drop them.
 const ROUTEROS_AGE: Duration = Duration::from_secs(10 * 60);
 const PARTITIONS_AGE: Duration = Duration::from_secs(10 * 60);
@@ -1744,6 +1734,31 @@ async fn newest(major: u32, channel: update::Channel) -> Result<update::Version,
 }
 
 impl AccessibleDevice {
+    /// The planned changes as `freshness` takes them (`FactKind::Config`): shared by the
+    /// device page and `diffSite`.
+    pub async fn generated_cfg(&self, freshness: Freshness) -> facts::Fact<GeneratedCfg> {
+        let device = self.duplicate();
+        let generated = async move {
+            let as_of = tokio::time::Instant::now();
+            let mut device_cfg = DeviceCfg::fetch(&device.client, &device.device_config).await?;
+            device_cfg
+                .generate_live(&device.device_config, &device.connect_again().await?)
+                .await?;
+            let (script, menus) = {
+                let mutations = device_cfg.sorted_mutations()?;
+                (render_script(&mutations)?, crate::device::site_diff::menu_changes(&mutations))
+            };
+            Ok(GeneratedCfg {
+                script,
+                menus,
+                warnings: device_cfg
+                    .warnings(async || device.connect_again::<SimpleResult>().await)
+                    .await,
+                as_of,
+            })
+        };
+        facts::get(self.fact_key(FactKind::Config), freshness, generated).await
+    }
     /// The key of a fact about the device as this connection reads it: the credentials go in,
     /// what typed-in ones read stays with them.
     fn fact_key(&self, kind: FactKind) -> FactKey {
@@ -1756,7 +1771,7 @@ impl AccessibleDevice {
                 self.credentials.fact_key(),
                 // a helper's plan: of that topology only
                 if self.preview {
-                    format!(" plan {:p}", Arc::as_ptr(self.device_config.topology()))
+                    format!("{PLAN} {:p}", Arc::as_ptr(self.device_config.topology()))
                 } else {
                     String::new()
                 }

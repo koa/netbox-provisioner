@@ -1,20 +1,23 @@
 //! How far each device of a site is from NetBox (`Mutation.diffSite`, `device::site_diff`): a
 //! job of the site reads every device in the background, the card shows each as it comes, the
 //! most changes first, with what needs a closer look (addresses removed, OSPF, bridge ports).
-//! Opened again, it picks up the site's last job, running or not.
+//! Opened again, it picks up the site's last job, running or not. What the provisioner learned
+//! of a device since (`knownDiff`, subscribed: the device page read it after an apply) goes
+//! before the job's reading; a device changed since and not read again says so.
 use crate::{
     components::job::{POLL, RETRY},
     error::{FrontendError, ServerProblem},
     graphql::{
         authenticated::{
-            DiffSite, SiteDiffEvents, SiteDiffJobs, diff_site,
+            DiffSite, SiteDiffEvents, SiteDiffJobs, SiteDiffKnown, diff_site,
             site_diff_events::{
                 self, JobState, SiteDiffEventsJob as Job,
                 SiteDiffEventsJobEventsEvent as Event,
-                SiteDiffEventsJobEventsEventOnDeviceDiffedMenus as Menu,
             },
             site_diff_jobs::{self, JobKind},
+            site_diff_known,
         },
+        live::{Subscription, subscribe},
         query_authenticated,
     },
     i18n::site_diff as t,
@@ -23,7 +26,7 @@ use crate::{
 use patternfly_yew::prelude::{
     Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize,
 };
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, collections::HashMap, rc::Rc};
 use yew::{
     Component, Context, Html, Properties, html, html::Scope, platform::spawn_local,
     platform::time::sleep,
@@ -35,10 +38,29 @@ pub struct SiteDiffProps {
     pub site: u32,
 }
 
+/// The changes of one menu, from the job or from what is known.
+#[derive(Clone)]
+struct Menu {
+    menu: String,
+    added: i64,
+    changed: i64,
+    removed: i64,
+}
+
+#[derive(Clone)]
 enum Read {
     Pending,
     Done(Vec<Menu>),
     Failed(ServerProblem),
+    /// changed since the check, not read again
+    Changed,
+}
+
+/// What the provisioner knows of a device (`knownDiff`), times in milliseconds since the epoch.
+pub struct Known {
+    read: Option<Read>,
+    read_at: Option<f64>,
+    changed_at: Option<f64>,
 }
 
 struct Row {
@@ -49,6 +71,11 @@ struct Row {
 
 pub struct SiteDiff {
     job: Option<i64>,
+    /// when the job started (milliseconds since the epoch)
+    job_started: Option<f64>,
+    /// by device
+    known: HashMap<i64, Known>,
+    _known_subscription: Subscription,
     /// the devices of the job, in NetBox' order, as read so far
     rows: Vec<Row>,
     state: Option<JobState>,
@@ -65,6 +92,7 @@ pub enum SiteDiffMsg {
     Start,
     Started(Result<i64, FrontendError>),
     Loaded(Job),
+    Known(HashMap<i64, Known>),
     Lost,
     Error(FrontendError),
 }
@@ -84,8 +112,22 @@ impl Component for SiteDiff {
                 .map(|job| job.id);
             scope.send_message(SiteDiffMsg::Last(last));
         });
+        let scope = ctx.link().clone();
+        let known_subscription =
+            subscribe::<SiteDiffKnown, _>(ctx.link(), site_diff_known::Variables { site }, move |response| {
+                let devices = response
+                    .ok()
+                    .and_then(|response| response.data)
+                    .and_then(|data| data.topology.site_by_id)
+                    .map(|site| site.devices)
+                    .unwrap_or_default();
+                scope.send_message(SiteDiffMsg::Known(devices.into_iter().map(known).collect()));
+            });
         Self {
             job: None,
+            job_started: None,
+            known: HashMap::new(),
+            _known_subscription: known_subscription,
             rows: Vec::new(),
             state: None,
             job_error: None,
@@ -134,7 +176,18 @@ impl Component for SiteDiff {
                             if let Some(row) = self.rows.iter_mut().find(|row| row.id == diffed.device.id) {
                                 row.read = match &diffed.error {
                                     Some(problem) => Read::Failed(ServerProblem::from(problem)),
-                                    None => Read::Done(diffed.menus),
+                                    None => Read::Done(
+                                        diffed
+                                            .menus
+                                            .into_iter()
+                                            .map(|menu| Menu {
+                                                menu: menu.menu,
+                                                added: menu.added,
+                                                changed: menu.changed,
+                                                removed: menu.removed,
+                                            })
+                                            .collect(),
+                                    ),
                                 };
                             }
                         }
@@ -143,7 +196,9 @@ impl Component for SiteDiff {
                 }
                 self.job_error = job.error.as_ref().map(ServerProblem::from);
                 self.state = Some(job.state);
+                self.job_started = Some(js_sys::Date::now() - job.age as f64 * 1000.0);
             }
+            SiteDiffMsg::Known(known) => self.known = known,
             SiteDiffMsg::Lost => {
                 self.lost = true;
                 self.state = None;
@@ -157,11 +212,15 @@ impl Component for SiteDiff {
         let running = self.state == Some(JobState::RUNNING);
         let label = if self.job.is_some() { t::AGAIN } else { t::START };
         let onclick = ctx.link().callback(|_| SiteDiffMsg::Start);
-        let read = self.rows.iter().filter(|row| !matches!(row.read, Read::Pending)).count();
-        let in_line = self
+        let reads = self
             .rows
             .iter()
-            .filter(|row| matches!(&row.read, Read::Done(menus) if total(menus) == 0))
+            .map(|row| (row, self.newest(row, running)))
+            .collect::<Vec<_>>();
+        let read = reads.iter().filter(|(_, read)| !matches!(read, Read::Pending)).count();
+        let in_line = reads
+            .iter()
+            .filter(|(_, read)| matches!(read, Read::Done(menus) if total(menus) == 0))
             .count();
         let progress = (!self.rows.is_empty()).then(|| {
             let text = if running {
@@ -171,11 +230,11 @@ impl Component for SiteDiff {
             };
             html!(<p>{text}</p>)
         });
-        let mut rows = self.rows.iter().collect::<Vec<_>>();
+        let mut rows = reads;
         // the most changes first, then the unread, then the ones in line
-        rows.sort_by_key(|row| match &row.read {
+        rows.sort_by_key(|(_, read)| match read {
             Read::Done(menus) if total(menus) > 0 => (0, u32::MAX - total(menus)),
-            Read::Failed(_) => (1, 0),
+            Read::Failed(_) | Read::Changed => (1, 0),
             Read::Pending => (2, 0),
             Read::Done(_) => (3, 0),
         });
@@ -192,10 +251,10 @@ impl Component for SiteDiff {
                     {self.job_error.as_ref().map(|problem| html!(<p>{problem.text()}</p>))}
                     {progress}
                     <dl class="neighbor-results">
-                        { for rows.into_iter().map(|row| html! {
+                        { for rows.into_iter().map(|(row, read)| html! {
                             <>
                                 <dt><Link<AppRoute> to={AppRoute::device(site, row.id as u32)}>{row.name.clone()}</Link<AppRoute>></dt>
-                                <dd>{read_view(&row.read)}</dd>
+                                <dd>{read_view(&read)}</dd>
                             </>
                         }) }
                     </dl>
@@ -210,6 +269,24 @@ impl Component for SiteDiff {
 }
 
 impl SiteDiff {
+    /// What to show of `row`: what is known if read after the job started, else the job's
+    /// reading, unless the device changed since.
+    fn newest(&self, row: &Row, running: bool) -> Read {
+        if running && matches!(row.read, Read::Pending) {
+            return Read::Pending;
+        }
+        let known = self.known.get(&row.id);
+        let started = self.job_started.unwrap_or(f64::MAX);
+        if let Some(Known { read: Some(read), read_at: Some(at), .. }) = known
+            && *at >= started
+        {
+            return read.clone();
+        }
+        if known.and_then(|known| known.changed_at).is_some_and(|at| at > started) {
+            return Read::Changed;
+        }
+        row.read.clone()
+    }
     /// Shows job `id` from its first event on, the poll of an earlier one stopped.
     fn follow(&mut self, ctx: &Context<Self>, id: i64) {
         self.alive.set(false);
@@ -229,9 +306,40 @@ fn total(menus: &[Menu]) -> u32 {
         .sum()
 }
 
+/// What is known of a device, in milliseconds since the epoch from the ages.
+fn known(device: site_diff_known::SiteDiffKnownTopologySiteByIdDevices) -> (i64, Known) {
+    let now = js_sys::Date::now();
+    let diff = device.known_diff;
+    let read = match (diff.menus, &diff.error) {
+        (_, Some(problem)) => Some(Read::Failed(ServerProblem::from(problem))),
+        (Some(menus), None) => Some(Read::Done(
+            menus
+                .into_iter()
+                .map(|menu| Menu {
+                    menu: menu.menu,
+                    added: menu.added,
+                    changed: menu.changed,
+                    removed: menu.removed,
+                })
+                .collect(),
+        )),
+        (None, None) => None,
+    };
+    let at = |age: Option<i64>| age.map(|age| now - age as f64 * 1000.0);
+    (
+        device.id,
+        Known {
+            read,
+            read_at: at(diff.age),
+            changed_at: at(diff.changed_age),
+        },
+    )
+}
+
 fn read_view(read: &Read) -> Html {
     match read {
         Read::Pending => html!(<Spinner size={SpinnerSize::Sm}/>),
+        Read::Changed => html!({ t::CHANGED_SINCE }),
         Read::Failed(problem) => html!({ t::unreadable(&problem.text()) }),
         Read::Done(menus) if total(menus) == 0 => html!({ t::IN_LINE }),
         Read::Done(menus) => {

@@ -406,8 +406,10 @@ a stream of `graphql::live::rounds`: it gives the object, the selection under it
 the query's resolvers while `LiveExtension` notes the facts and job devices they read
 (`facts::reading_in`), and it gives it again on a `facts::Change` concerning them (a job, facts
 dropped, the topology) or when the youngest fact read gets older than taken. A subscription has
-one root field: what a page needs hangs under it (the device's `jobs`). A fact stored anew is
-no change (two live pages would keep asking for each other); „Neu laden“ drops the device's
+one root field: what a page needs hangs under it (the device's `jobs`). A fact stored anew
+concerns only who looked without asking (`facts::peek_newest`, e.g. the device's `knownDiff`
+that „Abweichung von NetBox“ shows over its last job's readings); for who asks it is no change
+(two live pages would keep asking for each other); „Neu laden“ drops the device's
 facts (`refreshDevice`), so every page showing it reads anew. While a subscription is open
 NetBox is read every 10 s (`live::watch_netbox`).
 

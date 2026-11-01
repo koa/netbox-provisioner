@@ -4,8 +4,9 @@
 //! couldn't be read. It only reads, so its devices stay free for jobs of their own.
 use crate::{
     Error,
-    device::ros::graphql::in_script,
+    device::ros::graphql::{GeneratedCfg, in_script, of_device_as_is},
     error_info::ErrorInfo,
+    facts::{self, FactKind, Freshness},
     job::{self, Log},
     topology::{
         access::{device::DeviceAccess, site::SiteAccess},
@@ -52,6 +53,7 @@ pub struct DeviceDiffed {
 
 /// The job's work.
 pub async fn run(site: SiteAccess, log: Log) -> Result<(), Error> {
+    let started = tokio::time::Instant::now();
     let mut devices = site.devices().filter(DeviceAccess::has_routeros).collect::<Vec<_>>();
     devices.sort_by_cached_key(|device| naturalize(device.name()));
     log.emit(SiteDiffStarted {
@@ -63,7 +65,7 @@ pub async fn run(site: SiteAccess, log: Log) -> Result<(), Error> {
         let permits = permits.clone();
         reads.spawn(async move {
             let _permit = permits.acquire_owned().await;
-            let menus = job::run(changes_of(device.clone())).await;
+            let menus = job::run(changes_of(device.clone(), started)).await;
             (device, menus)
         });
     }
@@ -90,13 +92,47 @@ fn diffed_device(device: &DeviceAccess) -> DiffedDevice {
     }
 }
 
-async fn changes_of(device: DeviceAccess) -> Result<Vec<MenuChanges>, Error> {
-    device
+/// Read anew for the job (the device page shares it: `FactKind::Config`).
+async fn changes_of(device: DeviceAccess, started: tokio::time::Instant) -> Result<Vec<MenuChanges>, Error> {
+    let generated = device
         .connect(None, None, None)
         .await?
         .ok_or(Error::MissingCredentials)?
-        .menu_changes()
+        .generated_cfg(Freshness::Since(started))
         .await
+        .result()?;
+    Ok(generated.menu_changes().to_vec())
+}
+
+/// What the provisioner knows of how far a device is from NetBox, without asking it: the
+/// planned changes read last by anyone (`diffSite`, the device page), and since when what they
+/// were read for changed.
+#[derive(Debug, SimpleObject)]
+pub struct KnownDiff {
+    /// the changes read last by menu (none: it is as NetBox has it); `null` when none are
+    /// known (anymore)
+    pub menus: Option<Vec<MenuChanges>>,
+    /// why the device couldn't be read last
+    pub error: Option<ErrorInfo>,
+    /// seconds since it was read
+    pub age: Option<u64>,
+    /// seconds since what was read dropped: a job on the device ended, NetBox changed
+    pub changed_age: Option<u64>,
+}
+
+pub fn known(device: &DeviceAccess) -> KnownDiff {
+    let fact = facts::peek_newest::<GeneratedCfg>(FactKind::Config, device.id(), of_device_as_is);
+    let (menus, error) = match fact.as_ref().map(|fact| fact.result()) {
+        Some(Ok(generated)) => (Some(generated.menu_changes().to_vec()), None),
+        Some(Err(error)) => (None, Some(ErrorInfo::from(&error))),
+        None => (None, None),
+    };
+    KnownDiff {
+        menus,
+        error,
+        age: fact.map(|fact| fact.age().as_secs()),
+        changed_age: facts::dropped(FactKind::Config, device.id()).map(|at| at.elapsed().as_secs()),
+    }
 }
 
 /// The mutations counted by menu and kind, the menus in alphabetical order. Like the script,

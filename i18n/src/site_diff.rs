@@ -5,6 +5,8 @@ pub const AGAIN: &str = "Nochmals prüfen";
 pub const IN_LINE: &str = "entspricht NetBox";
 pub const LOST: &str = "Der Provisioner wurde neu gestartet, die Prüfung ist verloren.";
 pub const CANCELLED: &str = "abgebrochen";
+/// a device whose config or NetBox changed after it was checked, not read since
+pub const CHANGED_SINCE: &str = "seit der Prüfung verändert (Anwenden oder NetBox), noch nicht neu gelesen";
 
 /// how many of the devices are read
 pub fn progress(read: usize, all: usize) -> String {

@@ -379,6 +379,11 @@ impl DeviceAccess {
     async fn update_neighbors(&self) -> Vec<Box<str>> {
         crate::device::update_fallback::neighbors(self).into()
     }
+    /// How far it is from NetBox as far as the provisioner knows, without asking it
+    /// („Abweichung von NetBox“).
+    async fn known_diff(&self) -> crate::device::site_diff::KnownDiff {
+        crate::device::site_diff::known(self)
+    }
     /// `jobs(deviceId:)` of the query: those of this device, also those working through it.
     async fn jobs(&self) -> Vec<std::sync::Arc<crate::job::Job>> {
         crate::job::list_shown(Some(crate::job::JobSubject::Device(self.id)))

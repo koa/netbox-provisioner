@@ -1,4 +1,6 @@
-use super::{Came, Change, FactKey, FactKind, Freshness, LIMIT, Reading, get, invalidate, reading};
+use super::{
+    Came, Change, FactKey, FactKind, Freshness, LIMIT, Reading, dropped, get, invalidate, peek_newest, reading,
+};
 use crate::{Error, topology::DeviceId};
 use std::{
     sync::{
@@ -173,4 +175,28 @@ async fn a_live_query_notes_what_it_read() {
     assert!(read.concerns(&Change::Invalidated(DeviceId(10), &[FactKind::Config])));
     assert!(!read.concerns(&Change::Invalidated(DeviceId(10), &[FactKind::Login])));
     assert!(!read.concerns(&Change::Job(DeviceId(13))));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_peek_takes_the_newest_and_watches_the_kind() {
+    let asker = Asker::default();
+    let other = FactKey::new(FactKind::Config, Some(DeviceId(20)), "other way");
+    get(key(20), Freshness::MaxAge(MINUTE), asker.ask(SECOND, Ok(1))).await;
+    sleep(SECOND).await;
+    get(other.clone(), Freshness::MaxAge(MINUTE), asker.ask(SECOND, Ok(2))).await;
+    let read = Arc::new(Mutex::<Reading>::default());
+    let newest = reading(read.clone(), async {
+        peek_newest::<u32>(FactKind::Config, DeviceId(20), |key| key.detail.is_empty())
+    })
+    .await;
+    // the filter leaves out the newer one
+    assert_eq!(*newest.unwrap().value.unwrap(), 1);
+    let read = read.lock().unwrap();
+    assert!(read.concerns(&Change::Stored(other)));
+    assert!(!read.concerns(&Change::Stored(key(21))));
+    assert!(read.concerns(&Change::Invalidated(DeviceId(20), &[FactKind::Config])));
+    assert_eq!(dropped(FactKind::Config, DeviceId(20)), None);
+    invalidate(DeviceId(20), &[FactKind::Config]);
+    assert_eq!(dropped(FactKind::Config, DeviceId(20)), Some(Instant::now()));
+    assert!(peek_newest::<u32>(FactKind::Config, DeviceId(20), |_| true).is_none());
 }

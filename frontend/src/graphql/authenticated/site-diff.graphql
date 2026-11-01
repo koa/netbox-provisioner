@@ -9,9 +9,25 @@ query SiteDiffJobs($site: Int!){
         kind
     }
 }
+subscription SiteDiffKnown($site: Int!){
+    topology{
+        siteById(id: $site){
+            devices{
+                id
+                knownDiff{
+                    menus { menu added changed removed }
+                    error { ...Problem }
+                    age
+                    changedAge
+                }
+            }
+        }
+    }
+}
 query SiteDiffEvents($id: Int!, $after: Int){
     job(id: $id){
         state
+        age
         error { ...Problem }
         events(after: $after){
             index
