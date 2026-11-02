@@ -12,6 +12,7 @@ use crate::{
             NetworkMap as NetworkMapQuery,
             network_map::{
                 self, MapDownReason, MapEdgeKind, MapEdgeState, NetworkMapTopologyNetworkState as State, NodeState,
+                PoeProblem,
             },
         },
         query_authenticated,
@@ -266,6 +267,38 @@ fn map(state: &State, scope: &Scope<NetworkMap>) -> Html {
             ><title>{title}</title></line>
         })
     });
+    let mut parallel_poe = HashMap::<(i64, i64), f64>::new();
+    let poe_edges = state.poe_edges.iter().filter_map(|edge| {
+        let (a, b) = (edge.pse.device.id, edge.pd.device.id);
+        let (pa, pb) = (positions.get(&a)?, positions.get(&b)?);
+        let index = parallel_poe.entry((a.min(b), a.max(b))).or_default();
+        let offset = *index * 6.0;
+        *index += 1.0;
+        let problem_text = match &edge.problem {
+            Some(PoeProblem::NO_POE_OUT) => Some(t::POE_NO_POE_OUT),
+            Some(PoeProblem::NO_LOAD) => Some(t::POE_NO_LOAD),
+            Some(PoeProblem::PD_MISSING) => Some(t::POE_PD_MISSING),
+            Some(PoeProblem::FEEDS_INSTEAD) => Some(t::POE_FEEDS_INSTEAD),
+            Some(PoeProblem::UNDOCUMENTED) => Some(t::POE_UNDOCUMENTED),
+            Some(PoeProblem::Other(_)) | None => None,
+        };
+        let class = if problem_text.is_some() { "map-edge poe problem" } else { "map-edge poe" };
+        let title = t::poe_edge(
+            &format!("{} {}", edge.pse.device.name, edge.pse.name),
+            &format!("{} {}", edge.pd.device.name, edge.pd.name),
+            edge.status.as_deref(),
+            edge.power,
+            problem_text,
+        );
+        Some(html! {
+            <line
+                class={class}
+                x1={(pa.0 + offset).to_string()} y1={(pa.1 + offset).to_string()}
+                x2={(pb.0 + offset).to_string()} y2={(pb.1 + offset).to_string()}
+                marker-end={if problem_text.is_some() { "url(#poe-arrow-problem)" } else { "url(#poe-arrow)" }}
+            ><title>{title}</title></line>
+        })
+    });
     let outside = (state.outside > 0)
         .then(|| positions.get(&OUTSIDE))
         .flatten()
@@ -319,7 +352,16 @@ fn map(state: &State, scope: &Scope<NetworkMap>) -> Html {
     html! {
         <div class="network-map">
             <svg viewBox={format!("0 0 {width} {height}")} width={width.to_string()}>
+                <defs>
+                    <marker id="poe-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M0,0 L10,5 L0,10 z" style="fill: var(--pf-t--global--color--status--info--default)"/>
+                    </marker>
+                    <marker id="poe-arrow-problem" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M0,0 L10,5 L0,10 z" style="fill: var(--pf-t--global--color--status--warning--default)"/>
+                    </marker>
+                </defs>
                 {for edges}
+                {for poe_edges}
                 {outside}
                 {for nodes}
             </svg>
@@ -357,6 +399,8 @@ fn legend() -> Html {
                 {edge("down", t::EDGE_DOWN)}
                 {edge("not-ospf", t::EDGE_NOT_OSPF)}
                 {edge("up radio", t::RADIO)}
+                {edge("poe", t::EDGE_POE)}
+                {edge("poe problem", t::EDGE_POE_PROBLEM)}
             </ul>
         </details>
     }

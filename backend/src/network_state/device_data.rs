@@ -1,13 +1,15 @@
-//! Health and resources of a device, for the network map's nodes (`docs/concepts/network-map.md`,
-//! step 3): read over the same way as everything else (`DeviceAccess::connect`), as a fact
-//! (`FactKind::DeviceMapData`) per device, so the map's viewers share a reading. Not judged,
-//! only shown: the generic rows of `/system/health/print` as `(name, value, unit)`, and the few
-//! fields of `/system/resource/print` worth a column of their own.
+//! Health, resources and PoE out of a device, for the network map's nodes and PoE edges
+//! (`docs/concepts/network-map.md`, steps 3 and 4): read over the same way as everything else
+//! (`DeviceAccess::connect`), as a fact (`FactKind::DeviceMapData`) per device, so the map's
+//! viewers share a reading. Not judged, only shown: the generic rows of `/system/health/print`
+//! as `(name, value, unit)`, the few fields of `/system/resource/print` worth a column of their
+//! own, and every PoE-capable port (`helper::poe::PoePorts`).
 
 use crate::{
     Error,
     device::raw::{Row, field, rows},
     facts::{self, FactKey, FactKind, Freshness},
+    helper::poe::{self, PoePorts},
     topology::{DeviceId, access::device::DeviceAccess},
 };
 use async_graphql::futures_util::future::join_all;
@@ -40,6 +42,7 @@ pub struct Resources {
 pub struct DeviceMapData {
     pub health: Vec<HealthRow>,
     pub resources: Option<Resources>,
+    pub poe: PoePorts,
 }
 
 /// The health and resources of every device of `devices` that answers, by its id; one that
@@ -65,7 +68,8 @@ async fn read_one(device: &DeviceAccess) -> Option<Arc<DeviceMapData>> {
 async fn read(api: &RawDevice<SimpleResult>) -> Result<DeviceMapData, Error> {
     let health = rows(api, "/system/health/print").await?;
     let resources = rows(api, "/system/resource/print").await?;
-    Ok(from_rows(&health, &resources))
+    let poe = poe::read_ports(api).await?;
+    Ok(DeviceMapData { poe, ..from_rows(&health, &resources) })
 }
 
 /// The pure part of [`read`]: testable with rows built by hand, no device needed.
@@ -88,7 +92,7 @@ fn from_rows(health_rows: &[Row], resource_rows: &[Row]) -> DeviceMapData {
         free_hdd_space: field(row, "free-hdd-space").and_then(|v| v.parse().ok()).unwrap_or_default(),
         version: field(row, "version").unwrap_or_default().into(),
     });
-    DeviceMapData { health, resources }
+    DeviceMapData { health, resources, poe: PoePorts::default() }
 }
 
 #[cfg(test)]

@@ -21,6 +21,13 @@ query NetworkMap($site: Int){
                 reason
                 reasonDevice
             }
+            poeEdges{
+                pse{ id name device{ id name } }
+                pd{ id name device{ id name } }
+                status
+                power
+                problem
+            }
         }
     }
 }

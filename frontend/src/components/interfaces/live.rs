@@ -248,7 +248,10 @@ pub fn details(netbox: &str, live: &RowLive, device: impl Fn(&Device) -> Html) -
                                     PoeProblem::NO_LOAD => t::PoeMismatch::NoLoad,
                                     PoeProblem::PD_MISSING => t::PoeMismatch::PdMissing,
                                     PoeProblem::FEEDS_INSTEAD => t::PoeMismatch::FeedsInstead,
-                                    PoeProblem::Other(_) => t::PoeMismatch::Other,
+                                    // `mismatches()` never produces this (helper::poe::feeding,
+                                    // for the network map); unreachable here, but the enum is
+                                    // shared and must still match exhaustively.
+                                    PoeProblem::UNDOCUMENTED | PoeProblem::Other(_) => t::PoeMismatch::Other,
                                 },
                                 m.status.as_deref(),
                             )}

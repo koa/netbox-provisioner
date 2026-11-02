@@ -51,3 +51,18 @@ pub fn health_row(name: &str, value: &str, unit: Option<&str>) -> String {
         None => format!("{name}: {value}"),
     }
 }
+pub const EDGE_POE: &str = "PoE";
+pub const EDGE_POE_PROBLEM: &str = "PoE: Soll und Ist stimmen nicht";
+pub const POE_NO_POE_OUT: &str = "speist laut NetBox, der Port hat kein PoE-Out";
+pub const POE_NO_LOAD: &str = "speist laut NetBox, am anderen Ende bezieht nichts Strom";
+pub const POE_PD_MISSING: &str = "speist, die Gegenseite ist in NetBox nicht als gespeist erfasst";
+pub const POE_FEEDS_INSTEAD: &str = "in NetBox gespeist, speist aber selbst";
+pub const POE_UNDOCUMENTED: &str = "speist, ohne PoE-Modus in NetBox";
+/// Not judged beyond `problem` (`docs/concepts/network-map.md`, step 4): `status` as
+/// `poe-out-status`, `power` as `poe-out-power` in watts.
+pub fn poe_edge(pse: &str, pd: &str, status: Option<&str>, power: Option<f64>, problem: Option<&str>) -> String {
+    let power = power.map(|w| format!(", {w} W")).unwrap_or_default();
+    let status = status.map(|s| format!(" ({s})")).unwrap_or_default();
+    let problem = problem.map(|p| format!("\n{p}")).unwrap_or_default();
+    format!("{pse} → {pd}: PoE{power}{status}{problem}")
+}

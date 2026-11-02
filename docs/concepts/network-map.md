@@ -3,7 +3,8 @@
 Status: Schritt 1 bis 3 der [Reihenfolge](#reihenfolge-der-umsetzung) umgesetzt (LSA-Parser,
 Zustand der Kanten und Knoten, `Query.topology.networkState(siteId)`, SVG-Karte mit festem
 Layout, Health und Ressourcen im Tooltip, `backend/src/network_state/`,
-`components::network_map`), der Rest ist Konzept. Aufgabe C9 in [todo.md](../todo.md).
+`components::network_map`), Schritt 4 ohne das Budget (PSE→PD-Pfeile mit Soll-gegen-Ist), der
+Rest ist Konzept. Aufgabe C9 in [todo.md](../todo.md).
 
 Eine Seite pro Site, und eine über alle Sites (`/network-map`, Link auf der Sites-Seite): das
 Netz als Graph, Soll aus NetBox, Ist live aus dem Netz. Knoten sind Geräte, Kanten Kabel und
@@ -152,14 +153,24 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
 
 ## PoE
 
-- **Kante PSE → PD:** zusätzlich zur Kabel-Kante ein Pfeil vom speisenden zum gespeisten Gerät
-  (aus `poe_mode`, wie `PowerChain`), mit animiert fliessender Strichelung. Die Dicke folgt der
-  Leistung, die Beschriftung zeigt sie („3,3 W“).
-- **Soll gegen Ist:**
+- **Kante PSE → PD:** zusätzlich zur Kabel-Kante ein Pfeil vom speisenden zum gespeisten Gerät,
+  nur wo NetBox ein Kabel zum gespeisten Port hat. **Umgesetzt** (2026-11-02), vereinfacht:
+  gestrichelt statt animiert (Strichelung ohne Animation ist dem Projekt genug, siehe
+  `local.css`), Farbe statt Dicke für die Leistung (eine Zahl in der Beschriftung, nicht die
+  Linienstärke, ist genauer und einfacher). `helper::poe::feeding` liefert pro Port Modus, Status,
+  Leistung (`poe-out-power`), Gegenseite und eine Abweichung, wenn eine vorliegt; `mismatches`
+  (Geräteseite, Soll-gegen-Ist-Check) ist jetzt ein Filter darüber, unverändert in dem, was es
+  meldet.
+- **Soll gegen Ist** (`helper::poe::PoeProblem`, orange auf der Karte):
   - `poe_mode=pse` in NetBox, aber `poe-out-status` ist nicht `powered-on`: orange.
-  - Strom fliesst an einem Port ohne `pse` in NetBox: orange („nicht modelliert“).
-- **Am speisenden Gerät:** Summe (`poe-out-consumption`) gegen Budget. Das Budget pro Board kommt
-  aus `hw_facts.rs`, wo die Board-Fakten liegen; die Werte müssen pro Board nachgetragen werden.
+  - Strom fliesst an einem Port ohne `pse` in NetBox: orange („nicht modelliert“,
+    `PoeProblem::Undocumented`, nur für die Karte – `mismatches` meldet das weiterhin nicht, wie
+    schon vor dieser Karte).
+- **Am speisenden Gerät:** Summe (`poe-out-consumption`) gegen Budget. **Nicht umgesetzt:** das
+  Budget pro Board kommt aus `hw_facts.rs`, wo die Board-Fakten liegen; die Werte sind dort noch
+  für kein Board nachgetragen. Das ist Dateneingabe aus dem RouterOS-Handbuch je Board-Typ, kein
+  Code – ohne echte Werte für jedes vorkommende Board würde der Check falsche Zahlen zeigen statt
+  nichts.
 - Die PoE-Kette ist dieselbe, die Updates beachten. Ein Update, das auf ein gespeistes Gerät
   wartet, kann die Ansicht direkt an der Kante zeigen.
 
@@ -174,8 +185,11 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   weiterverwendet.
 - **Klick auf einen Knoten:** navigiert auf die Geräteseite (an der eigenen Site des Knotens,
   nicht der der Karte), wie bisher; keine Seitenleiste (**Entschieden 2026-11-02**). Health,
-  Ressourcen und, ab Schritt 4, PoE pro Port stehen im Tooltip beim Überfahren.
+  Ressourcen stehen im Tooltip beim Überfahren; bei einem PSE→PD-Pfeil dessen Leistung und, bei
+  Abweichung, welche.
 - **Klick auf eine Kante:** beide Ports, OSPF-Zustand v2/v3, Fehlerzähler, bei PoE die Leistung.
+  **Nicht umgesetzt** (nur der Tooltip, kein Klick-Verhalten für Kanten, konsistent mit
+  „keine Seitenleiste“ oben).
 - **Aktualisierung:** Die Seite fragt alle 5 s nach (wie die Job-Seite jede Sekunde). Die
   Subscriptions ([Gerätezustand](../device-state.md)) wecken nur bei Änderungen des Caches, die
   Karte zeigt aber Zähler, die sich laufend ändern; Polling reicht hier.
@@ -226,7 +240,13 @@ Historie, ergänzend.
    nur für Geräte mit eigenem OSPF (nicht für einen Switch, der nach Schritt 2 nur als Relais
    auf der Karte ist); im Tooltip beim Überfahren statt einer Seitenleiste
    (Entschieden 2026-11-02). Unit-Tests der Zeilen-Auswertung (`device_data::test`).
-4. PoE-Kanten und -Budget.
+4. PoE-Kanten und -Budget. **Teilweise umgesetzt** (2026-11-02): PSE→PD-Pfeile mit Leistung
+   (`poe-out-power`) und Soll-gegen-Ist (`helper::poe::feeding`, geteilt mit `mismatches` der
+   Geräteseite), im Tooltip die Leistung und, bei Abweichung, welche. Das Budget pro Board
+   bleibt offen: `hw_facts.rs` hat die nötigen Werte noch nicht pro Board nachgetragen (siehe
+   oben), das ist Dateneingabe aus dem Handbuch je Board, kein Code, und würde ohne echte Werte
+   nur falsche Zahlen zeigen. Unit-Tests in `helper::poe::test` (`feeding`) und
+   `network_state::graphql::test` (die Pfeile selbst).
 5. Verschiebbare Knoten, Positionen im Browser, Publizieren des offiziellen Layouts.
 
 ## Entschieden (2026-10-23)

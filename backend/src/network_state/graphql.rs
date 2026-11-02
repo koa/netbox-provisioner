@@ -6,10 +6,13 @@ use super::{
     edges::{DownReason, EdgeKind, EdgeState, Lsdb, edges},
     read::{read, readers},
 };
-use crate::topology::{
-    DeviceId,
-    access::device::DeviceAccess,
-    findings::{DeviceRef, InterfaceRef, device_ref, interface_ref},
+use crate::{
+    helper::poe::{self, PoeProblem},
+    topology::{
+        DeviceId, PoeMode,
+        access::device::DeviceAccess,
+        findings::{DeviceRef, InterfaceRef, device_ref, interface_ref},
+    },
 };
 use async_graphql::{Enum, SimpleObject};
 use std::{
@@ -29,6 +32,10 @@ pub struct NetworkState {
     error: Option<String>,
     nodes: Vec<MapNode>,
     edges: Vec<MapEdge>,
+    /// PSE→PD arrows, one per port currently feeding or modeled to (`docs/concepts/network-map.md`,
+    /// step 4); only between devices the map shows, and only where NetBox has a cable to the fed
+    /// port
+    poe_edges: Vec<MapPoeEdge>,
     /// routers in the LSDB that are no device in NetBox (production behind the lab's uplink)
     outside: u32,
     /// the site's routers that share a segment with those
@@ -128,6 +135,42 @@ pub struct MapEdge {
     reason: Option<MapDownReason>,
     /// the device `reason` is about
     reason_device: Option<u32>,
+}
+
+/// A PSE→PD arrow: `pse` feeds `pd` over a cable NetBox has between them.
+#[derive(SimpleObject)]
+pub struct MapPoeEdge {
+    pse: InterfaceRef,
+    pd: InterfaceRef,
+    /// `poe-out-status` as the device reports it
+    status: Option<String>,
+    /// `poe-out-power`, watts; only while `status` is `powered-on`
+    power: Option<f64>,
+    /// where the device contradicts NetBox's PoE mode (`helper::poe::Feeding`)
+    problem: Option<PoeProblem>,
+}
+
+/// One [`MapPoeEdge`] per port of `nodes` currently feeding, or modeled in NetBox to
+/// (`helper::poe::feeding`), with a cable to the fed port.
+fn poe_edges(nodes: &BTreeMap<DeviceId, DeviceAccess>, device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>) -> Vec<MapPoeEdge> {
+    let mut found = Vec::new();
+    for device in nodes.values() {
+        let Some(data) = device_data.get(&device.id()) else { continue };
+        for feeding in poe::feeding(device, &data.poe) {
+            let Some(pd) = feeding.far else { continue };
+            if feeding.mode != Some(PoeMode::Pse) && feeding.status.as_deref() != Some("powered-on") {
+                continue;
+            }
+            found.push(MapPoeEdge {
+                pse: feeding.port,
+                pd,
+                status: feeding.status.map(Into::into),
+                power: feeding.power,
+                problem: feeding.problem,
+            });
+        }
+    }
+    found
 }
 
 fn router_id(device: &DeviceAccess) -> Option<Ipv4Addr> {
@@ -314,6 +357,7 @@ fn build(
         })
         .collect::<Vec<_>>();
     result_nodes.sort_by(|a, b| a.device.name.cmp(&b.device.name));
+    let result_poe_edges = poe_edges(&nodes, device_data);
 
     // the routers NetBox doesn't know, and where they come in
     let known = topology
@@ -336,6 +380,7 @@ fn build(
         error,
         nodes: result_nodes,
         edges: result_edges,
+        poe_edges: result_poe_edges,
         outside: outside.len() as u32,
         outside_at,
     }

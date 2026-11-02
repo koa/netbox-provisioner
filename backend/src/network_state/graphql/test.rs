@@ -2,6 +2,8 @@
 //! they relay between two OSPF neighbors.
 
 use super::*;
+use crate::device::raw::Row;
+use crate::helper::poe::PoePorts;
 use crate::network_state::{edges::Lsdb, lsa::Lsa};
 use crate::topology::{
     Cable, CablePort, Device, Interface, InterfaceId, IpAddressData, IpAddressId, PhysicalPortId, PortType, Topology,
@@ -136,6 +138,65 @@ fn bridged_net() -> (Vec<DeviceAccess>, Arc<Topology>) {
     let topology = Arc::new(builder.build());
     let devices = [r1, r2].map(|id| topology.get_device_by_id(&id).unwrap()).to_vec();
     (devices, topology)
+}
+
+/// r1 and r2, cabled on `ether1`: r1's port is `pse` in NetBox, r2's `pd`.
+fn poe_net() -> (Vec<DeviceAccess>, Arc<Topology>) {
+    let mut builder = TopologyBuilder::default();
+    let r1 = device(&mut builder, "r1", true, Some("172.16.1.1/32"));
+    let r2 = device(&mut builder, "r2", true, Some("172.16.1.2/32"));
+    let e1 = port(&mut builder, r1, "ether1", Some("172.17.1.1/30"), true);
+    let e2 = port(&mut builder, r2, "ether1", Some("172.17.1.2/30"), true);
+    builder.interfaces.get_mut(&e1).unwrap().poe = Some(PoeMode::Pse);
+    builder.interfaces.get_mut(&e2).unwrap().poe = Some(PoeMode::Pd);
+    cable(&mut builder, e1, e2);
+    let topology = Arc::new(builder.build());
+    let devices = [r1, r2].map(|id| topology.get_device_by_id(&id).unwrap()).to_vec();
+    (devices, topology)
+}
+
+fn poe_row(fields: &[(&str, &str)]) -> Row {
+    fields.iter().map(|(k, v)| (Box::from(*k), Some(Box::from(*v)))).collect()
+}
+
+/// r1 feeds r2 over their cable, `pse`/`pd` as NetBox has it, reporting `powered-on` with 3.9 W:
+/// one PSE→PD arrow (`docs/concepts/network-map.md`, step 4).
+#[test]
+fn a_feeding_port_gets_a_poe_edge() {
+    let (devices, _topology) = poe_net();
+    let data = Arc::new(DeviceMapData {
+        poe: PoePorts {
+            ethernet: vec![poe_row(&[("name", "ether1"), ("default-name", "ether1"), ("poe-out", "auto-on")])],
+            monitor: vec![poe_row(&[("name", "ether1"), ("poe-out-status", "powered-on"), ("poe-out-power", "3.9")])],
+        },
+        ..DeviceMapData::default()
+    });
+    let device_data = BTreeMap::from([(devices[0].id(), data)]);
+    let state = build(&devices, &[], &Lsdb::default(), None, 0, None, &device_data);
+    assert_eq!(state.poe_edges.len(), 1, "{:?}", state.poe_edges.iter().map(|e| &e.pse.name).collect::<Vec<_>>());
+    let edge = &state.poe_edges[0];
+    assert_eq!(&*edge.pse.device.name, "r1");
+    assert_eq!(&*edge.pd.device.name, "r2");
+    assert_eq!(edge.power, Some(3.9));
+    assert_eq!(edge.problem, None);
+}
+
+/// Without a device reading for r2 (it didn't answer, or isn't polled), r1's PoE reading alone
+/// is still enough: the far end comes from NetBox's cable, not from r2's own reading.
+#[test]
+fn a_poe_edge_needs_no_reading_from_the_far_device() {
+    let (devices, _topology) = poe_net();
+    let data = Arc::new(DeviceMapData {
+        poe: PoePorts {
+            ethernet: vec![poe_row(&[("name", "ether1"), ("default-name", "ether1"), ("poe-out", "auto-on")])],
+            monitor: vec![poe_row(&[("name", "ether1"), ("poe-out-status", "waiting-for-load")])],
+        },
+        ..DeviceMapData::default()
+    });
+    let device_data = BTreeMap::from([(devices[0].id(), data)]);
+    let state = build(&devices, &[], &Lsdb::default(), None, 0, None, &device_data);
+    assert_eq!(state.poe_edges.len(), 1, "pse in NetBox draws the arrow even while waiting for load");
+    assert_eq!(state.poe_edges[0].problem, Some(PoeProblem::NoLoad));
 }
 
 fn row(fields: &[(&str, &str)]) -> Option<Lsa> {

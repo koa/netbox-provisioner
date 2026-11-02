@@ -267,6 +267,7 @@ pub struct PoeObserved {
 }
 
 /// What the device reports of its Ethernet ports and their PoE out.
+#[derive(Debug, Clone, Default)]
 pub struct PoePorts {
     /// `/interface/ethernet/print`: a port with PoE out has `poe-out`
     pub ethernet: Vec<Row>,
@@ -324,6 +325,9 @@ pub enum PoeProblem {
     PdMissing,
     /// NetBox has it fed (`pd`), the device feeds there (`powered-on`)
     FeedsInstead,
+    /// it feeds (`powered-on`), NetBox has no PoE mode there at all: the network map shows it
+    /// (`network_state::graphql`), [`mismatches`] doesn't (unchanged from before this existed)
+    Undocumented,
 }
 
 /// A port whose PoE mode in NetBox the device contradicts.
@@ -335,16 +339,33 @@ pub struct PoeMismatch {
     pub status: Option<Box<str>>,
 }
 
-/// The ports of the device with a PoE mode in NetBox that the device contradicts, by NetBox's
-/// name, which is the port's factory name (`default-name`). A port the device doesn't have is
-/// left to the other checks.
-pub fn mismatches(device: &DeviceAccess, ports: &PoePorts) -> Vec<PoeMismatch> {
-    let mut found: Vec<PoeMismatch> = device
+/// A PoE-capable Ethernet port, modeled to feed or fed in NetBox or reporting `powered-on`,
+/// with what the device says now. For the network map's PSE→PD arrows
+/// (`network_state::graphql`, `docs/concepts/network-map.md` step 4) and, filtered to a
+/// problem, [`mismatches`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Feeding {
+    pub port: InterfaceRef,
+    pub mode: Option<PoeMode>,
+    /// `poe-out-status` as the device reports it
+    pub status: Option<Box<str>>,
+    /// `poe-out-power`, watts; only while `status` is `powered-on`
+    pub power: Option<f64>,
+    /// the port at its cable's far end, if NetBox has one
+    pub far: Option<InterfaceRef>,
+    pub problem: Option<PoeProblem>,
+}
+
+/// Every Ethernet port of the device with a PoE mode in NetBox, or reporting `powered-on`
+/// without one, by NetBox's name, which is the port's factory name (`default-name`). A port the
+/// device doesn't have is left to the other checks.
+pub fn feeding(device: &DeviceAccess, ports: &PoePorts) -> Vec<Feeding> {
+    let mut found: Vec<Feeding> = device
         .interfaces()
         .iter()
         .filter(|interface| interface.is_ethernet() && interface.external_port().is_some())
         .filter_map(|interface| {
-            let mode = interface.poe()?;
+            let mode = interface.poe();
             let row = ports
                 .ethernet
                 .iter()
@@ -356,27 +377,58 @@ pub fn mismatches(device: &DeviceAccess, ports: &PoePorts) -> Vec<PoeMismatch> {
                     .find(|m| field(m, "name") == Some(name))
                     .and_then(|m| field(m, "poe-out-status"))
             });
+            let power = field(row, "name").and_then(|name| {
+                ports
+                    .monitor
+                    .iter()
+                    .find(|m| field(m, "name") == Some(name))
+                    .and_then(|m| field(m, "poe-out-power"))
+                    .and_then(|v| v.parse().ok())
+            });
             let far = interface.connected_interfaces().into_iter().next();
+            if mode.is_none() && status != Some("powered-on") {
+                return None;
+            }
             let problem = match (mode, field(row, "poe-out").is_some(), status) {
-                (PoeMode::Pse, false, _) => PoeProblem::NoPoeOut,
-                (PoeMode::Pse, true, Some("waiting-for-load")) if far.is_some() => PoeProblem::NoLoad,
-                (PoeMode::Pse, true, Some("powered-on"))
+                (Some(PoeMode::Pse), false, _) => Some(PoeProblem::NoPoeOut),
+                (Some(PoeMode::Pse), true, Some("waiting-for-load")) if far.is_some() => Some(PoeProblem::NoLoad),
+                (Some(PoeMode::Pse), true, Some("powered-on"))
                     if far.as_ref().is_some_and(|far| far.poe() != Some(PoeMode::Pd)) =>
                 {
-                    PoeProblem::PdMissing
+                    Some(PoeProblem::PdMissing)
                 }
-                (PoeMode::Pd, _, Some("powered-on")) => PoeProblem::FeedsInstead,
-                _ => return None,
+                (Some(PoeMode::Pd), _, Some("powered-on")) => Some(PoeProblem::FeedsInstead),
+                (None, _, Some("powered-on")) => Some(PoeProblem::Undocumented),
+                _ => None,
             };
-            Some(PoeMismatch {
+            Some(Feeding {
                 port: interface_ref(interface),
-                problem,
+                mode,
                 status: status.map(Box::from),
+                power,
+                far: far.as_ref().map(interface_ref),
+                problem,
             })
         })
         .collect();
-    found.sort_by_cached_key(|m| naturalize_interface(&m.port.name));
+    found.sort_by_cached_key(|f| naturalize_interface(&f.port.name));
     found
+}
+
+/// [`feeding`], filtered to those with a [`PoeProblem`] (`Undocumented` excluded: it didn't
+/// exist as a check before the network map, and still isn't one here).
+pub fn mismatches(device: &DeviceAccess, ports: &PoePorts) -> Vec<PoeMismatch> {
+    feeding(device, ports)
+        .into_iter()
+        .filter_map(|f| match f.problem {
+            None | Some(PoeProblem::Undocumented) => None,
+            Some(problem) => Some(PoeMismatch {
+                port: f.port,
+                problem,
+                status: f.status,
+            }),
+        })
+        .collect()
 }
 
 /// [`observed`] on what the device answered: `ethernet` from `/interface/ethernet/print`,
@@ -743,6 +795,31 @@ mod test {
                 (ports[3].0, PoeProblem::FeedsInstead),
             ]
         );
+    }
+
+    /// A port feeding without any PoE mode in NetBox at all is `Undocumented` in [`feeding`],
+    /// but [`mismatches`] still says nothing about it, same as before `feeding` existed.
+    #[test]
+    fn feeding_reports_what_mismatches_leaves_out() {
+        let mut builder = TopologyBuilder::default();
+        let sw = device(&mut builder, "sw");
+        let modeled = port(&mut builder, sw, "ether2");
+        let unmodeled = port(&mut builder, sw, "ether3");
+        builder.interfaces.get_mut(&modeled).unwrap().poe = Some(PoeMode::Pse);
+        let topology = Arc::new(builder.build());
+        let sw = topology.get_device_by_id(&sw).unwrap();
+        let with_poe = |name: &str| row(&[("name", name), ("default-name", name), ("poe-out", "auto-on")]);
+        let status = |name: &str, status: &str| row(&[("name", name), ("poe-out-status", status)]);
+        let ports = PoePorts {
+            ethernet: vec![with_poe("ether2"), with_poe("ether3")],
+            monitor: vec![
+                status("ether2", "powered-on"),
+                status("ether3", "powered-on"),
+            ],
+        };
+        let found = feeding(&sw, &ports).into_iter().map(|f| (f.port.id, f.problem)).collect::<Vec<_>>();
+        assert_eq!(found, [(modeled.0, None), (unmodeled.0, Some(PoeProblem::Undocumented))]);
+        assert!(mismatches(&sw, &ports).is_empty(), "neither is a mismatch mismatches() would report");
     }
 
     /// Without the port fed, the feeding one alone gets `pse`, no cable.
