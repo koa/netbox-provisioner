@@ -24,6 +24,7 @@ use crate::{
         live::{Subscription, local_time, same_reading, subscribe_data},
     },
     i18n::{device::as_of, interfaces as t},
+    local_storage::{store, stored},
 };
 use live::Live;
 use patternfly_yew::prelude::{
@@ -438,13 +439,3 @@ fn subscribe_view(ctx: &Context<Interfaces>) -> Subscription {
     })
 }
 
-/// A value the browser keeps; none where it keeps nothing (a private window, blocked storage).
-fn stored(key: &str) -> Option<String> {
-    web_sys::window()?.local_storage().ok()??.get_item(key).ok()?
-}
-
-fn store(key: &str, value: &str) {
-    if let Some(Ok(Some(storage))) = web_sys::window().map(|w| w.local_storage()) {
-        let _ = storage.set_item(key, value);
-    }
-}

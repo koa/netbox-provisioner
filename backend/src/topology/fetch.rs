@@ -364,6 +364,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                         .custom_field_data
                         .propagate_default_route
                         .unwrap_or(false),
+                    map_position: device.custom_field_data.map_position.map(|p| (p.x, p.y)),
                 },
             );
         }

@@ -584,6 +584,10 @@ ul.device-history {
 }
 .map-node {
   cursor: pointer;
+  touch-action: none;
+}
+.map-actions {
+  margin-bottom: 0.5rem;
 }
 .map-node circle,
 .map-node rect {

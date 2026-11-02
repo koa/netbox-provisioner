@@ -81,6 +81,16 @@ pub struct MapNode {
     /// `device.site`'s name, for the frontend to group and label a site's devices on the
     /// all-sites map; none of `device_ref`'s business, since most of it has no use for a name.
     site_name: Option<String>,
+    /// the device's published position (custom field `map_position`), if an admin ever
+    /// published one; the frontend starts a node there instead of the layout's own guess,
+    /// unless the browser's own, unpublished arrangement (`localStorage`) overrides it.
+    position: Option<MapPosition>,
+}
+
+#[derive(SimpleObject)]
+pub struct MapPosition {
+    x: i32,
+    y: i32,
 }
 
 #[derive(SimpleObject)]
@@ -365,6 +375,7 @@ fn build(
                 routeros: device.has_routeros(),
                 state,
                 site_name: device.site().map(|s| s.name().to_string()),
+                position: device.map_position().map(|(x, y)| MapPosition { x, y }),
             }
         })
         .collect::<Vec<_>>();

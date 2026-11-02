@@ -124,6 +124,7 @@ lange aus.
 | Wireless Link       | `rf_country`           | Text                         | Land beider Enden einer Funkbrücke übersteuern |
 | Wireless Link       | `rf_frequency_mode`    | Selection                    | Frequency Mode beider Enden übersteuern       |
 | Journal Entry       | `provisioner_job`      | JSON                         | Stand eines Jobs, vom Provisioner geschrieben |
+| Device              | `map_position`         | JSON                         | Position auf der Netz-Karte, von dort publiziert |
 
 Die Namen müssen exakt stimmen. Anlegen, Werte und Wirkung im Einzelnen:
 [custom-fields.md](custom-fields.md).

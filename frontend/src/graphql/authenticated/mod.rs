@@ -433,3 +433,11 @@ pub struct NetworkMap;
     response_derives = "Debug, Clone, PartialEq"
 )]
 pub struct NetworkMapDetails;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/network-map.graphql",
+    response_derives = "Debug"
+)]
+pub struct PublishLayout;

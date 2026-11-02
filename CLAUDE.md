@@ -430,9 +430,18 @@ of every site without it, from the LSDB alone, no device polled: fast. The front
 together, a temperature cools over 300 rounds), its own small implementation (no JS library),
 deterministic (a node without a pinned position starts at one hashed from its id, not randomly,
 `network_map::test`, the frontend's first unit tests, native target: `cargo test -p frontend
---bin frontend`, not `wasm32`). Dragging to pin a node, `localStorage` and NetBox's published
-layout (`publishLayout`) aren't implemented yet; `force_layout` already takes a pinned-positions
-map, unused so far. A node's own site (`DeviceRef.site`, not the page's) opens its device page,
+--bin frontend`, not `wasm32`). A node can be dragged (pointer events on the node, mapped into
+the SVG's own coordinate space via the `<svg>` element's `getBoundingClientRect()` — found with
+`event.target()` plus `.closest("svg")`, since Yew delegates listeners to a shared root rather
+than attaching one per element, so `current_target()` resolves to some far ancestor instead);
+the result is kept per browser (`local_storage`, scoped by site) and fed back into `force_layout`
+as a pinned position (`clustered_layout`'s all-sites view overrides the finished position
+instead, since feeding a pin into its two-level physics would need inverting its own
+per-site recenter/shrink transform, not known until after it has run). `publishLayout` writes
+the browser's current layout to each device's `map_position` custom field directly via
+`NetboxRest` (`NetboxWritesAllowed`, no `NetboxPlan`/job: idempotent single-field writes need
+none of that machinery); the map's own "Publizieren"/"Zurücksetzen" buttons show only with
+`allowNetboxWrite`. A node's own site (`DeviceRef.site`, not the page's) opens its device page,
 since the all-sites map mixes devices of different sites. Over more than one site,
 `clustered_layout` groups each site's devices into its own named, dashed circle: a two-level
 `force_layout` (sites against each other, `radii`/`gap` keeping circles apart by construction;

@@ -100,6 +100,7 @@ fn node(id: i64, site: Option<i64>, site_name: Option<&str>) -> network_map::Net
         routeros: true,
         state: NodeState::REACHED,
         site_name: site_name.map(str::to_string),
+        position: None,
     }
 }
 

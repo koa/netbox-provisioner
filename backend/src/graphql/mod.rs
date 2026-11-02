@@ -25,9 +25,10 @@ use crate::{
 };
 use std::{sync::Arc, time::SystemTime};
 use async_graphql::{
-    Context, EmptyMutation, EmptySubscription, Guard, Object, Schema, SimpleObject, Subscription,
+    Context, EmptyMutation, EmptySubscription, Guard, InputObject, Object, Schema, SimpleObject, Subscription,
     futures_util::Stream,
 };
+use serde_json::json;
 pub mod live;
 pub mod scalars;
 pub type AuthenticatedGraphqlSchema =
@@ -547,6 +548,14 @@ fn user_label(ctx: &Context<'_>) -> Box<str> {
         .into()
 }
 
+/// One device's position for `MutationAuthenticated.publishLayout`.
+#[derive(InputObject)]
+struct DevicePositionInput {
+    device_id: u32,
+    x: i32,
+    y: i32,
+}
+
 #[Object]
 impl MutationAuthenticated {
     /// Writes `helper`'s plan to NetBox, if it is still the one shown
@@ -591,6 +600,27 @@ impl MutationAuthenticated {
             refetch(&topology).await;
             result
         })?)
+    }
+    /// Publishes `positions` as the network map's official layout, custom field `map_position`
+    /// of each device (`docs/concepts/network-map.md`). One write per device, not a `NetboxPlan`:
+    /// a position is a single idempotent field with nothing else depending on it, so none of
+    /// that machinery's fingerprint check, undo log or job buys anything here. Not a job itself
+    /// either, since a handful of fast field writes don't need one; the topology is fetched
+    /// again before returning so the next `networkState` already has them.
+    #[graphql(guard = "NetboxWritesAllowed")]
+    async fn publish_layout(&self, ctx: &Context<'_>, positions: Vec<DevicePositionInput>) -> Result<u32, ApiError> {
+        let rest = netbox::rest::NetboxRest::writer(format!("Netz-Karte, Layout publiziert ({})", user_label(ctx)))
+            .map_err(Error::Netbox)?;
+        for position in &positions {
+            rest.update(
+                &format!("dcim/devices/{}/", position.device_id),
+                json!({ "custom_fields": { "map_position": { "x": position.x, "y": position.y } } }),
+            )
+            .await
+            .map_err(Error::Netbox)?;
+        }
+        refetch(&self.topology).await;
+        Ok(positions.len() as u32)
     }
     /// Starts the initial setup over mac-telnet from a neighbor along
     /// `DeviceAccess.bootstrapPlan` (the first neighbor that answers, checked again), for a device that can't be reached over IP yet

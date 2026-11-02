@@ -4,6 +4,7 @@ pub mod components;
 mod error;
 mod graphql;
 mod i18n;
+mod local_storage;
 pub mod pages;
 
 #[wasm_bindgen]

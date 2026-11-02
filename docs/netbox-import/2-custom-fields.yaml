@@ -34,6 +34,16 @@ search_weight: 1000
 filter_logic: loose
 weight: 100
 ---
+name: map_position
+label: Map position
+type: json
+object_types: dcim.device
+description: Position on the network map, published from there; never edit by hand
+required: false
+search_weight: 0
+filter_logic: disabled
+weight: 100
+---
 name: controller
 label: CAPsMAN controller
 type: object

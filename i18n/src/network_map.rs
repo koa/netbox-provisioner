@@ -67,3 +67,13 @@ pub fn poe_edge(pse: &str, pd: &str, status: Option<&str>, power: Option<f64>, p
     let problem = problem.map(|p| format!("\n{p}")).unwrap_or_default();
     format!("{pse} → {pd}: PoE{power}{status}{problem}")
 }
+pub const DRAG_HINT: &str = "Knoten lassen sich verschieben; die eigene Anordnung bleibt in diesem Browser, bis sie veröffentlicht oder zurückgesetzt wird.";
+pub const RESET: &str = "Eigene Anordnung zurücksetzen";
+pub const PUBLISH: &str = "Anordnung veröffentlichen";
+pub const PUBLISHING: &str = "Veröffentlicht …";
+pub fn published(count: u32) -> String {
+    format!("{count} Position(en) veröffentlicht.")
+}
+pub fn publish_failed(error: &str) -> String {
+    format!("Veröffentlichen fehlgeschlagen: {error}")
+}

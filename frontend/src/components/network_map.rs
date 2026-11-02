@@ -21,23 +21,26 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            NetworkMap as NetworkMapQuery, NetworkMapDetails as NetworkMapDetailsQuery,
+            NetworkMap as NetworkMapQuery, NetworkMapDetails as NetworkMapDetailsQuery, PublishLayout as PublishLayoutQuery,
             network_map::{self, MapDownReason, MapEdgeKind, MapEdgeState, NetworkMapTopologyNetworkState as State, NodeState},
             network_map_details::{self, NetworkMapDetailsTopologyNetworkStateDetails as DetailsState, PoeProblem},
+            publish_layout,
         },
         query_authenticated,
     },
     i18n::network_map as t,
+    local_storage,
     pages::routes::AppRoute,
 };
-use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
+use patternfly_yew::prelude::{Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
 use std::{
     cell::Cell,
     collections::{BTreeMap, HashMap, HashSet},
     rc::Rc,
     time::Duration,
 };
-use yew::{Component, Context, ContextHandle, Html, Properties, html, html::Scope, platform::time::sleep};
+use wasm_bindgen::JsCast;
+use yew::{Component, Context, ContextHandle, Html, Properties, html, html::Scope, platform::{spawn_local, time::sleep}};
 use yew_nested_router::prelude::RouterContext;
 
 /// How often the map asks (the backend reads the LSDB at most this often too, `LSDB_AGE`).
@@ -63,6 +66,27 @@ pub struct NetworkMap {
     alive: Rc<Cell<bool>>,
     router: Option<RouterContext<AppRoute>>,
     _router_handle: Option<ContextHandle<RouterContext<AppRoute>>>,
+    allow_netbox_write: bool,
+    /// a node the user dragged in this browser (`localStorage`, key [`storage_key`]), on top of
+    /// NetBox's published positions; cleared by `ResetOverrides`, written to `localStorage` once
+    /// a drag ends
+    overridden: HashMap<i64, (f64, f64)>,
+    /// the device currently being dragged, and whether it actually moved yet (a plain click,
+    /// pointer down and up without a move between, must still navigate as before)
+    dragging: Option<(i64, bool)>,
+    /// set by `DragEnd` when the drag moved the node, consumed by the next `Open`: the pointer
+    /// up after a drag fires a click too, which must not also navigate away from the map
+    suppress_click: bool,
+    publish: PublishState,
+}
+
+#[derive(Default)]
+enum PublishState {
+    #[default]
+    Idle,
+    Publishing,
+    Done(u32),
+    Failed(String),
 }
 
 pub enum NetworkMapMsg {
@@ -73,6 +97,20 @@ pub enum NetworkMapMsg {
     /// the device clicked, and its own site (it may be another one than `site`)
     Open(i64, Option<i64>),
     Hover(Option<i64>),
+    AllowNetboxWrite(bool),
+    DragStart(i64),
+    /// already mapped into the SVG's own coordinates, not the raw pointer event's
+    DragMove(f64, f64),
+    DragEnd,
+    ResetOverrides,
+    Publish(Vec<(i64, (f64, f64))>),
+    Published(Result<u32, FrontendError>),
+}
+
+/// Where a browser's own, unpublished arrangement is kept (`local_storage`): scoped to the page
+/// (a site's map, or the all-sites one), since the two use unrelated coordinate spaces.
+fn storage_key(site: Option<u32>) -> String {
+    format!("network-map-positions:{}", site.map(|s| s.to_string()).unwrap_or_else(|| "all".into()))
 }
 
 impl Component for NetworkMap {
@@ -87,6 +125,9 @@ impl Component for NetworkMap {
         let alive = Rc::new(Cell::new(true));
         poll(ctx.link().clone(), ctx.props().site, alive.clone());
         poll_details(ctx.link().clone(), ctx.props().site, alive.clone());
+        let overridden = local_storage::stored(&storage_key(ctx.props().site))
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default();
         Self {
             state: None,
             details: None,
@@ -95,10 +136,15 @@ impl Component for NetworkMap {
             alive,
             router,
             _router_handle: router_handle,
+            allow_netbox_write: false,
+            overridden,
+            dragging: None,
+            suppress_click: false,
+            publish: PublishState::default(),
         }
     }
 
-    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             NetworkMapMsg::Loaded(state) => {
                 self.state = Some(state);
@@ -107,12 +153,62 @@ impl Component for NetworkMap {
             NetworkMapMsg::DetailsLoaded(details) => self.details = Some(details),
             NetworkMapMsg::Error(error) => self.error = Some(error),
             NetworkMapMsg::Router(router) => self.router = Some(router),
+            NetworkMapMsg::AllowNetboxWrite(allowed) => self.allow_netbox_write = allowed,
             NetworkMapMsg::Open(device, site) => {
+                if self.suppress_click {
+                    self.suppress_click = false;
+                    return false;
+                }
                 if let (Some(router), Some(site)) = (&self.router, site) {
                     router.push(AppRoute::device(site as u32, device as u32));
                 }
                 return false;
             }
+            NetworkMapMsg::DragStart(id) => self.dragging = Some((id, false)),
+            NetworkMapMsg::DragMove(x, y) => {
+                let Some((id, _)) = self.dragging else { return false };
+                self.dragging = Some((id, true));
+                self.overridden.insert(id, (x, y));
+            }
+            NetworkMapMsg::DragEnd => {
+                let Some((_, moved)) = self.dragging.take() else { return false };
+                if moved {
+                    self.suppress_click = true;
+                    if let Ok(json) = serde_json::to_string(&self.overridden) {
+                        local_storage::store(&storage_key(ctx.props().site), &json);
+                    }
+                }
+            }
+            NetworkMapMsg::ResetOverrides => {
+                self.overridden.clear();
+                local_storage::remove(&storage_key(ctx.props().site));
+            }
+            NetworkMapMsg::Publish(positions) => {
+                self.publish = PublishState::Publishing;
+                let scope = ctx.link().clone();
+                spawn_local(async move {
+                    let variables = publish_layout::Variables {
+                        positions: positions
+                            .into_iter()
+                            .map(|(device_id, (x, y))| publish_layout::DevicePositionInput {
+                                device_id,
+                                x: x.round() as i64,
+                                y: y.round() as i64,
+                            })
+                            .collect(),
+                    };
+                    let result = query_authenticated::<PublishLayoutQuery, _>(scope.clone(), variables)
+                        .await
+                        .map(|data| data.publish_layout as u32);
+                    scope.send_message(NetworkMapMsg::Published(result));
+                });
+            }
+            NetworkMapMsg::Published(Ok(count)) => {
+                self.publish = PublishState::Done(count);
+                self.overridden.clear();
+                local_storage::remove(&storage_key(ctx.props().site));
+            }
+            NetworkMapMsg::Published(Err(error)) => self.publish = PublishState::Failed(error.to_string()),
             NetworkMapMsg::Hover(device) => self.hover = device,
         }
         true
@@ -134,10 +230,16 @@ impl Component for NetworkMap {
                     (None, Some(error)) => t::unreadable(error),
                     (None, None) => no_router.to_string(),
                 };
+                let interaction = Interaction {
+                    overridden: &self.overridden,
+                    dragging: self.dragging.is_some(),
+                    allow_netbox_write: self.allow_netbox_write,
+                    publish: &self.publish,
+                };
                 html! {
                     <>
                         <p>{source}</p>
-                        {map(state, &self.details, self.hover, ctx.link())}
+                        {map(state, &self.details, self.hover, &interaction, ctx.link())}
                         {legend()}
                     </>
                 }
@@ -167,6 +269,7 @@ fn poll(scope: Scope<NetworkMap>, site: Option<u32>, alive: Rc<Cell<bool>>) {
                     failed = 0;
                     let state = data.topology.network_state;
                     if alive.get() {
+                        scope.send_message(NetworkMapMsg::AllowNetboxWrite(data.allow_netbox_write));
                         scope.send_message(NetworkMapMsg::Loaded(state));
                     }
                     sleep(POLL).await;
@@ -621,14 +724,52 @@ fn clustered_layout(state: &State) -> (HashMap<i64, (f64, f64)>, Vec<SiteCircle>
     (positions, circles)
 }
 
-fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, scope: &Scope<NetworkMap>) -> Html {
+/// The interaction state [`map`] needs beyond the polled graph itself: dragging, the browser's
+/// own overrides and publishing them (`docs/concepts/network-map.md`, "Positionen speichern").
+struct Interaction<'a> {
+    overridden: &'a HashMap<i64, (f64, f64)>,
+    dragging: bool,
+    allow_netbox_write: bool,
+    publish: &'a PublishState,
+}
+
+fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, interaction: &Interaction, scope: &Scope<NetworkMap>) -> Html {
+    let overridden = interaction.overridden;
+    let dragging = interaction.dragging;
+    let allow_netbox_write = interaction.allow_netbox_write;
+    let publish = interaction.publish;
+    // NetBox's published layout, overlaid by whatever the user dragged in this browser (wins
+    // where both exist); fed into the layout below as pinned positions, so other nodes still
+    // arrange themselves around a pinned one ([`force_layout`]'s own doc comment).
+    let mut pinned: HashMap<i64, (f64, f64)> = state
+        .nodes
+        .iter()
+        .filter_map(|n| n.position.as_ref().map(|p| (n.device.id, (p.x as f64, p.y as f64))))
+        .collect();
+    pinned.extend(overridden.iter());
     let site_count = state.nodes.iter().filter_map(|n| n.device.site).collect::<HashSet<_>>().len();
-    let (positions, circles) = if site_count > 1 {
+    let (mut positions, circles) = if site_count > 1 {
         clustered_layout(state)
     } else {
         let (node_ids, edge_pairs) = graph(state);
-        (force_layout(&node_ids, &edge_pairs, &HashMap::new(), &HashMap::new(), 0.0, area_side(node_ids.len())), Vec::new())
+        // `pinned` holds the desired final rendered position, but `force_layout` adds `MARGIN`
+        // to every position, pinned ones included, right before returning it; undo that here so
+        // a pin actually lands where it says, rather than MARGIN further out.
+        let pinned_for_layout: HashMap<i64, (f64, f64)> =
+            pinned.iter().map(|(&id, &(x, y))| (id, (x - MARGIN, y - MARGIN))).collect();
+        (force_layout(&node_ids, &edge_pairs, &pinned_for_layout, &HashMap::new(), 0.0, area_side(node_ids.len())), Vec::new())
     };
+    if site_count > 1 {
+        // clustered_layout's two-level physics can't take a pin without first inverting its
+        // per-site recenter/shrink transform, which isn't known until it has already run,
+        // circular; so a drag here instead just overrides the final spot, same as the
+        // published layout would once a browser without its own override reads it back
+        for (&id, &pos) in &pinned {
+            if positions.contains_key(&id) {
+                positions.insert(id, pos);
+            }
+        }
+    }
     let names = state
         .nodes
         .iter()
@@ -753,17 +894,60 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, scope:
         let onclick = scope.callback(move |_| NetworkMapMsg::Open(id, site));
         let onmouseenter = scope.callback(move |_| NetworkMapMsg::Hover(Some(id)));
         let onmouseleave = scope.callback(move |_| NetworkMapMsg::Hover(None));
+        let onpointerdown = scope.callback(move |e: web_sys::PointerEvent| {
+            e.prevent_default();
+            NetworkMapMsg::DragStart(id)
+        });
         let shape = if node.routeros {
             html!(<circle cx={p.0.to_string()} cy={p.1.to_string()} r="14"/>)
         } else {
             html!(<rect x={(p.0 - 10.0).to_string()} y={(p.1 - 10.0).to_string()} width="20" height="20"/>)
         };
         Some(html! {
-            <g class={format!("map-node {class}")} {onclick} {onmouseenter} {onmouseleave}>
+            <g class={format!("map-node {class}")} {onclick} {onmouseenter} {onmouseleave} {onpointerdown}>
                 {shape}
                 <text x={p.0.to_string()} y={(p.1 + 30.0).to_string()}>{&node.device.name}</text>
             </g>
         })
+    });
+    let onpointermove = scope.batch_callback(move |e: web_sys::PointerEvent| {
+        if !dragging {
+            return None;
+        }
+        // `current_target()` is useless here: Yew delegates listeners to a shared root rather
+        // than attaching one per element, so it's some ancestor spanning far more than the
+        // svg. `target()` plus `closest("svg")` finds the actual element the viewBox is on.
+        let target = e.target()?.dyn_into::<web_sys::Element>().ok()?;
+        let svg = target.closest("svg").ok()??;
+        let rect = svg.get_bounding_client_rect();
+        let scale = if rect.width() > 0.0 { width / rect.width() } else { 1.0 };
+        let x = (f64::from(e.client_x()) - rect.left()) * scale;
+        let y = (f64::from(e.client_y()) - rect.top()) * scale;
+        Some(NetworkMapMsg::DragMove(x, y))
+    });
+    let onpointerup = scope.batch_callback(move |_: web_sys::PointerEvent| dragging.then_some(NetworkMapMsg::DragEnd));
+    let onpointerleave = onpointerup.clone();
+    let publish_positions: Vec<(i64, (f64, f64))> =
+        state.nodes.iter().filter_map(|n| positions.get(&n.device.id).map(|&p| (n.device.id, p))).collect();
+    let onclick_publish = scope.callback(move |_| NetworkMapMsg::Publish(publish_positions.clone()));
+    let onclick_reset = scope.callback(|_| NetworkMapMsg::ResetOverrides);
+    let publish_status = match publish {
+        PublishState::Idle => None,
+        PublishState::Publishing => Some(html!(<span>{t::PUBLISHING}</span>)),
+        PublishState::Done(count) => Some(html!(<span>{t::published(*count)}</span>)),
+        PublishState::Failed(error) => Some(html!(<span class="pf-v6-u-color-danger">{t::publish_failed(error)}</span>)),
+    };
+    let actions = allow_netbox_write.then(|| {
+        html! {
+            <div class="map-actions">
+                <p>{t::DRAG_HINT}</p>
+                <Button variant={ButtonVariant::Secondary} onclick={onclick_reset} disabled={overridden.is_empty()}>{t::RESET}</Button>
+                {" "}
+                <Button variant={ButtonVariant::Primary} onclick={onclick_publish} disabled={matches!(publish, PublishState::Publishing)}>{t::PUBLISH}</Button>
+                {" "}
+                {publish_status}
+            </div>
+        }
     });
     let popup = hover.and_then(|id| {
         let node = state.nodes.iter().find(|n| n.device.id == id)?;
@@ -797,7 +981,8 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, scope:
     });
     html! {
         <div class="network-map">
-            <svg viewBox={format!("0 0 {width} {height}")} width={width.to_string()}>
+            {actions}
+            <svg viewBox={format!("0 0 {width} {height}")} width={width.to_string()} {onpointermove} {onpointerup} {onpointerleave}>
                 <defs>
                     <marker id="poe-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                         <path d="M0,0 L10,5 L0,10 z" style="fill: var(--pf-t--global--color--status--info--default)"/>

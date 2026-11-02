@@ -1,10 +1,10 @@
 # Konzept: Netz-Ansicht (Ist-Zustand, Health, PoE)
 
-Status: Schritt 1 bis 3 der [Reihenfolge](#reihenfolge-der-umsetzung) umgesetzt (LSA-Parser,
+Status: Schritt 1 bis 3 und 5 der [Reihenfolge](#reihenfolge-der-umsetzung) umgesetzt (LSA-Parser,
 Zustand der Kanten und Knoten, `Query.topology.networkState(siteId)`, SVG-Karte, Health und
-Ressourcen im Popup, `backend/src/network_state/`, `components::network_map`), Schritt 4 ohne
-das Budget (PSE→PD-Pfeile mit Soll-gegen-Ist), Schritt 5 nur der Layout-Algorithmus (noch nicht
-verschiebbar), der Rest ist Konzept. Aufgabe C9 in [todo.md](../todo.md).
+Ressourcen im Popup, `backend/src/network_state/`, `components::network_map`; Schritt 5: Drag,
+`localStorage`, `publishLayout`), Schritt 4 ohne das Budget (PSE→PD-Pfeile mit Soll-gegen-Ist),
+der Rest ist Konzept. Aufgabe C9 in [todo.md](../todo.md).
 
 Eine Seite pro Site, und eine über alle Sites (`/network-map`, Link auf der Sites-Seite): das
 Netz als Graph, Soll aus NetBox, Ist live aus dem Netz. Knoten sind Geräte, Kanten Kabel und
@@ -190,9 +190,22 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   deterministisch, damit das Ergebnis testbar ist (`network_map::test`, erste Unit-Tests im
   Frontend überhaupt – `cargo test -p frontend --bin frontend`, native, nicht `wasm32`). Die
   Routers ausserhalb NetBox sind ein Knoten im Graphen wie jeder andere, mit Kanten zu den
-  Site-Routern, an deren Segment sie grenzen – kein eigener Platz mehr nötig. **Noch nicht
-  umgesetzt:** Verschieben per Drag, Festhalten einer Position, Speichern in `localStorage` und
-  Publizieren nach NetBox (`map_position`).
+  Site-Routern, an deren Segment sie grenzen – kein eigener Platz mehr nötig. **Verschieben per
+  Drag, umgesetzt** (2026-11-02, gegen das Lab geprüft): `onpointerdown`/`-move`/`-up`, die
+  Position per `getBoundingClientRect()` der `<svg>` in deren Koordinatenraum umgerechnet (Yews
+  Events sind an einer gemeinsamen Wurzel delegiert, `event.target()` plus `.closest("svg")`
+  statt `current_target()`, das sonst irgendeinen entfernten Vorfahren träfe). Ein verschobener
+  Knoten geht als `pinned` in `force_layout` ein (einzelne Site) bzw. überschreibt die fertige
+  Position direkt (Karte über alle Sites: `clustered_layout`s zweistufige Physik könnte einen Pin
+  nur nach Umkehrung ihrer eigenen Verschiebung/Schrumpfung aufnehmen, die aber erst nach deren
+  Lauf feststeht – zirkulär, darum dort nur die einfachere nachträgliche Überschreibung, die
+  Nachbarknoten im Kreis unbeeinflusst lässt). Festgehalten wird im Browser (`localStorage`,
+  je Seite ein Schlüssel, Override gewinnt über das offizielle Layout), publiziert mit
+  „Anordnung veröffentlichen“ (sichtbar nur mit `allowNetboxWrite`) über die Mutation
+  `publishLayout(positions)` nach `map_position`; „Eigene Anordnung zurücksetzen“ verwirft die
+  Browser-Overrides wieder. Die Aktionsleiste und beide Buttons: `components::network_map`
+  (`Interaction`, `PublishState`); der gemeinsame `localStorage`-Zugriff liegt jetzt in
+  `local_storage.rs` (zuvor in `components::interfaces`, dort weiterverwendet).
 - **Sites gruppiert:** über alle Sites zieht `clustered_layout` die Geräte jeder Site in einen
   eigenen, grau gestrichelten Kreis (benannt), die farbigen Kanten bleiben auf Geräte-Ebene.
   **Entschieden 2026-11-02**, nach einem ersten, unbefriedigenden Versuch ohne das: mit vielen
@@ -245,8 +258,11 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
 
 ### Positionen speichern
 
+**Umgesetzt** (2026-11-02), siehe Darstellung oben für die Einzelheiten.
+
 - **Offizielles Layout in NetBox:** ein Custom Field `map_position` (JSON) am Device. Ein Admin
-  „publiziert“ seine Anordnung dorthin (über die Schreibrechte der Helfer, `allow_netbox_write`).
+  „publiziert“ seine Anordnung dorthin (Mutation `publishLayout`, Guard `NetboxWritesAllowed`,
+  Button nur mit `allowNetboxWrite` sichtbar).
 - **Eigene Änderungen im Browser:** Jeder Benutzer startet mit dem offiziellen Layout; was er
   verschiebt, bleibt in seinem Browser (`localStorage`) und lässt sich auf das offizielle
   zurücksetzen.
@@ -261,8 +277,12 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
 - GraphQL: **umgesetzt**, zwei Abfragen statt einer (2026-11-02, siehe Darstellung oben) –
   `Query.networkState(siteId)` → Knoten (Gerät, Zustand) und Kanten (Ports, Art, Zustand v2/v3),
   nur aus der LSDB; `Query.networkStateDetails(siteId)` → Health, Ressourcen und PoE-Kanten, pro
-  Gerät gelesen. Mutation `publishLayout(siteId, positions)` (nur Admins, schreibt
-  `map_position`): **nicht umgesetzt**.
+  Gerät gelesen. Mutation `publishLayout(positions)` (schreibt `map_position` je Device, je ein
+  REST-PATCH statt der `NetboxPlan`/`helper::write`-Maschinerie: eine einzelne, idempotente,
+  nicht umkehrbedürftige Feldänderung braucht deren Fingerprint-Check, Undo-Log oder Job nicht;
+  Guard `NetboxWritesAllowed`, **umgesetzt** 2026-11-02). Ohne `siteId`-Parameter, anders als
+  hier zuerst notiert: jede `DevicePositionInput` trägt ihre `deviceId` schon selbst, ein
+  zusätzliches `siteId` hätte keinen eigenen Nutzen.
 - Alles nur lesend; `allow_apply` ist dafür nicht nötig.
 
 ## Alternative: Log-Aggregator (spätere Stufe)
@@ -299,9 +319,10 @@ Historie, ergänzend.
    nur falsche Zahlen zeigen. Unit-Tests in `helper::poe::test` (`feeding`) und
    `network_state::graphql::test` (die Pfeile selbst).
 5. Verschiebbare Knoten, Positionen im Browser, Publizieren des offiziellen Layouts.
-   **Teilweise umgesetzt** (2026-11-02): der Algorithmus selbst (`force_layout`, siehe
-   Darstellung oben), gegen das Lab geprüft. Verschieben per Drag, `localStorage`, NetBox-Feld
-   `map_position` und die Mutation `publishLayout` fehlen noch.
+   **Umgesetzt** (2026-11-02): der Algorithmus (`force_layout`, siehe Darstellung oben), Drag,
+   `localStorage`, NetBox-Feld `map_position` und die Mutation `publishLayout`, alles gegen das
+   Lab geprüft (Drag einer echten Lab-Site-Karte, Reload, Veröffentlichen, Zurücksetzen; dabei
+   zwei Koordinatenfehler gefunden und behoben, siehe Darstellung oben).
 
 ## Entschieden (2026-10-23)
 

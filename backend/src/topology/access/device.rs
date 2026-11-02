@@ -254,6 +254,10 @@ impl DeviceAccess {
     pub fn propagates_default_route(&self) -> bool {
         self.data().is_some_and(|d| d.propagate_default_route)
     }
+    /// Its position on the network map, published by an admin (custom field `map_position`).
+    pub fn map_position(&self) -> Option<(i32, i32)> {
+        self.data().and_then(|d| d.map_position)
+    }
     /// The DNS servers of the device's client networks (config context `dns_servers`).
     pub fn dns_servers(&self) -> &[IpAddr] {
         self.data().map(|d| &*d.dns_servers).unwrap_or_default()

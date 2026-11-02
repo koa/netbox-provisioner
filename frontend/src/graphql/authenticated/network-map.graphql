@@ -1,4 +1,5 @@
 query NetworkMap($site: Int){
+    allowNetboxWrite
     topology{
         networkState(siteId: $site){
             readFrom{ id name }
@@ -11,6 +12,7 @@ query NetworkMap($site: Int){
                 routeros
                 state
                 siteName
+                position{ x y }
             }
             edges{
                 kind
@@ -22,4 +24,7 @@ query NetworkMap($site: Int){
             }
         }
     }
+}
+mutation PublishLayout($positions: [DevicePositionInput!]!){
+    publishLayout(positions: $positions)
 }

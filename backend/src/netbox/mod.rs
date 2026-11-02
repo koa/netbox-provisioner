@@ -62,6 +62,16 @@ pub struct JSON {
     pub propagate_default_route: Option<bool>,
     /// On a prefix: the lease time of its DHCP server in seconds; without, RouterOS's 30 min.
     pub dhcp_lease_time: Option<u32>,
+    /// On a device: its position on the network map, published by an admin
+    /// (`Mutation.publishLayout`, `docs/concepts/network-map.md`).
+    pub map_position: Option<MapPosition>,
+}
+
+/// On a device, custom field `map_position`: where an admin published it on the network map.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MapPosition {
+    pub x: i32,
+    pub y: i32,
 }
 
 /// NetBox's `Decimal` scalar (e.g. an interface's RF channel frequency in MHz),

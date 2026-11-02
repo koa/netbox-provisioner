@@ -335,6 +335,9 @@ pub struct Device {
     pub ssh_blacklist_time: Option<std::time::Duration>,
     /// Custom field `propagate_default_route`: its OSPF announces its default route.
     pub propagate_default_route: bool,
+    /// Custom field `map_position`: where an admin published it on the network map (pixels,
+    /// rounded: it only needs to seed the layout, not reproduce the exact spot sub-pixel).
+    pub map_position: Option<(i32, i32)>,
 }
 
 /// Device-role slugs relevant to config generation. Other NetBox roles (anything not
