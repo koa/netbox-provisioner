@@ -417,9 +417,13 @@ management proxy's device if it has OSPF, else a site's or the whole topology's 
 name), as the fact `FactKind::Lsdb` (`read::LSDB_AGE`, 5 s). `graphql::network_state` turns that
 into `NetworkState` (nodes, edges, the router read from, the routers outside NetBox and where
 they come in), left out for a device without OSPF (no RouterOS, no primary IPv4, or no `ospf`
-interface anywhere, `graphql::supports_ospf`; unit-tested in `graphql::test` with a hand-built
-topology, no live device needed) and its edges. `Query.topology.networkState(siteId)` serves it,
-a site's devices with `siteId`, every device of every site without it; the frontend
+interface anywhere, `graphql::supports_ospf`) and its edges, unless it is a plain switch
+relaying an OSPF segment over several cables between two routers the LSDB confirms as neighbors
+(`graphql::on_map_devices`: `NodeState::NotOspf`, and both routers `Reached` even though neither
+of its own cables can ever be `Up`, a switch port never being an OSPF end itself); unit-tested
+in `graphql::test` with a hand-built topology, no live device needed.
+`Query.topology.networkState(siteId)` serves it, a site's devices with `siteId`, every device
+of every site without it; the frontend
 (`components::network_map`) shows it as an SVG at `/site/<id>/map` and, over every site, at
 `/network-map` (linked from the devices page and the sites page), polled every 5 s with a fixed
 layout (columns by hops from the router read). A node's own site (`DeviceRef.site`, not the

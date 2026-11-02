@@ -9,8 +9,15 @@ Eine Seite pro Site, und eine über alle Sites (`/network-map`, Link auf der Sit
 Netz als Graph, Soll aus NetBox, Ist live aus dem Netz. Knoten sind Geräte, Kanten Kabel und
 Funkbrücken; ein Gerät ohne OSPF (`network_state::graphql::supports_ospf`: kein RouterOS, keine
 primäre IPv4 oder kein `ospf`-Interface) erscheint auf keiner der beiden Karten, mit seinen
-Kanten. Farben zeigen den Zustand, ein Klick auf einen Knoten zeigt Health und PoE und öffnet
-die Geräteseite (an der eigenen Site des Knotens, nicht der der Karte).
+Kanten – **ausser** es trägt, als reiner Switch ohne eigenes OSPF, die Strecke zwischen zwei
+Routern, die laut LSDB tatsächlich Nachbarn sind (ein L2-Segment über mehrere Kabel, siehe
+unten): ein solcher Switch bleibt mit seinen Kabeln auf der Karte (`NodeState::NotOspf`,
+`network_state::graphql::on_map_devices`), und seine beiden Router gelten als erreicht, auch
+wenn keines ihrer Kabel für sich allein je `Up` sein kann (dafür bräuchte ein Port eine eigene
+OSPF-Adresse, die ein reiner Switch-Port nicht hat). Ein Gerät ohne jede OSPF-Verbindung
+dahinter (ein Kundendrucker) bleibt dagegen weg. Farben zeigen den Zustand, ein Klick auf einen
+Knoten zeigt Health und PoE und öffnet die Geräteseite (an der eigenen Site des Knotens, nicht
+der der Karte).
 
 ## Gemessen (CHR und Lab, 2026-10-15, nur lesend)
 
@@ -207,7 +214,8 @@ Historie, ergänzend.
    geprüft (lab-np2 liest 43 Router-LSAs v2, zeigt lab-wap als `REACHED` über die Kante
    `ether3`–`ether1` und 41 nicht in NetBox bekannte Router als „ausserhalb“). Dazu eine Karte
    über alle Sites (`siteId` weggelassen), und Geräte ohne OSPF (mit ihren Kanten) auf beiden
-   nicht dargestellt, mit Unit-Tests dafür (`network_state::graphql::test`).
+   nicht dargestellt – ausser ein reiner Switch, der laut LSDB zwei Nachbarn verbindet, siehe
+   oben –, mit Unit-Tests dafür (`network_state::graphql::test`).
 3. Gerätedaten: Health, Ressourcen, Seitenleiste.
 4. PoE-Kanten und -Budget.
 5. Verschiebbare Knoten, Positionen im Browser, Publizieren des offiziellen Layouts.

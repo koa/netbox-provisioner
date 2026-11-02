@@ -41,6 +41,9 @@ pub enum NodeState {
     Isolated,
     /// an OSPF router of NetBox without router LSA
     Missing,
+    /// a plain switch relaying an OSPF segment between two routers that are its neighbors
+    /// there (`on_map_devices`): on the map, but no OSPF reachability of its own to judge
+    NotOspf,
 }
 
 #[derive(SimpleObject)]
@@ -89,12 +92,65 @@ fn router_id(device: &DeviceAccess) -> Option<Ipv4Addr> {
     }
 }
 
-/// Whether `device` takes part in OSPF at all (it is the LSDB's reader, or it has RouterOS, a
-/// primary IPv4 and an `ospf` interface): devices that don't stay off the map entirely, with
-/// their edges (`network_state`).
+/// Whether `device` takes part in OSPF itself (it is the LSDB's reader, or it has RouterOS, a
+/// primary IPv4 and an `ospf` interface). A device that doesn't is off the map entirely unless
+/// it relays between two that do (`on_map_devices`).
 fn supports_ospf(device: &DeviceAccess, readers: &[DeviceAccess]) -> bool {
     readers.iter().any(|r| r.id() == device.id())
         || (device.has_routeros() && router_id(device).is_some() && device.interfaces().iter().any(|i| i.use_ospf()))
+}
+
+/// The devices to show: those with OSPF themselves (`supports_ospf`), and every plain device
+/// (a switch, an unmanaged device) on a run of cables between two that are OSPF neighbors over
+/// the segment it carries (an L2 segment over several cables, `docs/concepts/network-map.md`) —
+/// as opposed to a leaf with nothing OSPF beyond it (a customer's printer), which stays off.
+/// Also which of the OSPF devices such a run confirms as currently adjacent, hence reached,
+/// since none of its own cables can ever be `EdgeState::Up` (a plain device's port is never an
+/// OSPF end).
+fn on_map_devices(
+    by_id: &BTreeMap<DeviceId, DeviceAccess>,
+    readers: &[DeviceAccess],
+    lsdb: &Lsdb,
+    adjacency: &BTreeMap<DeviceId, BTreeSet<DeviceId>>,
+) -> (BTreeSet<DeviceId>, BTreeSet<DeviceId>) {
+    let is_ospf = |id: DeviceId| by_id.get(&id).is_some_and(|d| supports_ospf(d, readers));
+    let mut on_map = by_id
+        .values()
+        .filter(|d| supports_ospf(d, readers))
+        .map(DeviceAccess::id)
+        .collect::<BTreeSet<_>>();
+    let mut reached = BTreeSet::new();
+
+    let mut seen = BTreeSet::new();
+    for &start in by_id.keys() {
+        if is_ospf(start) || !seen.insert(start) {
+            continue;
+        }
+        let mut component = BTreeSet::from([start]);
+        let mut boundary = BTreeSet::new();
+        let mut stack = vec![start];
+        while let Some(id) = stack.pop() {
+            for &neighbor in adjacency.get(&id).into_iter().flatten() {
+                if is_ospf(neighbor) {
+                    boundary.insert(neighbor);
+                } else if component.insert(neighbor) {
+                    seen.insert(neighbor);
+                    stack.push(neighbor);
+                }
+            }
+        }
+        let boundary_routers = boundary.iter().filter_map(|id| by_id.get(id)).filter_map(router_id).collect::<Vec<_>>();
+        let neighboring = boundary_routers.iter().enumerate().any(|(i, &router)| {
+            boundary_routers[i + 1..]
+                .iter()
+                .any(|&other| lsdb.segment_neighbors(router).contains(&other))
+        });
+        if neighboring {
+            on_map.extend(&component);
+            reached.extend(boundary);
+        }
+    }
+    (on_map, reached)
 }
 
 /// The state of `devices` (a site's, or every device, with RouterOS or not) as the LSDB of one
@@ -127,19 +183,30 @@ fn build(
     let topology = devices.first().map(|d| d.topology().clone());
     let interface = |id| topology.as_ref().and_then(|t| t.get_interface_by_id(id));
 
-    // the OSPF devices at the edges, also those of another site
+    // every device at an edge, also those of another site, and how they cable to each other
+    let mut by_id = devices.iter().map(|d| (d.id(), d.clone())).collect::<BTreeMap<_, _>>();
+    let mut adjacency = BTreeMap::<DeviceId, BTreeSet<DeviceId>>::new();
+    for edge in &map_edges {
+        let (Some(a), Some(b)) = (interface(edge.a), interface(edge.b)) else { continue };
+        let (Some(device_a), Some(device_b)) = (a.device(), b.device()) else { continue };
+        by_id.entry(device_a.id()).or_insert_with(|| device_a.clone());
+        by_id.entry(device_b.id()).or_insert_with(|| device_b.clone());
+        adjacency.entry(device_a.id()).or_default().insert(device_b.id());
+        adjacency.entry(device_b.id()).or_default().insert(device_a.id());
+    }
+    let (on_map, mut up) = on_map_devices(&by_id, readers, lsdb, &adjacency);
+
     let mut nodes = BTreeMap::<DeviceId, DeviceAccess>::new();
-    for device in devices {
-        if supports_ospf(device, readers) {
+    for device in by_id.values() {
+        if on_map.contains(&device.id()) {
             nodes.insert(device.id(), device.clone());
         }
     }
-    let mut up = BTreeSet::new();
     let mut result_edges = Vec::new();
     for edge in &map_edges {
         let (Some(a), Some(b)) = (interface(edge.a), interface(edge.b)) else { continue };
         let (Some(device_a), Some(device_b)) = (a.device(), b.device()) else { continue };
-        if !supports_ospf(&device_a, readers) || !supports_ospf(&device_b, readers) {
+        if !on_map.contains(&device_a.id()) || !on_map.contains(&device_b.id()) {
             continue;
         }
         for device in [device_a, device_b] {
@@ -176,10 +243,14 @@ fn build(
     let mut result_nodes = nodes
         .values()
         .map(|device| {
-            let state = match router_id(device) {
-                _ if Some(device.id()) == reader || up.contains(&device.id()) => NodeState::Reached,
-                Some(id) if lsdb.routers().contains(&id) => NodeState::Isolated,
-                _ => NodeState::Missing,
+            let state = if !supports_ospf(device, readers) {
+                NodeState::NotOspf
+            } else {
+                match router_id(device) {
+                    _ if Some(device.id()) == reader || up.contains(&device.id()) => NodeState::Reached,
+                    Some(id) if lsdb.routers().contains(&id) => NodeState::Isolated,
+                    _ => NodeState::Missing,
+                }
             };
             MapNode {
                 device: device_ref(device),

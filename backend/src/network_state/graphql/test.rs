@@ -1,7 +1,8 @@
-//! Devices without OSPF, and their edges, stay off the map (`build`'s `supports_ospf` filter).
+//! Devices without OSPF, and their edges, stay off the map (`build`'s `on_map_devices`), unless
+//! they relay between two OSPF neighbors.
 
 use super::*;
-use crate::network_state::edges::Lsdb;
+use crate::network_state::{edges::Lsdb, lsa::Lsa};
 use crate::topology::{
     Cable, CablePort, Device, Interface, InterfaceId, IpAddressData, IpAddressId, PhysicalPortId, PortType, Topology,
     builder::TopologyBuilder,
@@ -116,4 +117,80 @@ fn both_ospf_routers_are_on_the_map() {
     assert_eq!(state.nodes.len(), 2);
     assert!(state.nodes.iter().all(|n| n.state == NodeState::Missing));
     assert_eq!(state.edges.len(), 1);
+}
+
+/// r1 and r2, both OSPF routers with an address in the same /30, cabled only through a plain
+/// switch without RouterOS: the segment an L2 run carries over several cables
+/// (`docs/concepts/network-map.md`).
+fn bridged_net() -> (Vec<DeviceAccess>, Arc<Topology>) {
+    let mut builder = TopologyBuilder::default();
+    let r1 = device(&mut builder, "r1", true, Some("172.16.1.1/32"));
+    let r2 = device(&mut builder, "r2", true, Some("172.16.1.2/32"));
+    let sw = device(&mut builder, "sw", false, None);
+    let e1 = port(&mut builder, r1, "ether1", Some("172.17.1.1/30"), true);
+    let e2 = port(&mut builder, r2, "ether1", Some("172.17.1.2/30"), true);
+    let s1 = port(&mut builder, sw, "ether1", None, false);
+    let s2 = port(&mut builder, sw, "ether2", None, false);
+    cable(&mut builder, e1, s1);
+    cable(&mut builder, s2, e2);
+    let topology = Arc::new(builder.build());
+    let devices = [r1, r2].map(|id| topology.get_device_by_id(&id).unwrap()).to_vec();
+    (devices, topology)
+}
+
+fn row(fields: &[(&str, &str)]) -> Option<Lsa> {
+    Lsa::from_row(|key| fields.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string()))
+}
+
+fn router(originator: &'static str, body: &'static str) -> [(&'static str, &'static str); 5] {
+    [
+        ("instance", "default-v2"),
+        ("type", "router"),
+        ("originator", originator),
+        ("id", originator),
+        ("body", body),
+    ]
+}
+
+const R1_V2: &str = "options=E\n    type=network id=172.17.1.1 data=172.17.1.1 metric=100\n";
+const R2_V2: &str = "options=E\n    type=network id=172.17.1.1 data=172.17.1.2 metric=100\n";
+const SEGMENT_V2: [(&str, &str); 5] = [
+    ("instance", "default-v2"),
+    ("type", "network"),
+    ("originator", "172.16.1.1"),
+    ("id", "172.17.1.1"),
+    ("body", "netmask=255.255.255.252\n    router-id=172.16.1.1\n    router-id=172.16.1.2\n"),
+];
+
+/// The switch between r1 and r2 isn't itself an OSPF router, but the LSDB confirms r1 and r2
+/// are neighbors over the segment it carries: it, and both its cables, stay on the map, and r1
+/// and r2 are `Reached` even though no single cable of theirs is ever `EdgeState::Up` (a plain
+/// device's port is never an OSPF end).
+#[test]
+fn a_switch_between_ospf_neighbors_is_on_the_map() {
+    let (devices, _topology) = bridged_net();
+    let lsdb = [router("172.16.1.1", R1_V2), router("172.16.1.2", R2_V2), SEGMENT_V2]
+        .iter()
+        .filter_map(|fields| row(fields))
+        .collect::<Lsdb>();
+    let state = build(&devices, &[], &lsdb, None, 0, None);
+    let mut names = state.nodes.iter().map(|n| &*n.device.name).collect::<Vec<_>>();
+    names.sort();
+    assert_eq!(names, ["r1", "r2", "sw"]);
+    let state_of = |name: &str| state.nodes.iter().find(|n| &*n.device.name == name).unwrap().state;
+    assert_eq!(state_of("sw"), NodeState::NotOspf, "the switch doesn't run OSPF itself");
+    assert_eq!(state_of("r1"), NodeState::Reached);
+    assert_eq!(state_of("r2"), NodeState::Reached);
+    assert_eq!(state.edges.len(), 2, "both cables through the switch are shown");
+}
+
+/// Without the LSDB confirming the two routers share a segment, the switch stays off: it might
+/// be relaying something else entirely, not necessarily this link.
+#[test]
+fn a_switch_without_a_confirmed_segment_is_off_the_map() {
+    let (devices, _topology) = bridged_net();
+    let state = build(&devices, &[], &Lsdb::default(), None, 0, None);
+    let names = state.nodes.iter().map(|n| &*n.device.name).collect::<Vec<_>>();
+    assert_eq!(names, ["r1", "r2"], "sw stays off without proof it relays a real OSPF neighbor");
+    assert!(state.edges.is_empty(), "neither cable through sw is shown without that proof");
 }

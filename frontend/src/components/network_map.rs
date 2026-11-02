@@ -288,6 +288,7 @@ fn map(state: &State, scope: &Scope<NetworkMap>) -> Html {
         let (class, text) = match node.state {
             NodeState::REACHED => ("reached", t::NODE_REACHED),
             NodeState::ISOLATED => ("isolated", t::NODE_ISOLATED),
+            NodeState::NOT_OSPF => ("not-ospf", t::NODE_NOT_OSPF),
             _ => ("missing", t::NODE_MISSING),
         };
         let id = node.device.id;
@@ -341,6 +342,7 @@ fn legend() -> Html {
                 {node("reached", t::NODE_REACHED)}
                 {node("isolated", t::NODE_ISOLATED)}
                 {node("missing", t::NODE_MISSING)}
+                {node("not-ospf", t::NODE_NOT_OSPF)}
                 {edge("up", t::EDGE_UP)}
                 {edge("v3-down", t::EDGE_V3_DOWN)}
                 {edge("down", t::EDGE_DOWN)}

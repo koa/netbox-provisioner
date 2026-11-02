@@ -20,6 +20,7 @@ pub fn outside(count: u32) -> String {
 pub const NODE_REACHED: &str = "in OSPF";
 pub const NODE_ISOLATED: &str = "abgeschnitten: noch in der OSPF-Datenbank, aber keine Strecke oben";
 pub const NODE_MISSING: &str = "fehlt in OSPF";
+pub const NODE_NOT_OSPF: &str = "kein OSPF-Router: trägt die Strecke zwischen zwei Nachbarn";
 pub const EDGE_UP: &str = "oben (OSPFv2 und v3)";
 pub const EDGE_V3_DOWN: &str = "OSPFv2 oben, OSPFv3 nicht (IPv6 aus?)";
 pub const EDGE_DOWN: &str = "unten";
