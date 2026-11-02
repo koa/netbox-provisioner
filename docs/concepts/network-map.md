@@ -1,10 +1,10 @@
 # Konzept: Netz-Ansicht (Ist-Zustand, Health, PoE)
 
 Status: Schritt 1 bis 3 der [Reihenfolge](#reihenfolge-der-umsetzung) umgesetzt (LSA-Parser,
-Zustand der Kanten und Knoten, `Query.topology.networkState(siteId)`, SVG-Karte mit festem
-Layout, Health und Ressourcen im Tooltip, `backend/src/network_state/`,
-`components::network_map`), Schritt 4 ohne das Budget (PSE→PD-Pfeile mit Soll-gegen-Ist), der
-Rest ist Konzept. Aufgabe C9 in [todo.md](../todo.md).
+Zustand der Kanten und Knoten, `Query.topology.networkState(siteId)`, SVG-Karte, Health und
+Ressourcen im Popup, `backend/src/network_state/`, `components::network_map`), Schritt 4 ohne
+das Budget (PSE→PD-Pfeile mit Soll-gegen-Ist), Schritt 5 nur der Layout-Algorithmus (noch nicht
+verschiebbar), der Rest ist Konzept. Aufgabe C9 in [todo.md](../todo.md).
 
 Eine Seite pro Site, und eine über alle Sites (`/network-map`, Link auf der Sites-Seite): das
 Netz als Graph, Soll aus NetBox, Ist live aus dem Netz. Knoten sind Geräte, Kanten Kabel und
@@ -182,7 +182,17 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   Knoten reichen etwa 150 Zeilen, ohne JavaScript-Bibliothek. Ein Knoten, den der Benutzer
   verschoben hat, bleibt fest; die übrigen ordnet das Layout um ihn herum. **Entschieden
   2026-11-02:** so umgesetzt (Schritt 5), nicht das feste Spalten-Layout von Schritt 2
-  weiterverwendet.
+  weiterverwendet. **Der Algorithmus ist umgesetzt** (2026-11-02, `components::network_map::force_layout`,
+  gegen das Lab geprüft): Knoten stossen sich ab (`k²/d`), Kanten ziehen ihre Enden zusammen
+  (`d²/k`), `k = √(Fläche/n)`; die Schrittweite kühlt über 300 Runden linear auf 0 ab. Ohne
+  festgehaltene Position startet ein Knoten nicht zufällig, sondern an einer aus seiner ID
+  gehashten Position (MurmurHash3-Finalizer), damit derselbe Graph immer gleich aussieht;
+  deterministisch, damit das Ergebnis testbar ist (`network_map::test`, erste Unit-Tests im
+  Frontend überhaupt – `cargo test -p frontend --bin frontend`, native, nicht `wasm32`). Die
+  Routers ausserhalb NetBox sind ein Knoten im Graphen wie jeder andere, mit Kanten zu den
+  Site-Routern, an deren Segment sie grenzen – kein eigener Platz mehr nötig. **Noch nicht
+  umgesetzt:** Verschieben per Drag, Festhalten einer Position, Speichern in `localStorage` und
+  Publizieren nach NetBox (`map_position`).
 - **Klick auf einen Knoten:** navigiert auf die Geräteseite (an der eigenen Site des Knotens,
   nicht der der Karte), wie bisher; keine Seitenleiste (**Entschieden 2026-11-02**). Health,
   Ressourcen stehen in einem Popup beim Überfahren; bei einem PSE→PD-Pfeil dessen Leistung und,
@@ -257,6 +267,9 @@ Historie, ergänzend.
    nur falsche Zahlen zeigen. Unit-Tests in `helper::poe::test` (`feeding`) und
    `network_state::graphql::test` (die Pfeile selbst).
 5. Verschiebbare Knoten, Positionen im Browser, Publizieren des offiziellen Layouts.
+   **Teilweise umgesetzt** (2026-11-02): der Algorithmus selbst (`force_layout`, siehe
+   Darstellung oben), gegen das Lab geprüft. Verschieben per Drag, `localStorage`, NetBox-Feld
+   `map_position` und die Mutation `publishLayout` fehlen noch.
 
 ## Entschieden (2026-10-23)
 

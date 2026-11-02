@@ -2,8 +2,9 @@
 //! and NetBox's cables and wireless links as an SVG, coloured by what the OSPF database of one
 //! router says; devices without OSPF, and their edges, are left out. Scoped to one site, or
 //! without a site to every device of every site. Asked anew every few seconds; reading only.
-//! The layout is fixed for now: columns by hops from the router read, the routers NetBox
-//! doesn't know as one node before the routers they come in at.
+//! The layout is force-directed (Fruchterman–Reingold, `force_layout`), own implementation, no
+//! JS library; the routers NetBox doesn't know are one node, pulled toward the site's routers
+//! it borders.
 //!
 //! The overview (nodes, edges, OSPF state) is `networkState`, asked and polled on its own so it
 //! renders fast; health, resources and PoE edges are `networkStateDetails` (one round trip per
@@ -24,19 +25,12 @@ use crate::{
     pages::routes::AppRoute,
 };
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
-use std::{
-    cell::Cell,
-    collections::{BTreeMap, HashMap, VecDeque},
-    rc::Rc,
-    time::Duration,
-};
+use std::{cell::Cell, collections::HashMap, rc::Rc, time::Duration};
 use yew::{Component, Context, ContextHandle, Html, Properties, html, html::Scope, platform::time::sleep};
 use yew_nested_router::prelude::RouterContext;
 
 /// How often the map asks (the backend reads the LSDB at most this often too, `LSDB_AGE`).
 const POLL: Duration = Duration::from_secs(5);
-const COLUMN: f64 = 170.0;
-const ROW: f64 = 80.0;
 const MARGIN: f64 = 70.0;
 /// the node standing for the routers NetBox doesn't know
 const OUTSIDE: i64 = -1;
@@ -203,56 +197,108 @@ fn poll_details(scope: Scope<NetworkMap>, site: Option<u32>, alive: Rc<Cell<bool
     });
 }
 
-/// Columns by hops from the router read (or the first node), the unreached last; the outside
-/// node in a column of its own before all.
-fn layout(state: &State) -> HashMap<i64, (f64, f64)> {
-    let mut neighbors = HashMap::<i64, Vec<i64>>::new();
-    for edge in &state.edges {
-        let (a, b) = (edge.a.device.id, edge.b.device.id);
-        neighbors.entry(a).or_default().push(b);
-        neighbors.entry(b).or_default().push(a);
+/// `state`'s nodes (plus the outside node, if any, pulled toward the routers it borders) and
+/// edges, as plain ids, for [`force_layout`].
+fn graph(state: &State) -> (Vec<i64>, Vec<(i64, i64)>) {
+    let mut nodes: Vec<i64> = state.nodes.iter().map(|n| n.device.id).collect();
+    let mut edges: Vec<(i64, i64)> = state.edges.iter().map(|e| (e.a.device.id, e.b.device.id)).collect();
+    if state.outside > 0 {
+        nodes.push(OUTSIDE);
+        edges.extend(state.outside_at.iter().map(|&id| (OUTSIDE, id)));
     }
-    let root = state
-        .read_from
-        .as_ref()
-        .map(|d| d.id)
-        .or_else(|| state.nodes.first().map(|n| n.device.id));
-    let mut column = HashMap::new();
-    let mut queue = VecDeque::new();
-    if let Some(root) = root {
-        column.insert(root, 0usize);
-        queue.push_back(root);
+    (nodes, edges)
+}
+
+/// A side length that gives `count` nodes roughly as much room as the old column layout did
+/// (`COLUMN` × `ROW` per node, in a square-ish area) — big enough that `force_layout`'s
+/// repulsion has space to spread nodes out, not a hard limit (nodes may end up outside it; the
+/// SVG's `viewBox` is sized from the actual positions, not this).
+fn area_side(count: usize) -> f64 {
+    (count.max(1) as f64 * 170.0 * 80.0).sqrt().max(300.0)
+}
+
+/// Fruchterman–Reingold: `nodes` repel each other (`k² / d`), `edges` pull their ends together
+/// (`d² / k`), `k = √(area / n)`; a pinned node (the user dragged it, or it's NetBox's published
+/// position) doesn't move but still pushes and pulls on the others, so they arrange themselves
+/// around it. Displacement per round is capped by a temperature that cools linearly to 0 over
+/// `ITERATIONS` rounds, standard to keep the layout from oscillating instead of settling.
+/// Deterministic: a node without a pinned position starts at a position hashed from its id, not
+/// randomly, so the same graph lays out the same way every time.
+const ITERATIONS: u32 = 300;
+
+fn force_layout(nodes: &[i64], edges: &[(i64, i64)], pinned: &HashMap<i64, (f64, f64)>, side: f64) -> HashMap<i64, (f64, f64)> {
+    if nodes.is_empty() {
+        return HashMap::new();
     }
-    while let Some(id) = queue.pop_front() {
-        let next = column[&id] + 1;
-        for far in neighbors.get(&id).into_iter().flatten() {
-            if !column.contains_key(far) {
-                column.insert(*far, next);
-                queue.push_back(*far);
+    let k = (side * side / nodes.len() as f64).sqrt();
+    let mut pos: HashMap<i64, (f64, f64)> =
+        nodes.iter().map(|&id| (id, pinned.get(&id).copied().unwrap_or_else(|| seeded(id, side)))).collect();
+    for step in 0..ITERATIONS {
+        let mut disp = HashMap::<i64, (f64, f64)>::new();
+        for (i, &a) in nodes.iter().enumerate() {
+            for &b in &nodes[i + 1..] {
+                let (dx, dy) = (pos[&a].0 - pos[&b].0, pos[&a].1 - pos[&b].1);
+                let dist = dx.hypot(dy).max(0.01);
+                let force = k * k / dist;
+                let (ux, uy) = (dx / dist * force, dy / dist * force);
+                let da = disp.entry(a).or_default();
+                da.0 += ux;
+                da.1 += uy;
+                let db = disp.entry(b).or_default();
+                db.0 -= ux;
+                db.1 -= uy;
             }
         }
-    }
-    let last = column.values().max().map_or(0, |c| c + 1);
-    let shift = usize::from(state.outside > 0);
-    let mut columns = BTreeMap::<usize, Vec<i64>>::new();
-    for node in &state.nodes {
-        let c = column.get(&node.device.id).copied().unwrap_or(last);
-        columns.entry(c + shift).or_default().push(node.device.id);
-    }
-    if shift == 1 {
-        columns.entry(0).or_default().push(OUTSIDE);
-    }
-    let mut positions = HashMap::new();
-    for (c, ids) in columns {
-        for (row, id) in ids.into_iter().enumerate() {
-            positions.insert(id, (MARGIN + c as f64 * COLUMN, MARGIN / 2.0 + 20.0 + row as f64 * ROW));
+        for &(a, b) in edges {
+            let (Some(&pa), Some(&pb)) = (pos.get(&a), pos.get(&b)) else { continue };
+            let (dx, dy) = (pa.0 - pb.0, pa.1 - pb.1);
+            let dist = dx.hypot(dy).max(0.01);
+            let force = dist * dist / k;
+            let (ux, uy) = (dx / dist * force, dy / dist * force);
+            let da = disp.entry(a).or_default();
+            da.0 -= ux;
+            da.1 -= uy;
+            let db = disp.entry(b).or_default();
+            db.0 += ux;
+            db.1 += uy;
+        }
+        let temperature = side * 0.1 * (1.0 - f64::from(step) / f64::from(ITERATIONS));
+        for &id in nodes {
+            if pinned.contains_key(&id) {
+                continue;
+            }
+            let (dx, dy) = disp.get(&id).copied().unwrap_or_default();
+            let dist = dx.hypot(dy).max(0.01);
+            let limited = dist.min(temperature);
+            let p = pos.get_mut(&id).expect("every node has a position");
+            p.0 = (p.0 + dx / dist * limited).clamp(0.0, side);
+            p.1 = (p.1 + dy / dist * limited).clamp(0.0, side);
         }
     }
-    positions
+    for p in pos.values_mut() {
+        p.0 += MARGIN;
+        p.1 += MARGIN;
+    }
+    pos
+}
+
+/// A position hashed from `id` (MurmurHash3's finalizer), not random, so a layout without a
+/// pinned position for every node still comes out the same way every time.
+fn seeded(id: i64, side: f64) -> (f64, f64) {
+    let mut h = id as u64 ^ 0x9E37_79B9_7F4A_7C15;
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xC4CE_B9FE_1A85_EC53);
+    h ^= h >> 33;
+    let x = (h & 0xFFFF_FFFF) as f64 / f64::from(u32::MAX);
+    let y = (h >> 32) as f64 / f64::from(u32::MAX);
+    (x * side, y * side)
 }
 
 fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, scope: &Scope<NetworkMap>) -> Html {
-    let positions = layout(state);
+    let (node_ids, edge_pairs) = graph(state);
+    let positions = force_layout(&node_ids, &edge_pairs, &HashMap::new(), area_side(node_ids.len()));
     let names = state
         .nodes
         .iter()
@@ -467,3 +513,6 @@ fn legend() -> Html {
         </details>
     }
 }
+
+#[cfg(test)]
+mod test;

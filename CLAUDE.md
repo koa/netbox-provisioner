@@ -425,9 +425,15 @@ in `graphql::test` with a hand-built topology, no live device needed.
 `Query.topology.networkState(siteId)` serves it, a site's devices with `siteId`, every device
 of every site without it, from the LSDB alone, no device polled: fast. The frontend
 (`components::network_map`) shows it as an SVG at `/site/<id>/map` and, over every site, at
-`/network-map` (linked from the devices page and the sites page), polled every 5 s with a fixed
-layout (columns by hops from the router read). A node's own site (`DeviceRef.site`, not the
-page's) opens its device page, since the all-sites map mixes devices of different sites.
+`/network-map` (linked from the devices page and the sites page), polled every 5 s, laid out by
+`force_layout`, a Fruchterman-Reingold force-directed layout (nodes repel, edges pull their ends
+together, a temperature cools over 300 rounds), its own small implementation (no JS library),
+deterministic (a node without a pinned position starts at one hashed from its id, not randomly,
+`network_map::test`, the frontend's first unit tests, native target: `cargo test -p frontend
+--bin frontend`, not `wasm32`). Dragging to pin a node, `localStorage` and NetBox's published
+layout (`publishLayout`) aren't implemented yet; `force_layout` already takes a pinned-positions
+map, unused so far. A node's own site (`DeviceRef.site`, not the page's) opens its device page,
+since the all-sites map mixes devices of different sites.
 
 Health, resources and PoE are a second query, `Query.topology.networkStateDetails(siteId)`,
 asked and polled independently (its own 5 s loop in the frontend) so a slow round trip to every
