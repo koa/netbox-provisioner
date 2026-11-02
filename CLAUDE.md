@@ -433,7 +433,18 @@ deterministic (a node without a pinned position starts at one hashed from its id
 --bin frontend`, not `wasm32`). Dragging to pin a node, `localStorage` and NetBox's published
 layout (`publishLayout`) aren't implemented yet; `force_layout` already takes a pinned-positions
 map, unused so far. A node's own site (`DeviceRef.site`, not the page's) opens its device page,
-since the all-sites map mixes devices of different sites.
+since the all-sites map mixes devices of different sites. Over more than one site,
+`clustered_layout` groups each site's devices into its own named, dashed circle: a two-level
+`force_layout` (sites against each other, `radii`/`gap` keeping circles apart by construction;
+then each site's own devices, pulled toward a pinned point in the direction of a neighbor site
+for any device cabled to it, so that connection lands on the right side of the circle) plus
+`reduce_crossings`, a 2-opt position-swap local search run both on the site positions and, per
+site, on its own devices, lowering edge crossings where a swap strictly helps (crossing
+minimization is NP-hard, so this is a heuristic, not exact, and a dense real switch closet can
+still have a few left). A circle's radius is enforced, not just estimated, after its devices lay
+out (`promised_radius`, shrunk to if exceeded) plus a geometric backstop pass pushing apart any
+pair still too close: two guarantees stacked so two sites' circles never overlap, whatever the
+physics landed on.
 
 Health, resources and PoE are a second query, `Query.topology.networkStateDetails(siteId)`,
 asked and polled independently (its own 5 s loop in the frontend) so a slow round trip to every

@@ -10,6 +10,7 @@ query NetworkMap($site: Int){
                 device{ id name site }
                 routeros
                 state
+                siteName
             }
             edges{
                 kind

@@ -193,6 +193,38 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   Site-Routern, an deren Segment sie grenzen – kein eigener Platz mehr nötig. **Noch nicht
   umgesetzt:** Verschieben per Drag, Festhalten einer Position, Speichern in `localStorage` und
   Publizieren nach NetBox (`map_position`).
+- **Sites gruppiert:** über alle Sites zieht `clustered_layout` die Geräte jeder Site in einen
+  eigenen, grau gestrichelten Kreis (benannt), die farbigen Kanten bleiben auf Geräte-Ebene.
+  **Entschieden 2026-11-02**, nach einem ersten, unbefriedigenden Versuch ohne das: mit vielen
+  kleinen, über Funk quer verbundenen Sites (Produktions-Export, 43 Geräte über 12 Sites)
+  überlappten die Kreise stark. **Umgesetzt** (2026-11-02, zweimal verfeinert am selben Tag,
+  gegen den Produktions-Export als statische Momentaufnahme geprüft, da das Lab nur eine Site
+  hat – `clustered_layout`s Gruppierung greift erst ab zwei Sites unter den Knoten): zweistufig,
+  beide Stufen `force_layout` selbst (keine zweite Implementierung). Zuerst die Sites
+  gegeneinander, als Knoten einer eigenen Kette (Kante kreuzt Sites → Kante zwischen deren
+  Kreisen), mit dem Kreisradius als Mindestabstand in der Abstossung (`force_layout`s
+  `radii`/`gap`), statt sie hinterher auseinanderzuschieben: kurze Kanten und keine Überlappung
+  kommen so aus derselben Simulation, nicht eines nachträglich auf Kosten des anderen. Dann je
+  Site ihre Geräte, wie bisher durch die Kanten innerhalb der Site gezogen, zusätzlich durch
+  einen festen Punkt je Nachbar-Site in deren Richtung (weit ausserhalb des Kreises, sodass er
+  zieht, aber nie erreicht wird): ein Gerät mit einer Kante zu einer anderen Site landet so auf
+  der Seite seines Kreises, die dieser Site zugewandt ist, nicht irgendwo.
+  **Überlappung, garantiert keine** (verschärft nach einem ersten Versuch, der nur einen vorab
+  aus der Geräteanzahl *geschätzten* Radius an die Site-Abstossung gab: in der Praxis zog das
+  Verankern der Geräte zu Nachbar-Sites ihre tatsächliche Ausdehnung teils über die Schätzung
+  hinaus, sodass Kreise trotz Abstossung wieder überlappten): derselbe Radius, den die
+  Site-Abstossung reserviert, wird nach dem Geräte-Layout erzwungen (`promised_radius`, eine
+  einzige Zahl für beides statt zwei auseinanderlaufenden), die Geräte nötigenfalls gleichmässig
+  um die Mitte zur Mitte geschrumpft; zusätzlich ein geometrischer Nachlauf (wie in Schritt 5
+  vor der kräftebasierten Version), der ein verbliebenes, zu nahes Kreispaar auseinanderschiebt
+  – nicht der Hauptmechanismus, sondern eine harte Garantie für den Fall, dass die feste
+  Rundenzahl der Simulation nicht reicht. **Kreuzungen, minimiert, nicht vermieden:**
+  `reduce_crossings`, ein 2-opt-artiges Vertauschen von je zwei Knotenpositionen, wo das die
+  Zahl sich kreuzender Kanten senkt (Kreuzungsminimierung ist NP-hart, daher ein Heuristik, kein
+  exaktes Verfahren), auf den Site-Positionen gegeneinander und, separat, je Site mit mehreren
+  Geräten auf deren eigenen; bei einem dichten, realen Switch-Schrank (ein gutes Dutzend über
+  mehrere Switches verkabelter Geräte) blieben im Produktions-Export einzelne Kreuzungen übrig,
+  die das lokale Verfahren nicht mehr auflöste.
 - **Klick auf einen Knoten:** navigiert auf die Geräteseite (an der eigenen Site des Knotens,
   nicht der der Karte), wie bisher; keine Seitenleiste (**Entschieden 2026-11-02**). Health,
   Ressourcen stehen in einem Popup beim Überfahren; bei einem PSE→PD-Pfeil dessen Leistung und,

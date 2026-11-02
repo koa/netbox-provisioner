@@ -78,6 +78,9 @@ pub struct MapNode {
     device: DeviceRef,
     routeros: bool,
     state: NodeState,
+    /// `device.site`'s name, for the frontend to group and label a site's devices on the
+    /// all-sites map; none of `device_ref`'s business, since most of it has no use for a name.
+    site_name: Option<String>,
 }
 
 #[derive(SimpleObject)]
@@ -361,6 +364,7 @@ fn build(
                 device: device_ref(device),
                 routeros: device.has_routeros(),
                 state,
+                site_name: device.site().map(|s| s.name().to_string()),
             }
         })
         .collect::<Vec<_>>();

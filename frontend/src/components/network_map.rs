@@ -4,7 +4,13 @@
 //! without a site to every device of every site. Asked anew every few seconds; reading only.
 //! The layout is force-directed (Fruchterman–Reingold, `force_layout`), own implementation, no
 //! JS library; the routers NetBox doesn't know are one node, pulled toward the site's routers
-//! it borders.
+//! it borders. Over every site (more than one site among the nodes), each site's devices are
+//! further grouped into their own dashed circle (`clustered_layout`): the circles lay out
+//! against each other like a layout of their own (an edge crossing sites pulls the two sites
+//! together, same as a device edge pulls two devices together within one; a site's circle never
+//! overlaps another's), and a device cabled to another site is pulled toward that site's
+//! direction within its own circle, so the connection is as short as the circles' layout allows
+//! and less likely to cross a site that isn't part of it.
 //!
 //! The overview (nodes, edges, OSPF state) is `networkState`, asked and polled on its own so it
 //! renders fast; health, resources and PoE edges are `networkStateDetails` (one round trip per
@@ -25,7 +31,12 @@ use crate::{
     pages::routes::AppRoute,
 };
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
-use std::{cell::Cell, collections::HashMap, rc::Rc, time::Duration};
+use std::{
+    cell::Cell,
+    collections::{BTreeMap, HashMap, HashSet},
+    rc::Rc,
+    time::Duration,
+};
 use yew::{Component, Context, ContextHandle, Html, Properties, html, html::Scope, platform::time::sleep};
 use yew_nested_router::prelude::RouterContext;
 
@@ -219,14 +230,27 @@ fn area_side(count: usize) -> f64 {
 
 /// Fruchterman–Reingold: `nodes` repel each other (`k² / d`), `edges` pull their ends together
 /// (`d² / k`), `k = √(area / n)`; a pinned node (the user dragged it, or it's NetBox's published
-/// position) doesn't move but still pushes and pulls on the others, so they arrange themselves
-/// around it. Displacement per round is capped by a temperature that cools linearly to 0 over
-/// `ITERATIONS` rounds, standard to keep the layout from oscillating instead of settling.
-/// Deterministic: a node without a pinned position starts at a position hashed from its id, not
-/// randomly, so the same graph lays out the same way every time.
+/// position, or, for [`clustered_layout`]'s per-site pass, a fixed anchor standing for the
+/// direction of another site) doesn't move but still pushes and pulls on the others, so they
+/// arrange themselves around it. `radii`/`gap` are for [`clustered_layout`]'s meta pass, where a
+/// "node" is a whole site: repulsion uses `max(k, radius of a + radius of b + gap)` in place of
+/// `k`, so two sites never end up overlapping regardless of `k`, while still being pulled as
+/// close as that allows by their edges; empty `radii` and `gap` 0 (every other caller) is plain
+/// Fruchterman–Reingold, `max(k, 0) == k`. Displacement per round is capped by a temperature
+/// that cools linearly to 0 over `ITERATIONS` rounds, standard to keep the layout from
+/// oscillating instead of settling. Deterministic: a node without a pinned position starts at a
+/// position hashed from its id, not randomly, so the same graph lays out the same way every
+/// time.
 const ITERATIONS: u32 = 300;
 
-fn force_layout(nodes: &[i64], edges: &[(i64, i64)], pinned: &HashMap<i64, (f64, f64)>, side: f64) -> HashMap<i64, (f64, f64)> {
+fn force_layout(
+    nodes: &[i64],
+    edges: &[(i64, i64)],
+    pinned: &HashMap<i64, (f64, f64)>,
+    radii: &HashMap<i64, f64>,
+    gap: f64,
+    side: f64,
+) -> HashMap<i64, (f64, f64)> {
     if nodes.is_empty() {
         return HashMap::new();
     }
@@ -239,7 +263,8 @@ fn force_layout(nodes: &[i64], edges: &[(i64, i64)], pinned: &HashMap<i64, (f64,
             for &b in &nodes[i + 1..] {
                 let (dx, dy) = (pos[&a].0 - pos[&b].0, pos[&a].1 - pos[&b].1);
                 let dist = dx.hypot(dy).max(0.01);
-                let force = k * k / dist;
+                let effective_k = (radii.get(&a).copied().unwrap_or(0.0) + radii.get(&b).copied().unwrap_or(0.0) + gap).max(k);
+                let force = effective_k * effective_k / dist;
                 let (ux, uy) = (dx / dist * force, dy / dist * force);
                 let da = disp.entry(a).or_default();
                 da.0 += ux;
@@ -296,16 +321,330 @@ fn seeded(id: i64, side: f64) -> (f64, f64) {
     (x * side, y * side)
 }
 
-fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, scope: &Scope<NetworkMap>) -> Html {
+/// A node's site, for [`clustered_layout`]: `Site` for a device with one, `Alone` (keyed by the
+/// node's own id, so two sideless nodes never share one) for the outside node or a device
+/// without a site. `Ord` only so [`clustered_layout`] can put clusters in a `BTreeMap` and get
+/// the same iteration order every time (a `HashMap`'s is randomized per instance, which would
+/// make `force_layout`'s floating-point sums round differently from one poll to the next and
+/// the whole map jitter, even with nothing changed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Cluster {
+    Site(i64),
+    Alone(i64),
+}
+
+/// A site's devices, grouped into their own circle.
+struct SiteCircle {
+    name: String,
+    center: (f64, f64),
+    radius: f64,
+}
+
+const SITE_PADDING: f64 = 35.0;
+const SITE_MIN_RADIUS: f64 = 50.0;
+/// minimum gap [`force_layout`]'s meta pass keeps between two site circles, so they end up
+/// visibly separate, not just touching
+const SITE_GAP: f64 = 25.0;
+
+/// Whether segments `p1`-`p2` and `p3`-`p4` cross in their interior (touching at an endpoint,
+/// or being collinear, doesn't count — good enough for a visual heuristic over lines that share
+/// no endpoint, which is the only way [`reduce_crossings`] calls this).
+fn segments_cross(p1: (f64, f64), p2: (f64, f64), p3: (f64, f64), p4: (f64, f64)) -> bool {
+    fn orientation(p: (f64, f64), q: (f64, f64), r: (f64, f64)) -> i8 {
+        let val = (q.1 - p.1) * (r.0 - q.0) - (q.0 - p.0) * (r.1 - q.1);
+        if val.abs() < 1e-9 {
+            0
+        } else if val > 0.0 {
+            1
+        } else {
+            -1
+        }
+    }
+    let (o1, o2, o3, o4) = (orientation(p1, p2, p3), orientation(p1, p2, p4), orientation(p3, p4, p1), orientation(p3, p4, p2));
+    o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0 && o1 != o2 && o3 != o4
+}
+
+fn count_crossings<K: Eq + std::hash::Hash + Copy>(positions: &HashMap<K, (f64, f64)>, edges: &[(K, K)]) -> usize {
+    let mut n = 0;
+    for i in 0..edges.len() {
+        for j in (i + 1)..edges.len() {
+            let (a1, b1) = edges[i];
+            let (a2, b2) = edges[j];
+            if a1 == a2 || a1 == b2 || b1 == a2 || b1 == b2 {
+                continue; // sharing a site isn't a crossing, the lines are meant to meet there
+            }
+            if segments_cross(positions[&a1], positions[&b1], positions[&a2], positions[&b2]) {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+/// 2-opt-style local search: try swapping two nodes' positions outright, keep the swap where it
+/// reduces the number of edges crossing each other, repeat until nothing helps or a round limit
+/// is hit (a pathological graph could otherwise keep trading one crossing for another forever).
+/// Used both over the meta layout's site positions (one meta-edge per cross-site device edge)
+/// and, within a site of more than a few devices, over its own devices' positions (the internal
+/// edges that stay inside one circle) — the same local search either way, just at a different
+/// scale and with different node ids. Position swaps, not nudges: a crossing is a discrete,
+/// all-or-nothing thing an edge's endpoint moving a little practically never removes, unlike
+/// edge length. Approximate — true crossing minimization is NP-hard — and only a well-known
+/// heuristic for it, not a novel one; it only ever accepts a strict improvement, so it can only
+/// make the force layout's drawing better, never worse, though a swap may lengthen some edges to
+/// remove a crossing, and at the site level a swap's effect on radius-aware repulsion's promise
+/// of non-overlap is restored by the hard backstop in [`clustered_layout`] afterwards, not by
+/// this (a device-level swap, within one circle's own local coordinates, needs no such backstop:
+/// it only ever swaps two positions already inside the circle, so it can't push one out of it).
+fn reduce_crossings<K: Eq + std::hash::Hash + Ord + Copy>(positions: &mut HashMap<K, (f64, f64)>, edges: &[(K, K)]) {
+    let mut nodes: Vec<K> = positions.keys().copied().collect();
+    nodes.sort(); // deterministic order: a HashMap's own would make the swap sequence, and so
+    // the result, depend on this process's hashing, not just the graph (see `force_layout`'s own
+    // doc comment on `BTreeMap` for why that matters here)
+    for _ in 0..nodes.len().min(30) {
+        let mut improved = false;
+        for i in 0..nodes.len() {
+            for j in (i + 1)..nodes.len() {
+                let before = count_crossings(positions, edges);
+                let (pi, pj) = (positions[&nodes[i]], positions[&nodes[j]]);
+                positions.insert(nodes[i], pj);
+                positions.insert(nodes[j], pi);
+                if count_crossings(positions, edges) < before {
+                    improved = true;
+                } else {
+                    positions.insert(nodes[i], pi);
+                    positions.insert(nodes[j], pj);
+                }
+            }
+        }
+        if !improved {
+            break;
+        }
+    }
+}
+
+/// Two-level layout for the all-sites map: a site's devices lay out among themselves as
+/// [`force_layout`] always has, then the sites lay out against each other the same way (one
+/// meta-node per site, one meta-edge per device edge crossing sites), and each site's devices
+/// are shifted onto its meta position. The outside node, and a device without a site, each stay
+/// their own single-node "site" in the meta layout (pulled toward what they're cabled to) but
+/// get no circle. Edges between devices are drawn at the devices' own, now clustered, positions
+/// — only where a node ends up, not what it's grouped under, changes.
+fn clustered_layout(state: &State) -> (HashMap<i64, (f64, f64)>, Vec<SiteCircle>) {
     let (node_ids, edge_pairs) = graph(state);
-    let positions = force_layout(&node_ids, &edge_pairs, &HashMap::new(), area_side(node_ids.len()));
+    if node_ids.is_empty() {
+        return (HashMap::new(), Vec::new());
+    }
+    let site_of: HashMap<i64, Option<i64>> = state.nodes.iter().map(|n| (n.device.id, n.device.site)).collect();
+    let site_name_of: HashMap<i64, String> =
+        state.nodes.iter().filter_map(|n| Some((n.device.site?, n.site_name.clone()?))).collect();
+    let cluster_of = |id: i64| match site_of.get(&id).copied().flatten() {
+        Some(site) => Cluster::Site(site),
+        None => Cluster::Alone(id),
+    };
+
+    let mut groups = BTreeMap::<Cluster, Vec<i64>>::new();
+    for &id in &node_ids {
+        groups.entry(cluster_of(id)).or_default().push(id);
+    }
+    let cluster_of_node: HashMap<i64, Cluster> =
+        groups.iter().flat_map(|(&c, ids)| ids.iter().map(move |&id| (id, c))).collect();
+
+    // the meta layout: one node per cluster (force_layout's ids are plain i64s, so clusters get
+    // synthetic ones by their position in the sorted, deterministic `clusters` list), sites
+    // repelling each other by their estimated size (`radius_estimate`, before the real per-site
+    // layout below — that would need to know where the site ends up first) so two sites can
+    // never end up overlapping regardless of how strongly their edges pull them together, and
+    // an edge between two sites is as short as that allows: unlike a plain point repulsion
+    // where "no overlap" would have to be bolted on afterwards (pushing circles apart without
+    // regard for their edges, undoing some of the force layout's own shortening), the two
+    // objectives are balanced by the same simulation here.
+    let clusters: Vec<Cluster> = groups.keys().copied().collect();
+    let meta_id_of: HashMap<Cluster, i64> = clusters.iter().enumerate().map(|(i, &c)| (c, i as i64)).collect();
+    let meta_ids: Vec<i64> = (0..clusters.len() as i64).collect();
+    let meta_edges: Vec<(i64, i64)> = edge_pairs
+        .iter()
+        .filter_map(|&(a, b)| {
+            let (ca, cb) = (cluster_of_node[&a], cluster_of_node[&b]);
+            (ca != cb).then(|| (meta_id_of[&ca], meta_id_of[&cb]))
+        })
+        .collect();
+    // reused, unchanged, for both the meta layout's repulsion and the final circle below: the
+    // meta layout must promise each site at least the radius it actually ends up drawn with,
+    // or sites sized by one number and drawn by another could still end up overlapping despite
+    // the radius-aware repulsion
+    let radius_of = |cluster: Cluster| match cluster {
+        Cluster::Alone(_) => 0.0,
+        Cluster::Site(_) => (area_side(groups[&cluster].len()) * 0.5).max(SITE_MIN_RADIUS),
+    };
+    let meta_radii: HashMap<i64, f64> = clusters.iter().map(|&c| (meta_id_of[&c], radius_of(c))).collect();
+    let meta_area: f64 = meta_radii.values().map(|r| std::f64::consts::PI * r * r).sum();
+    let meta_side = (meta_area * 2.0).sqrt().max(300.0);
+    let meta_positions_by_id = force_layout(&meta_ids, &meta_edges, &HashMap::new(), &meta_radii, SITE_GAP, meta_side);
+    let mut meta_positions: HashMap<Cluster, (f64, f64)> = clusters.iter().map(|&c| (c, meta_positions_by_id[&meta_id_of[&c]])).collect();
+    reduce_crossings(&mut meta_positions, &meta_edges.iter().map(|&(a, b)| (clusters[a as usize], clusters[b as usize])).collect::<Vec<_>>());
+
+    let mut positions = HashMap::new();
+    let mut circles = Vec::new();
+    let mut circle_members: Vec<Vec<i64>> = Vec::new();
+    for (&cluster, ids) in &groups {
+        let center = meta_positions[&cluster];
+        let promised_radius = radius_of(cluster);
+        let local = if ids.len() > 1 {
+            let internal_edges =
+                edge_pairs.iter().copied().filter(|&(a, b)| cluster_of_node[&a] == cluster && cluster_of_node[&b] == cluster).collect::<Vec<_>>();
+            // a device cabled to another site is pulled toward that site's direction too, by a
+            // fixed point well outside the local area in that direction (pinned, so it never
+            // moves itself) — otherwise devices would lay out from their internal cables alone,
+            // regardless of which side of the circle actually faces the site they also connect
+            // to, making that connection longer than it has to be and more likely to cross
+            // another site's circle on the way.
+            let side = area_side(ids.len());
+            let local_center = (side / 2.0, side / 2.0);
+            let mut anchor_of_cluster = HashMap::<Cluster, i64>::new();
+            let mut anchors = HashMap::<i64, (f64, f64)>::new();
+            let mut anchor_edges = Vec::new();
+            for &(a, b) in &edge_pairs {
+                let (ca, cb) = (cluster_of_node[&a], cluster_of_node[&b]);
+                let (local_end, other) = if ca == cluster && cb != cluster {
+                    (a, cb)
+                } else if cb == cluster && ca != cluster {
+                    (b, ca)
+                } else {
+                    continue;
+                };
+                let Some(&other_center) = meta_positions.get(&other) else { continue };
+                let anchor_id = *anchor_of_cluster.entry(other).or_insert_with(|| -1_000_000 - i64::from(anchors.len() as u32));
+                anchors.entry(anchor_id).or_insert_with(|| {
+                    let (dx, dy) = (other_center.0 - center.0, other_center.1 - center.1);
+                    let dist = dx.hypot(dy).max(0.01);
+                    (local_center.0 + dx / dist * side, local_center.1 + dy / dist * side)
+                });
+                anchor_edges.push((local_end, anchor_id));
+            }
+            let all_ids: Vec<i64> = ids.iter().copied().chain(anchors.keys().copied()).collect();
+            let all_edges: Vec<(i64, i64)> = internal_edges.iter().copied().chain(anchor_edges).collect();
+            let raw = force_layout(&all_ids, &all_edges, &anchors, &HashMap::new(), 0.0, side);
+            let mut local: HashMap<i64, (f64, f64)> = ids.iter().map(|&id| (id, raw[&id])).collect();
+            // untangle the devices' own cabling within the circle too, same local search as the
+            // meta layout above — the anchors already bias which side of the circle a device
+            // ends up on, this only straightens out crossings among the internal cables
+            reduce_crossings(&mut local, &internal_edges);
+            local
+        } else {
+            HashMap::from([(ids[0], center)])
+        };
+        let (sx, sy) = local.values().fold((0.0, 0.0), |(sx, sy), p| (sx + p.0, sy + p.1));
+        let n = local.len() as f64;
+        let (dx, dy) = (center.0 - sx / n, center.1 - sy / n);
+        let mut radius = 0.0f64;
+        let mut recentered = HashMap::with_capacity(local.len());
+        for (&id, &(x, y)) in &local {
+            let p = (x + dx, y + dy);
+            radius = radius.max((p.0 - center.0).hypot(p.1 - center.1));
+            recentered.insert(id, p);
+        }
+        // the anchors above pull devices toward wherever their external neighbors are, which
+        // can spread them wider than a plain internal-only layout would — further than
+        // `promised_radius` (what the meta layout, above, already reserved this site against
+        // every other site's own radius): shrink evenly around the center to fit back within
+        // it, rather than let two sites whose circles the meta layout kept apart end up
+        // overlapping anyway once each is actually drawn at its real size.
+        let shrink = if radius > promised_radius { promised_radius / radius } else { 1.0 };
+        for (id, (x, y)) in recentered {
+            positions.insert(id, (center.0 + (x - center.0) * shrink, center.1 + (y - center.1) * shrink));
+        }
+        if let Cluster::Site(site) = cluster {
+            let name = site_name_of.get(&site).cloned().unwrap_or_default();
+            circles.push(SiteCircle { name, center, radius: promised_radius + SITE_PADDING });
+            circle_members.push(ids.clone());
+        }
+    }
+
+    // a hard backstop, not the primary mechanism: the meta layout's radius-aware repulsion
+    // above, now promising each site exactly the radius it's shrunk to fit, keeps circles
+    // apart as part of laying them out well (short cross-site edges and no overlap come from
+    // the same simulation, not two conflicting passes) — but `force_layout` is a fixed number
+    // of iterations, not a solver run to convergence, so an unusual graph could in principle
+    // still leave a pair closer than their radii demand. Push such a pair fully apart, keeping
+    // their members with them: a visual guarantee of no overlap at all, whatever the physics
+    // above did or didn't fully resolve.
+    for _ in 0..200 {
+        let mut moved = false;
+        for i in 0..circles.len() {
+            for j in (i + 1)..circles.len() {
+                let (dx, dy) = (circles[j].center.0 - circles[i].center.0, circles[j].center.1 - circles[i].center.1);
+                let dist = dx.hypot(dy).max(0.01);
+                let min_dist = circles[i].radius + circles[j].radius + SITE_GAP;
+                if dist >= min_dist {
+                    continue;
+                }
+                moved = true;
+                let push = (min_dist - dist) / 2.0;
+                let (ux, uy) = (dx / dist * push, dy / dist * push);
+                circles[i].center.0 -= ux;
+                circles[i].center.1 -= uy;
+                circles[j].center.0 += ux;
+                circles[j].center.1 += uy;
+                for &id in &circle_members[i] {
+                    if let Some(p) = positions.get_mut(&id) {
+                        p.0 -= ux;
+                        p.1 -= uy;
+                    }
+                }
+                for &id in &circle_members[j] {
+                    if let Some(p) = positions.get_mut(&id) {
+                        p.0 += ux;
+                        p.1 += uy;
+                    }
+                }
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
+
+    // keep the same "everything at MARGIN or more" convention plain force_layout gives: the
+    // recentering above can have pushed a cluster's devices, or a circle's edge, past it
+    let min_x = positions.values().map(|p| p.0).chain(circles.iter().map(|c| c.center.0 - c.radius)).fold(f64::INFINITY, f64::min);
+    let min_y = positions.values().map(|p| p.1).chain(circles.iter().map(|c| c.center.1 - c.radius)).fold(f64::INFINITY, f64::min);
+    let (shift_x, shift_y) = (MARGIN - min_x, MARGIN - min_y);
+    for p in positions.values_mut() {
+        p.0 += shift_x;
+        p.1 += shift_y;
+    }
+    for c in &mut circles {
+        c.center.0 += shift_x;
+        c.center.1 += shift_y;
+    }
+    (positions, circles)
+}
+
+fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, scope: &Scope<NetworkMap>) -> Html {
+    let site_count = state.nodes.iter().filter_map(|n| n.device.site).collect::<HashSet<_>>().len();
+    let (positions, circles) = if site_count > 1 {
+        clustered_layout(state)
+    } else {
+        let (node_ids, edge_pairs) = graph(state);
+        (force_layout(&node_ids, &edge_pairs, &HashMap::new(), &HashMap::new(), 0.0, area_side(node_ids.len())), Vec::new())
+    };
     let names = state
         .nodes
         .iter()
         .map(|n| (n.device.id, n.device.name.as_str()))
         .collect::<HashMap<_, _>>();
-    let width = positions.values().map(|p| p.0).fold(0.0, f64::max) + MARGIN + 40.0;
-    let height = positions.values().map(|p| p.1).fold(0.0, f64::max) + MARGIN;
+    let width =
+        positions.values().map(|p| p.0).chain(circles.iter().map(|c| c.center.0 + c.radius)).fold(0.0, f64::max) + MARGIN + 40.0;
+    let height = positions.values().map(|p| p.1).chain(circles.iter().map(|c| c.center.1 + c.radius)).fold(0.0, f64::max) + MARGIN;
+    let site_circles = circles.iter().map(|c| {
+        html! {
+            <g class="map-site">
+                <circle cx={c.center.0.to_string()} cy={c.center.1.to_string()} r={c.radius.to_string()}/>
+                <text x={c.center.0.to_string()} y={(c.center.1 - c.radius - 8.0).to_string()}>{&c.name}</text>
+            </g>
+        }
+    });
     // parallel edges between the same two devices side by side
     let mut parallel = HashMap::<(i64, i64), f64>::new();
     let edges = state.edges.iter().filter_map(|edge| {
@@ -467,6 +806,7 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, scope:
                         <path d="M0,0 L10,5 L0,10 z" style="fill: var(--pf-t--global--color--status--warning--default)"/>
                     </marker>
                 </defs>
+                {for site_circles}
                 {for edges}
                 {for poe_edges}
                 {outside}

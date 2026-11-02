@@ -615,3 +615,14 @@ ul.device-history {
   list-style: none;
   padding: 0;
 }
+.map-site circle {
+  fill: none;
+  stroke: var(--pf-t--global--border--color--default);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+}
+.map-site text {
+  text-anchor: middle;
+  font-size: 11px;
+  fill: var(--pf-t--global--text--color--subtle);
+}
