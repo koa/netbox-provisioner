@@ -423,26 +423,33 @@ relaying an OSPF segment over several cables between two routers the LSDB confir
 of its own cables can ever be `Up`, a switch port never being an OSPF end itself); unit-tested
 in `graphql::test` with a hand-built topology, no live device needed.
 `Query.topology.networkState(siteId)` serves it, a site's devices with `siteId`, every device
-of every site without it; the frontend
+of every site without it, from the LSDB alone, no device polled: fast. The frontend
 (`components::network_map`) shows it as an SVG at `/site/<id>/map` and, over every site, at
 `/network-map` (linked from the devices page and the sites page), polled every 5 s with a fixed
 layout (columns by hops from the router read). A node's own site (`DeviceRef.site`, not the
 page's) opens its device page, since the all-sites map mixes devices of different sites.
-`device_data::read_all` reads `/system/health/print`, `/system/resource/print` and every
-PoE-capable port (`helper::poe::read_ports`) of every device with OSPF of its own (not a plain
-switch on the map only as a relay), as the fact `FactKind::DeviceMapData`
-(`device_data::DEVICE_DATA_AGE`, 30 s; a device that doesn't answer is left out, same as the
-LSDB read); `graphql::network_state` runs it alongside the LSDB read (`tokio::join!`) and puts
-health and resources on each `MapNode` (`health`, `resources`), shown by a node's tooltip on
-hover, not judged (`i18n::network_map::resources`/`health_row`): clicking a node still navigates
-to its device page, no sidebar. `graphql::poe_edges` turns the PoE readings into `MapPoeEdge`
-(`NetworkState.poeEdges`, separate from `edges`): one PSE→PD arrow per port `helper::poe::feeding`
-has modeled as `pse` or reporting `powered-on`, with a cable in NetBox to the fed port;
-`feeding` is the shared base `mismatches` (the device page's own PoE check) now filters for a
-problem, so neither changed what it reports, and the one addition for the map
-(`PoeProblem::Undocumented`, a port feeding with no PoE mode in NetBox at all) stays invisible to
-`mismatches`. No PoE budget check yet: `hw_facts.rs` has no per-board PoE wattage to check a
-device's consumption against.
+
+Health, resources and PoE are a second query, `Query.topology.networkStateDetails(siteId)`,
+asked and polled independently (its own 5 s loop in the frontend) so a slow round trip to every
+device never holds up the overview. `device_data::read_all` reads `/system/health/print`,
+`/system/resource/print` and every PoE-capable port (`helper::poe::read_ports`) of every device
+with OSPF of its own (not a plain switch on the map only as a relay), as the fact
+`FactKind::DeviceMapData` (`device_data::DEVICE_DATA_AGE`, 30 s; a device that doesn't answer is
+left out). `graphql::network_state_details` puts health and resources on `MapNodeDetails`, and
+turns the PoE readings into `MapPoeEdge` (`NetworkStateDetails.poeEdges`): one PSE→PD arrow per
+port `helper::poe::feeding` has modeled as `pse` or reporting `powered-on`, with a cable in
+NetBox to the fed port; `feeding` is the shared base `mismatches` (the device page's own PoE
+check) now filters for a problem, so neither changed what it reports, and the one addition for
+the map (`PoeProblem::Undocumented`, a port feeding with no PoE mode in NetBox at all) stays
+invisible to `mismatches`. No PoE budget check yet: `hw_facts.rs` has no per-board PoE wattage to
+check a device's consumption against.
+
+The frontend shows health, resources and PoE in a popup on hovering a node
+(`i18n::network_map::resources`/`health_row`, not judged), built from whichever of the two
+queries' results are in, so it starts as a spinner (`details` not loaded yet) and fills in once
+the details poll answers; a node not in that answer (not a candidate, or it didn't answer) stays
+at its base state text, no spinner left spinning forever. Clicking a node still navigates to its
+device page, no sidebar.
 
 ## Device access, setup and updates
 

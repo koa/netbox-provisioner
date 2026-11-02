@@ -94,7 +94,7 @@ fn net(far: impl FnOnce(&mut TopologyBuilder) -> DeviceId) -> (Vec<DeviceAccess>
 #[test]
 fn a_device_without_routeros_is_off_the_map() {
     let (devices, _topology) = net(|builder| device(builder, "printer", false, None));
-    let state = build(&devices, &[], &Lsdb::default(), None, 0, None, &BTreeMap::new());
+    let state = build(&devices, &[], &Lsdb::default(), None, 0, None);
     assert_eq!(state.nodes.iter().map(|n| &*n.device.name).collect::<Vec<_>>(), ["r1", "r2"]);
     let edges = state.edges.iter().map(|e| (&*e.a.device.name, &*e.b.device.name)).collect::<Vec<_>>();
     assert_eq!(edges, [("r1", "r2")], "the edge to the printer is left out, the one between r1 and r2 isn't");
@@ -104,7 +104,7 @@ fn a_device_without_routeros_is_off_the_map() {
 #[test]
 fn a_routeros_device_without_ospf_is_off_the_map() {
     let (devices, _topology) = net(|builder| device(builder, "r3", true, Some("172.16.1.3/32")));
-    let state = build(&devices, &[], &Lsdb::default(), None, 0, None, &BTreeMap::new());
+    let state = build(&devices, &[], &Lsdb::default(), None, 0, None);
     assert_eq!(state.nodes.iter().map(|n| &*n.device.name).collect::<Vec<_>>(), ["r1", "r2"]);
     let edges = state.edges.iter().map(|e| (&*e.a.device.name, &*e.b.device.name)).collect::<Vec<_>>();
     assert_eq!(edges, [("r1", "r2")]);
@@ -115,7 +115,7 @@ fn a_routeros_device_without_ospf_is_off_the_map() {
 #[test]
 fn both_ospf_routers_are_on_the_map() {
     let (devices, _topology) = net(|builder| device(builder, "printer", false, None));
-    let state = build(&devices, &[], &Lsdb::default(), None, 0, None, &BTreeMap::new());
+    let state = build(&devices, &[], &Lsdb::default(), None, 0, None);
     assert_eq!(state.nodes.len(), 2);
     assert!(state.nodes.iter().all(|n| n.state == NodeState::Missing));
     assert_eq!(state.edges.len(), 1);
@@ -172,9 +172,9 @@ fn a_feeding_port_gets_a_poe_edge() {
         ..DeviceMapData::default()
     });
     let device_data = BTreeMap::from([(devices[0].id(), data)]);
-    let state = build(&devices, &[], &Lsdb::default(), None, 0, None, &device_data);
-    assert_eq!(state.poe_edges.len(), 1, "{:?}", state.poe_edges.iter().map(|e| &e.pse.name).collect::<Vec<_>>());
-    let edge = &state.poe_edges[0];
+    let details = build_details(&devices, &device_data);
+    assert_eq!(details.poe_edges.len(), 1, "{:?}", details.poe_edges.iter().map(|e| &e.pse.name).collect::<Vec<_>>());
+    let edge = &details.poe_edges[0];
     assert_eq!(&*edge.pse.device.name, "r1");
     assert_eq!(&*edge.pd.device.name, "r2");
     assert_eq!(edge.power, Some(3.9));
@@ -194,9 +194,9 @@ fn a_poe_edge_needs_no_reading_from_the_far_device() {
         ..DeviceMapData::default()
     });
     let device_data = BTreeMap::from([(devices[0].id(), data)]);
-    let state = build(&devices, &[], &Lsdb::default(), None, 0, None, &device_data);
-    assert_eq!(state.poe_edges.len(), 1, "pse in NetBox draws the arrow even while waiting for load");
-    assert_eq!(state.poe_edges[0].problem, Some(PoeProblem::NoLoad));
+    let details = build_details(&devices, &device_data);
+    assert_eq!(details.poe_edges.len(), 1, "pse in NetBox draws the arrow even while waiting for load");
+    assert_eq!(details.poe_edges[0].problem, Some(PoeProblem::NoLoad));
 }
 
 fn row(fields: &[(&str, &str)]) -> Option<Lsa> {
@@ -234,7 +234,7 @@ fn a_switch_between_ospf_neighbors_is_on_the_map() {
         .iter()
         .filter_map(|fields| row(fields))
         .collect::<Lsdb>();
-    let state = build(&devices, &[], &lsdb, None, 0, None, &BTreeMap::new());
+    let state = build(&devices, &[], &lsdb, None, 0, None);
     let mut names = state.nodes.iter().map(|n| &*n.device.name).collect::<Vec<_>>();
     names.sort();
     assert_eq!(names, ["r1", "r2", "sw"]);
@@ -250,7 +250,7 @@ fn a_switch_between_ospf_neighbors_is_on_the_map() {
 #[test]
 fn a_switch_without_a_confirmed_segment_is_off_the_map() {
     let (devices, _topology) = bridged_net();
-    let state = build(&devices, &[], &Lsdb::default(), None, 0, None, &BTreeMap::new());
+    let state = build(&devices, &[], &Lsdb::default(), None, 0, None);
     let names = state.nodes.iter().map(|n| &*n.device.name).collect::<Vec<_>>();
     assert_eq!(names, ["r1", "r2"], "sw stays off without proof it relays a real OSPF neighbor");
     assert!(state.edges.is_empty(), "neither cable through sw is shown without that proof");

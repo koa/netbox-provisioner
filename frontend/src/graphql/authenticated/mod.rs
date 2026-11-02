@@ -425,3 +425,11 @@ pub struct DeviceJournal;
     response_derives = "Debug, Clone, PartialEq"
 )]
 pub struct NetworkMap;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "src/graphql/authenticated/schema.graphql",
+    query_path = "src/graphql/authenticated/network-map-details.graphql",
+    response_derives = "Debug, Clone, PartialEq"
+)]
+pub struct NetworkMapDetails;

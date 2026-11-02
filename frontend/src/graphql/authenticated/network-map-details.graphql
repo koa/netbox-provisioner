@@ -1,0 +1,18 @@
+query NetworkMapDetails($site: Int){
+    topology{
+        networkStateDetails(siteId: $site){
+            nodes{
+                device{ id name site }
+                health{ name value unit }
+                resources{ uptime cpuLoad freeMemory totalMemory freeHddSpace version }
+            }
+            poeEdges{
+                pse{ id name device{ id name } }
+                pd{ id name device{ id name } }
+                status
+                power
+                problem
+            }
+        }
+    }
+}

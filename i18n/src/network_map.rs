@@ -51,6 +51,7 @@ pub fn health_row(name: &str, value: &str, unit: Option<&str>) -> String {
         None => format!("{name}: {value}"),
     }
 }
+pub const LOADING: &str = "Lädt …";
 pub const EDGE_POE: &str = "PoE";
 pub const EDGE_POE_PROBLEM: &str = "PoE: Soll und Ist stimmen nicht";
 pub const POE_NO_POE_OUT: &str = "speist laut NetBox, der Port hat kein PoE-Out";

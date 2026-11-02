@@ -185,14 +185,21 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   weiterverwendet.
 - **Klick auf einen Knoten:** navigiert auf die Geräteseite (an der eigenen Site des Knotens,
   nicht der der Karte), wie bisher; keine Seitenleiste (**Entschieden 2026-11-02**). Health,
-  Ressourcen stehen im Tooltip beim Überfahren; bei einem PSE→PD-Pfeil dessen Leistung und, bei
-  Abweichung, welche.
+  Ressourcen stehen in einem Popup beim Überfahren; bei einem PSE→PD-Pfeil dessen Leistung und,
+  bei Abweichung, welche.
 - **Klick auf eine Kante:** beide Ports, OSPF-Zustand v2/v3, Fehlerzähler, bei PoE die Leistung.
   **Nicht umgesetzt** (nur der Tooltip, kein Klick-Verhalten für Kanten, konsistent mit
   „keine Seitenleiste“ oben).
 - **Aktualisierung:** Die Seite fragt alle 5 s nach (wie die Job-Seite jede Sekunde). Die
   Subscriptions ([Gerätezustand](../device-state.md)) wecken nur bei Änderungen des Caches, die
-  Karte zeigt aber Zähler, die sich laufend ändern; Polling reicht hier.
+  Karte zeigt aber Zähler, die sich laufend ändern; Polling reicht hier. **Umgesetzt**
+  (2026-11-02), in zwei getrennten Abfragen: `networkState` (Übersicht: Knoten, Kanten,
+  OSPF-Zustand) kommt allein aus der LSDB, ohne ein Gerät zu fragen, und ist darum schnell;
+  `networkStateDetails` (Health, Ressourcen, PoE-Kanten) braucht pro Gerät eine eigene Anfrage und
+  ist entsprechend langsamer. Beide werden unabhängig voneinander alle 5 s neu gefragt, sodass ein
+  langsames Gerät nie die Übersicht blockiert. Das Popup eines Knotens zeigt einen Spinner, bis
+  die erste Antwort von `networkStateDetails` da ist; danach bleibt es leer, wenn der Knoten dort
+  fehlt (kein eigenes OSPF, oder das Gerät hat nicht geantwortet) statt für immer zu drehen.
 
 ### Positionen speichern
 
@@ -209,9 +216,11 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   Gerätedaten alle 30 s, beides im Speicher.
 - Parser für den LSA-`body` (Zeilen `key=value`, eingerückte Link-Zeilen) in `mikrotik-model`,
   wo `RosValue` lebt, mit Tests aus den hier gemessenen Zeilen.
-- GraphQL: `Query.networkState(siteId)` → Knoten (Gerät, Zustand, Gründe, Health, Ressourcen,
-  PoE) und Kanten (Ports, Art, Zustand v2/v3, PoE-Leistung), plus `measuredAt`. Mutation
-  `publishLayout(siteId, positions)` (nur Admins, schreibt `map_position`).
+- GraphQL: **umgesetzt**, zwei Abfragen statt einer (2026-11-02, siehe Darstellung oben) –
+  `Query.networkState(siteId)` → Knoten (Gerät, Zustand) und Kanten (Ports, Art, Zustand v2/v3),
+  nur aus der LSDB; `Query.networkStateDetails(siteId)` → Health, Ressourcen und PoE-Kanten, pro
+  Gerät gelesen. Mutation `publishLayout(siteId, positions)` (nur Admins, schreibt
+  `map_position`): **nicht umgesetzt**.
 - Alles nur lesend; `allow_apply` ist dafür nicht nötig.
 
 ## Alternative: Log-Aggregator (spätere Stufe)

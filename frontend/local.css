@@ -529,10 +529,23 @@ ul.device-history {
 
 /* the network map (`components::network_map`): wider than a phone, it scrolls sideways */
 .network-map {
+  position: relative;
   overflow-x: auto;
 }
 .network-map svg {
   max-width: none;
+}
+.map-popup {
+  position: absolute;
+  z-index: 1;
+  padding: 0.5rem 0.75rem;
+  background: var(--pf-t--global--background--color--primary--default);
+  border: 1px solid var(--pf-t--global--border--color--default);
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
 }
 .map-edge {
   stroke-width: 3;

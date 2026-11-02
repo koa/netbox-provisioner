@@ -10,8 +10,6 @@ query NetworkMap($site: Int){
                 device{ id name site }
                 routeros
                 state
-                health{ name value unit }
-                resources{ uptime cpuLoad freeMemory totalMemory freeHddSpace version }
             }
             edges{
                 kind
@@ -20,13 +18,6 @@ query NetworkMap($site: Int){
                 state
                 reason
                 reasonDevice
-            }
-            poeEdges{
-                pse{ id name device{ id name } }
-                pd{ id name device{ id name } }
-                status
-                power
-                problem
             }
         }
     }

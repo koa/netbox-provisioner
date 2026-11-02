@@ -105,17 +105,32 @@ impl TopologyHolder {
         }
     }
     /// The devices and edges of the site `site_id`, or without it of every site, as OSPF sees
-    /// them, for the network map; read anew after `network_state::read::LSDB_AGE`.
+    /// them, for the network map; read anew after `network_state::read::LSDB_AGE`. Fast: only
+    /// the LSDB, no device polled. Health, resources and PoE are `networkStateDetails`, asked
+    /// separately so the overview doesn't wait on them.
     async fn network_state(&self, site_id: Option<u32>) -> crate::network_state::graphql::NetworkState {
-        let devices = self
-            .topo_lock()
+        crate::network_state::graphql::network_state(self.map_devices(site_id).await).await
+    }
+    /// Health, resources and PoE edges of `network_state`'s devices with OSPF of their own,
+    /// read from each device anew after `network_state::device_data::DEVICE_DATA_AGE`: slower
+    /// than `networkState` (one round trip per device), asked separately so it doesn't hold up
+    /// the overview.
+    async fn network_state_details(&self, site_id: Option<u32>) -> crate::network_state::graphql::NetworkStateDetails {
+        crate::network_state::graphql::network_state_details(self.map_devices(site_id).await).await
+    }
+}
+
+impl TopologyHolder {
+    /// `site_id`'s devices, or without it every device of every site, for `network_state` and
+    /// `network_state_details`.
+    async fn map_devices(&self, site_id: Option<u32>) -> Vec<DeviceAccess> {
+        self.topo_lock()
             .await
             .as_ref()
             .map(|topo| match site_id {
                 Some(id) => SiteAccess::create(topo.clone(), SiteId(id)).devices().collect(),
                 None => topo.list_devices().collect(),
             })
-            .unwrap_or_default();
-        crate::network_state::graphql::network_state(devices).await
+            .unwrap_or_default()
     }
 }

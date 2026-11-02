@@ -4,23 +4,26 @@
 //! without a site to every device of every site. Asked anew every few seconds; reading only.
 //! The layout is fixed for now: columns by hops from the router read, the routers NetBox
 //! doesn't know as one node before the routers they come in at.
+//!
+//! The overview (nodes, edges, OSPF state) is `networkState`, asked and polled on its own so it
+//! renders fast; health, resources and PoE edges are `networkStateDetails` (one round trip per
+//! device, slower), asked and polled independently and shown in a popup on hovering a node,
+//! with a spinner until the first answer of its own poll arrives.
 use crate::{
     components::job::RETRY,
     error::FrontendError,
     graphql::{
         authenticated::{
-            NetworkMap as NetworkMapQuery,
-            network_map::{
-                self, MapDownReason, MapEdgeKind, MapEdgeState, NetworkMapTopologyNetworkState as State, NodeState,
-                PoeProblem,
-            },
+            NetworkMap as NetworkMapQuery, NetworkMapDetails as NetworkMapDetailsQuery,
+            network_map::{self, MapDownReason, MapEdgeKind, MapEdgeState, NetworkMapTopologyNetworkState as State, NodeState},
+            network_map_details::{self, NetworkMapDetailsTopologyNetworkStateDetails as DetailsState, PoeProblem},
         },
         query_authenticated,
     },
     i18n::network_map as t,
     pages::routes::AppRoute,
 };
-use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner};
+use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
 use std::{
     cell::Cell,
     collections::{BTreeMap, HashMap, VecDeque},
@@ -47,6 +50,10 @@ pub struct NetworkMapProps {
 
 pub struct NetworkMap {
     state: Option<State>,
+    /// none until the details poll's first answer; a node not in it then has none, for good
+    details: Option<DetailsState>,
+    /// the device of the node under the pointer, for the popup
+    hover: Option<i64>,
     error: Option<FrontendError>,
     alive: Rc<Cell<bool>>,
     router: Option<RouterContext<AppRoute>>,
@@ -55,10 +62,12 @@ pub struct NetworkMap {
 
 pub enum NetworkMapMsg {
     Loaded(State),
+    DetailsLoaded(DetailsState),
     Error(FrontendError),
     Router(RouterContext<AppRoute>),
     /// the device clicked, and its own site (it may be another one than `site`)
     Open(i64, Option<i64>),
+    Hover(Option<i64>),
 }
 
 impl Component for NetworkMap {
@@ -72,8 +81,11 @@ impl Component for NetworkMap {
             .unzip();
         let alive = Rc::new(Cell::new(true));
         poll(ctx.link().clone(), ctx.props().site, alive.clone());
+        poll_details(ctx.link().clone(), ctx.props().site, alive.clone());
         Self {
             state: None,
+            details: None,
+            hover: None,
             error: None,
             alive,
             router,
@@ -87,6 +99,7 @@ impl Component for NetworkMap {
                 self.state = Some(state);
                 self.error = None;
             }
+            NetworkMapMsg::DetailsLoaded(details) => self.details = Some(details),
             NetworkMapMsg::Error(error) => self.error = Some(error),
             NetworkMapMsg::Router(router) => self.router = Some(router),
             NetworkMapMsg::Open(device, site) => {
@@ -95,6 +108,7 @@ impl Component for NetworkMap {
                 }
                 return false;
             }
+            NetworkMapMsg::Hover(device) => self.hover = device,
         }
         true
     }
@@ -118,7 +132,7 @@ impl Component for NetworkMap {
                 html! {
                     <>
                         <p>{source}</p>
-                        {map(state, ctx.link())}
+                        {map(state, &self.details, self.hover, ctx.link())}
                         {legend()}
                     </>
                 }
@@ -156,6 +170,31 @@ fn poll(scope: Scope<NetworkMap>, site: Option<u32>, alive: Rc<Cell<bool>>) {
                     if alive.get() {
                         scope.send_message(NetworkMapMsg::Error(error));
                     }
+                    sleep(RETRY[failed.min(RETRY.len() - 1)]).await;
+                    failed += 1;
+                }
+            }
+        }
+    });
+}
+
+/// Health, resources and PoE edges, independently of [`poll`] so a slow round trip to every
+/// device never holds up the overview; a failure here stays silent (no page-level error), the
+/// popup just keeps its spinner until the next try.
+fn poll_details(scope: Scope<NetworkMap>, site: Option<u32>, alive: Rc<Cell<bool>>) {
+    yew::platform::spawn_local(async move {
+        let mut failed = 0;
+        while alive.get() {
+            let variables = network_map_details::Variables { site: site.map(|s| s as i64) };
+            match query_authenticated::<NetworkMapDetailsQuery, _>(scope.clone(), variables).await {
+                Ok(data) => {
+                    failed = 0;
+                    if alive.get() {
+                        scope.send_message(NetworkMapMsg::DetailsLoaded(data.topology.network_state_details));
+                    }
+                    sleep(POLL).await;
+                }
+                Err(_) => {
                     sleep(RETRY[failed.min(RETRY.len() - 1)]).await;
                     failed += 1;
                 }
@@ -212,7 +251,7 @@ fn layout(state: &State) -> HashMap<i64, (f64, f64)> {
     positions
 }
 
-fn map(state: &State, scope: &Scope<NetworkMap>) -> Html {
+fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, scope: &Scope<NetworkMap>) -> Html {
     let positions = layout(state);
     let names = state
         .nodes
@@ -268,7 +307,7 @@ fn map(state: &State, scope: &Scope<NetworkMap>) -> Html {
         })
     });
     let mut parallel_poe = HashMap::<(i64, i64), f64>::new();
-    let poe_edges = state.poe_edges.iter().filter_map(|edge| {
+    let poe_edges = details.iter().flat_map(|d| &d.poe_edges).filter_map(|edge| {
         let (a, b) = (edge.pse.device.id, edge.pd.device.id);
         let (pa, pb) = (positions.get(&a)?, positions.get(&b)?);
         let index = parallel_poe.entry((a.min(b), a.max(b))).or_default();
@@ -318,35 +357,57 @@ fn map(state: &State, scope: &Scope<NetworkMap>) -> Html {
         });
     let nodes = state.nodes.iter().filter_map(|node| {
         let p = positions.get(&node.device.id)?;
-        let (class, text) = match node.state {
-            NodeState::REACHED => ("reached", t::NODE_REACHED),
-            NodeState::ISOLATED => ("isolated", t::NODE_ISOLATED),
-            NodeState::NOT_OSPF => ("not-ospf", t::NODE_NOT_OSPF),
-            _ => ("missing", t::NODE_MISSING),
+        let class = match node.state {
+            NodeState::REACHED => "reached",
+            NodeState::ISOLATED => "isolated",
+            NodeState::NOT_OSPF => "not-ospf",
+            _ => "missing",
         };
         let id = node.device.id;
         let site = node.device.site;
         let onclick = scope.callback(move |_| NetworkMapMsg::Open(id, site));
+        let onmouseenter = scope.callback(move |_| NetworkMapMsg::Hover(Some(id)));
+        let onmouseleave = scope.callback(move |_| NetworkMapMsg::Hover(None));
         let shape = if node.routeros {
             html!(<circle cx={p.0.to_string()} cy={p.1.to_string()} r="14"/>)
         } else {
             html!(<rect x={(p.0 - 10.0).to_string()} y={(p.1 - 10.0).to_string()} width="20" height="20"/>)
         };
-        let mut tooltip = format!("{}: {text}", node.device.name);
-        if let Some(r) = &node.resources {
-            tooltip.push('\n');
-            tooltip.push_str(&t::resources(&r.uptime, r.cpu_load, r.free_memory, r.total_memory, r.free_hdd_space, &r.version));
-        }
-        for h in &node.health {
-            tooltip.push('\n');
-            tooltip.push_str(&t::health_row(&h.name, &h.value, h.unit.as_deref()));
-        }
         Some(html! {
-            <g class={format!("map-node {class}")} {onclick}>
-                <title>{tooltip}</title>
+            <g class={format!("map-node {class}")} {onclick} {onmouseenter} {onmouseleave}>
                 {shape}
                 <text x={p.0.to_string()} y={(p.1 + 30.0).to_string()}>{&node.device.name}</text>
             </g>
+        })
+    });
+    let popup = hover.and_then(|id| {
+        let node = state.nodes.iter().find(|n| n.device.id == id)?;
+        let p = positions.get(&id)?;
+        let text = match node.state {
+            NodeState::REACHED => t::NODE_REACHED,
+            NodeState::ISOLATED => t::NODE_ISOLATED,
+            NodeState::NOT_OSPF => t::NODE_NOT_OSPF,
+            _ => t::NODE_MISSING,
+        };
+        let detail = match details {
+            None => return Some(html! {
+                <div class="map-popup" style={format!("left:{}px; top:{}px", p.0 + 18.0, p.1 - 10.0)}>
+                    <div>{format!("{}: {text}", node.device.name)}</div>
+                    <Spinner size={SpinnerSize::Sm} aria_label={t::LOADING.to_string()}/>
+                </div>
+            }),
+            Some(d) => d.nodes.iter().find(|n| n.device.id == id),
+        };
+        Some(html! {
+            <div class="map-popup" style={format!("left:{}px; top:{}px", p.0 + 18.0, p.1 - 10.0)}>
+                <div>{format!("{}: {text}", node.device.name)}</div>
+                if let Some(detail) = detail {
+                    if let Some(r) = &detail.resources {
+                        <div>{t::resources(&r.uptime, r.cpu_load, r.free_memory, r.total_memory, r.free_hdd_space, &r.version)}</div>
+                    }
+                    { for detail.health.iter().map(|h| html!(<div>{t::health_row(&h.name, &h.value, h.unit.as_deref())}</div>)) }
+                }
+            </div>
         })
     });
     html! {
@@ -365,6 +426,7 @@ fn map(state: &State, scope: &Scope<NetworkMap>) -> Html {
                 {outside}
                 {for nodes}
             </svg>
+            {popup}
         </div>
     }
 }

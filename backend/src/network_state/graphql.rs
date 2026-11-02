@@ -1,5 +1,8 @@
 //! `Query.topology.networkState`: a site's, or every site's, devices and edges with their state
-//! from the LSDB, for the network map (`docs/concepts/network-map.md`, step 2).
+//! from the LSDB, for the network map (`docs/concepts/network-map.md`, step 2). Fast: only the
+//! LSDB, no device polled. `Query.topology.networkStateDetails` is health, resources and PoE
+//! (steps 3 and 4), asked separately so the overview doesn't wait on a round trip to every
+//! device.
 
 use super::{
     device_data::{self, DeviceMapData},
@@ -32,14 +35,29 @@ pub struct NetworkState {
     error: Option<String>,
     nodes: Vec<MapNode>,
     edges: Vec<MapEdge>,
-    /// PSE→PD arrows, one per port currently feeding or modeled to (`docs/concepts/network-map.md`,
-    /// step 4); only between devices the map shows, and only where NetBox has a cable to the fed
-    /// port
-    poe_edges: Vec<MapPoeEdge>,
     /// routers in the LSDB that are no device in NetBox (production behind the lab's uplink)
     outside: u32,
     /// the site's routers that share a segment with those
     outside_at: Vec<u32>,
+}
+
+/// `Query.topology.networkStateDetails`: health, resources and PoE edges of `network_state`'s
+/// devices with OSPF of their own, read from each device directly (not the LSDB) and so slower;
+/// asked separately so `networkState` doesn't wait on it.
+#[derive(SimpleObject)]
+pub struct NetworkStateDetails {
+    nodes: Vec<MapNodeDetails>,
+    /// PSE→PD arrows, one per port currently feeding or modeled to (`docs/concepts/network-map.md`,
+    /// step 4), only where NetBox has a cable to the fed port
+    poe_edges: Vec<MapPoeEdge>,
+}
+
+#[derive(SimpleObject)]
+pub struct MapNodeDetails {
+    device: DeviceRef,
+    /// `/system/health/print`, generic, not judged (`docs/concepts/network-map.md`, step 3)
+    health: Vec<MapHealth>,
+    resources: Option<MapResources>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
@@ -60,9 +78,6 @@ pub struct MapNode {
     device: DeviceRef,
     routeros: bool,
     state: NodeState,
-    /// `/system/health/print`, generic, not judged (`docs/concepts/network-map.md`, step 3)
-    health: Vec<MapHealth>,
-    resources: Option<MapResources>,
 }
 
 #[derive(SimpleObject)]
@@ -150,11 +165,11 @@ pub struct MapPoeEdge {
     problem: Option<PoeProblem>,
 }
 
-/// One [`MapPoeEdge`] per port of `nodes` currently feeding, or modeled in NetBox to
+/// One [`MapPoeEdge`] per port of `candidates` currently feeding, or modeled in NetBox to
 /// (`helper::poe::feeding`), with a cable to the fed port.
-fn poe_edges(nodes: &BTreeMap<DeviceId, DeviceAccess>, device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>) -> Vec<MapPoeEdge> {
+fn poe_edges(candidates: &[DeviceAccess], device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>) -> Vec<MapPoeEdge> {
     let mut found = Vec::new();
-    for device in nodes.values() {
+    for device in candidates {
         let Some(data) = device_data.get(&device.id()) else { continue };
         for feeding in poe::feeding(device, &data.poe) {
             let Some(pd) = feeding.far else { continue };
@@ -242,11 +257,11 @@ fn on_map_devices(
 }
 
 /// The state of `devices` (a site's, or every device, with RouterOS or not) as the LSDB of one
-/// of them says. Devices without OSPF, and their edges, are left out.
+/// of them says. Devices without OSPF, and their edges, are left out. Fast: only the LSDB,
+/// read from one router; see [`network_state_details`] for health, resources and PoE.
 pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
     let readers = readers(&devices);
-    let candidates = devices.iter().filter(|d| supports_ospf(d, &readers)).cloned().collect::<Vec<_>>();
-    let (lsdb_result, device_data) = tokio::join!(read(&readers), device_data::read_all(&candidates));
+    let lsdb_result = read(&readers).await;
     let (read_from, age, lsdb, error) = match lsdb_result {
         Ok(Some((device, fact))) => {
             let age = fact.age().as_secs() as u32;
@@ -256,7 +271,7 @@ pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
         Err(error) => (None, 0, None, Some(error.to_string())),
     };
     let lsdb = lsdb.unwrap_or_default();
-    build(&devices, &readers, &lsdb, read_from, age, error, &device_data)
+    build(&devices, &readers, &lsdb, read_from, age, error)
 }
 
 /// The synchronous part of [`network_state`], once the LSDB (or none, read-only, after a
@@ -268,7 +283,6 @@ fn build(
     read_from: Option<DeviceAccess>,
     age: u32,
     error: Option<String>,
-    device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>,
 ) -> NetworkState {
     let map_edges = edges(devices, lsdb);
     let topology = devices.first().map(|d| d.topology().clone());
@@ -343,21 +357,14 @@ fn build(
                     _ => NodeState::Missing,
                 }
             };
-            let (health, resources) = device_data
-                .get(&device.id())
-                .map(|data| (&**data).into())
-                .unwrap_or_default();
             MapNode {
                 device: device_ref(device),
                 routeros: device.has_routeros(),
                 state,
-                health,
-                resources,
             }
         })
         .collect::<Vec<_>>();
     result_nodes.sort_by(|a, b| a.device.name.cmp(&b.device.name));
-    let result_poe_edges = poe_edges(&nodes, device_data);
 
     // the routers NetBox doesn't know, and where they come in
     let known = topology
@@ -380,10 +387,33 @@ fn build(
         error,
         nodes: result_nodes,
         edges: result_edges,
-        poe_edges: result_poe_edges,
         outside: outside.len() as u32,
         outside_at,
     }
+}
+
+/// Health, resources and PoE edges of `devices`' candidates (`supports_ospf`): slower than
+/// [`network_state`] (one round trip per device), asked separately.
+pub async fn network_state_details(devices: Vec<DeviceAccess>) -> NetworkStateDetails {
+    let readers = readers(&devices);
+    let candidates = devices.iter().filter(|d| supports_ospf(d, &readers)).cloned().collect::<Vec<_>>();
+    let device_data = device_data::read_all(&candidates).await;
+    build_details(&candidates, &device_data)
+}
+
+/// The synchronous part of [`network_state_details`]: testable without a device to read from.
+fn build_details(candidates: &[DeviceAccess], device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>) -> NetworkStateDetails {
+    let mut nodes = candidates
+        .iter()
+        .filter_map(|device| {
+            let data = device_data.get(&device.id())?;
+            let (health, resources) = (&**data).into();
+            Some(MapNodeDetails { device: device_ref(device), health, resources })
+        })
+        .collect::<Vec<_>>();
+    nodes.sort_by(|a, b| a.device.name.cmp(&b.device.name));
+    let poe_edges = poe_edges(candidates, device_data);
+    NetworkStateDetails { nodes, poe_edges }
 }
 
 #[cfg(test)]
