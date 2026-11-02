@@ -1,9 +1,9 @@
 # Konzept: Netz-Ansicht (Ist-Zustand, Health, PoE)
 
-Status: Schritt 1 und 2 der [Reihenfolge](#reihenfolge-der-umsetzung) umgesetzt (LSA-Parser,
+Status: Schritt 1 bis 3 der [Reihenfolge](#reihenfolge-der-umsetzung) umgesetzt (LSA-Parser,
 Zustand der Kanten und Knoten, `Query.topology.networkState(siteId)`, SVG-Karte mit festem
-Layout, `backend/src/network_state/`, `components::network_map`), der Rest ist Konzept. Aufgabe
-C9 in [todo.md](../todo.md).
+Layout, Health und Ressourcen im Tooltip, `backend/src/network_state/`,
+`components::network_map`), der Rest ist Konzept. Aufgabe C9 in [todo.md](../todo.md).
 
 Eine Seite pro Site, und eine über alle Sites (`/network-map`, Link auf der Sites-Seite): das
 Netz als Graph, Soll aus NetBox, Ist live aus dem Netz. Knoten sind Geräte, Kanten Kabel und
@@ -15,9 +15,10 @@ unten): ein solcher Switch bleibt mit seinen Kabeln auf der Karte (`NodeState::N
 `network_state::graphql::on_map_devices`), und seine beiden Router gelten als erreicht, auch
 wenn keines ihrer Kabel für sich allein je `Up` sein kann (dafür bräuchte ein Port eine eigene
 OSPF-Adresse, die ein reiner Switch-Port nicht hat). Ein Gerät ohne jede OSPF-Verbindung
-dahinter (ein Kundendrucker) bleibt dagegen weg. Farben zeigen den Zustand, ein Klick auf einen
-Knoten zeigt Health und PoE und öffnet die Geräteseite (an der eigenen Site des Knotens, nicht
-der der Karte).
+dahinter (ein Kundendrucker) bleibt dagegen weg. Farben zeigen den Zustand, Health und
+Ressourcen stehen im Tooltip beim Überfahren (**Entschieden 2026-11-02**: keine Seitenleiste,
+der Klick bleibt die Navigation auf die Geräteseite, an deren eigener Site, nicht der der
+Karte).
 
 ## Gemessen (CHR und Lab, 2026-10-15, nur lesend)
 
@@ -142,8 +143,9 @@ nicht antwortet, wird nicht schneller wiederholt als die anderen.
 | orange | nur über OSPF sichtbar, aber API nicht erreichbar (oder umgekehrt) |
 
 Die Farbe hängt nur an der Erreichbarkeit. Health und Ressourcen werden nicht beurteilt, sondern
-angezeigt (beim Überfahren und in der Seitenleiste): keine Grenzwerte, keine Warnung. So leuchtet
-auch ein absichtlich nicht angeschlossenes Netzteil (`psu1-state=fail` auf lab-core) nicht.
+angezeigt (beim Überfahren, `i18n::network_map::resources`/`health_row`): keine Grenzwerte,
+keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
+(`psu1-state=fail` auf lab-core) nicht.
 
 „Gerät entspricht NetBox“ gehört nicht zum Zustand: Den Diff zu berechnen kostet zu viel für alle
 30 s. Ein Abzeichen zeigt den zuletzt gesehenen Diff-Zustand von der Geräteseite.
@@ -167,9 +169,12 @@ auch ein absichtlich nicht angeschlossenes Netzteil (`psu1-state=fail` auf lab-c
   dem Namen darunter; Kantenfarbe nach Zustand; Funkbrücken gestrichelt.
 - **Layout:** kräftebasiert (Fruchterman-Reingold), selbst in Rust geschrieben. Bei einigen Dutzend
   Knoten reichen etwa 150 Zeilen, ohne JavaScript-Bibliothek. Ein Knoten, den der Benutzer
-  verschoben hat, bleibt fest; die übrigen ordnet das Layout um ihn herum.
-- **Klick auf einen Knoten:** Seitenleiste mit Health (alle Zeilen), Ressourcen, PoE pro Port,
-  Version und einem Link auf die Geräteseite.
+  verschoben hat, bleibt fest; die übrigen ordnet das Layout um ihn herum. **Entschieden
+  2026-11-02:** so umgesetzt (Schritt 5), nicht das feste Spalten-Layout von Schritt 2
+  weiterverwendet.
+- **Klick auf einen Knoten:** navigiert auf die Geräteseite (an der eigenen Site des Knotens,
+  nicht der der Karte), wie bisher; keine Seitenleiste (**Entschieden 2026-11-02**). Health,
+  Ressourcen und, ab Schritt 4, PoE pro Port stehen im Tooltip beim Überfahren.
 - **Klick auf eine Kante:** beide Ports, OSPF-Zustand v2/v3, Fehlerzähler, bei PoE die Leistung.
 - **Aktualisierung:** Die Seite fragt alle 5 s nach (wie die Job-Seite jede Sekunde). Die
   Subscriptions ([Gerätezustand](../device-state.md)) wecken nur bei Änderungen des Caches, die
@@ -216,7 +221,11 @@ Historie, ergänzend.
    über alle Sites (`siteId` weggelassen), und Geräte ohne OSPF (mit ihren Kanten) auf beiden
    nicht dargestellt – ausser ein reiner Switch, der laut LSDB zwei Nachbarn verbindet, siehe
    oben –, mit Unit-Tests dafür (`network_state::graphql::test`).
-3. Gerätedaten: Health, Ressourcen, Seitenleiste.
+3. Gerätedaten: Health, Ressourcen. **Umgesetzt** (2026-11-02): `/system/health/print` und
+   `/system/resource/print` alle 30 s pro Gerät (`network_state::device_data`, `FactKind::DeviceMapData`),
+   nur für Geräte mit eigenem OSPF (nicht für einen Switch, der nach Schritt 2 nur als Relais
+   auf der Karte ist); im Tooltip beim Überfahren statt einer Seitenleiste
+   (Entschieden 2026-11-02). Unit-Tests der Zeilen-Auswertung (`device_data::test`).
 4. PoE-Kanten und -Budget.
 5. Verschiebbare Knoten, Positionen im Browser, Publizieren des offiziellen Layouts.
 

@@ -299,9 +299,18 @@ fn map(state: &State, scope: &Scope<NetworkMap>) -> Html {
         } else {
             html!(<rect x={(p.0 - 10.0).to_string()} y={(p.1 - 10.0).to_string()} width="20" height="20"/>)
         };
+        let mut tooltip = format!("{}: {text}", node.device.name);
+        if let Some(r) = &node.resources {
+            tooltip.push('\n');
+            tooltip.push_str(&t::resources(&r.uptime, r.cpu_load, r.free_memory, r.total_memory, r.free_hdd_space, &r.version));
+        }
+        for h in &node.health {
+            tooltip.push('\n');
+            tooltip.push_str(&t::health_row(&h.name, &h.value, h.unit.as_deref()));
+        }
         Some(html! {
             <g class={format!("map-node {class}")} {onclick}>
-                <title>{format!("{}: {text}", node.device.name)}</title>
+                <title>{tooltip}</title>
                 {shape}
                 <text x={p.0.to_string()} y={(p.1 + 30.0).to_string()}>{&node.device.name}</text>
             </g>

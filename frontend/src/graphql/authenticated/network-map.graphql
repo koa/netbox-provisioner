@@ -6,7 +6,13 @@ query NetworkMap($site: Int){
             error
             outside
             outsideAt
-            nodes{ device{ id name site } routeros state }
+            nodes{
+                device{ id name site }
+                routeros
+                state
+                health{ name value unit }
+                resources{ uptime cpuLoad freeMemory totalMemory freeHddSpace version }
+            }
             edges{
                 kind
                 a{ id name device{ id name } }

@@ -100,6 +100,8 @@ pub enum FactKind {
     InterfaceLive,
     /// the OSPF link-state database a router has (`network_state::read`)
     Lsdb,
+    /// a device's health and resources for the network map (`network_state::device_data`)
+    DeviceMapData,
 }
 
 impl FactKind {
@@ -116,6 +118,7 @@ impl FactKind {
         FactKind::Interfaces,
         FactKind::InterfaceLive,
         FactKind::Lsdb,
+        FactKind::DeviceMapData,
     ];
 }
 
@@ -135,6 +138,7 @@ impl FactKind {
             FactKind::Interfaces => "interfaces",
             FactKind::InterfaceLive => "interface_live",
             FactKind::Lsdb => "lsdb",
+            FactKind::DeviceMapData => "device_map_data",
         }
     }
 }

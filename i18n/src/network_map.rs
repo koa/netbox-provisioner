@@ -34,3 +34,20 @@ pub fn not_on_segment(device: &str) -> String {
     format!("{device} ist nicht im Netz des Ports")
 }
 pub const LEGEND: &str = "Legende";
+/// Not judged, only shown (`docs/concepts/network-map.md`, step 3): memory and disk as MiB,
+/// for readability, nothing more.
+pub fn resources(uptime: &str, cpu_load: i64, free_memory: i64, total_memory: i64, free_hdd_space: i64, version: &str) -> String {
+    let mib = |bytes: i64| bytes / (1024 * 1024);
+    format!(
+        "{version}, seit {uptime}, CPU {cpu_load} %, RAM {} von {} MiB frei, Disk {} MiB frei",
+        mib(free_memory),
+        mib(total_memory),
+        mib(free_hdd_space)
+    )
+}
+pub fn health_row(name: &str, value: &str, unit: Option<&str>) -> String {
+    match unit {
+        Some(unit) => format!("{name}: {value} {unit}"),
+        None => format!("{name}: {value}"),
+    }
+}

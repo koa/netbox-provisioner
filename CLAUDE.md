@@ -407,7 +407,7 @@ mean the route is in the FIB yet under this harness's software-emulated (TCG, no
 realistic-path apply retries "General SOCKS server failure" against a deadline rather than failing
 on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 
-`backend/src/network_state/` is steps 1 and 2 of the network map (C9,
+`backend/src/network_state/` is steps 1 to 3 of the network map (C9,
 `docs/concepts/network-map.md`): `lsa` parses `/routing/ospf/lsa/print` rows (router and network
 LSAs of `default-v2`/`-v3`), `edges` gives each cable and wireless link of a set of devices an
 `EdgeState` from that LSDB. A router that went away leaves its LSAs for an hour, so a segment
@@ -428,6 +428,13 @@ of every site without it; the frontend
 `/network-map` (linked from the devices page and the sites page), polled every 5 s with a fixed
 layout (columns by hops from the router read). A node's own site (`DeviceRef.site`, not the
 page's) opens its device page, since the all-sites map mixes devices of different sites.
+`device_data::read_all` reads `/system/health/print` and `/system/resource/print` of every
+device with OSPF of its own (not a plain switch on the map only as a relay), as the fact
+`FactKind::DeviceMapData` (`device_data::DEVICE_DATA_AGE`, 30 s; a device that doesn't answer is
+left out, same as the LSDB read); `graphql::network_state` runs it alongside the LSDB read
+(`tokio::join!`) and puts it on each `MapNode` (`health`, `resources`), shown by a node's
+tooltip on hover, not judged (`i18n::network_map::resources`/`health_row`): clicking a node
+still navigates to its device page, no sidebar.
 
 ## Device access, setup and updates
 

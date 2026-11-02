@@ -2,6 +2,7 @@
 //! from the LSDB, for the network map (`docs/concepts/network-map.md`, step 2).
 
 use super::{
+    device_data::{self, DeviceMapData},
     edges::{DownReason, EdgeKind, EdgeState, Lsdb, edges},
     read::{read, readers},
 };
@@ -14,6 +15,7 @@ use async_graphql::{Enum, SimpleObject};
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr},
+    sync::Arc,
 };
 
 #[derive(SimpleObject)]
@@ -51,6 +53,49 @@ pub struct MapNode {
     device: DeviceRef,
     routeros: bool,
     state: NodeState,
+    /// `/system/health/print`, generic, not judged (`docs/concepts/network-map.md`, step 3)
+    health: Vec<MapHealth>,
+    resources: Option<MapResources>,
+}
+
+#[derive(SimpleObject)]
+pub struct MapHealth {
+    name: String,
+    value: String,
+    unit: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct MapResources {
+    uptime: String,
+    cpu_load: u32,
+    free_memory: u64,
+    total_memory: u64,
+    free_hdd_space: u64,
+    version: String,
+}
+
+impl From<&DeviceMapData> for (Vec<MapHealth>, Option<MapResources>) {
+    fn from(data: &DeviceMapData) -> Self {
+        let health = data
+            .health
+            .iter()
+            .map(|row| MapHealth {
+                name: row.name.to_string(),
+                value: row.value.to_string(),
+                unit: row.unit.as_deref().map(str::to_string),
+            })
+            .collect();
+        let resources = data.resources.as_ref().map(|r| MapResources {
+            uptime: r.uptime.to_string(),
+            cpu_load: r.cpu_load,
+            free_memory: r.free_memory,
+            total_memory: r.total_memory,
+            free_hdd_space: r.free_hdd_space,
+            version: r.version.to_string(),
+        });
+        (health, resources)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
@@ -157,7 +202,9 @@ fn on_map_devices(
 /// of them says. Devices without OSPF, and their edges, are left out.
 pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
     let readers = readers(&devices);
-    let (read_from, age, lsdb, error) = match read(&readers).await {
+    let candidates = devices.iter().filter(|d| supports_ospf(d, &readers)).cloned().collect::<Vec<_>>();
+    let (lsdb_result, device_data) = tokio::join!(read(&readers), device_data::read_all(&candidates));
+    let (read_from, age, lsdb, error) = match lsdb_result {
         Ok(Some((device, fact))) => {
             let age = fact.age().as_secs() as u32;
             (Some(device), age, fact.value.ok(), None)
@@ -166,7 +213,7 @@ pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
         Err(error) => (None, 0, None, Some(error.to_string())),
     };
     let lsdb = lsdb.unwrap_or_default();
-    build(&devices, &readers, &lsdb, read_from, age, error)
+    build(&devices, &readers, &lsdb, read_from, age, error, &device_data)
 }
 
 /// The synchronous part of [`network_state`], once the LSDB (or none, read-only, after a
@@ -178,6 +225,7 @@ fn build(
     read_from: Option<DeviceAccess>,
     age: u32,
     error: Option<String>,
+    device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>,
 ) -> NetworkState {
     let map_edges = edges(devices, lsdb);
     let topology = devices.first().map(|d| d.topology().clone());
@@ -252,10 +300,16 @@ fn build(
                     _ => NodeState::Missing,
                 }
             };
+            let (health, resources) = device_data
+                .get(&device.id())
+                .map(|data| (&**data).into())
+                .unwrap_or_default();
             MapNode {
                 device: device_ref(device),
                 routeros: device.has_routeros(),
                 state,
+                health,
+                resources,
             }
         })
         .collect::<Vec<_>>();
