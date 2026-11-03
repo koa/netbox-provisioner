@@ -27,8 +27,8 @@ pub struct ChrRelease {
 /// The release every node runs. Bump together with its checksum, and
 /// re-verify the whole first-boot dance by hand, if this ever needs to change.
 pub const CHR: ChrRelease = ChrRelease {
-    version: "7.24.5",
-    sha256: "16f07222a3213352c9c4fbea4f4dec6a8ffb78fdc0fa5e398c23103ed357c6eb",
+    version: "7.24.6",
+    sha256: "692672e6cac9cfaa4f37c6334d07760d49e074b50befc61f0904270553f17126",
 };
 /// An older release (the long-term one when the current was the newest
 /// stable), for a node to update from to [`CHR`].
