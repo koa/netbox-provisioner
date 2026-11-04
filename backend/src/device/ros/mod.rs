@@ -27,7 +27,7 @@ use mikrotik_model::{
         IpNeighborDiscoverySettingsCfg, IpSocksAccessAction, IpSocksAccessCfg, IpSocksAuthMethod, IpServiceByName, IpServiceCfg, IpSocksUsersByName, IpSocksUsersCfg,
         IpSshCfg, IpSshForwardingEnabled, Ipv6AddressByAddress, Ipv6AddressCfg,
         Ipv6DhcpClientByInterface, Ipv6DhcpClientCfg, Ipv6DhcpClientRequest,
-        Ipv6NdAdvertiseDns, Ipv6NdByInterface, Ipv6NdCfg, RoutingOriginateDefault,
+        Ipv6NdByInterface, Ipv6NdCfg, RoutingOriginateDefault,
         RoutingOspfInstanceByName, RoutingOspfInstanceCfg, RoutingOspfInstanceVersion,
         RoutingRedistribute, ToolMacServerCfg, VlanFrameTypes, WifiChannelBand, YesNo,
     },
@@ -1501,7 +1501,7 @@ impl BaseDeviceDataTarget {
                 || self.ipv_6_address.values().any(|address| address.0.advertise);
             if client_networks && !v6.is_empty() {
                 nd.dns = Some(v6);
-                nd.advertise_dns = Some(Ipv6NdAdvertiseDns::Yes);
+                nd.advertise_dns = Some(true);
             }
             for network in self.dhcp_v_4_server_network.values_mut() {
                 network.0.dns_server = v4.clone();
