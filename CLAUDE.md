@@ -435,9 +435,15 @@ the SVG's own coordinate space via the `<svg>` element's `getBoundingClientRect(
 `event.target()` plus `.closest("svg")`, since Yew delegates listeners to a shared root rather
 than attaching one per element, so `current_target()` resolves to some far ancestor instead);
 the result is kept per browser (`local_storage`, scoped by site) and fed back into `force_layout`
-as a pinned position (`clustered_layout`'s all-sites view overrides the finished position
-instead, since feeding a pin into its two-level physics would need inverting its own
-per-site recenter/shrink transform, not known until after it has run). `publishLayout` writes
+as a pinned position; `clustered_layout` (all sites) lays a site out a second time with the
+pin carried into its local space (its own recenter/shrink inverted, approximately), so the
+others react to it, and the exact position is set on the result afterwards. A site's dashed
+circle can be dragged as a whole: every member moves by the same delta (stored per device like
+a single drag) and the circle's center goes into a second map (`site_overrides`, the same
+`localStorage` key). Each `DragMove` computes the absolute position from where the drag
+started plus the total pointer movement, not a step onto the last result: several
+`pointermove`s can arrive before Yew renders, and the step-wise version lost movement.
+`publishLayout` writes
 the browser's current layout to each device's `map_position` custom field directly via
 `NetboxRest` (`NetboxWritesAllowed`, no `NetboxPlan`/job: idempotent single-field writes need
 none of that machinery); the map's own "Publizieren"/"Zurücksetzen" buttons show only with
@@ -453,7 +459,15 @@ minimization is NP-hard, so this is a heuristic, not exact, and a dense real swi
 still have a few left). A circle's radius is enforced, not just estimated, after its devices lay
 out (`promised_radius`, shrunk to if exceeded) plus a geometric backstop pass pushing apart any
 pair still too close: two guarantees stacked so two sites' circles never overlap, whatever the
-physics landed on.
+physics landed on. The site-level pass starts from `seed_from_graph` (layered by BFS depth,
+so directly connected sites start one layer apart) instead of hashed positions, and
+`reduce_site_crossings` then swaps whole sites, every member moving with its circle, where that
+lowers the real device edges' crossings plus the edges passing through a third site's circle
+(`count_intrusions`): on the meta graph, edges into one site all meet at its single point and
+never count as crossing. „Als SVG/PNG exportieren“ (`svg_export.rs`) saves the map as a file:
+a clone with each element's computed style (`fill`, `stroke`, fonts, …) inlined and a
+background, since the live `<svg>` only looks right with the page's stylesheet and design
+tokens; PNG draws that SVG onto a canvas at the map's own size.
 
 Health, resources and PoE are a second query, `Query.topology.networkStateDetails(siteId)`,
 asked and polled independently (its own 5 s loop in the frontend) so a slow round trip to every

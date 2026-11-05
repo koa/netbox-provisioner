@@ -77,3 +77,5 @@ pub fn published(count: u32) -> String {
 pub fn publish_failed(error: &str) -> String {
     format!("Veröffentlichen fehlgeschlagen: {error}")
 }
+pub const EXPORT_SVG: &str = "Als SVG exportieren";
+pub const EXPORT_PNG: &str = "Als PNG exportieren";

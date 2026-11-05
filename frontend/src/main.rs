@@ -6,6 +6,7 @@ mod graphql;
 mod i18n;
 mod local_storage;
 pub mod pages;
+mod svg_export;
 
 #[wasm_bindgen]
 pub fn init_panic_hook() {

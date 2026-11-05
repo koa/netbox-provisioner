@@ -195,11 +195,15 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   Position per `getBoundingClientRect()` der `<svg>` in deren Koordinatenraum umgerechnet (Yews
   Events sind an einer gemeinsamen Wurzel delegiert, `event.target()` plus `.closest("svg")`
   statt `current_target()`, das sonst irgendeinen entfernten Vorfahren träfe). Ein verschobener
-  Knoten geht als `pinned` in `force_layout` ein (einzelne Site) bzw. überschreibt die fertige
-  Position direkt (Karte über alle Sites: `clustered_layout`s zweistufige Physik könnte einen Pin
-  nur nach Umkehrung ihrer eigenen Verschiebung/Schrumpfung aufnehmen, die aber erst nach deren
-  Lauf feststeht – zirkulär, darum dort nur die einfachere nachträgliche Überschreibung, die
-  Nachbarknoten im Kreis unbeeinflusst lässt). Festgehalten wird im Browser (`localStorage`,
+  Knoten geht als `pinned` in `force_layout` ein (einzelne Site). Über alle Sites legt
+  `clustered_layout` die Site des Knotens ein zweites Mal aus, mit dem Pin in deren lokale
+  Koordinaten zurückgerechnet (Verschiebung und Schrumpfung des ersten Laufs umgekehrt,
+  näherungsweise), sodass die übrigen Geräte darauf reagieren; die genaue Position wird danach
+  gesetzt. Ein ganzer Site-Kreis lässt sich ebenso ziehen: alle Geräte darin verschieben sich
+  gleich (je Gerät gespeichert wie beim einzelnen Ziehen), die Kreismitte zusätzlich je Site.
+  Jede Bewegung rechnet von der Lage beim Greifen plus der gesamten Zeigerbewegung, nicht
+  schrittweise vom letzten Ergebnis: zwischen zwei Renderings kommen mehrere `pointermove`, und
+  schrittweise ging dabei Bewegung verloren. Festgehalten wird im Browser (`localStorage`,
   je Seite ein Schlüssel, Override gewinnt über das offizielle Layout), publiziert mit
   „Anordnung veröffentlichen“ (sichtbar nur mit `allowNetboxWrite`) über die Mutation
   `publishLayout(positions)` nach `map_position`; „Eigene Anordnung zurücksetzen“ verwirft die
@@ -237,7 +241,18 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   exaktes Verfahren), auf den Site-Positionen gegeneinander und, separat, je Site mit mehreren
   Geräten auf deren eigenen; bei einem dichten, realen Switch-Schrank (ein gutes Dutzend über
   mehrere Switches verkabelter Geräte) blieben im Produktions-Export einzelne Kreuzungen übrig,
-  die das lokale Verfahren nicht mehr auflöste.
+  die das lokale Verfahren nicht mehr auflöste. Die Site-Stufe beginnt seit 2026-11-04 nicht
+  mehr bei gehashten Positionen, sondern nach Graph-Tiefe geschichtet (`seed_from_graph`:
+  direkt verbundene Sites starten eine Schicht auseinander), und `reduce_site_crossings`
+  vertauscht danach ganze Sites samt Geräten, wo das die Kreuzungen der echten Gerätekanten senkt,
+  dazu die Kanten, die durch einen dritten Site-Kreis laufen (`count_intrusions`). Auf dem
+  Site-Graphen treffen sich alle Kanten einer Site in ihrem einen Punkt und gelten nie als
+  Kreuzung, darum diese zweite Runde auf Geräte-Ebene.
+- **Export:** „Als SVG exportieren“ und „Als PNG exportieren“ (`svg_export.rs`) speichern die
+  Karte als Datei. Die Live-`<svg>` sieht nur mit dem Stylesheet der Seite richtig aus (Klassen,
+  Design-Tokens), darum wird eine Kopie mit dem berechneten Stil jedes Elements als Inline-Stil
+  und einem Hintergrund gespeichert; PNG zeichnet dieses SVG in ein Canvas in der Grösse der
+  Karte. **Umgesetzt** 2026-11-04.
 - **Klick auf einen Knoten:** navigiert auf die Geräteseite (an der eigenen Site des Knotens,
   nicht der der Karte), wie bisher; keine Seitenleiste (**Entschieden 2026-11-02**). Health,
   Ressourcen stehen in einem Popup beim Überfahren; bei einem PSE→PD-Pfeil dessen Leistung und,

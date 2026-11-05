@@ -619,8 +619,15 @@ ul.device-history {
   list-style: none;
   padding: 0;
 }
+.map-site {
+  cursor: grab;
+  touch-action: none;
+}
 .map-site circle {
   fill: none;
+  /* grabbable over the whole circle, not just its dashed line (which "fill: none" would
+     otherwise limit pointer events to) */
+  pointer-events: all;
   stroke: var(--pf-t--global--border--color--default);
   stroke-width: 1.5;
   stroke-dasharray: 6 5;
