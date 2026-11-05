@@ -215,6 +215,9 @@ fn configure_bridge_radio(
             },
         );
     }
+    // not `card-rates`, which MikroTik's troubleshooting page recommends for 802.11a/b/g/n:
+    // an 802.11ac radio refuses it (lab-sxt-a, SXT G-5HPacD, 7.23.8: "tx-power-mode not
+    // supported")
     if let Some(power) = radio.tx_power {
         wlan.tx_power_mode = Some(InterfaceWirelessTxPowerMode::AllRatesFixed);
         wlan.tx_power = Some(power);

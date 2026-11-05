@@ -71,6 +71,12 @@ Board die eingebaute Antenne (`antenna-gain`: DynaDish 25, SXT 14 dBi) und
 | `country`, `frequency-mode` | Land der Site, `regulatory-domain` | wie AP                    |
 | `tx-power-mode`, `tx-power` | TX Power: `all-rates-fixed`, sonst `default` | wie AP          |
 
+Mit TX Power aus NetBox gilt `all-rates-fixed`, nicht das `card-rates`, das MikroTik für
+802.11a/b/g/n empfiehlt: ein 802.11ac-Radio lehnt es ab (lab-sxt-a, SXT G-5HPacD, 7.23.8:
+„tx-power-mode not supported“). `frequency-mode` bleibt dabei `regulatory-domain`, das in der
+Schweiz als einziger Modus erlaubt ist; die Leistung zu senken geht darin (lab-sxt-a/-b mit
+5 dBm: −56 → −65 dBm).
+
 Die Protokolle entsprechen den produktiven Strecken (`hegglin-bachmann`/`bachmann-hegglin-2`). Der
 AP spricht nur Nv2, deshalb verschlüsselt Nv2 die Strecke (`nv2-security`), nicht das
 WPA-Sicherheitsprofil. Das Profil bleibt `default`: es lässt sich nicht löschen, und für eine
