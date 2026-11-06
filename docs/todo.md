@@ -17,16 +17,19 @@ das Verhalten unverändert (ausser bei den Fehlern):
 1. **Fehler zuerst:** B12 (URL-Kodierung), B13 (deutsche Texte und Test der Codes). Klein,
    für den Operator sichtbar.
 2. **Kleine Aufräumarbeiten:** B24, B25, B26. Kaum Risiko, macht die folgenden Diffs ruhiger.
-3. **Gerät-Ziel als ein Input:** B14, dann B15. Verkleinert Backend und Frontend zugleich und
+3. **cynic:** C4, Abfrage für Abfrage. Danach die Codequalität nochmals beurteilen (wie die
+   Durchsicht vom 2026-11-06: clippy mit strengeren Lints, Duplikate, Modulstruktur) und die
+   folgenden Schritte anpassen, bevor es weitergeht: Mit gemeinsamen Typen im Frontend fallen
+   Teile von B14, B15, B21 und B24 kleiner aus oder weg.
+4. **Gerät-Ziel als ein Input:** B14, dann B15. Verkleinert Backend und Frontend zugleich und
    ändert das Schema, deshalb vor dem Verschieben der Module.
-4. **Module ordnen:** B16 (Wiederaufnehmen raus aus `graphql/mod.rs`), dann B17 (Apply raus
+5. **Module ordnen:** B16 (Wiederaufnehmen raus aus `graphql/mod.rs`), dann B17 (Apply raus
    aus `ros/graphql.rs`). Reines Verschieben, danach sind die Dateien überschaubar.
-5. **Lange Funktionen teilen:** B18 (`helper/write.rs`), B19 (`ros/mod.rs`), B20
-   (`build_topology_from`), B21 (Geräteseite), B22 (Layout der Netzkarte). In dieser Folge, weil
-   die ersten am meisten Fehlerrisiko tragen; jede für sich, keine hängt an einer anderen.
-6. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
-
-B14/B15 werden kleiner, wenn C4 (cynic) vorher käme; C4 ist aber L, deshalb nicht abwarten.
+6. **Lange Funktionen teilen:** B18 (`helper/write.rs`), B19 (`ros/mod.rs`), B20
+   (`build_topology_from`), B21 (Geräteseite), B22 (Layout der Netzkarte, vor E21). In dieser
+   Folge, weil die ersten am meisten Fehlerrisiko tragen; jede für sich, keine hängt an einer
+   anderen.
+7. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
 
 ## Entscheidungen
 
