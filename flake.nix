@@ -28,7 +28,10 @@
       };
       lib = pkgs.lib;
       toolchain = pkgs.rust-bin.stable.latest.default.override {
-        targets = [ "wasm32-unknown-unknown" ];
+        targets = [
+          "wasm32-unknown-unknown"
+          "x86_64-unknown-linux-musl"
+        ];
       };
       craneLib = (crane.mkLib pkgs).overrideToolchain (_: toolchain);
       # trunk runs the wasm-bindgen of the version in Cargo.lock
@@ -60,6 +63,16 @@
         cargoVendorDir = craneLib.vendorCargoDeps { cargoLock = ./Cargo.lock; };
         strictDeps = true;
       };
+      # the binary links statically against musl, so its closure is itself alone; the C parts of
+      # the crates (aws-lc-rs, ring) are built with musl's gcc, the build scripts with the host's
+      muslCc = pkgs.pkgsCross.musl64.stdenv.cc;
+      musl = {
+        CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
+        CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = "${muslCc}/bin/${muslCc.targetPrefix}cc";
+        CC_x86_64_unknown_linux_musl = "${muslCc}/bin/${muslCc.targetPrefix}cc";
+        AR_x86_64_unknown_linux_musl = "${muslCc}/bin/${muslCc.targetPrefix}ar";
+      };
+
       # the dependencies alone, built from the dummied sources with the commands of the builds
       # that inherit them, so cargo finds them fresh there
       deps =
@@ -84,11 +97,14 @@
         '';
       };
       # the binary (release)
-      nativeReleaseDeps = deps "native-release" {
-        buildPhaseCargoCommand = ''
-          cargo build --locked --release -p binary
-        '';
-      };
+      nativeReleaseDeps = deps "native-release" (
+        musl
+        // {
+          buildPhaseCargoCommand = ''
+            cargo build --locked --release -p binary
+          '';
+        }
+      );
       # the frontend (wasm, release) and its clippy run, with the build script's host crates
       wasmDeps = deps "wasm" {
         buildPhaseCargoCommand = ''
@@ -132,6 +148,7 @@
 
       provisioner = craneLib.buildPackage (
         common
+        // musl
         // {
           cargoArtifacts = nativeReleaseDeps;
           cargoExtraArgs = "--locked -p binary";
@@ -161,8 +178,8 @@
       packages.${system} = {
         default = provisioner;
         inherit provisioner frontend;
-        # an OCI image of the binary and the CA certificates, nothing else: no shell, no
-        # coreutils (`docs/deployment.md`)
+        # an OCI image of the static binary and the CA certificates, nothing else: no libc, no
+        # shell, no coreutils (`docs/deployment.md`)
         image = pkgs.dockerTools.buildLayeredImage {
           name = "netbox-provisioner";
           tag = self.shortRev or "dirty";
@@ -200,14 +217,18 @@
           pname = "netbox-provisioner";
           version = "0.1.0";
         };
-        # the image holds no shell or interpreter, also when a new dependency would bring one
-        no-shell = pkgs.runCommand "no-shell" { closure = pkgs.closureInfo { rootPaths = [ provisioner ]; }; } ''
-          if grep -E -- '-(bash|coreutils|busybox|python3|perl)-[0-9]' $closure/store-paths; then
-            echo "the provisioner's closure holds a shell or interpreter" >&2
-            exit 1
-          fi
-          touch $out
-        '';
+        # the image holds the static binary and the certificates, nothing else: no libc, no shell,
+        # also when a new dependency would bring one
+        only-binary =
+          pkgs.runCommand "only-binary" { closure = pkgs.closureInfo { rootPaths = [ provisioner ]; }; }
+            ''
+              if [ "$(cat $closure/store-paths)" != "${provisioner}" ]; then
+                echo "the provisioner's closure holds more than the binary:" >&2
+                cat $closure/store-paths >&2
+                exit 1
+              fi
+              touch $out
+            '';
       };
 
       devShells.${system}.default = pkgs.mkShell {

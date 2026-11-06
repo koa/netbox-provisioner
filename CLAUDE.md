@@ -24,9 +24,9 @@ and `local/lab/run-provisioner.sh` do both. `binary/build.rs` only checks that `
 rebuilds when it changes — `backend` alone does not need this and can be
 checked/tested independently.
 
-`flake.nix` builds the same with Nix (`nix build .#image`: an OCI image of the binary and the CA
-certificates, no shell; `nix flake check`: tests, the three clippy runs, `cargo fmt --check`, no shell or
-interpreter in the closure) and is what CI runs (`.github/workflows/ci.yaml`, with the store kept between
+`flake.nix` builds the same with Nix (`nix build .#image`: an OCI image of the binary, static
+against musl, and the CA certificates, no libc or shell; `nix flake check`: tests, the three clippy
+runs, `cargo fmt --check`, nothing but the binary in its closure) and is what CI runs (`.github/workflows/ci.yaml`, with the store kept between
 runs by `magic-nix-cache-action`). It builds with crane: the crates' dependencies are
 derivations of their own (`deps`, from `dummyWorkspace`: this repository's crates dummied, the
 two libraries whole), one for dev (tests, clippy), release (binary) and wasm (frontend), and the

@@ -21,6 +21,9 @@ Die Bereinigungen aus der Durchsicht vom 2026-11-06, je ein Commit, Tests und cl
 das Verhalten unverändert (die Fehler B12 und B13 sind behoben):
 
 1. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
+2. E14
+3. E20
+4. E21
 
 ## Entscheidungen
 
@@ -86,7 +89,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 |---|---|---|---|---|
 | E1 | Watchdog-Befunde: kein Weg zu einer Wurzel (kein Watchdog möglich) als Warnung; ein Custom Field für Sonderfälle (aus, oder eine feste Adresse) | [Watchdog](watchdog.md) | S–M | offen |
 | E3 | Das Image in einem Cluster ausrollen und die beiden Workflows (CI, Aufräumen) auf GitHub einmal laufen lassen | [Deployment](deployment.md#noch-nicht-geprüft) | S | offen |
-| E4 | rustls statt OpenSSL, dann musl und ein Image nur aus Binary und Zertifikaten | [Deployment](deployment.md#noch-nicht-geprüft) | M | offen |
 | E6 | Kunden-Netz: optional eine IP-Range mit Rolle `dhcp` anlegen (heute ist der DHCP-Pool der freie Rest des Netzes) | [Config-Helper](config-helper.md#kunden-netz) | S | offen |
 | E8 | Weitere Befunde (Rest; erledigt: WLAN-Gruppe ohne Controller, Land): die Fehler des Generators gesammelt pro Site; gegen das Gerät ein OSPF-Nachbar `Full` über einen Port ohne `ospf`, das gemeldete Board gegen den Device Type und PoE als Befund für alle Geräte einer Site | [Config-Helper](config-helper.md#befunde) | M | offen |
 | E9 | Automatischer Test der Helfer gegen das Lab-NetBox: ausführen, Vorschau mit dem Ergebnis vergleichen, zurücknehmen | [Config-Helper](config-helper.md#technik) | M | offen |

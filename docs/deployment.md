@@ -36,10 +36,12 @@ samt wasm-Ziel über `rust-overlay`, `trunk`, `dart-sass`, `wasm-bindgen-cli` pa
 `Cargo.lock`) ist im Ausdruck festgelegt, so bauen Lab, CI und Image gleich. Heraus kommt ein
 normales OCI-Image.
 
-- **Closure** (Versuch 2026-10-19): das Binary (74 MiB, Frontend eingebettet), glibc,
-  `gcc-lib`/`libgcc`, OpenSSL (vor reqwest 0.13), `libidn2`, `libunistring`, dazu `cacert`. Image rund 50 MiB
-  gepackt, 133 MiB entpackt; ausführbar ist darin ausser dem Provisioner nur
-  `glibc/libexec/getconf/*`.
+- **Closure:** nur das Binary, statisch gegen musl gelinkt (`x86_64-unknown-linux-musl`, rund
+  100 MiB mit dem eingebetteten Frontend); die C-Teile der Crates (aws-lc-rs, ring) baut der
+  gcc von `pkgsCross.musl64`. Im Image liegen daneben nur die Zertifikate (`cacert`), keine
+  libc, keine Shell. Bis 2026-11-06 war es glibc mit `gcc-lib`, OpenSSL, `libidn2` und
+  `libunistring` (Image rund 50 MiB gepackt, 133 MiB entpackt). Lab-Test 2026-11-06: das
+  musl-Binary mit Anmeldung, NetBox, Gerät und den RouterOS-Versionen über HTTPS.
 - **Gebaut mit [crane](https://crane.dev):** Die Abhängigkeiten der Crates sind eigene
   Ableitungen, gebaut aus dem Workspace mit Attrappen statt der Quellen dieses Repositorys
   (`mkDummySrc`); sie ändern sich nur mit einem `Cargo.toml`, `Cargo.lock` oder `flake.lock`.
@@ -50,9 +52,9 @@ normales OCI-Image.
   Tests, Clippy und Binary übernehmen die Abhängigkeiten (`cargoArtifacts`) und bauen nur die
   eigenen Crates.
 - **`checks`:** die Tests ohne CHR, die drei Clippy-Läufe mit `-D warnings` (Backend und Binary,
-  Frontend für wasm), `fmt` (`cargo fmt --check`) und `no-shell`: Taucht
-  in der Closure eine Shell oder ein Interpreter auf, schlägt der Check fehl. So bleibt das Image
-  ohne Shell, auch wenn eine neue Abhängigkeit eine mitbrächte.
+  Frontend für wasm), `fmt` (`cargo fmt --check`) und `only-binary`: Hält
+  die Closure mehr als das Binary (eine libc, eine Shell, einen Interpreter), schlägt der Check
+  fehl. So bleibt das Image so, auch wenn eine neue Abhängigkeit etwas mitbrächte.
 - **Bibliotheken:** `mikrotik-model` und `mikrotik-api` sind Git-Abhängigkeiten in `Cargo.toml`
   (GitHub, Zweig `master`), festgelegt in `Cargo.lock` und mit den anderen Crates
   vendort. Eine Änderung dort kommt erst ins Image, wenn sie gepusht und
@@ -141,5 +143,4 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
 ## Noch nicht geprüft
 
 Das Image lief noch in keinem Cluster, und beide Workflows sind auf GitHub noch nicht gelaufen
-(E3). Ohne OpenSSL (rustls, dann musl und ein Image nur aus Binary und Zertifikaten) ist ein
-eigener Schritt (E4).
+(E3).
