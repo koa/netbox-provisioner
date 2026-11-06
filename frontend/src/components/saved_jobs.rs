@@ -6,10 +6,10 @@ use crate::{
     graphql::{
         authenticated::{
             saved_jobs::{
-                DiscardSavedJob, DiscardSavedJobVariables, HeldBack, Phase, SavedJobKind,
+                DiscardSavedJob, DiscardSavedJobVariables, HeldBack, SavedJobKind,
                 SavedJobs as SavedJobsQuery, Waiting as Saved,
             },
-            types::{ApplyState as A, UpdateState as U},
+            types::{ApplyState as A, JobPhase as Phase, UpdateState as U},
         },
         request,
     },

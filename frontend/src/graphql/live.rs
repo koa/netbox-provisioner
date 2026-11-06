@@ -93,15 +93,6 @@ fn start<T: DeserializeOwned + 'static, S: Component>(
     })
 }
 
-/// [`subscribe`] taking the data as `query_authenticated` does: without data, the errors.
-pub fn subscribe_data<Q: GraphQLQuery + 'static, S: Component>(
-    scope: &Scope<S>,
-    variables: Q::Variables,
-    deliver: impl Fn(Result<Q::ResponseData, FrontendError>) + 'static,
-) -> Subscription {
-    subscribe::<Q, S>(scope, variables, move |response| deliver(data(response)))
-}
-
 /// When something was read that is `age` seconds old (milliseconds since the epoch): ages come
 /// from the server, times are the browser's.
 pub fn read_at(age: impl Into<i64>) -> f64 {

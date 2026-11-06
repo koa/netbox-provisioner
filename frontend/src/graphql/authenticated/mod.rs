@@ -3,12 +3,14 @@
 //! graphql_client follow below.
 use graphql_client::GraphQLQuery;
 
+pub mod adjust_target;
 pub mod batch_apply;
 pub mod findings;
 pub mod helper;
 pub mod history;
 pub mod interface_live;
 pub mod interfaces;
+pub mod job;
 pub mod list_devices;
 pub mod neighbor_findings;
 pub mod network_map;
@@ -17,7 +19,6 @@ pub mod schema;
 pub mod site_diff;
 pub mod types;
 
-type ScalarDuration = u64;
 /// `D4:01:C3:29:67:64`; the backend checks it
 type ScalarMac = String;
 
@@ -44,14 +45,6 @@ pub struct AllowApply;
     response_derives = "Debug"
 )]
 pub struct RefreshDevice;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/adjust-target.graphql",
-    response_derives = "Debug"
-)]
-pub struct AdjustTargetListCredentials;
 
 #[derive(GraphQLQuery)]
 #[graphql(
@@ -140,22 +133,6 @@ pub struct BootPartition;
     response_derives = "Debug,Clone,PartialEq"
 )]
 pub struct BootstrapCandidates;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/job.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct JobEvents;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/job.graphql",
-    response_derives = "Debug"
-)]
-pub struct CancelJob;
 
 #[derive(GraphQLQuery)]
 #[graphql(

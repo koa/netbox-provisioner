@@ -551,16 +551,14 @@ fn fallback_run<'a>(records: &[&'a Value]) -> Option<&'a str> {
 /// the job view shows, then the marks themselves.
 fn script_lines(progress: &Progress) -> Vec<String> {
     let script = ScriptProgress::of(progress, true);
-    let lost: Vec<i64> = script.lost.iter().map(|&line| line.into()).collect();
-    let back: Vec<i64> = script.back.iter().map(|&line| line.into()).collect();
     let mut lines = i18n::job::event::script_progress(i18n::job::event::Progress {
         lines: script.lines,
         section: script.section,
         done: script.done,
         error: script.error_line.zip(script.error.as_deref()),
         probe: script.probe.as_deref().map(|probe| (probe, script.probe_answered)),
-        lost: &lost,
-        back: &back,
+        lost: &script.lost,
+        back: &script.back,
         rearmed: script.rearmed.map(|rearmed| Duration::from(rearmed).as_secs()),
         after_fallback: true,
     });

@@ -5,18 +5,19 @@ use crate::{
     i18n::{common::CANCEL, job as t, login},
     graphql::{
         authenticated::{
-            CancelJob, JobEvents, cancel_job,
-            job_events::{
-                self, FallbackLeftReason, JobEventsJob, JobEventsJobEvents,
-                JobEventsJobEventsEvent as Event, JobEventsJobPhase as Phase, JobKind, JobState,
-                PowerWait, RebootReason,
+            job::{
+                CancelJob, CancelJobVariables, DeviceModeReason, Event, FallbackLeftReason, Job,
+                JobEvents, JobEventsVariables, LeftoverAction, Logged, PowerWait, RebootReason,
+                ScriptProgress,
             },
+            types::{ErrorInfo, JobKind, JobPhase as Phase, JobState},
         },
-        live::{Subscription, subscribe_data},
-        query_authenticated,
+        live::{Subscription, watch_data},
+        request,
     },
     pages::start_login,
 };
+use cynic::{MutationBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, CodeBlock, CodeBlockCode, Spinner, SpinnerSize,
 };
@@ -34,7 +35,7 @@ pub(crate) const RETRY: [Duration; 4] = [
 ];
 
 pub struct JobView {
-    job: Option<JobEventsJob>,
+    job: Option<Job>,
     /// the last asking failed (the server is away, restarts); asked again until it answers
     error: Option<FrontendError>,
     /// the server doesn't know the job (anymore): it restarted meanwhile
@@ -55,7 +56,7 @@ pub struct JobViewProps {
 }
 
 pub enum JobMessage {
-    Loaded(JobEventsJob),
+    Loaded(Job),
     Error(FrontendError),
     /// the server answered without the job
     Lost,
@@ -70,18 +71,18 @@ impl Component for JobView {
 
     fn create(ctx: &Context<Self>) -> Self {
         let scope = ctx.link().clone();
-        let subscription = subscribe_data::<JobEvents, _>(
-            ctx.link(),
-            job_events::Variables { id: ctx.props().id, after: Some(0) },
-            move |answer| {
-                scope.send_message(match answer {
-                    Ok(job_events::ResponseData { job: Some(job) }) => JobMessage::Loaded(job),
-                    // the backend restarted and forgot it
-                    Ok(job_events::ResponseData { job: None }) => JobMessage::Lost,
-                    Err(error) => JobMessage::Error(error),
-                })
-            },
-        );
+        let variables = JobEventsVariables {
+            id: ctx.props().id as i32,
+            after: Some(0),
+        };
+        let subscription = watch_data(ctx.link(), JobEvents::build(variables), move |answer| {
+            scope.send_message(match answer {
+                Ok(JobEvents { job: Some(job) }) => JobMessage::Loaded(job),
+                // the backend restarted and forgot it
+                Ok(JobEvents { job: None }) => JobMessage::Lost,
+                Err(error) => JobMessage::Error(error),
+            })
+        });
         JobView {
             job: None,
             error: None,
@@ -102,9 +103,9 @@ impl Component for JobView {
                     events.extend(loaded.events.into_iter().filter(|event| event.index >= next));
                     loaded.events = events;
                 }
-                if loaded.state != JobState::RUNNING {
+                if loaded.state != JobState::Running {
                     self.subscription = None;
-                    ctx.props().on_finished.emit(loaded.state == JobState::DONE);
+                    ctx.props().on_finished.emit(loaded.state == JobState::Done);
                 }
                 self.job = Some(loaded);
                 self.error = None;
@@ -120,12 +121,10 @@ impl Component for JobView {
             JobMessage::Cancel => {
                 self.cancelling = true;
                 let scope = ctx.link().clone();
-                let id = ctx.props().id;
+                let id = ctx.props().id as i32;
                 spawn_local(async move {
-                    if let Err(error) =
-                        query_authenticated::<CancelJob, _>(scope.clone(), cancel_job::Variables { id })
-                            .await
-                    {
+                    let cancel = CancelJob::build(CancelJobVariables { id });
+                    if let Err(error) = request(scope.clone(), cancel).await {
                         scope.send_message(JobMessage::Error(error));
                     }
                 });
@@ -152,15 +151,19 @@ impl Component for JobView {
         });
         let Some(job) = &self.job else {
             if self.lost {
-                return html!(<Alert inline=true title={t::LOST} r#type={AlertType::Warning}><p>{t::LOST_TEXT}{t::LOST_FALLBACK}</p></Alert>);
+                return html! {
+                    <Alert inline=true title={t::LOST} r#type={AlertType::Warning}>
+                        <p>{t::LOST_TEXT}{t::LOST_FALLBACK}</p>
+                    </Alert>
+                };
             }
             return html!(<>{error}<Spinner size={SpinnerSize::Md}/></>);
         };
-        let fallback = matches!(job.kind, JobKind::APPLY | JobKind::UPDATE);
+        let fallback = matches!(job.kind, JobKind::Apply | JobKind::Update);
         let lost = self.lost.then(|| {
             html!(<p>{t::LOST_TEXT}{if fallback { t::LOST_FALLBACK } else { "" }}</p>)
         });
-        let running = job.state == JobState::RUNNING && !self.lost;
+        let running = job.state == JobState::Running && !self.lost;
         let (title, kind) = if self.lost {
             (t::LOST.to_string(), AlertType::Warning)
         } else {
@@ -189,35 +192,37 @@ impl Component for JobView {
             </Alert>
         }
     }
-
 }
 
-fn title(job: &JobEventsJob) -> (String, AlertType) {
+fn title(job: &Job) -> (String, AlertType) {
     let what = match &job.kind {
-        JobKind::UPDATE => t::UPDATE,
-        JobKind::DOWNGRADE => t::DOWNGRADE,
-        JobKind::CLEANUP => t::CLEANUP,
-        JobKind::APPLY => t::APPLY,
-        JobKind::BOOTSTRAP => t::BOOTSTRAP,
-        JobKind::REBOOT => t::REBOOT,
-        JobKind::POWER_CYCLE => t::POWER_CYCLE,
-        JobKind::DEVICE_MODE => t::DEVICE_MODE,
-        JobKind::REPARTITION => t::REPARTITION,
-        JobKind::BOOT_PARTITION => t::BOOT_PARTITION,
-        JobKind::NETBOX_WRITE => t::NETBOX_WRITE,
-        JobKind::NETBOX_UNDO => t::NETBOX_UNDO,
-        JobKind::SITE_DIFF => t::SITE_DIFF,
+        JobKind::Update => t::UPDATE,
+        JobKind::Downgrade => t::DOWNGRADE,
+        JobKind::Cleanup => t::CLEANUP,
+        JobKind::Apply => t::APPLY,
+        JobKind::Bootstrap => t::BOOTSTRAP,
+        JobKind::Reboot => t::REBOOT,
+        JobKind::PowerCycle => t::POWER_CYCLE,
+        JobKind::DeviceMode => t::DEVICE_MODE,
+        JobKind::Repartition => t::REPARTITION,
+        JobKind::BootPartition => t::BOOT_PARTITION,
+        JobKind::NetboxWrite => t::NETBOX_WRITE,
+        JobKind::NetboxUndo => t::NETBOX_UNDO,
+        JobKind::SiteDiff => t::SITE_DIFF,
         JobKind::Other(other) => other,
     };
     let events = || job.events.iter().map(|event| &event.event);
-    if job.state == JobState::DONE {
-        if events().any(|e| matches!(e, Event::ApplyPlanned(planned) if planned.script.trim().is_empty())) {
+    if job.state == JobState::Done {
+        let nothing = |e: &Event| matches!(e, Event::ApplyPlanned(p) if p.script.trim().is_empty());
+        if events().any(nothing) {
             return (t::NOTHING_TO_APPLY.into(), AlertType::Success);
         }
         let incomplete = events().any(|e| match e {
             Event::ApplyRunning(running) => running.error.is_some(),
             Event::ApplyStarted(started) => started.error.is_some(),
-            Event::ApplyChecked(checked) => checked.error.is_some() || !checked.remaining.trim().is_empty(),
+            Event::ApplyChecked(checked) => {
+                checked.error.is_some() || !checked.remaining.trim().is_empty()
+            }
             Event::FallbackLeft(_) | Event::FallbackFired(_) => true,
             Event::ScriptProgress(progress) => progress.error.is_some() || !progress.done,
             _ => false,
@@ -236,8 +241,8 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
         }
     }
     match &job.state {
-        JobState::RUNNING => (t::running(what), AlertType::Info),
-        JobState::DONE => {
+        JobState::Running => (t::running(what), AlertType::Info),
+        JobState::Done => {
             let update = events().find_map(|event| match event {
                 Event::UpdateDone(done) => Some((done.from.as_str(), done.to.as_str())),
                 Event::Downgraded(done) => Some((done.from.as_str(), done.to.as_str())),
@@ -245,100 +250,101 @@ fn title(job: &JobEventsJob) -> (String, AlertType) {
             });
             (t::done(what, update), AlertType::Success)
         }
-        JobState::FAILED => (t::failed(what), AlertType::Danger),
-        JobState::CANCELLED => (t::cancelled(what), AlertType::Warning),
+        JobState::Failed => (t::failed(what), AlertType::Danger),
+        JobState::Cancelled => (t::cancelled(what), AlertType::Warning),
         JobState::Other(other) => (t::other_state(what, other), AlertType::Warning),
     }
 }
 
 /// The state the job is in while it runs, or ended in when it didn't get through; nothing
 /// once done (its last state says nothing then).
-fn phase_line(job: &JobEventsJob, running: bool) -> Option<String> {
-    use job_events::{
-        ApplyState as A, BootstrapState as B, CleanupState as C, DeviceModeState as D, NetboxState as N,
-        PowerCycleState as P, RebootState as R, UpdateState as U,
+fn phase_line(job: &Job, running: bool) -> Option<String> {
+    use crate::graphql::authenticated::types::{
+        ApplyState as A, BootstrapState as B, CleanupState as C, DeviceModeState as D,
+        NetboxState as N, PowerCycleState as P, RebootState as R, UpdateState as U,
     };
     use t::phase as p;
-    if job.state == JobState::DONE {
+    if job.state == JobState::Done {
         return None;
     }
     let other = |other: &str| other.to_string();
     let state = match job.phase.as_ref()? {
         Phase::ApplyPhase(phase) => match &phase.apply {
-            A::PLANNING => p::PLANNING.into(),
-            A::SUSPENDING_WATCHDOGS => p::SUSPENDING_WATCHDOGS.into(),
-            A::ARMING_FALLBACK => p::ARMING_FALLBACK.into(),
-            A::WRITING_SCRIPT => p::WRITING_SCRIPT.into(),
-            A::STARTING_SCRIPT => p::STARTING_SCRIPT.into(),
-            A::SCRIPT_RUNNING => p::SCRIPT_RUNNING.into(),
-            A::TAKING_BACK => p::TAKING_BACK.into(),
-            A::STOPPING_FALLBACK => p::STOPPING_FALLBACK.into(),
-            A::NOT_REACHED => p::NOT_REACHED.into(),
-            A::CHECKING => p::CHECKING.into(),
-            A::FINISHING => p::FINISHING.into(),
+            A::Planning => p::PLANNING.into(),
+            A::SuspendingWatchdogs => p::SUSPENDING_WATCHDOGS.into(),
+            A::ArmingFallback => p::ARMING_FALLBACK.into(),
+            A::WritingScript => p::WRITING_SCRIPT.into(),
+            A::StartingScript => p::STARTING_SCRIPT.into(),
+            A::ScriptRunning => p::SCRIPT_RUNNING.into(),
+            A::TakingBack => p::TAKING_BACK.into(),
+            A::StoppingFallback => p::STOPPING_FALLBACK.into(),
+            A::NotReached => p::NOT_REACHED.into(),
+            A::Checking => p::CHECKING.into(),
+            A::Finishing => p::FINISHING.into(),
             A::Other(o) => other(o),
         },
         Phase::UpdatePhase(phase) => match &phase.update {
-            U::READING => p::READING.into(),
-            U::SUSPENDING_WATCHDOGS => p::SUSPENDING_WATCHDOGS.into(),
-            U::WAITING_FOR_CHAIN => p::WAITING_FOR_CHAIN.into(),
-            U::REMEMBERING_NEIGHBORS => p::REMEMBERING_NEIGHBORS.into(),
-            U::ARMING_FALLBACK => p::ARMING_FALLBACK.into(),
-            U::DOWNLOADING => p::DOWNLOADING.into(),
-            U::UPLOADING => p::UPLOADING.into(),
-            U::WAITING_TO_REBOOT => p::WAITING_TO_REBOOT.into(),
-            U::REBOOTING => p::REBOOTING.into(),
-            U::NOT_UPDATED => p::NOT_UPDATED.into(),
-            U::STOPPING_FALLBACK => p::STOPPING_FALLBACK.into(),
-            U::WAITING_FOR_NEIGHBORS => p::WAITING_FOR_NEIGHBORS.into(),
-            U::FIRMWARE => p::FIRMWARE.into(),
-            U::WAITING_TO_REBOOT_FIRMWARE => p::WAITING_TO_REBOOT_FIRMWARE.into(),
-            U::REBOOTING_FIRMWARE => p::REBOOTING_FIRMWARE.into(),
-            U::RESTORING_WATCHDOGS => p::RESTORING_WATCHDOGS.into(),
+            U::Reading => p::READING.into(),
+            U::SuspendingWatchdogs => p::SUSPENDING_WATCHDOGS.into(),
+            U::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
+            U::RememberingNeighbors => p::REMEMBERING_NEIGHBORS.into(),
+            U::ArmingFallback => p::ARMING_FALLBACK.into(),
+            U::Downloading => p::DOWNLOADING.into(),
+            U::Uploading => p::UPLOADING.into(),
+            U::WaitingToReboot => p::WAITING_TO_REBOOT.into(),
+            U::Rebooting => p::REBOOTING.into(),
+            U::NotUpdated => p::NOT_UPDATED.into(),
+            U::StoppingFallback => p::STOPPING_FALLBACK.into(),
+            U::WaitingForNeighbors => p::WAITING_FOR_NEIGHBORS.into(),
+            U::Firmware => p::FIRMWARE.into(),
+            U::WaitingToRebootFirmware => p::WAITING_TO_REBOOT_FIRMWARE.into(),
+            U::RebootingFirmware => p::REBOOTING_FIRMWARE.into(),
+            U::RestoringWatchdogs => p::RESTORING_WATCHDOGS.into(),
             U::Other(o) => other(o),
         },
         Phase::RebootPhase(phase) => match &phase.reboot {
-            R::READING => p::READING.into(),
-            R::WAITING_FOR_CHAIN => p::WAITING_FOR_CHAIN.into(),
-            R::REBOOTING => p::REBOOTING.into(),
+            R::Reading => p::READING.into(),
+            R::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
+            R::Rebooting => p::REBOOTING.into(),
             R::Other(o) => other(o),
         },
         Phase::PowerCyclePhase(phase) => match &phase.power_cycle {
-            P::READING => p::READING.into(),
-            P::WAITING_FOR_CHAIN => p::WAITING_FOR_CHAIN.into(),
-            P::CUTTING => p::CUTTING.into(),
-            P::WAITING_FOR_DEVICE => p::WAITING_FOR_DEVICE.into(),
+            P::Reading => p::READING.into(),
+            P::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
+            P::Cutting => p::CUTTING.into(),
+            P::WaitingForDevice => p::WAITING_FOR_DEVICE.into(),
             P::Other(o) => other(o),
         },
         Phase::DeviceModePhase(phase) => match &phase.device_mode {
-            D::READING => p::READING.into(),
-            D::WAITING_FOR_CHAIN => p::WAITING_FOR_CHAIN.into(),
-            D::REQUESTING => p::REQUESTING.into(),
-            D::WAITING_FOR_CONFIRMATION => p::WAITING_FOR_CONFIRMATION.into(),
-            D::REBOOTING => p::REBOOTING.into(),
+            D::Reading => p::READING.into(),
+            D::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
+            D::Requesting => p::REQUESTING.into(),
+            D::WaitingForConfirmation => p::WAITING_FOR_CONFIRMATION.into(),
+            D::Rebooting => p::REBOOTING.into(),
             D::Other(o) => other(o),
         },
         Phase::BootstrapPhase(phase) => match &phase.bootstrap {
-            B::SUSPENDING_WATCHDOGS => p::SUSPENDING_WATCHDOGS.into(),
-            B::CHECKING_NEIGHBOR => p::CHECKING_NEIGHBOR.into(),
-            B::CONSOLE => p::CONSOLE.into(),
-            B::WAITING_FOR_API => p::WAITING_FOR_API.into(),
-            B::RESTORING_WATCHDOGS => p::RESTORING_WATCHDOGS.into(),
+            B::SuspendingWatchdogs => p::SUSPENDING_WATCHDOGS.into(),
+            B::CheckingNeighbor => p::CHECKING_NEIGHBOR.into(),
+            B::Console => p::CONSOLE.into(),
+            B::WaitingForApi => p::WAITING_FOR_API.into(),
+            B::RestoringWatchdogs => p::RESTORING_WATCHDOGS.into(),
             B::Other(o) => other(o),
         },
         Phase::CleanupPhase(phase) => match &phase.cleanup {
-            C::CLEARING => p::CLEARING.into(),
-            C::WAITING_FOR_CHAIN => p::WAITING_FOR_CHAIN.into(),
-            C::REBOOTING => p::REBOOTING.into(),
+            C::Clearing => p::CLEARING.into(),
+            C::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
+            C::Rebooting => p::REBOOTING.into(),
             C::Other(o) => other(o),
         },
         Phase::NetboxPhase(phase) => match &phase.netbox {
-            N::PLANNING => p::PLANNING.into(),
-            N::WRITING => p::WRITING.into(),
-            N::UNDOING => p::UNDOING.into(),
-            N::REFETCHING => p::REFETCHING.into(),
+            N::Planning => p::PLANNING.into(),
+            N::Writing => p::WRITING.into(),
+            N::Undoing => p::UNDOING.into(),
+            N::Refetching => p::REFETCHING.into(),
             N::Other(o) => other(o),
         },
+        Phase::Unknown => return None,
     };
     Some(if running { p::running(&state) } else { p::ended(&state) })
 }
@@ -350,7 +356,7 @@ fn elapsed(nanos: u64) -> String {
 }
 
 /// An error the job or one of its events reports.
-fn problem(problem: &job_events::Problem) -> String {
+fn problem(problem: &ErrorInfo) -> String {
     ServerProblem::from(problem).text()
 }
 
@@ -367,7 +373,7 @@ fn script(title: &str, script: &str) -> Html {
 }
 
 /// One entry per event, consecutive console output in one.
-fn items(events: &[JobEventsJobEvents]) -> Vec<Html> {
+fn items(events: &[Logged]) -> Vec<Html> {
     // the lines the marks of the script count
     let planned = events.iter().rev().find_map(|event| match &event.event {
         Event::ApplyPlanned(planned) => Some(planned.script.as_str()),
@@ -401,7 +407,9 @@ fn items(events: &[JobEventsJobEvents]) -> Vec<Html> {
 
 /// How far the script got: what it says, the lines it stopped at or lost the provisioner
 /// after (with the two before, from `planned`), and the marks as the device has them.
-fn script_progress(progress: &job_events::JobEventsJobEventsEventOnScriptProgress, planned: Option<&str>) -> Html {
+fn script_progress(progress: &ScriptProgress, planned: Option<&str>) -> Html {
+    let line_numbers = |lines: &[i32]| lines.iter().map(|&line| line as u32).collect::<Vec<_>>();
+    let (lost, back) = (line_numbers(&progress.lost), line_numbers(&progress.back));
     let lines = t::event::script_progress(t::event::Progress {
         lines: progress.lines as u32,
         section: progress.section.map(|s| s as u32),
@@ -411,19 +419,21 @@ fn script_progress(progress: &job_events::JobEventsJobEventsEventOnScriptProgres
             .zip(progress.error.as_deref())
             .map(|(line, error)| (line as u32, error)),
         probe: progress.probe.as_deref().map(|probe| (probe, progress.probe_answered)),
-        lost: &progress.lost,
-        back: &progress.back,
+        lost: &lost,
+        back: &back,
         rearmed: progress.rearmed.map(seconds),
         after_fallback: progress.after_fallback,
     });
-    let at: Vec<i64> = progress.error_line.iter().chain(&progress.lost).copied().collect();
+    let at: Vec<i32> = progress.error_line.iter().chain(&progress.lost).copied().collect();
     let shown = planned.map(|planned| {
         let script: Vec<&str> = planned.lines().collect();
         at.iter()
             .map(|&line| {
                 let from = (line - 2).max(1);
                 (from..=line)
-                    .filter_map(|n| script.get(n as usize - 1).map(|text| format!("{n:>4}  {text}")))
+                    .filter_map(|n| {
+                        script.get(n as usize - 1).map(|text| format!("{n:>4}  {text}"))
+                    })
                     .collect::<Vec<_>>()
                     .join("\n")
             })
@@ -460,11 +470,12 @@ macro_rules! watching {
     }};
 }
 
-fn describe(event: &JobEventsJobEvents) -> Html {
+fn describe(event: &Logged) -> Html {
     use t::event as e;
     let text = match &event.event {
-        // a site's job, shown by `components::site_diff`, never on a device's page
-        Event::SiteDiffStarted | Event::DeviceDiffed => return Html::default(),
+        // one this page doesn't know yet; a site's job (`components::site_diff`) is never on a
+        // device's page
+        Event::Unknown => e::UNKNOWN.into(),
         Event::ApplyPlanned(planned) if planned.script.trim().is_empty() => e::NOTHING_TO_DO.into(),
         Event::ApplyPlanned(planned) => return script(t::SCRIPT, &planned.script),
         Event::FallbackArmed(armed) => e::fallback_armed(
@@ -472,7 +483,9 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             armed.window.map(seconds),
             armed.radio_wait.map(seconds),
         ),
-        Event::FallbackUnavailable(unavailable) => e::fallback_unavailable(&unavailable.device_mode),
+        Event::FallbackUnavailable(unavailable) => {
+            e::fallback_unavailable(&unavailable.device_mode)
+        }
         Event::ApplyRunning(running) => match &running.error {
             Some(error) => e::script_not_started(&problem(error)),
             None => e::script_running(seconds(running.timeout)),
@@ -488,19 +501,21 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::FallbackStopped(_) => e::FALLBACK_STOPPED.into(),
         Event::FallbackLeft(left) => e::fallback_left(
             match &left.reason {
-                FallbackLeftReason::CANCELLED => e::FallbackLeft::Cancelled,
-                FallbackLeftReason::NOT_REACHED => e::FallbackLeft::NotReached,
-                FallbackLeftReason::NOT_STOPPED => {
+                FallbackLeftReason::Cancelled => e::FallbackLeft::Cancelled,
+                FallbackLeftReason::NotReached => e::FallbackLeft::NotReached,
+                FallbackLeftReason::NotStopped => {
                     e::FallbackLeft::NotStopped(left.error.as_ref().map(problem))
                 }
-                FallbackLeftReason::NOT_APPLIED => e::FallbackLeft::NotApplied,
-                FallbackLeftReason::DUE => e::FallbackLeft::Due,
-                FallbackLeftReason::BATCH_INCOMPLETE => e::FallbackLeft::BatchIncomplete,
+                FallbackLeftReason::NotApplied => e::FallbackLeft::NotApplied,
+                FallbackLeftReason::Due => e::FallbackLeft::Due,
+                FallbackLeftReason::BatchIncomplete => e::FallbackLeft::BatchIncomplete,
                 FallbackLeftReason::Other(other) => e::FallbackLeft::Other(other),
             },
             seconds(left.fires_in),
         ),
-        Event::SetupStarted(setup) => e::setup_started(&setup.neighbor, &setup.neighbor_port, &setup.macs),
+        Event::SetupStarted(setup) => {
+            e::setup_started(&setup.neighbor, &setup.neighbor_port, &setup.macs)
+        }
         Event::ConsoleOutput(output) => return console(&output.text),
         Event::WaitingForApi(wait) => e::waiting_for_api(seconds(wait.timeout), &wait.address),
         Event::SetupDone(done) => e::setup_done(&done.address),
@@ -515,7 +530,7 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             None => e::apply_started(seconds(started.starts_in)),
         },
         Event::RadiosReprovisioned(radios) => match &radios.error {
-            None => e::radios_reprovisioned(radios.count, &radios.menu),
+            None => e::radios_reprovisioned(radios.count.into(), &radios.menu),
             Some(error) => e::radios_not_reprovisioned(&radios.menu, &problem(error)),
         },
         Event::Connecting(connecting) => e::connecting(&connecting.device),
@@ -530,44 +545,54 @@ fn describe(event: &JobEventsJobEvents) -> Html {
         Event::WatchdogNotSet(not_set) => e::watchdog_not_set(&not_set.device),
         Event::PoeChain(chain) => e::poe_chain(&chain.suppliers, &chain.consumers),
         Event::WaitingForPower(wait) => match &wait.reason {
-            PowerWait::SUPPLIER_REBOOTING => e::waiting_for_supplier(&wait.device),
-            PowerWait::CONSUMER_UPDATING => e::waiting_for_consumer(&wait.device),
+            PowerWait::SupplierRebooting => e::waiting_for_supplier(&wait.device),
+            PowerWait::ConsumerUpdating => e::waiting_for_consumer(&wait.device),
             PowerWait::Other(other) => e::waiting_for(&wait.device, other),
         },
-        Event::UpdateStart(start) => e::update_start(&start.version, &start.architecture, &start.packages),
-        Event::UpdateStepPlanned(step) => e::update_step(&step.version, &step.files, &step.uninstall),
+        Event::UpdateStart(start) => {
+            e::update_start(&start.version, &start.architecture, &start.packages)
+        }
+        Event::UpdateStepPlanned(step) => {
+            e::update_step(&step.version, &step.files, &step.uninstall)
+        }
         Event::SshPasswordLogin(ssh) if ssh.restored => e::ssh_restored(&ssh.setting, &ssh.value),
         Event::SshPasswordLogin(ssh) => e::ssh_for_upload(&ssh.setting, &ssh.value),
-        Event::PackageDownloaded(package) => e::downloaded(&package.file, package.bytes),
-        Event::PackageUploading(package) => e::uploading(&package.file, package.bytes, package.total),
+        Event::PackageDownloaded(package) => e::downloaded(&package.file, package.bytes.0),
+        Event::PackageUploading(package) => {
+            e::uploading(&package.file, package.bytes.0, package.total.0)
+        }
         Event::PackageUploaded(package) => e::uploaded(&package.file),
         Event::Reboot(reboot) => e::reboot(
             match &reboot.reason {
-                RebootReason::PACKAGES => e::Reboot::Packages,
-                RebootReason::FIRMWARE => e::Reboot::Firmware,
-                RebootReason::REQUESTED => e::Reboot::Requested,
-                RebootReason::DEVICE_MODE => e::Reboot::DeviceMode,
-                RebootReason::REPARTITION => e::Reboot::Repartition,
-                RebootReason::PARTITION => e::Reboot::Partition,
-                RebootReason::DOWNGRADE => e::Reboot::Downgrade,
-                RebootReason::APPLY_FALLBACK => e::Reboot::ApplyFallback,
+                RebootReason::Packages => e::Reboot::Packages,
+                RebootReason::Firmware => e::Reboot::Firmware,
+                RebootReason::Requested => e::Reboot::Requested,
+                RebootReason::DeviceMode => e::Reboot::DeviceMode,
+                RebootReason::Repartition => e::Reboot::Repartition,
+                RebootReason::Partition => e::Reboot::Partition,
+                RebootReason::Downgrade => e::Reboot::Downgrade,
+                RebootReason::ApplyFallback => e::Reboot::ApplyFallback,
                 RebootReason::Other(other) => e::Reboot::Other(other),
             },
             reboot.timeout / 60_000_000_000,
         ),
         Event::RouterOsRunning(running) => e::routeros_running(&running.version),
-        Event::FirmwareUpgrade(firmware) if firmware.running => e::firmware_running(&firmware.upgrade),
-        Event::FirmwareUpgrade(firmware) => e::firmware_upgrade(&firmware.current, &firmware.upgrade),
+        Event::FirmwareUpgrade(firmware) if firmware.running => {
+            e::firmware_running(&firmware.upgrade)
+        }
+        Event::FirmwareUpgrade(firmware) => {
+            e::firmware_upgrade(&firmware.current, &firmware.upgrade)
+        }
         Event::UpdateDone(done) => e::update_done(&done.from, &done.to),
         Event::Downgraded(done) => e::downgraded(&done.from, &done.to),
         Event::LeftoverCleared(cleared) => e::leftover_cleared({
-            use crate::graphql::authenticated::job_events::LeftoverAction as A;
+            use LeftoverAction as A;
             match &cleared.action {
-                A::STOP_APPLY_FALLBACK => e::Cleared::StopApplyFallback,
-                A::APPLY_FALLBACK_NOW => e::Cleared::ApplyFallbackNow,
-                A::STOP_UPDATE_FALLBACK => e::Cleared::StopUpdateFallback,
-                A::RESTORE_WATCHDOGS => e::Cleared::RestoreWatchdogs,
-                A::REMOVE_PACKAGES => e::Cleared::RemovePackages,
+                A::StopApplyFallback => e::Cleared::StopApplyFallback,
+                A::ApplyFallbackNow => e::Cleared::ApplyFallbackNow,
+                A::StopUpdateFallback => e::Cleared::StopUpdateFallback,
+                A::RestoreWatchdogs => e::Cleared::RestoreWatchdogs,
+                A::RemovePackages => e::Cleared::RemovePackages,
                 A::Other(other) => e::Cleared::Other(other),
             }
         }),
@@ -576,14 +601,16 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             confirm.timeout / 60_000_000_000,
         ),
         Event::PowerCycled(cycled) => {
-            e::power_cycled(&cycled.supplier, &cycled.port, &cycled.device, cycled.seconds)
+            e::power_cycled(&cycled.supplier, &cycled.port, &cycled.device, cycled.seconds.into())
         }
         Event::PartitionRunning(running) => e::partition_running(&running.name, &running.version),
         Event::UpdateFallbackArmed(armed) => {
             e::update_fallback_armed(&armed.partition, &armed.version, seconds(armed.delay) / 60)
         }
         Event::UpdateFallbackDisarmed(disarmed) => e::update_fallback_disarmed(&disarmed.partition),
-        Event::UpdateWithoutFallback(without) => e::update_without_fallback(without.partitions, &without.neighbors),
+        Event::UpdateWithoutFallback(without) => {
+            e::update_without_fallback(without.partitions.into(), &without.neighbors)
+        }
         Event::OspfNeighborsBack(back) => e::ospf_neighbors_back(&back.neighbors),
         Event::WatchdogSuspended(suspended) => e::watchdog_suspended(
             &suspended.device,
@@ -615,19 +642,24 @@ fn describe(event: &JobEventsJobEvents) -> Html {
             written
                 .changes
                 .iter()
-                .map(|change| (change.field.as_str(), change.value.as_deref(), change.previous.as_deref())),
+                .map(|c| (c.field.as_str(), c.value.as_deref(), c.previous.as_deref())),
         ),
         Event::NetboxUndone(undone) if undone.deleted => e::netbox_deleted(&undone.display),
         Event::NetboxUndone(undone) if undone.recreated => {
             e::netbox_recreated(&undone.display, &undone.path)
         }
         Event::NetboxUndone(undone) => e::netbox_restored(&undone.display),
-        Event::RepartitionStarted(started) => e::repartition_started(started.count, started.files),
+        Event::RepartitionStarted(started) => {
+            e::repartition_started(started.count.into(), started.files.into())
+        }
         Event::Repartitioned(done) => e::repartitioned(
             &done
                 .partitions
                 .iter()
-                .map(|p| crate::i18n::device::partition(&p.name, &p.version, p.size_mib, false, p.running))
+                .map(|p| {
+                    let size = p.size_mib.into();
+                    crate::i18n::device::partition(&p.name, &p.version, size, false, p.running)
+                })
                 .collect::<Vec<_>>(),
             &done.missing_files,
         ),
@@ -639,17 +671,17 @@ fn describe(event: &JobEventsJobEvents) -> Html {
 }
 
 /// The features of a device-mode change, each with why it is needed.
-fn features<'a>(changes: impl Iterator<Item = (&'a str, &'a job_events::DeviceModeReason)>) -> Vec<String> {
+fn features<'a>(changes: impl Iterator<Item = (&'a str, &'a DeviceModeReason)>) -> Vec<String> {
     use crate::i18n::common::{DeviceModeNeed, device_mode_feature};
     changes
         .map(|(feature, reason)| {
             device_mode_feature(
                 feature,
                 match reason {
-                    job_events::DeviceModeReason::APPLY_FALLBACK => DeviceModeNeed::ApplyFallback,
-                    job_events::DeviceModeReason::MANAGEMENT_PROXY => DeviceModeNeed::ManagementProxy,
-                    job_events::DeviceModeReason::UPDATE_FALLBACK => DeviceModeNeed::UpdateFallback,
-                    job_events::DeviceModeReason::Other(other) => DeviceModeNeed::Other(other),
+                    DeviceModeReason::ApplyFallback => DeviceModeNeed::ApplyFallback,
+                    DeviceModeReason::ManagementProxy => DeviceModeNeed::ManagementProxy,
+                    DeviceModeReason::UpdateFallback => DeviceModeNeed::UpdateFallback,
+                    DeviceModeReason::Other(other) => DeviceModeNeed::Other(other),
                 },
             )
         })

@@ -15,7 +15,9 @@ Umgestellt (Module unter `graphql/authenticated/`): `DeviceJournal` (`history`),
 `InterfaceLiveSubscription` und `RefreshInterfaceLive` (`interface_live`), `DiffSite`,
 `SiteDiffJobs`, `SiteDiffKnown` und `SiteDiffEvents` (`site_diff`), `BatchCandidates`, `BatchDevice`
 und `ApplyBatch` (`batch_apply`; `ErrorInfo`, `JobState` und `ApplyWarning` in `types`),
-`NetworkMap`, `NetworkMapDetails` und `PublishLayout` (`network_map`; `PoeProblem` in `types`). Ein
+`NetworkMap`, `NetworkMapDetails` und `PublishLayout` (`network_map`; `PoeProblem` in `types`),
+`ListCredentials` (`adjust_target`), `JobEvents` und `CancelJob` (`job`; die Phasen eines Jobs als
+`types::JobPhase`, auch für `SavedJobs`). Ein
 `Int`, das das Backend aus einem `u64` füllt und das über 32 Bit gehen kann, liest das Frontend als
 `types::WideInt` (Z38). Die Befunde sind damit ein Typ, wo sie bisher pro Abfrage einer waren und
 über JSON umgewandelt wurden. Offen danach: `describe_warning` steht in `pages/devices/show.rs` und

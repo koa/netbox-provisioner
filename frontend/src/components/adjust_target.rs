@@ -1,9 +1,8 @@
 use crate::error::FrontendError;
 use crate::i18n::target as t;
-use crate::graphql::authenticated::{AdjustTargetListCredentials, adjust_target_list_credentials};
-use crate::graphql::query_authenticated_response;
+use crate::graphql::{authenticated::adjust_target::ListCredentials, request};
 use crate::components::menu::popup::Select;
-use log::error;
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{
     Form, FormGroup, FormGroupValidated, InputState, TextInput, ValidationContext,
     ValidationResult, Validator,
@@ -52,6 +51,8 @@ pub struct SelectedTarget {
 pub struct AdjustTarget {
     callback: Callback<SelectedTarget>,
     available_credentials: Box<[Box<str>]>,
+    /// the credentials couldn't be read
+    credentials_error: Option<FrontendError>,
     selected_credential: Box<str>,
     current_ip_address: Box<str>,
     adhoc_username: Box<str>,
@@ -130,7 +131,7 @@ pub enum AdjustTargetMsg {
     UpdateSelectedCredential(Box<str>),
     UpdateUsername(String),
     UpdatePassword(String),
-    AvailableCredentials(Box<[Box<str>]>),
+    AvailableCredentials(Result<Box<[Box<str>]>, FrontendError>),
 }
 
 impl Component for AdjustTarget {
@@ -144,6 +145,7 @@ impl Component for AdjustTarget {
         Self {
             callback: props.onchange.clone(),
             available_credentials: Box::new([]),
+            credentials_error: None,
             selected_credential,
             current_ip_address,
             adhoc_username,
@@ -174,7 +176,12 @@ impl Component for AdjustTarget {
                 self.update_selected_target();
                 true
             }
-            AdjustTargetMsg::AvailableCredentials(list) => {
+            AdjustTargetMsg::AvailableCredentials(Err(error)) => {
+                self.credentials_error = Some(error);
+                true
+            }
+            AdjustTargetMsg::AvailableCredentials(Ok(list)) => {
+                self.credentials_error = None;
                 self.available_credentials = list;
                 self.update_selected_target();
                 true
@@ -264,6 +271,7 @@ impl Component for AdjustTarget {
                 </FormGroupValidated<TextInput>>
                 <FormGroup label={t::CREDENTIALS}>
                     <Select<Box<str>> selected={selected_credential} entries={defined_credentials} onselect={on_change_credential}/>
+                    {self.credentials_error.as_ref().map(FrontendError::to_html)}
                 </FormGroup>
                 <FormGroup label={t::USERNAME}>
                     <TextInput disabled={!enable_adhoc} onchange={on_change_username} value={username} />
@@ -279,12 +287,8 @@ impl Component for AdjustTarget {
         if first_render {
             let scope = ctx.link().clone();
             spawn_local(async move {
-                match fetch_known_credentials(scope.clone()).await {
-                    Ok(list) => scope.send_message(AdjustTargetMsg::AvailableCredentials(list)),
-                    Err(e) => {
-                        error!("Failed to fetch available credentials. {}", e)
-                    }
-                }
+                let list = fetch_known_credentials(scope.clone()).await;
+                scope.send_message(AdjustTargetMsg::AvailableCredentials(list));
             })
         }
     }
@@ -293,15 +297,6 @@ impl Component for AdjustTarget {
 async fn fetch_known_credentials(
     scope: Scope<AdjustTarget>,
 ) -> Result<Box<[Box<str>]>, FrontendError> {
-    let response = query_authenticated_response::<AdjustTargetListCredentials, _>(
-        scope.clone(),
-        adjust_target_list_credentials::Variables {},
-    )
-    .await?;
-    Ok(response
-        .data
-        .into_iter()
-        .flat_map(|d| d.list_credentials.into_iter())
-        .map(Box::from)
-        .collect())
+    let data = request(scope, ListCredentials::build(())).await?;
+    Ok(data.list_credentials.into_iter().map(Box::from).collect())
 }

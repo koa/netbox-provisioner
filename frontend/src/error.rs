@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 
 use crate::{
-    graphql::authenticated::{device_overview, job_events, types::ErrorInfo},
+    graphql::authenticated::{device_overview, types::ErrorInfo},
     i18n::error as t,
 };
 use patternfly_yew::prelude::{Alert, AlertGroup, AlertType};
@@ -90,7 +90,7 @@ macro_rules! problem_from {
         }
     )*};
 }
-problem_from!(job_events::Problem, device_overview::Problem, ErrorInfo);
+problem_from!(device_overview::Problem, ErrorInfo);
 
 pub struct JavascriptError {
     original_value: JsValue,

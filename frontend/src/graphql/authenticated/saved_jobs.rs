@@ -1,8 +1,5 @@
 //! The jobs saved before a restart that didn't go on (`components::saved_jobs`).
-use super::{
-    schema::schema,
-    types::{ApplyState, UpdateState},
-};
+use super::{schema::schema, types::JobPhase};
 
 #[derive(cynic::QueryFragment, Debug)]
 #[cynic(schema = "authenticated", graphql_type = "QueryAuthenticated")]
@@ -20,31 +17,7 @@ pub struct Waiting {
     pub age: Option<u64>,
     pub unreadable: Option<String>,
     pub held_back: Option<HeldBack>,
-    pub phase: Option<Phase>,
-}
-
-/// The state it was saved in: only an apply's or an update's go on after a restart.
-#[derive(cynic::InlineFragments, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated", graphql_type = "JobPhaseObject")]
-pub enum Phase {
-    ApplyPhase(ApplyPhase),
-    UpdatePhase(UpdatePhase),
-    #[cynic(fallback)]
-    Other,
-}
-
-#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
-pub struct ApplyPhase {
-    #[cynic(alias, rename = "state")]
-    pub apply: ApplyState,
-}
-
-#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
-pub struct UpdatePhase {
-    #[cynic(alias, rename = "state")]
-    pub update: UpdateState,
+    pub phase: Option<JobPhase>,
 }
 
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]

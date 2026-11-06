@@ -67,6 +67,9 @@ pub fn other_state(what: &str, state: &str) -> String {
 pub mod event {
     use crate::common::list;
 
+    /// an event this page doesn't know yet (an older page than the provisioner)
+    pub const UNKNOWN: &str = "Ein Ereignis, das diese Seite noch nicht kennt: neu laden.";
+
     pub const NOTHING_TO_DO: &str = "Nichts zu tun: das Gerät entspricht NetBox";
     pub const IN_LINE: &str = "Das Gerät entspricht NetBox";
     pub const FALLBACK_STOPPED: &str =
@@ -125,8 +128,8 @@ pub mod event {
         pub error: Option<(u32, &'a str)>,
         /// the provisioner's address, and whether it answered before the script
         pub probe: Option<(&'a str, bool)>,
-        pub lost: &'a [i64],
-        pub back: &'a [i64],
+        pub lost: &'a [u32],
+        pub back: &'a [u32],
         pub rearmed: Option<u64>,
         pub after_fallback: bool,
     }
@@ -304,10 +307,10 @@ pub mod event {
     pub fn ssh_for_upload(setting: &str, value: &str) -> String {
         format!("SSH: {setting}={value} für die Anmeldung mit Passwort (der Benutzer hat SSH-Schlüssel)")
     }
-    pub fn downloaded(file: &str, bytes: i64) -> String {
+    pub fn downloaded(file: &str, bytes: u64) -> String {
         format!("{file}: {:.1} MB heruntergeladen", bytes as f64 / 1_000_000.0)
     }
-    pub fn uploading(file: &str, bytes: i64, total: i64) -> String {
+    pub fn uploading(file: &str, bytes: u64, total: u64) -> String {
         if bytes == 0 {
             return format!("{file}: Gerät nimmt die Datei an, Übertragung beginnt");
         }
