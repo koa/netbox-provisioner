@@ -7,6 +7,7 @@ use crate::graphql::authenticated::{
     network_map::{MapEdge, MapNode},
     types::{DeviceRef, InterfaceRef},
 };
+use std::collections::BTreeMap;
 
 /// Two edges crossing like a square's diagonals: swapping either diagonal's endpoints with the
 /// other's untangles them into two non-crossing sides, which the local search should find.
