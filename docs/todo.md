@@ -20,14 +20,13 @@ kleiner geworden.
 Die Bereinigungen aus der Durchsicht vom 2026-11-06, je ein Commit, Tests und clippy grün,
 das Verhalten unverändert (die Fehler B12 und B13 sind behoben):
 
-1. **Gerät-Ziel als ein Input:** B15 (B14 erledigt). Vor dem Verschieben der Module.
-2. **Module ordnen:** B16 (Wiederaufnehmen raus aus `graphql/mod.rs`), dann B17 (Apply raus
+1. **Module ordnen:** B16 (Wiederaufnehmen raus aus `graphql/mod.rs`), dann B17 (Apply raus
    aus `ros/graphql.rs`). Reines Verschieben, danach sind die Dateien überschaubar.
-3. **Lange Funktionen teilen:** B18 (`helper/write.rs`), B19 (`ros/mod.rs`), B20
+2. **Lange Funktionen teilen:** B18 (`helper/write.rs`), B19 (`ros/mod.rs`), B20
    (`build_topology_from`), B21 (Geräteseite), B22 (Layout der Netzkarte, vor E21). In dieser
    Folge, weil die ersten am meisten Fehlerrisiko tragen; jede für sich, keine hängt an einer
    anderen.
-4. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
+3. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
 
 ## Entscheidungen
 
@@ -68,7 +67,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B15 | Die Körper dieser Mutationen sind gleich (Gerät holen, `PowerChain::of`, `job::start` mit `connect_for_job`, `log.enter`): ein Helfer `start_device_job(kind, state, target, \|link, log\| …)` | S | offen |
 | B16 | Wiederaufnehmen gespeicherter Jobs nach einem Neustart aus `graphql/mod.rs` nach `saved_job` (oder `job/resume.rs`): `resume_saved_jobs`, `resume_batch`, `saved_update`, `connect_until`, `resume_apply`, `resume_update`, `Watchers`, `restore_watchdogs` (rund 250 Zeilen); `graphql/mod.rs` behält nur Schema und Resolver | S | offen |
 | B17 | `device/ros/graphql.rs` (1912 Zeilen) aufteilen: darin stehen die Generierung (`DeviceCfg`, `render_script`), der ganze Apply-Ablauf (`impl AccessibleDevice`, `apply`, `apply_planned`, `provision_radios`, `reprovision`), seine Events (`ApplyPlanned` … `RadiosReprovisioned`), Log und RouterOS-Versionen; `job.rs` importiert es bezeichnenderweise als `ros::graphql as apply`. Vorschlag `ros/cfg.rs`, `ros/apply.rs` (Ablauf und Events), `graphql.rs` nur mit den Resolvern | M | offen |
 | B18 | `helper/write.rs` `write` (381 Zeilen, kognitive Komplexität 54): der `match` über alle `PlanStep`s inline; je Schritt eine Funktion (oder Methode am Schritt). Die Update-Funktionen enden dreimal gleich mit `rest.update` und `NetboxWritten` (Zeilen 660, 794, 846): eine gemeinsame `write_update` | M | offen |

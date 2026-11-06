@@ -273,6 +273,36 @@ impl Guard for NetboxWritesAllowed {
     }
 }
 
+/// Starts a job of `kind` on `device` for the user of `ctx`: it enters `state` (where its kind
+/// begins with one), connects through `target` (`connect_for_job`) and does `work` with the
+/// connection, the device, its PoE chain and the log.
+fn start_device_job<F, W>(
+    ctx: &Context<'_>,
+    device: DeviceAccess,
+    kind: JobKind,
+    state: Option<JobPhase>,
+    target: Option<DeviceTarget>,
+    work: W,
+) -> Result<Arc<Job>, ApiError>
+where
+    W: FnOnce(AccessibleDevice, DeviceAccess, PowerChain, Log) -> F + Send + 'static,
+    F: Future<Output = Result<(), Error>> + Send + 'static,
+{
+    let power = PowerChain::of(&device);
+    Ok(job::start(
+        &device.clone(),
+        kind,
+        Started::By(user_label(ctx)),
+        |log| async move {
+            if let Some(state) = state {
+                log.enter(state);
+            }
+            let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
+            work(link, device, power, log).await
+        },
+    )?)
+}
+
 /// Connects to `device` for a job, which shows where it got to: a connection that takes long
 /// (the NetBox address first, then each neighbor's tunnel) is otherwise a job without events.
 pub(crate) async fn connect_for_job(
@@ -787,17 +817,15 @@ impl MutationAuthenticated {
         without_fallback: Option<bool>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
-        let power = PowerChain::of(&device);
         let way_back = update_fallback::WayBack::of(&device, without_fallback == Some(true));
         let watchers = Watchers::of(&device, suspend_watchdogs == Some(true));
-        Ok(job::start(
-            &device.clone(),
+        start_device_job(
+            ctx,
+            device,
             JobKind::Update,
-            Started::By(user_label(ctx)),
-            |log| async move {
-                log.enter(UpdateState::Reading);
-                let access = device.clone();
-                let device = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
+            Some(UpdateState::Reading.into()),
+            target,
+            move |device, access, power, log| async move {
                 let wanted = device.wanted_packages().await?;
                 let version = match channel {
                     Some(channel) => update::newest(7, channel).await?,
@@ -829,7 +857,7 @@ impl MutationAuthenticated {
                 restore_watchdogs(suspended, &log, UpdateState::RestoringWatchdogs).await;
                 updated
             },
-        )?)
+        )
     }
     /// Starts taking RouterOS 7 on device `id` back to the older `version` (`allow_apply` must
     /// be set): the packages it runs, of that version, then `/system/package/downgrade`. The
@@ -848,16 +876,15 @@ impl MutationAuthenticated {
         let device = self.device(id).await?;
         let version =
             update::Version::parse(&version).ok_or_else(|| Error::NoVersion(version.into()))?;
-        let power = PowerChain::of(&device);
         let way_back = update_fallback::WayBack::of(&device, without_fallback == Some(true));
         let watchers = Watchers::of(&device, suspend_watchdogs == Some(true));
-        Ok(job::start(
-            &device.clone(),
+        start_device_job(
+            ctx,
+            device,
             JobKind::Downgrade,
-            Started::By(user_label(ctx)),
-            |log| async move {
-                log.enter(UpdateState::Reading);
-                let device = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
+            Some(UpdateState::Reading.into()),
+            target,
+            move |device, _, power, log| async move {
                 let suspended = watchers
                     .suspend(&log, UpdateState::SuspendingWatchdogs)
                     .await?;
@@ -866,7 +893,7 @@ impl MutationAuthenticated {
                 restore_watchdogs(suspended, &log, UpdateState::RestoringWatchdogs).await;
                 downgraded
             },
-        )?)
+        )
     }
     /// Starts switching off and on the PoE of the device feeding device `id`
     /// (`DeviceAccess.powerSupply`; `allow_apply` must be set): a cold boot, which confirms a
@@ -916,7 +943,6 @@ impl MutationAuthenticated {
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let name: Box<str> = device.name().into();
-        let power = PowerChain::of(&device);
         if action == crate::device::leftovers::LeftoverAction::RestoreWatchdogs
             && let Some(held) = job::holding_watchdogs(&name)
         {
@@ -926,15 +952,16 @@ impl MutationAuthenticated {
             }
             .into());
         }
-        Ok(job::start(
-            &device.clone(),
+        start_device_job(
+            ctx,
+            device,
             JobKind::Cleanup,
-            Started::By(user_label(ctx)),
-            |log| async move {
-                let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
+            None,
+            target,
+            move |link, _, power, log| async move {
                 crate::device::leftovers::clear(&link, &name, action, &power, &log).await
             },
-        )?)
+        )
     }
     /// Starts a reboot of a device (`allow_apply` must be set) and waits until it is back.
     /// Target and credentials as for `DeviceAccess.access`.
@@ -945,18 +972,14 @@ impl MutationAuthenticated {
         id: u32,
         target: Option<DeviceTarget>,
     ) -> Result<Arc<Job>, ApiError> {
-        let device = self.device(id).await?;
-        let power = PowerChain::of(&device);
-        Ok(job::start(
-            &device.clone(),
+        start_device_job(
+            ctx,
+            self.device(id).await?,
             JobKind::Reboot,
-            Started::By(user_label(ctx)),
-            |log| async move {
-                log.enter(RebootState::Reading);
-                let device = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
-                update::reboot(&device, &power, &log).await
-            },
-        )?)
+            Some(RebootState::Reading.into()),
+            target,
+            |link, _, power, log| async move { update::reboot(&link, &power, &log).await },
+        )
     }
     /// Starts turning on the features of the device mode the provisioner needs
     /// (`DeviceAccess.access.deviceMode.changes`; `allow_apply` must be set). The device asks for
@@ -969,18 +992,16 @@ impl MutationAuthenticated {
         id: u32,
         target: Option<DeviceTarget>,
     ) -> Result<Arc<Job>, ApiError> {
-        let device = self.device(id).await?;
-        let power = PowerChain::of(&device);
-        Ok(job::start(
-            &device.clone(),
+        start_device_job(
+            ctx,
+            self.device(id).await?,
             JobKind::DeviceMode,
-            Started::By(user_label(ctx)),
-            |log| async move {
-                log.enter(DeviceModeState::Reading);
-                let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
+            Some(DeviceModeState::Reading.into()),
+            target,
+            |link, device, power, log| async move {
                 device_mode::change(&link, &device, &power, &log).await
             },
-        )?)
+        )
     }
     /// Starts splitting the flash in two partitions (`DeviceAccess.access.partitions.canSplit`;
     /// `allow_apply` must be set): the device reformats its flash and reboots. Target and
@@ -992,18 +1013,14 @@ impl MutationAuthenticated {
         id: u32,
         target: Option<DeviceTarget>,
     ) -> Result<Arc<Job>, ApiError> {
-        let device = self.device(id).await?;
-        let power = PowerChain::of(&device);
-        Ok(job::start(
-            &device.clone(),
+        start_device_job(
+            ctx,
+            self.device(id).await?,
             JobKind::Repartition,
-            Started::By(user_label(ctx)),
-            |log| async move {
-                log.enter(RebootState::Reading);
-                let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
-                partitions::repartition(&link, &power, &log).await
-            },
-        )?)
+            Some(RebootState::Reading.into()),
+            target,
+            |link, _, power, log| async move { partitions::repartition(&link, &power, &log).await },
+        )
     }
     /// Starts booting the device from `partition` (one of `DeviceAccess.access.partitions` with
     /// a RouterOS on it; `allow_apply` must be set), e.g. back to the RouterOS from before an
@@ -1016,18 +1033,16 @@ impl MutationAuthenticated {
         partition: Box<str>,
         target: Option<DeviceTarget>,
     ) -> Result<Arc<Job>, ApiError> {
-        let device = self.device(id).await?;
-        let power = PowerChain::of(&device);
-        Ok(job::start(
-            &device.clone(),
+        start_device_job(
+            ctx,
+            self.device(id).await?,
             JobKind::BootPartition,
-            Started::By(user_label(ctx)),
-            |log| async move {
-                log.enter(RebootState::Reading);
-                let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
+            Some(RebootState::Reading.into()),
+            target,
+            move |link, _, power, log| async move {
                 partitions::boot_from(&link, &power, &partition, &log).await
             },
-        )?)
+        )
     }
     /// Stops a job (`Query.job`) at the next point where that is safe: an update between its
     /// steps or while it waits, removing the packages it uploaded unless the device reboots
@@ -1109,18 +1124,14 @@ impl MutationAuthenticated {
         id: u32,
         target: Option<DeviceTarget>,
     ) -> Result<Arc<Job>, ApiError> {
-        let device = self.device(id).await?;
-        Ok(job::start(
-            &device.clone(),
+        start_device_job(
+            ctx,
+            self.device(id).await?,
             JobKind::Apply,
-            Started::By(user_label(ctx)),
-            |log| async move {
-                connect_for_job(&device, target.unwrap_or_default(), &log)
-                    .await?
-                    .apply(&log)
-                    .await
-            },
-        )?)
+            None,
+            target,
+            |link, _, _, log| async move { link.apply(&log).await },
+        )
     }
 }
 #[Object]
