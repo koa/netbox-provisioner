@@ -55,6 +55,7 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 | B8 | mikrotik-model: Der Generator gibt die Enums jedes Mal in anderer Reihenfolge aus (HashMap); Diffs des erzeugten Codes unlesbar, vermutlich unnötiges Neukompilieren | S | 2026-10-23 (mikrotik-model „generate the same code on every build“) |
 | B10 | `graphql_client` 0.16 von crates.io statt des Forks (`Chrisss93/graphql-client`, Branch `reqwest-upgrade`) prüfen; nur als Übergang, bis C4 den Fork ablöst (Z6) | S | 2026-10-23 („take graphql_client from crates.io“): ohne Features, `json` direkt an reqwest; Topologie aus der Lab-NetBox und Site-Seite im Browser geprüft |
 | B11 | Gemeinsames Crate `i18n` für Frontend und Backend: die Module mit einfachen Werten zogen um, Fehler als Trait `i18n::error::Problem`; `findings`, `neighbors`, `target`, `interfaces` bleiben im Frontend (Z32) | M | 2026-10-25 („move the texts into a crate shared with the backend“) |
+| B12 | NetBox-REST-Abfragen setzten Namen ohne URL-Kodierung in die Query (`Keller #2` wurde zu `?name=Keller `, `+` zu einem Leerzeichen): `NetboxRest::find(path, filters)` übergibt die Filter über `.query(…)`, alle Abfragen mit Werten der Helfer gehen darüber; Test mit `#`, `&` und `+` | S | 2026-11-06 („encode the filters of netbox rest queries“) |
 
 ## C. Konzepte
 

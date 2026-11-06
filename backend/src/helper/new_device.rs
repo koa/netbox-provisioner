@@ -237,7 +237,7 @@ async fn read_facts(router: &DeviceAccess, input: &NewDeviceInput) -> Result<Fac
         .get(&format!("dcim/device-types/{}/", input.device_type))
         .await?;
     let role = rest.get(&format!("dcim/device-roles/{}/", input.role)).await?;
-    let platform = rest.get(&format!("dcim/platforms/?name={PLATFORM}")).await?;
+    let platform = rest.find("dcim/platforms/", &[("name", PLATFORM)]).await?;
     let neighbor = rest.get(&format!("dcim/devices/{}/", router.id().0)).await?;
     let mut tenant_id = neighbor["tenant"]["id"].as_u64();
     if tenant_id.is_none()

@@ -4,7 +4,7 @@
 use super::{NetboxError, authorization_header, web_url};
 use crate::config::CONFIG;
 use reqwest::{
-    Method,
+    Method, RequestBuilder,
     header::{ACCEPT, AUTHORIZATION, HeaderMap},
 };
 use serde_json::{Map, Value};
@@ -53,20 +53,25 @@ impl NetboxRest {
 
     /// `path` below `api/`, e.g. `ipam/prefixes/1/available-ips/`.
     pub async fn get(&self, path: &str) -> Result<Value, NetboxError> {
-        self.send(Method::GET, path, None).await
+        self.send(Method::GET, path, &[], None).await
+    }
+    /// The objects below `path` (e.g. `dcim/devices/`) matching `filters`, which go into the
+    /// URL encoded: a name may hold `#`, `&` or `+`.
+    pub async fn find(&self, path: &str, filters: &[(&str, &str)]) -> Result<Value, NetboxError> {
+        self.send(Method::GET, path, filters, None).await
     }
     /// Creates an object, returns it as NetBox does (with its `id`).
     pub async fn create(&self, path: &str, object: Value) -> Result<Value, NetboxError> {
-        self.send(Method::POST, path, Some(self.with_message(object)))
+        self.send(Method::POST, path, &[], Some(self.with_message(object)))
             .await
     }
     /// Changes the fields of `object` (`PATCH`), returns the object.
     pub async fn update(&self, path: &str, object: Value) -> Result<Value, NetboxError> {
-        self.send(Method::PATCH, path, Some(self.with_message(object)))
+        self.send(Method::PATCH, path, &[], Some(self.with_message(object)))
             .await
     }
     pub async fn delete(&self, path: &str) -> Result<(), NetboxError> {
-        self.send(Method::DELETE, path, Some(self.with_message(Value::Object(Map::new()))))
+        self.send(Method::DELETE, path, &[], Some(self.with_message(Value::Object(Map::new()))))
             .await
             .map(|_| ())
     }
@@ -81,9 +86,10 @@ impl NetboxRest {
         &self,
         method: Method,
         path: &str,
+        filters: &[(&str, &str)],
         body: Option<Value>,
     ) -> Result<Value, NetboxError> {
-        let mut request = self.client.request(method, format!("{}{path}", self.api));
+        let mut request = self.request(method, path, filters);
         if let Some(body) = &body {
             request = request.json(body);
         }
@@ -104,5 +110,34 @@ impl NetboxRest {
             error: error.to_string().into(),
             body: text.chars().take(300).collect::<String>().into(),
         })
+    }
+    fn request(&self, method: Method, path: &str, filters: &[(&str, &str)]) -> RequestBuilder {
+        let request = self.client.request(method, format!("{}{path}", self.api));
+        if filters.is_empty() {
+            request
+        } else {
+            request.query(filters)
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn filters_are_url_encoded() {
+        let rest = NetboxRest {
+            client: reqwest::Client::new(),
+            api: "http://netbox.example/api/".into(),
+            changelog_message: None,
+        };
+        let filters = [("name", "Keller #2 & A+B"), ("limit", "1")];
+        let request =
+            rest.request(Method::GET, "dcim/devices/", &filters).build().expect("request");
+        assert_eq!(
+            request.url().as_str(),
+            "http://netbox.example/api/dcim/devices/?name=Keller+%232+%26+A%2BB&limit=1"
+        );
     }
 }

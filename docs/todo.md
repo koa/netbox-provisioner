@@ -14,8 +14,8 @@ Status: **offen**, **in Arbeit**.
 Die Bereinigungen aus der Durchsicht vom 2026-11-06, je ein Commit, Tests und clippy grün,
 das Verhalten unverändert (ausser bei den Fehlern):
 
-1. **Fehler zuerst:** B12 (URL-Kodierung), B13 (deutsche Texte und Test der Codes). Klein,
-   für den Operator sichtbar.
+1. **Fehler zuerst:** B13 (deutsche Texte und Test der Codes). Klein, für den Operator
+   sichtbar.
 2. **Kleine Aufräumarbeiten:** B24, B25, B26. Kaum Risiko, macht die folgenden Diffs ruhiger.
 3. **cynic:** C4, Abfrage für Abfrage. Danach die Codequalität nochmals beurteilen (wie die
    Durchsicht vom 2026-11-06: clippy mit strengeren Lints, Duplikate, Modulstruktur) und die
@@ -72,7 +72,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B12 | **Fehler:** NetBox-REST-Abfragen setzen Namen ohne URL-Kodierung in die Query (`helper/write.rs:100` `dcim/devices/?name={}`, ebenso Interfaces, Adressen, Prefixe und Tags in `write.rs`, `new_device.rs:240`). Ein Gerätename wie `Keller #2` wird zu `?name=Keller ` (ab `#` Fragment), `+` zu einem Leerzeichen: Die Prüfung „gibt es schon“ fragt nach dem falschen Namen, statt `DEVICE_NAME_TAKEN` kommt ein roher `400` von NetBox. Parameter über `.query(&[…])` übergeben (z.B. `NetboxRest::find(path, params)`), mit Test für `#`, `&` und `+` | S | offen |
 | B13 | **Fehler:** 20 Fehlercodes ohne deutschen Text, das UI zeigt die englische `message` (`i18n/src/error.rs`, Fall `_`): `NO_PSK`, `NO_COUNTRY`, `UNKNOWN_COUNTRY`, `NO_RADIO_PROFILE`, `NO_WIRELESS_LINK`, `CHANNEL_WIDTH`, `FREQUENCY_MODE`, `VLAN_LOOP`, `AMBIGUOUS_VLAN_IDS`, `WLAN_VLANS_UNTAGGED`, `NETWORKS_ON_VLAN`, `DHCP_SERVERS_ON_VLAN`, `NO_VTEP_ADDRESS`, `NO_AP_MGMT_INTERFACE`, `NO_ADDRESS_ON_PREFIX`, `CONSOLE`, `DEVICE_MODEL`, `MUTATIONS`, `SCRIPT`, `NO_REACHABLE_NEIGHBOR` (letzteres als `obstacle`, heute über `_` richtig). Texte nachtragen und ein Test, der jeden Code aus `error_info.rs` gegen `i18n::error::server` prüft (die Codes sind Strings in zwei Crates, nichts hält sie gleich) | S | offen |
 | B14 | Gerät-Ziel als ein GraphQL-Input: `target`, `credentialName`, `adhocCredentials` stehen einzeln in 8 Mutationen (`graphql/mod.rs`, `apply_cfg`, `reboot_device`, `change_device_mode`, `repartition_device`, `boot_partition`, `clear_leftover`, Updates); ein InputObject `DeviceTarget`. Im Frontend fallen damit die 6 fast gleichen Funktionen in `pages/devices/show.rs` (`reboot`, `change_mode`, `repartition`, `boot_from`, `clear`, `apply`, je mit eigenem `AdhocCredentials`) auf eine Umwandlung von `SelectedTarget` zusammen. Schema-Änderung: Backend und Frontend im selben Commit | M | offen |
 | B15 | Die Körper dieser Mutationen sind gleich (Gerät holen, `PowerChain::of`, `job::start` mit `connect_for_job`, `log.enter`): ein Helfer `start_device_job(kind, state, target, \|link, log\| …)` | S | offen |

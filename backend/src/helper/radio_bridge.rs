@@ -693,7 +693,7 @@ pub(super) async fn next_free_network(
                 continue;
             }
             let addresses = rest
-                .get(&format!("ipam/ip-addresses/?parent={net}&limit=1"))
+                .find("ipam/ip-addresses/", &[("parent", &net.to_string()), ("limit", "1")])
                 .await?;
             if addresses["count"].as_u64() == Some(0) {
                 return Ok((pool, net));

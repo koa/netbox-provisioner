@@ -97,7 +97,7 @@ pub async fn write(
             .ok_or_else(|| Error::NetboxChanged(plan.description.clone()))?;
         let id = match step {
             PlanStep::CreateDevice(create) => {
-                let existing = rest.get(&format!("dcim/devices/?name={}", create.name)).await?;
+                let existing = rest.find("dcim/devices/", &[("name", &create.name)]).await?;
                 if existing["count"].as_u64() != Some(0) {
                     return Err(Error::NetboxChanged(
                         format!("{} exists already", create.name).into(),
@@ -122,10 +122,10 @@ pub async fn write(
             }
             PlanStep::CreateInterface(create) => {
                 let existing = rest
-                    .get(&format!(
-                        "dcim/interfaces/?device_id={}&name={}",
-                        create.device.id, create.name
-                    ))
+                    .find(
+                        "dcim/interfaces/",
+                        &[("device_id", &create.device.id.to_string()), ("name", &create.name)],
+                    )
                     .await?;
                 // from the device type: taken as it is, it goes with the device
                 if on_new_device && let Some(id) = existing["results"][0]["id"].as_u64() {
@@ -174,7 +174,7 @@ pub async fn write(
                 let interface = resolve(&created, create.on)
                     .ok_or_else(|| Error::NetboxChanged(create.interface.clone()))?;
                 let host = create.address.split('/').next().unwrap_or_default();
-                let existing = rest.get(&format!("ipam/ip-addresses/?address={host}")).await?;
+                let existing = rest.find("ipam/ip-addresses/", &[("address", host)]).await?;
                 if existing["count"].as_u64() != Some(0) {
                     return Err(Error::NetboxChanged(
                         format!("{} is taken", create.address).into(),
@@ -251,9 +251,9 @@ pub async fn write(
                 Some(logged_create(log, "dcim/cables", &object)?)
             }
             PlanStep::CreatePrefix(create) => {
-                let prefixes = rest.get(&format!("ipam/prefixes/?prefix={}", create.prefix)).await?;
+                let prefixes = rest.find("ipam/prefixes/", &[("prefix", &create.prefix)]).await?;
                 let addresses = rest
-                    .get(&format!("ipam/ip-addresses/?parent={}&limit=1", create.prefix))
+                    .find("ipam/ip-addresses/", &[("parent", &create.prefix), ("limit", "1")])
                     .await?;
                 if prefixes["count"].as_u64() != Some(0) || addresses["count"].as_u64() != Some(0)
                 {
@@ -332,7 +332,10 @@ pub async fn write(
                 let path = format!("dcim/interfaces/{}/", interface.id);
                 let current = rest.get(&path).await?;
                 let addresses = rest
-                    .get(&format!("ipam/ip-addresses/?interface_id={}&limit=1", interface.id))
+                    .find(
+                        "ipam/ip-addresses/",
+                        &[("interface_id", &interface.id.to_string()), ("limit", "1")],
+                    )
                     .await?;
                 if current["name"].as_str() != Some(&*interface.name)
                     || current["device"]["id"].as_u64() != Some(interface.device.id.into())
@@ -428,7 +431,7 @@ pub async fn write(
                 let path = format!("ipam/prefixes/{}/", delete.id);
                 let current = rest.get(&path).await?;
                 let addresses = rest
-                    .get(&format!("ipam/ip-addresses/?parent={}&limit=1", delete.prefix))
+                    .find("ipam/ip-addresses/", &[("parent", &delete.prefix), ("limit", "1")])
                     .await?;
                 if current["prefix"].as_str() != Some(&*delete.prefix)
                     || addresses["count"].as_u64() != Some(0)
@@ -859,7 +862,7 @@ async fn update_wireless_link(
 async fn tag_ids(rest: &NetboxRest, tags: &[flags::InterfaceTag]) -> Result<Vec<Value>, Error> {
     let mut ids = Vec::new();
     for tag in tags {
-        let found = rest.get(&format!("extras/tags/?slug={}", tag.slug())).await?;
+        let found = rest.find("extras/tags/", &[("slug", tag.slug())]).await?;
         let id = found["results"][0]["id"].clone();
         if id.is_null() {
             return Err(Error::TagMissing(tag.slug().into()));
