@@ -247,7 +247,19 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   vertauscht danach ganze Sites samt Geräten, wo das die Kreuzungen der echten Gerätekanten senkt,
   dazu die Kanten, die durch einen dritten Site-Kreis laufen (`count_intrusions`). Auf dem
   Site-Graphen treffen sich alle Kanten einer Site in ihrem einen Punkt und gelten nie als
-  Kreuzung, darum diese zweite Runde auf Geräte-Ebene.
+  Kreuzung, darum diese zweite Runde auf Geräte-Ebene. **Verbindungen aus einer Site hinaus**
+  (E21, 2026-11-06): Sie liefen quer durch ihren Kreis, über die übrigen Geräte. Jetzt zählt das
+  Vertauschen in der Site die Linie zum Anker jeder fremden Site mit, wie ein Kabel, und dazu jede
+  Linie, die durch ein Gerät läuft, an dem sie nicht endet (`count_through_devices`). Ein Gerät mit
+  einer Verbindung hinaus liegt am Rand seines Kreises (`RIM`), im Winkel, den die Anker ihm
+  gaben. Haben vertauschte Sites ihre Plätze gewechselt, legt die Karte die Geräte der Sites neu
+  aus, sonst zeigten sie zum alten Platz der anderen. Zuletzt vertauscht
+  `reduce_faults_within_sites` Geräte einer Site auf den echten Kanten an den endgültigen
+  Positionen (zwei Linien zur selben Site kreuzten sich sonst unterwegs). Kennzahl im Test
+  `the_exports_map_draws_with_few_faults` auf dem Graphen des gespeicherten Exports: vorher
+  4 Kreuzungen und 3 Linien durch ein Gerät, jetzt 1 Kreuzung in Berg 1654. Das Bündeln
+  mehrerer Verbindungen zwischen zwei Sites (Ansatz 3) war dafür nicht nötig. Das Lab hat nur
+  eine Site und zeigt diese Darstellung nicht.
 - **Export:** „Als SVG exportieren“ und „Als PNG exportieren“ (`svg_export.rs`) speichern die
   Karte als Datei. Die Live-`<svg>` sieht nur mit dem Stylesheet der Seite richtig aus (Klassen,
   Design-Tokens), darum wird eine Kopie mit dem berechneten Stil jedes Elements als Inline-Stil

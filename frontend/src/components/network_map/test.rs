@@ -594,3 +594,182 @@ fn the_outside_node_is_only_added_when_there_is_one() {
     assert!(nodes.contains(&OUTSIDE));
     assert_eq!(edges, [(OUTSIDE, 42)]);
 }
+
+/// The map's graph of the stored export (`docs/netbox-response-example.json`: the devices with
+/// OSPF and their cables and radio links, as `network_state::graphql::build` gives them without
+/// an LSDB), as (device, site) and edges, numbered anew without names. Site 1 is Berg 1654,
+/// with five edges leaving it (E21).
+const EXPORT_NODES: &[(i32, i32)] = &[
+    (1, 1),
+    (2, 1),
+    (3, 1),
+    (4, 1),
+    (5, 1),
+    (6, 1),
+    (7, 1),
+    (8, 1),
+    (9, 1),
+    (10, 1),
+    (11, 1),
+    (12, 2),
+    (13, 2),
+    (14, 2),
+    (15, 2),
+    (16, 2),
+    (17, 3),
+    (18, 3),
+    (19, 3),
+    (20, 3),
+    (21, 4),
+    (22, 4),
+    (23, 4),
+    (24, 4),
+    (25, 5),
+    (26, 5),
+    (27, 5),
+    (28, 5),
+    (29, 6),
+    (30, 6),
+    (31, 6),
+    (32, 7),
+    (33, 7),
+    (34, 7),
+    (35, 8),
+    (36, 8),
+    (37, 8),
+    (38, 9),
+    (39, 9),
+    (40, 10),
+    (41, 10),
+    (42, 11),
+    (43, 12),
+];
+const EXPORT_EDGES: &[(i32, i32)] = &[
+    (1, 2),
+    (1, 6),
+    (1, 9),
+    (1, 21),
+    (2, 3),
+    (2, 11),
+    (2, 33),
+    (3, 4),
+    (3, 8),
+    (5, 6),
+    (5, 8),
+    (5, 10),
+    (5, 32),
+    (5, 42),
+    (6, 7),
+    (8, 22),
+    (12, 13),
+    (12, 20),
+    (13, 14),
+    (13, 15),
+    (13, 16),
+    (14, 25),
+    (15, 36),
+    (17, 18),
+    (17, 19),
+    (17, 20),
+    (18, 31),
+    (19, 33),
+    (21, 22),
+    (22, 23),
+    (22, 24),
+    (25, 26),
+    (26, 27),
+    (26, 28),
+    (28, 39),
+    (29, 30),
+    (30, 31),
+    (32, 34),
+    (35, 36),
+    (35, 37),
+    (35, 43),
+    (38, 39),
+    (40, 41),
+];
+
+/// How badly a layout draws: edges crossing each other, edges passing through a device that
+/// isn't one of their ends (closer than its symbol), and edges through a site circle neither
+/// end belongs to.
+#[derive(Debug)]
+struct Faults {
+    crossings: usize,
+    through_devices: usize,
+    through_circles: usize,
+}
+
+fn faults(state: &State, positions: &HashMap<i32, (f64, f64)>, circles: &[SiteCircle]) -> Faults {
+    let edges: Vec<(i32, i32)> = state
+        .edges
+        .iter()
+        .map(|e| (e.a.device.id, e.b.device.id))
+        .collect();
+    let through_devices = edges
+        .iter()
+        .map(|&(a, b)| {
+            positions
+                .iter()
+                .filter(|&(&id, &p)| {
+                    id != a
+                        && id != b
+                        && segment_intersects_circle(positions[&a], positions[&b], p, 16.0)
+                })
+                .count()
+        })
+        .sum();
+    let cluster_of_node = state
+        .nodes
+        .iter()
+        .map(|n| {
+            let id = n.device.id;
+            (id, n.device.site.map_or(Cluster::Alone(id), Cluster::Site))
+        })
+        .collect();
+    let centers = circles
+        .iter()
+        .map(|c| (Cluster::Site(c.site), c.center))
+        .collect();
+    let radii = circles
+        .iter()
+        .map(|c| (Cluster::Site(c.site), c.radius))
+        .collect();
+    Faults {
+        crossings: count_crossings(positions, &edges),
+        through_devices,
+        through_circles: count_intrusions(positions, &edges, &cluster_of_node, &centers, &radii),
+    }
+}
+
+fn export_state() -> State {
+    State {
+        read_from: None,
+        age: 0,
+        error: None,
+        outside: 0,
+        outside_at: vec![],
+        nodes: EXPORT_NODES
+            .iter()
+            .map(|&(id, site)| node(id, Some(site), Some(&format!("site {site}"))))
+            .collect(),
+        edges: EXPORT_EDGES.iter().map(|&(a, b)| edge(a, b)).collect(),
+    }
+}
+
+/// The measure of E21 on the stored export's map: what the layout leaves at most. Before E21
+/// 4 crossings and 3 edges through a device (two lines leaving Berg 1654 across it); devices
+/// cabled outside at the rim, the sites laid out again after their swaps and the last swaps on
+/// the real edges leave one crossing inside Berg 1654.
+#[test]
+fn the_exports_map_draws_with_few_faults() {
+    let state = export_state();
+    let (positions, circles) = clustered_layout(&state, &HashMap::new());
+    let faults = faults(&state, &positions, &circles);
+    assert!(faults.crossings <= 1, "{faults:?}");
+    assert_eq!(
+        (faults.through_devices, faults.through_circles),
+        (0, 0),
+        "{faults:?}"
+    );
+}

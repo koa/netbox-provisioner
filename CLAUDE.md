@@ -475,7 +475,13 @@ so directly connected sites start one layer apart) instead of hashed positions, 
 `reduce_site_crossings` then swaps whole sites, every member moving with its circle, where that
 lowers the real device edges' crossings plus the edges passing through a third site's circle
 (`count_intrusions`): on the meta graph, edges into one site all meet at its single point and
-never count as crossing. „Als SVG/PNG exportieren“ (`svg_export.rs`) saves the map as a file:
+never count as crossing. A site's own swaps count each line to an anchor like a cable and
+every line through a device it doesn't end at (`count_through_devices`); a device cabled to
+another site sits at the rim (`RIM`), at the angle the anchors gave it; when the site swaps
+moved anything, the sites' devices are laid out again (else they faced the old places), and
+`reduce_faults_within_sites` swaps devices of a site last on the real edges, counting only
+what a swap changes (`faults_at`), as the layout runs on every render. Test
+`the_exports_map_draws_with_few_faults` measures it on the stored export's graph (E21). „Als SVG/PNG exportieren“ (`svg_export.rs`) saves the map as a file:
 a clone with each element's computed style (`fill`, `stroke`, fonts, …) inlined and a
 background, since the live `<svg>` only looks right with the page's stylesheet and design
 tokens; PNG draws that SVG onto a canvas at the map's own size.
