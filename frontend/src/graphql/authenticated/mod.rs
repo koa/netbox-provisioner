@@ -3,6 +3,7 @@
 //! graphql_client follow below.
 use graphql_client::GraphQLQuery;
 
+pub mod batch_apply;
 pub mod findings;
 pub mod helper;
 pub mod history;
@@ -12,6 +13,7 @@ pub mod list_devices;
 pub mod neighbor_findings;
 pub mod saved_jobs;
 pub mod schema;
+pub mod site_diff;
 pub mod types;
 
 type ScalarDuration = u64;
@@ -276,62 +278,6 @@ pub struct PoeObserved;
     response_derives = "Debug, Clone, PartialEq"
 )]
 pub struct RadioBridgeCandidates;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/batch-apply.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct BatchCandidates;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/batch-apply.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct BatchDevice;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/batch-apply.graphql",
-    response_derives = "Debug"
-)]
-pub struct ApplyBatch;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/site-diff.graphql",
-    response_derives = "Debug"
-)]
-pub struct DiffSite;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/site-diff.graphql",
-    response_derives = "Debug, PartialEq"
-)]
-pub struct SiteDiffJobs;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/site-diff.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct SiteDiffEvents;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/site-diff.graphql",
-    response_derives = "Debug"
-)]
-pub struct SiteDiffKnown;
 
 #[derive(GraphQLQuery)]
 #[graphql(

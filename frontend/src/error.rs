@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 
 use crate::{
-    graphql::authenticated::{device_overview, job_events, site_diff_events, site_diff_known},
+    graphql::authenticated::{device_overview, job_events, types::ErrorInfo},
     i18n::error as t,
 };
 use patternfly_yew::prelude::{Alert, AlertGroup, AlertType};
@@ -71,7 +71,8 @@ impl t::Problem for ServerProblem {
     }
 }
 
-/// `ServerProblem` from the `Problem` fragment, which every query module has a type of.
+/// `ServerProblem` from `ErrorInfo`, and from the `Problem` fragment of each graphql_client
+/// module that still selects it.
 macro_rules! problem_from {
     ($($fragment:ty),*) => {$(
         impl From<&$fragment> for ServerProblem {
@@ -89,12 +90,7 @@ macro_rules! problem_from {
         }
     )*};
 }
-problem_from!(
-    job_events::Problem,
-    device_overview::Problem,
-    site_diff_events::Problem,
-    site_diff_known::Problem
-);
+problem_from!(job_events::Problem, device_overview::Problem, ErrorInfo);
 
 pub struct JavascriptError {
     original_value: JsValue,

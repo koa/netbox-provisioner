@@ -9,20 +9,20 @@ use crate::{
     error::{FrontendError, ServerProblem},
     graphql::{
         authenticated::{
-            DiffSite, SiteDiffEvents, SiteDiffJobs, SiteDiffKnown, diff_site,
-            site_diff_events::{
-                self, JobState, SiteDiffEventsJob as Job,
-                SiteDiffEventsJobEventsEvent as Event,
+            site_diff::{
+                DiffEvent as Event, DiffJob as Job, DiffSite, KnownDevice, MenuChanges as Menu,
+                SiteDiffEvents, SiteDiffEventsVariables, SiteDiffJobs, SiteDiffKnown,
+                SiteVariables,
             },
-            site_diff_jobs::{self, JobKind},
-            site_diff_known,
+            types::{JobKind, JobState},
         },
-        live::{Subscription, subscribe},
-        query_authenticated,
+        live::{Subscription, read_at, watch},
+        request,
     },
     i18n::site_diff as t,
     pages::routes::AppRoute,
 };
+use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{
     Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize,
 };
@@ -36,15 +36,6 @@ use yew_nested_router::components::Link;
 #[derive(Debug, Clone, PartialEq, Properties)]
 pub struct SiteDiffProps {
     pub site: u32,
-}
-
-/// The changes of one menu, from the job or from what is known.
-#[derive(Clone)]
-struct Menu {
-    menu: String,
-    added: i64,
-    changed: i64,
-    removed: i64,
 }
 
 #[derive(Clone)]
@@ -64,17 +55,17 @@ pub struct Known {
 }
 
 struct Row {
-    id: i64,
+    id: i32,
     name: String,
     read: Read,
 }
 
 pub struct SiteDiff {
-    job: Option<i64>,
+    job: Option<i32>,
     /// when the job started (milliseconds since the epoch)
     job_started: Option<f64>,
     /// by device
-    known: HashMap<i64, Known>,
+    known: HashMap<i32, Known>,
     _known_subscription: Subscription,
     /// the devices of the job, in NetBox' order, as read so far
     rows: Vec<Row>,
@@ -88,11 +79,11 @@ pub struct SiteDiff {
 
 pub enum SiteDiffMsg {
     /// the site's last job, if it has one
-    Last(Option<i64>),
+    Last(Option<i32>),
     Start,
-    Started(Result<i64, FrontendError>),
+    Started(Result<i32, FrontendError>),
     Loaded(Job),
-    Known(HashMap<i64, Known>),
+    Known(HashMap<i32, Known>),
     Lost,
     Error(FrontendError),
 }
@@ -103,18 +94,18 @@ impl Component for SiteDiff {
 
     fn create(ctx: &Context<Self>) -> Self {
         let scope = ctx.link().clone();
-        let site = ctx.props().site as i64;
+        let site = ctx.props().site as i32;
         spawn_local(async move {
-            let last = query_authenticated::<SiteDiffJobs, _>(scope.clone(), site_diff_jobs::Variables { site })
+            let last = request(scope.clone(), SiteDiffJobs::build(SiteVariables { site }))
                 .await
                 .ok()
-                .and_then(|data| data.jobs.into_iter().find(|job| job.kind == JobKind::SITE_DIFF))
+                .and_then(|data| data.jobs.into_iter().find(|job| job.kind == JobKind::SiteDiff))
                 .map(|job| job.id);
             scope.send_message(SiteDiffMsg::Last(last));
         });
         let scope = ctx.link().clone();
         let known_subscription =
-            subscribe::<SiteDiffKnown, _>(ctx.link(), site_diff_known::Variables { site }, move |response| {
+            watch(ctx.link(), SiteDiffKnown::build(SiteVariables { site }), move |response| {
                 let devices = response
                     .ok()
                     .and_then(|response| response.data)
@@ -142,12 +133,12 @@ impl Component for SiteDiff {
             SiteDiffMsg::Last(None) => return false,
             SiteDiffMsg::Last(Some(id)) | SiteDiffMsg::Started(Ok(id)) => self.follow(ctx, id),
             SiteDiffMsg::Start => {
-                self.state = Some(JobState::RUNNING);
+                self.state = Some(JobState::Running);
                 self.error = None;
                 let scope = ctx.link().clone();
-                let site = ctx.props().site as i64;
+                let site = ctx.props().site as i32;
                 spawn_local(async move {
-                    let started = query_authenticated::<DiffSite, _>(scope.clone(), diff_site::Variables { site })
+                    let started = request(scope.clone(), DiffSite::build(SiteVariables { site }))
                         .await
                         .map(|data| data.diff_site.id);
                     scope.send_message(SiteDiffMsg::Started(started));
@@ -176,27 +167,16 @@ impl Component for SiteDiff {
                             if let Some(row) = self.rows.iter_mut().find(|row| row.id == diffed.device.id) {
                                 row.read = match &diffed.error {
                                     Some(problem) => Read::Failed(ServerProblem::from(problem)),
-                                    None => Read::Done(
-                                        diffed
-                                            .menus
-                                            .into_iter()
-                                            .map(|menu| Menu {
-                                                menu: menu.menu,
-                                                added: menu.added,
-                                                changed: menu.changed,
-                                                removed: menu.removed,
-                                            })
-                                            .collect(),
-                                    ),
+                                    None => Read::Done(diffed.menus),
                                 };
                             }
                         }
-                        _ => {}
+                        Event::Other => {}
                     }
                 }
                 self.job_error = job.error.as_ref().map(ServerProblem::from);
                 self.state = Some(job.state);
-                self.job_started = Some(js_sys::Date::now() - job.age as f64 * 1000.0);
+                self.job_started = Some(read_at(job.age));
             }
             SiteDiffMsg::Known(known) => self.known = known,
             SiteDiffMsg::Lost => {
@@ -209,7 +189,7 @@ impl Component for SiteDiff {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let running = self.state == Some(JobState::RUNNING);
+        let running = self.state == Some(JobState::Running);
         let label = if self.job.is_some() { t::AGAIN } else { t::START };
         let onclick = ctx.link().callback(|_| SiteDiffMsg::Start);
         let reads = self
@@ -247,7 +227,7 @@ impl Component for SiteDiff {
                     <Button variant={ButtonVariant::Secondary} disabled={running} {onclick}>{label}</Button>
                     {self.error.as_ref().map(FrontendError::to_html)}
                     if self.lost { <p>{t::LOST}</p> }
-                    if self.state == Some(JobState::CANCELLED) { <p>{t::CANCELLED}</p> }
+                    if self.state == Some(JobState::Cancelled) { <p>{t::CANCELLED}</p> }
                     {self.job_error.as_ref().map(|problem| html!(<p>{problem.text()}</p>))}
                     {progress}
                     <dl class="neighbor-results">
@@ -288,7 +268,7 @@ impl SiteDiff {
         row.read.clone()
     }
     /// Shows job `id` from its first event on, the poll of an earlier one stopped.
-    fn follow(&mut self, ctx: &Context<Self>, id: i64) {
+    fn follow(&mut self, ctx: &Context<Self>, id: i32) {
         self.alive.set(false);
         self.alive = Rc::new(Cell::new(true));
         self.job = Some(id);
@@ -307,31 +287,19 @@ fn total(menus: &[Menu]) -> u32 {
 }
 
 /// What is known of a device, in milliseconds since the epoch from the ages.
-fn known(device: site_diff_known::SiteDiffKnownTopologySiteByIdDevices) -> (i64, Known) {
-    let now = js_sys::Date::now();
+fn known(device: KnownDevice) -> (i32, Known) {
     let diff = device.known_diff;
     let read = match (diff.menus, &diff.error) {
         (_, Some(problem)) => Some(Read::Failed(ServerProblem::from(problem))),
-        (Some(menus), None) => Some(Read::Done(
-            menus
-                .into_iter()
-                .map(|menu| Menu {
-                    menu: menu.menu,
-                    added: menu.added,
-                    changed: menu.changed,
-                    removed: menu.removed,
-                })
-                .collect(),
-        )),
+        (Some(menus), None) => Some(Read::Done(menus)),
         (None, None) => None,
     };
-    let at = |age: Option<i64>| age.map(|age| now - age as f64 * 1000.0);
     (
         device.id,
         Known {
             read,
-            read_at: at(diff.age),
-            changed_at: at(diff.changed_age),
+            read_at: diff.age.map(read_at),
+            changed_at: diff.changed_age.map(read_at),
         },
     )
 }
@@ -346,7 +314,7 @@ fn read_view(read: &Read) -> Html {
             let addresses = menus
                 .iter()
                 .filter(|menu| menu.menu == "ip/address" || menu.menu == "ipv6/address")
-                .map(|menu| menu.removed)
+                .map(|menu| i64::from(menu.removed))
                 .sum::<i64>();
             let mut closer_look = Vec::new();
             if addresses > 0 {
@@ -355,7 +323,7 @@ fn read_view(read: &Read) -> Html {
             let leases = menus
                 .iter()
                 .filter(|menu| menu.menu == "ip/dhcp-server/lease")
-                .map(|menu| menu.removed)
+                .map(|menu| i64::from(menu.removed))
                 .sum::<i64>();
             if leases > 0 {
                 closer_look.push(t::removes_leases(leases));
@@ -366,11 +334,16 @@ fn read_view(read: &Read) -> Html {
             if menus.iter().any(|menu| menu.menu == "interface/bridge/port") {
                 closer_look.push(t::TOUCHES_BRIDGE_PORTS.to_string());
             }
+            let list = menus
+                .iter()
+                .map(|m| t::menu(&m.menu, m.added.into(), m.changed.into(), m.removed.into()))
+                .collect::<Vec<_>>()
+                .join(", ");
             html! {
                 <>
                     <strong>{t::changes(total(menus))}</strong>
                     { for closer_look.into_iter().map(|text| html!(<>{", "}<strong>{text}</strong></>)) }
-                    <div>{ menus.iter().map(|menu| t::menu(&menu.menu, menu.added, menu.changed, menu.removed)).collect::<Vec<_>>().join(", ") }</div>
+                    <div>{list}</div>
                 </>
             }
         }
@@ -379,26 +352,22 @@ fn read_view(read: &Read) -> Html {
 
 /// Asks for the job's new events until it is over, or the server doesn't know it anymore;
 /// while asking fails, it asks again, less often.
-fn poll(scope: Scope<SiteDiff>, id: i64, alive: Rc<Cell<bool>>) {
+fn poll(scope: Scope<SiteDiff>, id: i32, alive: Rc<Cell<bool>>) {
     spawn_local(async move {
         let mut after = 0;
         let mut failed = 0;
         while alive.get() {
-            match query_authenticated::<SiteDiffEvents, _>(
-                scope.clone(),
-                site_diff_events::Variables {
-                    id,
-                    after: Some(after),
-                },
-            )
-            .await
-            {
-                Ok(site_diff_events::ResponseData { job: Some(job) }) => {
+            let variables = SiteDiffEventsVariables {
+                id,
+                after: Some(after),
+            };
+            match request(scope.clone(), SiteDiffEvents::build(variables)).await {
+                Ok(SiteDiffEvents { job: Some(job) }) => {
                     failed = 0;
                     if let Some(last) = job.events.last() {
                         after = last.index + 1;
                     }
-                    let over = job.state != JobState::RUNNING;
+                    let over = job.state != JobState::Running;
                     if alive.get() {
                         scope.send_message(SiteDiffMsg::Loaded(job));
                     }
@@ -406,7 +375,7 @@ fn poll(scope: Scope<SiteDiff>, id: i64, alive: Rc<Cell<bool>>) {
                         return;
                     }
                 }
-                Ok(site_diff_events::ResponseData { job: None }) => {
+                Ok(SiteDiffEvents { job: None }) => {
                     scope.send_message(SiteDiffMsg::Lost);
                     return;
                 }

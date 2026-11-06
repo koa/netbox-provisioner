@@ -2,19 +2,22 @@
 
 Status: in Arbeit (cynic, entschieden 2026-10-23). Aufgabe C4 in [todo.md](../todo.md).
 
-Stand: cynic im Frontend. `frontend/build.rs` registriert das Schema des authentifizierten
-Endpunkts als „authenticated“, ohne Default: Jeder Typ nennt es (`schema = "authenticated"`),
-die Abfragen liegen in `graphql/authenticated/`, ihre geteilten Typen (`DeviceRef`,
-`InterfaceRef` usw., `Severity`) in `graphql/authenticated/types.rs`. Der anonyme Endpunkt
-(`settings`) bekommt sein eigenes Schema, die Trennung bleibt. `graphql::request` schickt eine
-Operation (auch ein Abo, das der Server über HTTP mit seiner ersten Antwort beantwortet),
-`graphql::live::watch` abonniert eine. Umgestellt (Module unter `graphql/authenticated/`):
-`DeviceJournal` (`history`), `SavedJobs` und `DiscardSavedJob` (`saved_jobs`), `ListSites`,
-`SiteDevices` und `PingDevice` (`list_devices`), `Findings` (`findings`, mit dem Input
-`Helper` in `helper`), `NeighborFindings` und `RefreshNeighbors` (`neighbor_findings`),
-`DeviceInterfaces` (`interfaces`), `InterfaceLiveSubscription` und `RefreshInterfaceLive`
-(`interface_live`). Die Befunde sind damit ein Typ, wo sie bisher pro Abfrage einer waren und
-über JSON umgewandelt wurden.
+Stand: cynic im Frontend. `frontend/build.rs` registriert das Schema des authentifizierten Endpunkts
+als „authenticated“, ohne Default: Jeder Typ nennt es (`schema = "authenticated"`), die Abfragen
+liegen in `graphql/authenticated/`, ihre geteilten Typen (`DeviceRef`, `InterfaceRef` usw.,
+`Severity`) in `graphql/authenticated/types.rs`. Der anonyme Endpunkt (`settings`) bekommt sein
+eigenes Schema, die Trennung bleibt. `graphql::request` schickt eine Operation (auch ein Abo, das
+der Server über HTTP mit seiner ersten Antwort beantwortet), `graphql::live::watch` abonniert eine.
+Umgestellt (Module unter `graphql/authenticated/`): `DeviceJournal` (`history`), `SavedJobs` und
+`DiscardSavedJob` (`saved_jobs`), `ListSites`, `SiteDevices` und `PingDevice` (`list_devices`),
+`Findings` (`findings`, mit dem Input `Helper` in `helper`), `NeighborFindings` und
+`RefreshNeighbors` (`neighbor_findings`), `DeviceInterfaces` (`interfaces`),
+`InterfaceLiveSubscription` und `RefreshInterfaceLive` (`interface_live`), `DiffSite`,
+`SiteDiffJobs`, `SiteDiffKnown` und `SiteDiffEvents` (`site_diff`), `BatchCandidates`, `BatchDevice`
+und `ApplyBatch` (`batch_apply`; `ErrorInfo`, `JobState` und `ApplyWarning` in `types`). Die Befunde
+sind damit ein Typ, wo sie bisher pro Abfrage einer waren und über JSON umgewandelt wurden. Offen
+danach: `describe_warning` steht in `pages/devices/show.rs` und `components/batch_apply.rs`, bis
+`show-device` auch `types::ApplyWarning` nimmt.
 
 ## Ausgangslage
 

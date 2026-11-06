@@ -16,5 +16,9 @@ pub fn unreachable(problem: &str) -> String {
 }
 /// `count` devices, this one included
 pub fn apply(count: usize) -> String {
+    // only this device yet: the button waits for another one
+    if count < 2 {
+        return "Gemeinsam anwenden".into();
+    }
     format!("{count} Geräte gemeinsam anwenden")
 }

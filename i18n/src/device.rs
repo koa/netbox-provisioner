@@ -207,6 +207,8 @@ pub mod setup {
 
 /// The warnings of `generateCfg` (`ApplyWarning`), before applying.
 pub mod warning {
+    /// a kind of warning this page doesn't know yet (an older page than the provisioner)
+    pub const UNKNOWN: &str = "Eine Warnung, die diese Seite noch nicht kennt: neu laden.";
     /// `port` (with `default_name` where it is named otherwise) loses its PoE out
     pub fn poe_cut(port: &str, default_name: &str) -> String {
         let port = if port == default_name {

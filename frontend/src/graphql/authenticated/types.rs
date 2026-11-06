@@ -170,3 +170,70 @@ pub struct AdhocCredentials {
     pub username: Option<String>,
     pub password: Option<String>,
 }
+
+/// Where a job stands (`JobState`).
+#[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum JobState {
+    Running,
+    Done,
+    Failed,
+    Cancelled,
+    #[cynic(fallback)]
+    Other,
+}
+
+/// An error the backend reports (`ErrorInfo`), worded through `error::ServerProblem`.
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct ErrorInfo {
+    pub code: String,
+    pub params: Vec<ErrorParam>,
+    pub message: String,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct ErrorParam {
+    pub name: String,
+    pub value: String,
+}
+
+/// What applying would cut or leave behind (`ApplyWarning`), shown before applying.
+#[derive(cynic::InlineFragments, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub enum ApplyWarning {
+    PoeCut(PoeCut),
+    CapOffOutsideWlanGroup(CapOffOutsideWlanGroup),
+    WatchTargetSilent(WatchTargetSilent),
+    ApiClientsOutside(ApiClientsOutside),
+    #[cynic(fallback)]
+    Unknown,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct PoeCut {
+    pub port: String,
+    pub default_name: String,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct CapOffOutsideWlanGroup {
+    pub package: String,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct WatchTargetSilent {
+    pub address: String,
+    pub port: Option<String>,
+    pub device: String,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct ApiClientsOutside {
+    pub clients: Vec<String>,
+}

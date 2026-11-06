@@ -5,13 +5,18 @@ use crate::{
     error::{FrontendError, ServerProblem},
     graphql::{
         authenticated::{
-            ApplyBatch, BatchCandidates, BatchDevice, apply_batch, batch_candidates, batch_device,
+            batch_apply::{
+                ApplyBatch, ApplyBatchVariables, BatchCandidate as Candidate, BatchCandidates,
+                BatchDevice, DeviceVariables,
+            },
+            types::ApplyWarning as Warning,
         },
-        query_authenticated, query_authenticated_response,
+        request, request_response,
     },
     i18n::{batch as t, device},
     pages::routes::AppRoute,
 };
+use cynic::{MutationBuilder, QueryBuilder};
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
     CodeBlockCode, Spinner, SpinnerSize,
@@ -19,9 +24,6 @@ use patternfly_yew::prelude::{
 use std::collections::{BTreeSet, HashMap};
 use yew::{Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
 use yew_nested_router::components::Link;
-
-type Candidate = batch_candidates::BatchCandidatesTopologyDeviceByIdBatchCandidates;
-type Warning = batch_device::BatchDeviceTopologyDeviceByIdAccessGenerateCfgWarnings;
 
 /// A job of a started batch, as the device page shows it next to the others.
 #[derive(Debug, Clone, PartialEq)]
@@ -56,8 +58,8 @@ pub enum Planned {
 pub struct BatchApply {
     open: bool,
     candidates: Option<Result<Vec<Candidate>, String>>,
-    picked: BTreeSet<i64>,
-    planned: HashMap<i64, Planned>,
+    picked: BTreeSet<i32>,
+    planned: HashMap<i32, Planned>,
     starting: bool,
     error: Option<FrontendError>,
 }
@@ -65,10 +67,10 @@ pub struct BatchApply {
 pub enum BatchMessage {
     Open,
     Candidates(Result<Vec<Candidate>, String>),
-    Toggle(i64),
-    Planned(i64, Planned),
+    Toggle(i32),
+    Planned(i32, Planned),
     Apply,
-    Started(Result<Vec<(i64, i64, String)>, FrontendError>),
+    Started(Result<Vec<(i32, i32, String)>, FrontendError>),
 }
 
 impl Component for BatchApply {
@@ -111,7 +113,7 @@ impl Component for BatchApply {
             BatchMessage::Apply => {
                 self.starting = true;
                 self.error = None;
-                let ids: Vec<i64> = std::iter::once(ctx.props().id as i64)
+                let ids: Vec<i32> = std::iter::once(ctx.props().id as i32)
                     .chain(self.picked.iter().copied())
                     .collect();
                 start(ctx.link().clone(), ids);
@@ -121,17 +123,22 @@ impl Component for BatchApply {
                 match result {
                     Ok(jobs) => {
                         let own = ctx.props().id as i64;
-                        let site = |device: i64| {
+                        let site = |device: i32| {
                             self.candidates
                                 .as_ref()
                                 .and_then(|c| c.as_ref().ok())
                                 .and_then(|c| c.iter().find(|c| c.device.id == device))
                                 .and_then(|c| c.device.site.as_ref())
-                                .map(|site| site.id)
+                                .map(|site| site.id.into())
                         };
                         let mut jobs: Vec<BatchJob> = jobs
                             .into_iter()
-                            .map(|(job, device, name)| BatchJob { job, device, name, site: site(device) })
+                            .map(|(job, device, name)| BatchJob {
+                                job: job.into(),
+                                device: device.into(),
+                                name,
+                                site: site(device),
+                            })
                             .collect();
                         jobs.sort_by_key(|job| job.device != own);
                         // the jobs show on the page, next to each other
@@ -200,7 +207,7 @@ impl Component for BatchApply {
 }
 
 impl BatchApply {
-    fn pick(&mut self, ctx: &Context<Self>, id: i64) {
+    fn pick(&mut self, ctx: &Context<Self>, id: i32) {
         self.picked.insert(id);
         if !matches!(self.planned.get(&id), Some(Planned::Ready { .. } | Planned::Loading)) {
             self.planned.insert(id, Planned::Loading);
@@ -260,11 +267,9 @@ impl BatchApply {
 
 fn fetch_candidates(scope: Scope<BatchApply>, id: u32) {
     spawn_local(async move {
-        let result = query_authenticated::<BatchCandidates, _>(
-            scope.clone(),
-            batch_candidates::Variables { id: id as i64 },
-        )
-        .await
+        let variables = DeviceVariables { id: id as i32 };
+        let result = request(scope.clone(), BatchCandidates::build(variables))
+            .await
         .map_err(|e| e.message())
         .map(|data| {
             data.topology
@@ -276,14 +281,10 @@ fn fetch_candidates(scope: Scope<BatchApply>, id: u32) {
     });
 }
 
-fn fetch_planned(scope: Scope<BatchApply>, id: i64) {
+fn fetch_planned(scope: Scope<BatchApply>, id: i32) {
     spawn_local(async move {
-        let planned = match query_authenticated_response::<BatchDevice, _>(
-            scope.clone(),
-            batch_device::Variables { id },
-        )
-        .await
-        {
+        let plan = BatchDevice::build(DeviceVariables { id });
+        let planned = match request_response(scope.clone(), plan).await {
             Err(error) => Planned::Problem(error.message()),
             Ok(response) => {
                 let problem = response
@@ -316,9 +317,9 @@ fn fetch_planned(scope: Scope<BatchApply>, id: i64) {
     });
 }
 
-fn start(scope: Scope<BatchApply>, ids: Vec<i64>) {
+fn start(scope: Scope<BatchApply>, ids: Vec<i32>) {
     spawn_local(async move {
-        let result = query_authenticated::<ApplyBatch, _>(scope.clone(), apply_batch::Variables { ids })
+        let result = request(scope.clone(), ApplyBatch::build(ApplyBatchVariables { ids }))
             .await
             .map(|data| {
                 data.apply_batch
@@ -341,5 +342,6 @@ fn describe_warning(warning: &Warning) -> String {
             w::watch_target_silent(&silent.address, silent.port.as_deref(), &silent.device)
         }
         Warning::ApiClientsOutside(outside) => w::api_clients_outside(&outside.clients),
+        Warning::Unknown => w::UNKNOWN.into(),
     }
 }

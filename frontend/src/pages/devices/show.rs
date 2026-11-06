@@ -1506,7 +1506,6 @@ fn boot_from(scope: Scope<ShowDevice>, id: u32, partition: String, target: Selec
     });
 }
 
-/// Shows the job the device runs, should one have been started before the page was opened.
 /// A warning of `generateCfg`, as the operator reads it before applying.
 fn describe_warning(warning: &Warning) -> String {
     match warning {
