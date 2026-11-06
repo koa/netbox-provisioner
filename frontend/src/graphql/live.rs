@@ -2,7 +2,9 @@
 //! `backend::graphql::live`): the server answers again whenever what an answer showed changed,
 //! whoever changed it. The connection is opened with the first subscription and comes back by
 //! itself after it broke (with the steps of [`RETRY`]), the subscriptions started again: their
-//! first answer brings each view up to date.
+//! first answer brings each view up to date. The server ends every operation at the expiry of
+//! the token the connection was opened with (`TOKEN_EXPIRED`), so that answer opens it again
+//! too, with the token as it is now, instead of going to the view.
 use crate::{components::job::RETRY, error::FrontendError, graphql::host};
 use futures::{SinkExt, StreamExt, channel::mpsc};
 use gloo::net::websocket::{Message, futures::WebSocket};
@@ -190,6 +192,9 @@ async fn session(connection: &Rc<Connection>) -> bool {
         let Ok(message) = serde_json::from_str::<Value>(&text) else {
             continue;
         };
+        if token_expired(&message) {
+            break;
+        }
         match message["type"].as_str() {
             Some("next") => {
                 let id = message["id"].as_str().and_then(|id| id.parse::<u64>().ok());
@@ -213,6 +218,36 @@ async fn session(connection: &Rc<Connection>) -> bool {
     true
 }
 
+/// Whether `message` is the server's answer to an operation after the connection's token
+/// expired: errors with the code `TOKEN_EXPIRED`, in a `next` (a response) or an `error` (the
+/// errors alone).
+fn token_expired(message: &Value) -> bool {
+    let errors = match message["type"].as_str() {
+        Some("next") => &message["payload"]["errors"],
+        Some("error") => &message["payload"],
+        _ => return false,
+    };
+    errors
+        .as_array()
+        .is_some_and(|errors| errors.iter().any(|error| error["extensions"]["code"] == "TOKEN_EXPIRED"))
+}
+
 fn message_type(text: &str) -> Option<String> {
     serde_json::from_str::<Value>(text).ok()?["type"].as_str().map(String::from)
+}
+
+#[cfg(test)]
+mod test {
+    use super::token_expired;
+    use serde_json::json;
+
+    #[test]
+    fn the_answer_after_the_token_expired_is_told_apart() {
+        let expired = json!([{"message": "token expired", "extensions": {"code": "TOKEN_EXPIRED"}}]);
+        assert!(token_expired(&json!({"type": "next", "id": "1", "payload": {"data": null, "errors": expired}})));
+        assert!(token_expired(&json!({"type": "error", "id": "1", "payload": expired})));
+        let other = json!([{"message": "no device", "extensions": {"code": "NOT_FOUND"}}]);
+        assert!(!token_expired(&json!({"type": "next", "id": "1", "payload": {"data": null, "errors": other}})));
+        assert!(!token_expired(&json!({"type": "next", "id": "1", "payload": {"data": {"x": 1}}})));
+    }
 }

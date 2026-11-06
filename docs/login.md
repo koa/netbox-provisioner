@@ -9,7 +9,13 @@ den Issuer und lässt nur die Benutzer aus `auth_users` herein. Bei den Zeiten (
 `exp`) lässt es 60 s Abweichung zu: ohne lehnte ein Server, dessen Uhr eine Sekunde hinter
 Pocket-ID ging, jedes frische Token ab. Lehnt es ein Token mit gültiger Signatur ab (`403`
 „Token does not have sufficient rights“), steht der Grund im Log (`token refused: …`, mit den
-Claims und der Uhrzeit des Servers). Jeder OIDC-Provider, der das kann,
+Claims und der Uhrzeit des Servers). `exp`, `iss`, `aud` und `sub` muss das Token haben: die
+Prüfung (biscuit) schaut einen Claim sonst nur an, wo er steht, ein Token ohne `exp` liefe nie ab.
+Die WebSocket-Verbindung der Live-Ansichten bekommt das Token nur beim Aufbau
+(`connection_init`); jede Operation darauf, auch eine Query oder Mutation, endet beim Ablauf des
+Tokens (`exp` plus die 60 s) mit dem Fehler `TOKEN_EXPIRED`, und das UI baut die Verbindung mit
+dem aktuellen Token neu auf. Die Schlüssel des Issuers holt das Backend nur beim Start (A8): Nach
+einem Schlüsselwechsel beim Provider braucht es einen Neustart. Jeder OIDC-Provider, der das kann,
 funktioniert; das Lab verwendet Keycloak (`local/keycloak/`, Realm `lab`), produktiv ist Pocket-ID
 vorgesehen.
 

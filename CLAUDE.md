@@ -533,7 +533,14 @@ log says why; the frontend words the status, `i18n::error::refused`; without a r
 `yew-oauth2` keeps an expired token as authenticated, so the job view offers to log in again on
 `401`/`403`, `pages::start_login`; with errors async-graphql may leave a failed non-null root
 field out of `data`, so `graphql::post_graphql` then gives only the errors) (`docs/login.md`:
-the `auth_*` settings and how to set up Pocket-ID; keep it in line with them). The UI picks a
+the `auth_*` settings and how to set up Pocket-ID; keep it in line with them). biscuit checks
+a claim only where the token has it, so `validation_options_for` requires `exp`, `iss`, `aud`
+and `sub` (a token without `exp` would never expire). The WebSocket checks its token once, at
+`connection_init`, and carries queries and mutations too: `token_expiry::Expiring` wraps the
+schema there and ends every operation at the token's `exp` plus the 60 s leeway (`TokenExpiry`
+in the connection's data) with the error code `TOKEN_EXPIRED`, on which the frontend opens the
+connection again with its current token (`graphql::live::token_expired`). The issuer's keys
+are fetched once, at the start (A8). The UI picks a
 NetBox site first, then one of its devices (`/sites`, `/site/<id>`, `/site/<id>/device/<id>/show`,
 `pages/routes.rs`): no sidebar, a breadcrumb of dropdowns to the sibling sites and devices
 (`components/menu/`, page layout and `PopupMenu` taken from the cable-editor). Selects use

@@ -21,7 +21,10 @@ use log::{error, trace, warn};
 use prometheus::{HistogramVec, histogram_opts};
 use std::{collections::HashMap, ffi::OsStr};
 use thiserror::Error;
+use token_expiry::{Expiring, TokenExpiry};
 use tracing_actix_web::TracingLogger;
+
+mod token_expiry;
 
 use backend::{
     config::CONFIG,
@@ -130,19 +133,21 @@ async fn graphql_anonymous(
 
 /// Subscriptions over a WebSocket (`graphql-transport-ws`, `backend::graphql::live`). A
 /// browser can't set headers on one: the token comes in the `connection_init` payload
-/// (`{"token": …}`) and is checked as `/graphql` checks its header.
+/// (`{"token": …}`) and is checked as `/graphql` checks its header. Every operation on the
+/// connection ends at the token's expiry ([`Expiring`]).
 async fn graphql_ws(
     context: Data<ApplicationContext>,
     request: actix_web::HttpRequest,
     payload: actix_web::web::Payload,
 ) -> actix_web::Result<HttpResponse> {
     let oidc = request.app_data::<Oidc>().cloned();
-    GraphQLSubscription::new(context.schema.clone())
+    GraphQLSubscription::new(Expiring(context.schema.clone()))
         .on_connection_init(move |init| async move {
             let token = init.get("token").and_then(|token| token.as_str()).unwrap_or_default();
             let oidc = oidc.ok_or_else(|| async_graphql::Error::new("no OIDC"))?;
-            let user = authenticate(oidc, token)?;
+            let (user, expiry) = authenticate(oidc, token)?;
             let mut data = async_graphql::Data::default();
+            data.insert(expiry);
             if let Some(user) = user {
                 data.insert(user);
             }
@@ -152,9 +157,9 @@ async fn graphql_ws(
 }
 
 /// Checks `token` as the middleware of `/graphql` does (signature, `validation_options`,
-/// `auth_users`) and gives the user info in it. The extractor reads the token from a request's
-/// header only, so it gets a request carrying it.
-fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<Option<UserInfo>> {
+/// `auth_users`) and gives the user info in it and when it expires. The extractor reads the
+/// token from a request's header only, so it gets a request carrying it.
+fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<(Option<UserInfo>, TokenExpiry)> {
     use actix_web::FromRequest;
     let carrier = actix_web::test::TestRequest::default()
         .insert_header(("Authorization", format!("Bearer {token}")))
@@ -173,7 +178,14 @@ fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<Option<UserInf
         warn!("user refused on the WebSocket, not in auth_users: {subject:?}");
         return Err(async_graphql::Error::new("user not in auth_users"));
     }
-    Ok(serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok())
+    // `exp` is required by `validation_options`
+    let expiry = info
+        .payload
+        .registered
+        .expiry
+        .ok_or_else(|| async_graphql::Error::new("token without exp"))?;
+    let expiry = TokenExpiry(*expiry + chrono::Duration::seconds(LEEWAY_SECONDS));
+    Ok((serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok(), expiry))
 }
 
 #[get("/health")]
@@ -331,20 +343,33 @@ async fn require_allowed_user(
     Ok(next.call(req).await?.map_into_boxed_body())
 }
 
-/// What a token has to meet besides its signature. The audience must name this app, else
-/// tokens the issuer made for other apps would pass. The times allow for clocks a little
-/// apart: without, a token was refused as not yet valid by a server one second behind the
-/// issuer (Pocket-ID).
+/// How far the token's times may be off this server's clock: without, a token was refused as
+/// not yet valid by a server one second behind the issuer (Pocket-ID).
+const LEEWAY_SECONDS: i64 = 60;
+
+/// What a token has to meet besides its signature, [`validation_options_for`] this app.
 fn validation_options() -> ValidationOptions {
+    validation_options_for(CONFIG.auth_issuer(), CONFIG.auth_client_id())
+}
+
+/// What a token from `issuer` for the app `audience` has to meet besides its signature. The
+/// audience must name this app, else tokens the issuer made for other apps would pass. biscuit
+/// checks a claim only where the token has it, so `exp`, `iss` and `sub` are required too:
+/// without, a token lacking `exp` would never expire and one lacking `iss` pass the issuer
+/// check (`sub` is what `auth_users` lists).
+fn validation_options_for(issuer: &str, audience: &str) -> ValidationOptions {
     ValidationOptions {
         claim_presence_options: ClaimPresenceOptions {
+            expiry: Presence::Required,
+            issuer: Presence::Required,
             audience: Presence::Required,
+            subject: Presence::Required,
             ..ClaimPresenceOptions::default()
         },
-        issuer: Validation::Validate(CONFIG.auth_issuer().to_string()),
-        audience: Validation::Validate(CONFIG.auth_client_id().to_string()),
+        issuer: Validation::Validate(issuer.to_string()),
+        audience: Validation::Validate(audience.to_string()),
         temporal_options: TemporalOptions {
-            epsilon: chrono::Duration::seconds(60),
+            epsilon: chrono::Duration::seconds(LEEWAY_SECONDS),
             now: None,
         },
         ..ValidationOptions::default()
@@ -382,4 +407,59 @@ async fn log_refused_token(
         );
     }
     Ok(response)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use actix_4_jwt_auth::biscuit::{RegisteredClaims, SingleOrMultiple, Timestamp};
+    use chrono::Utc;
+
+    const ISSUER: &str = "https://id.example";
+    const APP: &str = "netbox-provisioner";
+
+    fn claims(expires_in: Option<i64>) -> RegisteredClaims {
+        RegisteredClaims {
+            issuer: Some(ISSUER.into()),
+            subject: Some("someone".into()),
+            audience: Some(SingleOrMultiple::Single(APP.into())),
+            expiry: expires_in.map(|seconds| Timestamp::from(Utc::now() + chrono::Duration::seconds(seconds))),
+            ..RegisteredClaims::default()
+        }
+    }
+
+    fn valid(claims: &RegisteredClaims) -> bool {
+        claims.validate(validation_options_for(ISSUER, APP)).is_ok()
+    }
+
+    #[test]
+    fn a_token_is_valid_until_its_expiry_and_the_leeway() {
+        assert!(valid(&claims(Some(300))));
+        assert!(valid(&claims(Some(-LEEWAY_SECONDS + 5))));
+        assert!(!valid(&claims(Some(-LEEWAY_SECONDS - 5))));
+    }
+
+    #[test]
+    fn a_token_needs_exp_iss_aud_and_sub() {
+        assert!(!valid(&claims(None)), "without exp");
+        for strip in [
+            |c: &mut RegisteredClaims| c.issuer = None,
+            |c: &mut RegisteredClaims| c.audience = None,
+            |c: &mut RegisteredClaims| c.subject = None,
+        ] {
+            let mut claims = claims(Some(300));
+            strip(&mut claims);
+            assert!(!valid(&claims), "{claims:?}");
+        }
+    }
+
+    #[test]
+    fn a_token_from_another_issuer_or_for_another_app_is_refused() {
+        let mut other_issuer = claims(Some(300));
+        other_issuer.issuer = Some("https://other.example".into());
+        assert!(!valid(&other_issuer));
+        let mut other_app = claims(Some(300));
+        other_app.audience = Some(SingleOrMultiple::Single("other-app".into()));
+        assert!(!valid(&other_app));
+    }
 }

@@ -16,8 +16,8 @@ actix-web-prom = { version = "0.10.0", features = ["process"] }
 thiserror = "2.0.11"
 # rustls 0.23 for fetching the issuer's keys; its default is rustls 0.20 with ring 0.16
 actix-4-jwt-auth = { version = "1.2.9", default-features = false, features = ["rustls-0_23-native-roots"] }
-# the `Duration` of biscuit's `TemporalOptions`
-chrono = { version = "0.4", default-features = false }
+# the `Duration` of biscuit's `TemporalOptions`, the expiry of a WebSocket's token
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tracing-actix-web = "0.7"
 tracing = { version = "0.1", features = ["log"] }
 serde = "1.0.218"
