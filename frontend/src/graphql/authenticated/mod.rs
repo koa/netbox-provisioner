@@ -11,6 +11,7 @@ pub mod interface_live;
 pub mod interfaces;
 pub mod list_devices;
 pub mod neighbor_findings;
+pub mod network_map;
 pub mod saved_jobs;
 pub mod schema;
 pub mod site_diff;
@@ -278,27 +279,3 @@ pub struct PoeObserved;
     response_derives = "Debug, Clone, PartialEq"
 )]
 pub struct RadioBridgeCandidates;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/network-map.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct NetworkMap;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/network-map-details.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct NetworkMapDetails;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/network-map.graphql",
-    response_derives = "Debug"
-)]
-pub struct PublishLayout;

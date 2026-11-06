@@ -4,7 +4,7 @@ use super::{
     interfaces::RowAction,
     neighbor_findings::{NeighborFinding, SeenNeighbor},
     schema::schema,
-    types::{AdhocCredentials, DeviceRef, InterfaceRef},
+    types::{AdhocCredentials, DeviceRef, InterfaceRef, PoeProblem},
 };
 
 #[derive(cynic::QueryVariables, Debug)]
@@ -149,17 +149,4 @@ pub struct DeviceOnlyLease {
     pub settings: Vec<String>,
     pub elsewhere: Option<DeviceRef>,
     pub unassigned: bool,
-}
-
-/// What doesn't fit at a PoE port (`PoeProblem`).
-#[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
-pub enum PoeProblem {
-    NoPoeOut,
-    NoLoad,
-    PdMissing,
-    FeedsInstead,
-    Undocumented,
-    #[cynic(fallback)]
-    Other,
 }

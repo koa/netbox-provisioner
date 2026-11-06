@@ -34,7 +34,7 @@ pub fn version(v6: bool) -> &'static str {
 pub fn pool_missing(pool: Html, version: &str) -> Html {
     html!(<>{"Kein Prefix mit dem Tag "}{pool}{" für "}{version}{": Der Helfer hat nichts, woraus er vergeben kann."}</>)
 }
-pub fn pool_nearly_full(pool: Html, version: &str, free: i32, size: i32) -> Html {
+pub fn pool_nearly_full(pool: Html, version: &str, free: u64, size: u64) -> Html {
     html!(<>{"Der Pool "}{pool}{format!(" ({version}) ist fast voll: {free} von {size} Adressen frei.")}</>)
 }
 pub fn no_loopback(device: Html) -> Html {

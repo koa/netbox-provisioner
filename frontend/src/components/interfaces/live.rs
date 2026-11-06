@@ -18,10 +18,10 @@ use crate::{
             interface_live::{
                 BridgeAnswer, DeviceOnlyAddress as DeviceOnly, DeviceOnlyLease,
                 InterfaceLiveSubscription, InterfaceLiveVariables, OspfNeighbor, PoeMismatch,
-                PoeProblem, RefreshInterfaceLive, RefreshInterfaceLiveVariables,
+                RefreshInterfaceLive, RefreshInterfaceLiveVariables,
             },
             neighbor_findings::{NeighborFinding, SeenNeighbor as Seen},
-            types::{AdhocCredentials, DeviceRef as Device, Severity},
+            types::{AdhocCredentials, DeviceRef as Device, PoeProblem, Severity},
         },
         live::{Subscription, read_at, watch},
         request,

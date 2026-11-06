@@ -21,18 +21,22 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            NetworkMap as NetworkMapQuery, NetworkMapDetails as NetworkMapDetailsQuery, PublishLayout as PublishLayoutQuery,
-            network_map::{self, MapDownReason, MapEdgeKind, MapEdgeState, NetworkMapTopologyNetworkState as State, NodeState},
-            network_map_details::{self, NetworkMapDetailsTopologyNetworkStateDetails as DetailsState, PoeProblem},
-            publish_layout,
+            network_map::{
+                DevicePositionInput, MapDownReason, MapEdgeKind, MapEdgeState, MapVariables,
+                NetworkMap as NetworkMapQuery, NetworkMapDetails as NetworkMapDetailsQuery,
+                NetworkState as State, NetworkStateDetails as DetailsState, NodeState,
+                PublishLayout as PublishLayoutQuery, PublishLayoutVariables,
+            },
+            types::PoeProblem,
         },
-        query_authenticated,
+        request,
     },
     i18n::network_map as t,
     local_storage,
     pages::routes::AppRoute,
     svg_export,
 };
+use cynic::{MutationBuilder, QueryBuilder};
 use patternfly_yew::prelude::{Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
 use std::{
     cell::Cell,
@@ -48,7 +52,7 @@ use yew_nested_router::prelude::RouterContext;
 const POLL: Duration = Duration::from_secs(5);
 const MARGIN: f64 = 70.0;
 /// the node standing for the routers NetBox doesn't know
-const OUTSIDE: i64 = -1;
+const OUTSIDE: i32 = -1;
 
 #[derive(Properties, PartialEq)]
 pub struct NetworkMapProps {
@@ -62,7 +66,7 @@ pub struct NetworkMap {
     /// none until the details poll's first answer; a node not in it then has none, for good
     details: Option<DetailsState>,
     /// the device of the node under the pointer, for the popup
-    hover: Option<i64>,
+    hover: Option<i32>,
     error: Option<FrontendError>,
     alive: Rc<Cell<bool>>,
     router: Option<RouterContext<AppRoute>>,
@@ -72,12 +76,12 @@ pub struct NetworkMap {
     /// NetBox's published positions; cleared by `ResetOverrides`, written to `localStorage` once
     /// a drag ends. Dragging a whole site's circle writes every one of its members here too, by
     /// device id, same as dragging one of them individually would.
-    overridden: HashMap<i64, (f64, f64)>,
+    overridden: HashMap<i32, (f64, f64)>,
     /// a site's circle, dragged to this center instead of wherever `clustered_layout` puts it;
     /// by site id, stored and reset alongside `overridden` (same key, see [`Overrides`]). Devices
     /// have no circle of their own to carry this, so it can't reuse `overridden` the way dragging
     /// a site's members already does.
-    site_overrides: HashMap<i64, (f64, f64)>,
+    site_overrides: HashMap<i32, (f64, f64)>,
     /// what's currently grabbed, and whether it actually moved yet (a plain click, pointer down
     /// and up without a move between, must still navigate as before)
     dragging: Option<(DragTarget, bool)>,
@@ -91,8 +95,8 @@ pub struct NetworkMap {
     /// two such events would add its step onto a position `map()` hadn't caught up to yet —
     /// losing part of the movement. Recomputing from a fixed origin every time is immune to how
     /// many events land between renders, or in what order they're drained.
-    drag_base: HashMap<i64, (f64, f64)>,
-    drag_base_site: Option<(i64, (f64, f64))>,
+    drag_base: HashMap<i32, (f64, f64)>,
+    drag_base_site: Option<(i32, (f64, f64))>,
     /// the pointer's own SVG-space position at the first `DragMove` after `DragStart`, the
     /// origin `drag_base`'s positions move from; `None` until that first move sets it
     drag_origin: Option<(f64, f64)>,
@@ -106,9 +110,9 @@ pub struct NetworkMap {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DragTarget {
-    Device(i64),
+    Device(i32),
     /// every device of this site moves together, same delta
-    Site(i64),
+    Site(i32),
 }
 
 #[derive(Default)]
@@ -126,22 +130,22 @@ pub enum NetworkMapMsg {
     Error(FrontendError),
     Router(RouterContext<AppRoute>),
     /// the device clicked, and its own site (it may be another one than `site`)
-    Open(i64, Option<i64>),
-    Hover(Option<i64>),
+    Open(i32, Option<i32>),
+    Hover(Option<i32>),
     AllowNetboxWrite(bool),
     /// the target, its affected devices' current positions (one, or every member of a site),
     /// and, dragging a site, its circle's current center: `drag_base`/`drag_base_site`, read
     /// fresh from a render that just happened, before any native event can get ahead of Yew's
     /// own one (unlike a `DragMove` in the middle of a drag, `DragStart` is a single discrete
     /// event, not a rapid-fire stream, so a render-time snapshot taken right here is never stale)
-    DragStart(DragTarget, Vec<(i64, (f64, f64))>, Option<(i64, (f64, f64))>),
+    DragStart(DragTarget, Vec<(i32, (f64, f64))>, Option<(i32, (f64, f64))>),
     /// the pointer's new SVG-space position, nothing else: every `DragMove` recomputes the full
     /// move from `drag_base`/`drag_origin`, so the closure that sends this needs to carry no
     /// drag-specific state of its own (see `drag_base`'s own doc comment for why)
     DragMove(f64, f64),
     DragEnd,
     ResetOverrides,
-    Publish(Vec<(i64, (f64, f64))>),
+    Publish(Vec<(i32, (f64, f64))>),
     Published(Result<u32, FrontendError>),
 }
 
@@ -156,9 +160,9 @@ fn storage_key(site: Option<u32>) -> String {
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct Overrides {
     #[serde(default)]
-    devices: HashMap<i64, (f64, f64)>,
+    devices: HashMap<i32, (f64, f64)>,
     #[serde(default)]
-    sites: HashMap<i64, (f64, f64)>,
+    sites: HashMap<i32, (f64, f64)>,
 }
 
 fn load_overrides(site: Option<u32>) -> Overrides {
@@ -278,17 +282,17 @@ impl Component for NetworkMap {
                 self.publish = PublishState::Publishing;
                 let scope = ctx.link().clone();
                 spawn_local(async move {
-                    let variables = publish_layout::Variables {
+                    let variables = PublishLayoutVariables {
                         positions: positions
                             .into_iter()
-                            .map(|(device_id, (x, y))| publish_layout::DevicePositionInput {
+                            .map(|(device_id, (x, y))| DevicePositionInput {
                                 device_id,
-                                x: x.round() as i64,
-                                y: y.round() as i64,
+                                x: x.round() as i32,
+                                y: y.round() as i32,
                             })
                             .collect(),
                     };
-                    let result = query_authenticated::<PublishLayoutQuery, _>(scope.clone(), variables)
+                    let result = request(scope.clone(), PublishLayoutQuery::build(variables))
                         .await
                         .map(|data| data.publish_layout as u32);
                     scope.send_message(NetworkMapMsg::Published(result));
@@ -356,8 +360,8 @@ fn poll(scope: Scope<NetworkMap>, site: Option<u32>, alive: Rc<Cell<bool>>) {
     yew::platform::spawn_local(async move {
         let mut failed = 0;
         while alive.get() {
-            let variables = network_map::Variables { site: site.map(|s| s as i64) };
-            match query_authenticated::<NetworkMapQuery, _>(scope.clone(), variables).await {
+            let variables = MapVariables { site: site.map(|s| s as i32) };
+            match request(scope.clone(), NetworkMapQuery::build(variables)).await {
                 Ok(data) => {
                     failed = 0;
                     let state = data.topology.network_state;
@@ -386,8 +390,8 @@ fn poll_details(scope: Scope<NetworkMap>, site: Option<u32>, alive: Rc<Cell<bool
     yew::platform::spawn_local(async move {
         let mut failed = 0;
         while alive.get() {
-            let variables = network_map_details::Variables { site: site.map(|s| s as i64) };
-            match query_authenticated::<NetworkMapDetailsQuery, _>(scope.clone(), variables).await {
+            let variables = MapVariables { site: site.map(|s| s as i32) };
+            match request(scope.clone(), NetworkMapDetailsQuery::build(variables)).await {
                 Ok(data) => {
                     failed = 0;
                     if alive.get() {
@@ -406,9 +410,9 @@ fn poll_details(scope: Scope<NetworkMap>, site: Option<u32>, alive: Rc<Cell<bool
 
 /// `state`'s nodes (plus the outside node, if any, pulled toward the routers it borders) and
 /// edges, as plain ids, for [`force_layout`].
-fn graph(state: &State) -> (Vec<i64>, Vec<(i64, i64)>) {
-    let mut nodes: Vec<i64> = state.nodes.iter().map(|n| n.device.id).collect();
-    let mut edges: Vec<(i64, i64)> = state.edges.iter().map(|e| (e.a.device.id, e.b.device.id)).collect();
+fn graph(state: &State) -> (Vec<i32>, Vec<(i32, i32)>) {
+    let mut nodes: Vec<i32> = state.nodes.iter().map(|n| n.device.id).collect();
+    let mut edges: Vec<(i32, i32)> = state.edges.iter().map(|e| (e.a.device.id, e.b.device.id)).collect();
     if state.outside > 0 {
         nodes.push(OUTSIDE);
         edges.extend(state.outside_at.iter().map(|&id| (OUTSIDE, id)));
@@ -441,24 +445,24 @@ fn area_side(count: usize) -> f64 {
 const ITERATIONS: u32 = 300;
 
 fn force_layout(
-    nodes: &[i64],
-    edges: &[(i64, i64)],
-    pinned: &HashMap<i64, (f64, f64)>,
-    radii: &HashMap<i64, f64>,
+    nodes: &[i32],
+    edges: &[(i32, i32)],
+    pinned: &HashMap<i32, (f64, f64)>,
+    radii: &HashMap<i32, f64>,
     gap: f64,
     side: f64,
-    seed: &HashMap<i64, (f64, f64)>,
-) -> HashMap<i64, (f64, f64)> {
+    seed: &HashMap<i32, (f64, f64)>,
+) -> HashMap<i32, (f64, f64)> {
     if nodes.is_empty() {
         return HashMap::new();
     }
     let k = (side * side / nodes.len() as f64).sqrt();
-    let mut pos: HashMap<i64, (f64, f64)> = nodes
+    let mut pos: HashMap<i32, (f64, f64)> = nodes
         .iter()
         .map(|&id| (id, pinned.get(&id).or_else(|| seed.get(&id)).copied().unwrap_or_else(|| seeded(id, side))))
         .collect();
     for step in 0..ITERATIONS {
-        let mut disp = HashMap::<i64, (f64, f64)>::new();
+        let mut disp = HashMap::<i32, (f64, f64)>::new();
         for (i, &a) in nodes.iter().enumerate() {
             for &b in &nodes[i + 1..] {
                 let (dx, dy) = (pos[&a].0 - pos[&b].0, pos[&a].1 - pos[&b].1);
@@ -509,7 +513,7 @@ fn force_layout(
 
 /// A position hashed from `id` (MurmurHash3's finalizer), not random, so a layout without a
 /// pinned position for every node still comes out the same way every time.
-fn seeded(id: i64, side: f64) -> (f64, f64) {
+fn seeded(id: i32, side: f64) -> (f64, f64) {
     let mut h = id as u64 ^ 0x9E37_79B9_7F4A_7C15;
     h ^= h >> 33;
     h = h.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
@@ -533,8 +537,8 @@ fn seeded(id: i64, side: f64) -> (f64, f64) {
 /// its own layered block. Not itself crossing-free for anything beyond a tree (a non-tree edge —
 /// two nodes in the same or a cousin layer — can still need to travel past an unrelated node) —
 /// only a head start for what follows, not a replacement for it.
-fn seed_from_graph(nodes: &[i64], edges: &[(i64, i64)], side: f64) -> HashMap<i64, (f64, f64)> {
-    let mut adjacency: HashMap<i64, Vec<i64>> = HashMap::new();
+fn seed_from_graph(nodes: &[i32], edges: &[(i32, i32)], side: f64) -> HashMap<i32, (f64, f64)> {
+    let mut adjacency: HashMap<i32, Vec<i32>> = HashMap::new();
     for &(a, b) in edges {
         adjacency.entry(a).or_default().push(b);
         adjacency.entry(b).or_default().push(a);
@@ -552,9 +556,9 @@ fn seed_from_graph(nodes: &[i64], edges: &[(i64, i64)], side: f64) -> HashMap<i6
         if !visited.insert(root) {
             continue;
         }
-        let mut layers: Vec<Vec<i64>> = vec![vec![root]];
+        let mut layers: Vec<Vec<i32>> = vec![vec![root]];
         loop {
-            let next: Vec<i64> = layers
+            let next: Vec<i32> = layers
                 .last()
                 .expect("just pushed a first layer, and only ever push another non-empty one")
                 .iter()
@@ -587,13 +591,13 @@ fn seed_from_graph(nodes: &[i64], edges: &[(i64, i64)], side: f64) -> HashMap<i6
 /// the whole map jitter, even with nothing changed).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Cluster {
-    Site(i64),
-    Alone(i64),
+    Site(i32),
+    Alone(i32),
 }
 
 /// A site's devices, grouped into their own circle.
 struct SiteCircle {
-    site: i64,
+    site: i32,
     name: String,
     center: (f64, f64),
     radius: f64,
@@ -698,9 +702,9 @@ fn segment_intersects_circle(p1: (f64, f64), p2: (f64, f64), center: (f64, f64),
 /// whether it also crosses another edge on the way, so [`reduce_site_crossings`] weighs it the
 /// same as an actual crossing.
 fn count_intrusions(
-    positions: &HashMap<i64, (f64, f64)>,
-    edges: &[(i64, i64)],
-    cluster_of_node: &HashMap<i64, Cluster>,
+    positions: &HashMap<i32, (f64, f64)>,
+    edges: &[(i32, i32)],
+    cluster_of_node: &HashMap<i32, Cluster>,
     centers: &HashMap<Cluster, (f64, f64)>,
     radii: &HashMap<Cluster, f64>,
 ) -> usize {
@@ -734,21 +738,21 @@ fn count_intrusions(
 /// overlapping (this only moves centers, blind to radius) — left for the caller's own radius-aware
 /// cleanup, same as any other cause of overlap.
 fn reduce_site_crossings(
-    positions: &mut HashMap<i64, (f64, f64)>,
+    positions: &mut HashMap<i32, (f64, f64)>,
     centers: &mut HashMap<Cluster, (f64, f64)>,
-    cluster_of_node: &HashMap<i64, Cluster>,
-    members: &BTreeMap<Cluster, Vec<i64>>,
-    edges: &[(i64, i64)],
+    cluster_of_node: &HashMap<i32, Cluster>,
+    members: &BTreeMap<Cluster, Vec<i32>>,
+    edges: &[(i32, i32)],
     radii: &HashMap<Cluster, f64>,
 ) {
-    let offsets: HashMap<i64, (f64, f64)> = positions
+    let offsets: HashMap<i32, (f64, f64)> = positions
         .iter()
         .map(|(&id, &(x, y))| {
             let center = centers[&cluster_of_node[&id]];
             (id, (x - center.0, y - center.1))
         })
         .collect();
-    let badness = |positions: &HashMap<i64, (f64, f64)>, centers: &HashMap<Cluster, (f64, f64)>| {
+    let badness = |positions: &HashMap<i32, (f64, f64)>, centers: &HashMap<Cluster, (f64, f64)>| {
         count_crossings(positions, edges) + count_intrusions(positions, edges, cluster_of_node, centers, radii)
     };
     let mut site_clusters: Vec<Cluster> = members.keys().copied().filter(|c| matches!(c, Cluster::Site(_))).collect();
@@ -795,24 +799,24 @@ fn reduce_site_crossings(
 /// their own single-node "site" in the meta layout (pulled toward what they're cabled to) but
 /// get no circle. Edges between devices are drawn at the devices' own, now clustered, positions
 /// — only where a node ends up, not what it's grouped under, changes.
-fn clustered_layout(state: &State, pinned: &HashMap<i64, (f64, f64)>) -> (HashMap<i64, (f64, f64)>, Vec<SiteCircle>) {
+fn clustered_layout(state: &State, pinned: &HashMap<i32, (f64, f64)>) -> (HashMap<i32, (f64, f64)>, Vec<SiteCircle>) {
     let (node_ids, edge_pairs) = graph(state);
     if node_ids.is_empty() {
         return (HashMap::new(), Vec::new());
     }
-    let site_of: HashMap<i64, Option<i64>> = state.nodes.iter().map(|n| (n.device.id, n.device.site)).collect();
-    let site_name_of: HashMap<i64, String> =
+    let site_of: HashMap<i32, Option<i32>> = state.nodes.iter().map(|n| (n.device.id, n.device.site)).collect();
+    let site_name_of: HashMap<i32, String> =
         state.nodes.iter().filter_map(|n| Some((n.device.site?, n.site_name.clone()?))).collect();
-    let cluster_of = |id: i64| match site_of.get(&id).copied().flatten() {
+    let cluster_of = |id: i32| match site_of.get(&id).copied().flatten() {
         Some(site) => Cluster::Site(site),
         None => Cluster::Alone(id),
     };
 
-    let mut groups = BTreeMap::<Cluster, Vec<i64>>::new();
+    let mut groups = BTreeMap::<Cluster, Vec<i32>>::new();
     for &id in &node_ids {
         groups.entry(cluster_of(id)).or_default().push(id);
     }
-    let cluster_of_node: HashMap<i64, Cluster> =
+    let cluster_of_node: HashMap<i32, Cluster> =
         groups.iter().flat_map(|(&c, ids)| ids.iter().map(move |&id| (id, c))).collect();
 
     // the meta layout: one node per cluster (force_layout's ids are plain i64s, so clusters get
@@ -825,9 +829,9 @@ fn clustered_layout(state: &State, pinned: &HashMap<i64, (f64, f64)>) -> (HashMa
     // regard for their edges, undoing some of the force layout's own shortening), the two
     // objectives are balanced by the same simulation here.
     let clusters: Vec<Cluster> = groups.keys().copied().collect();
-    let meta_id_of: HashMap<Cluster, i64> = clusters.iter().enumerate().map(|(i, &c)| (c, i as i64)).collect();
-    let meta_ids: Vec<i64> = (0..clusters.len() as i64).collect();
-    let meta_edges: Vec<(i64, i64)> = edge_pairs
+    let meta_id_of: HashMap<Cluster, i32> = clusters.iter().enumerate().map(|(i, &c)| (c, i as i32)).collect();
+    let meta_ids: Vec<i32> = (0..clusters.len() as i32).collect();
+    let meta_edges: Vec<(i32, i32)> = edge_pairs
         .iter()
         .filter_map(|&(a, b)| {
             let (ca, cb) = (cluster_of_node[&a], cluster_of_node[&b]);
@@ -842,7 +846,7 @@ fn clustered_layout(state: &State, pinned: &HashMap<i64, (f64, f64)>) -> (HashMa
         Cluster::Alone(_) => 0.0,
         Cluster::Site(_) => (area_side(groups[&cluster].len()) * 0.5).max(SITE_MIN_RADIUS),
     };
-    let meta_radii: HashMap<i64, f64> = clusters.iter().map(|&c| (meta_id_of[&c], radius_of(c))).collect();
+    let meta_radii: HashMap<i32, f64> = clusters.iter().map(|&c| (meta_id_of[&c], radius_of(c))).collect();
     let meta_area: f64 = meta_radii.values().map(|r| std::f64::consts::PI * r * r).sum();
     let meta_side = (meta_area * 2.0).sqrt().max(300.0);
     let meta_seed = seed_from_graph(&meta_ids, &meta_edges, meta_side);
@@ -852,7 +856,7 @@ fn clustered_layout(state: &State, pinned: &HashMap<i64, (f64, f64)>) -> (HashMa
 
     let mut positions = HashMap::new();
     let mut circles = Vec::new();
-    let mut circle_members: Vec<Vec<i64>> = Vec::new();
+    let mut circle_members: Vec<Vec<i32>> = Vec::new();
     for (&cluster, ids) in &groups {
         let center = meta_positions[&cluster];
         let promised_radius = radius_of(cluster);
@@ -861,7 +865,7 @@ fn clustered_layout(state: &State, pinned: &HashMap<i64, (f64, f64)>) -> (HashMa
         // `promised_radius`): called once below for the plain case, and, where a device of this
         // site is pinned (dragged, live or settled), a second time so the others can be laid out
         // reacting to it rather than just having it stamped on top afterwards.
-        let recenter = |local: &HashMap<i64, (f64, f64)>| -> (HashMap<i64, (f64, f64)>, f64, f64, f64) {
+        let recenter = |local: &HashMap<i32, (f64, f64)>| -> (HashMap<i32, (f64, f64)>, f64, f64, f64) {
             let (sx, sy) = local.values().fold((0.0, 0.0), |(sx, sy), p| (sx + p.0, sy + p.1));
             let n = local.len() as f64;
             let (dx, dy) = (center.0 - sx / n, center.1 - sy / n);
@@ -896,8 +900,8 @@ fn clustered_layout(state: &State, pinned: &HashMap<i64, (f64, f64)>) -> (HashMa
             // another site's circle on the way.
             let side = area_side(ids.len());
             let local_center = (side / 2.0, side / 2.0);
-            let mut anchor_of_cluster = HashMap::<Cluster, i64>::new();
-            let mut anchors = HashMap::<i64, (f64, f64)>::new();
+            let mut anchor_of_cluster = HashMap::<Cluster, i32>::new();
+            let mut anchors = HashMap::<i32, (f64, f64)>::new();
             let mut anchor_edges = Vec::new();
             for &(a, b) in &edge_pairs {
                 let (ca, cb) = (cluster_of_node[&a], cluster_of_node[&b]);
@@ -909,7 +913,7 @@ fn clustered_layout(state: &State, pinned: &HashMap<i64, (f64, f64)>) -> (HashMa
                     continue;
                 };
                 let Some(&other_center) = meta_positions.get(&other) else { continue };
-                let anchor_id = *anchor_of_cluster.entry(other).or_insert_with(|| -1_000_000 - i64::from(anchors.len() as u32));
+                let anchor_id = *anchor_of_cluster.entry(other).or_insert_with(|| -1_000_000 - anchors.len() as i32);
                 anchors.entry(anchor_id).or_insert_with(|| {
                     let (dx, dy) = (other_center.0 - center.0, other_center.1 - center.1);
                     let dist = dx.hypot(dy).max(0.01);
@@ -917,13 +921,13 @@ fn clustered_layout(state: &State, pinned: &HashMap<i64, (f64, f64)>) -> (HashMa
                 });
                 anchor_edges.push((local_end, anchor_id));
             }
-            let all_ids: Vec<i64> = ids.iter().copied().chain(anchors.keys().copied()).collect();
-            let all_edges: Vec<(i64, i64)> = internal_edges.iter().copied().chain(anchor_edges).collect();
-            let compute_local = |extra_pins: &HashMap<i64, (f64, f64)>| -> HashMap<i64, (f64, f64)> {
+            let all_ids: Vec<i32> = ids.iter().copied().chain(anchors.keys().copied()).collect();
+            let all_edges: Vec<(i32, i32)> = internal_edges.iter().copied().chain(anchor_edges).collect();
+            let compute_local = |extra_pins: &HashMap<i32, (f64, f64)>| -> HashMap<i32, (f64, f64)> {
                 let mut pins = anchors.clone();
                 pins.extend(extra_pins);
                 let raw = force_layout(&all_ids, &all_edges, &pins, &HashMap::new(), 0.0, side, &HashMap::new());
-                let mut local: HashMap<i64, (f64, f64)> = ids.iter().map(|&id| (id, raw[&id])).collect();
+                let mut local: HashMap<i32, (f64, f64)> = ids.iter().map(|&id| (id, raw[&id])).collect();
                 // untangle the devices' own cabling within the circle too, same local search as
                 // the meta layout above — the anchors already bias which side of the circle a
                 // device ends up on, this only straightens out crossings among the internal
@@ -932,7 +936,7 @@ fn clustered_layout(state: &State, pinned: &HashMap<i64, (f64, f64)>) -> (HashMa
                 local
             };
             let (local, dx, dy, shrink) = recenter(&compute_local(&HashMap::new()));
-            let pinned_here: HashMap<i64, (f64, f64)> = ids.iter().filter_map(|id| Some((*id, *pinned.get(id)?))).collect();
+            let pinned_here: HashMap<i32, (f64, f64)> = ids.iter().filter_map(|id| Some((*id, *pinned.get(id)?))).collect();
             if pinned_here.is_empty() {
                 local
             } else {
@@ -944,7 +948,7 @@ fn clustered_layout(state: &State, pinned: &HashMap<i64, (f64, f64)>) -> (HashMa
                 // which this inversion still assumes — but close enough for a live, reacting
                 // picture; the exact position is guaranteed separately, by `map()`'s own
                 // post-override of `positions` after this returns.
-                let local_pins: HashMap<i64, (f64, f64)> = pinned_here
+                let local_pins: HashMap<i32, (f64, f64)> = pinned_here
                     .iter()
                     .map(|(&id, &(x, y))| (id, ((x - center.0) / shrink + center.0 - dx, (y - center.1) / shrink + center.1 - dy)))
                     .collect();
@@ -1032,14 +1036,14 @@ fn clustered_layout(state: &State, pinned: &HashMap<i64, (f64, f64)>) -> (HashMa
 /// The interaction state [`map`] needs beyond the polled graph itself: dragging, the browser's
 /// own overrides and publishing them (`docs/concepts/network-map.md`, "Positionen speichern").
 struct Interaction<'a> {
-    overridden: &'a HashMap<i64, (f64, f64)>,
-    site_overrides: &'a HashMap<i64, (f64, f64)>,
+    overridden: &'a HashMap<i32, (f64, f64)>,
+    site_overrides: &'a HashMap<i32, (f64, f64)>,
     allow_netbox_write: bool,
     publish: &'a PublishState,
     svg_ref: &'a NodeRef,
 }
 
-fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, interaction: &Interaction, scope: &Scope<NetworkMap>) -> Html {
+fn map(state: &State, details: &Option<DetailsState>, hover: Option<i32>, interaction: &Interaction, scope: &Scope<NetworkMap>) -> Html {
     let overridden = interaction.overridden;
     let site_overrides = interaction.site_overrides;
     let allow_netbox_write = interaction.allow_netbox_write;
@@ -1048,7 +1052,7 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
     // NetBox's published layout, overlaid by whatever the user dragged in this browser (wins
     // where both exist); fed into the layout below as pinned positions, so other nodes still
     // arrange themselves around a pinned one ([`force_layout`]'s own doc comment).
-    let mut pinned: HashMap<i64, (f64, f64)> = state
+    let mut pinned: HashMap<i32, (f64, f64)> = state
         .nodes
         .iter()
         .filter_map(|n| n.position.as_ref().map(|p| (n.device.id, (p.x as f64, p.y as f64))))
@@ -1062,7 +1066,7 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
         // `pinned` holds the desired final rendered position, but `force_layout` adds `MARGIN`
         // to every position, pinned ones included, right before returning it; undo that here so
         // a pin actually lands where it says, rather than MARGIN further out.
-        let pinned_for_layout: HashMap<i64, (f64, f64)> =
+        let pinned_for_layout: HashMap<i32, (f64, f64)> =
             pinned.iter().map(|(&id, &(x, y))| (id, (x - MARGIN, y - MARGIN))).collect();
         (force_layout(&node_ids, &edge_pairs, &pinned_for_layout, &HashMap::new(), 0.0, area_side(node_ids.len()), &HashMap::new()), Vec::new())
     };
@@ -1095,7 +1099,7 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
     let height = positions.values().map(|p| p.1).chain(circles.iter().map(|c| c.center.1 + c.radius)).fold(0.0, f64::max) + MARGIN;
     // every device of a site, for a dragged site's circle to carry them all along as its
     // `DragStart` baseline
-    let mut site_members = HashMap::<i64, Vec<i64>>::new();
+    let mut site_members = HashMap::<i32, Vec<i32>>::new();
     for n in &state.nodes {
         if let Some(site) = n.device.site {
             site_members.entry(site).or_default().push(n.device.id);
@@ -1104,7 +1108,7 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
     let site_circles = circles.iter().map(|c| {
         let site = c.site;
         let center = c.center;
-        let bases: Vec<(i64, (f64, f64))> =
+        let bases: Vec<(i32, (f64, f64))> =
             site_members.get(&site).into_iter().flatten().filter_map(|&id| Some((id, positions.get(&id).copied()?))).collect();
         let onpointerdown = scope.callback(move |e: web_sys::PointerEvent| {
             e.prevent_default();
@@ -1118,7 +1122,7 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
         }
     });
     // parallel edges between the same two devices side by side
-    let mut parallel = HashMap::<(i64, i64), f64>::new();
+    let mut parallel = HashMap::<(i32, i32), f64>::new();
     let edges = state.edges.iter().filter_map(|edge| {
         let (a, b) = (edge.a.device.id, edge.b.device.id);
         let (pa, pb) = (positions.get(&a)?, positions.get(&b)?);
@@ -1126,22 +1130,22 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
         let offset = *index * 6.0;
         *index += 1.0;
         let class = match edge.state {
-            MapEdgeState::UP => "up",
-            MapEdgeState::V3_DOWN => "v3-down",
-            MapEdgeState::DOWN => "down",
+            MapEdgeState::Up => "up",
+            MapEdgeState::V3Down => "v3-down",
+            MapEdgeState::Down => "down",
             _ => "not-ospf",
         };
-        let radio = if edge.kind == MapEdgeKind::RADIO { " radio" } else { "" };
+        let radio = if edge.kind == MapEdgeKind::Radio { " radio" } else { "" };
         let name = |id| names.get(&id).copied().unwrap_or_default();
         let state_text = match edge.state {
-            MapEdgeState::UP => t::EDGE_UP.to_string(),
-            MapEdgeState::V3_DOWN => t::EDGE_V3_DOWN.to_string(),
-            MapEdgeState::DOWN => {
+            MapEdgeState::Up => t::EDGE_UP.to_string(),
+            MapEdgeState::V3Down => t::EDGE_V3_DOWN.to_string(),
+            MapEdgeState::Down => {
                 let device = edge.reason_device.map(name).unwrap_or_default();
                 match edge.reason {
-                    Some(MapDownReason::ROUTER_MISSING) => t::router_missing(device),
-                    Some(MapDownReason::NOT_ON_SEGMENT) => t::not_on_segment(device),
-                    Some(MapDownReason::NO_SEGMENT) => t::NO_SEGMENT.to_string(),
+                    Some(MapDownReason::RouterMissing) => t::router_missing(device),
+                    Some(MapDownReason::NotOnSegment) => t::not_on_segment(device),
+                    Some(MapDownReason::NoSegment) => t::NO_SEGMENT.to_string(),
                     _ => t::EDGE_DOWN.to_string(),
                 }
             }
@@ -1163,7 +1167,7 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
             ><title>{title}</title></line>
         })
     });
-    let mut parallel_poe = HashMap::<(i64, i64), f64>::new();
+    let mut parallel_poe = HashMap::<(i32, i32), f64>::new();
     let poe_edges = details.iter().flat_map(|d| &d.poe_edges).filter_map(|edge| {
         let (a, b) = (edge.pse.device.id, edge.pd.device.id);
         let (pa, pb) = (positions.get(&a)?, positions.get(&b)?);
@@ -1171,12 +1175,12 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
         let offset = *index * 6.0;
         *index += 1.0;
         let problem_text = match &edge.problem {
-            Some(PoeProblem::NO_POE_OUT) => Some(t::POE_NO_POE_OUT),
-            Some(PoeProblem::NO_LOAD) => Some(t::POE_NO_LOAD),
-            Some(PoeProblem::PD_MISSING) => Some(t::POE_PD_MISSING),
-            Some(PoeProblem::FEEDS_INSTEAD) => Some(t::POE_FEEDS_INSTEAD),
-            Some(PoeProblem::UNDOCUMENTED) => Some(t::POE_UNDOCUMENTED),
-            Some(PoeProblem::Other(_)) | None => None,
+            Some(PoeProblem::NoPoeOut) => Some(t::POE_NO_POE_OUT),
+            Some(PoeProblem::NoLoad) => Some(t::POE_NO_LOAD),
+            Some(PoeProblem::PdMissing) => Some(t::POE_PD_MISSING),
+            Some(PoeProblem::FeedsInstead) => Some(t::POE_FEEDS_INSTEAD),
+            Some(PoeProblem::Undocumented) => Some(t::POE_UNDOCUMENTED),
+            Some(PoeProblem::Other) | None => None,
         };
         let class = if problem_text.is_some() { "map-edge poe problem" } else { "map-edge poe" };
         let title = t::poe_edge(
@@ -1215,9 +1219,9 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
     let nodes = state.nodes.iter().filter_map(|node| {
         let p = positions.get(&node.device.id)?;
         let class = match node.state {
-            NodeState::REACHED => "reached",
-            NodeState::ISOLATED => "isolated",
-            NodeState::NOT_OSPF => "not-ospf",
+            NodeState::Reached => "reached",
+            NodeState::Isolated => "isolated",
+            NodeState::NotOspf => "not-ospf",
             _ => "missing",
         };
         let id = node.device.id;
@@ -1258,7 +1262,7 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
     });
     let onpointerup = scope.callback(move |_: web_sys::PointerEvent| NetworkMapMsg::DragEnd);
     let onpointerleave = onpointerup.clone();
-    let publish_positions: Vec<(i64, (f64, f64))> =
+    let publish_positions: Vec<(i32, (f64, f64))> =
         state.nodes.iter().filter_map(|n| positions.get(&n.device.id).map(|&p| (n.device.id, p))).collect();
     let onclick_publish = scope.callback(move |_| NetworkMapMsg::Publish(publish_positions.clone()));
     let onclick_reset = scope.callback(|_| NetworkMapMsg::ResetOverrides);
@@ -1305,9 +1309,9 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
         let node = state.nodes.iter().find(|n| n.device.id == id)?;
         let p = positions.get(&id)?;
         let text = match node.state {
-            NodeState::REACHED => t::NODE_REACHED,
-            NodeState::ISOLATED => t::NODE_ISOLATED,
-            NodeState::NOT_OSPF => t::NODE_NOT_OSPF,
+            NodeState::Reached => t::NODE_REACHED,
+            NodeState::Isolated => t::NODE_ISOLATED,
+            NodeState::NotOspf => t::NODE_NOT_OSPF,
             _ => t::NODE_MISSING,
         };
         let detail = match details {
@@ -1324,7 +1328,14 @@ fn map(state: &State, details: &Option<DetailsState>, hover: Option<i64>, intera
                 <div>{format!("{}: {text}", node.device.name)}</div>
                 if let Some(detail) = detail {
                     if let Some(r) = &detail.resources {
-                        <div>{t::resources(&r.uptime, r.cpu_load, r.free_memory, r.total_memory, r.free_hdd_space, &r.version)}</div>
+                        <div>{t::resources(
+                            &r.uptime,
+                            r.cpu_load,
+                            r.free_memory.0,
+                            r.total_memory.0,
+                            r.free_hdd_space.0,
+                            &r.version,
+                        )}</div>
                     }
                     { for detail.health.iter().map(|h| html!(<div>{t::health_row(&h.name, &h.value, h.unit.as_deref())}</div>)) }
                 }

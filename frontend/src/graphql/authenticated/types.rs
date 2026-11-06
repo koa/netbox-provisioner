@@ -24,6 +24,12 @@ pub enum JobKind {
 
 // nanoseconds (`ScalarDuration`)
 cynic::impl_scalar!(u64, schema::ScalarDuration);
+/// An `Int` the backend fills from a `u64`, beyond the 32 bits of GraphQL's `Int` (bytes, the
+/// hosts of an IPv6 pool): an `i32` would fail the whole answer.
+#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct WideInt(pub u64);
+cynic::impl_scalar!(WideInt, schema::Int);
 
 /// The state of an apply (`ApplyState`).
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -236,4 +242,36 @@ pub struct WatchTargetSilent {
 #[cynic(schema = "authenticated")]
 pub struct ApiClientsOutside {
     pub clients: Vec<String>,
+}
+
+/// What doesn't fit at a PoE port (`PoeProblem`).
+#[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum PoeProblem {
+    NoPoeOut,
+    NoLoad,
+    PdMissing,
+    FeedsInstead,
+    Undocumented,
+    #[cynic(fallback)]
+    Other,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PoeProblem, WideInt};
+
+    /// The free hosts of an IPv6 pool come as `u64::MAX` (`topology::findings`).
+    #[test]
+    fn wide_int_takes_more_than_32_bits() {
+        let wide: WideInt = serde_json::from_str("18446744073709551615").unwrap();
+        assert_eq!(wide, WideInt(u64::MAX));
+    }
+
+    /// A value a newer backend added doesn't fail the answer.
+    #[test]
+    fn unknown_enum_value_falls_back() {
+        let problem: PoeProblem = serde_json::from_str("\"SOMETHING_NEW\"").unwrap();
+        assert_eq!(problem, PoeProblem::Other);
+    }
 }

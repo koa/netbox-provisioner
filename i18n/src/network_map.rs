@@ -36,8 +36,15 @@ pub fn not_on_segment(device: &str) -> String {
 pub const LEGEND: &str = "Legende";
 /// Not judged, only shown (`docs/concepts/network-map.md`, step 3): memory and disk as MiB,
 /// for readability, nothing more.
-pub fn resources(uptime: &str, cpu_load: i64, free_memory: i64, total_memory: i64, free_hdd_space: i64, version: &str) -> String {
-    let mib = |bytes: i64| bytes / (1024 * 1024);
+pub fn resources(
+    uptime: &str,
+    cpu_load: i32,
+    free_memory: u64,
+    total_memory: u64,
+    free_hdd_space: u64,
+    version: &str,
+) -> String {
+    let mib = |bytes: u64| bytes / (1024 * 1024);
     format!(
         "{version}, seit {uptime}, CPU {cpu_load} %, RAM {} von {} MiB frei, Disk {} MiB frei",
         mib(free_memory),

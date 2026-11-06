@@ -5,7 +5,7 @@ use super::{
     schema::schema,
     types::{
         AddressRef, DeviceRef, InterfaceRef, IpVersion, PrefixRef, ServiceRef, Severity, SiteRef,
-        VlanRef, WlanGroupRef,
+        VlanRef, WideInt, WlanGroupRef,
     },
 };
 
@@ -90,8 +90,8 @@ pub struct PoolMissing {
 pub struct PoolNearlyFull {
     pub pool: PrefixPool,
     pub version: IpVersion,
-    pub free: i32,
-    pub size: i32,
+    pub free: WideInt,
+    pub size: WideInt,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

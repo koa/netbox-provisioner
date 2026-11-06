@@ -164,7 +164,7 @@ impl Links<'_> {
         match kind {
             Kind::PoolMissing(f) => t::pool_missing(self.pool(&f.pool), version(&f.version)),
             Kind::PoolNearlyFull(f) => {
-                t::pool_nearly_full(self.pool(&f.pool), version(&f.version), f.free, f.size)
+                t::pool_nearly_full(self.pool(&f.pool), version(&f.version), f.free.0, f.size.0)
             }
             Kind::NoLoopback(f) => t::no_loopback(self.device(&f.device)),
             Kind::NoPrimaryIpv4(f) => t::no_primary_ipv4(self.device(&f.device)),

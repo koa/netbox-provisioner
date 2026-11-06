@@ -3,6 +3,10 @@
 //! coordinates.
 
 use super::*;
+use crate::graphql::authenticated::{
+    network_map::{MapEdge, MapNode},
+    types::{DeviceRef, InterfaceRef},
+};
 
 /// Two edges crossing like a square's diagonals: swapping either diagonal's endpoints with the
 /// other's untangles them into two non-crossing sides, which the local search should find.
@@ -77,7 +81,7 @@ fn seed_from_graph_lays_out_a_chain_in_order() {
     let side = area_side(nodes.len());
     let seed = seed_from_graph(&nodes, &edges, side);
     assert_eq!(seed.len(), 4);
-    let depth = |id: i64| seed[&id].1;
+    let depth = |id: i32| seed[&id].1;
     assert!(depth(1) < depth(2) && depth(2) < depth(3) && depth(3) < depth(4), "a chain should be seeded in depth order: {seed:?}");
     let step = depth(2) - depth(1);
     assert!(step > 0.0, "consecutive sites should land in different layers");
@@ -134,7 +138,7 @@ fn connected_nodes_end_up_closer_than_distant_ones() {
     let edges = [(1, 2), (2, 3), (3, 4), (4, 5)];
     let side = area_side(nodes.len());
     let pos = force_layout(&nodes, &edges, &HashMap::new(), &HashMap::new(), 0.0, side, &HashMap::new());
-    let dist = |a: i64, b: i64| {
+    let dist = |a: i32, b: i32| {
         let (ax, ay) = pos[&a];
         let (bx, by) = pos[&b];
         (ax - bx).hypot(ay - by)
@@ -176,30 +180,30 @@ fn the_layout_is_deterministic() {
     assert_eq!(a, b);
 }
 
-fn node(id: i64, site: Option<i64>, site_name: Option<&str>) -> network_map::NetworkMapTopologyNetworkStateNodes {
-    network_map::NetworkMapTopologyNetworkStateNodes {
-        device: network_map::NetworkMapTopologyNetworkStateNodesDevice { id, name: id.to_string(), site },
+fn node(id: i32, site: Option<i32>, site_name: Option<&str>) -> MapNode {
+    MapNode {
+        device: DeviceRef { id, name: id.to_string(), site },
         routeros: true,
-        state: NodeState::REACHED,
+        state: NodeState::Reached,
         site_name: site_name.map(str::to_string),
         position: None,
     }
 }
 
-fn edge(a: i64, b: i64) -> network_map::NetworkMapTopologyNetworkStateEdges {
-    network_map::NetworkMapTopologyNetworkStateEdges {
-        kind: MapEdgeKind::CABLE,
-        a: network_map::NetworkMapTopologyNetworkStateEdgesA {
+fn edge(a: i32, b: i32) -> MapEdge {
+    MapEdge {
+        kind: MapEdgeKind::Cable,
+        a: InterfaceRef {
             id: a,
             name: "a".into(),
-            device: network_map::NetworkMapTopologyNetworkStateEdgesADevice { id: a, name: "a".into() },
+            device: DeviceRef { id: a, name: "a".into(), site: None },
         },
-        b: network_map::NetworkMapTopologyNetworkStateEdgesB {
+        b: InterfaceRef {
             id: b,
             name: "b".into(),
-            device: network_map::NetworkMapTopologyNetworkStateEdgesBDevice { id: b, name: "b".into() },
+            device: DeviceRef { id: b, name: "b".into(), site: None },
         },
-        state: MapEdgeState::UP,
+        state: MapEdgeState::Up,
         reason: None,
         reason_device: None,
     }
@@ -253,7 +257,7 @@ fn a_device_with_an_external_edge_is_pulled_toward_it() {
         edges: vec![edge(1, 2), edge(2, 3), edge(1, 3), edge(1, 4)],
     };
     let (positions, _) = clustered_layout(&state, &HashMap::new());
-    let dist = |a: i64, b: i64| {
+    let dist = |a: i32, b: i32| {
         let (ax, ay) = positions[&a];
         let (bx, by) = positions[&b];
         (ax - bx).hypot(ay - by)
@@ -281,7 +285,7 @@ fn two_sites_get_their_own_circle() {
     let names = circles.iter().map(|c| c.name.as_str()).collect::<Vec<_>>();
     assert!(names.contains(&"A") && names.contains(&"B"));
     for circle in &circles {
-        let members: &[i64] = if circle.name == "A" { &[1, 2] } else { &[3, 4] };
+        let members: &[i32] = if circle.name == "A" { &[1, 2] } else { &[3, 4] };
         for &id in members {
             let (x, y) = positions[&id];
             let dist = (x - circle.center.0).hypot(y - circle.center.1);
