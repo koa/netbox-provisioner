@@ -166,7 +166,8 @@ pub struct LeaseTakeoverInput {
     pub role: i32,
 }
 
-#[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+/// A tag the provisioner acts on (`InterfaceTag`); one a newer backend has keeps its name.
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
 #[cynic(schema = "authenticated")]
 pub enum InterfaceTag {
     Ospf,
@@ -175,5 +176,5 @@ pub enum InterfaceTag {
     Nat,
     Internet,
     #[cynic(fallback)]
-    Other,
+    Other(String),
 }

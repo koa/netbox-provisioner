@@ -5,18 +5,16 @@ use crate::{
     components::menu::popup::Select,
     error::FrontendError,
     graphql::{
-        authenticated::{
-            LinkPorts,
-            link_ports::{self, LinkPortFields},
-        },
-        query_authenticated,
+        authenticated::helper_options::{DeviceVariables, LinkPort, LinkPorts},
+        request,
     },
 };
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{Button, ButtonVariant, Form, FormGroup, Spinner, SpinnerSize, TextInput};
 use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 
 pub enum LinkMsg {
-    Ports(Result<link_ports::ResponseData, FrontendError>),
+    Ports(Result<LinkPorts, FrontendError>),
     Port(Choice),
     PeerDevice(Choice),
     Peer(Choice),
@@ -74,10 +72,10 @@ impl NetboxHelper {
         }
         true
     }
-    pub(super) fn ports(&self) -> Option<&link_ports::ResponseData> {
+    pub(super) fn ports(&self) -> Option<&LinkPorts> {
         self.ports.as_ref().and_then(|ports| ports.as_ref().ok())
     }
-    pub(super) fn port(&self, id: u32) -> Option<&LinkPortFields> {
+    pub(super) fn port(&self, id: u32) -> Option<&LinkPort> {
         self.ports()?
             .topology
             .device_by_id
@@ -87,7 +85,7 @@ impl NetboxHelper {
             .find(|port| port.id as u32 == id)
     }
     /// A port of any router, with its device's name.
-    pub(super) fn any_port(&self, id: u32) -> Option<(&str, &LinkPortFields)> {
+    pub(super) fn any_port(&self, id: u32) -> Option<(&str, &LinkPort)> {
         self.ports()?.topology.all_devices.iter().find_map(|device| {
             device
                 .link_ports
@@ -174,7 +172,7 @@ impl NetboxHelper {
             Some(Ok(ports)) => ports,
         };
         let choices =
-            |ports: &[LinkPortFields]| -> Vec<Choice> { ports.iter().map(port_choice).collect() };
+            |ports: &[LinkPort]| -> Vec<Choice> { ports.iter().map(port_choice).collect() };
         let own = ports
             .topology
             .device_by_id
@@ -254,7 +252,7 @@ impl NetboxHelper {
 }
 
 /// A port to pick for a link, with its far end, cable, IPv4 and bridge.
-pub(super) fn port_choice(port: &LinkPortFields) -> Choice {
+pub(super) fn port_choice(port: &LinkPort) -> Choice {
     Choice {
         id: port.id as u32,
         text: t::link_port(
@@ -270,11 +268,8 @@ pub(super) fn port_choice(port: &LinkPortFields) -> Choice {
 
 pub(super) fn fetch_ports(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
-        let ports = query_authenticated::<LinkPorts, _>(
-            scope.clone(),
-            link_ports::Variables { id: id as i64 },
-        )
-        .await;
+        let query = LinkPorts::build(DeviceVariables { id: id as i32 });
+        let ports = request(scope.clone(), query).await;
         scope.send_message(LinkMsg::Ports(ports));
     });
 }

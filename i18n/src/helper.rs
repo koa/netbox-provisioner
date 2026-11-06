@@ -40,7 +40,7 @@ pub const DHCP_SERVER: &str = "DHCP-Server (Tag dhcp)";
 pub const CHOOSE_NET: &str = "Port oder VLAN und ein IPv4- oder IPv6-Prefix wählen.";
 /// the port given by its row
 pub const CHOOSE_NET_PREFIX: &str = "Ein IPv4- oder IPv6-Prefix wählen.";
-pub fn net_vlan(name: &str, vid: i64, interface: Option<&str>) -> String {
+pub fn net_vlan(name: &str, vid: i32, interface: Option<&str>) -> String {
     match interface {
         Some(interface) => format!("VLAN {name} ({vid}), an {interface}"),
         None => format!("VLAN {name} ({vid}), neues Interface"),
@@ -353,7 +353,7 @@ pub const NO_PORT_VLAN_VLANS: &str = "Kein VLAN, das ein Port erreicht: eines de
     eines aus einer VLAN-Gruppe mit vxlan_vni. Weggelassen sind VLANs mit einer VID, die auf dem \
     Gerät schon ein anderes hat, und VLANs einer Gruppe, deren VXLAN auf dem Gerät an einer \
     anderen Bridge hängt.";
-pub fn port_vlan_port(name: &str, label: Option<&str>, vlan: Option<(i64, &str)>) -> String {
+pub fn port_vlan_port(name: &str, label: Option<&str>, vlan: Option<(i32, &str)>) -> String {
     let mut text = match label {
         Some(label) => format!("{name} ({label})"),
         None => name.to_string(),
@@ -363,7 +363,7 @@ pub fn port_vlan_port(name: &str, label: Option<&str>, vlan: Option<(i64, &str)>
     }
     text
 }
-pub fn port_vlan_vlan(vid: i64, name: &str) -> String {
+pub fn port_vlan_vlan(vid: i32, name: &str) -> String {
     format!("VLAN {vid} ({name})")
 }
 pub const RADIO_DISCONNECT: &str = "Richtfunk abräumen";

@@ -6,12 +6,16 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            PoeObserved, PoeOptions, poe_observed,
-            poe_options::{self, PoePortFields},
+            helper_options::{
+                DeviceVariables, PoeMode, PoeObserved, PoeObservedQuery, PoeObservedVariables,
+                PoeOptions, PoeOptionsQuery, PoePort,
+            },
+            types::{AdhocCredentials, InterfaceRef},
         },
-        query_authenticated,
+        request,
     },
 };
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{Button, ButtonVariant, Form, FormGroup, Spinner, SpinnerSize};
 use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 
@@ -113,7 +117,7 @@ impl NetboxHelper {
         true
     }
     /// A port of the device or of another device of „PoE“.
-    pub(super) fn poe_port(&self, id: u32) -> Option<&PoePortFields> {
+    pub(super) fn poe_port(&self, id: u32) -> Option<&PoePort> {
         let options = self.poe_options.as_ref()?.as_ref().ok()?;
         options
             .ports
@@ -127,7 +131,7 @@ impl NetboxHelper {
             Some(Err(error)) => return error.to_html(),
             Some(Ok(options)) => options,
         };
-        let choices = |ports: &[PoePortFields]| -> Vec<Choice> {
+        let choices = |ports: &[PoePort]| -> Vec<Choice> {
             ports
                 .iter()
                 .map(|port| Choice {
@@ -188,10 +192,11 @@ impl NetboxHelper {
                 { for observed.iter().map(|o| {
                     let far = o.far.as_ref();
                     // NetBox has it as the device does: the cable, PSE here and PD there
-                    let mode = |id: i64| self.poe_port(id as u32).and_then(|p| p.poe.clone());
+                    let mode = |id: i32| self.poe_port(id as u32).and_then(|p| p.poe.clone());
+                    let pse = |port: &InterfaceRef| mode(port.id) == Some(PoeMode::Pse);
                     let recorded = !o.from_neighbor
-                        && o.port.interface.as_ref().is_some_and(|port| mode(port.id) == Some(poe_options::PoeMode::PSE))
-                        && far.is_some_and(|far| mode(far.id) == Some(poe_options::PoeMode::PD));
+                        && o.port.interface.as_ref().is_some_and(pse)
+                        && far.is_some_and(|far| mode(far.id) == Some(PoeMode::Pd));
                     let text = t::poe_observed(
                         &o.port.name,
                         far.map(|far| (far.device.name.as_str(), far.name.as_str())),
@@ -274,17 +279,9 @@ impl NetboxHelper {
 
 pub(super) fn fetch_poe_options(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
-        let options = query_authenticated::<PoeOptions, _>(
-            scope.clone(),
-            poe_options::Variables { id: id as i64 },
-        )
-        .await
-        .map(|data| match data.topology.device_by_id {
-            Some(device) => device.poe_options,
-            None => PoeOptionsData {
-                ports: Vec::new(),
-                peers: Vec::new(),
-            },
+        let query = PoeOptionsQuery::build(DeviceVariables { id: id as i32 });
+        let options = request(scope.clone(), query).await.map(|data| {
+            data.topology.device_by_id.map(|device| device.poe_options).unwrap_or_default()
         });
         scope.send_message(PoeMsg::Options(options));
     });
@@ -295,19 +292,15 @@ pub(super) fn fetch_poe_observed(scope: Scope<NetboxHelper>, id: u32, target: Se
     spawn_local(async move {
         let (credential_name, adhoc_credentials) =
             target.credentials.variables(|username, password| {
-                poe_observed::AdhocCredentials { username, password }
+                AdhocCredentials { username, password }
             });
-        let observed = query_authenticated::<PoeObserved, _>(
-            scope.clone(),
-            poe_observed::Variables {
-                id: id as i64,
-                target: target.address.map(|a| a.to_string()),
-                credential_name,
-                adhoc_credentials,
-            },
-        )
-        .await
-        .map(|data| {
+        let query = PoeObservedQuery::build(PoeObservedVariables {
+            id: id as i32,
+            target: target.address.map(|a| a.to_string()),
+            credential_name,
+            adhoc_credentials,
+        });
+        let observed = request(scope.clone(), query).await.map(|data| {
             data.topology
                 .device_by_id
                 .and_then(|device| device.access)
@@ -318,15 +311,15 @@ pub(super) fn fetch_poe_observed(scope: Scope<NetboxHelper>, id: u32, target: Se
     });
 }
 
-pub(super) type PoeOptionsData = poe_options::PoeOptionsTopologyDeviceByIdPoeOptions;
+pub(super) type PoeOptionsData = PoeOptions;
 
-pub(super) type Observed = poe_observed::PoeObservedTopologyDeviceByIdAccessPoeObserved;
+pub(super) type Observed = PoeObserved;
 
 /// NetBox' PoE mode as the UI shows it.
-fn poe_mode(mode: &poe_options::PoeMode) -> &str {
+fn poe_mode(mode: &PoeMode) -> &str {
     match mode {
-        poe_options::PoeMode::PSE => "PSE",
-        poe_options::PoeMode::PD => "PD",
-        poe_options::PoeMode::Other(other) => other,
+        PoeMode::Pse => "PSE",
+        PoeMode::Pd => "PD",
+        PoeMode::Other(other) => other,
     }
 }

@@ -7,15 +7,16 @@ use crate::{
     components::menu::popup::Select,
     error::FrontendError,
     graphql::{
-        authenticated::{LeaseTakeoverOptions, lease_takeover_options},
-        query_authenticated,
+        authenticated::helper_options::{LeaseTakeoverOptions, LeaseTakeoverOptionsQuery},
+        request,
     },
 };
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{Form, FormGroup, Spinner, SpinnerSize, TextInput};
 use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 
 pub enum LeaseMsg {
-    Options(Result<lease_takeover_options::ResponseData, FrontendError>),
+    Options(Result<LeaseTakeoverOptions, FrontendError>),
     Name(String),
     /// the name left or confirmed: planned
     Commit,
@@ -53,7 +54,6 @@ impl NetboxHelper {
         match msg {
             LeaseMsg::Options(options) => {
                 if let Ok(options) = &options {
-                    let options = &options.lease_takeover_options;
                     choice.device_type = choice.device_type.or_else(|| {
                         options
                             .device_types
@@ -98,7 +98,7 @@ impl NetboxHelper {
         let options = match &self.lease_options {
             None => return html!(<Spinner size={SpinnerSize::Md}/>),
             Some(Err(error)) => return error.to_html(),
-            Some(Ok(options)) => &options.lease_takeover_options,
+            Some(Ok(options)) => options,
         };
         let types = options
             .device_types
@@ -163,11 +163,9 @@ impl NetboxHelper {
 
 pub(super) fn fetch_lease_options(scope: Scope<NetboxHelper>) {
     spawn_local(async move {
-        let options = query_authenticated::<LeaseTakeoverOptions, _>(
-            scope.clone(),
-            lease_takeover_options::Variables {},
-        )
-        .await;
+        let options = request(scope.clone(), LeaseTakeoverOptionsQuery::build(()))
+            .await
+            .map(|data| data.lease_takeover_options);
         scope.send_message(LeaseMsg::Options(options));
     });
 }

@@ -4,10 +4,11 @@ use crate::{
     components::menu::popup::Select,
     error::FrontendError,
     graphql::{
-        authenticated::{PortVlanOptions, port_vlan_options},
-        query_authenticated,
+        authenticated::helper_options::{DeviceVariables, PortVlanOptions, PortVlanOptionsQuery},
+        request,
     },
 };
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{Form, FormGroup, Spinner, SpinnerSize};
 use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 
@@ -149,21 +150,12 @@ impl NetboxHelper {
 
 pub(super) fn fetch_port_vlan_options(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
-        let options = query_authenticated::<PortVlanOptions, _>(
-            scope.clone(),
-            port_vlan_options::Variables { id: id as i64 },
-        )
-        .await
-        .map(|data| match data.topology.device_by_id {
-            Some(device) => device.port_vlan_options,
-            None => PortVlanOptionsData {
-                ports: Vec::new(),
-                groups: Vec::new(),
-                group: None,
-            },
+        let query = PortVlanOptionsQuery::build(DeviceVariables { id: id as i32 });
+        let options = request(scope.clone(), query).await.map(|data| {
+            data.topology.device_by_id.map(|device| device.port_vlan_options).unwrap_or_default()
         });
         scope.send_message(PortVlanMsg::Options(options));
     });
 }
 
-pub(super) type PortVlanOptionsData = port_vlan_options::PortVlanOptionsTopologyDeviceByIdPortVlanOptions;
+pub(super) type PortVlanOptionsData = PortVlanOptions;

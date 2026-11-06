@@ -4,10 +4,13 @@ use crate::{
     components::menu::popup::Select,
     error::FrontendError,
     graphql::{
-        authenticated::{CustomerNetOptions, customer_net_options},
-        query_authenticated,
+        authenticated::helper_options::{
+            CustomerNetOptions, CustomerNetOptionsQuery, DeviceVariables,
+        },
+        request,
     },
 };
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{Form, FormGroup, Spinner, SpinnerSize, TextInput};
 use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 
@@ -88,7 +91,7 @@ impl NetboxHelper {
             }))
             .collect();
         // with „keins“ first: a network may come in one family only
-        let entries = |parents: Vec<(i64, &String)>| -> Vec<NetEntry<Option<u32>>> {
+        let entries = |parents: Vec<(i32, &String)>| -> Vec<NetEntry<Option<u32>>> {
             (!parents.is_empty())
                 .then(|| NetEntry {
                     value: None,
@@ -174,22 +177,12 @@ impl NetboxHelper {
 
 pub(super) fn fetch_net_options(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
-        let options = query_authenticated::<CustomerNetOptions, _>(
-            scope.clone(),
-            customer_net_options::Variables { id: id as i64 },
-        )
-        .await
-        .map(|data| match data.topology.device_by_id {
-            Some(device) => device.customer_net_options,
-            None => NetOptions {
-                interfaces: Vec::new(),
-                vlans: Vec::new(),
-                parents: Vec::new(),
-                parents_v6: Vec::new(),
-            },
+        let query = CustomerNetOptionsQuery::build(DeviceVariables { id: id as i32 });
+        let options = request(scope.clone(), query).await.map(|data| {
+            data.topology.device_by_id.map(|device| device.customer_net_options).unwrap_or_default()
         });
         scope.send_message(NetMsg::Options(options));
     });
 }
 
-pub(super) type NetOptions = customer_net_options::CustomerNetOptionsTopologyDeviceByIdCustomerNetOptions;
+pub(super) type NetOptions = CustomerNetOptions;

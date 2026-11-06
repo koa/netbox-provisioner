@@ -2,8 +2,8 @@
 //! the link out, a task for it, its settings): a stepper Plan → Vorschau → In NetBox schreiben →
 //! Anwenden above the helper's form, plan and preview (`NetboxHelper`, embedded). „Funkbrücke“
 //! from a free router port first asks for the bridge device to cable there (one radio, no cable
-//! to a router but to this port), then embeds that device's helper. Written, „Jetzt anwenden“ goes to the card
-//! „Änderungen“, „Später“ closes it.
+//! to a router but to this port), then embeds that device's helper. Written, „Jetzt anwenden“
+//! goes to the card „Änderungen“, „Später“ closes it.
 use crate::{
     components::{
         adjust_target::SelectedTarget,
@@ -12,11 +12,12 @@ use crate::{
     },
     error::FrontendError,
     graphql::{
-        authenticated::{RadioBridgeCandidates, radio_bridge_candidates},
-        query_authenticated,
+        authenticated::helper_options::{DeviceVariables, RadioBridgeCandidates},
+        request,
     },
     i18n::helper_flow as t,
 };
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{
     Bullseye, Button, ButtonVariant, Form, FormGroup, Modal, ModalVariant,
     ProgressStepperStep, ProgressStepperStepStatus, Spinner, SpinnerSize,
@@ -246,12 +247,8 @@ fn fetch_bridges(ctx: &Context<HelperFlow>) {
         _ => None,
     };
     spawn_local(async move {
-        let bridges = query_authenticated::<RadioBridgeCandidates, _>(
-            scope.clone(),
-            radio_bridge_candidates::Variables { id: id as i64 },
-        )
-        .await
-        .map(|data| {
+        let query = RadioBridgeCandidates::build(DeviceVariables { id: id as i32 });
+        let bridges = request(scope.clone(), query).await.map(|data| {
             data.topology
                 .device_by_id
                 .map(|device| device.radio_bridge_candidates)

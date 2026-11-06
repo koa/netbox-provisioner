@@ -38,9 +38,9 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            UndoNetboxWrite, WriteNetboxPlan, lease_takeover_options, link_ports, netbox_plan,
-            new_device_options,
-            undo_netbox_write, write_netbox_plan,
+            UndoNetboxWrite, WriteNetboxPlan,
+            helper_options::{LeaseTakeoverOptions, LinkPorts, NewDeviceOptions},
+            netbox_plan, undo_netbox_write, write_netbox_plan,
         },
         query_authenticated,
     },
@@ -101,7 +101,7 @@ pub struct NetboxHelper {
     bridge_leave: Option<u32>,
     /// „Adresse übernehmen“: the interface and the address
     address_takeover: Option<(u32, String)>,
-    ports: Option<Result<link_ports::ResponseData, FrontendError>>,
+    ports: Option<Result<LinkPorts, FrontendError>>,
     flag_interfaces: Option<Result<Vec<FlagInterface>, FrontendError>>,
     /// the tags switched away from what NetBox has
     flags: BTreeMap<(u32, Flag), bool>,
@@ -126,10 +126,10 @@ pub struct NetboxHelper {
     radio: RadioChoice,
     radio_options: Option<Result<Vec<Candidate>, FrontendError>>,
     new_device: NewDeviceChoice,
-    new_device_options: Option<Result<new_device_options::ResponseData, FrontendError>>,
+    new_device_options: Option<Result<NewDeviceOptions, FrontendError>>,
     /// „Lease übernehmen“: the lease and the client chosen
     lease: LeaseChoice,
-    lease_options: Option<Result<lease_takeover_options::ResponseData, FrontendError>>,
+    lease_options: Option<Result<LeaseTakeoverOptions, FrontendError>>,
     /// what the plan shown was computed for
     planned: Option<HelperChoice>,
     plan: Option<Result<netbox_plan::ResponseData, FrontendError>>,

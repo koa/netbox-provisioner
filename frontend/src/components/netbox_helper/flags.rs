@@ -6,14 +6,15 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            FlagInterfaces, flag_interfaces,
             findings::{Finding, Findings, FindingsVariables},
+            helper::InterfaceTag,
+            helper_options::{self, DeviceVariables, FlagInterfaces},
             netbox_plan,
         },
-        query_authenticated, request,
+        request,
     },
 };
-use cynic::SubscriptionBuilder;
+use cynic::{QueryBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{Spinner, SpinnerSize};
 use yew::{Context, Html, classes, html, html::Scope, platform::spawn_local};
 
@@ -182,12 +183,8 @@ impl NetboxHelper {
 
 pub(super) fn fetch_flag_interfaces(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
-        let interfaces = query_authenticated::<FlagInterfaces, _>(
-            scope.clone(),
-            flag_interfaces::Variables { id: id as i64 },
-        )
-        .await
-        .map(|data| {
+        let query = FlagInterfaces::build(DeviceVariables { id: id as i32 });
+        let interfaces = request(scope.clone(), query).await.map(|data| {
             data.topology
                 .device_by_id
                 .map(|device| device.flag_interfaces)
@@ -213,7 +210,7 @@ pub(super) fn fetch_flag_findings(scope: Scope<NetboxHelper>, id: u32, changes: 
     });
 }
 
-pub(super) type FlagInterface = flag_interfaces::FlagInterfacesTopologyDeviceByIdFlagInterfaces;
+pub(super) type FlagInterface = helper_options::FlagInterface;
 
 /// The device's findings after these switches, with NetBox' address.
 pub(super) type FlagFindings = (
@@ -243,7 +240,20 @@ macro_rules! tag_slug {
     )*};
 }
 
-tag_slug!(flag_interfaces, netbox_plan);
+tag_slug!(netbox_plan);
+
+impl TagSlug for InterfaceTag {
+    fn slug(&self) -> &str {
+        match self {
+            InterfaceTag::Ospf => "ospf",
+            InterfaceTag::Dhcp => "dhcp",
+            InterfaceTag::DhcpClient => "dhcp-client",
+            InterfaceTag::Nat => "nat",
+            InterfaceTag::Internet => "internet",
+            InterfaceTag::Other(other) => other,
+        }
+    }
+}
 
 pub(super) fn tag_slug(tag: &impl TagSlug) -> &str {
     tag.slug()

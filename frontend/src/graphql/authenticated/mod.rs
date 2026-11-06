@@ -7,6 +7,7 @@ pub mod adjust_target;
 pub mod batch_apply;
 pub mod findings;
 pub mod helper;
+pub mod helper_options;
 pub mod history;
 pub mod interface_live;
 pub mod interfaces;
@@ -176,83 +177,3 @@ pub struct UndoNetboxWrite;
     response_derives = "Debug"
 )]
 pub struct HelperJobs;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct LinkPorts;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct FlagInterfaces;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct CustomerNetOptions;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct PoeOptions;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct PortVlanOptions;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct NewDeviceOptions;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct LeaseTakeoverOptions;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct NewDeviceDevices;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct PoeObserved;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct RadioBridgeCandidates;

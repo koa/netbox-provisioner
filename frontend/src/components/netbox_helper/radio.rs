@@ -7,10 +7,13 @@ use crate::{
     components::menu::popup::Select,
     error::FrontendError,
     graphql::{
-        authenticated::{RadioBridgeCandidates, radio_bridge_candidates},
-        query_authenticated,
+        authenticated::helper_options::{
+            DeviceVariables, RadioBridgeCandidate, RadioBridgeCandidates, RadioRole,
+        },
+        request,
     },
 };
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{Form, FormGroup, Spinner, SpinnerSize, TextInput};
 use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 
@@ -56,13 +59,14 @@ impl NetboxHelper {
             RadioMsg::Options(options) => {
                 // this bridge's role and the other end of its link, as NetBox has them
                 if let Ok(candidates) = &options
-                    && let Some(own) = candidates.iter().find(|c| c.device.id as u32 == ctx.props().id)
+                    && let Some(own) =
+                        candidates.iter().find(|c| c.device.id as u32 == ctx.props().id)
                 {
                     if self.radio.peer.is_none() {
                         self.radio.peer = own.peer.as_ref().map(|peer| peer.id as u32);
                     }
-                    if let Some(role) = &own.role {
-                        self.radio.own_ap = !matches!(role, radio_bridge_candidates::RadioRole::STATION);
+                    if let Some(role) = own.role {
+                        self.radio.own_ap = role != RadioRole::Station;
                     }
                 }
                 self.radio_options = Some(options);
@@ -251,12 +255,8 @@ impl NetboxHelper {
 
 pub(super) fn fetch_radio_options(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
-        let options = query_authenticated::<RadioBridgeCandidates, _>(
-            scope.clone(),
-            radio_bridge_candidates::Variables { id: id as i64 },
-        )
-        .await
-        .map(|data| {
+        let query = RadioBridgeCandidates::build(DeviceVariables { id: id as i32 });
+        let options = request(scope.clone(), query).await.map(|data| {
             data.topology
                 .device_by_id
                 .map(|device| device.radio_bridge_candidates)
@@ -266,5 +266,4 @@ pub(super) fn fetch_radio_options(scope: Scope<NetboxHelper>, id: u32) {
     });
 }
 
-pub(super) type Candidate =
-    radio_bridge_candidates::RadioBridgeCandidatesTopologyDeviceByIdRadioBridgeCandidates;
+pub(super) type Candidate = RadioBridgeCandidate;

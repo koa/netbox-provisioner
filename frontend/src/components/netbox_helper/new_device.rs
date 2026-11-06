@@ -8,17 +8,20 @@ use crate::{
     components::menu::popup::Select,
     error::FrontendError,
     graphql::{
-        authenticated::{NewDeviceDevices, NewDeviceOptions, new_device_devices, new_device_options},
-        query_authenticated,
+        authenticated::helper_options::{
+            NewDeviceDevices, NewDeviceOptions, NewDeviceOptionsQuery,
+        },
+        request,
     },
     pages::routes::AppRoute,
 };
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{Form, FormGroup, Spinner, SpinnerSize, TextInput};
 use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 use yew_nested_router::components::Link;
 
 pub enum NewDeviceMsg {
-    Options(Result<new_device_options::ResponseData, FrontendError>),
+    Options(Result<NewDeviceOptions, FrontendError>),
     Name(String),
     FarPort(String),
     /// a text left or confirmed: planned
@@ -76,7 +79,6 @@ impl NetboxHelper {
         match msg {
             NewDeviceMsg::Options(options) => {
                 if let Ok(options) = &options {
-                    let options = &options.new_device_options;
                     // the board seen, as model or part number
                     let board = choice.seen.as_ref().map(|seen| seen.board.to_lowercase());
                     choice.device_type = choice.device_type.or_else(|| {
@@ -147,7 +149,7 @@ impl NetboxHelper {
         let options = match &self.new_device_options {
             None => return html!(<Spinner size={SpinnerSize::Md}/>),
             Some(Err(error)) => return error.to_html(),
-            Some(Ok(options)) => &options.new_device_options,
+            Some(Ok(options)) => options,
         };
         if options.device_types.is_empty() {
             return html!(<p>{t::NEW_DEVICE_NO_TYPES}</p>);
@@ -251,11 +253,9 @@ impl NetboxHelper {
 
 pub(super) fn fetch_new_device_options(scope: Scope<NetboxHelper>) {
     spawn_local(async move {
-        let options = query_authenticated::<NewDeviceOptions, _>(
-            scope.clone(),
-            new_device_options::Variables {},
-        )
-        .await;
+        let options = request(scope.clone(), NewDeviceOptionsQuery::build(()))
+            .await
+            .map(|data| data.new_device_options);
         scope.send_message(NewDeviceMsg::Options(options));
     });
 }
@@ -263,11 +263,8 @@ pub(super) fn fetch_new_device_options(scope: Scope<NetboxHelper>) {
 /// The device of this name, once the topology has it after the write.
 pub(super) fn fetch_written_device(scope: Scope<NetboxHelper>, name: String) {
     spawn_local(async move {
-        let device = query_authenticated::<NewDeviceDevices, _>(
-            scope.clone(),
-            new_device_devices::Variables {},
-        )
-        .await
+        let device = request(scope.clone(), NewDeviceDevices::build(()))
+            .await
         .ok()
         .and_then(|data| {
             data.topology
