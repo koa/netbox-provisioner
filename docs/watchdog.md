@@ -128,6 +128,16 @@ ein Update (nur die Speiser: Das Gerät hat noch keine Adresse, über die andere
 und stellt sie danach wieder her, auch nach einem Fehler; dasselbe Sicherheitsnetz von 2 h. Lässt
 sich ein Speiser nicht aussetzen, beginnt die Einrichtung nicht.
 
+## Entschieden (2026-11-06)
+
+- **Befund „kein Weg zu einer Wurzel“** (Z36, E1): nur für Geräte mit `ospf`-Interface, die
+  keinen Weg zu einer Wurzel haben und kein `propagate_default_route`. APs, Switches und CAPs
+  ohne `ospf` haben nie einen Parent; eine Warnung für jedes wäre Rauschen.
+- **Sonderfälle** über ein Custom Field `watchdog_target` (Text) am Gerät: leer automatisch,
+  `none` aus, sonst eine feste IPv4. In NetBox mit einer Validierungs-Regex, damit nur diese
+  Werte gehen; ein Feld statt Auswahl und IP, so gibt es keine widersprüchlichen Kombinationen.
+  Muss auch in die produktive NetBox importiert werden.
+
 ## Grenzen
 
 - **Neustart-Schleifen:** Fällt eine Verbindung dauerhaft aus (Funkstrecke bei Schnee), startet

@@ -46,7 +46,8 @@ settings:
 - **`auth_scopes`**: `offline_access` (Refresh-Token) kennt nicht jeder Provider; dann die Scopes
   ohne ihn angeben. Ohne Refresh-Token erneuert das UI das Token nicht: Ist es abgelaufen,
   antwortet der Server `403`, bis man sich neu anmeldet (die Job-Ansicht bietet das an, die
-  anderen Seiten zeigen den Fehler; Z34).
+  anderen Seiten zeigen den Fehler). Entschieden 2026-11-06 (Z34): alle Seiten zeigen dann oben
+  einen Hinweis mit „Erneut anmelden“, ohne von selbst umzuleiten (E20).
 
 ## Pocket-ID
 
