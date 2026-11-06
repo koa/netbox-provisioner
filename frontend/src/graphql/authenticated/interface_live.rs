@@ -4,7 +4,7 @@ use super::{
     interfaces::RowAction,
     neighbor_findings::{NeighborFinding, SeenNeighbor},
     schema::schema,
-    types::{AdhocCredentials, DeviceRef, InterfaceRef, PoeProblem},
+    types::{DeviceRef, DeviceTarget, InterfaceRef, PoeProblem},
 };
 
 #[derive(cynic::QueryVariables, Debug)]
@@ -27,9 +27,7 @@ pub struct RefreshInterfaceLive {
 #[derive(cynic::QueryVariables, Debug)]
 pub struct InterfaceLiveVariables {
     pub id: i32,
-    pub target: Option<String>,
-    pub credential_name: Option<String>,
-    pub adhoc_credentials: Option<AdhocCredentials>,
+    pub target: DeviceTarget,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
@@ -62,8 +60,6 @@ pub struct LiveTopology {
 pub struct LiveDevice {
     #[arguments(
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
     )]
     pub access: Option<LiveAccess>,
 }

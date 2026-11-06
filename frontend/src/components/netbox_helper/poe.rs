@@ -10,7 +10,7 @@ use crate::{
                 PoeObserved, PoeObservedQuery, PoeObservedVariables, PoeOptions, PoeOptionsQuery,
                 PoePort,
             },
-            types::{AdhocCredentials, DeviceVariables, InterfaceRef, PoeMode},
+            types::{DeviceVariables, InterfaceRef, PoeMode},
         },
         request,
     },
@@ -312,14 +312,9 @@ pub(super) fn fetch_poe_options(scope: Scope<NetboxHelper>, id: u32) {
 /// What the device reports feeding, reached as the page reaches it.
 pub(super) fn fetch_poe_observed(scope: Scope<NetboxHelper>, id: u32, target: SelectedTarget) {
     spawn_local(async move {
-        let (credential_name, adhoc_credentials) = target
-            .credentials
-            .variables(|username, password| AdhocCredentials { username, password });
         let query = PoeObservedQuery::build(PoeObservedVariables {
             id: id as i32,
-            target: target.address.map(|a| a.to_string()),
-            credential_name,
-            adhoc_credentials,
+            target: target.input(),
         });
         let observed = request(scope.clone(), query).await.map(|data| {
             data.topology

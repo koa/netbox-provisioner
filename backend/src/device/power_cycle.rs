@@ -16,7 +16,7 @@ use crate::{
     device_state::PowerCycleState,
     job::Log,
     topology::{
-        access::{AccessTopology, device::DeviceAccess},
+        access::{AccessTopology, DeviceTarget, device::DeviceAccess},
         findings::DeviceRef,
     },
 };
@@ -119,7 +119,7 @@ pub async fn wait_for_fed(device: &DeviceAccess, log: &Log) -> Result<(), Error>
         let tried = log
             .unless_cancelled(timeout(
                 Duration::from_secs(30),
-                device.connect(None, None, None),
+                device.connect(DeviceTarget::default()),
             ))
             .await?;
         if let Ok(Ok(Some(link))) = tried {

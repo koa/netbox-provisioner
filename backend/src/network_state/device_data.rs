@@ -10,7 +10,10 @@ use crate::{
     device::raw::{Row, field, rows},
     facts::{self, FactKey, FactKind, Freshness},
     helper::poe::{self, PoePorts},
-    topology::{DeviceId, access::device::DeviceAccess},
+    topology::{
+        DeviceId,
+        access::{DeviceTarget, device::DeviceAccess},
+    },
 };
 use async_graphql::futures_util::future::join_all;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
@@ -60,7 +63,7 @@ pub async fn read_all(devices: &[DeviceAccess]) -> BTreeMap<DeviceId, Arc<Device
 
 async fn read_one(device: &DeviceAccess) -> Option<Arc<DeviceMapData>> {
     let key = FactKey::new(FactKind::DeviceMapData, Some(device.id()), "");
-    let accessible = match device.connect(None, None, None).await {
+    let accessible = match device.connect(DeviceTarget::default()).await {
         Ok(Some(accessible)) => accessible,
         _ => return None,
     };

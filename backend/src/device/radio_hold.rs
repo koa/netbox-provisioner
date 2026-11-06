@@ -31,7 +31,11 @@ use crate::{
     job::Log,
     lock::LockAnyway,
     saved_job::SavedHold,
-    topology::{DeviceId, access::device::DeviceAccess, natural::naturalize},
+    topology::{
+        DeviceId,
+        access::{DeviceTarget, device::DeviceAccess},
+        natural::naturalize,
+    },
 };
 use async_graphql::SimpleObject;
 use mikrotik_api::simple::SimpleResult;
@@ -104,7 +108,7 @@ impl RadioHold {
         };
         let mut links = Vec::new();
         for watcher in depending(&link.device_config, applied, claimed) {
-            let reached = connect_for_job(&watcher, None, None, None, log).await;
+            let reached = connect_for_job(&watcher, DeviceTarget::default(), log).await;
             if matches!(reached, Err(Error::Cancelled)) {
                 hold.release(link, log).await;
                 return Err(Error::Cancelled);
@@ -203,7 +207,9 @@ impl RadioHold {
         let mut others = Vec::new();
         for (name, watching) in &saved.others {
             let reached = match topology.list_devices().find(|d| d.name() == &**name) {
-                Some(watcher) => connect_for_job(&watcher, None, None, None, log).await.ok(),
+                Some(watcher) => connect_for_job(&watcher, DeviceTarget::default(), log)
+                    .await
+                    .ok(),
                 None => None,
             };
             match reached {

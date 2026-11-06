@@ -175,6 +175,16 @@ pub struct PortRef {
     pub interface: Option<InterfaceRef>,
 }
 
+/// How to reach a device (`DeviceTarget`): at `address`, else its primary IP; with the
+/// credentials named `credentialName` or the ad-hoc ones, else those of its tenant.
+#[derive(cynic::InputObject, Debug, Clone, Default)]
+#[cynic(schema = "authenticated")]
+pub struct DeviceTarget {
+    pub address: Option<String>,
+    pub credential_name: Option<String>,
+    pub adhoc_credentials: Option<AdhocCredentials>,
+}
+
 /// A login typed in for one connection (`AdhocCredentials`).
 #[derive(cynic::InputObject, Debug, Clone)]
 #[cynic(schema = "authenticated")]

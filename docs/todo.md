@@ -20,8 +20,7 @@ kleiner geworden.
 Die Bereinigungen aus der Durchsicht vom 2026-11-06, je ein Commit, Tests und clippy grün,
 das Verhalten unverändert (die Fehler B12 und B13 sind behoben):
 
-1. **Gerät-Ziel als ein Input:** B14, dann B15. Verkleinert Backend und Frontend zugleich und
-   ändert das Schema, deshalb vor dem Verschieben der Module.
+1. **Gerät-Ziel als ein Input:** B15 (B14 erledigt). Vor dem Verschieben der Module.
 2. **Module ordnen:** B16 (Wiederaufnehmen raus aus `graphql/mod.rs`), dann B17 (Apply raus
    aus `ros/graphql.rs`). Reines Verschieben, danach sind die Dateien überschaubar.
 3. **Lange Funktionen teilen:** B18 (`helper/write.rs`), B19 (`ros/mod.rs`), B20
@@ -69,7 +68,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B14 | Gerät-Ziel als ein GraphQL-Input: `target`, `credentialName`, `adhocCredentials` stehen einzeln in 8 Mutationen (`graphql/mod.rs`, `apply_cfg`, `reboot_device`, `change_device_mode`, `repartition_device`, `boot_partition`, `clear_leftover`, Updates); ein InputObject `DeviceTarget`. Im Frontend teilen seit C4 vier Mutationen `TargetVariables` (`apply`, `reboot`, `change_mode`, `repartition`, gefüllt von `target_variables`); `boot_from`, `clear`, `update` und `downgrade` wiederholen die drei Felder in ihren eigenen Variablen und bekommen dann ebenfalls nur `target`. Schema-Änderung: Backend und Frontend im selben Commit | M | offen |
 | B15 | Die Körper dieser Mutationen sind gleich (Gerät holen, `PowerChain::of`, `job::start` mit `connect_for_job`, `log.enter`): ein Helfer `start_device_job(kind, state, target, \|link, log\| …)` | S | offen |
 | B16 | Wiederaufnehmen gespeicherter Jobs nach einem Neustart aus `graphql/mod.rs` nach `saved_job` (oder `job/resume.rs`): `resume_saved_jobs`, `resume_batch`, `saved_update`, `connect_until`, `resume_apply`, `resume_update`, `Watchers`, `restore_watchdogs` (rund 250 Zeilen); `graphql/mod.rs` behält nur Schema und Resolver | S | offen |
 | B17 | `device/ros/graphql.rs` (1912 Zeilen) aufteilen: darin stehen die Generierung (`DeviceCfg`, `render_script`), der ganze Apply-Ablauf (`impl AccessibleDevice`, `apply`, `apply_planned`, `provision_radios`, `reprovision`), seine Events (`ApplyPlanned` … `RadiosReprovisioned`), Log und RouterOS-Versionen; `job.rs` importiert es bezeichnenderweise als `ros::graphql as apply`. Vorschlag `ros/cfg.rs`, `ros/apply.rs` (Ablauf und Events), `graphql.rs` nur mit den Resolvern | M | offen |

@@ -40,7 +40,7 @@ use crate::{
     device::AccessibleDevice,
     topology::{
         DeviceId, Topology,
-        access::{AdhocCredentials, device::DeviceAccess, interface::InterfaceAccess},
+        access::{DeviceTarget, device::DeviceAccess, interface::InterfaceAccess},
         findings::{DeviceRef, InterfaceRef, IpVersion},
     },
 };
@@ -199,7 +199,7 @@ impl NetboxPlan {
     }
     /// The device as NetBox has it after the plan: its findings, and over `access` the script
     /// applying would bring then. Its management address may be a new one the device doesn't
-    /// have yet: `access(target:)` with the address it has now reaches it.
+    /// have yet: `access(target: { address })` with the address it has now reaches it.
     async fn preview(&self) -> Result<DeviceAccess, crate::error_info::ApiError> {
         Ok(self.preview_device()?)
     }
@@ -208,14 +208,12 @@ impl NetboxPlan {
     /// then.
     async fn preview_access(
         &self,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
+        target: Option<DeviceTarget>,
     ) -> Result<Option<AccessibleDevice>, crate::error_info::ApiError> {
         let preview = self.preview_device()?;
         Ok(self
             .device
-            .connect(target, credential_name, adhoc_credentials)
+            .connect(target.unwrap_or_default())
             .await?
             .map(|access| access.generating_for(preview)))
     }

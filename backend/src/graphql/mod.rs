@@ -21,7 +21,7 @@ use crate::{
     saved_job::{self, SavedWork},
     topology::{
         DeviceId, SiteId, TopologyHolder,
-        access::{AdhocCredentials, device::DeviceAccess, site::SiteAccess},
+        access::{DeviceTarget, device::DeviceAccess, site::SiteAccess},
         management::ManagementTree,
     },
 };
@@ -196,7 +196,7 @@ impl Watchers {
         }
         let mut links = Vec::new();
         for watchdog::Watcher { device, supplier } in self.watchers {
-            let link = connect_for_job(&device, None, None, None, log).await;
+            let link = connect_for_job(&device, DeviceTarget::default(), log).await;
             if matches!(link, Err(Error::Cancelled)) {
                 return Err(Error::Cancelled);
             }
@@ -277,16 +277,14 @@ impl Guard for NetboxWritesAllowed {
 /// (the NetBox address first, then each neighbor's tunnel) is otherwise a job without events.
 pub(crate) async fn connect_for_job(
     device: &DeviceAccess,
-    target: Option<String>,
-    credential_name: Option<Box<str>>,
-    adhoc_credentials: Option<AdhocCredentials>,
+    target: DeviceTarget,
     log: &Log,
 ) -> Result<AccessibleDevice, Error> {
     log.emit(Connecting {
         device: device.name().into(),
     });
     let link = log
-        .unless_cancelled(device.connect(target, credential_name, adhoc_credentials))
+        .unless_cancelled(device.connect(target))
         .await??
         .ok_or(Error::MissingCredentials)?;
     log.emit(link.connected_device());
@@ -523,7 +521,7 @@ async fn connect_until(
     });
     loop {
         let reached = log
-            .unless_cancelled(device.connect(None, credentials.clone(), None))
+            .unless_cancelled(device.connect(DeviceTarget::named(credentials.clone())))
             .await?;
         match reached {
             Ok(Some(link)) => {
@@ -586,7 +584,7 @@ async fn resume_update(
             .list_devices()
             .find(|d| d.name() == &**name)
         {
-            Some(watcher) => connect_for_job(&watcher, None, None, None, log).await,
+            Some(watcher) => connect_for_job(&watcher, DeviceTarget::default(), log).await,
             None => Err(Error::UnknownDeviceName(name.clone())),
         };
         match reached {
@@ -784,9 +782,7 @@ impl MutationAuthenticated {
         ctx: &Context<'_>,
         id: u32,
         channel: Option<update::Channel>,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
+        target: Option<DeviceTarget>,
         suspend_watchdogs: Option<bool>,
         without_fallback: Option<bool>,
     ) -> Result<Arc<Job>, ApiError> {
@@ -801,9 +797,7 @@ impl MutationAuthenticated {
             |log| async move {
                 log.enter(UpdateState::Reading);
                 let access = device.clone();
-                let device =
-                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
-                        .await?;
+                let device = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
                 let wanted = device.wanted_packages().await?;
                 let version = match channel {
                     Some(channel) => update::newest(7, channel).await?,
@@ -847,9 +841,7 @@ impl MutationAuthenticated {
         ctx: &Context<'_>,
         id: u32,
         version: String,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
+        target: Option<DeviceTarget>,
         suspend_watchdogs: Option<bool>,
         without_fallback: Option<bool>,
     ) -> Result<Arc<Job>, ApiError> {
@@ -865,9 +857,7 @@ impl MutationAuthenticated {
             Started::By(user_label(ctx)),
             |log| async move {
                 log.enter(UpdateState::Reading);
-                let device =
-                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
-                        .await?;
+                let device = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
                 let suspended = watchers
                     .suspend(&log, UpdateState::SuspendingWatchdogs)
                     .await?;
@@ -896,7 +886,7 @@ impl MutationAuthenticated {
             Started::By(user_label(ctx)),
             |log| async move {
                 log.enter(PowerCycleState::Reading);
-                let link = connect_for_job(&supplier, None, None, None, &log).await?;
+                let link = connect_for_job(&supplier, DeviceTarget::default(), &log).await?;
                 let cut = crate::device::power_cycle::power_cycle(
                     &link.api().await?,
                     &supply,
@@ -922,9 +912,7 @@ impl MutationAuthenticated {
         ctx: &Context<'_>,
         id: u32,
         action: crate::device::leftovers::LeftoverAction,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
+        target: Option<DeviceTarget>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let name: Box<str> = device.name().into();
@@ -943,9 +931,7 @@ impl MutationAuthenticated {
             JobKind::Cleanup,
             Started::By(user_label(ctx)),
             |log| async move {
-                let link =
-                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
-                        .await?;
+                let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
                 crate::device::leftovers::clear(&link, &name, action, &power, &log).await
             },
         )?)
@@ -957,9 +943,7 @@ impl MutationAuthenticated {
         &self,
         ctx: &Context<'_>,
         id: u32,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
+        target: Option<DeviceTarget>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
@@ -969,9 +953,7 @@ impl MutationAuthenticated {
             Started::By(user_label(ctx)),
             |log| async move {
                 log.enter(RebootState::Reading);
-                let device =
-                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
-                        .await?;
+                let device = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
                 update::reboot(&device, &power, &log).await
             },
         )?)
@@ -985,9 +967,7 @@ impl MutationAuthenticated {
         &self,
         ctx: &Context<'_>,
         id: u32,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
+        target: Option<DeviceTarget>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
@@ -997,9 +977,7 @@ impl MutationAuthenticated {
             Started::By(user_label(ctx)),
             |log| async move {
                 log.enter(DeviceModeState::Reading);
-                let link =
-                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
-                        .await?;
+                let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
                 device_mode::change(&link, &device, &power, &log).await
             },
         )?)
@@ -1012,9 +990,7 @@ impl MutationAuthenticated {
         &self,
         ctx: &Context<'_>,
         id: u32,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
+        target: Option<DeviceTarget>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
@@ -1024,9 +1000,7 @@ impl MutationAuthenticated {
             Started::By(user_label(ctx)),
             |log| async move {
                 log.enter(RebootState::Reading);
-                let link =
-                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
-                        .await?;
+                let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
                 partitions::repartition(&link, &power, &log).await
             },
         )?)
@@ -1040,9 +1014,7 @@ impl MutationAuthenticated {
         ctx: &Context<'_>,
         id: u32,
         partition: Box<str>,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
+        target: Option<DeviceTarget>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
@@ -1052,9 +1024,7 @@ impl MutationAuthenticated {
             Started::By(user_label(ctx)),
             |log| async move {
                 log.enter(RebootState::Reading);
-                let link =
-                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
-                        .await?;
+                let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
                 partitions::boot_from(&link, &power, &partition, &log).await
             },
         )?)
@@ -1137,9 +1107,7 @@ impl MutationAuthenticated {
         &self,
         ctx: &Context<'_>,
         id: u32,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
+        target: Option<DeviceTarget>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         Ok(job::start(
@@ -1147,7 +1115,7 @@ impl MutationAuthenticated {
             JobKind::Apply,
             Started::By(user_label(ctx)),
             |log| async move {
-                connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
+                connect_for_job(&device, target.unwrap_or_default(), &log)
                     .await?
                     .apply(&log)
                     .await

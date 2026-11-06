@@ -9,7 +9,7 @@ use crate::{
     facts::{self, FactKind, Freshness},
     job::{self, Log},
     topology::{
-        access::{device::DeviceAccess, site::SiteAccess},
+        access::{DeviceTarget, device::DeviceAccess, site::SiteAccess},
         natural::naturalize,
     },
 };
@@ -101,7 +101,7 @@ async fn changes_of(
     started: tokio::time::Instant,
 ) -> Result<Vec<MenuChanges>, Error> {
     let generated = device
-        .connect(None, None, None)
+        .connect(DeviceTarget::default())
         .await?
         .ok_or(Error::MissingCredentials)?
         .generated_cfg(Freshness::Since(started))

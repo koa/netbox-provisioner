@@ -84,3 +84,23 @@ pub struct AdhocCredentials {
     #[graphql(secret)]
     password: Option<Box<str>>,
 }
+
+/// How to reach a device (`DeviceAccess::connect`): at `address`, else its primary IP; with
+/// the credentials named `credentialName` or the ad-hoc ones, else those of its tenant. Empty,
+/// the way NetBox gives.
+#[derive(InputObject, Default)]
+pub struct DeviceTarget {
+    address: Option<String>,
+    credential_name: Option<Box<str>>,
+    adhoc_credentials: Option<AdhocCredentials>,
+}
+
+impl DeviceTarget {
+    /// At the NetBox address with the credentials named `credentials` (else the tenant's).
+    pub fn named(credentials: Option<Box<str>>) -> Self {
+        DeviceTarget {
+            credential_name: credentials,
+            ..Default::default()
+        }
+    }
+}

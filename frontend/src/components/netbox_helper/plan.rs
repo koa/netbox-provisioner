@@ -11,7 +11,7 @@ use crate::{
                 FindingKinds, HelperJobs, HelperJobsVariables, NetboxPlanPreview,
                 NetboxPlanPreviewVariables, NetboxPlanQuery, NetboxPlanVariables, PlanStep as Step,
             },
-            types::{AdhocCredentials, IpVersion, JobKind, JobState, PoeMode, RadioRole, VlanRef},
+            types::{IpVersion, JobKind, JobState, PoeMode, RadioRole, VlanRef},
         },
         request,
     },
@@ -235,15 +235,10 @@ pub(super) fn fetch_preview(
     target: SelectedTarget,
 ) {
     spawn_local(async move {
-        let (credential_name, adhoc_credentials) = target
-            .credentials
-            .variables(|username, password| AdhocCredentials { username, password });
         let query = NetboxPlanPreview::build(NetboxPlanPreviewVariables {
             id: id as i32,
             helper: helper(choice, id),
-            target: target.address.map(|a| a.to_string()),
-            credential_name,
-            adhoc_credentials,
+            target: target.input(),
         });
         let preview = request(scope.clone(), query).await.map(|data| {
             let kinds = |device: FindingKinds| {

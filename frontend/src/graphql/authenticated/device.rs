@@ -4,8 +4,8 @@
 use super::{
     schema::schema,
     types::{
-        AdhocCredentials, ApplyWarning, DeviceModeChange, DeviceRef, DeviceVariablesFields,
-        ErrorInfo, JobId, JobState, LeftoverAction, Mac, Partition, Watching,
+        ApplyWarning, DeviceModeChange, DeviceRef, DeviceTarget, DeviceVariablesFields, ErrorInfo,
+        JobId, JobState, LeftoverAction, Mac, Partition, Watching,
     },
 };
 
@@ -31,9 +31,7 @@ pub struct RefreshDevice {
 #[derive(cynic::QueryVariables, Debug)]
 pub struct TargetVariables {
     pub id: i32,
-    pub target: Option<String>,
-    pub credential_name: Option<String>,
-    pub adhoc_credentials: Option<AdhocCredentials>,
+    pub target: DeviceTarget,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
@@ -73,8 +71,6 @@ pub struct OverviewDevice {
     pub watchdogs: Vec<Watchdog>,
     #[arguments(
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
     )]
     pub access: Option<OverviewAccess>,
 }
@@ -257,8 +253,6 @@ pub struct ApplyDeviceCfg {
     #[arguments(
         id: $id,
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
     )]
     pub apply_cfg: JobId,
 }
@@ -273,8 +267,6 @@ pub struct RebootDevice {
     #[arguments(
         id: $id,
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
     )]
     pub reboot_device: JobId,
 }
@@ -289,8 +281,6 @@ pub struct ChangeDeviceMode {
     #[arguments(
         id: $id,
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
     )]
     pub change_device_mode: JobId,
 }
@@ -305,8 +295,6 @@ pub struct RepartitionDevice {
     #[arguments(
         id: $id,
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
     )]
     pub repartition_device: JobId,
 }
@@ -387,9 +375,7 @@ pub struct BootstrapDevice {
 pub struct UpdateVariables {
     pub id: i32,
     pub channel: Option<Channel>,
-    pub target: Option<String>,
-    pub credential_name: Option<String>,
-    pub adhoc_credentials: Option<AdhocCredentials>,
+    pub target: DeviceTarget,
     pub suspend_watchdogs: Option<bool>,
     pub without_fallback: Option<bool>,
 }
@@ -405,8 +391,6 @@ pub struct UpdateRouteros {
         id: $id,
         channel: $channel,
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
         suspendWatchdogs: $suspend_watchdogs,
         withoutFallback: $without_fallback,
     )]
@@ -417,9 +401,7 @@ pub struct UpdateRouteros {
 pub struct DowngradeVariables {
     pub id: i32,
     pub version: String,
-    pub target: Option<String>,
-    pub credential_name: Option<String>,
-    pub adhoc_credentials: Option<AdhocCredentials>,
+    pub target: DeviceTarget,
     pub suspend_watchdogs: Option<bool>,
     pub without_fallback: Option<bool>,
 }
@@ -435,8 +417,6 @@ pub struct DowngradeRouteros {
         id: $id,
         version: $version,
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
         suspendWatchdogs: $suspend_watchdogs,
         withoutFallback: $without_fallback,
     )]
@@ -447,9 +427,7 @@ pub struct DowngradeRouteros {
 pub struct ClearLeftoverVariables {
     pub id: i32,
     pub action: LeftoverAction,
-    pub target: Option<String>,
-    pub credential_name: Option<String>,
-    pub adhoc_credentials: Option<AdhocCredentials>,
+    pub target: DeviceTarget,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
@@ -463,8 +441,6 @@ pub struct ClearLeftover {
         id: $id,
         action: $action,
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
     )]
     pub clear_leftover: JobId,
 }
@@ -473,9 +449,7 @@ pub struct ClearLeftover {
 pub struct BootPartitionVariables {
     pub id: i32,
     pub partition: String,
-    pub target: Option<String>,
-    pub credential_name: Option<String>,
-    pub adhoc_credentials: Option<AdhocCredentials>,
+    pub target: DeviceTarget,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
@@ -489,8 +463,6 @@ pub struct BootPartition {
         id: $id,
         partition: $partition,
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
     )]
     pub boot_partition: JobId,
 }

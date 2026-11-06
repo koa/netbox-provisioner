@@ -8,7 +8,7 @@ use crate::{
     config::CONFIG,
     device::raw,
     facts::{self, Fact, FactKey, FactKind, Freshness},
-    topology::access::device::DeviceAccess,
+    topology::access::{DeviceTarget, device::DeviceAccess},
 };
 use std::time::Duration;
 
@@ -32,7 +32,7 @@ pub fn readers(devices: &[DeviceAccess]) -> Vec<DeviceAccess> {
 pub async fn read(readers: &[DeviceAccess]) -> Result<Option<(DeviceAccess, Fact<Lsdb>)>, Error> {
     let mut failure = None;
     for device in readers {
-        let accessible = match device.connect(None, None, None).await {
+        let accessible = match device.connect(DeviceTarget::default()).await {
             Ok(Some(accessible)) => accessible,
             Ok(None) => continue,
             Err(error) => {

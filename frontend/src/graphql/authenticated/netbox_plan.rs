@@ -7,7 +7,7 @@ use super::{
     helper::{Helper, InterfaceTag},
     schema::schema,
     types::{
-        AdhocCredentials, DeviceRef, InterfaceRef, IpVersion, JobId, JobKind, JobState, PoeMode,
+        DeviceRef, DeviceTarget, InterfaceRef, IpVersion, JobId, JobKind, JobState, PoeMode,
         RadioRole, VlanRef,
     },
 };
@@ -218,9 +218,7 @@ pub struct UndocumentedAddress {
 pub struct NetboxPlanPreviewVariables {
     pub id: i32,
     pub helper: Helper,
-    pub target: Option<String>,
-    pub credential_name: Option<String>,
-    pub adhoc_credentials: Option<AdhocCredentials>,
+    pub target: DeviceTarget,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
@@ -256,8 +254,6 @@ pub struct PlanPreview {
     pub preview: FindingKinds,
     #[arguments(
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
     )]
     pub preview_access: Option<PreviewAccess>,
 }

@@ -23,8 +23,7 @@ use crate::{
                 TargetVariables, UpdateRouteros, UpdateVariables, Watchdog,
             },
             types::{
-                AdhocCredentials, ApplyWarning as Warning, DeviceVariables, ErrorInfo, JobState,
-                LeftoverAction, Mac,
+                ApplyWarning as Warning, DeviceVariables, ErrorInfo, JobState, LeftoverAction, Mac,
             },
         },
         live::{Subscription, local_time, read_at, same_reading, watch},
@@ -1185,15 +1184,9 @@ impl ShowDevice {
 
 /// The variables of an operation on device `id` reached through `target`.
 fn target_variables(id: u32, target: &SelectedTarget) -> TargetVariables {
-    let (credential_name, adhoc_credentials) = target
-        .credentials
-        .clone()
-        .variables(|username, password| AdhocCredentials { username, password });
     TargetVariables {
         id: id as i32,
-        target: target.address.map(|a| a.to_string()),
-        credential_name,
-        adhoc_credentials,
+        target: target.input(),
     }
 }
 
@@ -1346,18 +1339,11 @@ fn update(
     without_fallback: bool,
     target: &SelectedTarget,
 ) {
-    let TargetVariables {
-        id,
-        target,
-        credential_name,
-        adhoc_credentials,
-    } = target_variables(id, target);
+    let (id, target) = (id as i32, target.input());
     let update = UpdateRouteros::build(UpdateVariables {
         id,
         channel,
         target,
-        credential_name,
-        adhoc_credentials,
         suspend_watchdogs: suspend.then_some(true),
         without_fallback: without_fallback.then_some(true),
     });
@@ -1378,18 +1364,11 @@ fn downgrade(
     without_fallback: bool,
     target: &SelectedTarget,
 ) {
-    let TargetVariables {
-        id,
-        target,
-        credential_name,
-        adhoc_credentials,
-    } = target_variables(id, target);
+    let (id, target) = (id as i32, target.input());
     let downgrade = DowngradeRouteros::build(DowngradeVariables {
         id,
         version,
         target,
-        credential_name,
-        adhoc_credentials,
         suspend_watchdogs: suspend.then_some(true),
         without_fallback: without_fallback.then_some(true),
     });
@@ -1411,19 +1390,8 @@ fn clear(scope: Scope<ShowDevice>, id: u32, leftover: Leftover, target: &Selecte
         Leftover::RestoreWatchdogs => A::RestoreWatchdogs,
         Leftover::RemovePackages => A::RemovePackages,
     };
-    let TargetVariables {
-        id,
-        target,
-        credential_name,
-        adhoc_credentials,
-    } = target_variables(id, target);
-    let clear = ClearLeftover::build(ClearLeftoverVariables {
-        id,
-        action,
-        target,
-        credential_name,
-        adhoc_credentials,
-    });
+    let (id, target) = (id as i32, target.input());
+    let clear = ClearLeftover::build(ClearLeftoverVariables { id, action, target });
     spawn_local(async move {
         let result = request(scope.clone(), clear)
             .await
@@ -1479,18 +1447,11 @@ fn repartition(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
 
 /// Boots the device from `partition`.
 fn boot_from(scope: Scope<ShowDevice>, id: u32, partition: String, target: &SelectedTarget) {
-    let TargetVariables {
-        id,
-        target,
-        credential_name,
-        adhoc_credentials,
-    } = target_variables(id, target);
+    let (id, target) = (id as i32, target.input());
     let boot = BootPartition::build(BootPartitionVariables {
         id,
         partition,
         target,
-        credential_name,
-        adhoc_credentials,
     });
     spawn_local(async move {
         let result = request(scope.clone(), boot)

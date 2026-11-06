@@ -1,6 +1,12 @@
 use crate::components::menu::popup::Select;
 use crate::error::FrontendError;
-use crate::graphql::{authenticated::adjust_target::ListCredentials, request};
+use crate::graphql::{
+    authenticated::{
+        adjust_target::ListCredentials,
+        types::{AdhocCredentials, DeviceTarget},
+    },
+    request,
+};
 use crate::i18n::target as t;
 use cynic::QueryBuilder;
 use patternfly_yew::prelude::{
@@ -23,31 +29,32 @@ pub enum SelectedCredentials {
     },
 }
 
-impl SelectedCredentials {
-    /// As the variables of a query take them: `credentialName`, and `adhocCredentials` built by
-    /// `adhoc` (each query has its own type of it).
-    pub fn variables<A>(
-        self,
-        adhoc: impl FnOnce(Option<String>, Option<String>) -> A,
-    ) -> (Option<String>, Option<A>) {
-        match self {
-            SelectedCredentials::Default => (None, None),
-            SelectedCredentials::Named(name) => (Some(name.into_string()), None),
-            SelectedCredentials::Adhoc { username, password } => (
-                None,
-                Some(adhoc(
-                    Some(username.into_string()),
-                    Some(password.into_string()),
-                )),
-            ),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialOrd, PartialEq, Default)]
 pub struct SelectedTarget {
     pub address: Option<IpAddr>,
     pub credentials: SelectedCredentials,
+}
+
+impl SelectedTarget {
+    /// As the queries take it (`DeviceTarget`).
+    pub fn input(&self) -> DeviceTarget {
+        let (credential_name, adhoc_credentials) = match &self.credentials {
+            SelectedCredentials::Default => (None, None),
+            SelectedCredentials::Named(name) => (Some(name.to_string()), None),
+            SelectedCredentials::Adhoc { username, password } => (
+                None,
+                Some(AdhocCredentials {
+                    username: Some(username.to_string()),
+                    password: Some(password.to_string()),
+                }),
+            ),
+        };
+        DeviceTarget {
+            address: self.address.map(|address| address.to_string()),
+            credential_name,
+            adhoc_credentials,
+        }
+    }
 }
 
 #[derive(Debug)]

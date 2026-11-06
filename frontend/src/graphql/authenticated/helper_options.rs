@@ -5,8 +5,8 @@ use super::{
     helper::InterfaceTag,
     schema::schema,
     types::{
-        AdhocCredentials, DeviceRef, DeviceVariablesFields, InterfaceRef, PoeMode, PortRef,
-        RadioRole, VlanRef,
+        DeviceRef, DeviceTarget, DeviceVariablesFields, InterfaceRef, PoeMode, PortRef, RadioRole,
+        VlanRef,
     },
 };
 
@@ -164,9 +164,7 @@ pub struct PoePort {
 #[derive(cynic::QueryVariables, Debug)]
 pub struct PoeObservedVariables {
     pub id: i32,
-    pub target: Option<String>,
-    pub credential_name: Option<String>,
-    pub adhoc_credentials: Option<AdhocCredentials>,
+    pub target: DeviceTarget,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -199,8 +197,6 @@ pub struct PoeObservedTopology {
 pub struct PoeObservedDevice {
     #[arguments(
         target: $target,
-        credentialName: $credential_name,
-        adhocCredentials: $adhoc_credentials,
     )]
     pub access: Option<PoeObservedAccess>,
 }

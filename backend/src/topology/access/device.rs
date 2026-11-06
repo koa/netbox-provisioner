@@ -10,7 +10,7 @@ use crate::{
     topology::{
         CablePort, Device, DeviceId, DeviceRole, Topology,
         access::{
-            AccessTopology, AdhocCredentials, interface::InterfaceAccess,
+            AccessTopology, AdhocCredentials, DeviceTarget, interface::InterfaceAccess,
             ip_addresses::IpAddressAccess, site::SiteAccess, wlan_group::WlanGroupAccess,
         },
         findings::Finding,
@@ -90,13 +90,13 @@ impl DeviceAccess {
     /// its [initial setup](bootstrap) gives it, through a tunnel to a neighbor on the cable
     /// (every one of [`bootstrap::plans`] in turn): before its first apply that is all it has,
     /// and no route back, and a device whose OSPF is cut off is still reached like that.
-    pub async fn connect(
-        &self,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
-    ) -> Result<Option<AccessibleDevice>, Error> {
-        let target: Option<IpAddr> = target.and_then(|ip| ip.parse().ok());
+    pub async fn connect(&self, target: DeviceTarget) -> Result<Option<AccessibleDevice>, Error> {
+        let DeviceTarget {
+            address,
+            credential_name,
+            adhoc_credentials,
+        } = target;
+        let target: Option<IpAddr> = address.and_then(|ip| ip.parse().ok());
         let credentials = if let Some(credential_name) = credential_name {
             Some(Credentials::Named(credential_name))
         } else if let Some(AdhocCredentials { username, password }) = adhoc_credentials {
@@ -320,15 +320,13 @@ impl DeviceAccess {
     async fn access(
         &self,
         ctx: &async_graphql::Context<'_>,
-        target: Option<String>,
-        credential_name: Option<Box<str>>,
-        adhoc_credentials: Option<AdhocCredentials>,
+        target: Option<DeviceTarget>,
         max_age: Option<u32>,
     ) -> Option<AccessibleDevice> {
         // the page shows why next to "unreachable" (an error at this path, which a returned
         // error would put on the whole device); `None` also without credentials or an address
         let result = self
-            .connect(target, credential_name, adhoc_credentials)
+            .connect(target.unwrap_or_default())
             .await
             .inspect_err(|error| error!("Cannot access device {}: {}", self.name(), error));
         let max_age = max_age.map(|seconds| Duration::from_secs(seconds.into()));
@@ -425,7 +423,7 @@ impl DeviceAccess {
                 async move {
                     let read = async {
                         let link = device
-                            .connect(None, None, None)
+                            .connect(DeviceTarget::default())
                             .await?
                             .ok_or(Error::MissingCredentials)?;
                         watchdog::read(&link.connect_again().await?, powered).await

@@ -44,7 +44,7 @@ use crate::{
     saved_job::{self, SavedApply, SavedBatch, SavedJob, SavedWork, ScriptRun},
     topology::{
         DeviceId,
-        access::{AccessTopology, device::DeviceAccess},
+        access::{AccessTopology, DeviceTarget, device::DeviceAccess},
     },
 };
 use async_graphql::{SimpleObject, futures_util::future::join_all};
@@ -205,7 +205,7 @@ struct Seen {
 impl Planning for Linked {
     type Planned = Reached;
     async fn plan(self, log: &Log) -> Result<Option<Reached>, Error> {
-        let link = connect_for_job(&self.device, None, None, None, log).await?;
+        let link = connect_for_job(&self.device, DeviceTarget::default(), log).await?;
         let planned = link.plan_apply(log).await?;
         if planned.is_empty() {
             return Ok(None);
@@ -410,7 +410,7 @@ impl Rejoined {
         if link.is_none() {
             let reached = self
                 .device
-                .connect(None, self.saved.credentials.clone(), None)
+                .connect(DeviceTarget::named(self.saved.credentials.clone()))
                 .await
                 .ok()
                 .flatten()?;

@@ -21,7 +21,7 @@ use crate::{
                 RefreshInterfaceLive, RefreshInterfaceLiveVariables,
             },
             neighbor_findings::{NeighborFinding, SeenNeighbor as Seen},
-            types::{AdhocCredentials, DeviceRef as Device, PoeProblem, Severity},
+            types::{DeviceRef as Device, PoeProblem, Severity},
         },
         live::{Subscription, read_at, watch},
         request,
@@ -265,14 +265,9 @@ pub fn device_only_lease_list(
 
 /// Subscribes to the live checks for the card.
 pub fn subscribe_live(scope: &Scope<Interfaces>, id: u32, target: SelectedTarget) -> Subscription {
-    let (credential_name, adhoc_credentials) = target
-        .credentials
-        .variables(|username, password| AdhocCredentials { username, password });
     let variables = InterfaceLiveVariables {
         id: id as i32,
-        target: target.address.map(|a| a.to_string()),
-        credential_name,
-        adhoc_credentials,
+        target: target.input(),
     };
     let to = scope.clone();
     watch(
