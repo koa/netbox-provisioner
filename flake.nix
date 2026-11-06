@@ -196,6 +196,12 @@
         clippy-frontend = check "clippy-frontend" wasmDeps ''
           cargo clippy --locked --release -p frontend --target wasm32-unknown-unknown -- -D warnings
         '';
+        # every commit is formatted with `cargo fmt` (Z37)
+        fmt = craneLib.cargoFmt {
+          inherit src;
+          pname = "netbox-provisioner";
+          version = "0.1.0";
+        };
         # the image holds no shell or interpreter, also when a new dependency would bring one
         no-shell = pkgs.runCommand "no-shell" { closure = pkgs.closureInfo { rootPaths = [ provisioner ]; }; } ''
           if grep -E -- '-(bash|coreutils|busybox|python3|perl)-[0-9]' $closure/store-paths; then

@@ -48,7 +48,7 @@ normales OCI-Image.
   Tests, Clippy und Binary übernehmen die Abhängigkeiten (`cargoArtifacts`) und bauen nur die
   eigenen Crates.
 - **`checks`:** die Tests ohne CHR, die drei Clippy-Läufe mit `-D warnings` (Backend und Binary,
-  Frontend für wasm) und `no-shell`: Taucht
+  Frontend für wasm), `fmt` (`cargo fmt --check`) und `no-shell`: Taucht
   in der Closure eine Shell oder ein Interpreter auf, schlägt der Check fehl. So bleibt das Image
   ohne Shell, auch wenn eine neue Abhängigkeit eine mitbrächte.
 - **Bibliotheken:** `mikrotik-model` und `mikrotik-api` sind Git-Abhängigkeiten in `Cargo.toml`

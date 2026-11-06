@@ -25,8 +25,8 @@ rebuilds when it changes — `backend` alone does not need this and can be
 checked/tested independently.
 
 `flake.nix` builds the same with Nix (`nix build .#image`: an OCI image of the binary and the CA
-certificates, no shell; `nix flake check`: tests, the three clippy runs, no shell or interpreter
-in the closure) and is what CI runs (`.github/workflows/ci.yaml`, with the store kept between
+certificates, no shell; `nix flake check`: tests, the three clippy runs, `cargo fmt --check`, no shell or
+interpreter in the closure) and is what CI runs (`.github/workflows/ci.yaml`, with the store kept between
 runs by `magic-nix-cache-action`). It builds with crane: the crates' dependencies are
 derivations of their own (`deps`, from `dummyWorkspace`: this repository's crates dummied, the
 two libraries whole), one for dev (tests, clippy), release (binary) and wasm (frontend), and the
@@ -1245,5 +1245,8 @@ QEMU's, the golden image's dhcp-client is bound to it).
   as prerelease of `Chart.yaml`'s `version`), a tag `vX.Y.Z` as the release X.Y.Z, so this
   matters more here than in the other two repos. Snapshots are for a quick try: a daily
   cleanup (`cleanup.yaml`) deletes all but the newest.
+- Format with `cargo fmt` before every commit (`nix flake check` runs `cargo fmt --check`); a
+  formatting-only commit goes into `.git-blame-ignore-revs`. rustfmt leaves `html!` bodies
+  alone, keep those within 100 columns by hand.
 - Verify with `cargo clippy` in addition to `cargo check`/`cargo test` — not every pre-existing
   warning needs fixing, but a change shouldn't leave new, avoidable ones behind.

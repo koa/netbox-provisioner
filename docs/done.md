@@ -11,6 +11,7 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 
 | # | Frage | Entscheidung | betrifft |
 |---|---|---|---|
+| Z37 | Formatierung: 1018 Zeilen in 151 `.rs`-Dateien sind länger als 100 Zeichen, es gibt weder `rustfmt.toml` noch eine Regel; `cargo fmt` (Vorgabe 100) würde 136 Dateien umformatieren. Einmal alles mit `cargo fmt` formatieren (ein Commit nur dafür, in `.git-blame-ignore-revs`, danach `cargo fmt --check` in den Checks), oder bei Hand-Umbruch bleiben und nur neue Zeilen auf 100 halten? `html!`-Makros formatiert rustfmt nicht, dort bliebe es Handarbeit | `cargo fmt` vor jedem Commit, immer, in allen drei Repositories (2026-11-06) | B27 |
 | Z5 | `netbox-model` entfernen oder für cynic verwenden? | entfernen (2026-10-23) | B3, C4 |
 | Z6 | cynic oder Abfragen in einzelne Dateien? | cynic (2026-10-23) | C4, B10 |
 | Z1 | Woran erkennt der Provisioner seine eigenen Firewall-Regeln? | Kommentar-Präfix; fremde Regeln bleiben stehen (2026-10-23) | A1 |
@@ -62,6 +63,7 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 | B24 | Kleine Duplikate im Frontend: `netbox_helper::link::port_choice` statt dreimal derselben `Choice`; die Wahl des Tokens (ID-Token, sonst Access-Token) einmal in `graphql::token`, für HTTP und WebSocket; 8 redundante `clone`s weg | S | 2026-11-06 („share the port choice and the token choice in the frontend“) |
 | B25 | Kleine Duplikate im Backend: `job::start` und `start_through` gehen über `start_on`; 45-mal `.lock().unwrap_or_else(PoisonError::into_inner)` → `lock::LockAnyway::lock_anyway`; ein redundantes `clone` in `helper/poe.rs`. Die gleichen Arme in `device_state.rs` bleiben: Es sind Zustandstabellen in der Folge des Ablaufs, jedes Ende dort, wo der Ablauf es erreicht | S | 2026-11-06 („lock mutexes through one trait, start jobs through one function“) |
 | B26 | Kleinkram: `extern crate core;` weg; `device/batch.rs`: das Planen ist ein eigenes Trait `Planning`, das das geplante Gerät gibt (`Reached`, mit `Applying` und `Watched`), statt `Linked.reached: Option` mit zweimal `expect("planned before")`; im Lab mit lab-np2, lab-sxt-a (je eine Watchdog-Änderung) und lab-hex (nichts zu tun) gemeinsam angewendet | S | 2026-11-06 („give a planned batch member a type of its own“) |
+| B27 | Zeilenlänge nach Z37: einmal `cargo fmt` über alle Crates, danach `cargo fmt --check` in den Checks (`fmt`), der Commit in `.git-blame-ignore-revs`; 290 Zeilen über 100 Zeichen bleiben in `html!`, Strings und Kommentaren | S | 2026-11-06 („format with cargo fmt“, „check the formatting with cargo fmt“) |
 
 ## C. Konzepte
 
