@@ -40,7 +40,10 @@ use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
     CodeBlockCode, Spinner, SpinnerSize, TextInput,
 };
-use yew::{Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
+use web_sys::MouseEvent;
+use yew::{
+    Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local,
+};
 use yew_nested_router::components::Link;
 
 pub struct ShowDevice {
@@ -245,46 +248,7 @@ impl Component for ShowDevice {
                 true
             }
             ShowDeviceMessage::Data { data, error } => {
-                if data.access.is_none() && data.bootstrap_plan.is_some() {
-                    self.candidates = None;
-                    fetch_candidates(ctx.link().clone(), self.id);
-                }
-                if self.channel.is_none() {
-                    self.channel = data.routeros.as_ref().map(|r| r.default_channel.clone());
-                }
-                if self.downgrade_version.is_empty()
-                    && let Some(previous) = data.routeros.as_ref().and_then(|r| r.previous.clone())
-                {
-                    self.downgrade_version = previous;
-                }
-                if self
-                    .data
-                    .as_ref()
-                    .is_some_and(|before| before.jobs_over != data.jobs_over)
-                {
-                    self.jobs_finished += 1;
-                }
-                if let Some((id, through)) = data.running_job.clone()
-                    && self.job != Some(id)
-                    && self.batch_jobs.is_empty()
-                {
-                    self.job = Some(id);
-                    self.job_through = through;
-                    self.job_running = true;
-                }
-                let mut data = *data;
-                let as_of = |data: &ShowDeviceData| {
-                    data.access
-                        .as_ref()
-                        .and_then(|(_, cfg)| cfg.as_ref())
-                        .map(|cfg| cfg.as_of)
-                };
-                let before = self.data.as_ref().and_then(as_of);
-                if let Some(cfg) = data.access.as_mut().and_then(|(_, cfg)| cfg.as_mut()) {
-                    cfg.as_of = same_reading(before, cfg.as_of);
-                }
-                self.data = Some(data);
-                self.error = error;
+                self.take_data(ctx, *data, error);
                 true
             }
             ShowDeviceMessage::Reload => {
@@ -320,31 +284,11 @@ impl Component for ShowDevice {
                 let Some(channel) = self.channel.clone() else {
                     return false;
                 };
-                self.job_running = true;
-                let suspend = self.suspend();
-                let without = self.without_fallback;
-                update(
-                    ctx.link().clone(),
-                    self.id,
-                    Some(channel),
-                    suspend,
-                    without,
-                    &self.alternate_target,
-                );
+                self.start_update(ctx, Some(channel));
                 true
             }
             ShowDeviceMessage::AdjustPackages => {
-                self.job_running = true;
-                let suspend = self.suspend();
-                let without = self.without_fallback;
-                update(
-                    ctx.link().clone(),
-                    self.id,
-                    None,
-                    suspend,
-                    without,
-                    &self.alternate_target,
-                );
+                self.start_update(ctx, None);
                 true
             }
             ShowDeviceMessage::SuspendWatchdogs(suspend) => {
@@ -536,453 +480,16 @@ impl Component for ShowDevice {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let error = self.error.as_ref().map(|e| e.to_html());
-        let job = if self.batch_jobs.is_empty() {
-            self.job.map(|id| html! {<>
-                if let Some(device) = &self.job_through {
-                    <p>{t::job_through(device)}</p>
-                }
-                <JobView key={id} id={id} on_finished={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}/>
-            </>})
-        } else {
-            Some(html! {
-                <div class="batch-jobs">
-                    { for self.batch_jobs.iter().map(|job| html! {
-                        <div class="batch-job" key={job.job}>
-                            <h3>
-                                if let Some(site) = job.site {
-                                    <Link<AppRoute>
-                                        to={AppRoute::device(site as u32, job.device as u32)}
-                                    >
-                                        {&job.name}
-                                    </Link<AppRoute>>
-                                } else {
-                                    {&job.name}
-                                }
-                            </h3>
-                            <JobView id={job.job} on_finished={ctx.link().callback(|_| ShowDeviceMessage::BatchJobFinished)}/>
-                        </div>
-                    })}
-                </div>
-            })
+        let job = self.job_view(ctx);
+        let content = match &self.data {
+            Some(data) => self.data_view(ctx, data, job),
+            // a job started before the overview is there (it reloads after each job)
+            None => html! {<>{job}<Spinner size={SpinnerSize::Md}/></>},
         };
-        // a job started before the overview is there (it reloads after each job)
-        let job_fallback = job.clone();
-        let target_form = html! {
-            <AdjustTarget onchange={ctx.link().callback(ShowDeviceMessage::AdjustTarget)} value={self.alternate_target.clone()} />
-        };
-        let data = self.data.as_ref().map(|data| {
-            // a job runs, or writing is locked
-            let running = self.job_running || !self.allow_apply;
-            let locked = (!self.allow_apply).then(|| html! {
-                <Alert inline=true title={t::LOCKED} r#type={AlertType::Info}>
-                    <p>{t::LOCKED_BEFORE}<code>{"allow_apply: true"}</code>{t::LOCKED_AFTER}</p>
-                </Alert>
-            });
-            let (board, cfg_update) = data
-                .access
-                .as_ref()
-                .map(|(board, cfg)| (board.as_ref(), cfg.as_ref()))
-                .unwrap_or_default();
-            let generated = cfg_update.is_some();
-            let warnings = cfg_update.map(|cfg| cfg.warnings.as_slice()).unwrap_or_default();
-            let cfg_update = cfg_update.map(|cfg| cfg.script.as_ref()).unwrap_or_default();
-            let nothing_to_do = cfg_update.trim().is_empty();
-            // nothing brings the device back from an update: only once confirmed
-            let no_way_back = self.no_way_back(data);
-            let update_locked = no_way_back && !self.without_fallback;
-            let routeros = data.routeros.as_ref().map(|routeros| {
-                let selected = routeros
-                    .channels
-                    .iter()
-                    .find(|c| Some(&c.channel) == self.channel.as_ref());
-                let entries: Vec<Box<str>> = routeros.channels.iter().map(channel_label).collect();
-                let action = selected.filter(|c| c.update).map(|c| {
-                    if c.upgrade {
-                        t::update_to(&c.newest)
-                    } else {
-                        t::ADJUST_PACKAGES.to_string()
-                    }
-                });
-                // without changing the version, whatever the channel; unless that is what the
-                // channel's update does anyway
-                let adjust_packages = routeros.adjust_packages
-                    && !selected.is_some_and(|c| c.update && !c.upgrade);
-                html! {<>
-                <dt>{t::ROUTEROS}</dt><dd>
-                    { routeros.version.clone() }
-                    {t::packages(&routeros.packages, &routeros.wanted)}
-                    <div class="routeros-update">
-                        <Select<Box<str>>
-                            selected={selected.map(channel_label)}
-                            entries={entries}
-                            onselect={ctx.link().callback(ShowDeviceMessage::SelectChannel)}
-                        />
-                        if let Some(action) = action {
-                            {" "}
-                            <Button
-                                variant={ButtonVariant::Secondary}
-                                label={action}
-                                disabled={update_locked || running}
-                                onclick={ctx.link().callback(|_| ShowDeviceMessage::Update)}
-                            />
-                        } else if !adjust_packages {
-                            {t::UP_TO_DATE}
-                        }
-                        if adjust_packages {
-                            {" "}
-                            <Button
-                                variant={ButtonVariant::Secondary}
-                                label={t::ADJUST_PACKAGES}
-                                disabled={update_locked || running}
-                                onclick={ctx.link().callback(|_| ShowDeviceMessage::AdjustPackages)}
-                            />
-                        }
-                    </div>
-                    if !routeros.version.starts_with("6.") {
-                        { self.downgrade_view(ctx, update_locked || running) }
-                    }
-                    if no_way_back {
-                        { self.no_way_back_view(ctx) }
-                    }
-                    { self.watchdogs_view(ctx, &data.watchdogs) }
-                    <div class="device-reboot">
-                        if self.confirm_reboot {
-                            {t::REBOOT_CONFIRM}
-                            <Button
-                                variant={ButtonVariant::Danger}
-                                label={t::REBOOT_NOW}
-                                disabled={running}
-                                onclick={ctx.link().callback(|_| ShowDeviceMessage::Reboot)}
-                            />
-                            {" "}
-                            <Button
-                                variant={ButtonVariant::Link}
-                                label={CANCEL}
-                                onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmReboot(false))}
-                            />
-                        } else {
-                            <Button
-                                variant={ButtonVariant::Secondary}
-                                label={t::REBOOT}
-                                disabled={running}
-                                onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmReboot(true))}
-                            />
-                        }
-                        if let Some(supply) = &data.power_supply {
-                            {" "}
-                            { self.power_cycle_view(ctx, supply, self.allow_apply) }
-                        }
-                    </div>
-                </dd>
-            </>}
-            });
-            let device_mode = data.device_mode.as_ref().map(|mode| {
-                let changes = mode.changes.iter().map(|c| (c.feature.as_str(), &c.reason));
-                let missing = features(changes);
-                html! {<>
-                <dt>{t::DEVICE_MODE}</dt><dd>
-                    { mode.mode.clone() }
-                    if !missing.is_empty() {
-                        { t::device_mode_missing(&missing) }
-                        <div class="device-mode">
-                            if self.confirm_device_mode {
-                                {t::DEVICE_MODE_CONFIRM}
-                                <Button
-                                    variant={ButtonVariant::Danger}
-                                    label={t::DEVICE_MODE_NOW}
-                                    disabled={running}
-                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ChangeDeviceMode)}
-                                />
-                                {" "}
-                                <Button
-                                    variant={ButtonVariant::Link}
-                                    label={CANCEL}
-                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmDeviceMode(false))}
-                                />
-                            } else {
-                                <Button
-                                    variant={ButtonVariant::Secondary}
-                                    label={t::DEVICE_MODE_ADJUST}
-                                    disabled={running}
-                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmDeviceMode(true))}
-                                />
-                            }
-                        </div>
-                    }
-                </dd>
-            </>}
-            });
-            let partitions = data.partitions.as_ref().map(|partitions| {
-                html! {<>
-                <dt>{t::PARTITIONS}</dt><dd>
-                    { for partitions.partitions.iter().map(|p| {
-                        // a RouterOS to boot, e.g. the one from before an update
-                        let bootable = !p.running && !p.version.is_empty();
-                        let name = p.name.clone();
-                        html!(
-                        <div>
-                            { t::partition(&p.name, &p.version, p.size_mib, p.active, p.running) }
-                            if bootable && self.confirm_boot.as_ref() == Some(&p.name) {
-                                {" "}{t::PARTITION_BOOT_CONFIRM}
-                                <Button
-                                    variant={ButtonVariant::Danger}
-                                    label={t::PARTITION_BOOT_NOW}
-                                    disabled={running}
-                                    onclick={ctx.link().callback(move |_| ShowDeviceMessage::BootPartition(name.clone()))}
-                                />
-                                {" "}
-                                <Button
-                                    variant={ButtonVariant::Link}
-                                    label={CANCEL}
-                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmBoot(None))}
-                                />
-                            } else if bootable {
-                                {" "}
-                                <Button
-                                    variant={ButtonVariant::Secondary}
-                                    label={t::partition_boot(&p.name)}
-                                    disabled={running}
-                                    onclick={ctx.link().callback(move |_| ShowDeviceMessage::ConfirmBoot(Some(name.clone())))}
-                                />
-                            }
-                        </div>
-                    )})}
-                    if partitions.can_split {
-                        <div class="partitions-split">
-                            if self.confirm_repartition {
-                                {t::PARTITIONS_CONFIRM}
-                                <Button
-                                    variant={ButtonVariant::Danger}
-                                    label={t::PARTITIONS_NOW}
-                                    disabled={running}
-                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::Repartition)}
-                                />
-                                {" "}
-                                <Button
-                                    variant={ButtonVariant::Link}
-                                    label={CANCEL}
-                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmRepartition(false))}
-                                />
-                            } else {
-                                <Button
-                                    variant={ButtonVariant::Secondary}
-                                    label={t::PARTITIONS_SPLIT}
-                                    disabled={running}
-                                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmRepartition(true))}
-                                />
-                            }
-                        </div>
-                    }
-                </dd>
-            </>}
-            });
-            let bootstrap_running = running;
-            let update = if data.access.is_none() {
-                let setup = match (&data.bootstrap_plan, &data.bootstrap_problem) {
-                    (Some(plan), _) => {
-                        let name = data.configured_name.clone();
-                        let candidates = match &self.candidates {
-                            None => html!(<p><Spinner size={SpinnerSize::Md}/>{setup::searching(&plan.neighbor, &plan.neighbor_port)}</p>),
-                            Some(Err(error)) => html!(<p>{setup::search_failed(&plan.neighbor, error)}</p>),
-                            Some(Ok(found)) if found.is_empty() => html!(<p>{setup::nothing_found(&plan.neighbor, &plan.neighbor_port)}</p>),
-                            Some(Ok(found)) => html! {
-                                <table class="bootstrap-candidates">
-                                    <thead><tr>
-                                        <th>{setup::IDENTITY}</th><th>{setup::BOARD}</th><th>{setup::ROUTEROS}</th><th>{setup::MAC}</th><th>{setup::PORT}</th><th/>
-                                    </tr></thead>
-                                    <tbody>
-                                    { for found.iter().map(|c| {
-                                        let mac = c.mac.0.clone();
-                                        html! {<tr>
-                                            <td>{&c.identity}</td><td>{&c.board}</td><td>{&c.version}</td>
-                                            <td><code>{&c.mac.0}</code></td><td>{&c.interface}</td>
-                                            <td><Button
-                                                variant={ButtonVariant::Secondary}
-                                                label={setup::set_up_as(&name)}
-                                                disabled={bootstrap_running}
-                                                onclick={ctx.link().callback(move |_| ShowDeviceMessage::Bootstrap(mac.clone()))}
-                                            /></td>
-                                        </tr>}
-                                    })}
-                                    </tbody>
-                                </table>
-                            },
-                        };
-                        let manual = self.manual_mac.clone();
-                        html! {<>
-                            <p>{setup::plan(&plan.neighbor, &plan.neighbor_port, &plan.port, &plan.address)}</p>
-                            <p>{setup::RESCUE}</p>
-                            {candidates}
-                            <div class="bootstrap-manual">
-                                <TextInput
-                                    value={self.manual_mac.clone()}
-                                    placeholder={setup::MAC_PLACEHOLDER}
-                                    onchange={ctx.link().callback(ShowDeviceMessage::ManualMac)}
-                                />
-                                <Button
-                                    variant={ButtonVariant::Secondary}
-                                    label={setup::WITH_MAC}
-                                    disabled={bootstrap_running || manual.trim().is_empty()}
-                                    onclick={ctx.link().callback(move |_| ShowDeviceMessage::Bootstrap(manual.clone()))}
-                                />
-                            </div>
-                        </>}
-                    }
-                    (None, Some(problem)) => html!(<p>{setup::impossible(&ServerProblem::from(problem).text())}</p>),
-                    (None, None) => html!(),
-                };
-                html!(<Alert inline=true title={t::UNREACHABLE} r#type={AlertType::Warning}>
-                    if let Some(problem) = &data.access_problem {
-                        <p>{problem.as_ref()}</p>
-                    }
-                    {setup}
-                    <p>{t::UNREACHABLE_HINT}</p>
-                    {target_form.clone()}
-                </Alert>)
-            } else if !generated {
-                html!(<Alert inline=true title={t::NOT_GENERATED} r#type={AlertType::Warning}>
-                    <p>{t::NOT_GENERATED_HINT}</p>
-                </Alert>)
-            } else if nothing_to_do {
-                html!(<Alert inline=true title={t::IN_LINE} r#type={AlertType::Success}/>)
-            } else {
-                html! {<>
-                    { for warnings.iter().map(|warning| html!(
-                        <Alert inline=true title={describe_warning(warning)} r#type={AlertType::Warning}/>
-                    ))}
-                    <CodeBlock><CodeBlockCode>{ cfg_update }</CodeBlockCode></CodeBlock>
-                </>}
-            };
-            let reachable = data.access.is_some();
-            let head = html! {
-                <Card class="device-head">
-                    <CardHeader><CardTitle>{ data.configured_name.as_ref() }</CardTitle></CardHeader>
-                    <CardBody>
-                        <dl class="device-overview">
-                            if reachable {
-                                <dt>{t::BOARD}</dt><dd>{ board }</dd>
-                            }
-                            if let Some(connected) = &data.connected {
-                                <dt>{t::CONNECTED}</dt><dd>
-                                    { t::connected(&connected.address, connected.neighbor.as_deref(), &connected.identity) }
-                                    if !connected.same_name {
-                                        <Alert inline=true r#type={AlertType::Warning}
-                                            title={t::other_identity(&connected.identity, &data.configured_name)}/>
-                                    }
-                                </dd>
-                            }
-                            <dt>{target::ACCESS}</dt><dd>
-                                { target::describe(&self.alternate_target) }
-                                if reachable {
-                                    {" "}
-                                    <Button
-                                        variant={ButtonVariant::Link}
-                                        label={if self.show_target { target::HIDE } else { target::SHOW }}
-                                        onclick={ctx.link().callback({
-                                            let show = !self.show_target;
-                                            move |_| ShowDeviceMessage::ShowTarget(show)
-                                        })}
-                                    />
-                                }
-                            </dd>
-                        </dl>
-                        if reachable && self.show_target {
-                            {target_form.clone()}
-                        }
-                    </CardBody>
-                </Card>
-            };
-            let device = (routeros.is_some() || device_mode.is_some() || partitions.is_some()).then(|| html! {
-                <Card class="device-state">
-                    <CardHeader><CardTitle>{t::DEVICE}</CardTitle></CardHeader>
-                    <CardBody>
-                        <dl class="device-overview">
-                            {routeros}
-                            {device_mode}
-                            {partitions}
-                        </dl>
-                    </CardBody>
-                </Card>
-            });
-            html! {<>
-            {locked}
-            {head}
-            if let Some(left) = &data.leftovers {
-                <Leftovers
-                    left={left.clone()}
-                    disabled={running}
-                    on_clear={ctx.link().callback(ShowDeviceMessage::ClearLeftover)}
-                />
-            }
-            {job}
-            <Interfaces
-                id={self.id}
-                refresh={self.jobs_finished}
-                applied={self.applied}
-                target={self.alternate_target.clone()}
-                on_written={ctx.link().callback(|()| ShowDeviceMessage::JobFinished)}
-                on_apply={ctx.link().callback(|()| ShowDeviceMessage::ShowChanges)}
-            />
-            <div class="device-columns">
-                {device}
-                <Card class="device-cfg">
-                    <CardHeader><CardTitle>{t::CHANGES}</CardTitle></CardHeader>
-                    <CardBody>
-                        <p class="as-of">
-                            if let Some((_, Some(generated))) = &data.access {
-                                {t::as_of(&local_time(generated.as_of))}
-                            }
-                            <Button
-                                variant={ButtonVariant::Link}
-                                label={t::RELOAD}
-                                disabled={running}
-                                onclick={ctx.link().callback(|_| ShowDeviceMessage::Reload)}
-                            />
-                        </p>
-                        {update}
-                        if reachable {
-                            <Button
-                                variant={ButtonVariant::Primary}
-                                label={t::APPLY}
-                                disabled={nothing_to_do || running}
-                                onclick={ctx.link().callback(|_| ShowDeviceMessage::Apply)}
-                            />
-                            <BatchApply
-                                id={self.id}
-                                disabled={running}
-                                on_started={ctx.link().callback(ShowDeviceMessage::BatchStarted)}
-                            />
-                        }
-                    </CardBody>
-                </Card>
-            </div>
-            if !data.log.is_empty() {
-                <Card class="device-log">
-                    <CardHeader><CardTitle>{t::LOG}</CardTitle></CardHeader>
-                    <CardBody>
-                        <details>
-                            <summary>{t::log_entries(data.log.len())}</summary>
-                            <CodeBlock>
-                                <CodeBlockCode>
-                                    { for data.log.iter().map(|entry| format!("{} {} {}\n", entry.time, entry.topics, entry.message)) }
-                                </CodeBlockCode>
-                            </CodeBlock>
-                        </details>
-                    </CardBody>
-                </Card>
-            }
-            <History id={self.id} refresh={self.jobs_finished}/>
-            </>}
-        });
         html! {
             <div class="device-page">
             {error}
-            if let Some(data) = data {
-                {data}
-            } else {
-                {job_fallback}
-                <Spinner size={SpinnerSize::Md}/>
-            }
+            {content}
             </div>
         }
     }
@@ -1003,6 +510,507 @@ impl Component for ShowDevice {
 }
 
 impl ShowDevice {
+    /// Takes a new overview: the setup's candidates asked again where it is unreachable, the
+    /// channel and version to go back to preset, a job running elsewhere shown.
+    fn take_data(
+        &mut self,
+        ctx: &Context<Self>,
+        data: ShowDeviceData,
+        error: Option<FrontendError>,
+    ) {
+        if data.access.is_none() && data.bootstrap_plan.is_some() {
+            self.candidates = None;
+            fetch_candidates(ctx.link().clone(), self.id);
+        }
+        if self.channel.is_none() {
+            self.channel = data.routeros.as_ref().map(|r| r.default_channel.clone());
+        }
+        if self.downgrade_version.is_empty()
+            && let Some(previous) = data.routeros.as_ref().and_then(|r| r.previous.clone())
+        {
+            self.downgrade_version = previous;
+        }
+        if self
+            .data
+            .as_ref()
+            .is_some_and(|before| before.jobs_over != data.jobs_over)
+        {
+            self.jobs_finished += 1;
+        }
+        if let Some((id, through)) = data.running_job.clone()
+            && self.job != Some(id)
+            && self.batch_jobs.is_empty()
+        {
+            self.job = Some(id);
+            self.job_through = through;
+            self.job_running = true;
+        }
+        let mut data = data;
+        let as_of = |data: &ShowDeviceData| {
+            data.access
+                .as_ref()
+                .and_then(|(_, cfg)| cfg.as_ref())
+                .map(|cfg| cfg.as_of)
+        };
+        let before = self.data.as_ref().and_then(as_of);
+        if let Some(cfg) = data.access.as_mut().and_then(|(_, cfg)| cfg.as_mut()) {
+            cfg.as_of = same_reading(before, cfg.as_of);
+        }
+        self.data = Some(data);
+        self.error = error;
+    }
+    /// Starts updating to the newest release of `channel`, or only the packages without one.
+    fn start_update(&mut self, ctx: &Context<Self>, channel: Option<Channel>) {
+        self.job_running = true;
+        let suspend = self.suspend();
+        let without = self.without_fallback;
+        update(
+            ctx.link().clone(),
+            self.id,
+            channel,
+            suspend,
+            without,
+            &self.alternate_target,
+        );
+    }
+    /// The job shown, or those of a batch side by side.
+    fn job_view(&self, ctx: &Context<Self>) -> Option<Html> {
+        if self.batch_jobs.is_empty() {
+            return self.job.map(|id| html! {<>
+                if let Some(device) = &self.job_through {
+                    <p>{t::job_through(device)}</p>
+                }
+                <JobView key={id} id={id} on_finished={ctx.link().callback(|_| ShowDeviceMessage::JobFinished)}/>
+            </>});
+        }
+        Some(html! {
+            <div class="batch-jobs">
+                { for self.batch_jobs.iter().map(|job| html! {
+                    <div class="batch-job" key={job.job}>
+                        <h3>
+                            if let Some(site) = job.site {
+                                <Link<AppRoute>
+                                    to={AppRoute::device(site as u32, job.device as u32)}
+                                >
+                                    {&job.name}
+                                </Link<AppRoute>>
+                            } else {
+                                {&job.name}
+                            }
+                        </h3>
+                        <JobView id={job.job} on_finished={ctx.link().callback(|_| ShowDeviceMessage::BatchJobFinished)}/>
+                    </div>
+                })}
+            </div>
+        })
+    }
+    /// The page once the overview is there, `job` below the head.
+    fn data_view(&self, ctx: &Context<Self>, data: &ShowDeviceData, job: Option<Html>) -> Html {
+        // a job runs, or writing is locked
+        let running = self.job_running || !self.allow_apply;
+        let locked = (!self.allow_apply).then(|| {
+            html! {
+                <Alert inline=true title={t::LOCKED} r#type={AlertType::Info}>
+                    <p>{t::LOCKED_BEFORE}<code>{"allow_apply: true"}</code>{t::LOCKED_AFTER}</p>
+                </Alert>
+            }
+        });
+        let routeros = self.routeros_view(ctx, data, running);
+        let device_mode = self.device_mode_view(ctx, data, running);
+        let partitions = self.partitions_view(ctx, data, running);
+        let device =
+            (routeros.is_some() || device_mode.is_some() || partitions.is_some()).then(|| {
+                html! {
+                    <Card class="device-state">
+                        <CardHeader><CardTitle>{t::DEVICE}</CardTitle></CardHeader>
+                        <CardBody>
+                            <dl class="device-overview">
+                                {routeros}
+                                {device_mode}
+                                {partitions}
+                            </dl>
+                        </CardBody>
+                    </Card>
+                }
+            });
+        html! {<>
+            {locked}
+            {self.head_view(ctx, data)}
+            if let Some(left) = &data.leftovers {
+                <Leftovers
+                    left={left.clone()}
+                    disabled={running}
+                    on_clear={ctx.link().callback(ShowDeviceMessage::ClearLeftover)}
+                />
+            }
+            {job}
+            <Interfaces
+                id={self.id}
+                refresh={self.jobs_finished}
+                applied={self.applied}
+                target={self.alternate_target.clone()}
+                on_written={ctx.link().callback(|()| ShowDeviceMessage::JobFinished)}
+                on_apply={ctx.link().callback(|()| ShowDeviceMessage::ShowChanges)}
+            />
+            <div class="device-columns">
+                {device}
+                {self.changes_view(ctx, data, running)}
+            </div>
+            {log_view(&data.log)}
+            <History id={self.id} refresh={self.jobs_finished}/>
+        </>}
+    }
+    /// The form for another address or other credentials.
+    fn target_form(&self, ctx: &Context<Self>) -> Html {
+        html! {
+            <AdjustTarget onchange={ctx.link().callback(ShowDeviceMessage::AdjustTarget)} value={self.alternate_target.clone()} />
+        }
+    }
+    /// The head: name, board, the device the connection reached and how it is reached.
+    fn head_view(&self, ctx: &Context<Self>, data: &ShowDeviceData) -> Html {
+        let reachable = data.access.is_some();
+        let board = data
+            .access
+            .as_ref()
+            .map(|(board, _)| board.as_ref())
+            .unwrap_or_default();
+        html! {
+            <Card class="device-head">
+                <CardHeader><CardTitle>{ data.configured_name.as_ref() }</CardTitle></CardHeader>
+                <CardBody>
+                    <dl class="device-overview">
+                        if reachable {
+                            <dt>{t::BOARD}</dt><dd>{ board }</dd>
+                        }
+                        if let Some(connected) = &data.connected {
+                            <dt>{t::CONNECTED}</dt><dd>
+                                { t::connected(&connected.address, connected.neighbor.as_deref(), &connected.identity) }
+                                if !connected.same_name {
+                                    <Alert inline=true r#type={AlertType::Warning}
+                                        title={t::other_identity(&connected.identity, &data.configured_name)}/>
+                                }
+                            </dd>
+                        }
+                        <dt>{target::ACCESS}</dt><dd>
+                            { target::describe(&self.alternate_target) }
+                            if reachable {
+                                {" "}
+                                <Button
+                                    variant={ButtonVariant::Link}
+                                    label={if self.show_target { target::HIDE } else { target::SHOW }}
+                                    onclick={ctx.link().callback({
+                                        let show = !self.show_target;
+                                        move |_| ShowDeviceMessage::ShowTarget(show)
+                                    })}
+                                />
+                            }
+                        </dd>
+                    </dl>
+                    if reachable && self.show_target {
+                        {self.target_form(ctx)}
+                    }
+                </CardBody>
+            </Card>
+        }
+    }
+    /// RouterOS: version and packages, update, downgrade, the watchdogs, reboot and power cycle.
+    fn routeros_view(
+        &self,
+        ctx: &Context<Self>,
+        data: &ShowDeviceData,
+        running: bool,
+    ) -> Option<Html> {
+        let routeros = data.routeros.as_ref()?;
+        // nothing brings the device back from an update: only once confirmed
+        let no_way_back = self.no_way_back(data);
+        let update_locked = no_way_back && !self.without_fallback;
+        let selected = routeros
+            .channels
+            .iter()
+            .find(|c| Some(&c.channel) == self.channel.as_ref());
+        let entries: Vec<Box<str>> = routeros.channels.iter().map(channel_label).collect();
+        let action = selected.filter(|c| c.update).map(|c| {
+            if c.upgrade {
+                t::update_to(&c.newest)
+            } else {
+                t::ADJUST_PACKAGES.to_string()
+            }
+        });
+        // without changing the version, whatever the channel; unless that is what the
+        // channel's update does anyway
+        let adjust_packages =
+            routeros.adjust_packages && !selected.is_some_and(|c| c.update && !c.upgrade);
+        let reboot = Confirm {
+            asking: self.confirm_reboot,
+            question: t::REBOOT_CONFIRM.into(),
+            now: t::REBOOT_NOW,
+            ask: t::REBOOT.into(),
+            disabled: running,
+        }
+        .view(
+            ctx.link().callback(|_| ShowDeviceMessage::Reboot),
+            ctx.link().callback(ShowDeviceMessage::ConfirmReboot),
+        );
+        Some(html! {<>
+            <dt>{t::ROUTEROS}</dt><dd>
+                { routeros.version.clone() }
+                {t::packages(&routeros.packages, &routeros.wanted)}
+                <div class="routeros-update">
+                    <Select<Box<str>>
+                        selected={selected.map(channel_label)}
+                        entries={entries}
+                        onselect={ctx.link().callback(ShowDeviceMessage::SelectChannel)}
+                    />
+                    if let Some(action) = action {
+                        {" "}
+                        <Button
+                            variant={ButtonVariant::Secondary}
+                            label={action}
+                            disabled={update_locked || running}
+                            onclick={ctx.link().callback(|_| ShowDeviceMessage::Update)}
+                        />
+                    } else if !adjust_packages {
+                        {t::UP_TO_DATE}
+                    }
+                    if adjust_packages {
+                        {" "}
+                        <Button
+                            variant={ButtonVariant::Secondary}
+                            label={t::ADJUST_PACKAGES}
+                            disabled={update_locked || running}
+                            onclick={ctx.link().callback(|_| ShowDeviceMessage::AdjustPackages)}
+                        />
+                    }
+                </div>
+                if !routeros.version.starts_with("6.") {
+                    { self.downgrade_view(ctx, update_locked || running) }
+                }
+                if no_way_back {
+                    { self.no_way_back_view(ctx) }
+                }
+                { self.watchdogs_view(ctx, &data.watchdogs) }
+                <div class="device-reboot">
+                    {reboot}
+                    if let Some(supply) = &data.power_supply {
+                        {" "}
+                        { self.power_cycle_view(ctx, supply, self.allow_apply) }
+                    }
+                </div>
+            </dd>
+        </>})
+    }
+    /// The device mode, with the features the provisioner needs turned on where some are off.
+    fn device_mode_view(
+        &self,
+        ctx: &Context<Self>,
+        data: &ShowDeviceData,
+        running: bool,
+    ) -> Option<Html> {
+        let mode = data.device_mode.as_ref()?;
+        let changes = mode.changes.iter().map(|c| (c.feature.as_str(), &c.reason));
+        let missing = features(changes);
+        let adjust = Confirm {
+            asking: self.confirm_device_mode,
+            question: t::DEVICE_MODE_CONFIRM.into(),
+            now: t::DEVICE_MODE_NOW,
+            ask: t::DEVICE_MODE_ADJUST.into(),
+            disabled: running,
+        };
+        Some(html! {<>
+            <dt>{t::DEVICE_MODE}</dt><dd>
+                { mode.mode.clone() }
+                if !missing.is_empty() {
+                    { t::device_mode_missing(&missing) }
+                    <div class="device-mode">
+                        { adjust.view(
+                            ctx.link().callback(|_| ShowDeviceMessage::ChangeDeviceMode),
+                            ctx.link().callback(ShowDeviceMessage::ConfirmDeviceMode),
+                        ) }
+                    </div>
+                }
+            </dd>
+        </>})
+    }
+    /// The partitions, each with a RouterOS to boot from, and splitting a single one.
+    fn partitions_view(
+        &self,
+        ctx: &Context<Self>,
+        data: &ShowDeviceData,
+        running: bool,
+    ) -> Option<Html> {
+        let partitions = data.partitions.as_ref()?;
+        let split = Confirm {
+            asking: self.confirm_repartition,
+            question: t::PARTITIONS_CONFIRM.into(),
+            now: t::PARTITIONS_NOW,
+            ask: t::PARTITIONS_SPLIT.into(),
+            disabled: running,
+        };
+        Some(html! {<>
+            <dt>{t::PARTITIONS}</dt><dd>
+                { for partitions.partitions.iter().map(|p| {
+                    // a RouterOS to boot, e.g. the one from before an update
+                    let bootable = !p.running && !p.version.is_empty();
+                    let boot = bootable.then(|| {
+                        let (now, ask) = (p.name.clone(), p.name.clone());
+                        Confirm {
+                            asking: self.confirm_boot.as_ref() == Some(&p.name),
+                            question: t::PARTITION_BOOT_CONFIRM.into(),
+                            now: t::PARTITION_BOOT_NOW,
+                            ask: t::partition_boot(&p.name),
+                            disabled: running,
+                        }
+                        .view(
+                            ctx.link().callback(move |_| ShowDeviceMessage::BootPartition(now.clone())),
+                            ctx.link().callback(move |asking: bool| {
+                                ShowDeviceMessage::ConfirmBoot(asking.then(|| ask.clone()))
+                            }),
+                        )
+                    });
+                    html!(
+                    <div>
+                        { t::partition(&p.name, &p.version, p.size_mib, p.active, p.running) }
+                        if let Some(boot) = boot {
+                            {" "}{boot}
+                        }
+                    </div>
+                )})}
+                if partitions.can_split {
+                    <div class="partitions-split">
+                        { split.view(
+                            ctx.link().callback(|_| ShowDeviceMessage::Repartition),
+                            ctx.link().callback(ShowDeviceMessage::ConfirmRepartition),
+                        ) }
+                    </div>
+                }
+            </dd>
+        </>})
+    }
+    /// „Änderungen“: what an apply would change (or why the device can't be reached, with
+    /// its setup), and the buttons to apply.
+    fn changes_view(&self, ctx: &Context<Self>, data: &ShowDeviceData, running: bool) -> Html {
+        let cfg = data.access.as_ref().and_then(|(_, cfg)| cfg.as_ref());
+        let script = cfg.map(|cfg| cfg.script.as_ref()).unwrap_or_default();
+        let nothing_to_do = script.trim().is_empty();
+        let changes = match cfg {
+            _ if data.access.is_none() => {
+                html!(<Alert inline=true title={t::UNREACHABLE} r#type={AlertType::Warning}>
+                if let Some(problem) = &data.access_problem {
+                    <p>{problem.as_ref()}</p>
+                }
+                {self.setup_view(ctx, data, running)}
+                <p>{t::UNREACHABLE_HINT}</p>
+                {self.target_form(ctx)}
+            </Alert>)
+            }
+            None => html!(<Alert inline=true title={t::NOT_GENERATED} r#type={AlertType::Warning}>
+                <p>{t::NOT_GENERATED_HINT}</p>
+            </Alert>),
+            Some(_) if nothing_to_do => {
+                html!(<Alert inline=true title={t::IN_LINE} r#type={AlertType::Success}/>)
+            }
+            Some(cfg) => html! {<>
+                { for cfg.warnings.iter().map(|warning| html!(
+                    <Alert inline=true title={describe_warning(warning)} r#type={AlertType::Warning}/>
+                ))}
+                <CodeBlock><CodeBlockCode>{ script }</CodeBlockCode></CodeBlock>
+            </>},
+        };
+        html! {
+            <Card class="device-cfg">
+                <CardHeader><CardTitle>{t::CHANGES}</CardTitle></CardHeader>
+                <CardBody>
+                    <p class="as-of">
+                        if let Some(generated) = cfg {
+                            {t::as_of(&local_time(generated.as_of))}
+                        }
+                        <Button
+                            variant={ButtonVariant::Link}
+                            label={t::RELOAD}
+                            disabled={running}
+                            onclick={ctx.link().callback(|_| ShowDeviceMessage::Reload)}
+                        />
+                    </p>
+                    {changes}
+                    if data.access.is_some() {
+                        <Button
+                            variant={ButtonVariant::Primary}
+                            label={t::APPLY}
+                            disabled={nothing_to_do || running}
+                            onclick={ctx.link().callback(|_| ShowDeviceMessage::Apply)}
+                        />
+                        <BatchApply
+                            id={self.id}
+                            disabled={running}
+                            on_started={ctx.link().callback(ShowDeviceMessage::BatchStarted)}
+                        />
+                    }
+                </CardBody>
+            </Card>
+        }
+    }
+    /// The initial setup of an unreachable device over its neighbor: what the neighbor sees
+    /// at its port, or a MAC to type; or why there is none.
+    fn setup_view(&self, ctx: &Context<Self>, data: &ShowDeviceData, running: bool) -> Html {
+        let plan = match (&data.bootstrap_plan, &data.bootstrap_problem) {
+            (Some(plan), _) => plan,
+            (None, Some(problem)) => {
+                return html!(<p>{setup::impossible(&ServerProblem::from(problem).text())}</p>);
+            }
+            (None, None) => return html!(),
+        };
+        let name = data.configured_name.clone();
+        let candidates = match &self.candidates {
+            None => {
+                html!(<p><Spinner size={SpinnerSize::Md}/>{setup::searching(&plan.neighbor, &plan.neighbor_port)}</p>)
+            }
+            Some(Err(error)) => html!(<p>{setup::search_failed(&plan.neighbor, error)}</p>),
+            Some(Ok(found)) if found.is_empty() => {
+                html!(<p>{setup::nothing_found(&plan.neighbor, &plan.neighbor_port)}</p>)
+            }
+            Some(Ok(found)) => html! {
+                <table class="bootstrap-candidates">
+                    <thead><tr>
+                        <th>{setup::IDENTITY}</th><th>{setup::BOARD}</th><th>{setup::ROUTEROS}</th><th>{setup::MAC}</th><th>{setup::PORT}</th><th/>
+                    </tr></thead>
+                    <tbody>
+                    { for found.iter().map(|c| {
+                        let mac = c.mac.0.clone();
+                        html! {<tr>
+                            <td>{&c.identity}</td><td>{&c.board}</td><td>{&c.version}</td>
+                            <td><code>{&c.mac.0}</code></td><td>{&c.interface}</td>
+                            <td><Button
+                                variant={ButtonVariant::Secondary}
+                                label={setup::set_up_as(&name)}
+                                disabled={running}
+                                onclick={ctx.link().callback(move |_| ShowDeviceMessage::Bootstrap(mac.clone()))}
+                            /></td>
+                        </tr>}
+                    })}
+                    </tbody>
+                </table>
+            },
+        };
+        let manual = self.manual_mac.clone();
+        html! {<>
+            <p>{setup::plan(&plan.neighbor, &plan.neighbor_port, &plan.port, &plan.address)}</p>
+            <p>{setup::RESCUE}</p>
+            {candidates}
+            <div class="bootstrap-manual">
+                <TextInput
+                    value={self.manual_mac.clone()}
+                    placeholder={setup::MAC_PLACEHOLDER}
+                    onchange={ctx.link().callback(ShowDeviceMessage::ManualMac)}
+                />
+                <Button
+                    variant={ButtonVariant::Secondary}
+                    label={setup::WITH_MAC}
+                    disabled={running || manual.trim().is_empty()}
+                    onclick={ctx.link().callback(move |_| ShowDeviceMessage::Bootstrap(manual.clone()))}
+                />
+            </div>
+        </>}
+    }
     /// Subscribes to the overview with the target chosen, ending the subscription before.
     fn start_live(&mut self, ctx: &Context<Self>) {
         let (id, scope) = (self.id, ctx.link().clone());
@@ -1073,29 +1081,18 @@ impl ShowDevice {
                 <JobView key={id} id={id} on_finished={yew::Callback::noop()}/>
             }
         });
+        let cycle = Confirm {
+            asking: self.confirm_power_cycle,
+            question: t::power_cycle_confirm(&supply.device.name, &supply.port),
+            now: t::POWER_CYCLE_NOW,
+            ask: t::POWER_CYCLE.into(),
+            disabled: !allow_apply,
+        };
         html! {<>
-            if self.confirm_power_cycle {
-                {t::power_cycle_confirm(&supply.device.name, &supply.port)}
-                <Button
-                    variant={ButtonVariant::Danger}
-                    label={t::POWER_CYCLE_NOW}
-                    disabled={!allow_apply}
-                    onclick={ctx.link().callback(|_| ShowDeviceMessage::PowerCycle)}
-                />
-                {" "}
-                <Button
-                    variant={ButtonVariant::Link}
-                    label={CANCEL}
-                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmPowerCycle(false))}
-                />
-            } else {
-                <Button
-                    variant={ButtonVariant::Secondary}
-                    label={t::POWER_CYCLE}
-                    disabled={!allow_apply}
-                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmPowerCycle(true))}
-                />
-            }
+            { cycle.view(
+                ctx.link().callback(|_| ShowDeviceMessage::PowerCycle),
+                ctx.link().callback(ShowDeviceMessage::ConfirmPowerCycle),
+            ) }
             {job}
         </>}
     }
@@ -1179,6 +1176,69 @@ impl ShowDevice {
                 }
             </Alert>
         }
+    }
+}
+
+/// A button that asks first: `ask` until clicked, then `question` with `now` and one to cancel.
+struct Confirm {
+    asking: bool,
+    question: String,
+    now: &'static str,
+    ask: String,
+    disabled: bool,
+}
+
+impl Confirm {
+    /// `on_now` does it, `on_asking` gets whether it asks now (`true`) or was cancelled.
+    fn view(self, on_now: Callback<MouseEvent>, on_asking: Callback<bool>) -> Html {
+        if self.asking {
+            html! {<>
+                {self.question}
+                <Button
+                    variant={ButtonVariant::Danger}
+                    label={self.now}
+                    disabled={self.disabled}
+                    onclick={on_now}
+                />
+                {" "}
+                <Button
+                    variant={ButtonVariant::Link}
+                    label={CANCEL}
+                    onclick={on_asking.reform(|_| false)}
+                />
+            </>}
+        } else {
+            html! {
+                <Button
+                    variant={ButtonVariant::Secondary}
+                    label={self.ask}
+                    disabled={self.disabled}
+                    onclick={on_asking.reform(|_| true)}
+                />
+            }
+        }
+    }
+}
+
+/// The newest entries of the device's log, folded.
+fn log_view(log: &[LogEntry]) -> Html {
+    if log.is_empty() {
+        return Html::default();
+    }
+    html! {
+        <Card class="device-log">
+            <CardHeader><CardTitle>{t::LOG}</CardTitle></CardHeader>
+            <CardBody>
+                <details>
+                    <summary>{t::log_entries(log.len())}</summary>
+                    <CodeBlock>
+                        <CodeBlockCode>
+                            { for log.iter().map(|entry| format!("{} {} {}\n", entry.time, entry.topics, entry.message)) }
+                        </CodeBlockCode>
+                    </CodeBlock>
+                </details>
+            </CardBody>
+        </Card>
     }
 }
 
