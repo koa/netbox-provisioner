@@ -333,7 +333,7 @@ that failed midway (`Job.netboxWrittenCount`): NetBox has no transaction across 
 steps before the failure stay, and the helper says "Nur teilweise geschrieben" instead of
 "Geschrieben".
 `components::netbox_helper` keeps the component and what all helpers share in `mod.rs` and
-`choice.rs` (presets, `HelperKind`, `HelperChoice`, `helper_input!`), the plan and preview in
+`choice.rs` (presets, `HelperKind`, `HelperChoice`, its input `helper`), the plan and preview in
 `plan.rs`, and gives each helper with a form a module with its choice, form, queries and its
 own message (`LinkMsg`, `PoeMsg`, …, wrapped by `From` so callbacks give it as is).
 A `CableMissing` neighbor finding with both ends in NetBox opens the card below it with those

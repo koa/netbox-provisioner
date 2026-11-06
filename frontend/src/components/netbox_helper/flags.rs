@@ -9,7 +9,6 @@ use crate::{
             findings::{Finding, Findings, FindingsVariables},
             helper::InterfaceTag,
             helper_options::{self, DeviceVariables, FlagInterfaces},
-            netbox_plan,
         },
         request,
     },
@@ -218,43 +217,14 @@ pub(super) type FlagFindings = (
     Result<(String, Vec<Finding>), FrontendError>,
 );
 
-/// A tag as NetBox names it, from the `InterfaceTag` of a query (each has its own).
-pub(super) trait TagSlug {
-    fn slug(&self) -> &str;
-}
-
-macro_rules! tag_slug {
-    ($($module:ident),*) => {$(
-        impl TagSlug for $module::InterfaceTag {
-            fn slug(&self) -> &str {
-                match self {
-                    $module::InterfaceTag::OSPF => "ospf",
-                    $module::InterfaceTag::DHCP => "dhcp",
-                    $module::InterfaceTag::DHCP_CLIENT => "dhcp-client",
-                    $module::InterfaceTag::NAT => "nat",
-                    $module::InterfaceTag::INTERNET => "internet",
-                    $module::InterfaceTag::Other(other) => other,
-                }
-            }
-        }
-    )*};
-}
-
-tag_slug!(netbox_plan);
-
-impl TagSlug for InterfaceTag {
-    fn slug(&self) -> &str {
-        match self {
-            InterfaceTag::Ospf => "ospf",
-            InterfaceTag::Dhcp => "dhcp",
-            InterfaceTag::DhcpClient => "dhcp-client",
-            InterfaceTag::Nat => "nat",
-            InterfaceTag::Internet => "internet",
-            InterfaceTag::Other(other) => other,
-        }
+/// A tag as NetBox names it.
+pub(super) fn tag_slug(tag: &InterfaceTag) -> &str {
+    match tag {
+        InterfaceTag::Ospf => "ospf",
+        InterfaceTag::Dhcp => "dhcp",
+        InterfaceTag::DhcpClient => "dhcp-client",
+        InterfaceTag::Nat => "nat",
+        InterfaceTag::Internet => "internet",
+        InterfaceTag::Other(other) => other,
     }
-}
-
-pub(super) fn tag_slug(tag: &impl TagSlug) -> &str {
-    tag.slug()
 }

@@ -402,6 +402,26 @@ pub enum NetboxState {
     Other(String),
 }
 
+/// Which way PoE goes at a port (`PoeMode`).
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum PoeMode {
+    Pse,
+    Pd,
+    #[cynic(fallback)]
+    Other(String),
+}
+
+/// The NetBox RF role of a radio (`RadioRole`).
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum RadioRole {
+    Ap,
+    Station,
+    #[cynic(fallback)]
+    Other(String),
+}
+
 #[cfg(test)]
 mod tests {
     use super::{PoeProblem, WideInt};

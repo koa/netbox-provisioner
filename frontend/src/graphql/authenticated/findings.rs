@@ -78,6 +78,45 @@ pub enum FindingKind {
     Unknown,
 }
 
+impl FindingKind {
+    /// Its GraphQL type (`NoLoopback`), as `i18n::helper::finding_kind` takes it; `Unknown` for
+    /// one this frontend doesn't know.
+    pub fn name(&self) -> &'static str {
+        match self {
+            FindingKind::PoolMissing(_) => "PoolMissing",
+            FindingKind::PoolNearlyFull(_) => "PoolNearlyFull",
+            FindingKind::NoLoopback(_) => "NoLoopback",
+            FindingKind::NoPrimaryIpv4(_) => "NoPrimaryIpv4",
+            FindingKind::PrimaryIpv4NotOnLoopback(_) => "PrimaryIpv4NotOnLoopback",
+            FindingKind::AddressWithoutPrefix(_) => "AddressWithoutPrefix",
+            FindingKind::DhcpPoolEmpty(_) => "DhcpPoolEmpty",
+            FindingKind::PortLikeName(_) => "PortLikeName",
+            FindingKind::VlanWithoutGroup(_) => "VlanWithoutGroup",
+            FindingKind::MtuMismatch(_) => "MtuMismatch",
+            FindingKind::OspfOnOneEnd(_) => "OspfOnOneEnd",
+            FindingKind::NoCommonSubnet(_) => "NoCommonSubnet",
+            FindingKind::AddressWithoutOspf(_) => "AddressWithoutOspf",
+            FindingKind::WlanWithoutVlan(_) => "WlanWithoutVlan",
+            FindingKind::WlanGroupWithoutController(_) => "WlanGroupWithoutController",
+            FindingKind::RadioWithoutRole(_) => "RadioWithoutRole",
+            FindingKind::NatWithoutInternet(_) => "NatWithoutInternet",
+            FindingKind::LoopbackWithoutOspf(_) => "LoopbackWithoutOspf",
+            FindingKind::NoCountry(_) => "NoCountry",
+            FindingKind::VlanWithSeveralGateways(_) => "VlanWithSeveralGateways",
+            FindingKind::VlanWithoutGateway(_) => "VlanWithoutGateway",
+            FindingKind::TaggedVlanOnPort(_) => "TaggedVlanOnPort",
+            FindingKind::RadioPathIncomplete(_) => "RadioPathIncomplete",
+            FindingKind::LabelNotFarEnd(_) => "LabelNotFarEnd",
+            FindingKind::VlanWithoutPort(_) => "VlanWithoutPort",
+            FindingKind::ForwardWithoutRouter(_) => "ForwardWithoutRouter",
+            FindingKind::ForwardWithoutSite(_) => "ForwardWithoutSite",
+            FindingKind::ForwardPortTaken(_) => "ForwardPortTaken",
+            FindingKind::ForwardIncomplete(_) => "ForwardIncomplete",
+            FindingKind::Unknown => "Unknown",
+        }
+    }
+}
+
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
 pub struct PoolMissing {

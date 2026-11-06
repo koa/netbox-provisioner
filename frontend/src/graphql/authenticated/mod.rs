@@ -14,6 +14,7 @@ pub mod interfaces;
 pub mod job;
 pub mod list_devices;
 pub mod neighbor_findings;
+pub mod netbox_plan;
 pub mod network_map;
 pub mod saved_jobs;
 pub mod schema;
@@ -134,46 +135,3 @@ pub struct BootPartition;
     response_derives = "Debug,Clone,PartialEq"
 )]
 pub struct BootstrapCandidates;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq",
-    skip_serializing_none
-)]
-pub struct NetboxPlan;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug, Clone, PartialEq",
-    skip_serializing_none
-)]
-pub struct NetboxPlanPreview;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug",
-    skip_serializing_none
-)]
-pub struct WriteNetboxPlan;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug"
-)]
-pub struct UndoNetboxWrite;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/netbox-helper.graphql",
-    response_derives = "Debug"
-)]
-pub struct HelperJobs;

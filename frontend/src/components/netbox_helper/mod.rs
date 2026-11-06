@@ -6,7 +6,6 @@
 //! queries it chooses from: `link` („Verbindung“, „Verbindung abräumen“), `flags`, `net`
 //! („Kunden-Netz“), `port_vlan`, `poe`, `radio` („Funkbrücke“), `new_device` („Neues Gerät“). `choice` is what all share: the
 //! preset a helper opens with, the helper shown and its input.
-#[macro_use]
 mod choice;
 mod flags;
 mod link;
@@ -21,7 +20,7 @@ mod radio;
 pub use choice::{HelperKind, HelperPreset, LinkPreset, NetTarget, RadioPreset};
 pub use new_device::SeenPreset;
 
-use choice::{Choice, HelperChoice, NetEntry};
+use choice::{Choice, HelperChoice, NetEntry, helper};
 use flags::{Flag, FlagFindings, FlagInterface, FlagsMsg, fetch_flag_interfaces};
 use link::{LinkChoice, LinkMsg, fetch_ports};
 use net::{NetChoice, NetMsg, NetOptions, fetch_net_options};
@@ -38,14 +37,17 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            UndoNetboxWrite, WriteNetboxPlan,
             helper_options::{LeaseTakeoverOptions, LinkPorts, NewDeviceOptions},
-            netbox_plan, undo_netbox_write, write_netbox_plan,
+            netbox_plan::{
+                NetboxPlanQuery, UndoNetboxWrite, UndoNetboxWriteVariables,
+                WriteNetboxPlan, WriteNetboxPlanVariables,
+            },
         },
-        query_authenticated,
+        request,
     },
     i18n::helper as t,
 };
+use cynic::MutationBuilder;
 use patternfly_yew::prelude::{
     Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Form, Switch,
 };
@@ -132,18 +134,18 @@ pub struct NetboxHelper {
     lease_options: Option<Result<LeaseTakeoverOptions, FrontendError>>,
     /// what the plan shown was computed for
     planned: Option<HelperChoice>,
-    plan: Option<Result<netbox_plan::ResponseData, FrontendError>>,
+    plan: Option<Result<Box<NetboxPlanQuery>, FrontendError>>,
     /// a removal written: its choice is gone from NetBox, there is no plan for it any more
     removed: bool,
     preview: Option<Result<Preview, FrontendError>>,
     preview_loading: bool,
     /// the job shown, writing or undoing
-    job: Option<i64>,
+    job: Option<i32>,
     job_running: bool,
     /// the write job whose objects "Rückgängig" deletes or sets back
-    written: Option<i64>,
+    written: Option<i32>,
     /// the write job started here, also when it wrote nothing
-    write_job: Option<i64>,
+    write_job: Option<i32>,
     /// how the write job of this session ended
     write_done: Option<bool>,
     /// `written` failed midway: only the steps before are in NetBox
@@ -163,18 +165,18 @@ pub enum NetboxHelperMsg {
     NewDevice(NewDeviceMsg),
     Lease(LeaseMsg),
     RadioDisconnectLink(bool),
-    Plan(HelperChoice, Result<netbox_plan::ResponseData, FrontendError>),
+    Plan(HelperChoice, Result<Box<NetboxPlanQuery>, FrontendError>),
     LoadPreview,
     Preview(Result<Preview, FrontendError>),
     Write,
     Undo,
     /// a write job (`true`) or an undo job started
-    JobStarted(Result<i64, FrontendError>, bool),
+    JobStarted(Result<i32, FrontendError>, bool),
     /// `true`: done
     JobFinished(bool),
     /// the last write job of the device the server still knows, not taken back: whether it got
     /// through, and whether it wrote anything
-    LastWrite { id: i64, complete: bool, wrote: bool },
+    LastWrite { id: i32, complete: bool, wrote: bool },
 }
 
 /// A helper's own message is one of the component: its forms' callbacks give it as is.
@@ -362,7 +364,7 @@ impl Component for NetboxHelper {
             }
             NetboxHelperMsg::Plan(_, plan) => {
                 // another plan, another preview
-                let fingerprint = |plan: Option<&Result<netbox_plan::ResponseData, _>>| {
+                let fingerprint = |plan: Option<&Result<Box<NetboxPlanQuery>, _>>| {
                     plan.and_then(|plan| plan.as_ref().ok())
                         .map(|plan| plan.netbox_plan.fingerprint.clone())
                 };
@@ -394,14 +396,13 @@ impl Component for NetboxHelper {
                 self.job_running = true;
                 self.error = None;
                 let scope = ctx.link().clone();
-                let variables = write_netbox_plan::Variables {
-                    helper: helper_input!(write_netbox_plan, choice, ctx.props().id),
+                let write = WriteNetboxPlan::build(WriteNetboxPlanVariables {
+                    helper: helper(choice, ctx.props().id),
                     fingerprint: plan.netbox_plan.fingerprint.clone(),
-                };
+                });
                 spawn_local(async move {
-                    let result = query_authenticated::<WriteNetboxPlan, _>(scope.clone(), variables)
-                        .await
-                        .map(|data| data.write_netbox_plan.id);
+                    let result =
+                        request(scope.clone(), write).await.map(|data| data.write_netbox_plan.id);
                     scope.send_message(NetboxHelperMsg::JobStarted(result, true));
                 });
             }
@@ -413,12 +414,9 @@ impl Component for NetboxHelper {
                 self.error = None;
                 let scope = ctx.link().clone();
                 spawn_local(async move {
-                    let result = query_authenticated::<UndoNetboxWrite, _>(
-                        scope.clone(),
-                        undo_netbox_write::Variables { job_id },
-                    )
-                    .await
-                    .map(|data| data.undo_netbox_write.id);
+                    let undo = UndoNetboxWrite::build(UndoNetboxWriteVariables { job_id });
+                    let result =
+                        request(scope.clone(), undo).await.map(|data| data.undo_netbox_write.id);
                     scope.send_message(NetboxHelperMsg::JobStarted(result, false));
                 });
             }
@@ -525,7 +523,11 @@ impl Component for NetboxHelper {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let job = self.job.map(|id| html! {
-            <JobView key={id} id={id} on_finished={ctx.link().callback(NetboxHelperMsg::JobFinished)}/>
+            <JobView
+                key={id}
+                id={i64::from(id)}
+                on_finished={ctx.link().callback(NetboxHelperMsg::JobFinished)}
+            />
         });
         let error = self.error.as_ref().map(|error| error.to_html());
         let plan = self.plan_view(ctx);

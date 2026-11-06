@@ -4,7 +4,7 @@
 use super::{
     helper::InterfaceTag,
     schema::schema,
-    types::{AdhocCredentials, DeviceRef, InterfaceRef, PortRef, VlanRef},
+    types::{AdhocCredentials, DeviceRef, InterfaceRef, PoeMode, PortRef, RadioRole, VlanRef},
 };
 
 /// A device's id, the variable of most of these queries.
@@ -164,16 +164,6 @@ pub struct PoePort {
     pub connected: Vec<InterfaceRef>,
 }
 
-/// Which way PoE goes at a port (`PoeMode`).
-#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
-pub enum PoeMode {
-    Pse,
-    Pd,
-    #[cynic(fallback)]
-    Other(String),
-}
-
 #[derive(cynic::QueryVariables, Debug)]
 pub struct PoeObservedVariables {
     pub id: i32,
@@ -269,16 +259,6 @@ pub struct RadioBridgeCandidate {
     pub peer: Option<DeviceRef>,
     pub router_port: Option<InterfaceRef>,
     pub address: Option<String>,
-}
-
-/// The NetBox RF role of a radio (`RadioRole`).
-#[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
-pub enum RadioRole {
-    Ap,
-    Station,
-    #[cynic(fallback)]
-    Other,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

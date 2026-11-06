@@ -1,20 +1,22 @@
 //! The plan of the chosen helper (`netboxPlan`), its preview (`netboxPlanPreview`) and the last
 //! write that can be taken back.
 use super::{
-    Flag, HelperChoice, HelperKind, NetTarget, NetboxHelper, NetboxHelperMsg, flags::tag_slug, t,
+    HelperChoice, HelperKind, NetboxHelper, NetboxHelperMsg, choice::helper, flags::tag_slug, t,
 };
 use crate::{
     components::adjust_target::SelectedTarget,
     graphql::{
         authenticated::{
-            HelperJobs, NetboxPlan, NetboxPlanPreview,
-            helper_jobs::{self, JobKind, JobState},
-            netbox_plan::{self, NetboxPlanNetboxPlanSteps as Step},
-            netbox_plan_preview,
+            netbox_plan::{
+                FindingKinds, HelperJobs, HelperJobsVariables, NetboxPlanPreview,
+                NetboxPlanPreviewVariables, NetboxPlanQuery, NetboxPlanVariables, PlanStep as Step,
+            },
+            types::{AdhocCredentials, IpVersion, JobKind, JobState, PoeMode, RadioRole, VlanRef},
         },
-        query_authenticated,
+        request,
     },
 };
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, CodeBlock, CodeBlockCode, Spinner, SpinnerSize,
 };
@@ -130,7 +132,7 @@ pub(super) fn describe(step: &Step) -> String {
             &create.ssid,
         ),
         Step::UpdatePortVlan(update) => {
-            fn vlan(vlan: &netbox_plan::PlanVlan) -> (i64, &str) {
+            fn vlan(vlan: &VlanRef) -> (i32, &str) {
                 (vlan.vid, vlan.name.as_str())
             }
             t::update_port_vlan(
@@ -155,14 +157,15 @@ pub(super) fn describe(step: &Step) -> String {
         ),
         Step::SetPrimaryIp(set) => t::set_primary(
             match set.version {
-                netbox_plan::IpVersion::V4 => "IPv4",
-                netbox_plan::IpVersion::V6 => "IPv6",
-                netbox_plan::IpVersion::Other(_) => "IP",
+                IpVersion::V4 => "IPv4",
+                IpVersion::V6 => "IPv6",
+                IpVersion::Other => "IP",
             },
             &set.device.name,
             &set.address,
             set.before.as_deref(),
         ),
+        Step::Unknown => t::UNKNOWN_STEP.into(),
     }
 }
 
@@ -171,25 +174,21 @@ pub(super) fn describe(step: &Step) -> String {
 /// midway wrote only the steps before.
 pub(super) fn last_write(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
-        let Ok(data) = query_authenticated::<HelperJobs, _>(
-            scope.clone(),
-            helper_jobs::Variables { device_id: id as i64 },
-        )
-        .await
-        else {
+        let query = HelperJobs::build(HelperJobsVariables { device_id: id as i32 });
+        let Ok(data) = request(scope.clone(), query).await else {
             return;
         };
         let last = data
             .jobs
             .into_iter()
-            .find(|job| matches!(job.kind, JobKind::NETBOX_WRITE | JobKind::NETBOX_UNDO));
+            .find(|job| matches!(job.kind, JobKind::NetboxWrite | JobKind::NetboxUndo));
         if let Some(job) = last
-            && matches!(job.kind, JobKind::NETBOX_WRITE)
-            && !matches!(job.state, JobState::RUNNING)
+            && job.kind == JobKind::NetboxWrite
+            && job.state != JobState::Running
         {
             scope.send_message(NetboxHelperMsg::LastWrite {
                 id: job.id,
-                complete: matches!(job.state, JobState::DONE),
+                complete: job.state == JobState::Done,
                 wrote: job.netbox_written_count > 0,
             });
         }
@@ -198,51 +197,39 @@ pub(super) fn last_write(scope: Scope<NetboxHelper>, id: u32) {
 
 pub(super) fn fetch_plan(scope: Scope<NetboxHelper>, id: u32, choice: HelperChoice) {
     spawn_local(async move {
-        let plan = query_authenticated::<NetboxPlan, _>(
-            scope.clone(),
-            netbox_plan::Variables {
-                helper: helper_input!(netbox_plan, choice.clone(), id),
-            },
-        )
-        .await;
+        let helper = helper(choice.clone(), id);
+        let plan = request(scope.clone(), NetboxPlanQuery::build(NetboxPlanVariables { helper }))
+            .await
+            .map(Box::new);
         scope.send_message(NetboxHelperMsg::Plan(choice, plan));
     });
 }
 
-pub(super) fn fetch_preview(scope: Scope<NetboxHelper>, id: u32, choice: HelperChoice, target: SelectedTarget) {
+pub(super) fn fetch_preview(
+    scope: Scope<NetboxHelper>,
+    id: u32,
+    choice: HelperChoice,
+    target: SelectedTarget,
+) {
     spawn_local(async move {
         let (credential_name, adhoc_credentials) =
             target.credentials.variables(|username, password| {
-                netbox_plan_preview::AdhocCredentials { username, password }
+                AdhocCredentials { username, password }
             });
-        let preview = query_authenticated::<NetboxPlanPreview, _>(
-            scope.clone(),
-            netbox_plan_preview::Variables {
-                id: id as i64,
-                helper: helper_input!(netbox_plan_preview, choice, id),
-                target: target.address.map(|a| a.to_string()),
-                credential_name,
-                adhoc_credentials,
-            },
-        )
-        .await
-        .map(|data| {
-            let kinds = |findings: Vec<String>| findings.into_iter().map(t::finding_kind).collect();
+        let query = NetboxPlanPreview::build(NetboxPlanPreviewVariables {
+            id: id as i32,
+            helper: helper(choice, id),
+            target: target.address.map(|a| a.to_string()),
+            credential_name,
+            adhoc_credentials,
+        });
+        let preview = request(scope.clone(), query).await.map(|data| {
+            let kinds = |device: FindingKinds| {
+                device.findings.iter().map(|f| t::finding_kind(f.kind.name().into())).collect()
+            };
             Preview {
-                before: kinds(
-                    data.topology
-                        .device_by_id
-                        .map(|d| d.findings.into_iter().map(|f| format!("{:?}", f.kind)).collect())
-                        .unwrap_or_default(),
-                ),
-                after: kinds(
-                    data.netbox_plan
-                        .preview
-                        .findings
-                        .into_iter()
-                        .map(|f| format!("{:?}", f.kind))
-                        .collect(),
-                ),
+                before: data.topology.device_by_id.map(kinds).unwrap_or_default(),
+                after: kinds(data.netbox_plan.preview),
                 script: data
                     .netbox_plan
                     .preview_access
@@ -254,19 +241,19 @@ pub(super) fn fetch_preview(scope: Scope<NetboxHelper>, id: u32, choice: HelperC
     });
 }
 
-fn rf_role(role: &netbox_plan::RadioRole) -> &str {
+fn rf_role(role: &RadioRole) -> &str {
     match role {
-        netbox_plan::RadioRole::AP => "AP",
-        netbox_plan::RadioRole::STATION => "Station",
-        netbox_plan::RadioRole::Other(other) => other,
+        RadioRole::Ap => "AP",
+        RadioRole::Station => "Station",
+        RadioRole::Other(other) => other,
     }
 }
 
-fn plan_poe_mode(mode: &netbox_plan::PoeMode) -> &str {
+fn plan_poe_mode(mode: &PoeMode) -> &str {
     match mode {
-        netbox_plan::PoeMode::PSE => "PSE",
-        netbox_plan::PoeMode::PD => "PD",
-        netbox_plan::PoeMode::Other(other) => other,
+        PoeMode::Pse => "PSE",
+        PoeMode::Pd => "PD",
+        PoeMode::Other(other) => other,
     }
 }
 

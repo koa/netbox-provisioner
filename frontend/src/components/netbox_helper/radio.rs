@@ -7,8 +7,9 @@ use crate::{
     components::menu::popup::Select,
     error::FrontendError,
     graphql::{
-        authenticated::helper_options::{
-            DeviceVariables, RadioBridgeCandidate, RadioBridgeCandidates, RadioRole,
+        authenticated::{
+            helper_options::{DeviceVariables, RadioBridgeCandidate, RadioBridgeCandidates},
+            types::RadioRole,
         },
         request,
     },
@@ -65,8 +66,8 @@ impl NetboxHelper {
                     if self.radio.peer.is_none() {
                         self.radio.peer = own.peer.as_ref().map(|peer| peer.id as u32);
                     }
-                    if let Some(role) = own.role {
-                        self.radio.own_ap = role != RadioRole::Station;
+                    if let Some(role) = &own.role {
+                        self.radio.own_ap = *role != RadioRole::Station;
                     }
                 }
                 self.radio_options = Some(options);

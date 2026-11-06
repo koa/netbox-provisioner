@@ -241,11 +241,11 @@ pub fn delete_wireless_link(a: (&str, &str), b: (&str, &str)) -> String {
 }
 pub fn update_port_vlan(
     port: (&str, &str),
-    vlan: Option<(i64, &str)>,
-    before: Option<(i64, &str)>,
-    tagged_before: &[(i64, &str)],
+    vlan: Option<(i32, &str)>,
+    before: Option<(i32, &str)>,
+    tagged_before: &[(i32, &str)],
 ) -> String {
-    let name = |(vid, name): (i64, &str)| format!("VLAN {vid} ({name})");
+    let name = |(vid, name): (i32, &str)| format!("VLAN {vid} ({name})");
     let mut text = match (vlan, before) {
         (Some(vlan), Some(before)) => {
             format!("{} {}: untagged {} statt {}", port.0, port.1, name(vlan), name(before))
@@ -406,6 +406,9 @@ pub const WRITTEN_PARTLY: &str = "Nur teilweise geschrieben: Was vor dem Fehler 
     im Auftrag unter „In NetBox geändert“. Rückgängig nimmt es zurück, sonst den Rest von Hand \
     nachtragen.";
 
+/// a step of a plan this page doesn't know yet (an older page than the provisioner)
+pub const UNKNOWN_STEP: &str = "Ein Schritt, den diese Seite noch nicht kennt: neu laden.";
+
 /// a finding by its kind (`__typename`), short
 pub fn finding_kind(kind: String) -> String {
     match kind.as_str() {
@@ -480,7 +483,7 @@ pub fn create_cable(a: (&str, &str), b: (&str, &str)) -> String {
     format!("Kabel {} {} – {} {} anlegen", a.0, a.1, b.0, b.1)
 }
 /// with the DHCP lease time in seconds, where the prefix gets one
-pub fn create_prefix(prefix: &str, pool: &str, description: &str, lease: Option<i64>) -> String {
+pub fn create_prefix(prefix: &str, pool: &str, description: &str, lease: Option<i32>) -> String {
     let created = if pool.is_empty() {
         // a network NetBox has no prefix around (`helper::address_takeover`)
         format!("Prefix {prefix} „{description}“ anlegen")
@@ -496,7 +499,7 @@ pub fn create_prefix(prefix: &str, pool: &str, description: &str, lease: Option<
 pub fn update_interface(
     port: (&str, &str),
     label: Option<(&str, Option<&str>)>,
-    mtu: Option<(i64, Option<i64>)>,
+    mtu: Option<(i32, Option<i32>)>,
     tags_added: &[&str],
     tags_removed: &[&str],
     poe: Option<(Option<&str>, Option<&str>)>,
