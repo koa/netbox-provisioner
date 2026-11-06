@@ -3,8 +3,8 @@
 use super::{
     schema::schema,
     types::{
-        DeviceModeChange, ErrorInfo, JobKind, JobPhase, JobState, LeftoverAction, Partition,
-        Watching, WideInt,
+        DeviceModeChange, ErrorInfo, JobId, JobKind, JobPhase, JobState, LeftoverAction,
+        Partition, Watching, WideInt,
     },
 };
 
@@ -539,14 +539,7 @@ pub struct CancelJobVariables {
 pub struct CancelJob {
     #[arguments(id: $id)]
     #[expect(dead_code, reason = "selected because a mutation needs a field")]
-    pub cancel_job: CancelledJob,
-}
-
-#[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "Job")]
-pub struct CancelledJob {
-    #[expect(dead_code, reason = "selected because a mutation needs a field")]
-    pub id: i32,
+    pub cancel_job: JobId,
 }
 
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]

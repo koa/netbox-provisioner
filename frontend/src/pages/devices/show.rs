@@ -305,7 +305,7 @@ impl Component for ShowDevice {
             ShowDeviceMessage::Apply => {
                 self.job_running = true;
                 self.applying = true;
-                apply(ctx.link().clone(), self.id, self.alternate_target.clone());
+                apply(ctx.link().clone(), self.id, &self.alternate_target);
                 true
             }
             ShowDeviceMessage::Update => {
@@ -315,14 +315,21 @@ impl Component for ShowDevice {
                 self.job_running = true;
                 let suspend = self.suspend();
                 let without = self.without_fallback;
-                update(ctx.link().clone(), self.id, Some(channel), suspend, without, self.alternate_target.clone());
+                update(
+                    ctx.link().clone(),
+                    self.id,
+                    Some(channel),
+                    suspend,
+                    without,
+                    &self.alternate_target,
+                );
                 true
             }
             ShowDeviceMessage::AdjustPackages => {
                 self.job_running = true;
                 let suspend = self.suspend();
                 let without = self.without_fallback;
-                update(ctx.link().clone(), self.id, None, suspend, without, self.alternate_target.clone());
+                update(ctx.link().clone(), self.id, None, suspend, without, &self.alternate_target);
                 true
             }
             ShowDeviceMessage::SuspendWatchdogs(suspend) => {
@@ -335,7 +342,7 @@ impl Component for ShowDevice {
             }
             ShowDeviceMessage::ClearLeftover(leftover) => {
                 self.job_running = true;
-                clear(ctx.link().clone(), self.id, leftover, self.alternate_target.clone());
+                clear(ctx.link().clone(), self.id, leftover, &self.alternate_target);
                 true
             }
             ShowDeviceMessage::DowngradeVersion(version) => {
@@ -352,7 +359,14 @@ impl Component for ShowDevice {
                 let version = self.downgrade_version.trim().to_string();
                 let suspend = self.suspend();
                 let without = self.without_fallback;
-                downgrade(ctx.link().clone(), self.id, version, suspend, without, self.alternate_target.clone());
+                downgrade(
+                    ctx.link().clone(),
+                    self.id,
+                    version,
+                    suspend,
+                    without,
+                    &self.alternate_target,
+                );
                 true
             }
             ShowDeviceMessage::ConfirmReboot(confirm) => {
@@ -362,7 +376,7 @@ impl Component for ShowDevice {
             ShowDeviceMessage::Reboot => {
                 self.confirm_reboot = false;
                 self.job_running = true;
-                reboot(ctx.link().clone(), self.id, self.alternate_target.clone());
+                reboot(ctx.link().clone(), self.id, &self.alternate_target);
                 true
             }
             ShowDeviceMessage::ConfirmPowerCycle(confirm) => {
@@ -388,7 +402,7 @@ impl Component for ShowDevice {
             ShowDeviceMessage::ChangeDeviceMode => {
                 self.confirm_device_mode = false;
                 self.job_running = true;
-                change_mode(ctx.link().clone(), self.id, self.alternate_target.clone());
+                change_mode(ctx.link().clone(), self.id, &self.alternate_target);
                 true
             }
             ShowDeviceMessage::ConfirmRepartition(confirm) => {
@@ -398,7 +412,7 @@ impl Component for ShowDevice {
             ShowDeviceMessage::Repartition => {
                 self.confirm_repartition = false;
                 self.job_running = true;
-                repartition(ctx.link().clone(), self.id, self.alternate_target.clone());
+                repartition(ctx.link().clone(), self.id, &self.alternate_target);
                 true
             }
             ShowDeviceMessage::ConfirmBoot(partition) => {
@@ -408,7 +422,7 @@ impl Component for ShowDevice {
             ShowDeviceMessage::BootPartition(partition) => {
                 self.confirm_boot = None;
                 self.job_running = true;
-                boot_from(ctx.link().clone(), self.id, partition, self.alternate_target.clone());
+                boot_from(ctx.link().clone(), self.id, partition, &self.alternate_target);
                 true
             }
             ShowDeviceMessage::ShowTarget(show) => {
@@ -1229,8 +1243,8 @@ fn overview_message(
     }
 }
 
-fn apply(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
-    let apply = ApplyDeviceCfg::build(target_variables(id, &target));
+fn apply(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
+    let apply = ApplyDeviceCfg::build(target_variables(id, target));
     spawn_local(async move {
         let result = request(scope.clone(), apply).await.map(|data| data.apply_cfg.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
@@ -1279,10 +1293,10 @@ fn update(
     channel: Option<Channel>,
     suspend: bool,
     without_fallback: bool,
-    target: SelectedTarget,
+    target: &SelectedTarget,
 ) {
     let TargetVariables { id, target, credential_name, adhoc_credentials } =
-        target_variables(id, &target);
+        target_variables(id, target);
     let update = UpdateRouteros::build(UpdateVariables {
         id,
         channel,
@@ -1305,10 +1319,10 @@ fn downgrade(
     version: String,
     suspend: bool,
     without_fallback: bool,
-    target: SelectedTarget,
+    target: &SelectedTarget,
 ) {
     let TargetVariables { id, target, credential_name, adhoc_credentials } =
-        target_variables(id, &target);
+        target_variables(id, target);
     let downgrade = DowngradeRouteros::build(DowngradeVariables {
         id,
         version,
@@ -1326,7 +1340,7 @@ fn downgrade(
 }
 
 /// Takes care of something a job left on the device.
-fn clear(scope: Scope<ShowDevice>, id: u32, leftover: Leftover, target: SelectedTarget) {
+fn clear(scope: Scope<ShowDevice>, id: u32, leftover: Leftover, target: &SelectedTarget) {
     use LeftoverAction as A;
     let action = match leftover {
         Leftover::StopApplyFallback => A::StopApplyFallback,
@@ -1336,7 +1350,7 @@ fn clear(scope: Scope<ShowDevice>, id: u32, leftover: Leftover, target: Selected
         Leftover::RemovePackages => A::RemovePackages,
     };
     let TargetVariables { id, target, credential_name, adhoc_credentials } =
-        target_variables(id, &target);
+        target_variables(id, target);
     let clear = ClearLeftover::build(ClearLeftoverVariables {
         id,
         action,
@@ -1351,8 +1365,8 @@ fn clear(scope: Scope<ShowDevice>, id: u32, leftover: Leftover, target: Selected
 }
 
 /// Reboots the device and waits until it is back.
-fn reboot(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
-    let reboot = RebootDevice::build(target_variables(id, &target));
+fn reboot(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
+    let reboot = RebootDevice::build(target_variables(id, target));
     spawn_local(async move {
         let result = request(scope.clone(), reboot).await.map(|data| data.reboot_device.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
@@ -1370,8 +1384,8 @@ fn cut_power(scope: Scope<ShowDevice>, id: u32) {
 
 /// Turns on the features of the device mode the provisioner needs; the device then waits for
 /// the confirmation at the device.
-fn change_mode(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
-    let change = ChangeDeviceMode::build(target_variables(id, &target));
+fn change_mode(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
+    let change = ChangeDeviceMode::build(target_variables(id, target));
     spawn_local(async move {
         let result = request(scope.clone(), change).await.map(|data| data.change_device_mode.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
@@ -1379,8 +1393,8 @@ fn change_mode(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
 }
 
 /// Splits the flash in two partitions; the device reformats it and reboots.
-fn repartition(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
-    let split = RepartitionDevice::build(target_variables(id, &target));
+fn repartition(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
+    let split = RepartitionDevice::build(target_variables(id, target));
     spawn_local(async move {
         let result = request(scope.clone(), split).await.map(|data| data.repartition_device.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
@@ -1388,9 +1402,9 @@ fn repartition(scope: Scope<ShowDevice>, id: u32, target: SelectedTarget) {
 }
 
 /// Boots the device from `partition`.
-fn boot_from(scope: Scope<ShowDevice>, id: u32, partition: String, target: SelectedTarget) {
+fn boot_from(scope: Scope<ShowDevice>, id: u32, partition: String, target: &SelectedTarget) {
     let TargetVariables { id, target, credential_name, adhoc_credentials } =
-        target_variables(id, &target);
+        target_variables(id, target);
     let boot = BootPartition::build(BootPartitionVariables {
         id,
         partition,
