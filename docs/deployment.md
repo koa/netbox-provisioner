@@ -43,18 +43,31 @@ normales OCI-Image.
   (`mkDummySrc`); sie ändern sich nur mit einem `Cargo.toml`, `Cargo.lock` oder `flake.lock`.
   Drei davon: nativ im Debug-Profil für Tests und Clippy, nativ im Release-Profil für das Binary,
   wasm für das Frontend (mit den Host-Crates seines Build-Skripts). Die beiden Bibliotheken sind
-  darin ganz enthalten, weil sie sich nur mit `flake.lock` ändern. Das Frontend ist eine eigene
+  darin ganz enthalten, weil sie sich nur mit `Cargo.lock` ändern. Das Frontend ist eine eigene
   Ableitung (`packages.frontend`), einmal gebaut für das Binary und den Clippy-Lauf des Binaries.
   Tests, Clippy und Binary übernehmen die Abhängigkeiten (`cargoArtifacts`) und bauen nur die
-  eigenen Crates. Die Bauverzeichnisse heissen gleich (`workspace`), sonst wären die Pfade
-  verschieden und Cargo baute alles neu.
+  eigenen Crates.
 - **`checks`:** die Tests ohne CHR, die drei Clippy-Läufe mit `-D warnings` (Backend und Binary,
   Frontend für wasm) und `no-shell`: Taucht
   in der Closure eine Shell oder ein Interpreter auf, schlägt der Check fehl. So bleibt das Image
   ohne Shell, auch wenn eine neue Abhängigkeit eine mitbrächte.
-- **Bibliotheken:** `mikrotik-model` und `mikrotik-api` sind Flake-Inputs (GitHub, Zweig
-  `claude-edition`). Der Build legt sie neben das Repository, wo die Pfad-Abhängigkeiten in
-  `Cargo.toml` sie finden.
+- **Bibliotheken:** `mikrotik-model` und `mikrotik-api` sind Git-Abhängigkeiten in `Cargo.toml`
+  (GitHub, Zweig `master`), festgelegt in `Cargo.lock` und mit den anderen Crates
+  vendort. Eine Änderung dort kommt erst ins Image, wenn sie gepusht und
+  `cargo update -p mikrotik-model` (oder `mikrotik-api`) hier committet ist. Lokal im Workspace
+  nimmt Cargo die Nachbarverzeichnisse, über eine `.cargo/config.toml` im Workspace-Ordner
+  (ausserhalb der Repositories):
+
+  ```toml
+  [patch."https://github.com/koa/mikrotik-api"]
+  mikrotik-api = { path = "mikrotik-api" }
+
+  [patch."https://github.com/koa/mikrotik-model"]
+  mikrotik-model = { path = "mikrotik-model" }
+  ```
+
+  Ein solcher Build nimmt die Git-Quellen der vier Crates aus `Cargo.lock`; committet wird nur
+  die Fassung mit Git-Quellen, die Checks laufen mit `--locked` und lehnen die andere ab.
 - `packages.provisioner` ist das Binary als `netbox-provisioner`, dazu eine `devShell`.
 
 **Fehlersuche ohne Shell:** `kubectl debug -it <pod> --image=busybox --target=<container>`

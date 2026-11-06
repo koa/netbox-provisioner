@@ -9,18 +9,8 @@
     };
     # builds the dependencies apart from the crates, so they come from the cache
     crane.url = "github:ipetkov/crane";
-    # the two libraries are path dependencies (`../../mikrotik-model`); the build puts them next
-    # to this repository, as they are in the workspace. Locally:
-    #   nix build --override-input mikrotik-model path:../mikrotik-model \
-    #     --override-input mikrotik-api path:../mikrotik-api
-    mikrotik-model = {
-      url = "github:koa/mikrotik-model/claude-edition";
-      flake = false;
-    };
-    mikrotik-api = {
-      url = "github:koa/mikrotik-api/claude-edition";
-      flake = false;
-    };
+    # mikrotik-model and mikrotik-api are git dependencies in Cargo.toml, pinned by Cargo.lock
+    # and vendored with the other crates
   };
 
   outputs =
@@ -29,8 +19,6 @@
       nixpkgs,
       rust-overlay,
       crane,
-      mikrotik-model,
-      mikrotik-api,
     }:
     let
       system = "x86_64-linux";
@@ -46,9 +34,8 @@
       # trunk runs the wasm-bindgen of the version in Cargo.lock
       wasmBindgen = pkgs.wasm-bindgen-cli_0_2_129;
 
-      # the workspace as the path dependencies expect it: this repository and the two libraries
-      # side by side; only tracked files, without build output or the lab's secrets
-      own = lib.cleanSourceWith {
+      # this repository without build output or the lab's secrets
+      src = lib.cleanSourceWith {
         src = self;
         filter =
           path: type:
@@ -61,49 +48,29 @@
             "config.yaml"
           ]);
       };
-      sideBySide =
-        name: ownSrc: modelSrc: apiSrc:
-        pkgs.runCommand name { } ''
-          mkdir -p $out
-          cp -r ${ownSrc} $out/netbox-provisioner
-          cp -r ${modelSrc} $out/mikrotik-model
-          cp -r ${apiSrc} $out/mikrotik-api
-          chmod -R u+w $out
-        '';
-      workspace = sideBySide "workspace" own mikrotik-model mikrotik-api;
       # the same with this repository's crates dummied, for building only the dependencies: it
-      # changes only with a Cargo.toml or Cargo.lock here or with flake.lock, so the dependencies
-      # come from the cache. The two libraries stay whole: they change only with flake.lock, and
-      # mikrotik-model is the biggest crate of all. Same name as `workspace`, so both unpack to
-      # the same path and cargo takes the dependencies as fresh.
-      dummyWorkspace =
-        sideBySide "workspace" (craneLib.mkDummySrc { src = own; }) mikrotik-model
-          mikrotik-api;
+      # changes only with a Cargo.toml or Cargo.lock, so the dependencies come from the cache
+      dummySrc = craneLib.mkDummySrc { inherit src; };
 
-      # what every build shares: the vendored crates, cargo run in this repository's directory
+      # what every build shares: the vendored crates, the git dependencies among them
       common = {
         pname = "netbox-provisioner";
         version = "0.1.0";
-        src = workspace;
-        # cargo runs in this repository, next to the two libraries
-        postUnpack = ''
-          sourceRoot="$sourceRoot/netbox-provisioner"
-        '';
+        inherit src;
         cargoVendorDir = craneLib.vendorCargoDeps { cargoLock = ./Cargo.lock; };
         strictDeps = true;
         nativeBuildInputs = [ pkgs.pkg-config ];
         buildInputs = [ pkgs.openssl ];
       };
-      # the dependencies alone, built from the dummied workspace with the commands of the
-      # builds that inherit them, so cargo finds them fresh there
+      # the dependencies alone, built from the dummied sources with the commands of the builds
+      # that inherit them, so cargo finds them fresh there
       deps =
         name: attrs:
         craneLib.buildDepsOnly (
           common
           // {
             pname = "netbox-provisioner-${name}";
-            src = null;
-            dummySrc = dummyWorkspace;
+            inherit dummySrc;
             doCheck = false;
           }
           // attrs
@@ -179,7 +146,7 @@
         }
       );
 
-      # a check is a build of the workspace that runs cargo and leaves only a stamp
+      # a check is a build of the repository that runs cargo and leaves only a stamp
       check =
         name: artifacts: script:
         craneLib.mkCargoDerivation (

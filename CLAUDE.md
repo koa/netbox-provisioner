@@ -6,7 +6,8 @@ RouterOS network from NetBox. `backend` fetches topology via GraphQL with cynic:
 `backend/src/netbox/schema.graphqls` (registered by `backend/build.rs`) at compile time — add a
 field there to change what's fetched (`docs/graphql.md`). `backend` builds an in-memory
 `Topology`, generates per-device RouterOS config
-(`device/ros/`) against `mikrotik-model` (sibling repo, path dependency: `../mikrotik-model`), and
+(`device/ros/`) against `mikrotik-model` (sibling repo, a git dependency like `mikrotik-api`,
+branch `master`; local builds take `../mikrotik-model`, see below), and
 exposes it over a GraphQL API + embedded `frontend` (Rust/WASM, built via `trunk`) through
 `binary`.
 
@@ -31,11 +32,18 @@ derivations of their own (`deps`, from `dummyWorkspace`: this repository's crate
 two libraries whole), one for dev (tests, clippy), release (binary) and wasm (frontend), and the
 frontend is one derivation (`packages.frontend`) the binary and its clippy run copy in; a new
 check takes the fitting deps as `cargoArtifacts` and runs the same cargo command (profile,
-packages, target) the deps were built with, or cargo rebuilds them. It takes `mikrotik-model` and
-`mikrotik-api` as flake inputs from GitHub (branch `claude-edition`) and puts them next to this
-repository, where the path dependencies find them: a change there reaches the image only after it
-is pushed and `nix flake update mikrotik-model` (or `mikrotik-api`) is committed here; locally
-`--override-input mikrotik-model path:../mikrotik-model` builds with the workspace's. A change of
+packages, target) the deps were built with, or cargo rebuilds them. `mikrotik-model` and
+`mikrotik-api` are git dependencies (GitHub, branch `master`), pinned by `Cargo.lock` and
+vendored by crane like any crate: a change there reaches the image only after it is pushed and
+`cargo update -p mikrotik-model` (or `mikrotik-api`) is committed here. Local builds in the
+workspace take the sibling checkouts instead, through `[patch]` in the workspace's
+`.cargo/config.toml` (outside the repositories). Such a build drops the git `source` lines of
+the four crates (`mikrotik-api`, `mikrotik-model` and its generator and macro) from
+`Cargo.lock`: commit only the git version (restore those lines, or update the lock with that
+file moved aside); the Nix checks run with `--locked` and refuse the other. (`paths` instead of
+`[patch]` keeps the lock, but warns on every build that mikrotik-model's own path crates changed
+source, a future hard error.) `nix build`/`nix flake check` always build the pushed revisions in
+`Cargo.lock`. A change of
 `frontend/node/package-lock.json` needs the new `npmDeps` hash in `flake.nix` (the build names
 it). The Helm chart is `charts/netbox-provisioner`: every setting of `config.yaml` is a value
 of its own (`settings`), the chart writes them to a ConfigMap without the secrets; a secret

@@ -98,10 +98,13 @@ Probes, Netzwerk und Beenden in [docs/deployment.md](docs/deployment.md).
 ## Entwicklung
 
 Das Projekt braucht die beiden Bibliotheken [mikrotik-model](https://github.com/koa/mikrotik-model)
-und [mikrotik-api](https://github.com/koa/mikrotik-api) als Nachbarverzeichnisse, jeweils im Zweig `claude-edition` (den nimmt auch der Flake):
+und [mikrotik-api](https://github.com/koa/mikrotik-api), als Git-Abhängigkeiten (Zweig `master`, festgelegt in
+`Cargo.lock`). Um sie mitzuändern, liegen sie als Nachbarverzeichnisse daneben, und eine `.cargo/config.toml`
+im Workspace-Ordner leitet die lokalen Builds dorthin um ([docs/deployment.md](docs/deployment.md)):
 
 ```
 workspace/
+├── .cargo/config.toml
 ├── mikrotik-api/
 ├── mikrotik-model/
 └── netbox-provisioner/

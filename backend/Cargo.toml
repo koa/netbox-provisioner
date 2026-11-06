@@ -17,10 +17,9 @@ ipnet = { version = "2.11.0", features = ["serde"] }
 regex = "1.11.1"
 surge-ping = "0.8.2"
 #encoding_rs = "0.8.35"
-#mikrotik-api = { version = "0.1.0", git = "https://github.com/koa/mikrotik-api" }
-#mikrotik-model = { version = "0.1.0", git = "https://github.com/koa/mikrotik-model" }
-mikrotik-api = { version = "0.1.0", path = "../../mikrotik-api" }
-mikrotik-model = { version = "0.1.0", path = "../../mikrotik-model" }
+# local builds in the workspace take the sibling checkouts (`[patch]` in its `.cargo/config.toml`)
+mikrotik-api = { version = "0.1.0", git = "https://github.com/koa/mikrotik-api", branch = "master" }
+mikrotik-model = { version = "0.1.0", git = "https://github.com/koa/mikrotik-model", branch = "master" }
 tokio-socks = "0.5.2"
 russh = "0.64.1"
 #lru = "0.13.0"

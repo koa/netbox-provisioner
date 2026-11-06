@@ -15,40 +15,6 @@
         "type": "github"
       }
     },
-    "mikrotik-api": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1792296642,
-        "narHash": "sha256-3UoKB3fUHZQvxrJMXPFSbQk5CLq+Qy46EE5ULJGTapM=",
-        "owner": "koa",
-        "repo": "mikrotik-api",
-        "rev": "677661ac0e7a0200ca1d2bd70e38386426534f3f",
-        "type": "github"
-      },
-      "original": {
-        "owner": "koa",
-        "ref": "claude-edition",
-        "repo": "mikrotik-api",
-        "type": "github"
-      }
-    },
-    "mikrotik-model": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1793802410,
-        "narHash": "sha256-2CXS8djbPeCmMzwXUXKD5E3UDfmPp0+SsbV+m++qLUU=",
-        "owner": "koa",
-        "repo": "mikrotik-model",
-        "rev": "76ab839c7c57d991de2c772138c0fc9c6429bf06",
-        "type": "github"
-      },
-      "original": {
-        "owner": "koa",
-        "ref": "claude-edition",
-        "repo": "mikrotik-model",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1792502884,
@@ -68,8 +34,6 @@
     "root": {
       "inputs": {
         "crane": "crane",
-        "mikrotik-api": "mikrotik-api",
-        "mikrotik-model": "mikrotik-model",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay"
       }
