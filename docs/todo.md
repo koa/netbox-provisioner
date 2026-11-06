@@ -2,7 +2,7 @@
 
 Alle offenen Aufgaben über die drei Repositories (netbox-provisioner, mikrotik-model,
 mikrotik-api), gesammelt aus [pending.md](pending.md), den [Konzepten](concepts/) und der
-Durchsicht des Codes vom 2026-10-19. Die Nummern bleiben, auch wenn umsortiert wird; eine
+Durchsichten des Codes vom 2026-10-19 und 2026-11-06. Die Nummern bleiben, auch wenn umsortiert wird; eine
 erledigte Aufgabe wandert mit Datum und Commit nach [done.md](done.md), ein erledigter Teil
 ebenso, der Rest bleibt hier.
 
@@ -11,7 +11,22 @@ Status: **offen**, **in Arbeit**.
 
 ## Reihenfolge
 
-Zurzeit keine; dann schauen wir weiter
+Die Bereinigungen aus der Durchsicht vom 2026-11-06, je ein Commit, Tests und clippy grün,
+das Verhalten unverändert (ausser bei den Fehlern):
+
+1. **Fehler zuerst:** B12 (URL-Kodierung), B13 (deutsche Texte und Test der Codes). Klein,
+   für den Operator sichtbar.
+2. **Kleine Aufräumarbeiten:** B24, B25, B26. Kaum Risiko, macht die folgenden Diffs ruhiger.
+3. **Gerät-Ziel als ein Input:** B14, dann B15. Verkleinert Backend und Frontend zugleich und
+   ändert das Schema, deshalb vor dem Verschieben der Module.
+4. **Module ordnen:** B16 (Wiederaufnehmen raus aus `graphql/mod.rs`), dann B17 (Apply raus
+   aus `ros/graphql.rs`). Reines Verschieben, danach sind die Dateien überschaubar.
+5. **Lange Funktionen teilen:** B18 (`helper/write.rs`), B19 (`ros/mod.rs`), B20
+   (`build_topology_from`), B21 (Geräteseite), B22 (Layout der Netzkarte). In dieser Folge, weil
+   die ersten am meisten Fehlerrisiko tragen; jede für sich, keine hängt an einer anderen.
+6. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
+
+B14/B15 werden kleiner, wenn C4 (cynic) vorher käme; C4 ist aber L, deshalb nicht abwarten.
 
 ## Entscheidungen
 
@@ -54,6 +69,21 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
+| B12 | **Fehler:** NetBox-REST-Abfragen setzen Namen ohne URL-Kodierung in die Query (`helper/write.rs:100` `dcim/devices/?name={}`, ebenso Interfaces, Adressen, Prefixe und Tags in `write.rs`, `new_device.rs:240`). Ein Gerätename wie `Keller #2` wird zu `?name=Keller ` (ab `#` Fragment), `+` zu einem Leerzeichen: Die Prüfung „gibt es schon“ fragt nach dem falschen Namen, statt `DEVICE_NAME_TAKEN` kommt ein roher `400` von NetBox. Parameter über `.query(&[…])` übergeben (z.B. `NetboxRest::find(path, params)`), mit Test für `#`, `&` und `+` | S | offen |
+| B13 | **Fehler:** 20 Fehlercodes ohne deutschen Text, das UI zeigt die englische `message` (`i18n/src/error.rs`, Fall `_`): `NO_PSK`, `NO_COUNTRY`, `UNKNOWN_COUNTRY`, `NO_RADIO_PROFILE`, `NO_WIRELESS_LINK`, `CHANNEL_WIDTH`, `FREQUENCY_MODE`, `VLAN_LOOP`, `AMBIGUOUS_VLAN_IDS`, `WLAN_VLANS_UNTAGGED`, `NETWORKS_ON_VLAN`, `DHCP_SERVERS_ON_VLAN`, `NO_VTEP_ADDRESS`, `NO_AP_MGMT_INTERFACE`, `NO_ADDRESS_ON_PREFIX`, `CONSOLE`, `DEVICE_MODEL`, `MUTATIONS`, `SCRIPT`, `NO_REACHABLE_NEIGHBOR` (letzteres als `obstacle`, heute über `_` richtig). Texte nachtragen und ein Test, der jeden Code aus `error_info.rs` gegen `i18n::error::server` prüft (die Codes sind Strings in zwei Crates, nichts hält sie gleich) | S | offen |
+| B14 | Gerät-Ziel als ein GraphQL-Input: `target`, `credentialName`, `adhocCredentials` stehen einzeln in 8 Mutationen (`graphql/mod.rs`, `apply_cfg`, `reboot_device`, `change_device_mode`, `repartition_device`, `boot_partition`, `clear_leftover`, Updates); ein InputObject `DeviceTarget`. Im Frontend fallen damit die 6 fast gleichen Funktionen in `pages/devices/show.rs` (`reboot`, `change_mode`, `repartition`, `boot_from`, `clear`, `apply`, je mit eigenem `AdhocCredentials`) auf eine Umwandlung von `SelectedTarget` zusammen. Schema-Änderung: Backend und Frontend im selben Commit | M | offen |
+| B15 | Die Körper dieser Mutationen sind gleich (Gerät holen, `PowerChain::of`, `job::start` mit `connect_for_job`, `log.enter`): ein Helfer `start_device_job(kind, state, target, \|link, log\| …)` | S | offen |
+| B16 | Wiederaufnehmen gespeicherter Jobs nach einem Neustart aus `graphql/mod.rs` nach `saved_job` (oder `job/resume.rs`): `resume_saved_jobs`, `resume_batch`, `saved_update`, `connect_until`, `resume_apply`, `resume_update`, `Watchers`, `restore_watchdogs` (rund 250 Zeilen); `graphql/mod.rs` behält nur Schema und Resolver | S | offen |
+| B17 | `device/ros/graphql.rs` (1912 Zeilen) aufteilen: darin stehen die Generierung (`DeviceCfg`, `render_script`), der ganze Apply-Ablauf (`impl AccessibleDevice`, `apply`, `apply_planned`, `provision_radios`, `reprovision`), seine Events (`ApplyPlanned` … `RadiosReprovisioned`), Log und RouterOS-Versionen; `job.rs` importiert es bezeichnenderweise als `ros::graphql as apply`. Vorschlag `ros/cfg.rs`, `ros/apply.rs` (Ablauf und Events), `graphql.rs` nur mit den Resolvern | M | offen |
+| B18 | `helper/write.rs` `write` (381 Zeilen, kognitive Komplexität 54): der `match` über alle `PlanStep`s inline; je Schritt eine Funktion (oder Methode am Schritt). Die Update-Funktionen enden dreimal gleich mit `rest.update` und `NetboxWritten` (Zeilen 660, 794, 846): eine gemeinsame `write_update` | M | offen |
+| B19 | `device/ros/mod.rs`: `impl BaseDeviceDataTarget` hat rund 1180 Zeilen. DHCP, Firewall, Radio, Speed, Syslog sind schon eigene Module; OSPF, Adressen, PoE, MTU sowie DNS/Services/Proxy nach demselben Muster auslagern | M | offen |
+| B20 | `topology/fetch.rs` `build_topology_from` (657 Zeilen, rund 15 lokale Maps, kognitive Komplexität 59): in Durchläufe je Objektart teilen (Builder-Struktur mit den Maps als Feldern). Dabei `data.clone()` der ganzen NetBox-Antwort (Zeile 39) vermeiden, wenn `Source` die Antwort teilen kann | M | offen |
+| B21 | Geräteseite `pages/devices/show.rs`: `view` 454 Zeilen, `update` 253; die Karten (RouterOS, Partitionen, Watchdogs, Änderungen) als eigene Funktionen oder Komponenten | M | offen |
+| B22 | `components/network_map.rs` (1396 Zeilen): die Layout-Algorithmen sind reine Funktionen (Force-Layout, `clustered_layout`, `seed_from_graph`, `count_intrusions`, `reduce_site_crossings`) und gehören nach `network_map/layout.rs`, neben das vorhandene `test.rs` | S | offen |
+| B23 | Wiederholungen bei Geräten und Firewall: die Port-Ketten pro Board in `hw_facts.rs` (`repeat_n…chain…enumerate`, z.B. CCR1009-7G/8G) als Tabelle oder Makro, dort auch 4 gleiche Match-Arme; die Builder für v4 und v6 in `ros/firewall.rs` (`v4`/`v6`) gleich bis auf die Typen | S–M | offen |
+| B24 | Kleine Duplikate im Frontend: `Choice` aus `LinkPortFields` dreimal gebaut (`netbox_helper/link.rs:142` und `:191`, `radio.rs:165`) → `fn port_choice`; die Wahl `id_token.unwrap_or(access_token)` doppelt (`graphql/mod.rs:54`, `graphql/live.rs:139`) → eine Funktion; 8 redundante `clone`s in `netbox_helper` (clippy `redundant_clone`) | S | offen |
+| B25 | Kleine Duplikate im Backend: `job::start` ist `start_through` ohne `through`; 45-mal `.lock().unwrap_or_else(PoisonError::into_inner)` → ein kleiner Extension-Trait; gleiche Match-Arme in `device_state.rs` (Zeilen 89, 166, 328) | S | offen |
+| B26 | Kleinkram: `extern crate core;` in `backend/src/lib.rs:1` überflüssig; `device/batch.rs` `Linked.reached: Option` mit zweimal `expect("planned before")` → eigener Typ für den geplanten Zustand | S | offen |
 
 ## C. Konzepte zum Umsetzen
 
