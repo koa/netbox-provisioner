@@ -37,6 +37,34 @@ impl ScalarType for ScalarDuration {
     }
 }
 
+/// A number that may go past the 32 bits of GraphQL's `Int` (bytes, the hosts of an IPv6 pool),
+/// as a JSON number.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+pub struct ScalarU64(pub u64);
+
+impl From<u64> for ScalarU64 {
+    fn from(value: u64) -> Self {
+        ScalarU64(value)
+    }
+}
+
+#[Scalar]
+impl ScalarType for ScalarU64 {
+    fn parse(value: Value) -> InputValueResult<Self> {
+        match &value {
+            Value::Number(n) => n
+                .as_u64()
+                .map(ScalarU64)
+                .ok_or_else(|| InputValueError::custom(format!("not a u64: {n}"))),
+            _ => Err(InputValueError::expected_type(value)),
+        }
+    }
+
+    fn to_value(&self) -> Value {
+        Value::Number(self.0.into())
+    }
+}
+
 /// A MAC address, as text `D4:01:C3:29:67:64`; also read with `-` and around whitespace.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ScalarMac(pub MacAddress);

@@ -37,9 +37,12 @@ Muster:
   (`FindingKind::name`).
 - Ein Enum hat den Fall `Other(String)`: Er nimmt einen neuen Wert des Backends auf und geht als
   derselbe String zurück, taugt also auch für Inputs.
-- Ein `Int`, das das Backend aus einem `u64` füllt und das über 32 Bit gehen kann (Bytes,
-  Hosts eines IPv6-Pools), liest das Frontend als `types::WideInt` (Z38). Eigene Skalare sind
-  Newtypes (`Mac`), weil `impl_scalar!` keinen fremden Typ und kein zweites `String` nimmt.
+- Eine Zahl, die über die 32 Bit von GraphQL's `Int` gehen kann (Bytes, Hosts eines
+  IPv6-Pools), gibt das Backend als eigenen Skalar `ScalarU64` aus (`graphql::scalars`, Z38),
+  das Frontend liest ihn als `types::WideInt`. Kleine Zahlen (`usize`, `u32`) bleiben `Int`.
+  Eigene Skalare sind Newtypes (`Mac`, `WideInt`), weil `impl_scalar!` keinen fremden Typ nimmt
+  und ein Typ nur einen Skalar trägt (`String` ist schon `String`, `u64` schon
+  `ScalarDuration`).
 - Geteilte Variablen (`DeviceVariables`) brauchen in einem anderen Modul auch ihren erzeugten
   Typ `…Fields` im Import.
 

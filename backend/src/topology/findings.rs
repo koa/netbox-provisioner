@@ -2,6 +2,7 @@
 //! Befund „NetBox in sich“ of `docs/config-helper.md`). Only the devices with RouterOS
 //! are looked at, the ones the provisioner manages. Data only: the frontend words it and links
 //! each object to NetBox.
+use crate::graphql::scalars::ScalarU64;
 use crate::{
     device::ros::{DEFAULT_MTU, dhcp_pool_v4},
     topology::{
@@ -111,8 +112,8 @@ pub struct PoolMissing {
 pub struct PoolNearlyFull {
     pub pool: PrefixPool,
     pub version: IpVersion,
-    pub free: u64,
-    pub size: u64,
+    pub free: ScalarU64,
+    pub size: ScalarU64,
 }
 /// The device's radios need the country of its site (`radio::needs_country`), and its topmost
 /// region (`region`, none without a region) is none the generator knows: generating fails.
@@ -451,8 +452,8 @@ fn pools(topo: &Topology, findings: &mut Vec<Finding>) {
                 kind: FindingKind::PoolNearlyFull(PoolNearlyFull {
                     pool,
                     version,
-                    free: u64::try_from(free).unwrap_or(u64::MAX),
-                    size: u64::try_from(size).unwrap_or(u64::MAX),
+                    free: u64::try_from(free).unwrap_or(u64::MAX).into(),
+                    size: u64::try_from(size).unwrap_or(u64::MAX).into(),
                 }),
             });
         }

@@ -811,8 +811,8 @@ fn missing_and_full_pools() {
             FindingKind::PoolNearlyFull(PoolNearlyFull {
                 pool: PrefixPool::Loopback,
                 version: IpVersion::V4,
-                free: 0,
-                size: 8,
+                free: 0.into(),
+                size: 8.into(),
             }),
             FindingKind::PoolMissing(PoolMissing {
                 pool: PrefixPool::Loopback,
@@ -821,8 +821,8 @@ fn missing_and_full_pools() {
             FindingKind::PoolNearlyFull(PoolNearlyFull {
                 pool: PrefixPool::Transfer,
                 version: IpVersion::V4,
-                free: 0,
-                size: 16,
+                free: 0.into(),
+                size: 16.into(),
             }),
         ]
     );

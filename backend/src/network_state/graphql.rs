@@ -9,6 +9,7 @@ use super::{
     edges::{DownReason, EdgeKind, EdgeState, Lsdb, edges},
     read::{read, readers},
 };
+use crate::graphql::scalars::ScalarU64;
 use crate::{
     helper::poe::{self, PoeProblem},
     topology::{
@@ -104,9 +105,9 @@ pub struct MapHealth {
 pub struct MapResources {
     uptime: String,
     cpu_load: u32,
-    free_memory: u64,
-    total_memory: u64,
-    free_hdd_space: u64,
+    free_memory: ScalarU64,
+    total_memory: ScalarU64,
+    free_hdd_space: ScalarU64,
     version: String,
 }
 
@@ -124,9 +125,9 @@ impl From<&DeviceMapData> for (Vec<MapHealth>, Option<MapResources>) {
         let resources = data.resources.as_ref().map(|r| MapResources {
             uptime: r.uptime.to_string(),
             cpu_load: r.cpu_load,
-            free_memory: r.free_memory,
-            total_memory: r.total_memory,
-            free_hdd_space: r.free_hdd_space,
+            free_memory: r.free_memory.into(),
+            total_memory: r.total_memory.into(),
+            free_hdd_space: r.free_hdd_space.into(),
             version: r.version.to_string(),
         });
         (health, resources)

@@ -24,12 +24,12 @@ pub enum JobKind {
 
 // nanoseconds (`ScalarDuration`)
 cynic::impl_scalar!(u64, schema::ScalarDuration);
-/// An `Int` the backend fills from a `u64`, beyond the 32 bits of GraphQL's `Int` (bytes, the
-/// hosts of an IPv6 pool): an `i32` would fail the whole answer.
+/// The backend's `ScalarU64`: a number beyond the 32 bits of GraphQL's `Int` (bytes, the hosts
+/// of an IPv6 pool). A newtype, as `u64` is `ScalarDuration` already.
 #[derive(serde::Deserialize, serde::Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(transparent)]
 pub struct WideInt(pub u64);
-cynic::impl_scalar!(WideInt, schema::Int);
+cynic::impl_scalar!(WideInt, schema::ScalarU64);
 
 /// A MAC, `D4:01:C3:29:67:64`; the backend checks it (`ScalarMac`).
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug, PartialEq, Eq)]

@@ -16,7 +16,7 @@ use crate::{
         update_fallback,
     },
     device_state::{RebootState, UpdateState},
-    graphql::scalars::ScalarDuration,
+    graphql::scalars::{ScalarDuration, ScalarU64},
     job::Log,
     saved_job::UpdateRun,
 };
@@ -58,8 +58,8 @@ pub trait DeviceLink {
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct PackageUploading {
     pub file: Box<str>,
-    pub bytes: u64,
-    pub total: u64,
+    pub bytes: ScalarU64,
+    pub total: ScalarU64,
 }
 
 /// The version the update goes to: the newest of `channel`, or the one the device runs (only
@@ -100,7 +100,7 @@ pub struct SshPasswordLogin {
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct PackageDownloaded {
     pub file: Box<str>,
-    pub bytes: u64,
+    pub bytes: ScalarU64,
 }
 
 /// The package is on the device, in full.
@@ -1118,7 +1118,7 @@ async fn put_packages(
             .await??;
         log.emit(PackageDownloaded {
             file: file.clone(),
-            bytes: data.len() as u64,
+            bytes: (data.len() as u64).into(),
         });
         packages.push((file, data));
     }
@@ -1127,11 +1127,11 @@ async fn put_packages(
     let relaxed = allow_password_login(&link.api().await?, Some(log)).await?;
     let uploaded = async {
         for &(file, ref data) in &packages {
-            let total = data.len() as u64;
+            let total = (data.len() as u64).into();
             let progress = |sent: usize| {
                 log.emit(PackageUploading {
                     file: file.clone(),
-                    bytes: sent as u64,
+                    bytes: (sent as u64).into(),
                     total,
                 })
             };
