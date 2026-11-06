@@ -20,7 +20,7 @@ kleiner geworden.
 Die Bereinigungen aus der Durchsicht vom 2026-11-06, je ein Commit, Tests und clippy grün,
 das Verhalten unverändert (die Fehler B12 und B13 sind behoben):
 
-1. **Lange Funktionen teilen:** B18 (`helper/write.rs`), B19 (`ros/mod.rs`), B20
+1. **Lange Funktionen teilen:** B19 (`ros/mod.rs`; B18 erledigt), B20
    (`build_topology_from`), B21 (Geräteseite), B22 (Layout der Netzkarte, vor E21). In dieser
    Folge, weil die ersten am meisten Fehlerrisiko tragen; jede für sich, keine hängt an einer
    anderen.
@@ -65,7 +65,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B18 | `helper/write.rs` `write` (381 Zeilen, kognitive Komplexität 54): der `match` über alle `PlanStep`s inline; je Schritt eine Funktion (oder Methode am Schritt). Die Update-Funktionen enden dreimal gleich mit `rest.update` und `NetboxWritten` (Zeilen 660, 794, 846): eine gemeinsame `write_update` | M | offen |
 | B19 | `device/ros/mod.rs`: `impl BaseDeviceDataTarget` hat rund 1180 Zeilen. DHCP, Firewall, Radio, Speed, Syslog sind schon eigene Module; OSPF, Adressen, PoE, MTU sowie DNS/Services/Proxy nach demselben Muster auslagern | M | offen |
 | B20 | `topology/fetch.rs` `build_topology_from` (657 Zeilen, rund 15 lokale Maps, kognitive Komplexität 59): in Durchläufe je Objektart teilen (Builder-Struktur mit den Maps als Feldern). Dabei `data.clone()` der ganzen NetBox-Antwort (Zeile 39) vermeiden, wenn `Source` die Antwort teilen kann | M | offen |
 | B21 | Geräteseite `pages/devices/show.rs`: `view` 454 Zeilen, `update` 253; die Karten (RouterOS, Partitionen, Watchdogs, Änderungen) als eigene Funktionen oder Komponenten | M | offen |

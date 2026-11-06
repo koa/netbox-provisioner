@@ -2,8 +2,10 @@
 //! job (`NetboxWritten`, `NetboxUndone`).
 
 use super::{
-    CableEnd, Helper, PlanStep, Target, UpdateInterface, UpdatePort, UpdatePortVlan,
-    UpdateWirelessLink, flags,
+    CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreatePrefix,
+    CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
+    DeleteWirelessLink, Helper, PlanStep, SetPrimaryIp, Target, UpdateInterface, UpdatePort,
+    UpdatePortVlan, UpdateWirelessLink, flags,
 };
 use crate::{
     Error,
@@ -73,10 +75,6 @@ pub async fn write(
     log.enter(NetboxState::Writing);
     let rest = NetboxRest::writer(format!("{} ({user})", plan.description))?;
     let mut created = Vec::<Option<u32>>::with_capacity(plan.steps.len());
-    let resolve = |created: &[Option<u32>], target: Target| match target {
-        Target::Existing(id) => Some(id),
-        Target::Step(step) => created.get(step).copied().flatten(),
-    };
     // the ids the plan's preview gives the objects it creates: step `n` has `u32::MAX - n`
     let first_created = u32::MAX - plan.steps.len() as u32;
     let is_created = |id: u32| id > first_created;
@@ -95,429 +93,526 @@ pub async fn write(
         let step = &step
             .with_real_ids(real)
             .ok_or_else(|| Error::NetboxChanged(plan.description.clone()))?;
-        let id = match step {
-            PlanStep::CreateDevice(create) => {
-                let existing = rest
-                    .find("dcim/devices/", &[("name", &create.name)])
-                    .await?;
-                if existing["count"].as_u64() != Some(0) {
-                    return Err(Error::NetboxChanged(
-                        format!("{} exists already", create.name).into(),
-                    ));
-                }
-                let mut body = json!({
-                    "name": create.name,
-                    "site": create.site_id,
-                    "device_type": create.device_type_id,
-                    "role": create.role_id,
-                    "platform": create.platform_id,
-                    "status": "active",
-                });
-                if let Some(tenant) = create.tenant_id {
-                    body["tenant"] = json!(tenant);
-                }
-                if let Some(group) = create.wlan_group_id {
-                    body["custom_fields"] = json!({ "wlan_group": group });
-                }
-                let object = rest.create("dcim/devices/", body).await?;
-                Some(logged_create(log, "dcim/devices", &object)?)
-            }
-            PlanStep::CreateInterface(create) => {
-                let existing = rest
-                    .find(
-                        "dcim/interfaces/",
-                        &[
-                            ("device_id", &create.device.id.to_string()),
-                            ("name", &create.name),
-                        ],
-                    )
-                    .await?;
-                // from the device type: taken as it is, it goes with the device
-                if on_new_device && let Some(id) = existing["results"][0]["id"].as_u64() {
-                    created.push(Some(id as u32));
-                    continue;
-                }
-                if existing["count"].as_u64() != Some(0) {
-                    return Err(Error::NetboxChanged(
-                        format!("{} has {} already", create.device.name, create.name).into(),
-                    ));
-                }
-                let mut body =
-                    json!({ "device": create.device.id, "name": create.name, "type": create.kind });
-                if let Some(vlan) = create.vlan {
-                    body["mode"] = json!("access");
-                    body["untagged_vlan"] = json!(vlan);
-                }
-                if !create.tags.is_empty() {
-                    body["tags"] = Value::Array(tag_ids(&rest, &create.tags).await?);
-                }
-                let object = rest.create("dcim/interfaces/", body).await?;
-                let interface = logged_create(log, "dcim/interfaces", &object)?;
-                // its own object, assigned to the interface, then its primary one; an undo
-                // deletes it before the interface, which then has none again
-                if let Some(mac) = &create.mac {
-                    let mac = rest
-                        .create(
-                            "dcim/mac-addresses/",
-                            json!({
-                                "mac_address": mac,
-                                "assigned_object_type": "dcim.interface",
-                                "assigned_object_id": interface,
-                            }),
-                        )
-                        .await?;
-                    let mac_id = logged_create(log, "dcim/mac-addresses", &mac)?;
-                    rest.update(
-                        &format!("dcim/interfaces/{interface}/"),
-                        json!({ "primary_mac_address": mac_id }),
-                    )
-                    .await?;
-                }
-                Some(interface)
-            }
-            PlanStep::CreateAddress(create) => {
-                let interface = resolve(&created, create.on)
-                    .ok_or_else(|| Error::NetboxChanged(create.interface.clone()))?;
-                let host = create.address.split('/').next().unwrap_or_default();
-                let existing = rest
-                    .find("ipam/ip-addresses/", &[("address", host)])
-                    .await?;
-                if existing["count"].as_u64() != Some(0) {
-                    return Err(Error::NetboxChanged(
-                        format!("{} is taken", create.address).into(),
-                    ));
-                }
-                let object = rest
-                    .create(
-                        "ipam/ip-addresses/",
-                        json!({
-                            "address": create.address,
-                            "status": "active",
-                            "assigned_object_type": "dcim.interface",
-                            "assigned_object_id": interface,
-                        }),
-                    )
-                    .await?;
-                Some(logged_create(log, "ipam/ip-addresses", &object)?)
-            }
-            PlanStep::SetPrimaryIp(set) => {
-                let address = resolve(&created, set.address_id)
-                    .ok_or_else(|| Error::NetboxChanged(set.address.clone()))?;
-                let path = format!("dcim/devices/{}/", set.device.id);
-                let field = match set.version {
-                    IpVersion::V4 => "primary_ip4",
-                    IpVersion::V6 => "primary_ip6",
-                };
-                let current = rest.get(&path).await?;
-                let current_id = current[field]["id"].as_u64().map(|id| id as u32);
-                if current_id != set.before_id {
-                    return Err(Error::NetboxChanged(
-                        format!("{}: {field}", set.device.name).into(),
-                    ));
-                }
-                let before = json!({ field: current_id });
-                let object = rest.update(&path, json!({ field: address })).await?;
-                let shown = |object: &Value| object[field]["address"].as_str().map(Box::from);
-                log.emit(Event::NetboxWritten(NetboxWritten {
-                    path: path.into(),
-                    display: display(&object),
-                    before: Some(before.to_string().into()),
-                    changes: vec![FieldChange {
-                        field: field.into(),
-                        value: shown(&object),
-                        previous: shown(&current),
-                    }],
-                    deleted: false,
-                    recreate: None,
-                }));
-                None
-            }
-            PlanStep::CreateCable(create) => {
-                let ends = [(create.a_end, &create.a), (CableEnd::Interface, &create.b)];
-                for (kind, end) in ends {
-                    let current = rest
-                        .get(&format!("{}/{}/", kind.netbox().1, end.id))
-                        .await?;
-                    if !current["cable"].is_null() {
-                        return Err(Error::NetboxChanged(
-                            format!("{} {} has a cable", end.device.name, end.name).into(),
-                        ));
-                    }
-                }
-                let end = |(kind, interface): (CableEnd, &InterfaceRef)| json!([{ "object_type": kind.netbox().0, "object_id": interface.id }]);
-                let object = rest
-                    .create(
-                        "dcim/cables/",
-                        json!({
-                            "a_terminations": end(ends[0]),
-                            "b_terminations": end(ends[1]),
-                            "status": "connected",
-                        }),
-                    )
-                    .await?;
-                Some(logged_create(log, "dcim/cables", &object)?)
-            }
-            PlanStep::CreatePrefix(create) => {
-                let prefixes = rest
-                    .find("ipam/prefixes/", &[("prefix", &create.prefix)])
-                    .await?;
-                let addresses = rest
-                    .find(
-                        "ipam/ip-addresses/",
-                        &[("parent", &create.prefix), ("limit", "1")],
-                    )
-                    .await?;
-                if prefixes["count"].as_u64() != Some(0) || addresses["count"].as_u64() != Some(0) {
-                    return Err(Error::NetboxChanged(
-                        format!("{} is taken", create.prefix).into(),
-                    ));
-                }
-                let mut body = json!({
-                    "prefix": create.prefix,
-                    "status": "active",
-                    "description": create.description,
-                });
-                if let Some(site) = create.site {
-                    body["scope_type"] = json!("dcim.site");
-                    body["scope_id"] = json!(site);
-                }
-                if let Some(vlan) = create.vlan {
-                    body["vlan"] = json!(vlan);
-                }
-                if let Some(seconds) = create.dhcp_lease_time {
-                    body["custom_fields"] = json!({ "dhcp_lease_time": seconds });
-                }
-                let object = rest.create("ipam/prefixes/", body).await?;
-                Some(logged_create(log, "ipam/prefixes", &object)?)
-            }
-            PlanStep::UpdateInterface(update) => {
-                update_interface(&rest, update, log).await?;
-                None
-            }
-            PlanStep::UpdatePort(update) => {
-                let bridge = match update.bridge_id {
-                    Some(target) => Some(
-                        resolve(&created, target)
-                            .ok_or_else(|| Error::NetboxChanged(update.interface.name.clone()))?,
-                    ),
-                    None => None,
-                };
-                update_port(&rest, update, bridge, log).await?;
-                None
-            }
-            PlanStep::CreateWirelessLink(create) => {
-                for end in [&create.a, &create.b] {
-                    let current = rest.get(&format!("dcim/interfaces/{}/", end.id)).await?;
-                    if !current["wireless_link"].is_null() {
-                        return Err(Error::NetboxChanged(
-                            format!("{} {} has a wireless link", end.device.name, end.name).into(),
-                        ));
-                    }
-                }
-                let object = rest
-                    .create(
-                        "wireless/wireless-links/",
-                        json!({
-                            "interface_a": create.a.id,
-                            "interface_b": create.b.id,
-                            "ssid": create.ssid,
-                            "status": "connected",
-                            "auth_type": "wpa-personal",
-                            "auth_cipher": "aes",
-                            "auth_psk": create.psk,
-                        }),
-                    )
-                    .await?;
-                Some(logged_create(log, "wireless/wireless-links", &object)?)
-            }
-            PlanStep::UpdateWirelessLink(update) => {
-                update_wireless_link(&rest, update, log).await?;
-                None
-            }
-            PlanStep::UpdatePortVlan(update) => {
-                update_port_vlan(&rest, update, log).await?;
-                None
-            }
-            PlanStep::DeleteInterface(delete) => {
-                let interface = &delete.interface;
-                let path = format!("dcim/interfaces/{}/", interface.id);
-                let current = rest.get(&path).await?;
-                let addresses = rest
-                    .find(
-                        "ipam/ip-addresses/",
-                        &[("interface_id", &interface.id.to_string()), ("limit", "1")],
-                    )
-                    .await?;
-                if current["name"].as_str() != Some(&*interface.name)
-                    || current["device"]["id"].as_u64() != Some(interface.device.id.into())
-                    || addresses["count"].as_u64() != Some(0)
-                {
-                    return Err(Error::NetboxChanged(
-                        format!("{} {}", interface.device.name, interface.name).into(),
-                    ));
-                }
-                let body = recreate(
-                    &current,
-                    &[
-                        "device",
-                        "name",
-                        "label",
-                        "type",
-                        "enabled",
-                        "parent",
-                        "bridge",
-                        "mtu",
-                        "mode",
-                        "untagged_vlan",
-                        "tagged_vlans",
-                        "vrf",
-                        "description",
-                        "tags",
-                        "custom_fields",
-                    ],
-                );
-                deleted(&rest, log, &path, &current, body).await?;
-                None
-            }
-            PlanStep::DeleteWirelessLink(delete) => {
-                let path = format!("wireless/wireless-links/{}/", delete.id);
-                let current = rest.get(&path).await?;
-                let ends = ["interface_a", "interface_b"].map(|end| current[end]["id"].as_u64());
-                let same = |a: &InterfaceRef, b: &InterfaceRef| {
-                    ends == [Some(a.id.into()), Some(b.id.into())]
-                };
-                if !same(&delete.a, &delete.b) && !same(&delete.b, &delete.a) {
-                    return Err(Error::NetboxChanged(
-                        format!("wireless link {}", delete.id).into(),
-                    ));
-                }
-                // with its PSK, so that undo brings the same link back
-                let body = recreate(
-                    &current,
-                    &[
-                        "interface_a",
-                        "interface_b",
-                        "ssid",
-                        "status",
-                        "tenant",
-                        "auth_type",
-                        "auth_cipher",
-                        "auth_psk",
-                        "distance",
-                        "distance_unit",
-                        "description",
-                        "comments",
-                        "tags",
-                        "custom_fields",
-                    ],
-                );
-                deleted(&rest, log, &path, &current, body).await?;
-                None
-            }
-            PlanStep::DeleteCable(delete) => {
-                let path = format!("dcim/cables/{}/", delete.id);
-                let current = rest.get(&path).await?;
-                let at_port = ["a_terminations", "b_terminations"].iter().any(|end| {
-                    current[end]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .any(|termination| {
-                            termination["object_type"] == "dcim.interface"
-                                && termination["object_id"].as_u64() == Some(delete.port.id.into())
-                        })
-                });
-                if !at_port {
-                    return Err(Error::NetboxChanged(
-                        format!(
-                            "{} {}: cable {}",
-                            delete.port.device.name, delete.port.name, delete.id
-                        )
-                        .into(),
-                    ));
-                }
-                deleted(&rest, log, &path, &current, recreate_cable(&current)).await?;
-                None
-            }
-            PlanStep::DeleteAddress(delete) => {
-                let path = format!("ipam/ip-addresses/{}/", delete.id);
-                let current = rest.get(&path).await?;
-                if current["address"].as_str() != Some(&*delete.address)
-                    || current["assigned_object_id"].as_u64() != Some(delete.interface.id.into())
-                {
-                    return Err(Error::NetboxChanged(delete.address.clone()));
-                }
-                let device = rest
-                    .get(&format!("dcim/devices/{}/", delete.interface.device.id))
-                    .await?;
-                if ["primary_ip4", "primary_ip6"]
-                    .iter()
-                    .any(|field| device[field]["id"].as_u64() == Some(delete.id.into()))
-                {
-                    return Err(Error::PrimaryAddress {
-                        address: delete.address.clone(),
-                        device: delete.interface.device.name.clone(),
-                    });
-                }
-                let body = recreate(
-                    &current,
-                    &[
-                        "address",
-                        "vrf",
-                        "tenant",
-                        "status",
-                        "role",
-                        "assigned_object_type",
-                        "assigned_object_id",
-                        "dns_name",
-                        "description",
-                        "comments",
-                        "tags",
-                        "custom_fields",
-                    ],
-                );
-                deleted(&rest, log, &path, &current, body).await?;
-                None
-            }
-            PlanStep::DeletePrefix(delete) => {
-                let path = format!("ipam/prefixes/{}/", delete.id);
-                let current = rest.get(&path).await?;
-                let addresses = rest
-                    .find(
-                        "ipam/ip-addresses/",
-                        &[("parent", &delete.prefix), ("limit", "1")],
-                    )
-                    .await?;
-                if current["prefix"].as_str() != Some(&*delete.prefix)
-                    || addresses["count"].as_u64() != Some(0)
-                {
-                    return Err(Error::NetboxChanged(delete.prefix.clone()));
-                }
-                let body = recreate(
-                    &current,
-                    &[
-                        "prefix",
-                        "vrf",
-                        "tenant",
-                        "vlan",
-                        "status",
-                        "role",
-                        "scope_type",
-                        "scope_id",
-                        "is_pool",
-                        "mark_utilized",
-                        "description",
-                        "comments",
-                        "tags",
-                        "custom_fields",
-                    ],
-                );
-                deleted(&rest, log, &path, &current, body).await?;
-                None
-            }
-        };
+        let id = write_step(&rest, step, &created, on_new_device, log).await?;
         created.push(id);
     }
+    Ok(())
+}
+
+/// Writes one step of a plan, `created` the ids of the objects the steps before it created;
+/// gives the id of the object it creates.
+async fn write_step(
+    rest: &NetboxRest,
+    step: &PlanStep,
+    created: &[Option<u32>],
+    on_new_device: bool,
+    log: &Log,
+) -> Result<Option<u32>, Error> {
+    let resolve = |target: Target, name: &str| {
+        match target {
+            Target::Existing(id) => Some(id),
+            Target::Step(step) => created.get(step).copied().flatten(),
+        }
+        .ok_or_else(|| Error::NetboxChanged(name.into()))
+    };
+    Ok(match step {
+        PlanStep::CreateDevice(create) => Some(create_device(rest, create, log).await?),
+        PlanStep::CreateInterface(create) => {
+            Some(create_interface(rest, create, on_new_device, log).await?)
+        }
+        PlanStep::CreateAddress(create) => {
+            let interface = resolve(create.on, &create.interface)?;
+            Some(create_address(rest, create, interface, log).await?)
+        }
+        PlanStep::SetPrimaryIp(set) => {
+            let address = resolve(set.address_id, &set.address)?;
+            set_primary_ip(rest, set, address, log).await?;
+            None
+        }
+        PlanStep::CreateCable(create) => Some(create_cable(rest, create, log).await?),
+        PlanStep::CreatePrefix(create) => Some(create_prefix(rest, create, log).await?),
+        PlanStep::UpdateInterface(update) => {
+            update_interface(rest, update, log).await?;
+            None
+        }
+        PlanStep::UpdatePort(update) => {
+            let bridge = match update.bridge_id {
+                Some(target) => Some(resolve(target, &update.interface.name)?),
+                None => None,
+            };
+            update_port(rest, update, bridge, log).await?;
+            None
+        }
+        PlanStep::CreateWirelessLink(create) => {
+            Some(create_wireless_link(rest, create, log).await?)
+        }
+        PlanStep::UpdateWirelessLink(update) => {
+            update_wireless_link(rest, update, log).await?;
+            None
+        }
+        PlanStep::UpdatePortVlan(update) => {
+            update_port_vlan(rest, update, log).await?;
+            None
+        }
+        PlanStep::DeleteInterface(delete) => {
+            delete_interface(rest, delete, log).await?;
+            None
+        }
+        PlanStep::DeleteWirelessLink(delete) => {
+            delete_wireless_link(rest, delete, log).await?;
+            None
+        }
+        PlanStep::DeleteCable(delete) => {
+            delete_cable(rest, delete, log).await?;
+            None
+        }
+        PlanStep::DeleteAddress(delete) => {
+            delete_address(rest, delete, log).await?;
+            None
+        }
+        PlanStep::DeletePrefix(delete) => {
+            delete_prefix(rest, delete, log).await?;
+            None
+        }
+    })
+}
+
+/// Creates the device once no device has its name.
+async fn create_device(rest: &NetboxRest, create: &CreateDevice, log: &Log) -> Result<u32, Error> {
+    let existing = rest
+        .find("dcim/devices/", &[("name", &create.name)])
+        .await?;
+    if existing["count"].as_u64() != Some(0) {
+        return Err(Error::NetboxChanged(
+            format!("{} exists already", create.name).into(),
+        ));
+    }
+    let mut body = json!({
+        "name": create.name,
+        "site": create.site_id,
+        "device_type": create.device_type_id,
+        "role": create.role_id,
+        "platform": create.platform_id,
+        "status": "active",
+    });
+    if let Some(tenant) = create.tenant_id {
+        body["tenant"] = json!(tenant);
+    }
+    if let Some(group) = create.wlan_group_id {
+        body["custom_fields"] = json!({ "wlan_group": group });
+    }
+    let object = rest.create("dcim/devices/", body).await?;
+    logged_create(log, "dcim/devices", &object)
+}
+
+/// Creates the interface once the device has none of its name; on a device the plan created
+/// (`on_new_device`) one from its device type is taken as it is.
+async fn create_interface(
+    rest: &NetboxRest,
+    create: &CreateInterface,
+    on_new_device: bool,
+    log: &Log,
+) -> Result<u32, Error> {
+    let existing = rest
+        .find(
+            "dcim/interfaces/",
+            &[
+                ("device_id", &create.device.id.to_string()),
+                ("name", &create.name),
+            ],
+        )
+        .await?;
+    // from the device type: taken as it is, it goes with the device
+    if on_new_device && let Some(id) = existing["results"][0]["id"].as_u64() {
+        return Ok(id as u32);
+    }
+    if existing["count"].as_u64() != Some(0) {
+        return Err(Error::NetboxChanged(
+            format!("{} has {} already", create.device.name, create.name).into(),
+        ));
+    }
+    let mut body = json!({ "device": create.device.id, "name": create.name, "type": create.kind });
+    if let Some(vlan) = create.vlan {
+        body["mode"] = json!("access");
+        body["untagged_vlan"] = json!(vlan);
+    }
+    if !create.tags.is_empty() {
+        body["tags"] = Value::Array(tag_ids(rest, &create.tags).await?);
+    }
+    let object = rest.create("dcim/interfaces/", body).await?;
+    let interface = logged_create(log, "dcim/interfaces", &object)?;
+    // its own object, assigned to the interface, then its primary one; an undo
+    // deletes it before the interface, which then has none again
+    if let Some(mac) = &create.mac {
+        let mac = rest
+            .create(
+                "dcim/mac-addresses/",
+                json!({
+                    "mac_address": mac,
+                    "assigned_object_type": "dcim.interface",
+                    "assigned_object_id": interface,
+                }),
+            )
+            .await?;
+        let mac_id = logged_create(log, "dcim/mac-addresses", &mac)?;
+        rest.update(
+            &format!("dcim/interfaces/{interface}/"),
+            json!({ "primary_mac_address": mac_id }),
+        )
+        .await?;
+    }
+    Ok(interface)
+}
+
+/// Creates the address on `interface` once it is free.
+async fn create_address(
+    rest: &NetboxRest,
+    create: &CreateAddress,
+    interface: u32,
+    log: &Log,
+) -> Result<u32, Error> {
+    let host = create.address.split('/').next().unwrap_or_default();
+    let existing = rest
+        .find("ipam/ip-addresses/", &[("address", host)])
+        .await?;
+    if existing["count"].as_u64() != Some(0) {
+        return Err(Error::NetboxChanged(
+            format!("{} is taken", create.address).into(),
+        ));
+    }
+    let object = rest
+        .create(
+            "ipam/ip-addresses/",
+            json!({
+                "address": create.address,
+                "status": "active",
+                "assigned_object_type": "dcim.interface",
+                "assigned_object_id": interface,
+            }),
+        )
+        .await?;
+    logged_create(log, "ipam/ip-addresses", &object)
+}
+
+/// Sets `address` as the device's primary IP once the one before is still the plan's.
+async fn set_primary_ip(
+    rest: &NetboxRest,
+    set: &SetPrimaryIp,
+    address: u32,
+    log: &Log,
+) -> Result<(), Error> {
+    let path = format!("dcim/devices/{}/", set.device.id);
+    let field = match set.version {
+        IpVersion::V4 => "primary_ip4",
+        IpVersion::V6 => "primary_ip6",
+    };
+    let current = rest.get(&path).await?;
+    let current_id = current[field]["id"].as_u64().map(|id| id as u32);
+    if current_id != set.before_id {
+        return Err(Error::NetboxChanged(
+            format!("{}: {field}", set.device.name).into(),
+        ));
+    }
+    let before = json!({ field: current_id });
+    let object = rest.update(&path, json!({ field: address })).await?;
+    let shown = |object: &Value| object[field]["address"].as_str().map(Box::from);
+    log.emit(Event::NetboxWritten(NetboxWritten {
+        path: path.into(),
+        display: display(&object),
+        before: Some(before.to_string().into()),
+        changes: vec![FieldChange {
+            field: field.into(),
+            value: shown(&object),
+            previous: shown(&current),
+        }],
+        deleted: false,
+        recreate: None,
+    }));
+    Ok(())
+}
+
+/// Creates the cable once both ends are free.
+async fn create_cable(rest: &NetboxRest, create: &CreateCable, log: &Log) -> Result<u32, Error> {
+    let ends = [(create.a_end, &create.a), (CableEnd::Interface, &create.b)];
+    for (kind, end) in ends {
+        let current = rest
+            .get(&format!("{}/{}/", kind.netbox().1, end.id))
+            .await?;
+        if !current["cable"].is_null() {
+            return Err(Error::NetboxChanged(
+                format!("{} {} has a cable", end.device.name, end.name).into(),
+            ));
+        }
+    }
+    let end = |(kind, interface): (CableEnd, &InterfaceRef)| json!([{ "object_type": kind.netbox().0, "object_id": interface.id }]);
+    let object = rest
+        .create(
+            "dcim/cables/",
+            json!({
+                "a_terminations": end(ends[0]),
+                "b_terminations": end(ends[1]),
+                "status": "connected",
+            }),
+        )
+        .await?;
+    logged_create(log, "dcim/cables", &object)
+}
+
+/// Creates the prefix once neither it nor an address in it exists.
+async fn create_prefix(rest: &NetboxRest, create: &CreatePrefix, log: &Log) -> Result<u32, Error> {
+    let prefixes = rest
+        .find("ipam/prefixes/", &[("prefix", &create.prefix)])
+        .await?;
+    let addresses = rest
+        .find(
+            "ipam/ip-addresses/",
+            &[("parent", &create.prefix), ("limit", "1")],
+        )
+        .await?;
+    if prefixes["count"].as_u64() != Some(0) || addresses["count"].as_u64() != Some(0) {
+        return Err(Error::NetboxChanged(
+            format!("{} is taken", create.prefix).into(),
+        ));
+    }
+    let mut body = json!({
+        "prefix": create.prefix,
+        "status": "active",
+        "description": create.description,
+    });
+    if let Some(site) = create.site {
+        body["scope_type"] = json!("dcim.site");
+        body["scope_id"] = json!(site);
+    }
+    if let Some(vlan) = create.vlan {
+        body["vlan"] = json!(vlan);
+    }
+    if let Some(seconds) = create.dhcp_lease_time {
+        body["custom_fields"] = json!({ "dhcp_lease_time": seconds });
+    }
+    let object = rest.create("ipam/prefixes/", body).await?;
+    logged_create(log, "ipam/prefixes", &object)
+}
+
+/// Creates the wireless link once neither end has one.
+async fn create_wireless_link(
+    rest: &NetboxRest,
+    create: &CreateWirelessLink,
+    log: &Log,
+) -> Result<u32, Error> {
+    for end in [&create.a, &create.b] {
+        let current = rest.get(&format!("dcim/interfaces/{}/", end.id)).await?;
+        if !current["wireless_link"].is_null() {
+            return Err(Error::NetboxChanged(
+                format!("{} {} has a wireless link", end.device.name, end.name).into(),
+            ));
+        }
+    }
+    let object = rest
+        .create(
+            "wireless/wireless-links/",
+            json!({
+                "interface_a": create.a.id,
+                "interface_b": create.b.id,
+                "ssid": create.ssid,
+                "status": "connected",
+                "auth_type": "wpa-personal",
+                "auth_cipher": "aes",
+                "auth_psk": create.psk,
+            }),
+        )
+        .await?;
+    logged_create(log, "wireless/wireless-links", &object)
+}
+
+/// Deletes the interface once it is still the plan's and has no address.
+async fn delete_interface(
+    rest: &NetboxRest,
+    delete: &DeleteInterface,
+    log: &Log,
+) -> Result<(), Error> {
+    let interface = &delete.interface;
+    let path = format!("dcim/interfaces/{}/", interface.id);
+    let current = rest.get(&path).await?;
+    let addresses = rest
+        .find(
+            "ipam/ip-addresses/",
+            &[("interface_id", &interface.id.to_string()), ("limit", "1")],
+        )
+        .await?;
+    if current["name"].as_str() != Some(&*interface.name)
+        || current["device"]["id"].as_u64() != Some(interface.device.id.into())
+        || addresses["count"].as_u64() != Some(0)
+    {
+        return Err(Error::NetboxChanged(
+            format!("{} {}", interface.device.name, interface.name).into(),
+        ));
+    }
+    let body = recreate(
+        &current,
+        &[
+            "device",
+            "name",
+            "label",
+            "type",
+            "enabled",
+            "parent",
+            "bridge",
+            "mtu",
+            "mode",
+            "untagged_vlan",
+            "tagged_vlans",
+            "vrf",
+            "description",
+            "tags",
+            "custom_fields",
+        ],
+    );
+    deleted(rest, log, &path, &current, body).await?;
+    Ok(())
+}
+
+/// Deletes the wireless link once it still joins the plan's ends.
+async fn delete_wireless_link(
+    rest: &NetboxRest,
+    delete: &DeleteWirelessLink,
+    log: &Log,
+) -> Result<(), Error> {
+    let path = format!("wireless/wireless-links/{}/", delete.id);
+    let current = rest.get(&path).await?;
+    let ends = ["interface_a", "interface_b"].map(|end| current[end]["id"].as_u64());
+    let same = |a: &InterfaceRef, b: &InterfaceRef| ends == [Some(a.id.into()), Some(b.id.into())];
+    if !same(&delete.a, &delete.b) && !same(&delete.b, &delete.a) {
+        return Err(Error::NetboxChanged(
+            format!("wireless link {}", delete.id).into(),
+        ));
+    }
+    // with its PSK, so that undo brings the same link back
+    let body = recreate(
+        &current,
+        &[
+            "interface_a",
+            "interface_b",
+            "ssid",
+            "status",
+            "tenant",
+            "auth_type",
+            "auth_cipher",
+            "auth_psk",
+            "distance",
+            "distance_unit",
+            "description",
+            "comments",
+            "tags",
+            "custom_fields",
+        ],
+    );
+    deleted(rest, log, &path, &current, body).await?;
+    Ok(())
+}
+
+/// Deletes the cable once it still ends at the plan's port.
+async fn delete_cable(rest: &NetboxRest, delete: &DeleteCable, log: &Log) -> Result<(), Error> {
+    let path = format!("dcim/cables/{}/", delete.id);
+    let current = rest.get(&path).await?;
+    let at_port = ["a_terminations", "b_terminations"].iter().any(|end| {
+        current[end]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|termination| {
+                termination["object_type"] == "dcim.interface"
+                    && termination["object_id"].as_u64() == Some(delete.port.id.into())
+            })
+    });
+    if !at_port {
+        return Err(Error::NetboxChanged(
+            format!(
+                "{} {}: cable {}",
+                delete.port.device.name, delete.port.name, delete.id
+            )
+            .into(),
+        ));
+    }
+    deleted(rest, log, &path, &current, recreate_cable(&current)).await?;
+    Ok(())
+}
+
+/// Deletes the address once it is still on the plan's interface and no primary IP.
+async fn delete_address(rest: &NetboxRest, delete: &DeleteAddress, log: &Log) -> Result<(), Error> {
+    let path = format!("ipam/ip-addresses/{}/", delete.id);
+    let current = rest.get(&path).await?;
+    if current["address"].as_str() != Some(&*delete.address)
+        || current["assigned_object_id"].as_u64() != Some(delete.interface.id.into())
+    {
+        return Err(Error::NetboxChanged(delete.address.clone()));
+    }
+    let device = rest
+        .get(&format!("dcim/devices/{}/", delete.interface.device.id))
+        .await?;
+    if ["primary_ip4", "primary_ip6"]
+        .iter()
+        .any(|field| device[field]["id"].as_u64() == Some(delete.id.into()))
+    {
+        return Err(Error::PrimaryAddress {
+            address: delete.address.clone(),
+            device: delete.interface.device.name.clone(),
+        });
+    }
+    let body = recreate(
+        &current,
+        &[
+            "address",
+            "vrf",
+            "tenant",
+            "status",
+            "role",
+            "assigned_object_type",
+            "assigned_object_id",
+            "dns_name",
+            "description",
+            "comments",
+            "tags",
+            "custom_fields",
+        ],
+    );
+    deleted(rest, log, &path, &current, body).await?;
+    Ok(())
+}
+
+/// Deletes the prefix once it holds no address.
+async fn delete_prefix(rest: &NetboxRest, delete: &DeletePrefix, log: &Log) -> Result<(), Error> {
+    let path = format!("ipam/prefixes/{}/", delete.id);
+    let current = rest.get(&path).await?;
+    let addresses = rest
+        .find(
+            "ipam/ip-addresses/",
+            &[("parent", &delete.prefix), ("limit", "1")],
+        )
+        .await?;
+    if current["prefix"].as_str() != Some(&*delete.prefix) || addresses["count"].as_u64() != Some(0)
+    {
+        return Err(Error::NetboxChanged(delete.prefix.clone()));
+    }
+    let body = recreate(
+        &current,
+        &[
+            "prefix",
+            "vrf",
+            "tenant",
+            "vlan",
+            "status",
+            "role",
+            "scope_type",
+            "scope_id",
+            "is_pool",
+            "mark_utilized",
+            "description",
+            "comments",
+            "tags",
+            "custom_fields",
+        ],
+    );
+    deleted(rest, log, &path, &current, body).await?;
     Ok(())
 }
 
@@ -745,16 +840,15 @@ async fn update_interface(
             previous: slugs(&update.tags_removed),
         });
     }
-    let object = rest.update(&path, Value::Object(change)).await?;
-    log.emit(Event::NetboxWritten(NetboxWritten {
-        path: path.into(),
-        display: display(&object),
-        before: Some(Value::Object(before).to_string().into()),
+    write_update(
+        rest,
+        log,
+        path,
+        Value::Object(change),
+        Value::Object(before),
         changes,
-        deleted: false,
-        recreate: None,
-    }));
-    Ok(())
+    )
+    .await
 }
 
 /// Writes `update` once the port still has the VLANs the plan found.
@@ -817,16 +911,7 @@ async fn update_port_vlan(
             ),
         });
     }
-    let object = rest.update(&path, change).await?;
-    log.emit(Event::NetboxWritten(NetboxWritten {
-        path: path.into(),
-        display: display(&object),
-        before: Some(before.to_string().into()),
-        changes,
-        deleted: false,
-        recreate: None,
-    }));
-    Ok(())
+    write_update(rest, log, path, change, before, changes).await
 }
 
 /// Writes `update` once the port is still as the plan found it; `bridge` is its new bridge's id.
@@ -896,16 +981,15 @@ async fn update_port(
             previous: current["bridge"]["name"].as_str().map(Box::from),
         });
     }
-    let object = rest.update(&path, Value::Object(change)).await?;
-    log.emit(Event::NetboxWritten(NetboxWritten {
-        path: path.into(),
-        display: display(&object),
-        before: Some(Value::Object(before).to_string().into()),
+    write_update(
+        rest,
+        log,
+        path,
+        Value::Object(change),
+        Value::Object(before),
         changes,
-        deleted: false,
-        recreate: None,
-    }));
-    Ok(())
+    )
+    .await
 }
 
 /// Writes `update` once the link still has its SSID and, where a PSK comes, none.
@@ -955,11 +1039,32 @@ async fn update_wireless_link(
             previous: None,
         });
     }
-    let object = rest.update(&path, Value::Object(change)).await?;
+    write_update(
+        rest,
+        log,
+        path,
+        Value::Object(change),
+        Value::Object(before),
+        changes,
+    )
+    .await
+}
+
+/// Writes `change` to the object at `path`: `before` is what `undo` sets back, `changes` what
+/// the job shows.
+async fn write_update(
+    rest: &NetboxRest,
+    log: &Log,
+    path: String,
+    change: Value,
+    before: Value,
+    changes: Vec<FieldChange>,
+) -> Result<(), Error> {
+    let object = rest.update(&path, change).await?;
     log.emit(Event::NetboxWritten(NetboxWritten {
         path: path.into(),
         display: display(&object),
-        before: Some(Value::Object(before).to_string().into()),
+        before: Some(before.to_string().into()),
         changes,
         deleted: false,
         recreate: None,
