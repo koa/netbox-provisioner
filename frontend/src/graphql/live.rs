@@ -104,8 +104,8 @@ pub fn subscribe_data<Q: GraphQLQuery + 'static, S: Component>(
 
 /// When something was read that is `age` seconds old (milliseconds since the epoch): ages come
 /// from the server, times are the browser's.
-pub fn read_at(age: i64) -> f64 {
-    js_sys::Date::now() - age as f64 * 1000.0
+pub fn read_at(age: impl Into<i64>) -> f64 {
+    js_sys::Date::now() - age.into() as f64 * 1000.0
 }
 
 /// The time `new` of an answer again, but `before` where it is the same reading: an age comes

@@ -6,6 +6,8 @@ pub const NONE: &str = "Keine Befunde: NetBox ist für diese Site vollständig, 
 pub const ERROR: &str = "Fehler";
 pub const WARNING: &str = "Warnung";
 pub const HINT: &str = "Hinweis";
+/// a kind of finding this frontend doesn't know yet (an older page than the provisioner)
+pub const UNKNOWN: &str = "Ein Befund, den diese Seite noch nicht kennt: neu laden.";
 
 /// on a device or site card: how many findings, how many of them errors
 pub fn count(all: usize, errors: usize) -> Option<String> {
@@ -32,7 +34,7 @@ pub fn version(v6: bool) -> &'static str {
 pub fn pool_missing(pool: Html, version: &str) -> Html {
     html!(<>{"Kein Prefix mit dem Tag "}{pool}{" für "}{version}{": Der Helfer hat nichts, woraus er vergeben kann."}</>)
 }
-pub fn pool_nearly_full(pool: Html, version: &str, free: i64, size: i64) -> Html {
+pub fn pool_nearly_full(pool: Html, version: &str, free: i32, size: i32) -> Html {
     html!(<>{"Der Pool "}{pool}{format!(" ({version}) ist fast voll: {free} von {size} Adressen frei.")}</>)
 }
 pub fn no_loopback(device: Html) -> Html {
@@ -74,7 +76,7 @@ pub fn dhcp_pool_empty(interface: Html, address: Html, prefix: Option<Html>) -> 
     }
 }
 /// the link text of a VLAN
-pub fn vlan_name(vid: i64, name: &str) -> String {
+pub fn vlan_name(vid: i32, name: &str) -> String {
     format!("VLAN {vid} ({name})")
 }
 /// items joined by commas, the last by „und“
@@ -150,10 +152,10 @@ pub fn vlan_without_group(interface: Html, vlan: Html) -> Html {
     html!(<>{interface}{" hat ein "}{vlan}{" ohne VLAN-Gruppe: Der Provisioner liest es nicht."}</>)
 }
 /// the link text of a VLAN known only by its NetBox id
-pub fn vlan(id: i64) -> String {
+pub fn vlan(id: i32) -> String {
     format!("VLAN (NetBox-ID {id})")
 }
-pub fn mtu_mismatch(interface: Html, mtu: i64, far_end: Html, far_mtu: i64) -> Html {
+pub fn mtu_mismatch(interface: Html, mtu: i32, far_end: Html, far_mtu: i32) -> Html {
     html!(<>{"Ungleiche MTU an einem Kabel: "}{interface}{format!(" {mtu}, ")}{far_end}{format!(" {far_mtu}. OSPF kommt dazwischen nicht hoch.")}</>)
 }
 pub fn ospf_on_one_end(interface: Html, far_end: Html) -> Html {

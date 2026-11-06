@@ -1,11 +1,11 @@
 //! The live checks of the rows (`AccessibleDevice.interfaceLive`): who the device sees at a
 //! row's ports, its OSPF neighbors there, the bridge devices of a radio link answering. Read
 //! after the view, in a subscription of their own (a job on the device or a change in NetBox
-//! brings them anew), with the time they were read; the neighbor findings come over as the type of the
-//! query `NeighborFindings`, so `components::neighbor_check` words them.
+//! brings them anew), with the time they were read; the neighbor findings are those of
+//! `neighborFindings`, so `components::neighbor_check` words them.
 use super::{
     Interfaces, InterfacesMsg,
-    rows::{self, Action, Device},
+    rows::{self, Action},
 };
 use crate::{
     components::{
@@ -15,21 +15,21 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            InterfaceLive, RefreshInterfaceLive,
-            findings::Severity,
-            interface_live::{self, PoeProblem}, interface_view, refresh_interface_live,
-            neighbor_findings::{
-                NeighborFindingsTopologyDeviceByIdAccessNeighborFindings as NeighborFinding, Seen,
-                Severity as NeighborSeverity,
+            interface_live::{
+                BridgeAnswer, DeviceOnlyAddress as DeviceOnly, DeviceOnlyLease,
+                InterfaceLiveSubscription, InterfaceLiveVariables, OspfNeighbor, PoeMismatch,
+                PoeProblem, RefreshInterfaceLive, RefreshInterfaceLiveVariables,
             },
+            neighbor_findings::{NeighborFinding, SeenNeighbor as Seen},
+            types::{AdhocCredentials, DeviceRef as Device, Severity},
         },
-        live::{Subscription, read_at, subscribe},
-        query_authenticated,
+        live::{Subscription, read_at, watch},
+        request,
     },
     i18n::interfaces as t,
 };
+use cynic::{MutationBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{Icon, Spinner, SpinnerSize};
-use serde::{Serialize, de::DeserializeOwned};
 use std::{collections::HashMap, rc::Rc};
 use yew::{Html, html, html::Scope, platform::spawn_local};
 
@@ -47,7 +47,7 @@ pub struct Checked {
     /// when the device was read (milliseconds since the epoch)
     pub read_at: f64,
     /// by the row's interface
-    pub rows: HashMap<i64, Rc<LiveRow>>,
+    pub rows: HashMap<i32, Rc<LiveRow>>,
     pub other_findings: Vec<NeighborFinding>,
     /// the addresses only the device has on an interface of no row
     pub other_addresses: Vec<DeviceOnly>,
@@ -66,9 +66,9 @@ pub enum RowLive {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LiveRow {
     pub seen: Vec<Seen>,
-    pub ospf: Vec<Ospf>,
+    pub ospf: Vec<OspfNeighbor>,
     pub ospf_missing: Vec<Device>,
-    pub bridges: Vec<Bridge>,
+    pub bridges: Vec<BridgeAnswer>,
     pub findings: Vec<NeighborFinding>,
     /// the addresses only the device has there: the next apply removes them
     pub device_only: Vec<DeviceOnly>,
@@ -80,56 +80,9 @@ pub struct LiveRow {
     pub actions: Vec<Action>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Ospf {
-    pub instance: String,
-    pub router_id: String,
-    pub state: String,
-    pub adjacent: bool,
-    pub device: Option<Device>,
-}
-
-/// An address only the device has, NetBox the address elsewhere or on no interface.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DeviceOnly {
-    pub address: String,
-    pub interface_name: String,
-    pub disabled: bool,
-    pub elsewhere: Option<Device>,
-    pub unassigned: bool,
-}
-
-/// A static lease only the device has, NetBox the address elsewhere or on no interface.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DeviceOnlyLease {
-    pub address: String,
-    pub mac: Option<String>,
-    pub client_id: Option<String>,
-    pub name: Option<String>,
-    pub disabled: bool,
-    pub settings: Vec<String>,
-    pub elsewhere: Option<Device>,
-    pub unassigned: bool,
-}
-
-/// A port whose PoE mode in NetBox the device contradicts.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PoeMismatch {
-    pub port: String,
-    pub problem: PoeProblem,
-    pub status: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Bridge {
-    pub device: Device,
-    pub address: Option<String>,
-    pub answers: bool,
-}
-
 impl Live {
     /// The checks of the row of `interface`.
-    pub fn row(&self, interface: i64) -> RowLive {
+    pub fn row(&self, interface: i32) -> RowLive {
         match self {
             Live::Pending => RowLive::Pending,
             Live::Unchecked(_) => RowLive::Unchecked,
@@ -149,21 +102,17 @@ impl LiveRow {
     pub fn severities(&self) -> Vec<Severity> {
         self.findings
             .iter()
-            .map(|finding| match finding.severity {
-                NeighborSeverity::ERROR => Severity::ERROR,
-                NeighborSeverity::WARNING => Severity::WARNING,
-                NeighborSeverity::HINT | NeighborSeverity::Other(_) => Severity::HINT,
-            })
-            .chain(self.ospf_missing.iter().map(|_| Severity::ERROR))
+            .map(|finding| finding.severity)
+            .chain(self.ospf_missing.iter().map(|_| Severity::Error))
             .chain(
                 self.bridges
                     .iter()
                     .filter(|bridge| bridge.address.is_some() && !bridge.answers)
-                    .map(|_| Severity::ERROR),
+                    .map(|_| Severity::Error),
             )
-            .chain(self.device_only.iter().map(|_| Severity::WARNING))
-            .chain(self.device_only_leases.iter().map(|_| Severity::WARNING))
-            .chain(self.poe.iter().map(|_| Severity::WARNING))
+            .chain(self.device_only.iter().map(|_| Severity::Warning))
+            .chain(self.device_only_leases.iter().map(|_| Severity::Warning))
+            .chain(self.poe.iter().map(|_| Severity::Warning))
             .collect()
     }
 }
@@ -242,16 +191,16 @@ pub fn details(netbox: &str, live: &RowLive, device: impl Fn(&Device) -> Html) -
                         <div>
                             <span class="live-failed">{Icon::ExclamationTriangle}</span>{" "}
                             {t::poe_mismatch(
-                                &m.port,
+                                &m.port.name,
                                 match m.problem {
-                                    PoeProblem::NO_POE_OUT => t::PoeMismatch::NoPoeOut,
-                                    PoeProblem::NO_LOAD => t::PoeMismatch::NoLoad,
-                                    PoeProblem::PD_MISSING => t::PoeMismatch::PdMissing,
-                                    PoeProblem::FEEDS_INSTEAD => t::PoeMismatch::FeedsInstead,
+                                    PoeProblem::NoPoeOut => t::PoeMismatch::NoPoeOut,
+                                    PoeProblem::NoLoad => t::PoeMismatch::NoLoad,
+                                    PoeProblem::PdMissing => t::PoeMismatch::PdMissing,
+                                    PoeProblem::FeedsInstead => t::PoeMismatch::FeedsInstead,
                                     // `mismatches()` never produces this (helper::poe::feeding,
                                     // for the network map); unreachable here, but the enum is
                                     // shared and must still match exhaustively.
-                                    PoeProblem::UNDOCUMENTED | PoeProblem::Other(_) => t::PoeMismatch::Other,
+                                    PoeProblem::Undocumented | PoeProblem::Other => t::PoeMismatch::Other,
                                 },
                                 m.status.as_deref(),
                             )}
@@ -315,33 +264,34 @@ pub fn device_only_lease_list(leases: &[DeviceOnlyLease], device: impl Fn(&Devic
 pub fn subscribe_live(scope: &Scope<Interfaces>, id: u32, target: SelectedTarget) -> Subscription {
     let (credential_name, adhoc_credentials) = target
         .credentials
-        .variables(|username, password| interface_live::AdhocCredentials { username, password });
-    let variables = interface_live::Variables {
-        id: id as i64,
+        .variables(|username, password| AdhocCredentials { username, password });
+    let variables = InterfaceLiveVariables {
+        id: id as i32,
         target: target.address.map(|a| a.to_string()),
         credential_name,
         adhoc_credentials,
     };
     let to = scope.clone();
-    subscribe::<InterfaceLive, _>(scope, variables, move |response| {
+    watch(scope, InterfaceLiveSubscription::build(variables), move |response| {
         // `access` is null where the device can't be reached, the error says why
-        let live = response.and_then(|response| {
-            match response.data.map(|data| Checked::of(data, id)).transpose()?.flatten() {
-                Some(checked) => Ok(Live::Checked(Rc::new(checked))),
-                None => Ok(Live::Unchecked(
+        let live = match response {
+            Ok(response) => match response.data.and_then(|data| Checked::of(data, id)) {
+                Some(checked) => Live::Checked(Rc::new(checked)),
+                None => Live::Unchecked(
                     FrontendError::Graphql(response.errors.unwrap_or_default()).message(),
-                )),
-            }
-        });
-        to.send_message(InterfacesMsg::Live(live.unwrap_or_else(|error| Live::Unchecked(error.message()))));
+                ),
+            },
+            Err(error) => Live::Unchecked(error.message()),
+        };
+        to.send_message(InterfacesMsg::Live(live));
     })
 }
 
 /// Drops the device's live checks: the subscription reads them anew.
 pub fn check_again(scope: Scope<Interfaces>, id: u32) {
     spawn_local(async move {
-        let variables = refresh_interface_live::Variables { id: id as i64 };
-        if let Err(error) = query_authenticated::<RefreshInterfaceLive, _>(scope.clone(), variables).await {
+        let refresh = RefreshInterfaceLive::build(RefreshInterfaceLiveVariables { id: id as i32 });
+        if let Err(error) = request(scope.clone(), refresh).await {
             scope.send_message(InterfacesMsg::Live(Live::Unchecked(error.message())));
         }
     });
@@ -349,107 +299,37 @@ pub fn check_again(scope: Scope<Interfaces>, id: u32) {
 
 impl Checked {
     /// `None` where the device has no access (not reachable).
-    fn of(data: interface_live::ResponseData, device_id: u32) -> Result<Option<Checked>, FrontendError> {
-        let Some((live, age)) = data
-            .topology
-            .device_by_id
-            .and_then(|device| device.access)
-            .map(|access| (access.interface_live, access.interface_live_age))
-        else {
-            return Ok(None);
-        };
+    fn of(data: InterfaceLiveSubscription, device_id: u32) -> Option<Checked> {
+        let access = data.topology.device_by_id?.access?;
+        let live = access.interface_live;
         let rows = live
             .rows
             .into_iter()
             .map(|row| {
                 let live = LiveRow {
-                    seen: convert(&row.seen)?,
-                    ospf: row
-                        .ospf
-                        .into_iter()
-                        .map(|n| Ospf {
-                            instance: n.instance,
-                            router_id: n.router_id,
-                            state: n.state,
-                            adjacent: n.adjacent,
-                            device: n.device.map(device),
-                        })
-                        .collect(),
-                    ospf_missing: row.ospf_missing.into_iter().map(device).collect(),
-                    bridges: row
-                        .bridges
-                        .into_iter()
-                        .map(|b| Bridge {
-                            device: device(b.device),
-                            address: b.address,
-                            answers: b.answers,
-                        })
-                        .collect(),
-                    findings: convert(&row.findings)?,
-                    device_only: row.device_only_addresses.into_iter().map(device_only).collect(),
-                    device_only_leases: row.device_only_leases.into_iter().map(device_only_lease).collect(),
-                    poe: row
-                        .poe
-                        .into_iter()
-                        .map(|m| PoeMismatch {
-                            port: m.port.name,
-                            problem: m.problem,
-                            status: m.status,
-                        })
-                        .collect(),
-                    actions: convert::<_, interface_view::Action>(&row.actions)?
+                    seen: row.seen,
+                    ospf: row.ospf,
+                    ospf_missing: row.ospf_missing,
+                    bridges: row.bridges,
+                    findings: row.findings,
+                    device_only: row.device_only_addresses,
+                    device_only_leases: row.device_only_leases,
+                    poe: row.poe,
+                    actions: row
+                        .actions
                         .into_iter()
                         .filter_map(|action| rows::action(action, device_id))
                         .collect(),
                 };
-                Ok((row.interface, Rc::new(live)))
+                (row.interface, Rc::new(live))
             })
-            .collect::<Result<_, FrontendError>>()?;
-        Ok(Some(Checked {
-            read_at: read_at(age),
+            .collect();
+        Some(Checked {
+            read_at: read_at(access.interface_live_age),
             rows,
-            other_findings: convert(&live.other_findings)?,
-            other_addresses: live.other_addresses.into_iter().map(device_only).collect(),
-            other_leases: live.other_leases.into_iter().map(device_only_lease).collect(),
-        }))
-    }
-}
-
-/// The same selection as another query's type.
-fn convert<F: Serialize, T: DeserializeOwned>(items: &[F]) -> Result<Vec<T>, FrontendError> {
-    items
-        .iter()
-        .map(|item| Ok(serde_json::from_value(serde_json::to_value(item)?)?))
-        .collect()
-}
-
-fn device_only(address: interface_live::DeviceOnly) -> DeviceOnly {
-    DeviceOnly {
-        address: address.address,
-        interface_name: address.interface_name,
-        disabled: address.disabled,
-        elsewhere: address.elsewhere.map(device),
-        unassigned: address.unassigned,
-    }
-}
-
-fn device_only_lease(lease: interface_live::DeviceOnlyLease) -> DeviceOnlyLease {
-    DeviceOnlyLease {
-        address: lease.address,
-        mac: lease.mac,
-        client_id: lease.client_id,
-        name: lease.name,
-        disabled: lease.disabled,
-        settings: lease.settings,
-        elsewhere: lease.elsewhere.map(device),
-        unassigned: lease.unassigned,
-    }
-}
-
-fn device(device: interface_live::Device) -> Device {
-    Device {
-        id: device.id,
-        name: device.name,
-        site: device.site,
+            other_findings: live.other_findings,
+            other_addresses: live.other_addresses,
+            other_leases: live.other_leases,
+        })
     }
 }

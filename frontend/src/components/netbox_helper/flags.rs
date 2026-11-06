@@ -1,18 +1,19 @@
 //! „Flags“: the interfaces' tags as switches, with the device's findings as they would be
 //! after them (`topology.findings(after:)`).
-use super::{HelperChoice, NetTarget, NetboxHelper, t};
+use super::{HelperChoice, NetboxHelper, choice::helper, t};
 use crate::{
     components::findings::finding_list,
     error::FrontendError,
     graphql::{
         authenticated::{
-            FlagInterfaces, Findings, flag_interfaces,
-            findings::{self, FindingsTopologyFindings},
+            FlagInterfaces, flag_interfaces,
+            findings::{Finding, Findings, FindingsVariables},
             netbox_plan,
         },
-        query_authenticated,
+        query_authenticated, request,
     },
 };
+use cynic::SubscriptionBuilder;
 use patternfly_yew::prelude::{Spinner, SpinnerSize};
 use yew::{Context, Html, classes, html, html::Scope, platform::spawn_local};
 
@@ -22,7 +23,7 @@ pub enum FlagsMsg {
     Toggle(u32, Flag, bool),
     Findings(
         Vec<(u32, Flag, bool)>,
-        Result<(String, Vec<FindingsTopologyFindings>), FrontendError>,
+        Result<(String, Vec<Finding>), FrontendError>,
     ),
 }
 
@@ -199,17 +200,14 @@ pub(super) fn fetch_flag_interfaces(scope: Scope<NetboxHelper>, id: u32) {
 /// The device's findings as they would be with `changes` (as they are without any).
 pub(super) fn fetch_flag_findings(scope: Scope<NetboxHelper>, id: u32, changes: Vec<(u32, Flag, bool)>) {
     spawn_local(async move {
-        let after = (!changes.is_empty())
-            .then(|| helper_input!(findings, HelperChoice::Flags(changes.clone()), id));
-        let result = query_authenticated::<Findings, _>(
-            scope.clone(),
-            findings::Variables {
-                site: None,
-                device: Some(id as i64),
-                after,
-            },
-        )
-        .await
+        let after = (!changes.is_empty()).then(|| helper(HelperChoice::Flags(changes.clone()), id));
+        let variables = FindingsVariables {
+            site: None,
+            device: Some(id as i32),
+            after,
+        };
+        let result = request(scope.clone(), Findings::build(variables))
+            .await
         .map(|data| (data.topology.netbox_url, data.topology.findings));
         scope.send_message(FlagsMsg::Findings(changes, result));
     });
@@ -220,7 +218,7 @@ pub(super) type FlagInterface = flag_interfaces::FlagInterfacesTopologyDeviceByI
 /// The device's findings after these switches, with NetBox' address.
 pub(super) type FlagFindings = (
     Vec<(u32, Flag, bool)>,
-    Result<(String, Vec<FindingsTopologyFindings>), FrontendError>,
+    Result<(String, Vec<Finding>), FrontendError>,
 );
 
 /// A tag as NetBox names it, from the `InterfaceTag` of a query (each has its own).

@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     components::findings::finding_list,
-    graphql::authenticated::findings::FindingsTopologyFindings,
+    graphql::authenticated::findings::Finding,
     i18n::interfaces as t,
 };
 use patternfly_yew::prelude::{EmptyState, Size};
@@ -16,7 +16,7 @@ use yew::{Callback, Html, html};
 pub fn view(
     netbox: &str,
     row: Option<&Row>,
-    device_findings: &[FindingsTopologyFindings],
+    device_findings: &[Finding],
     actions: &[Action],
     changed: bool,
     on_action: &Callback<Action>,

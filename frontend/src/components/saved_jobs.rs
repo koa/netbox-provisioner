@@ -4,12 +4,14 @@
 use crate::{
     error::FrontendError,
     graphql::{
-        request,
-        saved_jobs::{
-            DiscardSavedJob, DiscardSavedJobVariables, HeldBack, Phase, SavedJobKind,
-            SavedJobs as SavedJobsQuery, Waiting as Saved,
+        authenticated::{
+            saved_jobs::{
+                DiscardSavedJob, DiscardSavedJobVariables, HeldBack, Phase, SavedJobKind,
+                SavedJobs as SavedJobsQuery, Waiting as Saved,
+            },
+            types::{ApplyState as A, UpdateState as U},
         },
-        types::{ApplyState as A, UpdateState as U},
+        request,
     },
     i18n::{job::phase as p, saved_jobs as t},
 };

@@ -7,12 +7,12 @@ use crate::{
     },
     error::FrontendError,
     graphql::{
-        list_devices::{
-            PingDevice, PingDeviceVariables, PingResult as Pinged, SiteDevices, SiteDevicesVariables,
+        authenticated::list_devices::{
+            PingDevice, PingDeviceVariables, PingResult as Pinged, SiteDevices,
+            SiteDevicesVariables,
         },
         live::{Subscription, watch_data},
         request_response,
-        types::Severity,
     },
     pages::routes::{AppRoute, SiteView},
 };
@@ -77,12 +77,7 @@ impl Component for Devices {
                                 .and_then(|ip| ip.address)
                                 .and_then(|a| IpAddr::from_str(a.ip.as_str()).ok()),
                             serial: device.serial.map(|s| s.into_boxed_str()),
-                            findings: findings::count(
-                                device
-                                    .findings
-                                    .iter()
-                                    .map(|f| matches!(f.severity, Severity::Error)),
-                            ),
+                            findings: findings::count(device.findings.iter().map(|f| f.severity)),
                         })
                         .collect(),
                 ),

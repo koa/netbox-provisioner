@@ -1,6 +1,7 @@
 //! What a helper is opened with (`HelperPreset`), which one is shown (`HelperKind`), what it is
 //! planned for (`HelperChoice`) and that as the input of a query (`helper_input!`).
 use super::{flags::Flag, new_device::SeenPreset, t};
+use crate::graphql::authenticated::helper as input;
 use std::fmt::{self, Display, Formatter};
 
 /// The helper to open and what it starts with.
@@ -340,6 +341,117 @@ macro_rules! helper_input {
             }
         }
     };
+}
+
+/// The input naming the helper of `choice` on device `id`, for cynic's queries (`helper_input!`
+/// builds the same for those of graphql_client).
+pub(crate) fn helper(choice: HelperChoice, id: u32) -> input::Helper {
+    use input::*;
+    let device = id as i32;
+    match choice {
+        HelperChoice::Loopback => Helper::Loopback(device),
+        HelperChoice::Connection { interface, peer, mtu } => Helper::Connection(ConnectionInput {
+            interface: interface as i32,
+            peer: peer as i32,
+            mtu: mtu.map(i32::from),
+        }),
+        HelperChoice::Disconnect(interface) => {
+            Helper::Disconnect(DisconnectInput { device, interface: interface as i32 })
+        }
+        HelperChoice::Flags(changes) => Helper::Flags(FlagsInput {
+            device,
+            changes: changes
+                .into_iter()
+                .map(|(interface, flag, set)| TagChange {
+                    interface: interface as i32,
+                    tag: match flag {
+                        Flag::Ospf => InterfaceTag::Ospf,
+                        Flag::Dhcp => InterfaceTag::Dhcp,
+                        Flag::DhcpClient => InterfaceTag::DhcpClient,
+                        Flag::Nat => InterfaceTag::Nat,
+                        Flag::Internet => InterfaceTag::Internet,
+                    },
+                    set,
+                })
+                .collect(),
+        }),
+        HelperChoice::CustomerNet { target, parent, length, parent_v6, dhcp } => {
+            Helper::CustomerNet(CustomerNetInput {
+                device,
+                target: match target {
+                    NetTarget::Interface(id) => CustomerNetTarget::Interface(id as i32),
+                    NetTarget::Vlan(id) => CustomerNetTarget::Vlan(id as i32),
+                },
+                parent: parent.map(|id| id as i32),
+                length: length.map(i32::from),
+                parent_v6: parent_v6.map(|id| id as i32),
+                dhcp,
+            })
+        }
+        HelperChoice::Poe { pse, pd } => {
+            Helper::Poe(PoeInput { device, pse: pse as i32, pd: pd.map(|pd| pd as i32) })
+        }
+        HelperChoice::PoeRemove { port } => {
+            Helper::PoeRemove(PoeRemoveInput { device, port: port as i32 })
+        }
+        HelperChoice::RadioBridge {
+            ap,
+            station,
+            ap_router_port,
+            station_router_port,
+            ap_address,
+            station_address,
+            ssid,
+        } => Helper::RadioBridge(RadioBridgeInput {
+            ap: ap as i32,
+            station: station as i32,
+            ap_router_port: ap_router_port.map(|port| port as i32),
+            station_router_port: station_router_port.map(|port| port as i32),
+            ap_address,
+            station_address,
+            ssid,
+        }),
+        HelperChoice::RadioDisconnect { radio, wireless_link } => {
+            let radio = radio as i32;
+            Helper::RadioDisconnect(RadioDisconnectInput { device, radio, wireless_link })
+        }
+        HelperChoice::CustomerDisconnect(interface) => Helper::CustomerDisconnect(
+            CustomerDisconnectInput { device, interface: interface as i32 },
+        ),
+        HelperChoice::PortVlan { port, vlan } => {
+            Helper::PortVlan(PortVlanInput { device, port: port as i32, vlan: vlan as i32 })
+        }
+        HelperChoice::CableTakeover { port, peer } => {
+            Helper::CableTakeover(CableTakeoverInput { port: port as i32, peer: peer as i32 })
+        }
+        HelperChoice::BridgeLeave(port) => {
+            Helper::BridgeLeave(BridgeLeaveInput { device, port: port as i32 })
+        }
+        HelperChoice::NewDevice { port, name, device_type, role, far_port, wlan_group } => {
+            Helper::NewDevice(NewDeviceInput {
+                port: port as i32,
+                name,
+                device_type: device_type as i32,
+                role: role as i32,
+                far_port,
+                wlan_group: wlan_group.map(|group| group as i32),
+            })
+        }
+        HelperChoice::LeaseTakeover { address, mac, name, device_type, role } => {
+            Helper::LeaseTakeover(LeaseTakeoverInput {
+                device,
+                address,
+                mac,
+                name,
+                device_type: device_type as i32,
+                role: role as i32,
+            })
+        }
+        HelperChoice::AddressTakeover { interface, address } => {
+            let interface = interface as i32;
+            Helper::AddressTakeover(AddressTakeoverInput { device, interface, address })
+        }
+    }
 }
 
 /// Which helper the card shows.

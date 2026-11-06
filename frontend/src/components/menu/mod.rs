@@ -4,7 +4,7 @@ use crate::{
     i18n,
     error::FrontendError,
     graphql::{
-        list_devices::{ListSites, Site},
+        authenticated::list_devices::{ListSites, Site},
         request,
     },
     pages::routes::{AppRoute, SiteView},

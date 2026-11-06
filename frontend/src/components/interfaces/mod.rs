@@ -20,12 +20,17 @@ use crate::{
     },
     error::FrontendError,
     graphql::{
-        authenticated::{InterfaceView, findings::Severity, interface_view},
-        live::{Subscription, local_time, same_reading, subscribe_data},
+        authenticated::{
+            findings::Finding,
+            interfaces::{DeviceInterfaces, DeviceInterfacesVariables},
+            types::Severity,
+        },
+        live::{Subscription, local_time, same_reading, watch_data},
     },
     i18n::{device::as_of, interfaces as t},
     local_storage::{store, stored},
 };
+use cynic::SubscriptionBuilder;
 use live::Live;
 use patternfly_yew::prelude::{
     Alert, AlertType, Badge, Button, ButtonVariant, Card, CardBody, CardHeader,
@@ -72,7 +77,7 @@ pub struct Interfaces {
     flow: Option<Flow>,
     /// the rows written to NetBox since the last apply (their interface), with the action that
     /// wrote: its helper offers to take the write back
-    changed: BTreeMap<i64, Action>,
+    changed: BTreeMap<i32, Action>,
     /// the view subscribed to: shown again when NetBox changed
     subscription: Option<Subscription>,
     /// the live checks subscribed to
@@ -83,7 +88,7 @@ pub struct Interfaces {
 struct Flow {
     preset: HelperPreset,
     title: String,
-    row: Option<(i64, Action)>,
+    row: Option<(i32, Action)>,
 }
 
 pub enum InterfacesMsg {
@@ -97,7 +102,7 @@ pub enum InterfacesMsg {
     OnlyFindings(bool),
     /// the action of a row's port, its id and name (`None`: the loopback's, which may have no
     /// row)
-    Open(Option<(i64, String)>, Action),
+    Open(Option<(i32, String)>, Action),
     Close,
     Written,
     /// the write of the open helper is done (`true`) or taken back
@@ -421,20 +426,16 @@ impl Interfaces {
     }
 }
 
-fn has_error<'f>(
-    findings: impl IntoIterator<Item = &'f crate::graphql::authenticated::findings::FindingsTopologyFindings>,
-) -> bool {
-    findings
-        .into_iter()
-        .any(|f| matches!(f.severity, Severity::ERROR))
+fn has_error<'f>(findings: impl IntoIterator<Item = &'f Finding>) -> bool {
+    findings.into_iter().any(|f| f.severity == Severity::Error)
 }
 
 fn subscribe_view(ctx: &Context<Interfaces>) -> Subscription {
     let scope = ctx.link().clone();
-    let variables = interface_view::Variables {
-        device: i64::from(ctx.props().id),
+    let variables = DeviceInterfacesVariables {
+        device: ctx.props().id as i32,
     };
-    subscribe_data::<InterfaceView, _>(ctx.link(), variables, move |data| {
+    watch_data(ctx.link(), DeviceInterfaces::build(variables), move |data| {
         scope.send_message(InterfacesMsg::Data(data.and_then(View::of)));
     })
 }

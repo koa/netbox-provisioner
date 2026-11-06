@@ -1,4 +1,18 @@
+//! The queries of the authenticated endpoint (`/graphql`), checked against its schema
+//! (`schema.graphql`, `schema`); one module per page or component. Those still bound through
+//! graphql_client follow below.
 use graphql_client::GraphQLQuery;
+
+pub mod findings;
+pub mod helper;
+pub mod history;
+pub mod interface_live;
+pub mod interfaces;
+pub mod list_devices;
+pub mod neighbor_findings;
+pub mod saved_jobs;
+pub mod schema;
+pub mod types;
 
 type ScalarDuration = u64;
 /// `D4:01:C3:29:67:64`; the backend checks it
@@ -139,57 +153,6 @@ pub struct JobEvents;
     response_derives = "Debug"
 )]
 pub struct CancelJob;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/findings.graphql",
-    response_derives = "Debug, Clone, PartialEq",
-    skip_serializing_none
-)]
-pub struct Findings;
-
-/// Serializes, to hand its findings on as the type of `Findings`.
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/interfaces.graphql",
-    response_derives = "Debug, Clone, PartialEq, Serialize"
-)]
-pub struct InterfaceView;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/interface-live.graphql",
-    response_derives = "Debug, Clone, PartialEq, Serialize",
-    skip_serializing_none
-)]
-pub struct InterfaceLive;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/interface-live.graphql",
-    response_derives = "Debug"
-)]
-pub struct RefreshInterfaceLive;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/neighbor-findings.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct NeighborFindings;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/neighbor-findings.graphql",
-    response_derives = "Debug"
-)]
-pub struct RefreshNeighbors;
 
 #[derive(GraphQLQuery)]
 #[graphql(

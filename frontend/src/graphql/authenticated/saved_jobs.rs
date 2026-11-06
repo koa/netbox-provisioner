@@ -5,13 +5,14 @@ use super::{
 };
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(graphql_type = "QueryAuthenticated")]
+#[cynic(schema = "authenticated", graphql_type = "QueryAuthenticated")]
 pub struct SavedJobs {
     pub allow_apply: bool,
     pub saved_jobs: Vec<Waiting>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
 pub struct Waiting {
     pub device_id: i32,
     pub device_name: Option<String>,
@@ -24,7 +25,7 @@ pub struct Waiting {
 
 /// The state it was saved in: only an apply's or an update's go on after a restart.
 #[derive(cynic::InlineFragments, Debug, Clone, PartialEq)]
-#[cynic(graphql_type = "JobPhaseObject")]
+#[cynic(schema = "authenticated", graphql_type = "JobPhaseObject")]
 pub enum Phase {
     ApplyPhase(ApplyPhase),
     UpdatePhase(UpdatePhase),
@@ -33,18 +34,21 @@ pub enum Phase {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
 pub struct ApplyPhase {
     #[cynic(alias, rename = "state")]
     pub apply: ApplyState,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
 pub struct UpdatePhase {
     #[cynic(alias, rename = "state")]
     pub update: UpdateState,
 }
 
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
 pub enum SavedJobKind {
     Apply,
     Update,
@@ -53,6 +57,7 @@ pub enum SavedJobKind {
 }
 
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
 pub enum HeldBack {
     DeviceGone,
     BatchIncomplete,
@@ -66,7 +71,11 @@ pub struct DiscardSavedJobVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(graphql_type = "MutationAuthenticated", variables = "DiscardSavedJobVariables")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "MutationAuthenticated",
+    variables = "DiscardSavedJobVariables",
+)]
 pub struct DiscardSavedJob {
     #[arguments(deviceId: $device_id)]
     #[expect(dead_code, reason = "selected because a mutation needs a field; the page reloads")]

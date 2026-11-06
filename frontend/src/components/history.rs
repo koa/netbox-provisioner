@@ -4,12 +4,14 @@
 use crate::{
     error::FrontendError,
     graphql::{
-        history::{
-            DeviceJournal, DeviceJournalVariables, JournalEntry as Entry, JournalLeft,
-            JournalOutcome,
+        authenticated::{
+            history::{
+                DeviceJournal, DeviceJournalVariables, JournalEntry as Entry, JournalLeft,
+                JournalOutcome,
+            },
+            types::JobKind,
         },
         request,
-        types::JobKind,
     },
     i18n::{
         job::{self as jobs, phase},

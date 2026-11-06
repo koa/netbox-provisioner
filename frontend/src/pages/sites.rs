@@ -6,9 +6,8 @@ use crate::{
     },
     error::FrontendError,
     graphql::{
-        list_devices::{ListSites, Site},
+        authenticated::list_devices::{ListSites, Site},
         live::{Subscription, watch_data},
-        types::Severity,
     },
     pages::routes::{AppRoute, SiteView},
 };
@@ -62,12 +61,8 @@ impl Component for Sites {
                         view: SiteView::Devices,
                     };
                     let count = i18n::pages::device_count(site.devices.len());
-                    let findings = findings::count(
-                        site.findings
-                            .iter()
-                            .map(|f| matches!(f.severity, Severity::Error)),
-                    )
-                    .map(|count| html!(<div class="site-findings">{count}</div>));
+                    let findings = findings::count(site.findings.iter().map(|f| f.severity))
+                        .map(|count| html!(<div class="site-findings">{count}</div>));
                     html! {
                         <Card key={site.id}>
                             <CardHeader><CardTitle>

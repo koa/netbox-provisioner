@@ -4,17 +4,18 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            Findings,
             findings::{
-                self, FindingsTopologyFindings, FindingsTopologyFindingsKind as Kind, IpVersion,
-                PrefixPool, RadioPathPart, Severity,
+                Finding, FindingKind as Kind, Findings, FindingsVariables, PrefixPool,
+                RadioPathPart,
             },
+            types::{AddressRef, DeviceRef, InterfaceRef, IpVersion, ServiceRef, Severity, VlanRef},
         },
-        live::{Subscription, subscribe_data},
+        live::{Subscription, watch_data},
     },
     i18n::findings as t,
 };
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Color, Label, Spinner};
+use cynic::SubscriptionBuilder;
 use yew::{Component, Context, Html, Properties, html};
 
 #[derive(Debug, Clone, PartialEq, Properties)]
@@ -25,13 +26,13 @@ pub struct FindingsProps {
 }
 
 pub struct FindingsList {
-    data: Option<Result<(String, Vec<FindingsTopologyFindings>), FrontendError>>,
+    data: Option<Result<(String, Vec<Finding>), FrontendError>>,
     /// shown again when NetBox changed
     _subscription: Subscription,
 }
 
 pub enum FindingsMsg {
-    Data(Result<(String, Vec<FindingsTopologyFindings>), FrontendError>),
+    Data(Result<(String, Vec<Finding>), FrontendError>),
 }
 
 impl Component for FindingsList {
@@ -40,12 +41,12 @@ impl Component for FindingsList {
 
     fn create(ctx: &Context<Self>) -> Self {
         let scope = ctx.link().clone();
-        let variables = findings::Variables {
-            site: ctx.props().site.map(i64::from),
+        let variables = FindingsVariables {
+            site: ctx.props().site.map(|site| site as i32),
             device: None,
             after: None,
         };
-        let subscription = subscribe_data::<Findings, _>(ctx.link(), variables, move |data| {
+        let subscription = watch_data(ctx.link(), Findings::build(variables), move |data| {
             let data = data.map(|data| (data.topology.netbox_url, data.topology.findings));
             scope.send_message(FindingsMsg::Data(data));
         });
@@ -89,13 +90,13 @@ impl Component for FindingsList {
 }
 
 /// The findings, each object a link into NetBox at `netbox` (ending in `/`).
-pub fn finding_list(netbox: &str, findings: &[FindingsTopologyFindings]) -> Html {
+pub fn finding_list(netbox: &str, findings: &[Finding]) -> Html {
     let links = Links { netbox };
     html! {
         <ul class="finding-list">
             { for findings.iter().map(|finding| html! {
                 <li>
-                    {severity(&finding.severity)}
+                    {severity_label(finding.severity)}
                     <span>{links.describe(&finding.kind)}</span>
                 </li>
             }) }
@@ -103,26 +104,12 @@ pub fn finding_list(netbox: &str, findings: &[FindingsTopologyFindings]) -> Html
     }
 }
 
-fn severity(severity: &Severity) -> Html {
-    level_label(match severity {
-        Severity::ERROR => Level::Error,
-        Severity::WARNING => Level::Warning,
-        Severity::HINT | Severity::Other(_) => Level::Hint,
-    })
-}
-
-/// How bad a finding is; each query has its own `Severity`.
-pub enum Level {
-    Error,
-    Warning,
-    Hint,
-}
-
-pub fn level_label(level: Level) -> Html {
-    let (label, color) = match level {
-        Level::Error => (t::ERROR, Color::Red),
-        Level::Warning => (t::WARNING, Color::Orange),
-        Level::Hint => (t::HINT, Color::Blue),
+/// How bad a finding is, as a colored label.
+pub fn severity_label(severity: Severity) -> Html {
+    let (label, color) = match severity {
+        Severity::Error => (t::ERROR, Color::Red),
+        Severity::Warning => (t::WARNING, Color::Orange),
+        Severity::Hint | Severity::Other => (t::HINT, Color::Blue),
     };
     html!(<Label compact=true {color} label={label}/>)
 }
@@ -143,32 +130,32 @@ impl Links<'_> {
     fn link(&self, path: &str, text: &str) -> Html {
         netbox_link(self.netbox, path, text)
     }
-    fn device(&self, device: &findings::Device) -> Html {
+    fn device(&self, device: &DeviceRef) -> Html {
         self.link(&format!("dcim/devices/{}/", device.id), &device.name)
     }
-    fn interface(&self, interface: &findings::Interface) -> Html {
+    fn interface(&self, interface: &InterfaceRef) -> Html {
         self.link(
             &format!("dcim/interfaces/{}/", interface.id),
             &format!("{} {}", interface.device.name, interface.name),
         )
     }
-    fn address(&self, address: &findings::Address) -> Html {
+    fn address(&self, address: &AddressRef) -> Html {
         self.link(
             &format!("ipam/ip-addresses/{}/", address.id),
             &address.address,
         )
     }
-    fn service(&self, service: &findings::Service) -> Html {
+    fn service(&self, service: &ServiceRef) -> Html {
         self.link(&format!("ipam/services/{}/", service.id), &service.name)
     }
-    fn vlan(&self, vlan: &findings::Vlan) -> Html {
+    fn vlan(&self, vlan: &VlanRef) -> Html {
         self.link(&format!("ipam/vlans/{}/", vlan.id), &t::vlan_name(vlan.vid, &vlan.name))
     }
-    fn interfaces(&self, interfaces: &[findings::Interface]) -> Html {
+    fn interfaces(&self, interfaces: &[InterfaceRef]) -> Html {
         t::list(interfaces.iter().map(|i| self.interface(i)).collect())
     }
     fn pool(&self, pool: &PrefixPool) -> Html {
-        let tag = t::pool(matches!(pool, PrefixPool::LOOPBACK));
+        let tag = t::pool(matches!(pool, PrefixPool::Loopback));
         self.link(&format!("ipam/prefixes/?tag={tag}"), &format!("„{tag}“"))
     }
 
@@ -253,11 +240,11 @@ impl Links<'_> {
                 f.missing
                     .iter()
                     .filter_map(|part| match part {
-                        RadioPathPart::ROUTER_CABLE => Some(t::RADIO_ROUTER_CABLE),
-                        RadioPathPart::WIRELESS_LINK => Some(t::RADIO_WIRELESS_LINK),
-                        RadioPathPart::SSID => Some(t::RADIO_SSID),
-                        RadioPathPart::PEER_ROUTER_CABLE => Some(t::RADIO_PEER_ROUTER_CABLE),
-                        RadioPathPart::Other(_) => None,
+                        RadioPathPart::RouterCable => Some(t::RADIO_ROUTER_CABLE),
+                        RadioPathPart::WirelessLink => Some(t::RADIO_WIRELESS_LINK),
+                        RadioPathPart::Ssid => Some(t::RADIO_SSID),
+                        RadioPathPart::PeerRouterCable => Some(t::RADIO_PEER_ROUTER_CABLE),
+                        RadioPathPart::Other => None,
                     })
                     .collect(),
             ),
@@ -284,17 +271,17 @@ impl Links<'_> {
                 self.service(&f.by),
             ),
             Kind::ForwardIncomplete(f) => t::forward_incomplete(self.service(&f.service)),
+            Kind::Unknown => t::UNKNOWN.into(),
         }
     }
 }
 
-/// The text for a card of a list: how many findings, how many errors; one `bool` per finding,
-/// whether it is an error (each query has its own `Severity`).
-pub fn count(errors: impl IntoIterator<Item = bool>) -> Option<String> {
+/// The text for a card of a list: how many findings, how many errors.
+pub fn count(severities: impl IntoIterator<Item = Severity>) -> Option<String> {
     let (mut all, mut error_count) = (0, 0);
-    for error in errors {
+    for severity in severities {
         all += 1;
-        error_count += usize::from(error);
+        error_count += usize::from(severity == Severity::Error);
     }
     t::count(all, error_count)
 }

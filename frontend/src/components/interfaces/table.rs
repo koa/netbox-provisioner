@@ -1,7 +1,7 @@
 //! The table of a task: a row per L3 interface, its findings when opened.
 use super::{
     live::{self, RowLive},
-    rows::{Action, Address, Device, Iface, Kind, PortRow, RadioPath, Row, Task},
+    rows::{Action, Kind, PortRow, Row, Task},
 };
 use crate::{
     components::{
@@ -9,7 +9,10 @@ use crate::{
         menu::popup::{MenuActionItem, MenuGroup, PopupMenu},
         netbox_helper::HelperKind,
     },
-    graphql::authenticated::findings::Severity,
+    graphql::authenticated::{
+        interfaces::RadioPath,
+        types::{AddressRef, DeviceRef, InterfaceRef, Severity},
+    },
     i18n::interfaces as t,
     pages::routes::AppRoute,
 };
@@ -372,9 +375,9 @@ pub fn state<'s>(severities: impl IntoIterator<Item = &'s Severity>) -> Html {
     let (mut errors, mut warnings, mut hints) = (0, 0, 0);
     for severity in severities {
         match severity {
-            Severity::ERROR => errors += 1,
-            Severity::WARNING => warnings += 1,
-            Severity::HINT | Severity::Other(_) => hints += 1,
+            Severity::Error => errors += 1,
+            Severity::Warning => warnings += 1,
+            Severity::Hint | Severity::Other => hints += 1,
         }
     }
     let (label, color, icon) = if errors > 0 {
@@ -408,7 +411,7 @@ fn yes(set: bool) -> Html {
     html!({ if set { "✓" } else { t::NONE } })
 }
 
-fn addresses(addresses: &[Address]) -> Html {
+fn addresses(addresses: &[AddressRef]) -> Html {
     if addresses.is_empty() {
         return html!({ t::NONE });
     }
@@ -442,18 +445,18 @@ fn customer_addresses(row: &Row, v6: bool) -> Html {
 }
 
 /// A device, as a link to its page here.
-pub fn device(device: &Device) -> Html {
+pub fn device(device: &DeviceRef) -> Html {
     match device.site {
         Some(site) => html!(<Link<AppRoute> to={AppRoute::device(site as u32, device.id as u32)}>{&device.name}</Link<AppRoute>>),
         None => html!({ &device.name }),
     }
 }
 
-fn interface(interface: &Iface) -> Html {
+fn interface(interface: &InterfaceRef) -> Html {
     html!(<>{device(&interface.device)}{" "}{&interface.name}</>)
 }
 
-fn far_ends(far_ends: &[Iface]) -> Html {
+fn far_ends(far_ends: &[InterfaceRef]) -> Html {
     if far_ends.is_empty() {
         return html!({ t::NO_CABLE });
     }
@@ -462,7 +465,7 @@ fn far_ends(far_ends: &[Iface]) -> Html {
 
 /// `bridge ┄ ssid ┄ peer bridge → router`, as small labels breaking on a phone.
 fn path(path: &RadioPath) -> Html {
-    let part = |interface: &Option<Iface>| match interface {
+    let part = |interface: &Option<InterfaceRef>| match interface {
         Some(i) => html!(<span class="path-part">{self::interface(i)}</span>),
         None => html!(<span class="path-part path-missing">{"?"}</span>),
     };

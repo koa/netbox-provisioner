@@ -7,21 +7,21 @@
 use crate::{
     components::{
         adjust_target::SelectedTarget,
-        findings::{Level, level_label, netbox_link},
+        findings::{netbox_link, severity_label},
         netbox_helper::{HelperPreset, LinkPreset, NetboxHelper},
     },
     error::FrontendError,
     graphql::{
         authenticated::{
-            NeighborFindings, RefreshNeighbors, refresh_neighbors,
             neighbor_findings::{
-                self, Interface, NeighborFindingsTopologyDeviceByIdAccessNeighborFindings as Finding,
-                NeighborFindingsTopologyDeviceByIdAccessNeighborFindingsKind as Kind, Port, Seen,
-                Severity,
+                NeighborFinding as Finding, NeighborFindingKind as Kind, NeighborFindings,
+                NeighborFindingsVariables, RefreshNeighbors, RefreshNeighborsVariables,
+                SeenNeighbor as Seen,
             },
+            types::{InterfaceRef as Interface, PortRef as Port},
         },
-        live::{Subscription, local_time, read_at, same_reading, subscribe_data},
-        query_authenticated,
+        live::{Subscription, local_time, read_at, same_reading, watch_data},
+        request,
     },
     i18n::{device::as_of, neighbors as t},
 };
@@ -29,6 +29,7 @@ use patternfly_yew::prelude::{
     Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize,
 };
 use std::collections::HashSet;
+use cynic::{MutationBuilder, SubscriptionBuilder};
 use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
 
 #[derive(Debug, Clone, PartialEq, Properties)]
@@ -86,10 +87,10 @@ impl Component for NeighborCheck {
                 self.taking_over.clear();
                 self.subscriptions.clear();
                 let scope = ctx.link().clone();
-                let ids = devices.iter().map(|(id, _)| i64::from(*id)).collect();
+                let ids = devices.iter().map(|(id, _)| *id as i32).collect();
                 spawn_local(async move {
-                    let variables = refresh_neighbors::Variables { ids };
-                    let _ = query_authenticated::<RefreshNeighbors, _>(scope.clone(), variables).await;
+                    let refresh = RefreshNeighbors::build(RefreshNeighborsVariables { ids });
+                    let _ = request(scope.clone(), refresh).await;
                     scope.send_message(NeighborCheckMsg::Subscribe);
                 });
             }
@@ -101,8 +102,8 @@ impl Component for NeighborCheck {
                     .enumerate()
                     .map(|(index, (id, _))| {
                         let scope = ctx.link().clone();
-                        let variables = neighbor_findings::Variables { id: i64::from(*id) };
-                        subscribe_data::<NeighborFindings, _>(ctx.link(), variables, move |data| {
+                        let variables = NeighborFindingsVariables { id: *id as i32 };
+                        watch_data(ctx.link(), NeighborFindings::build(variables), move |data| {
                             let result = match data {
                                 Ok(data) => match data.topology.device_by_id.and_then(|d| d.access) {
                                     Some(access) => DeviceResult::Done {
@@ -199,7 +200,7 @@ impl NeighborCheck {
                             let open = self.taking_over.contains(&(device, index));
                             html! {
                                 <li>
-                                    {level_label(level(&finding.severity))}
+                                    {severity_label(finding.severity)}
                                     <span>{links.describe(&finding.kind)}</span>
                                     if let Some(preset) = preset {
                                         if open {
@@ -249,7 +250,7 @@ pub fn neighbor_finding_list(netbox: &str, findings: &[Finding]) -> Html {
         <ul class="finding-list">
             { for findings.iter().map(|finding| html! {
                 <li>
-                    {level_label(level(&finding.severity))}
+                    {severity_label(finding.severity)}
                     <span>{links.describe(&finding.kind)}</span>
                 </li>
             }) }
@@ -260,14 +261,6 @@ pub fn neighbor_finding_list(netbox: &str, findings: &[Finding]) -> Html {
 /// Who the device sees, linked into NetBox.
 pub fn seen_list(netbox: &str, seen: &[Seen]) -> Html {
     Links { netbox }.seen(seen)
-}
-
-fn level(severity: &Severity) -> Level {
-    match severity {
-        Severity::ERROR => Level::Error,
-        Severity::WARNING => Level::Warning,
-        Severity::HINT | Severity::Other(_) => Level::Hint,
-    }
 }
 
 struct Links<'a> {
@@ -330,6 +323,7 @@ impl Links<'_> {
                 t::not_in_netbox(self.port(&f.port), self.seen(&f.seen))
             }
             Kind::DiscoveryOff(f) => html!({ t::discovery_off(&f.list) }),
+            Kind::Unknown => html!({ crate::i18n::findings::UNKNOWN }),
         }
     }
 }

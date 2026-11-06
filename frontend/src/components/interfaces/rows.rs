@@ -1,5 +1,6 @@
-//! The rows of `DeviceAccess.interfaceView` as the card shows them. The findings come over as
-//! the type of the query `Findings`, so `components::findings` words them as everywhere else.
+//! The rows of `DeviceAccess.interfaceView` as the card shows them: the task and the actions
+//! translated, the rest as the query has it. The findings are those of `topology.findings`, so
+//! `components::findings` words them as everywhere else.
 use crate::{
     components::netbox_helper::{
         HelperKind, HelperPreset, LinkPreset, NetTarget, RadioPreset, SeenPreset,
@@ -7,11 +8,11 @@ use crate::{
     error::FrontendError,
     i18n::interfaces as t,
     graphql::authenticated::{
-        findings::FindingsTopologyFindings,
-        interface_view::{self, ActionHelper, ActionKind, InterfaceTask},
+        findings::Finding,
+        interfaces::{self, ActionHelper, ActionKind, InterfaceTask, RadioPath, RowAction},
+        types::{AddressRef, DeviceRef, InterfaceRef, VlanRef},
     },
 };
-use serde::Serialize;
 
 /// What an interface is for, in the order of the card.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -46,80 +47,36 @@ impl Task {
     }
     fn of(task: &InterfaceTask) -> Task {
         match task {
-            InterfaceTask::LOOPBACK => Task::Loopback,
-            InterfaceTask::UPLINK => Task::Uplink,
-            InterfaceTask::DIRECT => Task::Direct,
-            InterfaceTask::RADIO_LINK => Task::RadioLink,
-            InterfaceTask::CUSTOMER => Task::Customer,
-            InterfaceTask::UNKNOWN | InterfaceTask::Other(_) => Task::Unknown,
+            InterfaceTask::Loopback => Task::Loopback,
+            InterfaceTask::Uplink => Task::Uplink,
+            InterfaceTask::Direct => Task::Direct,
+            InterfaceTask::RadioLink => Task::RadioLink,
+            InterfaceTask::Customer => Task::Customer,
+            InterfaceTask::Unknown | InterfaceTask::Other => Task::Unknown,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Device {
-    pub id: i64,
-    pub name: String,
-    pub site: Option<i64>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Iface {
-    pub id: i64,
-    pub name: String,
-    pub device: Device,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Vlan {
-    pub id: i64,
-    pub vid: i64,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Address {
-    pub id: i64,
-    /// `172.17.1.1/30`
-    pub address: String,
-}
-
-impl Address {
-    pub fn is_v6(&self) -> bool {
-        self.address.contains(':')
-    }
-}
-
-/// `router_port ── bridge_port ┄ ssid ┄ peer_bridge_port ── peer_router_port`
-#[derive(Debug, Clone, PartialEq)]
-pub struct RadioPath {
-    pub router_port: Option<Iface>,
-    pub bridge_port: Option<Iface>,
-    pub ssid: Option<String>,
-    pub peer_bridge_port: Option<Iface>,
-    pub peer_router_port: Option<Iface>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct Row {
     pub task: Task,
-    pub interface: Iface,
+    pub interface: InterfaceRef,
     pub label: Option<String>,
-    pub ports: Vec<Iface>,
-    pub addresses: Vec<Address>,
+    pub ports: Vec<InterfaceRef>,
+    pub addresses: Vec<AddressRef>,
     pub ospf: bool,
     pub dhcp: bool,
     pub dhcp_client: bool,
     pub nat: bool,
     pub internet: bool,
-    pub mtu: Option<i64>,
-    pub untagged_vlan: Option<Vlan>,
-    pub tagged_vlans: Vec<Vlan>,
-    pub far_ends: Vec<Iface>,
+    pub mtu: Option<i32>,
+    pub untagged_vlan: Option<VlanRef>,
+    pub tagged_vlans: Vec<VlanRef>,
+    pub far_ends: Vec<InterfaceRef>,
     pub radio_path: Option<RadioPath>,
-    pub gateways: Vec<Device>,
+    pub gateways: Vec<DeviceRef>,
     pub free: bool,
-    pub findings: Vec<FindingsTopologyFindings>,
+    pub findings: Vec<Finding>,
     pub actions: Vec<Action>,
     /// a bridge's ports, each chosen on its own
     pub port_rows: Vec<PortRow>,
@@ -128,9 +85,9 @@ pub struct Row {
 /// A port of a bridge with its own actions.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PortRow {
-    pub interface: Iface,
+    pub interface: InterfaceRef,
     pub label: Option<String>,
-    pub far_ends: Vec<Iface>,
+    pub far_ends: Vec<InterfaceRef>,
     pub actions: Vec<Action>,
 }
 
@@ -173,13 +130,13 @@ impl Action {
 pub struct View {
     pub netbox: String,
     pub rows: Vec<Row>,
-    pub device_findings: Vec<FindingsTopologyFindings>,
-    pub other_findings: Vec<FindingsTopologyFindings>,
+    pub device_findings: Vec<Finding>,
+    pub other_findings: Vec<Finding>,
     pub loopback_actions: Vec<Action>,
 }
 
 impl View {
-    pub fn of(data: interface_view::ResponseData) -> Result<View, FrontendError> {
+    pub fn of(data: interfaces::DeviceInterfaces) -> Result<View, FrontendError> {
         let view = data
             .topology
             .device_by_id
@@ -187,9 +144,9 @@ impl View {
             .interface_view;
         Ok(View {
             netbox: data.topology.netbox_url,
-            rows: view.rows.into_iter().map(Row::of).collect::<Result<_, _>>()?,
-            device_findings: findings(&view.device_findings)?,
-            other_findings: findings(&view.other_findings)?,
+            rows: view.rows.into_iter().map(Row::of).collect(),
+            device_findings: view.device_findings,
+            other_findings: view.other_findings,
             loopback_actions: view
                 .loopback_actions
                 .into_iter()
@@ -200,101 +157,59 @@ impl View {
 }
 
 impl Row {
-    fn of(row: interface_view::InterfaceViewTopologyDeviceByIdInterfaceViewRows) -> Result<Row, FrontendError> {
+    fn of(row: interfaces::InterfaceRow) -> Row {
         let own_device = row.interface.device.id as u32;
-        Ok(Row {
+        let actions = |actions: Vec<RowAction>| {
+            actions.into_iter().filter_map(|a| action(a, own_device)).collect()
+        };
+        Row {
             task: Task::of(&row.task),
-            interface: iface(row.interface),
+            interface: row.interface,
             label: row.label,
-            ports: row.ports.into_iter().map(iface).collect(),
-            addresses: row
-                .addresses
-                .into_iter()
-                .map(|a| Address {
-                    id: a.id,
-                    address: a.address,
-                })
-                .collect(),
+            ports: row.ports,
+            addresses: row.addresses,
             ospf: row.ospf,
             dhcp: row.dhcp,
             dhcp_client: row.dhcp_client,
             nat: row.nat,
             internet: row.internet,
             mtu: row.mtu,
-            untagged_vlan: row.untagged_vlan.map(vlan),
-            tagged_vlans: row.tagged_vlans.into_iter().map(vlan).collect(),
-            far_ends: row.far_ends.into_iter().map(iface).collect(),
-            radio_path: row.radio_path.map(|path| RadioPath {
-                router_port: path.router_port.map(iface),
-                bridge_port: path.bridge_port.map(iface),
-                ssid: path.ssid,
-                peer_bridge_port: path.peer_bridge_port.map(iface),
-                peer_router_port: path.peer_router_port.map(iface),
-            }),
-            gateways: row.gateways.into_iter().map(device).collect(),
+            untagged_vlan: row.untagged_vlan,
+            tagged_vlans: row.tagged_vlans,
+            far_ends: row.far_ends,
+            radio_path: row.radio_path,
+            gateways: row.gateways,
             free: row.free,
-            findings: findings(&row.findings)?,
-            actions: row.actions.into_iter().filter_map(|a| action(a, own_device)).collect(),
+            findings: row.findings,
+            actions: actions(row.actions),
             port_rows: row
                 .port_rows
                 .into_iter()
                 .map(|port| PortRow {
-                    interface: iface(port.interface),
+                    interface: port.interface,
                     label: port.label,
-                    far_ends: port.far_ends.into_iter().map(iface).collect(),
-                    actions: port.actions.into_iter().filter_map(|a| action(a, own_device)).collect(),
+                    far_ends: port.far_ends,
+                    actions: actions(port.actions),
                 })
                 .collect(),
-        })
-    }
-}
-
-/// The findings as the query `Findings` has them: the same selection, another type.
-fn findings<F: Serialize>(findings: &[F]) -> Result<Vec<FindingsTopologyFindings>, FrontendError> {
-    findings
-        .iter()
-        .map(|finding| Ok(serde_json::from_value(serde_json::to_value(finding)?)?))
-        .collect()
-}
-
-fn device(device: interface_view::Device) -> Device {
-    Device {
-        id: device.id,
-        name: device.name,
-        site: device.site,
-    }
-}
-
-fn iface(interface: interface_view::Interface) -> Iface {
-    Iface {
-        id: interface.id,
-        name: interface.name,
-        device: device(interface.device),
-    }
-}
-
-fn vlan(vlan: interface_view::Vlan) -> Vlan {
-    Vlan {
-        id: vlan.id,
-        vid: vlan.vid,
-        name: vlan.name,
+        }
     }
 }
 
 /// The helper and its start for an action of the backend on a row of `device`; none for one it
 /// doesn't know.
-pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Action> {
+pub(super) fn action(action: RowAction, device: u32) -> Option<Action> {
     let kind = match action.kind {
-        ActionKind::SUGGESTION => Kind::Suggestion,
-        ActionKind::REMOVE => Kind::Remove,
-        ActionKind::ASSIGN_ROLE => Kind::AssignRole,
-        ActionKind::EDIT => Kind::Edit,
-        ActionKind::Other(_) => return None,
+        ActionKind::Suggestion => Kind::Suggestion,
+        ActionKind::Remove => Kind::Remove,
+        ActionKind::AssignRole => Kind::AssignRole,
+        ActionKind::Edit => Kind::Edit,
+        ActionKind::Other => return None,
     };
     let interface = action.interface.map(|id| id as u32);
     let (helper, preset) = match action.helper {
-        ActionHelper::LOOPBACK => (HelperKind::Loopback, HelperPreset::Kind(HelperKind::Loopback)),
-        ActionHelper::CONNECTION => (
+        ActionHelper::Loopback => (HelperKind::Loopback, HelperPreset::Kind(HelperKind::Loopback)),
+        ActionHelper::Connection => (
             HelperKind::Connection,
             match (interface, action.peer) {
                 (Some(port), Some(peer)) => HelperPreset::Link(LinkPreset {
@@ -306,22 +221,22 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
                 (None, _) => HelperPreset::Kind(HelperKind::Connection),
             },
         ),
-        ActionHelper::DISCONNECT => (HelperKind::Disconnect, HelperPreset::Disconnect(interface?)),
-        ActionHelper::CUSTOMER_DISCONNECT => (
+        ActionHelper::Disconnect => (HelperKind::Disconnect, HelperPreset::Disconnect(interface?)),
+        ActionHelper::CustomerDisconnect => (
             HelperKind::CustomerDisconnect,
             HelperPreset::CustomerDisconnect(interface?),
         ),
-        ActionHelper::PORT_VLAN => (
+        ActionHelper::PortVlan => (
             HelperKind::PortVlan,
             HelperPreset::PortVlan {
                 port: interface,
                 vlan: action.vlan.map(|vlan| vlan as u32),
             },
         ),
-        ActionHelper::POE => (HelperKind::Poe, HelperPreset::Poe(interface?)),
-        ActionHelper::POE_REMOVE => (HelperKind::Poe, HelperPreset::PoeRemove(interface?)),
-        ActionHelper::BRIDGE_LEAVE => (HelperKind::BridgeLeave, HelperPreset::BridgeLeave(interface?)),
-        ActionHelper::LEASE_TAKEOVER => {
+        ActionHelper::Poe => (HelperKind::Poe, HelperPreset::Poe(interface?)),
+        ActionHelper::PoeRemove => (HelperKind::Poe, HelperPreset::PoeRemove(interface?)),
+        ActionHelper::BridgeLeave => (HelperKind::BridgeLeave, HelperPreset::BridgeLeave(interface?)),
+        ActionHelper::LeaseTakeover => {
             let lease = action.lease?;
             (
                 HelperKind::LeaseTakeover,
@@ -332,14 +247,14 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
                 },
             )
         }
-        ActionHelper::ADDRESS_TAKEOVER => (
+        ActionHelper::AddressTakeover => (
             HelperKind::AddressTakeover,
             HelperPreset::AddressTakeover {
                 interface: interface?,
                 address: action.address?,
             },
         ),
-        ActionHelper::NEW_DEVICE => (
+        ActionHelper::NewDevice => (
             HelperKind::NewDevice,
             HelperPreset::NewDevice {
                 port: interface?,
@@ -350,19 +265,19 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
                 }),
             },
         ),
-        ActionHelper::FLAGS => (HelperKind::Flags, HelperPreset::Flags(interface?)),
-        ActionHelper::CABLE_TAKEOVER => (
+        ActionHelper::Flags => (HelperKind::Flags, HelperPreset::Flags(interface?)),
+        ActionHelper::CableTakeover => (
             HelperKind::CableTakeover,
             HelperPreset::CableTakeover {
                 port: interface?,
                 peer: action.peer?.id as u32,
             },
         ),
-        ActionHelper::RADIO_DISCONNECT => (
+        ActionHelper::RadioDisconnect => (
             HelperKind::RadioDisconnect,
             HelperPreset::RadioDisconnect(interface?),
         ),
-        ActionHelper::CUSTOMER_NET => (
+        ActionHelper::CustomerNet => (
             HelperKind::CustomerNet,
             HelperPreset::CustomerNet(match (action.vlan, interface) {
                 (Some(vlan), _) => NetTarget::Vlan(vlan as u32),
@@ -370,7 +285,7 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
                 (None, None) => return None,
             }),
         ),
-        ActionHelper::RADIO_BRIDGE => (
+        ActionHelper::RadioBridge => (
             HelperKind::RadioBridge,
             match (interface, action.peer) {
                 // from the router port: for the bridge device cabled to it
@@ -387,7 +302,7 @@ pub(super) fn action(action: interface_view::Action, device: u32) -> Option<Acti
                 _ => HelperPreset::Kind(HelperKind::RadioBridge),
             },
         ),
-        ActionHelper::Other(_) => return None,
+        ActionHelper::Other => return None,
     };
     Some(Action {
         kind,
