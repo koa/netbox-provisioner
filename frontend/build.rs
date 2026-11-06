@@ -9,9 +9,13 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Also registers it for cynic (`graphql::schema`), which checks every query struct against it.
 fn write_graphql_schema() -> Result<()> {
     let schema = create_schema(Default::default());
     fs::write("src/graphql/authenticated/schema.graphql", schema.sdl())?;
+    cynic_codegen::register_schema("provisioner")
+        .from_sdl_file("src/graphql/authenticated/schema.graphql")?
+        .as_default()?;
     Ok(())
 }
 fn write_anonymous_graphql_schema() -> Result<()> {

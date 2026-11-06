@@ -27,7 +27,9 @@ console_error_panic_hook = "0.1.7"
 gloo = "0.11.0"
 futures = "0.3"
 i18n = { path = "../i18n" }
+cynic = "3.14"
 
 [build-dependencies]
 backend = { path = "../backend" }
 anyhow = "1.0.96"
+cynic-codegen = { version = "3.14", default-features = false }

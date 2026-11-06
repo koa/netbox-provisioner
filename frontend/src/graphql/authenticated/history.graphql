@@ -1,7 +1,0 @@
-query DeviceJournal($device: Int!){
-    topology{
-        deviceById(id: $device){
-            journal{ id created kind observation{ found fired removed } outcome state left by url }
-        }
-    }
-}

@@ -4,17 +4,19 @@
 use crate::{
     error::FrontendError,
     graphql::{
-        authenticated::{
-            DeviceJournal,
-            device_journal::{self, DeviceJournalTopologyDeviceByIdJournal as Entry, JobKind, JournalLeft, JournalOutcome},
+        history::{
+            DeviceJournal, DeviceJournalVariables, JournalEntry as Entry, JournalLeft,
+            JournalOutcome,
         },
-        query_authenticated,
+        request,
+        types::JobKind,
     },
     i18n::{
         job::{self as jobs, phase},
         journal::{self as t, Left, Outcome, history as h},
     },
 };
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle};
 use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
 
@@ -31,14 +33,15 @@ pub struct History {
 }
 
 pub enum HistoryMsg {
-    Loaded(Result<device_journal::ResponseData, FrontendError>),
+    Loaded(Result<DeviceJournal, FrontendError>),
 }
 
 fn fetch(ctx: &Context<History>) {
     let scope = ctx.link().clone();
-    let device = ctx.props().id as i64;
+    let device = ctx.props().id as i32;
     spawn_local(async move {
-        let loaded = query_authenticated::<DeviceJournal, _>(scope.clone(), device_journal::Variables { device }).await;
+        let journal = DeviceJournal::build(DeviceJournalVariables { device });
+        let loaded = request(scope.clone(), journal).await;
         scope.send_message(HistoryMsg::Loaded(loaded));
     });
 }
@@ -152,39 +155,39 @@ fn entry(entry: &Entry) -> Html {
 
 fn outcome(outcome: &JournalOutcome) -> Outcome {
     match outcome {
-        JournalOutcome::RUNNING | JournalOutcome::Other(_) => Outcome::Running,
-        JournalOutcome::DONE => Outcome::Done,
-        JournalOutcome::INCOMPLETE => Outcome::Incomplete,
-        JournalOutcome::FAILED => Outcome::Failed,
-        JournalOutcome::CANCELLED => Outcome::Cancelled,
-        JournalOutcome::INTERRUPTED => Outcome::Interrupted,
+        JournalOutcome::Running | JournalOutcome::Other => Outcome::Running,
+        JournalOutcome::Done => Outcome::Done,
+        JournalOutcome::Incomplete => Outcome::Incomplete,
+        JournalOutcome::Failed => Outcome::Failed,
+        JournalOutcome::Cancelled => Outcome::Cancelled,
+        JournalOutcome::Interrupted => Outcome::Interrupted,
     }
 }
 
 fn left(left: &JournalLeft) -> Option<Left> {
     match left {
-        JournalLeft::APPLY_FALLBACK => Some(Left::ApplyFallback),
-        JournalLeft::UPDATE_FALLBACK => Some(Left::UpdateFallback),
-        JournalLeft::WATCHDOG_SAFETY_NET => Some(Left::WatchdogSafetyNet),
-        JournalLeft::Other(_) => None,
+        JournalLeft::ApplyFallback => Some(Left::ApplyFallback),
+        JournalLeft::UpdateFallback => Some(Left::UpdateFallback),
+        JournalLeft::WatchdogSafetyNet => Some(Left::WatchdogSafetyNet),
+        JournalLeft::Other => None,
     }
 }
 
 fn kind(kind: &JobKind) -> &str {
     match kind {
-        JobKind::UPDATE => jobs::UPDATE,
-        JobKind::DOWNGRADE => jobs::DOWNGRADE,
-        JobKind::CLEANUP => jobs::CLEANUP,
-        JobKind::APPLY => jobs::APPLY,
-        JobKind::BOOTSTRAP => jobs::BOOTSTRAP,
-        JobKind::REBOOT => jobs::REBOOT,
-        JobKind::POWER_CYCLE => jobs::POWER_CYCLE,
-        JobKind::DEVICE_MODE => jobs::DEVICE_MODE,
-        JobKind::REPARTITION => jobs::REPARTITION,
-        JobKind::BOOT_PARTITION => jobs::BOOT_PARTITION,
-        JobKind::NETBOX_WRITE => jobs::NETBOX_WRITE,
-        JobKind::NETBOX_UNDO => jobs::NETBOX_UNDO,
-        JobKind::SITE_DIFF => jobs::SITE_DIFF,
+        JobKind::Update => jobs::UPDATE,
+        JobKind::Downgrade => jobs::DOWNGRADE,
+        JobKind::Cleanup => jobs::CLEANUP,
+        JobKind::Apply => jobs::APPLY,
+        JobKind::Bootstrap => jobs::BOOTSTRAP,
+        JobKind::Reboot => jobs::REBOOT,
+        JobKind::PowerCycle => jobs::POWER_CYCLE,
+        JobKind::DeviceMode => jobs::DEVICE_MODE,
+        JobKind::Repartition => jobs::REPARTITION,
+        JobKind::BootPartition => jobs::BOOT_PARTITION,
+        JobKind::NetboxWrite => jobs::NETBOX_WRITE,
+        JobKind::NetboxUndo => jobs::NETBOX_UNDO,
+        JobKind::SiteDiff => jobs::SITE_DIFF,
         JobKind::Other(other) => other,
     }
 }
