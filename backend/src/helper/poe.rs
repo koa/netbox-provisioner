@@ -159,7 +159,7 @@ pub fn plan_remove(topology: &Arc<Topology>, input: &PoeRemoveInput) -> Result<N
         .connected_interfaces()
         .into_iter()
         .filter(|far| far.poe() == Some(counterpart));
-    for end in std::iter::once(port.clone()).chain(far_ends) {
+    for end in std::iter::once(port).chain(far_ends) {
         plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
             interface: interface_ref(&end),
             label: None,

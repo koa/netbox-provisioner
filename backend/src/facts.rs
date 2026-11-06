@@ -9,7 +9,7 @@
 //! change. Nothing is kept longer than [`LIMIT`].
 //!
 //! Times are instants of the monotonic clock ([`Instant`]); only ages go to the frontend.
-use crate::{Error, topology::DeviceId};
+use crate::{Error, lock::LockAnyway, topology::DeviceId};
 use log::warn;
 use prometheus::{
     HistogramOpts, HistogramVec, IntCounterVec, IntGaugeVec, Opts, Registry, core::Collector,
@@ -19,7 +19,7 @@ use std::{
     collections::HashMap,
     fmt::{self, Display},
     sync::{
-        Arc, LazyLock, Mutex, PoisonError,
+        Arc, LazyLock, Mutex,
         atomic::{AtomicU64, Ordering},
     },
     time::Duration,
@@ -314,7 +314,7 @@ static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(not(test))]
 fn store() -> std::sync::MutexGuard<'static, Store> {
-    STORE.lock().unwrap_or_else(PoisonError::into_inner)
+    STORE.lock_anyway()
 }
 
 /// A store per thread: each test runs on a thread of its own with a clock of its own
@@ -324,7 +324,7 @@ fn store() -> std::sync::MutexGuard<'static, Store> {
     thread_local! {
         static STORE: &'static Mutex<Store> = Box::leak(Box::new(new_store()));
     }
-    STORE.with(|store| *store).lock().unwrap_or_else(PoisonError::into_inner)
+    STORE.with(|store| *store).lock_anyway()
 }
 
 impl Store {
@@ -427,7 +427,7 @@ pub fn current_reading() -> Option<Arc<Mutex<Reading>>> {
 /// Notes that the subscription answering (if any) read `key`, taken at `max_age` from `as_of`.
 fn note(key: &FactKey, as_of: Instant, max_age: Option<Duration>) {
     let _ = READING.try_with(|reading| {
-        let mut reading = reading.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut reading = reading.lock_anyway();
         reading.keys.insert(key.clone());
         if let Some(device) = key.device {
             reading.devices.insert(device);
@@ -445,7 +445,7 @@ fn note(key: &FactKey, as_of: Instant, max_age: Option<Duration>) {
 pub fn events_from(job: u32, after: u32) -> u32 {
     READING
         .try_with(|reading| {
-            let reading = reading.lock().unwrap_or_else(PoisonError::into_inner);
+            let reading = reading.lock_anyway();
             reading.delivered.get(&job).map_or(after, |delivered| after.max(*delivered))
         })
         .unwrap_or(after)
@@ -454,14 +454,14 @@ pub fn events_from(job: u32, after: u32) -> u32 {
 /// The subscription answering delivers the events of `job` up to `until`.
 pub fn note_delivered(job: u32, until: u32) {
     let _ = READING.try_with(|reading| {
-        reading.lock().unwrap_or_else(PoisonError::into_inner).delivered.insert(job, until);
+        reading.lock_anyway().delivered.insert(job, until);
     });
 }
 
 /// Notes that the subscription answering (if any) read the jobs of `device`, or of all devices.
 pub fn note_jobs(device: Option<DeviceId>) {
     let _ = READING.try_with(|reading| {
-        let mut reading = reading.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut reading = reading.lock_anyway();
         match device {
             Some(device) => {
                 reading.devices.insert(device);
@@ -711,7 +711,7 @@ pub fn peek_newest<T: Send + Sync + 'static>(
     filter: impl Fn(&FactKey) -> bool,
 ) -> Option<Fact<T>> {
     let _ = READING.try_with(|reading| {
-        reading.lock().unwrap_or_else(PoisonError::into_inner).peeked.insert((device, kind));
+        reading.lock_anyway().peeked.insert((device, kind));
     });
     let store = store();
     let (_, done) = store

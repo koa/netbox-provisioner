@@ -7,6 +7,7 @@
 use super::AuthenticatedGraphqlSchema;
 use crate::{
     facts::{self, Change, Reading},
+    lock::LockAnyway,
     topology::TopologyHolder,
 };
 use async_graphql::{
@@ -18,7 +19,7 @@ use async_graphql::{
 use std::{
     pin::Pin,
     sync::{
-        Arc, Mutex, PoisonError,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
     task::{Context, Poll},
@@ -147,7 +148,7 @@ where
             wait(&reading, started, &mut state.changes).await;
         }
         if let Some(reading) = facts::current_reading() {
-            let mut reading = reading.lock().unwrap_or_else(PoisonError::into_inner);
+            let mut reading = reading.lock_anyway();
             *reading = Reading {
                 delivered: std::mem::take(&mut reading.delivered),
                 ..Reading::default()
@@ -170,7 +171,7 @@ struct Rounds<F> {
 
 /// Until something read changed (and a moment for more), or got older than it was taken.
 async fn wait(reading: &Mutex<Reading>, started: u64, changes: &mut Receiver<(u64, Change)>) {
-    let outdated = reading.lock().unwrap_or_else(PoisonError::into_inner).outdated;
+    let outdated = reading.lock_anyway().outdated;
     let deadline = async {
         match outdated {
             Some(at) => tokio::time::sleep_until(at).await,
@@ -184,7 +185,7 @@ async fn wait(reading: &Mutex<Reading>, started: u64, changes: &mut Receiver<(u6
             change = changes.recv() => match change {
                 Ok((number, change)) => {
                     let concerns = number > started
-                        && reading.lock().unwrap_or_else(PoisonError::into_inner).concerns(&change);
+                        && reading.lock_anyway().concerns(&change);
                     if concerns {
                         break;
                     }

@@ -19,6 +19,7 @@ use crate::{
     },
     device_state::{JobPhase, Restart},
     facts::{self, FactKind},
+    lock::LockAnyway,
     saved_job::{self, SavedJob},
     graphql::scalars::ScalarDuration,
     helper,
@@ -32,7 +33,7 @@ use async_graphql::{Enum, Object, SimpleObject, Union};
 use log::{info, warn};
 use std::{
     sync::{
-        Arc, LazyLock, Mutex, OnceLock, PoisonError,
+        Arc, LazyLock, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -182,17 +183,17 @@ impl Log {
     }
     /// The job wrote the apply script of `run` onto the device.
     pub fn wrote_script(&self, run: &str) {
-        *self.script_run.lock().unwrap_or_else(PoisonError::into_inner) = Some(run.into());
+        *self.script_run.lock_anyway() = Some(run.into());
     }
     /// The run of the apply script it wrote last.
     pub fn script_run(&self) -> Option<Box<str>> {
-        self.script_run.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.script_run.lock_anyway().clone()
     }
     /// The job enters `phase`. One its kind's table doesn't allow after the current one is
     /// logged and kept ([`Self::unexpected`]), the job goes on as before.
     pub fn enter(&self, phase: impl Into<JobPhase>) {
         let phase = phase.into();
-        let mut phases = self.phase.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut phases = self.phase.lock_anyway();
         let again = phases.resumed && phases.current == Some(phase);
         phases.resumed = false;
         if !again && !phase.may_follow(phases.current) {
@@ -212,7 +213,7 @@ impl Log {
     /// first states are; its work may enter that state again.
     pub fn resume_in(&self, phase: impl Into<JobPhase>) {
         let phase = phase.into();
-        let mut phases = self.phase.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut phases = self.phase.lock_anyway();
         phases.current = Some(phase);
         if !phase.undoes_for_others() {
             phases.own = Some(phase);
@@ -246,12 +247,12 @@ impl Log {
     /// enters on: written whenever it enters a state that goes on (`Restart::Continue`), with
     /// that state, and removed when it enters any other or ends.
     pub fn keep(&self, job: SavedJob) {
-        self.saving.lock().unwrap_or_else(PoisonError::into_inner).job = Some(job);
+        self.saving.lock_anyway().job = Some(job);
     }
     /// Writes or removes the file for `phase`; `entered` now, else entered before a restart: the
     /// update counts its reboot from then (`saved_at`).
     fn save_for(&self, phase: JobPhase, entered: bool) {
-        let mut saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut saving = self.saving.lock_anyway();
         let Saving { job, written } = &mut *saving;
         let Some(job) = job else {
             return;
@@ -271,7 +272,7 @@ impl Log {
     /// What the file holds now, `None` while there is none.
     #[cfg(test)]
     fn saved(&self) -> Option<SavedJob> {
-        let saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
+        let saving = self.saving.lock_anyway();
         saving.job.clone().filter(|_| saving.written)
     }
     /// The job ended: what it kept for a restart goes, but while the server shuts down
@@ -280,7 +281,7 @@ impl Log {
         if SHUTTING_DOWN.load(Ordering::SeqCst) && self.goes_on() {
             return;
         }
-        let mut saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut saving = self.saving.lock_anyway();
         if let Some(job) = saving.job.take()
             && saving.written
         {
@@ -290,21 +291,21 @@ impl Log {
     }
     /// Its file is written: it goes on after a restart.
     fn goes_on(&self) -> bool {
-        self.saving.lock().unwrap_or_else(PoisonError::into_inner).written
+        self.saving.lock_anyway().written
     }
     /// The state the job is in, or ended in; `None` before its first.
     pub fn phase(&self) -> Option<JobPhase> {
-        self.phase.lock().unwrap_or_else(PoisonError::into_inner).current
+        self.phase.lock_anyway().current
     }
     /// The state the job's own work ended in: the last one before undoing for others (where it
     /// failed, not where it restored the watchdogs afterwards); the current one without such.
     pub fn ended_in(&self) -> Option<JobPhase> {
-        let phases = self.phase.lock().unwrap_or_else(PoisonError::into_inner);
+        let phases = self.phase.lock_anyway();
         phases.own.or(phases.current)
     }
     /// The transitions the tables didn't allow, from (`None`: none yet) and to.
     pub fn unexpected(&self) -> Vec<(Option<JobPhase>, JobPhase)> {
-        self.phase.lock().unwrap_or_else(PoisonError::into_inner).unexpected.clone()
+        self.phase.lock_anyway().unexpected.clone()
     }
     /// Asks the work to stop ([`cancel`] for a job).
     pub fn cancel(&self) {
@@ -337,7 +338,7 @@ impl Log {
     pub fn emit(&self, event: impl Into<Event>) {
         let event = event.into();
         info!("{}: {event:?}", self.label);
-        let mut events = self.events.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut events = self.events.lock_anyway();
         let index = events.len() as u32;
         events.push(Logged {
             index,
@@ -349,7 +350,7 @@ impl Log {
     }
     /// The events from `after` on.
     pub fn since(&self, after: u32) -> Vec<Logged> {
-        let events = self.events.lock().unwrap_or_else(PoisonError::into_inner);
+        let events = self.events.lock_anyway();
         events.get(after as usize..).unwrap_or_default().to_vec()
     }
     pub fn events(&self) -> Vec<Event> {
@@ -514,7 +515,7 @@ impl Job {
             .collect()
     }
     fn state(&self) -> JobState {
-        self.outcome.lock().unwrap_or_else(PoisonError::into_inner).0
+        self.outcome.lock_anyway().0
     }
     /// The state it is in, or once over the one its own work ended in ([`Log::ended_in`]).
     pub fn shown_phase(&self) -> Option<JobPhase> {
@@ -532,12 +533,12 @@ impl Job {
         }
     }
     fn finish(&self, state: JobState, error: Option<ErrorInfo>) {
-        *self.took.lock().unwrap_or_else(PoisonError::into_inner) = Some(self.log.started.elapsed());
+        *self.took.lock_anyway() = Some(self.log.started.elapsed());
         match &error {
             Some(error) => info!("{}: job {} {state:?}: {}", self.name, self.id, error.message),
             None => info!("{}: job {} {state:?}", self.name, self.id),
         }
-        *self.outcome.lock().unwrap_or_else(PoisonError::into_inner) = (state, error);
+        *self.outcome.lock_anyway() = (state, error);
         // what the job may have changed is asked anew; only now, what was asked while it ran
         // isn't kept either (`facts`)
         if let JobSubject::Device(device) = self.subject {
@@ -559,7 +560,7 @@ impl Job {
             return;
         }
         let checked = {
-            let events = self.log.events.lock().unwrap_or_else(PoisonError::into_inner);
+            let events = self.log.events.lock_anyway();
             let last = events.iter().rposition(|logged| matches!(logged.event, Event::ApplyChecked(_)));
             last.and_then(|index| {
                 let after = &events[index + 1..];
@@ -594,11 +595,11 @@ impl Job {
     }
     /// how it stands or ended, with the error it failed with
     pub fn outcome(&self) -> (JobState, Option<ErrorInfo>) {
-        self.outcome.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.outcome.lock_anyway().clone()
     }
     /// how long it ran, once ended
     pub fn ran_for(&self) -> Option<Duration> {
-        *self.took.lock().unwrap_or_else(PoisonError::into_inner)
+        *self.took.lock_anyway()
     }
 }
 
@@ -612,12 +613,7 @@ pub fn start<F>(
 where
     F: Future<Output = Result<(), Error>> + Send + 'static,
 {
-    let log = Log::new(device.name());
-    let work = work(log.clone());
-    let job = register(&[(subject_of(device), log)], None, kind)?.swap_remove(0);
-    write_journal(&job, &started);
-    spawn(job.clone(), work);
-    Ok(job)
+    start_on(device, None, kind, started, work)
 }
 
 /// Like [`start`], working through `through` as well (a setup over its neighbor): neither
@@ -632,9 +628,22 @@ pub fn start_through<F>(
 where
     F: Future<Output = Result<(), Error>> + Send + 'static,
 {
+    start_on(device, Some(through), kind, started, work)
+}
+
+fn start_on<F>(
+    device: &DeviceAccess,
+    through: Option<&DeviceAccess>,
+    kind: JobKind,
+    started: Started,
+    work: impl FnOnce(Log) -> F,
+) -> Result<Arc<Job>, Error>
+where
+    F: Future<Output = Result<(), Error>> + Send + 'static,
+{
     let log = Log::new(device.name());
     let work = work(log.clone());
-    let job = register(&[(subject_of(device), log)], Some(subject_of(through)), kind)?.swap_remove(0);
+    let job = register(&[(subject_of(device), log)], through.map(subject_of), kind)?.swap_remove(0);
     write_journal(&job, &started);
     spawn(job.clone(), work);
     Ok(job)
@@ -651,7 +660,7 @@ pub fn start_site<F>(
 where
     F: Future<Output = Result<(), Error>> + Send + 'static,
 {
-    let mut jobs = JOBS.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut jobs = JOBS.lock_anyway();
     let subject = JobSubject::Site(site.id());
     if let Some(running) = jobs
         .jobs
@@ -754,7 +763,7 @@ fn register(
     through: Option<(JobSubject, &str)>,
     kind: JobKind,
 ) -> Result<Vec<Arc<Job>>, Error> {
-    let mut jobs = JOBS.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut jobs = JOBS.lock_anyway();
     for (subject, name) in members.iter().map(|(member, _)| *member).chain(through) {
         if jobs.jobs.iter().any(|job| job.occupies(subject) && job.is_running()) {
             return Err(Error::Busy(name.into()));
@@ -828,8 +837,7 @@ pub(crate) async fn run<T: Send + 'static>(
 }
 
 pub fn get(id: u32) -> Option<Arc<Job>> {
-    JOBS.lock()
-        .unwrap_or_else(PoisonError::into_inner)
+    JOBS.lock_anyway()
         .jobs
         .iter()
         .find(|job| job.id == id)
@@ -838,8 +846,7 @@ pub fn get(id: u32) -> Option<Arc<Job>> {
 
 /// The jobs of `subject` (all without), newest first, with those working through it.
 pub fn list(subject: Option<JobSubject>) -> Vec<Arc<Job>> {
-    JOBS.lock()
-        .unwrap_or_else(PoisonError::into_inner)
+    JOBS.lock_anyway()
         .jobs
         .iter()
         .rev()
@@ -917,9 +924,7 @@ static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 /// its script). Called once the server takes no more requests.
 pub async fn shutdown(wait: Duration) {
     SHUTTING_DOWN.store(true, Ordering::SeqCst);
-    let running: Vec<Arc<Job>> = JOBS
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
+    let running: Vec<Arc<Job>> = JOBS.lock_anyway()
         .jobs
         .iter()
         .filter(|job| job.state() == JobState::Running)
@@ -988,7 +993,7 @@ impl Job {
     }
     /// why it failed
     async fn error(&self) -> Option<ErrorInfo> {
-        self.outcome.lock().unwrap_or_else(PoisonError::into_inner).1.clone()
+        self.outcome.lock_anyway().1.clone()
     }
     /// the state it is in (`device_state`), or the one its own work ended in (not restoring
     /// the watchdogs after it); `null` before its first and for a site's job
@@ -997,7 +1002,7 @@ impl Job {
     }
     /// how long it ran; `None` while it runs
     async fn took(&self) -> Option<ScalarDuration> {
-        self.took.lock().unwrap_or_else(PoisonError::into_inner).map(ScalarDuration::from)
+        self.took.lock_anyway().map(ScalarDuration::from)
     }
     /// its events from `after` on (the `index` after the last one seen); in a subscription
     /// each answer only those not delivered yet

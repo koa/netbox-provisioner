@@ -14,6 +14,7 @@ pub mod graphql;
 pub mod helper;
 pub mod job;
 pub mod journal;
+pub mod lock;
 pub mod netbox;
 pub mod network_state;
 pub mod saved_job;

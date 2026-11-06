@@ -14,6 +14,7 @@ use crate::{
     device::watchdog::Watching,
     device_state::{ApplyState, JobPhase, JobPhaseObject, UpdateState},
     graphql::scalars::ScalarDuration,
+    lock::LockAnyway,
     topology::{DeviceId, SiteId},
 };
 use async_graphql::{Enum, Object};
@@ -24,7 +25,7 @@ use std::{
     fs::{self, File},
     io,
     path::{Path, PathBuf},
-    sync::{Mutex, OnceLock, PoisonError},
+    sync::{Mutex, OnceLock},
     time::{Duration, Instant, SystemTime},
 };
 
@@ -236,7 +237,7 @@ pub enum HeldBack {
 
 /// Leaves the file of `device` waiting, saying why.
 pub fn hold_back(device: DeviceId, why: HeldBack) {
-    if let Some(waiting) = WAITING.lock().unwrap_or_else(PoisonError::into_inner).get_mut(&device) {
+    if let Some(waiting) = WAITING.lock_anyway().get_mut(&device) {
         waiting.held_back = Some(why);
     }
 }
@@ -253,7 +254,7 @@ pub fn open(dir: &Path) -> Result<(), StoreError> {
     let lock = lock(dir)?;
     let read = read_all(&jobs).map_err(io_error(&jobs))?;
     info!("{} saved jobs in {}", read.len(), jobs.display());
-    *WAITING.lock().unwrap_or_else(PoisonError::into_inner) =
+    *WAITING.lock_anyway() =
         read.into_iter().map(|waiting| (waiting.device, waiting)).collect();
     if STORE.set(Store { jobs, _lock: lock }).is_err() {
         warn!("state_dir opened twice, the first one stays");
@@ -344,12 +345,12 @@ pub fn remove(device: DeviceId) {
 
 /// The files read at the start that no job took up yet.
 pub fn waiting() -> Vec<Waiting> {
-    WAITING.lock().unwrap_or_else(PoisonError::into_inner).values().cloned().collect()
+    WAITING.lock_anyway().values().cloned().collect()
 }
 
 /// Takes the file of `device` out of [`waiting`], to go on with it.
 pub fn take(device: DeviceId) -> Option<Waiting> {
-    WAITING.lock().unwrap_or_else(PoisonError::into_inner).remove(&device)
+    WAITING.lock_anyway().remove(&device)
 }
 
 /// Discards the file of `device` read at the start; `false` if none waits.

@@ -1210,6 +1210,8 @@ QEMU's, the golden image's dhcp-client is bound to it).
   middleware, `allow_apply` by `#[graphql(guard = "WritesAllowed")]` on each writing mutation
   (a new one needs it too). The work below (`apply`, `bootstrap`, `update`) doesn't ask again,
   and the frontend only hides or disables what the backend refuses anyway.
+- A `Mutex` is locked with `lock::LockAnyway::lock_anyway`: a panic in one job poisons it,
+  and the server and the other jobs go on with its data.
 - Before adding a helper, look whether one exists (`grep` the crate); one used from several
   modules belongs in a module of its own, not in the first one that needed it.
 

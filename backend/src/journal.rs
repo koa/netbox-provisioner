@@ -11,6 +11,7 @@ use crate::{
     device_state::JobPhase,
     error_info::ErrorInfo,
     job::{Event, Job, JobKind, JobState},
+    lock::LockAnyway,
     netbox::{NetboxError, rest::NetboxRest, web_url},
     topology::DeviceId,
 };
@@ -662,7 +663,7 @@ pub async fn observe(device: DeviceId, now: Vec<Left>, uptime: Option<Duration>,
         return;
     }
     {
-        let mut observing = OBSERVING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut observing = OBSERVING.lock_anyway();
         if observing.contains(&device) {
             return;
         }
@@ -703,9 +704,7 @@ pub async fn observe(device: DeviceId, now: Vec<Left>, uptime: Option<Duration>,
     if let Err(error) = result {
         warn!("observation of device {} not written to its journal: {error}", device.0);
     }
-    OBSERVING
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+    OBSERVING.lock_anyway()
         .retain(|observed| *observed != device);
 }
 
