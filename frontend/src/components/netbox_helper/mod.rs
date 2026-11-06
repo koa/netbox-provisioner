@@ -21,7 +21,7 @@ pub use choice::{HelperKind, HelperPreset, LinkPreset, NetTarget, RadioPreset};
 pub use new_device::SeenPreset;
 
 use crate::{
-    components::{adjust_target::SelectedTarget, job::JobView},
+    components::job::JobView,
     error::FrontendError,
     graphql::{
         authenticated::{
@@ -34,6 +34,7 @@ use crate::{
         request,
     },
     i18n::helper as t,
+    target::SelectedTarget,
 };
 use choice::{Choice, HelperChoice, NetEntry, helper};
 use cynic::MutationBuilder;

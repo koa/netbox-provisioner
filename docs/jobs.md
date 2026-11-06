@@ -24,7 +24,7 @@ einem Zustand tut und was ein Neustart des Servers mit dem Job macht.
 - **Anmeldung abgelaufen:** Die WebSocket-Verbindung prüft das Token nur beim Aufbau; solange sie
   steht, läuft die Ansicht auch mit abgelaufenem Token weiter. Lehnt der Server ein Token über
   HTTP ab (`401`/`403`, etwa beim Abbrechen), sagt die Zeile das, mit dem Knopf „Erneut
-  anmelden“ (`pages::start_login`); der Login kehrt auf die Seite zurück, die den laufenden Job
+  anmelden“ (`auth::start_login`); der Login kehrt auf die Seite zurück, die den laufenden Job
   wieder aufnimmt. Baut sich die Verbindung mit einem abgelaufenen Token neu auf, lehnt der
   Server sie ab, und sie versucht es still weiter (Z34). Ohne Refresh-Token (Pocket-ID ohne
   `offline_access`) hält `yew-oauth2` ein abgelaufenes Token für gültig ([Login](login.md)).

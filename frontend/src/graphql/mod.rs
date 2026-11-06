@@ -1,7 +1,7 @@
-use crate::{components::login_expired, error::FrontendError};
+use crate::{auth, error::FrontendError};
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use serde::{Serialize, de::DeserializeOwned};
-use std::sync::LazyLock;
+use std::{sync::LazyLock, time::Duration};
 use yew::Component;
 use yew::html::Scope;
 use yew_oauth2::prelude::{Authentication, OAuth2Context};
@@ -23,6 +23,16 @@ pub fn path_segment(segment: &cynic::GraphQlErrorPathSegment) -> String {
 pub mod anonymous;
 pub mod authenticated;
 pub mod live;
+
+/// How often a view that doesn't subscribe asks again (a site's diff job).
+pub(crate) const POLL: Duration = Duration::from_secs(1);
+/// How long to wait after the 1st, 2nd, … failed asking in a row; then the last one.
+pub(crate) const RETRY: [Duration; 4] = [
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+    Duration::from_secs(5),
+    Duration::from_secs(10),
+];
 
 static GRAPHQL_AUTHENTICATED_URL: LazyLock<String> =
     LazyLock::new(|| format!("{}/graphql", host()));
@@ -111,15 +121,15 @@ async fn post<T: DeserializeOwned>(
     let status = response.status();
     if !status.is_success() {
         let text = response.text().await.unwrap_or_default();
-        if matches!(status.as_u16(), 401 | 403) && login_expired::refuses_token(&text) {
-            login_expired::report(true);
+        if matches!(status.as_u16(), 401 | 403) && auth::refuses_token(&text) {
+            auth::report(true);
         }
         return Err(FrontendError::Server {
             status: status.as_u16(),
             text,
         });
     }
-    login_expired::report(false);
+    auth::report(false);
     let Response { data, errors } = response.json::<Response<serde_json::Value>>().await?;
     let data = match data {
         Some(data) if errors.as_ref().is_some_and(|errors| !errors.is_empty()) => {

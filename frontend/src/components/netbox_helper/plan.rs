@@ -3,19 +3,17 @@
 use super::{
     HelperChoice, HelperKind, NetboxHelper, NetboxHelperMsg, choice::helper, flags::tag_slug, t,
 };
-use crate::{
-    components::adjust_target::SelectedTarget,
-    graphql::{
-        authenticated::{
-            netbox_plan::{
-                FindingKinds, HelperJobs, HelperJobsVariables, NetboxPlanPreview,
-                NetboxPlanPreviewVariables, NetboxPlanQuery, NetboxPlanVariables, PlanStep as Step,
-            },
-            types::{IpVersion, JobKind, JobState, PoeMode, RadioRole, VlanRef},
+use crate::graphql::{
+    authenticated::{
+        netbox_plan::{
+            FindingKinds, HelperJobs, HelperJobsVariables, NetboxPlanPreview,
+            NetboxPlanPreviewVariables, NetboxPlanQuery, NetboxPlanVariables, PlanStep as Step,
         },
-        request,
+        types::{IpVersion, JobKind, JobState, PoeMode, RadioRole, VlanRef},
     },
+    request,
 };
+use crate::target::SelectedTarget;
 use cynic::QueryBuilder;
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, CodeBlock, CodeBlockCode, Spinner, SpinnerSize,

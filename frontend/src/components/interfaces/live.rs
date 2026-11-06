@@ -7,11 +7,9 @@ use super::{
     Interfaces, InterfacesMsg,
     rows::{self, Action},
 };
+use crate::target::SelectedTarget;
 use crate::{
-    components::{
-        adjust_target::SelectedTarget,
-        neighbor_check::{neighbor_finding_list, seen_list},
-    },
+    components::neighbor_check::{neighbor_finding_list, seen_list},
     error::FrontendError,
     graphql::{
         authenticated::{

@@ -14,7 +14,7 @@ use crate::{
         types::{AddressRef, DeviceRef, InterfaceRef, Severity},
     },
     i18n::interfaces as t,
-    pages::routes::AppRoute,
+    routes::AppRoute,
 };
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, Cell, CellContext, Color, Icon, Label,

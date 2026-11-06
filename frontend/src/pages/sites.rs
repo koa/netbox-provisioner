@@ -9,7 +9,7 @@ use crate::{
         live::{Subscription, watch_data},
     },
     i18n,
-    pages::routes::{AppRoute, SiteView},
+    routes::{AppRoute, SiteView},
 };
 use cynic::SubscriptionBuilder;
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner};

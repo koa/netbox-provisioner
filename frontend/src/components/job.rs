@@ -8,31 +8,18 @@ use crate::{
                 CancelJob, CancelJobVariables, Event, FallbackLeftReason, Job, JobEvents,
                 JobEventsVariables, Logged, PowerWait, RebootReason, ScriptProgress,
             },
-            types::{
-                DeviceModeReason, ErrorInfo, JobKind, JobPhase as Phase, JobState, LeftoverAction,
-            },
+            types::{ErrorInfo, JobKind, JobPhase as Phase, JobState, LeftoverAction},
         },
         live::{Subscription, watch_data},
         request,
     },
-    i18n::{common::CANCEL, device, job as t},
+    i18n::{common::CANCEL, device, device_mode, job as t},
 };
 use cynic::{MutationBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, CodeBlock, CodeBlockCode, Spinner, SpinnerSize,
 };
-use std::time::Duration;
 use yew::{Callback, Component, Context, Html, Properties, html, platform::spawn_local};
-
-/// How often a running job is asked for new events where it isn't subscribed to.
-pub(crate) const POLL: Duration = Duration::from_secs(1);
-/// How long to wait after the 1st, 2nd, … failed asking in a row; then the last one.
-pub(crate) const RETRY: [Duration; 4] = [
-    Duration::from_secs(1),
-    Duration::from_secs(2),
-    Duration::from_secs(5),
-    Duration::from_secs(10),
-];
 
 pub struct JobView {
     job: Option<Job>,
@@ -603,7 +590,7 @@ fn describe(event: &Logged) -> Html {
             }
         }),
         Event::DeviceModeConfirm(confirm) => e::device_mode_confirm(
-            &features(
+            &device_mode::features(
                 confirm
                     .changes
                     .iter()
@@ -681,7 +668,7 @@ fn describe(event: &Logged) -> Html {
                 .collect::<Vec<_>>(),
             &done.missing_files,
         ),
-        Event::DeviceModeChanged(changed) => e::device_mode_changed(&features(
+        Event::DeviceModeChanged(changed) => e::device_mode_changed(&device_mode::features(
             changed
                 .changes
                 .iter()
@@ -689,24 +676,4 @@ fn describe(event: &Logged) -> Html {
         )),
     };
     html!({ text })
-}
-
-/// The features of a device-mode change, each with why it is needed (also on the device page).
-pub(crate) fn features<'a>(
-    changes: impl Iterator<Item = (&'a str, &'a DeviceModeReason)>,
-) -> Vec<String> {
-    use crate::i18n::common::{DeviceModeNeed, device_mode_feature};
-    changes
-        .map(|(feature, reason)| {
-            device_mode_feature(
-                feature,
-                match reason {
-                    DeviceModeReason::ApplyFallback => DeviceModeNeed::ApplyFallback,
-                    DeviceModeReason::ManagementProxy => DeviceModeNeed::ManagementProxy,
-                    DeviceModeReason::UpdateFallback => DeviceModeNeed::UpdateFallback,
-                    DeviceModeReason::Other(other) => DeviceModeNeed::Other(other),
-                },
-            )
-        })
-        .collect()
 }

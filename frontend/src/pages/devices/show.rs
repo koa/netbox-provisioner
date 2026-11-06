@@ -1,11 +1,12 @@
-use crate::pages::routes::AppRoute;
+use crate::routes::AppRoute;
+use crate::target::SelectedTarget;
 use crate::{
     components::{
-        adjust_target::{AdjustTarget, SelectedTarget},
-        batch_apply::{BatchApply, BatchJob, describe_warning},
+        adjust_target::AdjustTarget,
+        batch_apply::{BatchApply, BatchJob},
         history::History,
         interfaces::Interfaces,
-        job::{JobView, features},
+        job::JobView,
         leftovers::{Leftover, Leftovers},
         menu::popup::Select,
     },
@@ -30,9 +31,10 @@ use crate::{
         path_segment, request,
     },
     i18n::{
+        apply_warning,
         common::CANCEL,
         device::{self as t, setup},
-        target,
+        device_mode, target,
     },
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
@@ -808,7 +810,7 @@ impl ShowDevice {
     ) -> Option<Html> {
         let mode = data.device_mode.as_ref()?;
         let changes = mode.changes.iter().map(|c| (c.feature.as_str(), &c.reason));
-        let missing = features(changes);
+        let missing = device_mode::features(changes);
         let adjust = Confirm {
             asking: self.confirm_device_mode,
             question: t::DEVICE_MODE_CONFIRM.into(),
@@ -911,7 +913,7 @@ impl ShowDevice {
             }
             Some(cfg) => html! {<>
                 { for cfg.warnings.iter().map(|warning| html!(
-                    <Alert inline=true title={describe_warning(warning)} r#type={AlertType::Warning}/>
+                    <Alert inline=true title={apply_warning::describe(warning)} r#type={AlertType::Warning}/>
                 ))}
                 <CodeBlock><CodeBlockCode>{ script }</CodeBlockCode></CodeBlock>
             </>},

@@ -1,4 +1,4 @@
-use crate::pages::routes::AppRoute;
+use crate::routes::AppRoute;
 use patternfly_yew::prelude::{Divider, Icon, MenuToggle, MenuToggleVariant};
 use std::fmt::Display;
 use wasm_bindgen::JsCast;

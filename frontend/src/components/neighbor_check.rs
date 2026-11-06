@@ -4,9 +4,9 @@
 //! its finding without reading the device again. A click again reads the devices anew
 //! (`refreshNeighbors`). A missing cable whose two ends NetBox has can be taken over: the
 //! helper „Verbindung“ opens below it with those ends.
+use crate::target::SelectedTarget;
 use crate::{
     components::{
-        adjust_target::SelectedTarget,
         findings::{netbox_link, severity_label},
         netbox_helper::{HelperPreset, LinkPreset, NetboxHelper},
     },

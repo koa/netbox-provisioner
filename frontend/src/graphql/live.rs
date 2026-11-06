@@ -6,9 +6,9 @@
 //! the token the connection was opened with (`TOKEN_EXPIRED`), so that answer opens it again
 //! too, with the token as it is now, instead of going to the view.
 use crate::{
-    components::{job::RETRY, login_expired},
+    auth,
     error::FrontendError,
-    graphql::{Response, host, token},
+    graphql::{RETRY, Response, host, token},
 };
 use cynic::StreamingOperation;
 use futures::{SinkExt, StreamExt, channel::mpsc};
@@ -197,13 +197,13 @@ async fn session(connection: &Rc<Connection>) -> bool {
         Some(Ok(Message::Text(text)))
             if message_type(&text).as_deref() == Some("connection_ack") =>
         {
-            login_expired::report(false);
+            auth::report(false);
         }
         // the token refused (`on_connection_init`): tried again, the note asks to log in
         Some(Err(WebSocketError::ConnectionClose(close)))
-            if login_expired::ws_refuses_token(close.code, &close.reason) =>
+            if auth::ws_refuses_token(close.code, &close.reason) =>
         {
-            login_expired::report(true);
+            auth::report(true);
             return false;
         }
         _ => return false,

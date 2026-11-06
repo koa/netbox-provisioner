@@ -11,11 +11,9 @@ pub mod loopback;
 pub mod rows;
 pub mod table;
 
+use crate::target::SelectedTarget;
 use crate::{
-    components::{
-        adjust_target::SelectedTarget, findings::finding_list, helper_flow::HelperFlow,
-        netbox_helper::HelperPreset,
-    },
+    components::{findings::finding_list, helper_flow::HelperFlow, netbox_helper::HelperPreset},
     error::FrontendError,
     graphql::{
         authenticated::{

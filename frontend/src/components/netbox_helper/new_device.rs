@@ -13,7 +13,7 @@ use crate::{
         },
         request,
     },
-    pages::routes::AppRoute,
+    routes::AppRoute,
 };
 use cynic::QueryBuilder;
 use patternfly_yew::prelude::{Form, FormGroup, Spinner, SpinnerSize, TextInput};

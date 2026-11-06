@@ -17,9 +17,9 @@
 //! device, slower), asked and polled independently and shown in a popup on hovering a node,
 //! with a spinner until the first answer of its own poll arrives.
 use crate::{
-    components::job::RETRY,
     error::FrontendError,
     graphql::{
+        RETRY,
         authenticated::{
             network_map::{
                 DevicePositionInput, MapDownReason, MapEdgeKind, MapEdgeState, MapVariables,
@@ -33,7 +33,7 @@ use crate::{
     },
     i18n::network_map as t,
     local_storage,
-    pages::routes::AppRoute,
+    routes::AppRoute,
     svg_export,
 };
 use cynic::{MutationBuilder, QueryBuilder};

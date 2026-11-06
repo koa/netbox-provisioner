@@ -4,9 +4,9 @@
 //! from a free router port first asks for the bridge device to cable there (one radio, no cable
 //! to a router but to this port), then embeds that device's helper. Written, „Jetzt anwenden“
 //! goes to the card „Änderungen“, „Später“ closes it.
+use crate::target::SelectedTarget;
 use crate::{
     components::{
-        adjust_target::SelectedTarget,
         menu::popup::Select,
         netbox_helper::{HelperPreset, NetboxHelper, Phase, RadioPreset},
     },

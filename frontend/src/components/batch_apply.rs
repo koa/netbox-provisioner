@@ -4,17 +4,14 @@
 use crate::{
     error::{FrontendError, ServerProblem},
     graphql::{
-        authenticated::{
-            batch_apply::{
-                ApplyBatch, ApplyBatchVariables, BatchCandidate as Candidate, BatchCandidates,
-                BatchDevice, DeviceVariables,
-            },
-            types::ApplyWarning as Warning,
+        authenticated::batch_apply::{
+            ApplyBatch, ApplyBatchVariables, BatchCandidate as Candidate, BatchCandidates,
+            BatchDevice, DeviceVariables,
         },
         request, request_response,
     },
-    i18n::{batch as t, device},
-    pages::routes::AppRoute,
+    i18n::{apply_warning, batch as t, device},
+    routes::AppRoute,
 };
 use cynic::{MutationBuilder, QueryBuilder};
 use patternfly_yew::prelude::{
@@ -315,7 +312,7 @@ fn fetch_planned(scope: Scope<BatchApply>, id: i32) {
                         ),
                         Some(cfg) => Planned::Ready {
                             script: cfg.script,
-                            warnings: cfg.warnings.iter().map(describe_warning).collect(),
+                            warnings: cfg.warnings.iter().map(apply_warning::describe).collect(),
                             connected: Some(device::connected(
                                 &access.connected.address,
                                 access.connected.neighbor.as_deref(),
@@ -346,19 +343,4 @@ fn start(scope: Scope<BatchApply>, ids: Vec<i32>) {
         });
         scope.send_message(BatchMessage::Started(result));
     });
-}
-
-/// A warning of `generateCfg`, as the operator reads it before applying (also on the device
-/// page).
-pub(crate) fn describe_warning(warning: &Warning) -> String {
-    use device::warning as w;
-    match warning {
-        Warning::PoeCut(cut) => w::poe_cut(&cut.port, &cut.default_name),
-        Warning::CapOffOutsideWlanGroup(cap) => w::cap_off_outside_wlan_group(&cap.package),
-        Warning::WatchTargetSilent(silent) => {
-            w::watch_target_silent(&silent.address, silent.port.as_deref(), &silent.device)
-        }
-        Warning::ApiClientsOutside(outside) => w::api_clients_outside(&outside.clients),
-        Warning::Unknown => w::UNKNOWN.into(),
-    }
 }

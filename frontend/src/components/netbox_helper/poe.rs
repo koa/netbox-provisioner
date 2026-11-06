@@ -1,8 +1,9 @@
 //! „PoE“: the direction and both ports (`poeOptions`), or what the device reports feeding
 //! (`access.poeObserved`).
 use super::{Choice, NetEntry, NetboxHelper, t};
+use crate::target::SelectedTarget;
 use crate::{
-    components::{adjust_target::SelectedTarget, menu::popup::Select},
+    components::menu::popup::Select,
     error::FrontendError,
     graphql::{
         authenticated::{

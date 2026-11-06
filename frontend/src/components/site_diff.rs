@@ -5,9 +5,9 @@
 //! of a device since (`knownDiff`, subscribed: the device page read it after an apply) goes
 //! before the job's reading; a device changed since and not read again says so.
 use crate::{
-    components::job::{POLL, RETRY},
     error::{FrontendError, ServerProblem},
     graphql::{
+        POLL, RETRY,
         authenticated::{
             site_diff::{
                 DiffEvent as Event, DiffJob as Job, DiffSite, KnownDevice, MenuChanges as Menu,
@@ -20,7 +20,7 @@ use crate::{
         request,
     },
     i18n::site_diff as t,
-    pages::routes::AppRoute,
+    routes::AppRoute,
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{

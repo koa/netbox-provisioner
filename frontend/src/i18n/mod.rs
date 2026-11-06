@@ -20,3 +20,10 @@ pub mod target;
 
 /// The device's interfaces by task (`components::interfaces`).
 pub mod interfaces;
+
+/// A warning of `generateCfg` (the device page, `components::batch_apply`).
+pub mod apply_warning;
+
+/// The features of a device-mode change, with why each is needed (the device page,
+/// `components::job`).
+pub mod device_mode;

@@ -7,7 +7,7 @@ use crate::{
         request,
     },
     i18n,
-    pages::routes::{AppRoute, SiteView},
+    routes::{AppRoute, SiteView},
 };
 use cynic::SubscriptionBuilder;
 use patternfly_yew::prelude::{Icon, MenuToggleVariant, Spinner};

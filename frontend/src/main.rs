@@ -1,12 +1,16 @@
-use crate::pages::App;
+use crate::app::App;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
+mod app;
+mod auth;
 pub mod components;
 mod error;
 mod graphql;
 mod i18n;
 mod local_storage;
 pub mod pages;
+mod routes;
 mod svg_export;
+mod target;
 
 #[wasm_bindgen]
 pub fn init_panic_hook() {

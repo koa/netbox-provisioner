@@ -6,6 +6,7 @@ pub mod history;
 pub mod interfaces;
 pub mod job;
 pub mod leftovers;
+pub mod login;
 pub mod login_expired;
 pub mod menu;
 pub mod neighbor_check;

@@ -548,7 +548,7 @@ the backend checks the JWT against `auth_issuer` and lets only `auth_users` in, 
 middleware of `/graphql` in `binary` (`authenticated_graphql`: `403` otherwise, and the server
 log says why; the frontend words the status, `i18n::error::refused`; without a refresh token
 `yew-oauth2` keeps an expired token as authenticated, so every page shows „Anmeldung
-abgelaufen“ with a login button on top (`components::login_expired`, `pages::start_login`, no
+abgelaufen“ with a login button on top (`components::login_expired`, `auth::start_login`, no
 redirect by itself) once `graphql::post` gets `401`/`403` or the WebSocket's `connection_init`
 is refused (async-graphql closes it with `1002` and the error, `token …`); not for a user
 outside `auth_users`, logging in again changes nothing there; with errors async-graphql may leave a failed non-null root
@@ -562,8 +562,8 @@ in the connection's data) with the error code `TOKEN_EXPIRED`, on which the fron
 connection again with its current token (`graphql::live::token_expired`). The issuer's keys
 are fetched once, at the start (A8). The UI picks a
 NetBox site first, then one of its devices (`/sites`, `/site/<id>`, `/site/<id>/device/<id>/show`,
-`pages/routes.rs`): no sidebar, a breadcrumb of dropdowns to the sibling sites and devices
-(`components/menu/`, page layout and `PopupMenu` taken from the cable-editor). Selects use
+`routes.rs`, each rendered by `app.rs`): no sidebar, a breadcrumb of dropdowns to the sibling
+sites and devices (`components/menu/`, page layout and `PopupMenu` taken from the cable-editor). Selects use
 `menu::popup::Select` on `PopupMenu`, not patternfly-yew's `SimpleSelect`, whose fixed-position
 popper left the end of a long list out of reach. Devices are
 reached directly, or, with `management_proxy` set, all through one device's `/ip socks` (SOCKS5

@@ -1,4 +1,4 @@
-use crate::components::adjust_target::{SelectedCredentials, SelectedTarget};
+use crate::target::{SelectedCredentials, SelectedTarget};
 
 pub const SHOW: &str = "Ändern";
 pub const HIDE: &str = "Ausblenden";
