@@ -139,6 +139,14 @@ fn content(route: AppRoute) -> Html {
         AppRoute::Site { id, .. } => (Some(*id), None),
         AppRoute::Sites | AppRoute::NetworkMap | AppRoute::NotFound => (None, None),
     };
+    let map = matches!(
+        route,
+        AppRoute::NetworkMap
+            | AppRoute::Site {
+                view: SiteView::Map,
+                ..
+            }
+    );
     let content = match route {
         AppRoute::Sites => html! {<Sites/>},
         AppRoute::NetworkMap => html! {<AllSitesMap/>},
@@ -150,7 +158,7 @@ fn content(route: AppRoute) -> Html {
             <div class="pf-v6-c-page__main-container">
                 <main class="pf-v6-c-page__main" id="main-content" tabindex="-1">
                     <PageSection r#type={PageSectionType::Breadcrumbs}>
-                        <div class="breadcrumb-bar"><Navigation {site} {device}/></div>
+                        <div class="breadcrumb-bar"><Navigation {site} {device} {map}/></div>
                     </PageSection>
                     <PageSection>{content}</PageSection>
                 </main>

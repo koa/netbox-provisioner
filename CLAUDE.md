@@ -563,7 +563,8 @@ connection again with its current token (`graphql::live::token_expired`). The is
 are fetched once, at the start (A8). The UI picks a
 NetBox site first, then one of its devices (`/sites`, `/site/<id>`, `/site/<id>/device/<id>/show`,
 `routes.rs`, each rendered by `app.rs`): no sidebar, a breadcrumb of dropdowns to the sibling
-sites and devices (`components/frame/navigation.rs`, page layout and `PopupMenu` taken from the
+sites and devices, with the network map of every site among the sites and the site's map among
+its devices (`components/frame/navigation.rs`, page layout and `PopupMenu` taken from the
 cable-editor). Selects use `widgets::popup::Select` on `PopupMenu`, not patternfly-yew's
 `SimpleSelect`, whose fixed-position
 popper left the end of a long list out of reach. Devices are

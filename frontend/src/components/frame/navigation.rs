@@ -76,9 +76,13 @@ pub struct NavigationProps {
     pub site: Option<u32>,
     #[prop_or_default]
     pub device: Option<u32>,
+    /// the page is a network map: of every site without `site`, else of the site
+    #[prop_or_default]
+    pub map: bool,
 }
 
-/// The breadcrumb of a page: the site, and on a site's pages its device.
+/// The breadcrumb of a page: the site (or the map of every site), and on a site's pages its
+/// device (or its map). Every page is reached from it.
 pub struct Navigation {
     sites: Option<Result<Vec<Site>, FrontendError>>,
 }
@@ -144,7 +148,13 @@ impl Navigation {
             text: i18n::menu::OVERVIEW.into(),
             target: AppRoute::Sites,
         };
-        let site_entries = Some(overview)
+        let all_sites_map = props.map && props.site.is_none();
+        let all_map = MenuEntry {
+            selected: all_sites_map,
+            text: i18n::menu::ALL_SITES_MAP.into(),
+            target: AppRoute::NetworkMap,
+        };
+        let site_entries = [overview, all_map]
             .into_iter()
             .chain(sites.iter().map(|entry| MenuEntry {
                 selected: site.is_some_and(|site| site.id == entry.id),
@@ -155,8 +165,11 @@ impl Navigation {
                 },
             }))
             .collect::<Box<[_]>>();
-        let site_title =
-            i18n::menu::site(site.map(|site| site.name.as_str()), props.site.is_some());
+        let site_title = if all_sites_map {
+            i18n::menu::ALL_SITES_MAP.to_string()
+        } else {
+            i18n::menu::site(site.map(|site| site.name.as_str()), props.site.is_some())
+        };
         let site_menu = html! {
             <BreadcrumbItem>
                 <MenuDropdown title={site_title} entries={site_entries}/>
@@ -168,14 +181,24 @@ impl Navigation {
         let device = props
             .device
             .and_then(|id| site.devices.iter().find(|device| device.id as u32 == id));
-        let device_entries = Some(MenuEntry {
-            selected: false,
-            text: i18n::menu::ALL_DEVICES.into(),
-            target: AppRoute::Site {
-                id: site.id as u32,
-                view: SiteView::Devices,
+        let device_entries = [
+            MenuEntry {
+                selected: false,
+                text: i18n::menu::ALL_DEVICES.into(),
+                target: AppRoute::Site {
+                    id: site.id as u32,
+                    view: SiteView::Devices,
+                },
             },
-        })
+            MenuEntry {
+                selected: props.map,
+                text: i18n::menu::SITE_MAP.into(),
+                target: AppRoute::Site {
+                    id: site.id as u32,
+                    view: SiteView::Map,
+                },
+            },
+        ]
         .into_iter()
         .chain(site.devices.iter().map(|entry| MenuEntry {
             selected: false,
@@ -183,10 +206,14 @@ impl Navigation {
             target: AppRoute::device(site.id as u32, entry.id as u32),
         }))
         .collect::<Box<[_]>>();
-        let device_title = i18n::menu::device(
-            device.map(|device| device.name.as_str()),
-            props.device.is_some(),
-        );
+        let device_title = if props.map {
+            i18n::menu::SITE_MAP.to_string()
+        } else {
+            i18n::menu::device(
+                device.map(|device| device.name.as_str()),
+                props.device.is_some(),
+            )
+        };
         html! {
             <>
                 {site_menu}
