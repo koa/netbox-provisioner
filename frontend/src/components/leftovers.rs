@@ -2,10 +2,7 @@
 //! can do about it; nothing is cleared by itself. Watchdogs a running job of another device
 //! holds suspended are no leftover: they are shown apart, without a button.
 use crate::{
-    graphql::authenticated::device_overview::{
-        DeviceOverviewTopologyDeviceByIdAccessLeftovers as Left,
-        DeviceOverviewTopologyDeviceByIdAccessLeftoversWatchdogs as Watchdogs,
-    },
+    graphql::authenticated::device::{Leftovers as Left, WatchdogsLeft as Watchdogs},
     i18n::{common::CANCEL, device::leftovers as t},
 };
 use patternfly_yew::prelude::{Alert, AlertType, Button, ButtonVariant};

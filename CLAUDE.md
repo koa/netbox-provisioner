@@ -320,8 +320,8 @@ router port a `/29` with `dhcp` and `dhcp_lease_time` 120 s (`CreatePrefix.dhcp_
 `next_free_network` skips the prefixes the plan creates already. Topology carries the link's id and peer (`Interface.wireless_link`,
 `WirelessLinkEnd`); `example_topology` makes up both for an export lacking them. Deleting is undone by creating the object again from the
 JSON NetBox had (`NetboxWritten.recreate`, `helper::write::recreate`; it gets a new id): undoing an
-older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (graphql_client
-makes it an enum; its queries need `skip_serializing_none`), naming the device or the two ports;
+older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (an enum,
+`graphql::authenticated::helper`), naming the device or the two ports;
 the device page opens them in a modal (`components::helper_flow`, a stepper over the embedded
 (its own `<ol>` with `pf-m-horizontal`: `ProgressStepper` stacks the steps below `md`, a third of
 a phone's height; `i18n::helper::finding_kind` names every `FindingKind`, test
@@ -1219,8 +1219,8 @@ QEMU's, the golden image's dhcp-client is bound to it).
   `frontend/build.rs`; the anonymous endpoint gets its own, the two stay apart), types several
   queries share in `graphql::authenticated::types`, sent by `graphql::request`
   (`request_response` keeps the data next to the errors), subscribed by `graphql::live::watch`.
-  The queries not moved yet are graphql_client's `.graphql` files; a new query is written with
-  cynic.
+  The authenticated schema is all cynic; `settings` (anonymous) is still graphql_client's. A
+  new query is written with cynic.
 - Before adding a helper, look whether one exists (`grep` the crate); one used from several
   modules belongs in a module of its own, not in the first one that needed it.
 

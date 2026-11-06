@@ -9,7 +9,7 @@ use crate::{components::job::RETRY, error::FrontendError, graphql::{host, token}
 use futures::{SinkExt, StreamExt, channel::mpsc};
 use gloo::net::websocket::{Message, futures::WebSocket};
 use cynic::StreamingOperation;
-use graphql_client::{GraphQLQuery, Response};
+use graphql_client::Response;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
@@ -35,16 +35,6 @@ impl Drop for Subscription {
             connection.send(json!({"type": "complete", "id": self.id.to_string()}));
         });
     }
-}
-
-/// Subscribes to `Q` with `variables`, each answer going to `deliver`.
-pub fn subscribe<Q: GraphQLQuery + 'static, S: Component>(
-    scope: &Scope<S>,
-    variables: Q::Variables,
-    deliver: impl Fn(Result<Response<Q::ResponseData>, FrontendError>) + 'static,
-) -> Subscription {
-    let payload = serde_json::to_value(Q::build_query(variables)).unwrap_or_default();
-    start(scope, payload, deliver)
 }
 
 /// Subscribes to `subscription` (cynic), each answer going to `deliver`.
@@ -95,8 +85,8 @@ fn start<T: DeserializeOwned + 'static, S: Component>(
 
 /// When something was read that is `age` seconds old (milliseconds since the epoch): ages come
 /// from the server, times are the browser's.
-pub fn read_at(age: impl Into<i64>) -> f64 {
-    js_sys::Date::now() - age.into() as f64 * 1000.0
+pub fn read_at(age: i32) -> f64 {
+    js_sys::Date::now() - f64::from(age) * 1000.0
 }
 
 /// The time `new` of an answer again, but `before` where it is the same reading: an age comes

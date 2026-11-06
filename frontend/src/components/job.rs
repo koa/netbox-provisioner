@@ -2,7 +2,7 @@
 //! (each answer brings the new ones), worded by `i18n::job`; with a button to cancel it.
 use crate::{
     error::{FrontendError, ServerProblem},
-    i18n::{common::CANCEL, job as t, login},
+    i18n::{common::CANCEL, device, job as t, login},
     graphql::{
         authenticated::{
             job::{
@@ -50,7 +50,7 @@ pub struct JobView {
 
 #[derive(Properties, Clone, PartialEq)]
 pub struct JobViewProps {
-    pub id: i64,
+    pub id: i32,
     /// the job is over (done, failed or cancelled), `true` when it is done
     #[prop_or_default]
     pub on_finished: Callback<bool>,
@@ -73,7 +73,7 @@ impl Component for JobView {
     fn create(ctx: &Context<Self>) -> Self {
         let scope = ctx.link().clone();
         let variables = JobEventsVariables {
-            id: ctx.props().id as i32,
+            id: ctx.props().id,
             after: Some(0),
         };
         let subscription = watch_data(ctx.link(), JobEvents::build(variables), move |answer| {
@@ -122,7 +122,7 @@ impl Component for JobView {
             JobMessage::Cancel => {
                 self.cancelling = true;
                 let scope = ctx.link().clone();
-                let id = ctx.props().id as i32;
+                let id = ctx.props().id;
                 spawn_local(async move {
                     let cancel = CancelJob::build(CancelJobVariables { id });
                     if let Err(error) = request(scope.clone(), cancel).await {
@@ -657,10 +657,7 @@ fn describe(event: &Logged) -> Html {
             &done
                 .partitions
                 .iter()
-                .map(|p| {
-                    let size = p.size_mib.into();
-                    crate::i18n::device::partition(&p.name, &p.version, size, false, p.running)
-                })
+                .map(|p| device::partition(&p.name, &p.version, p.size_mib, false, p.running))
                 .collect::<Vec<_>>(),
             &done.missing_files,
         ),

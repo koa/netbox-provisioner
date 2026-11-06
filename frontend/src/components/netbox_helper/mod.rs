@@ -525,7 +525,7 @@ impl Component for NetboxHelper {
         let job = self.job.map(|id| html! {
             <JobView
                 key={id}
-                id={i64::from(id)}
+                id={id}
                 on_finished={ctx.link().callback(NetboxHelperMsg::JobFinished)}
             />
         });

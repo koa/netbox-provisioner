@@ -23,27 +23,6 @@ pub fn host() -> String {
     format!("{protocol}//{host}")
 }
 
-/// Send Graphql-Query to server
-pub async fn query_authenticated<Q: GraphQLQuery, S: Component>(
-    scope: Scope<S>,
-    request: Q::Variables,
-) -> Result<Q::ResponseData, FrontendError> {
-    let response = query_authenticated_response::<Q, S>(scope, request).await?;
-    if let Some(data) = response.data {
-        Ok(data)
-    } else {
-        Err(FrontendError::Graphql(response.errors.unwrap_or_default()))
-    }
-}
-
-pub async fn query_authenticated_response<Q: GraphQLQuery, S: Component>(
-    scope: Scope<S>,
-    request: Q::Variables,
-) -> Result<Response<<Q as GraphQLQuery>::ResponseData>, FrontendError> {
-    let client = authenticated_client(&scope)?;
-    post(&client, GRAPHQL_AUTHENTICATED_URL.as_str(), &Q::build_query(request)).await
-}
-
 /// What cynic builds to send: a query or mutation, or a subscription, which the server answers
 /// over HTTP with its first answer (`live::execute_once`).
 pub trait Sendable: Serialize {
@@ -58,7 +37,7 @@ impl<T: DeserializeOwned + 'static, V: Serialize> Sendable for cynic::StreamingO
     type Data = T;
 }
 
-/// Sends `operation` (cynic) as [`query_authenticated`] sends one: without data, the errors.
+/// Sends `operation` (cynic) to the authenticated endpoint: without data, the errors.
 pub async fn request<O: Sendable, S: Component>(
     scope: Scope<S>,
     operation: O,
@@ -96,7 +75,7 @@ fn token<S: Component>(scope: &Scope<S>) -> Option<String> {
     }
 }
 
-/// Sends a query of graphql_client or cynic. A response without success (a token the server
+/// Sends a query. A response without success (a token the server
 /// refuses: `401` or `403` with a text) is that text, not a failure to decode it as JSON. With
 /// errors, `data` may lack the fields that failed (async-graphql leaves out a non-null root
 /// field with an error, `netboxPlan` refused with `PORT_ADDRESSED`): then it is only the

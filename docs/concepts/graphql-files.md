@@ -21,11 +21,13 @@ und `ApplyBatch` (`batch_apply`; `ErrorInfo`, `JobState` und `ApplyWarning` in `
 `PoeOptions`, `PoeObserved`, `RadioBridgeCandidates`, `CustomerNetOptions`, `PortVlanOptions`,
 `NewDeviceOptions`, `LeaseTakeoverOptions`, `NewDeviceDevices`; `helper_options`), ihr Plan
 (`NetboxPlan`, `NetboxPlanPreview`, `WriteNetboxPlan`, `UndoNetboxWrite`, `HelperJobs`;
-`netbox_plan`, alle mit dem Input `helper::Helper`, `helper_input!` ist weg). Ein
+`netbox_plan`, alle mit dem Input `helper::Helper`, `helper_input!` ist weg), die Geräteseite
+(`DeviceOverview`, `AllowApply`, `RefreshDevice` und die Mutationen, die einen Job starten;
+`device`). Damit ist das authentifizierte Schema ganz auf cynic; graphql_client bleibt für
+`settings` (anonym) und das Backend. Ein
 `Int`, das das Backend aus einem `u64` füllt und das über 32 Bit gehen kann, liest das Frontend als
 `types::WideInt` (Z38). Die Befunde sind damit ein Typ, wo sie bisher pro Abfrage einer waren und
-über JSON umgewandelt wurden. Offen danach: `describe_warning` steht in `pages/devices/show.rs` und
-`components/batch_apply.rs`, bis `show-device` auch `types::ApplyWarning` nimmt.
+über JSON umgewandelt wurden.
 
 ## Ausgangslage
 

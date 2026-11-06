@@ -95,7 +95,7 @@ pub const PARTITIONS_CONFIRM: &str = "Das Gerät formatiert den Flash neu und st
     ist währenddessen weg. ";
 
 /// one partition, e.g. `part0: RouterOS v7.23.8 …, 128 MiB, läuft`
-pub fn partition(name: &str, version: &str, size_mib: i64, active: bool, running: bool) -> String {
+pub fn partition(name: &str, version: &str, size_mib: i32, active: bool, running: bool) -> String {
     let mut text = format!(
         "{name}: {}, {size_mib} MiB",
         if version.is_empty() { "leer" } else { version }

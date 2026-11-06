@@ -28,11 +28,11 @@ use yew_nested_router::components::Link;
 /// A job of a started batch, as the device page shows it next to the others.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BatchJob {
-    pub job: i64,
-    pub device: i64,
+    pub job: i32,
+    pub device: i32,
     pub name: String,
     /// for the link to the device's page; `None` for the page's own device
-    pub site: Option<i64>,
+    pub site: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Properties)]
@@ -122,20 +122,20 @@ impl Component for BatchApply {
                 self.starting = false;
                 match result {
                     Ok(jobs) => {
-                        let own = ctx.props().id as i64;
+                        let own = ctx.props().id as i32;
                         let site = |device: i32| {
                             self.candidates
                                 .as_ref()
                                 .and_then(|c| c.as_ref().ok())
                                 .and_then(|c| c.iter().find(|c| c.device.id == device))
                                 .and_then(|c| c.device.site.as_ref())
-                                .map(|site| site.id.into())
+                                .map(|site| site.id)
                         };
                         let mut jobs: Vec<BatchJob> = jobs
                             .into_iter()
                             .map(|(job, device, name)| BatchJob {
-                                job: job.into(),
-                                device: device.into(),
+                                job,
+                                device,
                                 name,
                                 site: site(device),
                             })
@@ -332,8 +332,9 @@ fn start(scope: Scope<BatchApply>, ids: Vec<i32>) {
     });
 }
 
-/// A warning of `generateCfg`, as on the device page.
-fn describe_warning(warning: &Warning) -> String {
+/// A warning of `generateCfg`, as the operator reads it before applying (also on the device
+/// page).
+pub(crate) fn describe_warning(warning: &Warning) -> String {
     use device::warning as w;
     match warning {
         Warning::PoeCut(cut) => w::poe_cut(&cut.port, &cut.default_name),
