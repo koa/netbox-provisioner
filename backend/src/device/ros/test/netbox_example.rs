@@ -135,7 +135,7 @@ fn generate(device: &DeviceAccess) -> Result<String, String> {
     .collect::<Vec<_>>();
     let mutations = ResourceMutation::sort_mutations_with_provided_dependencies(
         mutations.as_ref(),
-        crate::device::ros::graphql::provided_by_routeros(),
+        crate::device::ros::cfg::provided_by_routeros(),
     )
     .map_err(|e| format!("sort: {e:?}"))?;
     let mut script = String::new();

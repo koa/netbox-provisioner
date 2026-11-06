@@ -14,7 +14,7 @@ use crate::chr_network::mac_telnet::ping;
 use crate::chr_network::scenario::boot_scenario;
 use crate::chr_network::vm::RunningNode;
 use crate::chr_network::wait::wait_until;
-use backend::device::ros::graphql::DeviceCfg;
+use backend::device::ros::cfg::DeviceCfg;
 use backend::device::ros::l2::KeepNameGenerator;
 use backend::topology::access::device::DeviceAccess;
 use backend::topology::builder::TopologyBuilder;

@@ -154,7 +154,7 @@ fn the_api_stays_open_for_a_client_outside() {
 
 #[test]
 fn a_remote_gives_its_address() {
-    use crate::device::ros::graphql::remote_address;
+    use crate::device::ros::cfg::remote_address;
     assert_eq!(
         remote_address("10.0.2.2:40374"),
         Some("10.0.2.2".parse().unwrap())

@@ -7,7 +7,7 @@
 use crate::{
     Error,
     config::CONFIG,
-    device::ros::{graphql::ScriptProgress, progress::Progress},
+    device::ros::{apply::ScriptProgress, progress::Progress},
     device_state::JobPhase,
     error_info::ErrorInfo,
     job::{Event, Job, JobKind, JobState},

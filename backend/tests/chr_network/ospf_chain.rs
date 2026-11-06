@@ -14,7 +14,7 @@ use crate::chr_network::scenario::boot_scenario;
 use crate::chr_network::vm::{RunningNode, mac_of};
 use crate::chr_network::wait::wait_for_ospf_full;
 use backend::device::bootstrap::{MacTelnetSetup, set_up};
-use backend::device::ros::graphql::DeviceCfg;
+use backend::device::ros::cfg::DeviceCfg;
 use backend::device::ros::l2::KeepNameGenerator;
 use backend::device::terminal::{Terminal, Tunnel};
 use backend::topology::builder::TopologyBuilder;

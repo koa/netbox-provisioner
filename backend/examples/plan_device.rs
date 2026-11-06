@@ -8,7 +8,7 @@
 //! Goes through the `management_proxy` of the config, if there is one.
 use backend::{
     config::CONFIG,
-    device::{proxied_stream, ros::graphql::DeviceCfg},
+    device::{proxied_stream, ros::cfg::DeviceCfg},
     topology::fetch::build_topology,
 };
 use mikrotik_model::MikrotikDevice;

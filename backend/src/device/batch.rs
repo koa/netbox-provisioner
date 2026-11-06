@@ -26,13 +26,13 @@ use crate::{
         AccessibleDevice, bootstrap,
         radio_hold::RadioHold,
         ros::{
-            fallback::{Pending, Rearmed},
-            graphql::{
+            apply::{
                 APPLY_TIMEOUT, ApplyStarted, FALLBACK_MARGIN, FallbackLeftReason, PlannedApply,
                 SCRIPT_LIMIT, ScriptProgress, arm_fallback_on, emit_checked, fallback_left,
                 fallback_window, look_on, remove_script, script_running, start_script,
                 write_script,
             },
+            fallback::{Pending, Rearmed},
             progress::Progress,
         },
     },

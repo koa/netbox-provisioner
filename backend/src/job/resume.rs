@@ -275,7 +275,7 @@ async fn resume_apply(
     saved: &saved_job::SavedApply,
     log: &Log,
 ) -> Result<(), Error> {
-    use crate::device::ros::graphql::{COME_BACK, FallbackLeftReason, fallback_left, give_up};
+    use crate::device::ros::apply::{COME_BACK, FallbackLeftReason, fallback_left, give_up};
     let fires = saved_job::instant(saved.script.fires);
     let link = match connect_until(device, saved.credentials.clone(), fires + COME_BACK, log).await
     {

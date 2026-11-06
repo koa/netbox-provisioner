@@ -2,7 +2,7 @@
 use crate::device::batch::{Applying, Planning, Running, Timing, Watched, run, watch};
 use crate::{
     Error,
-    device::ros::{fallback::Pending, graphql::FallbackLeftReason},
+    device::ros::{apply::FallbackLeftReason, fallback::Pending},
     job::{Event, Log},
 };
 use std::{

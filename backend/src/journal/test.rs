@@ -3,7 +3,7 @@ use super::{
     observation, outcome, parse, phase_name, script_lines,
 };
 use crate::{
-    device::{batch::BatchApply, ros::graphql as apply, update::UpdateDone},
+    device::{batch::BatchApply, ros::apply, update::UpdateDone},
     device_state::{ApplyState, UpdateState},
     error_info::{ErrorInfo, ErrorParam},
     job::{Event, JobKind, JobState},

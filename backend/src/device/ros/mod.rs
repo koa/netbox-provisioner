@@ -40,6 +40,8 @@ use std::{
     time::Duration,
 };
 
+pub mod apply;
+pub mod cfg;
 pub(crate) mod dhcp;
 pub mod fallback;
 mod firewall;

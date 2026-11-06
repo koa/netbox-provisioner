@@ -4,7 +4,10 @@
 //! couldn't be read. It only reads, so its devices stay free for jobs of their own.
 use crate::{
     Error,
-    device::ros::graphql::{GeneratedCfg, in_script, of_device_as_is},
+    device::ros::{
+        cfg::{GeneratedCfg, in_script},
+        graphql::of_device_as_is,
+    },
     error_info::ErrorInfo,
     facts::{self, FactKind, Freshness},
     job::{self, Log},

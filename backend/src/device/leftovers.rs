@@ -12,7 +12,7 @@ use crate::{
     device::{
         power::PowerChain,
         raw::{Row, command, field, rows},
-        ros::{fallback, graphql::APPLY_SCRIPT},
+        ros::{apply::APPLY_SCRIPT, fallback},
         update::{self, DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason, read_state},
         update_fallback, watchdog,
     },

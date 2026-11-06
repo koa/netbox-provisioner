@@ -1,6 +1,6 @@
 //! The ping watchdogs an apply suspends while a radio it changes stays off
 //! (`docs/watchdog.md`). On a DFS channel the AP listens for radar 10 minutes or longer
-//! after a change ([`RADIO_RESTART`](super::ros::graphql::RADIO_RESTART)), as long as
+//! after a change ([`RADIO_RESTART`](super::ros::apply::RADIO_RESTART)), as long as
 //! `ping-timeout`: the station, and whoever reaches its parent through the link, would reboot
 //! meanwhile, and the fallback of a rebooted device counts its delay anew.
 //!
@@ -19,7 +19,7 @@
 //! again.
 use super::{
     AccessibleDevice,
-    ros::graphql::PlannedApply,
+    ros::apply::PlannedApply,
     watchdog::{
         self, SAFETY_NET, Suspended, WatchdogLeft, WatchdogNotRestored, WatchdogRestored,
         WatchdogSuspended, WatcherLink, Watching,

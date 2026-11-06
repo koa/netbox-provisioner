@@ -26,7 +26,7 @@ Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
 Was noch nicht umgesetzt ist, steht als Konzept in [concepts/](concepts/), die Aufgaben dazu in
 [todo.md](todo.md).
 
-## Die Pipeline (`device/ros/graphql.rs::DeviceCfg`)
+## Die Pipeline (`device/ros/cfg.rs::DeviceCfg`)
 
 1. **Fetch**: `DeviceCfg::fetch`/`fetch_with_board_model` liest den **Ist-Zustand** direkt vom
    Zielgerät (`BaseDeviceDataCurrent::fetch`, plus optional `WirelessDeviceDataCurrent`/

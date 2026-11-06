@@ -14,7 +14,8 @@ use crate::{
     Error,
     device::{
         self, batch, bootstrap, device_mode, leftovers, partitions, power, power_cycle, radio_hold,
-        ros::graphql as apply, terminal, update, update_fallback, watchdog,
+        ros::{apply, cfg::GeneratedCfg},
+        terminal, update, update_fallback, watchdog,
     },
     device_state::{JobPhase, Restart},
     error_info::ErrorInfo,
@@ -647,7 +648,7 @@ impl Job {
                 Some(device),
                 format!("checked by job {}", self.id),
             );
-            facts::put(key, apply::GeneratedCfg::in_line(as_of), as_of);
+            facts::put(key, GeneratedCfg::in_line(as_of), as_of);
         }
     }
     pub fn job_id(&self) -> u32 {

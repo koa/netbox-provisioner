@@ -5,7 +5,8 @@ use crate::{
     device::ros::{
         CapsManDeviceDataCurrent, CapsManDeviceDataTarget, SetupError, WifiDeviceDataCurrent,
         WifiDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
-        graphql::{provided_by_routeros, reprovisioned_menus, restarts_radio},
+        apply::{reprovisioned_menus, restarts_radio},
+        cfg::provided_by_routeros,
         hw_facts::{RadioPackage, build_wifi_ports, build_wireless_ports},
         l2::{KeepNameGenerator, L2Setup},
         needed_radio_package,
@@ -560,7 +561,7 @@ async fn provisioning_with_two_slaves_sorts() {
     let mutations = wifi.generate_mutations(&current).unwrap();
     ResourceMutation::sort_mutations_with_provided_dependencies(
         &mutations,
-        crate::device::ros::graphql::provided_by_routeros(),
+        crate::device::ros::cfg::provided_by_routeros(),
     )
     .unwrap();
 }
