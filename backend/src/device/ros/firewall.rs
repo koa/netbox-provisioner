@@ -60,6 +60,41 @@ struct Rule {
     dst_address: Option<IpNet>,
 }
 
+/// A rule as `/ip/firewall/filter` or `/ipv6/firewall/filter` takes it, alike but for the
+/// types.
+macro_rules! filter {
+    ($rule:expr, $action:ident, $builder:ident) => {{
+        let rule = $rule;
+        let (action, address_list, timeout) = match rule.action.unwrap_or(Action::Accept) {
+            Action::Accept => ($action::Accept, None, None),
+            Action::Drop => ($action::Drop, None, None),
+            Action::AddSource(list, timeout) => (
+                $action::AddSrcToAddressList,
+                Some(list.into()),
+                Some(timeout),
+            ),
+        };
+        $builder {
+            action: Some(action),
+            address_list,
+            address_list_timeout: timeout,
+            chain: Some(rule.chain.into()),
+            comment: Some(rule.comment()),
+            connection_nat_state: rule.connection_nat_state.map(Into::into),
+            connection_state: rule.connection_state.map(Into::into),
+            dst_address: rule.dst_address.map(ros_address),
+            dst_port: rule.dst_port.as_deref().map(Into::into),
+            in_interface_list: Some(UPLINK_LIST.as_slice().into()),
+            protocol: rule.protocol.map(Into::into),
+            src_address: rule.src_address.map(ros_address),
+            src_address_list: rule.src_address_list.map(Into::into),
+            ..Default::default()
+        }
+        .build()
+        .expect("a perimeter rule has its chain and action")
+    }};
+}
+
 impl Rule {
     fn new(chain: &'static str, name: &str, action: Action) -> Self {
         Rule {
@@ -79,62 +114,10 @@ impl Rule {
         }
     }
     fn v4(&self) -> IpFirewallFilterCfg {
-        let (action, address_list, timeout) = match self.action.unwrap_or(Action::Accept) {
-            Action::Accept => (IpFirewallFilterAction::Accept, None, None),
-            Action::Drop => (IpFirewallFilterAction::Drop, None, None),
-            Action::AddSource(list, timeout) => (
-                IpFirewallFilterAction::AddSrcToAddressList,
-                Some(list.into()),
-                Some(timeout),
-            ),
-        };
-        IpFirewallFilterCfgBuilder {
-            action: Some(action),
-            address_list,
-            address_list_timeout: timeout,
-            chain: Some(self.chain.into()),
-            comment: Some(self.comment()),
-            connection_nat_state: self.connection_nat_state.map(Into::into),
-            connection_state: self.connection_state.map(Into::into),
-            dst_address: self.dst_address.map(ros_address),
-            dst_port: self.dst_port.as_deref().map(Into::into),
-            in_interface_list: Some(UPLINK_LIST.as_slice().into()),
-            protocol: self.protocol.map(Into::into),
-            src_address: self.src_address.map(ros_address),
-            src_address_list: self.src_address_list.map(Into::into),
-            ..Default::default()
-        }
-        .build()
-        .expect("a perimeter rule has its chain and action")
+        filter!(self, IpFirewallFilterAction, IpFirewallFilterCfgBuilder)
     }
     fn v6(&self) -> Ipv6FirewallFilterCfg {
-        let (action, address_list, timeout) = match self.action.unwrap_or(Action::Accept) {
-            Action::Accept => (Ipv6FirewallFilterAction::Accept, None, None),
-            Action::Drop => (Ipv6FirewallFilterAction::Drop, None, None),
-            Action::AddSource(list, timeout) => (
-                Ipv6FirewallFilterAction::AddSrcToAddressList,
-                Some(list.into()),
-                Some(timeout),
-            ),
-        };
-        Ipv6FirewallFilterCfgBuilder {
-            action: Some(action),
-            address_list,
-            address_list_timeout: timeout,
-            chain: Some(self.chain.into()),
-            comment: Some(self.comment()),
-            connection_nat_state: self.connection_nat_state.map(Into::into),
-            connection_state: self.connection_state.map(Into::into),
-            dst_address: self.dst_address.map(ros_address),
-            dst_port: self.dst_port.as_deref().map(Into::into),
-            in_interface_list: Some(UPLINK_LIST.as_slice().into()),
-            protocol: self.protocol.map(Into::into),
-            src_address: self.src_address.map(ros_address),
-            src_address_list: self.src_address_list.map(Into::into),
-            ..Default::default()
-        }
-        .build()
-        .expect("a perimeter rule has its chain and action")
+        filter!(self, Ipv6FirewallFilterAction, Ipv6FirewallFilterCfgBuilder)
     }
 }
 

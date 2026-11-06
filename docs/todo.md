@@ -17,11 +17,6 @@ nennenswerten Doppelungen (`cancelJob` nahm noch einen eigenen Typ, behoben). Di
 Funktionen sind dieselben wie vorher; B15 bis B23 bleiben, wie sie sind, B14 ist im Frontend
 kleiner geworden.
 
-Die Bereinigungen aus der Durchsicht vom 2026-11-06, je ein Commit, Tests und clippy grün,
-das Verhalten unverändert (die Fehler B12 und B13 sind behoben):
-
-1. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
-
 ## Entscheidungen
 
 Fragen aus den Konzepten und der Durchsicht, mit der Antwort und den Aufgaben, die davon
@@ -59,7 +54,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B23 | Wiederholungen bei Geräten und Firewall: die Port-Ketten pro Board in `hw_facts.rs` (`repeat_n…chain…enumerate`, z.B. CCR1009-7G/8G) als Tabelle oder Makro, dort auch 4 gleiche Match-Arme; die Builder für v4 und v6 in `ros/firewall.rs` (`v4`/`v6`) gleich bis auf die Typen | S–M | offen |
 
 ## C. Konzepte zum Umsetzen
 

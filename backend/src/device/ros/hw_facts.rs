@@ -7,19 +7,20 @@ use mikrotik_model::{
         ADVERTISE_25G, ADVERTISE_100M, EthernetNamePattern, generate_ethernet, generate_wlan,
     },
     model::{
-        EnabledDisabled, InterfaceEthernetByDefaultName, InterfaceW60GArp, InterfaceW60GByName,
-        InterfaceW60GCfg, InterfaceWirelessAdaptiveNoiseImmunity, InterfaceWirelessArp,
-        InterfaceWirelessBand, InterfaceWirelessBasicRatesAG, InterfaceWirelessByDefaultName,
-        InterfaceWirelessCfg, InterfaceWirelessChannelWidth, InterfaceWirelessFrequencyMode,
-        InterfaceWirelessGuardInterval, InterfaceWirelessHwProtectionMode,
-        InterfaceWirelessInstallation, InterfaceWirelessMulticastHelper, InterfaceWirelessNv2Mode,
-        InterfaceWirelessNv2Qos, InterfaceWirelessPreambleMode, InterfaceWirelessRateSelection,
-        InterfaceWirelessRateSet, InterfaceWirelessSupportedRatesAG, InterfaceWirelessTxPowerMode,
-        InterfaceWirelessVlanMode, InterfaceWirelessWdsMode, InterfaceWirelessWpsMode,
+        EnabledDisabled, EthernetSpeed, InterfaceEthernetByDefaultName, InterfaceW60GArp,
+        InterfaceW60GByName, InterfaceW60GCfg, InterfaceWirelessAdaptiveNoiseImmunity,
+        InterfaceWirelessArp, InterfaceWirelessBand, InterfaceWirelessBasicRatesAG,
+        InterfaceWirelessByDefaultName, InterfaceWirelessCfg, InterfaceWirelessChannelWidth,
+        InterfaceWirelessFrequencyMode, InterfaceWirelessGuardInterval,
+        InterfaceWirelessHwProtectionMode, InterfaceWirelessInstallation,
+        InterfaceWirelessMulticastHelper, InterfaceWirelessNv2Mode, InterfaceWirelessNv2Qos,
+        InterfaceWirelessPreambleMode, InterfaceWirelessRateSelection, InterfaceWirelessRateSet,
+        InterfaceWirelessSupportedRatesAG, InterfaceWirelessTxPowerMode, InterfaceWirelessVlanMode,
+        InterfaceWirelessWdsMode, InterfaceWirelessWpsMode,
     },
     value::{Auto, HasNone, PossibleRangeDash},
 };
-use std::{collections::BTreeSet, iter::repeat_n, ops::RangeInclusive, time::Duration};
+use std::{collections::BTreeSet, ops::RangeInclusive, time::Duration};
 
 /// The RouterOS 7 package a board's radios need: `wireless` for the 802.11 radios of the old
 /// stack (`/interface/wireless`) and the 60 GHz ones (`/interface/w60g`), `wifi-qcom` or
@@ -267,8 +268,9 @@ pub fn runs_wireless(model: &[u8]) -> bool {
 }
 
 /// The factory values of the power cycling of a hung PD, which not every PoE board has, as a
-/// CRS318-16P-2S+ (RouterOS 7.19), a hAP ax² and a cAP ax (7.23.8) report them. Without them the diff
-/// would clear them, which RouterOS refuses for `power-cycle-ping-enabled` (must be yes or no).
+/// CRS318-16P-2S+ (RouterOS 7.19), a hAP ax² and a cAP ax (7.23.8) report them. Without them the
+/// diff would clear them, which RouterOS refuses for `power-cycle-ping-enabled` (must be yes or
+/// no).
 fn with_poe_power_cycle(
     mut port: InterfaceEthernetByDefaultName,
 ) -> InterfaceEthernetByDefaultName {
@@ -285,333 +287,177 @@ fn with_poe_power_control(port: InterfaceEthernetByDefaultName) -> InterfaceEthe
     port
 }
 
+/// What a port gives PoE out with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PoeOut {
+    No,
+    /// with the power cycling of a hung PD (`with_poe_power_cycle`)
+    PowerCycle,
+    /// with the power cycling and the voltage selection (`with_poe_power_control`)
+    PowerControl,
+}
+
+/// A run of alike ports of a board, numbered on from the run before of the same name pattern.
+#[derive(Debug, Clone, Copy)]
+struct Ports {
+    name: EthernetNamePattern,
+    speeds: &'static [EthernetSpeed],
+    l2mtu: u16,
+    poe_out: PoeOut,
+    count: usize,
+}
+
+const fn ports(
+    name: EthernetNamePattern,
+    speeds: &'static [EthernetSpeed],
+    l2mtu: u16,
+    count: usize,
+) -> Ports {
+    Ports {
+        name,
+        speeds,
+        l2mtu,
+        poe_out: PoeOut::No,
+        count,
+    }
+}
+
+const fn poe_out(poe_out: PoeOut, ports: Ports) -> Ports {
+    Ports { poe_out, ..ports }
+}
+
+/// The ethernet ports of the runs, in their order.
+fn build_runs(runs: &[Ports]) -> Box<[InterfaceEthernetByDefaultName]> {
+    let mut numbers: Vec<(EthernetNamePattern, usize)> = Vec::new();
+    let mut built = Vec::new();
+    for run in runs {
+        let first = match numbers.iter_mut().find(|(name, _)| *name == run.name) {
+            Some((_, last)) => last,
+            None => &mut numbers.push_mut((run.name, 0)).1,
+        };
+        let generator =
+            generate_ethernet(run.name, run.speeds, run.l2mtu, run.poe_out != PoeOut::No);
+        built.extend(
+            (*first + 1..=*first + run.count).map(|idx| match run.poe_out {
+                PoeOut::No => generator(idx),
+                PoeOut::PowerCycle => with_poe_power_cycle(generator(idx)),
+                PoeOut::PowerControl => with_poe_power_control(generator(idx)),
+            }),
+        );
+        *first += run.count;
+    }
+    built.into()
+}
+
+/// The ethernet ports of a board, by the model `/system/routerboard` reports; none for a board
+/// not listed.
 pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName]> {
-    match model {
+    use EthernetNamePattern::{Combo, Ether, QsfpPlus, Sfp, Sfp28, SfpSfpPlus};
+    use PoeOut::{PowerControl, PowerCycle};
+    let runs: &[Ports] = match model {
         // hAP ac: PoE-out on ether5, with the power cycling of a hung PD (ap-klr-solar, 7.23.7)
-        b"RB962UiGS-5HacT2HnT" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
-            4,
-        )
-        .enumerate()
-        .map(|(idx, generator)| generator(idx + 1))
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, true),
-                1,
-            )
-            .map(|generator| with_poe_power_cycle(generator(5))),
-        )
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::Sfp, &ADVERTISE_1G_SFP, 1600, false),
-                1,
-            )
-            .enumerate()
-            .map(|(idx, generator)| generator(idx + 1)),
-        )
-        .collect(),
+        b"RB962UiGS-5HacT2HnT" => &[
+            ports(Ether, &ADVERTISE_1G, 1598, 4),
+            poe_out(PowerCycle, ports(Ether, &ADVERTISE_1G, 1598, 1)),
+            ports(Sfp, &ADVERTISE_1G_SFP, 1600, 1),
+        ],
         // hEX PoE: ether1 is PoE-in only, PoE-out on ether2-5, a 1G SFP cage (l2mtu as
         // router-schopf reports them, 7.23.8)
-        b"RB960PGS" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
-            1,
-        )
-        .enumerate()
-        .map(|(idx, generator)| generator(idx + 1))
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, true),
-                4,
-            )
-            .enumerate()
-            .map(|(idx, generator)| with_poe_power_cycle(generator(idx + 2))),
-        )
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::Sfp, &ADVERTISE_1G_SFP, 1600, false),
-                1,
-            )
-            .enumerate()
-            .map(|(idx, generator)| generator(idx + 1)),
-        )
-        .collect(),
+        b"RB960PGS" => &[
+            ports(Ether, &ADVERTISE_1G, 1598, 1),
+            poe_out(PowerCycle, ports(Ether, &ADVERTISE_1G, 1598, 4)),
+            ports(Sfp, &ADVERTISE_1G_SFP, 1600, 1),
+        ],
         // wAP ac: ether1 is PoE-in only
-        b"RBwAPG-5HacD2HnD" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
-            2,
-        )
-        .enumerate()
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        // the first wAP ac: a single port, PoE-in only (7.23.7)
-        b"RBwAPG-5HacT2HnD" => [generate_ethernet(
-            EthernetNamePattern::Ether,
-            &ADVERTISE_1G,
-            1600,
-            false,
-        )(1)]
-        .into(),
+        b"RBwAPG-5HacD2HnD" => &[ports(Ether, &ADVERTISE_1G, 1598, 2)],
+        // the first wAP ac: a single port, PoE-in only (7.23.7); Groove A-52HPn: a single port,
+        // PoE-in only, a 10/100 port that advertises 1G all the same, no switch chip
+        // (groove-38, 7.14.1); `SXT G-5HPacD r2` as RouterOS 7.20.8 reports it, with this l2mtu
+        // (read from lab-sxt-a)
+        b"RBwAPG-5HacT2HnD" | b"Groove A-52HPn" | b"SXT G-5HPacD r2" => {
+            &[ports(Ether, &ADVERTISE_1G, 1600, 1)]
+        }
         // cAP 2n: a single port, PoE-in only; a 10/100 port that advertises 1G all the same
-        // (bachman-wlan-dg, 7.20.4)
-        b"RBcAP2n" => [generate_ethernet(
-            EthernetNamePattern::Ether,
-            &ADVERTISE_1G,
-            1598,
-            false,
-        )(1)]
-        .into(),
-        // Groove A-52HPn: a single port, PoE-in only; a 10/100 port that advertises 1G all
-        // the same, no switch chip (groove-38, 7.14.1)
-        b"Groove A-52HPn" => [generate_ethernet(
-            EthernetNamePattern::Ether,
-            &ADVERTISE_1G,
-            1600,
-            false,
-        )(1)]
-        .into(),
-        // RB750GL: five ports on an Atheros-8327, ether1 PoE-in only (sat-switch, 7.23.8)
-        b"RB750GL" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
-            5,
-        )
-        .enumerate()
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        b"RB750Gr3" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1596, false),
-            5,
-        )
-        .enumerate()
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        b"CRS326-24G-2S+" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1592, false),
-            24,
-        )
-        .enumerate()
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::SfpSfpPlus, &ADVERTISE_10G, 1592, false),
-                2,
-            )
-            .enumerate(),
-        )
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        // ether1 takes PoE in only; l2mtu 1584 on every port (klr-sw-3)
-        b"CRS309-1G-8S+" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1584, false),
-            1,
-        )
-        .enumerate()
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::SfpSfpPlus, &ADVERTISE_10G, 1584, false),
-                8,
-            )
-            .enumerate(),
-        )
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        b"CRS318-16P-2S+" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1592, true),
-            16,
-        )
-        .enumerate()
-        .map(|(idx, generator)| with_poe_power_control(generator(idx + 1)))
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::SfpSfpPlus, &ADVERTISE_10G, 1592, false),
-                2,
-            )
-            .enumerate()
-            .map(|(idx, generator)| generator(idx + 1)),
-        )
-        .collect(),
-        // hAP ax²: PoE-out on ether1
-        b"C52iG-5HaxD2HaxD" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, true),
-            1,
-        )
-        .enumerate()
-        .map(|(idx, generator)| with_poe_power_cycle(generator(idx + 1)))
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, false),
-                4,
-            )
-            .enumerate()
-            .map(|(idx, generator)| generator(idx + 2)),
-        )
-        .collect(),
-        // cAP ax: PoE-out on ether2, with the power cycling of a hung PD (ap-schopf, 7.23.8)
-        b"cAPGi-5HaxD2HaxD" => [
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, false)(1),
-            with_poe_power_cycle(generate_ethernet(
-                EthernetNamePattern::Ether,
-                &ADVERTISE_1G,
-                1568,
-                true,
-            )(2)),
-        ]
-        .into(),
-        b"CCR1009-7G-1C-1S+" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G_FULL, 1580, false),
-            7,
-        )
-        .enumerate()
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::Combo, &ADVERTISE_1G_FULL, 1580, false),
-                1,
-            )
-            .enumerate(),
-        )
-        .chain(
-            repeat_n(
-                generate_ethernet(
-                    EthernetNamePattern::SfpSfpPlus,
-                    &ADVERTISE_10G_FULL,
-                    1580,
-                    false,
-                ),
-                1,
-            )
-            .enumerate(),
-        )
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        // router-faesigrund-keller (examples/02-edge-router-bgp-vpn), as its 7G sibling
-        b"CCR1009-8G-1S-1S+" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G_FULL, 1580, false),
-            8,
-        )
-        .enumerate()
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::Sfp, &ADVERTISE_1G_FULL, 1580, false),
-                1,
-            )
-            .enumerate(),
-        )
-        .chain(
-            repeat_n(
-                generate_ethernet(
-                    EthernetNamePattern::SfpSfpPlus,
-                    &ADVERTISE_10G_FULL,
-                    1580,
-                    false,
-                ),
-                1,
-            )
-            .enumerate(),
-        )
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        b"CCR2004-1G-12S+2XS" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1600, false),
-            1,
-        )
-        .enumerate()
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::SfpSfpPlus, &ADVERTISE_10G, 1592, false),
-                12,
-            )
-            .enumerate(),
-        )
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::Sfp28, &ADVERTISE_25G, 1592, false),
-                2,
-            )
-            .enumerate(),
-        )
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        b"CRS354-48G-4S+2Q+" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1592, false),
-            48,
-        )
-        .chain(repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_100M, 1592, false),
-            1,
-        ))
-        .enumerate()
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::SfpSfpPlus, &ADVERTISE_10G, 1592, false),
-                4,
-            )
-            .enumerate(),
-        )
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::QsfpPlus, &ADVERTISE_10G, 1592, false),
-                4 * 2,
-            )
-            .enumerate(),
-        )
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        b"CRS109-8G-1S-2HnD" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1588, false),
-            8,
-        )
-        .enumerate()
-        .chain(
-            repeat_n(
-                generate_ethernet(EthernetNamePattern::Sfp, &ADVERTISE_1G_SFP, 1588, false),
-                1,
-            )
-            .enumerate(),
-        )
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        // point-to-point radio bridges: one ethernet port next to the radio
-        // `SXT G-5HPacD r2` as RouterOS 7.20.8 reports it, with this l2mtu (read from lab-sxt-a)
-        b"SXT G-5HPacD r2" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1600, false),
-            1,
-        )
-        .enumerate()
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        b"RBDynaDishG-5HacDr3"
+        // (bachman-wlan-dg, 7.20.4); point-to-point radio bridges: one ethernet port next to
+        // the radio
+        b"RBcAP2n"
+        | b"RBDynaDishG-5HacDr3"
         | b"RB912UAG-2HPnD"
         | b"912UAG-2HPnD"
         | b"SXT G-5HPacD"
         | b"RBwAPG-60ad"
         | b"RBwAPG-60ad-A"
-        | b"RBLHGG-60ad" => repeat_n(
-            generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1598, false),
-            1,
-        )
-        .enumerate()
-        .map(|(idx, generator)| generator(idx + 1))
-        .collect(),
-        _ => Box::default(),
-    }
+        | b"RBLHGG-60ad" => &[ports(Ether, &ADVERTISE_1G, 1598, 1)],
+        // RB750GL: five ports on an Atheros-8327, ether1 PoE-in only (sat-switch, 7.23.8)
+        b"RB750GL" => &[ports(Ether, &ADVERTISE_1G, 1598, 5)],
+        b"RB750Gr3" => &[ports(Ether, &ADVERTISE_1G, 1596, 5)],
+        b"CRS326-24G-2S+" => &[
+            ports(Ether, &ADVERTISE_1G, 1592, 24),
+            ports(SfpSfpPlus, &ADVERTISE_10G, 1592, 2),
+        ],
+        // ether1 takes PoE in only; l2mtu 1584 on every port (klr-sw-3)
+        b"CRS309-1G-8S+" => &[
+            ports(Ether, &ADVERTISE_1G, 1584, 1),
+            ports(SfpSfpPlus, &ADVERTISE_10G, 1584, 8),
+        ],
+        b"CRS318-16P-2S+" => &[
+            poe_out(PowerControl, ports(Ether, &ADVERTISE_1G, 1592, 16)),
+            ports(SfpSfpPlus, &ADVERTISE_10G, 1592, 2),
+        ],
+        // hAP ax²: PoE-out on ether1
+        b"C52iG-5HaxD2HaxD" => &[
+            poe_out(PowerCycle, ports(Ether, &ADVERTISE_1G, 1568, 1)),
+            ports(Ether, &ADVERTISE_1G, 1568, 4),
+        ],
+        // cAP ax: PoE-out on ether2, with the power cycling of a hung PD (ap-schopf, 7.23.8)
+        b"cAPGi-5HaxD2HaxD" => &[
+            ports(Ether, &ADVERTISE_1G, 1568, 1),
+            poe_out(PowerCycle, ports(Ether, &ADVERTISE_1G, 1568, 1)),
+        ],
+        b"CCR1009-7G-1C-1S+" => &[
+            ports(Ether, &ADVERTISE_1G_FULL, 1580, 7),
+            ports(Combo, &ADVERTISE_1G_FULL, 1580, 1),
+            ports(SfpSfpPlus, &ADVERTISE_10G_FULL, 1580, 1),
+        ],
+        // router-faesigrund-keller (examples/02-edge-router-bgp-vpn), as its 7G sibling
+        b"CCR1009-8G-1S-1S+" => &[
+            ports(Ether, &ADVERTISE_1G_FULL, 1580, 8),
+            ports(Sfp, &ADVERTISE_1G_FULL, 1580, 1),
+            ports(SfpSfpPlus, &ADVERTISE_10G_FULL, 1580, 1),
+        ],
+        b"CCR2004-1G-12S+2XS" => &[
+            ports(Ether, &ADVERTISE_1G, 1600, 1),
+            ports(SfpSfpPlus, &ADVERTISE_10G, 1592, 12),
+            ports(Sfp28, &ADVERTISE_25G, 1592, 2),
+        ],
+        // ether49 is the 100M management port
+        b"CRS354-48G-4S+2Q+" => &[
+            ports(Ether, &ADVERTISE_1G, 1592, 48),
+            ports(Ether, &ADVERTISE_100M, 1592, 1),
+            ports(SfpSfpPlus, &ADVERTISE_10G, 1592, 4),
+            ports(QsfpPlus, &ADVERTISE_10G, 1592, 4 * 2),
+        ],
+        b"CRS109-8G-1S-2HnD" => &[
+            ports(Ether, &ADVERTISE_1G, 1588, 8),
+            ports(Sfp, &ADVERTISE_1G_SFP, 1588, 1),
+        ],
+        _ => &[],
+    };
+    build_runs(runs)
 }
 /// The `/interface/wifi` radios a board comes with (tests; the service reads them off the device).
 #[cfg(test)]
 pub fn build_wifi_ports(model: &[u8]) -> Box<[mikrotik_model::model::InterfaceWifiByDefaultName]> {
     use mikrotik_model::hwconfig::generate_wifi;
     match model {
-        b"C52iG-5HaxD2HaxD" => repeat_n(generate_wifi(), 2)
-            .enumerate()
-            .map(|(idx, generator)| generator(idx + 1))
-            .collect(),
+        b"C52iG-5HaxD2HaxD" => (1..=2).map(generate_wifi()).collect(),
         &_ => Box::default(),
     }
 }
 pub fn build_wireless_ports(model: &[u8]) -> Box<[InterfaceWirelessByDefaultName]> {
     match model {
         b"CRS109-8G-1S-2HnD" | b"RB912UAG-2HPnD" | b"912UAG-2HPnD" => {
-            repeat_n(generate_wlan(1600), 1)
-                .enumerate()
-                .map(|(idx, generator)| generator(idx + 1))
-                .collect()
+            [generate_wlan(1600)(1)].into()
         }
         // integrated antenna gain as the boards report it
         b"RBDynaDishG-5HacDr3" => [wireless_bridge_port(1, 25)].into(),
