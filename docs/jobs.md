@@ -473,16 +473,19 @@ des Jobs).
 Zwei Dinge hängen an den Aufträgen **mehrerer** Geräte. Sie sind keine Zustände, sondern
 Bedingungen an Übergängen, in eckigen Klammern in den Diagrammen.
 
-### PoE-Kette
+### PoE-Kette und Wege
 
-Ein Gerät, das gerade Pakete auf dem Flash hat, kann ein Stromausfall unbrauchbar machen. Das
-verhindern die Leases in `device::power` (nur im Prozess); als Bedingungen:
+Ein Gerät, das gerade Pakete auf dem Flash hat, kann ein Stromausfall unbrauchbar machen, und
+ein Update bricht ab, wenn ein Neustart unterwegs dem Provisioner den Weg zum Gerät nimmt. Das
+verhindern die Leases in `device::dependency` (nur im Prozess); als Bedingungen:
 
 | Bedingung | wahr, wenn kein Gerät der Kette … |
 |---|---|
 | `[kein Gespeistes aktualisiert]` | … unterhalb (das es direkt oder weiter unten speist) in einem Update oder Downgrade nach `WartetAufKette` ist |
 | `[kein Speisendes startet neu]` | … oberhalb neu startet (`Neustart`, `Ausgelöst`, `FirmwareNeustart`, Device-Mode `WartetAufTaste` und `Neustart`) oder einem Gerät darunter den Strom schneidet („Strom aus und ein“ `Aus`, `WartetAufGerät`) |
 | `[weder das Gespeiste noch eines, das es speist, aktualisiert]` | … ab dem gespeisten Gerät abwärts in einem Update oder Downgrade nach `WartetAufKette` ist |
+| `[keines dahinter aktualisiert]` | … in einem Update nach `WartetAufKette` ist und nur über dieses und die neu startenden Geräte erreichbar (die Wege: Kabel und Funkstrecken aus NetBox ohne die laut LSDB toten, ab den Wurzeln des Management-Baums) |
+| `[keines davor startet neu]` | … neu startet und dem Gerät, allein oder mit den anderen neu startenden, den Weg nimmt |
 
 Wer auf eine Bedingung wartet, bleibt im Zustand `WartetAuf…`; der Übergang geschieht, sobald ein
 anderes Gerät seinen Lease freigibt. Prüfen und Nehmen geschehen unter einer Sperre, damit sich

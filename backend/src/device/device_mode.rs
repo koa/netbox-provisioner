@@ -17,7 +17,7 @@ use crate::{
     Error,
     config::CONFIG,
     device::{
-        power::PowerChain,
+        dependency::PowerChain,
         raw::{Row, field, rows},
         update::{DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason},
     },

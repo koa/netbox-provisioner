@@ -4,7 +4,7 @@ use crate::{
     Error,
     device::{
         AccessibleDevice, Connecting,
-        power::PowerChain,
+        dependency::PowerChain,
         update,
         watchdog::{self, restore_watchdogs},
     },
@@ -329,7 +329,7 @@ async fn resume_update(
             }),
         }
     }
-    let power = PowerChain::of(device);
+    let power = PowerChain::of(device).await;
     let until = rebooting_since + saved.run.wait;
     let resumed = async {
         let link = connect_until(device, saved.credentials.clone(), until, log).await?;

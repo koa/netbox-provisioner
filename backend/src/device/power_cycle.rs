@@ -9,7 +9,7 @@ use crate::{
     Error,
     device::{
         bootstrap,
-        power::{PowerChain, RebootLease},
+        dependency::{PowerChain, RebootLease},
         raw::command,
         update::REBOOT_TIMEOUT,
     },

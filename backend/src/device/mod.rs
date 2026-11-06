@@ -25,12 +25,12 @@ use tokio_socks::tcp::Socks5Stream;
 
 pub mod batch;
 pub mod bootstrap;
+pub mod dependency;
 pub mod device_mode;
 pub mod interface_live;
 pub mod leftovers;
 pub mod neighbors;
 pub mod partitions;
-pub mod power;
 pub mod power_cycle;
 pub(crate) mod radio_hold;
 pub(crate) mod raw;

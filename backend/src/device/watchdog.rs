@@ -127,7 +127,7 @@ pub struct Watcher {
 /// The RouterOS devices whose watchdogs may fire while `device` is away: the ones powering it
 /// and the ones depending on it on the way to the management roots, nearest suppliers first.
 pub fn watchers(device: &DeviceAccess, tree: &ManagementTree) -> Vec<Watcher> {
-    let suppliers = super::power::supplier_devices(device)
+    let suppliers = super::dependency::supplier_devices(device)
         .into_iter()
         .filter(DeviceAccess::has_routeros)
         .collect::<Vec<_>>();

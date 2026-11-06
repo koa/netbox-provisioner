@@ -81,7 +81,7 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
 
 `charts/netbox-provisioner`:
 
-- **Eine Replik** mit Strategie `Recreate`: Jobs, Leases (`device/power.rs`) und das Abbrechen
+- **Eine Replik** mit Strategie `Recreate`: Jobs, Leases (`device/dependency.rs`) und das Abbrechen
   leben im Prozess, zwei Repliken würden dasselbe Gerät gleichzeitig anwenden, und beim Update
   laufen nie zwei.
 - **`state_dir`** ist das Volume `state` unter `/state`: `persistence.existingClaim`, sonst ein

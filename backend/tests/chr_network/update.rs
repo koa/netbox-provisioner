@@ -9,7 +9,7 @@ use crate::chr_network::qemu::{free_tcp_port, nix_unavailable};
 use crate::chr_network::vm::{PortWiring, boot_node, mac_of, start_node};
 use backend::Error;
 use backend::device::bootstrap::{MacTelnetSetup, set_up};
-use backend::device::power::PowerChain;
+use backend::device::dependency::PowerChain;
 use backend::device::terminal::{Terminal, Tunnel, upload};
 use backend::device::update::{
     DeviceLink, Downgraded, UpdateDone, Version, downgrade, read_state, update,

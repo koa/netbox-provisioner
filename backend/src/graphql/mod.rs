@@ -3,8 +3,9 @@ use crate::{
     config::CONFIG,
     context::UserInfo,
     device::{
-        AccessibleDevice, Connecting, bootstrap, device_mode, partitions,
-        power::PowerChain,
+        AccessibleDevice, Connecting, bootstrap,
+        dependency::PowerChain,
+        device_mode, partitions,
         update::{self, DeviceLink},
         update_fallback,
         watchdog::{Watchers, restore_watchdogs},
@@ -224,7 +225,6 @@ where
     W: FnOnce(AccessibleDevice, DeviceAccess, PowerChain, Log) -> F + Send + 'static,
     F: Future<Output = Result<(), Error>> + Send + 'static,
 {
-    let power = PowerChain::of(&device);
     Ok(job::start(
         &device.clone(),
         kind,
@@ -233,6 +233,7 @@ where
             if let Some(state) = state {
                 log.enter(state);
             }
+            let power = PowerChain::of(&device).await;
             let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
             work(link, device, power, log).await
         },
@@ -513,7 +514,6 @@ impl MutationAuthenticated {
         let device = self.device(id).await?;
         let (supplier, supply, factory) = crate::device::power_cycle::supply(&device)
             .ok_or_else(|| Error::NoPowerSupply(device.name().into()))?;
-        let power = PowerChain::of(&device);
         let name: Box<str> = device.name().into();
         Ok(job::start(
             &supplier.clone(),
@@ -521,6 +521,7 @@ impl MutationAuthenticated {
             Started::By(user_label(ctx)),
             |log| async move {
                 log.enter(PowerCycleState::Reading);
+                let power = PowerChain::of(&device).await;
                 let link = connect_for_job(&supplier, DeviceTarget::default(), &log).await?;
                 let cut = crate::device::power_cycle::power_cycle(
                     &link.api().await?,

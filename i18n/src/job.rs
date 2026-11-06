@@ -305,6 +305,18 @@ pub mod event {
             "Wartet mit dem Neustart, bis {device} (über PoE versorgt) sein Update abgeschlossen hat"
         )
     }
+    pub fn waiting_behind_rebooting(device: &str) -> String {
+        format!(
+            "Wartet, bis {device} nach seinem Neustart zurück ist: ohne es ist das Gerät nicht \
+             erreichbar"
+        )
+    }
+    pub fn waiting_for_behind(device: &str) -> String {
+        format!(
+            "Wartet mit dem Neustart, bis {device} sein Update abgeschlossen hat: es ist nur \
+             über dieses Gerät erreichbar"
+        )
+    }
     pub fn waiting_for(device: &str, reason: &str) -> String {
         format!("Wartet auf {device} ({reason})")
     }
@@ -637,7 +649,7 @@ pub mod phase {
     pub const FINISHING: &str = "Nacharbeit";
 
     pub const READING: &str = "Lesen";
-    pub const WAITING_FOR_CHAIN: &str = "Wartet auf die PoE-Kette";
+    pub const WAITING_FOR_CHAIN: &str = "Wartet auf die PoE-Kette und die Wege";
     pub const REMEMBERING_NEIGHBORS: &str = "OSPF-Nachbarn merken";
     pub const DOWNLOADING: &str = "Pakete laden";
     pub const UPLOADING: &str = "Pakete hochladen";

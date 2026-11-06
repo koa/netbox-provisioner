@@ -1046,10 +1046,16 @@ removed. A VLAN interface on a tagged bridge only exists where the device has L3
 
 A device that powers another one over PoE (NetBox `poe_mode=pse` on the port cabled to it) must
 not reboot while that one updates: uploaded packages install at the next boot, and losing power
-then has bricked devices. `device::power::PowerChain::of` collects the devices up and down the
-PoE chains; the update holds an update lease from before the upload to the end and a reboot
-lease per reboot, and a reboot waits while a consumer holds an update lease, an update waits to
-start while a supplier reboots (both under one lock). The leases are in-process only. They only hold back reboots the provisioner sends: a supplier with
+then has bricked devices. Nor may a device reboot while one the provisioner reaches only through
+it updates. `device::dependency::PowerChain::of` collects the devices up and down the PoE chains
+and the ways from the management roots (`Paths`: NetBox's cables and wireless links, without
+those the LSDB says are down, every one if no router answers within 10 s); the update holds an
+update lease from before the upload to the end and a reboot lease per reboot, and a reboot waits
+while a consumer holds an update lease or a device updating is reached only through it and the
+devices rebooting (`BehindUpdating`), an update waits to start while a supplier reboots or the
+rebooting devices cut it off (`BehindRebooting`), all under one lock. A device NetBox's ways
+don't reach at all holds nothing back. The leases are in-process only. They only hold back
+reboots the provisioner sends: a supplier with
 `/system/watchdog watch-address` behind the updating device reboots by itself and cuts its
 power mid-install (berghof-burri bricked burri-schopf that way; RouterBOOT then only asked for
 Netinstall).

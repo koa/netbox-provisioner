@@ -1,6 +1,7 @@
 # Konzept: Updates im ganzen Netz
 
-Status: Konzept, nicht umgesetzt. Aufgabe C10 in [todo.md](../todo.md).
+Status: zum Teil umgesetzt: die Regel beim Neustart (`device/dependency.rs`). Aufgabe C10 in
+[todo.md](../todo.md).
 Baut auf dem Server-Log (Events, Jobs) auf, das erledigt ist, und profitiert vom
 [Update-Fallback](../update-fallback.md).
 
@@ -19,7 +20,7 @@ Startet ein Gerät neu, sind alle Geräte, deren Weg nur über dieses Gerät fü
 weg. Läuft auf einem davon gerade ein Upload oder das Warten auf den Neustart, bricht dessen
 Update mit `NotBackAfterReboot` oder einem Upload-Fehler ab, obwohl es selbst in Ordnung ist.
 
-Für PoE löst `device/power.rs` dasselbe Problem schon: ein speisendes Gerät startet erst neu,
+Für PoE löste `device/power.rs` dasselbe Problem schon: ein speisendes Gerät startet erst neu,
 wenn keines der gespeisten mehr ein Update macht. Der Vorschlag verallgemeinert das. Neben
 „speist“ gibt es die Beziehung „liegt auf dem Weg zu“.
 
@@ -81,7 +82,7 @@ Die Regel oben verhindert Schaden, sie legt aber noch keine gute Reihenfolge fes
   entscheidet: „Gerät überspringen und weiter“ oder „Rollout beenden“.
 - **Abbrechen:** wie bei einem Einzel-Update, an den sicheren Stellen. Nicht gestartete Geräte
   bleiben, wie sie sind.
-- **Neustart des Provisioners:** Die Leases leben im Prozess (`power.rs`). Der Rollout ist danach
+- **Neustart des Provisioners:** Die Leases leben im Prozess (`dependency.rs`). Der Rollout ist danach
   weg, aber er ist idempotent: `next_step` gibt für ein Gerät auf der Zielversion `None` zurück.
   Ein neuer Rollout überspringt also, was schon fertig ist.
 
@@ -116,8 +117,10 @@ Geräten mit 3 Architekturen sind das wenige Dutzend MB statt einige hundert.
 - Mutationen: `planRollout(siteIds, channel)` (nur lesend, gibt den Plan zurück),
   `startRollout(siteIds, channel)`, `continueRollout(jobId)`, `skipRolloutDevice(jobId, deviceId)`,
   `cancelJob` wie bisher.
-- `device/power.rs` wird zu `device/dependency.rs`: Leases wie heute, die Prüfung zusätzlich
-  über den Wegegraphen.
+- `device/power.rs` ist zu `device/dependency.rs` geworden: Leases wie zuvor, die Prüfung
+  zusätzlich über den Wegegraphen (`Paths`, je Update einmal gebaut; ohne Antwort eines Routers
+  in 10 s gelten alle Kanten aus NetBox). Ein Gerät, das die Wege aus NetBox gar nicht erreichen,
+  hält niemanden auf.
 
 ## Frontend
 
@@ -129,7 +132,7 @@ läuft: dieselbe Tabelle mit Zustand pro Gerät und Link auf den Job des Geräts
 ## Testen
 
 - Unit-Tests für die Regel (Graph mit redundanten Wegen, Ketten, PoE und Weg kombiniert), wie
-  `power.rs` sie für PoE hat.
+  `dependency.rs` sie für PoE hat (erledigt: Kette, zwei Wege, Gerät abseits der Wege).
 - CHR: die 3-Knoten-Kette `entry -- a -- target` aus `ospf_chain.rs`. Ein Rollout muss `target`
   vor `a` neu starten, und `a` muss warten, solange `target` sein Update macht.
 - Lab: ein Rollout auf eine Version, die die Geräte schon haben, nur mit Paketabgleich. Ein echter

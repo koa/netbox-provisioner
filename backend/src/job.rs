@@ -13,7 +13,8 @@
 use crate::{
     Error,
     device::{
-        self, batch, bootstrap, device_mode, leftovers, partitions, power, power_cycle, radio_hold,
+        self, batch, bootstrap, dependency, device_mode, leftovers, partitions, power_cycle,
+        radio_hold,
         ros::{apply, cfg::GeneratedCfg},
         terminal, update, update_fallback, watchdog,
     },
@@ -51,8 +52,8 @@ const KEEP: usize = 50;
 pub enum Event {
     Connecting(device::Connecting),
     Connected(device::Connected),
-    PoeChain(power::PoeChain),
-    WaitingForPower(power::WaitingForPower),
+    PoeChain(dependency::PoeChain),
+    WaitingForDevice(dependency::WaitingForDevice),
     UpdateTarget(update::UpdateTarget),
     UpdateStart(update::UpdateStart),
     UpdateStepPlanned(update::UpdateStepPlanned),

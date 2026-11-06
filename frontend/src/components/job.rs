@@ -5,8 +5,8 @@ use crate::{
     graphql::{
         authenticated::{
             job::{
-                CancelJob, CancelJobVariables, Event, FallbackLeftReason, Job, JobEvents,
-                JobEventsVariables, Logged, PowerWait, RebootReason, ScriptProgress,
+                CancelJob, CancelJobVariables, DeviceWait, Event, FallbackLeftReason, Job,
+                JobEvents, JobEventsVariables, Logged, RebootReason, ScriptProgress,
             },
             types::{ErrorInfo, JobKind, JobPhase as Phase, JobState, LeftoverAction},
         },
@@ -537,10 +537,12 @@ fn describe(event: &Logged) -> Html {
         Event::UpdateTarget(target) => e::update_target(&target.version, target.channel.as_deref()),
         Event::WatchdogNotSet(not_set) => e::watchdog_not_set(&not_set.device),
         Event::PoeChain(chain) => e::poe_chain(&chain.suppliers, &chain.consumers),
-        Event::WaitingForPower(wait) => match &wait.reason {
-            PowerWait::SupplierRebooting => e::waiting_for_supplier(&wait.device),
-            PowerWait::ConsumerUpdating => e::waiting_for_consumer(&wait.device),
-            PowerWait::Other(other) => e::waiting_for(&wait.device, other),
+        Event::WaitingForDevice(wait) => match &wait.reason {
+            DeviceWait::SupplierRebooting => e::waiting_for_supplier(&wait.device),
+            DeviceWait::ConsumerUpdating => e::waiting_for_consumer(&wait.device),
+            DeviceWait::BehindRebooting => e::waiting_behind_rebooting(&wait.device),
+            DeviceWait::BehindUpdating => e::waiting_for_behind(&wait.device),
+            DeviceWait::Other(other) => e::waiting_for(&wait.device, other),
         },
         Event::UpdateStart(start) => {
             e::update_start(&start.version, &start.architecture, &start.packages)

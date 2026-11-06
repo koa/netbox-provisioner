@@ -115,7 +115,7 @@ pub enum UpdateState {
     Reading,
     /// the watchdogs of the devices that would miss this one, suspended on those
     SuspendingWatchdogs,
-    /// waiting until no device powering this one reboots (`PowerChain::updating`)
+    /// waiting until no device powering this one or on its way reboots (`PowerChain::updating`)
     WaitingForChain,
     /// the OSPF neighbors up now, to be back after the update
     RememberingNeighbors,
@@ -125,7 +125,8 @@ pub enum UpdateState {
     Downloading,
     /// uploading them; from here they install at the next boot
     Uploading,
-    /// waiting until no device this one powers updates (`PowerChain::rebooting`)
+    /// waiting until no device this one powers or reached only through it updates
+    /// (`PowerChain::rebooting`)
     WaitingToReboot,
     /// packages not wanted uninstalled, rebooting, waiting for the version expected
     Rebooting,
@@ -206,7 +207,8 @@ impl States for UpdateState {
 pub enum RebootState {
     /// connecting, reading what the reboot needs (the partitions)
     Reading,
-    /// waiting until no device this one powers updates (`PowerChain::rebooting`)
+    /// waiting until no device this one powers or reached only through it updates
+    /// (`PowerChain::rebooting`)
     WaitingForChain,
     /// the command sent (reboot, repartition, activate), waiting for the device to be back
     Rebooting,

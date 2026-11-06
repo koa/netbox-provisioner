@@ -10,7 +10,7 @@
 use crate::{
     Error,
     device::{
-        power::PowerChain,
+        dependency::PowerChain,
         raw::{Row, command, field, rows},
         ros::{apply::APPLY_SCRIPT, fallback},
         update::{self, DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason, read_state},

@@ -11,7 +11,7 @@
 use crate::{
     Error,
     device::{
-        power::{PowerChain, RebootLease},
+        dependency::{PowerChain, RebootLease},
         raw::{command, field, rows},
         update_fallback,
     },

@@ -57,7 +57,7 @@ pub enum Event {
     UpdateTarget(UpdateTarget),
     WatchdogNotSet(WatchdogNotSet),
     PoeChain(PoeChain),
-    WaitingForPower(WaitingForPower),
+    WaitingForDevice(WaitingForDevice),
     UpdateStart(UpdateStart),
     UpdateStepPlanned(UpdateStepPlanned),
     SshPasswordLogin(SshPasswordLogin),
@@ -151,9 +151,9 @@ pub struct PoeChain {
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
-pub struct WaitingForPower {
+pub struct WaitingForDevice {
     pub device: String,
-    pub reason: PowerWait,
+    pub reason: DeviceWait,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -566,9 +566,11 @@ pub enum FallbackLeftReason {
 
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
 #[cynic(schema = "authenticated")]
-pub enum PowerWait {
+pub enum DeviceWait {
     SupplierRebooting,
     ConsumerUpdating,
+    BehindRebooting,
+    BehindUpdating,
     #[cynic(fallback)]
     Other(String),
 }
