@@ -28,7 +28,7 @@ settings:
   # die Adresse des Providers, genau wie "issuer" in <issuer>/.well-known/openid-configuration
   auth_issuer: https://id.example.ch
   # angeforderte Scopes, mit Leerzeichen getrennt (ohne Angabe: openid profile email offline_access)
-  auth_scopes: "openid profile email"
+  # auth_scopes: "openid profile email"
   # wer hinein darf: der Claim "sub" der Benutzer
   auth_users:
     - 8b1d6e2a-....-....-....-............
@@ -45,26 +45,33 @@ settings:
   das `sub` (`user refused, not in auth_users`).
 - **`auth_scopes`**: `offline_access` (Refresh-Token) kennt nicht jeder Provider; dann die Scopes
   ohne ihn angeben. Ohne Refresh-Token erneuert das UI das Token nicht: Ist es abgelaufen,
-  antwortet der Server `403`, bis man sich neu anmeldet (die Job-Ansicht bietet das an, die
-  anderen Seiten zeigen den Fehler). Entschieden 2026-11-06 (Z34): alle Seiten zeigen dann oben
-  einen Hinweis mit „Erneut anmelden“, ohne von selbst umzuleiten (E20).
+  antwortet der Server `403` (und schliesst den WebSocket bei `connection_init`), bis man sich
+  neu anmeldet. Jede Seite zeigt dann oben „Anmeldung abgelaufen“ mit „Erneut anmelden“
+  (`components::login_expired`, Z34): Der Login führt über den Provider zurück auf dieselbe Seite,
+  von selbst leitet nichts um, ein offenes Formular bleibt, bis man klickt. Die Job-Ansicht fragt
+  weiter und nimmt den Job danach wieder auf. Wer angemeldet ist, aber nicht in `auth_users`
+  steht, bekommt den Hinweis nicht: neu anmelden änderte nichts. Im Lab mit Keycloak ohne
+  Refresh-Token und 20 s Laufzeit geprüft, über HTTP-Abfragen und über den WebSocket allein.
 
 ## Pocket-ID
 
 Unter *OIDC Clients* einen Client anlegen:
 
 - **Public Client** und **PKCE** einschalten.
-- **Callback URLs**: die Adresse des Provisioners, am besten mit Wildcard
-  (`https://provisioner.example.ch/*`): Nach dem Login kehrt das UI auf die Seite zurück, auf der
-  der Login begann.
+- **Callback URLs**: die Adresse des Provisioners mit `**` als Pfad
+  (`https://provisioner.example.ch/**`): Nach dem Login kehrt das UI auf die Seite zurück, auf der
+  der Login begann. `*` steht bei Pocket-ID (2.19) für genau ein Pfadsegment, nicht leer: `/*`
+  deckt weder `/` noch `/site/1/device/3/show` ab („redirect_uri … is not registered“).
 - Die angezeigte **Client ID** (UUID) ist `auth_client_id`, die Adresse von Pocket-ID (`APP_URL`,
   ohne `/` am Ende) `auth_issuer`.
 - `sub` ist die UUID des Benutzers (in der Admin-Oberfläche unter *Users*, oder im Payload eines
   Tokens); diese kommt in `auth_users`.
 
 Mit Pocket-ID getestet: Das Access-Token trägt die Client ID in `aud` und kommt durch die Prüfung,
-aber ohne `name`. Nicht getestet ist, ob Pocket-ID `offline_access` annimmt (darum oben
-`auth_scopes` ohne ihn).
+aber ohne `name`. `offline_access` nimmt Pocket-ID an (2.19.1, 2026-11-06, lokal mit einem Public
+Client, PKCE und 1 min Laufzeit des Access-Tokens, `accessTokenDurationMinutes`): Es gibt ein
+Refresh-Token, jedes Refresh bringt ein neues ID-Token mit `name`, und das UI blieb über 4 min
+angemeldet, ohne Hinweis und ohne abgelehntes Token. `auth_scopes` bleibt darum ohne Angabe.
 
 ## Keycloak (Lab)
 

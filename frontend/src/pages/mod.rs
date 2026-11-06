@@ -1,4 +1,5 @@
 use crate::{
+    components::login_expired::LoginExpired,
     error::FrontendError,
     graphql::{
         anonymous::settings::{Authentication, Settings},
@@ -204,6 +205,7 @@ fn main_page() -> Html {
     html! {
         <BackdropViewer>
             <ToastViewer>
+                    <LoginExpired/>
                     <RouterSwitch<AppRoute> render={AppRoute::content}/>
             </ToastViewer>
         </BackdropViewer>

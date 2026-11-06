@@ -15,8 +15,7 @@ use crate::{
         live::{Subscription, watch_data},
         request,
     },
-    i18n::{common::CANCEL, device, job as t, login},
-    pages::start_login,
+    i18n::{common::CANCEL, device, job as t},
 };
 use cynic::{MutationBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{
@@ -44,8 +43,6 @@ pub struct JobView {
     /// its events as they come; ends with the job, or once the component is gone
     subscription: Option<Subscription>,
     cancelling: bool,
-    /// starting the login (after the server refused the token) failed
-    login_error: Option<String>,
 }
 
 #[derive(Properties, Clone, PartialEq)]
@@ -62,8 +59,6 @@ pub enum JobMessage {
     /// the server answered without the job
     Lost,
     Cancel,
-    /// log in again: the server refused the token
-    Login,
 }
 
 impl Component for JobView {
@@ -90,7 +85,6 @@ impl Component for JobView {
             lost: false,
             subscription: Some(subscription),
             cancelling: false,
-            login_error: None,
         }
     }
 
@@ -123,7 +117,6 @@ impl Component for JobView {
                 self.error = None;
                 ctx.props().on_finished.emit(false);
             }
-            JobMessage::Login => self.login_error = start_login(ctx.link()),
             JobMessage::Cancel => {
                 self.cancelling = true;
                 let scope = ctx.link().clone();
@@ -140,21 +133,12 @@ impl Component for JobView {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        // one line while the server is away or refuses the token, it is asked again
+        // one line while the server is away or refuses the token (the note on top of the page
+        // offers to log in again, `login_expired`), it is asked again
         let error = self.error.as_ref().map(|e| match e {
             FrontendError::Server {
                 status: 401 | 403, ..
-            } => html! {
-                <p class="job-unreachable">
-                    {t::login_refused(&e.message())}{" "}
-                    <Button
-                        variant={ButtonVariant::Secondary}
-                        label={login::AGAIN}
-                        onclick={ctx.link().callback(|_| JobMessage::Login)}
-                    />
-                    if let Some(failure) = &self.login_error { <br/>{login::failed(failure)} }
-                </p>
-            },
+            } => html!(<p class="job-unreachable">{t::login_refused(&e.message())}</p>),
             e => html!(<p class="job-unreachable">{t::server_away(&e.message())}</p>),
         });
         let Some(job) = &self.job else {

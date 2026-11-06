@@ -637,3 +637,13 @@ ul.device-history {
   font-size: 11px;
   fill: var(--pf-t--global--text--color--subtle);
 }
+
+/* The note once the server refuses the token (components/login_expired.rs): above the page and
+   kept in sight while it scrolls. */
+.login-expired {
+    position: sticky;
+    top: 0;
+    z-index: var(--pf-t--global--z-index--md, 300);
+    padding: var(--pf-t--global--spacer--sm);
+    background-color: var(--pf-t--global--background--color--secondary--default);
+}

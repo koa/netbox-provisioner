@@ -541,8 +541,11 @@ The UI logs in over OIDC (`yew-oauth2` in the frontend, structure taken from the
 the backend checks the JWT against `auth_issuer` and lets only `auth_users` in, both as
 middleware of `/graphql` in `binary` (`authenticated_graphql`: `403` otherwise, and the server
 log says why; the frontend words the status, `i18n::error::refused`; without a refresh token
-`yew-oauth2` keeps an expired token as authenticated, so the job view offers to log in again on
-`401`/`403`, `pages::start_login`; with errors async-graphql may leave a failed non-null root
+`yew-oauth2` keeps an expired token as authenticated, so every page shows „Anmeldung
+abgelaufen“ with a login button on top (`components::login_expired`, `pages::start_login`, no
+redirect by itself) once `graphql::post` gets `401`/`403` or the WebSocket's `connection_init`
+is refused (async-graphql closes it with `1002` and the error, `token …`); not for a user
+outside `auth_users`, logging in again changes nothing there; with errors async-graphql may leave a failed non-null root
 field out of `data`, so `graphql::post_graphql` then gives only the errors) (`docs/login.md`:
 the `auth_*` settings and how to set up Pocket-ID; keep it in line with them). biscuit checks
 a claim only where the token has it, so `validation_options_for` requires `exp`, `iss`, `aud`

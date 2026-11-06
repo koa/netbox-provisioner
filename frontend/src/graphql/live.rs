@@ -6,13 +6,13 @@
 //! the token the connection was opened with (`TOKEN_EXPIRED`), so that answer opens it again
 //! too, with the token as it is now, instead of going to the view.
 use crate::{
-    components::job::RETRY,
+    components::{job::RETRY, login_expired},
     error::FrontendError,
     graphql::{Response, host, token},
 };
 use cynic::StreamingOperation;
 use futures::{SinkExt, StreamExt, channel::mpsc};
-use gloo::net::websocket::{Message, futures::WebSocket};
+use gloo::net::websocket::{Message, WebSocketError, futures::WebSocket};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
@@ -195,7 +195,17 @@ async fn session(connection: &Rc<Connection>) -> bool {
     }
     match read.next().await {
         Some(Ok(Message::Text(text)))
-            if message_type(&text).as_deref() == Some("connection_ack") => {}
+            if message_type(&text).as_deref() == Some("connection_ack") =>
+        {
+            login_expired::report(false);
+        }
+        // the token refused (`on_connection_init`): tried again, the note asks to log in
+        Some(Err(WebSocketError::ConnectionClose(close)))
+            if login_expired::ws_refuses_token(close.code, &close.reason) =>
+        {
+            login_expired::report(true);
+            return false;
+        }
         _ => return false,
     }
     let (outgoing, mut sending) = mpsc::unbounded::<String>();

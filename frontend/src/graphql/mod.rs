@@ -1,4 +1,4 @@
-use crate::error::FrontendError;
+use crate::{components::login_expired, error::FrontendError};
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use serde::{Serialize, de::DeserializeOwned};
 use std::sync::LazyLock;
@@ -111,11 +111,15 @@ async fn post<T: DeserializeOwned>(
     let status = response.status();
     if !status.is_success() {
         let text = response.text().await.unwrap_or_default();
+        if matches!(status.as_u16(), 401 | 403) && login_expired::refuses_token(&text) {
+            login_expired::report(true);
+        }
         return Err(FrontendError::Server {
             status: status.as_u16(),
             text,
         });
     }
+    login_expired::report(false);
     let Response { data, errors } = response.json::<Response<serde_json::Value>>().await?;
     let data = match data {
         Some(data) if errors.as_ref().is_some_and(|errors| !errors.is_empty()) => {
