@@ -21,7 +21,9 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
 - **Zustand:** nur die weiterführbaren Aufträge in `state_dir` (Vorgabe `state` neben
   `config.yaml`, mit Sperrdatei gegen eine zweite Instanz;
   [Jobs](jobs.md#weiterführen-nach-einem-neustart)). Alle anderen Jobs leben im Prozess.
-- **TLS:** Das Binary linkt OpenSSL (`openssl-sys`, über `native-tls`), nicht nur rustls.
+- **TLS:** nur rustls (Provider aws-lc-rs), kein OpenSSL mehr seit reqwest 0.13. Die
+  Wurzelzertifikate kommen aus dem System bzw. `SSL_CERT_FILE` (`rustls-native-certs`), auch
+  für den Aussteller der Anmeldung (`actix-4-jwt-auth`, native roots).
 - Zur Laufzeit startet der Provisioner keine Programme (`Command::new` nur in Tests; SSH über
   `russh`).
 
@@ -35,7 +37,7 @@ samt wasm-Ziel über `rust-overlay`, `trunk`, `dart-sass`, `wasm-bindgen-cli` pa
 normales OCI-Image.
 
 - **Closure** (Versuch 2026-10-19): das Binary (74 MiB, Frontend eingebettet), glibc,
-  `gcc-lib`/`libgcc`, OpenSSL, `libidn2`, `libunistring`, dazu `cacert`. Image rund 50 MiB
+  `gcc-lib`/`libgcc`, OpenSSL (vor reqwest 0.13), `libidn2`, `libunistring`, dazu `cacert`. Image rund 50 MiB
   gepackt, 133 MiB entpackt; ausführbar ist darin ausser dem Provisioner nur
   `glibc/libexec/getconf/*`.
 - **Gebaut mit [crane](https://crane.dev):** Die Abhängigkeiten der Crates sind eigene

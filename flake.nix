@@ -32,7 +32,7 @@
       };
       craneLib = (crane.mkLib pkgs).overrideToolchain (_: toolchain);
       # trunk runs the wasm-bindgen of the version in Cargo.lock
-      wasmBindgen = pkgs.wasm-bindgen-cli_0_2_129;
+      wasmBindgen = pkgs.wasm-bindgen-cli_0_2_130;
 
       # this repository without build output or the lab's secrets
       src = lib.cleanSourceWith {
@@ -59,8 +59,6 @@
         inherit src;
         cargoVendorDir = craneLib.vendorCargoDeps { cargoLock = ./Cargo.lock; };
         strictDeps = true;
-        nativeBuildInputs = [ pkgs.pkg-config ];
-        buildInputs = [ pkgs.openssl ];
       };
       # the dependencies alone, built from the dummied sources with the commands of the builds
       # that inherit them, so cargo finds them fresh there
@@ -108,10 +106,10 @@
           cargoArtifacts = wasmDeps;
           npmDeps = pkgs.fetchNpmDeps {
             src = ./frontend/node;
-            hash = "sha256-/eB4Wl1zm8x6I+mvgVX8Np/OPggI+pkKUy+Tei+WEQU=";
+            hash = "sha256-LFKJQLC0I6hcCglmC6/zAWOZdw/BlFMc8jNaIDz+5SU=";
           };
           npmRoot = "frontend/node";
-          nativeBuildInputs = common.nativeBuildInputs ++ [
+          nativeBuildInputs = [
             pkgs.trunk
             pkgs.dart-sass
             wasmBindgen
@@ -219,8 +217,6 @@
           pkgs.dart-sass
           wasmBindgen
           pkgs.nodejs
-          pkgs.pkg-config
-          pkgs.openssl
         ];
       };
 

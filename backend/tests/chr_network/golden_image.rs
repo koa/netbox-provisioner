@@ -104,7 +104,7 @@ async fn download_and_verify(zip_path: &Path, release: &ChrRelease) -> anyhow::R
     }
     let url = format!("https://download.mikrotik.com/routeros/{version}/chr-{version}.img.zip");
     let bytes = reqwest::get(url).await?.error_for_status()?.bytes().await?;
-    let digest = format!("{:x}", Sha256::digest(&bytes));
+    let digest = sha256_hex(&bytes);
     anyhow::ensure!(
         digest == *sha256,
         "downloaded CHR image checksum mismatch: expected {sha256}, got {digest} - \
@@ -117,7 +117,14 @@ async fn download_and_verify(zip_path: &Path, release: &ChrRelease) -> anyhow::R
 
 async fn sha256_file(path: &Path) -> anyhow::Result<String> {
     let bytes = tokio::fs::read(path).await?;
-    Ok(format!("{:x}", Sha256::digest(&bytes)))
+    Ok(sha256_hex(&bytes))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 async fn extract_image(zip_path: &Path, dest: &Path, release: &ChrRelease) -> anyhow::Result<()> {

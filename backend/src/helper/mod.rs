@@ -513,7 +513,7 @@ impl NetboxPlan {
 
 /// A random WPA key of 24 letters and digits.
 pub(crate) fn new_psk() -> Box<str> {
-    use rand::Rng;
+    use rand::RngExt;
     const CHARS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
     let mut rng = rand::rng();
     (0..24)

@@ -32,7 +32,7 @@ use mikrotik_model::{
     model::{CapsManManagerCfg, SystemRouterboardState},
     resource::{ResourceMutation, SingleResource},
 };
-use rand::{Rng, distr::Alphanumeric};
+use rand::{RngExt, distr::Alphanumeric};
 use std::{
     collections::BTreeSet,
     sync::atomic::Ordering,

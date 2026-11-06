@@ -7,23 +7,24 @@ edition = "2024"
 actix-web = "4"
 actix-web-static-files = "4"
 backend = { path = "../backend" }
-async-graphql = "7.0.15"
-async-graphql-actix-web = "7.0.15"
-env_logger = "0.11.6"
+async-graphql = "7.2.1"
+async-graphql-actix-web = "7.2.1"
+env_logger = "0.11.11"
 log = "0.4"
 prometheus = "0.14.0"
 actix-web-prom = { version = "0.10.0", features = ["process"] }
-thiserror = "2.0.11"
+thiserror = "2.0.21"
 # rustls 0.23 for fetching the issuer's keys; its default is rustls 0.20 with ring 0.16
 actix-4-jwt-auth = { version = "1.2.9", default-features = false, features = ["rustls-0_23-native-roots"] }
 # the `Duration` of biscuit's `TemporalOptions`, the expiry of a WebSocket's token
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tracing-actix-web = "0.7"
+# only for its `log` feature: the spans and events of tracing-actix-web reach env_logger
 tracing = { version = "0.1", features = ["log"] }
-serde = "1.0.218"
-serde_json = "1.0.139"
-futures-util = "0.3.31"
+serde_json = "1.0.154"
+futures-util = "0.3.34"
 include_dir = "0.7.4"
 mime_guess = "2.0.5"
 
-[build-dependencies]
+[package.metadata.cargo-machete]
+ignored = ["tracing"]

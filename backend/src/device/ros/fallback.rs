@@ -15,7 +15,7 @@ use crate::{
 };
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::value::{ParseRosValueResult, RosValue};
-use rand::{Rng, distr::Alphanumeric};
+use rand::{RngExt, distr::Alphanumeric};
 use std::time::Duration;
 
 /// The name of the scheduler entry and of the backup (`.backup` added by RouterOS).

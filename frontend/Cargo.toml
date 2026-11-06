@@ -4,25 +4,27 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-wasm-bindgen = "0.2.100"
+wasm-bindgen = "0.2.130"
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
 yew = { version = "0.23.0", features = ["csr"] }
 yew-nested-router = { version = "0.9.0" }
 patternfly-yew = { version = "0.8" }
-reqwest = { version = "0.12.12", features = ["json"] }
-serde = { version = "1.0.218", features = ["derive"] }
-serde_json = "1.0.139"
+# the version oauth2 (under yew-oauth2) uses; a newer one would be a second copy in the wasm
+reqwest = { version = "0.12.28", default-features = false, features = ["json"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 log = "0.4"
 wasm-logger = "0.2.0"
-web-sys = { version = "0.3.77", features = ["Blob", "BlobPropertyBag",
+web-sys = { version = "0.3.107", features = ["Blob", "BlobPropertyBag",
     "CanvasRenderingContext2d", "CssStyleDeclaration", "Document",
     "DomRect", "Element", "HtmlAnchorElement", "HtmlCanvasElement", "HtmlElement",
     "HtmlImageElement", "Location", "Node", "NodeList", "PointerEvent",
     "ScrollIntoViewOptions", "ScrollLogicalPosition", "Storage", "Url", "Window"] }
-thiserror = "2.0.11"
+thiserror = "2.0.21"
 yew-oauth2 = { version = "0.14", features = ["openid"] }
 console_error_panic_hook = "0.1.7"
+# the version yew, patternfly-yew and yew-oauth2 use; a newer one would be a second copy
 gloo = "0.11.0"
 futures = "0.3"
 i18n = { path = "../i18n" }
@@ -30,5 +32,5 @@ cynic = "3.14"
 
 [build-dependencies]
 backend = { path = "../backend" }
-anyhow = "1.0.96"
+anyhow = "1.0.104"
 cynic-codegen = { version = "3.14", default-features = false }
