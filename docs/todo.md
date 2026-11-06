@@ -20,9 +20,9 @@ kleiner geworden.
 Die Bereinigungen aus der Durchsicht vom 2026-11-06, je ein Commit, Tests und clippy grün,
 das Verhalten unverändert (die Fehler B12 und B13 sind behoben):
 
-1. **Lange Funktionen teilen:** B20 (`build_topology_from`; B18 und B19 erledigt), B21 (Geräteseite), B22 (Layout der Netzkarte, vor E21). In dieser
-   Folge, weil die ersten am meisten Fehlerrisiko tragen; jede für sich, keine hängt an einer
-   anderen.
+1. **Lange Funktionen teilen:** B21 (Geräteseite), B22 (Layout der Netzkarte, vor E21; B18
+   bis B20 erledigt). In dieser Folge, weil die ersten am meisten Fehlerrisiko tragen; jede für
+   sich, keine hängt an einer anderen.
 2. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
 
 ## Entscheidungen
@@ -64,7 +64,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B20 | `topology/fetch.rs` `build_topology_from` (657 Zeilen, rund 15 lokale Maps, kognitive Komplexität 59): in Durchläufe je Objektart teilen (Builder-Struktur mit den Maps als Feldern). Dabei `data.clone()` der ganzen NetBox-Antwort (Zeile 39) vermeiden, wenn `Source` die Antwort teilen kann | M | offen |
 | B21 | Geräteseite `pages/devices/show.rs`: `view` 454 Zeilen, `update` 253; die Karten (RouterOS, Partitionen, Watchdogs, Änderungen) als eigene Funktionen oder Komponenten | M | offen |
 | B22 | `components/network_map.rs` (1396 Zeilen): die Layout-Algorithmen sind reine Funktionen (Force-Layout, `clustered_layout`, `seed_from_graph`, `count_intrusions`, `reduce_site_crossings`) und gehören nach `network_map/layout.rs`, neben das vorhandene `test.rs` | S | offen |
 | B23 | Wiederholungen bei Geräten und Firewall: die Port-Ketten pro Board in `hw_facts.rs` (`repeat_n…chain…enumerate`, z.B. CCR1009-7G/8G) als Tabelle oder Makro, dort auch 4 gleiche Match-Arme; die Builder für v4 und v6 in `ros/firewall.rs` (`v4`/`v6`) gleich bis auf die Typen | S–M | offen |
