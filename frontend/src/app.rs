@@ -1,9 +1,7 @@
 //! The frame of every page: the login's settings from the backend, the OIDC session, the router,
 //! and each route's page below the breadcrumb.
 use crate::{
-    components::{
-        login::Login, login_expired::LoginExpired, menu::Navigation, network_map::NetworkMap,
-    },
+    components::{login::Login, login_expired::LoginExpired, menu::Navigation},
     error::FrontendError,
     graphql::{
         anonymous::settings::{Authentication, Settings},
@@ -11,7 +9,8 @@ use crate::{
     },
     i18n,
     pages::{
-        devices::{Devices, show::ShowDevice},
+        network_map::AllSitesMap,
+        site::{Devices, device::show::ShowDevice, map::SiteMap},
         sites::Sites,
     },
     routes::{AppRoute, DeviceView, SiteView},
@@ -140,7 +139,7 @@ fn content(route: AppRoute) -> Html {
     };
     let content = match route {
         AppRoute::Sites => html! {<Sites/>},
-        AppRoute::NetworkMap => html! {<NetworkMap site={None}/>},
+        AppRoute::NetworkMap => html! {<AllSitesMap/>},
         AppRoute::Site { id, view } => site_content(view, id),
         AppRoute::NotFound => html! {<h1>{i18n::pages::NOT_FOUND}</h1>},
     };
@@ -162,7 +161,7 @@ fn site_content(view: SiteView, site: u32) -> Html {
     match view {
         // keyed: another site or device in the breadcrumb loads the page anew
         SiteView::Devices => html! {<Devices key={site} {site}/>},
-        SiteView::Map => html! {<NetworkMap key={site} site={Some(site)}/>},
+        SiteView::Map => html! {<SiteMap key={site} {site}/>},
         SiteView::Device { id, view } => device_content(view, id),
     }
 }

@@ -1,4 +1,4 @@
-//! The device page (`pages::devices::show`): its overview, subscribed (the device, its jobs,
+//! The device page (`pages::site::device::show`): its overview, subscribed (the device, its jobs,
 //! what the provisioner would change, its RouterOS, partitions, device mode, leftovers and log),
 //! and the jobs it starts (apply, setup, update, downgrade, reboot, power cycle, …).
 use super::{

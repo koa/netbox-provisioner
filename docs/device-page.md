@@ -1,6 +1,6 @@
 # Geräteseite
 
-Die Seite eines Geräts (`frontend/src/pages/devices/show.rs`) trennt, was man liest (Zustand),
+Die Seite eines Geräts (`frontend/src/pages/site/device/show.rs`) trennt, was man liest (Zustand),
 was man tun kann (Aktionen) und was gerade passiert (Job). Sie besteht aus Karten, auf breiten
 Bildschirmen teils in zwei Spalten, auf dem Telefon untereinander. Lange Werte (Pakete, OSPF-Nachbarn)
 brechen um; ein Skript scrollt in seiner Box waagrecht, die Seite selbst nie. Die Helfer öffnen auf

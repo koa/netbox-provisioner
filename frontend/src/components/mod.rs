@@ -1,5 +1,6 @@
 pub mod adjust_target;
 pub mod batch_apply;
+pub mod device_entry_card;
 pub mod findings;
 pub mod helper_flow;
 pub mod history;

@@ -30,7 +30,7 @@ pub mod site_diff;
 /// The site's devices and edges as OSPF sees them (`components::network_map`).
 pub mod network_map;
 
-/// The device page (`pages::devices::show`).
+/// The device page (`pages::site::device::show`).
 pub mod device;
 
 /// Applying together with other devices (`components::batch_apply`).
