@@ -7,10 +7,10 @@ use crate::{
     graphql::{
         authenticated::{
             helper_options::{
-                DeviceVariables, PoeObserved, PoeObservedQuery, PoeObservedVariables, PoeOptions,
-                PoeOptionsQuery, PoePort,
+                PoeObserved, PoeObservedQuery, PoeObservedVariables, PoeOptions, PoeOptionsQuery,
+                PoePort,
             },
-            types::{AdhocCredentials, InterfaceRef, PoeMode},
+            types::{AdhocCredentials, DeviceVariables, InterfaceRef, PoeMode},
         },
         request,
     },

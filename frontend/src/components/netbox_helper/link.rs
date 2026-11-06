@@ -5,7 +5,10 @@ use crate::{
     components::menu::popup::Select,
     error::FrontendError,
     graphql::{
-        authenticated::helper_options::{DeviceVariables, LinkPort, LinkPorts},
+        authenticated::{
+            helper_options::{LinkPort, LinkPorts},
+            types::DeviceVariables,
+        },
         request,
     },
 };

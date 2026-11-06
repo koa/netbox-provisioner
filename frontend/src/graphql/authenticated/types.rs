@@ -31,6 +31,12 @@ cynic::impl_scalar!(u64, schema::ScalarDuration);
 pub struct WideInt(pub u64);
 cynic::impl_scalar!(WideInt, schema::Int);
 
+/// A MAC, `D4:01:C3:29:67:64`; the backend checks it (`ScalarMac`).
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct Mac(pub String);
+cynic::impl_scalar!(Mac, schema::ScalarMac);
+
 /// The state of an apply (`ApplyState`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
 #[cynic(schema = "authenticated")]
@@ -420,6 +426,80 @@ pub enum RadioRole {
     Station,
     #[cynic(fallback)]
     Other(String),
+}
+
+/// A feature of the device mode the provisioner needs, and why (`DeviceModeChange`).
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct DeviceModeChange {
+    pub feature: String,
+    pub reason: DeviceModeReason,
+}
+
+/// A partition of the flash (`Partition`).
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct Partition {
+    pub name: String,
+    pub version: String,
+    pub size_mib: i32,
+    pub active: bool,
+    pub running: bool,
+    pub fallback_to: String,
+}
+
+/// What a watchdog watches (`Watching`).
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct Watching {
+    pub watch_address: Option<String>,
+    pub poe_pings: Vec<PoePing>,
+}
+
+/// A PoE port a watchdog switches off and on when its address stops answering (`PoePing`).
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct PoePing {
+    pub port: String,
+    pub address: String,
+    pub timeout: String,
+}
+
+/// What to do about something a job left on the device (`LeftoverAction`).
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum LeftoverAction {
+    StopApplyFallback,
+    ApplyFallbackNow,
+    StopUpdateFallback,
+    RestoreWatchdogs,
+    RemovePackages,
+    #[cynic(fallback)]
+    Other(String),
+}
+
+/// Why the provisioner needs a feature of the device mode (`DeviceModeReason`).
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum DeviceModeReason {
+    ApplyFallback,
+    ManagementProxy,
+    UpdateFallback,
+    #[cynic(fallback)]
+    Other(String),
+}
+
+/// A device's id, the variable of many operations.
+#[derive(cynic::QueryVariables, Debug)]
+pub struct DeviceVariables {
+    pub id: i32,
+}
+
+/// The job an operation started.
+#[derive(cynic::QueryFragment, Debug)]
+#[cynic(schema = "authenticated", graphql_type = "Job")]
+pub struct JobId {
+    pub id: i32,
 }
 
 #[cfg(test)]

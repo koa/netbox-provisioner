@@ -12,7 +12,7 @@ use crate::{
     },
     error::FrontendError,
     graphql::{
-        authenticated::helper_options::{DeviceVariables, RadioBridgeCandidates},
+        authenticated::{helper_options::RadioBridgeCandidates, types::DeviceVariables},
         request,
     },
     i18n::helper_flow as t,

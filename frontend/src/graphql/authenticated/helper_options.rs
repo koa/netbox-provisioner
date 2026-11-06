@@ -4,14 +4,11 @@
 use super::{
     helper::InterfaceTag,
     schema::schema,
-    types::{AdhocCredentials, DeviceRef, InterfaceRef, PoeMode, PortRef, RadioRole, VlanRef},
+    types::{
+        AdhocCredentials, DeviceRef, DeviceVariablesFields, InterfaceRef, PoeMode, PortRef,
+        RadioRole, VlanRef,
+    },
 };
-
-/// A device's id, the variable of most of these queries.
-#[derive(cynic::QueryVariables, Debug)]
-pub struct DeviceVariables {
-    pub id: i32,
-}
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(

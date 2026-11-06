@@ -4,7 +4,10 @@ use crate::{
     components::menu::popup::Select,
     error::FrontendError,
     graphql::{
-        authenticated::helper_options::{DeviceVariables, PortVlanOptions, PortVlanOptionsQuery},
+        authenticated::{
+            helper_options::{PortVlanOptions, PortVlanOptionsQuery},
+            types::DeviceVariables,
+        },
         request,
     },
 };

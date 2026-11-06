@@ -6,11 +6,12 @@ use crate::{
     graphql::{
         authenticated::{
             job::{
-                CancelJob, CancelJobVariables, DeviceModeReason, Event, FallbackLeftReason, Job,
-                JobEvents, JobEventsVariables, LeftoverAction, Logged, PowerWait, RebootReason,
-                ScriptProgress,
+                CancelJob, CancelJobVariables, Event, FallbackLeftReason, Job, JobEvents,
+                JobEventsVariables, Logged, PowerWait, RebootReason, ScriptProgress,
             },
-            types::{ErrorInfo, JobKind, JobPhase as Phase, JobState},
+            types::{
+                DeviceModeReason, ErrorInfo, JobKind, JobPhase as Phase, JobState, LeftoverAction,
+            },
         },
         live::{Subscription, watch_data},
         request,
@@ -670,8 +671,10 @@ fn describe(event: &Logged) -> Html {
     html!({ text })
 }
 
-/// The features of a device-mode change, each with why it is needed.
-fn features<'a>(changes: impl Iterator<Item = (&'a str, &'a DeviceModeReason)>) -> Vec<String> {
+/// The features of a device-mode change, each with why it is needed (also on the device page).
+pub(crate) fn features<'a>(
+    changes: impl Iterator<Item = (&'a str, &'a DeviceModeReason)>,
+) -> Vec<String> {
     use crate::i18n::common::{DeviceModeNeed, device_mode_feature};
     changes
         .map(|(feature, reason)| {

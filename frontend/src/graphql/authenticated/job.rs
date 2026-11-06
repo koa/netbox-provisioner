@@ -2,7 +2,10 @@
 //! after `after`; and the button to cancel it (`cancelJob`).
 use super::{
     schema::schema,
-    types::{ErrorInfo, JobKind, JobPhase, JobState, WideInt},
+    types::{
+        DeviceModeChange, ErrorInfo, JobKind, JobPhase, JobState, LeftoverAction, Partition,
+        Watching, WideInt,
+    },
 };
 
 #[derive(cynic::QueryVariables, Debug)]
@@ -516,43 +519,10 @@ pub struct NetboxUndone {
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
-pub struct DeviceModeChange {
-    pub feature: String,
-    pub reason: DeviceModeReason,
-}
-
-#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct FieldChange {
     pub field: String,
     pub value: Option<String>,
     pub previous: Option<String>,
-}
-
-#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
-pub struct Partition {
-    pub name: String,
-    pub version: String,
-    pub size_mib: i32,
-    pub active: bool,
-    pub running: bool,
-    pub fallback_to: String,
-}
-
-#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
-pub struct Watching {
-    pub watch_address: Option<String>,
-    pub poe_pings: Vec<PoePing>,
-}
-
-#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
-pub struct PoePing {
-    pub port: String,
-    pub address: String,
-    pub timeout: String,
 }
 
 #[derive(cynic::QueryVariables, Debug)]
@@ -594,18 +564,6 @@ pub enum FallbackLeftReason {
 
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
 #[cynic(schema = "authenticated")]
-pub enum LeftoverAction {
-    StopApplyFallback,
-    ApplyFallbackNow,
-    StopUpdateFallback,
-    RestoreWatchdogs,
-    RemovePackages,
-    #[cynic(fallback)]
-    Other(String),
-}
-
-#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum PowerWait {
     SupplierRebooting,
     ConsumerUpdating,
@@ -624,16 +582,6 @@ pub enum RebootReason {
     Partition,
     Downgrade,
     ApplyFallback,
-    #[cynic(fallback)]
-    Other(String),
-}
-
-#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
-pub enum DeviceModeReason {
-    ApplyFallback,
-    ManagementProxy,
-    UpdateFallback,
     #[cynic(fallback)]
     Other(String),
 }

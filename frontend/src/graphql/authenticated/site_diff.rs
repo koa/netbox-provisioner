@@ -3,7 +3,7 @@
 //! of each device since (`knownDiff`, subscribed).
 use super::{
     schema::schema,
-    types::{ErrorInfo, JobKind, JobState},
+    types::{ErrorInfo, JobId, JobKind, JobState},
 };
 
 #[derive(cynic::QueryVariables, Debug)]
@@ -20,12 +20,6 @@ pub struct SiteVariables {
 pub struct DiffSite {
     #[arguments(siteId: $site)]
     pub diff_site: JobId,
-}
-
-#[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "Job")]
-pub struct JobId {
-    pub id: i32,
 }
 
 #[derive(cynic::QueryFragment, Debug)]

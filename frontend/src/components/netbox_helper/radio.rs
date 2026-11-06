@@ -8,8 +8,8 @@ use crate::{
     error::FrontendError,
     graphql::{
         authenticated::{
-            helper_options::{DeviceVariables, RadioBridgeCandidate, RadioBridgeCandidates},
-            types::RadioRole,
+            helper_options::{RadioBridgeCandidate, RadioBridgeCandidates},
+            types::{DeviceVariables, RadioRole},
         },
         request,
     },

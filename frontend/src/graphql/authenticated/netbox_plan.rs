@@ -7,7 +7,7 @@ use super::{
     helper::{Helper, InterfaceTag},
     schema::schema,
     types::{
-        AdhocCredentials, DeviceRef, InterfaceRef, IpVersion, JobKind, JobState, PoeMode,
+        AdhocCredentials, DeviceRef, InterfaceRef, IpVersion, JobId, JobKind, JobState, PoeMode,
         RadioRole, VlanRef,
     },
 };
@@ -312,12 +312,6 @@ pub struct UndoNetboxWriteVariables {
 pub struct UndoNetboxWrite {
     #[arguments(jobId: $job_id)]
     pub undo_netbox_write: JobId,
-}
-
-#[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "Job")]
-pub struct JobId {
-    pub id: i32,
 }
 
 #[derive(cynic::QueryVariables, Debug)]

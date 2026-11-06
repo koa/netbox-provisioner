@@ -4,8 +4,9 @@ use crate::{
     components::menu::popup::Select,
     error::FrontendError,
     graphql::{
-        authenticated::helper_options::{
-            CustomerNetOptions, CustomerNetOptionsQuery, DeviceVariables,
+        authenticated::{
+            helper_options::{CustomerNetOptions, CustomerNetOptionsQuery},
+            types::DeviceVariables,
         },
         request,
     },

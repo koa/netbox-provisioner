@@ -8,7 +8,8 @@ use crate::{
         authenticated::{
             findings::{Finding, Findings, FindingsVariables},
             helper::InterfaceTag,
-            helper_options::{self, DeviceVariables, FlagInterfaces},
+            helper_options::{self, FlagInterfaces},
+            types::DeviceVariables,
         },
         request,
     },
