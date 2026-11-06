@@ -244,7 +244,7 @@ impl NetboxHelper {
                         <Select<Choice>
                             placeholder={t::CHOOSE_PORT}
                             selected={selected(&own, self.poe.port)}
-                            entries={own.clone()}
+                            entries={own}
                             onselect={ctx.link().callback(PoeMsg::Port)}
                         />
                     </FormGroup>
@@ -254,7 +254,7 @@ impl NetboxHelper {
                         <Select<Choice>
                             placeholder={t::CHOOSE_DEVICE}
                             selected={selected(&devices, self.poe.peer_device)}
-                            entries={devices.clone()}
+                            entries={devices}
                             onselect={ctx.link().callback(PoeMsg::PeerDevice)}
                         />
                     </FormGroup>
@@ -262,7 +262,7 @@ impl NetboxHelper {
                         <Select<Choice>
                             placeholder={t::CHOOSE_PEER_PORT}
                             selected={selected(&peer_ports, self.poe.peer)}
-                            entries={peer_ports.clone()}
+                            entries={peer_ports}
                             onselect={ctx.link().callback(PoeMsg::Peer)}
                         />
                     </FormGroup>

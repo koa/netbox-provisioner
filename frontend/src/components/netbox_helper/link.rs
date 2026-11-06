@@ -139,19 +139,7 @@ impl NetboxHelper {
             .iter()
             .flat_map(|device| &device.link_ports)
             .filter(|port| port.cabled || port.ipv4.is_some())
-            .map(|port| Choice {
-                id: port.id as u32,
-                text: t::link_port(
-                    &port.name,
-                    port.label.as_deref(),
-                    port.connected
-                        .first()
-                        .map(|far| (far.device.name.as_str(), far.name.as_str())),
-                    port.cabled,
-                    port.ipv4.as_deref(),
-                    port.bridge.as_deref(),
-                ),
-            })
+            .map(port_choice)
             .collect();
         // a port at the far end, from „Verbindung“
         if let Some(id) = self.disconnect
@@ -185,24 +173,8 @@ impl NetboxHelper {
             Some(Err(error)) => return error.to_html(),
             Some(Ok(ports)) => ports,
         };
-        let choices = |ports: &[LinkPortFields]| -> Vec<Choice> {
-            ports
-                .iter()
-                .map(|port| Choice {
-                    id: port.id as u32,
-                    text: t::link_port(
-                        &port.name,
-                        port.label.as_deref(),
-                        port.connected
-                            .first()
-                            .map(|far| (far.device.name.as_str(), far.name.as_str())),
-                        port.cabled,
-                        port.ipv4.as_deref(),
-                        port.bridge.as_deref(),
-                    ),
-                })
-                .collect()
-        };
+        let choices =
+            |ports: &[LinkPortFields]| -> Vec<Choice> { ports.iter().map(port_choice).collect() };
         let own = ports
             .topology
             .device_by_id
@@ -237,7 +209,7 @@ impl NetboxHelper {
                         <Select<Choice>
                             placeholder={t::CHOOSE_PORT}
                             selected={selected(&own, self.link.port)}
-                            entries={own.clone()}
+                            entries={own}
                             onselect={ctx.link().callback(LinkMsg::Port)}
                         />
                     </FormGroup>
@@ -246,7 +218,7 @@ impl NetboxHelper {
                     <Select<Choice>
                         placeholder={t::CHOOSE_DEVICE}
                         selected={selected(&devices, self.link.peer_device)}
-                        entries={devices.clone()}
+                        entries={devices}
                         onselect={ctx.link().callback(LinkMsg::PeerDevice)}
                     />
                 </FormGroup>
@@ -254,7 +226,7 @@ impl NetboxHelper {
                     <Select<Choice>
                         placeholder={t::CHOOSE_PEER_PORT}
                         selected={selected(&peer_ports, self.link.peer)}
-                        entries={peer_ports.clone()}
+                        entries={peer_ports}
                         onselect={ctx.link().callback(LinkMsg::Peer)}
                     />
                 </FormGroup>
@@ -278,6 +250,21 @@ impl NetboxHelper {
                 }
             </Form>
         }
+    }
+}
+
+/// A port to pick for a link, with its far end, cable, IPv4 and bridge.
+pub(super) fn port_choice(port: &LinkPortFields) -> Choice {
+    Choice {
+        id: port.id as u32,
+        text: t::link_port(
+            &port.name,
+            port.label.as_deref(),
+            port.connected.first().map(|far| (far.device.name.as_str(), far.name.as_str())),
+            port.cabled,
+            port.ipv4.as_deref(),
+            port.bridge.as_deref(),
+        ),
     }
 }
 

@@ -40,24 +40,24 @@ pub async fn query_authenticated_response<Q: GraphQLQuery, S: Component>(
     request: Q::Variables,
 ) -> Result<Response<<Q as GraphQLQuery>::ResponseData>, FrontendError> {
     let mut headers = HeaderMap::new();
-    if let Some((
-        OAuth2Context::Authenticated(Authentication {
-            access_token,
-            id_token,
-            ..
-        }),
-        _,
-    )) = scope.context::<OAuth2Context>(Default::default())
-    {
-        // The ID token carries the user's name, Pocket-ID's access token only `sub`; a refresh
-        // may come without a new ID token
-        let token = id_token.unwrap_or(access_token);
+    if let Some(token) = token(&scope) {
         headers.insert(AUTHORIZATION, format!("Bearer {token}").parse()?);
     }
     let client = reqwest::Client::builder()
         .default_headers(headers)
         .build()?;
     post_graphql::<Q>(&client, GRAPHQL_AUTHENTICATED_URL.as_str(), request).await
+}
+
+/// The token the backend takes: the ID token, which carries the user's name (Pocket-ID's
+/// access token only `sub`), else the access token (a refresh may come without a new ID token).
+fn token<S: Component>(scope: &Scope<S>) -> Option<String> {
+    match scope.context::<OAuth2Context>(Default::default()) {
+        Some((OAuth2Context::Authenticated(Authentication { access_token, id_token, .. }), _)) => {
+            Some(id_token.unwrap_or(access_token))
+        }
+        _ => None,
+    }
 }
 
 /// `graphql_client`'s `post_graphql`, but a response without success (a token the server

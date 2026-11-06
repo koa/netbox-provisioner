@@ -57,6 +57,7 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 | B11 | Gemeinsames Crate `i18n` für Frontend und Backend: die Module mit einfachen Werten zogen um, Fehler als Trait `i18n::error::Problem`; `findings`, `neighbors`, `target`, `interfaces` bleiben im Frontend (Z32) | M | 2026-10-25 („move the texts into a crate shared with the backend“) |
 | B12 | NetBox-REST-Abfragen setzten Namen ohne URL-Kodierung in die Query (`Keller #2` wurde zu `?name=Keller `, `+` zu einem Leerzeichen): `NetboxRest::find(path, filters)` übergibt die Filter über `.query(…)`, alle Abfragen mit Werten der Helfer gehen darüber; Test mit `#`, `&` und `+` | S | 2026-11-06 („encode the filters of netbox rest queries“) |
 | B13 | 20 Fehlercodes ohne deutschen Text (das UI zeigte die englische `message`): Texte nachgetragen, `NO_REACHABLE_NEIGHBOR` als eigener Fall; der Test `every_code_is_worded_in_german` prüft jeden Code aus `error_info.rs` gegen `i18n::error::server` | S | 2026-11-06 („word the remaining error codes in german“) |
+| B24 | Kleine Duplikate im Frontend: `netbox_helper::link::port_choice` statt dreimal derselben `Choice`; die Wahl des Tokens (ID-Token, sonst Access-Token) einmal in `graphql::token`, für HTTP und WebSocket; 8 redundante `clone`s weg | S | 2026-11-06 („share the port choice and the token choice in the frontend“) |
 
 ## C. Konzepte
 

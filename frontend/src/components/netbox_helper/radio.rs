@@ -2,7 +2,7 @@
 //! only where they aren't cabled the router ports (`radioBridgeCandidates`, `linkPorts`). The
 //! other bridge is of the same kind, with RouterOS or without; one without has no address of
 //! its own (it takes a lease of its router's DHCP network).
-use super::{Choice, NetEntry, NetboxHelper, t};
+use super::{Choice, NetEntry, NetboxHelper, link::port_choice, t};
 use crate::{
     components::menu::popup::Select,
     error::FrontendError,
@@ -162,19 +162,7 @@ impl NetboxHelper {
                     device
                         .link_ports
                         .iter()
-                        .map(|port| Choice {
-                            id: port.id as u32,
-                            text: t::link_port(
-                                &port.name,
-                                port.label.as_deref(),
-                                port.connected
-                                    .first()
-                                    .map(|far| (far.device.name.as_str(), far.name.as_str())),
-                                port.cabled,
-                                port.ipv4.as_deref(),
-                                port.bridge.as_deref(),
-                            ),
-                        })
+                        .map(port_choice)
                         .collect()
                 })
                 .unwrap_or_default()
@@ -211,7 +199,7 @@ impl NetboxHelper {
                         <Select<Choice>
                             placeholder={t::CHOOSE_PORT}
                             selected={selected(&port_entries, self.radio.router_port[index])}
-                            entries={port_entries.clone()}
+                            entries={port_entries}
                             onselect={ctx.link().callback(move |c| RadioMsg::RouterPort(index, c))}
                         />
                     </FormGroup>
@@ -241,7 +229,7 @@ impl NetboxHelper {
                     <Select<Choice>
                         placeholder={t::CHOOSE_DEVICE}
                         selected={selected(&peers, self.radio.peer)}
-                        entries={peers.clone()}
+                        entries={peers}
                         onselect={ctx.link().callback(RadioMsg::Peer)}
                     />
                 </FormGroup>

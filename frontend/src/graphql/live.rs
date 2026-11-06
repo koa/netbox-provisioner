@@ -5,7 +5,7 @@
 //! first answer brings each view up to date. The server ends every operation at the expiry of
 //! the token the connection was opened with (`TOKEN_EXPIRED`), so that answer opens it again
 //! too, with the token as it is now, instead of going to the view.
-use crate::{components::job::RETRY, error::FrontendError, graphql::host};
+use crate::{components::job::RETRY, error::FrontendError, graphql::{host, token}};
 use futures::{SinkExt, StreamExt, channel::mpsc};
 use gloo::net::websocket::{Message, futures::WebSocket};
 use graphql_client::{GraphQLQuery, Response};
@@ -20,7 +20,6 @@ use yew::{
     html::Scope,
     platform::{spawn_local, time::sleep},
 };
-use yew_oauth2::prelude::{Authentication, OAuth2Context};
 
 /// A subscription running; dropping it ends it.
 pub struct Subscription {
@@ -129,17 +128,6 @@ thread_local! {
 
 fn subscribe_message(id: u64, payload: &Value) -> Value {
     json!({"type": "subscribe", "id": id.to_string(), "payload": payload})
-}
-
-/// The token the backend takes (as `query_authenticated_response`): the ID token, which
-/// carries the user's name, else the access token.
-fn token<S: Component>(scope: &Scope<S>) -> Option<String> {
-    match scope.context::<OAuth2Context>(Default::default()) {
-        Some((OAuth2Context::Authenticated(Authentication { access_token, id_token, .. }), _)) => {
-            Some(id_token.unwrap_or(access_token))
-        }
-        _ => None,
-    }
 }
 
 /// Keeps the connection while there are subscriptions, opening it again after it broke.

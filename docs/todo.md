@@ -14,11 +14,11 @@ Status: **offen**, **in Arbeit**.
 Die Bereinigungen aus der Durchsicht vom 2026-11-06, je ein Commit, Tests und clippy grün,
 das Verhalten unverändert (die Fehler B12 und B13 sind behoben):
 
-1. **Kleine Aufräumarbeiten:** B24, B25, B26. Kaum Risiko, macht die folgenden Diffs ruhiger.
+1. **Kleine Aufräumarbeiten:** B25, B26. Kaum Risiko, macht die folgenden Diffs ruhiger.
 2. **cynic:** C4, Abfrage für Abfrage. Danach die Codequalität nochmals beurteilen (wie die
    Durchsicht vom 2026-11-06: clippy mit strengeren Lints, Duplikate, Modulstruktur) und die
    folgenden Schritte anpassen, bevor es weitergeht: Mit gemeinsamen Typen im Frontend fallen
-   Teile von B14, B15, B21 und B24 kleiner aus oder weg.
+   Teile von B14, B15 und B21 kleiner aus oder weg.
 3. **Gerät-Ziel als ein Input:** B14, dann B15. Verkleinert Backend und Frontend zugleich und
    ändert das Schema, deshalb vor dem Verschieben der Module.
 4. **Module ordnen:** B16 (Wiederaufnehmen raus aus `graphql/mod.rs`), dann B17 (Apply raus
@@ -80,7 +80,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | B21 | Geräteseite `pages/devices/show.rs`: `view` 454 Zeilen, `update` 253; die Karten (RouterOS, Partitionen, Watchdogs, Änderungen) als eigene Funktionen oder Komponenten | M | offen |
 | B22 | `components/network_map.rs` (1396 Zeilen): die Layout-Algorithmen sind reine Funktionen (Force-Layout, `clustered_layout`, `seed_from_graph`, `count_intrusions`, `reduce_site_crossings`) und gehören nach `network_map/layout.rs`, neben das vorhandene `test.rs` | S | offen |
 | B23 | Wiederholungen bei Geräten und Firewall: die Port-Ketten pro Board in `hw_facts.rs` (`repeat_n…chain…enumerate`, z.B. CCR1009-7G/8G) als Tabelle oder Makro, dort auch 4 gleiche Match-Arme; die Builder für v4 und v6 in `ros/firewall.rs` (`v4`/`v6`) gleich bis auf die Typen | S–M | offen |
-| B24 | Kleine Duplikate im Frontend: `Choice` aus `LinkPortFields` dreimal gebaut (`netbox_helper/link.rs:142` und `:191`, `radio.rs:165`) → `fn port_choice`; die Wahl `id_token.unwrap_or(access_token)` doppelt (`graphql/mod.rs:54`, `graphql/live.rs:139`) → eine Funktion; 8 redundante `clone`s in `netbox_helper` (clippy `redundant_clone`) | S | offen |
 | B25 | Kleine Duplikate im Backend: `job::start` ist `start_through` ohne `through`; 45-mal `.lock().unwrap_or_else(PoisonError::into_inner)` → ein kleiner Extension-Trait; gleiche Match-Arme in `device_state.rs` (Zeilen 89, 166, 328) | S | offen |
 | B26 | Kleinkram: `extern crate core;` in `backend/src/lib.rs:1` überflüssig; `device/batch.rs` `Linked.reached: Option` mit zweimal `expect("planned before")` → eigener Typ für den geplanten Zustand | S | offen |
 
