@@ -510,6 +510,9 @@ impl Component for NetboxHelper {
                 // NetBox has the tags switched now (or again what it had)
                 if self.flag_interfaces.is_some() {
                     self.flags.clear();
+                    // those without switches were NetBox before the job: after an undo they
+                    // looked like the ones still to show
+                    self.flag_findings = None;
                     fetch_flag_interfaces(ctx.link().clone(), ctx.props().id);
                     self.check_flags(ctx);
                     self.choose(ctx);
