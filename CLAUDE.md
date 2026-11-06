@@ -59,8 +59,10 @@ capable of producing the functionality of (not byte-for-byte). `docs/` describes
 NetBox-to-RouterOS config generation itself works (interface naming, L2/bridge/VLAN generation,
 OSPF, VXLAN, WLAN/CAPsMAN, point-to-point radio bridges) - read it before changing anything under
 `device/ros/`. There `mod.rs` has the `mikrotik_model!` definitions and the base config
-(`BaseDeviceDataTarget`), `radio/` the radios (`wireless`, `w60g`, `wifi`, `capsman`, shared
-helpers in `radio/mod.rs`), `dhcp.rs` the DHCP pool, `l2/` the bridges and VLANs. What a
+(`BaseDeviceDataTarget`, its steps by topic in `addresses.rs`, `services.rs`, `ospf.rs`,
+`mtu.rs`, `poe.rs`, `speed.rs`, `syslog.rs`, `firewall.rs`), `radio/` the radios (`wireless`,
+`w60g`, `wifi`, `capsman`, shared helpers in `radio/mod.rs`), `dhcp.rs` the DHCP pool, `l2/` the
+bridges and VLANs, `cfg.rs` the whole device (`DeviceCfg`), `apply.rs` applying it. What a
 board's switch chips offload, port by port, is in `hw_facts::SwitchChips` (from MikroTik's
 manual; every chip but a CRS1xx/2xx's offloads one bridge only). `L2Setup::for_switch_chips`
 turns the bridges on chips that filter VLANs in hardware into VLANs of one bridge
