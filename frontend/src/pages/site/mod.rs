@@ -10,14 +10,11 @@ use crate::{
         authenticated::list_devices::{SiteDevices, SiteDevicesVariables},
         live::{Subscription, watch_data},
     },
-    i18n,
-    routes::{AppRoute, SiteView},
 };
 use cynic::SubscriptionBuilder;
 use patternfly_yew::prelude::Spinner;
 use std::{net::IpAddr, str::FromStr};
 use yew::{Component, Context, Html, Properties, html};
-use yew_nested_router::components::Link;
 pub mod device;
 pub mod map;
 #[derive(Debug, Clone, PartialEq, Properties)]
@@ -123,9 +120,6 @@ impl Component for Devices {
         };
         html! {
             <>
-                <p class="site-links">
-                    <Link<AppRoute> to={AppRoute::Site { id: site, view: SiteView::Map }}>{i18n::network_map::OPEN}</Link<AppRoute>>
-                </p>
                 <FindingsList site={Some(site)}/>
                 <SiteDiff {site}/>
                 {check}

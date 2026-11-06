@@ -76,9 +76,6 @@ impl Component for Sites {
         };
         html! {
             <>
-                <p class="site-links">
-                    <Link<AppRoute> to={AppRoute::NetworkMap}>{i18n::network_map::OPEN_ALL}</Link<AppRoute>>
-                </p>
                 <SavedJobs/>
                 <FindingsList site={None::<u32>}/>
                 <div class="site-list">{content}</div>

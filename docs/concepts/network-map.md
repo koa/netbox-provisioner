@@ -6,8 +6,8 @@ Ressourcen im Popup, `backend/src/network_state/`, `components::network_map`; Sc
 `localStorage`, `publishLayout`), Schritt 4 ohne das Budget (PSE→PD-Pfeile mit Soll-gegen-Ist),
 der Rest ist Konzept. Aufgabe C9 in [todo.md](../todo.md).
 
-Eine Seite pro Site, und eine über alle Sites (`/network-map`, Link auf der Sites-Seite und im
-Site-Menü der Breadcrumb; die Karte einer Site im Geräte-Menü): das Netz als Graph, Soll aus
+Eine Seite pro Site, und eine über alle Sites (`/network-map`, im Site-Menü der Breadcrumb; die
+Karte einer Site im Geräte-Menü): das Netz als Graph, Soll aus
 NetBox, Ist live aus dem Netz. Knoten sind Geräte, Kanten Kabel und
 Funkbrücken; ein Gerät ohne OSPF (`network_state::graphql::supports_ospf`: kein RouterOS, keine
 primäre IPv4 oder kein `ospf`-Interface) erscheint auf keiner der beiden Karten, mit seinen
