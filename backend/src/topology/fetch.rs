@@ -2,11 +2,7 @@ use crate::{
     netbox::{
         NetboxError, fetch_topology,
         fetch_topology::{
-            CableConnectionTermination, CableConnectionTerminationOnCircuitTerminationType,
-            CableConnectionTerminationOnFrontPortType,
-            CableConnectionTerminationOnInterfaceType, CableConnectionTerminationOnRearPortType,
-            FetchTopologyServiceListParent, FetchTopologyServiceListParentOnVirtualMachineTypeClusterScope,
-            ResponseData,
+            CableTermination, ClusterScope, FetchTopology, PrefixScope, Region, ServiceParent,
         },
     },
     topology::{
@@ -35,12 +31,12 @@ pub async fn build_topology() -> Result<Topology, NetboxError> {
 /// Builds the in-memory topology from an already fetched NetBox response - split
 /// from `build_topology` so a stored response (`docs/netbox-response-example.json`)
 /// can be turned into a topology offline.
-pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> Topology {
+pub(crate) fn build_topology_from(data: FetchTopology, fetch_time: Instant) -> Topology {
     let source = super::Source(Arc::new(data.clone()));
     let mut credentials_by_tenants = HashMap::<&str, &str>::new();
     for tenant in &data.tenant_list {
         if let Some(cred) = tenant.custom_field_data.mikrotik_credentials.as_ref() {
-            credentials_by_tenants.insert(tenant.id.as_ref(), cred);
+            credentials_by_tenants.insert(tenant.id.inner(), cred);
         }
     }
     let mut interfaces = HashMap::new();
@@ -59,21 +55,21 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
 
     for wlan_group in data.wireless_lan_group_list {
         if let (Some(wlan_group_id), None) = (
-            wlan_group.id.parse().ok().map(WlanGroupId),
+            wlan_group.id.inner().parse().ok().map(WlanGroupId),
             wlan_group.custom_fields.controller,
         ) {
             wlan_groups_without_controller.insert(wlan_group_id, wlan_group.name.into_boxed_str());
         } else if let (Some(wlan_group_id), Some(controller)) = (
-            wlan_group.id.parse().ok().map(WlanGroupId),
+            wlan_group.id.inner().parse().ok().map(WlanGroupId),
             wlan_group.custom_fields.controller.map(DeviceId),
         ) {
             controllers.insert(controller, wlan_group_id);
             let mgmt_vlan = wlan_group.custom_fields.wlan_mgmt.map(VlanId);
             let mut wlans_ids = BTreeSet::new();
             for wlan in wlan_group.wireless_lans {
-                let vlan = wlan.vlan.and_then(|vlan| vlan.id.parse().ok()).map(VlanId);
+                let vlan = wlan.vlan.and_then(|vlan| vlan.id.inner().parse().ok()).map(VlanId);
                 if let (Some(id), Some(wlan_auth)) = (
-                    wlan.id.parse().ok().map(WlanId),
+                    wlan.id.inner().parse().ok().map(WlanId),
                     match wlan.auth_type.as_deref() {
                         Some("wpa-personal") => Some(WlanAuth::Wpa(WlanWpaSettings {
                             key: wlan.auth_psk.into_boxed_str(),
@@ -113,9 +109,9 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
     let mut interface_of_address = HashMap::new();
     let mut sites = HashMap::<SiteId, (Box<str>, Vec<DeviceId>)>::new();
     for device in data.device_list {
-        if let Some(device_id) = device.id.parse().ok().map(DeviceId) {
+        if let Some(device_id) = device.id.inner().parse().ok().map(DeviceId) {
             let role = DeviceRole::from_slug(device.role.slug.as_str());
-            let site = device.site.id.parse().ok().map(SiteId);
+            let site = device.site.id.inner().parse().ok().map(SiteId);
             if let Some(site) = site {
                 sites
                     .entry(site)
@@ -126,27 +122,27 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             let country = device.site.region.as_ref().map(country_of_region);
             let credentials = device
                 .tenant
-                .and_then(|tenant| credentials_by_tenants.get(tenant.id.as_str()))
+                .and_then(|tenant| credentials_by_tenants.get(tenant.id.inner()))
                 .or_else(|| {
                     device
                         .location
                         .and_then(|location| location.tenant)
-                        .and_then(|tenant| credentials_by_tenants.get(tenant.id.as_str()))
+                        .and_then(|tenant| credentials_by_tenants.get(tenant.id.inner()))
                 })
                 .or_else(|| {
                     device
                         .site
                         .tenant
-                        .and_then(|tenant| credentials_by_tenants.get(tenant.id.as_str()))
+                        .and_then(|tenant| credentials_by_tenants.get(tenant.id.inner()))
                 })
                 .copied()
                 .map(Box::<str>::from);
             let primary_ip_v6 = device
                 .primary_ip6
-                .and_then(|primary_ip| primary_ip.id.parse().map(IpAddressId).ok());
+                .and_then(|primary_ip| primary_ip.id.inner().parse().map(IpAddressId).ok());
             let primary_ip_v4 = device
                 .primary_ip4
-                .and_then(|primary_ip| primary_ip.id.parse().map(IpAddressId).ok());
+                .and_then(|primary_ip| primary_ip.id.inner().parse().map(IpAddressId).ok());
             let primary_ip = Option::or(primary_ip_v6, primary_ip_v4);
             let mut ports = HashSet::new();
             let mut loopback_ip = None;
@@ -156,17 +152,17 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     && let Some(ip) = interface
                         .ip_addresses
                         .iter()
-                        .filter_map(|address| address.id.parse().map(IpAddressId).ok())
+                        .filter_map(|address| address.id.inner().parse().map(IpAddressId).ok())
                         .next()
                 {
                     loopback_ip = Some(ip);
                 }
-                if let Some(id) = interface.id.parse().ok().map(InterfaceId) {
+                if let Some(id) = interface.id.inner().parse().ok().map(InterfaceId) {
                     ports.insert(CablePort::Interface(id));
                     let ips = interface
                         .ip_addresses
                         .into_iter()
-                        .filter_map(|address| address.id.parse().map(IpAddressId).ok())
+                        .filter_map(|address| address.id.inner().parse().map(IpAddressId).ok())
                         .collect::<Box<[_]>>();
                     for ip_id in &ips {
                         interface_of_address.insert(*ip_id, id);
@@ -181,15 +177,15 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     let port_type = port_type(&interface.type_);
                     let vlan = interface
                         .untagged_vlan
-                        .and_then(|vlan| vlan.id.parse().ok().map(VlanId));
+                        .and_then(|vlan| vlan.id.inner().parse().ok().map(VlanId));
                     let tagged_vlans = interface
                         .tagged_vlans
                         .into_iter()
-                        .filter_map(|vlan| vlan.id.parse().ok().map(VlanId))
+                        .filter_map(|vlan| vlan.id.inner().parse().ok().map(VlanId))
                         .collect();
                     let bridge = interface
                         .bridge
-                        .and_then(|b| b.id.parse().ok())
+                        .and_then(|b| b.id.inner().parse().ok())
                         .map(InterfaceId);
                     let poe = interface.poe_mode.as_deref().and_then(|mode| match mode {
                         "pse" => Some(PoeMode::Pse),
@@ -198,9 +194,9 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                     });
                     let wireless_link = interface.wireless_link.map(|link| {
                         let ends = [&link.interface_a.id, &link.interface_b.id]
-                            .map(|end| end.parse().ok().map(InterfaceId));
+                            .map(|end| end.inner().parse().ok().map(InterfaceId));
                         WirelessLinkEnd {
-                            id: link.id.parse().unwrap_or_default(),
+                            id: link.id.inner().parse().unwrap_or_default(),
                             peer: ends.into_iter().flatten().find(|end| *end != id),
                             link: RadioLink {
                                 ssid: link.ssid.into_boxed_str(),
@@ -285,7 +281,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                 }
             }
             for rear_port in device.rearports {
-                if let Ok(port_id) = rear_port.id.parse().map(RearPortId) {
+                if let Ok(port_id) = rear_port.id.inner().parse().map(RearPortId) {
                     rear_ports.insert(
                         port_id,
                         RearPort {
@@ -299,13 +295,13 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                 }
             }
             for front_port in device.frontports {
-                if let Ok(port_id) = front_port.id.parse().map(FrontPortId) {
+                if let Ok(port_id) = front_port.id.inner().parse().map(FrontPortId) {
                     // NetBox maps a front port to rear port positions via a list;
                     // the topology model only knows a single rear port per front port.
                     let rear_port = front_port
                         .mappings
                         .first()
-                        .and_then(|m| m.rear_port.id.parse().ok())
+                        .and_then(|m| m.rear_port.id.inner().parse().ok())
                         .map(RearPortId);
                     front_ports.insert(
                         port_id,
@@ -377,14 +373,14 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
     let mut vlan_groups = HashMap::new();
     let mut vlans = HashMap::new();
     for vlan_group in data.vlan_group_list {
-        if let Some(vlan_group_id) = vlan_group.id.parse().ok().map(VlanGroupId) {
+        if let Some(vlan_group_id) = vlan_group.id.inner().parse().ok().map(VlanGroupId) {
             let vxlan = vlan_group.custom_field_data.vxlan_vni.map(|vni| {
                 let vxlan_id = VxlanId(vlan_group_id.0);
                 (vxlan_id, vni)
             });
             let mut vlan_ids = BTreeSet::new();
             for vlan in vlan_group.vlans {
-                if let Some(vlan_id) = vlan.id.parse().ok().map(VlanId) {
+                if let Some(vlan_id) = vlan.id.inner().parse().ok().map(VlanId) {
                     vlan_ids.insert(vlan_id);
                     vlans.insert(
                         vlan_id,
@@ -427,7 +423,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
         let ends = circuit
             .terminations
             .iter()
-            .filter_map(|end| end.id.parse().ok().map(CircuitTerminationId))
+            .filter_map(|end| end.id.inner().parse().ok().map(CircuitTerminationId))
             .collect::<Vec<_>>();
         for (index, id) in ends.iter().enumerate() {
             let peer = match ends.as_slice() {
@@ -445,7 +441,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
         }
     }
     for cable in data.cable_list {
-        if let Ok(cable_id) = cable.id.parse().map(CableId) {
+        if let Ok(cable_id) = cable.id.inner().parse().map(CableId) {
             let port_a: Box<[CablePort]> = cable
                 .a_terminations
                 .into_iter()
@@ -488,7 +484,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
 
     for prefix_data in data.prefix_list {
         if let (Ok(id), Ok(prefix)) = (
-            prefix_data.id.parse().map(IpPrefixId),
+            prefix_data.id.inner().parse().map(IpPrefixId),
             prefix_data.prefix.parse::<IpNet>(),
         ) {
             prefix_idx.insert(prefix, id);
@@ -503,10 +499,8 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                 .filter(|secs| *secs > 0)
                 .map(|secs| std::time::Duration::from_secs(secs.into()));
             let site = prefix_data.scope.as_ref().and_then(|scope| match scope {
-                fetch_topology::FetchTopologyPrefixListScope::SiteType(site) => {
-                    site.id.parse().ok().map(SiteId)
-                }
-                _ => None,
+                PrefixScope::Site(site) => site.id.inner().parse().ok().map(SiteId),
+                PrefixScope::Other => None,
             });
             ip_prefixes.insert(
                 id,
@@ -548,7 +542,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
             .map(|role| role.slug.as_str() == "dhcp")
             .unwrap_or(false);
         if let (Ok(id), Ok(start_addr), Ok(end_addr)) = (
-            ip_range.id.parse().map(IpRangeId),
+            ip_range.id.inner().parse().map(IpRangeId),
             ip_range.start_address.parse::<IpNet>(),
             ip_range.end_address.parse::<IpNet>(),
         ) {
@@ -590,7 +584,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
     let mut ip_addresses_of_prefix = HashMap::new();
     for ip_addr_data in data.ip_address_list {
         if let (Ok(id), Ok(ip)) = (
-            ip_addr_data.id.parse().map(IpAddressId),
+            ip_addr_data.id.inner().parse().map(IpAddressId),
             ip_addr_data.address.parse::<IpNet>(),
         ) {
             let prefix = prefix_idx.get(&ip.trunc()).copied();
@@ -616,7 +610,7 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
         .into_iter()
         .filter(|service| service.tags.iter().any(|tag| tag.slug == "forward"))
         .filter_map(|service| {
-            let id = service.id.parse().map(ServiceId).ok()?;
+            let id = service.id.inner().parse().map(ServiceId).ok()?;
             let ports = service
                 .port_mappings
                 .iter()
@@ -629,23 +623,23 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
                 })
                 .collect();
             let (device, site) = match service.parent {
-                Some(FetchTopologyServiceListParent::DeviceType(device)) => {
-                    (device.id.parse().map(DeviceId).ok(), None)
+                Some(ServiceParent::Device(device)) => {
+                    (device.id.inner().parse().map(DeviceId).ok(), None)
                 }
-                Some(FetchTopologyServiceListParent::VirtualMachineType(machine)) => {
+                Some(ServiceParent::VirtualMachine(machine)) => {
                     let cluster_site = machine.cluster.and_then(|cluster| match cluster.scope? {
-                        FetchTopologyServiceListParentOnVirtualMachineTypeClusterScope::SiteType(site) => Some(site.id),
-                        _ => None,
+                        ClusterScope::Site(site) => Some(site.id),
+                        ClusterScope::Other => None,
                     });
                     let site = machine.site.map(|site| site.id).or(cluster_site);
-                    (None, site.and_then(|id| id.parse().ok()).map(SiteId))
+                    (None, site.and_then(|id| id.inner().parse().ok()).map(SiteId))
                 }
                 _ => (None, None),
             };
             let addresses = service
                 .ipaddresses
                 .iter()
-                .filter_map(|address| address.id.parse().map(IpAddressId).ok())
+                .filter_map(|address| address.id.inner().parse().map(IpAddressId).ok())
                 .collect();
             Some((
                 id,
@@ -706,52 +700,32 @@ pub(crate) fn build_topology_from(data: ResponseData, fetch_time: Instant) -> To
     .with_findings()
 }
 
-fn termination_2_cable_port(termination: CableConnectionTermination) -> Option<CablePort> {
+fn termination_2_cable_port(termination: CableTermination) -> Option<CablePort> {
     match termination {
-        CableConnectionTermination::CircuitTerminationType(
-            CableConnectionTerminationOnCircuitTerminationType { id },
-        ) => id
-            .parse()
-            .ok()
-            .map(CircuitTerminationId)
-            .map(CablePort::CircuitTermination),
-        CableConnectionTermination::ConsolePortType => None,
-        CableConnectionTermination::ConsoleServerPortType => None,
-        CableConnectionTermination::FrontPortType(CableConnectionTerminationOnFrontPortType {
-            id,
-        }) => id.parse().ok().map(FrontPortId).map(CablePort::FrontPort),
-        CableConnectionTermination::InterfaceType(CableConnectionTerminationOnInterfaceType {
-            id,
-        }) => id.parse().ok().map(InterfaceId).map(CablePort::Interface),
-        CableConnectionTermination::PowerFeedType => None,
-        CableConnectionTermination::PowerOutletType => None,
-        CableConnectionTermination::PowerPortType => None,
-        CableConnectionTermination::RearPortType(CableConnectionTerminationOnRearPortType {
-            id,
-        }) => id.parse().ok().map(RearPortId).map(CablePort::RearPort),
+        CableTermination::CircuitTermination(end) => {
+            end.id.inner().parse().ok().map(CircuitTerminationId).map(CablePort::CircuitTermination)
+        }
+        CableTermination::FrontPort(port) => {
+            port.id.inner().parse().ok().map(FrontPortId).map(CablePort::FrontPort)
+        }
+        CableTermination::Interface(interface) => {
+            interface.id.inner().parse().ok().map(InterfaceId).map(CablePort::Interface)
+        }
+        CableTermination::RearPort(port) => {
+            port.id.inner().parse().ok().map(RearPortId).map(CablePort::RearPort)
+        }
+        CableTermination::Other => None,
     }
 }
 
 /// The slug of the topmost region above (or being) `region`, as far as the query
-/// reaches (`RegionAncestry`): the country.
-fn country_of_region(region: &fetch_topology::RegionAncestry) -> Box<str> {
-    let mut slug = &region.slug;
-    if let Some(parent) = &region.parent {
-        slug = &parent.slug;
-        if let Some(parent) = &parent.parent {
-            slug = &parent.slug;
-            if let Some(parent) = &parent.parent {
-                slug = &parent.slug;
-                if let Some(parent) = &parent.parent {
-                    slug = &parent.slug;
-                    if let Some(parent) = &parent.parent {
-                        slug = &parent.slug;
-                    }
-                }
-            }
-        }
+/// reaches (`Region`): the country.
+fn country_of_region(region: &Region) -> Box<str> {
+    let mut region = region;
+    while let Some(parent) = &region.parent {
+        region = parent;
     }
-    slug.as_str().into()
+    region.slug.as_str().into()
 }
 
 /// The kind of a port by its NetBox interface type: every `…base-…` is ethernet (`2.5gbase-t`,

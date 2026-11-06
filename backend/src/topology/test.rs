@@ -1,7 +1,7 @@
 //! Fixtures for tests across the crate.
 
 use crate::{
-    netbox::fetch_topology::ResponseData,
+    netbox::fetch_topology::FetchTopology,
     topology::{Topology, fetch::build_topology_from},
 };
 use std::sync::Arc;
@@ -143,7 +143,7 @@ pub(crate) fn example_topology() -> Arc<Topology> {
             );
         }
     }
-    let response: graphql_client::Response<ResponseData> =
+    let response: cynic::GraphQlResponse<FetchTopology> =
         serde_json::from_value(raw).expect("parse example response");
     Arc::new(build_topology_from(
         response.data.expect("response without data"),

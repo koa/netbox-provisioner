@@ -1,20 +1,14 @@
 use crate::config::CONFIG;
 use async_graphql::{ComplexObject, SimpleObject};
-use graphql_client::{GraphQLQuery, Response};
+use cynic::{GraphQlError, GraphQlResponse, QueryBuilder};
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use thiserror::Error;
 
+pub mod fetch_topology;
 pub mod rest;
 
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/netbox/schema.graphqls",
-    query_path = "src/netbox/fetch_topology.graphql",
-    response_derives = "Debug, Clone, Serialize"
-)]
-pub struct FetchTopology;
 
 /// NetBox' `BigInt` (an interface's `speed`), sent as a number or as a string.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -120,7 +114,7 @@ pub enum NetboxError {
     #[error("accessing netbox API {0}")]
     Reqwest(#[from] reqwest::Error),
     #[error("errors from netbox {0:?}")]
-    Graphql(Box<[graphql_client::Error]>),
+    Graphql(Box<[GraphQlError]>),
     #[error("cannot call netbox {0}")]
     InvalidHeaderValue(#[from] reqwest::header::InvalidHeaderValue),
     #[error("no data from netbox")]
@@ -140,8 +134,8 @@ pub enum NetboxError {
     },
 }
 
-pub async fn fetch_topology() -> Result<fetch_topology::ResponseData, NetboxError> {
-    let request_body = FetchTopology::build_query(fetch_topology::Variables {});
+pub async fn fetch_topology() -> Result<fetch_topology::FetchTopology, NetboxError> {
+    let request_body = fetch_topology::FetchTopology::build(());
     let client = netbox_client()?;
     let response = client
         .post(netbox_url())
@@ -159,7 +153,7 @@ pub async fn fetch_topology() -> Result<fetch_topology::ResponseData, NetboxErro
     if !status.is_success() {
         return Err(unexpected(None));
     }
-    let response_body: Response<fetch_topology::ResponseData> =
+    let response_body: GraphQlResponse<fetch_topology::FetchTopology> =
         serde_json::from_str(&body).map_err(|error| unexpected(Some(error)))?;
     if let Some(errors) = response_body.errors.filter(|data| !data.is_empty()) {
         Err(NetboxError::Graphql(errors.into()))

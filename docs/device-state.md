@@ -232,8 +232,8 @@ setzen können; das Binary prüft das Token wie den Header von `/graphql`.
 - Eine WebSocket-Verbindung pro Tab (`frontend/src/graphql/live.rs`) für alle Subscriptions der
   Seite. Sie öffnet sich mit der ersten und baut sich nach einem Abbruch mit der Staffel von
   `RETRY` und dem dann gültigen Token wieder auf; die offenen Subscriptions startet sie neu.
-- `subscribe::<Q>(scope, variables, deliver)` gibt eine `Subscription`; fällt sie weg, endet sie
-  (`complete`). Antworten kommen als `graphql_client::Response<Q::ResponseData>` wie über HTTP.
+- `watch(scope, operation, deliver)` gibt eine `Subscription`; fällt sie weg, endet sie
+  (`complete`). Antworten kommen als `graphql::Response` wie über HTTP.
 - Fehler sind Erkenntnisse mit Stand wie alle anderen: „Gerät nicht erreichbar“ verschwindet,
   sobald eine neuere Erkenntnis da ist.
 - Laufende Jobs eines Geräts erscheinen auf seiner Seite, auch wenn ein anderer Browser sie

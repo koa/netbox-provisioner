@@ -22,7 +22,7 @@ Geräteseite.
   Liste der Objekte, die angelegt, geändert oder gelöscht werden, mit altem und neuem Wert. Der
   Plan wird angezeigt und erst nach Bestätigung geschrieben, wie beim Anwenden auf ein Gerät.
 - **Vorschau bis aufs Gerät.** Der Plan wird zusätzlich auf die schon geladene NetBox-Antwort im
-  Speicher angewendet (`ResponseData`). Daraus baut der Provisioner wie gewohnt die Topologie
+  Speicher angewendet (`FetchTopology`). Daraus baut der Provisioner wie gewohnt die Topologie
   (`build_topology_from`) und erzeugt die Konfiguration der betroffenen Geräte. Die Vorschau zeigt
   deshalb neben dem NetBox-Plan auch das RouterOS-Skript, das danach beim Anwenden käme. Fehler
   des Generators (MTU ungleich, Prefix fehlt, …) zeigen sich, *bevor* etwas in NetBox steht.

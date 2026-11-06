@@ -1,20 +1,21 @@
 # netbox-provisioner
 
 Cargo workspace (`binary`, `backend`, `frontend`, `i18n`) that provisions a MikroTik
-RouterOS network from NetBox. `backend` fetches topology via GraphQL using the `graphql_client`
-crate directly against `backend/src/netbox/schema.graphqls` + `fetch_topology.graphql` (the
-`#[derive(GraphQLQuery)]` in `backend/src/netbox/mod.rs` generates the request/response types from
-those two files at compile time) — edit `fetch_topology.graphql` to change what's fetched, no
-other codegen step needed. `backend` builds an in-memory `Topology`, generates per-device RouterOS config
+RouterOS network from NetBox. `backend` fetches topology via GraphQL with cynic: the structs of
+`backend/src/netbox/fetch_topology.rs` are the query, checked against
+`backend/src/netbox/schema.graphqls` (registered by `backend/build.rs`) at compile time — add a
+field there to change what's fetched (`docs/graphql.md`). `backend` builds an in-memory
+`Topology`, generates per-device RouterOS config
 (`device/ros/`) against `mikrotik-model` (sibling repo, path dependency: `../mikrotik-model`), and
 exposes it over a GraphQL API + embedded `frontend` (Rust/WASM, built via `trunk`) through
 `binary`.
 
-A GraphQL scalar (e.g. NetBox's `JSON`) resolves to whatever Rust type of the exact same name is
-in scope at the `#[derive(GraphQLQuery)]` site in `backend/src/netbox/mod.rs` — since that's keyed
-by scalar name, not by field, every `custom_field_data`/`custom_fields` selection anywhere in
-`fetch_topology.graphql` shares the one `JSON` struct there; add new custom-field keys to that same
-struct rather than creating a new scalar-backing type per query site.
+NetBox's scalar `JSON` is the one `JSON` struct in `backend/src/netbox/mod.rs`
+(`impl_scalar!` in `fetch_topology.rs`), so every `custom_field_data`/`custom_fields` field
+shares it; add new custom-field keys to that same struct rather than creating a new type per
+field. The response is kept (`Topology.source`) and a helper's preview edits its JSON, so an
+object the preview creates (`helper::NetboxPlan`) needs every field, an empty one as `null`:
+cynic doesn't take a missing field for `None`.
 
 Building `binary` embeds `frontend/dist`, which has to be built first (`trunk` and the
 `wasm32-unknown-unknown` target; PatternFly from `frontend/node` via `npm install`): `build.sh`
@@ -67,7 +68,7 @@ the commit that finishes one moves it to `docs/done.md`, with date and commit su
 its number (a finished part likewise, the rest stays in `todo.md`).
 `docs/netbox-modeling.md` is the user-facing contract for how devices must be modeled in NetBox
 (tags, custom fields, interface names, VLAN groups and their VXLAN VNI); update it whenever `fetch.rs` or
-`fetch_topology.graphql` changes what is read. Every custom field read (the `JSON` struct in
+`fetch_topology.rs` changes what is read. Every custom field read (the `JSON` struct in
 `netbox/mod.rs`) is also described in `docs/custom-fields.md`, with how to create it in NetBox.
 
 WLAN is mainly the `/interface/wifi` stack (`docs/wlan-generation.md`): CAPsMAN on the Wireless
@@ -1213,14 +1214,13 @@ QEMU's, the golden image's dhcp-client is bound to it).
   and the frontend only hides or disables what the backend refuses anyway.
 - A `Mutex` is locked with `lock::LockAnyway::lock_anyway`: a panic in one job poisons it,
   and the server and the other jobs go on with its data.
-- The frontend's GraphQL moves to cynic, query by query (C4, `docs/concepts/graphql-files.md`):
-  a query is structs in `graphql/authenticated/<area>.rs` (named like the `.graphql` file it
-  replaces), each type naming its schema (`schema = "authenticated"`, registered by
-  `frontend/build.rs`; the anonymous endpoint gets its own, the two stay apart), types several
-  queries share in `graphql::authenticated::types`, sent by `graphql::request`
-  (`request_response` keeps the data next to the errors), subscribed by `graphql::live::watch`.
-  The anonymous endpoint's `settings` is in `graphql/anonymous/` with its own schema
-  ("anonymous"). The frontend has no graphql_client left.
+- The frontend's GraphQL is cynic (`docs/graphql.md`): a query is structs in
+  `graphql/authenticated/<area>.rs`, each type naming its schema (`schema = "authenticated"`,
+  registered by `frontend/build.rs`; the anonymous endpoint's `settings` has its own,
+  "anonymous", in `graphql/anonymous/`: the two stay apart), types several queries share in
+  `graphql::authenticated::types`, sent by `graphql::request` (`request_response` keeps the
+  data next to the errors), subscribed by `graphql::live::watch`. A union gets a `fallback`
+  case, an enum `Other(String)`.
 - Before adding a helper, look whether one exists (`grep` the crate); one used from several
   modules belongs in a module of its own, not in the first one that needed it.
 

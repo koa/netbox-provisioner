@@ -21,6 +21,7 @@ Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
 - [Protokoll](protocol.md): ein Eintrag pro Job im Journal des Geräts in NetBox, Beobachtungen ohne Job, der Verlauf auf der Geräteseite.
 - [Watchdog](watchdog.md): Hardware-, Ping- und PoE-Watchdog, ihre Ziele aus der Topologie, das Aussetzen bei Update und Funkänderung.
 - [Deployment](deployment.md): Binary, Image mit Nix, Helm-Chart, GitHub Actions.
+- [GraphQL](graphql.md): die Abfragen mit cynic, die beiden Schemas des Frontends, die NetBox-Abfrage.
 
 Was noch nicht umgesetzt ist, steht als Konzept in [concepts/](concepts/), die Aufgaben dazu in
 [todo.md](todo.md).

@@ -5,7 +5,7 @@ Switches gepflegt werden müssen, damit am Ende eine korrekte RouterOS-Konfigura
 Was der Provisioner aus den Daten macht, steht in den anderen Dateien dieses Ordners (siehe
 [overview.md](overview.md)).
 
-Grundlage ist ausschließlich das, was `backend/src/netbox/fetch_topology.graphql` abfragt und
+Grundlage ist ausschließlich das, was `backend/src/netbox/fetch_topology.rs` abfragt und
 `backend/src/topology/fetch.rs` auswertet. Alles, was dort nicht vorkommt, ignoriert der
 Provisioner, auch wenn es in NetBox gepflegt ist (siehe [Was nicht ausgewertet wird](#was-nicht-ausgewertet-wird)).
 

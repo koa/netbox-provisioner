@@ -258,7 +258,7 @@ impl NetboxPlan {
             .ok_or(Error::UnknownDevice(self.device.id().0))
     }
 
-    /// The plan on the JSON of NetBox' `ResponseData`, for the preview. Created objects get ids
+    /// The plan on the JSON of NetBox' `FetchTopology`, for the preview. Created objects get ids
     /// from the top of the range, which NetBox doesn't hand out.
     fn apply_to(&self, json: &mut Value) {
         let created_id = |step: usize| (u32::MAX - step as u32).to_string();
@@ -330,11 +330,14 @@ impl NetboxPlan {
                             "enabled": true,
                             "type": create.kind,
                             "mtu": null,
+                            "speed": null,
+                            "duplex": null,
                             "bridge": null,
                             "tags": create.tags.iter().map(|tag| json!({ "slug": tag.slug() })).collect::<Vec<_>>(),
                             "untagged_vlan": create.vlan.map(|vlan| json!({ "id": vlan.to_string() })),
                             "tagged_vlans": [],
                             "poe_mode": null,
+                            "poe_type": null,
                             "rf_role": null,
                             "rf_channel_frequency": null,
                             "rf_channel_width": null,
@@ -373,6 +376,7 @@ impl NetboxPlan {
                     if let Some(cables) = json["cable_list"].as_array_mut() {
                         cables.push(json!({
                             "id": created_id(index),
+                            "type": null,
                             "a_terminations": end(create.a_end, &create.a),
                             "b_terminations": end(CableEnd::Interface, &create.b),
                         }));

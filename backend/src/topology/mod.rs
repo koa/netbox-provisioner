@@ -1,5 +1,5 @@
 use crate::{
-    netbox::{NetboxError, fetch_topology::ResponseData},
+    netbox::{NetboxError, fetch_topology::FetchTopology},
     topology::fetch::build_topology,
 };
 use access::device::DeviceAccess;
@@ -211,7 +211,7 @@ impl Topology {
 /// The NetBox response a topology is built from: compared by identity and not printed, it is
 /// the whole of NetBox.
 #[derive(Clone)]
-pub struct Source(pub Arc<ResponseData>);
+pub struct Source(pub Arc<FetchTopology>);
 impl PartialEq for Source {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
@@ -279,7 +279,7 @@ impl Topology {
         self.ip_prefixes.get(&id)
     }
     /// This topology built again from its NetBox response after `change` (the JSON of
-    /// `ResponseData`): what NetBox will be after a helper's plan. `None` for a topology not
+    /// `FetchTopology`): what NetBox will be after a helper's plan. `None` for a topology not
     /// built from a response (tests built from parts).
     pub(crate) fn rebuilt_with(
         &self,
@@ -289,7 +289,7 @@ impl Topology {
         Some((|| {
             let mut json = serde_json::to_value(&*source.0)?;
             change(&mut json);
-            let data: ResponseData = serde_json::from_value(json)?;
+            let data: FetchTopology = serde_json::from_value(json)?;
             Ok(fetch::build_topology_from(data, Instant::now()))
         })())
     }
