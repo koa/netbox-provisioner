@@ -11,6 +11,7 @@ pub mod anonymous;
 pub mod authenticated;
 pub mod history;
 pub mod live;
+pub mod saved_jobs;
 pub mod schema;
 pub mod types;
 

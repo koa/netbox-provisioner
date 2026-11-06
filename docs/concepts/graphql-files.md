@@ -3,7 +3,8 @@
 Status: in Arbeit (cynic, entschieden 2026-10-23). Aufgabe C4 in [todo.md](../todo.md).
 
 Stand: cynic im Frontend, das Schema in `frontend/build.rs` registriert, `graphql::request`
-schickt eine Operation. Umgestellt: `DeviceJournal` (`graphql/history.rs`).
+schickt eine Operation. Umgestellt: `DeviceJournal` (`graphql/history.rs`), `SavedJobs` und `DiscardSavedJob`
+(`graphql/saved_jobs.rs`).
 
 ## Ausgangslage
 

@@ -4,14 +4,16 @@
 use crate::{
     error::FrontendError,
     graphql::{
-        authenticated::{
-            DiscardSavedJob, SavedJobs as SavedJobsQuery, discard_saved_job,
-            saved_jobs::{self, ApplyState as A, HeldBack, SavedJobKind, SavedJobsSavedJobs as Saved, SavedJobsSavedJobsPhase as Phase, UpdateState as U},
+        request,
+        saved_jobs::{
+            DiscardSavedJob, DiscardSavedJobVariables, HeldBack, Phase, SavedJobKind,
+            SavedJobs as SavedJobsQuery, Waiting as Saved,
         },
-        query_authenticated,
+        types::{ApplyState as A, UpdateState as U},
     },
     i18n::{job::phase as p, saved_jobs as t},
 };
+use cynic::{MutationBuilder, QueryBuilder};
 use patternfly_yew::prelude::{Alert, AlertType, Button, ButtonVariant};
 use yew::{Component, Context, Html, html, platform::spawn_local};
 
@@ -22,8 +24,8 @@ pub struct SavedJobs {
 }
 
 pub enum SavedJobsMsg {
-    Loaded(Result<saved_jobs::ResponseData, FrontendError>),
-    Discard(i64),
+    Loaded(Result<SavedJobsQuery, FrontendError>),
+    Discard(i32),
     Discarded(Result<(), FrontendError>),
 }
 
@@ -31,7 +33,7 @@ impl SavedJobs {
     fn load(ctx: &Context<Self>) {
         let scope = ctx.link().clone();
         spawn_local(async move {
-            let loaded = query_authenticated::<SavedJobsQuery, _>(scope.clone(), saved_jobs::Variables {}).await;
+            let loaded = request(scope.clone(), SavedJobsQuery::build(())).await;
             scope.send_message(SavedJobsMsg::Loaded(loaded));
         });
     }
@@ -60,12 +62,8 @@ impl Component for SavedJobs {
             SavedJobsMsg::Discard(device_id) => {
                 let scope = ctx.link().clone();
                 spawn_local(async move {
-                    let discarded = query_authenticated::<DiscardSavedJob, _>(
-                        scope.clone(),
-                        discard_saved_job::Variables { device_id },
-                    )
-                    .await
-                    .map(|_| ());
+                    let discard = DiscardSavedJob::build(DiscardSavedJobVariables { device_id });
+                    let discarded = request(scope.clone(), discard).await.map(|_| ());
                     scope.send_message(SavedJobsMsg::Discarded(discarded));
                 });
                 return false;
@@ -84,13 +82,13 @@ impl Component for SavedJobs {
             let device_id = saved.device_id;
             let title = match &saved.device_name {
                 Some(name) => t::title(name),
-                None => t::title_unreadable(device_id),
+                None => t::title_unreadable(device_id.into()),
             };
             let text = match &saved.unreadable {
                 Some(why) => t::unreadable(why),
                 None => t::saved(
                     match saved.kind {
-                        Some(SavedJobKind::APPLY) => t::APPLY,
+                        Some(SavedJobKind::Apply) => t::APPLY,
                         _ => t::UPDATE,
                     },
                     &saved.phase.as_ref().map(phase).unwrap_or_default(),
@@ -98,8 +96,8 @@ impl Component for SavedJobs {
                 ),
             };
             let why = match saved.held_back {
-                Some(HeldBack::DEVICE_GONE) => Some(t::DEVICE_GONE),
-                Some(HeldBack::BATCH_INCOMPLETE) => Some(t::BATCH_INCOMPLETE),
+                Some(HeldBack::DeviceGone) => Some(t::DEVICE_GONE),
+                Some(HeldBack::BatchIncomplete) => Some(t::BATCH_INCOMPLETE),
                 _ => None,
             };
             html! {
@@ -126,14 +124,14 @@ impl Component for SavedJobs {
 fn phase(phase: &Phase) -> String {
     let state = match phase {
         Phase::ApplyPhase(phase) => match &phase.apply {
-            A::SCRIPT_RUNNING => p::SCRIPT_RUNNING,
-            A::STOPPING_FALLBACK => p::STOPPING_FALLBACK,
+            A::ScriptRunning => p::SCRIPT_RUNNING,
+            A::StoppingFallback => p::STOPPING_FALLBACK,
             other => return format!("{other:?}"),
         },
         Phase::UpdatePhase(phase) => match &phase.update {
-            U::REBOOTING => p::REBOOTING,
-            U::NOT_UPDATED => p::NOT_UPDATED,
-            U::STOPPING_FALLBACK => p::STOPPING_FALLBACK,
+            U::Rebooting => p::REBOOTING,
+            U::NotUpdated => p::NOT_UPDATED,
+            U::StoppingFallback => p::STOPPING_FALLBACK,
             other => return format!("{other:?}"),
         },
         other => return format!("{other:?}"),

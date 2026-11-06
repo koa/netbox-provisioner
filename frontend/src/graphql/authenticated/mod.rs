@@ -397,22 +397,6 @@ pub struct SiteDiffKnown;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/saved-jobs.graphql",
-    response_derives = "Debug, Clone, PartialEq"
-)]
-pub struct SavedJobs;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
-    query_path = "src/graphql/authenticated/saved-jobs.graphql",
-    response_derives = "Debug"
-)]
-pub struct DiscardSavedJob;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/graphql/authenticated/schema.graphql",
     query_path = "src/graphql/authenticated/network-map.graphql",
     response_derives = "Debug, Clone, PartialEq"
 )]
