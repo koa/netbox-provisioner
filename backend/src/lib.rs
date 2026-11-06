@@ -1,5 +1,3 @@
-extern crate core;
-
 use crate::device::ros::SetupError;
 use mikrotik_model::resource::{MissingDependenciesError, ResourceMutationError};
 use thiserror::Error;

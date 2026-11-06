@@ -14,20 +14,19 @@ Status: **offen**, **in Arbeit**.
 Die Bereinigungen aus der Durchsicht vom 2026-11-06, je ein Commit, Tests und clippy grün,
 das Verhalten unverändert (die Fehler B12 und B13 sind behoben):
 
-1. **Kleine Aufräumarbeiten:** B26. Kaum Risiko, macht die folgenden Diffs ruhiger.
-2. **cynic:** C4, Abfrage für Abfrage. Danach die Codequalität nochmals beurteilen (wie die
+1. **cynic:** C4, Abfrage für Abfrage. Danach die Codequalität nochmals beurteilen (wie die
    Durchsicht vom 2026-11-06: clippy mit strengeren Lints, Duplikate, Modulstruktur) und die
    folgenden Schritte anpassen, bevor es weitergeht: Mit gemeinsamen Typen im Frontend fallen
    Teile von B14, B15 und B21 kleiner aus oder weg.
-3. **Gerät-Ziel als ein Input:** B14, dann B15. Verkleinert Backend und Frontend zugleich und
+2. **Gerät-Ziel als ein Input:** B14, dann B15. Verkleinert Backend und Frontend zugleich und
    ändert das Schema, deshalb vor dem Verschieben der Module.
-4. **Module ordnen:** B16 (Wiederaufnehmen raus aus `graphql/mod.rs`), dann B17 (Apply raus
+3. **Module ordnen:** B16 (Wiederaufnehmen raus aus `graphql/mod.rs`), dann B17 (Apply raus
    aus `ros/graphql.rs`). Reines Verschieben, danach sind die Dateien überschaubar.
-5. **Lange Funktionen teilen:** B18 (`helper/write.rs`), B19 (`ros/mod.rs`), B20
+4. **Lange Funktionen teilen:** B18 (`helper/write.rs`), B19 (`ros/mod.rs`), B20
    (`build_topology_from`), B21 (Geräteseite), B22 (Layout der Netzkarte, vor E21). In dieser
    Folge, weil die ersten am meisten Fehlerrisiko tragen; jede für sich, keine hängt an einer
    anderen.
-6. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
+5. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
 
 ## Entscheidungen
 
@@ -80,7 +79,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | B21 | Geräteseite `pages/devices/show.rs`: `view` 454 Zeilen, `update` 253; die Karten (RouterOS, Partitionen, Watchdogs, Änderungen) als eigene Funktionen oder Komponenten | M | offen |
 | B22 | `components/network_map.rs` (1396 Zeilen): die Layout-Algorithmen sind reine Funktionen (Force-Layout, `clustered_layout`, `seed_from_graph`, `count_intrusions`, `reduce_site_crossings`) und gehören nach `network_map/layout.rs`, neben das vorhandene `test.rs` | S | offen |
 | B23 | Wiederholungen bei Geräten und Firewall: die Port-Ketten pro Board in `hw_facts.rs` (`repeat_n…chain…enumerate`, z.B. CCR1009-7G/8G) als Tabelle oder Makro, dort auch 4 gleiche Match-Arme; die Builder für v4 und v6 in `ros/firewall.rs` (`v4`/`v6`) gleich bis auf die Typen | S–M | offen |
-| B26 | Kleinkram: `extern crate core;` in `backend/src/lib.rs:1` überflüssig; `device/batch.rs` `Linked.reached: Option` mit zweimal `expect("planned before")` → eigener Typ für den geplanten Zustand | S | offen |
 
 ## C. Konzepte zum Umsetzen
 

@@ -1,5 +1,5 @@
 //! The rules of a batch, with stand-ins for the devices.
-use crate::device::batch::{Applying, Running, Timing, Watched, run, watch};
+use crate::device::batch::{Applying, Planning, Running, Timing, Watched, run, watch};
 use crate::{
     Error,
     device::ros::{fallback::Pending, graphql::FallbackLeftReason},
@@ -43,12 +43,16 @@ impl Fake {
     }
 }
 
-impl Applying for Fake {
-    async fn plan(&mut self, _log: &Log) -> Result<bool, Error> {
+impl Planning for Fake {
+    type Planned = Fake;
+    async fn plan(self, _log: &Log) -> Result<Option<Fake>, Error> {
         self.call("plan");
         self.fails(self.plan_fails)?;
-        Ok(!self.nothing_to_do)
+        Ok((!self.nothing_to_do).then_some(self))
     }
+}
+
+impl Applying for Fake {
     fn radio_wait(&self) -> Option<Duration> {
         self.radio.then_some(Duration::from_millis(200))
     }

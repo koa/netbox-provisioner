@@ -111,11 +111,16 @@ pub(crate) trait Watched: Send + Sync {
     fn after(&self, log: &Log) -> impl Future<Output = Result<(), Error>> + Send;
 }
 
-/// The steps of one device's apply, as the batch runs them ([`run`]); a device reached over
-/// the provisioner's connection ([`Linked`]) or, in the tests, a stand-in.
+/// A device of the batch before its plan ([`run`]): one reached over the provisioner's
+/// connection ([`Linked`]) or, in the tests, a stand-in.
+pub(crate) trait Planning {
+    type Planned: Applying;
+    /// Connects and plans the diff (`ApplyPlanned`); `None` when there is nothing to do.
+    fn plan(self, log: &Log) -> impl Future<Output = Result<Option<Self::Planned>, Error>> + Send;
+}
+
+/// The steps of one device's apply after its plan, as the batch runs them ([`run`]).
 pub(crate) trait Applying: Watched {
-    /// Connects and plans the diff (`ApplyPlanned`); `false` when there is nothing to do.
-    fn plan(&mut self, log: &Log) -> impl Future<Output = Result<bool, Error>> + Send;
     /// How much longer the fallback waits for a radio the plan changes, if it does.
     fn radio_wait(&self) -> Option<Duration>;
     /// Suspends the watchdogs a radio the plan changes may set off (`radio_hold`); nothing
@@ -153,7 +158,6 @@ pub(crate) trait Applying: Watched {
 /// A device of the batch, reached the way every job reaches it.
 pub(crate) struct Linked {
     device: DeviceAccess,
-    reached: Option<Reached>,
     /// the devices of the batch, which hold their own watchdogs
     batch: Arc<BTreeSet<DeviceId>>,
     /// the devices whose watchdogs a member holds already
@@ -162,7 +166,10 @@ pub(crate) struct Linked {
 
 /// A planned device of the batch: its connection, the plan, and a second connection for the
 /// steps up to starting the script, opened with the first (no login between the steps).
-struct Reached {
+pub(crate) struct Reached {
+    device: DeviceAccess,
+    batch: Arc<BTreeSet<DeviceId>>,
+    claimed: Arc<Mutex<BTreeSet<DeviceId>>>,
     link: AccessibleDevice,
     planned: PlannedApply,
     control: RawDevice<SimpleResult>,
@@ -184,40 +191,39 @@ struct Seen {
     shown: bool,
 }
 
-impl Linked {
-    fn reached(&self) -> &Reached {
-        self.reached.as_ref().expect("planned before")
+impl Planning for Linked {
+    type Planned = Reached;
+    async fn plan(self, log: &Log) -> Result<Option<Reached>, Error> {
+        let link = connect_for_job(&self.device, None, None, None, log).await?;
+        let planned = link.plan_apply(log).await?;
+        if planned.is_empty() {
+            return Ok(None);
+        }
+        let control = link.connect_again::<SimpleResult>().await?;
+        Ok(Some(Reached {
+            device: self.device,
+            batch: self.batch,
+            claimed: self.claimed,
+            link,
+            planned,
+            control,
+            hold: Mutex::new(None),
+            run: Mutex::new(None),
+            seen: Mutex::new(Seen::default()),
+            log: log.clone(),
+        }))
     }
 }
 
-impl Applying for Linked {
-    async fn plan(&mut self, log: &Log) -> Result<bool, Error> {
-        let link = connect_for_job(&self.device, None, None, None, log).await?;
-        let planned = link.plan_apply(log).await?;
-        let something = !planned.is_empty();
-        if something {
-            let control = link.connect_again::<SimpleResult>().await?;
-            self.reached = Some(Reached {
-                link,
-                planned,
-                control,
-                hold: Mutex::new(None),
-                run: Mutex::new(None),
-                seen: Mutex::new(Seen::default()),
-                log: log.clone(),
-            });
-        }
-        Ok(something)
-    }
+impl Applying for Reached {
     fn radio_wait(&self) -> Option<Duration> {
-        self.reached().planned.radio_wait()
+        self.planned.radio_wait()
     }
     async fn hold(&mut self, log: &Log) -> Result<(), Error> {
-        let (batch, claimed) = (self.batch.clone(), self.claimed.clone());
-        let reached = self.reached.as_mut().expect("planned before");
-        if reached.planned.radio_wait().is_some() {
-            let hold = RadioHold::take(&reached.link, &mut reached.planned, &batch, &claimed, log).await?;
-            *reached.hold.lock_anyway() = Some(hold);
+        if self.planned.radio_wait().is_some() {
+            let (batch, claimed) = (&self.batch, &self.claimed);
+            let hold = RadioHold::take(&self.link, &mut self.planned, batch, claimed, log).await?;
+            *self.hold.lock_anyway() = Some(hold);
         }
         Ok(())
     }
@@ -228,28 +234,26 @@ impl Applying for Linked {
         radio_wait: Option<Duration>,
         log: &Log,
     ) -> Result<bool, Error> {
-        arm_fallback_on(&self.reached().control, delay, window, radio_wait, log).await
+        arm_fallback_on(&self.control, delay, window, radio_wait, log).await
     }
     async fn write(&self, lead: Duration, rearm: Option<Duration>, log: &Log) -> Result<(), Error> {
-        let reached = self.reached();
-        let run = write_script(&reached.control, &reached.planned, lead, rearm, Some(log)).await?;
+        let run = write_script(&self.control, &self.planned, lead, rearm, Some(log)).await?;
         log.wrote_script(&run);
-        *reached.run.lock_anyway() = Some(run);
+        *self.run.lock_anyway() = Some(run);
         Ok(())
     }
     async fn start(&self) -> Result<bool, Error> {
-        start_script(&self.reached().control).await
+        start_script(&self.control).await
     }
     async fn running(&self) -> Result<bool, Error> {
-        script_running(&self.reached().control).await
+        script_running(&self.control).await
     }
     async fn remove(&self) -> Result<(), Error> {
-        remove_script(&self.reached().control).await
+        remove_script(&self.control).await
     }
     fn keep(&self, fallback: bool, fires: Instant, batch: &SavedBatch, log: &Log) {
-        let reached = self.reached();
         let (Some(run), Some(credentials)) =
-            (reached.run.lock_anyway().clone(), reached.link.credentials_name())
+            (self.run.lock_anyway().clone(), self.link.credentials_name())
         else {
             return;
         };
@@ -270,9 +274,9 @@ impl Applying for Linked {
                         armed_at: saved_job::system_time(fires.checked_sub(batch.delay).unwrap_or(fires)),
                         fires: saved_job::system_time(fires),
                         unmarked: now + APPLY_TIMEOUT,
-                        reprovision: reached.planned.reprovisioned(),
+                        reprovision: self.planned.reprovisioned(),
                     },
-                    hold: reached.hold.lock_anyway().as_ref().map(RadioHold::saved),
+                    hold: self.hold.lock_anyway().as_ref().map(RadioHold::saved),
                     batch: Some(batch.clone()),
                 }),
             },
@@ -280,36 +284,32 @@ impl Applying for Linked {
     }
 }
 
-impl Watched for Linked {
+impl Watched for Reached {
     async fn release(&self, back: bool, log: &Log) {
-        let reached = self.reached();
-        let hold = reached.hold.lock_anyway().take();
+        let hold = self.hold.lock_anyway().take();
         match hold {
-            Some(hold) if back => hold.release(&reached.link, log).await,
+            Some(hold) if back => hold.release(&self.link, log).await,
             Some(hold) => hold.leave(log),
             None => {}
         }
     }
     async fn check(&self, settled: Instant) -> Option<Result<Box<str>, Error>> {
-        let reached = self.reached();
-        let run = reached.run.lock_anyway().clone()?;
-        check_on(&reached.link, &run, &reached.seen, &reached.log, settled).await
+        let run = self.run.lock_anyway().clone()?;
+        check_on(&self.link, &run, &self.seen, &self.log, settled).await
     }
     fn pending(&self) -> Option<(Pending, Instant)> {
-        self.reached().seen.lock_anyway().pending
+        self.seen.lock_anyway().pending
     }
     async fn last_look(&self) -> Result<Box<str>, Error> {
-        let reached = self.reached();
-        let run = reached.run.lock_anyway().clone();
-        last_look_on(&reached.link, run.as_deref(), &reached.seen, &reached.log).await
+        let run = self.run.lock_anyway().clone();
+        last_look_on(&self.link, run.as_deref(), &self.seen, &self.log).await
     }
     async fn stop(&self, fires: Instant, delay: Duration, log: &Log) -> Result<(), Error> {
-        let rearmed = self.reached().seen.lock_anyway().rearmed;
-        self.reached().link.stop_fallback(fires, delay, rearmed, log).await
+        let rearmed = self.seen.lock_anyway().rearmed;
+        self.link.stop_fallback(fires, delay, rearmed, log).await
     }
     async fn after(&self, log: &Log) -> Result<(), Error> {
-        let reached = self.reached();
-        reached.link.after_apply(&reached.planned, log).await
+        self.link.after_apply(&self.planned, log).await
     }
 }
 
@@ -469,7 +469,6 @@ pub async fn apply(devices: Vec<DeviceAccess>, logs: Vec<Log>) -> Vec<Result<(),
         .into_iter()
         .map(|device| Linked {
             device,
-            reached: None,
             batch: batch.clone(),
             claimed: claimed.clone(),
         })
@@ -508,7 +507,7 @@ fn first_failure(results: Vec<Result<(), Error>>) -> Option<(usize, Error)> {
 }
 
 /// The batch over `members` (named `names`, logging to `logs`).
-pub(crate) async fn run<M: Applying>(
+pub(crate) async fn run<M: Planning>(
     members: Vec<M>,
     devices: Vec<DeviceId>,
     names: Vec<Box<str>>,
@@ -548,8 +547,7 @@ pub(crate) async fn run<M: Applying>(
     };
 
     // connect and plan, all at once
-    let mut members = members;
-    let planned = join_all(members.iter_mut().zip(&logs).map(|(member, log)| async move {
+    let planned = join_all(members.into_iter().zip(&logs).map(|(member, log)| async move {
         log.check()?;
         log.enter(ApplyState::Planning);
         member.plan(log).await
@@ -558,10 +556,10 @@ pub(crate) async fn run<M: Applying>(
     let mut running = Vec::new();
     let mut failure = None;
     let mut failed_too = Vec::new();
-    for (index, (member, planned)) in members.into_iter().zip(planned).enumerate() {
+    for (index, planned) in planned.into_iter().enumerate() {
         match planned {
-            Ok(false) => results[index] = Some(Ok(())),
-            Ok(true) => running.push(Running {
+            Ok(None) => results[index] = Some(Ok(())),
+            Ok(Some(member)) => running.push(Running {
                 index,
                 name: names[index].clone(),
                 log: logs[index].clone(),
