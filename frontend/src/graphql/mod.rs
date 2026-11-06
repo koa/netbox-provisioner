@@ -1,11 +1,24 @@
 use crate::error::FrontendError;
-use graphql_client::{GraphQLQuery, Response};
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use serde::{Serialize, de::DeserializeOwned};
 use std::sync::LazyLock;
 use yew::Component;
 use yew::html::Scope;
 use yew_oauth2::prelude::{Authentication, OAuth2Context};
+
+/// An answer: the data, and the errors with their `extensions` (`code`, `params`,
+/// `error::ServerProblem`).
+pub type Response<T> = cynic::GraphQlResponse<T, serde_json::Value>;
+/// An error of an answer.
+pub type GraphqlError = cynic::GraphQlError<serde_json::Value>;
+
+/// A segment of an error's `path` as text (`deviceById`, `0`).
+pub fn path_segment(segment: &cynic::GraphQlErrorPathSegment) -> String {
+    match segment {
+        cynic::GraphQlErrorPathSegment::Field(field) => field.clone(),
+        cynic::GraphQlErrorPathSegment::Index(index) => index.to_string(),
+    }
+}
 
 pub mod anonymous;
 pub mod authenticated;
@@ -91,11 +104,7 @@ async fn post<T: DeserializeOwned>(
         let text = response.text().await.unwrap_or_default();
         return Err(FrontendError::Server { status: status.as_u16(), text });
     }
-    let Response {
-        data,
-        errors,
-        extensions,
-    } = response.json::<Response<serde_json::Value>>().await?;
+    let Response { data, errors } = response.json::<Response<serde_json::Value>>().await?;
     let data = match data {
         Some(data) if errors.as_ref().is_some_and(|errors| !errors.is_empty()) => {
             serde_json::from_value(data).ok()
@@ -103,22 +112,13 @@ async fn post<T: DeserializeOwned>(
         Some(data) => Some(serde_json::from_value(data)?),
         None => None,
     };
-    Ok(Response {
-        data,
-        errors,
-        extensions,
-    })
+    Ok(Response { data, errors })
 }
 
-pub async fn query_anonymous<Q: GraphQLQuery>(
-    request: Q::Variables,
-) -> Result<Q::ResponseData, FrontendError> {
+/// Sends `operation` (cynic) to the anonymous endpoint, before the login.
+pub async fn request_anonymous<O: Sendable>(operation: O) -> Result<O::Data, FrontendError> {
     let client = reqwest::Client::builder().build()?;
-    let response: Response<Q::ResponseData> =
-        post(&client, GRAPHQL_ANONYMOUS_URL.as_str(), &Q::build_query(request)).await?;
-    if let Some(data) = response.data {
-        Ok(data)
-    } else {
-        Err(FrontendError::Graphql(response.errors.unwrap_or_default()))
-    }
+    let response: Response<O::Data> =
+        post(&client, GRAPHQL_ANONYMOUS_URL.as_str(), &operation).await?;
+    response.data.ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
 }

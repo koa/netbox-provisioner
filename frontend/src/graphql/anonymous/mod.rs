@@ -1,9 +1,4 @@
-use graphql_client::GraphQLQuery;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "target/anonymous_schema.graphql",
-    query_path = "src/graphql/anonymous/settings.graphql",
-    response_derives = "Debug"
-)]
-pub struct Settings;
+//! The queries of the anonymous endpoint (`/graphql_anonymous`), before the login, checked
+//! against its own schema (`schema`), apart from the authenticated one.
+pub mod schema;
+pub mod settings;

@@ -5,11 +5,14 @@
 //! first answer brings each view up to date. The server ends every operation at the expiry of
 //! the token the connection was opened with (`TOKEN_EXPIRED`), so that answer opens it again
 //! too, with the token as it is now, instead of going to the view.
-use crate::{components::job::RETRY, error::FrontendError, graphql::{host, token}};
+use crate::{
+    components::job::RETRY,
+    error::FrontendError,
+    graphql::{Response, host, token},
+};
 use futures::{SinkExt, StreamExt, channel::mpsc};
 use gloo::net::websocket::{Message, futures::WebSocket};
 use cynic::StreamingOperation;
-use graphql_client::Response;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{

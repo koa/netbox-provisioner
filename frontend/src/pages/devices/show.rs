@@ -30,8 +30,9 @@ use crate::{
                 LeftoverAction, Mac,
             },
         },
+        Response,
         live::{Subscription, local_time, read_at, same_reading, watch},
-        request,
+        path_segment, request,
     },
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
@@ -1152,7 +1153,7 @@ fn target_variables(id: u32, target: &SelectedTarget) -> TargetVariables {
 /// What an answer of the overview shows.
 fn overview_message(
     id: u32,
-    response: graphql_client::Response<DeviceOverview>,
+    response: Response<DeviceOverview>,
 ) -> ShowDeviceMessage {
     if let Some(data) = response.data {
         // why the device couldn't be reached goes with the warning, not the banner
@@ -1162,7 +1163,7 @@ fn overview_message(
             .into_iter()
             .partition(|e| {
                 e.path.as_ref().is_some_and(|path| {
-                    path.iter().map(|p| p.to_string()).eq(["topology", "deviceById", "access"])
+                    path.iter().map(path_segment).eq(["topology", "deviceById", "access"])
                 })
             });
         let access_problem = access_errors

@@ -5,8 +5,8 @@ Status: in Arbeit (cynic, entschieden 2026-10-23). Aufgabe C4 in [todo.md](../to
 Stand: cynic im Frontend. `frontend/build.rs` registriert das Schema des authentifizierten Endpunkts
 als „authenticated“, ohne Default: Jeder Typ nennt es (`schema = "authenticated"`), die Abfragen
 liegen in `graphql/authenticated/`, ihre geteilten Typen (`DeviceRef`, `InterfaceRef` usw.,
-`Severity`) in `graphql/authenticated/types.rs`. Der anonyme Endpunkt (`settings`) bekommt sein
-eigenes Schema, die Trennung bleibt. `graphql::request` schickt eine Operation (auch ein Abo, das
+`Severity`) in `graphql/authenticated/types.rs`. Der anonyme Endpunkt (`settings`) hat sein
+eigenes Schema („anonymous“), die Trennung bleibt. `graphql::request` schickt eine Operation (auch ein Abo, das
 der Server über HTTP mit seiner ersten Antwort beantwortet), `graphql::live::watch` abonniert eine.
 Umgestellt (Module unter `graphql/authenticated/`): `DeviceJournal` (`history`), `SavedJobs` und
 `DiscardSavedJob` (`saved_jobs`), `ListSites`, `SiteDevices` und `PingDevice` (`list_devices`),
@@ -23,8 +23,9 @@ und `ApplyBatch` (`batch_apply`; `ErrorInfo`, `JobState` und `ApplyWarning` in `
 (`NetboxPlan`, `NetboxPlanPreview`, `WriteNetboxPlan`, `UndoNetboxWrite`, `HelperJobs`;
 `netbox_plan`, alle mit dem Input `helper::Helper`, `helper_input!` ist weg), die Geräteseite
 (`DeviceOverview`, `AllowApply`, `RefreshDevice` und die Mutationen, die einen Job starten;
-`device`). Damit ist das authentifizierte Schema ganz auf cynic; graphql_client bleibt für
-`settings` (anonym) und das Backend. Ein
+`device`), und `Settings` des anonymen Endpunkts mit seinem eigenen Schema „anonymous“
+(`graphql/anonymous/`). Das Frontend braucht graphql_client nicht mehr; auch die Antwort und ihre
+Fehler sind cynics (`graphql::Response`, `GraphqlError`). Offen: das Backend. Ein
 `Int`, das das Backend aus einem `u64` füllt und das über 32 Bit gehen kann, liest das Frontend als
 `types::WideInt` (Z38). Die Befunde sind damit ein Typ, wo sie bisher pro Abfrage einer waren und
 über JSON umgewandelt wurden.

@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 
 use crate::{
-    graphql::authenticated::types::ErrorInfo,
+    graphql::{GraphqlError, authenticated::types::ErrorInfo, path_segment},
     i18n::error as t,
 };
 use patternfly_yew::prelude::{Alert, AlertGroup, AlertType};
@@ -34,7 +34,7 @@ impl ServerProblem {
         t::server(self)
     }
     /// From a GraphQL error's extensions (`code`, `params`); without a code only its message.
-    pub fn of(error: &graphql_client::Error) -> Self {
+    pub fn of(error: &GraphqlError) -> Self {
         let extensions = error.extensions.as_ref();
         let code = extensions
             .and_then(|extensions| extensions.get("code"))
@@ -127,7 +127,7 @@ pub enum FrontendError {
     #[error("Cannot convert json")]
     Serde(#[from] serde_json::Error),
     #[error("Graphql Execution Error")]
-    Graphql(Vec<graphql_client::Error>),
+    Graphql(Vec<GraphqlError>),
     #[error("Error on http request")]
     Reqwest(#[from] reqwest::Error),
     #[error("Server answered {status}: {text}")]
@@ -185,7 +185,7 @@ impl FrontendError {
                                     .path.as_ref()
                                     .map(|p|
                                         p.iter()
-                                            .map(|path| path.to_string())
+                                            .map(path_segment)
                                             .collect::<Vec<String>>()
                                             .join("/")
                                     )

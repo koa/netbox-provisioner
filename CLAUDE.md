@@ -1219,8 +1219,8 @@ QEMU's, the golden image's dhcp-client is bound to it).
   `frontend/build.rs`; the anonymous endpoint gets its own, the two stay apart), types several
   queries share in `graphql::authenticated::types`, sent by `graphql::request`
   (`request_response` keeps the data next to the errors), subscribed by `graphql::live::watch`.
-  The authenticated schema is all cynic; `settings` (anonymous) is still graphql_client's. A
-  new query is written with cynic.
+  The anonymous endpoint's `settings` is in `graphql/anonymous/` with its own schema
+  ("anonymous"). The frontend has no graphql_client left.
 - Before adding a helper, look whether one exists (`grep` the crate); one used from several
   modules belongs in a module of its own, not in the first one that needed it.
 

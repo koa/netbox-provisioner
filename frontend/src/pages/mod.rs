@@ -2,10 +2,11 @@ use crate::{
     i18n,
     error::FrontendError,
     graphql::{
-        anonymous::{Settings, settings},
-        query_anonymous,
+        anonymous::settings::{Authentication, Settings},
+        request_anonymous,
     },
 };
+use cynic::QueryBuilder;
 use patternfly_yew::prelude::{
     Alert, AlertType, BackdropViewer, Bullseye, Button, ButtonVariant, Spinner, ToastViewer,
 };
@@ -73,14 +74,9 @@ impl Component for App {
             let scope = ctx.link().clone();
             spawn_local(async move {
                 scope.send_message(
-                    match query_anonymous::<Settings>(settings::Variables {}).await {
-                        Ok(settings::ResponseData {
-                            authentication:
-                                settings::SettingsAuthentication {
-                                    client_id,
-                                    issuer_url,
-                                    scopes,
-                                },
+                    match request_anonymous(Settings::build(())).await {
+                        Ok(Settings {
+                            authentication: Authentication { client_id, issuer_url, scopes },
                         }) => AppMessage::AuthenticationData(AuthenticationData {
                             client_id,
                             issuer_url,

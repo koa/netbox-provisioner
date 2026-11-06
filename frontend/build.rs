@@ -18,8 +18,11 @@ fn write_graphql_schema() -> Result<()> {
         .from_sdl_file("src/graphql/authenticated/schema.graphql")?;
     Ok(())
 }
+/// Registers it for cynic as "anonymous" (`graphql::anonymous::schema`), apart from the
+/// authenticated one.
 fn write_anonymous_graphql_schema() -> Result<()> {
     let schema = create_anonymous_schema();
     fs::write("target/anonymous_schema.graphql", schema.sdl())?;
+    cynic_codegen::register_schema("anonymous").from_sdl_file("target/anonymous_schema.graphql")?;
     Ok(())
 }
