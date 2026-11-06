@@ -70,10 +70,15 @@ pub fn server(problem: &impl Problem) -> String {
         ),
         "NO_BOOTSTRAP_PATH" => match p("obstacle") {
             "NO_IPV4_PORT" => format!("{} hat in NetBox keinen Port mit IPv4-Adresse", p("device")),
-            _ => "Von keinem Port mit IPv4-Adresse führt ein Kabel zu einem erreichbaren Gerät \
-                  im selben Netz"
+            "NO_REACHABLE_NEIGHBOR" => "Von keinem Port mit IPv4-Adresse führt ein Kabel zu \
+                                        einem erreichbaren Gerät im selben Netz"
                 .into(),
+            _ => problem.message().into(),
         },
+        "CONSOLE" => format!("Konsole: {}", p("cause")),
+        "DEVICE_MODEL" => format!("Fehler im Datenmodell des Geräts: {}", p("cause")),
+        "MUTATIONS" => format!("Die Änderungen lassen sich nicht berechnen: {}", p("cause")),
+        "SCRIPT" => format!("Das Skript lässt sich nicht schreiben: {}", p("cause")),
         "CONSOLE_LOGIN_REFUSED" => format!(
             "Anmeldung über mac-telnet an {} abgelehnt (Werkseinstellung und hinterlegte \
              Zugangsdaten)",
@@ -356,6 +361,61 @@ pub fn server(problem: &impl Problem) -> String {
             p("device")
         ),
         "PORT_IN_BRIDGES" => port_in_bridges(problem),
+        "NO_ADDRESS_ON_PREFIX" => format!("Prefix {} hat in NetBox kein Netz", p("prefix")),
+        "NO_AP_MGMT_INTERFACE" => "Kein Management-Interface für den AP festgelegt".into(),
+        "AMBIGUOUS_VLAN_IDS" => "Mehrere VLANs derselben Bridge haben auf dem Gerät dieselbe \
+                                 VID: RouterOS kennt nur die Nummer"
+            .into(),
+        "VLAN_LOOP" => format!(
+            "VLAN {} geht über das VXLAN seiner Gruppe und zugleich über das Kabel von {} zu {}: \
+             das gäbe eine Schleife",
+            p("vlan"),
+            p("interface"),
+            p("farEnd")
+        ),
+        "NETWORKS_ON_VLAN" => format!(
+            "VLAN {} verbände mehrere IP-Netze in einer L2-Domäne: {}",
+            p("vlan"),
+            p("networks")
+        ),
+        "DHCP_SERVERS_ON_VLAN" => format!(
+            "VLAN {} hätte mehrere DHCP-Server in einer L2-Domäne: {}",
+            p("vlan"),
+            p("servers")
+        ),
+        "NO_VTEP_ADDRESS" => format!(
+            "Das Gerät hat Ports am VXLAN {}, aber keine primäre IPv4-Adresse als VTEP",
+            p("vxlan")
+        ),
+        "CHANNEL_WIDTH" => format!("Kanalbreite {} MHz kann ein wireless-Radio nicht", p("width")),
+        "NO_RADIO_PROFILE" => format!(
+            "Radio {} hat eine RF-Rolle, aber das Board hat kein Profil für Richtfunk \
+             (hw_facts.rs)",
+            p("radio")
+        ),
+        "NO_WIRELESS_LINK" => format!(
+            "Radio {} hat eine RF-Rolle, ist aber kein Ende eines Wireless Links",
+            p("radio")
+        ),
+        "NO_PSK" => format!(
+            "Wireless Link {} ist verschlüsselt, NetBox gibt aber keinen PSK heraus",
+            p("link")
+        ),
+        "NO_COUNTRY" => format!(
+            "{} hat ein Radio, aber seine Site keine Region (Land) und sein Link kein rf_country",
+            p("device")
+        ),
+        "UNKNOWN_COUNTRY" => format!(
+            "Für die Region {} kennt RouterOS kein Land: rf_country am Wireless Link setzen",
+            p("region")
+        ),
+        "FREQUENCY_MODE" => format!("Unbekannter rf_frequency_mode {}", p("mode")),
+        "WLAN_VLANS_UNTAGGED" => format!(
+            "Die WLANs der Wireless LAN Group von {} haben verschiedene VLANs, die seine \
+             802.11ac-Radios (wifi-qcom-ac) nicht taggen können: in NetBox die Radios des alten \
+             CAPsMAN geben (wlan1, wlan2 statt wifi1, wifi2)",
+            p("device")
+        ),
         "MTU_MISMATCH" => format!(
             "{} hat MTU {}, das andere Ende des Kabels, {}, {}: OSPF braucht auf beiden dieselbe",
             p("port"),

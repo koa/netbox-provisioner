@@ -486,9 +486,43 @@ impl From<ApiError> for async_graphql::Error {
 
 #[cfg(test)]
 mod test {
-    use super::{ApiError, ErrorInfo};
+    use super::{ApiError, BootstrapObstacle, ErrorInfo};
     use crate::{Error, device::ros::SetupError};
     use async_graphql::Value;
+
+    /// The codes are strings here and in `i18n::error::server`, nothing else keeps them in
+    /// line: every code the two `From` impls give must have a German text, not the
+    /// English `message` the frontend falls back to.
+    #[test]
+    fn every_code_is_worded_in_german() {
+        let source: &'static str = include_str!("error_info.rs");
+        let start = source.find("impl From<&Error> for ErrorInfo").expect("From<&Error>");
+        let end = source.find("\nfn info(").expect("fn info");
+        let codes = source[start..end]
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .filter(|literal| {
+                literal.len() > 1 && literal.bytes().all(|b| b.is_ascii_uppercase() || b == b'_')
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(codes.len() > 100, "only {} codes found", codes.len());
+        // worded by its `obstacle`, checked below
+        let unworded = codes
+            .into_iter()
+            .filter(|&code| code != "NO_BOOTSTRAP_PATH")
+            .filter(|&code| {
+                let info = ErrorInfo { code, params: vec![], message: "untranslated".into() };
+                i18n::error::server(&info) == "untranslated"
+            })
+            .collect::<Vec<_>>();
+        assert!(unworded.is_empty(), "codes without German text: {unworded:?}");
+        for obstacle in [BootstrapObstacle::NoIpv4Port, BootstrapObstacle::NoReachableNeighbor] {
+            let info = ErrorInfo::from(&Error::NoBootstrapPath("lab-ap1".into(), obstacle));
+            let info = ErrorInfo { message: "untranslated".into(), ..info };
+            assert_ne!(i18n::error::server(&info), "untranslated", "{obstacle:?}");
+        }
+    }
 
     #[test]
     fn setup_errors_keep_their_own_code() {

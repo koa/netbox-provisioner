@@ -1195,7 +1195,8 @@ QEMU's, the golden image's dhcp-client is bound to it).
   a sentence in a `Box<str>`: a string field holds a value (a URL, a file, what the device
   or a library answered). A command or anything else that may hold a password goes in with
   it replaced by `***` (`bootstrap::hidden`). The frontend words a code in
-  `i18n::error::server` and falls back to `message` for one it doesn't know yet.
+  `i18n::error::server` and falls back to `message` for one it doesn't know yet; the test
+  `error_info::test::every_code_is_worded_in_german` fails for a code without its text.
 - Every text the UI shows is in the crate `i18n` (German), a module (file) per page or
   component, a `const` or a `fn` taking the values; components write none inline, so a second
   language replaces that one crate. It takes plain values only (`&str`, numbers, its own enums;

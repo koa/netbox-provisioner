@@ -12,24 +12,22 @@ Status: **offen**, **in Arbeit**.
 ## Reihenfolge
 
 Die Bereinigungen aus der Durchsicht vom 2026-11-06, je ein Commit, Tests und clippy grün,
-das Verhalten unverändert (ausser bei den Fehlern):
+das Verhalten unverändert (die Fehler B12 und B13 sind behoben):
 
-1. **Fehler zuerst:** B13 (deutsche Texte und Test der Codes). Klein, für den Operator
-   sichtbar.
-2. **Kleine Aufräumarbeiten:** B24, B25, B26. Kaum Risiko, macht die folgenden Diffs ruhiger.
-3. **cynic:** C4, Abfrage für Abfrage. Danach die Codequalität nochmals beurteilen (wie die
+1. **Kleine Aufräumarbeiten:** B24, B25, B26. Kaum Risiko, macht die folgenden Diffs ruhiger.
+2. **cynic:** C4, Abfrage für Abfrage. Danach die Codequalität nochmals beurteilen (wie die
    Durchsicht vom 2026-11-06: clippy mit strengeren Lints, Duplikate, Modulstruktur) und die
    folgenden Schritte anpassen, bevor es weitergeht: Mit gemeinsamen Typen im Frontend fallen
    Teile von B14, B15, B21 und B24 kleiner aus oder weg.
-4. **Gerät-Ziel als ein Input:** B14, dann B15. Verkleinert Backend und Frontend zugleich und
+3. **Gerät-Ziel als ein Input:** B14, dann B15. Verkleinert Backend und Frontend zugleich und
    ändert das Schema, deshalb vor dem Verschieben der Module.
-5. **Module ordnen:** B16 (Wiederaufnehmen raus aus `graphql/mod.rs`), dann B17 (Apply raus
+4. **Module ordnen:** B16 (Wiederaufnehmen raus aus `graphql/mod.rs`), dann B17 (Apply raus
    aus `ros/graphql.rs`). Reines Verschieben, danach sind die Dateien überschaubar.
-6. **Lange Funktionen teilen:** B18 (`helper/write.rs`), B19 (`ros/mod.rs`), B20
+5. **Lange Funktionen teilen:** B18 (`helper/write.rs`), B19 (`ros/mod.rs`), B20
    (`build_topology_from`), B21 (Geräteseite), B22 (Layout der Netzkarte, vor E21). In dieser
    Folge, weil die ersten am meisten Fehlerrisiko tragen; jede für sich, keine hängt an einer
    anderen.
-7. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
+6. **Bei Gelegenheit:** B23 (`hw_facts`, Firewall v4/v6), wenn dort ohnehin etwas dazukommt.
 
 ## Entscheidungen
 
@@ -72,7 +70,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B13 | **Fehler:** 20 Fehlercodes ohne deutschen Text, das UI zeigt die englische `message` (`i18n/src/error.rs`, Fall `_`): `NO_PSK`, `NO_COUNTRY`, `UNKNOWN_COUNTRY`, `NO_RADIO_PROFILE`, `NO_WIRELESS_LINK`, `CHANNEL_WIDTH`, `FREQUENCY_MODE`, `VLAN_LOOP`, `AMBIGUOUS_VLAN_IDS`, `WLAN_VLANS_UNTAGGED`, `NETWORKS_ON_VLAN`, `DHCP_SERVERS_ON_VLAN`, `NO_VTEP_ADDRESS`, `NO_AP_MGMT_INTERFACE`, `NO_ADDRESS_ON_PREFIX`, `CONSOLE`, `DEVICE_MODEL`, `MUTATIONS`, `SCRIPT`, `NO_REACHABLE_NEIGHBOR` (letzteres als `obstacle`, heute über `_` richtig). Texte nachtragen und ein Test, der jeden Code aus `error_info.rs` gegen `i18n::error::server` prüft (die Codes sind Strings in zwei Crates, nichts hält sie gleich) | S | offen |
 | B14 | Gerät-Ziel als ein GraphQL-Input: `target`, `credentialName`, `adhocCredentials` stehen einzeln in 8 Mutationen (`graphql/mod.rs`, `apply_cfg`, `reboot_device`, `change_device_mode`, `repartition_device`, `boot_partition`, `clear_leftover`, Updates); ein InputObject `DeviceTarget`. Im Frontend fallen damit die 6 fast gleichen Funktionen in `pages/devices/show.rs` (`reboot`, `change_mode`, `repartition`, `boot_from`, `clear`, `apply`, je mit eigenem `AdhocCredentials`) auf eine Umwandlung von `SelectedTarget` zusammen. Schema-Änderung: Backend und Frontend im selben Commit | M | offen |
 | B15 | Die Körper dieser Mutationen sind gleich (Gerät holen, `PowerChain::of`, `job::start` mit `connect_for_job`, `log.enter`): ein Helfer `start_device_job(kind, state, target, \|link, log\| …)` | S | offen |
 | B16 | Wiederaufnehmen gespeicherter Jobs nach einem Neustart aus `graphql/mod.rs` nach `saved_job` (oder `job/resume.rs`): `resume_saved_jobs`, `resume_batch`, `saved_update`, `connect_until`, `resume_apply`, `resume_update`, `Watchers`, `restore_watchdogs` (rund 250 Zeilen); `graphql/mod.rs` behält nur Schema und Resolver | S | offen |
