@@ -248,7 +248,7 @@ async fn main() -> Result<(), BackendError> {
     let topology = TopologyHolder::default();
     // ensure initial fetch
     topology.fetch().await?;
-    backend::graphql::resume_saved_jobs(&topology).await;
+    backend::job::resume::resume_saved_jobs(&topology).await;
     backend::graphql::live::watch_netbox(topology.clone());
 
     let schema = create_schema(topology.clone());

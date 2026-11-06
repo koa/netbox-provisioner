@@ -17,11 +17,18 @@
 //! they are back.
 use crate::{
     Error,
-    device::raw::{command, field, rows},
+    device::{
+        AccessibleDevice,
+        raw::{command, field, rows},
+    },
+    device_state::JobPhase,
     error_info::ErrorInfo,
-    graphql::scalars::ScalarDuration,
+    graphql::{connect_for_job, management_tree, scalars::ScalarDuration},
     job::Log,
-    topology::{access::device::DeviceAccess, management::ManagementTree},
+    topology::{
+        access::{DeviceTarget, device::DeviceAccess},
+        management::ManagementTree,
+    },
 };
 use async_graphql::SimpleObject;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
@@ -455,6 +462,70 @@ pub async fn restore_all<L: super::update::DeviceLink>(suspended: Vec<Suspended<
             }),
         }
     }
+}
+
+/// The watchdogs of others that may fire while a device updates (`suspendWatchdogs`) or is set
+/// up, and the addresses its suppliers' PoE ports ping.
+pub(crate) struct Watchers {
+    watchers: Vec<Watcher>,
+    powered: Vec<IpAddr>,
+}
+
+impl Watchers {
+    pub(crate) fn of(device: &DeviceAccess, suspend: bool) -> Self {
+        Self {
+            watchers: match suspend {
+                true => watchers(device, &management_tree(device)),
+                false => Vec::new(),
+            },
+            powered: addresses(device),
+        }
+    }
+    /// Only the devices powering `device`, for its setup: a device in factory state doesn't
+    /// answer the PoE ping of its addresses in NetBox (one replacing another), and would lose
+    /// its power every few minutes, in the middle of its setup too (E2).
+    pub(crate) fn suppliers(device: &DeviceAccess) -> Self {
+        let mut watchers = Self::of(device, true);
+        watchers.watchers.retain(|watcher| watcher.supplier);
+        watchers
+    }
+    /// Connects to each and suspends its watchdogs, the job entering `suspending` first.
+    pub(crate) async fn suspend(
+        self,
+        log: &Log,
+        suspending: impl Into<JobPhase>,
+    ) -> Result<Vec<Suspended<AccessibleDevice>>, Error> {
+        if !self.watchers.is_empty() {
+            log.enter(suspending);
+        }
+        let mut links = Vec::new();
+        for Watcher { device, supplier } in self.watchers {
+            let link = connect_for_job(&device, DeviceTarget::default(), log).await;
+            if matches!(link, Err(Error::Cancelled)) {
+                return Err(Error::Cancelled);
+            }
+            links.push(WatcherLink {
+                device: device.name().into(),
+                supplier,
+                powered: self.powered.clone(),
+                link,
+            });
+        }
+        suspend_all(links, log).await
+    }
+}
+
+/// Sets the watchdogs [`Watchers::suspend`] suspended again, whatever the job came to, the job
+/// entering `restoring` first.
+pub(crate) async fn restore_watchdogs(
+    suspended: Vec<Suspended<AccessibleDevice>>,
+    log: &Log,
+    restoring: impl Into<JobPhase>,
+) {
+    if !suspended.is_empty() {
+        log.enter(restoring);
+    }
+    restore_all(suspended, log).await;
 }
 
 #[cfg(test)]

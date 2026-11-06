@@ -40,6 +40,8 @@ use std::{
 };
 use tokio::sync::{Notify, watch};
 
+pub mod resume;
+
 /// How many finished jobs are kept.
 const KEEP: usize = 50;
 

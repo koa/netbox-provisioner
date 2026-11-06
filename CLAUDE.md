@@ -789,7 +789,7 @@ device gone from NetBox, unreadable) is shown on the site selection (`savedJobs`
 clock, never an `Instant`. Without `saved_job::open` (tests, the CHR harness) nothing is
 written. A job hands what it needs to its `Log` (`Log::keep`); `Log::enter` writes the file
 in a state that goes on (with that state) and removes it in any other, the job's end too.
-`graphql::resume_saved_jobs` (at the start, after the topology) starts a job per file of a
+`job::resume::resume_saved_jobs` (at the start, after the topology) starts a job per file of a
 device NetBox has, beginning with `Resumed` and `Log::resume_in`: an apply
 (`SavedApply`: credentials by name, `ScriptRun`, the held watchdogs) connects until its
 device answers and goes on watching its script (`AccessibleDevice::watch_script`, the part of
@@ -797,7 +797,7 @@ device answers and goes on watching its script (`AccessibleDevice::watch_script`
 apply with ad hoc credentials saves nothing. An update with its fallback set hands its
 `UpdateRun` to `keep` (`update::update_keeping`; `update::update` keeps nothing, the CHR
 tests use it) before `Rebooting`, `StoppingFallback` and `NotUpdated`; resumed
-(`update::resume`, `graphql::resume_update`) it waits for the reboot counted from entering
+(`update::resume`, `job::resume::resume_update`) it waits for the reboot counted from entering
 `Rebooting` and goes on as before. A resumed job may enter its saved state once more
 (`Log::resume_in`). Once the servers stop (SIGTERM, SIGINT) `binary` calls `job::shutdown`:
 a job with its file written is left as it is, every other one cancelled and given 20 s (the
