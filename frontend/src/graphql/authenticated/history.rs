@@ -1,4 +1,4 @@
-//! The device's journal entries for „Verlauf“ (`components::history`).
+//! The device's journal entries for „Verlauf“ (`components::device::history`).
 use super::{schema::schema, types::JobKind};
 
 #[derive(cynic::QueryVariables, Debug)]

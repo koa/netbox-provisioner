@@ -7,18 +7,15 @@
 use crate::target::SelectedTarget;
 use crate::{
     components::{
-        findings::{netbox_link, severity_label},
+        findings::severity_label,
+        neighbors,
         netbox_helper::{HelperPreset, LinkPreset, NetboxHelper},
     },
     error::FrontendError,
     graphql::{
-        authenticated::{
-            neighbor_findings::{
-                NeighborFinding as Finding, NeighborFindingKind as Kind, NeighborFindings,
-                NeighborFindingsVariables, RefreshNeighbors, RefreshNeighborsVariables,
-                SeenNeighbor as Seen,
-            },
-            types::{InterfaceRef as Interface, PortRef as Port},
+        authenticated::neighbor_findings::{
+            NeighborFinding as Finding, NeighborFindingKind as Kind, NeighborFindings,
+            NeighborFindingsVariables, RefreshNeighbors, RefreshNeighborsVariables,
         },
         live::{Subscription, local_time, read_at, same_reading, watch_data},
         request,
@@ -206,7 +203,6 @@ impl NeighborCheck {
                 findings,
                 read_at,
             } => {
-                let links = Links { netbox };
                 html! {
                     <>
                     <div>{as_of(&local_time(*read_at))}</div>
@@ -217,7 +213,7 @@ impl NeighborCheck {
                             html! {
                                 <li>
                                     {severity_label(finding.severity)}
-                                    <span>{links.describe(&finding.kind)}</span>
+                                    <span>{neighbors::describe(netbox, &finding.kind)}</span>
                                     if let Some(preset) = preset {
                                         if open {
                                             <NetboxHelper id={device_id} target={SelectedTarget::default()} preset={HelperPreset::Link(preset)}/>
@@ -256,92 +252,4 @@ fn link_preset(kind: &Kind) -> Option<LinkPreset> {
         peer_device: peer.device.id as u32,
         peer: peer.id as u32,
     })
-}
-
-/// Neighbor findings as a list, the worst first (the interface view's live checks); without
-/// taking a cable over, the row's actions do that.
-pub fn neighbor_finding_list(netbox: &str, findings: &[Finding]) -> Html {
-    let links = Links { netbox };
-    html! {
-        <ul class="finding-list">
-            { for findings.iter().map(|finding| html! {
-                <li>
-                    {severity_label(finding.severity)}
-                    <span>{links.describe(&finding.kind)}</span>
-                </li>
-            }) }
-        </ul>
-    }
-}
-
-/// Who the device sees, linked into NetBox.
-pub fn seen_list(netbox: &str, seen: &[Seen]) -> Html {
-    Links { netbox }.seen(seen)
-}
-
-struct Links<'a> {
-    netbox: &'a str,
-}
-
-impl Links<'_> {
-    fn interface(&self, interface: &Interface) -> Html {
-        netbox_link(
-            self.netbox,
-            &format!("dcim/interfaces/{}/", interface.id),
-            &format!("{} {}", interface.device.name, interface.name),
-        )
-    }
-    /// the port as the device names it, linked to its NetBox interface where there is one
-    fn port(&self, port: &Port) -> Html {
-        match &port.interface {
-            Some(interface) => netbox_link(
-                self.netbox,
-                &format!("dcim/interfaces/{}/", interface.id),
-                &port.name,
-            ),
-            None => html!({ port.name.clone() }),
-        }
-    }
-    fn seen_one(&self, seen: &Seen) -> Html {
-        match (&seen.interface, &seen.device) {
-            (Some(interface), _) => netbox_link(
-                self.netbox,
-                &format!("dcim/interfaces/{}/", interface.id),
-                &format!("{} {}", seen.identity, seen.interface_name),
-            ),
-            (None, Some(device)) => netbox_link(
-                self.netbox,
-                &format!("dcim/devices/{}/", device.id),
-                &format!("{} {}", seen.identity, seen.interface_name),
-            ),
-            (None, None) => {
-                html!({ t::unknown(&seen.identity, &seen.interface_name, &seen.board) })
-            }
-        }
-    }
-    fn seen(&self, seen: &[Seen]) -> Html {
-        t::seen(seen.iter().map(|s| self.seen_one(s)).collect())
-    }
-
-    fn describe(&self, kind: &Kind) -> Html {
-        match kind {
-            Kind::CableMissing(f) => t::cable_missing(self.port(&f.port), self.seen(&f.seen)),
-            Kind::CableElsewhere(f) => t::cable_elsewhere(
-                self.port(&f.port),
-                self.interface(&f.far_end),
-                self.seen(&f.seen),
-            ),
-            Kind::OtherFarPort(f) => t::other_far_port(
-                self.port(&f.port),
-                self.interface(&f.far_end),
-                self.seen_one(&f.seen),
-            ),
-            Kind::NeighborNotSeen(f) => t::not_seen(self.port(&f.port), self.interface(&f.far_end)),
-            Kind::NeighborsNotInNetbox(f) => {
-                t::not_in_netbox(self.port(&f.port), self.seen(&f.seen))
-            }
-            Kind::DiscoveryOff(f) => html!({ t::discovery_off(&f.list) }),
-            Kind::Unknown => html!({ crate::i18n::findings::UNKNOWN }),
-        }
-    }
 }

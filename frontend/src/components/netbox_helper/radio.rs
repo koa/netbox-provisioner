@@ -4,7 +4,7 @@
 //! its own (it takes a lease of its router's DHCP network).
 use super::{Choice, NetEntry, NetboxHelper, link::port_choice, t};
 use crate::{
-    components::menu::popup::Select,
+    components::widgets::popup::Select,
     error::FrontendError,
     graphql::{
         authenticated::{

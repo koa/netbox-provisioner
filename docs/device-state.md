@@ -252,7 +252,7 @@ alt (das Gerät meldet den neuen Namen ohnehin erst mit der nächsten Ankündigu
 
 Die Job-Ansicht abonniert ihren Job (`JobEvents`, Wurzelfeld `job(id)`), jede Antwort mit den
 neuen Ereignissen ([Jobs](jobs.md#verfolgen-im-browser)). Nur „Abweichung von NetBox“ fragt die
-Ereignisse ihres Prüf-Jobs noch jede Sekunde ab (`components/site_diff.rs`).
+Ereignisse ihres Prüf-Jobs noch jede Sekunde ab (`components/site/site_diff.rs`).
 
 ### Abweichung von NetBox
 

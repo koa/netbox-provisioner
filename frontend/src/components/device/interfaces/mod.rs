@@ -13,7 +13,10 @@ pub mod table;
 
 use crate::target::SelectedTarget;
 use crate::{
-    components::{findings::finding_list, helper_flow::HelperFlow, netbox_helper::HelperPreset},
+    components::{
+        findings::finding_list, helper_flow::HelperFlow, neighbors::neighbor_finding_list,
+        netbox_helper::HelperPreset,
+    },
     error::FrontendError,
     graphql::{
         authenticated::{
@@ -336,7 +339,7 @@ impl Interfaces {
                         {finding_list(&netbox, &view.other_findings)}
                     }
                     if !live_findings.is_empty() {
-                        {crate::components::neighbor_check::neighbor_finding_list(&netbox, &live_findings)}
+                        {neighbor_finding_list(&netbox, &live_findings)}
                     }
                     if !live_addresses.is_empty() {
                         <p>{t::OTHER_ADDRESSES}</p>

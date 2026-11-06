@@ -12,16 +12,16 @@ pub use ::i18n::{
 /// as links to NetBox.
 pub mod findings;
 
-/// What the devices see at their ports against NetBox's cables (`components::neighbor_check`).
+/// What the devices see at their ports against NetBox's cables (`components::neighbors`).
 pub mod neighbors;
 
-/// Choosing another address or other credentials (`components::adjust_target`).
+/// Choosing another address or other credentials (`components::device::adjust_target`).
 pub mod target;
 
-/// The device's interfaces by task (`components::interfaces`).
+/// The device's interfaces by task (`components::device::interfaces`).
 pub mod interfaces;
 
-/// A warning of `generateCfg` (the device page, `components::batch_apply`).
+/// A warning of `generateCfg` (the device page, `components::device::batch_apply`).
 pub mod apply_warning;
 
 /// The features of a device-mode change, with why each is needed (the device page,

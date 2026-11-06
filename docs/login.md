@@ -47,8 +47,9 @@ settings:
   ohne ihn angeben. Ohne Refresh-Token erneuert das UI das Token nicht: Ist es abgelaufen,
   antwortet der Server `403` (und schliesst den WebSocket bei `connection_init`), bis man sich
   neu anmeldet. Jede Seite zeigt dann oben „Anmeldung abgelaufen“ mit „Erneut anmelden“
-  (`components::login_expired`, Z34): Der Login führt über den Provider zurück auf dieselbe Seite,
-  von selbst leitet nichts um, ein offenes Formular bleibt, bis man klickt. Die Job-Ansicht fragt
+  (`components::frame::login_expired`, Z34): Der Login führt über den Provider zurück auf dieselbe
+  Seite, von selbst leitet nichts um, ein offenes Formular bleibt, bis man klickt. Die Job-Ansicht
+  fragt
   weiter und nimmt den Job danach wieder auf. Wer angemeldet ist, aber nicht in `auth_users`
   steht, bekommt den Hinweis nicht: neu anmelden änderte nichts. Im Lab mit Keycloak ohne
   Refresh-Token und 20 s Laufzeit geprüft, über HTTP-Abfragen und über den WebSocket allein.

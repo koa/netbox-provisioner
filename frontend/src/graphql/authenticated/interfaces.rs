@@ -1,5 +1,5 @@
-//! A device's interfaces sorted by task (`DeviceAccess.interfaceView`, `components::interfaces`),
-//! the findings of `super::findings` grouped onto the rows.
+//! A device's interfaces sorted by task (`DeviceAccess.interfaceView`,
+//! `components::device::interfaces`), the findings of `super::findings` grouped onto the rows.
 use super::{
     findings::Finding,
     schema::schema,

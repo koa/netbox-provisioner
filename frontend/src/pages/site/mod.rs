@@ -1,9 +1,9 @@
 use crate::{
     components::{
-        device_entry_card::{DeviceEntryCard, DeviceRow},
         findings::{self, FindingsList},
-        neighbor_check::NeighborCheck,
-        site_diff::SiteDiff,
+        site::device_entry_card::{DeviceEntryCard, DeviceRow},
+        site::neighbor_check::NeighborCheck,
+        site::site_diff::SiteDiff,
     },
     error::FrontendError,
     graphql::{

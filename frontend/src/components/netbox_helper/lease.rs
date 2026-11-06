@@ -4,7 +4,7 @@
 //! The name is planned when left or confirmed with Enter, not on each key.
 use super::{Choice, NetboxHelper, NetboxHelperMsg, t};
 use crate::{
-    components::menu::popup::Select,
+    components::widgets::popup::Select,
     error::FrontendError,
     graphql::{
         authenticated::helper_options::{LeaseTakeoverOptions, LeaseTakeoverOptionsQuery},

@@ -191,7 +191,7 @@ rows by the interfaces they name (those about the device as a whole go with the 
 computed again; a new check is a new finding. The order of the rules and what a bridge device is
 (`DeviceAccess::is_bridge_device`) come from the stored export and the lab, see `docs/interface-view.md`;
 `interfaces_of_netbox_example` writes the export's rows to `target/netbox-example/interfaces.txt`.
-The device page shows them in `components::interfaces`, every port with a row of its own (a
+The device page shows them in `components::device::interfaces`, every port with a row of its own (a
 bridge's ports below it, `InterfaceRow.portRows`, with PoE only; the free ones in a section
 that opens) and on it exactly the actions possible there, the helper starting from that port:
 there is no menu of all helpers. A free or unknown port gets the roles, an Ethernet port
@@ -258,8 +258,8 @@ its steps shifted behind (`PlanStep::shift`); a cable over a patch panel is refu
 (`PORT_PATCHED`), the new one would be direct.
 
 `device/site_diff.rs` is the site page's „Abweichung von NetBox“ (`Mutation.diffSite`,
-`components::site_diff`): a job of the site (`job::start_site`, `JobSubject::Site`; a site's job
-locks none of its devices, a second start gives back the running one) reads its RouterOS
+`components::site::site_diff`): a job of the site (`job::start_site`, `JobSubject::Site`; a site's
+job locks none of its devices, a second start gives back the running one) reads its RouterOS
 devices, four at a time, and emits `DeviceDiffed` per device with the changes of an apply by
 menu (`AccessibleDevice::menu_changes`: the sorted mutations counted like the script, which
 leaves out every update without fields) or the error. A job's `deviceId`/`deviceName` are
@@ -267,7 +267,7 @@ leaves out every update without fields) or the error. A job's `deviceId`/`device
 
 `device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's
 cables (`AccessibleDevice.neighborFindings`, read-only; the site page asks every device at once,
-`components::neighbor_check`). What the device answers is the fact `Neighbors`
+`components::site::neighbor_check`). What the device answers is the fact `Neighbors`
 (`neighbors::read_table`, `neighborsAge`), compared with NetBox anew on each answer
 (`evaluate`), so the card subscribes after the click and a cable taken over in NetBox drops its
 finding; the click drops the facts first (`refreshNeighbors`), every job on a device drops its
@@ -348,7 +348,7 @@ steps before the failure stay, and the helper says "Nur teilweise geschrieben" i
 `plan.rs`, and gives each helper with a form a module with its choice, form, queries and its
 own message (`LinkMsg`, `PoeMsg`, …, wrapped by `From` so callbacks give it as is).
 A `CableMissing` neighbor finding with both ends in NetBox opens the card below it with those
-ends (`components::neighbor_check`, `LinkPreset`). Lists of devices and interfaces follow
+ends (`components::site::neighbor_check`, `LinkPreset`). Lists of devices and interfaces follow
 NetBox' order (`topology::natural`, its `naturalize`/`naturalize_interface`).
 A helper computes a `NetboxPlan` of steps (`PlanStep`: create interface, address, cable,
 prefix, set primary IP, update interface or port, create or update wireless link, delete
@@ -548,7 +548,7 @@ the backend checks the JWT against `auth_issuer` and lets only `auth_users` in, 
 middleware of `/graphql` in `binary` (`authenticated_graphql`: `403` otherwise, and the server
 log says why; the frontend words the status, `i18n::error::refused`; without a refresh token
 `yew-oauth2` keeps an expired token as authenticated, so every page shows „Anmeldung
-abgelaufen“ with a login button on top (`components::login_expired`, `auth::start_login`, no
+abgelaufen“ with a login button on top (`components::frame::login_expired`, `auth::start_login`, no
 redirect by itself) once `graphql::post` gets `401`/`403` or the WebSocket's `connection_init`
 is refused (async-graphql closes it with `1002` and the error, `token …`); not for a user
 outside `auth_users`, logging in again changes nothing there; with errors async-graphql may leave a failed non-null root
@@ -563,8 +563,9 @@ connection again with its current token (`graphql::live::token_expired`). The is
 are fetched once, at the start (A8). The UI picks a
 NetBox site first, then one of its devices (`/sites`, `/site/<id>`, `/site/<id>/device/<id>/show`,
 `routes.rs`, each rendered by `app.rs`): no sidebar, a breadcrumb of dropdowns to the sibling
-sites and devices (`components/menu/`, page layout and `PopupMenu` taken from the cable-editor). Selects use
-`menu::popup::Select` on `PopupMenu`, not patternfly-yew's `SimpleSelect`, whose fixed-position
+sites and devices (`components/frame/navigation.rs`, page layout and `PopupMenu` taken from the
+cable-editor). Selects use `widgets::popup::Select` on `PopupMenu`, not patternfly-yew's
+`SimpleSelect`, whose fixed-position
 popper left the end of a long list out of reach. Devices are
 reached directly, or, with `management_proxy` set, all through one device's `/ip socks` (SOCKS5
 with password, and with `api_networks` only from those: `/ip/socks/access` allows each, then
@@ -612,8 +613,8 @@ connect to its neighbor had no limit yet), and berghof's batch missed the short 
 link was back.
 
 `applyBatch` applies several devices together (`device::batch`; the device page's „Gemeinsam
-anwenden“, `components::batch_apply`, with the other ends of its wireless links picked and the
-devices of the sites to add, `DeviceAccess.batchCandidates`, each picked device's changes
+anwenden“, `components::device::batch_apply`, with the other ends of its wireless links picked and
+the devices of the sites to add, `DeviceAccess.batchCandidates`, each picked device's changes
 shown before): one job per device (`job::start_all`, none if one is busy; cancelling one
 cancels all; the page shows all jobs as equals, side by side where there is room,
 `div.batch-jobs`), and one fallback for all, firing at one moment; each script brings its own
@@ -857,12 +858,12 @@ out when NetBox is slow), tag `netbox-provisioner`, what the provisioner reads b
 field `provisioner_job` (JSON), the text in German from `i18n::journal`. Who started it comes
 with the start (`journal::Started`: the login's name, or `Resumed`). A failed write never stops
 the job (`JournalNotWritten`, once per run of failures); after the end only the newest 20 of the
-provisioner's entries on the device stay. A site's job (`SiteDiff`) writes none. A resumed job writes on in its entry (`SavedJob::journal_entry`), every other entry still running is set to interrupted at the start (`journal::close_interrupted`). The device page's „Verlauf“ (`components::history`) reads them back from `provisioner_job` (`DeviceAccess.journal`, typed: `JournalOutcome`, `JournalLeft`) and words them like the journal. Reading `AccessibleDevice.leftovers` compares what is on the device with what the entries say lies there (`journal::observe`, Z31: each job entry's `left` and `touched`, the kinds it armed or cleared): a leftover no entry names, a fallback gone after a reboot (fired) or without one (removed) is an observation entry, itself a snapshot, so the next read writes none. A fired apply fallback brings the marks of its script: each entry names the run of the script its job wrote (`run`, `Log::wrote_script`), and the read passes the progress file along (`progress::contents`) while no apply fallback lies there.
+provisioner's entries on the device stay. A site's job (`SiteDiff`) writes none. A resumed job writes on in its entry (`SavedJob::journal_entry`), every other entry still running is set to interrupted at the start (`journal::close_interrupted`). The device page's „Verlauf“ (`components::device::history`) reads them back from `provisioner_job` (`DeviceAccess.journal`, typed: `JournalOutcome`, `JournalLeft`) and words them like the journal. Reading `AccessibleDevice.leftovers` compares what is on the device with what the entries say lies there (`journal::observe`, Z31: each job entry's `left` and `touched`, the kinds it armed or cleared): a leftover no entry names, a fallback gone after a reboot (fired) or without one (removed) is an observation entry, itself a snapshot, so the next read writes none. A fired apply fallback brings the marks of its script: each entry names the run of the script its job wrote (`run`, `Log::wrote_script`), and the read passes the progress file along (`progress::contents`) while no apply fallback lies there.
 
 What a job didn't see to the end leaves on a device (cancelled, the provisioner restarted, the
 device unreached) the device page shows under its head (`device::leftovers`,
-`AccessibleDevice.leftovers`, `components::leftovers`; `null` while a job of the device runs):
-the apply fallback's entry („Fallback stoppen“, „Jetzt zurück“: its `on-event` run with
+`AccessibleDevice.leftovers`, `components::device::leftovers`; `null` while a job of the device
+runs): the apply fallback's entry („Fallback stoppen“, „Jetzt zurück“: its `on-event` run with
 `/execute`, then waiting for the device), the update fallback's, the watchdogs' safety net
 („Jetzt wiederherstellen“; while a running job of another device holds them suspended, e.g.
 the update of the device they watch, they show apart as `heldBy` without a button and
@@ -1242,6 +1243,17 @@ QEMU's, the golden image's dhcp-client is bound to it).
   and the frontend only hides or disables what the backend refuses anyway.
 - A `Mutex` is locked with `lock::LockAnyway::lock_anyway`: a panic in one job poisons it,
   and the server and the other jobs go on with its data.
+- The frontend's modules: a component a route shows is a page, in `pages`, its submodules as
+  the routes nest (`sites`, `network_map`, `site` with `site/map` and `site/device/show`; a
+  page may be a thin one around a component), and every page is reached from the breadcrumb.
+  Every other component is in `components`, by what it shows: `frame` around every page
+  (breadcrumb, login), `widgets` without a subject of their own (`popup`, `confirm`), `device`
+  and `site` what one device or one site shows, and a component shown for several subjects
+  (`job`, `findings`, `neighbors`, `netbox_helper`, `helper_flow`, `network_map`,
+  `saved_jobs`) a module of its own. `pages` and `components` hold only components with
+  their props, messages and private data; what several use is outside them (`routes`, `app`
+  for the frame and each route's page, `auth`, `target`, `graphql`, the wording in
+  `frontend/src/i18n`). A `fn` returning `Html` counts as a component.
 - The frontend's GraphQL is cynic (`docs/graphql.md`): a query is structs in
   `graphql/authenticated/<area>.rs`, each type naming its schema (`schema = "authenticated"`,
   registered by `frontend/build.rs`; the anonymous endpoint's `settings` has its own,

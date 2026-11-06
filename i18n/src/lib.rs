@@ -16,7 +16,7 @@ pub mod error;
 
 pub mod login;
 
-/// The breadcrumb of dropdowns (`components::menu`).
+/// The breadcrumb of dropdowns (`components::frame::navigation`).
 pub mod menu;
 
 pub mod pages;
@@ -24,7 +24,7 @@ pub mod pages;
 /// Jobs saved before a restart that didn't go on (`components::saved_jobs`).
 pub mod saved_jobs;
 
-/// How far each device of a site is from NetBox (`components::site_diff`).
+/// How far each device of a site is from NetBox (`components::site::site_diff`).
 pub mod site_diff;
 
 /// The site's devices and edges as OSPF sees them (`components::network_map`).
@@ -33,7 +33,7 @@ pub mod network_map;
 /// The device page (`pages::site::device::show`).
 pub mod device;
 
-/// Applying together with other devices (`components::batch_apply`).
+/// Applying together with other devices (`components::device::batch_apply`).
 pub mod batch;
 
 /// A job and its events (`components::job`), as the backend reports them.

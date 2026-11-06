@@ -270,7 +270,7 @@ pub mod warning {
     }
 }
 
-/// What a job left on the device (`components::leftovers`).
+/// What a job left on the device (`components::device::leftovers`).
 pub mod leftovers {
     pub const TITLE: &str = "Auf dem Gerät liegt noch etwas von einem früheren Auftrag";
     pub const TEXT: &str = "Ein Auftrag ist nicht zu Ende gekommen (abgebrochen, Provisioner neu \

@@ -3,7 +3,7 @@
 use super::{Choice, NetEntry, NetboxHelper, t};
 use crate::target::SelectedTarget;
 use crate::{
-    components::menu::popup::Select,
+    components::widgets::popup::Select,
     error::FrontendError,
     graphql::{
         authenticated::{

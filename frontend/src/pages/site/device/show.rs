@@ -2,13 +2,14 @@ use crate::routes::AppRoute;
 use crate::target::SelectedTarget;
 use crate::{
     components::{
-        adjust_target::AdjustTarget,
-        batch_apply::{BatchApply, BatchJob},
-        history::History,
-        interfaces::Interfaces,
+        device::adjust_target::AdjustTarget,
+        device::batch_apply::{BatchApply, BatchJob},
+        device::history::History,
+        device::interfaces::Interfaces,
+        device::leftovers::{Leftover, Leftovers},
         job::JobView,
-        leftovers::{Leftover, Leftovers},
-        menu::popup::Select,
+        widgets::confirm::Confirm,
+        widgets::popup::Select,
     },
     error::{FrontendError, ServerProblem},
     graphql::{
@@ -42,10 +43,7 @@ use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
     CodeBlockCode, Spinner, SpinnerSize, TextInput,
 };
-use web_sys::MouseEvent;
-use yew::{
-    Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local,
-};
+use yew::{Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
 use yew_nested_router::components::Link;
 
 pub struct ShowDevice {
@@ -1177,47 +1175,6 @@ impl ShowDevice {
                     </label>
                 }
             </Alert>
-        }
-    }
-}
-
-/// A button that asks first: `ask` until clicked, then `question` with `now` and one to cancel.
-struct Confirm {
-    asking: bool,
-    question: String,
-    now: &'static str,
-    ask: String,
-    disabled: bool,
-}
-
-impl Confirm {
-    /// `on_now` does it, `on_asking` gets whether it asks now (`true`) or was cancelled.
-    fn view(self, on_now: Callback<MouseEvent>, on_asking: Callback<bool>) -> Html {
-        if self.asking {
-            html! {<>
-                {self.question}
-                <Button
-                    variant={ButtonVariant::Danger}
-                    label={self.now}
-                    disabled={self.disabled}
-                    onclick={on_now}
-                />
-                {" "}
-                <Button
-                    variant={ButtonVariant::Link}
-                    label={CANCEL}
-                    onclick={on_asking.reform(|_| false)}
-                />
-            </>}
-        } else {
-            html! {
-                <Button
-                    variant={ButtonVariant::Secondary}
-                    label={self.ask}
-                    disabled={self.disabled}
-                    onclick={on_asking.reform(|_| true)}
-                />
-            }
         }
     }
 }

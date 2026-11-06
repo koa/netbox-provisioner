@@ -5,7 +5,7 @@
 //! whose page has its initial setup.
 use super::{Choice, NetEntry, NetboxHelper, NetboxHelperMsg, t};
 use crate::{
-    components::menu::popup::Select,
+    components::widgets::popup::Select,
     error::FrontendError,
     graphql::{
         authenticated::helper_options::{

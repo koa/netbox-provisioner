@@ -126,7 +126,7 @@ pub fn removed(left: &[Left]) -> String {
     )
 }
 
-/// The device page's „Verlauf“ (`components::history`): the entries from the journal.
+/// The device page's „Verlauf“ (`components::device::history`): the entries from the journal.
 pub mod history {
     pub const TITLE: &str = "Verlauf";
     pub const NONE: &str = "Noch keine Einträge des Provisioners im Journal des Geräts in NetBox.";

@@ -1,4 +1,4 @@
-//! Applying the config to a device together with others (`components::batch_apply`): the
+//! Applying the config to a device together with others (`components::device::batch_apply`): the
 //! devices to pick (`batchCandidates`), the plan of each (`generateCfg`), the batch started
 //! (`applyBatch`).
 use super::{schema::schema, types::ApplyWarning};

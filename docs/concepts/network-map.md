@@ -209,7 +209,7 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   `publishLayout(positions)` nach `map_position`; „Eigene Anordnung zurücksetzen“ verwirft die
   Browser-Overrides wieder. Die Aktionsleiste und beide Buttons: `components::network_map`
   (`Interaction`, `PublishState`); der gemeinsame `localStorage`-Zugriff liegt jetzt in
-  `local_storage.rs` (zuvor in `components::interfaces`, dort weiterverwendet).
+  `local_storage.rs` (zuvor in `components::device::interfaces`, dort weiterverwendet).
 - **Sites gruppiert:** über alle Sites zieht `clustered_layout` die Geräte jeder Site in einen
   eigenen, grau gestrichelten Kreis (benannt), die farbigen Kanten bleiben auf Geräte-Ebene.
   **Entschieden 2026-11-02**, nach einem ersten, unbefriedigenden Versuch ohne das: mit vielen

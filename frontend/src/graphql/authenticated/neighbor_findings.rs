@@ -1,5 +1,5 @@
 //! What the devices see at their ports compared with NetBox's cables (`neighborFindings`,
-//! `components::neighbor_check`); the interface view's live checks group the same type onto
+//! `components::site::neighbor_check`); the interface view's live checks group the same type onto
 //! their rows (`super::interface_live`).
 use super::{
     schema::schema,

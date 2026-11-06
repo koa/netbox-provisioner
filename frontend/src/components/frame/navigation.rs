@@ -1,6 +1,7 @@
 //! The breadcrumb, after cable-editor: every item a dropdown leading to its siblings (another
 //! site, another device of the site).
 use crate::{
+    components::widgets::popup::{MenuGroup, MenuLinkItem, PopupMenu},
     error::FrontendError,
     graphql::{
         authenticated::list_devices::{ListSites, Site},
@@ -11,13 +12,10 @@ use crate::{
 };
 use cynic::SubscriptionBuilder;
 use patternfly_yew::prelude::{Icon, MenuToggleVariant, Spinner};
-use popup::{MenuGroup, MenuLinkItem, PopupMenu};
 use yew::{
     AttrValue, Component, Context, Html, Properties, function_component, html, html::ChildrenProps,
     platform::spawn_local,
 };
-
-pub mod popup;
 
 #[derive(Properties, PartialEq)]
 pub struct MenuDropdownProps {

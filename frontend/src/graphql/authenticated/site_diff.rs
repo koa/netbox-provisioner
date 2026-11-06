@@ -1,4 +1,4 @@
-//! How far each device of a site is from NetBox (`components::site_diff`): the job started
+//! How far each device of a site is from NetBox (`components::site::site_diff`): the job started
 //! (`diffSite`), the site's last one (`jobs`), its events polled, and what the provisioner knows
 //! of each device since (`knownDiff`, subscribed).
 use super::{

@@ -1,5 +1,5 @@
 use crate::components::{
-    interfaces::rows::{Kind, Task},
+    device::interfaces::rows::{Kind, Task},
     netbox_helper::HelperKind,
 };
 

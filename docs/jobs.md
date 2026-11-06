@@ -597,8 +597,9 @@ wegfällt. Die Gnadenfrist des Charts ist 60 s ([Deployment](deployment.md)).
 
 Was ein Job nicht zu Ende gesehen hat (abgebrochen, der Provisioner neu gestartet, das Gerät nicht
 erreicht), zeigt die Geräteseite unter ihrem Kopf (`device::leftovers`,
-`AccessibleDevice.leftovers`, `components::leftovers`; `null`, solange ein Job des Geräts läuft),
-mit Knöpfen, die der Mensch auslöst. Jede Aktion ist ein Job `Cleanup` (`clearLeftover`); nichts
+`AccessibleDevice.leftovers`, `components::device::leftovers`; `null`, solange ein Job des Geräts
+läuft), mit Knöpfen, die der Mensch auslöst. Jede Aktion ist ein Job `Cleanup` (`clearLeftover`);
+nichts
 wird von selbst weggeräumt.
 
 | Rest | von | Knöpfe |

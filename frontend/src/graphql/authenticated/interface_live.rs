@@ -1,5 +1,6 @@
 //! The live checks of the interface view's rows (`AccessibleDevice.interfaceLive`,
-//! `components::interfaces::live`), with the neighbor findings of `super::neighbor_findings`.
+//! `components::device::interfaces::live`), with the neighbor findings of
+//! `super::neighbor_findings`.
 use super::{
     interfaces::RowAction,
     neighbor_findings::{NeighborFinding, SeenNeighbor},

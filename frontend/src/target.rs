@@ -1,5 +1,6 @@
 //! Where and as whom a device is reached, when the operator picks another address or other
-//! credentials than NetBox's (`components::adjust_target`); every view asking the device takes it.
+//! credentials than NetBox's (`components::device::adjust_target`); every view asking the device
+//! takes it.
 use crate::graphql::authenticated::types::{AdhocCredentials, DeviceTarget};
 use std::net::IpAddr;
 

@@ -121,7 +121,7 @@ Was dabei gelernt wurde:
 Am Anfang und nach Arbeiten von Hand gilt für jedes Gerät dieselbe Schleife: den Diff ansehen,
 was davon gewollt ist (dann NetBox korrigieren, etwa mit „Adresse übernehmen“) und was falsch
 (dann anwenden). Den Überblick gibt „Abweichung von NetBox“ auf der Site-Seite (`diffSite`,
-`device/site_diff.rs`, `components::site_diff`): Ein Job der Site liest ihre RouterOS-Geräte,
+`device/site_diff.rs`, `components::site::site_diff`): Ein Job der Site liest ihre RouterOS-Geräte,
 vier zugleich, und meldet je Gerät, was ein Anwenden je Menü hinzufügt, ändert und entfernt (wie
 das Skript: Updates ohne Felder zählen nicht), oder warum es nicht lesbar war. Die Karte zeigt
 den Zwischenstand, die meisten Änderungen zuerst, hebt entfernte Adressen, statische Leases, OSPF

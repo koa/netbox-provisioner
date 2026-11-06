@@ -2,14 +2,14 @@
 //! row's ports, its OSPF neighbors there, the bridge devices of a radio link answering. Read
 //! after the view, in a subscription of their own (a job on the device or a change in NetBox
 //! brings them anew), with the time they were read; the neighbor findings are those of
-//! `neighborFindings`, so `components::neighbor_check` words them.
+//! `neighborFindings`, so `components::neighbors` words them.
 use super::{
     Interfaces, InterfacesMsg,
     rows::{self, Action},
 };
 use crate::target::SelectedTarget;
 use crate::{
-    components::neighbor_check::{neighbor_finding_list, seen_list},
+    components::neighbors::{neighbor_finding_list, seen_list},
     error::FrontendError,
     graphql::{
         authenticated::{

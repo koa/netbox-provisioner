@@ -1,7 +1,7 @@
 //! „VLAN am Port“: a port, then the VLAN group, then its VLAN (`portVlanOptions`).
 use super::{Choice, NetboxHelper, t};
 use crate::{
-    components::menu::popup::Select,
+    components::widgets::popup::Select,
     error::FrontendError,
     graphql::{
         authenticated::{

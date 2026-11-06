@@ -6,7 +6,7 @@ aus geht es mit einem Klick zum passenden Helfer ([Config-Helper](config-helper.
 Die Helfer selbst (Plan, Vorschau, Schreiben, Rückgängig) sind dieselben wie anderswo.
 
 Code: `topology/interfaces.rs` (Zuordnung, Zeilen, Aktionen), `device/interface_live.rs`
-(Live-Prüfungen), `components/interfaces/` und `components/helper_flow.rs` (Frontend).
+(Live-Prüfungen), `components/device/interfaces/` und `components/helper_flow.rs` (Frontend).
 
 ## Aufgaben
 
@@ -230,6 +230,6 @@ die Seite neu lädt.
 - `AccessibleDevice.interfaceLive`: die Live-Prüfungen, im Backend auf die Zeilen der Ansicht
   gruppiert (`DeviceAccess::interface_rows`); das Frontend fügt über das Interface der Zeile
   zusammen.
-- Frontend: `components/interfaces/` (`rows.rs` das Modell, `table.rs` die Tabelle mit den Spalten
-  pro Aufgabe, `loopback.rs`, `live.rs`), `components/helper_flow.rs` (Modal und Ablauf),
+- Frontend: `components/device/interfaces/` (`rows.rs` das Modell, `table.rs` die Tabelle mit den
+  Spalten pro Aufgabe, `loopback.rs`, `live.rs`), `components/helper_flow.rs` (Modal und Ablauf),
   `components/netbox_helper/` (ein Modul pro Helfer mit Formular).

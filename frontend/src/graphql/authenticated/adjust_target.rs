@@ -1,4 +1,5 @@
-//! The credentials the backend knows by name (`listCredentials`), for `components::adjust_target`.
+//! The credentials the backend knows by name (`listCredentials`), for
+//! `components::device::adjust_target`.
 use super::schema::schema;
 
 #[derive(cynic::QueryFragment, Debug)]

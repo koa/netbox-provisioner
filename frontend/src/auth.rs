@@ -1,6 +1,6 @@
 //! The login: leaving for the provider ([`start_login`]), and whether the server takes the token
 //! (E20): the requests (`graphql::post`) and the WebSocket (`graphql::live`) [`report`] it, the
-//! note `components::login_expired` [`watch`]es it.
+//! note `components::frame::login_expired` [`watch`]es it.
 use std::cell::{Cell, RefCell};
 use yew::{Callback, Component, html::Scope};
 use yew_oauth2::{agent::OAuth2Operations, components::context::Agent, openid::Client};

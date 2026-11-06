@@ -466,8 +466,8 @@ macro_rules! watching {
 fn describe(event: &Logged) -> Html {
     use t::event as e;
     let text = match &event.event {
-        // one this page doesn't know yet; a site's job (`components::site_diff`) is never on a
-        // device's page
+        // one this page doesn't know yet; a site's job (`components::site::site_diff`) is never on
+        // a device's page
         Event::Unknown => e::UNKNOWN.into(),
         Event::ApplyPlanned(planned) if planned.script.trim().is_empty() => e::NOTHING_TO_DO.into(),
         Event::ApplyPlanned(planned) => return script(t::SCRIPT, &planned.script),

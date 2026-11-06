@@ -6,8 +6,8 @@ use super::{
 use crate::{
     components::{
         findings::finding_list,
-        menu::popup::{MenuActionItem, MenuGroup, PopupMenu},
         netbox_helper::HelperKind,
+        widgets::popup::{MenuActionItem, MenuGroup, PopupMenu},
     },
     graphql::authenticated::{
         interfaces::RadioPath,
@@ -281,7 +281,7 @@ impl TableEntryRenderer<Column> for Entry {
                 RowLive::Unchecked => html!({ t::NONE }),
                 RowLive::Checked(live) if live.seen.is_empty() => html!({ t::SEES_NOBODY }),
                 RowLive::Checked(live) => {
-                    crate::components::neighbor_check::seen_list(&self.netbox, &live.seen)
+                    crate::components::neighbors::seen_list(&self.netbox, &live.seen)
                 }
             },
             Column::State if self.changed.is_some() => changed_label(),

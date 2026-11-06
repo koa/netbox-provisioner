@@ -1,7 +1,7 @@
 //! „Kunden-Netz“: a port or VLAN and a prefix of the site (`customerNetOptions`).
 use super::{NetEntry, NetTarget, NetboxHelper, t};
 use crate::{
-    components::menu::popup::Select,
+    components::widgets::popup::Select,
     error::FrontendError,
     graphql::{
         authenticated::{

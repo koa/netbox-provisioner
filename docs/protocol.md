@@ -64,7 +64,7 @@ weiter darin.
 
 ## Verlauf auf der Geräteseite
 
-Die Geräteseite zeigt zuunterst den **Verlauf** (`components::history`,
+Die Geräteseite zeigt zuunterst den **Verlauf** (`components::device::history`,
 `DeviceAccess.journal`, gelesen mit `netbox_token`): die Einträge des Provisioners, neueste
 zuerst, mit Art und Ausgang, Zeitpunkt (wie NetBox ihn gibt, in seiner Zeitzone), wer gestartet
 hat, dem Zustand (nicht bei fertig), was auf dem Gerät bleibt, und dem Link auf den Eintrag in

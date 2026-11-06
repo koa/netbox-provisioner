@@ -1,7 +1,9 @@
 //! The frame of every page: the login's settings from the backend, the OIDC session, the router,
 //! and each route's page below the breadcrumb.
 use crate::{
-    components::{login::Login, login_expired::LoginExpired, menu::Navigation},
+    components::{
+        frame::login::Login, frame::login_expired::LoginExpired, frame::navigation::Navigation,
+    },
     error::FrontendError,
     graphql::{
         anonymous::settings::{Authentication, Settings},
