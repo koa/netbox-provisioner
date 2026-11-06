@@ -40,6 +40,7 @@ use crate::{
     },
     graphql::connect_for_job,
     job::Log,
+    lock::LockAnyway,
     saved_job::{self, SavedApply, SavedBatch, SavedJob, SavedWork, ScriptRun},
     topology::{DeviceId, access::{AccessTopology, device::DeviceAccess}},
 };
@@ -189,10 +190,6 @@ impl Linked {
     }
 }
 
-fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|p| p.into_inner())
-}
-
 impl Applying for Linked {
     async fn plan(&mut self, log: &Log) -> Result<bool, Error> {
         let link = connect_for_job(&self.device, None, None, None, log).await?;
@@ -220,7 +217,7 @@ impl Applying for Linked {
         let reached = self.reached.as_mut().expect("planned before");
         if reached.planned.radio_wait().is_some() {
             let hold = RadioHold::take(&reached.link, &mut reached.planned, &batch, &claimed, log).await?;
-            *reached.hold.lock().unwrap_or_else(|p| p.into_inner()) = Some(hold);
+            *reached.hold.lock_anyway() = Some(hold);
         }
         Ok(())
     }
@@ -237,7 +234,7 @@ impl Applying for Linked {
         let reached = self.reached();
         let run = write_script(&reached.control, &reached.planned, lead, rearm, Some(log)).await?;
         log.wrote_script(&run);
-        *lock(&reached.run) = Some(run);
+        *reached.run.lock_anyway() = Some(run);
         Ok(())
     }
     async fn start(&self) -> Result<bool, Error> {
@@ -251,7 +248,9 @@ impl Applying for Linked {
     }
     fn keep(&self, fallback: bool, fires: Instant, batch: &SavedBatch, log: &Log) {
         let reached = self.reached();
-        let (Some(run), Some(credentials)) = (lock(&reached.run).clone(), reached.link.credentials_name()) else {
+        let (Some(run), Some(credentials)) =
+            (reached.run.lock_anyway().clone(), reached.link.credentials_name())
+        else {
             return;
         };
         let now = SystemTime::now();
@@ -273,7 +272,7 @@ impl Applying for Linked {
                         unmarked: now + APPLY_TIMEOUT,
                         reprovision: reached.planned.reprovisioned(),
                     },
-                    hold: lock(&reached.hold).as_ref().map(RadioHold::saved),
+                    hold: reached.hold.lock_anyway().as_ref().map(RadioHold::saved),
                     batch: Some(batch.clone()),
                 }),
             },
@@ -284,7 +283,7 @@ impl Applying for Linked {
 impl Watched for Linked {
     async fn release(&self, back: bool, log: &Log) {
         let reached = self.reached();
-        let hold = lock(&reached.hold).take();
+        let hold = reached.hold.lock_anyway().take();
         match hold {
             Some(hold) if back => hold.release(&reached.link, log).await,
             Some(hold) => hold.leave(log),
@@ -293,19 +292,19 @@ impl Watched for Linked {
     }
     async fn check(&self, settled: Instant) -> Option<Result<Box<str>, Error>> {
         let reached = self.reached();
-        let run = lock(&reached.run).clone()?;
+        let run = reached.run.lock_anyway().clone()?;
         check_on(&reached.link, &run, &reached.seen, &reached.log, settled).await
     }
     fn pending(&self) -> Option<(Pending, Instant)> {
-        lock(&self.reached().seen).pending
+        self.reached().seen.lock_anyway().pending
     }
     async fn last_look(&self) -> Result<Box<str>, Error> {
         let reached = self.reached();
-        let run = lock(&reached.run).clone();
+        let run = reached.run.lock_anyway().clone();
         last_look_on(&reached.link, run.as_deref(), &reached.seen, &reached.log).await
     }
     async fn stop(&self, fires: Instant, delay: Duration, log: &Log) -> Result<(), Error> {
-        let rearmed = lock(&self.reached().seen).rearmed;
+        let rearmed = self.reached().seen.lock_anyway().rearmed;
         self.reached().link.stop_fallback(fires, delay, rearmed, log).await
     }
     async fn after(&self, log: &Log) -> Result<(), Error> {
@@ -329,7 +328,7 @@ async fn check_on(
     .ok()?
     .ok()?;
     {
-        let mut seen = lock(seen);
+        let mut seen = seen.lock_anyway();
         seen.pending = Some((look.pending, Instant::now()));
         if let Some(rearmed) = look.progress.as_ref().and_then(Progress::rearm) {
             seen.rearmed = Some(rearmed);
@@ -360,7 +359,7 @@ async fn last_look_on(link: &AccessibleDevice, run: Option<&str>, seen: &Mutex<S
 
 /// The marks of the script (`ScriptProgress`), once.
 fn show(seen: &Mutex<Seen>, log: &Log, progress: Option<&Progress>, after_fallback: bool) {
-    let mut seen = lock(seen);
+    let mut seen = seen.lock_anyway();
     if let Some(progress) = progress
         && !seen.shown
     {
@@ -389,7 +388,7 @@ impl Rejoined {
             let reached = self.device.connect(None, self.saved.credentials.clone(), None).await.ok().flatten()?;
             self.log.emit(reached.connected_device());
             if let Some(saved) = &self.saved.hold {
-                *lock(&self.hold) = Some(RadioHold::resumed(&reached, saved, &self.log).await);
+                *self.hold.lock_anyway() = Some(RadioHold::resumed(&reached, saved, &self.log).await);
             }
             *link = Some(Arc::new(reached));
         }
@@ -400,7 +399,7 @@ impl Rejoined {
 impl Watched for Rejoined {
     async fn release(&self, back: bool, log: &Log) {
         let link = self.link.lock().await.clone();
-        let hold = lock(&self.hold).take();
+        let hold = self.hold.lock_anyway().take();
         match (hold, link) {
             (Some(hold), Some(link)) if back => hold.release(&link, log).await,
             (Some(hold), _) => hold.leave(log),
@@ -418,7 +417,7 @@ impl Watched for Rejoined {
         check_on(&link, &self.saved.script.run, &self.seen, &self.log, settled).await
     }
     fn pending(&self) -> Option<(Pending, Instant)> {
-        lock(&self.seen).pending
+        self.seen.lock_anyway().pending
     }
     async fn last_look(&self) -> Result<Box<str>, Error> {
         match self.link().await {
@@ -429,7 +428,7 @@ impl Watched for Rejoined {
         }
     }
     async fn stop(&self, fires: Instant, delay: Duration, log: &Log) -> Result<(), Error> {
-        let rearmed = lock(&self.seen).rearmed;
+        let rearmed = self.seen.lock_anyway().rearmed;
         match self.link().await {
             Some(link) => link.stop_fallback(fires, delay, rearmed, log).await,
             None => {

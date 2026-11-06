@@ -29,6 +29,7 @@ use crate::{
     Error,
     graphql::{connect_for_job, scalars::ScalarDuration},
     job::Log,
+    lock::LockAnyway,
     saved_job::SavedHold,
     topology::{DeviceId, access::device::DeviceAccess, natural::naturalize},
 };
@@ -248,7 +249,7 @@ fn depending(
     claimed: &Mutex<BTreeSet<DeviceId>>,
 ) -> Vec<DeviceAccess> {
     let topology = device.topology();
-    let mut claimed = claimed.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut claimed = claimed.lock_anyway();
     let mut depending: Vec<DeviceAccess> = crate::graphql::management_tree(device)
         .depending_on(device.id())
         .into_iter()
