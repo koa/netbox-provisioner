@@ -5,7 +5,7 @@ use crate::{
     Error,
     config::CONFIG,
     device::{
-        AccessibleDevice,
+        AccessibleDevice, partitions,
         radio_hold::RadioHold,
         raw,
         ros::{
@@ -425,6 +425,17 @@ pub(crate) fn emit_checked(log: &Log, remaining: &Result<Box<str>, Error>) {
     });
 }
 
+/// Where an apply's script left the device ([`AccessibleDevice::watch_script`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Back {
+    /// not reached, or its fallback fired or may still fire
+    Fallback,
+    /// reached and the fallback taken away (or none), with a part left or not checked
+    Reached,
+    /// reached, the fallback taken away (or none), and nothing of the diff left
+    InLine,
+}
+
 /// A device's diff, read and generated for an apply.
 pub(crate) struct PlannedApply {
     cfg: DeviceCfg,
@@ -538,12 +549,38 @@ impl AccessibleDevice {
             });
         };
         let (applied, back) = self.apply_planned(&planned, keep, log).await;
+        self.after_back(applied, back, hold, log).await
+    }
+    /// Restores what `hold` suspended where the device is back, else leaves it; in line, the
+    /// other partition follows ([`partitions::sync_other`]), after the hold, so it doesn't keep
+    /// what the hold changed.
+    async fn after_back(
+        &self,
+        applied: Result<(), Error>,
+        back: Back,
+        hold: Option<RadioHold>,
+        log: &Log,
+    ) -> Result<(), Error> {
         match hold {
-            Some(hold) if back => hold.release(self, log).await,
+            Some(hold) if back != Back::Fallback => hold.release(self, log).await,
             Some(hold) => hold.leave(log),
             None => {}
         }
+        if applied.is_ok() && back == Back::InLine {
+            self.sync_partition(log).await;
+        }
         applied
+    }
+    /// [`partitions::sync_other`] over a new connection.
+    pub(crate) async fn sync_partition(&self, log: &Log) {
+        match self.connect_again::<SimpleResult>().await {
+            Ok(raw) => partitions::sync_other(&raw, log).await,
+            Err(error) => log.emit(partitions::PartitionSynced {
+                partition: None,
+                config_only: false,
+                error: Some(ErrorInfo::from(&error)),
+            }),
+        }
     }
     /// The credentials it was reached with, by name; `None` for ad hoc ones.
     pub(crate) fn credentials_name(&self) -> Option<&str> {
@@ -559,15 +596,11 @@ impl AccessibleDevice {
             None => None,
         };
         let (applied, back) = self.watch_script(&saved.script, log).await;
-        match hold {
-            Some(hold) if back => hold.release(self, log).await,
-            Some(hold) => hold.leave(log),
-            None => {}
-        }
-        applied
+        self.after_back(applied, back, hold, log).await
     }
-    /// [`Self::apply`] once planned; `true` along with it where the fallback won't fire:
-    /// nothing applied, or the device reached again and the fallback taken away.
+    /// [`Self::apply`] once planned, and where it left the device: not [`Back::Fallback`] where
+    /// the fallback won't fire (nothing applied, or the device reached again and the fallback
+    /// taken away).
     ///
     /// The script runs in the background and leaves its marks on the device (`progress`); the
     /// apply looks at them every few seconds. Once the script is through and the device
@@ -582,7 +615,7 @@ impl AccessibleDevice {
         planned: &PlannedApply,
         keep: impl FnOnce(&ScriptRun),
         log: &Log,
-    ) -> (Result<(), Error>, bool) {
+    ) -> (Result<(), Error>, Back) {
         let radio_wait = planned.radio_wait();
         let window = fallback_window(radio_wait);
         let delay = SCRIPT_LIMIT + window;
@@ -590,12 +623,12 @@ impl AccessibleDevice {
         let fires = armed_at + delay;
         let raw = match self.connect_again::<SimpleResult>().await {
             Ok(raw) => raw,
-            Err(error) => return (Err(error), true),
+            Err(error) => return (Err(error), Back::Reached),
         };
         log.enter(ApplyState::ArmingFallback);
         let armed = match arm_fallback_on(&raw, delay, window, radio_wait, log).await {
             Ok(armed) => armed,
-            Err(error) => return (Err(error), true),
+            Err(error) => return (Err(error), Back::Reached),
         };
         let started = async {
             log.enter(ApplyState::WritingScript);
@@ -625,7 +658,7 @@ impl AccessibleDevice {
                     timeout: window.into(),
                     error: Some(ErrorInfo::from(&error)),
                 });
-                return (Err(error), true);
+                return (Err(error), Back::Reached);
             }
         };
         log.emit(ApplyRunning {
@@ -648,13 +681,13 @@ impl AccessibleDevice {
     }
     /// [`Self::apply_planned`] once the script runs, also after a restart of the provisioner
     /// (`saved_job`): looks at the marks until the script is through and the device reached,
-    /// takes the fallback away and diffs, or waits for the fallback to fire. `true` along with
-    /// it where the fallback won't fire.
+    /// takes the fallback away and diffs, or waits for the fallback to fire; with where it left
+    /// the device ([`Back`]).
     pub(crate) async fn watch_script(
         &self,
         script: &ScriptRun,
         log: &Log,
-    ) -> (Result<(), Error>, bool) {
+    ) -> (Result<(), Error>, Back) {
         let armed = script.armed;
         let armed_at = saved_job::instant(script.armed_at);
         let fires = saved_job::instant(script.fires);
@@ -674,7 +707,7 @@ impl AccessibleDevice {
         let mut seen: Option<Progress> = None;
         loop {
             if let Err(error) = wait(Duration::from_secs(3), left).await {
-                return (Err(error), false);
+                return (Err(error), Back::Fallback);
             }
             let look = tokio::time::timeout(CHECK_TIMEOUT, async {
                 look_on(&self.connect_again::<SimpleResult>().await?, run).await
@@ -698,7 +731,7 @@ impl AccessibleDevice {
                         if let Some(progress) = &seen {
                             log.emit(ScriptProgress::of(progress, false));
                         }
-                        return (Ok(()), false);
+                        return (Ok(()), Back::Fallback);
                     }
                     info!("{}: not reached yet", self.device_config.name());
                     continue;
@@ -714,7 +747,7 @@ impl AccessibleDevice {
                 log.emit(FallbackFired {
                     after: armed_at.elapsed().into(),
                 });
-                return (Ok(()), false);
+                return (Ok(()), Back::Fallback);
             }
             let through = match &seen {
                 Some(progress) => progress.finished(),
@@ -781,12 +814,16 @@ impl AccessibleDevice {
                     None => {}
                 }
                 if let Err(error) = wait(Duration::from_secs(3), true).await {
-                    return (Err(error), true);
+                    return (Err(error), Back::Reached);
                 }
             };
             emit_checked(log, &remaining);
+            let back = match &remaining {
+                Ok(left) if left.trim().is_empty() => Back::InLine,
+                _ => Back::Reached,
+            };
             log.enter(ApplyState::Finishing);
-            return (self.after_script(&script.reprovision, log).await, true);
+            return (self.after_script(&script.reprovision, log).await, back);
         }
     }
     /// The diff to apply, planned (`ApplyPlanned`); an empty one is nothing to do.

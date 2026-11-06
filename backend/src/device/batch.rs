@@ -120,6 +120,10 @@ pub(crate) trait Watched: Send + Sync {
     ) -> impl Future<Output = Result<(), Error>> + Send;
     /// What follows the apply (a controller provisions its CAPs' radios again).
     fn after(&self, log: &Log) -> impl Future<Output = Result<(), Error>> + Send;
+    /// The other partition follows (`PartitionSynced`), once all are in line and released.
+    fn sync_partition(&self, _log: &Log) -> impl Future<Output = ()> + Send {
+        std::future::ready(())
+    }
 }
 
 /// A device of the batch before its plan ([`run`]): one reached over the provisioner's
@@ -324,6 +328,9 @@ impl Watched for Reached {
     async fn after(&self, log: &Log) -> Result<(), Error> {
         self.link.after_apply(&self.planned, log).await
     }
+    async fn sync_partition(&self, log: &Log) {
+        self.link.sync_partition(log).await
+    }
 }
 
 /// [`Watched::check`] of a device reached at `link`, its script's marks under `run`.
@@ -479,6 +486,11 @@ impl Watched for Rejoined {
         match self.link().await {
             Some(link) => link.after_script(&self.saved.script.reprovision, log).await,
             None => Ok(()),
+        }
+    }
+    async fn sync_partition(&self, log: &Log) {
+        if let Some(link) = self.link().await {
+            link.sync_partition(log).await
         }
     }
 }
@@ -878,6 +890,15 @@ pub(crate) async fn watch<M: Watched>(
         }))
         .await;
         release_all(&running, true).await;
+        // the other partitions follow once all are through and released (E14)
+        join_all(
+            running
+                .iter()
+                .zip(&stopped)
+                .filter(|(_, stopped)| stopped.is_ok())
+                .map(|(m, _)| m.member.sync_partition(&m.log)),
+        )
+        .await;
         for (member, stopped) in running.iter().zip(stopped) {
             results[member.index] = Some(stopped);
         }

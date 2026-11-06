@@ -95,6 +95,7 @@ pub enum Event {
     RepartitionStarted(RepartitionStarted),
     Repartitioned(Repartitioned),
     PartitionRunning(PartitionRunning),
+    PartitionSynced(PartitionSynced),
     UpdateFallbackArmed(UpdateFallbackArmed),
     UpdateFallbackDisarmed(UpdateFallbackDisarmed),
     UpdateWithoutFallback(UpdateWithoutFallback),
@@ -420,6 +421,14 @@ pub struct Repartitioned {
 pub struct PartitionRunning {
     pub name: String,
     pub version: String,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct PartitionSynced {
+    pub partition: Option<String>,
+    pub config_only: bool,
+    pub error: Option<ErrorInfo>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

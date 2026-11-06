@@ -1141,6 +1141,15 @@ It compares identity, files and the partition count after the reboot and reports
 On lab-core (CCR2004, 7.23.8) it took about 80 s and kept the configuration, all files and the
 OSPF neighbors; part1 is empty afterwards. A CHR has no `/partitions`, so there is no CHR test.
 
+After an apply the other of two partitions follows (`partitions::sync_other`, Z28): with the
+same RouterOS `/partitions save-config-to`, else `copy-to`, which overwrites a RouterOS from
+before an update. Only where the check found nothing left, and after the watchdog hold is
+released (else the copy would keep the suspended watchdog); in a batch once all are through
+(`Watched::sync_partition` after `release_all`). The event `PartitionSynced` carries an error
+instead of failing the job. Lab, lab-sxt-b (7.23.8): copy-to 8 s, save-config-to 2 s, and booted
+from part1 it ran the configuration of the last apply. `DeviceMode` and `Apply` invalidate the
+`Partitions` fact (`can_split` depends on the device mode; an apply copies).
+
 An update on a RouterOS 7 device with two partitions first copies the running RouterOS to the
 other one (`device::update_fallback::arm`, `/partitions copy-to`). It then adds a scheduler
 `netbox-provisioner-update-fallback` (`start-time=startup`). Its script waits

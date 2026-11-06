@@ -16,22 +16,20 @@ use crate::{
     config::CONFIG,
     device::{
         bootstrap,
-        partitions::{self, Partition},
+        partitions::{self, copy_to, other},
         raw::{Row, command, field, rows},
     },
     graphql::scalars::ScalarDuration,
     job::Log,
     topology::access::device::DeviceAccess,
 };
-use async_graphql::{SimpleObject, futures_util::StreamExt};
+use async_graphql::SimpleObject;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use std::{collections::BTreeSet, time::Duration};
-use tokio::time::{Instant, sleep, timeout};
+use tokio::time::{Instant, sleep};
 
 /// The name of the scheduler entry.
 pub(crate) const NAME: &str = "netbox-provisioner-update-fallback";
-/// Copying RouterOS between partitions: a few tens of MiB on NAND.
-const COPY_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// OSPF takes its dead interval and the exchange to get adjacent after a boot.
 pub const OSPF_TIMEOUT: Duration = Duration::from_secs(3 * 60);
 
@@ -136,15 +134,6 @@ pub struct OspfNeighborsBack {
     pub neighbors: Box<[Box<str>]>,
 }
 
-/// The partition to copy to: the other one of two, while the device runs the active one.
-fn other(partitions: &[Partition]) -> Option<&Partition> {
-    match partitions {
-        [a, b] if a.running && a.active => Some(b),
-        [a, b] if b.running && b.active => Some(a),
-        _ => None,
-    }
-}
-
 /// Copies the running RouterOS to the other partition and schedules switching to it, where
 /// the device has two partitions; `None` (and [`UpdateWithoutFallback`]) where not, or
 /// [`Error::NoUpdateFallback`] without `way_back` either, before anything changes.
@@ -209,35 +198,6 @@ fn script(target: &str, delay: Duration) -> String {
          /system reboot }}",
         delay.as_secs().max(1)
     )
-}
-
-/// `/partitions copy-to` runs like a monitor: it answers while it copies and is done at the end.
-async fn copy_to(device: &RawDevice<SimpleResult>, target: &str) -> Result<(), Error> {
-    let path = "/partitions/copy-to";
-    let id = partitions::id_of(device, target).await?;
-    // copying slow flash may stay silent for a while; the copy's own limit holds
-    let mut stream = device
-        .send_command_with_reply_timeout(
-            path.as_bytes(),
-            |cmd| cmd.attribute(b"number", id.as_bytes()),
-            (),
-            Some(COPY_TIMEOUT),
-        )
-        .await;
-    let copied = timeout(COPY_TIMEOUT, async {
-        while let Some(result) = stream.next().await {
-            match result {
-                SimpleResult::Sentence(row) => log::info!("{path} {target}: {row:?}"),
-                SimpleResult::Error(error) => return Err(error.into()),
-                SimpleResult::Trap { message, .. } => {
-                    return Err(Error::Refused(format!("{path}: {message}").into()));
-                }
-            }
-        }
-        Ok(())
-    })
-    .await;
-    copied.map_err(|_| Error::Refused(format!("{path} {target} not done in time").into()))?
 }
 
 /// Removes the scheduler: the device is reached with the update. The old partition stays.
@@ -348,38 +308,9 @@ pub async fn wait_for_ospf(
 
 #[cfg(test)]
 mod tests {
-    use super::{adjacent, missing, other, script};
-    use crate::device::partitions::Partition;
+    use super::{adjacent, missing, script};
     use crate::device::raw::Row;
     use std::{collections::BTreeSet, time::Duration};
-
-    fn partition(name: &str, active: bool, running: bool) -> Partition {
-        Partition {
-            name: name.into(),
-            version: "".into(),
-            size_mib: 64,
-            active,
-            running,
-            fallback_to: "next".into(),
-        }
-    }
-
-    #[test]
-    fn copies_to_the_other_of_two() {
-        let part0 = partition("part0", true, true);
-        let part1 = partition("part1", false, false);
-        assert_eq!(other(&[part0.clone(), part1.clone()]), Some(&part1));
-        assert_eq!(other(&[part1.clone(), part0.clone()]), Some(&part1));
-        // one partition, or the device runs another than it boots from: no fallback
-        assert_eq!(other(std::slice::from_ref(&part0)), None);
-        assert_eq!(
-            other(&[
-                partition("part0", false, true),
-                partition("part1", true, false)
-            ]),
-            None
-        );
-    }
 
     #[test]
     fn switches_back_unless_removed() {

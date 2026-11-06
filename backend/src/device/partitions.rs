@@ -16,9 +16,10 @@ use crate::{
         update::{DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason, read_state, wait_until_back},
     },
     device_state::RebootState,
+    error_info::ErrorInfo,
     job::Log,
 };
-use async_graphql::SimpleObject;
+use async_graphql::{SimpleObject, futures_util::StreamExt};
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use std::time::Duration;
 use tokio::time::{Instant, timeout};
@@ -44,6 +45,9 @@ pub struct Partition {
     /// where RouterBOOT goes when this one doesn't boot (`next`, `etherboot`, a name)
     pub fallback_to: Box<str>,
 }
+
+/// Copying RouterOS between partitions: a few tens of MiB on NAND.
+const COPY_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 /// The partitions of a device and whether [`repartition`] can split them.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -121,6 +125,113 @@ pub async fn read(device: &RawDevice<SimpleResult>) -> Result<Option<Partitions>
         partitions,
         can_split,
     }))
+}
+
+/// The partition to copy to: the other one of two, while the device runs the active one.
+pub(crate) fn other(partitions: &[Partition]) -> Option<&Partition> {
+    match partitions {
+        [a, b] if a.running && a.active => Some(b),
+        [a, b] if b.running && b.active => Some(a),
+        _ => None,
+    }
+}
+
+/// `/partitions copy-to`: the running RouterOS with its configuration to `target`.
+pub(crate) async fn copy_to(device: &RawDevice<SimpleResult>, target: &str) -> Result<(), Error> {
+    to_partition(device, "/partitions/copy-to", target).await
+}
+
+/// `path` (`copy-to`, `save-config-to`) with `target` as `number`. It runs like a monitor: it
+/// answers while it copies and is done at the end.
+async fn to_partition(
+    device: &RawDevice<SimpleResult>,
+    path: &str,
+    target: &str,
+) -> Result<(), Error> {
+    let id = id_of(device, target).await?;
+    // copying slow flash may stay silent for a while; the copy's own limit holds
+    let mut stream = device
+        .send_command_with_reply_timeout(
+            path.as_bytes(),
+            |cmd| cmd.attribute(b"number", id.as_bytes()),
+            (),
+            Some(COPY_TIMEOUT),
+        )
+        .await;
+    let copied = timeout(COPY_TIMEOUT, async {
+        while let Some(result) = stream.next().await {
+            match result {
+                SimpleResult::Sentence(row) => log::info!("{path} {target}: {row:?}"),
+                SimpleResult::Error(error) => return Err(error.into()),
+                SimpleResult::Trap { message, .. } => {
+                    return Err(Error::Refused(format!("{path}: {message}").into()));
+                }
+            }
+        }
+        Ok(())
+    })
+    .await;
+    copied.map_err(|_| Error::Refused(format!("{path} {target} not done in time").into()))?
+}
+
+/// After an apply the other partition holds what the device runs now: with the same RouterOS
+/// only its configuration (`config_only`), else a copy of all, which overwrites a RouterOS from
+/// before an update (Z28). `partition` is `None` where the device couldn't be asked.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct PartitionSynced {
+    pub partition: Option<Box<str>>,
+    pub config_only: bool,
+    pub error: Option<ErrorInfo>,
+}
+
+/// Brings the other of two partitions to what the device runs (`PartitionSynced`), so a device
+/// that boots it by itself (RouterBOOT takes it after a boot it thinks failed, as on unsteady
+/// power) runs the same configuration. Nothing where there is no other partition.
+pub(crate) async fn sync_other(device: &RawDevice<SimpleResult>, log: &Log) {
+    let list = list(device).await;
+    let Some((partition, config_only)) = to_sync(&list) else {
+        return;
+    };
+    let running = list.iter().find(|p| p.running).map(|p| p.version.clone());
+    let synced = if config_only {
+        to_partition(device, "/partitions/save-config-to", &partition).await
+    } else {
+        sync_copy(device, &partition, running).await
+    };
+    log.emit(PartitionSynced {
+        partition: Some(partition),
+        config_only,
+        error: synced.err().as_ref().map(ErrorInfo::from),
+    });
+}
+
+/// The partition [`sync_other`] brings in line, and whether only its configuration: it holds
+/// the RouterOS the device runs.
+fn to_sync(partitions: &[Partition]) -> Option<(Box<str>, bool)> {
+    let target = other(partitions)?;
+    let running = partitions.iter().find(|p| p.running)?;
+    let config_only = !target.version.is_empty() && target.version == running.version;
+    Some((target.name.clone(), config_only))
+}
+
+/// [`copy_to`] `target`, which then holds the `running` RouterOS.
+async fn sync_copy(
+    device: &RawDevice<SimpleResult>,
+    target: &str,
+    running: Option<Box<str>>,
+) -> Result<(), Error> {
+    copy_to(device, target).await?;
+    let copied = list(device).await;
+    let version = copied
+        .iter()
+        .find(|p| p.name.as_ref() == target)
+        .map(|p| &p.version);
+    match version {
+        Some(version) if !version.is_empty() && Some(version) == running.as_ref() => Ok(()),
+        _ => Err(Error::Refused(
+            format!("{target} holds no copy of the running RouterOS after copy-to").into(),
+        )),
+    }
 }
 
 /// The `.id` of partition `name`, for `number` of `activate` and `copy-to`.
@@ -293,7 +404,58 @@ pub async fn boot_from(
 
 #[cfg(test)]
 mod tests {
-    use super::{Partition, can_split, partition};
+    use super::{Partition, can_split, other, partition, to_sync};
+
+    fn named(name: &str, active: bool, running: bool) -> Partition {
+        Partition {
+            name: name.into(),
+            version: "".into(),
+            size_mib: 64,
+            active,
+            running,
+            fallback_to: "next".into(),
+        }
+    }
+
+    #[test]
+    fn copies_to_the_other_of_two() {
+        let part0 = named("part0", true, true);
+        let part1 = named("part1", false, false);
+        assert_eq!(other(&[part0.clone(), part1.clone()]), Some(&part1));
+        assert_eq!(other(&[part1.clone(), part0.clone()]), Some(&part1));
+        // one partition, or the device runs another than it boots from: no other to copy to
+        assert_eq!(other(std::slice::from_ref(&part0)), None);
+        assert_eq!(
+            other(&[named("part0", false, true), named("part1", true, false)]),
+            None
+        );
+    }
+
+    #[test]
+    fn syncs_the_config_of_the_same_routeros_else_all() {
+        let with = |name, active, version: &str| Partition {
+            version: version.into(),
+            ..named(name, active, active)
+        };
+        let v24 = "RouterOS v7.24.6 2026-10-30 10:12:00";
+        let v23 = "RouterOS v7.23.8 2026-10-08 09:46:16";
+        assert_eq!(
+            to_sync(&[with("part0", true, v24), with("part1", false, v24)]),
+            Some(("part1".into(), true))
+        );
+        // the RouterOS from before an update, or none: all of it
+        assert_eq!(
+            to_sync(&[with("part0", false, v23), with("part1", true, v24)]),
+            Some(("part0".into(), false))
+        );
+        assert_eq!(
+            to_sync(&[with("part0", true, v24), with("part1", false, "")]),
+            Some(("part1".into(), false))
+        );
+        // one partition, or the device runs one it doesn't boot from: nothing
+        assert_eq!(to_sync(&[with("part0", true, v24)]), None);
+        assert_eq!(to_sync(&[]), None);
+    }
 
     #[test]
     fn reads_lab_cores_partition_and_splits_only_one() {

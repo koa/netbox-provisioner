@@ -427,6 +427,21 @@ pub mod event {
     pub fn partition_running(name: &str, version: &str) -> String {
         format!("Läuft von {name}: {version}")
     }
+    pub fn partition_synced(name: &str, config_only: bool) -> String {
+        match config_only {
+            true => format!("Konfiguration auf {name} nachgezogen"),
+            false => format!("RouterOS und Konfiguration auf {name} kopiert"),
+        }
+    }
+    pub fn partition_not_synced(name: Option<&str>, error: &str) -> String {
+        match name {
+            Some(name) => format!(
+                "{name} nicht nachgezogen (bootet das Gerät von dort, läuft die alte \
+                 Konfiguration): {error}"
+            ),
+            None => format!("Andere Partition nicht nachgezogen: {error}"),
+        }
+    }
     pub fn update_fallback_armed(partition: &str, version: &str, minutes: u64) -> String {
         format!(
             "{version} samt Konfiguration auf {partition} kopiert: Erreicht der Provisioner das \

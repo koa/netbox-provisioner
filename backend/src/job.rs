@@ -91,6 +91,7 @@ pub enum Event {
     RepartitionStarted(partitions::RepartitionStarted),
     Repartitioned(partitions::Repartitioned),
     PartitionRunning(partitions::PartitionRunning),
+    PartitionSynced(partitions::PartitionSynced),
     UpdateFallbackArmed(update_fallback::UpdateFallbackArmed),
     UpdateFallbackDisarmed(update_fallback::UpdateFallbackDisarmed),
     UpdateWithoutFallback(update_fallback::UpdateWithoutFallback),
@@ -405,11 +406,13 @@ impl JobKind {
     pub fn invalidates(self) -> &'static [FactKind] {
         use FactKind::*;
         match self {
+            // `Partitions`: the other one follows the apply (`PartitionSynced`)
             JobKind::Apply => &[
                 Login,
                 Route,
                 Config,
                 Leftovers,
+                Partitions,
                 Interfaces,
                 Neighbors,
                 InterfaceLive,
@@ -448,11 +451,13 @@ impl JobKind {
             JobKind::Reboot => &[Login, Route, Config, Leftovers, Neighbors, InterfaceLive],
             // a job of the supplier: what it sees on the port changes with the device it feeds
             JobKind::PowerCycle => &[Login, Route, Leftovers, Neighbors, InterfaceLive],
+            // `Partitions`: whether they can be split depends on the device mode
             JobKind::DeviceMode => &[
                 Login,
                 Route,
                 Config,
                 Leftovers,
+                Partitions,
                 DeviceMode,
                 Neighbors,
                 InterfaceLive,

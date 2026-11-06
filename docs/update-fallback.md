@@ -44,6 +44,20 @@ dauerte das rund 80 s; Konfiguration, Dateien und OSPF-Nachbarn blieben erhalten
 **Von einer Partition starten:** Jede Partition mit einem RouterOS, die gerade nicht läuft,
 bietet „Von partN starten“ an (Job `BootPartition`: `activate` und Neustart).
 
+**Nach jedem Anwenden** zieht der Provisioner die andere Partition nach (E14, Z28), denn bei
+unstetem Strom bootet RouterBOOT manchmal von selbst die andere, weil es fälschlich ein
+Boot-Problem erkennt, und das Gerät liefe dann mit alter Konfiguration:
+
+- Gleiche Version: nur die Konfiguration (`/partitions save-config-to`), andere oder keine:
+  alles (`copy-to`). Das überschreibt auch ein RouterOS von vor einem Update, den Weg zurück
+  über „Von partN starten“; eine Partition mit alter Konfiguration wäre die grössere Falle.
+- Nur wenn danach nichts vom Diff übrig ist, und erst nachdem die ausgesetzten Watchdogs
+  wieder stehen; im Batch erst, wenn alle Geräte durch sind.
+- Das Ereignis „Konfiguration auf part1 nachgezogen“ bzw. „RouterOS und Konfiguration auf part1
+  kopiert“; ein Fehler steht dort, der Job bleibt abgeschlossen.
+- Lab-Test 2026-11-06 auf lab-sxt-b (7.23.8): `copy-to` 8 s, `save-config-to` 2 s; von part1
+  gestartet lief es mit der Konfiguration des letzten Anwendens.
+
 ### Ablauf eines Updates mit Fallback
 
 `backend/src/device/update_fallback.rs` und `update.rs`:

@@ -634,6 +634,13 @@ fn describe(event: &Logged) -> Html {
             cycled.seconds.into(),
         ),
         Event::PartitionRunning(running) => e::partition_running(&running.name, &running.version),
+        Event::PartitionSynced(synced) => match &synced.error {
+            None => e::partition_synced(
+                synced.partition.as_deref().unwrap_or_default(),
+                synced.config_only,
+            ),
+            Some(error) => e::partition_not_synced(synced.partition.as_deref(), &problem(error)),
+        },
         Event::UpdateFallbackArmed(armed) => {
             e::update_fallback_armed(&armed.partition, &armed.version, seconds(armed.delay) / 60)
         }
