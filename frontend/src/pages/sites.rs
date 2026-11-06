@@ -6,24 +6,26 @@ use crate::{
     },
     error::FrontendError,
     graphql::{
-        authenticated::{ListSites, list_sites},
-        live::{Subscription, subscribe_data},
+        list_devices::{ListSites, Site},
+        live::{Subscription, watch_data},
+        types::Severity,
     },
     pages::routes::{AppRoute, SiteView},
 };
+use cynic::SubscriptionBuilder;
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner};
 use yew::{Component, Context, Html, html};
 use yew_nested_router::components::Link;
 
 /// The sites with devices the provisioner manages, the first step to a device.
 pub struct Sites {
-    sites: Option<Result<Vec<list_sites::ListSitesTopologyAllSites>, FrontendError>>,
+    sites: Option<Result<Vec<Site>, FrontendError>>,
     /// shown again when NetBox changed
     _subscription: Subscription,
 }
 
 pub enum SitesMsg {
-    Sites(Result<Vec<list_sites::ListSitesTopologyAllSites>, FrontendError>),
+    Sites(Result<Vec<Site>, FrontendError>),
 }
 
 impl Component for Sites {
@@ -32,7 +34,7 @@ impl Component for Sites {
 
     fn create(ctx: &Context<Self>) -> Self {
         let scope = ctx.link().clone();
-        let subscription = subscribe_data::<ListSites, _>(ctx.link(), list_sites::Variables {}, move |data| {
+        let subscription = watch_data(ctx.link(), ListSites::build(()), move |data| {
             scope.send_message(SitesMsg::Sites(data.map(|data| data.topology.all_sites)));
         });
         Self {
@@ -63,7 +65,7 @@ impl Component for Sites {
                     let findings = findings::count(
                         site.findings
                             .iter()
-                            .map(|f| matches!(f.severity, list_sites::Severity::ERROR)),
+                            .map(|f| matches!(f.severity, Severity::Error)),
                     )
                     .map(|count| html!(<div class="site-findings">{count}</div>));
                     html! {

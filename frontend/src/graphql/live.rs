@@ -8,7 +8,9 @@
 use crate::{components::job::RETRY, error::FrontendError, graphql::{host, token}};
 use futures::{SinkExt, StreamExt, channel::mpsc};
 use gloo::net::websocket::{Message, futures::WebSocket};
+use cynic::StreamingOperation;
 use graphql_client::{GraphQLQuery, Response};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
     cell::{Cell, RefCell},
@@ -42,6 +44,38 @@ pub fn subscribe<Q: GraphQLQuery + 'static, S: Component>(
     deliver: impl Fn(Result<Response<Q::ResponseData>, FrontendError>) + 'static,
 ) -> Subscription {
     let payload = serde_json::to_value(Q::build_query(variables)).unwrap_or_default();
+    start(scope, payload, deliver)
+}
+
+/// Subscribes to `subscription` (cynic), each answer going to `deliver`.
+pub fn watch<T: DeserializeOwned + 'static, V: Serialize, S: Component>(
+    scope: &Scope<S>,
+    subscription: StreamingOperation<T, V>,
+    deliver: impl Fn(Result<Response<T>, FrontendError>) + 'static,
+) -> Subscription {
+    start(scope, serde_json::to_value(subscription).unwrap_or_default(), deliver)
+}
+
+/// [`watch`] taking the data as `request` does: without data, the errors.
+pub fn watch_data<T: DeserializeOwned + 'static, V: Serialize, S: Component>(
+    scope: &Scope<S>,
+    subscription: StreamingOperation<T, V>,
+    deliver: impl Fn(Result<T, FrontendError>) + 'static,
+) -> Subscription {
+    watch(scope, subscription, move |response| deliver(data(response)))
+}
+
+fn data<T>(response: Result<Response<T>, FrontendError>) -> Result<T, FrontendError> {
+    response.and_then(|response| {
+        response.data.ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
+    })
+}
+
+fn start<T: DeserializeOwned + 'static, S: Component>(
+    scope: &Scope<S>,
+    payload: Value,
+    deliver: impl Fn(Result<Response<T>, FrontendError>) + 'static,
+) -> Subscription {
     let deliver: Rc<dyn Fn(Value)> = Rc::new(move |answer| {
         deliver(serde_json::from_value(answer).map_err(FrontendError::from));
     });
@@ -65,13 +99,7 @@ pub fn subscribe_data<Q: GraphQLQuery + 'static, S: Component>(
     variables: Q::Variables,
     deliver: impl Fn(Result<Q::ResponseData, FrontendError>) + 'static,
 ) -> Subscription {
-    subscribe::<Q, S>(scope, variables, move |response| {
-        deliver(response.and_then(|response| {
-            response
-                .data
-                .ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
-        }))
-    })
+    subscribe::<Q, S>(scope, variables, move |response| deliver(data(response)))
 }
 
 /// When something was read that is `age` seconds old (milliseconds since the epoch): ages come

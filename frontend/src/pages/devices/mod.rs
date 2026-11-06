@@ -7,12 +7,16 @@ use crate::{
     },
     error::FrontendError,
     graphql::{
-        authenticated::{PingDevice, SiteDevices, ping_device, site_devices},
-        live::{Subscription, subscribe_data},
-        query_authenticated_response,
+        list_devices::{
+            PingDevice, PingDeviceVariables, PingResult as Pinged, SiteDevices, SiteDevicesVariables,
+        },
+        live::{Subscription, watch_data},
+        request_response,
+        types::Severity,
     },
     pages::routes::{AppRoute, SiteView},
 };
+use cynic::{QueryBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
 use std::{net::IpAddr, str::FromStr};
 use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
@@ -55,8 +59,8 @@ impl Component for Devices {
     fn create(ctx: &Context<Self>) -> Self {
         let scope = ctx.link().clone();
         let site = ctx.props().site;
-        let variables = site_devices::Variables { site: site as i64 };
-        let subscription = subscribe_data::<SiteDevices, _>(ctx.link(), variables, move |data| {
+        let devices = SiteDevices::build(SiteDevicesVariables { site: site as i32 });
+        let subscription = watch_data(ctx.link(), devices, move |data| {
             scope.send_message(match data {
                 Ok(data) => DevicesMsg::Data(
                     data.topology
@@ -77,7 +81,7 @@ impl Component for Devices {
                                 device
                                     .findings
                                     .iter()
-                                    .map(|f| matches!(f.severity, site_devices::Severity::ERROR)),
+                                    .map(|f| matches!(f.severity, Severity::Error)),
                             ),
                         })
                         .collect(),
@@ -159,7 +163,7 @@ enum PingResult {
     Pending,
     None,
     Success {
-        ping_result: ping_device::PingDeviceTopologyDeviceByIdAccessPing,
+        ping_result: Pinged,
         device_type: Box<str>,
         serial: Box<str>,
     },
@@ -171,7 +175,7 @@ struct DeviceEntryCardProps {
 }
 enum DeviceEntryCardMsg {
     PingResult {
-        ping_result: ping_device::PingDeviceTopologyDeviceByIdAccessPing,
+        ping_result: Pinged,
         device_type: Box<str>,
         serial: Box<str>,
     },
@@ -269,14 +273,10 @@ impl Component for DeviceEntryCard {
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
             let scope = ctx.link().clone();
-            let id = self.device.id as i64;
+            let id = self.device.id as i32;
             spawn_local(async move {
-                match query_authenticated_response::<PingDevice, _>(
-                    scope.clone(),
-                    ping_device::Variables { id },
-                )
-                .await
-                {
+                let ping = PingDevice::build(PingDeviceVariables { id });
+                match request_response(scope.clone(), ping).await {
                     Ok(result) => {
                         let msg =
                             result

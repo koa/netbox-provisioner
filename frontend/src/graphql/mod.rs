@@ -10,6 +10,7 @@ use yew_oauth2::prelude::{Authentication, OAuth2Context};
 pub mod anonymous;
 pub mod authenticated;
 pub mod history;
+pub mod list_devices;
 pub mod live;
 pub mod saved_jobs;
 pub mod schema;
@@ -48,16 +49,36 @@ pub async fn query_authenticated_response<Q: GraphQLQuery, S: Component>(
     post(&client, GRAPHQL_AUTHENTICATED_URL.as_str(), &Q::build_query(request)).await
 }
 
-/// A query or mutation of cynic, sent as [`query_authenticated`] sends one: without data, the
-/// errors.
-pub async fn request<T: DeserializeOwned, V: Serialize, S: Component>(
+/// What cynic builds to send: a query or mutation, or a subscription, which the server answers
+/// over HTTP with its first answer (`live::execute_once`).
+pub trait Sendable: Serialize {
+    type Data: DeserializeOwned + 'static;
+}
+
+impl<T: DeserializeOwned + 'static, V: Serialize> Sendable for cynic::Operation<T, V> {
+    type Data = T;
+}
+
+impl<T: DeserializeOwned + 'static, V: Serialize> Sendable for cynic::StreamingOperation<T, V> {
+    type Data = T;
+}
+
+/// Sends `operation` (cynic) as [`query_authenticated`] sends one: without data, the errors.
+pub async fn request<O: Sendable, S: Component>(
     scope: Scope<S>,
-    operation: cynic::Operation<T, V>,
-) -> Result<T, FrontendError> {
-    let client = authenticated_client(&scope)?;
-    let response: Response<T> =
-        post(&client, GRAPHQL_AUTHENTICATED_URL.as_str(), &operation).await?;
+    operation: O,
+) -> Result<O::Data, FrontendError> {
+    let response = request_response(scope, operation).await?;
     response.data.ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
+}
+
+/// [`request`] giving data and errors both: a field that failed leaves the rest.
+pub async fn request_response<O: Sendable, S: Component>(
+    scope: Scope<S>,
+    operation: O,
+) -> Result<Response<O::Data>, FrontendError> {
+    let client = authenticated_client(&scope)?;
+    post(&client, GRAPHQL_AUTHENTICATED_URL.as_str(), &operation).await
 }
 
 /// A client sending the user's token.

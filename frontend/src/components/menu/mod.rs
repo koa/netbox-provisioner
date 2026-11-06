@@ -4,11 +4,12 @@ use crate::{
     i18n,
     error::FrontendError,
     graphql::{
-        authenticated::{ListSites, list_sites},
-        query_authenticated,
+        list_devices::{ListSites, Site},
+        request,
     },
     pages::routes::{AppRoute, SiteView},
 };
+use cynic::SubscriptionBuilder;
 use patternfly_yew::prelude::{Icon, MenuToggleVariant, Spinner};
 use popup::{MenuGroup, MenuLinkItem, PopupMenu};
 use yew::{
@@ -81,11 +82,11 @@ pub struct NavigationProps {
 
 /// The breadcrumb of a page: the site, and on a site's pages its device.
 pub struct Navigation {
-    sites: Option<Result<Vec<list_sites::ListSitesTopologyAllSites>, FrontendError>>,
+    sites: Option<Result<Vec<Site>, FrontendError>>,
 }
 
 pub enum NavigationMsg {
-    Sites(Result<Vec<list_sites::ListSitesTopologyAllSites>, FrontendError>),
+    Sites(Result<Vec<Site>, FrontendError>),
 }
 
 impl Component for Navigation {
@@ -126,10 +127,9 @@ impl Component for Navigation {
         if first_render {
             let scope = ctx.link().clone();
             spawn_local(async move {
-                let sites =
-                    query_authenticated::<ListSites, _>(scope.clone(), list_sites::Variables {})
-                        .await
-                        .map(|data| data.topology.all_sites);
+                let sites = request(scope.clone(), ListSites::build(()))
+                    .await
+                    .map(|data| data.topology.all_sites);
                 scope.send_message(NavigationMsg::Sites(sites));
             });
         }
@@ -137,7 +137,7 @@ impl Component for Navigation {
 }
 
 impl Navigation {
-    fn items(&self, props: &NavigationProps, sites: &[list_sites::ListSitesTopologyAllSites]) -> Html {
+    fn items(&self, props: &NavigationProps, sites: &[Site]) -> Html {
         let site = props
             .site
             .and_then(|id| sites.iter().find(|site| site.id as u32 == id));

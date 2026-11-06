@@ -64,3 +64,13 @@ pub enum UpdateState {
     #[cynic(fallback)]
     Other,
 }
+
+/// How bad a finding is (`Severity`).
+#[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Severity {
+    Error,
+    Warning,
+    Hint,
+    #[cynic(fallback)]
+    Other,
+}

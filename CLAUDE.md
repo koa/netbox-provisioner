@@ -1216,7 +1216,8 @@ QEMU's, the golden image's dhcp-client is bound to it).
 - The frontend's GraphQL moves to cynic, query by query (C4, `docs/concepts/graphql-files.md`):
   a query is structs in `graphql/<area>.rs` (named like the `.graphql` file it replaces),
   checked against the schema `frontend/build.rs` registers (`graphql::schema`), types several
-  queries share in `graphql::types`, sent by `graphql::request`. The queries not moved yet are
+  queries share in `graphql::types`, sent by `graphql::request` (`request_response` keeps the data
+  next to the errors), subscribed by `graphql::live::watch`. The queries not moved yet are
   graphql_client's `.graphql` files; a new query is written with cynic.
 - Before adding a helper, look whether one exists (`grep` the crate); one used from several
   modules belongs in a module of its own, not in the first one that needed it.
