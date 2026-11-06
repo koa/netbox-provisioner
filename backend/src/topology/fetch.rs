@@ -6,11 +6,12 @@ use crate::{
         },
     },
     topology::{
-        Cable, CableId, CablePort, Device, DeviceId, DeviceRole, ForwardData, FrontPort, FrontPortId, Interface, ServiceId, ServicePort,
-        InterfaceId, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
-        Duplex, PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink, RadioRole, WirelessLinkEnd, RearPort, RearPortId, CircuitTermination, CircuitTerminationId, SiteData, SiteId,
-        Topology,
-        VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WlanAuth, WlanData,
+        Cable, CableId, CablePort, CircuitTermination, CircuitTerminationId, Device, DeviceId,
+        DeviceRole, Duplex, ForwardData, FrontPort, FrontPortId, Interface, InterfaceId,
+        IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
+        PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink, RadioRole, RearPort,
+        RearPortId, ServiceId, ServicePort, SiteData, SiteId, Topology, VlanData, VlanGroupData,
+        VlanGroupId, VlanId, VxlanData, VxlanId, WirelessLinkEnd, WlanAuth, WlanData,
         WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
     },
 };
@@ -67,7 +68,10 @@ pub(crate) fn build_topology_from(data: FetchTopology, fetch_time: Instant) -> T
             let mgmt_vlan = wlan_group.custom_fields.wlan_mgmt.map(VlanId);
             let mut wlans_ids = BTreeSet::new();
             for wlan in wlan_group.wireless_lans {
-                let vlan = wlan.vlan.and_then(|vlan| vlan.id.inner().parse().ok()).map(VlanId);
+                let vlan = wlan
+                    .vlan
+                    .and_then(|vlan| vlan.id.inner().parse().ok())
+                    .map(VlanId);
                 if let (Some(id), Some(wlan_auth)) = (
                     wlan.id.inner().parse().ok().map(WlanId),
                     match wlan.auth_type.as_deref() {
@@ -173,7 +177,8 @@ pub(crate) fn build_topology_from(data: FetchTopology, fetch_time: Instant) -> T
                     let nat = interface.tags.iter().any(|t| t.slug == "nat");
                     let internet = interface.tags.iter().any(|t| t.slug == "internet");
                     let external = PhysicalPortId::from_str(&interface.name).ok();
-                    let sixty_ghz = matches!(interface.type_.as_str(), "ieee802.11ad" | "ieee802.11ay");
+                    let sixty_ghz =
+                        matches!(interface.type_.as_str(), "ieee802.11ad" | "ieee802.11ay");
                     let port_type = port_type(&interface.type_);
                     let vlan = interface
                         .untagged_vlan
@@ -476,7 +481,14 @@ pub(crate) fn build_topology_from(data: FetchTopology, fetch_time: Instant) -> T
                     }
                 }
             }
-            cables.insert(cable_id, Cable { port_a, port_b, kind: cable.type_.filter(|kind| !kind.is_empty()).map(Into::into) });
+            cables.insert(
+                cable_id,
+                Cable {
+                    port_a,
+                    port_b,
+                    kind: cable.type_.filter(|kind| !kind.is_empty()).map(Into::into),
+                },
+            );
         }
     }
     let mut ip_prefixes = HashMap::new();
@@ -488,11 +500,14 @@ pub(crate) fn build_topology_from(data: FetchTopology, fetch_time: Instant) -> T
             prefix_data.prefix.parse::<IpNet>(),
         ) {
             prefix_idx.insert(prefix, id);
-            let pool = prefix_data.tags.iter().find_map(|tag| match tag.slug.as_str() {
-                "loopback" => Some(PrefixPool::Loopback),
-                "transfer" => Some(PrefixPool::Transfer),
-                _ => None,
-            });
+            let pool = prefix_data
+                .tags
+                .iter()
+                .find_map(|tag| match tag.slug.as_str() {
+                    "loopback" => Some(PrefixPool::Loopback),
+                    "transfer" => Some(PrefixPool::Transfer),
+                    _ => None,
+                });
             let dhcp_lease_time = prefix_data
                 .custom_field_data
                 .dhcp_lease_time
@@ -632,7 +647,10 @@ pub(crate) fn build_topology_from(data: FetchTopology, fetch_time: Instant) -> T
                         ClusterScope::Other => None,
                     });
                     let site = machine.site.map(|site| site.id).or(cluster_site);
-                    (None, site.and_then(|id| id.inner().parse().ok()).map(SiteId))
+                    (
+                        None,
+                        site.and_then(|id| id.inner().parse().ok()).map(SiteId),
+                    )
                 }
                 _ => (None, None),
             };
@@ -662,7 +680,10 @@ pub(crate) fn build_topology_from(data: FetchTopology, fetch_time: Instant) -> T
     for (id, prefix) in &mut ip_prefixes {
         prefix.children = children_prefix.remove(id).map(sorted).unwrap_or_default();
         prefix.ranges = ranges_of_prefix.remove(id).map(sorted).unwrap_or_default();
-        prefix.addresses = ip_addresses_of_prefix.remove(id).map(sorted).unwrap_or_default();
+        prefix.addresses = ip_addresses_of_prefix
+            .remove(id)
+            .map(sorted)
+            .unwrap_or_default();
     }
 
     Topology {
@@ -702,18 +723,34 @@ pub(crate) fn build_topology_from(data: FetchTopology, fetch_time: Instant) -> T
 
 fn termination_2_cable_port(termination: CableTermination) -> Option<CablePort> {
     match termination {
-        CableTermination::CircuitTermination(end) => {
-            end.id.inner().parse().ok().map(CircuitTerminationId).map(CablePort::CircuitTermination)
-        }
-        CableTermination::FrontPort(port) => {
-            port.id.inner().parse().ok().map(FrontPortId).map(CablePort::FrontPort)
-        }
-        CableTermination::Interface(interface) => {
-            interface.id.inner().parse().ok().map(InterfaceId).map(CablePort::Interface)
-        }
-        CableTermination::RearPort(port) => {
-            port.id.inner().parse().ok().map(RearPortId).map(CablePort::RearPort)
-        }
+        CableTermination::CircuitTermination(end) => end
+            .id
+            .inner()
+            .parse()
+            .ok()
+            .map(CircuitTerminationId)
+            .map(CablePort::CircuitTermination),
+        CableTermination::FrontPort(port) => port
+            .id
+            .inner()
+            .parse()
+            .ok()
+            .map(FrontPortId)
+            .map(CablePort::FrontPort),
+        CableTermination::Interface(interface) => interface
+            .id
+            .inner()
+            .parse()
+            .ok()
+            .map(InterfaceId)
+            .map(CablePort::Interface),
+        CableTermination::RearPort(port) => port
+            .id
+            .inner()
+            .parse()
+            .ok()
+            .map(RearPortId)
+            .map(CablePort::RearPort),
         CableTermination::Other => None,
     }
 }

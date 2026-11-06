@@ -1,6 +1,6 @@
 use super::{
-    Entry, JournalLeft, JournalOutcome, Observation, Started, expected, fallback_run, interrupted, observation, outcome,
-    parse, phase_name, script_lines,
+    Entry, JournalLeft, JournalOutcome, Observation, Started, expected, fallback_run, interrupted,
+    observation, outcome, parse, phase_name, script_lines,
 };
 use crate::{
     device::{batch::BatchApply, ros::graphql as apply, update::UpdateDone},
@@ -19,10 +19,15 @@ fn armed() -> Event {
     })
 }
 fn stopped() -> Event {
-    Event::FallbackStopped(apply::FallbackStopped { after: Duration::from_secs(40).into() })
+    Event::FallbackStopped(apply::FallbackStopped {
+        after: Duration::from_secs(40).into(),
+    })
 }
 fn checked(remaining: &str) -> Event {
-    Event::ApplyChecked(apply::ApplyChecked { remaining: remaining.into(), error: None })
+    Event::ApplyChecked(apply::ApplyChecked {
+        remaining: remaining.into(),
+        error: None,
+    })
 }
 
 fn entry(kind: JobKind, outcome: Outcome, events: Vec<Event>) -> Entry {
@@ -41,8 +46,14 @@ fn entry(kind: JobKind, outcome: Outcome, events: Vec<Event>) -> Entry {
 
 #[test]
 fn phase_names_are_graphqls() {
-    assert_eq!(phase_name(ApplyState::ScriptRunning.into()), "SCRIPT_RUNNING");
-    assert_eq!(phase_name(UpdateState::WaitingToRebootFirmware.into()), "WAITING_TO_REBOOT_FIRMWARE");
+    assert_eq!(
+        phase_name(ApplyState::ScriptRunning.into()),
+        "SCRIPT_RUNNING"
+    );
+    assert_eq!(
+        phase_name(UpdateState::WaitingToRebootFirmware.into()),
+        "WAITING_TO_REBOOT_FIRMWARE"
+    );
     assert_eq!(phase_name(ApplyState::Planning.into()), "PLANNING");
 }
 
@@ -91,7 +102,9 @@ fn a_finished_entry_has_its_results() {
         JobKind::Apply,
         Outcome::Done,
         vec![
-            Event::BatchApply(BatchApply { devices: vec!["lab-core".into(), "lab-np1".into()] }),
+            Event::BatchApply(BatchApply {
+                devices: vec!["lab-core".into(), "lab-np1".into()],
+            }),
             armed(),
             stopped(),
             checked(""),
@@ -115,12 +128,18 @@ fn a_failed_entry_words_its_error() {
     let mut failed = entry(
         JobKind::Update,
         Outcome::Failed,
-        vec![Event::UpdateDone(UpdateDone { from: "7.23.8".into(), to: "7.24.5".into() })],
+        vec![Event::UpdateDone(UpdateDone {
+            from: "7.23.8".into(),
+            to: "7.24.5".into(),
+        })],
     );
     failed.phase = Some(UpdateState::WaitingForNeighbors.into());
     failed.error = Some(ErrorInfo {
         code: "TIMEOUT",
-        params: vec![ErrorParam { name: "address", value: "192.168.100.3".into() }],
+        params: vec![ErrorParam {
+            name: "address",
+            value: "192.168.100.3".into(),
+        }],
         message: "timeout".into(),
     });
     assert_eq!(
@@ -174,7 +193,13 @@ fn an_entry_is_read_from_its_record() {
     assert_eq!(read.left, vec![JournalLeft::UpdateFallback]);
     assert_eq!(read.by.as_deref(), Some("Lab Admin"));
     // an entry with the tag but no record (written by hand) is left out
-    assert_eq!(parse(&serde_json::json!({ "id": 4, "created": "x", "custom_fields": {} }), "https://netbox/"), None);
+    assert_eq!(
+        parse(
+            &serde_json::json!({ "id": 4, "created": "x", "custom_fields": {} }),
+            "https://netbox/"
+        ),
+        None
+    );
 }
 
 fn record(outcome: &str, left: &[&str], touched: &[&str], at: u64) -> serde_json::Value {
@@ -185,7 +210,10 @@ fn record(outcome: &str, left: &[&str], touched: &[&str], at: u64) -> serde_json
 fn what_the_entries_left_counts_until_a_job_touches_it() {
     let apply = record("Incomplete", &["ApplyFallback"], &["ApplyFallback"], 100);
     let update = record("Done", &[], &["UpdateFallback", "WatchdogSafetyNet"], 200);
-    assert_eq!(expected(&[&apply, &update]), Some(vec![(Left::ApplyFallback, 100)]));
+    assert_eq!(
+        expected(&[&apply, &update]),
+        Some(vec![(Left::ApplyFallback, 100)])
+    );
     let cleanup = record("Done", &[], &["ApplyFallback"], 300);
     assert_eq!(expected(&[&apply, &update, &cleanup]), Some(vec![]));
     // nothing to compare while a job runs
@@ -197,12 +225,27 @@ fn what_the_entries_left_counts_until_a_job_touches_it() {
 fn a_fallback_gone_after_a_reboot_fired() {
     let expected = [(Left::ApplyFallback, 1000)];
     let seen = observation(&expected, &[], Some(Duration::from_secs(60)), 1300).unwrap();
-    assert_eq!(seen, Observation { fired: vec![Left::ApplyFallback], ..Default::default() });
+    assert_eq!(
+        seen,
+        Observation {
+            fired: vec![Left::ApplyFallback],
+            ..Default::default()
+        }
+    );
     // up longer than since the entry: taken away by hand
     let seen = observation(&expected, &[], Some(Duration::from_secs(600)), 1300).unwrap();
-    assert_eq!(seen, Observation { removed: vec![Left::ApplyFallback], ..Default::default() });
+    assert_eq!(
+        seen,
+        Observation {
+            removed: vec![Left::ApplyFallback],
+            ..Default::default()
+        }
+    );
     // still there: nothing to say
-    assert_eq!(observation(&expected, &[Left::ApplyFallback], None, 1300), None);
+    assert_eq!(
+        observation(&expected, &[Left::ApplyFallback], None, 1300),
+        None
+    );
 }
 
 /// The marks of the script whose fallback fired are those of the run the entry leaving the
@@ -215,20 +258,36 @@ fn a_fired_apply_fallback_names_the_marks_of_its_run() {
     assert_eq!(fallback_run(&[&apply, &update]), Some("r1"));
     assert_eq!(fallback_run(&[&update]), None);
 
-    let marks = "10:00:01 start 5 r1\n10:00:01 ping 10.0.2.2\n10:00:02 section 4\n10:00:03 lost 5\n";
+    let marks =
+        "10:00:01 start 5 r1\n10:00:01 ping 10.0.2.2\n10:00:02 section 4\n10:00:03 lost 5\n";
     let script = script_lines(&crate::device::ros::progress::Progress::parse(marks, "r1").unwrap());
-    let fired = Observation { fired: vec![Left::ApplyFallback], ..Default::default() };
+    let fired = Observation {
+        fired: vec![Left::ApplyFallback],
+        ..Default::default()
+    };
     let comments = fired.comments(&[], &script);
-    assert!(comments.contains("zuletzt begonnen ab Zeile 4 von 5"), "{comments}");
+    assert!(
+        comments.contains("zuletzt begonnen ab Zeile 4 von 5"),
+        "{comments}"
+    );
     assert!(comments.contains("ohne Antwort nach Zeile 5"), "{comments}");
     assert!(comments.contains("10:00:03 lost 5"), "{comments}");
     // an update fallback has no script
-    let fired = Observation { fired: vec![Left::UpdateFallback], ..Default::default() };
+    let fired = Observation {
+        fired: vec![Left::UpdateFallback],
+        ..Default::default()
+    };
     assert!(!fired.comments(&[], &script).contains("Zeile"));
 }
 
 #[test]
 fn a_leftover_no_entry_names_is_found() {
     let seen = observation(&[], &[Left::UpdateFallback], None, 1300).unwrap();
-    assert_eq!(seen, Observation { found: vec![Left::UpdateFallback], ..Default::default() });
+    assert_eq!(
+        seen,
+        Observation {
+            found: vec![Left::UpdateFallback],
+            ..Default::default()
+        }
+    );
 }

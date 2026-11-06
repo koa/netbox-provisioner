@@ -15,7 +15,7 @@ pub struct SiteVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "SiteVariables",
+    variables = "SiteVariables"
 )]
 pub struct DiffSite {
     #[arguments(siteId: $site)]
@@ -23,7 +23,11 @@ pub struct DiffSite {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "QueryAuthenticated", variables = "SiteVariables")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "QueryAuthenticated",
+    variables = "SiteVariables"
+)]
 pub struct SiteDiffJobs {
     #[arguments(siteId: $site)]
     pub jobs: Vec<SiteJob>,
@@ -40,14 +44,18 @@ pub struct SiteJob {
 #[cynic(
     schema = "authenticated",
     graphql_type = "SubscriptionAuthenticated",
-    variables = "SiteVariables",
+    variables = "SiteVariables"
 )]
 pub struct SiteDiffKnown {
     pub topology: KnownTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "TopologyHolder", variables = "SiteVariables")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "TopologyHolder",
+    variables = "SiteVariables"
+)]
 pub struct KnownTopology {
     #[arguments(id: $site)]
     pub site_by_id: Option<KnownSite>,
@@ -76,7 +84,7 @@ pub struct SiteDiffEventsVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "SiteDiffEventsVariables",
+    variables = "SiteDiffEventsVariables"
 )]
 pub struct SiteDiffEvents {
     #[arguments(id: $id)]
@@ -84,7 +92,11 @@ pub struct SiteDiffEvents {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "Job", variables = "SiteDiffEventsVariables")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "Job",
+    variables = "SiteDiffEventsVariables"
+)]
 pub struct DiffJob {
     pub state: JobState,
     pub age: i32,

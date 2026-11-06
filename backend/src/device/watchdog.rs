@@ -43,7 +43,9 @@ pub struct PoePing {
 }
 
 /// What a device's watchdogs watch, of what an update may cut off.
-#[derive(Debug, Clone, PartialEq, Eq, Default, SimpleObject, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, SimpleObject, serde::Serialize, serde::Deserialize,
+)]
 pub struct Watching {
     /// the address `/system/watchdog` watches, if any
     pub watch_address: Option<Box<str>>,
@@ -122,7 +124,10 @@ pub fn watchers(device: &DeviceAccess, tree: &ManagementTree) -> Vec<Watcher> {
         .into_iter()
         .filter(DeviceAccess::has_routeros)
         .collect::<Vec<_>>();
-    let ids = suppliers.iter().map(DeviceAccess::id).collect::<BTreeSet<_>>();
+    let ids = suppliers
+        .iter()
+        .map(DeviceAccess::id)
+        .collect::<BTreeSet<_>>();
     let topology = device.topology();
     let mut depending = tree
         .depending_on(device.id())
@@ -134,8 +139,14 @@ pub fn watchers(device: &DeviceAccess, tree: &ManagementTree) -> Vec<Watcher> {
     depending.sort_by_cached_key(|device| crate::topology::natural::naturalize(device.name()));
     suppliers
         .into_iter()
-        .map(|device| Watcher { device, supplier: true })
-        .chain(depending.into_iter().map(|device| Watcher { device, supplier: false }))
+        .map(|device| Watcher {
+            device,
+            supplier: true,
+        })
+        .chain(depending.into_iter().map(|device| Watcher {
+            device,
+            supplier: false,
+        }))
         .collect()
 }
 
@@ -175,7 +186,10 @@ pub async fn read(device: &RawDevice<SimpleResult>, powered: &[IpAddr]) -> Resul
             ) else {
                 continue;
             };
-            if address.parse().is_ok_and(|address: IpAddr| powered.contains(&address)) {
+            if address
+                .parse()
+                .is_ok_and(|address: IpAddr| powered.contains(&address))
+            {
                 poe_pings.push(PoePing {
                     port: port.into(),
                     address: address.into(),
@@ -274,14 +288,13 @@ fn restored_by(script: &str) -> Option<Watching> {
         if command.contains("/system watchdog set") {
             watching.watch_address = value("watch-address");
         } else if let (Some(port), Some(address), Some(timeout)) = (
-                command
-                    .split_once("/interface ethernet poe set [find name=\"")
-                    .and_then(|(_, rest)| rest.split_once('"'))
-                    .map(|(port, _)| Box::from(port)),
-                value("power-cycle-ping-address"),
-                value("power-cycle-ping-timeout"),
-            )
-        {
+            command
+                .split_once("/interface ethernet poe set [find name=\"")
+                .and_then(|(_, rest)| rest.split_once('"'))
+                .map(|(port, _)| Box::from(port)),
+            value("power-cycle-ping-address"),
+            value("power-cycle-ping-timeout"),
+        ) {
             watching.poe_pings.push(PoePing {
                 port,
                 address,
@@ -318,7 +331,12 @@ async fn remove_entry(device: &RawDevice<SimpleResult>) -> Result<(), Error> {
 }
 
 async fn set_watch_address(device: &RawDevice<SimpleResult>, address: &str) -> Result<(), Error> {
-    command(device, "/system/watchdog/set", &[("watch-address", address)]).await?;
+    command(
+        device,
+        "/system/watchdog/set",
+        &[("watch-address", address)],
+    )
+    .await?;
     Ok(())
 }
 

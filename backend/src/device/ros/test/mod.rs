@@ -1,6 +1,6 @@
 mod capsman;
-mod hand_made;
 mod firewall;
+mod hand_made;
 mod mac_server;
 mod mtu;
 mod netbox_example;
@@ -137,7 +137,10 @@ pub fn test_gap_single_addresses() {
     let gaps = finder
         .find_gaps_ipv4("10.200.1.8/30".parse().unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(gaps, vec!["10.200.1.10".parse().unwrap().."10.200.1.10".parse().unwrap()]);
+    assert_eq!(
+        gaps,
+        vec!["10.200.1.10".parse().unwrap().."10.200.1.10".parse().unwrap()]
+    );
 
     let mut finder = GapFinder::new();
     for ip in ["172.16.1.1", "172.16.1.3", "172.16.1.254"] {
@@ -229,7 +232,10 @@ pub(crate) fn empty_current(target: &BaseDeviceDataTarget) -> BaseDeviceDataCurr
             .1
             .into_values()
             .enumerate()
-            .map(|(id, data)| SystemLoggingById { id: Id(id as u32 + 1), data })
+            .map(|(id, data)| SystemLoggingById {
+                id: Id(id as u32 + 1),
+                data,
+            })
             .collect(),
     }
 }
@@ -238,7 +244,10 @@ pub(crate) fn empty_current(target: &BaseDeviceDataTarget) -> BaseDeviceDataCurr
 /// the CEF fields (CHR 7.24.5).
 fn routeros_logging_actions() -> Box<[SystemLoggingActionByName]> {
     let mut actions = crate::device::ros::syslog::routeros_logging().0;
-    let remote = &mut actions.get_mut(&b"remote".as_slice().into()).expect("RouterOS's remote action").0;
+    let remote = &mut actions
+        .get_mut(&b"remote".as_slice().into())
+        .expect("RouterOS's remote action")
+        .0;
     remote.remote_log_format = Some(SystemLoggingActionRemoteLogFormat::Default);
     remote.syslog_time_format = None;
     actions.into_values().collect()

@@ -44,7 +44,7 @@ pub struct SiteDevicesVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "SubscriptionAuthenticated",
-    variables = "SiteDevicesVariables",
+    variables = "SiteDevicesVariables"
 )]
 pub struct SiteDevices {
     pub topology: SiteDevicesTopology,
@@ -54,7 +54,7 @@ pub struct SiteDevices {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "SiteDevicesVariables",
+    variables = "SiteDevicesVariables"
 )]
 pub struct SiteDevicesTopology {
     #[arguments(id: $site)]
@@ -98,7 +98,7 @@ pub struct PingDeviceVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "PingDeviceVariables",
+    variables = "PingDeviceVariables"
 )]
 pub struct PingDevice {
     pub topology: PingTopology,
@@ -108,7 +108,7 @@ pub struct PingDevice {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "PingDeviceVariables",
+    variables = "PingDeviceVariables"
 )]
 pub struct PingTopology {
     #[arguments(id: $id)]

@@ -1,10 +1,10 @@
 use crate::{
-    i18n,
     error::FrontendError,
     graphql::{
         anonymous::settings::{Authentication, Settings},
         request_anonymous,
     },
+    i18n,
 };
 use cynic::QueryBuilder;
 use patternfly_yew::prelude::{
@@ -73,18 +73,21 @@ impl Component for App {
         if first_render {
             let scope = ctx.link().clone();
             spawn_local(async move {
-                scope.send_message(
-                    match request_anonymous(Settings::build(())).await {
-                        Ok(Settings {
-                            authentication: Authentication { client_id, issuer_url, scopes },
-                        }) => AppMessage::AuthenticationData(AuthenticationData {
-                            client_id,
-                            issuer_url,
-                            scopes,
-                        }),
-                        Err(error) => AppMessage::Error(error),
-                    },
-                );
+                scope.send_message(match request_anonymous(Settings::build(())).await {
+                    Ok(Settings {
+                        authentication:
+                            Authentication {
+                                client_id,
+                                issuer_url,
+                                scopes,
+                            },
+                    }) => AppMessage::AuthenticationData(AuthenticationData {
+                        client_id,
+                        issuer_url,
+                        scopes,
+                    }),
+                    Err(error) => AppMessage::Error(error),
+                });
             });
         }
     }
@@ -95,7 +98,10 @@ pub struct MainOAuth2Props {
 }
 #[function_component(MainOAuth2)]
 pub fn main_oauth2(props: &MainOAuth2Props) -> Html {
-    let config = Config::new(props.config.client_id.clone(), props.config.issuer_url.clone());
+    let config = Config::new(
+        props.config.client_id.clone(),
+        props.config.issuer_url.clone(),
+    );
     let scopes = props.config.scopes.clone();
     html! {
      <OAuth2 {config} {scopes}>

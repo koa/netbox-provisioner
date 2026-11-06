@@ -54,7 +54,10 @@ impl Component for History {
 
     fn create(ctx: &Context<Self>) -> Self {
         fetch(ctx);
-        Self { entries: None, error: None }
+        Self {
+            entries: None,
+            error: None,
+        }
     }
 
     fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
@@ -96,13 +99,18 @@ impl Component for History {
 
 fn entry(entry: &Entry) -> Html {
     // NetBox gives `2026-10-25T13:04:30.123456+00:00`, in its own time zone
-    let created = entry.created.get(..16).unwrap_or(&entry.created).replace('T', " ");
+    let created = entry
+        .created
+        .get(..16)
+        .unwrap_or(&entry.created)
+        .replace('T', " ");
     let link = html! {
         <div><a href={entry.url.clone()} target="_blank" rel="noopener">{h::IN_NETBOX}</a></div>
     };
     if let Some(seen) = &entry.observation {
         let lefts = |list: &[JournalLeft]| list.iter().filter_map(left).collect::<Vec<_>>();
-        let (fired, found, removed) = (lefts(&seen.fired), lefts(&seen.found), lefts(&seen.removed));
+        let (fired, found, removed) =
+            (lefts(&seen.fired), lefts(&seen.found), lefts(&seen.removed));
         let class = match (fired.is_empty(), found.is_empty()) {
             (false, _) => "failed",
             (true, false) => "warning",
@@ -135,7 +143,12 @@ fn entry(entry: &Entry) -> Html {
         .state
         .as_deref()
         .filter(|_| outcome != Outcome::Done)
-        .map(|state| t::state(phase::of(state).unwrap_or(state), outcome == Outcome::Running));
+        .map(|state| {
+            t::state(
+                phase::of(state).unwrap_or(state),
+                outcome == Outcome::Running,
+            )
+        });
     let left: Vec<Left> = entry.left.iter().filter_map(left).collect();
     html! {
         <li class={class}>

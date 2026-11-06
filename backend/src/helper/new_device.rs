@@ -157,10 +157,11 @@ pub async fn plan(topology: &Arc<Topology>, input: &NewDeviceInput) -> Result<Ne
         )
         .await?;
         let shift = plan.steps.len();
-        plan.steps.extend(connection.steps.into_iter().map(|mut step| {
-            step.shift(shift);
-            step
-        }));
+        plan.steps
+            .extend(connection.steps.into_iter().map(|mut step| {
+                step.shift(shift);
+                step
+            }));
         plan.undocumented.extend(connection.undocumented);
         plan.cut_off.extend(connection.cut_off);
         plan.checked_with = plan.checked_with.or(connection.checked_with);
@@ -220,10 +221,7 @@ fn router_port(
     if landing(&port).is_none() {
         return Err(Error::PortCabled {
             port: super::port_name(&port),
-            far: port
-                .connected_interfaces()
-                .first()
-                .map(super::port_name),
+            far: port.connected_interfaces().first().map(super::port_name),
         });
     }
     Ok((router, port))
@@ -236,9 +234,13 @@ async fn read_facts(router: &DeviceAccess, input: &NewDeviceInput) -> Result<Fac
     let device_type = rest
         .get(&format!("dcim/device-types/{}/", input.device_type))
         .await?;
-    let role = rest.get(&format!("dcim/device-roles/{}/", input.role)).await?;
+    let role = rest
+        .get(&format!("dcim/device-roles/{}/", input.role))
+        .await?;
     let platform = rest.find("dcim/platforms/", &[("name", PLATFORM)]).await?;
-    let neighbor = rest.get(&format!("dcim/devices/{}/", router.id().0)).await?;
+    let neighbor = rest
+        .get(&format!("dcim/devices/{}/", router.id().0))
+        .await?;
     let mut tenant_id = neighbor["tenant"]["id"].as_u64();
     if tenant_id.is_none()
         && let Some(location) = neighbor["location"]["id"].as_u64()
@@ -272,7 +274,10 @@ pub(crate) fn base(
     if name.is_empty() {
         return Err(Error::NoDeviceName);
     }
-    if topology.list_devices().any(|d| d.name().eq_ignore_ascii_case(name)) {
+    if topology
+        .list_devices()
+        .any(|d| d.name().eq_ignore_ascii_case(name))
+    {
         return Err(Error::DeviceNameTaken(name.into()));
     }
     let far_port = input.far_port.trim();

@@ -11,19 +11,19 @@
 //! are kept. Their numbers start anew after each start of the provisioner ([`first_id`]), so a
 //! page still asking for a job of the run before gets no job rather than someone else's.
 use crate::{
-    error_info::ErrorInfo,
     Error,
     device::{
-        self, batch, bootstrap, device_mode, leftovers, partitions, power, power_cycle, ros::graphql as apply, terminal, update,
-        radio_hold, update_fallback, watchdog,
+        self, batch, bootstrap, device_mode, leftovers, partitions, power, power_cycle, radio_hold,
+        ros::graphql as apply, terminal, update, update_fallback, watchdog,
     },
     device_state::{JobPhase, Restart},
+    error_info::ErrorInfo,
     facts::{self, FactKind},
-    lock::LockAnyway,
-    saved_job::{self, SavedJob},
     graphql::scalars::ScalarDuration,
     helper,
     journal::{self, Started},
+    lock::LockAnyway,
+    saved_job::{self, SavedJob},
     topology::{
         DeviceId, SiteId,
         access::{AccessTopology, device::DeviceAccess, site::SiteAccess},
@@ -197,7 +197,10 @@ impl Log {
         let again = phases.resumed && phases.current == Some(phase);
         phases.resumed = false;
         if !again && !phase.may_follow(phases.current) {
-            warn!("{}: unexpected state {phase:?} after {:?}", self.label, phases.current);
+            warn!(
+                "{}: unexpected state {phase:?} after {:?}",
+                self.label, phases.current
+            );
             let before = phases.current;
             phases.unexpected.push((before, phase));
         }
@@ -354,7 +357,10 @@ impl Log {
         events.get(after as usize..).unwrap_or_default().to_vec()
     }
     pub fn events(&self) -> Vec<Event> {
-        self.since(0).into_iter().map(|logged| logged.event).collect()
+        self.since(0)
+            .into_iter()
+            .map(|logged| logged.event)
+            .collect()
     }
 }
 
@@ -396,7 +402,15 @@ impl JobKind {
     pub fn invalidates(self) -> &'static [FactKind] {
         use FactKind::*;
         match self {
-            JobKind::Apply => &[Login, Route, Config, Leftovers, Interfaces, Neighbors, InterfaceLive],
+            JobKind::Apply => &[
+                Login,
+                Route,
+                Config,
+                Leftovers,
+                Interfaces,
+                Neighbors,
+                InterfaceLive,
+            ],
             JobKind::Update | JobKind::Downgrade => &[
                 Login,
                 Route,
@@ -409,17 +423,47 @@ impl JobKind {
                 Neighbors,
                 InterfaceLive,
             ],
-            JobKind::Cleanup => &[Login, Route, Config, RouterosState, Leftovers, Neighbors, InterfaceLive],
-            JobKind::Bootstrap => {
-                &[Login, Route, Config, RouterosState, Leftovers, Interfaces, Neighbors, InterfaceLive]
-            }
+            JobKind::Cleanup => &[
+                Login,
+                Route,
+                Config,
+                RouterosState,
+                Leftovers,
+                Neighbors,
+                InterfaceLive,
+            ],
+            JobKind::Bootstrap => &[
+                Login,
+                Route,
+                Config,
+                RouterosState,
+                Leftovers,
+                Interfaces,
+                Neighbors,
+                InterfaceLive,
+            ],
             JobKind::Reboot => &[Login, Route, Config, Leftovers, Neighbors, InterfaceLive],
             // a job of the supplier: what it sees on the port changes with the device it feeds
             JobKind::PowerCycle => &[Login, Route, Leftovers, Neighbors, InterfaceLive],
-            JobKind::DeviceMode => &[Login, Route, Config, Leftovers, DeviceMode, Neighbors, InterfaceLive],
-            JobKind::Repartition | JobKind::BootPartition => {
-                &[Login, Route, Config, RouterosState, Leftovers, Partitions, Neighbors, InterfaceLive]
-            }
+            JobKind::DeviceMode => &[
+                Login,
+                Route,
+                Config,
+                Leftovers,
+                DeviceMode,
+                Neighbors,
+                InterfaceLive,
+            ],
+            JobKind::Repartition | JobKind::BootPartition => &[
+                Login,
+                Route,
+                Config,
+                RouterosState,
+                Leftovers,
+                Partitions,
+                Neighbors,
+                InterfaceLive,
+            ],
             // NetBox changes a fact's key (addresses, cables), not what the device says
             JobKind::NetboxWrite | JobKind::NetboxUndo | JobKind::SiteDiff => &[],
         }
@@ -428,7 +472,11 @@ impl JobKind {
 
 /// What a setup changes on the neighbor it works through: what that sees on its port, and the
 /// login the setup let through with a password for a moment.
-const THROUGH_INVALIDATES: &[FactKind] = &[FactKind::Neighbors, FactKind::InterfaceLive, FactKind::Login];
+const THROUGH_INVALIDATES: &[FactKind] = &[
+    FactKind::Neighbors,
+    FactKind::InterfaceLive,
+    FactKind::Login,
+];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
 pub enum JobState {
@@ -481,7 +529,10 @@ static JOBS: LazyLock<Mutex<Jobs>> = LazyLock::new(|| {
 /// numbers of two runs only meet after 1000 jobs per second between their starts (they wrap
 /// every 11.5 days, `u32` and GraphQL's `Int` hold them).
 fn first_id(started: SystemTime) -> u32 {
-    let seconds = started.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let seconds = started
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     (seconds % 1_000_000) as u32 * 1000
 }
 
@@ -535,7 +586,10 @@ impl Job {
     fn finish(&self, state: JobState, error: Option<ErrorInfo>) {
         *self.took.lock_anyway() = Some(self.log.started.elapsed());
         match &error {
-            Some(error) => info!("{}: job {} {state:?}: {}", self.name, self.id, error.message),
+            Some(error) => info!(
+                "{}: job {} {state:?}: {}",
+                self.name, self.id, error.message
+            ),
             None => info!("{}: job {} {state:?}", self.name, self.id),
         }
         *self.outcome.lock_anyway() = (state, error);
@@ -561,15 +615,22 @@ impl Job {
         }
         let checked = {
             let events = self.log.events.lock_anyway();
-            let last = events.iter().rposition(|logged| matches!(logged.event, Event::ApplyChecked(_)));
+            let last = events
+                .iter()
+                .rposition(|logged| matches!(logged.event, Event::ApplyChecked(_)));
             last.and_then(|index| {
                 let after = &events[index + 1..];
-                let fell_back = after
-                    .iter()
-                    .any(|logged| matches!(logged.event, Event::FallbackLeft(_) | Event::FallbackFired(_)));
+                let fell_back = after.iter().any(|logged| {
+                    matches!(
+                        logged.event,
+                        Event::FallbackLeft(_) | Event::FallbackFired(_)
+                    )
+                });
                 match &events[index].event {
                     Event::ApplyChecked(checked)
-                        if checked.error.is_none() && checked.remaining.is_empty() && !fell_back =>
+                        if checked.error.is_none()
+                            && checked.remaining.is_empty()
+                            && !fell_back =>
                     {
                         Some(Duration::from(events[index].at))
                     }
@@ -579,7 +640,11 @@ impl Job {
         };
         if let Some(at) = checked {
             let as_of = tokio::time::Instant::from_std(self.log.started + at);
-            let key = facts::FactKey::new(FactKind::Config, Some(device), format!("checked by job {}", self.id));
+            let key = facts::FactKey::new(
+                FactKind::Config,
+                Some(device),
+                format!("checked by job {}", self.id),
+            );
             facts::put(key, apply::GeneratedCfg::in_line(as_of), as_of);
         }
     }
@@ -652,11 +717,7 @@ where
 /// Starts `work` for `site` in the background (`JobKind::SiteDiff`). A site runs one job of a
 /// kind at a time: while one runs, that one is given back instead of a second, so a page
 /// opened again finds it.
-pub fn start_site<F>(
-    site: &SiteAccess,
-    kind: JobKind,
-    work: impl FnOnce(Log) -> F,
-) -> Arc<Job>
+pub fn start_site<F>(site: &SiteAccess, kind: JobKind, work: impl FnOnce(Log) -> F) -> Arc<Job>
 where
     F: Future<Output = Result<(), Error>> + Send + 'static,
 {
@@ -709,7 +770,12 @@ fn write_journal(job: &Arc<Job>, started: &Started) {
     }
     let (changes, receiver) = watch::channel(());
     if job.log.journal.set(changes).is_ok() {
-        RUNTIME.spawn(journal::follow(job.clone(), device, started.clone(), receiver));
+        RUNTIME.spawn(journal::follow(
+            job.clone(),
+            device,
+            started.clone(),
+            receiver,
+        ));
     }
 }
 
@@ -729,11 +795,16 @@ pub fn start_all<F>(
 where
     F: Future<Output = Vec<Result<(), Error>>> + Send + 'static,
 {
-    let logs: Vec<Log> = devices.iter().map(|device| Log::new(device.name())).collect();
+    let logs: Vec<Log> = devices
+        .iter()
+        .map(|device| Log::new(device.name()))
+        .collect();
     let work = work(logs.clone());
     let members: Vec<_> = devices.iter().map(subject_of).zip(logs).collect();
     let jobs = register(&members, None, kind)?;
-    jobs.iter().enumerate().for_each(|(index, job)| write_journal(job, &started(index)));
+    jobs.iter()
+        .enumerate()
+        .for_each(|(index, job)| write_journal(job, &started(index)));
     let running = jobs.clone();
     RUNTIME.spawn(async move {
         let result = run(async move { Ok(work.await) }).await;
@@ -745,7 +816,9 @@ where
                     job.finish_with(results.next().unwrap_or(Ok(())));
                 }
             }
-            Err(Error::Cancelled) => running.iter().for_each(|job| job.finish(JobState::Cancelled, None)),
+            Err(Error::Cancelled) => running
+                .iter()
+                .for_each(|job| job.finish(JobState::Cancelled, None)),
             Err(error) => {
                 let error = ErrorInfo::from(&error);
                 for job in &running {
@@ -765,7 +838,11 @@ fn register(
 ) -> Result<Vec<Arc<Job>>, Error> {
     let mut jobs = JOBS.lock_anyway();
     for (subject, name) in members.iter().map(|(member, _)| *member).chain(through) {
-        if jobs.jobs.iter().any(|job| job.occupies(subject) && job.is_running()) {
+        if jobs
+            .jobs
+            .iter()
+            .any(|job| job.occupies(subject) && job.is_running())
+        {
             return Err(Error::Busy(name.into()));
         }
     }
@@ -808,9 +885,16 @@ fn add(
     let _ = job.log.devices.set(devices);
     job.log.announce();
     jobs.jobs.push(job.clone());
-    let finished = jobs.jobs.iter().filter(|job| job.state() != JobState::Running).count();
+    let finished = jobs
+        .jobs
+        .iter()
+        .filter(|job| job.state() != JobState::Running)
+        .count();
     if finished > KEEP
-        && let Some(oldest) = jobs.jobs.iter().position(|job| job.state() != JobState::Running)
+        && let Some(oldest) = jobs
+            .jobs
+            .iter()
+            .position(|job| job.state() != JobState::Running)
     {
         jobs.jobs.remove(oldest);
     }
@@ -872,7 +956,10 @@ pub fn holding_watchdogs(device: &str) -> Option<WatchdogsHeld> {
         .into_iter()
         .filter(|job| job.is_running())
         .find(|job| holds_watchdogs(&job.log.events(), device))
-        .map(|job| WatchdogsHeld { job: job.id, device: job.name.clone() })
+        .map(|job| WatchdogsHeld {
+            job: job.id,
+            device: job.name.clone(),
+        })
 }
 
 /// Whether `events` suspended the watchdogs of `device` and didn't restore them yet (the job
@@ -924,7 +1011,8 @@ static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 /// its script). Called once the server takes no more requests.
 pub async fn shutdown(wait: Duration) {
     SHUTTING_DOWN.store(true, Ordering::SeqCst);
-    let running: Vec<Arc<Job>> = JOBS.lock_anyway()
+    let running: Vec<Arc<Job>> = JOBS
+        .lock_anyway()
         .jobs
         .iter()
         .filter(|job| job.state() == JobState::Running)
@@ -935,11 +1023,18 @@ pub async fn shutdown(wait: Duration) {
         job.log.cancel();
     }
     let deadline = Instant::now() + wait;
-    let settled = || running.iter().all(|job| job.state() != JobState::Running || job.log.goes_on());
+    let settled = || {
+        running
+            .iter()
+            .all(|job| job.state() != JobState::Running || job.log.goes_on())
+    };
     while !settled() && Instant::now() < deadline {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
-    for job in running.iter().filter(|job| job.state() == JobState::Running) {
+    for job in running
+        .iter()
+        .filter(|job| job.state() == JobState::Running)
+    {
         match job.log.goes_on() {
             true => info!("{}: job {} goes on after the restart", job.name, job.id),
             false => warn!("{}: job {} still running at the shutdown", job.name, job.id),
@@ -1016,7 +1111,9 @@ impl Job {
 
 #[cfg(test)]
 mod tests {
-    use super::{Event, JobKind, JobState, Log, cancel, get, holds_watchdogs, list, start, start_through};
+    use super::{
+        Event, JobKind, JobState, Log, cancel, get, holds_watchdogs, list, start, start_through,
+    };
     use crate::journal::Started;
 
     fn by() -> Started {
@@ -1044,13 +1141,26 @@ mod tests {
     fn a_job_ends_in_its_own_state_not_in_restoring() {
         use crate::device_state::{BootstrapState, JobPhase};
         let log = Log::new("test");
-        for state in [BootstrapState::SuspendingWatchdogs, BootstrapState::CheckingNeighbor, BootstrapState::Console] {
+        for state in [
+            BootstrapState::SuspendingWatchdogs,
+            BootstrapState::CheckingNeighbor,
+            BootstrapState::Console,
+        ] {
             log.enter(state);
         }
-        assert_eq!(log.ended_in(), Some(JobPhase::Bootstrap(BootstrapState::Console)));
+        assert_eq!(
+            log.ended_in(),
+            Some(JobPhase::Bootstrap(BootstrapState::Console))
+        );
         log.enter(BootstrapState::RestoringWatchdogs);
-        assert_eq!(log.phase(), Some(JobPhase::Bootstrap(BootstrapState::RestoringWatchdogs)));
-        assert_eq!(log.ended_in(), Some(JobPhase::Bootstrap(BootstrapState::Console)));
+        assert_eq!(
+            log.phase(),
+            Some(JobPhase::Bootstrap(BootstrapState::RestoringWatchdogs))
+        );
+        assert_eq!(
+            log.ended_in(),
+            Some(JobPhase::Bootstrap(BootstrapState::Console))
+        );
         assert!(log.unexpected().is_empty());
     }
 
@@ -1094,11 +1204,20 @@ mod tests {
         });
         assert_eq!(state(&log), None);
         log.enter(ApplyState::ScriptRunning);
-        assert_eq!(state(&log), Some(JobPhase::Apply(ApplyState::ScriptRunning)));
+        assert_eq!(
+            state(&log),
+            Some(JobPhase::Apply(ApplyState::ScriptRunning))
+        );
         log.enter(ApplyState::StoppingFallback);
-        assert_eq!(state(&log), Some(JobPhase::Apply(ApplyState::StoppingFallback)));
+        assert_eq!(
+            state(&log),
+            Some(JobPhase::Apply(ApplyState::StoppingFallback))
+        );
         log.enter(ApplyState::ScriptRunning);
-        assert_eq!(state(&log), Some(JobPhase::Apply(ApplyState::ScriptRunning)));
+        assert_eq!(
+            state(&log),
+            Some(JobPhase::Apply(ApplyState::ScriptRunning))
+        );
         log.enter(ApplyState::StoppingFallback);
         log.enter(ApplyState::Checking);
         assert_eq!(state(&log), None);
@@ -1112,8 +1231,14 @@ mod tests {
         before.saved_at = SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_000);
         resumed.keep(before.clone());
         resumed.resume_in(ApplyState::ScriptRunning);
-        assert_eq!(state(&resumed), Some(JobPhase::Apply(ApplyState::ScriptRunning)));
-        assert_eq!(resumed.saved().map(|saved| saved.saved_at), Some(before.saved_at));
+        assert_eq!(
+            state(&resumed),
+            Some(JobPhase::Apply(ApplyState::ScriptRunning))
+        );
+        assert_eq!(
+            resumed.saved().map(|saved| saved.saved_at),
+            Some(before.saved_at)
+        );
         resumed.ended();
         assert_eq!(state(&resumed), None);
     }
@@ -1225,14 +1350,21 @@ mod tests {
         wait_for(panicked.id, JobState::Failed).await;
         let error = panicked.outcome.lock().unwrap().1.clone().expect("error");
         assert_eq!(error.code, "PANIC");
-        assert!(error.message.contains("Send command failed"), "{}", error.message);
+        assert!(
+            error.message.contains("Send command failed"),
+            "{}",
+            error.message
+        );
         let after = start(&device, JobKind::Update, by(), |_| async { Ok(()) }).unwrap();
         wait_for(after.id, JobState::Done).await;
     }
 
     #[test]
     fn watchdogs_are_held_from_suspended_to_restored() {
-        let watching = Watching { watch_address: Some("10.0.0.1".into()), poe_pings: Vec::new() };
+        let watching = Watching {
+            watch_address: Some("10.0.0.1".into()),
+            poe_pings: Vec::new(),
+        };
         let suspended = |device: &str| {
             Event::WatchdogSuspended(WatchdogSuspended {
                 device: device.into(),
@@ -1241,13 +1373,22 @@ mod tests {
             })
         };
         let restored = |device: &str| {
-            Event::WatchdogRestored(WatchdogRestored { device: device.into(), watching: watching.clone() })
+            Event::WatchdogRestored(WatchdogRestored {
+                device: device.into(),
+                watching: watching.clone(),
+            })
         };
         assert!(!holds_watchdogs(&[], "sw1"));
         assert!(holds_watchdogs(&[reboot(), suspended("sw1")], "sw1"));
         assert!(!holds_watchdogs(&[suspended("sw2")], "sw1"));
-        assert!(!holds_watchdogs(&[suspended("sw1"), restored("sw1")], "sw1"));
-        assert!(holds_watchdogs(&[suspended("sw1"), suspended("sw2"), restored("sw2")], "sw1"));
+        assert!(!holds_watchdogs(
+            &[suspended("sw1"), restored("sw1")],
+            "sw1"
+        ));
+        assert!(holds_watchdogs(
+            &[suspended("sw1"), suspended("sw2"), restored("sw2")],
+            "sw1"
+        ));
     }
 
     #[tokio::test]
@@ -1256,16 +1397,28 @@ mod tests {
         // apart from the other tests' devices: the jobs are global
         let ids = [DeviceId(9001), DeviceId(9002)];
         for (id, name) in ids.into_iter().zip(["setup-new", "setup-neighbor"]) {
-            builder.devices.insert(id, Device { name: name.into(), ..Default::default() });
+            builder.devices.insert(
+                id,
+                Device {
+                    name: name.into(),
+                    ..Default::default()
+                },
+            );
         }
         let topology: TopologyHolder = builder.into();
         let new = topology.devices_by_id(ids[0]).await.unwrap();
         let neighbor = topology.devices_by_id(ids[1]).await.unwrap();
 
-        let job = start_through(&new, &neighbor, JobKind::Bootstrap, by(), |log| async move {
-            log.unless_cancelled(sleep(Duration::from_secs(60))).await?;
-            Ok(())
-        })
+        let job = start_through(
+            &new,
+            &neighbor,
+            JobKind::Bootstrap,
+            by(),
+            |log| async move {
+                log.unless_cancelled(sleep(Duration::from_secs(60))).await?;
+                Ok(())
+            },
+        )
         .unwrap();
         assert!(start(&neighbor, JobKind::Apply, by(), |_| async { Ok(()) }).is_err());
         assert!(start(&new, JobKind::Apply, by(), |_| async { Ok(()) }).is_err());

@@ -15,8 +15,8 @@ use mikrotik_model::{
     generator::Generator,
     model::{
         InterfaceBridgePortById, InterfaceBridgePortCfg, InterfaceBridgeVlanById,
-        InterfaceBridgeVlanCfg, InterfaceVxlanVtepsById,
-        InterfaceVxlanVtepsCfg, RoutingOriginateDefault, RoutingRedistribute,
+        InterfaceBridgeVlanCfg, InterfaceVxlanVtepsById, InterfaceVxlanVtepsCfg,
+        RoutingOriginateDefault, RoutingRedistribute,
     },
     resource::{ResourceMutation, ResourceMutationOperation},
     value::Id,
@@ -302,9 +302,13 @@ async fn test_ospf_redistributes_bgp() -> Result<(), Box<dyn Error>> {
         let cfg = &target_data.ospf_instance[&AsciiString::from(instance.as_bytes())].0;
         assert_eq!(
             cfg.redistribute,
-            [RoutingRedistribute::Connected, RoutingRedistribute::Static, RoutingRedistribute::Bgp]
-                .into_iter()
-                .collect(),
+            [
+                RoutingRedistribute::Connected,
+                RoutingRedistribute::Static,
+                RoutingRedistribute::Bgp
+            ]
+            .into_iter()
+            .collect(),
             "{instance}"
         );
     }
@@ -874,16 +878,18 @@ async fn test_renamed_vxlan_frees_its_vni_first() -> Result<(), Box<dyn Error>> 
     current.bridge_vlan = target_data
         .bridge_vlan
         .iter()
-        .map(|((bridge, tagged, untagged, vlan_ids), vlan)| InterfaceBridgeVlanById {
-            id: next_id(),
-            data: InterfaceBridgeVlanCfg {
-                bridge: bridge.clone(),
-                tagged: tagged.iter().map(rename).collect(),
-                untagged: untagged.clone(),
-                vlan_ids: vlan_ids.clone(),
-                ..vlan.clone()
+        .map(
+            |((bridge, tagged, untagged, vlan_ids), vlan)| InterfaceBridgeVlanById {
+                id: next_id(),
+                data: InterfaceBridgeVlanCfg {
+                    bridge: bridge.clone(),
+                    tagged: tagged.iter().map(rename).collect(),
+                    untagged: untagged.clone(),
+                    vlan_ids: vlan_ids.clone(),
+                    ..vlan.clone()
+                },
             },
-        })
+        )
         .collect();
 
     let mutations = target_data.generate_mutations(&current)?;
@@ -1152,13 +1158,18 @@ async fn test_vxlan_on_two_bridges_is_rejected() {
     };
     assert_eq!(port, &AsciiString::from("client-berg"));
     // the error names each VLAN with its bridge, so the operator sees what to join
-    assert!(vlans.contains(&VlanOnBridge {
-        vlan: Some(2),
-        vlan_name: Some("wohnung-gast".into()),
-        bridge: Some("bridge-gast".into()),
-    }), "{vlans:?}");
     assert!(
-        vlans.iter().any(|v| v.vlan == Some(1) && v.bridge.as_deref() != Some("bridge-gast")),
+        vlans.contains(&VlanOnBridge {
+            vlan: Some(2),
+            vlan_name: Some("wohnung-gast".into()),
+            bridge: Some("bridge-gast".into()),
+        }),
+        "{vlans:?}"
+    );
+    assert!(
+        vlans
+            .iter()
+            .any(|v| v.vlan == Some(1) && v.bridge.as_deref() != Some("bridge-gast")),
         "{vlans:?}"
     );
 }
@@ -1900,7 +1911,11 @@ async fn dhcp_server_name_counts_ipv4_addresses_only() {
     let device = dhcp_server_on(&["2a02:16a:fe00:9002::1/64", "192.168.105.1/24"]).await;
     target.generate_from(&device, KeepNameGenerator).unwrap();
     assert_eq!(
-        target.dhcp_v_4_server.keys().map(|name| name.to_string()).collect::<Vec<_>>(),
+        target
+            .dhcp_v_4_server
+            .keys()
+            .map(|name| name.to_string())
+            .collect::<Vec<_>>(),
         ["dhcp-ether1"]
     );
 }
@@ -1913,7 +1928,11 @@ async fn dhcp_networks_of_a_port_share_its_server() {
     let device = dhcp_server_on(&["192.168.101.49/29", "192.168.105.1/29"]).await;
     target.generate_from(&device, KeepNameGenerator).unwrap();
     assert_eq!(
-        target.dhcp_v_4_server.keys().map(|name| name.to_string()).collect::<Vec<_>>(),
+        target
+            .dhcp_v_4_server
+            .keys()
+            .map(|name| name.to_string())
+            .collect::<Vec<_>>(),
         ["dhcp-ether1"]
     );
     assert_eq!(
@@ -1923,10 +1942,17 @@ async fn dhcp_networks_of_a_port_share_its_server() {
             .iter()
             .map(|range| range.to_string())
             .collect::<Vec<_>>(),
-        ["192.168.101.50-192.168.101.54", "192.168.105.2-192.168.105.6"]
+        [
+            "192.168.101.50-192.168.101.54",
+            "192.168.105.2-192.168.105.6"
+        ]
     );
     assert_eq!(
-        target.dhcp_v_4_server_network.keys().map(|net| net.to_string()).collect::<Vec<_>>(),
+        target
+            .dhcp_v_4_server_network
+            .keys()
+            .map(|net| net.to_string())
+            .collect::<Vec<_>>(),
         ["192.168.101.48/29", "192.168.105.0/29"]
     );
 }
@@ -1985,14 +2011,25 @@ async fn dhcp_lease_time_comes_from_the_prefix() {
                 ..Default::default()
             },
         );
-        let device = Into::<TopologyHolder>::into(builder).devices_by_id(device).await.unwrap();
+        let device = Into::<TopologyHolder>::into(builder)
+            .devices_by_id(device)
+            .await
+            .unwrap();
         let (mut target, _) = setup_testdata(b"CRS326-24G-2S+").unwrap();
         target.generate_from(&device, KeepNameGenerator).unwrap();
-        target.dhcp_v_4_server[&AsciiString::from("dhcp-ether1")].0.lease_time
+        target.dhcp_v_4_server[&AsciiString::from("dhcp-ether1")]
+            .0
+            .lease_time
     }
     let secs = |secs| Some(std::time::Duration::from_secs(secs));
-    assert_eq!(lease_time(&[("192.168.101.49/29", None)]).await, secs(30 * 60));
-    assert_eq!(lease_time(&[("192.168.101.49/29", Some(120))]).await, secs(120));
+    assert_eq!(
+        lease_time(&[("192.168.101.49/29", None)]).await,
+        secs(30 * 60)
+    );
+    assert_eq!(
+        lease_time(&[("192.168.101.49/29", Some(120))]).await,
+        secs(120)
+    );
     assert_eq!(
         lease_time(&[
             ("192.168.101.49/29", Some(120)),
@@ -2087,8 +2124,15 @@ async fn a_client_with_a_mac_is_a_static_lease() {
             Some("drucker".to_string())
         )]
     );
-    let pool = &target.ipv_4_pool[&AsciiString::from("dhcp-ether1")].0.ranges;
-    assert!(!pool.iter().any(|range| range.to_string().contains("192.168.105.50")), "{pool:?}");
+    let pool = &target.ipv_4_pool[&AsciiString::from("dhcp-ether1")]
+        .0
+        .ranges;
+    assert!(
+        !pool
+            .iter()
+            .any(|range| range.to_string().contains("192.168.105.50")),
+        "{pool:?}"
+    );
 }
 
 /// Ports renamed in the same apply (a label that moved: `e12-buero-neben-tuere` became
@@ -2114,7 +2158,11 @@ async fn test_renamed_ports_keep_their_bridge_ports() -> Result<(), Box<dyn Erro
             id: Id(ids.next().unwrap()),
             data: InterfaceBridgePortCfg {
                 bridge: bridge.clone(),
-                interface: if interface.0.starts_with(b"ether") { old(interface) } else { interface.clone() },
+                interface: if interface.0.starts_with(b"ether") {
+                    old(interface)
+                } else {
+                    interface.clone()
+                },
                 ..port.clone()
             },
         })
@@ -2216,7 +2264,11 @@ async fn bridges_of_a_crs3xx_become_vlans_of_one() {
     target.setup_ports(&device, &l2, None).unwrap();
     dump_mutations(&target, &current).unwrap();
     assert_eq!(
-        target.bridge.keys().map(ToString::to_string).collect::<Vec<_>>(),
+        target
+            .bridge
+            .keys()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
         ["bridge"]
     );
     let bridge = &target.bridge[&AsciiString::from("bridge")].0;
@@ -2317,7 +2369,13 @@ async fn snooping_goes_off_alone() {
         .map(|m| {
             m.fields
                 .iter()
-                .map(|f| format!("{}={}", String::from_utf8_lossy(f.key), String::from_utf8_lossy(&f.value)))
+                .map(|f| {
+                    format!(
+                        "{}={}",
+                        String::from_utf8_lossy(f.key),
+                        String::from_utf8_lossy(&f.value)
+                    )
+                })
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
@@ -2379,14 +2437,29 @@ async fn an_unknown_board_keeps_its_bridges_snooping() {
 fn ports_are_on_their_chip() {
     use crate::device::ros::hw_facts::SwitchChip;
     let chip = |model: &[u8], port| SwitchChips::of(model).chip_of(port);
-    assert_eq!(chip(b"CRS318-16P-2S+", PhysicalPortId::SfpSfpPlus(1)), Some(SwitchChip::Prestera));
-    assert_eq!(chip(b"RB962UiGS-5HacT2HnT", PhysicalPortId::Ethernet(5)), Some(SwitchChip::Qca8337));
+    assert_eq!(
+        chip(b"CRS318-16P-2S+", PhysicalPortId::SfpSfpPlus(1)),
+        Some(SwitchChip::Prestera)
+    );
+    assert_eq!(
+        chip(b"RB962UiGS-5HacT2HnT", PhysicalPortId::Ethernet(5)),
+        Some(SwitchChip::Qca8337)
+    );
     // on the CPU
     assert_eq!(chip(b"RB962UiGS-5HacT2HnT", PhysicalPortId::Sfp(1)), None);
     assert_eq!(chip(b"L009UiGS-2HaxD", PhysicalPortId::Ethernet(1)), None);
-    assert_eq!(chip(b"L009UiGS-2HaxD", PhysicalPortId::Sfp(1)), Some(SwitchChip::Marvell88E6));
-    assert_eq!(chip(b"RB2011UiAS-2HnD", PhysicalPortId::Ethernet(6)), Some(SwitchChip::Atheros8227));
-    assert_eq!(chip(b"RB2011UiAS-2HnD", PhysicalPortId::Sfp(1)), Some(SwitchChip::Qca8337));
+    assert_eq!(
+        chip(b"L009UiGS-2HaxD", PhysicalPortId::Sfp(1)),
+        Some(SwitchChip::Marvell88E6)
+    );
+    assert_eq!(
+        chip(b"RB2011UiAS-2HnD", PhysicalPortId::Ethernet(6)),
+        Some(SwitchChip::Atheros8227)
+    );
+    assert_eq!(
+        chip(b"RB2011UiAS-2HnD", PhysicalPortId::Sfp(1)),
+        Some(SwitchChip::Qca8337)
+    );
     assert_eq!(chip(b"CRS109-8G-1S-2HnD", PhysicalPortId::Wlan(1)), None);
     assert_eq!(chip(b"SXT G-5HPacD r2", PhysicalPortId::Ethernet(1)), None);
 }

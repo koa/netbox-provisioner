@@ -36,7 +36,9 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
     let port = topology
         .get_interface_by_id(InterfaceId(input.interface))
         .ok_or(Error::UnknownInterface(input.interface))?;
-    let port_device = port.device().ok_or(Error::UnknownInterface(input.interface))?;
+    let port_device = port
+        .device()
+        .ok_or(Error::UnknownInterface(input.interface))?;
     let far = port.connected_interfaces().first().cloned();
     let mut plan = NetboxPlan::new(
         &device,
@@ -56,7 +58,11 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
             .is_some_and(|net| pools.iter().any(|(_, pool)| pool.contains(&net.addr())))
     };
     let own: Vec<IpAddressAccess> = port.ips().into_iter().filter(in_pool).collect();
-    let networks: Vec<IpNet> = own.iter().filter_map(|ip| ip.net()).map(|net| net.trunc()).collect();
+    let networks: Vec<IpNet> = own
+        .iter()
+        .filter_map(|ip| ip.net())
+        .map(|net| net.trunc())
+        .collect();
     let far_ips: Vec<IpAddressAccess> = far
         .iter()
         .flat_map(|far| far.ips().into_vec())
@@ -69,9 +75,15 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
         .chain(far_ips.iter().zip(far.iter().cycle()))
         .collect();
     for (ip, interface) in &freed {
-        let owner = interface.device().ok_or(Error::UnknownInterface(interface.id().0))?;
+        let owner = interface
+            .device()
+            .ok_or(Error::UnknownInterface(interface.id().0))?;
         let primary = [owner.primary_ip_v4(), owner.primary_ip_v6()];
-        if primary.iter().flatten().any(|primary| primary.id() == ip.id()) {
+        if primary
+            .iter()
+            .flatten()
+            .any(|primary| primary.id() == ip.id())
+        {
             return Err(Error::PrimaryAddress {
                 address: address_text(ip),
                 device: owner.name().into(),
@@ -87,7 +99,9 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
     if let (Some(_), Some(far)) = (port.cable(), &far) {
         for (end, other) in [(&port, far), (far, &port)] {
             let other_name = other.device().map(|device| device.name().to_string());
-            let label = end.label().filter(|label| Some(*label) == other_name.as_deref());
+            let label = end
+                .label()
+                .filter(|label| Some(*label) == other_name.as_deref());
             if label.is_some() || end.use_ospf() {
                 plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
                     interface: interface_ref(end),
@@ -96,7 +110,11 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
                     mtu: None,
                     mtu_before: end.mtu(),
                     tags_added: Vec::new(),
-                    tags_removed: end.use_ospf().then_some(InterfaceTag::Ospf).into_iter().collect(),
+                    tags_removed: end
+                        .use_ospf()
+                        .then_some(InterfaceTag::Ospf)
+                        .into_iter()
+                        .collect(),
                     poe: None,
                     poe_before: None,
                     poe_removed: false,
@@ -157,22 +175,32 @@ pub(super) fn delete_prefixes<'a>(
 
 /// Whether `device` has a link to a router besides `end`: a port cabled to one, with an IPv4
 /// address in a network with it.
-pub(super) fn has_other_link(device: &crate::topology::access::device::DeviceAccess, end: &InterfaceAccess) -> bool {
-    device.interfaces().iter().filter(|i| i.id() != end.id()).any(|interface| {
-        interface.connected_interfaces().iter().any(|far| {
-            far.device().is_some_and(|d| d.has_routeros())
-                && interface.ips().iter().filter_map(|ip| ip.net()).any(|own| {
-                    far.ips()
-                        .iter()
-                        .filter_map(|ip| ip.net())
-                        .any(|other| own.trunc() == other.trunc())
-                })
+pub(super) fn has_other_link(
+    device: &crate::topology::access::device::DeviceAccess,
+    end: &InterfaceAccess,
+) -> bool {
+    device
+        .interfaces()
+        .iter()
+        .filter(|i| i.id() != end.id())
+        .any(|interface| {
+            interface.connected_interfaces().iter().any(|far| {
+                far.device().is_some_and(|d| d.has_routeros())
+                    && interface.ips().iter().filter_map(|ip| ip.net()).any(|own| {
+                        far.ips()
+                            .iter()
+                            .filter_map(|ip| ip.net())
+                            .any(|other| own.trunc() == other.trunc())
+                    })
+            })
         })
-    })
 }
 
 pub(super) fn address_text(ip: &IpAddressAccess) -> Box<str> {
-    ip.net().map(|net| net.to_string()).unwrap_or_default().into()
+    ip.net()
+        .map(|net| net.to_string())
+        .unwrap_or_default()
+        .into()
 }
 
 #[cfg(test)]
@@ -212,13 +240,21 @@ mod test {
             interface: port.id().0,
         };
         let plan = plan(&topology, &input).expect("plan");
-        assert!(matches!(plan.steps.first(), Some(PlanStep::DeleteCable(_))), "{:?}", plan.steps);
+        assert!(
+            matches!(plan.steps.first(), Some(PlanStep::DeleteCable(_))),
+            "{:?}",
+            plan.steps
+        );
         let deleted_at = |id: InterfaceId| {
             plan.steps.iter().any(|step| {
                 matches!(step, PlanStep::DeleteAddress(delete) if delete.interface.id == id.0)
             })
         };
-        assert!(deleted_at(port.id()) && deleted_at(far.id()), "{:?}", plan.steps);
+        assert!(
+            deleted_at(port.id()) && deleted_at(far.id()),
+            "{:?}",
+            plan.steps
+        );
 
         let after = plan.preview_topology().expect("preview");
         let port_after = after.get_interface_by_id(port.id()).unwrap();
@@ -229,7 +265,10 @@ mod test {
             device: device.id().0,
             interface: far.id().0,
         };
-        assert_eq!(super::plan(&topology, &reverse).expect("plan").steps.len(), plan.steps.len());
+        assert_eq!(
+            super::plan(&topology, &reverse).expect("plan").steps.len(),
+            plan.steps.len()
+        );
     }
 
     /// A port with nothing to take out of NetBox is refused.
@@ -245,6 +284,9 @@ mod test {
             device: port.device().unwrap().id().0,
             interface: port.id().0,
         };
-        assert!(matches!(plan(&topology, &input), Err(Error::NothingToDisconnect(_))));
+        assert!(matches!(
+            plan(&topology, &input),
+            Err(Error::NothingToDisconnect(_))
+        ));
     }
 }

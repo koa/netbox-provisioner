@@ -11,7 +11,9 @@ use backend::Error;
 use backend::device::bootstrap::{MacTelnetSetup, set_up};
 use backend::device::power::PowerChain;
 use backend::device::terminal::{Terminal, Tunnel, upload};
-use backend::device::update::{DeviceLink, Downgraded, UpdateDone, Version, downgrade, read_state, update};
+use backend::device::update::{
+    DeviceLink, Downgraded, UpdateDone, Version, downgrade, read_state, update,
+};
 use backend::device::update_fallback::{UpdateWithoutFallback, WayBack};
 use backend::device_state::UpdateState;
 use backend::job::{Event, Log};
@@ -57,8 +59,18 @@ impl DeviceLink for DirectLink {
         data: &[u8],
         progress: &(dyn Fn(usize) + Sync),
     ) -> Result<(), Error> {
-        let stream = TcpStream::connect(("127.0.0.1", self.ssh_port)).await.expect("ssh to the node");
-        Ok(upload(stream, "admin", Some(crate::TEST_PASSWORD), name, data, progress).await?)
+        let stream = TcpStream::connect(("127.0.0.1", self.ssh_port))
+            .await
+            .expect("ssh to the node");
+        Ok(upload(
+            stream,
+            "admin",
+            Some(crate::TEST_PASSWORD),
+            name,
+            data,
+            progress,
+        )
+        .await?)
     }
 }
 
@@ -71,10 +83,12 @@ struct TunnelLink {
 impl DeviceLink for TunnelLink {
     async fn api(&self) -> Result<MikrotikDevice<SimpleResult>, Error> {
         let stream = self.tunnel.open(self.address, 8728).await?;
-        Ok(
-            MikrotikDevice::connect_with_stream(stream, b"admin", Some(encode_latin1_lossy(PASSWORD)))
-                .await?,
+        Ok(MikrotikDevice::connect_with_stream(
+            stream,
+            b"admin",
+            Some(encode_latin1_lossy(PASSWORD)),
         )
+        .await?)
     }
     async fn upload(
         &self,
@@ -114,7 +128,10 @@ async fn update_older_chr_to_current() {
     let old = start_node(&older, &work_dir, "old", &[PortWiring::Connect(cable)])
         .await
         .expect("older node boot failed");
-    let entry_api = entry.connect_api(crate::TEST_PASSWORD).await.expect("entry api");
+    let entry_api = entry
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("entry api");
     let mut s = entry_api
         .send_command(
             b"/ip/address/add".as_slice(),
@@ -174,7 +191,11 @@ async fn update_older_chr_to_current() {
     // cancelled once the package is downloaded: it is uploaded, then removed again
     let log = reading();
     let cancel = async {
-        while !log.events().iter().any(|e| matches!(e, Event::PackageDownloaded(_))) {
+        while !log
+            .events()
+            .iter()
+            .any(|e| matches!(e, Event::PackageDownloaded(_)))
+        {
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
         log.cancel();
@@ -195,15 +216,29 @@ async fn update_older_chr_to_current() {
         ..way_back.clone()
     };
     let result = update(&link, &power, &target, &[], fallback, &without, &alone).await;
-    assert!(matches!(result, Err(Error::NoUpdateFallback(_))), "{result:?}");
-    assert!(!alone.events().iter().any(|e| matches!(e, Event::PackageDownloaded(_))));
+    assert!(
+        matches!(result, Err(Error::NoUpdateFallback(_))),
+        "{result:?}"
+    );
+    assert!(
+        !alone
+            .events()
+            .iter()
+            .any(|e| matches!(e, Event::PackageDownloaded(_)))
+    );
 
-    let (result, ()) =
-        tokio::join!(update(&link, &power, &target, &[], fallback, &way_back, &log), cancel);
+    let (result, ()) = tokio::join!(
+        update(&link, &power, &target, &[], fallback, &way_back, &log),
+        cancel
+    );
     eprintln!("--- cancelled update log ---\n{:#?}", log.events());
     assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
     kept_to_states(&log);
-    assert!(log.events().iter().any(|e| matches!(e, Event::PackageUploaded(_))));
+    assert!(
+        log.events()
+            .iter()
+            .any(|e| matches!(e, Event::PackageUploaded(_)))
+    );
     let api = link.api().await.unwrap();
     let mut files = api.send_simple_command(b"/file/print".as_slice(), ()).await;
     while let Some(row) = files.next().await {
@@ -213,7 +248,13 @@ async fn update_older_chr_to_current() {
         }
     }
     drop(api);
-    assert_eq!(read_state(&link.api().await.unwrap()).await.unwrap().version, before.version);
+    assert_eq!(
+        read_state(&link.api().await.unwrap())
+            .await
+            .unwrap()
+            .version,
+        before.version
+    );
 
     let log = reading();
     let result = update(&link, &power, &target, &[], fallback, &way_back, &log).await;
@@ -221,10 +262,13 @@ async fn update_older_chr_to_current() {
     result.expect("update");
     kept_to_states(&log);
     // a CHR has no partitions to fall back to
-    assert!(log.events().contains(&Event::UpdateWithoutFallback(UpdateWithoutFallback {
-        partitions: 0,
-        neighbors: ["entry".into()].into(),
-    })));
+    assert!(
+        log.events()
+            .contains(&Event::UpdateWithoutFallback(UpdateWithoutFallback {
+                partitions: 0,
+                neighbors: ["entry".into()].into(),
+            }))
+    );
     assert_eq!(
         log.events().last(),
         Some(&Event::UpdateDone(UpdateDone {
@@ -270,8 +314,15 @@ async fn downgrade_chr_to_older() {
     let log = reading();
     let newer = Version::parse("7.99").unwrap();
     let result = downgrade(&link, &power, &newer, &way_back, &log).await;
-    assert!(matches!(result, Err(Error::NoDowngrade { .. })), "{result:?}");
-    assert!(!log.events().iter().any(|e| matches!(e, Event::PackageDownloaded(_))));
+    assert!(
+        matches!(result, Err(Error::NoDowngrade { .. })),
+        "{result:?}"
+    );
+    assert!(
+        !log.events()
+            .iter()
+            .any(|e| matches!(e, Event::PackageDownloaded(_)))
+    );
 
     let older = Version::parse(CHR_OLDER.version).unwrap();
     let log = reading();
@@ -286,5 +337,11 @@ async fn downgrade_chr_to_older() {
             to: CHR_OLDER.version.into(),
         }))
     );
-    assert_eq!(read_state(&link.api().await.unwrap()).await.unwrap().version, older);
+    assert_eq!(
+        read_state(&link.api().await.unwrap())
+            .await
+            .unwrap()
+            .version,
+        older
+    );
 }

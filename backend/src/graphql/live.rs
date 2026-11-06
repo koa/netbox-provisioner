@@ -12,9 +12,9 @@ use crate::{
 };
 use async_graphql::{
     Request, Response,
-    parser::types::OperationType,
     extensions::{Extension, ExtensionContext, ExtensionFactory, NextSubscribe},
     futures_util::stream::{self, BoxStream, Stream, StreamExt},
+    parser::types::OperationType,
 };
 use std::{
     pin::Pin,
@@ -69,7 +69,11 @@ impl Drop for Open {
 /// views keeping it live.
 pub async fn execute_once(schema: &AuthenticatedGraphqlSchema, mut request: Request) -> Response {
     if is_subscription(&mut request) {
-        schema.execute_stream(request).next().await.unwrap_or_default()
+        schema
+            .execute_stream(request)
+            .next()
+            .await
+            .unwrap_or_default()
     } else {
         schema.execute(request).await
     }
@@ -83,7 +87,8 @@ fn is_subscription(request: &mut Request) -> bool {
     };
     let mut operations = document.operations.iter();
     let operation = match &name {
-        Some(name) => operations.find(|(operation, _)| operation.is_some_and(|operation| operation.as_str() == name)),
+        Some(name) => operations
+            .find(|(operation, _)| operation.is_some_and(|operation| operation.as_str() == name)),
         None => operations.next(),
     };
     operation.is_some_and(|(_, operation)| operation.node.ty == OperationType::Subscription)

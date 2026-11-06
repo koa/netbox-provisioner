@@ -47,7 +47,9 @@ impl ServerProblem {
             .map(|params| {
                 params
                     .iter()
-                    .map(|(name, value)| (name.clone(), value.as_str().unwrap_or_default().to_string()))
+                    .map(|(name, value)| {
+                        (name.clone(), value.as_str().unwrap_or_default().to_string())
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -148,7 +150,11 @@ impl FrontendError {
             FrontendError::Graphql(errors) => format!(
                 "{}: {}",
                 t::SERVER,
-                errors.iter().map(|error| ServerProblem::of(error).text()).collect::<Vec<_>>().join("; ")
+                errors
+                    .iter()
+                    .map(|error| ServerProblem::of(error).text())
+                    .collect::<Vec<_>>()
+                    .join("; ")
             ),
             FrontendError::Reqwest(error) => format!("{}: {error}", t::UNREACHABLE),
             FrontendError::Server { status, text } => format!("{}: {text}", t::refused(*status)),
@@ -232,4 +238,3 @@ impl FrontendError {
         }
     }
 }
-

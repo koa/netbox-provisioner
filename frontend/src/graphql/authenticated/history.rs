@@ -10,7 +10,7 @@ pub struct DeviceJournalVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "DeviceJournalVariables",
+    variables = "DeviceJournalVariables"
 )]
 pub struct DeviceJournal {
     pub topology: Topology,
@@ -20,7 +20,7 @@ pub struct DeviceJournal {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "DeviceJournalVariables",
+    variables = "DeviceJournalVariables"
 )]
 pub struct Topology {
     #[arguments(id: $device)]

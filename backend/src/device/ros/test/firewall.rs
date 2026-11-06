@@ -9,7 +9,10 @@ use crate::{
 };
 use mikrotik_model::{
     generator::Generator,
-    model::{IpFirewallFilterAction, IpFirewallFilterById, IpFirewallFilterCfgBuilder, IpFirewallNatAction},
+    model::{
+        IpFirewallFilterAction, IpFirewallFilterById, IpFirewallFilterCfgBuilder,
+        IpFirewallNatAction,
+    },
     resource::DeserializeRosBuilder,
     value::Id,
 };
@@ -72,7 +75,10 @@ fn v6_comments(target: &BaseDeviceDataTarget) -> Vec<String> {
 async fn an_internet_uplink_gets_the_perimeter() {
     let target = router(true, false, None).await;
     let prefixed = |names: &[&str]| {
-        names.iter().map(|name| format!("netbox-provisioner: {name}")).collect::<Vec<_>>()
+        names
+            .iter()
+            .map(|name| format!("netbox-provisioner: {name}"))
+            .collect::<Vec<_>>()
     };
     let ssh = [
         "input ssh blacklist",
@@ -82,29 +88,74 @@ async fn an_internet_uplink_gets_the_perimeter() {
         "input ssh",
     ];
     let v4 = [
-        &["input established", "input invalid", "input ssh blacklisted", "input icmp"][..],
+        &[
+            "input established",
+            "input invalid",
+            "input ssh blacklisted",
+            "input icmp",
+        ][..],
         &ssh,
-        &["last input drop", "forward established", "forward invalid", "forward dstnat", "last forward drop"],
+        &[
+            "last input drop",
+            "forward established",
+            "forward invalid",
+            "forward dstnat",
+            "last forward drop",
+        ],
     ]
     .concat();
     assert_eq!(v4_comments(&target), prefixed(&v4));
     let v6 = [
-        &["input established", "input invalid", "input ssh blacklisted", "input icmpv6", "input dhcpv6 client"][..],
+        &[
+            "input established",
+            "input invalid",
+            "input ssh blacklisted",
+            "input icmpv6",
+            "input dhcpv6 client",
+        ][..],
         &ssh,
-        &["last input drop", "forward established", "forward invalid", "last forward drop"],
+        &[
+            "last input drop",
+            "forward established",
+            "forward invalid",
+            "last forward drop",
+        ],
     ]
     .concat();
     assert_eq!(v6_comments(&target), prefixed(&v6));
-    assert!(target
-        .ip_firewall_filter
-        .iter()
-        .all(|rule| rule.in_interface_list.as_ref().map(|l| l.to_string()).as_deref() == Some("uplink")));
+    assert!(target.ip_firewall_filter.iter().all(|rule| {
+        rule.in_interface_list
+            .as_ref()
+            .map(|l| l.to_string())
+            .as_deref()
+            == Some("uplink")
+    }));
     // the stages from the end: the blacklist after the third, 10 minutes, the others a minute
     let blacklist = &target.ip_firewall_filter[4];
-    assert_eq!(blacklist.action, IpFirewallFilterAction::AddSrcToAddressList);
-    assert_eq!(blacklist.src_address_list.as_ref().map(|l| l.to_string()).as_deref(), Some("ssh_stage3"));
-    assert_eq!(blacklist.address_list.as_ref().map(|l| l.to_string()).as_deref(), Some("ssh_blacklist"));
-    assert_eq!(blacklist.address_list_timeout, Some(Duration::from_secs(10 * 60)));
+    assert_eq!(
+        blacklist.action,
+        IpFirewallFilterAction::AddSrcToAddressList
+    );
+    assert_eq!(
+        blacklist
+            .src_address_list
+            .as_ref()
+            .map(|l| l.to_string())
+            .as_deref(),
+        Some("ssh_stage3")
+    );
+    assert_eq!(
+        blacklist
+            .address_list
+            .as_ref()
+            .map(|l| l.to_string())
+            .as_deref(),
+        Some("ssh_blacklist")
+    );
+    assert_eq!(
+        blacklist.address_list_timeout,
+        Some(Duration::from_secs(10 * 60))
+    );
     let first = &target.ip_firewall_filter[7];
     assert_eq!(first.src_address_list, None);
     assert_eq!(first.address_list_timeout, Some(Duration::from_secs(60)));
@@ -117,7 +168,10 @@ async fn an_internet_uplink_gets_the_perimeter() {
 #[tokio::test]
 async fn nat_alone_gets_it_too_and_no_uplink_none() {
     let nat = router(false, true, None).await;
-    assert_eq!(v4_comments(&nat), v4_comments(&router(true, true, None).await));
+    assert_eq!(
+        v4_comments(&nat),
+        v4_comments(&router(true, true, None).await)
+    );
     assert_eq!(nat.ip_firewall_nat.len(), 1);
     let inside = router(false, false, None).await;
     assert!(inside.ip_firewall_filter.is_empty());
@@ -128,20 +182,38 @@ async fn nat_alone_gets_it_too_and_no_uplink_none() {
 #[tokio::test]
 async fn the_stage_time_comes_from_the_config_context() {
     let target = router(true, false, Some(Duration::from_secs(120))).await;
-    assert_eq!(target.ip_firewall_filter[7].address_list_timeout, Some(Duration::from_secs(120)));
-    assert_eq!(target.ip_firewall_filter[4].address_list_timeout, Some(Duration::from_secs(10 * 60)));
+    assert_eq!(
+        target.ip_firewall_filter[7].address_list_timeout,
+        Some(Duration::from_secs(120))
+    );
+    assert_eq!(
+        target.ip_firewall_filter[4].address_list_timeout,
+        Some(Duration::from_secs(10 * 60))
+    );
 }
 
 /// The provisioner's networks come after `invalid`, before the SSH stages, each in its
 /// family's menu; a device without uplink gets none.
 #[tokio::test]
 async fn the_provisioner_gets_in_before_the_ssh_stages() {
-    let networks = ["192.168.0.0/16".parse().unwrap(), "2a02:16a:fe00:8000::/50".parse().unwrap()];
+    let networks = [
+        "192.168.0.0/16".parse().unwrap(),
+        "2a02:16a:fe00:8000::/50".parse().unwrap(),
+    ];
     let mut target = router(true, false, None).await;
     target.allow_provisioner(&networks);
-    assert_eq!(v4_comments(&target)[2], "netbox-provisioner: input provisioner 192.168.0.0/16");
-    assert_eq!(v4_comments(&target)[3], "netbox-provisioner: input ssh blacklisted");
-    assert_eq!(v6_comments(&target)[2], "netbox-provisioner: input provisioner 2a02:16a:fe00:8000::/50");
+    assert_eq!(
+        v4_comments(&target)[2],
+        "netbox-provisioner: input provisioner 192.168.0.0/16"
+    );
+    assert_eq!(
+        v4_comments(&target)[3],
+        "netbox-provisioner: input ssh blacklisted"
+    );
+    assert_eq!(
+        v6_comments(&target)[2],
+        "netbox-provisioner: input provisioner 2a02:16a:fe00:8000::/50"
+    );
     assert_eq!(v4_comments(&target).len(), 15);
     let mut inside = router(false, false, None).await;
     inside.allow_provisioner(&networks);
@@ -153,10 +225,19 @@ async fn the_provisioner_gets_in_before_the_ssh_stages() {
 #[tokio::test]
 async fn a_host_is_written_as_routeros_reports_it() {
     let mut target = router(true, false, None).await;
-    target.allow_provisioner(&["100.64.0.1/32".parse().unwrap(), "2001:db8:64::1/128".parse().unwrap()]);
-    let v4 = target.ip_firewall_filter[2].src_address.as_ref().map(|a| a.to_string());
+    target.allow_provisioner(&[
+        "100.64.0.1/32".parse().unwrap(),
+        "2001:db8:64::1/128".parse().unwrap(),
+    ]);
+    let v4 = target.ip_firewall_filter[2]
+        .src_address
+        .as_ref()
+        .map(|a| a.to_string());
     assert_eq!(v4.as_deref(), Some("100.64.0.1"));
-    let v6 = target.ipv_6_firewall_filter[2].src_address.as_ref().map(|a| a.to_string());
+    let v6 = target.ipv_6_firewall_filter[2]
+        .src_address
+        .as_ref()
+        .map(|a| a.to_string());
     assert_eq!(v6.as_deref(), Some("2001:db8:64::1/128"));
 }
 
@@ -176,7 +257,10 @@ async fn the_drops_go_after_a_rule_set_up_by_hand() {
     }
     .build()
     .unwrap();
-    current.ip_firewall_filter = Box::new([IpFirewallFilterById { id: Id(1), data: by_hand }]);
+    current.ip_firewall_filter = Box::new([IpFirewallFilterById {
+        id: Id(1),
+        data: by_hand,
+    }]);
     let mut script = String::new();
     let mut generator = Generator::new(&mut script);
     for mutation in target.generate_mutations(&current).unwrap() {
@@ -184,9 +268,17 @@ async fn the_drops_go_after_a_rule_set_up_by_hand() {
             generator.append_mutation(&mutation).unwrap();
         }
     }
-    let moves = script.lines().filter(|line| line.starts_with("move")).collect::<Vec<_>>();
+    let moves = script
+        .lines()
+        .filter(|line| line.starts_with("move"))
+        .collect::<Vec<_>>();
     assert_eq!(moves.len(), 14, "{script}");
-    assert!(moves[..12].iter().all(|line| line.ends_with("destination=*1")), "{script}");
+    assert!(
+        moves[..12]
+            .iter()
+            .all(|line| line.ends_with("destination=*1")),
+        "{script}"
+    );
     assert_eq!(
         moves[12..],
         [
@@ -227,8 +319,12 @@ fn site_with(
     let other_site = builder.sites.next_id();
     let mut routers = Vec::new();
     let at_site = nat.iter().map(|&nat| (site, nat, false, true));
-    let at_other = elsewhere.iter().map(|&(propagate, connected)| (other_site, true, propagate, connected));
-    for (index, (site, nat, propagate_default_route, connected)) in at_site.chain(at_other).enumerate() {
+    let at_other = elsewhere
+        .iter()
+        .map(|&(propagate, connected)| (other_site, true, propagate, connected));
+    for (index, (site, nat, propagate_default_route, connected)) in
+        at_site.chain(at_other).enumerate()
+    {
         let router = builder.devices.next_id();
         builder.devices.insert(
             router,
@@ -291,7 +387,11 @@ fn site_with(
         site,
         SiteData {
             name: "site".into(),
-            devices: routers[..nat.len()].iter().copied().chain([client]).collect(),
+            devices: routers[..nat.len()]
+                .iter()
+                .copied()
+                .chain([client])
+                .collect(),
         },
     );
     builder.sites.insert(
@@ -345,7 +445,10 @@ async fn generate(topology: &TopologyHolder, device: DeviceId) -> BaseDeviceData
 async fn a_forward_gets_its_ports_through_the_perimeter() {
     let (topology, routers) = site(
         &[true],
-        &[(&["192.168.88.10/24", "2001:db8:1::10/64"], &["tcp/443", "udp/1194"])],
+        &[(
+            &["192.168.88.10/24", "2001:db8:1::10/64"],
+            &["tcp/443", "udp/1194"],
+        )],
     );
     let target = generate(&topology, routers[0]).await;
     let dstnat = target
@@ -395,9 +498,22 @@ async fn a_forward_gets_its_ports_through_the_perimeter() {
         .map(|name| format!("netbox-provisioner: {name}"))
     );
     let opening = &target.ipv_6_firewall_filter[target.ipv_6_firewall_filter.len() - 3];
-    assert_eq!(opening.dst_address.as_ref().map(|a| a.to_string()).as_deref(), Some("2001:db8:1::10/128"));
-    assert_eq!(opening.dst_port.as_ref().map(|p| p.to_string()).as_deref(), Some("443"));
-    assert_eq!(opening.protocol.as_ref().map(|p| p.to_string()).as_deref(), Some("tcp"));
+    assert_eq!(
+        opening
+            .dst_address
+            .as_ref()
+            .map(|a| a.to_string())
+            .as_deref(),
+        Some("2001:db8:1::10/128")
+    );
+    assert_eq!(
+        opening.dst_port.as_ref().map(|p| p.to_string()).as_deref(),
+        Some("443")
+    );
+    assert_eq!(
+        opening.protocol.as_ref().map(|p| p.to_string()).as_deref(),
+        Some("tcp")
+    );
     assert!(findings(&topology.current().await.unwrap()).is_empty());
 }
 
@@ -423,10 +539,21 @@ fn findings(topology: &crate::topology::Topology) -> Vec<FindingKind> {
 /// site); the IPv6 opening is there all the same, on every router to the internet.
 #[tokio::test]
 async fn an_ipv4_forward_needs_a_nat_router() {
-    let (topology, routers) = site(&[false], &[(&["192.168.88.10/24", "2001:db8:1::10/64"], &["tcp/443"])]);
+    let (topology, routers) = site(
+        &[false],
+        &[(&["192.168.88.10/24", "2001:db8:1::10/64"], &["tcp/443"])],
+    );
     let target = generate(&topology, routers[0]).await;
-    assert!(!target.ip_firewall_nat.iter().any(|nat| nat.action == IpFirewallNatAction::DstNat));
-    assert!(v6_comments(&target).contains(&"netbox-provisioner: forward 2001:db8:1::10 tcp/443".to_string()));
+    assert!(
+        !target
+            .ip_firewall_nat
+            .iter()
+            .any(|nat| nat.action == IpFirewallNatAction::DstNat)
+    );
+    assert!(
+        v6_comments(&target)
+            .contains(&"netbox-provisioner: forward 2001:db8:1::10 tcp/443".to_string())
+    );
     let found = findings(&topology.current().await.unwrap());
     assert!(
         matches!(&found[..], [FindingKind::ForwardWithoutRouter(f)]
@@ -448,11 +575,18 @@ fn dstnat_comments(target: &BaseDeviceDataTarget) -> Vec<String> {
 /// Two routers with `nat` (one in use, the other a fallback) both forward the ports.
 #[tokio::test]
 async fn every_nat_router_forwards() {
-    let (topology, routers) = site(&[true, true], &[(&["192.168.88.10/24"], &["tcp/80", "tcp/443"])]);
+    let (topology, routers) = site(
+        &[true, true],
+        &[(&["192.168.88.10/24"], &["tcp/80", "tcp/443"])],
+    );
     for router in routers {
         assert_eq!(
             dstnat_comments(&generate(&topology, router).await),
-            ["dstnat 192.168.88.10 tcp/80", "dstnat 192.168.88.10 tcp/443"].map(|c| format!("netbox-provisioner: {c}"))
+            [
+                "dstnat 192.168.88.10 tcp/80",
+                "dstnat 192.168.88.10 tcp/443"
+            ]
+            .map(|c| format!("netbox-provisioner: {c}"))
         );
     }
     assert!(findings(&topology.current().await.unwrap()).is_empty());
@@ -467,7 +601,8 @@ async fn a_service_of_a_virtual_machine_is_forwarded_at_its_site() {
     let (topology, routers) = site_with(&[true], &[], services, Parent::MachineOfSite);
     assert_eq!(
         dstnat_comments(&generate(&topology, routers[0]).await),
-        ["dstnat 172.31.88.3 tcp/80", "dstnat 172.31.88.3 tcp/443"].map(|c| format!("netbox-provisioner: {c}"))
+        ["dstnat 172.31.88.3 tcp/80", "dstnat 172.31.88.3 tcp/443"]
+            .map(|c| format!("netbox-provisioner: {c}"))
     );
     assert!(findings(&topology.current().await.unwrap()).is_empty());
 
@@ -536,7 +671,8 @@ async fn without_a_nat_router_at_its_site_the_default_routers_forward() {
     }
     assert!(findings(&topology.current().await.unwrap()).is_empty());
 
-    let (topology, routers) = site_with(&[false], &[(true, false)], services, Parent::MachineOfSite);
+    let (topology, routers) =
+        site_with(&[false], &[(true, false)], services, Parent::MachineOfSite);
     assert!(dstnat_comments(&generate(&topology, routers[1]).await).is_empty());
     let found = findings(&topology.current().await.unwrap());
     assert!(

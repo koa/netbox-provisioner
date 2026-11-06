@@ -1,8 +1,8 @@
 use crate::topology::{
-    DeviceId,
-    findings::Finding, SiteId, TopologyHolder,
-    natural::naturalize,
+    DeviceId, SiteId, TopologyHolder,
     access::{AccessTopology, device::DeviceAccess, site::SiteAccess},
+    findings::Finding,
+    natural::naturalize,
 };
 use crate::{error_info::ApiError, helper::Helper};
 use async_graphql::{InputObject, Object};
@@ -108,14 +108,20 @@ impl TopologyHolder {
     /// them, for the network map; read anew after `network_state::read::LSDB_AGE`. Fast: only
     /// the LSDB, no device polled. Health, resources and PoE are `networkStateDetails`, asked
     /// separately so the overview doesn't wait on them.
-    async fn network_state(&self, site_id: Option<u32>) -> crate::network_state::graphql::NetworkState {
+    async fn network_state(
+        &self,
+        site_id: Option<u32>,
+    ) -> crate::network_state::graphql::NetworkState {
         crate::network_state::graphql::network_state(self.map_devices(site_id).await).await
     }
     /// Health, resources and PoE edges of `network_state`'s devices with OSPF of their own,
     /// read from each device anew after `network_state::device_data::DEVICE_DATA_AGE`: slower
     /// than `networkState` (one round trip per device), asked separately so it doesn't hold up
     /// the overview.
-    async fn network_state_details(&self, site_id: Option<u32>) -> crate::network_state::graphql::NetworkStateDetails {
+    async fn network_state_details(
+        &self,
+        site_id: Option<u32>,
+    ) -> crate::network_state::graphql::NetworkStateDetails {
         crate::network_state::graphql::network_state_details(self.map_devices(site_id).await).await
     }
 }
@@ -128,7 +134,9 @@ impl TopologyHolder {
             .await
             .as_ref()
             .map(|topo| match site_id {
-                Some(id) => SiteAccess::create(topo.clone(), SiteId(id)).devices().collect(),
+                Some(id) => SiteAccess::create(topo.clone(), SiteId(id))
+                    .devices()
+                    .collect(),
                 None => topo.list_devices().collect(),
             })
             .unwrap_or_default()

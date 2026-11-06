@@ -9,14 +9,14 @@
 //! the connection of its job closes.
 use crate::{
     Error,
-    device_state::CleanupState,
     device::{
+        power::PowerChain,
         raw::{Row, command, field, rows},
         ros::{fallback, graphql::APPLY_SCRIPT},
-        power::PowerChain,
         update::{self, DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason, read_state},
         update_fallback, watchdog,
     },
+    device_state::CleanupState,
     job::Log,
 };
 use async_graphql::{Enum, SimpleObject};
@@ -46,7 +46,10 @@ impl Leftovers {
         [
             (self.apply_fallback.is_some(), Left::ApplyFallback),
             (self.update_fallback.is_some(), Left::UpdateFallback),
-            (self.watchdogs.as_ref().is_some_and(|w| w.held_by.is_none()), Left::WatchdogSafetyNet),
+            (
+                self.watchdogs.as_ref().is_some_and(|w| w.held_by.is_none()),
+                Left::WatchdogSafetyNet,
+            ),
         ]
         .into_iter()
         .filter_map(|(is, left)| is.then_some(left))
@@ -110,16 +113,23 @@ pub struct LeftoverCleared {
 pub async fn read(device: &RawDevice<SimpleResult>) -> Result<Leftovers, Error> {
     let schedulers = rows(device, "/system/scheduler/print").await?;
     let scheduled = |name: &str| {
-        schedulers.iter().find(|row| field(row, "name") == Some(name)).map(|row| ScheduledLeft {
-            next_run: field(row, "next-run").filter(|run| !run.is_empty()).map(Box::from),
-        })
+        schedulers
+            .iter()
+            .find(|row| field(row, "name") == Some(name))
+            .map(|row| ScheduledLeft {
+                next_run: field(row, "next-run")
+                    .filter(|run| !run.is_empty())
+                    .map(Box::from),
+            })
     };
     let watchdogs = match scheduled(watchdog::NAME) {
-        Some(entry) => watchdog::pending(device).await?.map(|watching| WatchdogsLeft {
-            next_run: entry.next_run,
-            watching,
-            held_by: None,
-        }),
+        Some(entry) => watchdog::pending(device)
+            .await?
+            .map(|watching| WatchdogsLeft {
+                next_run: entry.next_run,
+                watching,
+                held_by: None,
+            }),
         None => None,
     };
     let apply_script_running = rows(device, "/system/script/job/print")
@@ -222,7 +232,9 @@ mod test {
     fn only_a_package_in_the_root_installs() {
         assert!(installs_at_boot("routeros-7.23.8-arm.npk"));
         // the packages a CAPsMAN router keeps for its CAPs
-        assert!(!installs_at_boot("sd1-part1/upgrade/routeros-7.23.7-arm.npk"));
+        assert!(!installs_at_boot(
+            "sd1-part1/upgrade/routeros-7.23.7-arm.npk"
+        ));
         assert!(!installs_at_boot("routeros-7.23.8-arm.npk.txt"));
     }
 }

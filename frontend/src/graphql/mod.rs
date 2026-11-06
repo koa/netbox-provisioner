@@ -56,7 +56,9 @@ pub async fn request<O: Sendable, S: Component>(
     operation: O,
 ) -> Result<O::Data, FrontendError> {
     let response = request_response(scope, operation).await?;
-    response.data.ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
+    response
+        .data
+        .ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
 }
 
 /// [`request`] giving data and errors both: a field that failed leaves the rest.
@@ -74,16 +76,23 @@ fn authenticated_client<S: Component>(scope: &Scope<S>) -> Result<reqwest::Clien
     if let Some(token) = token(scope) {
         headers.insert(AUTHORIZATION, format!("Bearer {token}").parse()?);
     }
-    Ok(reqwest::Client::builder().default_headers(headers).build()?)
+    Ok(reqwest::Client::builder()
+        .default_headers(headers)
+        .build()?)
 }
 
 /// The token the backend takes: the ID token, which carries the user's name (Pocket-ID's
 /// access token only `sub`), else the access token (a refresh may come without a new ID token).
 fn token<S: Component>(scope: &Scope<S>) -> Option<String> {
     match scope.context::<OAuth2Context>(Default::default()) {
-        Some((OAuth2Context::Authenticated(Authentication { access_token, id_token, .. }), _)) => {
-            Some(id_token.unwrap_or(access_token))
-        }
+        Some((
+            OAuth2Context::Authenticated(Authentication {
+                access_token,
+                id_token,
+                ..
+            }),
+            _,
+        )) => Some(id_token.unwrap_or(access_token)),
         _ => None,
     }
 }
@@ -102,7 +111,10 @@ async fn post<T: DeserializeOwned>(
     let status = response.status();
     if !status.is_success() {
         let text = response.text().await.unwrap_or_default();
-        return Err(FrontendError::Server { status: status.as_u16(), text });
+        return Err(FrontendError::Server {
+            status: status.as_u16(),
+            text,
+        });
     }
     let Response { data, errors } = response.json::<Response<serde_json::Value>>().await?;
     let data = match data {
@@ -120,5 +132,7 @@ pub async fn request_anonymous<O: Sendable>(operation: O) -> Result<O::Data, Fro
     let client = reqwest::Client::builder().build()?;
     let response: Response<O::Data> =
         post(&client, GRAPHQL_ANONYMOUS_URL.as_str(), &operation).await?;
-    response.data.ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
+    response
+        .data
+        .ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
 }

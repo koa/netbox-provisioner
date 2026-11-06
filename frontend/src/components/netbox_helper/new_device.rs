@@ -88,7 +88,9 @@ impl NetboxHelper {
                             .find(|t| {
                                 board.as_ref().is_some_and(|board| {
                                     t.model.to_lowercase() == *board
-                                        || t.part_number.as_ref().is_some_and(|p| p.to_lowercase() == *board)
+                                        || t.part_number
+                                            .as_ref()
+                                            .is_some_and(|p| p.to_lowercase() == *board)
                                 })
                             })
                             .map(|t| t.id as u32)
@@ -113,7 +115,8 @@ impl NetboxHelper {
                 return false;
             }
             NewDeviceMsg::Commit => {
-                if choice.planned_name == choice.name && choice.planned_far_port == choice.far_port {
+                if choice.planned_name == choice.name && choice.planned_far_port == choice.far_port
+                {
                     return false;
                 }
                 choice.planned_name = choice.name.clone();
@@ -187,7 +190,10 @@ impl NetboxHelper {
         };
         let selected_type = selected(&types, choice.device_type);
         let selected_role = selected(&roles, choice.role);
-        let selected_group = groups.iter().find(|g| g.value == choice.wlan_group).cloned();
+        let selected_group = groups
+            .iter()
+            .find(|g| g.value == choice.wlan_group)
+            .cloned();
         let seen = choice.seen.as_ref().map(|seen| {
             let matched = choice.device_type.is_some()
                 && options.device_types.iter().any(|t| {
@@ -197,7 +203,9 @@ impl NetboxHelper {
                 });
             html!(<p>{t::new_device_seen(&seen.identity, &seen.board, &seen.interface_name, matched)}</p>)
         });
-        let commit = ctx.link().callback(|_: yew::FocusEvent| NewDeviceMsg::Commit);
+        let commit = ctx
+            .link()
+            .callback(|_: yew::FocusEvent| NewDeviceMsg::Commit);
         let enter = ctx.link().batch_callback(|event: yew::KeyboardEvent| {
             (event.key() == "Enter").then(|| {
                 event.prevent_default();
@@ -265,14 +273,14 @@ pub(super) fn fetch_written_device(scope: Scope<NetboxHelper>, name: String) {
     spawn_local(async move {
         let device = request(scope.clone(), NewDeviceDevices::build(()))
             .await
-        .ok()
-        .and_then(|data| {
-            data.topology
-                .all_devices
-                .into_iter()
-                .find(|d| d.name.eq_ignore_ascii_case(name.trim()))
-                .and_then(|d| Some((d.site?.id as u32, d.id as u32)))
-        });
+            .ok()
+            .and_then(|data| {
+                data.topology
+                    .all_devices
+                    .into_iter()
+                    .find(|d| d.name.eq_ignore_ascii_case(name.trim()))
+                    .and_then(|d| Some((d.site?.id as u32, d.id as u32)))
+            });
         scope.send_message(NewDeviceMsg::Written(device));
     });
 }

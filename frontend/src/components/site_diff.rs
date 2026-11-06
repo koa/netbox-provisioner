@@ -99,13 +99,19 @@ impl Component for SiteDiff {
             let last = request(scope.clone(), SiteDiffJobs::build(SiteVariables { site }))
                 .await
                 .ok()
-                .and_then(|data| data.jobs.into_iter().find(|job| job.kind == JobKind::SiteDiff))
+                .and_then(|data| {
+                    data.jobs
+                        .into_iter()
+                        .find(|job| job.kind == JobKind::SiteDiff)
+                })
                 .map(|job| job.id);
             scope.send_message(SiteDiffMsg::Last(last));
         });
         let scope = ctx.link().clone();
-        let known_subscription =
-            watch(ctx.link(), SiteDiffKnown::build(SiteVariables { site }), move |response| {
+        let known_subscription = watch(
+            ctx.link(),
+            SiteDiffKnown::build(SiteVariables { site }),
+            move |response| {
                 let devices = response
                     .ok()
                     .and_then(|response| response.data)
@@ -113,7 +119,8 @@ impl Component for SiteDiff {
                     .map(|site| site.devices)
                     .unwrap_or_default();
                 scope.send_message(SiteDiffMsg::Known(devices.into_iter().map(known).collect()));
-            });
+            },
+        );
         Self {
             job: None,
             job_started: None,
@@ -164,7 +171,9 @@ impl Component for SiteDiff {
                                 .collect();
                         }
                         Event::DeviceDiffed(diffed) => {
-                            if let Some(row) = self.rows.iter_mut().find(|row| row.id == diffed.device.id) {
+                            if let Some(row) =
+                                self.rows.iter_mut().find(|row| row.id == diffed.device.id)
+                            {
                                 row.read = match &diffed.error {
                                     Some(problem) => Read::Failed(ServerProblem::from(problem)),
                                     None => Read::Done(diffed.menus),
@@ -190,14 +199,21 @@ impl Component for SiteDiff {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let running = self.state == Some(JobState::Running);
-        let label = if self.job.is_some() { t::AGAIN } else { t::START };
+        let label = if self.job.is_some() {
+            t::AGAIN
+        } else {
+            t::START
+        };
         let onclick = ctx.link().callback(|_| SiteDiffMsg::Start);
         let reads = self
             .rows
             .iter()
             .map(|row| (row, self.newest(row, running)))
             .collect::<Vec<_>>();
-        let read = reads.iter().filter(|(_, read)| !matches!(read, Read::Pending)).count();
+        let read = reads
+            .iter()
+            .filter(|(_, read)| !matches!(read, Read::Pending))
+            .count();
         let in_line = reads
             .iter()
             .filter(|(_, read)| matches!(read, Read::Done(menus) if total(menus) == 0))
@@ -257,12 +273,19 @@ impl SiteDiff {
         }
         let known = self.known.get(&row.id);
         let started = self.job_started.unwrap_or(f64::MAX);
-        if let Some(Known { read: Some(read), read_at: Some(at), .. }) = known
+        if let Some(Known {
+            read: Some(read),
+            read_at: Some(at),
+            ..
+        }) = known
             && *at >= started
         {
             return read.clone();
         }
-        if known.and_then(|known| known.changed_at).is_some_and(|at| at > started) {
+        if known
+            .and_then(|known| known.changed_at)
+            .is_some_and(|at| at > started)
+        {
             return Read::Changed;
         }
         row.read.clone()
@@ -328,10 +351,16 @@ fn read_view(read: &Read) -> Html {
             if leases > 0 {
                 closer_look.push(t::removes_leases(leases));
             }
-            if menus.iter().any(|menu| menu.menu.starts_with("routing/ospf")) {
+            if menus
+                .iter()
+                .any(|menu| menu.menu.starts_with("routing/ospf"))
+            {
                 closer_look.push(t::TOUCHES_OSPF.to_string());
             }
-            if menus.iter().any(|menu| menu.menu == "interface/bridge/port") {
+            if menus
+                .iter()
+                .any(|menu| menu.menu == "interface/bridge/port")
+            {
                 closer_look.push(t::TOUCHES_BRIDGE_PORTS.to_string());
             }
             let list = menus

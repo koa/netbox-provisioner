@@ -4,8 +4,7 @@ use super::{
     table::{action_buttons, changed_label, state},
 };
 use crate::{
-    components::findings::finding_list,
-    graphql::authenticated::findings::Finding,
+    components::findings::finding_list, graphql::authenticated::findings::Finding,
     i18n::interfaces as t,
 };
 use patternfly_yew::prelude::{EmptyState, Size};

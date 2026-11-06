@@ -3,8 +3,8 @@
 //! menus read only for one field. A refusal is [`Error::Refused`] naming the command.
 use crate::Error;
 use async_graphql::futures_util::StreamExt;
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use async_graphql::futures_util::future::join_all;
+use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use std::{
     collections::{BTreeSet, HashMap},
     net::IpAddr,
@@ -24,9 +24,9 @@ pub(crate) async fn command(
         .send_command(
             path.as_bytes(),
             |cmd| {
-                attributes
-                    .iter()
-                    .fold(cmd, |cmd, (key, value)| cmd.attribute(key.as_bytes(), value.as_bytes()))
+                attributes.iter().fold(cmd, |cmd, (key, value)| {
+                    cmd.attribute(key.as_bytes(), value.as_bytes())
+                })
             },
             (),
         )
@@ -54,10 +54,17 @@ pub(crate) fn field<'r>(row: &'r Row, name: &str) -> Option<&'r str> {
 }
 
 /// The ones of `addresses` that answer a ping from the device, all asked at once.
-pub(crate) async fn answering(raw: &RawDevice<SimpleResult>, addresses: &[IpAddr]) -> BTreeSet<IpAddr> {
+pub(crate) async fn answering(
+    raw: &RawDevice<SimpleResult>,
+    addresses: &[IpAddr],
+) -> BTreeSet<IpAddr> {
     let pings = addresses.iter().map(|address| async move {
         let text = address.to_string();
-        let attributes = [("address", text.as_str()), ("count", "3"), ("interval", "0.3")];
+        let attributes = [
+            ("address", text.as_str()),
+            ("count", "3"),
+            ("interval", "0.3"),
+        ];
         let ping = command(raw, "/ping", &attributes);
         let answered = tokio::time::timeout(Duration::from_secs(10), ping)
             .await

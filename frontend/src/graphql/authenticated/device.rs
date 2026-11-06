@@ -19,7 +19,7 @@ pub struct AllowApply {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct RefreshDevice {
     #[arguments(id: $id)]
@@ -40,7 +40,7 @@ pub struct TargetVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "SubscriptionAuthenticated",
-    variables = "TargetVariables",
+    variables = "TargetVariables"
 )]
 pub struct DeviceOverview {
     pub topology: OverviewTopology,
@@ -50,7 +50,7 @@ pub struct DeviceOverview {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "TargetVariables",
+    variables = "TargetVariables"
 )]
 pub struct OverviewTopology {
     #[arguments(id: $id)]
@@ -61,7 +61,7 @@ pub struct OverviewTopology {
 #[cynic(
     schema = "authenticated",
     graphql_type = "DeviceAccess",
-    variables = "TargetVariables",
+    variables = "TargetVariables"
 )]
 pub struct OverviewDevice {
     pub name: String,
@@ -251,7 +251,7 @@ pub enum Channel {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "TargetVariables",
+    variables = "TargetVariables"
 )]
 pub struct ApplyDeviceCfg {
     #[arguments(
@@ -267,7 +267,7 @@ pub struct ApplyDeviceCfg {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "TargetVariables",
+    variables = "TargetVariables"
 )]
 pub struct RebootDevice {
     #[arguments(
@@ -283,7 +283,7 @@ pub struct RebootDevice {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "TargetVariables",
+    variables = "TargetVariables"
 )]
 pub struct ChangeDeviceMode {
     #[arguments(
@@ -299,7 +299,7 @@ pub struct ChangeDeviceMode {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "TargetVariables",
+    variables = "TargetVariables"
 )]
 pub struct RepartitionDevice {
     #[arguments(
@@ -315,7 +315,7 @@ pub struct RepartitionDevice {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct PowerCycle {
     #[arguments(id: $id)]
@@ -326,7 +326,7 @@ pub struct PowerCycle {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct BootstrapCandidates {
     pub topology: CandidatesTopology,
@@ -336,7 +336,7 @@ pub struct BootstrapCandidates {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct CandidatesTopology {
     #[arguments(id: $id)]
@@ -376,7 +376,7 @@ pub struct BootstrapVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "BootstrapVariables",
+    variables = "BootstrapVariables"
 )]
 pub struct BootstrapDevice {
     #[arguments(id: $id, mac: $mac)]
@@ -398,7 +398,7 @@ pub struct UpdateVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "UpdateVariables",
+    variables = "UpdateVariables"
 )]
 pub struct UpdateRouteros {
     #[arguments(
@@ -428,7 +428,7 @@ pub struct DowngradeVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "DowngradeVariables",
+    variables = "DowngradeVariables"
 )]
 pub struct DowngradeRouteros {
     #[arguments(
@@ -456,7 +456,7 @@ pub struct ClearLeftoverVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "ClearLeftoverVariables",
+    variables = "ClearLeftoverVariables"
 )]
 pub struct ClearLeftover {
     #[arguments(
@@ -482,7 +482,7 @@ pub struct BootPartitionVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "BootPartitionVariables",
+    variables = "BootPartitionVariables"
 )]
 pub struct BootPartition {
     #[arguments(

@@ -89,7 +89,10 @@ fn an_unreadable_file_waits_as_such() {
     write(&jobs, &saved(6)).expect("write");
     fs::rename(jobs.join("6.json"), jobs.join("9.json")).expect("rename");
     let read = read_all(&jobs).expect("read");
-    let devices = read.iter().map(|waiting| (waiting.device.0, waiting.saved.is_err())).collect::<Vec<_>>();
+    let devices = read
+        .iter()
+        .map(|waiting| (waiting.device.0, waiting.saved.is_err()))
+        .collect::<Vec<_>>();
     assert_eq!(devices, [(5, true), (9, true)]);
     let _ = fs::remove_dir_all(&jobs);
 }

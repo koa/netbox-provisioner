@@ -33,7 +33,10 @@ fn backup_file() -> String {
 /// provisioner didn't see to the end is replaced. `Some(mode)` and nothing saved where the
 /// device mode `mode` has the scheduler off (`home`): RouterOS refuses the entry ("not allowed
 /// by device-mode", berghof-hansueli, 7.21.5), so there is no fallback.
-pub async fn arm(raw: &RawDevice<SimpleResult>, delay: Duration) -> Result<Option<Box<str>>, Error> {
+pub async fn arm(
+    raw: &RawDevice<SimpleResult>,
+    delay: Duration,
+) -> Result<Option<Box<str>>, Error> {
     if let Some(mode) = without_scheduler(raw).await? {
         return Ok(Some(mode));
     }
@@ -72,7 +75,10 @@ pub async fn arm(raw: &RawDevice<SimpleResult>, delay: Duration) -> Result<Optio
             ("name", NAME),
             ("interval", &interval),
             ("on-event", &on_event),
-            ("comment", "loads the config from before the apply, unless the provisioner stops it"),
+            (
+                "comment",
+                "loads the config from before the apply, unless the provisioner stops it",
+            ),
         ],
     )
     .await?;
@@ -115,7 +121,10 @@ pub struct Rearmed {
 /// that jumps forward (NTP setting it after the apply) leaves `next-run` behind, which then
 /// looked due (1og-sw1: „fires in 0 s“ at 51 s, so the fallback stayed and took a good apply
 /// back; on a CHR 7.24.5 an hour's jump left `next-run` and the entry didn't run).
-pub async fn pending(raw: &RawDevice<SimpleResult>, rearmed: Option<Rearmed>) -> Result<Pending, Error> {
+pub async fn pending(
+    raw: &RawDevice<SimpleResult>,
+    rearmed: Option<Rearmed>,
+) -> Result<Pending, Error> {
     let entry = rows(raw, "/system/scheduler/print")
         .await?
         .into_iter()
@@ -126,11 +135,9 @@ pub async fn pending(raw: &RawDevice<SimpleResult>, rearmed: Option<Rearmed>) ->
     let Some(rearmed) = rearmed else {
         return Ok(Pending::Armed(None));
     };
-    Ok(Pending::Armed(
-        uptime(raw)
-            .await?
-            .map(|uptime| (rearmed.at + rearmed.window).saturating_sub(uptime)),
-    ))
+    Ok(Pending::Armed(uptime(raw).await?.map(|uptime| {
+        (rearmed.at + rearmed.window).saturating_sub(uptime)
+    })))
 }
 
 /// The device's uptime (`/system/resource`).

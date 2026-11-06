@@ -7,11 +7,10 @@ use mikrotik_model::{
         ADVERTISE_25G, ADVERTISE_100M, EthernetNamePattern, generate_ethernet, generate_wlan,
     },
     model::{
-        EnabledDisabled, InterfaceEthernetByDefaultName, InterfaceW60GArp,
-        InterfaceW60GByName, InterfaceW60GCfg,
-        InterfaceWirelessAdaptiveNoiseImmunity, InterfaceWirelessArp, InterfaceWirelessBand,
-        InterfaceWirelessBasicRatesAG, InterfaceWirelessByDefaultName, InterfaceWirelessCfg,
-        InterfaceWirelessChannelWidth, InterfaceWirelessFrequencyMode,
+        EnabledDisabled, InterfaceEthernetByDefaultName, InterfaceW60GArp, InterfaceW60GByName,
+        InterfaceW60GCfg, InterfaceWirelessAdaptiveNoiseImmunity, InterfaceWirelessArp,
+        InterfaceWirelessBand, InterfaceWirelessBasicRatesAG, InterfaceWirelessByDefaultName,
+        InterfaceWirelessCfg, InterfaceWirelessChannelWidth, InterfaceWirelessFrequencyMode,
         InterfaceWirelessGuardInterval, InterfaceWirelessHwProtectionMode,
         InterfaceWirelessInstallation, InterfaceWirelessMulticastHelper, InterfaceWirelessNv2Mode,
         InterfaceWirelessNv2Qos, InterfaceWirelessPreambleMode, InterfaceWirelessRateSelection,
@@ -159,9 +158,10 @@ impl ChipPorts {
         match (self, port) {
             (_, port) if port.is_radio() || port == PhysicalPortId::Loopback => false,
             (ChipPorts::All, _) => true,
-            (ChipPorts::Ether(numbers) | ChipPorts::EtherAndSfp1(numbers), PhysicalPortId::Ethernet(n)) => {
-                numbers.contains(&n)
-            }
+            (
+                ChipPorts::Ether(numbers) | ChipPorts::EtherAndSfp1(numbers),
+                PhysicalPortId::Ethernet(n),
+            ) => numbers.contains(&n),
             (ChipPorts::EtherAndSfp1(..), PhysicalPortId::Sfp(1)) => true,
             _ => false,
         }
@@ -178,8 +178,9 @@ impl SwitchChips {
     pub fn of(model: &[u8]) -> Self {
         use ChipPorts::{All, Ether, EtherAndSfp1};
         use SwitchChip::*;
-        const PRESTERA: &[&[u8]] =
-            &[b"CRS3", b"CRS4", b"CRS5", b"CRS8", b"CCR2116", b"CCR2216", b"RDS2216"];
+        const PRESTERA: &[&[u8]] = &[
+            b"CRS3", b"CRS4", b"CRS5", b"CRS8", b"CCR2116", b"CCR2216", b"RDS2216",
+        ];
         let prefixed = |prefixes: &[&[u8]]| prefixes.iter().any(|prefix| model.starts_with(prefix));
         Self(if prefixed(PRESTERA) {
             &[(Prestera, All)]
@@ -203,12 +204,23 @@ impl SwitchChips {
                 b"E50UG" => &[(MediaTek, Ether(2..=5))],
                 b"RB4011iGS+" => &[(MediaTek, Ether(1..=10))],
                 b"RB1100AHx4" => &[(MediaTek, Ether(1..=13))],
-                b"RB750Gr2" | b"RB962UiGS-5HacT2HnT" | b"RB960PGS" | b"RB960PGS-PB" | b"RB750GL"
-                | b"RB751G-2HnD" | b"RB951G-2HnD" | b"RBD52G-5HacD2HnD" | b"RBD53iG-5HacD2HnD"
-                | b"RB850Gx2" | b"RB450G" | b"RB450Gx4" | b"RB750G" | b"RB1200" => {
-                    &[(Qca8337, Ether(1..=5))]
-                }
-                b"RBcAPGi-5acD2nD" | b"RBwAPGR-5HacD2HnD" | b"RBwAPG-5HacD2HnD"
+                b"RB750Gr2"
+                | b"RB962UiGS-5HacT2HnT"
+                | b"RB960PGS"
+                | b"RB960PGS-PB"
+                | b"RB750GL"
+                | b"RB751G-2HnD"
+                | b"RB951G-2HnD"
+                | b"RBD52G-5HacD2HnD"
+                | b"RBD53iG-5HacD2HnD"
+                | b"RB850Gx2"
+                | b"RB450G"
+                | b"RB450Gx4"
+                | b"RB750G"
+                | b"RB1200" => &[(Qca8337, Ether(1..=5))],
+                b"RBcAPGi-5acD2nD"
+                | b"RBwAPGR-5HacD2HnD"
+                | b"RBwAPG-5HacD2HnD"
                 | b"RBD25G-5HPacQD2HPnD" => &[(Qca8337, Ether(1..=2))],
                 // not in the table, but reports `Atheros-8327` (7.23.8)
                 b"RBwAPG-60ad" => &[(Qca8337, Ether(1..=1))],
@@ -435,7 +447,12 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         // cAP ax: PoE-out on ether2, with the power cycling of a hung PD (ap-schopf, 7.23.8)
         b"cAPGi-5HaxD2HaxD" => [
             generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, false)(1),
-            with_poe_power_cycle(generate_ethernet(EthernetNamePattern::Ether, &ADVERTISE_1G, 1568, true)(2)),
+            with_poe_power_cycle(generate_ethernet(
+                EthernetNamePattern::Ether,
+                &ADVERTISE_1G,
+                1568,
+                true,
+            )(2)),
         ]
         .into(),
         b"CCR1009-7G-1C-1S+" => repeat_n(
@@ -743,22 +760,22 @@ pub fn build_w60g_ports(model: &[u8]) -> Box<[InterfaceW60GByName]> {
 /// `default-name` (RouterOS 7.23).
 pub fn w60g_port(idx: usize) -> InterfaceW60GByName {
     InterfaceW60GByName(InterfaceW60GCfg {
-            name: format!("wlan60-{idx}").into(),
-            comment: None,
-            disabled: false,
-            mode: None,
-            ssid: None,
-            password: None,
-            frequency: Some(Auto::Auto),
-            region: None,
-            put_stations_in_bridge: None,
-            isolate_stations: Some(false),
-            tx_sector: Some(Auto::Auto),
-            scan_list: None,
-            arp: Some(InterfaceW60GArp::Enabled),
-            arp_timeout: Some(Auto::Auto),
-            mtu: Some(1500),
-            l_2_mtu: None,
+        name: format!("wlan60-{idx}").into(),
+        comment: None,
+        disabled: false,
+        mode: None,
+        ssid: None,
+        password: None,
+        frequency: Some(Auto::Auto),
+        region: None,
+        put_stations_in_bridge: None,
+        isolate_stations: Some(false),
+        tx_sector: Some(Auto::Auto),
+        scan_list: None,
+        arp: Some(InterfaceW60GArp::Enabled),
+        arp_timeout: Some(Auto::Auto),
+        mtu: Some(1500),
+        l_2_mtu: None,
     })
 }
 

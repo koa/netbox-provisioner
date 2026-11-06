@@ -3,7 +3,11 @@
 
 /// `key`'s value; none where the browser keeps nothing (a private window, blocked storage).
 pub fn stored(key: &str) -> Option<String> {
-    web_sys::window()?.local_storage().ok()??.get_item(key).ok()?
+    web_sys::window()?
+        .local_storage()
+        .ok()??
+        .get_item(key)
+        .ok()?
 }
 
 pub fn store(key: &str, value: &str) {

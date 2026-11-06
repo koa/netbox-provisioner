@@ -10,9 +10,9 @@ use crate::{
     error::FrontendError,
     graphql::{Response, host, token},
 };
+use cynic::StreamingOperation;
 use futures::{SinkExt, StreamExt, channel::mpsc};
 use gloo::net::websocket::{Message, futures::WebSocket};
-use cynic::StreamingOperation;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
@@ -46,7 +46,11 @@ pub fn watch<T: DeserializeOwned + 'static, V: Serialize, S: Component>(
     subscription: StreamingOperation<T, V>,
     deliver: impl Fn(Result<Response<T>, FrontendError>) + 'static,
 ) -> Subscription {
-    start(scope, serde_json::to_value(subscription).unwrap_or_default(), deliver)
+    start(
+        scope,
+        serde_json::to_value(subscription).unwrap_or_default(),
+        deliver,
+    )
 }
 
 /// [`watch`] taking the data as `request` does: without data, the errors.
@@ -60,7 +64,9 @@ pub fn watch_data<T: DeserializeOwned + 'static, V: Serialize, S: Component>(
 
 fn data<T>(response: Result<Response<T>, FrontendError>) -> Result<T, FrontendError> {
     response.and_then(|response| {
-        response.data.ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
+        response
+            .data
+            .ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
     })
 }
 
@@ -78,7 +84,10 @@ fn start<T: DeserializeOwned + 'static, S: Component>(
         let id = connection.next.get() + 1;
         connection.next.set(id);
         connection.send(subscribe_message(id, &payload));
-        connection.queries.borrow_mut().insert(id, Query { payload, deliver });
+        connection
+            .queries
+            .borrow_mut()
+            .insert(id, Query { payload, deliver });
         if !connection.running.replace(true) {
             spawn_local(run());
         }
@@ -95,13 +104,20 @@ pub fn read_at(age: i32) -> f64 {
 /// The time `new` of an answer again, but `before` where it is the same reading: an age comes
 /// in whole seconds, so [`read_at`] of one reading moves by up to a second between answers.
 pub fn same_reading(before: Option<f64>, new: f64) -> f64 {
-    before.filter(|before| (before - new).abs() < 1500.0).unwrap_or(new)
+    before
+        .filter(|before| (before - new).abs() < 1500.0)
+        .unwrap_or(new)
 }
 
 /// `HH:MM:SS` of `millis` since the epoch, in the browser's time zone.
 pub fn local_time(millis: f64) -> String {
     let date = js_sys::Date::new(&millis.into());
-    format!("{:02}:{:02}:{:02}", date.get_hours(), date.get_minutes(), date.get_seconds())
+    format!(
+        "{:02}:{:02}:{:02}",
+        date.get_hours(),
+        date.get_minutes(),
+        date.get_seconds()
+    )
 }
 
 struct Query {
@@ -167,13 +183,19 @@ async fn session(connection: &Rc<Connection>) -> bool {
         return false;
     };
     let (mut write, mut read) = socket.split();
-    let token = connection.token.borrow().as_ref().and_then(|token| token()).unwrap_or_default();
+    let token = connection
+        .token
+        .borrow()
+        .as_ref()
+        .and_then(|token| token())
+        .unwrap_or_default();
     let init = json!({"type": "connection_init", "payload": {"token": token}});
     if write.send(Message::Text(init.to_string())).await.is_err() {
         return false;
     }
     match read.next().await {
-        Some(Ok(Message::Text(text))) if message_type(&text).as_deref() == Some("connection_ack") => {}
+        Some(Ok(Message::Text(text)))
+            if message_type(&text).as_deref() == Some("connection_ack") => {}
         _ => return false,
     }
     let (outgoing, mut sending) = mpsc::unbounded::<String>();
@@ -198,7 +220,13 @@ async fn session(connection: &Rc<Connection>) -> bool {
         match message["type"].as_str() {
             Some("next") => {
                 let id = message["id"].as_str().and_then(|id| id.parse::<u64>().ok());
-                let deliver = id.and_then(|id| connection.queries.borrow().get(&id).map(|q| q.deliver.clone()));
+                let deliver = id.and_then(|id| {
+                    connection
+                        .queries
+                        .borrow()
+                        .get(&id)
+                        .map(|q| q.deliver.clone())
+                });
                 if let Some(deliver) = deliver {
                     deliver(message["payload"].clone());
                 }
@@ -206,7 +234,13 @@ async fn session(connection: &Rc<Connection>) -> bool {
             // a subscription the server refused (not valid): as a response with its errors
             Some("error") => {
                 let id = message["id"].as_str().and_then(|id| id.parse::<u64>().ok());
-                let deliver = id.and_then(|id| connection.queries.borrow().get(&id).map(|q| q.deliver.clone()));
+                let deliver = id.and_then(|id| {
+                    connection
+                        .queries
+                        .borrow()
+                        .get(&id)
+                        .map(|q| q.deliver.clone())
+                });
                 if let Some(deliver) = deliver {
                     deliver(json!({"data": null, "errors": message["payload"]}));
                 }
@@ -227,13 +261,17 @@ fn token_expired(message: &Value) -> bool {
         Some("error") => &message["payload"],
         _ => return false,
     };
-    errors
-        .as_array()
-        .is_some_and(|errors| errors.iter().any(|error| error["extensions"]["code"] == "TOKEN_EXPIRED"))
+    errors.as_array().is_some_and(|errors| {
+        errors
+            .iter()
+            .any(|error| error["extensions"]["code"] == "TOKEN_EXPIRED")
+    })
 }
 
 fn message_type(text: &str) -> Option<String> {
-    serde_json::from_str::<Value>(text).ok()?["type"].as_str().map(String::from)
+    serde_json::from_str::<Value>(text).ok()?["type"]
+        .as_str()
+        .map(String::from)
 }
 
 #[cfg(test)]
@@ -243,11 +281,20 @@ mod test {
 
     #[test]
     fn the_answer_after_the_token_expired_is_told_apart() {
-        let expired = json!([{"message": "token expired", "extensions": {"code": "TOKEN_EXPIRED"}}]);
-        assert!(token_expired(&json!({"type": "next", "id": "1", "payload": {"data": null, "errors": expired}})));
-        assert!(token_expired(&json!({"type": "error", "id": "1", "payload": expired})));
+        let expired =
+            json!([{"message": "token expired", "extensions": {"code": "TOKEN_EXPIRED"}}]);
+        assert!(token_expired(
+            &json!({"type": "next", "id": "1", "payload": {"data": null, "errors": expired}})
+        ));
+        assert!(token_expired(
+            &json!({"type": "error", "id": "1", "payload": expired})
+        ));
         let other = json!([{"message": "no device", "extensions": {"code": "NOT_FOUND"}}]);
-        assert!(!token_expired(&json!({"type": "next", "id": "1", "payload": {"data": null, "errors": other}})));
-        assert!(!token_expired(&json!({"type": "next", "id": "1", "payload": {"data": {"x": 1}}})));
+        assert!(!token_expired(
+            &json!({"type": "next", "id": "1", "payload": {"data": null, "errors": other}})
+        ));
+        assert!(!token_expired(
+            &json!({"type": "next", "id": "1", "payload": {"data": {"x": 1}}})
+        ));
     }
 }

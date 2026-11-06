@@ -11,8 +11,8 @@ use backend::{
     config::CONFIG,
     device::{Io, proxied_stream, terminal::Tunnel},
 };
-use mikrotik_api::simple::SimpleResult;
 use mikrotik_api::prelude::MikrotikDevice;
+use mikrotik_api::simple::SimpleResult;
 use std::net::IpAddr;
 use tokio_stream::StreamExt;
 
@@ -55,11 +55,12 @@ async fn main() -> anyhow::Result<()> {
         }
     };
     for command in args {
-        anyhow::ensure!(command.ends_with("/print"), "only print commands: {command}");
+        anyhow::ensure!(
+            command.ends_with("/print"),
+            "only print commands: {command}"
+        );
         println!("{command}");
-        let mut rows = device
-            .send_simple_command(command.as_bytes(), ())
-            .await;
+        let mut rows = device.send_simple_command(command.as_bytes(), ()).await;
         while let Some(row) = rows.next().await {
             println!("  {row:?}");
         }

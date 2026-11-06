@@ -60,14 +60,20 @@ fn the_preview_has_the_device_with_its_port() {
         plan.steps
     );
     let after = plan.preview_topology().expect("preview");
-    let device = after.get_device_by_id(&DeviceId(u32::MAX)).expect("the new device");
+    let device = after
+        .get_device_by_id(&DeviceId(u32::MAX))
+        .expect("the new device");
     assert_eq!(device.name(), "ap-neu");
     assert!(device.has_routeros());
     assert_eq!(device.credentials(), router.credentials());
     assert_eq!(device.site().map(|s| s.id()), router.site().map(|s| s.id()));
     assert_eq!(device.role(), Some(DeviceRole::Router));
     assert!(device.primary_ip_v4().is_none());
-    let names = device.interfaces().iter().map(|i| i.name().to_string()).collect::<Vec<_>>();
+    let names = device
+        .interfaces()
+        .iter()
+        .map(|i| i.name().to_string())
+        .collect::<Vec<_>>();
     assert_eq!(names, ["ether1"]);
 }
 
@@ -77,7 +83,12 @@ fn the_preview_has_the_device_with_its_port() {
 fn a_bridge_device_is_cabled() {
     let topology = example_topology();
     let (_, port) = free_port(&topology);
-    let plan = base(&topology, &input(&port, "bridge-neu"), &facts("wireless-bridge")).expect("plan");
+    let plan = base(
+        &topology,
+        &input(&port, "bridge-neu"),
+        &facts("wireless-bridge"),
+    )
+    .expect("plan");
     let after = plan.preview_topology().expect("preview");
     let far = after
         .get_interface_by_id(InterfaceId(port.id().0))
@@ -94,10 +105,19 @@ fn a_device_at_poe_is_fed() {
     let topology = example_topology();
     let (_, port) = free_port(&topology);
     let plan = base(&topology, &input(&port, "ap-neu"), &facts("router")).expect("plan");
-    assert!(!plan.steps.iter().any(|s| matches!(s, PlanStep::UpdateInterface(_))));
+    assert!(
+        !plan
+            .steps
+            .iter()
+            .any(|s| matches!(s, PlanStep::UpdateInterface(_)))
+    );
     let on = crate::helper::poe::plan(
         &topology,
-        &crate::helper::poe::PoeInput { device: port.device().unwrap().id().0, pse: port.id().0, pd: None },
+        &crate::helper::poe::PoeInput {
+            device: port.device().unwrap().id().0,
+            pse: port.id().0,
+            pd: None,
+        },
     )
     .expect("poe")
     .preview_topology()
@@ -105,7 +125,9 @@ fn a_device_at_poe_is_fed() {
     let port = on.get_interface_by_id(port.id()).expect("the port");
     let plan = base(&on, &input(&port, "ap-neu"), &facts("router")).expect("plan");
     let after = plan.preview_topology().expect("preview");
-    let device = after.get_device_by_id(&DeviceId(u32::MAX)).expect("the new device");
+    let device = after
+        .get_device_by_id(&DeviceId(u32::MAX))
+        .expect("the new device");
     assert_eq!(device.interfaces()[0].poe(), Some(PoeMode::Pd));
 }
 
@@ -148,7 +170,9 @@ fn an_access_point_gets_its_wlan_group() {
     input.wlan_group = Some(group.id().0);
     let plan = base(&topology, &input, &facts("router")).expect("plan");
     let after = plan.preview_topology().expect("preview");
-    let device = after.get_device_by_id(&DeviceId(u32::MAX)).expect("the new device");
+    let device = after
+        .get_device_by_id(&DeviceId(u32::MAX))
+        .expect("the new device");
     assert_eq!(device.wlan_ap_of().map(|g| g.id()), Some(group.id()));
     input.wlan_group = Some(u32::MAX);
     assert!(matches!(
@@ -202,12 +226,18 @@ fn preview_ids_become_netbox_ids() {
 #[test]
 fn an_open_patch_panel_gets_the_cable() {
     let topology = example_topology();
-    let routers = || topology.list_devices().filter(|d| d.has_routeros() && d.site().is_some());
+    let routers = || {
+        topology
+            .list_devices()
+            .filter(|d| d.has_routeros() && d.site().is_some())
+    };
     let port = routers()
         .flat_map(|d| d.interfaces().into_vec())
         .find(|i| i.is_ethernet_port() && matches!(landing(i), Some(Landing::Panel(..))))
         .expect("a port patched to an open end");
-    let Some(Landing::Panel(end, panel)) = landing(&port) else { unreachable!() };
+    let Some(Landing::Panel(end, panel)) = landing(&port) else {
+        unreachable!()
+    };
     let plan = base(&topology, &input(&port, "ap-neu"), &facts("router")).expect("plan");
     assert!(
         matches!(&plan.steps[2], PlanStep::CreateCable(cable)
@@ -228,10 +258,12 @@ fn an_open_patch_panel_gets_the_cable() {
         .flat_map(|d| d.interfaces().into_vec())
         .find(|i| {
             i.cable().is_some_and(|cable| {
-                cable
-                    .port_a()
-                    .chain(cable.port_b())
-                    .any(|end| !matches!(end, crate::topology::access::cable::CablePortAccess::Interface(_)))
+                cable.port_a().chain(cable.port_b()).any(|end| {
+                    !matches!(
+                        end,
+                        crate::topology::access::cable::CablePortAccess::Interface(_)
+                    )
+                })
             }) && !i.connected_interfaces().is_empty()
         })
         .expect("a port patched through to an interface");

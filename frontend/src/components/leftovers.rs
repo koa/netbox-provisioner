@@ -74,10 +74,19 @@ impl Component for Leftovers {
                 .watch_address
                 .iter()
                 .map(|address| t::watch_address(address))
-                .chain(watchdogs.watching.poe_pings.iter().map(|ping| t::poe_ping(&ping.port, &ping.address)))
+                .chain(
+                    watchdogs
+                        .watching
+                        .poe_pings
+                        .iter()
+                        .map(|ping| t::poe_ping(&ping.port, &ping.address)),
+                )
                 .collect::<Vec<_>>()
         };
-        let held = left.watchdogs.as_ref().and_then(|w| w.held_by.as_ref().map(|by| (w, by)));
+        let held = left
+            .watchdogs
+            .as_ref()
+            .and_then(|w| w.held_by.as_ref().map(|by| (w, by)));
         let watchdogs = left.watchdogs.as_ref().filter(|w| w.held_by.is_none());
         let any_left = left.apply_fallback.is_some()
             || left.update_fallback.is_some()

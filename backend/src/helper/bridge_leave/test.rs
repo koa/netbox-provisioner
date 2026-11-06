@@ -45,7 +45,10 @@ fn the_preview_has_the_port_without_bridge() {
         device: port.device().unwrap().id().0,
         port: port.id().0,
     };
-    let after = plan(&topology, &input).expect("plan").preview_topology().expect("preview");
+    let after = plan(&topology, &input)
+        .expect("plan")
+        .preview_topology()
+        .expect("preview");
     assert!(self::port(&after, input.port).bridge().is_none());
 }
 

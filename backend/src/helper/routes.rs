@@ -5,7 +5,9 @@ use crate::{
     Error,
     config::CONFIG,
     device::{
-        Credentials, Path, bootstrap::reachable_address, connect,
+        Credentials, Path,
+        bootstrap::reachable_address,
+        connect,
         raw::{command, field},
     },
     topology::{Topology, access::device::DeviceAccess},
@@ -45,7 +47,10 @@ impl Routes {
     /// can't be handed out unchecked.
     pub async fn read(topology: &Arc<Topology>) -> Result<Routes, Error> {
         let mut failures = Vec::new();
-        let proxy = CONFIG.management_proxy.as_ref().map(|proxy| proxy.device.as_ref());
+        let proxy = CONFIG
+            .management_proxy
+            .as_ref()
+            .map(|proxy| proxy.device.as_ref());
         for router in routers(topology, proxy).into_iter().take(TRIED) {
             match timeout(TIMEOUT, read_from(&router)).await {
                 Ok(Ok(routes)) => {
@@ -125,15 +130,24 @@ fn routers(topology: &Arc<Topology>, proxy: Option<&str>) -> Vec<DeviceAccess> {
         .filter(|(device, ospf)| *ospf > 0 || Some(device.name()) == proxy)
         .collect::<Vec<_>>();
     routers.sort_by_key(|(device, ospf)| {
-        (Some(device.name()) != proxy, std::cmp::Reverse(*ospf), device.name().to_string())
+        (
+            Some(device.name()) != proxy,
+            std::cmp::Reverse(*ospf),
+            device.name().to_string(),
+        )
     });
     routers.into_iter().map(|(device, _)| device).collect()
 }
 
 async fn read_from(router: &DeviceAccess) -> Result<Vec<Route>, Error> {
-    let address = reachable_address(router).ok_or_else(|| Error::NoAddress(router.name().into()))?;
-    let credentials =
-        Credentials::Named(router.credentials().ok_or(Error::MissingCredentials)?.into());
+    let address =
+        reachable_address(router).ok_or_else(|| Error::NoAddress(router.name().into()))?;
+    let credentials = Credentials::Named(
+        router
+            .credentials()
+            .ok_or(Error::MissingCredentials)?
+            .into(),
+    );
     let client = connect::<SimpleResult>(address, &Path::Routed, &credentials).await?;
     let mut routes = Vec::new();
     for menu in ["/ip/route/print", "/ipv6/route/print"] {
@@ -169,7 +183,12 @@ mod test {
     #[test]
     fn an_address_in_a_more_specific_route_is_in_use() {
         let pool: IpNet = "192.168.100.0/26".parse().unwrap();
-        let routes = routes(&["0.0.0.0/0", "192.168.100.0/24", "192.168.100.0/26", "192.168.100.9/32"]);
+        let routes = routes(&[
+            "0.0.0.0/0",
+            "192.168.100.0/24",
+            "192.168.100.0/26",
+            "192.168.100.9/32",
+        ]);
         let taken = routes.in_use("192.168.100.9".parse().unwrap(), pool);
         assert_eq!(taken.map(|t| t.route), Some("192.168.100.9/32".into()));
         assert_eq!(routes.in_use("192.168.100.10".parse().unwrap(), pool), None);
@@ -180,7 +199,8 @@ mod test {
     #[test]
     fn the_routers_with_the_most_ospf_first() {
         let topology = crate::topology::test::example_topology();
-        let ospf = |device: &DeviceAccess| device.interfaces().iter().filter(|i| i.use_ospf()).count();
+        let ospf =
+            |device: &DeviceAccess| device.interfaces().iter().filter(|i| i.use_ospf()).count();
         let most = topology
             .list_devices()
             .filter(|d| d.has_routeros() && d.primary_ip().is_some())
@@ -189,7 +209,11 @@ mod test {
             .expect("a router");
         let asked = routers(&topology, None);
         assert_eq!(ospf(&asked[0]), most);
-        assert!(asked.windows(2).all(|pair| ospf(&pair[0]) >= ospf(&pair[1])));
+        assert!(
+            asked
+                .windows(2)
+                .all(|pair| ospf(&pair[0]) >= ospf(&pair[1]))
+        );
         let proxy = asked.last().expect("a router").name().to_string();
         assert_eq!(routers(&topology, Some(&proxy))[0].name(), proxy);
     }
@@ -198,6 +222,10 @@ mod test {
     fn a_link_network_over_the_address_is_in_use() {
         let pool: IpNet = "2a02:16a:fe00:8000::/64".parse().unwrap();
         let routes = routes(&["2a02:16a:fe00:8000::8/126"]);
-        assert!(routes.in_use("2a02:16a:fe00:8000::9".parse().unwrap(), pool).is_some());
+        assert!(
+            routes
+                .in_use("2a02:16a:fe00:8000::9".parse().unwrap(), pool)
+                .is_some()
+        );
     }
 }

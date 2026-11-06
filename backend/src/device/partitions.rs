@@ -10,12 +10,12 @@
 //! went missing.
 use crate::{
     Error,
-    device_state::RebootState,
     device::{
         power::PowerChain,
         raw::{Row, command, field, rows},
         update::{DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason, read_state, wait_until_back},
     },
+    device_state::RebootState,
     job::Log,
 };
 use async_graphql::SimpleObject;
@@ -76,7 +76,9 @@ fn partition(row: &Row) -> Partition {
             .filter(|version| *version != "EMPTY")
             .unwrap_or_default()
             .into(),
-        size_mib: field(row, "size").and_then(|s| s.parse().ok()).unwrap_or_default(),
+        size_mib: field(row, "size")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_default(),
         active: flag("active"),
         running: flag("running"),
         fallback_to: field(row, "fallback-to").unwrap_or_default().into(),
@@ -152,7 +154,11 @@ async fn identity(device: &RawDevice<SimpleResult>) -> Result<Box<str>, Error> {
 /// Splits the flash in [`COUNT`] partitions: the device reformats it and reboots, and is back
 /// (reached as before, with the same credentials) with the running partition and an empty one.
 /// `power`: what the device powers goes down with it.
-pub async fn repartition(link: &impl DeviceLink, power: &PowerChain, log: &Log) -> Result<(), Error> {
+pub async fn repartition(
+    link: &impl DeviceLink,
+    power: &PowerChain,
+    log: &Log,
+) -> Result<(), Error> {
     let device = link.api().await?;
     let partitions = list(&device).await;
     if !can_split(&partitions, allowed(&device).await?) {
@@ -173,7 +179,11 @@ pub async fn repartition(link: &impl DeviceLink, power: &PowerChain, log: &Log) 
     // the answer, or the connection breaking with the reboot
     if let Ok(Err(error @ Error::Refused(_))) = timeout(
         Duration::from_secs(30),
-        command(&device, "/partitions/repartition", &[("partitions", &count)]),
+        command(
+            &device,
+            "/partitions/repartition",
+            &[("partitions", &count)],
+        ),
     )
     .await
     {
@@ -196,7 +206,8 @@ pub async fn repartition(link: &impl DeviceLink, power: &PowerChain, log: &Log) 
     let after_identity = identity(&device).await?;
     if after_identity != before_identity {
         return Err(Error::Refused(
-            format!("identity {after_identity} after repartitioning, {before_identity} before").into(),
+            format!("identity {after_identity} after repartitioning, {before_identity} before")
+                .into(),
         ));
     }
     if partitions.len() != COUNT {
@@ -246,7 +257,11 @@ pub async fn boot_from(
     command(&device, "/partitions/activate", &[("number", &id)]).await?;
     let sent = Instant::now();
     // the answer, or the connection breaking with the reboot
-    let _ = timeout(Duration::from_secs(10), command(&device, "/system/reboot", &[])).await;
+    let _ = timeout(
+        Duration::from_secs(10),
+        command(&device, "/system/reboot", &[]),
+    )
+    .await;
     drop(device);
     log.emit(Reboot {
         reason: RebootReason::Partition,
@@ -254,7 +269,10 @@ pub async fn boot_from(
     });
     wait_until_back(link, log, uptime, sent, REBOOT_TIMEOUT, |_| Some(())).await?;
     drop(rebooting);
-    let running = list(&link.api().await?).await.into_iter().find(|p| p.running);
+    let running = list(&link.api().await?)
+        .await
+        .into_iter()
+        .find(|p| p.running);
     match running {
         Some(running) if running.name.as_ref() == name => {
             log.emit(PartitionRunning {

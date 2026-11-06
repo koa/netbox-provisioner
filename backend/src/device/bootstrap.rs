@@ -13,17 +13,16 @@
 //! session, so it runs on the neighbor's console over SSH ([`Terminal`]).
 use crate::{
     Error,
-    device_state::BootstrapState,
     config::{CONFIG, MikrotikCredentials},
+    device::{
+        Credentials, Path, connect, other_device_named, proxied_stream,
+        raw::{field, rows},
+        terminal::{LOGIN_FLAGS, Terminal, TerminalError, Tunnel},
+        update,
+    },
+    device_state::BootstrapState,
     error_info::{ApiError, BootstrapObstacle},
     facts::{self, FactKey, FactKind, Freshness},
-    device::{
-        Credentials, Path, connect, other_device_named,
-        proxied_stream,
-        raw::{field, rows},
-        update,
-        terminal::{LOGIN_FLAGS, Terminal, TerminalError, Tunnel},
-    },
     graphql::scalars::{ScalarDuration, ScalarMac},
     job::Log,
     topology::access::{device::DeviceAccess, interface::InterfaceAccess},
@@ -85,8 +84,17 @@ impl BootstrapPlan {
     /// What the neighbor discovers on its port (`/ip/neighbor`), the candidates to set up. Over
     /// a bridge (a radio link) that includes devices further away.
     async fn discovered(&self) -> Result<Vec<Discovered>, ApiError> {
-        let key = FactKey::new(FactKind::Neighbors, Some(self.neighbor_device.id()), &self.neighbor_port);
-        let fact = facts::get(key, Freshness::MaxAge(DISCOVERED_AGE), discover(self.clone())).await;
+        let key = FactKey::new(
+            FactKind::Neighbors,
+            Some(self.neighbor_device.id()),
+            &self.neighbor_port,
+        );
+        let fact = facts::get(
+            key,
+            Freshness::MaxAge(DISCOVERED_AGE),
+            discover(self.clone()),
+        )
+        .await;
         Ok(fact.result()?.to_vec())
     }
 }
@@ -185,7 +193,12 @@ pub async fn working_plan(device: &DeviceAccess) -> Result<BootstrapPlan, Error>
             return false;
         };
         let credentials = Credentials::Named(name.into());
-        let login = crate::device::login(&plan.neighbor_device, plan.neighbor_address, &Path::Routed, &credentials);
+        let login = crate::device::login(
+            &plan.neighbor_device,
+            plan.neighbor_address,
+            &Path::Routed,
+            &credentials,
+        );
         login.await.value.is_ok()
     }))
     .await;
@@ -210,7 +223,9 @@ pub fn plans(device: &DeviceAccess) -> Result<Vec<BootstrapPlan>, Error> {
         };
         reason = BootstrapObstacle::NoReachableNeighbor;
         for far in port.connected_interfaces() {
-            let Some(neighbor) = far.device() else { continue };
+            let Some(neighbor) = far.device() else {
+                continue;
+            };
             let Some(neighbor_address) = reachable_address(&neighbor) else {
                 continue;
             };
@@ -242,7 +257,10 @@ pub fn plans(device: &DeviceAccess) -> Result<Vec<BootstrapPlan>, Error> {
     if plans.is_empty() {
         return Err(no_path(reason));
     }
-    let proxy = CONFIG.management_proxy.as_ref().map(|proxy| proxy.device.as_ref());
+    let proxy = CONFIG
+        .management_proxy
+        .as_ref()
+        .map(|proxy| proxy.device.as_ref());
     plans.sort_by_key(|plan| proxy != Some(plan.neighbor.as_str()));
     Ok(plans)
 }
@@ -322,7 +340,10 @@ async fn check_neighbor(plan: &BootstrapPlan) -> Result<String, Error> {
         ));
     }
     Ok(match neighbor_port_name(plan).await.value {
-        Ok(name) => name.as_ref().clone().unwrap_or_else(|| plan.neighbor_port.clone()),
+        Ok(name) => name
+            .as_ref()
+            .clone()
+            .unwrap_or_else(|| plan.neighbor_port.clone()),
         Err(error) => {
             warn!("cannot read the port names of {}: {error}", plan.neighbor);
             plan.neighbor_port.clone()
@@ -340,7 +361,11 @@ fn neighbor_credentials(plan: &BootstrapPlan) -> Result<Credentials, Error> {
 }
 
 fn port_names_key(plan: &BootstrapPlan) -> FactKey {
-    FactKey::new(FactKind::Interfaces, Some(plan.neighbor_device.id()), &plan.neighbor_port)
+    FactKey::new(
+        FactKind::Interfaces,
+        Some(plan.neighbor_device.id()),
+        &plan.neighbor_port,
+    )
 }
 
 /// What the neighbor calls its port to the device, as a fact ([`PORT_NAMES_AGE`]): the page
@@ -348,10 +373,14 @@ fn port_names_key(plan: &BootstrapPlan) -> FactKey {
 async fn neighbor_port_name(plan: &BootstrapPlan) -> facts::Fact<Option<String>> {
     let (address, factory) = (plan.neighbor_address, plan.neighbor_port.clone());
     let credentials = neighbor_credentials(plan);
-    facts::get(port_names_key(plan), Freshness::MaxAge(PORT_NAMES_AGE), async move {
-        let neighbor = connect::<SimpleResult>(address, &Path::Routed, &credentials?).await?;
-        port_name(&neighbor, &factory).await
-    })
+    facts::get(
+        port_names_key(plan),
+        Freshness::MaxAge(PORT_NAMES_AGE),
+        async move {
+            let neighbor = connect::<SimpleResult>(address, &Path::Routed, &credentials?).await?;
+            port_name(&neighbor, &factory).await
+        },
+    )
     .await
 }
 
@@ -388,7 +417,11 @@ fn credentials_of(device: &DeviceAccess) -> Result<&'static MikrotikCredentials,
 /// replaced by `***`). `plan.setup.macs` is the device chosen by the operator. Cancelled, it
 /// stops before the console session or while it waits for the API, not within the session.
 /// Writes without asking for `allow_apply`, that is up to the caller (`WritesAllowed`).
-pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -> Result<(), Error> {
+pub async fn bootstrap(
+    device: &DeviceAccess,
+    plan: &BootstrapPlan,
+    log: &Log,
+) -> Result<(), Error> {
     let target = credentials_of(device)?;
     let neighbor = credentials_of(&plan.neighbor_device)?;
     let user = target.user();
@@ -408,7 +441,12 @@ pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -
     log.emit(SetupStarted {
         neighbor: plan.neighbor.as_str().into(),
         neighbor_port: plan.neighbor_port.as_str().into(),
-        macs: plan.setup.macs.iter().map(|mac| mac.to_string().into()).collect(),
+        macs: plan
+            .setup
+            .macs
+            .iter()
+            .map(|mac| mac.to_string().into())
+            .collect(),
     });
     let mut terminal = neighbor_login(plan, Some(log), || async {
         Ok(match proxied_stream(plan.neighbor_address, 22).await? {
@@ -440,7 +478,8 @@ pub async fn bootstrap(device: &DeviceAccess, plan: &BootstrapPlan, log: &Log) -
         address: address.to_string().into(),
         timeout: API_TIMEOUT.into(),
     });
-    log.unless_cancelled(wait_for_api(device, address, plan)).await??;
+    log.unless_cancelled(wait_for_api(device, address, plan))
+        .await??;
     log.emit(SetupDone {
         address: address.to_string().into(),
     });
@@ -504,7 +543,10 @@ where
     };
     let result = login().await;
     if let Err(error) = &result {
-        warn!("ssh login on {} with the password login on: {error}", plan.neighbor);
+        warn!(
+            "ssh login on {} with the password login on: {error}",
+            plan.neighbor
+        );
     }
     if let Err(error) = update::restore_password_login(&api, Some(relaxed), log).await {
         warn!("ssh settings of {} not put back: {error}", plan.neighbor);
@@ -578,7 +620,8 @@ async fn set_up_marked(
     // that is up they run from the start, until all of them are through in one session.
     let deadline = Instant::now() + LOGIN_TIMEOUT;
     loop {
-        let (login_user, how, mac, factory) = log_in(terminal, setup, user, password, deadline).await?;
+        let (login_user, how, mac, factory) =
+            log_in(terminal, setup, user, password, deadline).await?;
         let commands = setup_commands(setup, user, password, login_user, how, mac, factory);
         match run_in_session(terminal, &commands, password).await? {
             None => return Ok(()),
@@ -625,10 +668,19 @@ async fn log_in<'a>(
                     None => interfaces.clone(),
                 };
                 for interface in tried {
-                    match login(terminal, mac, interface, login_user, login_password, password)
-                        .await?
+                    match login(
+                        terminal,
+                        mac,
+                        interface,
+                        login_user,
+                        login_password,
+                        password,
+                    )
+                    .await?
                     {
-                        Login::Done(how) => return Ok((login_user, how, mac, login_password.is_empty())),
+                        Login::Done(how) => {
+                            return Ok((login_user, how, mac, login_password.is_empty()));
+                        }
                         Login::Refused => {
                             refused.insert((attempt, index));
                             answered[index] = Some(interface);
@@ -667,7 +719,10 @@ fn setup_commands(
     // the port under the name the device has for it: a device with an old config has its
     // ports renamed (berghof-hansueli: no `ether1`, "input does not match any value of
     // interface")
-    let port = format!("[/interface ethernet get [find default-name=\"{}\"] name]", setup.port);
+    let port = format!(
+        "[/interface ethernet get [find default-name=\"{}\"] name]",
+        setup.port
+    );
     let mut commands = Vec::new();
     if let LoggedIn::WithoutPassword = how {
         commands.push(format!(
@@ -762,7 +817,10 @@ async fn run_in_session(
     };
     for command in commands {
         terminal.send_line(&off_the_neighbor(command)).await?;
-        let output = match terminal.sync_unless(&[SESSION_ENDED], SESSION_TIMEOUT).await? {
+        let output = match terminal
+            .sync_unless(&[SESSION_ENDED], SESSION_TIMEOUT)
+            .await?
+        {
             Ok(output) => output,
             Err(_) => {
                 // the rest went to the neighbor, wait until it is through there
@@ -847,7 +905,11 @@ async fn login(
         match prompt {
             SESSION_ENDED => {
                 terminal.expect(&["] > "], COMMAND_TIMEOUT).await?;
-                return Ok(if refused { Login::Refused } else { Login::Undecided });
+                return Ok(if refused {
+                    Login::Refused
+                } else {
+                    Login::Undecided
+                });
             }
             "incorrect username or password" => refused = true,
             "[Y/n]" => terminal.send("n").await?,
@@ -871,13 +933,18 @@ async fn login(
             }
             _ => {
                 // through the prompts RouterOS redraws after the login
-                return Ok(match terminal.sync_unless(&[SESSION_ENDED], SESSION_TIMEOUT).await? {
-                    Ok(_) => Login::Done(how),
-                    Err(_) => {
-                        terminal.sync(COMMAND_TIMEOUT).await?;
-                        Login::Undecided
-                    }
-                });
+                return Ok(
+                    match terminal
+                        .sync_unless(&[SESSION_ENDED], SESSION_TIMEOUT)
+                        .await?
+                    {
+                        Ok(_) => Login::Done(how),
+                        Err(_) => {
+                            terminal.sync(COMMAND_TIMEOUT).await?;
+                            Login::Undecided
+                        }
+                    },
+                );
             }
         }
     }
@@ -932,7 +999,10 @@ async fn wait_for_api(
         let attempt = async {
             let client = connect::<SimpleResult>(address, &path, &credentials).await?;
             let rows = rows(&client, "/system/identity/print").await?;
-            Ok(rows.first().and_then(|row| field(row, "name")).map(Box::<str>::from))
+            Ok(rows
+                .first()
+                .and_then(|row| field(row, "name"))
+                .map(Box::<str>::from))
         };
         let limit = deadline
             .saturating_duration_since(Instant::now())
@@ -978,7 +1048,10 @@ mod tests {
             console_error("failure: already have such address\n"),
             Some("failure: already have such address")
         );
-        assert_eq!(console_error("syntax error (line 1 column 5)"), Some("syntax error (line 1 column 5)"));
+        assert_eq!(
+            console_error("syntax error (line 1 column 5)"),
+            Some("syntax error (line 1 column 5)")
+        );
         assert_eq!(console_error(""), None);
         assert_eq!(console_error("  name: lab-core\n"), None);
     }
@@ -991,7 +1064,10 @@ mod tests {
     /// a failing setup command goes into the error, which the log and the UI show
     #[test]
     fn hides_the_password_in_commands() {
-        let command = format!("/user set [find name=\"admin\"] password=\"{}\"", quote("p\"w$"));
+        let command = format!(
+            "/user set [find name=\"admin\"] password=\"{}\"",
+            quote("p\"w$")
+        );
         assert_eq!(
             hidden(&command, "p\"w$").as_ref(),
             "/user set [find name=\"admin\"] password=\"***\""
@@ -1014,8 +1090,19 @@ mod tests {
             neighbor_port: None,
         };
         let mac = "D4:CA:6D:C4:3A:18".parse().unwrap();
-        let commands = setup_commands(&setup, "admin", "pw", "admin", LoggedIn::WithPassword, &mac, false);
-        let api = commands.iter().find(|c| c.contains("available-from")).unwrap();
+        let commands = setup_commands(
+            &setup,
+            "admin",
+            "pw",
+            "admin",
+            LoggedIn::WithPassword,
+            &mac,
+            false,
+        );
+        let api = commands
+            .iter()
+            .find(|c| c.contains("available-from"))
+            .unwrap();
         if let Ok(path) = std::env::var("SETUP_API_COMMAND") {
             std::fs::write(path, api).unwrap();
         }

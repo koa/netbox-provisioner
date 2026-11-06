@@ -57,7 +57,12 @@ pub(crate) fn fixed_speed(port: &InterfaceAccess) -> Result<Option<EthernetSpeed
             2_500_000 => EthernetSpeed::_25GBaseT,
             5_000_000 => EthernetSpeed::_5GBaseT,
             10_000_000 => EthernetSpeed::_10GBaseT,
-            _ => return Err(SetupError::UnknownSpeed { port: name(), speed: label(kbits) }),
+            _ => {
+                return Err(SetupError::UnknownSpeed {
+                    port: name(),
+                    speed: label(kbits),
+                });
+            }
         },
         Some(
             PhysicalPortId::Sfp(_)
@@ -69,14 +74,25 @@ pub(crate) fn fixed_speed(port: &InterfaceAccess) -> Result<Option<EthernetSpeed
             let medium = port
                 .cable()
                 .and_then(|cable| cable.kind().and_then(medium))
-                .ok_or_else(|| SetupError::SpeedNeedsCableType { port: name(), speed: label(kbits) })?;
+                .ok_or_else(|| SetupError::SpeedNeedsCableType {
+                    port: name(),
+                    speed: label(kbits),
+                })?;
             use Medium::*;
             match (kbits, medium) {
-                (100_000, Twisted) => twisted(EthernetSpeed::_100MBaseTHalf, EthernetSpeed::_100MBaseTFull),
-                (100_000, Fiber) => {
-                    if half { EthernetSpeed::_100MBaseFxHalf } else { EthernetSpeed::_100MBaseFxFull }
+                (100_000, Twisted) => {
+                    twisted(EthernetSpeed::_100MBaseTHalf, EthernetSpeed::_100MBaseTFull)
                 }
-                (1_000_000, Twisted) => twisted(EthernetSpeed::_1GBaseTHalf, EthernetSpeed::_1GBaseTFull),
+                (100_000, Fiber) => {
+                    if half {
+                        EthernetSpeed::_100MBaseFxHalf
+                    } else {
+                        EthernetSpeed::_100MBaseFxFull
+                    }
+                }
+                (1_000_000, Twisted) => {
+                    twisted(EthernetSpeed::_1GBaseTHalf, EthernetSpeed::_1GBaseTFull)
+                }
                 (1_000_000, Twinax | Fiber) => EthernetSpeed::_1GBaseX,
                 (2_500_000, Twisted) => EthernetSpeed::_25GBaseT,
                 (2_500_000, Twinax | Fiber) => EthernetSpeed::_25GBaseX,
@@ -88,7 +104,12 @@ pub(crate) fn fixed_speed(port: &InterfaceAccess) -> Result<Option<EthernetSpeed
                 (25_000_000, Fiber) => EthernetSpeed::_25GBaseSrLr,
                 (40_000_000, Twinax) => EthernetSpeed::_40GBaseCr4,
                 (40_000_000, Fiber) => EthernetSpeed::_40GBaseSr4Lr4,
-                _ => return Err(SetupError::UnknownSpeed { port: name(), speed: label(kbits) }),
+                _ => {
+                    return Err(SetupError::UnknownSpeed {
+                        port: name(),
+                        speed: label(kbits),
+                    });
+                }
             }
         }
         _ => return Err(SetupError::SpeedNotSupported(name())),
@@ -102,7 +123,10 @@ pub(crate) fn fixed_speed(port: &InterfaceAccess) -> Result<Option<EthernetSpeed
                 speed: label(kbits),
                 far_end: format!(
                     "{} {}",
-                    far_end.device().map(|d| d.name().to_string()).unwrap_or_default(),
+                    far_end
+                        .device()
+                        .map(|d| d.name().to_string())
+                        .unwrap_or_default(),
                     far_end.name()
                 )
                 .into(),

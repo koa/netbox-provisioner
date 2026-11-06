@@ -23,13 +23,13 @@ use mikrotik_model::{
         InterfaceListByName, InterfaceListCfg, InterfaceListMemberCfg, InterfaceVlanByName,
         InterfaceVlanCfg, InterfaceVxlanByName, InterfaceVxlanCfg, IpAddressByAddress,
         IpAddressCfg, IpDhcpClientCfg, IpDhcpClientDhcpOptions, IpDhcpServerLeaseCfg,
-        IpFirewallNatAction, IpFirewallNatCfg,
-        IpNeighborDiscoverySettingsCfg, IpSocksAccessAction, IpSocksAccessCfg, IpSocksAuthMethod, IpServiceByName, IpServiceCfg, IpSocksUsersByName, IpSocksUsersCfg,
-        IpSshCfg, IpSshForwardingEnabled, Ipv6AddressByAddress, Ipv6AddressCfg,
-        Ipv6DhcpClientByInterface, Ipv6DhcpClientCfg, Ipv6DhcpClientRequest,
-        Ipv6NdByInterface, Ipv6NdCfg, RoutingOriginateDefault,
-        RoutingOspfInstanceByName, RoutingOspfInstanceCfg, RoutingOspfInstanceVersion,
-        RoutingRedistribute, ToolMacServerCfg, VlanFrameTypes, WifiChannelBand, YesNo,
+        IpFirewallNatAction, IpFirewallNatCfg, IpNeighborDiscoverySettingsCfg, IpServiceByName,
+        IpServiceCfg, IpSocksAccessAction, IpSocksAccessCfg, IpSocksAuthMethod, IpSocksUsersByName,
+        IpSocksUsersCfg, IpSshCfg, IpSshForwardingEnabled, Ipv6AddressByAddress, Ipv6AddressCfg,
+        Ipv6DhcpClientByInterface, Ipv6DhcpClientCfg, Ipv6DhcpClientRequest, Ipv6NdByInterface,
+        Ipv6NdCfg, RoutingOriginateDefault, RoutingOspfInstanceByName, RoutingOspfInstanceCfg,
+        RoutingOspfInstanceVersion, RoutingRedistribute, ToolMacServerCfg, VlanFrameTypes,
+        WifiChannelBand, YesNo,
     },
     resource::OWNED_LAST,
     value,
@@ -44,16 +44,16 @@ pub(crate) mod dhcp;
 pub mod fallback;
 mod firewall;
 pub mod graphql;
-pub mod progress;
 pub(crate) mod hw_facts;
 pub mod l2;
+pub mod progress;
 pub(crate) mod radio;
 pub(crate) mod speed;
 pub(crate) mod syslog;
-pub mod warning;
-pub mod watchdog;
 #[cfg(test)]
 mod test;
+pub mod warning;
+pub mod watchdog;
 
 pub(crate) use dhcp::dhcp_pool_v4;
 pub use radio::needed_radio_package;
@@ -96,9 +96,24 @@ mikrotik_model!(
             keys(address, list),
             owned = "netbox-provisioner:"
         )),
-        ipv6_firewall_filter(by_id(path = "ipv6/firewall/filter", keys(), owned = "netbox-provisioner:", ordered)),
-        ip_firewall_filter(by_id(path = "ip/firewall/filter", keys(), owned = "netbox-provisioner:", ordered)),
-        ip_firewall_nat(by_id(path = "ip/firewall/nat", keys(), owned = "netbox-provisioner:", ordered)),
+        ipv6_firewall_filter(by_id(
+            path = "ipv6/firewall/filter",
+            keys(),
+            owned = "netbox-provisioner:",
+            ordered
+        )),
+        ip_firewall_filter(by_id(
+            path = "ip/firewall/filter",
+            keys(),
+            owned = "netbox-provisioner:",
+            ordered
+        )),
+        ip_firewall_nat(by_id(
+            path = "ip/firewall/nat",
+            keys(),
+            owned = "netbox-provisioner:",
+            ordered
+        )),
         dns(single = "ip/dns"),
         ipv6_nd(by_key(path = "ipv6/nd", key = interface)),
         dhcp_v4_server(by_key(path = "ip/dhcp-server", key = name)),
@@ -108,7 +123,12 @@ mikrotik_model!(
         socks(single = "ip/socks"),
         socks_users(by_key(path = "ip/socks/users", key = name)),
         // the proxy's own rules carry `FIREWALL_PREFIX` in their comment, the others stay
-        socks_access(by_id(path = "ip/socks/access", keys(), owned = "netbox-provisioner:", ordered)),
+        socks_access(by_id(
+            path = "ip/socks/access",
+            keys(),
+            owned = "netbox-provisioner:",
+            ordered
+        )),
         ip_service(by_key(path = "ip/service", key = name)),
         ssh(single = "ip/ssh"),
         ipv6_settings(single = "ipv6/settings"),
@@ -218,8 +238,26 @@ fn following_renames(
         follow(&mut client.0.interface);
     }
     for vlan in current.bridge_vlan.iter_mut() {
-        vlan.data.tagged = vlan.data.tagged.iter().cloned().map(|mut n| { follow(&mut n); n }).collect();
-        vlan.data.untagged = vlan.data.untagged.iter().cloned().map(|mut n| { follow(&mut n); n }).collect();
+        vlan.data.tagged = vlan
+            .data
+            .tagged
+            .iter()
+            .cloned()
+            .map(|mut n| {
+                follow(&mut n);
+                n
+            })
+            .collect();
+        vlan.data.untagged = vlan
+            .data
+            .untagged
+            .iter()
+            .cloned()
+            .map(|mut n| {
+                follow(&mut n);
+                n
+            })
+            .collect();
     }
     current
 }
@@ -346,7 +384,9 @@ pub enum SetupError {
     SpeedNotSupported(Box<str>),
     #[error("{port} runs at {speed} in NetBox: its cable needs a type (DAC, fiber or copper)")]
     SpeedNeedsCableType { port: Box<str>, speed: String },
-    #[error("{port} runs at {speed} in NetBox, which RouterOS has no speed for on it with its cable")]
+    #[error(
+        "{port} runs at {speed} in NetBox, which RouterOS has no speed for on it with its cable"
+    )]
     UnknownSpeed { port: Box<str>, speed: String },
     #[error("{port} runs at {speed} in NetBox, which the board doesn't offer on it")]
     SpeedNotOnPort { port: Box<str>, speed: String },
@@ -376,7 +416,10 @@ fn port_mtu(port: &InterfaceAccess) -> Result<Option<u16>, SetupError> {
                 mtu: mtu.unwrap_or(DEFAULT_MTU),
                 far_end: format!(
                     "{} {}",
-                    far_end.device().map(|d| d.name().to_string()).unwrap_or_default(),
+                    far_end
+                        .device()
+                        .map(|d| d.name().to_string())
+                        .unwrap_or_default(),
                     far_end.name()
                 ),
                 far_mtu,
@@ -401,9 +444,13 @@ fn l2mtu_for(l2mtu: Option<u16>, mtu: Option<u16>) -> Option<u16> {
 /// this way (CHR 7.24.5: a static `0.0.0.0/0` with `redistribute=static` is no external LSA), only
 /// by `originate-default`.
 fn ospf_redistribute() -> BTreeSet<RoutingRedistribute> {
-    [RoutingRedistribute::Connected, RoutingRedistribute::Static, RoutingRedistribute::Bgp]
-        .into_iter()
-        .collect()
+    [
+        RoutingRedistribute::Connected,
+        RoutingRedistribute::Static,
+        RoutingRedistribute::Bgp,
+    ]
+    .into_iter()
+    .collect()
 }
 impl BaseDeviceDataTarget {
     fn new(model: &[u8]) -> Result<Self, SetupError> {
@@ -476,7 +523,10 @@ impl BaseDeviceDataTarget {
             interface_list: [(
                 MAINTENANCE_LIST.into(),
                 InterfaceListByName(InterfaceListCfg {
-                    comment: Some(b"ports to own devices and free ports: mac-telnet and neighbor discovery".into()),
+                    comment: Some(
+                        b"ports to own devices and free ports: mac-telnet and neighbor discovery"
+                            .into(),
+                    ),
                     exclude: Default::default(),
                     include: Default::default(),
                     name: MAINTENANCE_LIST.into(),
@@ -509,8 +559,18 @@ impl BaseDeviceDataTarget {
             let last = String::from_utf8_lossy(OWNED_LAST);
             self.socks_access = api_networks
                 .iter()
-                .map(|net| rule(IpSocksAccessAction::Allow, Some(net), &["provisioner", &net.trunc().to_string()]))
-                .chain([rule(IpSocksAccessAction::Deny, None, &[last.trim_end(), "rest"])])
+                .map(|net| {
+                    rule(
+                        IpSocksAccessAction::Allow,
+                        Some(net),
+                        &["provisioner", &net.trunc().to_string()],
+                    )
+                })
+                .chain([rule(
+                    IpSocksAccessAction::Deny,
+                    None,
+                    &[last.trim_end(), "rest"],
+                )])
                 .collect();
         }
         self.socks.enabled = true;
@@ -531,11 +591,19 @@ impl BaseDeviceDataTarget {
     /// `address`, which RouterOS 7.24 still takes for `available-from`, unless the device
     /// reports `available-from` already: an open service reports neither.
     pub fn setup_services(&mut self, current: &[IpServiceByName], api_networks: Option<&[IpNet]>) {
-        let api_networks = api_networks.filter(|networks| !networks.is_empty()).map(|networks| {
-            let list = networks.iter().map(|net| net.trunc().to_string()).collect::<Vec<_>>();
-            AsciiString::from(list.join(",").as_str())
-        });
-        self.ip_service = current.iter().map(|service| (service.name.clone(), service.data.clone())).collect();
+        let api_networks = api_networks
+            .filter(|networks| !networks.is_empty())
+            .map(|networks| {
+                let list = networks
+                    .iter()
+                    .map(|net| net.trunc().to_string())
+                    .collect::<Vec<_>>();
+                AsciiString::from(list.join(",").as_str())
+            });
+        self.ip_service = current
+            .iter()
+            .map(|service| (service.name.clone(), service.data.clone()))
+            .collect();
         for (name, service) in &mut self.ip_service {
             let restrict = |service: &mut IpServiceCfg| {
                 if let Some(networks) = &api_networks {
@@ -577,12 +645,15 @@ impl BaseDeviceDataTarget {
             return None;
         }
         let name = AsciiString::from("api");
-        if let (Some(target), Some(current)) =
-            (self.ip_service.get_mut(&name), current.iter().find(|service| service.name == name))
-        {
+        if let (Some(target), Some(current)) = (
+            self.ip_service.get_mut(&name),
+            current.iter().find(|service| service.name == name),
+        ) {
             *target = current.data.clone();
         }
-        Some(ApplyWarning::ApiClientsOutside(ApiClientsOutside { clients: outside }))
+        Some(ApplyWarning::ApiClientsOutside(ApiClientsOutside {
+            clients: outside,
+        }))
     }
     fn set_identity(&mut self, name: impl Into<AsciiString>) {
         self.identity.name = name.into();
@@ -866,7 +937,11 @@ impl BaseDeviceDataTarget {
     /// tunnel (`gre`, `ipip`, …), a PPPoE client or any other kind set up by hand, as BGP is.
     /// Managed are the Ethernet ports, bridges, VLANs, VXLANs, the radios (`radios`) and `lo`;
     /// an address on one of them, or on a removed interface (`*35`), goes with NetBox.
-    fn keep_hand_made_addresses(&mut self, current: &BaseDeviceDataCurrent, radios: &[AsciiString]) {
+    fn keep_hand_made_addresses(
+        &mut self,
+        current: &BaseDeviceDataCurrent,
+        radios: &[AsciiString],
+    ) {
         let managed = current
             .ethernet
             .iter()
@@ -882,11 +957,23 @@ impl BaseDeviceDataTarget {
             let name: &[u8] = interface.0.as_ref();
             !name.is_empty() && !name.starts_with(b"*") && name != b"lo" && !managed.contains(name)
         };
-        for address in current.ipv_4_address.iter().filter(|a| hand_made(&a.0.interface)) {
-            self.ipv_4_address.entry(address.0.address).or_insert_with(|| address.clone());
+        for address in current
+            .ipv_4_address
+            .iter()
+            .filter(|a| hand_made(&a.0.interface))
+        {
+            self.ipv_4_address
+                .entry(address.0.address)
+                .or_insert_with(|| address.clone());
         }
-        for address in current.ipv_6_address.iter().filter(|a| hand_made(&a.0.interface)) {
-            self.ipv_6_address.entry(address.0.address).or_insert_with(|| address.clone());
+        for address in current
+            .ipv_6_address
+            .iter()
+            .filter(|a| hand_made(&a.0.interface))
+        {
+            self.ipv_6_address
+                .entry(address.0.address)
+                .or_insert_with(|| address.clone());
         }
     }
 
@@ -981,7 +1068,11 @@ impl BaseDeviceDataTarget {
     /// Customer ports stay out, also those in the same bridge: the list takes the port itself,
     /// which RouterOS honors for a bridge port too (CHR 7.24.5). Runs after `setup_l2`, which
     /// names the ports.
-    fn setup_maintenance_ports<N: NameGenerator>(&mut self, device: &DeviceAccess, l2: &L2Setup<N>) {
+    fn setup_maintenance_ports<N: NameGenerator>(
+        &mut self,
+        device: &DeviceAccess,
+        l2: &L2Setup<N>,
+    ) {
         let mut members = BTreeSet::new();
         let mut used = HashSet::new();
         for port in device.interfaces() {
@@ -1262,7 +1353,11 @@ impl BaseDeviceDataTarget {
             if_name.clone(),
             Ipv6DhcpClientByInterface(Ipv6DhcpClientCfg {
                 interface: if_name,
-                request: [Ipv6DhcpClientRequest::Address, Ipv6DhcpClientRequest::Prefix].into(),
+                request: [
+                    Ipv6DhcpClientRequest::Address,
+                    Ipv6DhcpClientRequest::Prefix,
+                ]
+                .into(),
                 accept_prefix_without_address: true,
                 add_default_route: !use_ospf,
                 // RouterOS reports the distance only with a default route
@@ -1296,14 +1391,22 @@ impl BaseDeviceDataTarget {
                         request: target.request.clone(),
                         add_default_route: target.add_default_route,
                         default_route_distance: target.default_route_distance,
-                        pool_name: client.0.pool_name.clone().or_else(|| target.pool_name.clone()),
-                        pool_prefix_length: client.0.pool_prefix_length.or(target.pool_prefix_length),
+                        pool_name: client
+                            .0
+                            .pool_name
+                            .clone()
+                            .or_else(|| target.pool_name.clone()),
+                        pool_prefix_length: client
+                            .0
+                            .pool_prefix_length
+                            .or(target.pool_prefix_length),
                         disabled: false,
                         ..client.0.clone()
                     };
                 }
                 None => {
-                    self.dhcp_v_6_client.insert(client.0.interface.clone(), client.clone());
+                    self.dhcp_v_6_client
+                        .insert(client.0.interface.clone(), client.clone());
                 }
             }
         }
@@ -1374,9 +1477,10 @@ impl BaseDeviceDataTarget {
                                 interface: if_name.clone(),
                             });
                         };
-                        let IpNet::V4(net) = prefix.prefix().ok_or(SetupError::MissingAddressOnPrefix {
-                            prefix: prefix.id(),
-                        })?
+                        let IpNet::V4(net) =
+                            prefix.prefix().ok_or(SetupError::MissingAddressOnPrefix {
+                                prefix: prefix.id(),
+                            })?
                         else {
                             continue;
                         };
@@ -1412,12 +1516,12 @@ impl BaseDeviceDataTarget {
                         server.interface = if_name.clone();
                         server.address_pool = server_name.clone();
                         if let Some(lease_time) = prefix.dhcp_lease_time() {
-                            let shortest = port_lease_time.map_or(lease_time, |t| t.min(lease_time));
+                            let shortest =
+                                port_lease_time.map_or(lease_time, |t| t.min(lease_time));
                             port_lease_time = Some(shortest);
                             server.lease_time = Some(shortest);
                         }
-                        let network =
-                            &mut self.dhcp_v_4_server_network.entry(net).or_default().0;
+                        let network = &mut self.dhcp_v_4_server_network.entry(net).or_default().0;
                         network.gateway.insert(v4.addr());
                         if !network.dns_server.contains(&v4.addr()) {
                             network.dns_server = network
@@ -1498,7 +1602,10 @@ impl BaseDeviceDataTarget {
                 .collect::<Box<[_]>>();
             // only where there are client networks to announce them to
             let client_networks = !self.dhcp_v_4_server_network.is_empty()
-                || self.ipv_6_address.values().any(|address| address.0.advertise);
+                || self
+                    .ipv_6_address
+                    .values()
+                    .any(|address| address.0.advertise);
             if client_networks && !v6.is_empty() {
                 nd.dns = Some(v6);
                 nd.advertise_dns = Some(true);
@@ -1514,7 +1621,11 @@ impl BaseDeviceDataTarget {
                 .chain(device.loopback_ip().and_then(|ip| ip.addr()))
                 .collect::<HashSet<_>>();
             let resolver = servers.iter().any(|ip| own.contains(ip));
-            self.dns.servers = servers.iter().filter(|ip| !own.contains(ip)).copied().collect();
+            self.dns.servers = servers
+                .iter()
+                .filter(|ip| !own.contains(ip))
+                .copied()
+                .collect();
             self.dns.allow_remote_requests = resolver;
             return;
         }
@@ -1560,25 +1671,23 @@ impl BaseDeviceDataTarget {
     }
     /// Masquerades what leaves through the uplink `if_name` (NetBox tag `nat`).
     fn masquerade(&mut self, if_name: &AsciiString) {
-        self.ip_firewall_nat.push(
-            IpFirewallNatCfg {
-                action: IpFirewallNatAction::Masquerade,
-                chain: b"srcnat".into(),
-                comment: Some(firewall_comment(&["masquerade", &if_name.to_string()])),
-                disabled: false,
-                dst_address: None,
-                dst_port: None,
-                in_interface: None,
-                in_interface_list: None,
-                jump_target: None,
-                out_interface: Some(if_name.clone()),
-                out_interface_list: None,
-                protocol: None,
-                src_address: None,
-                to_addresses: None,
-                to_ports: None,
-            },
-        );
+        self.ip_firewall_nat.push(IpFirewallNatCfg {
+            action: IpFirewallNatAction::Masquerade,
+            chain: b"srcnat".into(),
+            comment: Some(firewall_comment(&["masquerade", &if_name.to_string()])),
+            disabled: false,
+            dst_address: None,
+            dst_port: None,
+            in_interface: None,
+            in_interface_list: None,
+            jump_target: None,
+            out_interface: Some(if_name.clone()),
+            out_interface_list: None,
+            protocol: None,
+            src_address: None,
+            to_addresses: None,
+            to_ports: None,
+        });
     }
 }
 

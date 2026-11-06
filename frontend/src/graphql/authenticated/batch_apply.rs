@@ -12,14 +12,18 @@ pub struct DeviceVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct BatchCandidates {
     pub topology: CandidatesTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "TopologyHolder", variables = "DeviceVariables")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "TopologyHolder",
+    variables = "DeviceVariables"
+)]
 pub struct CandidatesTopology {
     #[arguments(id: $id)]
     pub device_by_id: Option<CandidatesDevice>,
@@ -57,14 +61,18 @@ pub struct CandidateSite {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct BatchDevice {
     pub topology: PlanTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "TopologyHolder", variables = "DeviceVariables")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "TopologyHolder",
+    variables = "DeviceVariables"
+)]
 pub struct PlanTopology {
     #[arguments(id: $id)]
     pub device_by_id: Option<PlanDevice>,
@@ -107,7 +115,7 @@ pub struct ApplyBatchVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "ApplyBatchVariables",
+    variables = "ApplyBatchVariables"
 )]
 pub struct ApplyBatch {
     #[arguments(ids: $ids)]

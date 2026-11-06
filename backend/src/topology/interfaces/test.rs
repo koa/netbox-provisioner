@@ -36,7 +36,11 @@ impl Net {
         builder.interfaces.get_mut(&far).unwrap().label = "r1".into();
 
         let uplink = port(&mut builder, r1, "ether2", None, false);
-        builder.interfaces.get_mut(&uplink).unwrap().enable_dhcp_client = true;
+        builder
+            .interfaces
+            .get_mut(&uplink)
+            .unwrap()
+            .enable_dhcp_client = true;
 
         let radio_port = port(&mut builder, r1, "ether3", Some("172.17.1.9/29"), true);
         let far_radio_port = port(&mut builder, r2, "ether2", Some("172.17.1.10/29"), true);
@@ -44,7 +48,12 @@ impl Net {
         let (b2_ether, b2_radio) = bridge_device(&mut builder, b2, RadioRole::Station);
         cable(&mut builder, radio_port, b1_ether);
         cable(&mut builder, far_radio_port, b2_ether);
-        for (port, label) in [(radio_port, "b1"), (far_radio_port, "b2"), (b1_ether, "r1"), (b2_ether, "r2")] {
+        for (port, label) in [
+            (radio_port, "b1"),
+            (far_radio_port, "b2"),
+            (b1_ether, "r1"),
+            (b2_ether, "r2"),
+        ] {
             builder.interfaces.get_mut(&port).unwrap().label = label.into();
         }
         for (radio, peer) in [(b1_radio, b2_radio), (b2_radio, b1_radio)] {
@@ -353,10 +362,8 @@ fn a_radio_link_shows_the_way_to_the_other_router() {
     let net = Net::new();
     let r1 = net.r1;
     let path = row(&net.view(r1), "ether3").radio_path.clone().unwrap();
-    let name = |i: &Option<InterfaceRef>| {
-        i.as_ref()
-            .map(|i| format!("{} {}", i.device.name, i.name))
-    };
+    let name =
+        |i: &Option<InterfaceRef>| i.as_ref().map(|i| format!("{} {}", i.device.name, i.name));
     assert_eq!(name(&path.router_port).as_deref(), Some("r1 ether3"));
     assert_eq!(name(&path.bridge_port).as_deref(), Some("b1 ether1"));
     assert_eq!(name(&path.radio).as_deref(), Some("b1 wlan1"));
@@ -373,7 +380,10 @@ fn a_bridge_device_shows_the_link_from_its_side() {
     let view = net.view(b1);
     assert_eq!(tasks(&view), [("bridge", InterfaceTask::RadioLink)]);
     let path = view.rows[0].radio_path.clone().unwrap();
-    assert_eq!(path.router_port.map(|p| p.device.name).as_deref(), Some("r1"));
+    assert_eq!(
+        path.router_port.map(|p| p.device.name).as_deref(),
+        Some("r1")
+    );
     assert_eq!(
         path.peer_router_port.map(|p| p.device.name).as_deref(),
         Some("r2")
@@ -388,7 +398,11 @@ fn a_customer_port_without_address_names_the_gateway() {
     let elsewhere = row(&view, "ether3");
     assert_eq!(elsewhere.task, InterfaceTask::Customer);
     assert_eq!(
-        elsewhere.gateways.iter().map(|d| &*d.name).collect::<Vec<_>>(),
+        elsewhere
+            .gateways
+            .iter()
+            .map(|d| &*d.name)
+            .collect::<Vec<_>>(),
         ["r1"]
     );
 }
@@ -406,17 +420,30 @@ fn findings_go_to_their_rows() {
     let view = topology.get_device_by_id(&r1).unwrap().interface_view();
     assert!(matches!(
         &row(&view, "ether1").findings[..],
-        [Finding { kind: FindingKind::MtuMismatch(_), .. }]
+        [Finding {
+            kind: FindingKind::MtuMismatch(_),
+            ..
+        }]
     ));
-    assert!(view.device_findings.is_empty(), "{:#?}", view.device_findings);
+    assert!(
+        view.device_findings.is_empty(),
+        "{:#?}",
+        view.device_findings
+    );
     let view = topology.get_device_by_id(&r2).unwrap().interface_view();
     assert!(matches!(
         &row(&view, "ether1").findings[..],
-        [Finding { kind: FindingKind::MtuMismatch(_), .. }]
+        [Finding {
+            kind: FindingKind::MtuMismatch(_),
+            ..
+        }]
     ));
     assert!(matches!(
         &view.device_findings[..],
-        [Finding { kind: FindingKind::NoPrimaryIpv4(_), .. }]
+        [Finding {
+            kind: FindingKind::NoPrimaryIpv4(_),
+            ..
+        }]
     ));
 }
 
@@ -438,7 +465,11 @@ fn interfaces_of_netbox_example() {
         out.push_str(&format!("{}\n", device.name()));
         for row in &view.rows {
             let ports = row.ports.iter().map(|p| &*p.name).collect::<Vec<_>>();
-            let addresses = row.addresses.iter().map(|a| &*a.address).collect::<Vec<_>>();
+            let addresses = row
+                .addresses
+                .iter()
+                .map(|a| &*a.address)
+                .collect::<Vec<_>>();
             let far_ends = row
                 .far_ends
                 .iter()
@@ -484,7 +515,10 @@ fn rows_offer_the_helpers_that_fit() {
         .map(|(id, _)| *id)
         .unwrap();
     // a free port has the same actions as one without a task
-    let free_view = Arc::new(net.builder.clone().build()).get_device_by_id(&r1).unwrap().interface_view();
+    let free_view = Arc::new(net.builder.clone().build())
+        .get_device_by_id(&r1)
+        .unwrap()
+        .interface_view();
     let free = row(&free_view, "ether5");
     assert!(free.free);
     let free_helpers = helpers(free);
@@ -504,7 +538,10 @@ fn rows_offer_the_helpers_that_fit() {
     );
     assert_eq!(direct.actions[0].interface, Some(link.0));
     assert_eq!(
-        direct.actions[0].peer.as_ref().map(|p| (&*p.device.name, &*p.name)),
+        direct.actions[0]
+            .peer
+            .as_ref()
+            .map(|p| (&*p.device.name, &*p.name)),
         Some(("r2", "ether1"))
     );
     let unknown = [
@@ -519,7 +556,12 @@ fn rows_offer_the_helpers_that_fit() {
     assert_eq!(helpers(row(&view, "ether5")), unknown);
     assert_eq!(free_helpers, unknown);
     let ether5_row = row(&view, "ether5");
-    assert!(ether5_row.actions.iter().all(|a| a.interface == Some(ether5.0)));
+    assert!(
+        ether5_row
+            .actions
+            .iter()
+            .all(|a| a.interface == Some(ether5.0))
+    );
     // „Funkbrücke“ from the router port: the bridge device is chosen in the helper
     assert!(ether5_row.actions[3].peer.is_none());
     // the router's end of a complete radio link without findings: taking it out, its settings
@@ -539,16 +581,25 @@ fn rows_offer_the_helpers_that_fit() {
         clients
             .port_rows
             .iter()
-            .map(|p| (&*p.interface.name, p.actions.iter().map(|a| (a.helper, a.interface)).collect::<Vec<_>>()))
+            .map(|p| (
+                &*p.interface.name,
+                p.actions
+                    .iter()
+                    .map(|a| (a.helper, a.interface))
+                    .collect::<Vec<_>>()
+            ))
             .collect::<Vec<_>>(),
-        [("ether4", vec![(ActionHelper::Poe, ether4), (ActionHelper::BridgeLeave, ether4)])]
+        [(
+            "ether4",
+            vec![
+                (ActionHelper::Poe, ether4),
+                (ActionHelper::BridgeLeave, ether4)
+            ]
+        )]
     );
     assert!(!helpers(clients).contains(&(ActionKind::Edit, ActionHelper::Poe)));
     // a customer bridge with IPv4 only: the helper can bring IPv6
-    assert_eq!(
-        row(&view, "bridge-clients").actions[0].vlan,
-        Some(10)
-    );
+    assert_eq!(row(&view, "bridge-clients").actions[0].vlan, Some(10));
     assert!(view.loopback_actions.is_empty());
 
     // r2's VLAN port has its L3 on r1: no network of its own, taking it out, its settings
@@ -565,16 +616,27 @@ fn rows_offer_the_helpers_that_fit() {
     // the bridge device: no loopback yet
     let view = topology.get_device_by_id(&b1).unwrap().interface_view();
     // a radio bridge's ports stay in its bridge
-    assert!(view
-        .rows
-        .iter()
-        .flat_map(|r| &r.port_rows)
-        .flat_map(|p| &p.actions)
-        .all(|a| a.helper != ActionHelper::BridgeLeave));
+    assert!(
+        view.rows
+            .iter()
+            .flat_map(|r| &r.port_rows)
+            .flat_map(|p| &p.actions)
+            .all(|a| a.helper != ActionHelper::BridgeLeave)
+    );
     assert!(view.rows.iter().any(|r| !r.port_rows.is_empty()));
     // a free port of it: only „Funkbrücke“ and its settings
-    let unknown_rows = view.rows.iter().filter(|r| r.task == InterfaceTask::Unknown).collect::<Vec<_>>();
-    assert_eq!(unknown_rows.iter().map(|r| &*r.interface.name).collect::<Vec<_>>(), ["ether2"]);
+    let unknown_rows = view
+        .rows
+        .iter()
+        .filter(|r| r.task == InterfaceTask::Unknown)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        unknown_rows
+            .iter()
+            .map(|r| &*r.interface.name)
+            .collect::<Vec<_>>(),
+        ["ether2"]
+    );
     for unknown in unknown_rows {
         assert_eq!(
             helpers(unknown).first(),
@@ -588,7 +650,10 @@ fn rows_offer_the_helpers_that_fit() {
         )));
     }
     assert_eq!(
-        view.loopback_actions.iter().map(|a| a.helper).collect::<Vec<_>>(),
+        view.loopback_actions
+            .iter()
+            .map(|a| a.helper)
+            .collect::<Vec<_>>(),
         [ActionHelper::Loopback]
     );
 }
@@ -621,7 +686,10 @@ fn a_radio_link_offers_funkbruecke_from_the_router_port() {
     );
     assert_eq!(radio.actions[0].interface, Some(ether3.0));
     assert_eq!(
-        radio.actions[0].peer.as_ref().map(|p| (&*p.device.name, &*p.name)),
+        radio.actions[0]
+            .peer
+            .as_ref()
+            .map(|p| (&*p.device.name, &*p.name)),
         Some(("b1", "ether1"))
     );
 }
@@ -648,7 +716,12 @@ fn a_vlan_on_no_port_offers_vlan_am_port() {
     let action = &guests.actions[0];
     assert_eq!(
         (action.kind, action.helper, action.interface, action.vlan),
-        (ActionKind::Suggestion, ActionHelper::PortVlan, None, Some(vlan.0))
+        (
+            ActionKind::Suggestion,
+            ActionHelper::PortVlan,
+            None,
+            Some(vlan.0)
+        )
     );
 
     let ether5 = net.interface(r1, "ether5");

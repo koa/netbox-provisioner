@@ -36,7 +36,11 @@ pub(crate) async fn add_to(
     device: &DeviceAccess,
     routes: &mut Option<Routes>,
 ) -> Result<(), Error> {
-    let lo = device.interfaces().iter().find(|i| i.name() == "lo").cloned();
+    let lo = device
+        .interfaces()
+        .iter()
+        .find(|i| i.name() == "lo")
+        .cloned();
     let on = match &lo {
         Some(lo) => Target::Existing(lo.id().0),
         None => {
@@ -55,10 +59,10 @@ pub(crate) async fn add_to(
     let mut rest = None;
     for v6 in [false, true] {
         let version = if v6 { IpVersion::V6 } else { IpVersion::V4 };
-        let existing = lo
-            .iter()
-            .flat_map(|lo| lo.ips())
-            .find(|ip| ip.net().is_some_and(|net| matches!(net, IpNet::V6(_)) == v6));
+        let existing = lo.iter().flat_map(|lo| lo.ips()).find(|ip| {
+            ip.net()
+                .is_some_and(|net| matches!(net, IpNet::V6(_)) == v6)
+        });
         let (address_id, address) = match &existing {
             Some(ip) => (
                 Target::Existing(ip.id().0),
@@ -128,7 +132,10 @@ async fn next_free(
 ) -> Result<(IpNet, IpAddr), Error> {
     for (id, prefix) in device.topology().pool_prefixes(PrefixPool::Loopback, v6) {
         let free = rest
-            .get(&format!("ipam/prefixes/{}/available-ips/?limit={CANDIDATES}", id.0))
+            .get(&format!(
+                "ipam/prefixes/{}/available-ips/?limit={CANDIDATES}",
+                id.0
+            ))
             .await?;
         let candidates = free
             .as_array()

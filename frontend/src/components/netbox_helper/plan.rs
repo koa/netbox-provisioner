@@ -40,8 +40,11 @@ impl NetboxHelper {
             None => Html::default(),
             Some(Err(error)) => error.to_html(),
             Some(Ok(preview)) => {
-                let gone: Vec<&String> =
-                    preview.before.iter().filter(|kind| !preview.after.contains(kind)).collect();
+                let gone: Vec<&String> = preview
+                    .before
+                    .iter()
+                    .filter(|kind| !preview.after.contains(kind))
+                    .collect();
                 html! {<div class="helper-preview">
                     if preview.after.is_empty() {
                         <p>{t::NO_FINDINGS_AFTER}</p>
@@ -81,16 +84,22 @@ pub(super) fn describe(step: &Step) -> String {
             &create.tags.iter().map(tag_slug).collect::<Vec<_>>(),
             create.mac.as_deref(),
         ),
-        Step::CreateAddress(create) => {
-            t::create_address(&create.address, &create.device.name, &create.interface, &create.prefix)
-        }
+        Step::CreateAddress(create) => t::create_address(
+            &create.address,
+            &create.device.name,
+            &create.interface,
+            &create.prefix,
+        ),
         Step::CreateCable(create) => t::create_cable(
             (&create.a.device.name, &create.a.name),
             (&create.b.device.name, &create.b.name),
         ),
-        Step::CreatePrefix(create) => {
-            t::create_prefix(&create.prefix, &create.pool, &create.description, create.dhcp_lease_time)
-        }
+        Step::CreatePrefix(create) => t::create_prefix(
+            &create.prefix,
+            &create.pool,
+            &create.description,
+            create.dhcp_lease_time,
+        ),
         Step::UpdateInterface(update) => t::update_interface(
             (&update.interface.device.name, &update.interface.name),
             update
@@ -101,14 +110,20 @@ pub(super) fn describe(step: &Step) -> String {
             &update.tags_added.iter().map(tag_slug).collect::<Vec<_>>(),
             &update.tags_removed.iter().map(tag_slug).collect::<Vec<_>>(),
             match (&update.poe, update.poe_removed) {
-                (Some(poe), _) => Some((Some(plan_poe_mode(poe)), update.poe_before.as_ref().map(plan_poe_mode))),
+                (Some(poe), _) => Some((
+                    Some(plan_poe_mode(poe)),
+                    update.poe_before.as_ref().map(plan_poe_mode),
+                )),
                 (None, true) => Some((None, update.poe_before.as_ref().map(plan_poe_mode))),
                 (None, false) => None,
             },
         ),
         Step::DeleteCable(delete) => t::delete_cable(
             (&delete.port.device.name, &delete.port.name),
-            delete.far.as_ref().map(|far| (far.device.name.as_str(), far.name.as_str())),
+            delete
+                .far
+                .as_ref()
+                .map(|far| (far.device.name.as_str(), far.name.as_str())),
         ),
         Step::DeleteAddress(delete) => t::delete_address(
             &delete.address,
@@ -152,7 +167,10 @@ pub(super) fn describe(step: &Step) -> String {
         Step::UpdateWirelessLink(update) => t::update_wireless_link(
             (&update.a.device.name, &update.a.name),
             (&update.b.device.name, &update.b.name),
-            update.ssid.as_deref().map(|ssid| (ssid, update.ssid_before.as_str())),
+            update
+                .ssid
+                .as_deref()
+                .map(|ssid| (ssid, update.ssid_before.as_str())),
             update.psk_set,
         ),
         Step::SetPrimaryIp(set) => t::set_primary(
@@ -174,7 +192,9 @@ pub(super) fn describe(step: &Step) -> String {
 /// midway wrote only the steps before.
 pub(super) fn last_write(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
-        let query = HelperJobs::build(HelperJobsVariables { device_id: id as i32 });
+        let query = HelperJobs::build(HelperJobsVariables {
+            device_id: id as i32,
+        });
         let Ok(data) = request(scope.clone(), query).await else {
             return;
         };
@@ -198,9 +218,12 @@ pub(super) fn last_write(scope: Scope<NetboxHelper>, id: u32) {
 pub(super) fn fetch_plan(scope: Scope<NetboxHelper>, id: u32, choice: HelperChoice) {
     spawn_local(async move {
         let helper = helper(choice.clone(), id);
-        let plan = request(scope.clone(), NetboxPlanQuery::build(NetboxPlanVariables { helper }))
-            .await
-            .map(Box::new);
+        let plan = request(
+            scope.clone(),
+            NetboxPlanQuery::build(NetboxPlanVariables { helper }),
+        )
+        .await
+        .map(Box::new);
         scope.send_message(NetboxHelperMsg::Plan(choice, plan));
     });
 }
@@ -212,10 +235,9 @@ pub(super) fn fetch_preview(
     target: SelectedTarget,
 ) {
     spawn_local(async move {
-        let (credential_name, adhoc_credentials) =
-            target.credentials.variables(|username, password| {
-                AdhocCredentials { username, password }
-            });
+        let (credential_name, adhoc_credentials) = target
+            .credentials
+            .variables(|username, password| AdhocCredentials { username, password });
         let query = NetboxPlanPreview::build(NetboxPlanPreviewVariables {
             id: id as i32,
             helper: helper(choice, id),
@@ -225,7 +247,11 @@ pub(super) fn fetch_preview(
         });
         let preview = request(scope.clone(), query).await.map(|data| {
             let kinds = |device: FindingKinds| {
-                device.findings.iter().map(|f| t::finding_kind(f.kind.name().into())).collect()
+                device
+                    .findings
+                    .iter()
+                    .map(|f| t::finding_kind(f.kind.name().into()))
+                    .collect()
             };
             Preview {
                 before: data.topology.device_by_id.map(kinds).unwrap_or_default(),

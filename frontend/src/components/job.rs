@@ -2,7 +2,6 @@
 //! (each answer brings the new ones), worded by `i18n::job`; with a button to cancel it.
 use crate::{
     error::{FrontendError, ServerProblem},
-    i18n::{common::CANCEL, device, job as t, login},
     graphql::{
         authenticated::{
             job::{
@@ -16,6 +15,7 @@ use crate::{
         live::{Subscription, watch_data},
         request,
     },
+    i18n::{common::CANCEL, device, job as t, login},
     pages::start_login,
 };
 use cynic::{MutationBuilder, SubscriptionBuilder};
@@ -101,7 +101,12 @@ impl Component for JobView {
                     // after the connection came back the subscription starts over: only the new
                     let next = job.events.last().map_or(0, |last| last.index + 1);
                     let mut events = job.events;
-                    events.extend(loaded.events.into_iter().filter(|event| event.index >= next));
+                    events.extend(
+                        loaded
+                            .events
+                            .into_iter()
+                            .filter(|event| event.index >= next),
+                    );
                     loaded.events = events;
                 }
                 if loaded.state != JobState::Running {
@@ -137,7 +142,9 @@ impl Component for JobView {
     fn view(&self, ctx: &Context<Self>) -> Html {
         // one line while the server is away or refuses the token, it is asked again
         let error = self.error.as_ref().map(|e| match e {
-            FrontendError::Server { status: 401 | 403, .. } => html! {
+            FrontendError::Server {
+                status: 401 | 403, ..
+            } => html! {
                 <p class="job-unreachable">
                     {t::login_refused(&e.message())}{" "}
                     <Button
@@ -161,9 +168,9 @@ impl Component for JobView {
             return html!(<>{error}<Spinner size={SpinnerSize::Md}/></>);
         };
         let fallback = matches!(job.kind, JobKind::Apply | JobKind::Update);
-        let lost = self.lost.then(|| {
-            html!(<p>{t::LOST_TEXT}{if fallback { t::LOST_FALLBACK } else { "" }}</p>)
-        });
+        let lost = self
+            .lost
+            .then(|| html!(<p>{t::LOST_TEXT}{if fallback { t::LOST_FALLBACK } else { "" }}</p>));
         let running = job.state == JobState::Running && !self.lost;
         let (title, kind) = if self.lost {
             (t::LOST.to_string(), AlertType::Warning)
@@ -347,7 +354,11 @@ fn phase_line(job: &Job, running: bool) -> Option<String> {
         },
         Phase::Unknown => return None,
     };
-    Some(if running { p::running(&state) } else { p::ended(&state) })
+    Some(if running {
+        p::running(&state)
+    } else {
+        p::ended(&state)
+    })
 }
 
 /// `m:ss` since the start of the job.
@@ -419,13 +430,21 @@ fn script_progress(progress: &ScriptProgress, planned: Option<&str>) -> Html {
             .error_line
             .zip(progress.error.as_deref())
             .map(|(line, error)| (line as u32, error)),
-        probe: progress.probe.as_deref().map(|probe| (probe, progress.probe_answered)),
+        probe: progress
+            .probe
+            .as_deref()
+            .map(|probe| (probe, progress.probe_answered)),
         lost: &lost,
         back: &back,
         rearmed: progress.rearmed.map(seconds),
         after_fallback: progress.after_fallback,
     });
-    let at: Vec<i32> = progress.error_line.iter().chain(&progress.lost).copied().collect();
+    let at: Vec<i32> = progress
+        .error_line
+        .iter()
+        .chain(&progress.lost)
+        .copied()
+        .collect();
     let shown = planned.map(|planned| {
         let script: Vec<&str> = planned.lines().collect();
         at.iter()
@@ -433,7 +452,9 @@ fn script_progress(progress: &ScriptProgress, planned: Option<&str>) -> Html {
                 let from = (line - 2).max(1);
                 (from..=line)
                     .filter_map(|n| {
-                        script.get(n as usize - 1).map(|text| format!("{n:>4}  {text}"))
+                        script
+                            .get(n as usize - 1)
+                            .map(|text| format!("{n:>4}  {text}"))
                     })
                     .collect::<Vec<_>>()
                     .join("\n")
@@ -598,12 +619,20 @@ fn describe(event: &Logged) -> Html {
             }
         }),
         Event::DeviceModeConfirm(confirm) => e::device_mode_confirm(
-            &features(confirm.changes.iter().map(|c| (c.feature.as_str(), &c.reason))),
+            &features(
+                confirm
+                    .changes
+                    .iter()
+                    .map(|c| (c.feature.as_str(), &c.reason)),
+            ),
             confirm.timeout / 60_000_000_000,
         ),
-        Event::PowerCycled(cycled) => {
-            e::power_cycled(&cycled.supplier, &cycled.port, &cycled.device, cycled.seconds.into())
-        }
+        Event::PowerCycled(cycled) => e::power_cycled(
+            &cycled.supplier,
+            &cycled.port,
+            &cycled.device,
+            cycled.seconds.into(),
+        ),
         Event::PartitionRunning(running) => e::partition_running(&running.name, &running.version),
         Event::UpdateFallbackArmed(armed) => {
             e::update_fallback_armed(&armed.partition, &armed.version, seconds(armed.delay) / 60)
@@ -662,7 +691,10 @@ fn describe(event: &Logged) -> Html {
             &done.missing_files,
         ),
         Event::DeviceModeChanged(changed) => e::device_mode_changed(&features(
-            changed.changes.iter().map(|c| (c.feature.as_str(), &c.reason)),
+            changed
+                .changes
+                .iter()
+                .map(|c| (c.feature.as_str(), &c.reason)),
         )),
     };
     html!({ text })

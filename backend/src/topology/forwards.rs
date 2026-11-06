@@ -8,13 +8,14 @@
 //! over the other one gets no answer. The generator writes them
 //! (`device::ros::firewall`), the findings name what doesn't work out.
 use crate::topology::{
-    DeviceId, IpAddressId, IpPrefixId, ServiceId, ServicePort, SiteId, Topology, management::ManagementTree,
+    DeviceId, IpAddressId, IpPrefixId, ServiceId, ServicePort, SiteId, Topology,
+    management::ManagementTree,
 };
 use ipnet::IpNet;
 use std::{
-    sync::Arc,
     collections::BTreeMap,
     net::{Ipv4Addr, Ipv6Addr},
+    sync::Arc,
 };
 
 /// A port of an inner IPv4 address, forwarded from the router's uplink (the same port outside).
@@ -84,7 +85,10 @@ impl Topology {
                     IpNet::V4(v4) => {
                         let site = self
                             .site_of_prefix(address.prefix)
-                            .or_else(|| data.device.and_then(|device| self.devices.get(&device)?.site))
+                            .or_else(|| {
+                                data.device
+                                    .and_then(|device| self.devices.get(&device)?.site)
+                            })
                             .or(data.site)
                             .or_else(|| {
                                 let interface = self.interfaces.get(&address.interface?)?;
@@ -134,11 +138,15 @@ impl Topology {
                             }
                         }
                     }
-                    IpNet::V6(v6) => forwards.openings.extend(data.ports.iter().map(|&port| Opening {
-                        service,
-                        address: v6.addr(),
-                        port,
-                    })),
+                    IpNet::V6(v6) => {
+                        forwards
+                            .openings
+                            .extend(data.ports.iter().map(|&port| Opening {
+                                service,
+                                address: v6.addr(),
+                                port,
+                            }))
+                    }
                 }
             }
         }

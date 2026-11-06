@@ -40,7 +40,10 @@ fn steps(plan: &NetboxPlan) -> Vec<String> {
         .iter()
         .map(|step| match step {
             PlanStep::DeleteAddress(d) => {
-                format!("delete {} {} {}", d.interface.device.name, d.interface.name, d.address)
+                format!(
+                    "delete {} {} {}",
+                    d.interface.device.name, d.interface.name, d.address
+                )
             }
             PlanStep::UpdateInterface(u) => format!(
                 "update {} {} label {:?} -{:?}",
@@ -91,7 +94,10 @@ fn the_segment_goes_with_ospf_and_labels() {
         radio: other.id().0,
         ..input
     };
-    assert_eq!(super::plan(&topology, &reverse).expect("plan").steps.len(), plan.steps.len());
+    assert_eq!(
+        super::plan(&topology, &reverse).expect("plan").steps.len(),
+        plan.steps.len()
+    );
 }
 
 /// Asked, the wireless link goes too; cables and radios stay.
@@ -105,8 +111,16 @@ fn the_wireless_link_goes_when_asked() {
         wireless_link: true,
     };
     let plan = plan(&topology, &input).expect("plan");
-    assert_eq!(steps(&plan).last().map(String::as_str), Some("delete link 1"));
-    assert!(!plan.steps.iter().any(|s| matches!(s, PlanStep::DeleteCable(_))));
+    assert_eq!(
+        steps(&plan).last().map(String::as_str),
+        Some("delete link 1")
+    );
+    assert!(
+        !plan
+            .steps
+            .iter()
+            .any(|s| matches!(s, PlanStep::DeleteCable(_)))
+    );
 }
 
 /// schopf-burri – burri-schopf in the export: the preview has the routers' ends without the
@@ -148,5 +162,8 @@ fn the_preview_has_the_link_without_its_network() {
         "the addresses are gone"
     );
     let radio_after = after.get_interface_by_id(radio.id()).unwrap();
-    assert_eq!(radio_after.wireless_peer().map(|p| p.id()), radio.wireless_peer().map(|p| p.id()));
+    assert_eq!(
+        radio_after.wireless_peer().map(|p| p.id()),
+        radio.wireless_peer().map(|p| p.id())
+    );
 }

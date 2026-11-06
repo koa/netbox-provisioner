@@ -13,7 +13,9 @@ use crate::{
     },
 };
 use cynic::QueryBuilder;
-use patternfly_yew::prelude::{Button, ButtonVariant, Form, FormGroup, Spinner, SpinnerSize, TextInput};
+use patternfly_yew::prelude::{
+    Button, ButtonVariant, Form, FormGroup, Spinner, SpinnerSize, TextInput,
+};
 use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 
 pub enum LinkMsg {
@@ -89,13 +91,17 @@ impl NetboxHelper {
     }
     /// A port of any router, with its device's name.
     pub(super) fn any_port(&self, id: u32) -> Option<(&str, &LinkPort)> {
-        self.ports()?.topology.all_devices.iter().find_map(|device| {
-            device
-                .link_ports
-                .iter()
-                .find(|port| port.id as u32 == id)
-                .map(|port| (device.name.as_str(), port))
-        })
+        self.ports()?
+            .topology
+            .all_devices
+            .iter()
+            .find_map(|device| {
+                device
+                    .link_ports
+                    .iter()
+                    .find(|port| port.id as u32 == id)
+                    .map(|port| (device.name.as_str(), port))
+            })
     }
     /// The chosen ends of „Verbindung“ whose link is in the way: a cable elsewhere, or an IPv4
     /// not in a network with the other end.
@@ -111,9 +117,12 @@ impl NetboxHelper {
                     let device = self.ports()?.topology.device_by_id.as_ref()?;
                     self.port(end).map(|port| (device.name.as_str(), port))
                 })?;
-                let other_port = self.any_port(other).map(|(_, p)| p).or_else(|| self.port(other));
-                let cabled_elsewhere = port.cabled
-                    && !port.connected.iter().any(|far| far.id as u32 == other);
+                let other_port = self
+                    .any_port(other)
+                    .map(|(_, p)| p)
+                    .or_else(|| self.port(other));
+                let cabled_elsewhere =
+                    port.cabled && !port.connected.iter().any(|far| far.id as u32 == other);
                 let addressed_elsewhere = port.ipv4.as_deref().is_some_and(|own| {
                     !other_port
                         .and_then(|other| other.ipv4.as_deref())
@@ -195,7 +204,13 @@ impl NetboxHelper {
         let peer_ports = self
             .link
             .peer_device
-            .and_then(|id| ports.topology.all_devices.iter().find(|d| d.id as u32 == id))
+            .and_then(|id| {
+                ports
+                    .topology
+                    .all_devices
+                    .iter()
+                    .find(|d| d.id as u32 == id)
+            })
             .map(|device| choices(&device.link_ports))
             .unwrap_or_default();
         let selected = |entries: &[Choice], id: Option<u32>| {
@@ -261,7 +276,9 @@ pub(super) fn port_choice(port: &LinkPort) -> Choice {
         text: t::link_port(
             &port.name,
             port.label.as_deref(),
-            port.connected.first().map(|far| (far.device.name.as_str(), far.name.as_str())),
+            port.connected
+                .first()
+                .map(|far| (far.device.name.as_str(), far.name.as_str())),
             port.cabled,
             port.ipv4.as_deref(),
             port.bridge.as_deref(),

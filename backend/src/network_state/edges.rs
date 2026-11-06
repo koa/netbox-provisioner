@@ -94,22 +94,32 @@ impl Lsdb {
             .iter()
             .filter(|(_, dr, routers)| routers.contains(&router) && self.transit(router, *dr))
             .flat_map(|(_, dr, routers)| {
-                routers.iter().copied().filter(move |other| *other != router && self.transit(*other, *dr))
+                routers
+                    .iter()
+                    .copied()
+                    .filter(move |other| *other != router && self.transit(*other, *dr))
             })
             .collect()
     }
     /// Whether `router`'s v2 router LSA has a transit link to the segment with DR `dr`.
     fn transit(&self, router: Ipv4Addr, dr: Ipv4Addr) -> bool {
-        self.transit_v2.get(&router).is_some_and(|drs| drs.contains(&dr))
+        self.transit_v2
+            .get(&router)
+            .is_some_and(|drs| drs.contains(&dr))
     }
     fn names_v3(&self, router: Ipv4Addr, neighbor: Ipv4Addr) -> bool {
-        self.neighbors_v3.get(&router).is_some_and(|n| n.contains(&neighbor))
+        self.neighbors_v3
+            .get(&router)
+            .is_some_and(|n| n.contains(&neighbor))
     }
     /// Whether `a` and `b` are neighbors in OSPFv3: on a segment both link to, or naming each
     /// other point to point.
     fn neighbors_v3(&self, a: Ipv4Addr, b: Ipv4Addr) -> bool {
         self.segments_v3.iter().any(|(dr, routers)| {
-            routers.contains(&a) && routers.contains(&b) && self.names_v3(a, *dr) && self.names_v3(b, *dr)
+            routers.contains(&a)
+                && routers.contains(&b)
+                && self.names_v3(a, *dr)
+                && self.names_v3(b, *dr)
         }) || (self.names_v3(a, b) && self.names_v3(b, a))
     }
 }
@@ -165,7 +175,11 @@ pub fn edges(devices: &[DeviceAccess], lsdb: &Lsdb) -> Vec<Edge> {
                 .map(|far| (EdgeKind::Cable, far))
                 .chain(interface.wireless_peer().map(|far| (EdgeKind::Radio, far)));
             for (kind, far) in far_ends {
-                let key = (kind, interface.id().min(far.id()), interface.id().max(far.id()));
+                let key = (
+                    kind,
+                    interface.id().min(far.id()),
+                    interface.id().max(far.id()),
+                );
                 if !seen.insert(key) {
                     continue;
                 }
@@ -204,7 +218,8 @@ pub(crate) fn ospf_end(interface: &InterfaceAccess) -> Option<(DeviceId, Ipv4Add
 }
 
 fn state(a: &InterfaceAccess, b: &InterfaceAccess, lsdb: &Lsdb) -> EdgeState {
-    let (Some((device_a, router_a, nets)), Some((device_b, router_b, _))) = (ospf_end(a), ospf_end(b))
+    let (Some((device_a, router_a, nets)), Some((device_b, router_b, _))) =
+        (ospf_end(a), ospf_end(b))
     else {
         return EdgeState::NotOspf;
     };

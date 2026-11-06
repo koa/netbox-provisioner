@@ -105,7 +105,13 @@ pub(crate) async fn plan_with(
     segment(topology, &mut plan, &sides, routes).await?;
     let ends = sides
         .iter()
-        .map(|side| (side.router_port.clone(), side.ether.clone(), side.device.clone()))
+        .map(|side| {
+            (
+                side.router_port.clone(),
+                side.ether.clone(),
+                side.device.clone(),
+            )
+        })
         .collect::<Vec<_>>();
     labels(&mut plan, &ends);
     Ok(plan)
@@ -119,7 +125,9 @@ pub(super) fn labels(
     cables: &[(InterfaceAccess, InterfaceAccess, DeviceAccess)],
 ) {
     for (router_port, ether, device) in cables {
-        let Some(router) = router_port.device() else { continue };
+        let Some(router) = router_port.device() else {
+            continue;
+        };
         for (end, far) in [(router_port, device), (ether, &router)] {
             if end.label().is_some_and(|label| names(label, far.name())) {
                 continue;
@@ -171,7 +179,13 @@ fn link_plan(
     );
     let mut sides = Vec::new();
     for (device, role, router_port, address, other) in [
-        (&ap, RadioRole::Ap, input.ap_router_port, &input.ap_address, &station),
+        (
+            &ap,
+            RadioRole::Ap,
+            input.ap_router_port,
+            &input.ap_address,
+            &station,
+        ),
         (
             &station,
             RadioRole::Station,
@@ -180,7 +194,15 @@ fn link_plan(
             &ap,
         ),
     ] {
-        sides.push(side(topology, &mut plan, device, role, router_port, address, other)?);
+        sides.push(side(
+            topology,
+            &mut plan,
+            device,
+            role,
+            router_port,
+            address,
+            other,
+        )?);
     }
     let ends = sides
         .iter()
@@ -208,7 +230,10 @@ fn side(
         return Err(Error::NoRouterOs(device.name().into()));
     }
     let interfaces = device.interfaces();
-    let radios = interfaces.iter().filter(|i| is_radio(i)).collect::<Vec<_>>();
+    let radios = interfaces
+        .iter()
+        .filter(|i| is_radio(i))
+        .collect::<Vec<_>>();
     let [radio] = radios[..] else {
         return Err(Error::NoSingleRadio(device.name().into()));
     };
@@ -252,9 +277,8 @@ fn side(
             name: name.into(),
         });
     }
-    let in_bridge = |port: &InterfaceAccess| {
-        port.bridge().map(|b| Target::Existing(b.id().0)) == Some(bridge)
-    };
+    let in_bridge =
+        |port: &InterfaceAccess| port.bridge().map(|b| Target::Existing(b.id().0)) == Some(bridge);
     let radio_role = radio.data().and_then(|d| d.radio.as_ref()).map(|r| r.role);
     for (port, new_name, new_role) in [
         (&ether, None, None),
@@ -313,7 +337,9 @@ pub(super) fn router_cable(
                 return Err(Error::NoRouterOs(router.name().into()));
             }
             let cabled = ethernet().find(|port| {
-                port.connected_interfaces().iter().any(|far| far.id() == router_port.id())
+                port.connected_interfaces()
+                    .iter()
+                    .any(|far| far.id() == router_port.id())
             });
             let ether = match cabled {
                 Some(port) => port.clone(),
@@ -403,25 +429,27 @@ pub(super) fn radios(
             };
             if ssid.is_some() || psk.is_some() {
                 changed = true;
-                plan.steps.push(PlanStep::UpdateWirelessLink(UpdateWirelessLink {
-                    id: end.id,
-                    a: interface_ref(ap),
-                    b: interface_ref(station),
-                    ssid,
-                    ssid_before: link.ssid.clone(),
-                    psk_set: psk.is_some(),
-                    psk,
-                }));
+                plan.steps
+                    .push(PlanStep::UpdateWirelessLink(UpdateWirelessLink {
+                        id: end.id,
+                        a: interface_ref(ap),
+                        b: interface_ref(station),
+                        ssid,
+                        ssid_before: link.ssid.clone(),
+                        psk_set: psk.is_some(),
+                        psk,
+                    }));
             }
         }
         None => {
             changed = true;
-            plan.steps.push(PlanStep::CreateWirelessLink(CreateWirelessLink {
-                a: interface_ref(ap),
-                b: interface_ref(station),
-                ssid: wanted.unwrap_or(ap_device.name()).into(),
-                psk: new_psk(),
-            }));
+            plan.steps
+                .push(PlanStep::CreateWirelessLink(CreateWirelessLink {
+                    a: interface_ref(ap),
+                    b: interface_ref(station),
+                    ssid: wanted.unwrap_or(ap_device.name()).into(),
+                    psk: new_psk(),
+                }));
         }
     }
     Ok(changed)
@@ -486,12 +514,8 @@ async fn segment(
             plan.steps.push(PlanStep::CreatePrefix(CreatePrefix {
                 prefix: net.to_string().into(),
                 pool: pool.to_string().into(),
-                description: format!(
-                    "{} – {}",
-                    ends[0].device.name(),
-                    ends[1].device.name()
-                )
-                .into(),
+                description: format!("{} – {}", ends[0].device.name(), ends[1].device.name())
+                    .into(),
                 site: None,
                 vlan: None,
                 dhcp_lease_time: None,
@@ -529,9 +553,7 @@ async fn segment(
                                 address: wanted.as_str().into(),
                             })?;
                         if taken(topology, plan, net).contains(&address.addr()) {
-                            return Err(Error::NetboxChanged(
-                                format!("{address} is taken").into(),
-                            ));
+                            return Err(Error::NetboxChanged(format!("{address} is taken").into()));
                         }
                         address
                     }
@@ -597,14 +619,16 @@ pub(super) async fn read<'r>(
 /// The hosts of `net` NetBox or the plan hands out already.
 fn taken(topology: &Topology, plan: &NetboxPlan, net: IpNet) -> Vec<IpAddr> {
     let mut taken = topology.addresses_in(net);
-    taken.extend(plan.steps.iter().filter_map(|step| match step {
-        PlanStep::CreateAddress(create) => create
-            .address
-            .parse::<IpNet>()
-            .ok()
-            .map(|address| address.addr())
-            .filter(|host| net.contains(host)),
-        _ => None,
+    taken.extend(plan.steps.iter().filter_map(|step| {
+        match step {
+            PlanStep::CreateAddress(create) => create
+                .address
+                .parse::<IpNet>()
+                .ok()
+                .map(|address| address.addr())
+                .filter(|host| net.contains(host)),
+            _ => None,
+        }
     }));
     taken
 }
@@ -674,9 +698,7 @@ pub(super) async fn next_free_network(
             {
                 candidates.extend(
                     subnets
-                        .filter(|net| {
-                            !planned.iter().any(|p| p.contains(net) || net.contains(p))
-                        })
+                        .filter(|net| !planned.iter().any(|p| p.contains(net) || net.contains(p)))
                         .take(CANDIDATES),
                 );
             }
@@ -693,7 +715,10 @@ pub(super) async fn next_free_network(
                 continue;
             }
             let addresses = rest
-                .find("ipam/ip-addresses/", &[("parent", &net.to_string()), ("limit", "1")])
+                .find(
+                    "ipam/ip-addresses/",
+                    &[("parent", &net.to_string()), ("limit", "1")],
+                )
                 .await?;
             if addresses["count"].as_u64() == Some(0) {
                 return Ok((pool, net));
@@ -727,7 +752,10 @@ pub fn candidates(topology: &Arc<Topology>) -> Vec<RadioBridgeCandidate> {
         .list_devices()
         .filter_map(|device| {
             let interfaces = device.interfaces();
-            let radios = interfaces.iter().filter(|i| is_radio(i)).collect::<Vec<_>>();
+            let radios = interfaces
+                .iter()
+                .filter(|i| is_radio(i))
+                .collect::<Vec<_>>();
             // one without RouterOS may have a backup radio (a Wave Nano's 5 GHz `wlan1`)
             let radio = match radios[..] {
                 [radio] => radio,
@@ -786,9 +814,7 @@ mod test {
             topology
                 .rebuilt_with(|json| {
                     if let Some(addresses) = json["ip_address_list"].as_array_mut() {
-                        addresses.retain(|address| {
-                            !removed.iter().any(|id| address["id"] == *id)
-                        });
+                        addresses.retain(|address| !removed.iter().any(|id| address["id"] == *id));
                     }
                     for device in json["device_list"].as_array_mut().into_iter().flatten() {
                         for interface in device["interfaces"].as_array_mut().into_iter().flatten() {
@@ -834,7 +860,10 @@ mod test {
                 _ => {}
             }
         });
-        let (ap, station) = (find(&topology, "schopf-burri"), find(&topology, "burri-schopf"));
+        let (ap, station) = (
+            find(&topology, "schopf-burri"),
+            find(&topology, "burri-schopf"),
+        );
         let mut routes = Some(Routes::none("test"));
         let plan = plan_with(&topology, &input(&ap, &station), &mut routes)
             .await
@@ -855,7 +884,10 @@ mod test {
             assert_eq!(address.trunc().to_string(), "172.17.0.40/29", "{device}");
             assert_ne!(address.addr().to_string(), "172.17.0.41", "{device}");
         }
-        let devices = addresses.iter().map(|(d, _)| d.as_str()).collect::<Vec<_>>();
+        let devices = addresses
+            .iter()
+            .map(|(d, _)| d.as_str())
+            .collect::<Vec<_>>();
         assert_eq!(devices, ["berghof-burri", "schopf-burri", "burri-schopf"]);
         let tagged = plan
             .steps
@@ -867,7 +899,11 @@ mod test {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(tagged, ["schopf-burri", "burri-schopf"], "the routers have ospf");
+        assert_eq!(
+            tagged,
+            ["schopf-burri", "burri-schopf"],
+            "the routers have ospf"
+        );
         // each cable end names the device at the other one, as „Verbindung“ labels them
         let labels = plan
             .steps
@@ -901,7 +937,9 @@ mod test {
         assert!(
             !plan.steps.iter().any(|step| matches!(
                 step,
-                PlanStep::CreateCable(_) | PlanStep::CreateInterface(_) | PlanStep::CreateWirelessLink(_)
+                PlanStep::CreateCable(_)
+                    | PlanStep::CreateInterface(_)
+                    | PlanStep::CreateWirelessLink(_)
             )),
             "{:#?}",
             plan.steps
@@ -917,7 +955,12 @@ mod test {
         let device = builder.devices.next_id();
         builder.devices.insert(device, Device::default());
         let mut ids = Vec::new();
-        for (name, sixty_ghz) in [("wlan1", true), ("wlan60-1", true), ("radio", false), ("wlan1", false)] {
+        for (name, sixty_ghz) in [
+            ("wlan1", true),
+            ("wlan60-1", true),
+            ("radio", false),
+            ("wlan1", false),
+        ] {
             let id = builder.interfaces.next_id();
             builder.interfaces.insert(
                 id,
@@ -954,7 +997,10 @@ mod test {
                 link["auth_psk"] = serde_json::json!("");
             }
         });
-        let (ap, station) = (find(&topology, "hegglin-schopf"), find(&topology, "schopf-hegglin"));
+        let (ap, station) = (
+            find(&topology, "hegglin-schopf"),
+            find(&topology, "schopf-hegglin"),
+        );
         // without loopbacks and segment: the export's devices lack `lo`, a new one asks NetBox
         let (plan, _) = link_plan(&topology, &input(&ap, &station)).expect("plan");
         let ports = plan
@@ -967,7 +1013,10 @@ mod test {
             .filter(|update| update.rf_role.is_some())
             .collect::<Vec<_>>();
         assert_eq!(ports.len(), 2, "{:#?}", plan.steps);
-        assert!(ports.iter().all(|update| update.name.is_none()), "named as RouterOS");
+        assert!(
+            ports.iter().all(|update| update.name.is_none()),
+            "named as RouterOS"
+        );
         let link = plan.steps.iter().find_map(|step| match step {
             PlanStep::UpdateWirelessLink(update) => Some(update),
             _ => None,
@@ -976,7 +1025,10 @@ mod test {
         assert_eq!(link.ssid.as_deref(), Some("hegglin-schopf"));
         assert!(link.psk_set);
         assert_eq!(
-            plan.apply_together.iter().map(|d| d.name.to_string()).collect::<Vec<_>>(),
+            plan.apply_together
+                .iter()
+                .map(|d| d.name.to_string())
+                .collect::<Vec<_>>(),
             ["hegglin-schopf", "schopf-hegglin"]
         );
         assert!(plan.cut_off.is_empty());

@@ -34,7 +34,11 @@ impl<E: Executor> Executor for Expiring<E> {
         self.0.execute(request)
     }
 
-    fn execute_stream(&self, request: Request, session_data: Option<Arc<Data>>) -> BoxStream<'static, Response> {
+    fn execute_stream(
+        &self,
+        request: Request,
+        session_data: Option<Arc<Data>>,
+    ) -> BoxStream<'static, Response> {
         let expiry = session_data.as_deref().and_then(|data| {
             data.get(&TypeId::of::<TokenExpiry>())
                 .and_then(|expiry| expiry.downcast_ref::<TokenExpiry>())
@@ -123,7 +127,10 @@ mod test {
     async fn an_operation_after_the_expiry_gets_token_expired_only() {
         let past = Utc::now() - chrono::Duration::seconds(1);
         for query in ["{ value }", "subscription { ticks }"] {
-            let answers: Vec<_> = executor().execute_stream(Request::new(query), session(Some(past))).collect().await;
+            let answers: Vec<_> = executor()
+                .execute_stream(Request::new(query), session(Some(past)))
+                .collect()
+                .await;
             assert_eq!(answers.len(), 1, "{query}");
             assert!(is_expired(&answers[0]), "{query}: {:?}", answers[0]);
         }
@@ -131,7 +138,10 @@ mod test {
 
     #[actix_web::test]
     async fn a_connection_without_expiry_gets_token_expired() {
-        let answers: Vec<_> = executor().execute_stream(Request::new("{ value }"), session(None)).collect().await;
+        let answers: Vec<_> = executor()
+            .execute_stream(Request::new("{ value }"), session(None))
+            .collect()
+            .await;
         assert_eq!(answers.len(), 1);
         assert!(is_expired(&answers[0]));
     }
@@ -139,7 +149,10 @@ mod test {
     #[actix_web::test]
     async fn a_query_before_the_expiry_is_answered() {
         let future = Utc::now() + chrono::Duration::seconds(60);
-        let answers: Vec<_> = executor().execute_stream(Request::new("{ value }"), session(Some(future))).collect().await;
+        let answers: Vec<_> = executor()
+            .execute_stream(Request::new("{ value }"), session(Some(future)))
+            .collect()
+            .await;
         assert_eq!(answers.len(), 1);
         assert!(answers[0].errors.is_empty(), "{:?}", answers[0]);
     }
@@ -147,11 +160,17 @@ mod test {
     #[actix_web::test]
     async fn a_subscription_ends_with_token_expired_at_the_expiry() {
         let soon = Utc::now() + chrono::Duration::milliseconds(450);
-        let answers: Vec<_> =
-            executor().execute_stream(Request::new("subscription { ticks }"), session(Some(soon))).collect().await;
+        let answers: Vec<_> = executor()
+            .execute_stream(Request::new("subscription { ticks }"), session(Some(soon)))
+            .collect()
+            .await;
         let (last, ticks) = answers.split_last().expect("answers");
         assert!(is_expired(last), "{last:?}");
-        assert!((2..=5).contains(&ticks.len()), "{} ticks before the expiry", ticks.len());
+        assert!(
+            (2..=5).contains(&ticks.len()),
+            "{} ticks before the expiry",
+            ticks.len()
+        );
         assert!(ticks.iter().all(|tick| tick.errors.is_empty()));
     }
 }

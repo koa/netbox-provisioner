@@ -42,7 +42,12 @@ fn rows_get_their_neighbors_ospf_and_bridges() {
     let topology = Arc::new(net.builder.build());
     let r1 = topology.get_device_by_id(&net.r1).unwrap();
     let r2 = topology.get_device_by_id(&net.r2).unwrap();
-    let far = r2.interfaces().iter().find(|i| i.name() == "ether1").unwrap().clone();
+    let far = r2
+        .interfaces()
+        .iter()
+        .find(|i| i.name() == "ether1")
+        .unwrap()
+        .clone();
     let seen = SeenNeighbor {
         identity: "r2".into(),
         interface_name: "ether1".into(),
@@ -63,7 +68,15 @@ fn rows_get_their_neighbors_ospf_and_bridges() {
     ];
     let answering = BTreeSet::from(["172.16.1.4".parse().unwrap()]);
     let rows = r1.interface_rows();
-    let live = check(&r1, &rows, neighbors, &ospf, &[], &Dhcp::default(), &answering);
+    let live = check(
+        &r1,
+        &rows,
+        neighbors,
+        &ospf,
+        &[],
+        &Dhcp::default(),
+        &answering,
+    );
 
     let direct = live_row(&live, &r1, "ether1");
     assert_eq!(direct.seen, [seen]);
@@ -74,7 +87,12 @@ fn rows_get_their_neighbors_ospf_and_bridges() {
     assert!(direct.bridges.is_empty());
 
     let radio = live_row(&live, &r1, "ether3");
-    let names = |devices: &[DeviceRef]| devices.iter().map(|d| d.name.to_string()).collect::<Vec<_>>();
+    let names = |devices: &[DeviceRef]| {
+        devices
+            .iter()
+            .map(|d| d.name.to_string())
+            .collect::<Vec<_>>()
+    };
     assert_eq!(names(&radio.ospf_missing), ["b1", "b2"]);
     assert_eq!(
         radio
@@ -105,21 +123,34 @@ fn findings_go_to_the_row_of_their_port() {
     };
     let neighbors = Neighbors {
         findings: vec![
-            finding(NeighborFindingKind::NeighborsNotInNetbox(neighbors::NeighborsNotInNetbox {
-                port,
-                seen: Vec::new(),
-            })),
+            finding(NeighborFindingKind::NeighborsNotInNetbox(
+                neighbors::NeighborsNotInNetbox {
+                    port,
+                    seen: Vec::new(),
+                },
+            )),
             finding(NeighborFindingKind::DiscoveryOff(neighbors::DiscoveryOff {
                 list: "*2000011".into(),
             })),
         ],
         seen: BTreeMap::new(),
     };
-    let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &Dhcp::default(), &BTreeSet::new());
+    let live = check(
+        &r1,
+        &r1.interface_rows(),
+        neighbors,
+        &[],
+        &[],
+        &Dhcp::default(),
+        &BTreeSet::new(),
+    );
     assert_eq!(live_row(&live, &r1, "ether1").findings.len(), 1);
     assert!(matches!(
         live.other_findings.as_slice(),
-        [NeighborFinding { kind: NeighborFindingKind::DiscoveryOff(_), .. }]
+        [NeighborFinding {
+            kind: NeighborFindingKind::DiscoveryOff(_),
+            ..
+        }]
     ));
 }
 
@@ -134,11 +165,25 @@ fn an_ospf_neighbor_goes_to_the_interface_with_the_address() {
     };
     // L2 names the customer bridge otherwise than NetBox
     let ospf = [ospf("bridge-clients-10", "172.16.1.2", "10.10.0.2", "Full")];
-    let addresses = [row(&[("address", "10.10.0.1/24"), ("interface", "bridge-clients-10")])];
-    let live = check(&r1, &r1.interface_rows(), neighbors, &ospf, &addresses, &Dhcp::default(), &BTreeSet::new());
+    let addresses = [row(&[
+        ("address", "10.10.0.1/24"),
+        ("interface", "bridge-clients-10"),
+    ])];
+    let live = check(
+        &r1,
+        &r1.interface_rows(),
+        neighbors,
+        &ospf,
+        &addresses,
+        &Dhcp::default(),
+        &BTreeSet::new(),
+    );
     let customer = live_row(&live, &r1, "bridge-clients");
     assert_eq!(customer.ospf.len(), 1);
-    assert_eq!(customer.ospf[0].device.as_ref().map(|d| &*d.name), Some("r2"));
+    assert_eq!(
+        customer.ospf[0].device.as_ref().map(|d| &*d.name),
+        Some("r2")
+    );
 }
 
 /// NetBox has r1 ether1 – r2 ether1, r1 sees r2 ether3 there: „Kabel übernehmen“ to r2 ether3.
@@ -154,7 +199,12 @@ fn another_far_port_suggests_taking_over_the_cable() {
     let far = link.connected_interfaces()[0].clone();
     let interface_ref = crate::topology::findings::interface_ref;
     let seen = |device: &DeviceAccess, name: &str| {
-        let interface = device.interfaces().iter().find(|i| i.name() == name).unwrap().clone();
+        let interface = device
+            .interfaces()
+            .iter()
+            .find(|i| i.name() == name)
+            .unwrap()
+            .clone();
         SeenNeighbor {
             identity: device.name().into(),
             interface_name: name.into(),
@@ -179,7 +229,15 @@ fn another_far_port_suggests_taking_over_the_cable() {
             findings: vec![finding(seen)],
             seen: BTreeMap::new(),
         };
-        let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &Dhcp::default(), &BTreeSet::new());
+        let live = check(
+            &r1,
+            &r1.interface_rows(),
+            neighbors,
+            &[],
+            &[],
+            &Dhcp::default(),
+            &BTreeSet::new(),
+        );
         live_row(&live, &r1, "ether1").actions.clone()
     };
     let to_r2 = seen(&r2, "ether3");
@@ -196,7 +254,13 @@ fn another_far_port_suggests_taking_over_the_cable() {
             lease: None,
         }]
     );
-    let b1_port = b1.interfaces().iter().find(|i| i.radio().is_none()).unwrap().name().to_string();
+    let b1_port = b1
+        .interfaces()
+        .iter()
+        .find(|i| i.radio().is_none())
+        .unwrap()
+        .name()
+        .to_string();
     assert!(actions(seen(&b1, &b1_port)).is_empty());
 }
 
@@ -230,7 +294,15 @@ fn an_unknown_mikrotik_suggests_a_new_device() {
             findings: vec![finding],
             seen: BTreeMap::new(),
         };
-        let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &Dhcp::default(), &BTreeSet::new());
+        let live = check(
+            &r1,
+            &r1.interface_rows(),
+            neighbors,
+            &[],
+            &[],
+            &Dhcp::default(),
+            &BTreeSet::new(),
+        );
         live_row(&live, &r1, "ether5").actions.clone()
     };
     assert_eq!(
@@ -261,11 +333,22 @@ fn device_only_addresses_go_to_their_row() {
     let net = Net::new();
     let topology = Arc::new(net.builder.build());
     let r1 = topology.get_device_by_id(&net.r1).unwrap();
-    let address = |address: &str, interface: &str| row(&[("address", address), ("interface", interface), ("dynamic", "false"), ("disabled", "false")]);
+    let address = |address: &str, interface: &str| {
+        row(&[
+            ("address", address),
+            ("interface", interface),
+            ("dynamic", "false"),
+            ("disabled", "false"),
+        ])
+    };
     let addresses = [
         address("192.168.5.1/24", "ether2"),
         address("172.17.1.10/29", "ether2"),
-        row(&[("address", "192.168.6.1/24"), ("interface", "ether2"), ("dynamic", "true")]),
+        row(&[
+            ("address", "192.168.6.1/24"),
+            ("interface", "ether2"),
+            ("dynamic", "true"),
+        ]),
         address("fe80::1/64", "ether2"),
         address("172.17.1.0/31", "ether1"),
         address("10.10.0.1/24", "bridge-clients"),
@@ -276,17 +359,33 @@ fn device_only_addresses_go_to_their_row() {
         findings: Vec::new(),
         seen: BTreeMap::new(),
     };
-    let live = check(&r1, &r1.interface_rows(), neighbors, &[], &addresses, &Dhcp::default(), &BTreeSet::new());
+    let live = check(
+        &r1,
+        &r1.interface_rows(),
+        neighbors,
+        &[],
+        &addresses,
+        &Dhcp::default(),
+        &BTreeSet::new(),
+    );
     let shown = |row: &LiveRow| {
         row.device_only_addresses
             .iter()
-            .map(|a| (a.address.to_string(), a.elsewhere.as_ref().map(|d| d.name.to_string())))
+            .map(|a| {
+                (
+                    a.address.to_string(),
+                    a.elsewhere.as_ref().map(|d| d.name.to_string()),
+                )
+            })
             .collect::<Vec<_>>()
     };
     let uplink = live_row(&live, &r1, "ether2");
     assert_eq!(
         shown(uplink),
-        [("192.168.5.1/24".into(), None), ("172.17.1.10/29".into(), Some("r2".into()))]
+        [
+            ("192.168.5.1/24".into(), None),
+            ("172.17.1.10/29".into(), Some("r2".into()))
+        ]
     );
     assert_eq!(
         uplink
@@ -296,10 +395,20 @@ fn device_only_addresses_go_to_their_row() {
             .collect::<Vec<_>>(),
         [(ActionHelper::AddressTakeover, Some("192.168.5.1/24"))]
     );
-    assert_eq!(shown(live_row(&live, &r1, "bridge-clients")), [("10.10.0.2/24".into(), None)]);
-    assert!(live_row(&live, &r1, "ether1").device_only_addresses.is_empty());
     assert_eq!(
-        live.other_addresses.iter().map(|a| &*a.address).collect::<Vec<_>>(),
+        shown(live_row(&live, &r1, "bridge-clients")),
+        [("10.10.0.2/24".into(), None)]
+    );
+    assert!(
+        live_row(&live, &r1, "ether1")
+            .device_only_addresses
+            .is_empty()
+    );
+    assert_eq!(
+        live.other_addresses
+            .iter()
+            .map(|a| &*a.address)
+            .collect::<Vec<_>>(),
         ["192.168.9.1/24"]
     );
 }
@@ -313,32 +422,73 @@ fn device_only_leases_go_to_the_row_of_their_server() {
     let topology = Arc::new(net.builder.build());
     let r1 = topology.get_device_by_id(&net.r1).unwrap();
     let lease = |fields: &[(&str, &str)]| {
-        let mut all = vec![("dynamic", "false"), ("disabled", "false"), ("address-lists", ""), ("dhcp-option", "")];
+        let mut all = vec![
+            ("dynamic", "false"),
+            ("disabled", "false"),
+            ("address-lists", ""),
+            ("dhcp-option", ""),
+        ];
         all.extend_from_slice(fields);
         row(&all)
     };
     let dhcp = Dhcp {
-        servers: vec![row(&[("name", "dhcp-bridge-clients"), ("interface", "bridge-clients")])],
+        servers: vec![row(&[
+            ("name", "dhcp-bridge-clients"),
+            ("interface", "bridge-clients"),
+        ])],
         leases: vec![
-            lease(&[("address", "10.10.0.50"), ("mac-address", "AA:BB:CC:DD:EE:01"), ("server", "dhcp-bridge-clients"), ("host-name", "drucker"), ("block-access", "true")]),
-            lease(&[("address", "10.10.0.51"), ("client-id", "1:aa:bb:cc:dd:ee:02"), ("server", "dhcp-bridge-clients")]),
+            lease(&[
+                ("address", "10.10.0.50"),
+                ("mac-address", "AA:BB:CC:DD:EE:01"),
+                ("server", "dhcp-bridge-clients"),
+                ("host-name", "drucker"),
+                ("block-access", "true"),
+            ]),
+            lease(&[
+                ("address", "10.10.0.51"),
+                ("client-id", "1:aa:bb:cc:dd:ee:02"),
+                ("server", "dhcp-bridge-clients"),
+            ]),
             // of all servers: by its network
-            lease(&[("address", "10.10.0.52"), ("mac-address", "AA:BB:CC:DD:EE:03"), ("comment", "kamera")]),
-            row(&[("address", "10.10.0.53"), ("mac-address", "AA:BB:CC:DD:EE:04"), ("dynamic", "true")]),
-            lease(&[("address", "172.17.1.10"), ("mac-address", "AA:BB:CC:DD:EE:05")]),
+            lease(&[
+                ("address", "10.10.0.52"),
+                ("mac-address", "AA:BB:CC:DD:EE:03"),
+                ("comment", "kamera"),
+            ]),
+            row(&[
+                ("address", "10.10.0.53"),
+                ("mac-address", "AA:BB:CC:DD:EE:04"),
+                ("dynamic", "true"),
+            ]),
+            lease(&[
+                ("address", "172.17.1.10"),
+                ("mac-address", "AA:BB:CC:DD:EE:05"),
+            ]),
         ],
     };
     let neighbors = Neighbors {
         findings: Vec::new(),
         seen: BTreeMap::new(),
     };
-    let live = check(&r1, &r1.interface_rows(), neighbors, &[], &[], &dhcp, &BTreeSet::new());
+    let live = check(
+        &r1,
+        &r1.interface_rows(),
+        neighbors,
+        &[],
+        &[],
+        &dhcp,
+        &BTreeSet::new(),
+    );
     let customer = live_row(&live, &r1, "bridge-clients");
     assert_eq!(
         customer
             .device_only_leases
             .iter()
-            .map(|l| (&*l.address, l.name.as_deref(), l.settings.iter().map(|s| &**s).collect::<Vec<_>>()))
+            .map(|l| (
+                &*l.address,
+                l.name.as_deref(),
+                l.settings.iter().map(|s| &**s).collect::<Vec<_>>()
+            ))
             .collect::<Vec<_>>(),
         [
             ("10.10.0.50", Some("drucker"), vec!["block-access"]),
@@ -353,18 +503,36 @@ fn device_only_leases_go_to_the_row_of_their_server() {
             .filter(|a| a.helper == ActionHelper::LeaseTakeover)
             .map(|a| (a.address.as_deref(), a.lease.as_ref().map(|l| &*l.mac)))
             .collect::<Vec<_>>(),
-        [(Some("10.10.0.50"), Some("AA:BB:CC:DD:EE:01")), (Some("10.10.0.52"), Some("AA:BB:CC:DD:EE:03"))]
+        [
+            (Some("10.10.0.50"), Some("AA:BB:CC:DD:EE:01")),
+            (Some("10.10.0.52"), Some("AA:BB:CC:DD:EE:03"))
+        ]
     );
     // the radio link's network: NetBox has the address on r2
     let radio = live_row(&live, &r1, "ether3");
-    assert_eq!(radio.device_only_leases.iter().map(|l| l.elsewhere.as_ref().map(|d| &*d.name)).collect::<Vec<_>>(), [Some("r2")]);
-    assert!(radio.actions.iter().all(|a| a.helper != ActionHelper::LeaseTakeover));
+    assert_eq!(
+        radio
+            .device_only_leases
+            .iter()
+            .map(|l| l.elsewhere.as_ref().map(|d| &*d.name))
+            .collect::<Vec<_>>(),
+        [Some("r2")]
+    );
+    assert!(
+        radio
+            .actions
+            .iter()
+            .all(|a| a.helper != ActionHelper::LeaseTakeover)
+    );
 }
 
 /// A host name padded with NUL bytes is cut at the first; one of only padding is none.
 #[test]
 fn a_padded_host_name_is_cut() {
-    assert_eq!(client_name("Tinkerforge5093BA\0\0\0").as_deref(), Some("Tinkerforge5093BA"));
+    assert_eq!(
+        client_name("Tinkerforge5093BA\0\0\0").as_deref(),
+        Some("Tinkerforge5093BA")
+    );
     assert_eq!(client_name("\0\0"), None);
     assert_eq!(client_name("drucker"), Some("drucker".into()));
 }

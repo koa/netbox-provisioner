@@ -8,9 +8,9 @@
 //! preset a helper opens with, the helper shown and its input.
 mod choice;
 mod flags;
+mod lease;
 mod link;
 mod net;
-mod lease;
 mod new_device;
 mod plan;
 mod poe;
@@ -20,18 +20,6 @@ mod radio;
 pub use choice::{HelperKind, HelperPreset, LinkPreset, NetTarget, RadioPreset};
 pub use new_device::SeenPreset;
 
-use choice::{Choice, HelperChoice, NetEntry, helper};
-use flags::{Flag, FlagFindings, FlagInterface, FlagsMsg, fetch_flag_interfaces};
-use link::{LinkChoice, LinkMsg, fetch_ports};
-use net::{NetChoice, NetMsg, NetOptions, fetch_net_options};
-use lease::{LeaseChoice, LeaseMsg, fetch_lease_options};
-use new_device::{
-    NewDeviceChoice, NewDeviceMsg, fetch_new_device_options, fetch_written_device,
-};
-use plan::{Preview, fetch_plan, fetch_preview, last_write};
-use poe::{Observed, PoeChoice, PoeDirection, PoeMsg, PoeOptionsData, fetch_poe_options};
-use port_vlan::{PortVlanChoice, PortVlanMsg, PortVlanOptionsData, fetch_port_vlan_options};
-use radio::{Candidate, RadioChoice, RadioMsg, fetch_radio_options};
 use crate::{
     components::{adjust_target::SelectedTarget, job::JobView},
     error::FrontendError,
@@ -39,21 +27,30 @@ use crate::{
         authenticated::{
             helper_options::{LeaseTakeoverOptions, LinkPorts, NewDeviceOptions},
             netbox_plan::{
-                NetboxPlanQuery, UndoNetboxWrite, UndoNetboxWriteVariables,
-                WriteNetboxPlan, WriteNetboxPlanVariables,
+                NetboxPlanQuery, UndoNetboxWrite, UndoNetboxWriteVariables, WriteNetboxPlan,
+                WriteNetboxPlanVariables,
             },
         },
         request,
     },
     i18n::helper as t,
 };
+use choice::{Choice, HelperChoice, NetEntry, helper};
 use cynic::MutationBuilder;
+use flags::{Flag, FlagFindings, FlagInterface, FlagsMsg, fetch_flag_interfaces};
+use lease::{LeaseChoice, LeaseMsg, fetch_lease_options};
+use link::{LinkChoice, LinkMsg, fetch_ports};
+use net::{NetChoice, NetMsg, NetOptions, fetch_net_options};
+use new_device::{NewDeviceChoice, NewDeviceMsg, fetch_new_device_options, fetch_written_device};
 use patternfly_yew::prelude::{
     Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Form, Switch,
 };
+use plan::{Preview, fetch_plan, fetch_preview, last_write};
+use poe::{Observed, PoeChoice, PoeDirection, PoeMsg, PoeOptionsData, fetch_poe_options};
+use port_vlan::{PortVlanChoice, PortVlanMsg, PortVlanOptionsData, fetch_port_vlan_options};
+use radio::{Candidate, RadioChoice, RadioMsg, fetch_radio_options};
 use std::collections::BTreeMap;
 use yew::{Callback, Component, Context, Html, Properties, html, platform::spawn_local};
-
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct NetboxHelperProps {
@@ -176,7 +173,11 @@ pub enum NetboxHelperMsg {
     JobFinished(bool),
     /// the last write job of the device the server still knows, not taken back: whether it got
     /// through, and whether it wrote anything
-    LastWrite { id: i32, complete: bool, wrote: bool },
+    LastWrite {
+        id: i32,
+        complete: bool,
+        wrote: bool,
+    },
 }
 
 /// A helper's own message is one of the component: its forms' callbacks give it as is.
@@ -316,7 +317,11 @@ impl Component for NetboxHelper {
             flag_interfaces: None,
             flags: BTreeMap::new(),
             flags_of,
-            fixed_port: ctx.props().preset.as_ref().is_some_and(HelperPreset::fixes_port),
+            fixed_port: ctx
+                .props()
+                .preset
+                .as_ref()
+                .is_some_and(HelperPreset::fixes_port),
             flag_findings: None,
             net,
             net_options: None,
@@ -401,8 +406,9 @@ impl Component for NetboxHelper {
                     fingerprint: plan.netbox_plan.fingerprint.clone(),
                 });
                 spawn_local(async move {
-                    let result =
-                        request(scope.clone(), write).await.map(|data| data.write_netbox_plan.id);
+                    let result = request(scope.clone(), write)
+                        .await
+                        .map(|data| data.write_netbox_plan.id);
                     scope.send_message(NetboxHelperMsg::JobStarted(result, true));
                 });
             }
@@ -415,8 +421,9 @@ impl Component for NetboxHelper {
                 let scope = ctx.link().clone();
                 spawn_local(async move {
                     let undo = UndoNetboxWrite::build(UndoNetboxWriteVariables { job_id });
-                    let result =
-                        request(scope.clone(), undo).await.map(|data| data.undo_netbox_write.id);
+                    let result = request(scope.clone(), undo)
+                        .await
+                        .map(|data| data.undo_netbox_write.id);
                     scope.send_message(NetboxHelperMsg::JobStarted(result, false));
                 });
             }
@@ -433,7 +440,11 @@ impl Component for NetboxHelper {
                     self.error = Some(error);
                 }
             },
-            NetboxHelperMsg::LastWrite { id, complete, wrote } => {
+            NetboxHelperMsg::LastWrite {
+                id,
+                complete,
+                wrote,
+            } => {
                 // on opening, or the write job of this helper being over
                 if self.job.is_none() || self.job == Some(id) {
                     self.written = wrote.then_some(id);
@@ -522,24 +533,28 @@ impl Component for NetboxHelper {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let job = self.job.map(|id| html! {
-            <JobView
-                key={id}
-                id={id}
-                on_finished={ctx.link().callback(NetboxHelperMsg::JobFinished)}
-            />
+        let job = self.job.map(|id| {
+            html! {
+                <JobView
+                    key={id}
+                    id={id}
+                    on_finished={ctx.link().callback(NetboxHelperMsg::JobFinished)}
+                />
+            }
         });
         let error = self.error.as_ref().map(|error| error.to_html());
         let plan = self.plan_view(ctx);
-        let undo = self.written.filter(|_| !self.job_running).map(|_| html! {
-            <div class="helper-actions">
-                <p>{if self.written_partly { t::WRITTEN_PARTLY } else { t::WRITTEN }}</p>
-                <Button
-                    variant={ButtonVariant::Secondary}
-                    label={t::UNDO}
-                    onclick={ctx.link().callback(|_| NetboxHelperMsg::Undo)}
-                />
-            </div>
+        let undo = self.written.filter(|_| !self.job_running).map(|_| {
+            html! {
+                <div class="helper-actions">
+                    <p>{if self.written_partly { t::WRITTEN_PARTLY } else { t::WRITTEN }}</p>
+                    <Button
+                        variant={ButtonVariant::Secondary}
+                        label={t::UNDO}
+                        onclick={ctx.link().callback(|_| NetboxHelperMsg::Undo)}
+                    />
+                </div>
+            }
         });
         let hint = match self.kind {
             HelperKind::Loopback => t::LOOPBACK_HINT,
@@ -736,9 +751,17 @@ impl NetboxHelper {
                     dhcp: self.net.dhcp,
                 }),
             HelperKind::Poe => match self.poe.direction {
-                PoeDirection::Off => Some(HelperChoice::PoeRemove { port: self.poe.port? }),
-                PoeDirection::Feeds => Some(HelperChoice::Poe { pse: self.poe.port?, pd: self.poe.peer }),
-                PoeDirection::Fed => Some(HelperChoice::Poe { pse: self.poe.peer?, pd: Some(self.poe.port?) }),
+                PoeDirection::Off => Some(HelperChoice::PoeRemove {
+                    port: self.poe.port?,
+                }),
+                PoeDirection::Feeds => Some(HelperChoice::Poe {
+                    pse: self.poe.port?,
+                    pd: self.poe.peer,
+                }),
+                PoeDirection::Fed => Some(HelperChoice::Poe {
+                    pse: self.poe.peer?,
+                    pd: Some(self.poe.port?),
+                }),
             },
             HelperKind::RadioBridge => {
                 let radio = &self.radio;

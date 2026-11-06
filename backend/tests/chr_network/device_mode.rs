@@ -47,7 +47,12 @@ async fn feature(node: &RunningNode, feature: &str) -> String {
         .await;
     while let Some(row) = rows.next().await {
         if let SimpleResult::Sentence(row) = row {
-            return row.get(feature).cloned().flatten().unwrap_or_default().into();
+            return row
+                .get(feature)
+                .cloned()
+                .flatten()
+                .unwrap_or_default()
+                .into();
         }
     }
     panic!("no device mode")
@@ -56,7 +61,11 @@ async fn feature(node: &RunningNode, feature: &str) -> String {
 /// Waits until the job asks for the confirmation.
 async fn confirm_asked(log: &Log) {
     tokio::time::timeout(Duration::from_secs(60), async {
-        while !log.events().iter().any(|e| matches!(e, Event::DeviceModeConfirm(_))) {
+        while !log
+            .events()
+            .iter()
+            .any(|e| matches!(e, Event::DeviceModeConfirm(_)))
+        {
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
     })
@@ -139,7 +148,9 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
         .expect("nothing to change");
     assert_eq!(
         log.events(),
-        [Event::DeviceModeChanged(DeviceModeChanged { changes: vec![] })]
+        [Event::DeviceModeChanged(DeviceModeChanged {
+            changes: vec![]
+        })]
     );
 }
 
@@ -194,15 +205,25 @@ async fn home_mode_has_no_fallback() {
     while let Some(answer) = answers.next().await {
         refused.push(format!("{answer:?}"));
     }
-    assert!(refused.iter().any(|a| a.contains("device-mode")), "{refused:?}");
+    assert!(
+        refused.iter().any(|a| a.contains("device-mode")),
+        "{refused:?}"
+    );
     let armed = backend::device::ros::fallback::arm(&device, Duration::from_secs(60))
         .await
         .expect("arm");
     assert_eq!(armed.as_deref(), Some("home"));
-    let mut files = device.send_simple_command(b"/file/print".as_slice(), ()).await;
+    let mut files = device
+        .send_simple_command(b"/file/print".as_slice(), ())
+        .await;
     while let Some(file) = files.next().await {
-        assert!(!format!("{file:?}").contains("netbox-provisioner"), "{file:?}");
+        assert!(
+            !format!("{file:?}").contains("netbox-provisioner"),
+            "{file:?}"
+        );
     }
     // taking a fallback away that isn't there works too
-    backend::device::ros::fallback::disarm(&device).await.expect("disarm");
+    backend::device::ros::fallback::disarm(&device)
+        .await
+        .expect("disarm");
 }

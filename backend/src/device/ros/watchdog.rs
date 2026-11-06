@@ -59,7 +59,11 @@ impl BaseDeviceDataTarget {
             let powered = port
                 .connected_interfaces()
                 .iter()
-                .find_map(|far| far.device().filter(DeviceAccess::has_routeros).map(|_| far.clone()))
+                .find_map(|far| {
+                    far.device()
+                        .filter(DeviceAccess::has_routeros)
+                        .map(|_| far.clone())
+                })
                 .and_then(|far| cable_address(&far));
             ethernet.power_cycle_ping_enabled = Some(powered.is_some());
             ethernet.power_cycle_ping_address = powered;
@@ -105,17 +109,25 @@ impl BaseDeviceDataTarget {
             }));
         }
         for (default_name, port) in self.ethernet.iter_mut() {
-            let Some(address) = port.power_cycle_ping_address.filter(|_| port.power_cycle_ping_enabled == Some(true))
+            let Some(address) = port
+                .power_cycle_ping_address
+                .filter(|_| port.power_cycle_ping_enabled == Some(true))
             else {
                 continue;
             };
             if answering.contains(&address) {
                 continue;
             }
-            let kept = current.ethernet.iter().find(|current| current.default_name == *default_name);
-            port.power_cycle_ping_enabled = kept.and_then(|kept| kept.data.power_cycle_ping_enabled);
-            port.power_cycle_ping_address = kept.and_then(|kept| kept.data.power_cycle_ping_address);
-            port.power_cycle_ping_timeout = kept.and_then(|kept| kept.data.power_cycle_ping_timeout);
+            let kept = current
+                .ethernet
+                .iter()
+                .find(|current| current.default_name == *default_name);
+            port.power_cycle_ping_enabled =
+                kept.and_then(|kept| kept.data.power_cycle_ping_enabled);
+            port.power_cycle_ping_address =
+                kept.and_then(|kept| kept.data.power_cycle_ping_address);
+            port.power_cycle_ping_timeout =
+                kept.and_then(|kept| kept.data.power_cycle_ping_timeout);
             warnings.push(ApplyWarning::WatchTargetSilent(WatchTargetSilent {
                 address: address.to_string().into(),
                 port: Some(port.name.to_string().into()),
@@ -131,7 +143,12 @@ impl BaseDeviceDataTarget {
 fn cable_address(port: &InterfaceAccess) -> Option<IpAddr> {
     port.ips()
         .iter()
-        .chain(port.bridge().map(|bridge| bridge.ips()).unwrap_or_default().iter())
+        .chain(
+            port.bridge()
+                .map(|bridge| bridge.ips())
+                .unwrap_or_default()
+                .iter(),
+        )
         .filter_map(|ip| ip.net())
         .find(|net| matches!(net, ipnet::IpNet::V4(net) if net.prefix_len() < 32))
         .map(|net| net.addr())
@@ -163,13 +180,19 @@ fn through_powered_ports(device: &DeviceAccess, interface: &InterfaceAccess) -> 
         device
             .interfaces()
             .iter()
-            .filter(|port| port.bridge().is_some_and(|bridge| bridge.id() == interface.id()))
+            .filter(|port| {
+                port.bridge()
+                    .is_some_and(|bridge| bridge.id() == interface.id())
+            })
             .cloned()
             .collect()
     } else {
         vec![interface.clone()]
     };
-    let mut cabled = ports.iter().filter(|port| !port.connected_interfaces().is_empty()).peekable();
+    let mut cabled = ports
+        .iter()
+        .filter(|port| !port.connected_interfaces().is_empty())
+        .peekable();
     cabled.peek().is_some() && cabled.all(InterfaceAccess::enable_poe)
 }
 

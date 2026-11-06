@@ -50,14 +50,22 @@ fn addresses_on_tunnels_stay() {
         .iter()
         // an unchanged entry is an update without fields, which the script leaves out
         .filter(|m| m.resource.ends_with(b"address"))
-        .filter(|m| !matches!(m.operation, ResourceMutationOperation::UpdateByKey(_)) || !m.fields.is_empty())
+        .filter(|m| {
+            !matches!(m.operation, ResourceMutationOperation::UpdateByKey(_))
+                || !m.fields.is_empty()
+        })
         .map(|m| {
             let text = |value: &[u8]| String::from_utf8_lossy(value).into_owned();
             match &m.operation {
-                ResourceMutationOperation::RemoveByKey(key) => format!("remove {}", text(&key.value)),
+                ResourceMutationOperation::RemoveByKey(key) => {
+                    format!("remove {}", text(&key.value))
+                }
                 ResourceMutationOperation::Add => {
                     let address = m.fields.iter().find(|field| *field.key == *b"address");
-                    format!("add {}", address.map(|field| text(&field.value)).unwrap_or_default())
+                    format!(
+                        "add {}",
+                        address.map(|field| text(&field.value)).unwrap_or_default()
+                    )
                 }
                 other => format!("{other:?} {:?}", m.fields),
             }
@@ -65,6 +73,10 @@ fn addresses_on_tunnels_stay() {
         .collect::<Vec<_>>();
     assert_eq!(
         changes,
-        ["remove 10.195.17.1/24", "remove 192.168.9.1/24", "add 172.17.0.1/30"],
+        [
+            "remove 10.195.17.1/24",
+            "remove 192.168.9.1/24",
+            "add 172.17.0.1/30"
+        ],
     );
 }

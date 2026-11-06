@@ -11,7 +11,8 @@ use crate::chr_network::scenario::boot_scenario;
 use crate::chr_network::wait::wait_until;
 use backend::topology::builder::TopologyBuilder;
 use backend::topology::{
-    Cable, CablePort, Device, DeviceId, DeviceRole, Interface, IpAddressData, PhysicalPortId, TopologyHolder,
+    Cable, CablePort, Device, DeviceId, DeviceRole, Interface, IpAddressData, PhysicalPortId,
+    TopologyHolder,
 };
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
@@ -53,9 +54,14 @@ fn build() -> Segment {
         },
     );
     let mut speakers = Vec::new();
-    for (index, (name, bridge)) in [("near", false), ("bridge-a", true), ("bridge-b", true), ("far", false)]
-        .into_iter()
-        .enumerate()
+    for (index, (name, bridge)) in [
+        ("near", false),
+        ("bridge-a", true),
+        ("bridge-b", true),
+        ("far", false),
+    ]
+    .into_iter()
+    .enumerate()
     {
         let loopback = address(&mut builder, &format!("192.168.255.{}/32", 21 + index));
         let device = builder.devices.next_id();
@@ -121,9 +127,9 @@ async fn run(
         .send_command(
             command.as_bytes(),
             |cmd| {
-                attributes
-                    .iter()
-                    .fold(cmd, |cmd, (key, value)| cmd.attribute(key.as_bytes(), value.as_bytes()))
+                attributes.iter().fold(cmd, |cmd, (key, value)| {
+                    cmd.attribute(key.as_bytes(), value.as_bytes())
+                })
             },
             (),
         )
@@ -146,10 +152,20 @@ async fn role(device: &MikrotikDevice<SimpleResult>) -> (String, String) {
         .into_iter()
         .find(|row| {
             row.get("interface").cloned().flatten().as_deref() == Some("ether2")
-                && row.get("address").cloned().flatten().is_some_and(|a| a.starts_with("10.0.50."))
+                && row
+                    .get("address")
+                    .cloned()
+                    .flatten()
+                    .is_some_and(|a| a.starts_with("10.0.50."))
         })
         .map(|row| {
-            let field = |name: &str| row.get(name).cloned().flatten().unwrap_or_default().to_string();
+            let field = |name: &str| {
+                row.get(name)
+                    .cloned()
+                    .flatten()
+                    .unwrap_or_default()
+                    .to_string()
+            };
             (field("state"), field("dr"))
         })
         .unwrap_or_default()
@@ -185,13 +201,19 @@ async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
     let holder: TopologyHolder = builder.into();
 
     // by hand: the switch bridges its four ports
-    let switch_api = nodes[&switch].connect_api(crate::TEST_PASSWORD).await.expect("switch api");
+    let switch_api = nodes[&switch]
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("switch api");
     run(&switch_api, "/interface/bridge/add", &[("name", "segment")]).await;
     for ether in 2..=5 {
         run(
             &switch_api,
             "/interface/bridge/port/add",
-            &[("bridge", "segment"), ("interface", &format!("ether{ether}"))],
+            &[
+                ("bridge", "segment"),
+                ("interface", &format!("ether{ether}")),
+            ],
         )
         .await;
     }
@@ -201,9 +223,16 @@ async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
     }
     let mut apis = Vec::new();
     for speaker in speakers {
-        apis.push(nodes[&speaker].connect_api(crate::TEST_PASSWORD).await.expect("api"));
+        apis.push(
+            nodes[&speaker]
+                .connect_api(crate::TEST_PASSWORD)
+                .await
+                .expect("api"),
+        );
     }
-    let [_, bridge_a, bridge_b, _] = &apis[..] else { unreachable!() };
+    let [_, bridge_a, bridge_b, _] = &apis[..] else {
+        unreachable!()
+    };
     let roles = || async {
         let mut roles = Vec::new();
         for api in &apis {
@@ -214,29 +243,55 @@ async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
     };
     let routers_elected = |roles: &[(String, String)]| {
         let elected = |state: &str| state == "dr" || state == "bdr";
-        elected(&roles[0].0) && elected(&roles[3].0) && roles[1].0 == "dr-other" && roles[2].0 == "dr-other"
+        elected(&roles[0].0)
+            && elected(&roles[3].0)
+            && roles[1].0 == "dr-other"
+            && roles[2].0 == "dr-other"
     };
 
-    wait_until(|| async { Ok(routers_elected(&roles().await)) }, Duration::from_secs(180))
-        .await
-        .expect("the routers are DR and BDR, the bridge devices neither");
+    wait_until(
+        || async { Ok(routers_elected(&roles().await)) },
+        Duration::from_secs(180),
+    )
+    .await
+    .expect("the routers are DR and BDR, the bridge devices neither");
 
     // the DR goes away: the other router takes over, and no bridge device steps up as BDR
     let dr = if roles().await[0].0 == "dr" { 0 } else { 3 };
     let other = 3 - dr;
-    run(&apis[dr], "/interface/ethernet/disable", &[("numbers", "ether2")]).await;
-    wait_until(|| async { Ok(roles().await[other].0 == "dr") }, Duration::from_secs(120))
-        .await
-        .expect("the other router becomes DR");
+    run(
+        &apis[dr],
+        "/interface/ethernet/disable",
+        &[("numbers", "ether2")],
+    )
+    .await;
+    wait_until(
+        || async { Ok(roles().await[other].0 == "dr") },
+        Duration::from_secs(120),
+    )
+    .await
+    .expect("the other router becomes DR");
     // longer than the dead interval (40 s) and a wait after it
     tokio::time::sleep(Duration::from_secs(60)).await;
     for api in [bridge_a, bridge_b] {
-        assert_eq!(role(api).await.0, "dr-other", "a bridge device is no BDR with one router left");
+        assert_eq!(
+            role(api).await.0,
+            "dr-other",
+            "a bridge device is no BDR with one router left"
+        );
     }
 
     // and back: the routers again, whichever is DR
-    run(&apis[dr], "/interface/ethernet/enable", &[("numbers", "ether2")]).await;
-    wait_until(|| async { Ok(routers_elected(&roles().await)) }, Duration::from_secs(180))
-        .await
-        .expect("the routers are DR and BDR again");
+    run(
+        &apis[dr],
+        "/interface/ethernet/enable",
+        &[("numbers", "ether2")],
+    )
+    .await;
+    wait_until(
+        || async { Ok(routers_elected(&roles().await)) },
+        Duration::from_secs(180),
+    )
+    .await
+    .expect("the routers are DR and BDR again");
 }

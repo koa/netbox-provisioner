@@ -1,7 +1,8 @@
 use crate::topology::{
-    Cable, CableId, CablePort, CircuitTermination, CircuitTerminationId, Device, DeviceId, FrontPort, FrontPortId, Interface, InterfaceId,
-    ForwardData, IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId, RearPort, ServiceId,
-    RearPortId, SiteData, SiteId, Topology, TopologyHolder, VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData,
+    Cable, CableId, CablePort, CircuitTermination, CircuitTerminationId, Device, DeviceId,
+    ForwardData, FrontPort, FrontPortId, Interface, InterfaceId, IpAddressData, IpAddressId,
+    IpPrefixData, IpPrefixId, IpRangeData, IpRangeId, RearPort, RearPortId, ServiceId, SiteData,
+    SiteId, Topology, TopologyHolder, VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData,
     VxlanId, WlanData, WlanGroupData, WlanGroupId, WlanId,
 };
 use std::{

@@ -50,7 +50,10 @@ async fn warnings(current_poe_out: InterfaceEthernetPoeOut, powered: &[&str]) ->
         target.ethernet[&AsciiString::from("ether2")].poe_out,
         Some(InterfaceEthernetPoeOut::Off)
     );
-    let powered = powered.iter().map(|name| AsciiString::from(*name)).collect();
+    let powered = powered
+        .iter()
+        .map(|name| AsciiString::from(*name))
+        .collect();
     target.poe_warnings(&current, &powered)
 }
 
@@ -58,7 +61,11 @@ async fn warnings(current_poe_out: InterfaceEthernetPoeOut, powered: &[&str]) ->
 /// know keeps the board's default.
 #[tokio::test]
 async fn warns_where_poe_is_switched_off() {
-    let warnings = warnings(InterfaceEthernetPoeOut::AutoOn, &["ether1", "ether2", "ether3"]).await;
+    let warnings = warnings(
+        InterfaceEthernetPoeOut::AutoOn,
+        &["ether1", "ether2", "ether3"],
+    )
+    .await;
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert_eq!(
         warnings[0],
@@ -77,7 +84,11 @@ async fn no_warning_where_poe_is_already_off() {
 /// PoE out on, but nothing to power (`waiting-for-load`): switching it off cuts nothing.
 #[tokio::test]
 async fn no_warning_where_poe_powers_nothing() {
-    assert!(warnings(InterfaceEthernetPoeOut::AutoOn, &["ether1"]).await.is_empty());
+    assert!(
+        warnings(InterfaceEthernetPoeOut::AutoOn, &["ether1"])
+            .await
+            .is_empty()
+    );
 }
 
 /// A `pse` port gets `auto-on`, with a passive `poe_type` `forced-on` (a UISP Wave Nano isn't

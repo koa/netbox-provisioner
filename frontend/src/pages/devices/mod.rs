@@ -1,5 +1,4 @@
 use crate::{
-    i18n,
     components::{
         findings::{self, FindingsList},
         neighbor_check::NeighborCheck,
@@ -14,6 +13,7 @@ use crate::{
         live::{Subscription, watch_data},
         request_response,
     },
+    i18n,
     pages::routes::{AppRoute, SiteView},
 };
 use cynic::{QueryBuilder, SubscriptionBuilder};
@@ -109,7 +109,10 @@ impl Component for Devices {
         let site = ctx.props().site;
         let check = match &self.state {
             DeviceState::Data(rows) if !rows.is_empty() => {
-                let devices = rows.iter().map(|row| (row.id, row.name.clone())).collect::<Vec<_>>();
+                let devices = rows
+                    .iter()
+                    .map(|row| (row.id, row.name.clone()))
+                    .collect::<Vec<_>>();
                 html!(<NeighborCheck {devices}/>)
             }
             _ => Html::default(),
@@ -145,7 +148,6 @@ impl Component for Devices {
             </>
         }
     }
-
 }
 
 #[derive(Debug)]
@@ -233,8 +235,8 @@ impl Component for DeviceEntryCard {
                 device_type,
                 serial,
             } => (
-                html!({i18n::pages::ping(ping_result.duration)}),
-                html!({device_type.as_ref()}),
+                html!({ i18n::pages::ping(ping_result.duration) }),
+                html!({ device_type.as_ref() }),
                 Some(html!(<div class="device-detected-serial">{serial.as_ref()}</div>)),
             ),
 

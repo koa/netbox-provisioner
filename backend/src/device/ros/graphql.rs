@@ -1,40 +1,42 @@
 use crate::device::ros::l2::{EndpointNameGenerator, KeptNames, L2Setup, NameGenerator};
 use crate::device::ros::{
+    CapsManDeviceDataCurrent, CapsManDeviceDataTarget, WifiDeviceDataCurrent, WifiDeviceDataTarget,
     following_renames,
-    CapsManDeviceDataCurrent, CapsManDeviceDataTarget, WifiDeviceDataCurrent,
-    WifiDeviceDataTarget,
 };
+use crate::facts::{self, FactKey, FactKind, Freshness};
 use crate::{
     Error,
     config::CONFIG,
-    device_state::ApplyState,
-    error_info::{ApiError, ErrorInfo},
     device::{
-        AccessibleDevice, GraphqlSystemRouterboard, PingResult, neighbors,
+        AccessibleDevice, GraphqlSystemRouterboard, PingResult, device_mode, neighbors, partitions,
+        radio_hold::RadioHold,
+        raw,
         ros::{
-            fallback::{self, Disarmed, Pending, Rearmed},
-            progress::{self, Instrument, Progress},
             BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent,
             W60GDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
+            fallback::{self, Disarmed, Pending, Rearmed},
             hw_facts::{RadioPackage, SwitchChips, build_w60g_ports, radio_package},
             needed_radio_package,
+            progress::{self, Instrument, Progress},
             warning::{ApplyWarning, CapOffOutsideWlanGroup},
         },
-        device_mode, partitions, raw, update,
-        radio_hold::RadioHold,
+        update,
         watchdog::Watching,
     },
-    topology::{PhysicalPortId, access::{AccessTopology, device::DeviceAccess}},
+    device_state::ApplyState,
+    error_info::{ApiError, ErrorInfo},
+    topology::{
+        PhysicalPortId,
+        access::{AccessTopology, device::DeviceAccess},
+    },
 };
 use crate::{
     graphql::scalars::ScalarDuration,
     job::Log,
     saved_job::{self, SavedApply, SavedJob, SavedWork, ScriptRun},
 };
-use crate::facts::{self, FactKey, FactKind, Freshness};
 use async_graphql::{Context, Enum, Object, SimpleObject};
 use log::info;
-use rand::{Rng, distr::Alphanumeric};
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::{
     MikrotikDevice,
@@ -42,12 +44,13 @@ use mikrotik_model::{
     generator::Generator,
     hwconfig::DeviceType,
     model::{
-        CapsManManagerCfg, CertificateCfg, InterfaceWifiCapCfg, InterfaceWirelessCapCfg, InterfaceWifiCapsmanCfg, InterfaceWifiState,
-        InterfaceWifiCapsmanState,
-        ReferenceType, SystemIdentityCfg, SystemPackageState, SystemRouterboardState, YesNo,
+        CapsManManagerCfg, CertificateCfg, InterfaceWifiCapCfg, InterfaceWifiCapsmanCfg,
+        InterfaceWifiCapsmanState, InterfaceWifiState, InterfaceWirelessCapCfg, ReferenceType,
+        SystemIdentityCfg, SystemPackageState, SystemRouterboardState, YesNo,
     },
     resource::{ResourceMutation, ResourceMutationOperation, SingleResource, collect_resource},
 };
+use rand::{Rng, distr::Alphanumeric};
 use std::{
     collections::{BTreeSet, HashSet},
     net::IpAddr,
@@ -168,21 +171,28 @@ impl DeviceCfg {
             .wireless_current
             .iter()
             .flat_map(|current| current.wireless.iter().map(|radio| radio.data.name.clone()))
-            .chain(self.wifi_current.iter().flat_map(|current| {
-                current.wifi.iter().map(|radio| radio.data.name.clone())
-            }))
-            .chain(self.w60g_current.iter().flat_map(|current| {
-                current.radio.iter().map(|radio| radio.0.name.clone())
-            }))
+            .chain(
+                self.wifi_current
+                    .iter()
+                    .flat_map(|current| current.wifi.iter().map(|radio| radio.data.name.clone())),
+            )
+            .chain(
+                self.w60g_current
+                    .iter()
+                    .flat_map(|current| current.radio.iter().map(|radio| radio.0.name.clone())),
+            )
             .collect::<Vec<_>>();
         self.base_target
             .keep_hand_made_addresses(&self.base_current, &radios);
-        let renamed = following_renames(&self.base_target, &self.base_current, &self.radio_renames());
+        let renamed =
+            following_renames(&self.base_target, &self.base_current, &self.radio_renames());
         self.base_target.keep_dhcp_v6_clients(&renamed);
         if let Some(package) = self.idle_radios {
-            warnings.push(ApplyWarning::CapOffOutsideWlanGroup(CapOffOutsideWlanGroup {
-                package: package.name().into(),
-            }));
+            warnings.push(ApplyWarning::CapOffOutsideWlanGroup(
+                CapOffOutsideWlanGroup {
+                    package: package.name().into(),
+                },
+            ));
         }
         self.wifi_warnings = warnings;
         Ok(())
@@ -225,7 +235,8 @@ impl DeviceCfg {
     }
     pub fn generate_mutations(&self) -> Result<Box<[ResourceMutation<'_>]>, Error> {
         // owned: the device as it is after the renames lives only here
-        let mut current = following_renames(&self.base_target, &self.base_current, &self.radio_renames());
+        let mut current =
+            following_renames(&self.base_target, &self.base_current, &self.radio_renames());
         super::syslog::after_switch_to_cef(&mut current);
         let mut mutations = self
             .base_target
@@ -251,22 +262,28 @@ impl DeviceCfg {
     }
     /// The radios the plan renames, old name to new (`following_renames`).
     fn radio_renames(&self) -> Vec<(AsciiString, AsciiString)> {
-        let wifi = self.wifi_target.as_ref().zip(self.wifi_current.as_ref()).into_iter().flat_map(
-            |(target, current)| {
+        let wifi = self
+            .wifi_target
+            .as_ref()
+            .zip(self.wifi_current.as_ref())
+            .into_iter()
+            .flat_map(|(target, current)| {
                 current.wifi.iter().filter_map(|radio| {
                     let new = &target.wifi.get(&radio.default_name)?.name;
                     (new != &radio.data.name).then(|| (radio.data.name.clone(), new.clone()))
                 })
-            },
-        );
-        let wireless = self.wireless_target.as_ref().zip(self.wireless_current.as_ref()).into_iter().flat_map(
-            |(target, current)| {
+            });
+        let wireless = self
+            .wireless_target
+            .as_ref()
+            .zip(self.wireless_current.as_ref())
+            .into_iter()
+            .flat_map(|(target, current)| {
                 current.wireless.iter().filter_map(|radio| {
                     let new = &target.wireless.get(&radio.default_name.clone())?.name;
                     (new != &radio.data.name).then(|| (radio.data.name.clone(), new.clone()))
                 })
-            },
-        );
+            });
         wifi.chain(wireless).collect()
     }
     /// [`Self::generate_for`] with the watchdogs only on addresses that answer from the device,
@@ -283,29 +300,34 @@ impl DeviceCfg {
         let addresses = self.base_target.watched_addresses();
         let answering = raw::answering(raw, &addresses).await;
         let topology = device.topology().clone();
-        self.live_warnings = self.base_target.keep_silent_watchdogs(
-            &self.base_current,
-            &answering,
-            |address| {
-                topology
-                    .list_devices()
-                    .find(|device| crate::device::watchdog::addresses(device).contains(&address))
-                    .map(|device| device.name().into())
-                    .unwrap_or_default()
-            },
-        );
-        if let Some(networks) = CONFIG.api_networks.as_deref().filter(|networks| !networks.is_empty()) {
+        self.live_warnings =
+            self.base_target
+                .keep_silent_watchdogs(&self.base_current, &answering, |address| {
+                    topology
+                        .list_devices()
+                        .find(|device| {
+                            crate::device::watchdog::addresses(device).contains(&address)
+                        })
+                        .map(|device| device.name().into())
+                        .unwrap_or_default()
+                });
+        if let Some(networks) = CONFIG
+            .api_networks
+            .as_deref()
+            .filter(|networks| !networks.is_empty())
+        {
             let clients = raw::rows(raw, "/ip/service/print")
                 .await?
                 .iter()
                 .filter(|row| raw::field(row, "name") == Some("api"))
                 .filter_map(|row| raw::field(row, "remote").and_then(remote_address))
                 .collect::<Vec<_>>();
-            self.live_warnings.extend(self.base_target.keep_api_open_for(
-                &self.base_current.ip_service,
-                &clients,
-                networks,
-            ));
+            self.live_warnings
+                .extend(self.base_target.keep_api_open_for(
+                    &self.base_current.ip_service,
+                    &clients,
+                    networks,
+                ));
         }
         Ok(())
     }
@@ -337,7 +359,10 @@ impl DeviceCfg {
         if ports.is_empty() {
             return [self.wifi_warnings.clone(), self.live_warnings.clone()].concat();
         }
-        let names = ports.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>();
+        let names = ports
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect::<Vec<_>>();
         let powered = match raw().await {
             Ok(raw) => powered_ports(&raw, &names).await,
             Err(error) => Err(error),
@@ -574,7 +599,10 @@ impl ScriptProgress {
             error_line: progress.error.as_ref().map(|(line, _)| *line),
             error: progress.error.as_ref().map(|(_, message)| message.clone()),
             probe: progress.probe.as_ref().map(|(address, _)| address.clone()),
-            probe_answered: progress.probe.as_ref().is_some_and(|(_, answered)| *answered),
+            probe_answered: progress
+                .probe
+                .as_ref()
+                .is_some_and(|(_, answered)| *answered),
             lost: reach(true),
             back: reach(false),
             rearmed: progress.rearmed.map(|s| Duration::from_secs(s).into()),
@@ -625,12 +653,18 @@ pub struct RadiosReprovisioned {
 /// WLAN (a slave configuration) when its radios are provisioned again.
 pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<&'static str> {
     let touches = |menu: &str| {
-        mutations.iter().filter(|mutation| in_script(mutation)).any(|mutation| {
-            let path = mutation.resource.strip_prefix(b"/").unwrap_or(mutation.resource);
-            ["configuration", "provisioning", "datapath", "security"]
-                .iter()
-                .any(|entry| path == format!("{menu}/{entry}").as_bytes())
-        })
+        mutations
+            .iter()
+            .filter(|mutation| in_script(mutation))
+            .any(|mutation| {
+                let path = mutation
+                    .resource
+                    .strip_prefix(b"/")
+                    .unwrap_or(mutation.resource);
+                ["configuration", "provisioning", "datapath", "security"]
+                    .iter()
+                    .any(|entry| path == format!("{menu}/{entry}").as_bytes())
+            })
     };
     [
         ("interface/wifi", "/interface/wifi/radio"),
@@ -643,10 +677,7 @@ pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<&'stati
 }
 
 /// Provisions the CAPs' radios of `menu` again (not the controller's own); how many there are.
-async fn provision_radios(
-    raw: &RawDevice<SimpleResult>,
-    menu: &str,
-) -> Result<usize, Error> {
+async fn provision_radios(raw: &RawDevice<SimpleResult>, menu: &str) -> Result<usize, Error> {
     let rows = raw::rows(raw, &format!("{menu}/print")).await?;
     let ids = rows
         .iter()
@@ -727,7 +758,12 @@ pub(crate) async fn write_script(
             fallback: fallback::NAME,
         },
     );
-    raw::command(raw, "/system/script/add", &[("name", APPLY_SCRIPT), ("source", &source)]).await?;
+    raw::command(
+        raw,
+        "/system/script/add",
+        &[("name", APPLY_SCRIPT), ("source", &source)],
+    )
+    .await?;
     if let Some(log) = log {
         log.emit(ApplyWritten { lead: lead.into() });
     }
@@ -845,7 +881,8 @@ impl PlannedApply {
     /// Leaves the watch address as the device has it (`radio_hold`), planned again
     /// (`ApplyPlanned`) where that changes the script.
     pub(crate) fn hold_watchdog(&mut self, log: &Log) -> Result<(), Error> {
-        self.cfg.base_target.watchdog.watch_address = self.cfg.base_current.watchdog.watch_address.clone();
+        self.cfg.base_target.watchdog.watch_address =
+            self.cfg.base_current.watchdog.watch_address.clone();
         let script = render_script(&self.cfg.sorted_mutations()?)?;
         if script != self.script {
             log.emit(ApplyPlanned {
@@ -859,7 +896,12 @@ impl PlannedApply {
     pub(crate) fn reprovisioned(&self) -> Vec<Box<str>> {
         self.cfg
             .sorted_mutations()
-            .map(|mutations| reprovisioned_menus(&mutations).into_iter().map(Box::from).collect())
+            .map(|mutations| {
+                reprovisioned_menus(&mutations)
+                    .into_iter()
+                    .map(Box::from)
+                    .collect()
+            })
             .unwrap_or_default()
     }
     /// The device is in line already.
@@ -1001,7 +1043,8 @@ impl AccessibleDevice {
         };
         let started = async {
             log.enter(ApplyState::WritingScript);
-            let run = write_script(&raw, planned, SINGLE_LEAD, armed.then_some(window), None).await?;
+            let run =
+                write_script(&raw, planned, SINGLE_LEAD, armed.then_some(window), None).await?;
             log.wrote_script(&run);
             log.enter(ApplyState::StartingScript);
             let mut runs = start_script(&raw).await?;
@@ -1051,7 +1094,11 @@ impl AccessibleDevice {
     /// (`saved_job`): looks at the marks until the script is through and the device reached,
     /// takes the fallback away and diffs, or waits for the fallback to fire. `true` along with
     /// it where the fallback won't fire.
-    pub(crate) async fn watch_script(&self, script: &ScriptRun, log: &Log) -> (Result<(), Error>, bool) {
+    pub(crate) async fn watch_script(
+        &self,
+        script: &ScriptRun,
+        log: &Log,
+    ) -> (Result<(), Error>, bool) {
         let armed = script.armed;
         let armed_at = saved_job::instant(script.armed_at);
         let fires = saved_job::instant(script.fires);
@@ -1128,13 +1175,20 @@ impl AccessibleDevice {
                     Err(_) => continue,
                 };
                 log.enter(ApplyState::StoppingFallback);
-                match fallback::disarm_unless_due(&raw, seen.as_ref().and_then(Progress::rearm)).await {
+                match fallback::disarm_unless_due(&raw, seen.as_ref().and_then(Progress::rearm))
+                    .await
+                {
                     Ok(Disarmed::Stopped) => log.emit(FallbackStopped {
                         after: armed_at.elapsed().into(),
                     }),
                     Ok(Disarmed::Due(fires_in)) => {
                         log.enter(ApplyState::NotReached);
-                        fallback_left(log, Instant::now() + fires_in, FallbackLeftReason::Due, None);
+                        fallback_left(
+                            log,
+                            Instant::now() + fires_in,
+                            FallbackLeftReason::Due,
+                            None,
+                        );
                         left = true;
                         continue;
                     }
@@ -1150,7 +1204,10 @@ impl AccessibleDevice {
                         continue;
                     }
                     Err(error) => {
-                        info!("{}: fallback not stopped yet: {error}", self.device_config.name());
+                        info!(
+                            "{}: fallback not stopped yet: {error}",
+                            self.device_config.name()
+                        );
                         log.enter(ApplyState::ScriptRunning);
                         continue;
                     }
@@ -1179,7 +1236,8 @@ impl AccessibleDevice {
     /// The diff to apply, planned (`ApplyPlanned`); an empty one is nothing to do.
     pub(crate) async fn plan_apply(&self, log: &Log) -> Result<PlannedApply, Error> {
         let mut cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
-        cfg.generate_live(&self.device_config, &self.connect_again().await?).await?;
+        cfg.generate_live(&self.device_config, &self.connect_again().await?)
+            .await?;
         let mutations = cfg.sorted_mutations()?;
         let script = render_script(&mutations)?;
         let restarts_radio = restarts_radio(&mutations);
@@ -1187,7 +1245,11 @@ impl AccessibleDevice {
         log.emit(ApplyPlanned {
             script: script.clone(),
         });
-        Ok(PlannedApply { cfg, script, restarts_radio })
+        Ok(PlannedApply {
+            cfg,
+            script,
+            restarts_radio,
+        })
     }
     /// What is left of the diff once the device is in line, or `settled` has passed: `None`
     /// while it isn't, or can't be reached.
@@ -1217,24 +1279,40 @@ impl AccessibleDevice {
             let after = || delay.saturating_sub(fires.saturating_duration_since(Instant::now()));
             match disarmed {
                 Ok(Disarmed::Due(fires_in)) => {
-                    fallback_left(log, Instant::now() + fires_in, FallbackLeftReason::Due, None);
+                    fallback_left(
+                        log,
+                        Instant::now() + fires_in,
+                        FallbackLeftReason::Due,
+                        None,
+                    );
                     return Ok(());
                 }
                 Ok(Disarmed::Gone) => {
-                    log.emit(FallbackFired { after: after().into() });
+                    log.emit(FallbackFired {
+                        after: after().into(),
+                    });
                     return Ok(());
                 }
                 Ok(Disarmed::Stopped) => {
-                    log.emit(FallbackStopped { after: after().into() });
+                    log.emit(FallbackStopped {
+                        after: after().into(),
+                    });
                     return Ok(());
                 }
                 Err(error) if Instant::now() >= give_up => {
                     fallback_left(log, fires, FallbackLeftReason::NotStopped, Some(&error));
                     return Ok(());
                 }
-                Err(error) => info!("{}: fallback not stopped yet: {error}", self.device_config.name()),
+                Err(error) => info!(
+                    "{}: fallback not stopped yet: {error}",
+                    self.device_config.name()
+                ),
             }
-            if log.unless_cancelled(tokio::time::sleep(Duration::from_secs(3))).await.is_err() {
+            if log
+                .unless_cancelled(tokio::time::sleep(Duration::from_secs(3)))
+                .await
+                .is_err()
+            {
                 fallback_left(log, fires, FallbackLeftReason::Cancelled, None);
                 return Err(Error::Cancelled);
             }
@@ -1245,7 +1323,11 @@ impl AccessibleDevice {
         self.after_script(&planned.reprovisioned(), log).await
     }
     /// [`Self::after_apply`] with the radios to provision again (`reprovisioned_menus`).
-    pub(crate) async fn after_script(&self, reprovision: &[Box<str>], log: &Log) -> Result<(), Error> {
+    pub(crate) async fn after_script(
+        &self,
+        reprovision: &[Box<str>],
+        log: &Log,
+    ) -> Result<(), Error> {
         if self.device_config.wlan_controller_of().is_some() {
             log.check()?;
             self.reprovision(reprovision, log).await;
@@ -1320,14 +1402,18 @@ impl AccessibleDevice {
     ) -> Result<Watching, Error> {
         let mut cfg = DeviceCfg::fetch(&self.connect_again().await?, &self.device_config).await?;
         cfg.generate_for(&self.device_config)?;
-        Ok(match cfg.base_target.watchdog.watch_address.value().copied() {
-            None => Watching::default(),
-            Some(address) if raw::answering(raw, &[address]).await.contains(&address) => Watching {
-                watch_address: Some(address.to_string().into()),
-                poe_pings: Vec::new(),
+        Ok(
+            match cfg.base_target.watchdog.watch_address.value().copied() {
+                None => Watching::default(),
+                Some(address) if raw::answering(raw, &[address]).await.contains(&address) => {
+                    Watching {
+                        watch_address: Some(address.to_string().into()),
+                        poe_pings: Vec::new(),
+                    }
+                }
+                Some(_) => old.clone(),
             },
-            Some(_) => old.clone(),
-        })
+        )
     }
     /// The diff of a fresh look at the device.
     pub(crate) async fn remaining_diff(&self) -> Result<Box<str>, Error> {
@@ -1339,9 +1425,11 @@ impl AccessibleDevice {
         tokio::time::timeout(CHECK_TIMEOUT, async {
             let client = self.connect_again().await?;
             let mut cfg = DeviceCfg::fetch(&client, &self.device_config).await?;
-            cfg.generate_live(&self.device_config, &self.connect_again().await?).await?;
+            cfg.generate_live(&self.device_config, &self.connect_again().await?)
+                .await?;
             if self.watchdog_held.load(Ordering::Relaxed) {
-                cfg.base_target.watchdog.watch_address = cfg.base_current.watchdog.watch_address.clone();
+                cfg.base_target.watchdog.watch_address =
+                    cfg.base_current.watchdog.watch_address.clone();
             }
             cfg.script()
         })
@@ -1396,37 +1484,37 @@ impl DeviceCfg {
 
         let current = BaseDeviceDataCurrent::fetch(client).await?;
         let target = BaseDeviceDataTarget::new(model)?;
-        let (wireless_current, wireless_target) = if needed == Some(RadioPackage::Wireless)
-            && build_w60g_ports(model).is_empty()
-        {
-            (
-                Some(WirelessDeviceDataCurrent::fetch(client).await?),
-                Some(WirelessDeviceDataTarget::detect_device(client).await?),
-            )
-        } else {
-            (None, None)
-        };
+        let (wireless_current, wireless_target) =
+            if needed == Some(RadioPackage::Wireless) && build_w60g_ports(model).is_empty() {
+                (
+                    Some(WirelessDeviceDataCurrent::fetch(client).await?),
+                    Some(WirelessDeviceDataTarget::detect_device(client).await?),
+                )
+            } else {
+                (None, None)
+            };
         // a controller has no radios: CAP and CAPsMAN of `/interface/wifi` are in the base
         // package since RouterOS 7.13 (they fail before, then there is nothing to clean up)
-        let capsman_certificates: Box<[AsciiString]> =
-            InterfaceWifiCapsmanState::fetch(client)
-                .await
-                .ok()
-                .flatten()
-                .map(|state| {
-                    [state.generated_ca_certificate, state.generated_certificate]
-                        .into_iter()
-                        .flatten()
-                        .filter(|name| !name.is_empty())
-                        .collect()
-                })
-                .unwrap_or_default();
+        let capsman_certificates: Box<[AsciiString]> = InterfaceWifiCapsmanState::fetch(client)
+            .await
+            .ok()
+            .flatten()
+            .map(|state| {
+                [state.generated_ca_certificate, state.generated_certificate]
+                    .into_iter()
+                    .flatten()
+                    .filter(|name| !name.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
         // where CAP or CAPsMAN are still on without NetBox asking for them, or CAPsMAN's
         // certificates are left (a former controller or CAP), they are read to be cleaned up
         let wifi_left_on = || async {
             let capsman = InterfaceWifiCapsmanCfg::fetch(client).await.ok().flatten();
             let cap = InterfaceWifiCapCfg::fetch(client).await.ok().flatten();
-            let certificates = collect_resource::<CertificateCfg>(client).await.unwrap_or_default();
+            let certificates = collect_resource::<CertificateCfg>(client)
+                .await
+                .unwrap_or_default();
             capsman.is_some_and(|capsman| capsman.enabled == YesNo::Yes)
                 || cap.is_some_and(|cap| cap.enabled == YesNo::Yes)
                 || certificates
@@ -1457,23 +1545,22 @@ impl DeviceCfg {
         // radio, a `wlan<N>` or `wifi<N>` in NetBox is its `wlan60-<N>` misnamed
         if !build_w60g_ports(model).is_empty()
             && let Some(port) = device.interfaces().iter().find_map(|interface| {
-                interface
-                    .external_port()
-                    .filter(|port| matches!(port, PhysicalPortId::Wlan(_) | PhysicalPortId::Wifi(_)))
+                interface.external_port().filter(|port| {
+                    matches!(port, PhysicalPortId::Wlan(_) | PhysicalPortId::Wifi(_))
+                })
             })
         {
             return Err(SetupError::PortNotFound(port));
         }
-        let (w60g_current, w60g_target) = if needed == Some(RadioPackage::Wireless)
-            && !build_w60g_ports(model).is_empty()
-        {
-            (
-                Some(W60GDeviceDataCurrent::fetch(client).await?),
-                Some(W60GDeviceDataTarget::detect_device(client).await?),
-            )
-        } else {
-            (None, None)
-        };
+        let (w60g_current, w60g_target) =
+            if needed == Some(RadioPackage::Wireless) && !build_w60g_ports(model).is_empty() {
+                (
+                    Some(W60GDeviceDataCurrent::fetch(client).await?),
+                    Some(W60GDeviceDataTarget::detect_device(client).await?),
+                )
+            } else {
+                (None, None)
+            };
         // the legacy CAPsMAN only where NetBox has CAPs of it: a controller may run one that
         // NetBox doesn't know of (CAPs without their radios in NetBox), which stays as it is
         let (capsman_current, capsman_target) = if device
@@ -1571,7 +1658,10 @@ impl BaseDeviceDataTarget {
 #[Object]
 impl AccessibleDevice {
     async fn ping(&self, count: Option<u8>) -> Result<Box<[PingResult]>, ApiError> {
-        Ok(self.simple_ping(count.unwrap_or(1)).await.map_err(Error::from)?)
+        Ok(self
+            .simple_ping(count.unwrap_or(1))
+            .await
+            .map_err(Error::from)?)
     }
 
     /// The device the connection actually reached, to tell it from another one answering at
@@ -1591,14 +1681,25 @@ impl AccessibleDevice {
     /// applying it; `null` with the error in the response's errors when that fails, so a
     /// device the generator fails on still shows the rest (an update may be what it needs).
     async fn generate_cfg(&self, ctx: &Context<'_>) -> Option<Arc<GeneratedCfg>> {
-        nullable(ctx, self.generated_cfg(self.freshness(CONFIG_AGE)).await.result())
+        nullable(
+            ctx,
+            self.generated_cfg(self.freshness(CONFIG_AGE))
+                .await
+                .result(),
+        )
     }
     /// The device mode and the features the provisioner needs that are off in it; `null`
     /// before RouterOS 7.17, which has no device mode.
     async fn device_mode(&self, ctx: &Context<'_>) -> Option<device_mode::DeviceMode> {
         let device = self.duplicate();
-        let mode = async move { device_mode::read(&device.connect_again().await?, &device.device_config).await };
-        let fact = facts::get(self.fact_key(FactKind::DeviceMode), self.freshness(DEVICE_MODE_AGE), mode);
+        let mode = async move {
+            device_mode::read(&device.connect_again().await?, &device.device_config).await
+        };
+        let fact = facts::get(
+            self.fact_key(FactKind::DeviceMode),
+            self.freshness(DEVICE_MODE_AGE),
+            mode,
+        );
         nullable(ctx, fact.await.result()).and_then(|mode| (*mode).clone())
     }
     /// What the device sees at its ports against NetBox's cables there, the worst first: the
@@ -1613,7 +1714,9 @@ impl AccessibleDevice {
     }
     /// The live checks of the interface view (`DeviceAccess.interfaceView`) by row: neighbors,
     /// OSPF, the bridge devices of radio links answering (`interfaceLiveAge`).
-    async fn interface_live(&self) -> Result<crate::device::interface_live::InterfaceLive, ApiError> {
+    async fn interface_live(
+        &self,
+    ) -> Result<crate::device::interface_live::InterfaceLive, ApiError> {
         Ok((*self.interface_live_fact().await.result()?).clone())
     }
     /// seconds since the device was read for `interfaceLive`
@@ -1629,7 +1732,11 @@ impl AccessibleDevice {
     async fn partitions(&self, ctx: &Context<'_>) -> Option<partitions::Partitions> {
         let device = self.duplicate();
         let read = async move { partitions::read(&device.connect_again().await?).await };
-        let fact = facts::get(self.fact_key(FactKind::Partitions), self.freshness(PARTITIONS_AGE), read);
+        let fact = facts::get(
+            self.fact_key(FactKind::Partitions),
+            self.freshness(PARTITIONS_AGE),
+            read,
+        );
         nullable(ctx, fact.await.result()).and_then(|partitions| (*partitions).clone())
     }
     /// The running RouterOS and its packages, and what an update in each channel would do.
@@ -1652,8 +1759,12 @@ impl AccessibleDevice {
                 update::Channel::Development,
             ] {
                 let newest = newest(7, channel).await?;
-                let step =
-                    update::next_step(&state, &newest, newest_v6.as_ref().unwrap_or(&newest), &wanted);
+                let step = update::next_step(
+                    &state,
+                    &newest,
+                    newest_v6.as_ref().unwrap_or(&newest),
+                    &wanted,
+                );
                 channels.push(ChannelUpdate {
                     channel,
                     newest: newest.to_string().into(),
@@ -1665,8 +1776,10 @@ impl AccessibleDevice {
             let adjust_packages = state.version.major() >= 7
                 && update::next_step(&state, &state.version, &state.version, &wanted).is_some();
             // an update of this run brought the running one: the way back to the one before
-            let previous = crate::job::version_before_update(device.device_config.id())
-                .filter(|previous| update::Version::parse(previous).is_some_and(|v| v < state.version));
+            let previous =
+                crate::job::version_before_update(device.device_config.id()).filter(|previous| {
+                    update::Version::parse(previous).is_some_and(|v| v < state.version)
+                });
             Ok::<_, Error>(RouterOsVersions {
                 as_of,
                 previous,
@@ -1678,7 +1791,11 @@ impl AccessibleDevice {
                 channels,
             })
         };
-        let fact = facts::get(self.fact_key(FactKind::RouterosState), self.freshness(ROUTEROS_AGE), versions);
+        let fact = facts::get(
+            self.fact_key(FactKind::RouterosState),
+            self.freshness(ROUTEROS_AGE),
+            versions,
+        );
         nullable(ctx, fact.await.result())
     }
     /// What a job that didn't see its work to the end left on the device, with what can be
@@ -1686,7 +1803,10 @@ impl AccessibleDevice {
     /// the device (what it set up isn't left over).
     async fn leftovers(&self, ctx: &Context<'_>) -> Option<crate::device::leftovers::Leftovers> {
         let subject = crate::job::JobSubject::Device(self.device_config.id());
-        if crate::job::list(Some(subject)).iter().any(|job| job.is_running()) {
+        if crate::job::list(Some(subject))
+            .iter()
+            .any(|job| job.is_running())
+        {
             return None;
         }
         let device = self.duplicate();
@@ -1701,11 +1821,20 @@ impl AccessibleDevice {
                     Some(_) => Vec::new(),
                     None => progress::contents(&raw).await.unwrap_or_default(),
                 };
-                tokio::spawn(crate::journal::observe(device.device_config.id(), left.journal_left(), uptime, marks));
+                tokio::spawn(crate::journal::observe(
+                    device.device_config.id(),
+                    left.journal_left(),
+                    uptime,
+                    marks,
+                ));
             }
             Ok::<_, Error>(left)
         };
-        let fact = facts::get(self.fact_key(FactKind::Leftovers), self.freshness(LEFTOVERS_AGE), read);
+        let fact = facts::get(
+            self.fact_key(FactKind::Leftovers),
+            self.freshness(LEFTOVERS_AGE),
+            read,
+        );
         let mut left = (*nullable(ctx, fact.await.result())?).clone();
         // which job holds them changes without the device knowing
         if let Some(watchdogs) = &mut left.watchdogs {
@@ -1716,15 +1845,25 @@ impl AccessibleDevice {
     /// The newest `last` entries of the device's log (`/log`, kept in its memory until a
     /// reboot), oldest first: what happened, after an update that went wrong. Without the
     /// logins (topic `account`): the provisioner's own, several per page, drowned the rest.
-    async fn log(&self, ctx: &Context<'_>, #[graphql(default = 30)] last: u32) -> Option<Vec<LogEntry>> {
+    async fn log(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(default = 30)] last: u32,
+    ) -> Option<Vec<LogEntry>> {
         let read = async {
             let rows = raw::rows(&self.connect_again().await?, "/log/print").await?;
             let rows: Vec<_> = rows
                 .into_iter()
-                .filter(|row| !raw::field(row, "topics").unwrap_or_default().split(',').any(|t| t == "account"))
+                .filter(|row| {
+                    !raw::field(row, "topics")
+                        .unwrap_or_default()
+                        .split(',')
+                        .any(|t| t == "account")
+                })
                 .collect();
             let skip = rows.len().saturating_sub(last as usize);
-            let text = |row: &raw::Row, name| Box::<str>::from(raw::field(row, name).unwrap_or_default());
+            let text =
+                |row: &raw::Row, name| Box::<str>::from(raw::field(row, name).unwrap_or_default());
             Ok::<_, Error>(
                 rows[skip..]
                     .iter()
@@ -1766,8 +1905,17 @@ const NEWEST_AGE: Duration = Duration::from_secs(15 * 60);
 
 /// The newest RouterOS `major` in `channel` (`update::newest`), as a fact for every device.
 async fn newest(major: u32, channel: update::Channel) -> Result<update::Version, Error> {
-    let key = FactKey::new(FactKind::NewestVersion, None, format!("{major} {}", channel.name()));
-    let fact = facts::get(key, Freshness::MaxAge(NEWEST_AGE), update::newest(major, channel)).await;
+    let key = FactKey::new(
+        FactKind::NewestVersion,
+        None,
+        format!("{major} {}", channel.name()),
+    );
+    let fact = facts::get(
+        key,
+        Freshness::MaxAge(NEWEST_AGE),
+        update::newest(major, channel),
+    )
+    .await;
     Ok((*fact.result()?).clone())
 }
 
@@ -1784,7 +1932,10 @@ impl AccessibleDevice {
                 .await?;
             let (script, menus) = {
                 let mutations = device_cfg.sorted_mutations()?;
-                (render_script(&mutations)?, crate::device::site_diff::menu_changes(&mutations))
+                (
+                    render_script(&mutations)?,
+                    crate::device::site_diff::menu_changes(&mutations),
+                )
             };
             Ok(GeneratedCfg {
                 script,
@@ -1799,18 +1950,34 @@ impl AccessibleDevice {
     }
     /// The live checks (`FactKind::InterfaceLive`): NetBox changing drops them, they compare
     /// with it.
-    async fn interface_live_fact(&self) -> facts::Fact<crate::device::interface_live::InterfaceLive> {
+    async fn interface_live_fact(
+        &self,
+    ) -> facts::Fact<crate::device::interface_live::InterfaceLive> {
         let device = self.duplicate();
         let read = async move {
-            crate::device::interface_live::read(&device.connect_again().await?, &device.device_config).await
+            crate::device::interface_live::read(
+                &device.connect_again().await?,
+                &device.device_config,
+            )
+            .await
         };
-        facts::get(self.fact_key(FactKind::InterfaceLive), self.freshness(INTERFACE_LIVE_AGE), read).await
+        facts::get(
+            self.fact_key(FactKind::InterfaceLive),
+            self.freshness(INTERFACE_LIVE_AGE),
+            read,
+        )
+        .await
     }
     /// What the device answers for the neighbor check (`FactKind::Neighbors`).
     async fn neighbor_table(&self) -> facts::Fact<neighbors::NeighborTable> {
         let device = self.duplicate();
         let read = async move { neighbors::read_table(&device.connect_again().await?).await };
-        facts::get(self.fact_key(FactKind::Neighbors), self.freshness(NEIGHBORS_AGE), read).await
+        facts::get(
+            self.fact_key(FactKind::Neighbors),
+            self.freshness(NEIGHBORS_AGE),
+            read,
+        )
+        .await
     }
     /// The key of a fact about the device as this connection reads it: the credentials go in,
     /// what typed-in ones read stays with them.
@@ -1854,9 +2021,9 @@ pub(crate) fn nullable<T>(ctx: &Context<'_>, result: Result<T, Error>) -> Option
     match result {
         Ok(value) => Some(value),
         Err(error) => {
-            ctx.add_error(
-                ctx.set_error_path(async_graphql::Error::from(ApiError(error)).into_server_error(ctx.item.pos)),
-            );
+            ctx.add_error(ctx.set_error_path(
+                async_graphql::Error::from(ApiError(error)).into_server_error(ctx.item.pos),
+            ));
             None
         }
     }
@@ -1908,5 +2075,9 @@ pub struct ChannelUpdate {
 /// so the part before the last colon, whatever the whole would parse as.
 pub(super) fn remote_address(remote: &str) -> Option<IpAddr> {
     let (address, _port) = remote.rsplit_once(':')?;
-    address.trim_start_matches('[').trim_end_matches(']').parse().ok()
+    address
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse()
+        .ok()
 }

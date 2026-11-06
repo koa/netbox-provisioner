@@ -214,7 +214,12 @@ pub async fn start_node(
     let api_port = free_tcp_port()?;
     let socks_port = free_tcp_port()?;
     let ssh_port = free_tcp_port()?;
-    let child = spawn_qemu(&overlay_path, [api_port, socks_port, ssh_port], index, wiring)?;
+    let child = spawn_qemu(
+        &overlay_path,
+        [api_port, socks_port, ssh_port],
+        index,
+        wiring,
+    )?;
 
     let node = RunningNode {
         name: name.to_string(),

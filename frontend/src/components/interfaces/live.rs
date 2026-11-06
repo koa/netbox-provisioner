@@ -234,7 +234,10 @@ pub fn device_only_list(addresses: &[DeviceOnly], device: impl Fn(&Device) -> Ht
 
 /// Static leases only the device has, each with what a takeover can't keep and where NetBox
 /// has the address instead.
-pub fn device_only_lease_list(leases: &[DeviceOnlyLease], device: impl Fn(&Device) -> Html) -> Html {
+pub fn device_only_lease_list(
+    leases: &[DeviceOnlyLease],
+    device: impl Fn(&Device) -> Html,
+) -> Html {
     html! {
         { for leases.iter().map(|l| html! {
             <div>
@@ -272,19 +275,23 @@ pub fn subscribe_live(scope: &Scope<Interfaces>, id: u32, target: SelectedTarget
         adhoc_credentials,
     };
     let to = scope.clone();
-    watch(scope, InterfaceLiveSubscription::build(variables), move |response| {
-        // `access` is null where the device can't be reached, the error says why
-        let live = match response {
-            Ok(response) => match response.data.and_then(|data| Checked::of(data, id)) {
-                Some(checked) => Live::Checked(Rc::new(checked)),
-                None => Live::Unchecked(
-                    FrontendError::Graphql(response.errors.unwrap_or_default()).message(),
-                ),
-            },
-            Err(error) => Live::Unchecked(error.message()),
-        };
-        to.send_message(InterfacesMsg::Live(live));
-    })
+    watch(
+        scope,
+        InterfaceLiveSubscription::build(variables),
+        move |response| {
+            // `access` is null where the device can't be reached, the error says why
+            let live = match response {
+                Ok(response) => match response.data.and_then(|data| Checked::of(data, id)) {
+                    Some(checked) => Live::Checked(Rc::new(checked)),
+                    None => Live::Unchecked(
+                        FrontendError::Graphql(response.errors.unwrap_or_default()).message(),
+                    ),
+                },
+                Err(error) => Live::Unchecked(error.message()),
+            };
+            to.send_message(InterfacesMsg::Live(live));
+        },
+    )
 }
 
 /// Drops the device's live checks: the subscription reads them anew.

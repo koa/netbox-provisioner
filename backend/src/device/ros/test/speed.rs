@@ -84,7 +84,11 @@ fn port(
     let mut target = BaseDeviceDataTarget::new(model).unwrap();
     target.generate_from(device, KeepNameGenerator)?;
     let port = &target.ethernet[&AsciiString::from(port)];
-    Ok((port.auto_negotiation, port.speed, !port.advertise.is_empty()))
+    Ok((
+        port.auto_negotiation,
+        port.speed,
+        !port.advertise.is_empty(),
+    ))
 }
 
 const CRS354: &[u8] = b"CRS354-48G-4S+2Q+";
@@ -93,7 +97,10 @@ const CRS326: &[u8] = b"CRS326-24G-2S+";
 #[tokio::test]
 async fn a_port_without_speed_negotiates() {
     let [sw1, sw2] = topology([None, None], Some("dac-passive"), None).await;
-    assert_eq!(port(&sw1, CRS354, "qsfpplus1-1").unwrap(), (true, None, true));
+    assert_eq!(
+        port(&sw1, CRS354, "qsfpplus1-1").unwrap(),
+        (true, None, true)
+    );
     assert_eq!(port(&sw2, CRS326, "ether1").unwrap(), (true, None, true));
 }
 
@@ -126,7 +133,10 @@ async fn both_ends_need_the_same_speed() {
     let [sw1, _] = topology([Some(10_000_000), None], Some("dac-passive"), None).await;
     assert!(matches!(
         port(&sw1, CRS354, "qsfpplus1-1"),
-        Err(SetupError::SpeedMismatch { far_speed: None, .. })
+        Err(SetupError::SpeedMismatch {
+            far_speed: None,
+            ..
+        })
     ));
 }
 

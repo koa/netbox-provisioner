@@ -15,10 +15,9 @@ use crate::{
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
-        EnabledDisabled, InterfaceW60GMode, InterfaceW60GRegion,
-        InterfaceWirelessByDefaultName, InterfaceWirelessChannelWidth,
-        InterfaceWirelessFrequencyMode, InterfaceWirelessMode, InterfaceWirelessTxPowerMode,
-        InterfaceWirelessWdsMode, InterfaceWirelessWirelessProtocol,
+        EnabledDisabled, InterfaceW60GMode, InterfaceW60GRegion, InterfaceWirelessByDefaultName,
+        InterfaceWirelessChannelWidth, InterfaceWirelessFrequencyMode, InterfaceWirelessMode,
+        InterfaceWirelessTxPowerMode, InterfaceWirelessWdsMode, InterfaceWirelessWirelessProtocol,
     },
     value::Auto,
 };
@@ -365,8 +364,13 @@ async fn test_60ghz_bridge_port_leaves_hw_offloading_alone() {
     let (ether, _) = l2.placement_of_port(PhysicalPortId::Ethernet(1)).unwrap();
     let bridge = bridge.unwrap().clone();
     let mut target = BaseDeviceDataTarget::new(b"RBwAPG-60ad").unwrap();
-    target.generate_from(&device, EndpointNameGenerator).unwrap();
-    assert_eq!(target.bridge_port[&(bridge.clone(), radio.clone())].hw, None);
+    target
+        .generate_from(&device, EndpointNameGenerator)
+        .unwrap();
+    assert_eq!(
+        target.bridge_port[&(bridge.clone(), radio.clone())].hw,
+        None
+    );
     assert_eq!(target.bridge_port[&(bridge, ether.clone())].hw, Some(true));
 }
 
@@ -435,7 +439,9 @@ async fn test_radio_bridge_with_a_static_address_runs_ospf() {
     let (_, bridge) = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
     let bridge = bridge.unwrap().clone();
     let mut target = BaseDeviceDataTarget::new(b"RBwAPG-60ad").unwrap();
-    target.generate_from(&device, EndpointNameGenerator).unwrap();
+    target
+        .generate_from(&device, EndpointNameGenerator)
+        .unwrap();
     assert!(target.dhcp_v_4_client.is_empty(), "no DHCP client");
     let on_bridge = target
         .ipv_4_address
@@ -448,7 +454,11 @@ async fn test_radio_bridge_with_a_static_address_runs_ospf() {
     assert_eq!(backbone.interfaces.iter().collect::<Vec<_>>(), [&bridge]);
     // never DR or BDR of the segment it shares with the routers (E7)
     for area in ["backbone-v2", "backbone-v3"] {
-        assert_eq!(target.ospf_interface[&(AsciiString::from(area),)].priority, 0, "{area}");
+        assert_eq!(
+            target.ospf_interface[&(AsciiString::from(area),)].priority,
+            0,
+            "{area}"
+        );
     }
 }
 

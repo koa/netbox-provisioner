@@ -19,8 +19,8 @@ use crate::{
 };
 use cynic::QueryBuilder;
 use patternfly_yew::prelude::{
-    Bullseye, Button, ButtonVariant, Form, FormGroup, Modal, ModalVariant,
-    ProgressStepperStep, ProgressStepperStepStatus, Spinner, SpinnerSize,
+    Bullseye, Button, ButtonVariant, Form, FormGroup, Modal, ModalVariant, ProgressStepperStep,
+    ProgressStepperStepStatus, Spinner, SpinnerSize,
 };
 use std::fmt::{self, Display, Formatter};
 use yew::{Callback, Component, Context, Html, Properties, html, platform::spawn_local};
@@ -111,19 +111,25 @@ impl Component for HelperFlow {
         let props = ctx.props();
         // from a free router port: the chosen bridge device's helper, as from a cabled one
         let preset = match (&props.preset, &self.bridge) {
-            (HelperPreset::RadioChoose { router_device, router_port }, Some(bridge)) => {
-                Some(HelperPreset::RadioFrom(RadioPreset {
-                    bridge: bridge.id,
-                    router_device: *router_device,
-                    router_port: *router_port,
-                }))
-            }
+            (
+                HelperPreset::RadioChoose {
+                    router_device,
+                    router_port,
+                },
+                Some(bridge),
+            ) => Some(HelperPreset::RadioFrom(RadioPreset {
+                bridge: bridge.id,
+                router_device: *router_device,
+                router_port: *router_port,
+            })),
             (HelperPreset::RadioChoose { .. }, None) => None,
             (preset, _) => Some(preset.clone()),
         };
         // another device's helper (a bridge device's from the router port) reaches it at its
         // own address, with the credentials chosen
-        let helper_device = preset.as_ref().map_or(props.id, |preset| preset.device(props.id));
+        let helper_device = preset
+            .as_ref()
+            .map_or(props.id, |preset| preset.device(props.id));
         let target = if helper_device == props.id {
             props.target.clone()
         } else {

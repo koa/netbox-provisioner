@@ -8,7 +8,7 @@ use crate::{
     },
     topology::{
         Cable, CablePort, Device, DeviceId, Interface, InterfaceId, IpAddressData, PhysicalPortId,
-        PoeMode, PortType, TopologyHolder, management::ManagementTree, builder::TopologyBuilder,
+        PoeMode, PortType, TopologyHolder, builder::TopologyBuilder, management::ManagementTree,
     },
 };
 use mikrotik_model::ascii::AsciiString;
@@ -34,7 +34,11 @@ impl Net {
         let ap = router(&mut builder, "ap", "172.16.1.3/32");
         let st = router(&mut builder, "st", "172.16.1.4/32");
         let far = router(&mut builder, "far", "172.16.1.5/32");
-        builder.devices.get_mut(&core).unwrap().propagate_default_route = true;
+        builder
+            .devices
+            .get_mut(&core)
+            .unwrap()
+            .propagate_default_route = true;
         let core_e2 = port(&mut builder, core, "ether2", "10.0.0.1/29");
         let np_e1 = port(&mut builder, np, "ether1", "10.0.0.2/29");
         cable(&mut builder, core_e2, np_e1);
@@ -142,12 +146,22 @@ async fn a_port_powering_a_routeros_device_power_cycles_it() {
 async fn the_management_proxy_is_a_root() {
     let without_default = || {
         let mut net = Net::new();
-        net.builder.devices.get_mut(&net.core).unwrap().propagate_default_route = false;
+        net.builder
+            .devices
+            .get_mut(&net.core)
+            .unwrap()
+            .propagate_default_route = false;
         net
     };
     assert_eq!(
         without_default().watchdogs(Some("np")).await.watched,
-        [ip("172.16.1.2"), None, ip("172.16.1.2"), ip("172.16.1.2"), None]
+        [
+            ip("172.16.1.2"),
+            None,
+            ip("172.16.1.2"),
+            ip("172.16.1.2"),
+            None
+        ]
     );
     assert_eq!(without_default().watchdogs(None).await.watched, [None; 5]);
 }
@@ -308,7 +322,10 @@ async fn a_silent_address_keeps_what_the_device_has() {
     );
     let answering = [ip("172.16.1.1").unwrap()].into();
     let warnings = target.keep_silent_watchdogs(&current, &answering, |_| "ap".into());
-    assert_eq!(target.watchdog.watch_address.value().copied(), ip("172.16.1.1"));
+    assert_eq!(
+        target.watchdog.watch_address.value().copied(),
+        ip("172.16.1.1")
+    );
     let ether2 = &target.ethernet[&AsciiString::from("ether2")];
     assert_eq!(ether2.power_cycle_ping_enabled, Some(false));
     assert_eq!(ether2.power_cycle_ping_address, None);
@@ -359,6 +376,12 @@ async fn the_cabled_neighbor_is_the_parent() {
     // `aa-np` comes first by name, `np` is cabled to ap
     assert_eq!(
         net.watchdogs(None).await.watched,
-        [None, ip("172.16.1.1"), ip("172.16.1.2"), ip("172.16.1.6"), None]
+        [
+            None,
+            ip("172.16.1.1"),
+            ip("172.16.1.2"),
+            ip("172.16.1.6"),
+            None
+        ]
     );
 }

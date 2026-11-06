@@ -16,8 +16,8 @@ use crate::chr_network::vm::RunningNode;
 use crate::chr_network::wait::wait_until;
 use backend::device::ros::graphql::DeviceCfg;
 use backend::device::ros::l2::KeepNameGenerator;
-use backend::topology::builder::TopologyBuilder;
 use backend::topology::access::device::DeviceAccess;
+use backend::topology::builder::TopologyBuilder;
 use backend::topology::{
     Cable, CablePort, Device, DeviceId, ForwardData, Interface, IpAddressData, PhysicalPortId,
     SiteData, TopologyHolder,
@@ -128,8 +128,20 @@ fn build() -> Net {
     };
     // only the router's addresses count, the others' ports are there for the cables
     let internet_port = port(&mut builder, internet, 2, &[], false);
-    let uplink = port(&mut builder, router, 2, &["100.64.0.2/29", "2001:db8:64::2/64"], true);
-    let lan = port(&mut builder, router, 3, &["10.0.31.1/24", "2001:db8:31::1/64"], false);
+    let uplink = port(
+        &mut builder,
+        router,
+        2,
+        &["100.64.0.2/29", "2001:db8:64::2/64"],
+        true,
+    );
+    let lan = port(
+        &mut builder,
+        router,
+        3,
+        &["10.0.31.1/24", "2001:db8:31::1/64"],
+        false,
+    );
     let client_port = port(&mut builder, client, 2, &[], false);
     for (a, b) in [(internet_port, uplink), (lan, client_port)] {
         let id = builder.cables.next_id();
@@ -160,9 +172,9 @@ async fn run(
         .send_command(
             command.as_bytes(),
             |cmd| {
-                attributes
-                    .iter()
-                    .fold(cmd, |cmd, (key, value)| cmd.attribute(key.as_bytes(), value.as_bytes()))
+                attributes.iter().fold(cmd, |cmd, (key, value)| {
+                    cmd.attribute(key.as_bytes(), value.as_bytes())
+                })
             },
             (),
         )
@@ -231,7 +243,12 @@ async fn lists_of(device: &MikrotikDevice<SimpleResult>, menu: &str, address: &s
 /// next).
 async fn blacklisted(device: &MikrotikDevice<SimpleResult>, menu: &str, address: &str) {
     wait_until(
-        || async { Ok(lists_of(device, menu, address).await.iter().any(|list| list == "ssh_blacklist")) },
+        || async {
+            Ok(lists_of(device, menu, address)
+                .await
+                .iter()
+                .any(|list| list == "ssh_blacklist"))
+        },
         Duration::from_secs(10),
     )
     .await
@@ -240,7 +257,9 @@ async fn blacklisted(device: &MikrotikDevice<SimpleResult>, menu: &str, address:
 
 /// The router's typed connection through `internet`'s proxy to its uplink: the
 /// provisioner's way in.
-async fn typed_via_internet(internet: &RunningNode) -> anyhow::Result<mikrotik_model::MikrotikDevice> {
+async fn typed_via_internet(
+    internet: &RunningNode,
+) -> anyhow::Result<mikrotik_model::MikrotikDevice> {
     let stream = Socks5Stream::connect(
         ("127.0.0.1", internet.socks_port),
         SocketAddr::new(UPLINK.parse().unwrap(), 8728),
@@ -258,7 +277,10 @@ async fn typed_via_internet(internet: &RunningNode) -> anyhow::Result<mikrotik_m
 /// CHR doesn't take (as `ospf_chain`'s bootstrap: the harness's own dhcp-client on ether1,
 /// `bandwidth` and `disable-running-check`; its virtio ports also keep their flow control
 /// and `l2mtu`, taking the change silently) and without updates that change nothing.
-async fn router_diff(internet: &RunningNode, device: &DeviceAccess) -> Vec<ResourceMutation<'static>> {
+async fn router_diff(
+    internet: &RunningNode,
+    device: &DeviceAccess,
+) -> Vec<ResourceMutation<'static>> {
     let client = tokio::time::timeout(Duration::from_secs(30), typed_via_internet(internet))
         .await
         .expect("the provisioner's connection through the uplink timed out: locked out")
@@ -266,7 +288,8 @@ async fn router_diff(internet: &RunningNode, device: &DeviceAccess) -> Vec<Resou
     let mut cfg = DeviceCfg::fetch_with_board_model(&client, b"RB750Gr3", device)
         .await
         .expect("fetch");
-    cfg.generate_from(device, KeepNameGenerator).expect("generate");
+    cfg.generate_from(device, KeepNameGenerator)
+        .expect("generate");
     let api_networks = [
         format!("{PROVISIONER}/32").parse::<IpNet>().unwrap(),
         "2001:db8:64::1/128".parse().unwrap(),
@@ -318,7 +341,8 @@ async fn router_diff(internet: &RunningNode, device: &DeviceAccess) -> Vec<Resou
             !m.fields.is_empty()
                 || !matches!(
                     m.operation,
-                    ResourceMutationOperation::UpdateSingle | ResourceMutationOperation::UpdateByKey(_)
+                    ResourceMutationOperation::UpdateSingle
+                        | ResourceMutationOperation::UpdateByKey(_)
                 )
         })
         .collect()
@@ -354,33 +378,122 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
         .expect("scenario boot failed");
     let holder: TopologyHolder = builder.into();
     // once: the holder would fetch NetBox again after a while
-    let router_access = holder.devices_by_id(router).await.expect("router in the topology");
+    let router_access = holder
+        .devices_by_id(router)
+        .await
+        .expect("router in the topology");
 
     // by hand: the internet with the provisioner and a stranger, the client behind the router,
     // and the router's uplink address, so that the provisioner reaches it there
-    let internet_api = nodes[&internet].connect_api(crate::TEST_PASSWORD).await.expect("internet api");
+    let internet_api = nodes[&internet]
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("internet api");
     for address in ["100.64.0.1/29", "100.64.0.3/29"] {
-        run(&internet_api, "/ip/address/add", &[("address", address), ("interface", "ether2")]).await;
+        run(
+            &internet_api,
+            "/ip/address/add",
+            &[("address", address), ("interface", "ether2")],
+        )
+        .await;
     }
     for address in ["2001:db8:64::1/64", "2001:db8:64::3/64"] {
-        run(&internet_api, "/ipv6/address/add", &[("address", address), ("interface", "ether2"), ("advertise", "no")]).await;
+        run(
+            &internet_api,
+            "/ipv6/address/add",
+            &[
+                ("address", address),
+                ("interface", "ether2"),
+                ("advertise", "no"),
+            ],
+        )
+        .await;
     }
-    run(&internet_api, "/ipv6/route/add", &[("dst-address", "2001:db8:31::/64"), ("gateway", "2001:db8:64::2")]).await;
-    enable_socks(&internet_api).await.expect("socks on internet");
-    let client_api = nodes[&client].connect_api(crate::TEST_PASSWORD).await.expect("client api");
-    run(&client_api, "/ip/address/add", &[("address", "10.0.31.2/24"), ("interface", "ether2")]).await;
-    run(&client_api, "/ipv6/address/add", &[("address", "2001:db8:31::2/64"), ("interface", "ether2"), ("advertise", "no")]).await;
-    run(&client_api, "/ip/route/add", &[("dst-address", "100.64.0.0/29"), ("gateway", "10.0.31.1")]).await;
-    run(&client_api, "/ipv6/route/add", &[("dst-address", "2001:db8:64::/64"), ("gateway", "2001:db8:31::1")]).await;
-    let router_api = nodes[&router].connect_api(crate::TEST_PASSWORD).await.expect("router api");
-    run(&router_api, "/ip/address/add", &[("address", "100.64.0.2/29"), ("interface", "ether2")]).await;
-    run(&router_api, "/ipv6/address/add", &[("address", "2001:db8:31::1/64"), ("interface", "ether3"), ("advertise", "no")]).await;
-    run(&router_api, "/ipv6/address/add", &[("address", "2001:db8:64::2/64"), ("interface", "ether2"), ("advertise", "no")]).await;
+    run(
+        &internet_api,
+        "/ipv6/route/add",
+        &[
+            ("dst-address", "2001:db8:31::/64"),
+            ("gateway", "2001:db8:64::2"),
+        ],
+    )
+    .await;
+    enable_socks(&internet_api)
+        .await
+        .expect("socks on internet");
+    let client_api = nodes[&client]
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("client api");
+    run(
+        &client_api,
+        "/ip/address/add",
+        &[("address", "10.0.31.2/24"), ("interface", "ether2")],
+    )
+    .await;
+    run(
+        &client_api,
+        "/ipv6/address/add",
+        &[
+            ("address", "2001:db8:31::2/64"),
+            ("interface", "ether2"),
+            ("advertise", "no"),
+        ],
+    )
+    .await;
+    run(
+        &client_api,
+        "/ip/route/add",
+        &[("dst-address", "100.64.0.0/29"), ("gateway", "10.0.31.1")],
+    )
+    .await;
+    run(
+        &client_api,
+        "/ipv6/route/add",
+        &[
+            ("dst-address", "2001:db8:64::/64"),
+            ("gateway", "2001:db8:31::1"),
+        ],
+    )
+    .await;
+    let router_api = nodes[&router]
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("router api");
+    run(
+        &router_api,
+        "/ip/address/add",
+        &[("address", "100.64.0.2/29"), ("interface", "ether2")],
+    )
+    .await;
+    run(
+        &router_api,
+        "/ipv6/address/add",
+        &[
+            ("address", "2001:db8:31::1/64"),
+            ("interface", "ether3"),
+            ("advertise", "no"),
+        ],
+    )
+    .await;
+    run(
+        &router_api,
+        "/ipv6/address/add",
+        &[
+            ("address", "2001:db8:64::2/64"),
+            ("interface", "ether2"),
+            ("advertise", "no"),
+        ],
+    )
+    .await;
 
     // without the firewall the internet reaches the client and the router's API
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     while !ping(&internet_api, CLIENT_V6).await {
-        assert!(tokio::time::Instant::now() < deadline, "the client never answered from the internet");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the client never answered from the internet"
+        );
     }
     assert!(reaches(&internet_api, &format!("http://{UPLINK}:8728/"), STRANGER).await);
 
@@ -388,16 +501,31 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
     // the router
     let mutations = router_diff(&nodes[&internet], &router_access).await;
     for mutation in &mutations {
-        eprintln!("{} {:?} {:?}", String::from_utf8_lossy(mutation.resource), mutation.operation, mutation.fields);
+        eprintln!(
+            "{} {:?} {:?}",
+            String::from_utf8_lossy(mutation.resource),
+            mutation.operation,
+            mutation.fields
+        );
     }
-    apply_mutations_via_entry(nodes[&internet].socks_port, UPLINK.parse().unwrap(), &mutations, crate::TEST_PASSWORD)
-        .await
-        .expect("apply through the uplink");
+    apply_mutations_via_entry(
+        nodes[&internet].socks_port,
+        UPLINK.parse().unwrap(),
+        &mutations,
+        crate::TEST_PASSWORD,
+    )
+    .await
+    .expect("apply through the uplink");
 
     // a new connection the same way gets in, and the device reports what was generated
     let left = router_diff(&nodes[&internet], &router_access).await;
     for mutation in &left {
-        eprintln!("left: {} {:?} {:?}", String::from_utf8_lossy(mutation.resource), mutation.operation, mutation.fields);
+        eprintln!(
+            "left: {} {:?} {:?}",
+            String::from_utf8_lossy(mutation.resource),
+            mutation.operation,
+            mutation.fields
+        );
     }
     assert!(left.is_empty(), "the diff after the apply isn't empty");
     for menu in ["ip", "ipv6"] {
@@ -407,19 +535,42 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
             .filter_map(|row| row.get("comment").cloned().flatten())
             .collect::<Vec<_>>();
         eprintln!("{menu} rules: {comments:#?}");
-        assert!(comments.last().is_some_and(|c| c.ends_with("last forward drop")));
+        assert!(
+            comments
+                .last()
+                .is_some_and(|c| c.ends_with("last forward drop"))
+        );
     }
 
     // the client gets out (masquerade, the answers come back as established), ICMP to the
     // router gets in, the internet doesn't reach the client over IPv6 (its service opens
     // only `tcp/80`)
-    assert!(ping(&client_api, PROVISIONER).await, "the client doesn't reach the internet (IPv4)");
-    assert!(ping(&client_api, "2001:db8:64::1").await, "the client doesn't reach the internet (IPv6)");
-    assert!(ping(&internet_api, UPLINK).await, "the router doesn't answer ping");
-    assert!(!ping(&internet_api, CLIENT_V6).await, "the internet reaches the client");
+    assert!(
+        ping(&client_api, PROVISIONER).await,
+        "the client doesn't reach the internet (IPv4)"
+    );
+    assert!(
+        ping(&client_api, "2001:db8:64::1").await,
+        "the client doesn't reach the internet (IPv6)"
+    );
+    assert!(
+        ping(&internet_api, UPLINK).await,
+        "the router doesn't answer ping"
+    );
+    assert!(
+        !ping(&internet_api, CLIENT_V6).await,
+        "the internet reaches the client"
+    );
 
     // the API: the provisioner gets in, a stranger doesn't, over IPv4 and IPv6
-    assert!(reaches(&internet_api, &format!("http://{UPLINK}:8728/"), PROVISIONER).await);
+    assert!(
+        reaches(
+            &internet_api,
+            &format!("http://{UPLINK}:8728/"),
+            PROVISIONER
+        )
+        .await
+    );
     assert!(!reaches(&internet_api, &format!("http://{UPLINK}:8728/"), STRANGER).await);
     assert!(!reaches(&internet_api, "http://[2001:db8:64::2]:8728/", STRANGER_V6).await);
 
@@ -427,9 +578,28 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
     // forwarded) and at its own address (IPv6), its API not
     let nat = run(&router_api, "/ip/firewall/nat/print", &[]).await;
     eprintln!("nat: {nat:#?}");
-    assert!(reaches(&internet_api, &format!("http://{UPLINK}/"), STRANGER).await, "the forward to the client (IPv4)");
-    assert!(reaches(&internet_api, &format!("http://[{CLIENT_V6}]/"), STRANGER_V6).await, "the client's WebFig (IPv6)");
-    assert!(!reaches(&internet_api, &format!("http://[{CLIENT_V6}]:8728/"), STRANGER_V6).await, "the client's API (IPv6)");
+    assert!(
+        reaches(&internet_api, &format!("http://{UPLINK}/"), STRANGER).await,
+        "the forward to the client (IPv4)"
+    );
+    assert!(
+        reaches(
+            &internet_api,
+            &format!("http://[{CLIENT_V6}]/"),
+            STRANGER_V6
+        )
+        .await,
+        "the client's WebFig (IPv6)"
+    );
+    assert!(
+        !reaches(
+            &internet_api,
+            &format!("http://[{CLIENT_V6}]:8728/"),
+            STRANGER_V6
+        )
+        .await,
+        "the client's API (IPv6)"
+    );
 
     // SSH: the stranger's fourth new connection within a minute puts it on the blacklist, the
     // fifth doesn't get through; the provisioner's connections never count
@@ -440,7 +610,10 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
         );
     }
     blacklisted(&router_api, "ip", STRANGER).await;
-    assert_eq!(lists_of(&router_api, "ip", STRANGER).await, ["ssh_blacklist", "ssh_stage1", "ssh_stage2", "ssh_stage3"]);
+    assert_eq!(
+        lists_of(&router_api, "ip", STRANGER).await,
+        ["ssh_blacklist", "ssh_stage1", "ssh_stage2", "ssh_stage3"]
+    );
     assert!(!reaches(&internet_api, &format!("http://{UPLINK}:22/"), STRANGER).await);
     for _ in 1..=5 {
         assert!(reaches(&internet_api, &format!("http://{UPLINK}:22/"), PROVISIONER).await);

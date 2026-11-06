@@ -180,13 +180,19 @@ pub struct MapPoeEdge {
 
 /// One [`MapPoeEdge`] per port of `candidates` currently feeding, or modeled in NetBox to
 /// (`helper::poe::feeding`), with a cable to the fed port.
-fn poe_edges(candidates: &[DeviceAccess], device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>) -> Vec<MapPoeEdge> {
+fn poe_edges(
+    candidates: &[DeviceAccess],
+    device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>,
+) -> Vec<MapPoeEdge> {
     let mut found = Vec::new();
     for device in candidates {
-        let Some(data) = device_data.get(&device.id()) else { continue };
+        let Some(data) = device_data.get(&device.id()) else {
+            continue;
+        };
         for feeding in poe::feeding(device, &data.poe) {
             let Some(pd) = feeding.far else { continue };
-            if feeding.mode != Some(PoeMode::Pse) && feeding.status.as_deref() != Some("powered-on") {
+            if feeding.mode != Some(PoeMode::Pse) && feeding.status.as_deref() != Some("powered-on")
+            {
                 continue;
             }
             found.push(MapPoeEdge {
@@ -213,7 +219,9 @@ fn router_id(device: &DeviceAccess) -> Option<Ipv4Addr> {
 /// it relays between two that do (`on_map_devices`).
 fn supports_ospf(device: &DeviceAccess, readers: &[DeviceAccess]) -> bool {
     readers.iter().any(|r| r.id() == device.id())
-        || (device.has_routeros() && router_id(device).is_some() && device.interfaces().iter().any(|i| i.use_ospf()))
+        || (device.has_routeros()
+            && router_id(device).is_some()
+            && device.interfaces().iter().any(|i| i.use_ospf()))
 }
 
 /// The devices to show: those with OSPF themselves (`supports_ospf`), and every plain device
@@ -255,7 +263,11 @@ fn on_map_devices(
                 }
             }
         }
-        let boundary_routers = boundary.iter().filter_map(|id| by_id.get(id)).filter_map(router_id).collect::<Vec<_>>();
+        let boundary_routers = boundary
+            .iter()
+            .filter_map(|id| by_id.get(id))
+            .filter_map(router_id)
+            .collect::<Vec<_>>();
         let neighboring = boundary_routers.iter().enumerate().any(|(i, &router)| {
             boundary_routers[i + 1..]
                 .iter()
@@ -302,15 +314,32 @@ fn build(
     let interface = |id| topology.as_ref().and_then(|t| t.get_interface_by_id(id));
 
     // every device at an edge, also those of another site, and how they cable to each other
-    let mut by_id = devices.iter().map(|d| (d.id(), d.clone())).collect::<BTreeMap<_, _>>();
+    let mut by_id = devices
+        .iter()
+        .map(|d| (d.id(), d.clone()))
+        .collect::<BTreeMap<_, _>>();
     let mut adjacency = BTreeMap::<DeviceId, BTreeSet<DeviceId>>::new();
     for edge in &map_edges {
-        let (Some(a), Some(b)) = (interface(edge.a), interface(edge.b)) else { continue };
-        let (Some(device_a), Some(device_b)) = (a.device(), b.device()) else { continue };
-        by_id.entry(device_a.id()).or_insert_with(|| device_a.clone());
-        by_id.entry(device_b.id()).or_insert_with(|| device_b.clone());
-        adjacency.entry(device_a.id()).or_default().insert(device_b.id());
-        adjacency.entry(device_b.id()).or_default().insert(device_a.id());
+        let (Some(a), Some(b)) = (interface(edge.a), interface(edge.b)) else {
+            continue;
+        };
+        let (Some(device_a), Some(device_b)) = (a.device(), b.device()) else {
+            continue;
+        };
+        by_id
+            .entry(device_a.id())
+            .or_insert_with(|| device_a.clone());
+        by_id
+            .entry(device_b.id())
+            .or_insert_with(|| device_b.clone());
+        adjacency
+            .entry(device_a.id())
+            .or_default()
+            .insert(device_b.id());
+        adjacency
+            .entry(device_b.id())
+            .or_default()
+            .insert(device_a.id());
     }
     let (on_map, mut up) = on_map_devices(&by_id, readers, lsdb, &adjacency);
 
@@ -322,8 +351,12 @@ fn build(
     }
     let mut result_edges = Vec::new();
     for edge in &map_edges {
-        let (Some(a), Some(b)) = (interface(edge.a), interface(edge.b)) else { continue };
-        let (Some(device_a), Some(device_b)) = (a.device(), b.device()) else { continue };
+        let (Some(a), Some(b)) = (interface(edge.a), interface(edge.b)) else {
+            continue;
+        };
+        let (Some(device_a), Some(device_b)) = (a.device(), b.device()) else {
+            continue;
+        };
         if !on_map.contains(&device_a.id()) || !on_map.contains(&device_b.id()) {
             continue;
         }
@@ -337,13 +370,19 @@ fn build(
             EdgeState::Up => (MapEdgeState::Up, None, None),
             EdgeState::V3Down => (MapEdgeState::V3Down, None, None),
             EdgeState::NotOspf => (MapEdgeState::NotOspf, None, None),
-            EdgeState::Down(DownReason::RouterMissing(d)) => {
-                (MapEdgeState::Down, Some(MapDownReason::RouterMissing), Some(d.0))
+            EdgeState::Down(DownReason::RouterMissing(d)) => (
+                MapEdgeState::Down,
+                Some(MapDownReason::RouterMissing),
+                Some(d.0),
+            ),
+            EdgeState::Down(DownReason::NoSegment) => {
+                (MapEdgeState::Down, Some(MapDownReason::NoSegment), None)
             }
-            EdgeState::Down(DownReason::NoSegment) => (MapEdgeState::Down, Some(MapDownReason::NoSegment), None),
-            EdgeState::Down(DownReason::NotOnSegment(d)) => {
-                (MapEdgeState::Down, Some(MapDownReason::NotOnSegment), Some(d.0))
-            }
+            EdgeState::Down(DownReason::NotOnSegment(d)) => (
+                MapEdgeState::Down,
+                Some(MapDownReason::NotOnSegment),
+                Some(d.0),
+            ),
         };
         result_edges.push(MapEdge {
             kind: match edge.kind {
@@ -365,7 +404,9 @@ fn build(
                 NodeState::NotOspf
             } else {
                 match router_id(device) {
-                    _ if Some(device.id()) == reader || up.contains(&device.id()) => NodeState::Reached,
+                    _ if Some(device.id()) == reader || up.contains(&device.id()) => {
+                        NodeState::Reached
+                    }
                     Some(id) if lsdb.routers().contains(&id) => NodeState::Isolated,
                     _ => NodeState::Missing,
                 }
@@ -387,12 +428,19 @@ fn build(
         .flat_map(|t| t.list_devices())
         .filter_map(|device| router_id(&device))
         .collect::<BTreeSet<_>>();
-    let outside = lsdb.routers().difference(&known).copied().collect::<BTreeSet<_>>();
+    let outside = lsdb
+        .routers()
+        .difference(&known)
+        .copied()
+        .collect::<BTreeSet<_>>();
     let outside_at = devices
         .iter()
         .filter(|device| {
-            router_id(device)
-                .is_some_and(|id| lsdb.segment_neighbors(id).iter().any(|n| outside.contains(n)))
+            router_id(device).is_some_and(|id| {
+                lsdb.segment_neighbors(id)
+                    .iter()
+                    .any(|n| outside.contains(n))
+            })
         })
         .map(|device| device.id().0)
         .collect();
@@ -411,19 +459,30 @@ fn build(
 /// [`network_state`] (one round trip per device), asked separately.
 pub async fn network_state_details(devices: Vec<DeviceAccess>) -> NetworkStateDetails {
     let readers = readers(&devices);
-    let candidates = devices.iter().filter(|d| supports_ospf(d, &readers)).cloned().collect::<Vec<_>>();
+    let candidates = devices
+        .iter()
+        .filter(|d| supports_ospf(d, &readers))
+        .cloned()
+        .collect::<Vec<_>>();
     let device_data = device_data::read_all(&candidates).await;
     build_details(&candidates, &device_data)
 }
 
 /// The synchronous part of [`network_state_details`]: testable without a device to read from.
-fn build_details(candidates: &[DeviceAccess], device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>) -> NetworkStateDetails {
+fn build_details(
+    candidates: &[DeviceAccess],
+    device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>,
+) -> NetworkStateDetails {
     let mut nodes = candidates
         .iter()
         .filter_map(|device| {
             let data = device_data.get(&device.id())?;
             let (health, resources) = (&**data).into();
-            Some(MapNodeDetails { device: device_ref(device), health, resources })
+            Some(MapNodeDetails {
+                device: device_ref(device),
+                health,
+                resources,
+            })
         })
         .collect::<Vec<_>>();
     nodes.sort_by(|a, b| a.device.name.cmp(&b.device.name));

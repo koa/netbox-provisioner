@@ -391,9 +391,13 @@ pub fn feeding(device: &DeviceAccess, ports: &PoePorts) -> Vec<Feeding> {
             }
             let problem = match (mode, field(row, "poe-out").is_some(), status) {
                 (Some(PoeMode::Pse), false, _) => Some(PoeProblem::NoPoeOut),
-                (Some(PoeMode::Pse), true, Some("waiting-for-load")) if far.is_some() => Some(PoeProblem::NoLoad),
+                (Some(PoeMode::Pse), true, Some("waiting-for-load")) if far.is_some() => {
+                    Some(PoeProblem::NoLoad)
+                }
                 (Some(PoeMode::Pse), true, Some("powered-on"))
-                    if far.as_ref().is_some_and(|far| far.poe() != Some(PoeMode::Pd)) =>
+                    if far
+                        .as_ref()
+                        .is_some_and(|far| far.poe() != Some(PoeMode::Pd)) =>
                 {
                     Some(PoeProblem::PdMissing)
                 }
@@ -461,8 +465,7 @@ fn compare(
                 neighbors
                     .iter()
                     .filter(|row| {
-                        field(row, "interface")
-                            .is_some_and(|i| i.split(',').any(|i| i == name))
+                        field(row, "interface").is_some_and(|i| i.split(',').any(|i| i == name))
                     })
                     .find_map(|row| {
                         let identity = field(row, "identity")?;
@@ -539,7 +542,10 @@ mod test {
             .collect::<Vec<_>>();
         assert_eq!(
             modes,
-            [(pse.id().0, Some(PoeMode::Pse)), (pd.id().0, Some(PoeMode::Pd))]
+            [
+                (pse.id().0, Some(PoeMode::Pse)),
+                (pd.id().0, Some(PoeMode::Pd))
+            ]
         );
         let from_far = super::plan(&topology, &input(&pd)).expect("plan");
         assert_eq!(from_far.steps, plan.steps);
@@ -654,9 +660,21 @@ mod test {
         let topology = Arc::new(builder.build());
         let sw = topology.get_device_by_id(&sw).unwrap();
         let ethernet = [
-            row(&[("name", "e02-ap"), ("default-name", "ether2"), ("poe-out", "auto-on")]),
-            row(&[("name", "ether3"), ("default-name", "ether3"), ("poe-out", "auto-on")]),
-            row(&[("name", "ether4"), ("default-name", "ether4"), ("poe-out", "auto-on")]),
+            row(&[
+                ("name", "e02-ap"),
+                ("default-name", "ether2"),
+                ("poe-out", "auto-on"),
+            ]),
+            row(&[
+                ("name", "ether3"),
+                ("default-name", "ether3"),
+                ("poe-out", "auto-on"),
+            ]),
+            row(&[
+                ("name", "ether4"),
+                ("default-name", "ether4"),
+                ("poe-out", "auto-on"),
+            ]),
         ];
         let monitor = [
             row(&[("name", "e02-ap"), ("poe-out-status", "powered-on")]),
@@ -697,7 +715,11 @@ mod test {
         let (pse, pd) = cabled_ports(&topology);
         let paired = super::plan(
             &topology,
-            &PoeInput { device: pse.device().unwrap().id().0, pse: pse.id().0, pd: Some(pd.id().0) },
+            &PoeInput {
+                device: pse.device().unwrap().id().0,
+                pse: pse.id().0,
+                pd: Some(pd.id().0),
+            },
         )
         .expect("plan")
         .preview_topology()
@@ -718,12 +740,23 @@ mod test {
                 other => panic!("{other:?}"),
             })
             .collect::<Vec<_>>();
-        assert_eq!(removed, [(pd.id().0, Some(PoeMode::Pd)), (pse.id().0, Some(PoeMode::Pse))]);
+        assert_eq!(
+            removed,
+            [
+                (pd.id().0, Some(PoeMode::Pd)),
+                (pse.id().0, Some(PoeMode::Pse))
+            ]
+        );
         let after = plan.preview_topology().expect("preview");
         for port in [&pse, &pd] {
             assert_eq!(after.get_interface_by_id(port.id()).unwrap().poe(), None);
         }
-        assert!(plan_remove(&after, &input(&pse)).expect("plan").steps.is_empty());
+        assert!(
+            plan_remove(&after, &input(&pse))
+                .expect("plan")
+                .steps
+                .is_empty()
+        );
     }
 
     fn cable(builder: &mut TopologyBuilder, a: InterfaceId, b: InterfaceId) {
@@ -747,7 +780,14 @@ mod test {
         let sw = device(&mut builder, "sw");
         let names = ["ether2", "ether3", "ether4", "ether5", "ether6", "ether7"];
         let ports = names.map(|name| port(&mut builder, sw, name));
-        let modes = [PoeMode::Pse, PoeMode::Pse, PoeMode::Pse, PoeMode::Pd, PoeMode::Pse, PoeMode::Pse];
+        let modes = [
+            PoeMode::Pse,
+            PoeMode::Pse,
+            PoeMode::Pse,
+            PoeMode::Pd,
+            PoeMode::Pse,
+            PoeMode::Pse,
+        ];
         for (port, mode) in ports.iter().zip(modes) {
             builder.interfaces.get_mut(port).unwrap().poe = Some(mode);
         }
@@ -762,7 +802,11 @@ mod test {
         let topology = Arc::new(builder.build());
         let sw = topology.get_device_by_id(&sw).unwrap();
         let with_poe = |name: &str, renamed: &str| {
-            row(&[("name", renamed), ("default-name", name), ("poe-out", "auto-on")])
+            row(&[
+                ("name", renamed),
+                ("default-name", name),
+                ("poe-out", "auto-on"),
+            ])
         };
         let status = |name: &str, status: &str| row(&[("name", name), ("poe-out-status", status)]);
         let ports_read = PoePorts {
@@ -808,7 +852,13 @@ mod test {
         builder.interfaces.get_mut(&modeled).unwrap().poe = Some(PoeMode::Pse);
         let topology = Arc::new(builder.build());
         let sw = topology.get_device_by_id(&sw).unwrap();
-        let with_poe = |name: &str| row(&[("name", name), ("default-name", name), ("poe-out", "auto-on")]);
+        let with_poe = |name: &str| {
+            row(&[
+                ("name", name),
+                ("default-name", name),
+                ("poe-out", "auto-on"),
+            ])
+        };
         let status = |name: &str, status: &str| row(&[("name", name), ("poe-out-status", status)]);
         let ports = PoePorts {
             ethernet: vec![with_poe("ether2"), with_poe("ether3")],
@@ -817,9 +867,21 @@ mod test {
                 status("ether3", "powered-on"),
             ],
         };
-        let found = feeding(&sw, &ports).into_iter().map(|f| (f.port.id, f.problem)).collect::<Vec<_>>();
-        assert_eq!(found, [(modeled.0, None), (unmodeled.0, Some(PoeProblem::Undocumented))]);
-        assert!(mismatches(&sw, &ports).is_empty(), "neither is a mismatch mismatches() would report");
+        let found = feeding(&sw, &ports)
+            .into_iter()
+            .map(|f| (f.port.id, f.problem))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            found,
+            [
+                (modeled.0, None),
+                (unmodeled.0, Some(PoeProblem::Undocumented))
+            ]
+        );
+        assert!(
+            mismatches(&sw, &ports).is_empty(),
+            "neither is a mismatch mismatches() would report"
+        );
     }
 
     /// Without the port fed, the feeding one alone gets `pse`, no cable.
@@ -834,7 +896,11 @@ mod test {
             .expect("a free port");
         let plan = super::plan(
             &topology,
-            &PoeInput { device: port.device().unwrap().id().0, pse: port.id().0, pd: None },
+            &PoeInput {
+                device: port.device().unwrap().id().0,
+                pse: port.id().0,
+                pd: None,
+            },
         )
         .expect("plan");
         assert!(

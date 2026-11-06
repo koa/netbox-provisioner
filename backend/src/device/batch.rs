@@ -22,38 +22,41 @@
 use crate::{
     Error,
     config::CONFIG,
-    device_state::{ApplyState, JobPhase},
-    error_info::ErrorInfo,
     device::{
         AccessibleDevice, bootstrap,
         radio_hold::RadioHold,
         ros::{
             fallback::{Pending, Rearmed},
-            progress::Progress,
             graphql::{
                 APPLY_TIMEOUT, ApplyStarted, FALLBACK_MARGIN, FallbackLeftReason, PlannedApply,
                 SCRIPT_LIMIT, ScriptProgress, arm_fallback_on, emit_checked, fallback_left,
                 fallback_window, look_on, remove_script, script_running, start_script,
                 write_script,
             },
+            progress::Progress,
         },
     },
+    device_state::{ApplyState, JobPhase},
+    error_info::ErrorInfo,
     graphql::connect_for_job,
     job::Log,
     lock::LockAnyway,
     saved_job::{self, SavedApply, SavedBatch, SavedJob, SavedWork, ScriptRun},
-    topology::{DeviceId, access::{AccessTopology, device::DeviceAccess}},
+    topology::{
+        DeviceId,
+        access::{AccessTopology, device::DeviceAccess},
+    },
 };
 use async_graphql::{SimpleObject, futures_util::future::join_all};
 use log::info;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use std::time::Instant;
 use std::{
     collections::{BTreeSet, HashMap},
     net::IpAddr,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
-use std::time::Instant;
 use tokio::time::sleep;
 
 /// The devices of the batch.
@@ -100,13 +103,21 @@ pub(crate) trait Watched: Send + Sync {
     fn release(&self, back: bool, log: &Log) -> impl Future<Output = ()> + Send;
     /// What is left once the script is through (`ScriptProgress`) and the device in line, or
     /// once `settled` passed; `None` while not, or not reached.
-    fn check(&self, settled: Instant) -> impl Future<Output = Option<Result<Box<str>, Error>>> + Send;
+    fn check(
+        &self,
+        settled: Instant,
+    ) -> impl Future<Output = Option<Result<Box<str>, Error>>> + Send;
     /// Where the fallback stood at the last check that reached the device, and when that was.
     fn pending(&self) -> Option<(Pending, Instant)>;
     /// A last look at a device [`Self::check`] never found in line.
     fn last_look(&self) -> impl Future<Output = Result<Box<str>, Error>> + Send;
     /// Takes the fallback away (`FallbackStopped`, or `FallbackLeft`).
-    fn stop(&self, fires: Instant, delay: Duration, log: &Log) -> impl Future<Output = Result<(), Error>> + Send;
+    fn stop(
+        &self,
+        fires: Instant,
+        delay: Duration,
+        log: &Log,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
     /// What follows the apply (a controller provisions its CAPs' radios again).
     fn after(&self, log: &Log) -> impl Future<Output = Result<(), Error>> + Send;
 }
@@ -271,7 +282,9 @@ impl Applying for Reached {
                     script: ScriptRun {
                         run,
                         armed: fallback,
-                        armed_at: saved_job::system_time(fires.checked_sub(batch.delay).unwrap_or(fires)),
+                        armed_at: saved_job::system_time(
+                            fires.checked_sub(batch.delay).unwrap_or(fires),
+                        ),
                         fires: saved_job::system_time(fires),
                         unmarked: now + APPLY_TIMEOUT,
                         reprovision: self.planned.reprovisioned(),
@@ -347,12 +360,22 @@ async fn check_on(
 }
 
 /// [`Watched::last_look`] of a device reached at `link`.
-async fn last_look_on(link: &AccessibleDevice, run: Option<&str>, seen: &Mutex<Seen>, log: &Log) -> Result<Box<str>, Error> {
+async fn last_look_on(
+    link: &AccessibleDevice,
+    run: Option<&str>,
+    seen: &Mutex<Seen>,
+    log: &Log,
+) -> Result<Box<str>, Error> {
     if let Some(run) = run
         && let Ok(raw) = link.connect_again::<SimpleResult>().await
         && let Ok(look) = look_on(&raw, run).await
     {
-        show(seen, log, look.progress.as_ref(), look.pending == Pending::Gone);
+        show(
+            seen,
+            log,
+            look.progress.as_ref(),
+            look.pending == Pending::Gone,
+        );
     }
     link.remaining_diff().await
 }
@@ -385,10 +408,16 @@ impl Rejoined {
     async fn link(&self) -> Option<Arc<AccessibleDevice>> {
         let mut link = self.link.lock().await;
         if link.is_none() {
-            let reached = self.device.connect(None, self.saved.credentials.clone(), None).await.ok().flatten()?;
+            let reached = self
+                .device
+                .connect(None, self.saved.credentials.clone(), None)
+                .await
+                .ok()
+                .flatten()?;
             self.log.emit(reached.connected_device());
             if let Some(saved) = &self.saved.hold {
-                *self.hold.lock_anyway() = Some(RadioHold::resumed(&reached, saved, &self.log).await);
+                *self.hold.lock_anyway() =
+                    Some(RadioHold::resumed(&reached, saved, &self.log).await);
             }
             *link = Some(Arc::new(reached));
         }
@@ -414,14 +443,23 @@ impl Watched for Rejoined {
     }
     async fn check(&self, settled: Instant) -> Option<Result<Box<str>, Error>> {
         let link = self.link().await?;
-        check_on(&link, &self.saved.script.run, &self.seen, &self.log, settled).await
+        check_on(
+            &link,
+            &self.saved.script.run,
+            &self.seen,
+            &self.log,
+            settled,
+        )
+        .await
     }
     fn pending(&self) -> Option<(Pending, Instant)> {
         self.seen.lock_anyway().pending
     }
     async fn last_look(&self) -> Result<Box<str>, Error> {
         match self.link().await {
-            Some(link) => last_look_on(&link, Some(&self.saved.script.run), &self.seen, &self.log).await,
+            Some(link) => {
+                last_look_on(&link, Some(&self.saved.script.run), &self.seen, &self.log).await
+            }
             None => Err(Error::Timeout(
                 bootstrap::reachable_address(&self.device).unwrap_or(IpAddr::from([0u8; 4])),
             )),
@@ -503,7 +541,10 @@ pub(crate) struct Running<M> {
 
 /// The first failure of `results` (by member), if any.
 fn first_failure(results: Vec<Result<(), Error>>) -> Option<(usize, Error)> {
-    results.into_iter().enumerate().find_map(|(i, r)| r.err().map(|e| (i, e)))
+    results
+        .into_iter()
+        .enumerate()
+        .find_map(|(i, r)| r.err().map(|e| (i, e)))
 }
 
 /// The batch over `members` (named `names`, logging to `logs`).
@@ -543,15 +584,23 @@ pub(crate) async fn run<M: Planning>(
         }
     };
     let finish = |results: Vec<Option<Result<(), Error>>>| {
-        results.into_iter().map(|r| r.unwrap_or(Ok(()))).collect::<Vec<_>>()
+        results
+            .into_iter()
+            .map(|r| r.unwrap_or(Ok(())))
+            .collect::<Vec<_>>()
     };
 
     // connect and plan, all at once
-    let planned = join_all(members.into_iter().zip(&logs).map(|(member, log)| async move {
-        log.check()?;
-        log.enter(ApplyState::Planning);
-        member.plan(log).await
-    }))
+    let planned = join_all(
+        members
+            .into_iter()
+            .zip(&logs)
+            .map(|(member, log)| async move {
+                log.check()?;
+                log.enter(ApplyState::Planning);
+                member.plan(log).await
+            }),
+    )
     .await;
     let mut running = Vec::new();
     let mut failure = None;
@@ -614,7 +663,12 @@ pub(crate) async fn run<M: Planning>(
             cancelled(&logs)?;
             m.log.enter(ApplyState::ArmingFallback);
             m.member
-                .arm(fires.saturating_duration_since(Instant::now()), window, radio_wait, &m.log)
+                .arm(
+                    fires.saturating_duration_since(Instant::now()),
+                    window,
+                    radio_wait,
+                    &m.log,
+                )
                 .await
         }
         .await;
@@ -622,7 +676,10 @@ pub(crate) async fn run<M: Planning>(
             Ok(fallback) => {
                 let rearm = fallback.then_some(window);
                 m.log.enter(ApplyState::WritingScript);
-                (Some(fallback), m.member.write(timing.lead, rearm, &m.log).await)
+                (
+                    Some(fallback),
+                    m.member.write(timing.lead, rearm, &m.log).await,
+                )
             }
             Err(error) => (None, Err(error)),
         }
@@ -683,7 +740,12 @@ pub(crate) async fn run<M: Planning>(
 /// `members` with its saved apply and its job's log, the fallbacks firing at `fires` after
 /// `delay`. As after the start of the scripts: all through and in line, the fallbacks go,
 /// else all go back.
-pub async fn resume(members: Vec<(DeviceAccess, SavedApply)>, logs: Vec<Log>, fires: Instant, delay: Duration) -> Vec<Result<(), Error>> {
+pub async fn resume(
+    members: Vec<(DeviceAccess, SavedApply)>,
+    logs: Vec<Log>,
+    fires: Instant,
+    delay: Duration,
+) -> Vec<Result<(), Error>> {
     let running = members
         .into_iter()
         .zip(&logs)
@@ -719,7 +781,10 @@ pub(crate) async fn watch<M: Watched>(
     mut results: Vec<Option<Result<(), Error>>>,
 ) -> Vec<Result<(), Error>> {
     let finish = |results: Vec<Option<Result<(), Error>>>| {
-        results.into_iter().map(|r| r.unwrap_or(Ok(()))).collect::<Vec<_>>()
+        results
+            .into_iter()
+            .map(|r| r.unwrap_or(Ok(())))
+            .collect::<Vec<_>>()
     };
     // until every device is reached and checked, or the fallbacks are about to fire: the
     // latest, or the earliest a device reached said, as each script brings its own forward
@@ -850,10 +915,20 @@ pub(crate) async fn watch<M: Watched>(
 
 /// Before any script is started: takes the scripts and the fallbacks (of the `armed` ones)
 /// away, on all at once.
-async fn take_back<M: Applying>(running: &[Running<M>], armed: &[bool], fires: Instant, delay: Duration) {
+async fn take_back<M: Applying>(
+    running: &[Running<M>],
+    armed: &[bool],
+    fires: Instant,
+    delay: Duration,
+) {
     join_all(running.iter().zip(armed).map(|(m, &armed)| async move {
         // one cancelled before it armed has nothing on the device yet
-        if !matches!(m.log.phase(), Some(JobPhase::Apply(ApplyState::Planning | ApplyState::SuspendingWatchdogs))) {
+        if !matches!(
+            m.log.phase(),
+            Some(JobPhase::Apply(
+                ApplyState::Planning | ApplyState::SuspendingWatchdogs
+            ))
+        ) {
             m.log.enter(ApplyState::TakingBack);
         }
         if let Err(error) = m.member.remove().await {

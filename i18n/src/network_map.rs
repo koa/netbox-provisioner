@@ -3,8 +3,10 @@ pub const OPEN: &str = "Netz-Karte";
 pub const OPEN_ALL: &str = "Netz-Karte (alle Sites)";
 pub const INTRO: &str = "Die Geräte der Site und ihre Kabel und Funkstrecken aus NetBox, ihr Zustand aus der OSPF-Datenbank eines Routers; Geräte ohne OSPF werden nicht dargestellt. Liest nur, alle paar Sekunden neu.";
 pub const INTRO_ALL: &str = "Alle Geräte des OSPF-Netzes über alle Sites, ihre Kabel und Funkstrecken aus NetBox, ihr Zustand aus der OSPF-Datenbank eines Routers; Geräte ohne OSPF werden nicht dargestellt. Liest nur, alle paar Sekunden neu.";
-pub const NO_ROUTER: &str = "Die Site hat keinen OSPF-Router, von dem sich die OSPF-Datenbank lesen liesse.";
-pub const NO_ROUTER_ALL: &str = "Kein Gerät hat einen OSPF-Router, von dem sich die OSPF-Datenbank lesen liesse.";
+pub const NO_ROUTER: &str =
+    "Die Site hat keinen OSPF-Router, von dem sich die OSPF-Datenbank lesen liesse.";
+pub const NO_ROUTER_ALL: &str =
+    "Kein Gerät hat einen OSPF-Router, von dem sich die OSPF-Datenbank lesen liesse.";
 pub fn read_from(device: &str, age: u32) -> String {
     format!("Gelesen von {device}, vor {age} s")
 }
@@ -18,7 +20,8 @@ pub fn outside(count: u32) -> String {
     }
 }
 pub const NODE_REACHED: &str = "in OSPF";
-pub const NODE_ISOLATED: &str = "abgeschnitten: noch in der OSPF-Datenbank, aber keine Strecke oben";
+pub const NODE_ISOLATED: &str =
+    "abgeschnitten: noch in der OSPF-Datenbank, aber keine Strecke oben";
 pub const NODE_MISSING: &str = "fehlt in OSPF";
 pub const NODE_NOT_OSPF: &str = "kein OSPF-Router: trägt die Strecke zwischen zwei Nachbarn";
 pub const EDGE_UP: &str = "oben (OSPFv2 und v3)";
@@ -68,7 +71,13 @@ pub const POE_FEEDS_INSTEAD: &str = "in NetBox gespeist, speist aber selbst";
 pub const POE_UNDOCUMENTED: &str = "speist, ohne PoE-Modus in NetBox";
 /// Not judged beyond `problem` (`docs/concepts/network-map.md`, step 4): `status` as
 /// `poe-out-status`, `power` as `poe-out-power` in watts.
-pub fn poe_edge(pse: &str, pd: &str, status: Option<&str>, power: Option<f64>, problem: Option<&str>) -> String {
+pub fn poe_edge(
+    pse: &str,
+    pd: &str,
+    status: Option<&str>,
+    power: Option<f64>,
+    problem: Option<&str>,
+) -> String {
     let power = power.map(|w| format!(", {w} W")).unwrap_or_default();
     let status = status.map(|s| format!(" ({s})")).unwrap_or_default();
     let problem = problem.map(|p| format!("\n{p}")).unwrap_or_default();

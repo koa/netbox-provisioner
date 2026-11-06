@@ -20,14 +20,18 @@ pub struct FindingsVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "SubscriptionAuthenticated",
-    variables = "FindingsVariables",
+    variables = "FindingsVariables"
 )]
 pub struct Findings {
     pub topology: FindingsTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "TopologyHolder", variables = "FindingsVariables")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "TopologyHolder",
+    variables = "FindingsVariables"
+)]
 pub struct FindingsTopology {
     pub netbox_url: String,
     #[arguments(siteId: $site, deviceId: $device, after: $after)]

@@ -30,11 +30,18 @@ fn a_new_network_becomes_a_prefix() {
 #[test]
 fn a_host_or_a_used_network_gets_no_prefix() {
     let net = Net::new();
-    let inputs = [input(&net, "ether2", "192.168.5.1/32"), input(&net, "bridge-clients", "10.10.0.2/24")];
+    let inputs = [
+        input(&net, "ether2", "192.168.5.1/32"),
+        input(&net, "bridge-clients", "10.10.0.2/24"),
+    ];
     let topology = Arc::new(net.builder.build());
     for input in inputs {
         let plan = plan(&topology, &input).expect("plan");
-        assert!(matches!(&plan.steps[..], [PlanStep::CreateAddress(_)]), "{:?}", plan.steps);
+        assert!(
+            matches!(&plan.steps[..], [PlanStep::CreateAddress(_)]),
+            "{:?}",
+            plan.steps
+        );
     }
 }
 
@@ -48,8 +55,14 @@ fn what_netbox_has_or_another_device_is_refused() {
         ..input(&net, "ether2", "192.168.5.1/24")
     };
     let topology = Arc::new(net.builder.build());
-    assert!(matches!(plan(&topology, &taken), Err(Error::AddressInNetbox(_))));
-    assert!(matches!(plan(&topology, &foreign), Err(Error::UnknownInterface(_))));
+    assert!(matches!(
+        plan(&topology, &taken),
+        Err(Error::AddressInNetbox(_))
+    ));
+    assert!(matches!(
+        plan(&topology, &foreign),
+        Err(Error::UnknownInterface(_))
+    ));
 }
 
 /// In the preview of the stored export, the interface has the address, in its new prefix.
@@ -68,8 +81,18 @@ fn the_preview_has_the_address() {
         address: "198.51.100.7/24".into(),
     };
     let plan = plan(&topology, &input).expect("plan");
-    assert!(matches!(plan.steps[0], PlanStep::CreatePrefix(_)), "{:?}", plan.steps);
+    assert!(
+        matches!(plan.steps[0], PlanStep::CreatePrefix(_)),
+        "{:?}",
+        plan.steps
+    );
     let after = plan.preview_topology().expect("preview");
-    let ips = after.get_interface_by_id(InterfaceId(input.interface)).unwrap().ips();
-    assert!(ips.iter().any(|ip| ip.addr() == Some("198.51.100.7".parse().unwrap())));
+    let ips = after
+        .get_interface_by_id(InterfaceId(input.interface))
+        .unwrap()
+        .ips();
+    assert!(
+        ips.iter()
+            .any(|ip| ip.addr() == Some("198.51.100.7".parse().unwrap()))
+    );
 }

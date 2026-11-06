@@ -15,7 +15,7 @@ pub struct DeviceInterfacesVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "SubscriptionAuthenticated",
-    variables = "DeviceInterfacesVariables",
+    variables = "DeviceInterfacesVariables"
 )]
 pub struct DeviceInterfaces {
     pub topology: InterfacesTopology,
@@ -25,7 +25,7 @@ pub struct DeviceInterfaces {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "DeviceInterfacesVariables",
+    variables = "DeviceInterfacesVariables"
 )]
 pub struct InterfacesTopology {
     pub netbox_url: String,

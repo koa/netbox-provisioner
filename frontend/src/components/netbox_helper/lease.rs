@@ -62,7 +62,11 @@ impl NetboxHelper {
                             .map(|t| t.id as u32)
                     });
                     choice.role = choice.role.or_else(|| {
-                        options.roles.iter().find(|r| r.slug == "client").map(|r| r.id as u32)
+                        options
+                            .roles
+                            .iter()
+                            .find(|r| r.slug == "client")
+                            .map(|r| r.id as u32)
                     });
                 }
                 self.lease_options = Some(options);

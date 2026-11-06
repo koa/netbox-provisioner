@@ -45,22 +45,23 @@ fn build() -> Net {
         );
         id
     };
-    let device = |builder: &mut TopologyBuilder, name: &str, loopback: Option<&str>, propagate: bool| {
-        let id = builder.devices.next_id();
-        let loopback = loopback.map(|ip| address(builder, ip));
-        builder.devices.insert(
-            id,
-            Device {
-                name: name.into(),
-                primary_ip_v4: loopback,
-                loopback_ip: loopback,
-                has_routeros: true,
-                propagate_default_route: propagate,
-                ..Default::default()
-            },
-        );
-        id
-    };
+    let device =
+        |builder: &mut TopologyBuilder, name: &str, loopback: Option<&str>, propagate: bool| {
+            let id = builder.devices.next_id();
+            let loopback = loopback.map(|ip| address(builder, ip));
+            builder.devices.insert(
+                id,
+                Device {
+                    name: name.into(),
+                    primary_ip_v4: loopback,
+                    loopback_ip: loopback,
+                    has_routeros: true,
+                    propagate_default_route: propagate,
+                    ..Default::default()
+                },
+            );
+            id
+        };
     let internet = device(&mut builder, "internet", None, false);
     let router = device(&mut builder, "router", Some("192.168.255.10/32"), true);
     let inner = device(&mut builder, "inner", Some("192.168.255.11/32"), false);
@@ -116,9 +117,9 @@ async fn run(
         .send_command(
             command.as_bytes(),
             |cmd| {
-                attributes
-                    .iter()
-                    .fold(cmd, |cmd, (key, value)| cmd.attribute(key.as_bytes(), value.as_bytes()))
+                attributes.iter().fold(cmd, |cmd, (key, value)| {
+                    cmd.attribute(key.as_bytes(), value.as_bytes())
+                })
             },
             (),
         )
@@ -151,7 +152,10 @@ fn on_management_port(mutation: &ResourceMutation) -> bool {
 
 /// Generates the node's config and applies it directly (the scenario's bootstrap), without
 /// what a CHR doesn't take (`bandwidth`, `disable-running-check`) and the management client.
-pub async fn apply_directly(node: &RunningNode, device: &backend::topology::access::device::DeviceAccess) {
+pub async fn apply_directly(
+    node: &RunningNode,
+    device: &backend::topology::access::device::DeviceAccess,
+) {
     let client = mikrotik_model::MikrotikDevice::connect(
         ("127.0.0.1", node.api_port),
         b"admin",
@@ -162,7 +166,8 @@ pub async fn apply_directly(node: &RunningNode, device: &backend::topology::acce
     let mut cfg = DeviceCfg::fetch_with_board_model(&client, b"RB750Gr3", device)
         .await
         .expect("fetch");
-    cfg.generate_from(device, KeepNameGenerator).expect("generate");
+    cfg.generate_from(device, KeepNameGenerator)
+        .expect("generate");
     // as `generate_for`, without `api_networks`
     cfg.setup_services(None);
     let mutations = cfg.generate_mutations().expect("mutations");
@@ -182,7 +187,10 @@ pub async fn apply_directly(node: &RunningNode, device: &backend::topology::acce
     for mutation in sorted {
         let moves_management = mutation.resource == b"ip/dhcp-client".as_slice()
             && matches!(&mutation.operation, ResourceMutationOperation::UpdateByKey(key) if key.key == b".id".as_slice());
-        if mutation.resource == b"ip/dhcp-client".as_slice() && !moves_management && on_management_port(mutation) {
+        if mutation.resource == b"ip/dhcp-client".as_slice()
+            && !moves_management
+            && on_management_port(mutation)
+        {
             continue;
         }
         let mutation = if moves_management {
@@ -197,7 +205,9 @@ pub async fn apply_directly(node: &RunningNode, device: &backend::topology::acce
                 fields: mutation
                     .fields
                     .iter()
-                    .filter(|f| ![b"bandwidth".as_slice(), b"disable-running-check"].contains(&f.key))
+                    .filter(|f| {
+                        ![b"bandwidth".as_slice(), b"disable-running-check"].contains(&f.key)
+                    })
                     .cloned()
                     .collect(),
                 ..mutation.clone()
@@ -221,14 +231,22 @@ pub async fn apply_directly(node: &RunningNode, device: &backend::topology::acce
 /// The routes to `dst` in the node's `menu` (`ip` or `ipv6`), as gateway and flags. The
 /// harness's management port has a DHCP default of its own (distance 1), which stays active: the
 /// checks look for the route by its gateway.
-async fn default_routes(device: &MikrotikDevice<SimpleResult>, menu: &str, dst: &str) -> Vec<String> {
+async fn default_routes(
+    device: &MikrotikDevice<SimpleResult>,
+    menu: &str,
+    dst: &str,
+) -> Vec<String> {
     run(device, &format!("/{menu}/route/print"), &[])
         .await
         .into_iter()
         .filter(|row| row.get("dst-address").cloned().flatten().as_deref() == Some(dst))
         .map(|row| {
             let flag = |name: &'static str| {
-                if row.get(name).cloned().flatten().as_deref() == Some("true") { name } else { "" }
+                if row.get(name).cloned().flatten().as_deref() == Some("true") {
+                    name
+                } else {
+                    ""
+                }
             };
             format!(
                 "{} {} {} {} {}",
@@ -275,12 +293,31 @@ async fn the_default_route_of_an_internet_uplink_goes_out_over_ospf() {
     let inner_access = holder.devices_by_id(inner).await.unwrap();
 
     // by hand: the provider hands out an address and its gateway by DHCP
-    let internet_api = nodes[&internet].connect_api(crate::TEST_PASSWORD).await.expect("internet api");
+    let internet_api = nodes[&internet]
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("internet api");
     for (command, attributes) in [
-        ("/ip/address/add", &[("address", "100.64.0.1/29"), ("interface", "ether2")][..]),
-        ("/ip/pool/add", &[("name", "isp"), ("ranges", "100.64.0.2-100.64.0.6")]),
-        ("/ip/dhcp-server/network/add", &[("address", "100.64.0.0/29"), ("gateway", "100.64.0.1")]),
-        ("/ip/dhcp-server/add", &[("name", "isp"), ("interface", "ether2"), ("address-pool", "isp")]),
+        (
+            "/ip/address/add",
+            &[("address", "100.64.0.1/29"), ("interface", "ether2")][..],
+        ),
+        (
+            "/ip/pool/add",
+            &[("name", "isp"), ("ranges", "100.64.0.2-100.64.0.6")],
+        ),
+        (
+            "/ip/dhcp-server/network/add",
+            &[("address", "100.64.0.0/29"), ("gateway", "100.64.0.1")],
+        ),
+        (
+            "/ip/dhcp-server/add",
+            &[
+                ("name", "isp"),
+                ("interface", "ether2"),
+                ("address-pool", "isp"),
+            ],
+        ),
     ] {
         run(&internet_api, command, attributes).await;
     }
@@ -288,20 +325,37 @@ async fn the_default_route_of_an_internet_uplink_goes_out_over_ospf() {
     apply_directly(&nodes[&router], &router_access).await;
     apply_directly(&nodes[&inner], &inner_access).await;
 
-    let router_api = nodes[&router].connect_api(crate::TEST_PASSWORD).await.expect("router api");
-    let inner_api = nodes[&inner].connect_api(crate::TEST_PASSWORD).await.expect("inner api");
+    let router_api = nodes[&router]
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("router api");
+    let inner_api = nodes[&inner]
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("inner api");
     wait_for_ospf_full(&inner_api, "default-v2", Duration::from_secs(90))
         .await
         .expect("ospf between router and inner");
     let clients = run(&router_api, "/ip/dhcp-client/print", &[]).await;
     eprintln!("router dhcp-clients: {clients:#?}");
-    eprintln!("router ospf: {:#?}", run(&router_api, "/routing/ospf/instance/print", &[]).await);
+    eprintln!(
+        "router ospf: {:#?}",
+        run(&router_api, "/routing/ospf/instance/print", &[]).await
+    );
     let router_has = wait_until(
-        || async { Ok(default_routes(&router_api, "ip", "0.0.0.0/0").await.iter().any(|r| r.starts_with("100.64.0.1 ") && r.contains("dhcp"))) },
+        || async {
+            Ok(default_routes(&router_api, "ip", "0.0.0.0/0")
+                .await
+                .iter()
+                .any(|r| r.starts_with("100.64.0.1 ") && r.contains("dhcp")))
+        },
         Duration::from_secs(60),
     )
     .await;
-    eprintln!("router default: {:?}", default_routes(&router_api, "ip", "0.0.0.0/0").await);
+    eprintln!(
+        "router default: {:?}",
+        default_routes(&router_api, "ip", "0.0.0.0/0").await
+    );
     router_has.expect("the router never got its default route from DHCP");
     let inner_has = wait_until(
         || async {
@@ -313,7 +367,13 @@ async fn the_default_route_of_an_internet_uplink_goes_out_over_ospf() {
         Duration::from_secs(60),
     )
     .await;
-    eprintln!("inner default: {:?}", default_routes(&inner_api, "ip", "0.0.0.0/0").await);
-    eprintln!("router lsa: {:#?}", run(&router_api, "/routing/ospf/lsa/print", &[]).await);
+    eprintln!(
+        "inner default: {:?}",
+        default_routes(&inner_api, "ip", "0.0.0.0/0").await
+    );
+    eprintln!(
+        "router lsa: {:#?}",
+        run(&router_api, "/routing/ospf/lsa/print", &[]).await
+    );
     inner_has.expect("inner never learned the default route over OSPF");
 }

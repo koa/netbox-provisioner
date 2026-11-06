@@ -45,9 +45,9 @@ async fn run(device: &MikrotikDevice<SimpleResult>, command: &str, attributes: &
         .send_command(
             command.as_bytes(),
             |cmd| {
-                attributes
-                    .iter()
-                    .fold(cmd, |cmd, (key, value)| cmd.attribute(key.as_bytes(), value.as_bytes()))
+                attributes.iter().fold(cmd, |cmd, (key, value)| {
+                    cmd.attribute(key.as_bytes(), value.as_bytes())
+                })
             },
             (),
         )
@@ -67,7 +67,9 @@ fn unpowered() -> PowerChain {
 const CAP_PACKAGE: &str = "upgrade/routeros-7.99-arm.npk";
 
 async fn files(device: &MikrotikDevice<SimpleResult>) -> Vec<String> {
-    let mut stream = device.send_simple_command(b"/file/print".as_slice(), ()).await;
+    let mut stream = device
+        .send_simple_command(b"/file/print".as_slice(), ())
+        .await;
     let mut names = Vec::new();
     while let Some(result) = stream.next().await {
         if let SimpleResult::Sentence(row) = result
@@ -80,11 +82,18 @@ async fn files(device: &MikrotikDevice<SimpleResult>) -> Vec<String> {
 }
 
 async fn identity(device: &MikrotikDevice<SimpleResult>) -> String {
-    let mut stream = device.send_simple_command(b"/system/identity/print".as_slice(), ()).await;
+    let mut stream = device
+        .send_simple_command(b"/system/identity/print".as_slice(), ())
+        .await;
     let mut name = String::new();
     while let Some(result) = stream.next().await {
         if let SimpleResult::Sentence(row) = result {
-            name = row.get("name").cloned().flatten().unwrap_or_default().to_string();
+            name = row
+                .get("name")
+                .cloned()
+                .flatten()
+                .unwrap_or_default()
+                .to_string();
         }
     }
     name
@@ -110,27 +119,68 @@ async fn leftovers_are_found_and_cleared() {
     assert!(left.is_empty(), "{left:?}");
 
     // what jobs leave: an apply's fallback and script, a suspended watchdog, a package
-    assert_eq!(fallback::arm(&device, Duration::from_secs(3600)).await.unwrap(), None);
-    run(&device, "/system/script/add", &[("name", "netbox-provisioner-apply"), ("source", ":delay 600s")]).await;
-    run(&device, "/system/watchdog/set", &[("watch-address", "10.0.2.2")]).await;
+    assert_eq!(
+        fallback::arm(&device, Duration::from_secs(3600))
+            .await
+            .unwrap(),
+        None
+    );
+    run(
+        &device,
+        "/system/script/add",
+        &[
+            ("name", "netbox-provisioner-apply"),
+            ("source", ":delay 600s"),
+        ],
+    )
+    .await;
+    run(
+        &device,
+        "/system/watchdog/set",
+        &[("watch-address", "10.0.2.2")],
+    )
+    .await;
     let watching = Watching {
         watch_address: Some("10.0.2.2".into()),
         poe_pings: Vec::new(),
     };
-    suspend(&device, &watching, Duration::from_secs(7200)).await.unwrap();
-    run(&device, "/file/add", &[("name", "routeros-7.99.npk"), ("contents", "not a package")]).await;
+    suspend(&device, &watching, Duration::from_secs(7200))
+        .await
+        .unwrap();
+    run(
+        &device,
+        "/file/add",
+        &[("name", "routeros-7.99.npk"), ("contents", "not a package")],
+    )
+    .await;
     // what a CAPsMAN router keeps for its CAPs, on purpose: no leftover, never removed
-    run(&device, "/file/add", &[("name", "upgrade"), ("type", "directory")]).await;
-    run(&device, "/file/add", &[("name", CAP_PACKAGE), ("contents", "not a package")]).await;
+    run(
+        &device,
+        "/file/add",
+        &[("name", "upgrade"), ("type", "directory")],
+    )
+    .await;
+    run(
+        &device,
+        "/file/add",
+        &[("name", CAP_PACKAGE), ("contents", "not a package")],
+    )
+    .await;
     let left = read(&device).await.unwrap();
     eprintln!("{left:#?}");
     assert!(left.apply_fallback.is_some());
     assert!(left.update_fallback.is_none());
-    assert_eq!(left.watchdogs.as_ref().map(|w| &w.watching), Some(&watching));
+    assert_eq!(
+        left.watchdogs.as_ref().map(|w| &w.watching),
+        Some(&watching)
+    );
     // the script after every apply: no leftover while it doesn't run
     assert!(!left.apply_script_running);
     assert_eq!(
-        left.packages.iter().map(|p| p.file.as_ref()).collect::<Vec<_>>(),
+        left.packages
+            .iter()
+            .map(|p| p.file.as_ref())
+            .collect::<Vec<_>>(),
         ["routeros-7.99.npk"]
     );
 
@@ -140,17 +190,29 @@ async fn leftovers_are_found_and_cleared() {
         LeftoverAction::RemovePackages,
     ] {
         let log = Log::new("leftovers");
-        clear(&link, "leftovers", action, &unpowered(), &log).await.unwrap_or_else(|e| panic!("{action:?}: {e}"));
-        assert_eq!(log.events(), [Event::LeftoverCleared(LeftoverCleared { action })]);
+        clear(&link, "leftovers", action, &unpowered(), &log)
+            .await
+            .unwrap_or_else(|e| panic!("{action:?}: {e}"));
+        assert_eq!(
+            log.events(),
+            [Event::LeftoverCleared(LeftoverCleared { action })]
+        );
         assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     }
     let left = read(&device).await.unwrap();
     assert!(left.is_empty(), "{left:?}");
     assert!(files(&device).await.iter().any(|name| name == CAP_PACKAGE));
-    run(&device, "/execute", &[("script", "/system script run netbox-provisioner-apply")]).await;
+    run(
+        &device,
+        "/execute",
+        &[("script", "/system script run netbox-provisioner-apply")],
+    )
+    .await;
     tokio::time::sleep(Duration::from_secs(2)).await;
     assert!(read(&device).await.unwrap().apply_script_running);
-    let mut jobs = device.send_simple_command(b"/system/script/job/print".as_slice(), ()).await;
+    let mut jobs = device
+        .send_simple_command(b"/system/script/job/print".as_slice(), ())
+        .await;
     let mut ids = Vec::new();
     while let Some(result) = jobs.next().await {
         // the API session is a job too
@@ -166,16 +228,41 @@ async fn leftovers_are_found_and_cleared() {
         run(&device, "/system/script/job/remove", &[(".id", &id)]).await;
     }
     // a leftover cleared elsewhere in the meantime
-    let result = clear(&link, "leftovers", LeftoverAction::RestoreWatchdogs, &unpowered(), &Log::new("leftovers")).await;
+    let result = clear(
+        &link,
+        "leftovers",
+        LeftoverAction::RestoreWatchdogs,
+        &unpowered(),
+        &Log::new("leftovers"),
+    )
+    .await;
     assert!(matches!(result, Err(Error::LeftoverGone(_))), "{result:?}");
 
     // "Jetzt zurück": the identity set after the backup is gone after it
-    assert_eq!(fallback::arm(&device, Duration::from_secs(3600)).await.unwrap(), None);
+    assert_eq!(
+        fallback::arm(&device, Duration::from_secs(3600))
+            .await
+            .unwrap(),
+        None
+    );
     let before = identity(&device).await;
-    run(&device, "/system/identity/set", &[("name", "after-the-apply")]).await;
+    run(
+        &device,
+        "/system/identity/set",
+        &[("name", "after-the-apply")],
+    )
+    .await;
     drop(device);
     let log = Log::new("leftovers");
-    clear(&link, "leftovers", LeftoverAction::ApplyFallbackNow, &unpowered(), &log).await.expect("apply fallback now");
+    clear(
+        &link,
+        "leftovers",
+        LeftoverAction::ApplyFallbackNow,
+        &unpowered(),
+        &log,
+    )
+    .await
+    .expect("apply fallback now");
     assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     eprintln!("{:#?}", log.events());
     let device = link.api().await.unwrap();

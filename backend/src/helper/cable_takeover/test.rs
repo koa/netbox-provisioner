@@ -47,7 +47,9 @@ fn both_wrong_links_go() {
         port: port.id().0,
         peer: seen.id().0,
     };
-    let plan = clear(&topology, &input).expect("clear").expect("links to clear");
+    let plan = clear(&topology, &input)
+        .expect("clear")
+        .expect("links to clear");
     let cables = plan
         .steps
         .iter()
@@ -68,7 +70,11 @@ fn both_wrong_links_go() {
     let after = plan.preview_topology().expect("preview");
     for end in [&port, &seen] {
         let end = after.get_interface_by_id(end.id()).unwrap();
-        assert!(end.cable().is_none() && end.ips().is_empty(), "{}", end.name());
+        assert!(
+            end.cable().is_none() && end.ips().is_empty(),
+            "{}",
+            end.name()
+        );
     }
 }
 
@@ -86,7 +92,10 @@ fn a_patched_port_is_refused() {
         port: port.id().0,
         peer: far.id().0,
     };
-    assert!(matches!(clear(&topology, &input), Err(Error::PortPatched(_))));
+    assert!(matches!(
+        clear(&topology, &input),
+        Err(Error::PortPatched(_))
+    ));
 }
 
 /// A link NetBox has already is no takeover: the plan is the one of „Verbindung“.
@@ -106,7 +115,10 @@ async fn a_link_in_place_stays() {
     };
     assert_eq!(
         plan(&topology, &input).await.expect("plan").steps,
-        connection::plan(&topology, &connect).await.expect("plan").steps
+        connection::plan(&topology, &connect)
+            .await
+            .expect("plan")
+            .steps
     );
 }
 
@@ -124,5 +136,11 @@ fn shifted_steps_keep_their_references() {
         on: Target::Step(1),
     });
     step.shift(3);
-    assert!(matches!(step, PlanStep::CreateAddress(CreateAddress { on: Target::Step(4), .. })));
+    assert!(matches!(
+        step,
+        PlanStep::CreateAddress(CreateAddress {
+            on: Target::Step(4),
+            ..
+        })
+    ));
 }

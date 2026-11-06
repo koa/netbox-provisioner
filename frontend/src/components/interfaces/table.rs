@@ -73,7 +73,13 @@ impl Column {
 fn columns(task: Task) -> &'static [Column] {
     match task {
         Task::Loopback => &[],
-        Task::Uplink => &[Column::Port, Column::Address, Column::Nat, Column::State, Column::Netbox],
+        Task::Uplink => &[
+            Column::Port,
+            Column::Address,
+            Column::Nat,
+            Column::State,
+            Column::Netbox,
+        ],
         Task::Direct => &[
             Column::Port,
             Column::FarEnd,
@@ -82,7 +88,13 @@ fn columns(task: Task) -> &'static [Column] {
             Column::State,
             Column::Actions,
         ],
-        Task::RadioLink => &[Column::Port, Column::Path, Column::Network, Column::State, Column::Actions],
+        Task::RadioLink => &[
+            Column::Port,
+            Column::Path,
+            Column::Network,
+            Column::State,
+            Column::Actions,
+        ],
         Task::Customer => &[
             Column::Port,
             Column::Vlan,
@@ -92,7 +104,13 @@ fn columns(task: Task) -> &'static [Column] {
             Column::State,
             Column::Actions,
         ],
-        Task::Unknown => &[Column::Port, Column::NetboxHas, Column::Seen, Column::State, Column::Actions],
+        Task::Unknown => &[
+            Column::Port,
+            Column::NetboxHas,
+            Column::Seen,
+            Column::State,
+            Column::Actions,
+        ],
     }
 }
 
@@ -126,7 +144,10 @@ impl Entry {
             None => &self.row.actions,
         };
         // „PoE-Eintrag entfernen“ only at its port
-        let here = self.port.as_ref().map_or(self.row.interface.id, |p| p.interface.id) as u32;
+        let here = self
+            .port
+            .as_ref()
+            .map_or(self.row.interface.id, |p| p.interface.id) as u32;
         let live = live
             .iter()
             .filter(|a| a.helper != HelperKind::Poe || a.interface == Some(here))
@@ -135,13 +156,20 @@ impl Entry {
         let mut actions = live.clone();
         actions.extend(
             own.iter()
-                .filter(|a| !live.iter().any(|l| (l.kind, l.helper) == (a.kind, a.helper)))
+                .filter(|a| {
+                    !live
+                        .iter()
+                        .any(|l| (l.kind, l.helper) == (a.kind, a.helper))
+                })
                 .cloned(),
         );
         actions
     }
     fn netbox_url(&self) -> String {
-        let id = self.port.as_ref().map_or(self.row.interface.id, |p| p.interface.id);
+        let id = self
+            .port
+            .as_ref()
+            .map_or(self.row.interface.id, |p| p.interface.id);
         format!("{}dcim/interfaces/{id}/", self.netbox)
     }
     /// A bridge's port: its name and label, where its cable goes, its state, its actions.
@@ -234,7 +262,11 @@ impl TableEntryRenderer<Column> for Entry {
             Column::Nat => yes(row.nat),
             Column::FarEnd => far_ends(&row.far_ends),
             Column::Network => addresses(&row.addresses),
-            Column::Mtu => html!({ row.mtu.map(|mtu| mtu.to_string()).unwrap_or_else(|| "1500".into()) }),
+            Column::Mtu => html!({
+                row.mtu
+                    .map(|mtu| mtu.to_string())
+                    .unwrap_or_else(|| "1500".into())
+            }),
             Column::Path => row.radio_path.as_ref().map(path).unwrap_or_default(),
             Column::Vlan => match &row.untagged_vlan {
                 Some(vlan) => html!({ format!("{} ({})", vlan.vid, vlan.name) }),
@@ -289,7 +321,8 @@ impl TableEntryRenderer<Column> for Entry {
             })];
         }
         // the live checks' findings follow in their own list
-        let live_clean = !matches!(&self.live, RowLive::Checked(live) if !live.severities().is_empty());
+        let live_clean =
+            !matches!(&self.live, RowLive::Checked(live) if !live.severities().is_empty());
         let findings = if row.findings.is_empty() && live_clean {
             html!(<p>{t::NO_FINDINGS}</p>)
         } else if row.findings.is_empty() {
@@ -383,7 +416,11 @@ pub fn state<'s>(severities: impl IntoIterator<Item = &'s Severity>) -> Html {
     let (label, color, icon) = if errors > 0 {
         (t::errors(errors), Color::Red, Icon::ExclamationCircle)
     } else if warnings > 0 {
-        (t::warnings(warnings), Color::Orange, Icon::ExclamationTriangle)
+        (
+            t::warnings(warnings),
+            Color::Orange,
+            Icon::ExclamationTriangle,
+        )
     } else if hints > 0 {
         (t::hints(hints), Color::Blue, Icon::InfoCircle)
     } else {
@@ -447,7 +484,9 @@ fn customer_addresses(row: &Row, v6: bool) -> Html {
 /// A device, as a link to its page here.
 pub fn device(device: &DeviceRef) -> Html {
     match device.site {
-        Some(site) => html!(<Link<AppRoute> to={AppRoute::device(site as u32, device.id as u32)}>{&device.name}</Link<AppRoute>>),
+        Some(site) => {
+            html!(<Link<AppRoute> to={AppRoute::device(site as u32, device.id as u32)}>{&device.name}</Link<AppRoute>>)
+        }
         None => html!({ &device.name }),
     }
 }

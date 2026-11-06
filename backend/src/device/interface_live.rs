@@ -21,14 +21,13 @@ use crate::{
         access::device::DeviceAccess,
         findings::{DeviceRef, device_ref},
         interfaces::{
-            ActionHelper, ActionKind, InterfaceRow, InterfaceTask, LeaseSeen, RowAction,
-            SeenDevice,
+            ActionHelper, ActionKind, InterfaceRow, InterfaceTask, LeaseSeen, RowAction, SeenDevice,
         },
     },
 };
 use async_graphql::SimpleObject;
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use ipnet::IpNet;
+use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use std::{collections::BTreeSet, net::IpAddr};
 
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -131,7 +130,10 @@ pub struct BridgeAnswer {
 }
 
 /// Reads the device and checks its rows.
-pub async fn read(client: &RawDevice<SimpleResult>, device: &DeviceAccess) -> Result<InterfaceLive, Error> {
+pub async fn read(
+    client: &RawDevice<SimpleResult>,
+    device: &DeviceAccess,
+) -> Result<InterfaceLive, Error> {
     let neighbors = neighbors::read(client, device).await?;
     let ospf = rows(client, "/routing/ospf/neighbor/print").await?;
     let mut addresses = rows(client, "/ip/address/print").await?;
@@ -150,18 +152,30 @@ pub async fn read(client: &RawDevice<SimpleResult>, device: &DeviceAccess) -> Re
         .collect::<BTreeSet<_>>();
     let loopbacks = bridges
         .iter()
-        .filter_map(|id| device.topology().get_device_by_id(&DeviceId(*id))?.primary_ip_v4()?.addr())
+        .filter_map(|id| {
+            device
+                .topology()
+                .get_device_by_id(&DeviceId(*id))?
+                .primary_ip_v4()?
+                .addr()
+        })
         .collect::<Vec<_>>();
     let answering = answering(client, &loopbacks).await;
     let poe = poe::mismatches(device, &poe::read_ports(client).await?);
-    let mut live = check(device, &rows, neighbors, &ospf, &addresses, &dhcp, &answering);
+    let mut live = check(
+        device, &rows, neighbors, &ospf, &addresses, &dhcp, &answering,
+    );
     place_poe(&mut live, &rows, poe);
     Ok(live)
 }
 
 /// Puts each PoE mismatch on the row of its port, with „PoE-Eintrag entfernen“, or „PoE
 /// vervollständigen“ (`PdMissing`: „PoE“ from the port, the far end from its cable).
-pub fn place_poe(live: &mut InterfaceLive, rows: &[(InterfaceRow, BTreeSet<u32>)], poe: Vec<PoeMismatch>) {
+pub fn place_poe(
+    live: &mut InterfaceLive,
+    rows: &[(InterfaceRow, BTreeSet<u32>)],
+    poe: Vec<PoeMismatch>,
+) {
     for mismatch in poe {
         let Some(row) = rows
             .iter()
@@ -212,12 +226,22 @@ pub fn check(
             let on_it = addresses
                 .iter()
                 .filter(|row| field(row, "interface") == Some(name))
-                .filter_map(|row| field(row, "address")?.split('/').next()?.parse::<IpAddr>().ok())
+                .filter_map(|row| {
+                    field(row, "address")?
+                        .split('/')
+                        .next()?
+                        .parse::<IpAddr>()
+                        .ok()
+                })
                 .collect::<Vec<_>>();
             device
                 .interfaces()
                 .iter()
-                .find(|i| i.ips().iter().any(|ip| ip.addr().is_some_and(|ip| on_it.contains(&ip))))
+                .find(|i| {
+                    i.ips()
+                        .iter()
+                        .any(|ip| ip.addr().is_some_and(|ip| on_it.contains(&ip)))
+                })
                 .map(|i| i.id().0)
         })
     };
@@ -226,7 +250,11 @@ pub fn check(
         let address = field(row, "address").unwrap_or_default();
         topology
             .list_devices()
-            .find(|d| d.primary_ip_v4().and_then(|ip| ip.addr()).is_some_and(|ip| ip.to_string() == router_id))
+            .find(|d| {
+                d.primary_ip_v4()
+                    .and_then(|ip| ip.addr())
+                    .is_some_and(|ip| ip.to_string() == router_id)
+            })
             .or_else(|| {
                 topology.list_devices().find(|d| {
                     d.interfaces()
@@ -245,7 +273,11 @@ pub fn check(
         lease
             .server
             .as_deref()
-            .and_then(|server| dhcp.servers.iter().find(|row| field(row, "name") == Some(server)))
+            .and_then(|server| {
+                dhcp.servers
+                    .iter()
+                    .find(|row| field(row, "name") == Some(server))
+            })
             .and_then(|row| field(row, "interface"))
             .and_then(netbox_interface)
             .or_else(|| {
@@ -253,7 +285,11 @@ pub fn check(
                 device
                     .interfaces()
                     .iter()
-                    .find(|i| i.ips().iter().any(|ip| ip.net().is_some_and(|net| net.contains(&address))))
+                    .find(|i| {
+                        i.ips()
+                            .iter()
+                            .any(|ip| ip.net().is_some_and(|net| net.contains(&address)))
+                    })
                     .map(|i| i.id().0)
             })
     };
@@ -284,9 +320,9 @@ pub fn check(
             let ospf_missing = expected_ospf(device, row)
                 .into_iter()
                 .filter(|expected| {
-                    !ospf_here
-                        .iter()
-                        .any(|n| n.adjacent && n.device.as_ref().is_some_and(|d| d.id == expected.id))
+                    !ospf_here.iter().any(|n| {
+                        n.adjacent && n.device.as_ref().is_some_and(|d| d.id == expected.id)
+                    })
                 })
                 .collect();
             let bridges = bridge_devices(device, row)
@@ -305,18 +341,16 @@ pub fn check(
                 .findings
                 .iter()
                 .zip(placed.iter_mut())
-                .filter(|(finding, _)| {
-                    port_of(finding).is_some_and(|id| members.contains(&id))
-                })
+                .filter(|(finding, _)| port_of(finding).is_some_and(|id| members.contains(&id)))
                 .map(|(finding, placed)| {
                     *placed = true;
                     finding.clone()
                 })
                 .collect();
             let mut actions = Vec::<RowAction>::new();
-            let suggestions = findings
-                .iter()
-                .filter_map(|finding| seen_link(device, finding).or_else(|| new_device(device, finding)));
+            let suggestions = findings.iter().filter_map(|finding| {
+                seen_link(device, finding).or_else(|| new_device(device, finding))
+            });
             for action in suggestions {
                 if !actions.contains(&action) {
                     actions.push(action);
@@ -429,7 +463,8 @@ fn device_only_leases(device: &DeviceAccess, dhcp: &Dhcp) -> Vec<DeviceOnlyLease
         .map(|lease| IpAddr::V4(lease.address))
         .collect::<BTreeSet<_>>();
     let set = |row: &Row, name: &str| {
-        field(row, name).is_some_and(|value| !value.is_empty() && !matches!(value, "false" | "none" | "0s"))
+        field(row, name)
+            .is_some_and(|value| !value.is_empty() && !matches!(value, "false" | "none" | "0s"))
     };
     dhcp.leases
         .iter()
@@ -488,7 +523,9 @@ fn lease_takeover(lease: &DeviceOnlyLease, interface: u32) -> Option<RowAction> 
 
 /// The RouterOS types of the interfaces the provisioner manages (`BaseDeviceDataTarget::
 /// keep_hand_made_addresses` goes by their names): ports, bridges, VLANs, VXLANs, radios, `lo`.
-const MANAGED_TYPES: [&str; 8] = ["ether", "bridge", "vlan", "vxlan", "wlan", "wifi", "w60g", "loopback"];
+const MANAGED_TYPES: [&str; 8] = [
+    "ether", "bridge", "vlan", "vxlan", "wlan", "wifi", "w60g", "loopback",
+];
 
 /// The names of the interfaces of another type (`/interface` rows): tunnels, PPPoE clients and
 /// whatever else is set up by hand, whose addresses an apply keeps.
@@ -579,9 +616,17 @@ fn port_of(finding: &NeighborFinding) -> Option<u32> {
 /// their links are radio links.
 fn seen_link(device: &DeviceAccess, finding: &NeighborFinding) -> Option<RowAction> {
     let (port, seen, helper) = match &finding.kind {
-        NeighborFindingKind::CableMissing(f) => (&f.port, f.seen.as_slice(), ActionHelper::Connection),
-        NeighborFindingKind::CableElsewhere(f) => (&f.port, f.seen.as_slice(), ActionHelper::CableTakeover),
-        NeighborFindingKind::OtherFarPort(f) => (&f.port, std::slice::from_ref(&f.seen), ActionHelper::CableTakeover),
+        NeighborFindingKind::CableMissing(f) => {
+            (&f.port, f.seen.as_slice(), ActionHelper::Connection)
+        }
+        NeighborFindingKind::CableElsewhere(f) => {
+            (&f.port, f.seen.as_slice(), ActionHelper::CableTakeover)
+        }
+        NeighborFindingKind::OtherFarPort(f) => (
+            &f.port,
+            std::slice::from_ref(&f.seen),
+            ActionHelper::CableTakeover,
+        ),
         _ => return None,
     };
     let [seen] = seen else { return None };
@@ -589,7 +634,10 @@ fn seen_link(device: &DeviceAccess, finding: &NeighborFinding) -> Option<RowActi
     let topology = device.topology();
     let peer_device = topology.get_device_by_id(&DeviceId(peer.device.id))?;
     let routers = [device, &peer_device];
-    if routers.iter().any(|d| !d.has_routeros() || d.is_bridge_device()) {
+    if routers
+        .iter()
+        .any(|d| !d.has_routeros() || d.is_bridge_device())
+    {
         return None;
     }
     Some(RowAction {
@@ -611,7 +659,9 @@ fn new_device(device: &DeviceAccess, finding: &NeighborFinding) -> Option<RowAct
     let NeighborFindingKind::NeighborsNotInNetbox(f) = &finding.kind else {
         return None;
     };
-    let [seen] = f.seen.as_slice() else { return None };
+    let [seen] = f.seen.as_slice() else {
+        return None;
+    };
     let port = f.port.interface.as_ref()?;
     let free = device
         .topology()

@@ -80,7 +80,9 @@ impl Lsa {
             "router" => Some(Lsa::Router {
                 version,
                 originator: field("originator")?.parse().ok()?,
-                links: lines.filter_map(|line| router_link(version, line)).collect(),
+                links: lines
+                    .filter_map(|line| router_link(version, line))
+                    .collect(),
             }),
             "network" => Some(Lsa::Network {
                 version,
@@ -103,7 +105,9 @@ impl Lsa {
                 id,
                 netmask: Some(netmask),
                 ..
-            } => Ipv4Net::with_netmask(*id, *netmask).ok().map(|net| net.trunc()),
+            } => Ipv4Net::with_netmask(*id, *netmask)
+                .ok()
+                .map(|net| net.trunc()),
             _ => None,
         }
     }
@@ -182,14 +186,22 @@ mod test {
             ("type", "network"),
             ("originator", "192.168.100.3"),
             ("id", "172.17.1.82"),
-            ("body", "netmask=255.255.255.252\n    router-id=172.16.1.1\n    router-id=192.168.100.3\n"),
+            (
+                "body",
+                "netmask=255.255.255.252\n    router-id=172.16.1.1\n    router-id=192.168.100.3\n",
+            ),
         ])
         .unwrap();
         assert_eq!(lsa.network(), Some("172.17.1.80/30".parse().unwrap()));
-        let Lsa::Network { routers, .. } = lsa else { panic!() };
+        let Lsa::Network { routers, .. } = lsa else {
+            panic!()
+        };
         assert_eq!(
             routers,
-            ["172.16.1.1", "192.168.100.3"].iter().map(|r| r.parse().unwrap()).collect()
+            ["172.16.1.1", "192.168.100.3"]
+                .iter()
+                .map(|r| r.parse().unwrap())
+                .collect()
         );
     }
 
@@ -205,21 +217,35 @@ mod test {
                 "options=V6|E|R bits=E\n    type=network iface-id=7 neighbor-iface-if=7 neighbor-router-id=192.168.100.3 metric=100\n    type=network iface-id=109 neighbor-iface-if=4 neighbor-router-id=192.168.100.6 metric=100\n",
             ),
         ]);
-        let Some(Lsa::Router { links, .. }) = lsa else { panic!("{lsa:?}") };
+        let Some(Lsa::Router { links, .. }) = lsa else {
+            panic!("{lsa:?}")
+        };
         assert_eq!(
             links,
             ["192.168.100.3", "192.168.100.6"]
                 .iter()
-                .map(|r| RouterLink::Neighbor { router: r.parse().unwrap() })
+                .map(|r| RouterLink::Neighbor {
+                    router: r.parse().unwrap()
+                })
                 .collect::<Vec<_>>()
         );
     }
 
     #[test]
     fn other_types_and_instances_are_left_out() {
-        for (instance, kind) in [("default-v2", "external"), ("default-v3", "link"), ("other", "router")] {
+        for (instance, kind) in [
+            ("default-v2", "external"),
+            ("default-v3", "link"),
+            ("other", "router"),
+        ] {
             assert_eq!(
-                row(&[("instance", instance), ("type", kind), ("originator", "1.1.1.1"), ("id", "1.1.1.1"), ("body", "")]),
+                row(&[
+                    ("instance", instance),
+                    ("type", kind),
+                    ("originator", "1.1.1.1"),
+                    ("id", "1.1.1.1"),
+                    ("body", "")
+                ]),
                 None
             );
         }

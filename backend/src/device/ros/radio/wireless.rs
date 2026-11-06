@@ -8,10 +8,7 @@ use crate::{
         l2::{L2Setup, NameGenerator},
         l2mtu_for, port_mtu,
     },
-    topology::{
-        PhysicalPortId, Radio, RadioRole,
-        access::device::DeviceAccess,
-    },
+    topology::{PhysicalPortId, Radio, RadioRole, access::device::DeviceAccess},
 };
 use mikrotik_model::{
     ascii::AsciiString,
@@ -166,7 +163,10 @@ impl WirelessDeviceDataTarget {
             };
             cap.interfaces.insert(name);
             // `wireless` installs its radios disabled (a wAP ac coming from `wifi-qcom-ac`)
-            if let Some(wlan) = self.wireless.get_mut(&Some(AsciiString::from(port.to_string()))) {
+            if let Some(wlan) = self
+                .wireless
+                .get_mut(&Some(AsciiString::from(port.to_string())))
+            {
                 wlan.disabled = false;
             }
         }
@@ -224,7 +224,6 @@ fn configure_bridge_radio(
     }
     Ok(())
 }
-
 
 /// The channel width for `width` MHz with the control channel first, as on the AP
 /// side; a station follows the AP's layout (`X`), whatever it is.

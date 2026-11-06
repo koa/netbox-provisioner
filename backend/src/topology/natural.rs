@@ -69,15 +69,29 @@ mod test {
     #[test]
     fn interfaces_in_netbox_order() {
         let mut names = [
-            "sfp-sfpplus2", "ether10", "lo", "ether2", "sfp-sfpplus1", "ether1", "wlan1",
-            "1/2", "ether1.100",
+            "sfp-sfpplus2",
+            "ether10",
+            "lo",
+            "ether2",
+            "sfp-sfpplus1",
+            "ether1",
+            "wlan1",
+            "1/2",
+            "ether1.100",
         ];
         names.sort_by_key(|name| naturalize_interface(name));
         assert_eq!(
             names,
             [
-                "1/2", "ether1", "ether1.100", "ether2", "ether10", "lo", "sfp-sfpplus1",
-                "sfp-sfpplus2", "wlan1"
+                "1/2",
+                "ether1",
+                "ether1.100",
+                "ether2",
+                "ether10",
+                "lo",
+                "sfp-sfpplus1",
+                "sfp-sfpplus2",
+                "wlan1"
             ]
         );
     }

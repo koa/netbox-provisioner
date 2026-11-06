@@ -25,11 +25,11 @@ use crate::{
     },
     i18n::{device::as_of, neighbors as t},
 };
+use cynic::{MutationBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{
     Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize,
 };
 use std::collections::HashSet;
-use cynic::{MutationBuilder, SubscriptionBuilder};
 use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
 
 #[derive(Debug, Clone, PartialEq, Properties)]
@@ -103,20 +103,26 @@ impl Component for NeighborCheck {
                     .map(|(index, (id, _))| {
                         let scope = ctx.link().clone();
                         let variables = NeighborFindingsVariables { id: *id as i32 };
-                        watch_data(ctx.link(), NeighborFindings::build(variables), move |data| {
-                            let result = match data {
-                                Ok(data) => match data.topology.device_by_id.and_then(|d| d.access) {
-                                    Some(access) => DeviceResult::Done {
-                                        netbox: data.topology.netbox_url,
-                                        findings: access.neighbor_findings,
-                                        read_at: read_at(access.neighbors_age),
-                                    },
-                                    None => DeviceResult::Unreachable,
-                                },
-                                Err(error) => DeviceResult::Failed(error),
-                            };
-                            scope.send_message(NeighborCheckMsg::Result(index, result));
-                        })
+                        watch_data(
+                            ctx.link(),
+                            NeighborFindings::build(variables),
+                            move |data| {
+                                let result = match data {
+                                    Ok(data) => {
+                                        match data.topology.device_by_id.and_then(|d| d.access) {
+                                            Some(access) => DeviceResult::Done {
+                                                netbox: data.topology.netbox_url,
+                                                findings: access.neighbor_findings,
+                                                read_at: read_at(access.neighbors_age),
+                                            },
+                                            None => DeviceResult::Unreachable,
+                                        }
+                                    }
+                                    Err(error) => DeviceResult::Failed(error),
+                                };
+                                scope.send_message(NeighborCheckMsg::Result(index, result));
+                            },
+                        )
                     })
                     .collect();
                 return false;
@@ -126,8 +132,12 @@ impl Component for NeighborCheck {
             }
             NeighborCheckMsg::Result(index, mut result) => {
                 if let Some(slot) = self.results.as_mut().and_then(|r| r.get_mut(index)) {
-                    if let (DeviceResult::Done { read_at: before, .. }, DeviceResult::Done { read_at, .. }) =
-                        (&*slot, &mut result)
+                    if let (
+                        DeviceResult::Done {
+                            read_at: before, ..
+                        },
+                        DeviceResult::Done { read_at, .. },
+                    ) = (&*slot, &mut result)
                     {
                         *read_at = same_reading(Some(*before), *read_at);
                     }
@@ -186,10 +196,16 @@ impl NeighborCheck {
             DeviceResult::Pending => html!(<Spinner size={SpinnerSize::Sm}/>),
             DeviceResult::Unreachable => html!({ t::UNREACHABLE }),
             DeviceResult::Failed(error) => error.to_html(),
-            DeviceResult::Done { findings, read_at, .. } if findings.is_empty() => {
+            DeviceResult::Done {
+                findings, read_at, ..
+            } if findings.is_empty() => {
                 html!(<>{ t::IN_LINE }{" · "}{as_of(&local_time(*read_at))}</>)
             }
-            DeviceResult::Done { netbox, findings, read_at } => {
+            DeviceResult::Done {
+                netbox,
+                findings,
+                read_at,
+            } => {
                 let links = Links { netbox };
                 html! {
                     <>
@@ -298,7 +314,9 @@ impl Links<'_> {
                 &format!("dcim/devices/{}/", device.id),
                 &format!("{} {}", seen.identity, seen.interface_name),
             ),
-            (None, None) => html!({ t::unknown(&seen.identity, &seen.interface_name, &seen.board) }),
+            (None, None) => {
+                html!({ t::unknown(&seen.identity, &seen.interface_name, &seen.board) })
+            }
         }
     }
     fn seen(&self, seen: &[Seen]) -> Html {

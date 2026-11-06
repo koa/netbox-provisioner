@@ -12,8 +12,7 @@ use crate::{
     Error,
     device::raw::{Row, field, rows},
     topology::{
-        DeviceRole,
-        PhysicalPortId,
+        DeviceRole, PhysicalPortId,
         access::{device::DeviceAccess, interface::InterfaceAccess},
         findings::{DeviceRef, InterfaceRef, Severity, device_ref, interface_ref},
     },
@@ -107,7 +106,10 @@ pub struct Neighbors {
 }
 
 /// Reads the device's ports and neighbors and compares them with NetBox: who is seen where.
-pub async fn read(client: &RawDevice<SimpleResult>, device: &DeviceAccess) -> Result<Neighbors, Error> {
+pub async fn read(
+    client: &RawDevice<SimpleResult>,
+    device: &DeviceAccess,
+) -> Result<Neighbors, Error> {
     Ok(evaluate(device, &read_table(client).await?))
 }
 
@@ -230,7 +232,11 @@ fn seen_at(
 
 /// [`evaluate`] on what the device answered: `interfaces` from `/interface/print`, `neighbors`
 /// from `/ip/neighbor/print`.
-pub fn compare(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> Vec<NeighborFinding> {
+pub fn compare(
+    device: &DeviceAccess,
+    interfaces: &[Row],
+    neighbors: &[Row],
+) -> Vec<NeighborFinding> {
     let (seen_at, netbox_ports) = seen_at(device, interfaces, neighbors);
     let mut findings = Vec::new();
     for (default_name, (name, seen)) in &seen_at {
@@ -272,7 +278,11 @@ pub fn compare(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> 
         });
         match matching {
             Some((far_end, seen)) => {
-                if seen.interface.as_ref().is_none_or(|i| i.id != far_end.id().0) {
+                if seen
+                    .interface
+                    .as_ref()
+                    .is_none_or(|i| i.id != far_end.id().0)
+                {
                     findings.push(NeighborFinding {
                         severity: Severity::Error,
                         kind: NeighborFindingKind::OtherFarPort(OtherFarPort {
@@ -298,9 +308,13 @@ pub fn compare(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> 
         if seen_at.contains_key(default_name) {
             continue;
         }
-        let Some(far_end) = interface.connected_interfaces().into_iter().find(|far_end| {
-            far_end.device().is_some_and(|d| d.has_routeros()) && !is_on_bridge_device(far_end)
-        }) else {
+        let Some(far_end) = interface
+            .connected_interfaces()
+            .into_iter()
+            .find(|far_end| {
+                far_end.device().is_some_and(|d| d.has_routeros()) && !is_on_bridge_device(far_end)
+            })
+        else {
             continue;
         };
         let name = interface
@@ -328,7 +342,9 @@ pub fn compare(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> 
 pub(crate) fn port_named(device: &DeviceAccess, name: &str) -> Option<InterfaceAccess> {
     let names = name.split(['/', ',']).collect::<Vec<_>>();
     device.interfaces().into_iter().find(|interface| {
-        let short = interface.external_port().map(|port| port.short_name().to_string());
+        let short = interface
+            .external_port()
+            .map(|port| port.short_name().to_string());
         names.iter().any(|name| {
             interface.name() == *name
                 || short.as_deref().is_some_and(|short| {

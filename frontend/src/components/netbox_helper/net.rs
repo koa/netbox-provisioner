@@ -106,8 +106,17 @@ impl NetboxHelper {
                 .collect()
         };
         let parents = entries(options.parents.iter().map(|p| (p.id, &p.prefix)).collect());
-        let parents_v6 = entries(options.parents_v6.iter().map(|p| (p.id, &p.prefix)).collect());
-        let target = targets.iter().find(|e| Some(e.value) == self.net.target).cloned();
+        let parents_v6 = entries(
+            options
+                .parents_v6
+                .iter()
+                .map(|p| (p.id, &p.prefix))
+                .collect(),
+        );
+        let target = targets
+            .iter()
+            .find(|e| Some(e.value) == self.net.target)
+            .cloned();
         let selected = |entries: &[NetEntry<Option<u32>>], value: Option<u32>| {
             value.and_then(|value| entries.iter().find(|e| e.value == Some(value)).cloned())
         };
@@ -180,7 +189,10 @@ pub(super) fn fetch_net_options(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
         let query = CustomerNetOptionsQuery::build(DeviceVariables { id: id as i32 });
         let options = request(scope.clone(), query).await.map(|data| {
-            data.topology.device_by_id.map(|device| device.customer_net_options).unwrap_or_default()
+            data.topology
+                .device_by_id
+                .map(|device| device.customer_net_options)
+                .unwrap_or_default()
         });
         scope.send_message(NetMsg::Options(options));
     });

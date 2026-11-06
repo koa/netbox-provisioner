@@ -6,8 +6,8 @@ use crate::device::raw::Row;
 use crate::helper::poe::PoePorts;
 use crate::network_state::{edges::Lsdb, lsa::Lsa};
 use crate::topology::{
-    Cable, CablePort, Device, Interface, InterfaceId, IpAddressData, IpAddressId, PhysicalPortId, PortType, Topology,
-    builder::TopologyBuilder,
+    Cable, CablePort, Device, Interface, InterfaceId, IpAddressData, IpAddressId, PhysicalPortId,
+    PortType, Topology, builder::TopologyBuilder,
 };
 use std::{str::FromStr, sync::Arc};
 
@@ -24,7 +24,12 @@ fn address(builder: &mut TopologyBuilder, ip: &str) -> IpAddressId {
     id
 }
 
-fn device(builder: &mut TopologyBuilder, name: &str, has_routeros: bool, loopback: Option<&str>) -> DeviceId {
+fn device(
+    builder: &mut TopologyBuilder,
+    name: &str,
+    has_routeros: bool,
+    loopback: Option<&str>,
+) -> DeviceId {
     let primary = loopback.map(|ip| address(builder, ip));
     let id = builder.devices.next_id();
     builder.devices.insert(
@@ -40,7 +45,13 @@ fn device(builder: &mut TopologyBuilder, name: &str, has_routeros: bool, loopbac
     id
 }
 
-fn port(builder: &mut TopologyBuilder, device: DeviceId, name: &str, ip: Option<&str>, ospf: bool) -> InterfaceId {
+fn port(
+    builder: &mut TopologyBuilder,
+    device: DeviceId,
+    name: &str,
+    ip: Option<&str>,
+    ospf: bool,
+) -> InterfaceId {
     let ips = ip.map(|ip| address(builder, ip)).into_iter().collect();
     let id = builder.interfaces.next_id();
     builder.interfaces.insert(
@@ -84,7 +95,9 @@ fn net(far: impl FnOnce(&mut TopologyBuilder) -> DeviceId) -> (Vec<DeviceAccess>
     let e4 = port(&mut builder, far_device, "ether1", None, false);
     cable(&mut builder, e3, e4);
     let topology = Arc::new(builder.build());
-    let devices = [r1, r2].map(|id| topology.get_device_by_id(&id).unwrap()).to_vec();
+    let devices = [r1, r2]
+        .map(|id| topology.get_device_by_id(&id).unwrap())
+        .to_vec();
     (devices, topology)
 }
 
@@ -95,9 +108,24 @@ fn net(far: impl FnOnce(&mut TopologyBuilder) -> DeviceId) -> (Vec<DeviceAccess>
 fn a_device_without_routeros_is_off_the_map() {
     let (devices, _topology) = net(|builder| device(builder, "printer", false, None));
     let state = build(&devices, &[], &Lsdb::default(), None, 0, None);
-    assert_eq!(state.nodes.iter().map(|n| &*n.device.name).collect::<Vec<_>>(), ["r1", "r2"]);
-    let edges = state.edges.iter().map(|e| (&*e.a.device.name, &*e.b.device.name)).collect::<Vec<_>>();
-    assert_eq!(edges, [("r1", "r2")], "the edge to the printer is left out, the one between r1 and r2 isn't");
+    assert_eq!(
+        state
+            .nodes
+            .iter()
+            .map(|n| &*n.device.name)
+            .collect::<Vec<_>>(),
+        ["r1", "r2"]
+    );
+    let edges = state
+        .edges
+        .iter()
+        .map(|e| (&*e.a.device.name, &*e.b.device.name))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        edges,
+        [("r1", "r2")],
+        "the edge to the printer is left out, the one between r1 and r2 isn't"
+    );
 }
 
 /// A RouterOS device without an `ospf` port anywhere stays off the map too.
@@ -105,8 +133,19 @@ fn a_device_without_routeros_is_off_the_map() {
 fn a_routeros_device_without_ospf_is_off_the_map() {
     let (devices, _topology) = net(|builder| device(builder, "r3", true, Some("172.16.1.3/32")));
     let state = build(&devices, &[], &Lsdb::default(), None, 0, None);
-    assert_eq!(state.nodes.iter().map(|n| &*n.device.name).collect::<Vec<_>>(), ["r1", "r2"]);
-    let edges = state.edges.iter().map(|e| (&*e.a.device.name, &*e.b.device.name)).collect::<Vec<_>>();
+    assert_eq!(
+        state
+            .nodes
+            .iter()
+            .map(|n| &*n.device.name)
+            .collect::<Vec<_>>(),
+        ["r1", "r2"]
+    );
+    let edges = state
+        .edges
+        .iter()
+        .map(|e| (&*e.a.device.name, &*e.b.device.name))
+        .collect::<Vec<_>>();
     assert_eq!(edges, [("r1", "r2")]);
 }
 
@@ -136,7 +175,9 @@ fn bridged_net() -> (Vec<DeviceAccess>, Arc<Topology>) {
     cable(&mut builder, e1, s1);
     cable(&mut builder, s2, e2);
     let topology = Arc::new(builder.build());
-    let devices = [r1, r2].map(|id| topology.get_device_by_id(&id).unwrap()).to_vec();
+    let devices = [r1, r2]
+        .map(|id| topology.get_device_by_id(&id).unwrap())
+        .to_vec();
     (devices, topology)
 }
 
@@ -151,12 +192,17 @@ fn poe_net() -> (Vec<DeviceAccess>, Arc<Topology>) {
     builder.interfaces.get_mut(&e2).unwrap().poe = Some(PoeMode::Pd);
     cable(&mut builder, e1, e2);
     let topology = Arc::new(builder.build());
-    let devices = [r1, r2].map(|id| topology.get_device_by_id(&id).unwrap()).to_vec();
+    let devices = [r1, r2]
+        .map(|id| topology.get_device_by_id(&id).unwrap())
+        .to_vec();
     (devices, topology)
 }
 
 fn poe_row(fields: &[(&str, &str)]) -> Row {
-    fields.iter().map(|(k, v)| (Box::from(*k), Some(Box::from(*v)))).collect()
+    fields
+        .iter()
+        .map(|(k, v)| (Box::from(*k), Some(Box::from(*v))))
+        .collect()
 }
 
 /// r1 feeds r2 over their cable, `pse`/`pd` as NetBox has it, reporting `powered-on` with 3.9 W:
@@ -166,14 +212,31 @@ fn a_feeding_port_gets_a_poe_edge() {
     let (devices, _topology) = poe_net();
     let data = Arc::new(DeviceMapData {
         poe: PoePorts {
-            ethernet: vec![poe_row(&[("name", "ether1"), ("default-name", "ether1"), ("poe-out", "auto-on")])],
-            monitor: vec![poe_row(&[("name", "ether1"), ("poe-out-status", "powered-on"), ("poe-out-power", "3.9")])],
+            ethernet: vec![poe_row(&[
+                ("name", "ether1"),
+                ("default-name", "ether1"),
+                ("poe-out", "auto-on"),
+            ])],
+            monitor: vec![poe_row(&[
+                ("name", "ether1"),
+                ("poe-out-status", "powered-on"),
+                ("poe-out-power", "3.9"),
+            ])],
         },
         ..DeviceMapData::default()
     });
     let device_data = BTreeMap::from([(devices[0].id(), data)]);
     let details = build_details(&devices, &device_data);
-    assert_eq!(details.poe_edges.len(), 1, "{:?}", details.poe_edges.iter().map(|e| &e.pse.name).collect::<Vec<_>>());
+    assert_eq!(
+        details.poe_edges.len(),
+        1,
+        "{:?}",
+        details
+            .poe_edges
+            .iter()
+            .map(|e| &e.pse.name)
+            .collect::<Vec<_>>()
+    );
     let edge = &details.poe_edges[0];
     assert_eq!(&*edge.pse.device.name, "r1");
     assert_eq!(&*edge.pd.device.name, "r2");
@@ -188,19 +251,35 @@ fn a_poe_edge_needs_no_reading_from_the_far_device() {
     let (devices, _topology) = poe_net();
     let data = Arc::new(DeviceMapData {
         poe: PoePorts {
-            ethernet: vec![poe_row(&[("name", "ether1"), ("default-name", "ether1"), ("poe-out", "auto-on")])],
-            monitor: vec![poe_row(&[("name", "ether1"), ("poe-out-status", "waiting-for-load")])],
+            ethernet: vec![poe_row(&[
+                ("name", "ether1"),
+                ("default-name", "ether1"),
+                ("poe-out", "auto-on"),
+            ])],
+            monitor: vec![poe_row(&[
+                ("name", "ether1"),
+                ("poe-out-status", "waiting-for-load"),
+            ])],
         },
         ..DeviceMapData::default()
     });
     let device_data = BTreeMap::from([(devices[0].id(), data)]);
     let details = build_details(&devices, &device_data);
-    assert_eq!(details.poe_edges.len(), 1, "pse in NetBox draws the arrow even while waiting for load");
+    assert_eq!(
+        details.poe_edges.len(),
+        1,
+        "pse in NetBox draws the arrow even while waiting for load"
+    );
     assert_eq!(details.poe_edges[0].problem, Some(PoeProblem::NoLoad));
 }
 
 fn row(fields: &[(&str, &str)]) -> Option<Lsa> {
-    Lsa::from_row(|key| fields.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string()))
+    Lsa::from_row(|key| {
+        fields
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| v.to_string())
+    })
 }
 
 fn router(originator: &'static str, body: &'static str) -> [(&'static str, &'static str); 5] {
@@ -220,7 +299,10 @@ const SEGMENT_V2: [(&str, &str); 5] = [
     ("type", "network"),
     ("originator", "172.16.1.1"),
     ("id", "172.17.1.1"),
-    ("body", "netmask=255.255.255.252\n    router-id=172.16.1.1\n    router-id=172.16.1.2\n"),
+    (
+        "body",
+        "netmask=255.255.255.252\n    router-id=172.16.1.1\n    router-id=172.16.1.2\n",
+    ),
 ];
 
 /// The switch between r1 and r2 isn't itself an OSPF router, but the LSDB confirms r1 and r2
@@ -230,19 +312,42 @@ const SEGMENT_V2: [(&str, &str); 5] = [
 #[test]
 fn a_switch_between_ospf_neighbors_is_on_the_map() {
     let (devices, _topology) = bridged_net();
-    let lsdb = [router("172.16.1.1", R1_V2), router("172.16.1.2", R2_V2), SEGMENT_V2]
-        .iter()
-        .filter_map(|fields| row(fields))
-        .collect::<Lsdb>();
+    let lsdb = [
+        router("172.16.1.1", R1_V2),
+        router("172.16.1.2", R2_V2),
+        SEGMENT_V2,
+    ]
+    .iter()
+    .filter_map(|fields| row(fields))
+    .collect::<Lsdb>();
     let state = build(&devices, &[], &lsdb, None, 0, None);
-    let mut names = state.nodes.iter().map(|n| &*n.device.name).collect::<Vec<_>>();
+    let mut names = state
+        .nodes
+        .iter()
+        .map(|n| &*n.device.name)
+        .collect::<Vec<_>>();
     names.sort();
     assert_eq!(names, ["r1", "r2", "sw"]);
-    let state_of = |name: &str| state.nodes.iter().find(|n| &*n.device.name == name).unwrap().state;
-    assert_eq!(state_of("sw"), NodeState::NotOspf, "the switch doesn't run OSPF itself");
+    let state_of = |name: &str| {
+        state
+            .nodes
+            .iter()
+            .find(|n| &*n.device.name == name)
+            .unwrap()
+            .state
+    };
+    assert_eq!(
+        state_of("sw"),
+        NodeState::NotOspf,
+        "the switch doesn't run OSPF itself"
+    );
     assert_eq!(state_of("r1"), NodeState::Reached);
     assert_eq!(state_of("r2"), NodeState::Reached);
-    assert_eq!(state.edges.len(), 2, "both cables through the switch are shown");
+    assert_eq!(
+        state.edges.len(),
+        2,
+        "both cables through the switch are shown"
+    );
 }
 
 /// Without the LSDB confirming the two routers share a segment, the switch stays off: it might
@@ -251,7 +356,18 @@ fn a_switch_between_ospf_neighbors_is_on_the_map() {
 fn a_switch_without_a_confirmed_segment_is_off_the_map() {
     let (devices, _topology) = bridged_net();
     let state = build(&devices, &[], &Lsdb::default(), None, 0, None);
-    let names = state.nodes.iter().map(|n| &*n.device.name).collect::<Vec<_>>();
-    assert_eq!(names, ["r1", "r2"], "sw stays off without proof it relays a real OSPF neighbor");
-    assert!(state.edges.is_empty(), "neither cable through sw is shown without that proof");
+    let names = state
+        .nodes
+        .iter()
+        .map(|n| &*n.device.name)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        ["r1", "r2"],
+        "sw stays off without proof it relays a real OSPF neighbor"
+    );
+    assert!(
+        state.edges.is_empty(),
+        "neither cable through sw is shown without that proof"
+    );
 }

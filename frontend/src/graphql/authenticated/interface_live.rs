@@ -16,7 +16,7 @@ pub struct RefreshInterfaceLiveVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "RefreshInterfaceLiveVariables",
+    variables = "RefreshInterfaceLiveVariables"
 )]
 pub struct RefreshInterfaceLive {
     #[arguments(id: $id)]
@@ -36,7 +36,7 @@ pub struct InterfaceLiveVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "SubscriptionAuthenticated",
-    variables = "InterfaceLiveVariables",
+    variables = "InterfaceLiveVariables"
 )]
 pub struct InterfaceLiveSubscription {
     pub topology: LiveTopology,
@@ -46,7 +46,7 @@ pub struct InterfaceLiveSubscription {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "InterfaceLiveVariables",
+    variables = "InterfaceLiveVariables"
 )]
 pub struct LiveTopology {
     #[arguments(id: $id)]
@@ -57,7 +57,7 @@ pub struct LiveTopology {
 #[cynic(
     schema = "authenticated",
     graphql_type = "DeviceAccess",
-    variables = "InterfaceLiveVariables",
+    variables = "InterfaceLiveVariables"
 )]
 pub struct LiveDevice {
     #[arguments(

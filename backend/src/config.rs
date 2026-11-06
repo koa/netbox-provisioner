@@ -102,10 +102,7 @@ pub struct MikrotikCredentials {
 
 impl MikrotikCredentials {
     pub fn user(&self) -> &str {
-        self.user
-            .as_ref()
-            .map(Box::as_ref)
-            .unwrap_or("admin")
+        self.user.as_ref().map(Box::as_ref).unwrap_or("admin")
     }
     pub fn password(&self) -> Option<&str> {
         self.password.as_ref().map(Box::as_ref)
@@ -120,7 +117,9 @@ impl Settings {
         std::time::Duration::from_secs(self.update_fallback_seconds.unwrap_or(900))
     }
     pub fn state_dir(&self) -> &std::path::Path {
-        self.state_dir.as_deref().unwrap_or(std::path::Path::new("state"))
+        self.state_dir
+            .as_deref()
+            .unwrap_or(std::path::Path::new("state"))
     }
     pub fn auth_client_id(&self) -> &str {
         &self.auth_client_id
@@ -221,7 +220,8 @@ settings:
     #[test]
     fn api_networks_are_prefixes() {
         let yaml = format!("{YAML}  api_networks: [192.168.0.0/16, \"2a02:16a:fe00:8000::/50\"]\n");
-        let settings = settings_from(File::from_str(&yaml, FileFormat::Yaml), environment()).unwrap();
+        let settings =
+            settings_from(File::from_str(&yaml, FileFormat::Yaml), environment()).unwrap();
         let networks = settings.api_networks.expect("api_networks");
         assert_eq!(networks.len(), 2);
         assert_eq!(networks[1].to_string(), "2a02:16a:fe00:8000::/50");
@@ -231,9 +231,13 @@ settings:
     #[test]
     fn device_syslog_defaults_to_the_four_levels() {
         let yaml = format!("{YAML}  device_syslog:\n    remote: 2a02:16a:fe00:1a0::10:8\n");
-        let settings = settings_from(File::from_str(&yaml, FileFormat::Yaml), environment()).unwrap();
+        let settings =
+            settings_from(File::from_str(&yaml, FileFormat::Yaml), environment()).unwrap();
         let syslog = settings.device_syslog.expect("device_syslog");
         assert_eq!(syslog.port, None);
-        assert_eq!(syslog.topics().collect::<Vec<_>>(), ["info", "warning", "error", "critical"]);
+        assert_eq!(
+            syslog.topics().collect::<Vec<_>>(),
+            ["info", "warning", "error", "critical"]
+        );
     }
 }

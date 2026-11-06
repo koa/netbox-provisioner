@@ -1,3 +1,4 @@
+use crate::pages::routes::AppRoute;
 use crate::{
     components::{
         adjust_target::{AdjustTarget, SelectedTarget},
@@ -9,12 +10,8 @@ use crate::{
         menu::popup::Select,
     },
     error::{FrontendError, ServerProblem},
-    i18n::{
-        common::CANCEL,
-        device::{self as t, setup},
-        target,
-    },
     graphql::{
+        Response,
         authenticated::{
             device::{
                 AllowApply, ApplyDeviceCfg, BootPartition, BootPartitionVariables,
@@ -30,9 +27,13 @@ use crate::{
                 LeftoverAction, Mac,
             },
         },
-        Response,
         live::{Subscription, local_time, read_at, same_reading, watch},
         path_segment, request,
+    },
+    i18n::{
+        common::CANCEL,
+        device::{self as t, setup},
+        target,
     },
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
@@ -42,7 +43,6 @@ use patternfly_yew::prelude::{
 };
 use yew::{Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
 use yew_nested_router::components::Link;
-use crate::pages::routes::AppRoute;
 
 pub struct ShowDevice {
     id: u32,
@@ -258,7 +258,11 @@ impl Component for ShowDevice {
                 {
                     self.downgrade_version = previous;
                 }
-                if self.data.as_ref().is_some_and(|before| before.jobs_over != data.jobs_over) {
+                if self
+                    .data
+                    .as_ref()
+                    .is_some_and(|before| before.jobs_over != data.jobs_over)
+                {
                     self.jobs_finished += 1;
                 }
                 if let Some((id, through)) = data.running_job.clone()
@@ -270,7 +274,12 @@ impl Component for ShowDevice {
                     self.job_running = true;
                 }
                 let mut data = *data;
-                let as_of = |data: &ShowDeviceData| data.access.as_ref().and_then(|(_, cfg)| cfg.as_ref()).map(|cfg| cfg.as_of);
+                let as_of = |data: &ShowDeviceData| {
+                    data.access
+                        .as_ref()
+                        .and_then(|(_, cfg)| cfg.as_ref())
+                        .map(|cfg| cfg.as_of)
+                };
                 let before = self.data.as_ref().and_then(as_of);
                 if let Some(cfg) = data.access.as_mut().and_then(|(_, cfg)| cfg.as_mut()) {
                     cfg.as_of = same_reading(before, cfg.as_of);
@@ -329,7 +338,14 @@ impl Component for ShowDevice {
                 self.job_running = true;
                 let suspend = self.suspend();
                 let without = self.without_fallback;
-                update(ctx.link().clone(), self.id, None, suspend, without, &self.alternate_target);
+                update(
+                    ctx.link().clone(),
+                    self.id,
+                    None,
+                    suspend,
+                    without,
+                    &self.alternate_target,
+                );
                 true
             }
             ShowDeviceMessage::SuspendWatchdogs(suspend) => {
@@ -342,7 +358,12 @@ impl Component for ShowDevice {
             }
             ShowDeviceMessage::ClearLeftover(leftover) => {
                 self.job_running = true;
-                clear(ctx.link().clone(), self.id, leftover, &self.alternate_target);
+                clear(
+                    ctx.link().clone(),
+                    self.id,
+                    leftover,
+                    &self.alternate_target,
+                );
                 true
             }
             ShowDeviceMessage::DowngradeVersion(version) => {
@@ -422,7 +443,12 @@ impl Component for ShowDevice {
             ShowDeviceMessage::BootPartition(partition) => {
                 self.confirm_boot = None;
                 self.job_running = true;
-                boot_from(ctx.link().clone(), self.id, partition, &self.alternate_target);
+                boot_from(
+                    ctx.link().clone(),
+                    self.id,
+                    partition,
+                    &self.alternate_target,
+                );
                 true
             }
             ShowDeviceMessage::ShowTarget(show) => {
@@ -1043,8 +1069,10 @@ impl ShowDevice {
         supply: &PowerSupply,
         allow_apply: bool,
     ) -> Html {
-        let job = self.power_job.map(|id| html! {
-            <JobView key={id} id={id} on_finished={yew::Callback::noop()}/>
+        let job = self.power_job.map(|id| {
+            html! {
+                <JobView key={id} id={id} on_finished={yew::Callback::noop()}/>
+            }
         });
         html! {<>
             if self.confirm_power_cycle {
@@ -1076,8 +1104,13 @@ impl ShowDevice {
     /// the running RouterOS to switch back to, and no neighbor reaching it (also when the
     /// partitions couldn't be read, as the backend then finds none either).
     fn no_way_back(&self, data: &ShowDeviceData) -> bool {
-        let partitions = data.partitions.as_ref().map(|p| p.partitions.as_slice()).unwrap_or_default();
-        let two = matches!(partitions, [a, b] if (a.running && a.active) || (b.running && b.active));
+        let partitions = data
+            .partitions
+            .as_ref()
+            .map(|p| p.partitions.as_slice())
+            .unwrap_or_default();
+        let two =
+            matches!(partitions, [a, b] if (a.running && a.active) || (b.running && b.active));
         !two && data.update_neighbors.is_empty()
     }
     fn no_way_back_view(&self, ctx: &Context<Self>) -> Html {
@@ -1100,9 +1133,9 @@ impl ShowDevice {
     fn suspend(&self) -> bool {
         self.suspend_watchdogs
             && self.data.as_ref().is_some_and(|data| {
-                data.watchdogs.iter().any(|w| {
-                    w.watching.watch_address.is_some() || !w.watching.poe_pings.is_empty()
-                })
+                data.watchdogs
+                    .iter()
+                    .any(|w| w.watching.watch_address.is_some() || !w.watching.poe_pings.is_empty())
             })
     }
     /// The watchdogs that may fire while this device updates, where one watches something or
@@ -1111,9 +1144,9 @@ impl ShowDevice {
         let watching: Vec<Html> = watchdogs
             .iter()
             .flat_map(|w| {
-                let address = w.watching.watch_address.as_deref().map(|address| {
-                    html!(<p>{t::watchdog_watching(&w.device, w.supplier, address)}</p>)
-                });
+                let address = w.watching.watch_address.as_deref().map(
+                    |address| html!(<p>{t::watchdog_watching(&w.device, w.supplier, address)}</p>),
+                );
                 let ports = w.watching.poe_pings.iter().map(|ping| {
                     html!(<p>{t::watchdog_poe_ping(&w.device, &ping.port, &ping.address)}</p>)
                 });
@@ -1165,10 +1198,7 @@ fn target_variables(id: u32, target: &SelectedTarget) -> TargetVariables {
 }
 
 /// What an answer of the overview shows.
-fn overview_message(
-    id: u32,
-    response: Response<DeviceOverview>,
-) -> ShowDeviceMessage {
+fn overview_message(id: u32, response: Response<DeviceOverview>) -> ShowDeviceMessage {
     if let Some(data) = response.data {
         // why the device couldn't be reached goes with the warning, not the banner
         let (access_errors, errors): (Vec<_>, Vec<_>) = response
@@ -1177,7 +1207,9 @@ fn overview_message(
             .into_iter()
             .partition(|e| {
                 e.path.as_ref().is_some_and(|path| {
-                    path.iter().map(path_segment).eq(["topology", "deviceById", "access"])
+                    path.iter()
+                        .map(path_segment)
+                        .eq(["topology", "deviceById", "access"])
                 })
             });
         let access_problem = access_errors
@@ -1186,7 +1218,12 @@ fn overview_message(
         let error = Some(errors)
             .filter(|e| !e.is_empty())
             .map(FrontendError::Graphql);
-        let jobs = data.topology.device_by_id.as_ref().map(|d| d.jobs.as_slice()).unwrap_or_default();
+        let jobs = data
+            .topology
+            .device_by_id
+            .as_ref()
+            .map(|d| d.jobs.as_slice())
+            .unwrap_or_default();
         let running_job = jobs
             .iter()
             .find(|job| job.state == JobState::Running)
@@ -1209,7 +1246,11 @@ fn overview_message(
                 connected: d.access.as_ref().map(|a| a.connected.clone()),
                 access_problem,
                 routeros: d.access.as_mut().and_then(|a| a.routeros.take()),
-                log: d.access.as_mut().and_then(|a| a.log.take()).unwrap_or_default(),
+                log: d
+                    .access
+                    .as_mut()
+                    .and_then(|a| a.log.take())
+                    .unwrap_or_default(),
                 leftovers: d.access.as_mut().and_then(|a| a.leftovers.take()),
                 device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
                 partitions: d.access.as_mut().and_then(|a| a.partitions.take()),
@@ -1246,7 +1287,9 @@ fn overview_message(
 fn apply(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
     let apply = ApplyDeviceCfg::build(target_variables(id, target));
     spawn_local(async move {
-        let result = request(scope.clone(), apply).await.map(|data| data.apply_cfg.id);
+        let result = request(scope.clone(), apply)
+            .await
+            .map(|data| data.apply_cfg.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }
@@ -1254,21 +1297,29 @@ fn apply(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
 fn fetch_candidates(scope: Scope<ShowDevice>, id: u32) {
     spawn_local(async move {
         let query = BootstrapCandidates::build(DeviceVariables { id: id as i32 });
-        let result = request(scope.clone(), query).await.map_err(|e| e.message()).map(|data| {
-            data.topology
-                .device_by_id
-                .and_then(|d| d.bootstrap_plan)
-                .map(|plan| plan.discovered)
-                .unwrap_or_default()
-        });
+        let result = request(scope.clone(), query)
+            .await
+            .map_err(|e| e.message())
+            .map(|data| {
+                data.topology
+                    .device_by_id
+                    .and_then(|d| d.bootstrap_plan)
+                    .map(|plan| plan.discovered)
+                    .unwrap_or_default()
+            });
         scope.send_message(ShowDeviceMessage::Candidates(result));
     });
 }
 
 fn bootstrap(scope: Scope<ShowDevice>, id: u32, mac: String) {
     spawn_local(async move {
-        let setup = BootstrapDevice::build(BootstrapVariables { id: id as i32, mac: Mac(mac) });
-        let result = request(scope.clone(), setup).await.map(|data| data.bootstrap.id);
+        let setup = BootstrapDevice::build(BootstrapVariables {
+            id: id as i32,
+            mac: Mac(mac),
+        });
+        let result = request(scope.clone(), setup)
+            .await
+            .map(|data| data.bootstrap.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }
@@ -1295,8 +1346,12 @@ fn update(
     without_fallback: bool,
     target: &SelectedTarget,
 ) {
-    let TargetVariables { id, target, credential_name, adhoc_credentials } =
-        target_variables(id, target);
+    let TargetVariables {
+        id,
+        target,
+        credential_name,
+        adhoc_credentials,
+    } = target_variables(id, target);
     let update = UpdateRouteros::build(UpdateVariables {
         id,
         channel,
@@ -1307,7 +1362,9 @@ fn update(
         without_fallback: without_fallback.then_some(true),
     });
     spawn_local(async move {
-        let result = request(scope.clone(), update).await.map(|data| data.update_routeros.id);
+        let result = request(scope.clone(), update)
+            .await
+            .map(|data| data.update_routeros.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }
@@ -1321,8 +1378,12 @@ fn downgrade(
     without_fallback: bool,
     target: &SelectedTarget,
 ) {
-    let TargetVariables { id, target, credential_name, adhoc_credentials } =
-        target_variables(id, target);
+    let TargetVariables {
+        id,
+        target,
+        credential_name,
+        adhoc_credentials,
+    } = target_variables(id, target);
     let downgrade = DowngradeRouteros::build(DowngradeVariables {
         id,
         version,
@@ -1333,8 +1394,9 @@ fn downgrade(
         without_fallback: without_fallback.then_some(true),
     });
     spawn_local(async move {
-        let result =
-            request(scope.clone(), downgrade).await.map(|data| data.downgrade_routeros.id);
+        let result = request(scope.clone(), downgrade)
+            .await
+            .map(|data| data.downgrade_routeros.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }
@@ -1349,8 +1411,12 @@ fn clear(scope: Scope<ShowDevice>, id: u32, leftover: Leftover, target: &Selecte
         Leftover::RestoreWatchdogs => A::RestoreWatchdogs,
         Leftover::RemovePackages => A::RemovePackages,
     };
-    let TargetVariables { id, target, credential_name, adhoc_credentials } =
-        target_variables(id, target);
+    let TargetVariables {
+        id,
+        target,
+        credential_name,
+        adhoc_credentials,
+    } = target_variables(id, target);
     let clear = ClearLeftover::build(ClearLeftoverVariables {
         id,
         action,
@@ -1359,7 +1425,9 @@ fn clear(scope: Scope<ShowDevice>, id: u32, leftover: Leftover, target: &Selecte
         adhoc_credentials,
     });
     spawn_local(async move {
-        let result = request(scope.clone(), clear).await.map(|data| data.clear_leftover.id);
+        let result = request(scope.clone(), clear)
+            .await
+            .map(|data| data.clear_leftover.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }
@@ -1368,7 +1436,9 @@ fn clear(scope: Scope<ShowDevice>, id: u32, leftover: Leftover, target: &Selecte
 fn reboot(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
     let reboot = RebootDevice::build(target_variables(id, target));
     spawn_local(async move {
-        let result = request(scope.clone(), reboot).await.map(|data| data.reboot_device.id);
+        let result = request(scope.clone(), reboot)
+            .await
+            .map(|data| data.reboot_device.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }
@@ -1377,7 +1447,9 @@ fn reboot(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
 fn cut_power(scope: Scope<ShowDevice>, id: u32) {
     let cycle = PowerCycle::build(DeviceVariables { id: id as i32 });
     spawn_local(async move {
-        let result = request(scope.clone(), cycle).await.map(|data| data.power_cycle.id);
+        let result = request(scope.clone(), cycle)
+            .await
+            .map(|data| data.power_cycle.id);
         scope.send_message(ShowDeviceMessage::PowerCycleStarted(result));
     });
 }
@@ -1387,7 +1459,9 @@ fn cut_power(scope: Scope<ShowDevice>, id: u32) {
 fn change_mode(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
     let change = ChangeDeviceMode::build(target_variables(id, target));
     spawn_local(async move {
-        let result = request(scope.clone(), change).await.map(|data| data.change_device_mode.id);
+        let result = request(scope.clone(), change)
+            .await
+            .map(|data| data.change_device_mode.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }
@@ -1396,15 +1470,21 @@ fn change_mode(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
 fn repartition(scope: Scope<ShowDevice>, id: u32, target: &SelectedTarget) {
     let split = RepartitionDevice::build(target_variables(id, target));
     spawn_local(async move {
-        let result = request(scope.clone(), split).await.map(|data| data.repartition_device.id);
+        let result = request(scope.clone(), split)
+            .await
+            .map(|data| data.repartition_device.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }
 
 /// Boots the device from `partition`.
 fn boot_from(scope: Scope<ShowDevice>, id: u32, partition: String, target: &SelectedTarget) {
-    let TargetVariables { id, target, credential_name, adhoc_credentials } =
-        target_variables(id, target);
+    let TargetVariables {
+        id,
+        target,
+        credential_name,
+        adhoc_credentials,
+    } = target_variables(id, target);
     let boot = BootPartition::build(BootPartitionVariables {
         id,
         partition,
@@ -1413,7 +1493,9 @@ fn boot_from(scope: Scope<ShowDevice>, id: u32, partition: String, target: &Sele
         adhoc_credentials,
     });
     spawn_local(async move {
-        let result = request(scope.clone(), boot).await.map(|data| data.boot_partition.id);
+        let result = request(scope.clone(), boot)
+            .await
+            .map(|data| data.boot_partition.id);
         scope.send_message(ShowDeviceMessage::JobStarted(result));
     });
 }

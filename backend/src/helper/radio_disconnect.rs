@@ -64,7 +64,11 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
         &device,
         format!(
             "Richtfunk abräumen {}",
-            sides.iter().map(|s| s.device.name()).collect::<Vec<_>>().join(" – ")
+            sides
+                .iter()
+                .map(|s| s.device.name())
+                .collect::<Vec<_>>()
+                .join(" – ")
         ),
     );
 
@@ -81,7 +85,10 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
             }
         }
     }
-    let bridges = sides.iter().filter_map(|s| s.bridge.as_ref()).collect::<Vec<_>>();
+    let bridges = sides
+        .iter()
+        .filter_map(|s| s.bridge.as_ref())
+        .collect::<Vec<_>>();
     let is_bridge = |end: &InterfaceAccess| bridges.iter().any(|b| b.id() == end.id());
     let networks = |end: &InterfaceAccess| {
         end.ips()
@@ -96,9 +103,14 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
         .iter()
         .flat_map(&networks)
         .filter(|net| {
-            let at = ends.iter().filter(|end| networks(end).contains(net)).count();
+            let at = ends
+                .iter()
+                .filter(|end| networks(end).contains(net))
+                .count();
             at >= 2
-                || ends.iter().any(|end| is_bridge(end) && networks(end).contains(net))
+                || ends
+                    .iter()
+                    .any(|end| is_bridge(end) && networks(end).contains(net))
                 || pools.iter().any(|(_, pool)| pool.contains(&net.addr()))
         })
         .collect::<Vec<_>>();
@@ -112,7 +124,11 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
         let owner = end.device().ok_or(Error::UnknownInterface(end.id().0))?;
         for ip in end.ips().iter().filter(|ip| in_segment(ip)) {
             let primary = [owner.primary_ip_v4(), owner.primary_ip_v6()];
-            if primary.iter().flatten().any(|primary| primary.id() == ip.id()) {
+            if primary
+                .iter()
+                .flatten()
+                .any(|primary| primary.id() == ip.id())
+            {
                 return Err(Error::PrimaryAddress {
                     address: address_text(ip),
                     device: owner.name().into(),
@@ -132,9 +148,10 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
     let mut updates = Vec::<UpdateInterface>::new();
     let mut without_ospf = Vec::new();
     for end in &ends {
-        let stays = end.ips().iter().any(|ip| {
-            !in_segment(ip) && ip.net().is_some_and(|net| matches!(net, IpNet::V4(_)))
-        });
+        let stays = end
+            .ips()
+            .iter()
+            .any(|ip| !in_segment(ip) && ip.net().is_some_and(|net| matches!(net, IpNet::V4(_))));
         if end.use_ospf() && !stays {
             let index = update(&mut updates, end);
             updates[index].tags_removed.push(InterfaceTag::Ospf);
@@ -154,16 +171,18 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
             }
         }
     }
-    plan.steps.extend(updates.into_iter().map(PlanStep::UpdateInterface));
+    plan.steps
+        .extend(updates.into_iter().map(PlanStep::UpdateInterface));
 
     if input.wireless_link
         && let (Some(end), Some(peer)) = (radio.wireless_link(), &peer)
     {
-        plan.steps.push(PlanStep::DeleteWirelessLink(DeleteWirelessLink {
-            id: end.id,
-            a: interface_ref(&radio),
-            b: interface_ref(peer),
-        }));
+        plan.steps
+            .push(PlanStep::DeleteWirelessLink(DeleteWirelessLink {
+                id: end.id,
+                a: interface_ref(&radio),
+                b: interface_ref(peer),
+            }));
     }
     if plan.steps.is_empty() {
         return Err(Error::NothingToDisconnect(super::port_name(&radio)));
@@ -181,7 +200,13 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
         }
         if let Some(port) = &side.router_port
             && let Some(router) = port.device()
-            && freed.iter().any(|ip| port.bridge().unwrap_or_else(|| port.clone()).ips().iter().any(|own| own.id() == ip.id()))
+            && freed.iter().any(|ip| {
+                port.bridge()
+                    .unwrap_or_else(|| port.clone())
+                    .ips()
+                    .iter()
+                    .any(|own| own.id() == ip.id())
+            })
             && !has_other_link(&router, port)
             && !plan.cut_off.iter().any(|cut| cut.id == router.id().0)
         {
@@ -194,7 +219,10 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
 /// The index of `interface`'s update in `updates`, a new one where it has none: one per
 /// interface, a second would find the first one's change when it is written.
 fn update(updates: &mut Vec<UpdateInterface>, interface: &InterfaceAccess) -> usize {
-    if let Some(index) = updates.iter().position(|u| u.interface.id == interface.id().0) {
+    if let Some(index) = updates
+        .iter()
+        .position(|u| u.interface.id == interface.id().0)
+    {
         return index;
     }
     updates.push(UpdateInterface {
@@ -214,13 +242,14 @@ fn update(updates: &mut Vec<UpdateInterface>, interface: &InterfaceAccess) -> us
 
 /// The bridge device of `radio` and what of it the link has.
 fn side(radio: &InterfaceAccess) -> Result<Side, Error> {
-    let device = radio.device().ok_or(Error::UnknownInterface(radio.id().0))?;
+    let device = radio
+        .device()
+        .ok_or(Error::UnknownInterface(radio.id().0))?;
     let bridge = radio.bridge();
     let to_router = |port: &InterfaceAccess| {
         port.connected_interfaces().into_iter().find(|far| {
-            far.device().is_some_and(|d| {
-                d.has_routeros() && d.id() != device.id() && !d.is_bridge_device()
-            })
+            far.device()
+                .is_some_and(|d| d.has_routeros() && d.id() != device.id() && !d.is_bridge_device())
         })
     };
     let cabled = device
@@ -232,7 +261,9 @@ fn side(radio: &InterfaceAccess) -> Result<Side, Error> {
         .collect::<Vec<_>>();
     // the bridge's port first
     let in_bridge = cabled.iter().find(|(port, _)| {
-        port.bridge().zip(bridge.as_ref()).is_some_and(|(a, b)| a.id() == b.id())
+        port.bridge()
+            .zip(bridge.as_ref())
+            .is_some_and(|(a, b)| a.id() == b.id())
     });
     let (ether, router_port) = in_bridge
         .or(cabled.first())

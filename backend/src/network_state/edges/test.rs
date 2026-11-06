@@ -1,8 +1,8 @@
 use super::*;
 use crate::network_state::lsa::Lsa;
 use crate::topology::{
-    Cable, CablePort, Device, Interface, IpAddressData, IpAddressId, PhysicalPortId, PortType, Topology,
-    builder::TopologyBuilder,
+    Cable, CablePort, Device, Interface, IpAddressData, IpAddressId, PhysicalPortId, PortType,
+    Topology, builder::TopologyBuilder,
 };
 use std::{str::FromStr, sync::Arc};
 
@@ -43,7 +43,12 @@ fn device(builder: &mut TopologyBuilder, name: &str, loopback: Option<&str>) -> 
     id
 }
 
-fn port(builder: &mut TopologyBuilder, device: DeviceId, name: &str, ip: Option<&str>) -> InterfaceId {
+fn port(
+    builder: &mut TopologyBuilder,
+    device: DeviceId,
+    name: &str,
+    ip: Option<&str>,
+) -> InterfaceId {
     let ips = ip.map(|ip| address(builder, ip)).into_iter().collect();
     let id = builder.interfaces.next_id();
     builder.interfaces.insert(
@@ -93,7 +98,10 @@ impl Net {
     }
     /// The states of the edges, the OSPF one first.
     fn states(&self, lsas: &[&[(&str, &str)]]) -> Vec<EdgeState> {
-        let lsdb = lsas.iter().filter_map(|fields| row(fields)).collect::<Lsdb>();
+        let lsdb = lsas
+            .iter()
+            .filter_map(|fields| row(fields))
+            .collect::<Lsdb>();
         let devices = [self.r1, self.r2].map(|id| self.topology.get_device_by_id(&id).unwrap());
         let mut edges = edges(&devices, &lsdb);
         edges.sort_by_key(|edge| edge.a);
@@ -102,10 +110,19 @@ impl Net {
 }
 
 fn row(fields: &[(&str, &str)]) -> Option<Lsa> {
-    Lsa::from_row(|key| fields.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string()))
+    Lsa::from_row(|key| {
+        fields
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| v.to_string())
+    })
 }
 
-fn router(version: &'static str, originator: &'static str, body: &'static str) -> [(&'static str, &'static str); 5] {
+fn router(
+    version: &'static str,
+    originator: &'static str,
+    body: &'static str,
+) -> [(&'static str, &'static str); 5] {
     [
         ("instance", version),
         ("type", "router"),
@@ -122,7 +139,10 @@ const SEGMENT_V2: [(&str, &str); 5] = [
     ("type", "network"),
     ("originator", "172.16.1.1"),
     ("id", "172.17.1.1"),
-    ("body", "netmask=255.255.255.252\n    router-id=172.16.1.1\n    router-id=172.16.1.2\n"),
+    (
+        "body",
+        "netmask=255.255.255.252\n    router-id=172.16.1.1\n    router-id=172.16.1.2\n",
+    ),
 ];
 /// both name the DR r1 on the segment (the DR itself too, as on lab-np2)
 const R_V3: &str = "options=V6|E|R\n    type=network iface-id=7 neighbor-iface-if=7 neighbor-router-id=172.16.1.1 metric=100\n";
@@ -131,7 +151,10 @@ const SEGMENT_V3: [(&str, &str); 5] = [
     ("type", "network"),
     ("originator", "172.16.1.1"),
     ("id", "0.0.0.7"),
-    ("body", "options=V6|E|R\n    router-id=172.16.1.1\n    router-id=172.16.1.2\n"),
+    (
+        "body",
+        "options=V6|E|R\n    router-id=172.16.1.1\n    router-id=172.16.1.2\n",
+    ),
 ];
 
 #[test]
@@ -192,7 +215,10 @@ fn a_segment_left_behind_doesnt_count() {
             ("type", "network"),
             ("originator", "172.16.1.2"),
             ("id", "172.17.1.2"),
-            ("body", "netmask=255.255.255.252\n    router-id=172.16.1.1\n    router-id=172.16.1.2\n"),
+            (
+                "body",
+                "netmask=255.255.255.252\n    router-id=172.16.1.1\n    router-id=172.16.1.2\n",
+            ),
         ],
     ]);
     assert_eq!(states[0], EdgeState::Down(DownReason::NoSegment));
@@ -217,7 +243,10 @@ fn a_v3_segment_left_behind_doesnt_count() {
 fn a_router_gone_from_the_area_is_named() {
     let net = Net::new();
     let states = net.states(&[&router("default-v2", "172.16.1.1", R1_V2)]);
-    assert_eq!(states[0], EdgeState::Down(DownReason::RouterMissing(net.r2)));
+    assert_eq!(
+        states[0],
+        EdgeState::Down(DownReason::RouterMissing(net.r2))
+    );
 }
 
 /// r2 reaches the segment on another cable (a L2 segment over a switch), not this one.
@@ -232,7 +261,10 @@ fn a_segment_without_one_of_the_routers_is_down() {
             ("type", "network"),
             ("originator", "172.16.1.1"),
             ("id", "172.17.1.1"),
-            ("body", "netmask=255.255.255.252\n    router-id=172.16.1.1\n    router-id=172.16.1.9\n"),
+            (
+                "body",
+                "netmask=255.255.255.252\n    router-id=172.16.1.1\n    router-id=172.16.1.9\n",
+            ),
         ],
     ]);
     assert_eq!(states[0], EdgeState::Down(DownReason::NotOnSegment(net.r2)));

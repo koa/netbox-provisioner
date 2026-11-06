@@ -59,14 +59,22 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
         &golden,
         &work_dir,
         "entry",
-        &[PortWiring::Listen(to_factory), PortWiring::Listen(to_configured)],
+        &[
+            PortWiring::Listen(to_factory),
+            PortWiring::Listen(to_configured),
+        ],
         crate::TEST_PASSWORD,
     )
     .await
     .expect("entry boot failed");
-    let fresh = start_node(&factory, &work_dir, "fresh", &[PortWiring::Connect(to_factory)])
-        .await
-        .expect("factory node boot failed");
+    let fresh = start_node(
+        &factory,
+        &work_dir,
+        "fresh",
+        &[PortWiring::Connect(to_factory)],
+    )
+    .await
+    .expect("factory node boot failed");
     let configured = boot_node(
         &golden,
         &work_dir,
@@ -77,7 +85,10 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
     .await
     .expect("configured node boot failed");
 
-    let entry_api = entry.connect_api(crate::TEST_PASSWORD).await.expect("entry api");
+    let entry_api = entry
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("entry api");
     for (n, interface) in [(0, "ether2"), (1, "ether3")] {
         let address = cable_addresses(n, len).0;
         let mut s = entry_api
@@ -107,8 +118,16 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
     wait_for_boot(&fresh).await;
     // an old config has its ports renamed: the setup finds the port by its factory name
     // (berghof-hansueli)
-    let configured_api = configured.connect_api(crate::TEST_PASSWORD).await.expect("configured api");
-    run(&configured_api, "/interface/ethernet/set", &[("numbers", "ether3"), ("name", "e03-old")]).await;
+    let configured_api = configured
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("configured api");
+    run(
+        &configured_api,
+        "/interface/ethernet/set",
+        &[("numbers", "ether3"), ("name", "e03-old")],
+    )
+    .await;
     drop(configured_api);
 
     for (node, slot, password) in [
@@ -156,7 +175,10 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
             })
             .collect::<String>();
         assert!(streamed.contains("Welcome back!"), "{streamed}");
-        assert!(!streamed.contains(password), "the password must not be streamed");
+        assert!(
+            !streamed.contains(password),
+            "the password must not be streamed"
+        );
 
         // reachable from the entry over the cable, with the password
         let target = address.split('/').next().unwrap().to_string();
@@ -197,8 +219,12 @@ pub async fn wait_for_boot(node: &RunningNode) {
     wait_until(
         || async {
             Ok(matches!(
-                MikrotikDevice::<SimpleResult>::connect(("127.0.0.1", node.api_port), b"admin", None::<&[u8]>)
-                    .await,
+                MikrotikDevice::<SimpleResult>::connect(
+                    ("127.0.0.1", node.api_port),
+                    b"admin",
+                    None::<&[u8]>
+                )
+                .await,
                 Ok(_) | Err(mikrotik_api::error::Error::LoginFailed)
             ))
         },
@@ -247,12 +273,24 @@ async fn mac_telnet_setup_survives_a_stalled_device() {
         .expect("golden image build failed");
     let work_dir = std::env::temp_dir().join("chr-network-mac-telnet-stall-test");
     let link = free_tcp_port().unwrap();
-    let entry = boot_node(&golden, &work_dir, "entry", &[PortWiring::Listen(link)], crate::TEST_PASSWORD)
-        .await
-        .expect("entry boot failed");
-    let target = boot_node(&golden, &work_dir, "target", &[PortWiring::Connect(link)], crate::TEST_PASSWORD)
-        .await
-        .expect("target boot failed");
+    let entry = boot_node(
+        &golden,
+        &work_dir,
+        "entry",
+        &[PortWiring::Listen(link)],
+        crate::TEST_PASSWORD,
+    )
+    .await
+    .expect("entry boot failed");
+    let target = boot_node(
+        &golden,
+        &work_dir,
+        "target",
+        &[PortWiring::Connect(link)],
+        crate::TEST_PASSWORD,
+    )
+    .await
+    .expect("target boot failed");
     let setup = MacTelnetSetup {
         macs: [mac_of(target.index, 1)].into(),
         port: "ether2".into(),
@@ -274,8 +312,10 @@ async fn mac_telnet_setup_survives_a_stalled_device() {
             tokio::time::sleep(Duration::from_millis(offset)).await;
             target.stall(Duration::from_secs(10)).await
         };
-        let (result, stalled) =
-            tokio::join!(set_up(&mut terminal, &setup, "admin", crate::TEST_PASSWORD), stall);
+        let (result, stalled) = tokio::join!(
+            set_up(&mut terminal, &setup, "admin", crate::TEST_PASSWORD),
+            stall
+        );
         stalled.expect("stall the target");
         if let Err(error) = result {
             panic!(
@@ -285,7 +325,10 @@ async fn mac_telnet_setup_survives_a_stalled_device() {
         }
         terminal.close().await;
     }
-    let api = target.connect_api(crate::TEST_PASSWORD).await.expect("target api");
+    let api = target
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("target api");
     let mut addresses = api
         .send_simple_command(b"/ip/address/print".as_slice(), ())
         .await;
@@ -320,7 +363,9 @@ async fn run(device: &MikrotikDevice<SimpleResult>, command: &str, attributes: &
 
 /// The rows of `/ip/address/print` with `address`: whether each is dynamic.
 async fn address_rows(device: &MikrotikDevice<SimpleResult>, address: &str) -> Vec<bool> {
-    let mut stream = device.send_simple_command(b"/ip/address/print".as_slice(), ()).await;
+    let mut stream = device
+        .send_simple_command(b"/ip/address/print".as_slice(), ())
+        .await;
     let mut rows = Vec::new();
     while let Some(row) = stream.next().await {
         if let SimpleResult::Sentence(row) = &row
@@ -347,24 +392,91 @@ async fn mac_telnet_setup_takes_the_address_from_a_dhcp_client() {
         .expect("golden image build failed");
     let work_dir = std::env::temp_dir().join("chr-network-mac-telnet-dhcp-test");
     let link = free_tcp_port().unwrap();
-    let entry = boot_node(&golden, &work_dir, "entry", &[PortWiring::Listen(link)], crate::TEST_PASSWORD)
+    let entry = boot_node(
+        &golden,
+        &work_dir,
+        "entry",
+        &[PortWiring::Listen(link)],
+        crate::TEST_PASSWORD,
+    )
+    .await
+    .expect("entry boot failed");
+    let target = boot_node(
+        &golden,
+        &work_dir,
+        "target",
+        &[PortWiring::Connect(link)],
+        crate::TEST_PASSWORD,
+    )
+    .await
+    .expect("target boot failed");
+    let entry_api = entry
+        .connect_api(crate::TEST_PASSWORD)
         .await
-        .expect("entry boot failed");
-    let target = boot_node(&golden, &work_dir, "target", &[PortWiring::Connect(link)], crate::TEST_PASSWORD)
+        .expect("entry api");
+    let target_api = target
+        .connect_api(crate::TEST_PASSWORD)
         .await
-        .expect("target boot failed");
-    let entry_api = entry.connect_api(crate::TEST_PASSWORD).await.expect("entry api");
-    let target_api = target.connect_api(crate::TEST_PASSWORD).await.expect("target api");
+        .expect("target api");
     let address = "192.168.77.4/29";
-    run(&entry_api, "/ip/address/add", &[("address", "192.168.77.1/29"), ("interface", "ether2")]).await;
-    run(&entry_api, "/ip/pool/add", &[("name", "one"), ("ranges", "192.168.77.4")]).await;
-    run(&entry_api, "/ip/dhcp-server/network/add", &[("address", "192.168.77.0/29"), ("gateway", "192.168.77.1")]).await;
-    run(&entry_api, "/ip/dhcp-server/add", &[("name", "lan"), ("interface", "ether2"), ("address-pool", "one")]).await;
-    run(&entry_api, "/ip/ssh/set", &[("forwarding-enabled", "local")]).await;
-    run(&target_api, "/interface/ethernet/set", &[("numbers", "ether2"), ("name", "e02-old")]).await;
-    run(&target_api, "/interface/bridge/add", &[("name", "bridge-lan")]).await;
-    run(&target_api, "/interface/bridge/port/add", &[("bridge", "bridge-lan"), ("interface", "e02-old")]).await;
-    run(&target_api, "/ip/dhcp-client/add", &[("interface", "bridge-lan")]).await;
+    run(
+        &entry_api,
+        "/ip/address/add",
+        &[("address", "192.168.77.1/29"), ("interface", "ether2")],
+    )
+    .await;
+    run(
+        &entry_api,
+        "/ip/pool/add",
+        &[("name", "one"), ("ranges", "192.168.77.4")],
+    )
+    .await;
+    run(
+        &entry_api,
+        "/ip/dhcp-server/network/add",
+        &[("address", "192.168.77.0/29"), ("gateway", "192.168.77.1")],
+    )
+    .await;
+    run(
+        &entry_api,
+        "/ip/dhcp-server/add",
+        &[
+            ("name", "lan"),
+            ("interface", "ether2"),
+            ("address-pool", "one"),
+        ],
+    )
+    .await;
+    run(
+        &entry_api,
+        "/ip/ssh/set",
+        &[("forwarding-enabled", "local")],
+    )
+    .await;
+    run(
+        &target_api,
+        "/interface/ethernet/set",
+        &[("numbers", "ether2"), ("name", "e02-old")],
+    )
+    .await;
+    run(
+        &target_api,
+        "/interface/bridge/add",
+        &[("name", "bridge-lan")],
+    )
+    .await;
+    run(
+        &target_api,
+        "/interface/bridge/port/add",
+        &[("bridge", "bridge-lan"), ("interface", "e02-old")],
+    )
+    .await;
+    run(
+        &target_api,
+        "/ip/dhcp-client/add",
+        &[("interface", "bridge-lan")],
+    )
+    .await;
     wait_until(
         || async { Ok(address_rows(&target_api, address).await == [true]) },
         Duration::from_secs(120),
@@ -393,15 +505,28 @@ async fn mac_telnet_setup_takes_the_address_from_a_dhcp_client() {
     eprintln!("--- transcript ---\n{transcript}");
     result.unwrap_or_else(|e| panic!("setup failed: {e}"));
     terminal.close().await;
-    assert!(transcript.contains("disabled: it held 192.168.77.4/29"), "{transcript}");
+    assert!(
+        transcript.contains("disabled: it held 192.168.77.4/29"),
+        "{transcript}"
+    );
 
-    assert_eq!(address_rows(&target_api, address).await, [false], "the static address only");
-    let mut clients = target_api.send_simple_command(b"/ip/dhcp-client/print".as_slice(), ()).await;
+    assert_eq!(
+        address_rows(&target_api, address).await,
+        [false],
+        "the static address only"
+    );
+    let mut clients = target_api
+        .send_simple_command(b"/ip/dhcp-client/print".as_slice(), ())
+        .await;
     while let Some(row) = clients.next().await {
         if let SimpleResult::Sentence(row) = &row
             && row.get("interface").and_then(|v| v.as_deref()) == Some("bridge-lan")
         {
-            assert_eq!(row.get("disabled").and_then(|v| v.as_deref()), Some("true"), "{row:?}");
+            assert_eq!(
+                row.get("disabled").and_then(|v| v.as_deref()),
+                Some("true"),
+                "{row:?}"
+            );
         }
     }
     let ssh = tokio::net::TcpStream::connect(("127.0.0.1", entry.ssh_port))
@@ -410,7 +535,10 @@ async fn mac_telnet_setup_takes_the_address_from_a_dhcp_client() {
     let tunnel = Tunnel::connect_with_stream(ssh, "admin", Some(crate::TEST_PASSWORD))
         .await
         .expect("tunnel to entry");
-    let stream = tunnel.open("192.168.77.4".parse().unwrap(), 8728).await.expect("tunnel");
+    let stream = tunnel
+        .open("192.168.77.4".parse().unwrap(), 8728)
+        .await
+        .expect("tunnel");
     MikrotikDevice::<SimpleResult>::connect_with_stream(
         stream,
         b"admin",

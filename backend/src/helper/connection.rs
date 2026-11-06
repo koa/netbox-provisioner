@@ -105,11 +105,12 @@ pub async fn plan(topology: &Arc<Topology>, input: &ConnectionInput) -> Result<N
             }));
             for (end, address) in [(&a, net.network()), (&b, net.broadcast())] {
                 plan.steps.push(PlanStep::CreateAddress(CreateAddress {
-                    device: end.device().as_ref().map(device_ref).expect("checked above"),
-                    address: IpNet::new(address, 31)
-                        .expect("a /31")
-                        .to_string()
-                        .into(),
+                    device: end
+                        .device()
+                        .as_ref()
+                        .map(device_ref)
+                        .expect("checked above"),
+                    address: IpNet::new(address, 31).expect("a /31").to_string().into(),
                     interface: end.name().into(),
                     prefix: net.to_string().into(),
                     on: Target::Existing(end.id().0),
@@ -250,7 +251,10 @@ async fn next_free(
                 continue;
             }
             let addresses = rest
-                .find("ipam/ip-addresses/", &[("parent", &net.to_string()), ("limit", "1")])
+                .find(
+                    "ipam/ip-addresses/",
+                    &[("parent", &net.to_string()), ("limit", "1")],
+                )
                 .await?;
             if addresses["count"].as_u64() == Some(0) {
                 return Ok((pool, net));
@@ -300,10 +304,19 @@ mod test {
         assert!(plan.checked_with.is_none(), "no address, no route check");
         let mtu = a.mtu().max(b.mtu());
         for step in &plan.steps {
-            let PlanStep::UpdateInterface(update) = step else { unreachable!() };
-            let end = if update.interface.id == a.id().0 { &a } else { &b };
+            let PlanStep::UpdateInterface(update) = step else {
+                unreachable!()
+            };
+            let end = if update.interface.id == a.id().0 {
+                &a
+            } else {
+                &b
+            };
             assert_eq!(update.mtu.is_some(), end.mtu() != mtu);
-            assert_eq!(update.tags_added.contains(&InterfaceTag::Ospf), !end.use_ospf());
+            assert_eq!(
+                update.tags_added.contains(&InterfaceTag::Ospf),
+                !end.use_ospf()
+            );
         }
         let reverse = ConnectionInput {
             interface: b.id().0,
@@ -329,7 +342,10 @@ mod test {
             .find(|i| {
                 i.is_ethernet_port()
                     && i.cable().is_none()
-                    && !cabled.connected_interfaces().iter().any(|c| c.id() == i.id())
+                    && !cabled
+                        .connected_interfaces()
+                        .iter()
+                        .any(|c| c.id() == i.id())
             })
             .expect("a free port");
         let input = ConnectionInput {

@@ -113,7 +113,11 @@ fn offers_free_ports_and_the_vlans_that_reach_them() {
         options
             .groups
             .iter()
-            .map(|g| (&*g.name, g.vxlan, g.vlans.iter().map(|v| v.vid).collect::<Vec<_>>()))
+            .map(|g| (
+                &*g.name,
+                g.vxlan,
+                g.vlans.iter().map(|v| v.vid).collect::<Vec<_>>()
+            ))
             .collect::<Vec<_>>(),
         [("clients", true, vec![10]), ("guests", false, vec![20])]
     );
@@ -144,14 +148,21 @@ fn a_vid_the_device_has_is_refused() {
     let ether5 = net.interface(r1, "ether5");
     let topology = Arc::new(net.builder.build());
     let options = options(&topology.get_device_by_id(&r1).unwrap());
-    assert!(!options.groups.iter().any(|g| &*g.name == "other"), "{options:?}");
+    assert!(
+        !options.groups.iter().any(|g| &*g.name == "other"),
+        "{options:?}"
+    );
     let input = PortVlanInput {
         device: r1.0,
         port: ether5.0,
         vlan: other.0,
     };
     match plan(&topology, &input) {
-        Err(Error::VlanIdTaken { vid: 20, vlan, group }) => {
+        Err(Error::VlanIdTaken {
+            vid: 20,
+            vlan,
+            group,
+        }) => {
             assert_eq!((&*vlan, &*group), ("guests", "guests"))
         }
         other => panic!("{:?}", other.map(|plan| plan.steps)),
@@ -189,12 +200,23 @@ fn a_vxlan_stays_in_its_bridge() {
     let eleven = in_clients(&mut net, 11, 11);
     // on r2 too: tunneled once r1 has it
     let r2_port = net.interface(r2, "ether3");
-    net.builder.interfaces.get_mut(&r2_port).unwrap().tagged_vlans = Box::new([eleven]);
+    net.builder
+        .interfaces
+        .get_mut(&r2_port)
+        .unwrap()
+        .tagged_vlans = Box::new([eleven]);
     let ether5 = net.interface(r1, "ether5");
     let topology = Arc::new(net.builder.build());
     let options = options(&topology.get_device_by_id(&r1).unwrap());
-    let clients = options.groups.iter().find(|g| &*g.name == "clients").unwrap();
-    assert_eq!(clients.vlans.iter().map(|v| v.vid).collect::<Vec<_>>(), [10]);
+    let clients = options
+        .groups
+        .iter()
+        .find(|g| &*g.name == "clients")
+        .unwrap();
+    assert_eq!(
+        clients.vlans.iter().map(|v| v.vid).collect::<Vec<_>>(),
+        [10]
+    );
     let input = |vlan: VlanId| PortVlanInput {
         device: r1.0,
         port: ether5.0,
@@ -202,7 +224,10 @@ fn a_vxlan_stays_in_its_bridge() {
     };
     match plan(&topology, &input(eleven)) {
         Err(Error::VxlanInBridge { group, bridge }) => {
-            assert_eq!((&*group, bridge.as_deref()), ("clients", Some("bridge-clients")))
+            assert_eq!(
+                (&*group, bridge.as_deref()),
+                ("clients", Some("bridge-clients"))
+            )
         }
         other => panic!("{:?}", other.map(|plan| plan.steps)),
     }

@@ -95,7 +95,10 @@ impl WayBack {
 /// its [`bootstrap::plans`]); none for the management proxy's device, through which the
 /// provisioner reaches every other.
 pub fn neighbors(device: &DeviceAccess) -> Box<[Box<str>]> {
-    let proxy = CONFIG.management_proxy.as_ref().map(|proxy| proxy.device.as_ref());
+    let proxy = CONFIG
+        .management_proxy
+        .as_ref()
+        .map(|proxy| proxy.device.as_ref());
     if proxy == Some(device.name()) {
         return Box::new([]);
     }
@@ -115,7 +118,11 @@ pub fn arm_v6(way_back: &WayBack, log: &Log) -> Result<(), Error> {
 
 /// A downgrade copies nothing to the other partition, which may hold the RouterOS to go back
 /// to; without two partitions its way back is as for an update ([`WayBack`]).
-pub async fn check_downgrade(device: &RawDevice<SimpleResult>, way_back: &WayBack, log: &Log) -> Result<(), Error> {
+pub async fn check_downgrade(
+    device: &RawDevice<SimpleResult>,
+    way_back: &WayBack,
+    log: &Log,
+) -> Result<(), Error> {
     let list = partitions::list(device).await;
     if other(&list).is_none() {
         way_back.without_partitions(list.len() as u32, log)?;
@@ -163,7 +170,9 @@ pub async fn arm(
         .map(|p| p.version.clone())
         .filter(|version| !version.is_empty() && Some(version) == running.as_ref())
         .ok_or_else(|| {
-            Error::Refused(format!("{target} holds no copy of the running RouterOS after copy-to").into())
+            Error::Refused(
+                format!("{target} holds no copy of the running RouterOS after copy-to").into(),
+            )
         })?;
     let on_event = script(&target, delay);
     command(
@@ -173,7 +182,10 @@ pub async fn arm(
             ("name", NAME),
             ("start-time", "startup"),
             ("on-event", &on_event),
-            ("comment", "boots the RouterOS from before the update, unless the provisioner stops it"),
+            (
+                "comment",
+                "boots the RouterOS from before the update, unless the provisioner stops it",
+            ),
         ],
     )
     .await?;
@@ -229,7 +241,11 @@ async fn copy_to(device: &RawDevice<SimpleResult>, target: &str) -> Result<(), E
 }
 
 /// Removes the scheduler: the device is reached with the update. The old partition stays.
-pub async fn disarm(device: &RawDevice<SimpleResult>, partition: &str, log: &Log) -> Result<(), Error> {
+pub async fn disarm(
+    device: &RawDevice<SimpleResult>,
+    partition: &str,
+    log: &Log,
+) -> Result<(), Error> {
     remove_scheduler(device).await?;
     log.emit(UpdateFallbackDisarmed {
         partition: partition.into(),
@@ -262,7 +278,9 @@ pub async fn running(device: &RawDevice<SimpleResult>) -> Option<Box<str>> {
 /// The OSPF neighbors this device is adjacent with (see [`adjacent`]), as `<instance>
 /// <router-id>` (an instance per OSPF version); empty without OSPF.
 pub async fn ospf_up(device: &RawDevice<SimpleResult>) -> Result<BTreeSet<Box<str>>, Error> {
-    Ok(adjacent(&rows(device, "/routing/ospf/neighbor/print").await?))
+    Ok(adjacent(
+        &rows(device, "/routing/ospf/neighbor/print").await?,
+    ))
 }
 
 /// The neighbors in `rows` (`/routing/ospf/neighbor`) that are where OSPF leaves them: `Full`,
@@ -287,7 +305,8 @@ fn adjacent(rows: &[Row]) -> BTreeSet<Box<str>> {
 /// [`adjacent`]).
 pub(crate) fn is_adjacent(rows: &[Row], row: &Row) -> bool {
     let same_segment = |a: &Row, b: &Row| {
-        field(a, "instance") == field(b, "instance") && field(a, "interface") == field(b, "interface")
+        field(a, "instance") == field(b, "instance")
+            && field(a, "interface") == field(b, "interface")
     };
     // `id` (the DR or BDR) is none, or a neighbor of the segment other than `row`
     let another = |id: Option<&str>| match id {
@@ -330,9 +349,9 @@ pub async fn wait_for_ospf(
 #[cfg(test)]
 mod tests {
     use super::{adjacent, missing, other, script};
+    use crate::device::partitions::Partition;
     use crate::device::raw::Row;
     use std::{collections::BTreeSet, time::Duration};
-    use crate::device::partitions::Partition;
 
     fn partition(name: &str, active: bool, running: bool) -> Partition {
         Partition {
@@ -353,7 +372,13 @@ mod tests {
         assert_eq!(other(&[part1.clone(), part0.clone()]), Some(&part1));
         // one partition, or the device runs another than it boots from: no fallback
         assert_eq!(other(std::slice::from_ref(&part0)), None);
-        assert_eq!(other(&[partition("part0", false, true), partition("part1", true, false)]), None);
+        assert_eq!(
+            other(&[
+                partition("part0", false, true),
+                partition("part1", true, false)
+            ]),
+            None
+        );
     }
 
     #[test]
@@ -368,14 +393,29 @@ mod tests {
 
     #[test]
     fn misses_only_neighbors_that_were_adjacent() {
-        let set = |neighbors: &[&str]| neighbors.iter().map(|&n| n.into()).collect::<BTreeSet<Box<str>>>();
+        let set = |neighbors: &[&str]| {
+            neighbors
+                .iter()
+                .map(|&n| n.into())
+                .collect::<BTreeSet<Box<str>>>()
+        };
         let before = set(&["default-v2 10.0.0.1", "default-v3 10.0.0.1"]);
         let now = set(&["default-v2 10.0.0.1", "default-v2 10.0.0.9"]);
-        assert_eq!(missing(&before, &now), vec![Box::from("default-v3 10.0.0.1")]);
+        assert_eq!(
+            missing(&before, &now),
+            vec![Box::from("default-v3 10.0.0.1")]
+        );
         assert!(missing(&set(&[]), &now).is_empty());
     }
 
-    fn neighbor(instance: &str, address: &str, router_id: &str, dr: &str, bdr: &str, state: &str) -> Row {
+    fn neighbor(
+        instance: &str,
+        address: &str,
+        router_id: &str,
+        dr: &str,
+        bdr: &str,
+        state: &str,
+    ) -> Row {
         [
             ("instance", instance),
             ("interface", "bridge-bridge"),
@@ -395,20 +435,47 @@ mod tests {
     #[test]
     fn two_drothers_in_two_way_are_adjacent() {
         let v3 = |address, router_id, state| {
-            neighbor("default-v3", address, router_id, "172.16.1.15", "172.16.1.7", state)
+            neighbor(
+                "default-v3",
+                address,
+                router_id,
+                "172.16.1.15",
+                "172.16.1.7",
+                state,
+            )
         };
         let rows = [
-            neighbor("default-v2", "10.198.1.1", "172.16.1.7", "10.198.1.1", "10.198.1.3", "Full"),
-            neighbor("default-v2", "10.198.1.3", "172.16.1.60", "10.198.1.1", "10.198.1.3", "Full"),
+            neighbor(
+                "default-v2",
+                "10.198.1.1",
+                "172.16.1.7",
+                "10.198.1.1",
+                "10.198.1.3",
+                "Full",
+            ),
+            neighbor(
+                "default-v2",
+                "10.198.1.3",
+                "172.16.1.60",
+                "10.198.1.1",
+                "10.198.1.3",
+                "Full",
+            ),
             v3("fe80::1", "172.16.1.7", "Full"),
             v3("fe80::2", "172.16.1.15", "Full"),
             v3("fe80::3", "172.16.1.60", "TwoWay"),
         ];
         assert_eq!(
             adjacent(&rows),
-            ["default-v2 172.16.1.60", "default-v2 172.16.1.7", "default-v3 172.16.1.15", "default-v3 172.16.1.60", "default-v3 172.16.1.7"]
-                .map(Box::<str>::from)
-                .into()
+            [
+                "default-v2 172.16.1.60",
+                "default-v2 172.16.1.7",
+                "default-v3 172.16.1.15",
+                "default-v3 172.16.1.60",
+                "default-v3 172.16.1.7"
+            ]
+            .map(Box::<str>::from)
+            .into()
         );
     }
 
@@ -416,12 +483,33 @@ mod tests {
     #[test]
     fn two_way_with_the_dr_is_not_adjacent() {
         // the neighbor is the DR
-        let rows = [neighbor("default-v2", "10.0.0.1", "1.1.1.1", "10.0.0.1", "0.0.0.0", "TwoWay")];
+        let rows = [neighbor(
+            "default-v2",
+            "10.0.0.1",
+            "1.1.1.1",
+            "10.0.0.1",
+            "0.0.0.0",
+            "TwoWay",
+        )];
         assert!(adjacent(&rows).is_empty());
         // the DR is no neighbor: this device
-        let rows = [neighbor("default-v2", "10.0.0.2", "2.2.2.2", "10.0.0.9", "0.0.0.0", "TwoWay")];
+        let rows = [neighbor(
+            "default-v2",
+            "10.0.0.2",
+            "2.2.2.2",
+            "10.0.0.9",
+            "0.0.0.0",
+            "TwoWay",
+        )];
         assert!(adjacent(&rows).is_empty());
-        let rows = [neighbor("default-v2", "10.0.0.2", "2.2.2.2", "10.0.0.1", "10.0.0.2", "ExStart")];
+        let rows = [neighbor(
+            "default-v2",
+            "10.0.0.2",
+            "2.2.2.2",
+            "10.0.0.1",
+            "10.0.0.2",
+            "ExStart",
+        )];
         assert!(adjacent(&rows).is_empty());
     }
 }

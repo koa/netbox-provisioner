@@ -10,9 +10,9 @@ use crate::{
 };
 use mikrotik_model::{
     model::{
-        CapsAuthenticationTypes, CapsEncryption, CapsManConfigurationMode,
-        CapsManDatapathVlanMode, CapsManProvisioningAction, CapsManProvisioningCfg,
-        CapsManProvisioningNameFormat, WifiCountryLower as CapsManWifiCountry,
+        CapsAuthenticationTypes, CapsEncryption, CapsManConfigurationMode, CapsManDatapathVlanMode,
+        CapsManProvisioningAction, CapsManProvisioningCfg, CapsManProvisioningNameFormat,
+        WifiCountryLower as CapsManWifiCountry,
     },
     value::{HasNone, ParseRosValueResult, RosValue},
 };
@@ -34,7 +34,10 @@ impl CapsManDeviceDataTarget {
     /// traffic themselves, into their bridge (`WirelessDeviceDataTarget::setup_legacy_cap`)
     /// in the WLAN's VLAN, from where the VXLAN carries it on. Only read where NetBox asks
     /// for it (`DeviceCfg::fetch`).
-    pub(in crate::device::ros) fn generate_from(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
+    pub(in crate::device::ros) fn generate_from(
+        &mut self,
+        device: &DeviceAccess,
+    ) -> Result<(), SetupError> {
         let Some(group) = device
             .wlan_controller_of()
             .filter(WlanGroupAccess::has_legacy_caps)
@@ -44,7 +47,11 @@ impl CapsManDeviceDataTarget {
         self.manager.enabled = true;
         let country = match CapsManWifiCountry::parse_ros(country_settings(device)?.0.as_bytes()) {
             ParseRosValueResult::Value(country) => country,
-            _ => return Err(SetupError::UnknownCountry(country_settings(device)?.0.into())),
+            _ => {
+                return Err(SetupError::UnknownCountry(
+                    country_settings(device)?.0.into(),
+                ));
+            }
         };
         let mut names = Vec::new();
         for wlan in group.wlan() {

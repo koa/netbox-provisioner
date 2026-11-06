@@ -54,7 +54,10 @@ pub struct DeviceDiffed {
 /// The job's work.
 pub async fn run(site: SiteAccess, log: Log) -> Result<(), Error> {
     let started = tokio::time::Instant::now();
-    let mut devices = site.devices().filter(DeviceAccess::has_routeros).collect::<Vec<_>>();
+    let mut devices = site
+        .devices()
+        .filter(DeviceAccess::has_routeros)
+        .collect::<Vec<_>>();
     devices.sort_by_cached_key(|device| naturalize(device.name()));
     log.emit(SiteDiffStarted {
         devices: devices.iter().map(diffed_device).collect(),
@@ -93,7 +96,10 @@ fn diffed_device(device: &DeviceAccess) -> DiffedDevice {
 }
 
 /// Read anew for the job (the device page shares it: `FactKind::Config`).
-async fn changes_of(device: DeviceAccess, started: tokio::time::Instant) -> Result<Vec<MenuChanges>, Error> {
+async fn changes_of(
+    device: DeviceAccess,
+    started: tokio::time::Instant,
+) -> Result<Vec<MenuChanges>, Error> {
     let generated = device
         .connect(None, None, None)
         .await?
@@ -169,7 +175,10 @@ mod test {
         value::KeyValuePair,
     };
 
-    fn mutation(resource: &'static [u8], operation: ResourceMutationOperation<'static>) -> ResourceMutation<'static> {
+    fn mutation(
+        resource: &'static [u8],
+        operation: ResourceMutationOperation<'static>,
+    ) -> ResourceMutation<'static> {
         ResourceMutation {
             resource,
             operation,
@@ -193,7 +202,10 @@ mod test {
             mutation(b"ip/address", ResourceMutationOperation::RemoveByKey(key())),
             mutation(b"ip/address", ResourceMutationOperation::RemoveByKey(key())),
             mutation(b"ip/address", ResourceMutationOperation::Add),
-            mutation(b"interface/ethernet", ResourceMutationOperation::UpdateByKey(key())),
+            mutation(
+                b"interface/ethernet",
+                ResourceMutationOperation::UpdateByKey(key()),
+            ),
             mutation(b"system/identity", ResourceMutationOperation::UpdateSingle),
             // unchanged: not in the script
             ResourceMutation {

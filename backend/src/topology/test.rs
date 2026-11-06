@@ -59,10 +59,15 @@ pub(crate) fn example_topology() -> Arc<Topology> {
         .enumerate()
         .flat_map(|(index, ids)| {
             let (a, b) = (ids[0].clone(), ids.get(1).unwrap_or(&ids[0]).clone());
-            ids.iter().map(move |id| (id.clone(), (900_000 + index, a.clone(), b.clone())))
+            ids.iter()
+                .map(move |id| (id.clone(), (900_000 + index, a.clone(), b.clone())))
         })
         .collect::<std::collections::BTreeMap<_, _>>();
-    for device in raw["data"]["device_list"].as_array_mut().into_iter().flatten() {
+    for device in raw["data"]["device_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
         for interface in device["interfaces"].as_array_mut().into_iter().flatten() {
             let id = interface["id"].as_str().unwrap_or_default().to_string();
             if let Some((link_id, a, b)) = synthetic.get(&id) {
@@ -75,7 +80,11 @@ pub(crate) fn example_topology() -> Arc<Topology> {
     }
     // The export has the wireless links' PSKs removed: an encrypted link gets a placeholder,
     // as the provisioner would get the real one.
-    for device in raw["data"]["device_list"].as_array_mut().into_iter().flatten() {
+    for device in raw["data"]["device_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
         for interface in device["interfaces"].as_array_mut().into_iter().flatten() {
             let link = &mut interface["wireless_link"];
             let encrypted = link["auth_type"]
@@ -89,9 +98,11 @@ pub(crate) fn example_topology() -> Arc<Topology> {
     // Exports from before circuits were queried lack them, and the ends of the circuits on
     // the cables their id: those cables end there, as they did then.
     if let Some(data) = raw["data"].as_object_mut() {
-        data.entry("circuit_list").or_insert_with(|| serde_json::json!([]));
+        data.entry("circuit_list")
+            .or_insert_with(|| serde_json::json!([]));
         // and before the services were: none forwards a port
-        data.entry("service_list").or_insert_with(|| serde_json::json!([]));
+        data.entry("service_list")
+            .or_insert_with(|| serde_json::json!([]));
     }
     for cable in raw["data"]["cable_list"]
         .as_array_mut()
@@ -127,9 +138,15 @@ pub(crate) fn example_topology() -> Arc<Topology> {
         .flatten()
     {
         if let Some(prefix) = prefix.as_object_mut() {
-            prefix.entry("tags").or_insert_with(|| serde_json::json!([]));
-            prefix.entry("description").or_insert_with(|| serde_json::json!(""));
-            prefix.entry("custom_field_data").or_insert_with(|| serde_json::json!({}));
+            prefix
+                .entry("tags")
+                .or_insert_with(|| serde_json::json!([]));
+            prefix
+                .entry("description")
+                .or_insert_with(|| serde_json::json!(""));
+            prefix
+                .entry("custom_field_data")
+                .or_insert_with(|| serde_json::json!({}));
         }
     }
     for device in raw["data"]["device_list"]
@@ -138,9 +155,9 @@ pub(crate) fn example_topology() -> Arc<Topology> {
         .flatten()
     {
         if let Some(device) = device.as_object_mut() {
-            device.entry("device_type").or_insert_with(
-                || serde_json::json!({"model": "", "manufacturer": {"slug": ""}}),
-            );
+            device
+                .entry("device_type")
+                .or_insert_with(|| serde_json::json!({"model": "", "manufacturer": {"slug": ""}}));
         }
     }
     let response: cynic::GraphQlResponse<FetchTopology> =

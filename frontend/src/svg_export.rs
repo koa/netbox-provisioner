@@ -10,7 +10,8 @@
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    Blob, BlobPropertyBag, CanvasRenderingContext2d, Element, HtmlAnchorElement, HtmlCanvasElement, HtmlImageElement, Url,
+    Blob, BlobPropertyBag, CanvasRenderingContext2d, Element, HtmlAnchorElement, HtmlCanvasElement,
+    HtmlImageElement, Url,
 };
 use yew::NodeRef;
 
@@ -18,7 +19,15 @@ use yew::NodeRef;
 /// from [`web_sys::Window::get_computed_style`] onto every element of the clone, so the result
 /// no longer depends on this page's stylesheet or design-token variables (`local.css`'s
 /// `.map-*` rules, `var(--pf-t--...)`) to look the same.
-const PROPERTIES: &[&str] = &["fill", "stroke", "stroke-width", "stroke-dasharray", "font-size", "font-family", "text-anchor"];
+const PROPERTIES: &[&str] = &[
+    "fill",
+    "stroke",
+    "stroke-width",
+    "stroke-dasharray",
+    "font-size",
+    "font-family",
+    "text-anchor",
+];
 
 /// `svg_ref`'s live element, deep-cloned with every descendant's relevant style resolved and
 /// inlined (see the module doc comment), its own background painted in behind everything else
@@ -30,24 +39,43 @@ fn standalone_markup(svg_ref: &NodeRef) -> Option<(String, f64, f64)> {
     let svg_el = svg_ref.cast::<Element>()?;
     let window = web_sys::window()?;
     let clone: Element = svg_el.clone_node_with_deep(true).ok()?.dyn_into().ok()?;
-    clone.set_attribute("xmlns", "http://www.w3.org/2000/svg").ok()?;
+    clone
+        .set_attribute("xmlns", "http://www.w3.org/2000/svg")
+        .ok()?;
 
     let live_all = svg_el.query_selector_all("*").ok()?;
     let clone_all = clone.query_selector_all("*").ok()?;
     for i in 0..live_all.length() {
-        let (Some(live_node), Some(clone_node)) = (live_all.get(i), clone_all.get(i)) else { continue };
-        let (Ok(live_el), Ok(clone_el)) = (live_node.dyn_into::<Element>(), clone_node.dyn_into::<Element>()) else { continue };
-        let Ok(Some(computed)) = window.get_computed_style(&live_el) else { continue };
+        let (Some(live_node), Some(clone_node)) = (live_all.get(i), clone_all.get(i)) else {
+            continue;
+        };
+        let (Ok(live_el), Ok(clone_el)) = (
+            live_node.dyn_into::<Element>(),
+            clone_node.dyn_into::<Element>(),
+        ) else {
+            continue;
+        };
+        let Ok(Some(computed)) = window.get_computed_style(&live_el) else {
+            continue;
+        };
         let style = PROPERTIES
             .iter()
-            .filter_map(|&property| computed.get_property_value(property).ok().filter(|v| !v.is_empty()).map(|v| format!("{property}:{v}")))
+            .filter_map(|&property| {
+                computed
+                    .get_property_value(property)
+                    .ok()
+                    .filter(|v| !v.is_empty())
+                    .map(|v| format!("{property}:{v}"))
+            })
             .collect::<Vec<_>>()
             .join(";");
         let _ = clone_el.set_attribute("style", &style);
     }
 
     let view_box = svg_el.get_attribute("viewBox")?;
-    let mut parts = view_box.split_whitespace().filter_map(|s| s.parse::<f64>().ok());
+    let mut parts = view_box
+        .split_whitespace()
+        .filter_map(|s| s.parse::<f64>().ok());
     let (_, _, width, height) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
     // the live element only sets `width` (`network_map.rs`'s own `<svg>`), leaving its height to
     // the page's CSS/aspect-ratio handling — fine on the page itself, but a standalone file has
@@ -62,13 +90,28 @@ fn standalone_markup(svg_ref: &NodeRef) -> Option<(String, f64, f64)> {
         .filter(|c| c != "rgba(0, 0, 0, 0)" && !c.is_empty())
         .unwrap_or_else(|| "white".into());
     let document = window.document()?;
-    let background_rect = document.create_element_ns(Some("http://www.w3.org/2000/svg"), "rect").ok()?;
-    background_rect.set_attribute("width", &width.to_string()).ok()?;
-    background_rect.set_attribute("height", &height.to_string()).ok()?;
+    let background_rect = document
+        .create_element_ns(Some("http://www.w3.org/2000/svg"), "rect")
+        .ok()?;
+    background_rect
+        .set_attribute("width", &width.to_string())
+        .ok()?;
+    background_rect
+        .set_attribute("height", &height.to_string())
+        .ok()?;
     background_rect.set_attribute("fill", &background).ok()?;
-    clone.insert_before(&background_rect, clone.first_child().as_ref()).ok()?;
+    clone
+        .insert_before(&background_rect, clone.first_child().as_ref())
+        .ok()?;
 
-    Some((format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{}", clone.outer_html()), width, height))
+    Some((
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{}",
+            clone.outer_html()
+        ),
+        width,
+        height,
+    ))
 }
 
 /// A click-and-remove on a throwaway `<a download>`: the standard way to make a browser save
@@ -88,12 +131,18 @@ fn trigger_download(href: &str, filename: &str) -> Option<()> {
 /// Saves the map as a standalone SVG file: self-contained (see the module doc comment), opens in
 /// a browser or any vector tool, stays crisp at any zoom.
 pub fn download_svg(svg_ref: &NodeRef, filename: &str) {
-    let Some((markup, ..)) = standalone_markup(svg_ref) else { return };
+    let Some((markup, ..)) = standalone_markup(svg_ref) else {
+        return;
+    };
     let parts = js_sys::Array::of1(&JsValue::from_str(&markup));
     let options = BlobPropertyBag::new();
     options.set_type("image/svg+xml;charset=utf-8");
-    let Ok(blob) = Blob::new_with_str_sequence_and_options(&parts, &options) else { return };
-    let Ok(url) = Url::create_object_url_with_blob(&blob) else { return };
+    let Ok(blob) = Blob::new_with_str_sequence_and_options(&parts, &options) else {
+        return;
+    };
+    let Ok(url) = Url::create_object_url_with_blob(&blob) else {
+        return;
+    };
     trigger_download(&url, filename);
     let _ = Url::revoke_object_url(&url);
 }
@@ -103,17 +152,31 @@ pub fn download_svg(svg_ref: &NodeRef, filename: &str) {
 /// sharp only at that one size. Rasterizing is inherently asynchronous in a browser (there's no
 /// synchronous "draw this SVG string onto a canvas") — an `<img>` has to load it first.
 pub async fn download_png(svg_ref: &NodeRef, filename: &str) {
-    let Some((markup, width, height)) = standalone_markup(svg_ref) else { return };
+    let Some((markup, width, height)) = standalone_markup(svg_ref) else {
+        return;
+    };
     let parts = js_sys::Array::of1(&JsValue::from_str(&markup));
     let options = BlobPropertyBag::new();
     options.set_type("image/svg+xml;charset=utf-8");
-    let Ok(blob) = Blob::new_with_str_sequence_and_options(&parts, &options) else { return };
-    let Ok(svg_url) = Url::create_object_url_with_blob(&blob) else { return };
+    let Ok(blob) = Blob::new_with_str_sequence_and_options(&parts, &options) else {
+        return;
+    };
+    let Ok(svg_url) = Url::create_object_url_with_blob(&blob) else {
+        return;
+    };
 
-    let Some(window) = web_sys::window() else { return };
-    let Some(document) = window.document() else { return };
-    let Ok(img_el) = document.create_element("img") else { return };
-    let Ok(img) = img_el.dyn_into::<HtmlImageElement>() else { return };
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    let Ok(img_el) = document.create_element("img") else {
+        return;
+    };
+    let Ok(img) = img_el.dyn_into::<HtmlImageElement>() else {
+        return;
+    };
     img.set_src(&svg_url);
     // decoded, not just "loaded": only `decode()` guarantees the image is actually ready to
     // draw onto a canvas by the time its promise resolves.
@@ -123,15 +186,28 @@ pub async fn download_png(svg_ref: &NodeRef, filename: &str) {
         return;
     }
 
-    let Ok(canvas_el) = document.create_element("canvas") else { return };
-    let Ok(canvas) = canvas_el.dyn_into::<HtmlCanvasElement>() else { return };
+    let Ok(canvas_el) = document.create_element("canvas") else {
+        return;
+    };
+    let Ok(canvas) = canvas_el.dyn_into::<HtmlCanvasElement>() else {
+        return;
+    };
     canvas.set_width(width as u32);
     canvas.set_height(height as u32);
-    let Ok(Some(context)) = canvas.get_context("2d") else { return };
-    let Ok(context) = context.dyn_into::<CanvasRenderingContext2d>() else { return };
-    if context.draw_image_with_html_image_element(&img, 0.0, 0.0).is_err() {
+    let Ok(Some(context)) = canvas.get_context("2d") else {
+        return;
+    };
+    let Ok(context) = context.dyn_into::<CanvasRenderingContext2d>() else {
+        return;
+    };
+    if context
+        .draw_image_with_html_image_element(&img, 0.0, 0.0)
+        .is_err()
+    {
         return;
     }
-    let Ok(png_url) = canvas.to_data_url_with_type("image/png") else { return };
+    let Ok(png_url) = canvas.to_data_url_with_type("image/png") else {
+        return;
+    };
     trigger_download(&png_url, filename);
 }

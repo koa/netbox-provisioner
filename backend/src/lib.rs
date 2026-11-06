@@ -27,7 +27,9 @@ pub enum Error {
     #[error("the apply script didn't start within {0:?}")]
     ScriptNotStarted(std::time::Duration),
     /// devices of the batch weren't reached after it: all of it goes back
-    #[error("not reached after the apply: {0}; every device of the batch loads its config from before")]
+    #[error(
+        "not reached after the apply: {0}; every device of the batch loads its config from before"
+    )]
     BatchIncomplete(Box<str>),
     #[error("Error accessing device: {0}")]
     MikrotikApi(#[from] mikrotik_api::error::Error),
@@ -201,7 +203,10 @@ pub enum Error {
     NoRouterOs(Box<str>),
     /// a port (`device port`) cabled elsewhere, to `far` if the cable reaches an interface
     #[error("{port} has a cable to {far:?} already")]
-    PortCabled { port: Box<str>, far: Option<Box<str>> },
+    PortCabled {
+        port: Box<str>,
+        far: Option<Box<str>>,
+    },
     /// a port (`device port`) whose cable goes to a patch panel: a direct cable would replace
     /// what NetBox documents of the building
     #[error("{0} is cabled to a patch panel")]
@@ -239,11 +244,18 @@ pub enum Error {
     NoDhcpNetwork(Box<str>),
     /// another VLAN of the device (`vlan` of `group`) has the VID
     #[error("VLAN {vlan} of {group} has VID {vid} on the device already")]
-    VlanIdTaken { vid: u16, vlan: Box<str>, group: Box<str> },
+    VlanIdTaken {
+        vid: u16,
+        vlan: Box<str>,
+        group: Box<str>,
+    },
     /// the VXLAN of `group` is in `bridge` on the device (`None`: the default bridge), the port
     /// would be in another one
     #[error("The VXLAN of {group} is in bridge {bridge:?} on the device")]
-    VxlanInBridge { group: Box<str>, bridge: Option<Box<str>> },
+    VxlanInBridge {
+        group: Box<str>,
+        bridge: Option<Box<str>>,
+    },
     /// a port (`device port`) with `dhcp-client` or `nat`
     #[error("{0} is an uplink")]
     PortUplink(Box<str>),
@@ -290,7 +302,10 @@ pub enum Error {
     NoRouterPort(Box<str>),
     /// a radio port (`device port`) with a wireless link to `far`
     #[error("{port} has a wireless link to {far:?} already")]
-    WirelessLinkElsewhere { port: Box<str>, far: Option<Box<str>> },
+    WirelessLinkElsewhere {
+        port: Box<str>,
+        far: Option<Box<str>>,
+    },
     /// an encrypted wireless link whose PSK NetBox doesn't give (the token's rights)
     #[error("NetBox gives no PSK for the wireless link at {0}")]
     PskUnreadable(Box<str>),

@@ -1,7 +1,10 @@
 use super::*;
 
 fn row(fields: &[(&str, &str)]) -> Row {
-    fields.iter().map(|(k, v)| ((*k).into(), Some((*v).into()))).collect()
+    fields
+        .iter()
+        .map(|(k, v)| ((*k).into(), Some((*v).into())))
+        .collect()
 }
 
 /// As lab-core (CCR2004) reports it, with one PSU unplugged.
@@ -17,7 +20,10 @@ fn health_rows_keep_name_value_and_unit() {
     assert_eq!(&*data.health[0].value, "45");
     assert_eq!(data.health[0].unit.as_deref(), Some("C"));
     assert_eq!(&*data.health[1].name, "psu1-state");
-    assert_eq!(data.health[1].unit, None, "no type: a state, not a measurement");
+    assert_eq!(
+        data.health[1].unit, None,
+        "no type: a state, not a measurement"
+    );
 }
 
 #[test]

@@ -365,7 +365,11 @@ impl Topology {
     }
     /// The findings about the devices of `site`.
     pub fn site_findings(&self, site: SiteId) -> Vec<Finding> {
-        let devices = self.sites.get(&site).map(|d| &d.devices[..]).unwrap_or_default();
+        let devices = self
+            .sites
+            .get(&site)
+            .map(|d| &d.devices[..])
+            .unwrap_or_default();
         self.findings
             .iter()
             .filter(|finding| finding.devices.iter().any(|d| devices.contains(d)))
@@ -461,7 +465,11 @@ fn forwards(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
     let forwards = topo.forwards();
     let service_ref = |id: ServiceId| ServiceRef {
         id: id.0,
-        name: topo.services.get(&id).map(|s| s.name.clone()).unwrap_or_default(),
+        name: topo
+            .services
+            .get(&id)
+            .map(|s| s.name.clone())
+            .unwrap_or_default(),
     };
     let own_device = |id: ServiceId| topo.services.get(&id).and_then(|s| s.device);
     let device = |id: DeviceId| topo.get_device_by_id(&id);
@@ -474,7 +482,11 @@ fn forwards(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
                 address: address_ref(&IpAddressAccess::create(topo.clone(), unrouted.address)),
                 site: SiteRef {
                     id: unrouted.site.0,
-                    name: topo.sites.get(&unrouted.site).map(|s| s.name.clone()).unwrap_or_default(),
+                    name: topo
+                        .sites
+                        .get(&unrouted.site)
+                        .map(|s| s.name.clone())
+                        .unwrap_or_default(),
                 },
             }),
         });
@@ -490,10 +502,15 @@ fn forwards(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
         });
     }
     for taken in forwards.taken {
-        let Some(router) = device(taken.router) else { continue };
+        let Some(router) = device(taken.router) else {
+            continue;
+        };
         findings.push(Finding {
             severity: Severity::Error,
-            devices: [taken.router].into_iter().chain(own_device(taken.service)).collect(),
+            devices: [taken.router]
+                .into_iter()
+                .chain(own_device(taken.service))
+                .collect(),
             kind: FindingKind::ForwardPortTaken(ForwardPortTaken {
                 service: service_ref(taken.service),
                 port: taken.port.to_string().into(),
@@ -516,7 +533,10 @@ fn forwards(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
 /// The groups without a controller, at their APs; the WLANs without a VLAN, at the group's
 /// controller and APs.
 fn wlans(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
-    let mut without_controller = topo.wlan_groups_without_controller.iter().collect::<Vec<_>>();
+    let mut without_controller = topo
+        .wlan_groups_without_controller
+        .iter()
+        .collect::<Vec<_>>();
     without_controller.sort_by(|a, b| a.1.cmp(b.1));
     for (id, name) in without_controller {
         let mut aps = topo
@@ -553,7 +573,10 @@ fn wlans(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
             .filter(DeviceAccess::has_routeros)
             .map(|device| device.id())
             .collect::<Box<[_]>>();
-        let mut wlans = group.wlan().filter(|wlan| wlan.vlan().is_none()).collect::<Vec<_>>();
+        let mut wlans = group
+            .wlan()
+            .filter(|wlan| wlan.vlan().is_none())
+            .collect::<Vec<_>>();
         wlans.sort_by(|a, b| a.ssid().cmp(&b.ssid()));
         for wlan in wlans {
             findings.push(Finding {
@@ -577,7 +600,9 @@ fn vlans(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
     let mut vlans = topo.list_vlans().collect::<Vec<_>>();
     vlans.sort_by_key(|vlan| (vlan.vlan_id(), vlan.id.0));
     for vlan in vlans {
-        let Some(vlan_ref) = vlan_ref(&vlan) else { continue };
+        let Some(vlan_ref) = vlan_ref(&vlan) else {
+            continue;
+        };
         for domain in vlan_domain::domains(&vlan) {
             let devices = domain
                 .iter()
@@ -589,7 +614,10 @@ fn vlans(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
                 .filter(|(_, l3)| !l3.is_empty())
                 .collect::<Vec<_>>();
             // CAPsMAN finds its CAPs in a management VLAN on L2, it needs no gateway
-            let management = topo.wlan_groups.values().any(|g| g.mgmt_vlan == Some(vlan.id));
+            let management = topo
+                .wlan_groups
+                .values()
+                .any(|g| g.mgmt_vlan == Some(vlan.id));
             match gateways.len() {
                 0 if management => {}
                 0 => {
@@ -682,12 +710,14 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
             &this,
             FindingKind::NoCountry(NoCountry {
                 device: device_ref(device),
-                site: device.data().and_then(|d| d.site).zip(device.site()).map(|(id, site)| {
-                    SiteRef {
+                site: device
+                    .data()
+                    .and_then(|d| d.site)
+                    .zip(device.site())
+                    .map(|(id, site)| SiteRef {
                         id: id.0,
                         name: site.name().into(),
-                    }
-                }),
+                    }),
                 region: device.country().map(Into::into),
             }),
         );
@@ -768,7 +798,9 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
             {
                 let empty = match address.prefix() {
                     Some(prefix) => match prefix.prefix() {
-                        Some(IpNet::V4(prefix_net)) if dhcp_pool_v4(&prefix, prefix_net).is_empty() => {
+                        Some(IpNet::V4(prefix_net))
+                            if dhcp_pool_v4(&prefix, prefix_net).is_empty() =>
+                        {
                             Some(Some(PrefixRef {
                                 id: prefix.id().0,
                                 prefix: prefix_net.to_string().into(),
@@ -842,12 +874,13 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
                 );
             }
         }
-        if let Some(far_end) = interface
-            .connected_interfaces()
-            .into_iter()
-            .find(|far| far.device().is_some_and(|d| d.has_routeros() && d.id() != device.id()))
-            && let Some(far_device) = far_end.device()
-            && !interface.label().is_some_and(|label| names(label, far_device.name()))
+        if let Some(far_end) = interface.connected_interfaces().into_iter().find(|far| {
+            far.device()
+                .is_some_and(|d| d.has_routeros() && d.id() != device.id())
+        }) && let Some(far_device) = far_end.device()
+            && !interface
+                .label()
+                .is_some_and(|label| names(label, far_device.name()))
         {
             push(
                 Severity::Hint,
@@ -866,7 +899,8 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
             && let Some(vlan_ref) = vlan_ref(&vlan)
             && vlan.wlan().next().is_none()
             && !interfaces.iter().any(|other| {
-                other.id() != interface.id() && other.carried_vlans().iter().any(|v| v.id == vlan.id)
+                other.id() != interface.id()
+                    && other.carried_vlans().iter().any(|v| v.id == vlan.id)
             })
             && vlan_domain::domain_of(&vlan, device).len() <= 1
         {
@@ -972,17 +1006,29 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
 /// id, or from this one where the other is missing.
 fn radio_path(device: &DeviceAccess, findings: &mut Vec<Finding>) {
     for (row, _) in device.interface_rows() {
-        let Some(path) = row.radio_path.filter(|_| row.task == InterfaceTask::RadioLink) else {
+        let Some(path) = row
+            .radio_path
+            .filter(|_| row.task == InterfaceTask::RadioLink)
+        else {
             continue;
         };
-        let Some(radio) = path.radio.clone() else { continue };
-        if path.peer_radio.as_ref().is_some_and(|peer| peer.device.id < device.id().0) {
+        let Some(radio) = path.radio.clone() else {
+            continue;
+        };
+        if path
+            .peer_radio
+            .as_ref()
+            .is_some_and(|peer| peer.device.id < device.id().0)
+        {
             continue;
         }
         let missing = [
             (path.router_port.is_none(), RadioPathPart::RouterCable),
             (path.peer_radio.is_none(), RadioPathPart::WirelessLink),
-            (path.peer_radio.is_some() && path.ssid.is_none(), RadioPathPart::Ssid),
+            (
+                path.peer_radio.is_some() && path.ssid.is_none(),
+                RadioPathPart::Ssid,
+            ),
             (
                 path.peer_radio.is_some() && path.peer_router_port.is_none(),
                 RadioPathPart::PeerRouterCable,

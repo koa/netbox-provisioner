@@ -20,6 +20,5 @@ pub const BATCH_INCOMPLETE: &str = "Gemeinsames Anwenden, von dem nicht alle Ger
 pub fn unreadable(why: &str) -> String {
     format!("Die Datei liess sich nicht lesen: {why}")
 }
-pub const LEFT_ON_DEVICE: &str =
-    "Was der Auftrag auf dem Gerät hinterliess (Fallback, Watchdogs), bleibt dort; „Liegengebliebenes“ des Geräts zeigt es.";
+pub const LEFT_ON_DEVICE: &str = "Was der Auftrag auf dem Gerät hinterliess (Fallback, Watchdogs), bleibt dort; „Liegengebliebenes“ des Geräts zeigt es.";
 pub const DISCARD: &str = "Verwerfen";

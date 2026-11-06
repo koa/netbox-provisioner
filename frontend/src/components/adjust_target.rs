@@ -1,7 +1,7 @@
-use crate::error::FrontendError;
-use crate::i18n::target as t;
-use crate::graphql::{authenticated::adjust_target::ListCredentials, request};
 use crate::components::menu::popup::Select;
+use crate::error::FrontendError;
+use crate::graphql::{authenticated::adjust_target::ListCredentials, request};
+use crate::i18n::target as t;
 use cynic::QueryBuilder;
 use patternfly_yew::prelude::{
     Form, FormGroup, FormGroupValidated, InputState, TextInput, ValidationContext,
@@ -35,7 +35,10 @@ impl SelectedCredentials {
             SelectedCredentials::Named(name) => (Some(name.into_string()), None),
             SelectedCredentials::Adhoc { username, password } => (
                 None,
-                Some(adhoc(Some(username.into_string()), Some(password.into_string()))),
+                Some(adhoc(
+                    Some(username.into_string()),
+                    Some(password.into_string()),
+                )),
             ),
         }
     }

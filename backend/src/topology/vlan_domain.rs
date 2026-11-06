@@ -41,7 +41,9 @@ pub fn domains(vlan: &VlanAccess) -> Vec<BTreeSet<DeviceId>> {
                 continue;
             }
             for far in interface.connected_interfaces() {
-                let Some(far_device) = far.device() else { continue };
+                let Some(far_device) = far.device() else {
+                    continue;
+                };
                 if devices.contains(&far_device.id()) && carries(&far, vlan) {
                     let (a, b) = (root(&domain_of, *id), root(&domain_of, far_device.id()));
                     domain_of.insert(a.max(b), a.min(b));
@@ -51,7 +53,10 @@ pub fn domains(vlan: &VlanAccess) -> Vec<BTreeSet<DeviceId>> {
     }
     let mut domains = BTreeMap::<DeviceId, BTreeSet<DeviceId>>::new();
     for id in &devices {
-        domains.entry(root(&domain_of, *id)).or_default().insert(*id);
+        domains
+            .entry(root(&domain_of, *id))
+            .or_default()
+            .insert(*id);
     }
     domains.into_values().collect()
 }

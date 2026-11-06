@@ -196,13 +196,20 @@ pub fn poe_mismatch(port: &str, problem: PoeMismatch, status: Option<&str>) -> S
             "{port}: speist{status}, in NetBox ist die Gegenseite aber nicht als gespeist erfasst"
         ),
         PoeMismatch::FeedsInstead => {
-            format!("{port}: in NetBox gespeist, das Gerät speist an diesem Port aber selbst{status}")
+            format!(
+                "{port}: in NetBox gespeist, das Gerät speist an diesem Port aber selbst{status}"
+            )
         }
         PoeMismatch::Other => format!("{port}: PoE stimmt nicht mit NetBox überein{status}"),
     }
 }
 /// a static lease only the device has: the next apply removes it
-pub fn device_only_lease(address: &str, client: &str, name: Option<&str>, disabled: bool) -> String {
+pub fn device_only_lease(
+    address: &str,
+    client: &str,
+    name: Option<&str>,
+    disabled: bool,
+) -> String {
     let name = name.map(|name| format!(" „{name}“")).unwrap_or_default();
     let disabled = if disabled { ", deaktiviert" } else { "" };
     format!("{address} für {client}{name}{disabled}: das nächste Anwenden entfernt ihn")

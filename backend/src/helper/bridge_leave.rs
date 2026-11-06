@@ -27,11 +27,18 @@ pub fn plan(topology: &Arc<Topology>, input: &BridgeLeaveInput) -> Result<Netbox
     let port = topology
         .get_interface_by_id(InterfaceId(input.port))
         .ok_or(Error::UnknownInterface(input.port))?;
-    let bridge = port.bridge().ok_or_else(|| Error::NoBridge(port_name(&port)))?;
+    let bridge = port
+        .bridge()
+        .ok_or_else(|| Error::NoBridge(port_name(&port)))?;
     let owner = port.device().ok_or(Error::UnknownInterface(input.port))?;
     let mut plan = NetboxPlan::new(
         &device,
-        format!("Aus Bridge lösen {} {} ({})", owner.name(), port.name(), bridge.name()),
+        format!(
+            "Aus Bridge lösen {} {} ({})",
+            owner.name(),
+            port.name(),
+            bridge.name()
+        ),
     );
     plan.steps.push(PlanStep::UpdatePort(UpdatePort {
         interface: interface_ref(&port),

@@ -95,7 +95,11 @@ async fn ends_with_different_mtus_are_refused() {
     for device in [a, b] {
         assert!(matches!(
             ether1(&device),
-            Err(SetupError::MtuMismatch { mtu: 2000 | 1500, far_mtu: 1500 | 2000, .. })
+            Err(SetupError::MtuMismatch {
+                mtu: 2000 | 1500,
+                far_mtu: 1500 | 2000,
+                ..
+            })
         ));
     }
 }

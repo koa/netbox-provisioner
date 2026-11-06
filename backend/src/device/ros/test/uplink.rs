@@ -46,7 +46,11 @@ async fn uplink_router() -> BaseDeviceDataTarget {
 }
 
 fn names(target: &BaseDeviceDataTarget) -> Vec<String> {
-    target.dhcp_v_6_client.keys().map(|name| name.to_string()).collect()
+    target
+        .dhcp_v_6_client
+        .keys()
+        .map(|name| name.to_string())
+        .collect()
 }
 
 /// Only the uplink with `nat` asks for a prefix, into `pd-<port>`, with a default route as
@@ -58,9 +62,16 @@ async fn the_internet_uplink_asks_for_a_prefix() {
     let client = &target.dhcp_v_6_client[&AsciiString::from("ether1")].0;
     assert_eq!(
         client.request,
-        [Ipv6DhcpClientRequest::Address, Ipv6DhcpClientRequest::Prefix].into()
+        [
+            Ipv6DhcpClientRequest::Address,
+            Ipv6DhcpClientRequest::Prefix
+        ]
+        .into()
     );
-    assert_eq!(client.pool_name.as_ref().map(|p| p.to_string()).as_deref(), Some("pd-ether1"));
+    assert_eq!(
+        client.pool_name.as_ref().map(|p| p.to_string()).as_deref(),
+        Some("pd-ether1")
+    );
     assert!(client.add_default_route);
     assert_eq!(client.default_route_distance, Some(10));
     assert_eq!(target.dhcp_v_4_client.len(), 2);
@@ -72,7 +83,9 @@ async fn the_internet_uplink_asks_for_a_prefix() {
 async fn a_client_set_up_by_hand_gets_prefix_delegation() {
     let mut target = uplink_router().await;
     let mut current = empty_current(&target);
-    let own = target.dhcp_v_6_client[&AsciiString::from("ether1")].0.clone();
+    let own = target.dhcp_v_6_client[&AsciiString::from("ether1")]
+        .0
+        .clone();
     let by_hand = |interface: &str| {
         let mut cfg = own.clone();
         cfg.interface = interface.into();
@@ -91,11 +104,18 @@ async fn a_client_set_up_by_hand_gets_prefix_delegation() {
     let uplink = &target.dhcp_v_6_client[&AsciiString::from("ether1")].0;
     assert_eq!(
         uplink.request,
-        [Ipv6DhcpClientRequest::Address, Ipv6DhcpClientRequest::Prefix].into()
+        [
+            Ipv6DhcpClientRequest::Address,
+            Ipv6DhcpClientRequest::Prefix
+        ]
+        .into()
     );
     assert!(uplink.add_default_route);
     assert_eq!(uplink.default_route_distance, Some(10));
-    assert_eq!(uplink.pool_name.as_ref().map(|p| p.to_string()).as_deref(), Some("fiber7-pool"));
+    assert_eq!(
+        uplink.pool_name.as_ref().map(|p| p.to_string()).as_deref(),
+        Some("fiber7-pool")
+    );
     assert_eq!(uplink.pool_prefix_length, Some(56));
     assert!(uplink.script.is_some());
     assert_eq!(

@@ -20,10 +20,17 @@ fn crs354_qsfp_lanes_after_the_first_have_no_shutdown_temperature() {
     let temperatures: Vec<(String, Option<u8>)> = ports
         .iter()
         .filter(|port| port.default_name.to_string().starts_with("qsfpplus"))
-        .map(|port| (port.default_name.to_string(), port.data.sfp_shutdown_temperature))
+        .map(|port| {
+            (
+                port.default_name.to_string(),
+                port.data.sfp_shutdown_temperature,
+            )
+        })
         .collect();
     let wanted: Vec<(String, Option<u8>)> = (1..=2)
-        .flat_map(|cage| (1..=4).map(move |lane| (format!("qsfpplus{cage}-{lane}"), (lane == 1).then_some(95))))
+        .flat_map(|cage| {
+            (1..=4).map(move |lane| (format!("qsfpplus{cage}-{lane}"), (lane == 1).then_some(95)))
+        })
         .collect();
     assert_eq!(temperatures, wanted);
 }
@@ -46,7 +53,10 @@ fn hex_poe_has_poe_out_on_ether2_to_5() {
         .iter()
         .map(|port| String::from_utf8_lossy(&port.default_name).into_owned())
         .collect();
-    assert_eq!(names, ["ether1", "ether2", "ether3", "ether4", "ether5", "sfp1"]);
+    assert_eq!(
+        names,
+        ["ether1", "ether2", "ether3", "ether4", "ether5", "sfp1"]
+    );
     assert_eq!(ports[0].data.poe_out, None);
     for port in &ports[1..5] {
         assert!(port.data.poe_out.is_some());
@@ -89,14 +99,20 @@ fn cap_2n_has_one_port_and_runs_wireless() {
 #[test]
 fn rb750gl_has_five_ports_on_its_switch_chip() {
     let ports = build_ethernet_ports(b"RB750GL");
-    let names: Vec<_> = ports.iter().map(|port| port.default_name.to_string()).collect();
+    let names: Vec<_> = ports
+        .iter()
+        .map(|port| port.default_name.to_string())
+        .collect();
     assert_eq!(names, ["ether1", "ether2", "ether3", "ether4", "ether5"]);
     assert!(ports.iter().all(|port| port.data.l_2_mtu == Some(1598)
         && port.data.advertise.len() == 6
         && port.data.poe_out.is_none()));
     assert_eq!(radio_package(b"RB750GL"), None);
     let chips = SwitchChips::of(b"RB750GL");
-    assert_eq!(chips.chip_of(PhysicalPortId::Ethernet(5)), Some(SwitchChip::Qca8337));
+    assert_eq!(
+        chips.chip_of(PhysicalPortId::Ethernet(5)),
+        Some(SwitchChip::Qca8337)
+    );
 }
 
 /// As groove-38 reports it (7.14.1): `ether1` with `l2mtu=1600`, advertising up to 1G, no
@@ -109,8 +125,14 @@ fn groove_has_one_port_and_runs_wireless() {
     assert_eq!(ports[0].data.l_2_mtu, Some(1600));
     assert_eq!(ports[0].data.advertise.len(), 6);
     assert_eq!(ports[0].data.poe_out, None);
-    assert_eq!(radio_package(b"Groove A-52HPn"), Some(RadioPackage::Wireless));
-    assert_eq!(SwitchChips::of(b"Groove A-52HPn").chip_of(PhysicalPortId::Ethernet(1)), None);
+    assert_eq!(
+        radio_package(b"Groove A-52HPn"),
+        Some(RadioPackage::Wireless)
+    );
+    assert_eq!(
+        SwitchChips::of(b"Groove A-52HPn").chip_of(PhysicalPortId::Ethernet(1)),
+        None
+    );
 }
 
 #[test]
@@ -120,7 +142,10 @@ fn first_wap_ac_has_one_port_and_runs_wireless() {
     assert_eq!(&*ports[0].default_name, b"ether1");
     assert_eq!(ports[0].data.l_2_mtu, Some(1600));
     assert_eq!(ports[0].data.poe_out, None);
-    assert_eq!(radio_package(b"RBwAPG-5HacT2HnD"), Some(RadioPackage::Wireless));
+    assert_eq!(
+        radio_package(b"RBwAPG-5HacT2HnD"),
+        Some(RadioPackage::Wireless)
+    );
 }
 
 #[test]
@@ -130,7 +155,10 @@ fn hap_ac_poe_port_has_its_power_cycle_settings() {
         .iter()
         .map(|port| String::from_utf8_lossy(&port.default_name).into_owned())
         .collect();
-    assert_eq!(names, ["ether1", "ether2", "ether3", "ether4", "ether5", "sfp1"]);
+    assert_eq!(
+        names,
+        ["ether1", "ether2", "ether3", "ether4", "ether5", "sfp1"]
+    );
     for port in &ports[..4] {
         assert_eq!(port.data.poe_out, None);
         assert_eq!(port.data.power_cycle_ping_enabled, None);

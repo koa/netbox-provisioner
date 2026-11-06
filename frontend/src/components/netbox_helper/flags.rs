@@ -38,8 +38,13 @@ pub enum Flag {
     Internet,
 }
 
-pub(super) const FLAGS: [Flag; 5] =
-    [Flag::Ospf, Flag::Dhcp, Flag::DhcpClient, Flag::Nat, Flag::Internet];
+pub(super) const FLAGS: [Flag; 5] = [
+    Flag::Ospf,
+    Flag::Dhcp,
+    Flag::DhcpClient,
+    Flag::Nat,
+    Flag::Internet,
+];
 
 impl Flag {
     pub(super) fn slug(self) -> &'static str {
@@ -95,7 +100,11 @@ impl NetboxHelper {
     /// Fetches the device's findings after the switches, unless they are there already.
     pub(super) fn check_flags(&mut self, ctx: &Context<Self>) {
         let changes = self.flag_changes();
-        if self.flag_findings.as_ref().is_some_and(|(shown, _)| *shown == changes) {
+        if self
+            .flag_findings
+            .as_ref()
+            .is_some_and(|(shown, _)| *shown == changes)
+        {
             return;
         }
         self.flag_findings = None;
@@ -107,26 +116,27 @@ impl NetboxHelper {
             Some(Err(error)) => return error.to_html(),
             Some(Ok(interfaces)) => interfaces,
         };
-        let rows = interfaces
-            .iter()
-            .filter(|interface| self.flags_of.is_none_or(|id| interface.id as u32 == id))
-            .map(|interface| {
-            let id = interface.id as u32;
-            let name = match &interface.label {
-                Some(label) => format!("{} ({label})", interface.name),
-                None => interface.name.clone(),
-            };
-            let mut about: Vec<String> = interface.addresses.clone();
-            about.extend(
-                interface
-                    .connected
-                    .iter()
-                    .map(|far| t::cabled_to(&far.device.name, &far.name)),
-            );
-            if let Some(bridge) = &interface.bridge {
-                about.push(t::bridge_port(bridge));
-            }
-            let switches = FLAGS.iter().map(|&flag| {
+        let rows =
+            interfaces
+                .iter()
+                .filter(|interface| self.flags_of.is_none_or(|id| interface.id as u32 == id))
+                .map(|interface| {
+                    let id = interface.id as u32;
+                    let name = match &interface.label {
+                        Some(label) => format!("{} ({label})", interface.name),
+                        None => interface.name.clone(),
+                    };
+                    let mut about: Vec<String> = interface.addresses.clone();
+                    about.extend(
+                        interface
+                            .connected
+                            .iter()
+                            .map(|far| t::cabled_to(&far.device.name, &far.name)),
+                    );
+                    if let Some(bridge) = &interface.bridge {
+                        about.push(t::bridge_port(bridge));
+                    }
+                    let switches = FLAGS.iter().map(|&flag| {
                 let has = interface.tags.iter().any(|tag| tag_slug(tag) == flag.slug());
                 let set = self.flags.get(&(id, flag)).copied().unwrap_or(has);
                 let class = (set != has).then_some("flag-changed");
@@ -143,16 +153,16 @@ impl NetboxHelper {
                     </td>
                 }
             });
-            html! {
-                <tr class="pf-v6-c-table__tr" key={id}>
-                    <td class="pf-v6-c-table__td" data-label={t::INTERFACE}>
-                        <div>{name}</div>
-                        <small>{about.join(", ")}</small>
-                    </td>
-                    { for switches }
-                </tr>
-            }
-        });
+                    html! {
+                        <tr class="pf-v6-c-table__tr" key={id}>
+                            <td class="pf-v6-c-table__td" data-label={t::INTERFACE}>
+                                <div>{name}</div>
+                                <small>{about.join(", ")}</small>
+                            </td>
+                            { for switches }
+                        </tr>
+                    }
+                });
         let findings = match &self.flag_findings {
             None => html!(<Spinner size={SpinnerSize::Md}/>),
             Some((_, Err(error))) => error.to_html(),
@@ -195,7 +205,11 @@ pub(super) fn fetch_flag_interfaces(scope: Scope<NetboxHelper>, id: u32) {
 }
 
 /// The device's findings as they would be with `changes` (as they are without any).
-pub(super) fn fetch_flag_findings(scope: Scope<NetboxHelper>, id: u32, changes: Vec<(u32, Flag, bool)>) {
+pub(super) fn fetch_flag_findings(
+    scope: Scope<NetboxHelper>,
+    id: u32,
+    changes: Vec<(u32, Flag, bool)>,
+) {
     spawn_local(async move {
         let after = (!changes.is_empty()).then(|| helper(HelperChoice::Flags(changes.clone()), id));
         let variables = FindingsVariables {
@@ -205,7 +219,7 @@ pub(super) fn fetch_flag_findings(scope: Scope<NetboxHelper>, id: u32, changes: 
         };
         let result = request(scope.clone(), Findings::build(variables))
             .await
-        .map(|data| (data.topology.netbox_url, data.topology.findings));
+            .map(|data| (data.topology.netbox_url, data.topology.findings));
         scope.send_message(FlagsMsg::Findings(changes, result));
     });
 }

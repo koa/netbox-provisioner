@@ -158,15 +158,26 @@ impl RadioHold {
     pub(crate) fn saved(&self) -> SavedHold {
         SavedHold {
             own: self.own.clone(),
-            others: self.others.iter().map(|s| (s.device.clone(), s.watching.clone())).collect(),
+            others: self
+                .others
+                .iter()
+                .map(|s| (s.device.clone(), s.watching.clone()))
+                .collect(),
         }
     }
 
     /// Says again what an apply saved before a restart holds suspended (`WatchdogSuspended`),
     /// as soon as its job goes on: the other devices' pages show them held, not as leftovers.
     pub(crate) fn announce_saved(device: &str, saved: &SavedHold, log: &Log) {
-        let own = saved.own.iter().filter(|watching| !watching.is_empty()).map(|watching| (device.into(), watching));
-        let others = saved.others.iter().map(|(device, watching)| (device.clone(), watching));
+        let own = saved
+            .own
+            .iter()
+            .filter(|watching| !watching.is_empty())
+            .map(|watching| (device.into(), watching));
+        let others = saved
+            .others
+            .iter()
+            .map(|(device, watching)| (device.clone(), watching));
         for (device, watching) in own.chain(others) {
             log.emit(WatchdogSuspended {
                 device,
@@ -179,7 +190,11 @@ impl RadioHold {
     /// Holds again what an apply saved before a restart held ([`Self::announce_saved`]), once
     /// the device answers: each other device connected again for restoring it, one not
     /// reached left to its scheduler entry (`WatchdogKept`).
-    pub(crate) async fn resumed(link: &AccessibleDevice, saved: &SavedHold, log: &Log) -> RadioHold {
+    pub(crate) async fn resumed(
+        link: &AccessibleDevice,
+        saved: &SavedHold,
+        log: &Log,
+    ) -> RadioHold {
         let device: Box<str> = link.device_config.name().into();
         if saved.own.is_some() {
             link.hold_watchdog(true);
@@ -216,8 +231,15 @@ impl RadioHold {
     /// Leaves what an apply saved before a restart held to the scheduler entries
     /// (`WatchdogKept`), the device not reached again.
     pub(crate) fn leave_saved(device: &str, saved: &SavedHold, log: &Log) {
-        let own = saved.own.iter().filter(|watching| !watching.is_empty()).map(|watching| (device.into(), watching));
-        let others = saved.others.iter().map(|(device, watching)| (device.clone(), watching));
+        let own = saved
+            .own
+            .iter()
+            .filter(|watching| !watching.is_empty())
+            .map(|watching| (device.into(), watching));
+        let others = saved
+            .others
+            .iter()
+            .map(|(device, watching)| (device.clone(), watching));
         for (device, watching) in own.chain(others) {
             log.emit(WatchdogKept {
                 device,
@@ -229,7 +251,10 @@ impl RadioHold {
 
     /// Leaves what [`Self::take`] suspended to the scheduler entries (`WatchdogKept`).
     pub(crate) fn leave(self, log: &Log) {
-        let own = self.own.filter(|watching| !watching.is_empty()).map(|watching| (self.device, watching));
+        let own = self
+            .own
+            .filter(|watching| !watching.is_empty())
+            .map(|watching| (self.device, watching));
         let others = self.others.into_iter().map(|s| (s.device, s.watching));
         for (device, watching) in own.into_iter().chain(others) {
             log.emit(WatchdogKept {

@@ -56,7 +56,9 @@ pub(crate) fn static_leases(prefix: &IpPrefixAccess) -> Vec<StaticLease> {
         .ips()
         .iter()
         .filter_map(|ip| {
-            let Some(IpAddr::V4(address)) = ip.addr() else { return None };
+            let Some(IpAddr::V4(address)) = ip.addr() else {
+                return None;
+            };
             let interface = ip.interface()?;
             let device = interface.device()?;
             if device.has_routeros() {

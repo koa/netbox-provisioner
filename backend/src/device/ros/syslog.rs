@@ -51,7 +51,13 @@ pub(super) fn routeros_logging() -> (Actions, Rules) {
         action(b"memory", SystemLoggingActionTarget::Memory),
         action(b"disk", SystemLoggingActionTarget::Disk),
         action(b"echo", SystemLoggingActionTarget::Echo),
-        (REMOTE.into(), SystemLoggingActionByName(remote_action(IpAddr::V4(Ipv4Addr::UNSPECIFIED), DEFAULT_PORT))),
+        (
+            REMOTE.into(),
+            SystemLoggingActionByName(remote_action(
+                IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+                DEFAULT_PORT,
+            )),
+        ),
     ]
     .into();
     let rules = [
@@ -100,7 +106,10 @@ fn rule<'t>(
     action: &[u8],
     topics: impl IntoIterator<Item = &'t str>,
 ) -> (RuleKey, SystemLoggingCfg) {
-    let topics = topics.into_iter().map(|t| AsciiString::from(t.as_bytes())).collect::<BTreeSet<_>>();
+    let topics = topics
+        .into_iter()
+        .map(|t| AsciiString::from(t.as_bytes()))
+        .collect::<BTreeSet<_>>();
     (
         (action.into(), topics.clone()),
         SystemLoggingCfg {
@@ -119,7 +128,10 @@ impl BaseDeviceDataTarget {
     pub fn setup_syslog(&mut self, syslog: &DeviceSyslog) {
         self.logging_action.insert(
             REMOTE.into(),
-            SystemLoggingActionByName(remote_action(syslog.remote, syslog.port.unwrap_or(DEFAULT_PORT))),
+            SystemLoggingActionByName(remote_action(
+                syslog.remote,
+                syslog.port.unwrap_or(DEFAULT_PORT),
+            )),
         );
         for topic in syslog.topics() {
             let (key, rule) = rule(REMOTE, [topic]);

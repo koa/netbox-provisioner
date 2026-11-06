@@ -96,7 +96,10 @@ pub(super) async fn plan_with(
     }
     let pairs = pairs(&ap, &station)?;
     for (ap_radio, station_radio) in &pairs {
-        for (radio, role) in [(ap_radio, RadioRole::Ap), (station_radio, RadioRole::Station)] {
+        for (radio, role) in [
+            (ap_radio, RadioRole::Ap),
+            (station_radio, RadioRole::Station),
+        ] {
             let radio_role = radio.data().and_then(|d| d.radio.as_ref()).map(|r| r.role);
             if radio_role != Some(role) {
                 plan.steps.push(PlanStep::UpdatePort(UpdatePort {
@@ -133,7 +136,13 @@ pub(super) async fn plan_with(
     networks(topology, &mut plan, &sides, routes).await?;
     let cables = sides
         .iter()
-        .map(|side| (side.router_port.clone(), side.ether.clone(), side.device.clone()))
+        .map(|side| {
+            (
+                side.router_port.clone(),
+                side.ether.clone(),
+                side.device.clone(),
+            )
+        })
         .collect::<Vec<_>>();
     radio_bridge::labels(&mut plan, &cables);
     Ok(plan)
@@ -503,7 +512,9 @@ mod test {
         let mut lab = Lab::new();
         let port = lab.np2_port;
         address(&mut lab.builder, port, "10.9.9.1/30");
-        let Err(error) = lab.plan().await else { panic!("two networks of its own") };
+        let Err(error) = lab.plan().await else {
+            panic!("two networks of its own")
+        };
         assert!(
             matches!(&error, Error::PortAddressed { port, .. } if &**port == "np2 ether8"),
             "{error:?}"
@@ -516,8 +527,13 @@ mod test {
         let mut lab = Lab::new();
         let station = lab.wave_b;
         lab.builder.devices.get_mut(&station).unwrap().has_routeros = true;
-        let Err(error) = lab.plan().await else { panic!("mixed") };
-        assert!(matches!(&error, Error::NoRouterOs(name) if &**name == "wave-a"), "{error:?}");
+        let Err(error) = lab.plan().await else {
+            panic!("mixed")
+        };
+        assert!(
+            matches!(&error, Error::NoRouterOs(name) if &**name == "wave-a"),
+            "{error:?}"
+        );
     }
 
     /// A router port to a Wave Nano is a radio link in the interface view, also with `dhcp`
@@ -597,25 +613,21 @@ mod test {
         // 1og-sw2 ether13 in its client bridge, whichever the export has (a plan that gets as
         // far as the networks asks NetBox for free ones)
         let in_bridge = Arc::new(
-                topology
-                    .rebuilt_with(|json| {
-                        for device in json["device_list"].as_array_mut().into_iter().flatten() {
-                            for interface in
-                                device["interfaces"].as_array_mut().into_iter().flatten()
-                            {
-                                if interface["id"] == "24" {
-                                    interface["bridge"] = serde_json::json!({ "id": "415" });
-                                }
+            topology
+                .rebuilt_with(|json| {
+                    for device in json["device_list"].as_array_mut().into_iter().flatten() {
+                        for interface in device["interfaces"].as_array_mut().into_iter().flatten() {
+                            if interface["id"] == "24" {
+                                interface["bridge"] = serde_json::json!({ "id": "415" });
                             }
                         }
-                    })
-                    .expect("a source")
-                    .expect("rebuilt"),
-            );
+                    }
+                })
+                .expect("a source")
+                .expect("rebuilt"),
+        );
         let mut routes = Some(Routes::none("test"));
-        let Err(error) =
-            radio_bridge::plan_with(&in_bridge, &input, &mut routes).await
-        else {
+        let Err(error) = radio_bridge::plan_with(&in_bridge, &input, &mut routes).await else {
             panic!("1og-sw2 ether13 is in its client bridge")
         };
         assert!(
@@ -630,7 +642,10 @@ mod test {
             .collect::<Vec<_>>();
         assert_eq!(
             pairs,
-            [("wlan0".into(), "wlan0".into()), ("wlan1".into(), "wlan1".into())]
+            [
+                ("wlan0".into(), "wlan0".into()),
+                ("wlan1".into(), "wlan1".into())
+            ]
         );
         // over two patch panels
         let router = find("switch-schmidrueti");
@@ -647,8 +662,14 @@ mod test {
             port.as_ref()
                 .map(|port| format!("{} {}", port.device.name, port.name))
         };
-        assert_eq!(name(&path.peer_bridge_port).as_deref(), Some("berg-schmidrueti eth0"));
-        assert_eq!(name(&path.peer_router_port).as_deref(), Some("1og-sw2 ether13"));
+        assert_eq!(
+            name(&path.peer_bridge_port).as_deref(),
+            Some("berg-schmidrueti eth0")
+        );
+        assert_eq!(
+            name(&path.peer_router_port).as_deref(),
+            Some("1og-sw2 ether13")
+        );
         // the helper until the link has its networks, then the removal
         let planned = router
             .interfaces()
@@ -686,7 +707,15 @@ mod test {
                 )
             })
             .collect::<Vec<_>>();
-        assert_eq!(found[0], ("wave-a".into(), false, Some("wave-b".into()), Some(np1_port.0)));
+        assert_eq!(
+            found[0],
+            (
+                "wave-a".into(),
+                false,
+                Some("wave-b".into()),
+                Some(np1_port.0)
+            )
+        );
         assert_eq!(found.len(), 2, "{found:?}");
     }
 }

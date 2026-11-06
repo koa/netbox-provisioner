@@ -3,9 +3,10 @@ use actix_4_jwt_auth::{
     biscuit::{ClaimPresenceOptions, Presence, TemporalOptions, Validation, ValidationOptions},
 };
 use actix_web::{
-    App, HttpResponse, HttpServer, get,
+    App, HttpResponse, HttpServer,
     body::{BoxBody, MessageBody},
     dev::{HttpServiceFactory, ServiceRequest, ServiceResponse},
+    get,
     guard::Post,
     http::StatusCode,
     middleware::{Logger, Next, from_fn},
@@ -78,12 +79,9 @@ async fn graphql(
     let schema = &context.schema;
     let histogram = context.graphql_request_histogram.clone();
     let request = request.into_inner();
-    let subject = user.as_ref().and_then(|user| {
-        user.payload
-            .registered
-            .subject
-            .as_deref()
-    });
+    let subject = user
+        .as_ref()
+        .and_then(|user| user.payload.registered.subject.as_deref());
     let found_user = if let Some(DecodedInfo { jwt: _jwt, payload }) = &user {
         match serde_json::from_value::<UserInfo>(payload.private.clone()) {
             Ok(user) => Some(user),
@@ -143,7 +141,10 @@ async fn graphql_ws(
     let oidc = request.app_data::<Oidc>().cloned();
     GraphQLSubscription::new(Expiring(context.schema.clone()))
         .on_connection_init(move |init| async move {
-            let token = init.get("token").and_then(|token| token.as_str()).unwrap_or_default();
+            let token = init
+                .get("token")
+                .and_then(|token| token.as_str())
+                .unwrap_or_default();
             let oidc = oidc.ok_or_else(|| async_graphql::Error::new("no OIDC"))?;
             let (user, expiry) = authenticate(oidc, token)?;
             let mut data = async_graphql::Data::default();
@@ -185,7 +186,10 @@ fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<(Option<UserIn
         .expiry
         .ok_or_else(|| async_graphql::Error::new("token without exp"))?;
     let expiry = TokenExpiry(*expiry + chrono::Duration::seconds(LEEWAY_SECONDS));
-    Ok((serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok(), expiry))
+    Ok((
+        serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok(),
+        expiry,
+    ))
 }
 
 #[get("/health")]
@@ -274,8 +278,15 @@ async fn main() -> Result<(), BackendError> {
             .app_data(oidc.clone())
             // `/…/`: workaround for proxy troubles
             .service(authenticated_graphql("/graphql", biscuit_validator.clone()))
-            .service(authenticated_graphql("/graphql/", biscuit_validator.clone()))
-            .service(resource("/graphql/ws").guard(actix_web::guard::Get()).to(graphql_ws))
+            .service(authenticated_graphql(
+                "/graphql/",
+                biscuit_validator.clone(),
+            ))
+            .service(
+                resource("/graphql/ws")
+                    .guard(actix_web::guard::Get())
+                    .to(graphql_ws),
+            )
             .service(anonymous_graphql("/graphql_anonymous"))
             .service(anonymous_graphql("/graphql_anonymous/"))
             .service(ResourceFiles::new("/", resources).resolve_not_found_to_root())
@@ -423,7 +434,8 @@ mod test {
             issuer: Some(ISSUER.into()),
             subject: Some("someone".into()),
             audience: Some(SingleOrMultiple::Single(APP.into())),
-            expiry: expires_in.map(|seconds| Timestamp::from(Utc::now() + chrono::Duration::seconds(seconds))),
+            expiry: expires_in
+                .map(|seconds| Timestamp::from(Utc::now() + chrono::Duration::seconds(seconds))),
             ..RegisteredClaims::default()
         }
     }

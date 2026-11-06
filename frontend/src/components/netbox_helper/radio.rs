@@ -60,8 +60,9 @@ impl NetboxHelper {
             RadioMsg::Options(options) => {
                 // this bridge's role and the other end of its link, as NetBox has them
                 if let Ok(candidates) = &options
-                    && let Some(own) =
-                        candidates.iter().find(|c| c.device.id as u32 == ctx.props().id)
+                    && let Some(own) = candidates
+                        .iter()
+                        .find(|c| c.device.id as u32 == ctx.props().id)
                 {
                     if self.radio.peer.is_none() {
                         self.radio.peer = own.peer.as_ref().map(|peer| peer.id as u32);
@@ -131,8 +132,14 @@ impl NetboxHelper {
             Some(Ok(ports)) => ports,
         };
         let roles = vec![
-            NetEntry { value: true, text: t::RADIO_AP.to_string() },
-            NetEntry { value: false, text: t::RADIO_STATION.to_string() },
+            NetEntry {
+                value: true,
+                text: t::RADIO_AP.to_string(),
+            },
+            NetEntry {
+                value: false,
+                text: t::RADIO_STATION.to_string(),
+            },
         ];
         let role = roles.iter().find(|r| r.value == self.radio.own_ap).cloned();
         let peers: Vec<Choice> = candidates
@@ -162,14 +169,14 @@ impl NetboxHelper {
             .collect();
         let router_ports = |side: usize| -> Vec<Choice> {
             self.radio.router_device[side]
-                .and_then(|id| ports.topology.all_devices.iter().find(|d| d.id as u32 == id))
-                .map(|device| {
-                    device
-                        .link_ports
+                .and_then(|id| {
+                    ports
+                        .topology
+                        .all_devices
                         .iter()
-                        .map(port_choice)
-                        .collect()
+                        .find(|d| d.id as u32 == id)
                 })
+                .map(|device| device.link_ports.iter().map(port_choice).collect())
                 .unwrap_or_default()
         };
         let peer = self.radio.peer.and_then(|id| self.candidate(id));

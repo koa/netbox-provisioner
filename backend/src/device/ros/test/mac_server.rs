@@ -91,11 +91,17 @@ async fn allows_mac_telnet_towards_own_devices_and_on_free_ports() {
         .collect();
     // the bridge port itself, not the bridge: the other ports of the bridge stay out
     for port in ["ether1", "ether5"] {
-        assert!(members.iter().any(|m| m == port), "{port} missing in {members:?}");
+        assert!(
+            members.iter().any(|m| m == port),
+            "{port} missing in {members:?}"
+        );
     }
     // free: in NetBox without anything, or not there (renamed to the board's short names)
     for port in ["ether3", "e06", "e24", "s01", "s02"] {
-        assert!(members.iter().any(|m| m == port), "{port} missing in {members:?}");
+        assert!(
+            members.iter().any(|m| m == port),
+            "{port} missing in {members:?}"
+        );
     }
     for port in ["ether2", "ether4", "bridge"] {
         assert!(!members.iter().any(|m| m == port), "{port} in {members:?}");

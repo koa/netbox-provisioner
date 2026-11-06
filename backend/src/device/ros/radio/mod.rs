@@ -41,9 +41,12 @@ pub(crate) fn needs_country(device: &DeviceAccess) -> bool {
     device.wlan_ap_of().is_some()
         || device.wlan_controller_of().is_some()
         || device.interfaces().iter().any(|interface| {
-            interface
-                .radio()
-                .is_some_and(|radio| radio.link.as_ref().is_none_or(|link| link.country.is_none()))
+            interface.radio().is_some_and(|radio| {
+                radio
+                    .link
+                    .as_ref()
+                    .is_none_or(|link| link.country.is_none())
+            })
         })
 }
 
@@ -92,7 +95,13 @@ fn wlan_vlans(group: &WlanGroupAccess) -> WlanVlans {
 /// every character but ASCII letters, digits and `-` as `_`.
 fn wlan_configuration_name(ssid: &str) -> AsciiString {
     ssid.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .into()
 }

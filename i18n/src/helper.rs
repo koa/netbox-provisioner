@@ -194,7 +194,14 @@ pub fn update_wireless_link(
     if psk {
         changes.push("WPA mit neuem PSK".to_string());
     }
-    format!("Wireless Link {} {} – {} {}: {}", a.0, a.1, b.0, b.1, changes.join(", "))
+    format!(
+        "Wireless Link {} {} – {} {}: {}",
+        a.0,
+        a.1,
+        b.0,
+        b.1,
+        changes.join(", ")
+    )
 }
 pub const FLAGS: &str = "Flags";
 pub const FLAGS_HINT: &str = "Die Tags der Interfaces: ospf (OSPF), dhcp (DHCP-Server), \
@@ -204,10 +211,18 @@ pub const CHOOSE_FLAGS: &str = "Schalter umstellen, dann zeigt der Plan die Änd
 pub const INTERFACE: &str = "Interface";
 /// the device's findings, `after` the switches or as they are
 pub fn flag_findings(after: bool) -> &'static str {
-    if after { "Befunde des Geräts danach:" } else { "Befunde des Geräts:" }
+    if after {
+        "Befunde des Geräts danach:"
+    } else {
+        "Befunde des Geräts:"
+    }
 }
 pub fn no_flag_findings(after: bool) -> &'static str {
-    if after { "Danach keine Befunde zum Gerät." } else { "Keine Befunde zum Gerät." }
+    if after {
+        "Danach keine Befunde zum Gerät."
+    } else {
+        "Keine Befunde zum Gerät."
+    }
 }
 pub fn bridge_port(bridge: &str) -> String {
     format!("Port von {bridge}: dessen Tags zählen")
@@ -248,14 +263,24 @@ pub fn update_port_vlan(
     let name = |(vid, name): (i32, &str)| format!("VLAN {vid} ({name})");
     let mut text = match (vlan, before) {
         (Some(vlan), Some(before)) => {
-            format!("{} {}: untagged {} statt {}", port.0, port.1, name(vlan), name(before))
+            format!(
+                "{} {}: untagged {} statt {}",
+                port.0,
+                port.1,
+                name(vlan),
+                name(before)
+            )
         }
         (Some(vlan), None) => format!("{} {}: untagged {}", port.0, port.1, name(vlan)),
         (None, Some(before)) => format!("{} {}: {} weg", port.0, port.1, name(before)),
         (None, None) => format!("{} {}:", port.0, port.1),
     };
     if !tagged_before.is_empty() {
-        let tagged = tagged_before.iter().map(|v| name(*v)).collect::<Vec<_>>().join(", ");
+        let tagged = tagged_before
+            .iter()
+            .map(|v| name(*v))
+            .collect::<Vec<_>>()
+            .join(", ");
         text.push_str(&format!(", tagged {tagged} weg"));
     }
     text
@@ -271,7 +296,8 @@ pub const LEASE_TAKEOVER: &str = "Lease übernehmen";
 pub const LEASE_TAKEOVER_HINT: &str = "Trägt den Client eines statischen DHCP-Leases, den nur der \
     Router hat, in NetBox ein: ein Gerät mit Interface eth0, seiner MAC und der Adresse, damit das \
     nächste Anwenden den Lease schreibt statt entfernt.";
-pub const CHOOSE_LEASE_TAKEOVER: &str = "Über den Lease in der Live-Prüfung der Interfaces starten.";
+pub const CHOOSE_LEASE_TAKEOVER: &str =
+    "Über den Lease in der Live-Prüfung der Interfaces starten.";
 pub const LEASE_NAME: &str = "Name des Clients";
 pub const LEASE_NAME_PLACEHOLDER: &str = "drucker-buero";
 pub const LEASE_ROLE_PLACEHOLDER: &str = "Rolle wählen";
@@ -282,7 +308,8 @@ pub const ADDRESS_TAKEOVER: &str = "Adresse übernehmen";
 pub const ADDRESS_TAKEOVER_HINT: &str = "Trägt eine Adresse, die nur das Gerät hat, in NetBox an \
     ihrem Interface ein, damit das nächste Anwenden sie nicht entfernt. Ihr Netz wird ein Prefix, \
     wenn NetBox davon noch nichts hat.";
-pub const CHOOSE_ADDRESS_TAKEOVER: &str = "Über die Adresse in der Live-Prüfung der Interfaces starten.";
+pub const CHOOSE_ADDRESS_TAKEOVER: &str =
+    "Über die Adresse in der Live-Prüfung der Interfaces starten.";
 pub const NEW_DEVICE: &str = "Neues Gerät";
 pub const NEW_DEVICE_HINT: &str = "Legt in NetBox ein Gerät an, das an diesem Port hängt: an der \
     Site und mit dem Tenant dieses Geräts (dessen Zugangsdaten die Ersteinrichtung braucht), \
@@ -298,7 +325,8 @@ pub const NEW_DEVICE_ROLE: &str = "Rolle";
 pub const NEW_DEVICE_PORT: &str = "Port am neuen Gerät";
 pub const NEW_DEVICE_WLAN_GROUP: &str = "WLAN-Gruppe (Access Point)";
 pub const NEW_DEVICE_NO_WLAN_GROUP: &str = "keine";
-pub const NEW_DEVICE_NO_TYPES: &str = "NetBox hat keinen Device Type von MikroTik: zuerst dort anlegen.";
+pub const NEW_DEVICE_NO_TYPES: &str =
+    "NetBox hat keinen Device Type von MikroTik: zuerst dort anlegen.";
 pub const NEW_DEVICE_OPEN: &str = "Zum neuen Gerät";
 /// the board RouterOS reports at the port, whether a device type is it
 pub fn new_device_seen(identity: &str, board: &str, port: &str, matched: bool) -> String {
@@ -458,7 +486,13 @@ pub fn undocumented(address: &str, route: &str, gateway: Option<&str>, router: &
         None => format!("{address}: {router} hat die Route {route}"),
     }
 }
-pub fn create_device(name: &str, device_type: &str, role: &str, site: &str, wlan_group: Option<&str>) -> String {
+pub fn create_device(
+    name: &str,
+    device_type: &str,
+    role: &str,
+    site: &str,
+    wlan_group: Option<&str>,
+) -> String {
     match wlan_group {
         Some(group) => format!(
             "Gerät {name} anlegen ({device_type}, Rolle {role}, Site {site}, WLAN-Gruppe {group})"
@@ -466,7 +500,13 @@ pub fn create_device(name: &str, device_type: &str, role: &str, site: &str, wlan
         None => format!("Gerät {name} anlegen ({device_type}, Rolle {role}, Site {site})"),
     }
 }
-pub fn create_interface(device: &str, name: &str, kind: &str, tags: &[&str], mac: Option<&str>) -> String {
+pub fn create_interface(
+    device: &str,
+    name: &str,
+    kind: &str,
+    tags: &[&str],
+    mac: Option<&str>,
+) -> String {
     let mut what = vec![kind.to_string()];
     if !tags.is_empty() {
         what.push(format!("{} {}", tags_word(tags), tags.join(", ")));
@@ -527,10 +567,18 @@ pub fn update_interface(
         });
     }
     if !tags_added.is_empty() {
-        changes.push(format!("{} {}", tags_word(tags_added), tags_added.join(", ")));
+        changes.push(format!(
+            "{} {}",
+            tags_word(tags_added),
+            tags_added.join(", ")
+        ));
     }
     if !tags_removed.is_empty() {
-        changes.push(format!("{} {} weg", tags_word(tags_removed), tags_removed.join(", ")));
+        changes.push(format!(
+            "{} {} weg",
+            tags_word(tags_removed),
+            tags_removed.join(", ")
+        ));
     }
     format!("{} {}: {}", port.0, port.1, changes.join(", "))
 }

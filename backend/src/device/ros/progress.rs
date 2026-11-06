@@ -32,7 +32,11 @@ pub async fn file_path(raw: &RawDevice<SimpleResult>) -> Result<String, Error> {
         .await?
         .iter()
         .any(|row| field(row, "name") == Some("flash") && field(row, "type") == Some("disk"));
-    Ok(if flash { format!("flash/{FILE}") } else { FILE.into() })
+    Ok(if flash {
+        format!("flash/{FILE}")
+    } else {
+        FILE.into()
+    })
 }
 
 /// What [`instrument`] adds to a script.
@@ -75,8 +79,14 @@ pub fn instrument(script: &str, how: &Instrument) -> String {
     }
     let _ = writeln!(out, ":local ln 0");
     let _ = writeln!(out, ":local reach \"off\"");
-    let _ = writeln!(out, ":do {{ /file remove [find name=\"{file}\"] }} on-error={{}}");
-    let _ = writeln!(out, ":do {{ /file add name=\"{file}\" contents=\"\" }} on-error={{}}");
+    let _ = writeln!(
+        out,
+        ":do {{ /file remove [find name=\"{file}\"] }} on-error={{}}"
+    );
+    let _ = writeln!(
+        out,
+        ":do {{ /file add name=\"{file}\" contents=\"\" }} on-error={{}}"
+    );
     let _ = writeln!(out, "$mark \"start {lines} {}\"", how.run);
     if let Some(address) = how.probe {
         let _ = writeln!(
@@ -202,7 +212,8 @@ impl Progress {
                 "done" => progress.done = true,
                 "error" => {
                     let (line, message) = args.split_once(' ').unwrap_or((args, ""));
-                    progress.error = Some((line.parse().unwrap_or(0), without_line(message).into()));
+                    progress.error =
+                        Some((line.parse().unwrap_or(0), without_line(message).into()));
                 }
                 "rearmed" => {
                     let mut parts = args.split(' ');
@@ -221,14 +232,18 @@ impl Progress {
 fn script_uptime(text: &str) -> Option<Duration> {
     let (weeks, rest) = text.split_once('w').unwrap_or(("0", text));
     let (days, clock) = rest.split_once('d').unwrap_or(("0", rest));
-    let mut parts = clock.split(':').map(|part| part.split('.').next().unwrap_or(part).parse::<u64>());
+    let mut parts = clock
+        .split(':')
+        .map(|part| part.split('.').next().unwrap_or(part).parse::<u64>());
     let (Some(Ok(hours)), Some(Ok(minutes)), Some(Ok(seconds)), None) =
         (parts.next(), parts.next(), parts.next(), parts.next())
     else {
         return None;
     };
     let days = weeks.parse::<u64>().ok()? * 7 + days.parse::<u64>().ok()?;
-    Some(Duration::from_secs(((days * 24 + hours) * 60 + minutes) * 60 + seconds))
+    Some(Duration::from_secs(
+        ((days * 24 + hours) * 60 + minutes) * 60 + seconds,
+    ))
 }
 
 /// RouterOS' message without the line of the instrumented script, which isn't the one shown
@@ -242,7 +257,10 @@ fn without_line(message: &str) -> String {
 
 /// The marks on the device, if there are any of `run` (in the root or under `flash/`).
 pub async fn read(raw: &RawDevice<SimpleResult>, run: &str) -> Result<Option<Progress>, Error> {
-    Ok(contents(raw).await?.iter().find_map(|text| Progress::parse(text, run)))
+    Ok(contents(raw)
+        .await?
+        .iter()
+        .find_map(|text| Progress::parse(text, run)))
 }
 
 /// What the progress files on the device hold, of whichever run.
@@ -250,7 +268,9 @@ pub async fn contents(raw: &RawDevice<SimpleResult>) -> Result<Vec<Box<str>>, Er
     Ok(rows(raw, "/file/print")
         .await?
         .iter()
-        .filter(|row| field(row, "name").is_some_and(|name| name.trim_start_matches("flash/") == FILE))
+        .filter(|row| {
+            field(row, "name").is_some_and(|name| name.trim_start_matches("flash/") == FILE)
+        })
         .filter_map(|row| field(row, "contents"))
         .map(Box::from)
         .collect())
@@ -267,7 +287,10 @@ pub async fn provisioner_address(raw: &RawDevice<SimpleResult>) -> Result<Option
             *counts.entry(address).or_default() += 1;
         }
     }
-    Ok(counts.into_iter().max_by_key(|(_, count)| *count).map(|(address, _)| address))
+    Ok(counts
+        .into_iter()
+        .max_by_key(|(_, count)| *count)
+        .map(|(address, _)| address))
 }
 
 #[cfg(test)]

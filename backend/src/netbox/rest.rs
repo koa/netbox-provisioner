@@ -35,7 +35,10 @@ impl NetboxRest {
     /// For the jobs' journal entries (`crate::journal`), with `netbox_write_token`, whatever
     /// `allow_netbox_write` says: that one lets the helpers write.
     pub fn journal(changelog_message: impl Into<Box<str>>) -> Result<Self, NetboxError> {
-        let token = CONFIG.netbox_write_token.as_deref().ok_or(NetboxError::WriteNotAllowed)?;
+        let token = CONFIG
+            .netbox_write_token
+            .as_deref()
+            .ok_or(NetboxError::WriteNotAllowed)?;
         Self::with_token(token, Some(changelog_message.into()))
     }
     fn with_token(token: &str, changelog_message: Option<Box<str>>) -> Result<Self, NetboxError> {
@@ -71,14 +74,22 @@ impl NetboxRest {
             .await
     }
     pub async fn delete(&self, path: &str) -> Result<(), NetboxError> {
-        self.send(Method::DELETE, path, &[], Some(self.with_message(Value::Object(Map::new()))))
-            .await
-            .map(|_| ())
+        self.send(
+            Method::DELETE,
+            path,
+            &[],
+            Some(self.with_message(Value::Object(Map::new()))),
+        )
+        .await
+        .map(|_| ())
     }
 
     fn with_message(&self, mut object: Value) -> Value {
         if let (Some(message), Value::Object(fields)) = (&self.changelog_message, &mut object) {
-            fields.insert("changelog_message".into(), Value::String(message.to_string()));
+            fields.insert(
+                "changelog_message".into(),
+                Value::String(message.to_string()),
+            );
         }
         object
     }
@@ -133,8 +144,10 @@ mod test {
             changelog_message: None,
         };
         let filters = [("name", "Keller #2 & A+B"), ("limit", "1")];
-        let request =
-            rest.request(Method::GET, "dcim/devices/", &filters).build().expect("request");
+        let request = rest
+            .request(Method::GET, "dcim/devices/", &filters)
+            .build()
+            .expect("request");
         assert_eq!(
             request.url().as_str(),
             "http://netbox.example/api/dcim/devices/?name=Keller+%232+%26+A%2BB&limit=1"

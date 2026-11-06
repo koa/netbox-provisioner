@@ -61,9 +61,15 @@ fn a_reset_device_logs_to_the_server() {
     let mut target = target();
     target.setup_syslog(&loki());
     let script = logging_script(&target, &empty_current(&target));
-    assert!(script.contains(r#"remote="2a02:16a:fe00:1a0::10:8""#), "{script}");
+    assert!(
+        script.contains(r#"remote="2a02:16a:fe00:1a0::10:8""#),
+        "{script}"
+    );
     for topic in ["info", "warning", "error", "critical"] {
-        assert!(script.contains(&format!("add action=remote topics={topic} ")), "{topic}: {script}");
+        assert!(
+            script.contains(&format!("add action=remote topics={topic} ")),
+            "{topic}: {script}"
+        );
     }
     assert_eq!(script.matches("add ").count(), 4, "{script}");
     assert!(!script.contains("remove"), "{script}");
@@ -110,6 +116,13 @@ fn a_device_set_up_by_hand_loses_only_its_own_rules() {
 fn the_reset_remote_action_is_in_the_default_format() {
     let target = target();
     let current = empty_current(&target);
-    let remote = current.logging_action.iter().find(|a| a.0.name.0.as_ref() == b"remote").unwrap();
-    assert_eq!(remote.0.remote_log_format, Some(SystemLoggingActionRemoteLogFormat::Default));
+    let remote = current
+        .logging_action
+        .iter()
+        .find(|a| a.0.name.0.as_ref() == b"remote")
+        .unwrap();
+    assert_eq!(
+        remote.0.remote_log_format,
+        Some(SystemLoggingActionRemoteLogFormat::Default)
+    );
 }

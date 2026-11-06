@@ -31,7 +31,9 @@ async fn column(device: &MikrotikDevice<SimpleResult>, path: &str, field: &str) 
 }
 
 async fn watch_address(device: &MikrotikDevice<SimpleResult>) -> String {
-    column(device, "/system/watchdog", "watch-address").await.concat()
+    column(device, "/system/watchdog", "watch-address")
+        .await
+        .concat()
 }
 
 async fn entries(device: &MikrotikDevice<SimpleResult>) -> Vec<String> {
@@ -77,7 +79,9 @@ async fn watchdog_is_restored_or_restores_itself() {
     assert_eq!(watch_address(&device).await, "none");
     let nothing = read(&device, &[]).await.unwrap();
     assert!(nothing.is_empty());
-    suspend(&device, &nothing, Duration::from_secs(60)).await.unwrap();
+    suspend(&device, &nothing, Duration::from_secs(60))
+        .await
+        .unwrap();
     assert!(entries(&device).await.is_empty());
 
     // suspended and restored by the provisioner
@@ -90,7 +94,9 @@ async fn watchdog_is_restored_or_restores_itself() {
             poe_pings: Vec::new(),
         }
     );
-    suspend(&device, &watching, Duration::from_secs(600)).await.unwrap();
+    suspend(&device, &watching, Duration::from_secs(600))
+        .await
+        .unwrap();
     assert_eq!(watch_address(&device).await, "none");
     assert_eq!(entries(&device).await, [ENTRY]);
     // a suspend the provisioner didn't see to the end still knows the address
@@ -100,10 +106,14 @@ async fn watchdog_is_restored_or_restores_itself() {
     assert!(entries(&device).await.is_empty());
 
     // left alone: the scheduler entry restores it after the safety net and goes
-    suspend(&device, &watching, Duration::from_secs(20)).await.unwrap();
+    suspend(&device, &watching, Duration::from_secs(20))
+        .await
+        .unwrap();
     assert_eq!(watch_address(&device).await, "none");
     wait_until(
-        || async { Ok(watch_address(&device).await == WATCHED && entries(&device).await.is_empty()) },
+        || async {
+            Ok(watch_address(&device).await == WATCHED && entries(&device).await.is_empty())
+        },
         Duration::from_secs(120),
     )
     .await

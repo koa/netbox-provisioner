@@ -189,7 +189,11 @@ mod unix_seconds {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     pub fn serialize<S: Serializer>(time: &SystemTime, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_u64(time.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())
+        serializer.serialize_u64(
+            time.duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        )
     }
     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SystemTime, D::Error> {
         Ok(UNIX_EPOCH + Duration::from_secs(u64::deserialize(deserializer)?))
@@ -254,8 +258,10 @@ pub fn open(dir: &Path) -> Result<(), StoreError> {
     let lock = lock(dir)?;
     let read = read_all(&jobs).map_err(io_error(&jobs))?;
     info!("{} saved jobs in {}", read.len(), jobs.display());
-    *WAITING.lock_anyway() =
-        read.into_iter().map(|waiting| (waiting.device, waiting)).collect();
+    *WAITING.lock_anyway() = read
+        .into_iter()
+        .map(|waiting| (waiting.device, waiting))
+        .collect();
     if STORE.set(Store { jobs, _lock: lock }).is_err() {
         warn!("state_dir opened twice, the first one stays");
     }
@@ -286,12 +292,18 @@ fn read_all(jobs: &Path) -> io::Result<Vec<Waiting>> {
             let _ = fs::remove_file(&path);
             continue;
         }
-        let Some(device) = name.strip_suffix(".json").and_then(|id| id.parse().ok()).map(DeviceId) else {
+        let Some(device) = name
+            .strip_suffix(".json")
+            .and_then(|id| id.parse().ok())
+            .map(DeviceId)
+        else {
             continue;
         };
         let saved = fs::read(&path)
             .map_err(|error| error.to_string().into_boxed_str())
-            .and_then(|bytes| serde_json::from_slice::<SavedJob>(&bytes).map_err(|error| error.to_string().into()))
+            .and_then(|bytes| {
+                serde_json::from_slice::<SavedJob>(&bytes).map_err(|error| error.to_string().into())
+            })
             .and_then(|saved| match saved.device == device {
                 true => Ok(saved),
                 false => Err(format!("saved for device {}", saved.device.0).into()),
@@ -337,7 +349,10 @@ pub fn remove(device: DeviceId) {
     };
     match fs::remove_file(file(&store.jobs, device)) {
         Err(error) if error.kind() != io::ErrorKind::NotFound => {
-            warn!("Cannot remove the saved job of device {}: {error}", device.0)
+            warn!(
+                "Cannot remove the saved job of device {}: {error}",
+                device.0
+            )
         }
         _ => {}
     }
@@ -382,7 +397,11 @@ impl Waiting {
         self.saved.as_ref().ok().map(|saved| &*saved.device_name)
     }
     async fn site_id(&self) -> Option<u32> {
-        self.saved.as_ref().ok().and_then(|saved| saved.site).map(|site| site.0)
+        self.saved
+            .as_ref()
+            .ok()
+            .and_then(|saved| saved.site)
+            .map(|site| site.0)
     }
     async fn kind(&self) -> Option<SavedJobKind> {
         self.saved.as_ref().ok().map(|saved| match saved.work {
@@ -392,14 +411,19 @@ impl Waiting {
     }
     /// the state it was saved in
     async fn phase(&self) -> Option<JobPhaseObject> {
-        self.saved.as_ref().ok().map(|saved| saved.work.phase().into())
-    }
-    /// how long ago it was saved
-    async fn age(&self) -> Option<ScalarDuration> {
         self.saved
             .as_ref()
             .ok()
-            .map(|saved| SystemTime::now().duration_since(saved.saved_at).unwrap_or(Duration::ZERO).into())
+            .map(|saved| saved.work.phase().into())
+    }
+    /// how long ago it was saved
+    async fn age(&self) -> Option<ScalarDuration> {
+        self.saved.as_ref().ok().map(|saved| {
+            SystemTime::now()
+                .duration_since(saved.saved_at)
+                .unwrap_or(Duration::ZERO)
+                .into()
+        })
     }
     /// why it didn't go on; `null` with `unreadable`
     async fn held_back(&self) -> Option<HeldBack> {

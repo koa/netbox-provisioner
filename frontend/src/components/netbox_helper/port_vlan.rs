@@ -42,7 +42,10 @@ impl NetboxHelper {
                         .port_vlan
                         .vlan
                         .and_then(|vlan| {
-                            options.groups.iter().find(|g| g.vlans.iter().any(|v| v.id as u32 == vlan))
+                            options
+                                .groups
+                                .iter()
+                                .find(|g| g.vlans.iter().any(|v| v.id as u32 == vlan))
                         })
                         .map(|g| g.id as u32)
                         .or(options.group.map(|g| g as u32));
@@ -81,7 +84,9 @@ impl NetboxHelper {
                 text: t::port_vlan_port(
                     &port.name,
                     port.label.as_deref(),
-                    port.vlan.as_ref().map(|vlan| (vlan.vid, vlan.name.as_str())),
+                    port.vlan
+                        .as_ref()
+                        .map(|vlan| (vlan.vid, vlan.name.as_str())),
                 ),
             })
             .collect();
@@ -103,9 +108,18 @@ impl NetboxHelper {
                 text: t::port_vlan_vlan(vlan.vid, &vlan.name),
             })
             .collect();
-        let port = ports.iter().find(|c| Some(c.id) == self.port_vlan.port).cloned();
-        let group = groups.iter().find(|c| Some(c.id) == self.port_vlan.group).cloned();
-        let vlan = vlans.iter().find(|c| Some(c.id) == self.port_vlan.vlan).cloned();
+        let port = ports
+            .iter()
+            .find(|c| Some(c.id) == self.port_vlan.port)
+            .cloned();
+        let group = groups
+            .iter()
+            .find(|c| Some(c.id) == self.port_vlan.group)
+            .cloned();
+        let vlan = vlans
+            .iter()
+            .find(|c| Some(c.id) == self.port_vlan.vlan)
+            .cloned();
         html! {
             <Form>
                 if !self.fixed_port {
@@ -155,7 +169,10 @@ pub(super) fn fetch_port_vlan_options(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
         let query = PortVlanOptionsQuery::build(DeviceVariables { id: id as i32 });
         let options = request(scope.clone(), query).await.map(|data| {
-            data.topology.device_by_id.map(|device| device.port_vlan_options).unwrap_or_default()
+            data.topology
+                .device_by_id
+                .map(|device| device.port_vlan_options)
+                .unwrap_or_default()
         });
         scope.send_message(PortVlanMsg::Options(options));
     });

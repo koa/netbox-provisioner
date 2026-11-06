@@ -8,14 +8,16 @@ use crate::{
                 Finding, FindingKind as Kind, Findings, FindingsVariables, PrefixPool,
                 RadioPathPart,
             },
-            types::{AddressRef, DeviceRef, InterfaceRef, IpVersion, ServiceRef, Severity, VlanRef},
+            types::{
+                AddressRef, DeviceRef, InterfaceRef, IpVersion, ServiceRef, Severity, VlanRef,
+            },
         },
         live::{Subscription, watch_data},
     },
     i18n::findings as t,
 };
-use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Color, Label, Spinner};
 use cynic::SubscriptionBuilder;
+use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Color, Label, Spinner};
 use yew::{Component, Context, Html, Properties, html};
 
 #[derive(Debug, Clone, PartialEq, Properties)]
@@ -149,7 +151,10 @@ impl Links<'_> {
         self.link(&format!("ipam/services/{}/", service.id), &service.name)
     }
     fn vlan(&self, vlan: &VlanRef) -> Html {
-        self.link(&format!("ipam/vlans/{}/", vlan.id), &t::vlan_name(vlan.vid, &vlan.name))
+        self.link(
+            &format!("ipam/vlans/{}/", vlan.id),
+            &t::vlan_name(vlan.vid, &vlan.name),
+        )
     }
     fn interfaces(&self, interfaces: &[InterfaceRef]) -> Html {
         t::list(interfaces.iter().map(|i| self.interface(i)).collect())
@@ -188,9 +193,9 @@ impl Links<'_> {
             Kind::DhcpPoolEmpty(f) => t::dhcp_pool_empty(
                 self.interface(&f.interface),
                 self.address(&f.address),
-                f.prefix
-                    .as_ref()
-                    .map(|prefix| self.link(&format!("ipam/prefixes/{}/", prefix.id), &prefix.prefix)),
+                f.prefix.as_ref().map(|prefix| {
+                    self.link(&format!("ipam/prefixes/{}/", prefix.id), &prefix.prefix)
+                }),
             ),
             Kind::PortLikeName(f) => t::port_like_name(self.interface(&f.interface)),
             Kind::RadioWithoutRole(f) => t::radio_without_role(self.interface(&f.interface)),
@@ -219,11 +224,15 @@ impl Links<'_> {
             }
             Kind::WlanWithoutVlan(f) => t::wlan_without_vlan(
                 self.link(&format!("wireless/wireless-lans/{}/", f.id), &f.ssid),
-                self.link(&format!("wireless/wireless-lan-groups/{}/", f.group.id), &f.group.name),
+                self.link(
+                    &format!("wireless/wireless-lan-groups/{}/", f.group.id),
+                    &f.group.name,
+                ),
             ),
-            Kind::WlanGroupWithoutController(f) => t::wlan_group_without_controller(
-                self.link(&format!("wireless/wireless-lan-groups/{}/", f.group.id), &f.group.name),
-            ),
+            Kind::WlanGroupWithoutController(f) => t::wlan_group_without_controller(self.link(
+                &format!("wireless/wireless-lan-groups/{}/", f.group.id),
+                &f.group.name,
+            )),
             Kind::VlanWithSeveralGateways(f) => {
                 t::vlan_with_several_gateways(self.vlan(&f.vlan), self.interfaces(&f.interfaces))
             }

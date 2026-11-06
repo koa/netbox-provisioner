@@ -2,7 +2,8 @@ use yew::{Html, html};
 
 pub const TITLE: &str = "Befunde in NetBox";
 pub const NETWORK_TITLE: &str = "Befunde zum ganzen Netz";
-pub const NONE: &str = "Keine Befunde: NetBox ist für diese Site vollständig, soweit der Provisioner das prüft.";
+pub const NONE: &str =
+    "Keine Befunde: NetBox ist für diese Site vollständig, soweit der Provisioner das prüft.";
 pub const ERROR: &str = "Fehler";
 pub const WARNING: &str = "Warnung";
 pub const HINT: &str = "Hinweis";
@@ -57,8 +58,12 @@ pub fn no_primary_ipv4(device: Html) -> Html {
 }
 pub fn primary_not_on_loopback(device: Html, address: Html, interface: Option<Html>) -> Html {
     match interface {
-        Some(interface) => html!(<>{"Die Primary IPv4 "}{address}{" von "}{device}{" liegt nicht auf „lo“, sondern auf "}{interface}{"."}</>),
-        None => html!(<>{"Die Primary IPv4 "}{address}{" von "}{device}{" liegt auf keinem Interface."}</>),
+        Some(interface) => {
+            html!(<>{"Die Primary IPv4 "}{address}{" von "}{device}{" liegt nicht auf „lo“, sondern auf "}{interface}{"."}</>)
+        }
+        None => {
+            html!(<>{"Die Primary IPv4 "}{address}{" von "}{device}{" liegt auf keinem Interface."}</>)
+        }
     }
 }
 pub fn address_without_prefix(interface: Html, address: Html, dhcp: bool) -> Html {
@@ -71,8 +76,12 @@ pub fn address_without_prefix(interface: Html, address: Html, dhcp: bool) -> Htm
 }
 pub fn dhcp_pool_empty(interface: Html, address: Html, prefix: Option<Html>) -> Html {
     match prefix {
-        Some(prefix) => html!(<>{interface}{" hat das Tag „dhcp“, aber im Prefix "}{prefix}{" von "}{address}{" ist keine Adresse für einen Pool frei: Der DHCP-Server dort entsteht nicht."}</>),
-        None => html!(<>{interface}{" hat das Tag „dhcp“, aber "}{address}{" ist eine einzelne Adresse ohne Netz für Clients: Der DHCP-Server dort entsteht nicht."}</>),
+        Some(prefix) => {
+            html!(<>{interface}{" hat das Tag „dhcp“, aber im Prefix "}{prefix}{" von "}{address}{" ist keine Adresse für einen Pool frei: Der DHCP-Server dort entsteht nicht."}</>)
+        }
+        None => {
+            html!(<>{interface}{" hat das Tag „dhcp“, aber "}{address}{" ist eine einzelne Adresse ohne Netz für Clients: Der DHCP-Server dort entsteht nicht."}</>)
+        }
     }
 }
 /// the link text of a VLAN

@@ -10,24 +10,24 @@
 //! way back ([`update_fallback`]), and the update is done when the OSPF neighbors are back.
 use crate::{
     Error,
-    device_state::{RebootState, UpdateState},
     device::{
         power::{PowerChain, RebootLease},
         raw::{command, field, rows},
         update_fallback,
     },
+    device_state::{RebootState, UpdateState},
     graphql::scalars::ScalarDuration,
     job::Log,
     saved_job::UpdateRun,
 };
+use async_graphql::futures_util::StreamExt;
 use async_graphql::{Enum, SimpleObject};
 use log::warn;
-use serde::Deserialize;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::value::{ParseRosValueResult, RosValue};
+use serde::Deserialize;
 use std::{cmp::Ordering, collections::BTreeSet, time::Duration};
 use tokio::time::{Instant, sleep, timeout};
-use async_graphql::futures_util::StreamExt;
 
 const DOWNLOAD_URL: &str = "https://download.mikrotik.com/routeros";
 /// The newest release of a channel, as `<version> <timestamp>`.
@@ -378,7 +378,12 @@ pub fn downgrade_step(state: &DeviceState, target: &Version) -> Result<UpdateSte
     Ok(v7_step(&others, &state.architecture, target, [].into()))
 }
 
-fn v7_step(wanted: &[Box<str>], arch: &str, version: &Version, uninstall: Box<[Box<str>]>) -> UpdateStep {
+fn v7_step(
+    wanted: &[Box<str>],
+    arch: &str,
+    version: &Version,
+    uninstall: Box<[Box<str>]>,
+) -> UpdateStep {
     // x86 packages carry no architecture
     let suffix = if arch.starts_with("x86") {
         String::new()
@@ -451,7 +456,11 @@ pub(crate) async fn restore_password_login(
     Ok(())
 }
 
-async fn set_ssh(device: &RawDevice<SimpleResult>, setting: &str, value: &str) -> Result<(), Error> {
+async fn set_ssh(
+    device: &RawDevice<SimpleResult>,
+    setting: &str,
+    value: &str,
+) -> Result<(), Error> {
     command(device, "/ip/ssh/set", &[(setting, value)]).await?;
     Ok(())
 }
@@ -492,7 +501,9 @@ pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState,
     let version = field(resource, "version")
         .and_then(Version::parse)
         .ok_or(Error::MissingDeviceState("version"))?;
-    let architecture = field(resource, "architecture-name").unwrap_or_default().into();
+    let architecture = field(resource, "architecture-name")
+        .unwrap_or_default()
+        .into();
     let uptime = field(resource, "uptime")
         .and_then(|uptime| match Duration::parse_ros(uptime.as_bytes()) {
             ParseRosValueResult::Value(uptime) => Some(uptime),
@@ -587,7 +598,9 @@ where
     let sent = Instant::now();
     let mut answer = device.send_simple_command(path.as_bytes(), ()).await;
     // the answer, or the connection breaking with the reboot
-    if let Ok(Some(SimpleResult::Trap { message, .. })) = timeout(Duration::from_secs(10), answer.next()).await {
+    if let Ok(Some(SimpleResult::Trap { message, .. })) =
+        timeout(Duration::from_secs(10), answer.next()).await
+    {
         return Err(Error::Refused(format!("{path}: {message}").into()));
     }
     drop(answer);
@@ -618,7 +631,10 @@ where
     loop {
         log.unless_cancelled(sleep(Duration::from_secs(5))).await?;
         // a cancel doesn't wait for the try to end
-        let state = match log.unless_cancelled(timeout(Duration::from_secs(30), link.api())).await? {
+        let state = match log
+            .unless_cancelled(timeout(Duration::from_secs(30), link.api()))
+            .await?
+        {
             Ok(Ok(device)) => read_state(&device).await.ok(),
             _ => None,
         };
@@ -645,9 +661,14 @@ pub async fn reboot(link: &impl DeviceLink, power: &PowerChain, log: &Log) -> Re
     log.enter(RebootState::WaitingForChain);
     let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
     log.enter(RebootState::Rebooting);
-    let state = reboot_and_wait(link, rebooting, log, RebootReason::Requested, REBOOT_TIMEOUT, |state| {
-        Some(state.clone())
-    })
+    let state = reboot_and_wait(
+        link,
+        rebooting,
+        log,
+        RebootReason::Requested,
+        REBOOT_TIMEOUT,
+        |state| Some(state.clone()),
+    )
     .await?;
     log.emit(RouterOsRunning {
         version: state.version.to_string().into(),
@@ -671,7 +692,17 @@ pub async fn update(
     way_back: &update_fallback::WayBack,
     log: &Log,
 ) -> Result<(), Error> {
-    update_keeping(link, power, target, wanted, fallback, way_back, &|_| {}, log).await
+    update_keeping(
+        link,
+        power,
+        target,
+        wanted,
+        fallback,
+        way_back,
+        &|_| {},
+        log,
+    )
+    .await
 }
 
 /// [`update`], handing what going on after a restart needs (`saved_job`) to `keep` before
@@ -733,8 +764,20 @@ pub async fn update_keeping(
             expected: None,
             failed: None,
         });
-        let stepped =
-            steps(link, power, state, target, newest_v6, wanted, armed.as_deref(), wait, run.as_ref(), keep, log).await;
+        let stepped = steps(
+            link,
+            power,
+            state,
+            target,
+            newest_v6,
+            wanted,
+            armed.as_deref(),
+            wait,
+            run.as_ref(),
+            keep,
+            log,
+        )
+        .await;
         state = after_steps(link, stepped, run.as_ref(), keep, &ospf, log).await?;
     }
     firmware_and_done(link, power, state, from, log).await
@@ -764,7 +807,8 @@ pub async fn resume(
             async {
                 let expected = version(run.expected.as_deref().unwrap_or_default())?;
                 // a reboot sent just before the restart may still be shutting the device down
-                let settled = (rebooting_since + REBOOT_SENT_SETTLES).saturating_duration_since(Instant::now());
+                let settled = (rebooting_since + REBOOT_SENT_SETTLES)
+                    .saturating_duration_since(Instant::now());
                 log.unless_cancelled(sleep(settled)).await?;
                 if let Ok(Ok(device)) = timeout(Duration::from_secs(30), link.api()).await
                     && let Ok(now) = read_state(&device).await
@@ -775,12 +819,17 @@ pub async fn resume(
                 let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
                 let wait = (rebooting_since + run.wait).saturating_duration_since(Instant::now());
                 // up for less than since entering `Rebooting`: booted since
-                let state = wait_until_back(link, log, Duration::ZERO, rebooting_since, wait, |state| {
-                    (state.version == expected).then(|| state.clone())
-                })
-                .await?;
+                let state =
+                    wait_until_back(link, log, Duration::ZERO, rebooting_since, wait, |state| {
+                        (state.version == expected).then(|| state.clone())
+                    })
+                    .await?;
                 drop(rebooting);
-                if update_fallback::running(&link.api().await?).await.as_deref() == Some(&*run.partition) {
+                if update_fallback::running(&link.api().await?)
+                    .await
+                    .as_deref()
+                    == Some(&*run.partition)
+                {
                     return Err(Error::UpdateRolledBack {
                         partition: run.partition.clone(),
                         version: state.version.to_string().into(),
@@ -791,11 +840,26 @@ pub async fn resume(
                 });
                 let wanted = &run.wanted;
                 let partition = Some(&*run.partition);
-                steps(link, power, state, &target, &newest_v6, wanted, partition, run.wait, Some(run), keep, log).await
+                steps(
+                    link,
+                    power,
+                    state,
+                    &target,
+                    &newest_v6,
+                    wanted,
+                    partition,
+                    run.wait,
+                    Some(run),
+                    keep,
+                    log,
+                )
+                .await
             }
             .await
         }
-        UpdateState::NotUpdated => Err(Error::UpdateFailedBefore(run.failed.clone().unwrap_or_default())),
+        UpdateState::NotUpdated => Err(Error::UpdateFailedBefore(
+            run.failed.clone().unwrap_or_default(),
+        )),
         _ => read_state(&link.api().await?).await,
     };
     let state = after_steps(link, stepped, Some(run), keep, &run.ospf, log).await?;
@@ -815,7 +879,10 @@ async fn after_steps(
 ) -> Result<DeviceState, Error> {
     let state = match (stepped, run) {
         (Ok(state), Some(run)) => {
-            keep(&UpdateRun { expected: None, ..run.clone() });
+            keep(&UpdateRun {
+                expected: None,
+                ..run.clone()
+            });
             log.enter(UpdateState::StoppingFallback);
             update_fallback::disarm(&link.api().await?, &run.partition, log).await?;
             state
@@ -869,13 +936,20 @@ async fn firmware_and_done(
         log.enter(UpdateState::WaitingToRebootFirmware);
         let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
         log.enter(UpdateState::RebootingFirmware);
-        reboot_and_wait(link, rebooting, log, RebootReason::Firmware, REBOOT_TIMEOUT, |state| {
-            state
-                .firmware
-                .as_ref()
-                .is_some_and(|(running, _)| running == upgrade)
-                .then_some(())
-        })
+        reboot_and_wait(
+            link,
+            rebooting,
+            log,
+            RebootReason::Firmware,
+            REBOOT_TIMEOUT,
+            |state| {
+                state
+                    .firmware
+                    .as_ref()
+                    .is_some_and(|(running, _)| running == upgrade)
+                    .then_some(())
+            },
+        )
         .await?;
         log.emit(upgrade_event(true));
     }
@@ -921,9 +995,15 @@ pub async fn downgrade(
     let rebooting = put_packages(link, power, &step, log).await?;
     log.enter(UpdateState::Rebooting);
     let path = "/system/package/downgrade";
-    let restarted = restart_and_wait(link, rebooting, log, RebootReason::Downgrade, REBOOT_TIMEOUT, path, |state| {
-        (state.version == *target).then(|| state.clone())
-    })
+    let restarted = restart_and_wait(
+        link,
+        rebooting,
+        log,
+        RebootReason::Downgrade,
+        REBOOT_TIMEOUT,
+        path,
+        |state| (state.version == *target).then(|| state.clone()),
+    )
     .await;
     let state = match restarted {
         Ok(state) => state,
@@ -991,13 +1071,21 @@ async fn steps(
         log.enter(UpdateState::Rebooting);
         uninstall(&link.api().await?, &step.uninstall).await?;
         let expected = step.version.clone();
-        state = reboot_and_wait(link, rebooting, log, RebootReason::Packages, wait, |state| {
-            (state.version == expected).then(|| state.clone())
-        })
+        state = reboot_and_wait(
+            link,
+            rebooting,
+            log,
+            RebootReason::Packages,
+            wait,
+            |state| (state.version == expected).then(|| state.clone()),
+        )
         .await?;
         // back from the fallback, with the version a package-only step expects too
         if let Some(partition) = armed
-            && update_fallback::running(&link.api().await?).await.as_deref() == Some(partition)
+            && update_fallback::running(&link.api().await?)
+                .await
+                .as_deref()
+                == Some(partition)
         {
             return Err(Error::UpdateRolledBack {
                 partition: partition.into(),
@@ -1025,7 +1113,9 @@ async fn put_packages(
     log.enter(UpdateState::Downloading);
     let mut packages = Vec::new();
     for file in &step.files {
-        let data = log.unless_cancelled(download(&step.version, file)).await??;
+        let data = log
+            .unless_cancelled(download(&step.version, file))
+            .await??;
         log.emit(PackageDownloaded {
             file: file.clone(),
             bytes: data.len() as u64,
@@ -1103,7 +1193,10 @@ async fn put_packages(
 /// scheduler stays and does its job.
 async fn not_updated(link: &impl DeviceLink, partition: &str, error: Error, log: &Log) -> Error {
     // the fallback stays: not reached, back on it, or the packages installing at the next boot
-    if matches!(error, Error::NotBackAfterReboot | Error::RebootNotSent | Error::UpdateRolledBack { .. }) {
+    if matches!(
+        error,
+        Error::NotBackAfterReboot | Error::RebootNotSent | Error::UpdateRolledBack { .. }
+    ) {
         return error;
     }
     let device = match timeout(Duration::from_secs(30), link.api()).await {
@@ -1111,7 +1204,9 @@ async fn not_updated(link: &impl DeviceLink, partition: &str, error: Error, log:
         _ => return error,
     };
     if update_fallback::running(&device).await.as_deref() == Some(partition) {
-        let version = read_state(&device).await.map(|state| state.version.to_string());
+        let version = read_state(&device)
+            .await
+            .map(|state| state.version.to_string());
         return Error::UpdateRolledBack {
             partition: partition.into(),
             version: version.unwrap_or_default().into(),
@@ -1166,7 +1261,12 @@ mod tests {
         let v6 = v("6.49.19");
         let wireless = names(&["wireless"]);
         assert_eq!(
-            next_step(&state("7.15.3", "arm", &["routeros", "wireless"]), &target, &v6, &wireless),
+            next_step(
+                &state("7.15.3", "arm", &["routeros", "wireless"]),
+                &target,
+                &v6,
+                &wireless
+            ),
             Some(UpdateStep {
                 version: target.clone(),
                 files: names(&["routeros-7.20.8-arm.npk", "wireless-7.20.8-arm.npk"]),
@@ -1174,14 +1274,25 @@ mod tests {
             })
         );
         assert_eq!(
-            next_step(&state("7.24.5", "x86_64", &["routeros"]), &v("7.25"), &v6, &[])
-                .unwrap()
-                .files,
+            next_step(
+                &state("7.24.5", "x86_64", &["routeros"]),
+                &v("7.25"),
+                &v6,
+                &[]
+            )
+            .unwrap()
+            .files,
             names(&["routeros-7.25.npk"])
         );
-        assert_eq!(next_step(&state("7.20.8", "arm", &["routeros"]), &target, &v6, &[]), None);
+        assert_eq!(
+            next_step(&state("7.20.8", "arm", &["routeros"]), &target, &v6, &[]),
+            None
+        );
         // newer than the channel: no downgrade
-        assert_eq!(next_step(&state("7.21", "arm", &["routeros"]), &target, &v6, &[]), None);
+        assert_eq!(
+            next_step(&state("7.21", "arm", &["routeros"]), &target, &v6, &[]),
+            None
+        );
         let sxt = ["system", "wireless", "routing", "dhcp", "security"];
         assert_eq!(
             next_step(&state("6.45.1", "mipsbe", &sxt), &target, &v6, &wireless)
@@ -1193,10 +1304,7 @@ mod tests {
             next_step(&state("6.49.19", "mipsbe", &sxt), &target, &v6, &wireless)
                 .unwrap()
                 .files,
-            names(&[
-                "routeros-7.20.8-mipsbe.npk",
-                "wireless-7.20.8-mipsbe.npk"
-            ])
+            names(&["routeros-7.20.8-mipsbe.npk", "wireless-7.20.8-mipsbe.npk"])
         );
     }
 
@@ -1207,7 +1315,12 @@ mod tests {
         let wifi = names(&["wifi-qcom-ac"]);
         // an unused radio package goes with the update
         assert_eq!(
-            next_step(&state("7.18.2", "arm", &["routeros", "wifi-qcom-ac"]), &target, &v6, &[]),
+            next_step(
+                &state("7.18.2", "arm", &["routeros", "wifi-qcom-ac"]),
+                &target,
+                &v6,
+                &[]
+            ),
             Some(UpdateStep {
                 version: target.clone(),
                 files: names(&["routeros-7.20.8-arm.npk"]),
@@ -1216,7 +1329,12 @@ mod tests {
         );
         // at the version already: only the missing package, and what isn't needed goes
         assert_eq!(
-            next_step(&state("7.20.8", "arm", &["routeros", "wireless"]), &target, &v6, &wifi),
+            next_step(
+                &state("7.20.8", "arm", &["routeros", "wireless"]),
+                &target,
+                &v6,
+                &wifi
+            ),
             Some(UpdateStep {
                 version: target.clone(),
                 files: names(&["wifi-qcom-ac-7.20.8-arm.npk"]),
@@ -1224,7 +1342,12 @@ mod tests {
             })
         );
         assert_eq!(
-            next_step(&state("7.20.8", "arm", &["routeros", "wifi-qcom-ac"]), &target, &v6, &wifi),
+            next_step(
+                &state("7.20.8", "arm", &["routeros", "wifi-qcom-ac"]),
+                &target,
+                &v6,
+                &wifi
+            ),
             None
         );
     }
@@ -1232,7 +1355,11 @@ mod tests {
     #[test]
     fn a_downgrade_takes_the_packages_the_device_runs() {
         assert_eq!(
-            downgrade_step(&state("7.25", "arm", &["routeros", "wifi-qcom-ac"]), &v("7.23.8")).unwrap(),
+            downgrade_step(
+                &state("7.25", "arm", &["routeros", "wifi-qcom-ac"]),
+                &v("7.23.8")
+            )
+            .unwrap(),
             UpdateStep {
                 version: v("7.23.8"),
                 files: names(&["routeros-7.23.8-arm.npk", "wifi-qcom-ac-7.23.8-arm.npk"]),
@@ -1240,13 +1367,23 @@ mod tests {
             }
         );
         assert_eq!(
-            downgrade_step(&state("7.24.5", "x86_64", &["routeros"]), &v("7.23.8")).unwrap().files,
+            downgrade_step(&state("7.24.5", "x86_64", &["routeros"]), &v("7.23.8"))
+                .unwrap()
+                .files,
             names(&["routeros-7.23.8.npk"])
         );
         // only to an older RouterOS 7
-        for (running, target) in [("7.23.8", "7.23.8"), ("7.23.8", "7.25"), ("7.20.8", "6.49.19"), ("6.49.18", "6.48")] {
+        for (running, target) in [
+            ("7.23.8", "7.23.8"),
+            ("7.23.8", "7.25"),
+            ("7.20.8", "6.49.19"),
+            ("6.49.18", "6.48"),
+        ] {
             assert!(
-                matches!(downgrade_step(&state(running, "arm", &["routeros"]), &v(target)), Err(Error::NoDowngrade { .. })),
+                matches!(
+                    downgrade_step(&state(running, "arm", &["routeros"]), &v(target)),
+                    Err(Error::NoDowngrade { .. })
+                ),
                 "{running} to {target}"
             );
         }

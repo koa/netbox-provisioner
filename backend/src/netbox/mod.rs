@@ -9,7 +9,6 @@ use thiserror::Error;
 pub mod fetch_topology;
 pub mod rest;
 
-
 /// NetBox' `BigInt` (an interface's `speed`), sent as a number or as a string.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -137,17 +136,16 @@ pub enum NetboxError {
 pub async fn fetch_topology() -> Result<fetch_topology::FetchTopology, NetboxError> {
     let request_body = fetch_topology::FetchTopology::build(());
     let client = netbox_client()?;
-    let response = client
-        .post(netbox_url())
-        .json(&request_body)
-        .send()
-        .await?;
+    let response = client.post(netbox_url()).json(&request_body).send().await?;
     let status = response.status();
     let body = response.text().await?;
     // a proxy in front of NetBox may answer with text; show what came instead of JSON
     let unexpected = |error: Option<serde_json::Error>| NetboxError::UnexpectedResponse {
         status,
-        error: error.map(|error| error.to_string()).unwrap_or_default().into(),
+        error: error
+            .map(|error| error.to_string())
+            .unwrap_or_default()
+            .into(),
         body: body.chars().take(300).collect::<String>().into(),
     };
     if !status.is_success() {

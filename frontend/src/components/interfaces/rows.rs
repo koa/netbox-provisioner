@@ -6,12 +6,12 @@ use crate::{
         HelperKind, HelperPreset, LinkPreset, NetTarget, RadioPreset, SeenPreset,
     },
     error::FrontendError,
-    i18n::interfaces as t,
     graphql::authenticated::{
         findings::Finding,
         interfaces::{self, ActionHelper, ActionKind, InterfaceTask, RadioPath, RowAction},
         types::{AddressRef, DeviceRef, InterfaceRef, VlanRef},
     },
+    i18n::interfaces as t,
 };
 
 /// What an interface is for, in the order of the card.
@@ -160,7 +160,10 @@ impl Row {
     fn of(row: interfaces::InterfaceRow) -> Row {
         let own_device = row.interface.device.id as u32;
         let actions = |actions: Vec<RowAction>| {
-            actions.into_iter().filter_map(|a| action(a, own_device)).collect()
+            actions
+                .into_iter()
+                .filter_map(|a| action(a, own_device))
+                .collect()
         };
         Row {
             task: Task::of(&row.task),
@@ -208,7 +211,10 @@ pub(super) fn action(action: RowAction, device: u32) -> Option<Action> {
     };
     let interface = action.interface.map(|id| id as u32);
     let (helper, preset) = match action.helper {
-        ActionHelper::Loopback => (HelperKind::Loopback, HelperPreset::Kind(HelperKind::Loopback)),
+        ActionHelper::Loopback => (
+            HelperKind::Loopback,
+            HelperPreset::Kind(HelperKind::Loopback),
+        ),
         ActionHelper::Connection => (
             HelperKind::Connection,
             match (interface, action.peer) {
@@ -235,7 +241,10 @@ pub(super) fn action(action: RowAction, device: u32) -> Option<Action> {
         ),
         ActionHelper::Poe => (HelperKind::Poe, HelperPreset::Poe(interface?)),
         ActionHelper::PoeRemove => (HelperKind::Poe, HelperPreset::PoeRemove(interface?)),
-        ActionHelper::BridgeLeave => (HelperKind::BridgeLeave, HelperPreset::BridgeLeave(interface?)),
+        ActionHelper::BridgeLeave => (
+            HelperKind::BridgeLeave,
+            HelperPreset::BridgeLeave(interface?),
+        ),
         ActionHelper::LeaseTakeover => {
             let lease = action.lease?;
             (

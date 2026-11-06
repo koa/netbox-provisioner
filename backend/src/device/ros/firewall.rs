@@ -11,17 +11,13 @@
 //! IPv4 one by a port forwarding on its site's router with `nat`, which `forward dstnat` lets
 //! in, an IPv6 one by an accept on `forward` before its drop.
 use super::{BaseDeviceDataTarget, UPLINK_LIST, firewall_comment};
-use crate::topology::{
-    ServicePort,
-    access::device::DeviceAccess,
-    forwards::PortForward,
-};
+use crate::topology::{ServicePort, access::device::DeviceAccess, forwards::PortForward};
 use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
-        IpFirewallFilterAction, IpFirewallFilterCfg, IpFirewallFilterCfgBuilder, IpFirewallNatAction,
-        IpFirewallNatCfg, Ipv6FirewallFilterAction, Ipv6FirewallFilterCfg,
+        IpFirewallFilterAction, IpFirewallFilterCfg, IpFirewallFilterCfgBuilder,
+        IpFirewallNatAction, IpFirewallNatCfg, Ipv6FirewallFilterAction, Ipv6FirewallFilterCfg,
         Ipv6FirewallFilterCfgBuilder,
     },
     resource::{DeserializeRosBuilder, OWNED_LAST},
@@ -86,9 +82,11 @@ impl Rule {
         let (action, address_list, timeout) = match self.action.unwrap_or(Action::Accept) {
             Action::Accept => (IpFirewallFilterAction::Accept, None, None),
             Action::Drop => (IpFirewallFilterAction::Drop, None, None),
-            Action::AddSource(list, timeout) => {
-                (IpFirewallFilterAction::AddSrcToAddressList, Some(list.into()), Some(timeout))
-            }
+            Action::AddSource(list, timeout) => (
+                IpFirewallFilterAction::AddSrcToAddressList,
+                Some(list.into()),
+                Some(timeout),
+            ),
         };
         IpFirewallFilterCfgBuilder {
             action: Some(action),
@@ -113,9 +111,11 @@ impl Rule {
         let (action, address_list, timeout) = match self.action.unwrap_or(Action::Accept) {
             Action::Accept => (Ipv6FirewallFilterAction::Accept, None, None),
             Action::Drop => (Ipv6FirewallFilterAction::Drop, None, None),
-            Action::AddSource(list, timeout) => {
-                (Ipv6FirewallFilterAction::AddSrcToAddressList, Some(list.into()), Some(timeout))
-            }
+            Action::AddSource(list, timeout) => (
+                Ipv6FirewallFilterAction::AddSrcToAddressList,
+                Some(list.into()),
+                Some(timeout),
+            ),
         };
         Ipv6FirewallFilterCfgBuilder {
             action: Some(action),
@@ -191,7 +191,11 @@ fn perimeter(family: Family, stage: Duration, blacklist: Duration) -> Vec<Rule> 
             // each new connection puts its source a stage further, the last one on the
             // blacklist: the stages from the end, so one connection takes one step
             for (index, list) in SSH_STAGES.iter().enumerate().rev() {
-                let time = if index + 1 == SSH_STAGES.len() { blacklist } else { stage };
+                let time = if index + 1 == SSH_STAGES.len() {
+                    blacklist
+                } else {
+                    stage
+                };
                 rules.push(Rule {
                     protocol: Some("tcp"),
                     dst_port: Some("22".into()),
@@ -245,7 +249,11 @@ fn dstnat(forward: &PortForward) -> IpFirewallNatCfg {
     IpFirewallNatCfg {
         action: IpFirewallNatAction::DstNat,
         chain: b"dstnat".into(),
-        comment: Some(firewall_comment(&["dstnat", &forward.address.to_string(), &forward.port.to_string()])),
+        comment: Some(firewall_comment(&[
+            "dstnat",
+            &forward.address.to_string(),
+            &forward.port.to_string(),
+        ])),
         disabled: false,
         dst_address: None,
         dst_port: Some(forward.port.port.to_string().as_str().into()),
@@ -266,7 +274,12 @@ fn dstnat(forward: &PortForward) -> IpFirewallNatCfg {
 fn provisioner(family: Family, networks: &[IpNet]) -> Vec<Rule> {
     networks
         .iter()
-        .filter(|net| matches!((family, net), (Family::V4, IpNet::V4(_)) | (Family::V6, IpNet::V6(_))))
+        .filter(|net| {
+            matches!(
+                (family, net),
+                (Family::V4, IpNet::V4(_)) | (Family::V6, IpNet::V6(_))
+            )
+        })
         .map(|net| Rule {
             src_address: Some(*net),
             ..Rule::new("input", &format!("provisioner {net}"), Action::Accept)
@@ -307,13 +320,23 @@ impl BaseDeviceDataTarget {
             return;
         }
         let invalid = Some(Rule::new("input", "invalid", Action::Drop).comment());
-        if let Some(at) = self.ip_firewall_filter.iter().position(|rule| rule.comment == invalid) {
+        if let Some(at) = self
+            .ip_firewall_filter
+            .iter()
+            .position(|rule| rule.comment == invalid)
+        {
             let rules = provisioner(Family::V4, networks);
-            self.ip_firewall_filter.splice(at + 1..at + 1, rules.iter().map(Rule::v4));
+            self.ip_firewall_filter
+                .splice(at + 1..at + 1, rules.iter().map(Rule::v4));
         }
-        if let Some(at) = self.ipv_6_firewall_filter.iter().position(|rule| rule.comment == invalid) {
+        if let Some(at) = self
+            .ipv_6_firewall_filter
+            .iter()
+            .position(|rule| rule.comment == invalid)
+        {
             let rules = provisioner(Family::V6, networks);
-            self.ipv_6_firewall_filter.splice(at + 1..at + 1, rules.iter().map(Rule::v6));
+            self.ipv_6_firewall_filter
+                .splice(at + 1..at + 1, rules.iter().map(Rule::v6));
         }
     }
     fn has_uplinks(&self) -> bool {

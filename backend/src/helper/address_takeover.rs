@@ -40,7 +40,11 @@ pub fn plan(topology: &Arc<Topology>, input: &AddressTakeoverInput) -> Result<Ne
     let holder = topology.smallest_prefix_holding(network);
     let mut plan = NetboxPlan::new(
         &device,
-        format!("Adresse übernehmen {address} an {} {}", device.name(), interface.name()),
+        format!(
+            "Adresse übernehmen {address} an {} {}",
+            device.name(),
+            interface.name()
+        ),
     );
     let new_prefix = holder.is_none_or(|holder| holder.prefix != network)
         && network.prefix_len() < network.max_prefix_len()
@@ -48,7 +52,10 @@ pub fn plan(topology: &Arc<Topology>, input: &AddressTakeoverInput) -> Result<Ne
     let prefix = if new_prefix {
         plan.steps.push(PlanStep::CreatePrefix(CreatePrefix {
             prefix: network.to_string().into(),
-            pool: holder.map(|holder| holder.prefix.to_string()).unwrap_or_default().into(),
+            pool: holder
+                .map(|holder| holder.prefix.to_string())
+                .unwrap_or_default()
+                .into(),
             description: format!("Übernommen von {} {}", device.name(), interface.name()).into(),
             // a pool's prefixes are no site's, as those of the other helpers
             site: holder

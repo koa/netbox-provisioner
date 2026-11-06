@@ -73,10 +73,22 @@ fn what_doesnt_fit_is_refused() {
         ..input(&net, "10.10.0.50")
     };
     let topology = Arc::new(net.builder.build());
-    assert!(matches!(base(&topology, &outside, &facts()), Err(Error::NoDhcpNetwork(_))));
-    assert!(matches!(base(&topology, &taken, &facts()), Err(Error::AddressInNetbox(_))));
-    assert!(matches!(base(&topology, &bad_mac, &facts()), Err(Error::InvalidMac(_))));
-    assert!(matches!(base(&topology, &name, &facts()), Err(Error::DeviceNameTaken(_))));
+    assert!(matches!(
+        base(&topology, &outside, &facts()),
+        Err(Error::NoDhcpNetwork(_))
+    ));
+    assert!(matches!(
+        base(&topology, &taken, &facts()),
+        Err(Error::AddressInNetbox(_))
+    ));
+    assert!(matches!(
+        base(&topology, &bad_mac, &facts()),
+        Err(Error::InvalidMac(_))
+    ));
+    assert!(matches!(
+        base(&topology, &name, &facts()),
+        Err(Error::DeviceNameTaken(_))
+    ));
 }
 
 /// In the preview of the stored export, the router's DHCP network has the client as a static
@@ -126,5 +138,8 @@ fn the_preview_has_the_lease() {
         .filter(|lease| lease.address == address)
         .map(|lease| (lease.mac.to_string(), lease.name))
         .collect::<Vec<_>>();
-    assert_eq!(leases, [("AA:BB:CC:DD:EE:01".to_string(), "lease-test-client".into())]);
+    assert_eq!(
+        leases,
+        [("AA:BB:CC:DD:EE:01".to_string(), "lease-test-client".into())]
+    );
 }

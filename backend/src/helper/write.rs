@@ -2,8 +2,8 @@
 //! job (`NetboxWritten`, `NetboxUndone`).
 
 use super::{
-    CableEnd, Helper, PlanStep, Target, UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLink,
-    flags,
+    CableEnd, Helper, PlanStep, Target, UpdateInterface, UpdatePort, UpdatePortVlan,
+    UpdateWirelessLink, flags,
 };
 use crate::{
     Error,
@@ -97,7 +97,9 @@ pub async fn write(
             .ok_or_else(|| Error::NetboxChanged(plan.description.clone()))?;
         let id = match step {
             PlanStep::CreateDevice(create) => {
-                let existing = rest.find("dcim/devices/", &[("name", &create.name)]).await?;
+                let existing = rest
+                    .find("dcim/devices/", &[("name", &create.name)])
+                    .await?;
                 if existing["count"].as_u64() != Some(0) {
                     return Err(Error::NetboxChanged(
                         format!("{} exists already", create.name).into(),
@@ -124,7 +126,10 @@ pub async fn write(
                 let existing = rest
                     .find(
                         "dcim/interfaces/",
-                        &[("device_id", &create.device.id.to_string()), ("name", &create.name)],
+                        &[
+                            ("device_id", &create.device.id.to_string()),
+                            ("name", &create.name),
+                        ],
                     )
                     .await?;
                 // from the device type: taken as it is, it goes with the device
@@ -174,7 +179,9 @@ pub async fn write(
                 let interface = resolve(&created, create.on)
                     .ok_or_else(|| Error::NetboxChanged(create.interface.clone()))?;
                 let host = create.address.split('/').next().unwrap_or_default();
-                let existing = rest.find("ipam/ip-addresses/", &[("address", host)]).await?;
+                let existing = rest
+                    .find("ipam/ip-addresses/", &[("address", host)])
+                    .await?;
                 if existing["count"].as_u64() != Some(0) {
                     return Err(Error::NetboxChanged(
                         format!("{} is taken", create.address).into(),
@@ -228,16 +235,16 @@ pub async fn write(
             PlanStep::CreateCable(create) => {
                 let ends = [(create.a_end, &create.a), (CableEnd::Interface, &create.b)];
                 for (kind, end) in ends {
-                    let current = rest.get(&format!("{}/{}/", kind.netbox().1, end.id)).await?;
+                    let current = rest
+                        .get(&format!("{}/{}/", kind.netbox().1, end.id))
+                        .await?;
                     if !current["cable"].is_null() {
                         return Err(Error::NetboxChanged(
                             format!("{} {} has a cable", end.device.name, end.name).into(),
                         ));
                     }
                 }
-                let end = |(kind, interface): (CableEnd, &InterfaceRef)| {
-                    json!([{ "object_type": kind.netbox().0, "object_id": interface.id }])
-                };
+                let end = |(kind, interface): (CableEnd, &InterfaceRef)| json!([{ "object_type": kind.netbox().0, "object_id": interface.id }]);
                 let object = rest
                     .create(
                         "dcim/cables/",
@@ -251,12 +258,16 @@ pub async fn write(
                 Some(logged_create(log, "dcim/cables", &object)?)
             }
             PlanStep::CreatePrefix(create) => {
-                let prefixes = rest.find("ipam/prefixes/", &[("prefix", &create.prefix)]).await?;
-                let addresses = rest
-                    .find("ipam/ip-addresses/", &[("parent", &create.prefix), ("limit", "1")])
+                let prefixes = rest
+                    .find("ipam/prefixes/", &[("prefix", &create.prefix)])
                     .await?;
-                if prefixes["count"].as_u64() != Some(0) || addresses["count"].as_u64() != Some(0)
-                {
+                let addresses = rest
+                    .find(
+                        "ipam/ip-addresses/",
+                        &[("parent", &create.prefix), ("limit", "1")],
+                    )
+                    .await?;
+                if prefixes["count"].as_u64() != Some(0) || addresses["count"].as_u64() != Some(0) {
                     return Err(Error::NetboxChanged(
                         format!("{} is taken", create.prefix).into(),
                     ));
@@ -348,8 +359,20 @@ pub async fn write(
                 let body = recreate(
                     &current,
                     &[
-                        "device", "name", "label", "type", "enabled", "parent", "bridge", "mtu",
-                        "mode", "untagged_vlan", "tagged_vlans", "vrf", "description", "tags",
+                        "device",
+                        "name",
+                        "label",
+                        "type",
+                        "enabled",
+                        "parent",
+                        "bridge",
+                        "mtu",
+                        "mode",
+                        "untagged_vlan",
+                        "tagged_vlans",
+                        "vrf",
+                        "description",
+                        "tags",
                         "custom_fields",
                     ],
                 );
@@ -364,15 +387,28 @@ pub async fn write(
                     ends == [Some(a.id.into()), Some(b.id.into())]
                 };
                 if !same(&delete.a, &delete.b) && !same(&delete.b, &delete.a) {
-                    return Err(Error::NetboxChanged(format!("wireless link {}", delete.id).into()));
+                    return Err(Error::NetboxChanged(
+                        format!("wireless link {}", delete.id).into(),
+                    ));
                 }
                 // with its PSK, so that undo brings the same link back
                 let body = recreate(
                     &current,
                     &[
-                        "interface_a", "interface_b", "ssid", "status", "tenant", "auth_type",
-                        "auth_cipher", "auth_psk", "distance", "distance_unit", "description",
-                        "comments", "tags", "custom_fields",
+                        "interface_a",
+                        "interface_b",
+                        "ssid",
+                        "status",
+                        "tenant",
+                        "auth_type",
+                        "auth_cipher",
+                        "auth_psk",
+                        "distance",
+                        "distance_unit",
+                        "description",
+                        "comments",
+                        "tags",
+                        "custom_fields",
                     ],
                 );
                 deleted(&rest, log, &path, &current, body).await?;
@@ -382,15 +418,22 @@ pub async fn write(
                 let path = format!("dcim/cables/{}/", delete.id);
                 let current = rest.get(&path).await?;
                 let at_port = ["a_terminations", "b_terminations"].iter().any(|end| {
-                    current[end].as_array().into_iter().flatten().any(|termination| {
-                        termination["object_type"] == "dcim.interface"
-                            && termination["object_id"].as_u64() == Some(delete.port.id.into())
-                    })
+                    current[end]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .any(|termination| {
+                            termination["object_type"] == "dcim.interface"
+                                && termination["object_id"].as_u64() == Some(delete.port.id.into())
+                        })
                 });
                 if !at_port {
                     return Err(Error::NetboxChanged(
-                        format!("{} {}: cable {}", delete.port.device.name, delete.port.name, delete.id)
-                            .into(),
+                        format!(
+                            "{} {}: cable {}",
+                            delete.port.device.name, delete.port.name, delete.id
+                        )
+                        .into(),
                     ));
                 }
                 deleted(&rest, log, &path, &current, recreate_cable(&current)).await?;
@@ -419,8 +462,17 @@ pub async fn write(
                 let body = recreate(
                     &current,
                     &[
-                        "address", "vrf", "tenant", "status", "role", "assigned_object_type",
-                        "assigned_object_id", "dns_name", "description", "comments", "tags",
+                        "address",
+                        "vrf",
+                        "tenant",
+                        "status",
+                        "role",
+                        "assigned_object_type",
+                        "assigned_object_id",
+                        "dns_name",
+                        "description",
+                        "comments",
+                        "tags",
                         "custom_fields",
                     ],
                 );
@@ -431,7 +483,10 @@ pub async fn write(
                 let path = format!("ipam/prefixes/{}/", delete.id);
                 let current = rest.get(&path).await?;
                 let addresses = rest
-                    .find("ipam/ip-addresses/", &[("parent", &delete.prefix), ("limit", "1")])
+                    .find(
+                        "ipam/ip-addresses/",
+                        &[("parent", &delete.prefix), ("limit", "1")],
+                    )
                     .await?;
                 if current["prefix"].as_str() != Some(&*delete.prefix)
                     || addresses["count"].as_u64() != Some(0)
@@ -441,8 +496,19 @@ pub async fn write(
                 let body = recreate(
                     &current,
                     &[
-                        "prefix", "vrf", "tenant", "vlan", "status", "role", "scope_type",
-                        "scope_id", "is_pool", "mark_utilized", "description", "comments", "tags",
+                        "prefix",
+                        "vrf",
+                        "tenant",
+                        "vlan",
+                        "status",
+                        "role",
+                        "scope_type",
+                        "scope_id",
+                        "is_pool",
+                        "mark_utilized",
+                        "description",
+                        "comments",
+                        "tags",
                         "custom_fields",
                     ],
                 );
@@ -459,19 +525,15 @@ pub async fn write(
 /// deletes what it created, sets back what it changed, creates again what it deleted. An object
 /// created again gets a new id: what is taken back after it (an address of a VLAN interface
 /// deleted after its addresses) refers to that one ([`Recreated`]).
-pub async fn undo(
-    job: u32,
-    written: &[NetboxWritten],
-    user: &str,
-    log: &Log,
-) -> Result<(), Error> {
+pub async fn undo(job: u32, written: &[NetboxWritten], user: &str, log: &Log) -> Result<(), Error> {
     log.enter(NetboxState::Undoing);
     let rest = NetboxRest::writer(format!("Undo of provisioner job {job} ({user})"))?;
     let mut recreated = Recreated::default();
     for object in written.iter().rev() {
         log.check()?;
         let parse = |json: &str| {
-            serde_json::from_str::<Value>(json).map_err(|error| Error::Preview(error.to_string().into()))
+            serde_json::from_str::<Value>(json)
+                .map_err(|error| Error::Preview(error.to_string().into()))
         };
         let undone = match (&object.recreate, &object.before) {
             (Some(body), _) => {
@@ -551,7 +613,12 @@ impl Recreated {
             }
         }
         for end in ["a_terminations", "b_terminations"] {
-            for termination in body.get_mut(end).and_then(Value::as_array_mut).into_iter().flatten() {
+            for termination in body
+                .get_mut(end)
+                .and_then(Value::as_array_mut)
+                .into_iter()
+                .flatten()
+            {
                 if termination["object_type"] == "dcim.interface" {
                     new(&mut termination["object_id"]);
                 }
@@ -611,7 +678,10 @@ async fn update_interface(
     }
     if let Some(new) = update.poe {
         change.insert("poe_mode".into(), json!(new.value()));
-        before.insert("poe_mode".into(), json!(poe.map(PoeMode::value).unwrap_or_default()));
+        before.insert(
+            "poe_mode".into(),
+            json!(poe.map(PoeMode::value).unwrap_or_default()),
+        );
         changes.push(FieldChange {
             field: "poe_mode".into(),
             value: Some(new.value().into()),
@@ -620,7 +690,10 @@ async fn update_interface(
     }
     if update.poe_removed {
         change.insert("poe_mode".into(), json!(""));
-        before.insert("poe_mode".into(), json!(poe.map(PoeMode::value).unwrap_or_default()));
+        before.insert(
+            "poe_mode".into(),
+            json!(poe.map(PoeMode::value).unwrap_or_default()),
+        );
         changes.push(FieldChange {
             field: "poe_mode".into(),
             value: None,
@@ -628,7 +701,10 @@ async fn update_interface(
         });
         // NetBox refuses a PoE type without a mode ("Must specify PoE mode when designating
         // a PoE type"), so it goes too; undoing sets both again
-        if let Some(poe_type) = current["poe_type"]["value"].as_str().filter(|t| !t.is_empty()) {
+        if let Some(poe_type) = current["poe_type"]["value"]
+            .as_str()
+            .filter(|t| !t.is_empty())
+        {
             change.insert("poe_type".into(), json!(""));
             before.insert("poe_type".into(), json!(poe_type));
             changes.push(FieldChange {
@@ -641,12 +717,21 @@ async fn update_interface(
     if !update.tags_added.is_empty() || !update.tags_removed.is_empty() {
         let mut ids: Vec<Value> = tags
             .iter()
-            .filter(|t| !update.tags_removed.iter().any(|tag| t["slug"] == tag.slug()))
+            .filter(|t| {
+                !update
+                    .tags_removed
+                    .iter()
+                    .any(|tag| t["slug"] == tag.slug())
+            })
             .map(|t| t["id"].clone())
             .collect();
         ids.extend(tag_ids(rest, &update.tags_added).await?);
         let slugs = |list: &[flags::InterfaceTag]| {
-            let text = list.iter().map(|tag| tag.slug()).collect::<Vec<_>>().join(", ");
+            let text = list
+                .iter()
+                .map(|tag| tag.slug())
+                .collect::<Vec<_>>()
+                .join(", ");
             (!text.is_empty()).then(|| Box::from(text))
         };
         change.insert("tags".into(), Value::Array(ids));
@@ -689,10 +774,16 @@ async fn update_port_vlan(
         .filter_map(|vlan| vlan["id"].as_u64())
         .collect::<Vec<_>>();
     tagged.sort_unstable();
-    let mut tagged_before = update.tagged_before.iter().map(|v| u64::from(v.id)).collect::<Vec<_>>();
+    let mut tagged_before = update
+        .tagged_before
+        .iter()
+        .map(|v| u64::from(v.id))
+        .collect::<Vec<_>>();
     tagged_before.sort_unstable();
     if untagged != update.vlan_before.as_ref().map(|v| v.id.into()) || tagged != tagged_before {
-        return Err(Error::NetboxChanged(format!("{} {}", port.device.name, port.name).into()));
+        return Err(Error::NetboxChanged(
+            format!("{} {}", port.device.name, port.name).into(),
+        ));
     }
     let change = match &update.vlan {
         Some(vlan) => json!({ "mode": "access", "untagged_vlan": vlan.id, "tagged_vlans": [] }),
@@ -716,7 +807,13 @@ async fn update_port_vlan(
             field: "tagged_vlans".into(),
             value: None,
             previous: Some(
-                update.tagged_before.iter().map(name).collect::<Vec<_>>().join(", ").into(),
+                update
+                    .tagged_before
+                    .iter()
+                    .map(name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+                    .into(),
             ),
         });
     }
@@ -754,7 +851,9 @@ async fn update_port(
         || ((bridge.is_some() || update.leaves_bridge.is_some())
             && bridge_before != update.bridge_before)
     {
-        return Err(Error::NetboxChanged(format!("{} {}", port.device.name, port.name).into()));
+        return Err(Error::NetboxChanged(
+            format!("{} {}", port.device.name, port.name).into(),
+        ));
     }
     let mut change = serde_json::Map::new();
     let mut before = serde_json::Map::new();
@@ -770,7 +869,10 @@ async fn update_port(
     }
     if let Some(new) = update.rf_role {
         change.insert("rf_role".into(), json!(new.value()));
-        before.insert("rf_role".into(), json!(role.map(RadioRole::value).unwrap_or_default()));
+        before.insert(
+            "rf_role".into(),
+            json!(role.map(RadioRole::value).unwrap_or_default()),
+        );
         changes.push(FieldChange {
             field: "rf_role".into(),
             value: Some(new.value().into()),
@@ -817,7 +919,9 @@ async fn update_wireless_link(
     let ssid = current["ssid"].as_str().unwrap_or_default();
     let psk = current["auth_psk"].as_str().unwrap_or_default();
     if ssid != &*update.ssid_before || (update.psk.is_some() && !psk.is_empty()) {
-        return Err(Error::NetboxChanged(format!("wireless link {}", update.id).into()));
+        return Err(Error::NetboxChanged(
+            format!("wireless link {}", update.id).into(),
+        ));
     }
     let mut change = serde_json::Map::new();
     let mut before = serde_json::Map::new();
@@ -832,7 +936,12 @@ async fn update_wireless_link(
         });
     }
     if let Some(new) = &update.psk {
-        let auth = |field: &str| current[field]["value"].as_str().unwrap_or_default().to_string();
+        let auth = |field: &str| {
+            current[field]["value"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        };
         change.insert("auth_type".into(), json!("wpa-personal"));
         change.insert("auth_cipher".into(), json!("aes"));
         change.insert("auth_psk".into(), json!(new));
@@ -921,8 +1030,17 @@ fn recreate_cable(cable: &Value) -> Value {
     let mut body = recreate(
         cable,
         &[
-            "type", "status", "tenant", "label", "color", "length", "length_unit", "description",
-            "comments", "tags", "custom_fields",
+            "type",
+            "status",
+            "tenant",
+            "label",
+            "color",
+            "length",
+            "length_unit",
+            "description",
+            "comments",
+            "tags",
+            "custom_fields",
         ],
     );
     for end in ["a_terminations", "b_terminations"] {

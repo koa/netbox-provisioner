@@ -98,7 +98,11 @@ impl NetboxHelper {
             }
             PoeMsg::Observe => {
                 self.poe_observing = true;
-                fetch_poe_observed(ctx.link().clone(), ctx.props().id, ctx.props().target.clone());
+                fetch_poe_observed(
+                    ctx.link().clone(),
+                    ctx.props().id,
+                    ctx.props().target.clone(),
+                );
             }
             PoeMsg::Observed(observed) => {
                 self.poe_observing = false;
@@ -149,17 +153,32 @@ impl NetboxHelper {
                 .collect()
         };
         let directions = vec![
-            NetEntry { value: PoeDirection::Feeds, text: t::POE_FEEDS.to_string() },
-            NetEntry { value: PoeDirection::Fed, text: t::POE_FED.to_string() },
-            NetEntry { value: PoeDirection::Off, text: t::POE_OFF.to_string() },
+            NetEntry {
+                value: PoeDirection::Feeds,
+                text: t::POE_FEEDS.to_string(),
+            },
+            NetEntry {
+                value: PoeDirection::Fed,
+                text: t::POE_FED.to_string(),
+            },
+            NetEntry {
+                value: PoeDirection::Off,
+                text: t::POE_OFF.to_string(),
+            },
         ];
-        let direction = directions.iter().find(|d| d.value == self.poe.direction).cloned();
+        let direction = directions
+            .iter()
+            .find(|d| d.value == self.poe.direction)
+            .cloned();
         let off = self.poe.direction == PoeDirection::Off;
         let own = choices(&options.ports);
         let devices: Vec<Choice> = options
             .peers
             .iter()
-            .map(|peer| Choice { id: peer.id as u32, text: peer.name.clone() })
+            .map(|peer| Choice {
+                id: peer.id as u32,
+                text: peer.name.clone(),
+            })
             .collect();
         let peer_ports = self
             .poe
@@ -281,7 +300,10 @@ pub(super) fn fetch_poe_options(scope: Scope<NetboxHelper>, id: u32) {
     spawn_local(async move {
         let query = PoeOptionsQuery::build(DeviceVariables { id: id as i32 });
         let options = request(scope.clone(), query).await.map(|data| {
-            data.topology.device_by_id.map(|device| device.poe_options).unwrap_or_default()
+            data.topology
+                .device_by_id
+                .map(|device| device.poe_options)
+                .unwrap_or_default()
         });
         scope.send_message(PoeMsg::Options(options));
     });
@@ -290,10 +312,9 @@ pub(super) fn fetch_poe_options(scope: Scope<NetboxHelper>, id: u32) {
 /// What the device reports feeding, reached as the page reaches it.
 pub(super) fn fetch_poe_observed(scope: Scope<NetboxHelper>, id: u32, target: SelectedTarget) {
     spawn_local(async move {
-        let (credential_name, adhoc_credentials) =
-            target.credentials.variables(|username, password| {
-                AdhocCredentials { username, password }
-            });
+        let (credential_name, adhoc_credentials) = target
+            .credentials
+            .variables(|username, password| AdhocCredentials { username, password });
         let query = PoeObservedQuery::build(PoeObservedVariables {
             id: id as i32,
             target: target.address.map(|a| a.to_string()),

@@ -21,7 +21,10 @@ pub enum HelperPreset {
     RadioFrom(RadioPreset),
     /// „Funkbrücke“ from a free router port: the bridge device is chosen first
     /// (`components::helper_flow`), then it is `RadioFrom`
-    RadioChoose { router_device: u32, router_port: u32 },
+    RadioChoose {
+        router_device: u32,
+        router_port: u32,
+    },
     /// „PoE“ of this port
     Poe(u32),
     /// „PoE-Eintrag entfernen“: „PoE“ of this port with „Kein PoE“ chosen
@@ -33,7 +36,10 @@ pub enum HelperPreset {
     /// „Kunden-Anschluss abräumen“ of this interface
     CustomerDisconnect(u32),
     /// „VLAN am Port“ with this port or VLAN, or both
-    PortVlan { port: Option<u32>, vlan: Option<u32> },
+    PortVlan {
+        port: Option<u32>,
+        vlan: Option<u32>,
+    },
     /// „Kabel übernehmen“: the link from this port to the one the device sees there
     CableTakeover { port: u32, peer: u32 },
     /// „Aus Bridge lösen“ of this port
@@ -44,7 +50,11 @@ pub enum HelperPreset {
     AddressTakeover { interface: u32, address: String },
     /// „Lease übernehmen“: this static lease, which only the device has, as a client device;
     /// the name is the one the client sent, if any
-    LeaseTakeover { address: String, mac: String, name: Option<String> },
+    LeaseTakeover {
+        address: String,
+        mac: String,
+        name: Option<String>,
+    },
 }
 
 /// „Funkbrücke“ from a router port: the helper is the bridge device's, its router side set.
@@ -88,7 +98,6 @@ impl HelperPreset {
         }
     }
 }
-
 
 /// The ends of a link to choose at the start: the device's port and the other end.
 #[derive(Debug, Clone, PartialEq)]
@@ -196,14 +205,19 @@ pub(crate) fn helper(choice: HelperChoice, id: u32) -> input::Helper {
     let device = id as i32;
     match choice {
         HelperChoice::Loopback => Helper::Loopback(device),
-        HelperChoice::Connection { interface, peer, mtu } => Helper::Connection(ConnectionInput {
+        HelperChoice::Connection {
+            interface,
+            peer,
+            mtu,
+        } => Helper::Connection(ConnectionInput {
             interface: interface as i32,
             peer: peer as i32,
             mtu: mtu.map(i32::from),
         }),
-        HelperChoice::Disconnect(interface) => {
-            Helper::Disconnect(DisconnectInput { device, interface: interface as i32 })
-        }
+        HelperChoice::Disconnect(interface) => Helper::Disconnect(DisconnectInput {
+            device,
+            interface: interface as i32,
+        }),
         HelperChoice::Flags(changes) => Helper::Flags(FlagsInput {
             device,
             changes: changes
@@ -221,25 +235,32 @@ pub(crate) fn helper(choice: HelperChoice, id: u32) -> input::Helper {
                 })
                 .collect(),
         }),
-        HelperChoice::CustomerNet { target, parent, length, parent_v6, dhcp } => {
-            Helper::CustomerNet(CustomerNetInput {
-                device,
-                target: match target {
-                    NetTarget::Interface(id) => CustomerNetTarget::Interface(id as i32),
-                    NetTarget::Vlan(id) => CustomerNetTarget::Vlan(id as i32),
-                },
-                parent: parent.map(|id| id as i32),
-                length: length.map(i32::from),
-                parent_v6: parent_v6.map(|id| id as i32),
-                dhcp,
-            })
-        }
-        HelperChoice::Poe { pse, pd } => {
-            Helper::Poe(PoeInput { device, pse: pse as i32, pd: pd.map(|pd| pd as i32) })
-        }
-        HelperChoice::PoeRemove { port } => {
-            Helper::PoeRemove(PoeRemoveInput { device, port: port as i32 })
-        }
+        HelperChoice::CustomerNet {
+            target,
+            parent,
+            length,
+            parent_v6,
+            dhcp,
+        } => Helper::CustomerNet(CustomerNetInput {
+            device,
+            target: match target {
+                NetTarget::Interface(id) => CustomerNetTarget::Interface(id as i32),
+                NetTarget::Vlan(id) => CustomerNetTarget::Vlan(id as i32),
+            },
+            parent: parent.map(|id| id as i32),
+            length: length.map(i32::from),
+            parent_v6: parent_v6.map(|id| id as i32),
+            dhcp,
+        }),
+        HelperChoice::Poe { pse, pd } => Helper::Poe(PoeInput {
+            device,
+            pse: pse as i32,
+            pd: pd.map(|pd| pd as i32),
+        }),
+        HelperChoice::PoeRemove { port } => Helper::PoeRemove(PoeRemoveInput {
+            device,
+            port: port as i32,
+        }),
         HelperChoice::RadioBridge {
             ap,
             station,
@@ -257,45 +278,72 @@ pub(crate) fn helper(choice: HelperChoice, id: u32) -> input::Helper {
             station_address,
             ssid,
         }),
-        HelperChoice::RadioDisconnect { radio, wireless_link } => {
+        HelperChoice::RadioDisconnect {
+            radio,
+            wireless_link,
+        } => {
             let radio = radio as i32;
-            Helper::RadioDisconnect(RadioDisconnectInput { device, radio, wireless_link })
-        }
-        HelperChoice::CustomerDisconnect(interface) => Helper::CustomerDisconnect(
-            CustomerDisconnectInput { device, interface: interface as i32 },
-        ),
-        HelperChoice::PortVlan { port, vlan } => {
-            Helper::PortVlan(PortVlanInput { device, port: port as i32, vlan: vlan as i32 })
-        }
-        HelperChoice::CableTakeover { port, peer } => {
-            Helper::CableTakeover(CableTakeoverInput { port: port as i32, peer: peer as i32 })
-        }
-        HelperChoice::BridgeLeave(port) => {
-            Helper::BridgeLeave(BridgeLeaveInput { device, port: port as i32 })
-        }
-        HelperChoice::NewDevice { port, name, device_type, role, far_port, wlan_group } => {
-            Helper::NewDevice(NewDeviceInput {
-                port: port as i32,
-                name,
-                device_type: device_type as i32,
-                role: role as i32,
-                far_port,
-                wlan_group: wlan_group.map(|group| group as i32),
-            })
-        }
-        HelperChoice::LeaseTakeover { address, mac, name, device_type, role } => {
-            Helper::LeaseTakeover(LeaseTakeoverInput {
+            Helper::RadioDisconnect(RadioDisconnectInput {
                 device,
-                address,
-                mac,
-                name,
-                device_type: device_type as i32,
-                role: role as i32,
+                radio,
+                wireless_link,
             })
         }
+        HelperChoice::CustomerDisconnect(interface) => {
+            Helper::CustomerDisconnect(CustomerDisconnectInput {
+                device,
+                interface: interface as i32,
+            })
+        }
+        HelperChoice::PortVlan { port, vlan } => Helper::PortVlan(PortVlanInput {
+            device,
+            port: port as i32,
+            vlan: vlan as i32,
+        }),
+        HelperChoice::CableTakeover { port, peer } => Helper::CableTakeover(CableTakeoverInput {
+            port: port as i32,
+            peer: peer as i32,
+        }),
+        HelperChoice::BridgeLeave(port) => Helper::BridgeLeave(BridgeLeaveInput {
+            device,
+            port: port as i32,
+        }),
+        HelperChoice::NewDevice {
+            port,
+            name,
+            device_type,
+            role,
+            far_port,
+            wlan_group,
+        } => Helper::NewDevice(NewDeviceInput {
+            port: port as i32,
+            name,
+            device_type: device_type as i32,
+            role: role as i32,
+            far_port,
+            wlan_group: wlan_group.map(|group| group as i32),
+        }),
+        HelperChoice::LeaseTakeover {
+            address,
+            mac,
+            name,
+            device_type,
+            role,
+        } => Helper::LeaseTakeover(LeaseTakeoverInput {
+            device,
+            address,
+            mac,
+            name,
+            device_type: device_type as i32,
+            role: role as i32,
+        }),
         HelperChoice::AddressTakeover { interface, address } => {
             let interface = interface as i32;
-            Helper::AddressTakeover(AddressTakeoverInput { device, interface, address })
+            Helper::AddressTakeover(AddressTakeoverInput {
+                device,
+                interface,
+                address,
+            })
         }
     }
 }
@@ -358,7 +406,6 @@ impl Display for HelperKind {
         })
     }
 }
-
 
 /// A port or device in a select: its id and how it reads.
 #[derive(Debug, Clone, PartialEq, Eq)]

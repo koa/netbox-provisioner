@@ -8,20 +8,20 @@
 //! change made in between stops it instead of being overwritten. Every write is an event of
 //! the job (`NetboxWritten`), which is what `undo` takes back.
 pub mod address_takeover;
+pub mod bridge_leave;
 pub mod cable_takeover;
 pub mod connection;
-pub mod bridge_leave;
 pub mod customer_disconnect;
 pub mod customer_net;
 pub mod disconnect;
 pub mod flags;
+pub mod foreign_radio_bridge;
 pub mod lease_takeover;
 pub mod loopback;
 pub mod new_device;
 mod plan;
 pub mod poe;
 pub mod port_vlan;
-pub mod foreign_radio_bridge;
 pub mod radio_bridge;
 pub mod radio_disconnect;
 pub mod routes;
@@ -370,9 +370,7 @@ impl NetboxPlan {
                     }
                 }
                 PlanStep::CreateCable(create) => {
-                    let end = |end: CableEnd, interface: &InterfaceRef| {
-                        json!([{ "__typename": end.typename(), "id": interface.id.to_string() }])
-                    };
+                    let end = |end: CableEnd, interface: &InterfaceRef| json!([{ "__typename": end.typename(), "id": interface.id.to_string() }]);
                     if let Some(cables) = json["cable_list"].as_array_mut() {
                         cables.push(json!({
                             "id": created_id(index),
@@ -594,9 +592,16 @@ mod test {
             .into_iter()
             .find(|i| i.name() == "lo-test")
             .expect("created interface");
-        let address = lo.ips().first().and_then(|ip| ip.net()).map(|n| n.to_string());
+        let address = lo
+            .ips()
+            .first()
+            .and_then(|ip| ip.net())
+            .map(|n| n.to_string());
         assert_eq!(address.as_deref(), Some("192.0.2.1/32"));
-        let primary = after.primary_ip_v4().and_then(|ip| ip.net()).map(|n| n.to_string());
+        let primary = after
+            .primary_ip_v4()
+            .and_then(|ip| ip.net())
+            .map(|n| n.to_string());
         assert_eq!(primary.as_deref(), Some("192.0.2.1/32"));
         assert!(!device.interfaces().iter().any(|i| i.name() == "lo-test"));
     }
@@ -669,13 +674,30 @@ mod test {
         let after = plan.preview_topology().expect("preview");
         let a_after = after.get_interface_by_id(a.id()).unwrap();
         let connected = a_after.connected_interfaces();
-        assert_eq!(connected.iter().map(|i| i.id()).collect::<Vec<_>>(), [b.id()]);
-        for (end, address, far) in [(&a, "192.0.2.0/31", &b_device), (&b, "192.0.2.1/31", &a_device)] {
+        assert_eq!(
+            connected.iter().map(|i| i.id()).collect::<Vec<_>>(),
+            [b.id()]
+        );
+        for (end, address, far) in [
+            (&a, "192.0.2.0/31", &b_device),
+            (&b, "192.0.2.1/31", &a_device),
+        ] {
             let end = after.get_interface_by_id(end.id()).unwrap();
-            let net = end.ips().first().and_then(|ip| ip.net()).map(|n| n.to_string());
+            let net = end
+                .ips()
+                .first()
+                .and_then(|ip| ip.net())
+                .map(|n| n.to_string());
             assert_eq!(net.as_deref(), Some(address));
-            let prefix = end.ips().first().and_then(|ip| ip.prefix()).and_then(|p| p.prefix());
-            assert_eq!(prefix.map(|p| p.to_string()).as_deref(), Some("192.0.2.0/31"));
+            let prefix = end
+                .ips()
+                .first()
+                .and_then(|ip| ip.prefix())
+                .and_then(|p| p.prefix());
+            assert_eq!(
+                prefix.map(|p| p.to_string()).as_deref(),
+                Some("192.0.2.0/31")
+            );
             assert_eq!(end.label(), Some(far.name()));
             assert_eq!(end.mtu(), Some(2000));
             assert!(end.use_ospf());

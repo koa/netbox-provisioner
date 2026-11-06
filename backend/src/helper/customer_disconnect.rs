@@ -27,14 +27,19 @@ pub struct CustomerDisconnectInput {
     pub interface: u32,
 }
 
-pub fn plan(topology: &Arc<Topology>, input: &CustomerDisconnectInput) -> Result<NetboxPlan, Error> {
+pub fn plan(
+    topology: &Arc<Topology>,
+    input: &CustomerDisconnectInput,
+) -> Result<NetboxPlan, Error> {
     let device = topology
         .get_device_by_id(&DeviceId(input.device))
         .ok_or(Error::UnknownDevice(input.device))?;
     let l3 = topology
         .get_interface_by_id(InterfaceId(input.interface))
         .ok_or(Error::UnknownInterface(input.interface))?;
-    let owner = l3.device().ok_or(Error::UnknownInterface(input.interface))?;
+    let owner = l3
+        .device()
+        .ok_or(Error::UnknownInterface(input.interface))?;
     let mut plan = NetboxPlan::new(
         &device,
         format!("Kunden-Anschluss abräumen {} {}", owner.name(), l3.name()),
@@ -43,7 +48,11 @@ pub fn plan(topology: &Arc<Topology>, input: &CustomerDisconnectInput) -> Result
     let primary = [owner.primary_ip_v4(), owner.primary_ip_v6()];
     let addresses = l3.ips().into_vec();
     for ip in &addresses {
-        if primary.iter().flatten().any(|primary| primary.id() == ip.id()) {
+        if primary
+            .iter()
+            .flatten()
+            .any(|primary| primary.id() == ip.id())
+        {
             return Err(Error::PrimaryAddress {
                 address: address_text(ip),
                 device: owner.name().into(),

@@ -145,17 +145,20 @@ impl TaggedBridge {
     }
     /// Whether a radio, a VXLAN or a CAPsMAN attachment is one of its ports.
     pub fn carries_radio(&self) -> bool {
-        self.ports.values().flat_map(|entry| &entry.ports).any(|port| match port {
-            L2Port::TaggedEthernet { port, .. } | L2Port::UntaggedEthernet { port, .. } => {
-                port.is_radio()
-            }
-            L2Port::VxLan { .. }
-            | L2Port::CapsMan { .. }
-            | L2Port::Cap { .. }
-            | L2Port::CapsManMgmt
-            | L2Port::CapMgmt => true,
-            L2Port::Ip { .. } => false,
-        })
+        self.ports
+            .values()
+            .flat_map(|entry| &entry.ports)
+            .any(|port| match port {
+                L2Port::TaggedEthernet { port, .. } | L2Port::UntaggedEthernet { port, .. } => {
+                    port.is_radio()
+                }
+                L2Port::VxLan { .. }
+                | L2Port::CapsMan { .. }
+                | L2Port::Cap { .. }
+                | L2Port::CapsManMgmt
+                | L2Port::CapMgmt => true,
+                L2Port::Ip { .. } => false,
+            })
     }
 }
 
@@ -404,11 +407,12 @@ impl<G: NameGenerator> L2Setup<G> {
             if let Some(port) = interface.external_port() {
                 // a CAP's radio keeps its name: CAPsMAN binds it, and RouterOS refuses to
                 // rename a bound radio
-                let name = if matches!(port, PhysicalPortId::Wifi(_)) && device.wifi_cap_of().is_some() {
-                    Cow::Owned(port.to_string())
-                } else {
-                    name_generator.generate_interface_name(&interface)
-                };
+                let name =
+                    if matches!(port, PhysicalPortId::Wifi(_)) && device.wifi_cap_of().is_some() {
+                        Cow::Owned(port.to_string())
+                    } else {
+                        name_generator.generate_interface_name(&interface)
+                    };
                 for (vlan, port) in interface
                     .tagged_vlans()
                     .map(|vlan| {
@@ -595,7 +599,9 @@ impl<G: NameGenerator> L2Setup<G> {
                 {
                     let split = by_root
                         .iter()
-                        .flat_map(|(root, sub)| sub.iter().map(move |(vlan, ports)| (root, vlan, ports)))
+                        .flat_map(|(root, sub)| {
+                            sub.iter().map(move |(vlan, ports)| (root, vlan, ports))
+                        })
                         .filter(|(_, _, ports)| {
                             ports.iter().any(|p| {
                                 matches!(p, L2Port::TaggedEthernet { name: n, .. }

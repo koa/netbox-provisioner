@@ -1,5 +1,4 @@
 use crate::{
-    i18n,
     components::{
         findings::{self, FindingsList},
         saved_jobs::SavedJobs,
@@ -9,6 +8,7 @@ use crate::{
         authenticated::list_devices::{ListSites, Site},
         live::{Subscription, watch_data},
     },
+    i18n,
     pages::routes::{AppRoute, SiteView},
 };
 use cynic::SubscriptionBuilder;

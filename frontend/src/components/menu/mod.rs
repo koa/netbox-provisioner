@@ -1,20 +1,20 @@
 //! The breadcrumb, after cable-editor: every item a dropdown leading to its siblings (another
 //! site, another device of the site).
 use crate::{
-    i18n,
     error::FrontendError,
     graphql::{
         authenticated::list_devices::{ListSites, Site},
         request,
     },
+    i18n,
     pages::routes::{AppRoute, SiteView},
 };
 use cynic::SubscriptionBuilder;
 use patternfly_yew::prelude::{Icon, MenuToggleVariant, Spinner};
 use popup::{MenuGroup, MenuLinkItem, PopupMenu};
 use yew::{
-    AttrValue, Component, Context, Html, Properties, function_component, html,
-    html::ChildrenProps, platform::spawn_local,
+    AttrValue, Component, Context, Html, Properties, function_component, html, html::ChildrenProps,
+    platform::spawn_local,
 };
 
 pub mod popup;
@@ -157,7 +157,8 @@ impl Navigation {
                 },
             }))
             .collect::<Box<[_]>>();
-        let site_title = i18n::menu::site(site.map(|site| site.name.as_str()), props.site.is_some());
+        let site_title =
+            i18n::menu::site(site.map(|site| site.name.as_str()), props.site.is_some());
         let site_menu = html! {
             <BreadcrumbItem>
                 <MenuDropdown title={site_title} entries={site_entries}/>
@@ -184,8 +185,10 @@ impl Navigation {
             target: AppRoute::device(site.id as u32, entry.id as u32),
         }))
         .collect::<Box<[_]>>();
-        let device_title =
-            i18n::menu::device(device.map(|device| device.name.as_str()), props.device.is_some());
+        let device_title = i18n::menu::device(
+            device.map(|device| device.name.as_str()),
+            props.device.is_some(),
+        );
         html! {
             <>
                 {site_menu}

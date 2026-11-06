@@ -48,8 +48,14 @@ pub struct DeviceMapData {
 /// The health and resources of every device of `devices` that answers, by its id; one that
 /// doesn't is left out, same as a device the map leaves off entirely for lack of OSPF.
 pub async fn read_all(devices: &[DeviceAccess]) -> BTreeMap<DeviceId, Arc<DeviceMapData>> {
-    let reads = devices.iter().map(|device| async move { (device.id(), read_one(device).await) });
-    join_all(reads).await.into_iter().filter_map(|(id, data)| data.map(|data| (id, data))).collect()
+    let reads = devices
+        .iter()
+        .map(|device| async move { (device.id(), read_one(device).await) });
+    join_all(reads)
+        .await
+        .into_iter()
+        .filter_map(|(id, data)| data.map(|data| (id, data)))
+        .collect()
 }
 
 async fn read_one(device: &DeviceAccess) -> Option<Arc<DeviceMapData>> {
@@ -62,14 +68,20 @@ async fn read_one(device: &DeviceAccess) -> Option<Arc<DeviceMapData>> {
         let api = accessible.connect_again().await?;
         read(&api).await
     };
-    facts::get(key, Freshness::MaxAge(DEVICE_DATA_AGE), ask).await.value.ok()
+    facts::get(key, Freshness::MaxAge(DEVICE_DATA_AGE), ask)
+        .await
+        .value
+        .ok()
 }
 
 async fn read(api: &RawDevice<SimpleResult>) -> Result<DeviceMapData, Error> {
     let health = rows(api, "/system/health/print").await?;
     let resources = rows(api, "/system/resource/print").await?;
     let poe = poe::read_ports(api).await?;
-    Ok(DeviceMapData { poe, ..from_rows(&health, &resources) })
+    Ok(DeviceMapData {
+        poe,
+        ..from_rows(&health, &resources)
+    })
 }
 
 /// The pure part of [`read`]: testable with rows built by hand, no device needed.
@@ -86,13 +98,25 @@ fn from_rows(health_rows: &[Row], resource_rows: &[Row]) -> DeviceMapData {
         .collect();
     let resources = resource_rows.first().map(|row| Resources {
         uptime: field(row, "uptime").unwrap_or_default().into(),
-        cpu_load: field(row, "cpu-load").and_then(|v| v.parse().ok()).unwrap_or_default(),
-        free_memory: field(row, "free-memory").and_then(|v| v.parse().ok()).unwrap_or_default(),
-        total_memory: field(row, "total-memory").and_then(|v| v.parse().ok()).unwrap_or_default(),
-        free_hdd_space: field(row, "free-hdd-space").and_then(|v| v.parse().ok()).unwrap_or_default(),
+        cpu_load: field(row, "cpu-load")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_default(),
+        free_memory: field(row, "free-memory")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_default(),
+        total_memory: field(row, "total-memory")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_default(),
+        free_hdd_space: field(row, "free-hdd-space")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_default(),
         version: field(row, "version").unwrap_or_default().into(),
     });
-    DeviceMapData { health, resources, poe: PoePorts::default() }
+    DeviceMapData {
+        health,
+        resources,
+        poe: PoePorts::default(),
+    }
 }
 
 #[cfg(test)]

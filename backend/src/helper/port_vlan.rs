@@ -77,7 +77,11 @@ fn check_port(port: &InterfaceAccess) -> Result<(), Error> {
     if let Some(address) = port.ips().first() {
         return Err(Error::PortAddressed {
             port: port_name(port),
-            address: address.net().map(|net| net.to_string()).unwrap_or_default().into(),
+            address: address
+                .net()
+                .map(|net| net.to_string())
+                .unwrap_or_default()
+                .into(),
         });
     }
     if let Some(far) = port
@@ -119,7 +123,11 @@ fn conflict(
     port: Option<InterfaceId>,
 ) -> Result<(), Error> {
     let topology = device.topology();
-    let group = |vlan: &VlanAccess| vlan.group().map(|(_, name)| Box::from(name)).unwrap_or_default();
+    let group = |vlan: &VlanAccess| {
+        vlan.group()
+            .map(|(_, name)| Box::from(name))
+            .unwrap_or_default()
+    };
     // RouterOS knows the VID only: two VLANs with one VID on a device are one
     if let Some(taken) = topology.list_vlans().find(|other| {
         other.id != vlan.id && other.vlan_id() == vlan.vlan_id() && has(device, other, port)
@@ -147,7 +155,13 @@ fn conflict(
                 i.untagged_vlan().is_some_and(|v| v.id == vlan.id)
                     || i.tagged_vlans().any(|v| v.id == vlan.id)
             })
-            .find_map(|i| if i.is_bridge() { Some(i.clone()) } else { i.bridge() })
+            .find_map(|i| {
+                if i.is_bridge() {
+                    Some(i.clone())
+                } else {
+                    i.bridge()
+                }
+            })
     };
     let target = bridge_of(vlan).map(|b| b.id());
     let group_id = vlan.group().map(|(id, _)| id);

@@ -108,16 +108,9 @@ pub fn server(problem: &impl Problem) -> String {
             p("forwarding"),
             p("neighbor")
         ),
-        "CONSOLE_SESSION_ENDED" => format!(
-            "Die mac-telnet-Sitzung endete vor {}",
-            p("command")
-        ),
+        "CONSOLE_SESSION_ENDED" => format!("Die mac-telnet-Sitzung endete vor {}", p("command")),
         "DOWNLOAD" => format!("{} nicht geladen: {}", p("url"), p("cause")),
-        "UNKNOWN_RELEASE" => format!(
-            "{} nennt keine RouterOS-Version: {}",
-            p("url"),
-            p("answer")
-        ),
+        "UNKNOWN_RELEASE" => format!("{} nennt keine RouterOS-Version: {}", p("url"), p("answer")),
         "MISSING_DEVICE_STATE" => format!("Das Gerät meldet {} nicht", p("field")),
         "UPLOAD_MISSING" => format!("{} fehlt nach dem Hochladen auf dem Gerät", p("file")),
         "UPLOAD_INCOMPLETE" => format!(
@@ -138,12 +131,20 @@ pub fn server(problem: &impl Problem) -> String {
             ),
         },
         "NOT_BACK_AFTER_REBOOT" => "Das Gerät ist nach dem Neustart nicht zurück".into(),
-        "REBOOT_NOT_SENT" => "Der Provisioner wurde neu gestartet, bevor er das Gerät neu startete: \
+        "REBOOT_NOT_SENT" => {
+            "Der Provisioner wurde neu gestartet, bevor er das Gerät neu startete: \
                               Die hochgeladenen Pakete und der Fallback des Updates liegen noch \
                               auf dem Gerät (siehe Geräteseite)"
-            .into(),
-        "UPDATE_FAILED_BEFORE" => format!("Das Update schlug vor dem Neustart des Provisioners fehl: {}", p("message")),
-        "PANIC" => format!("Interner Fehler im Provisioner (bitte melden): {}", p("message")),
+                .into()
+        }
+        "UPDATE_FAILED_BEFORE" => format!(
+            "Das Update schlug vor dem Neustart des Provisioners fehl: {}",
+            p("message")
+        ),
+        "PANIC" => format!(
+            "Interner Fehler im Provisioner (bitte melden): {}",
+            p("message")
+        ),
         "UPDATE_ROLLED_BACK" => format!(
             "Update zurückgenommen: Das Gerät war nach dem Update nicht erreichbar und läuft \
              wieder mit RouterOS {} von {}",
@@ -151,8 +152,15 @@ pub fn server(problem: &impl Problem) -> String {
             p("partition")
         ),
         "NO_POWER_SUPPLY" => format!("Kein Gerät speist {} über PoE (NetBox)", p("device")),
-        "POE_PORT_NOT_FOUND" => format!("{} hat keinen Port {}, an dem es PoE schalten kann", p("device"), p("port")),
-        "LEFTOVER_GONE" => format!("Auf {} liegt das nicht mehr, die Seite ist neu geladen", p("device")),
+        "POE_PORT_NOT_FOUND" => format!(
+            "{} hat keinen Port {}, an dem es PoE schalten kann",
+            p("device"),
+            p("port")
+        ),
+        "LEFTOVER_GONE" => format!(
+            "Auf {} liegt das nicht mehr, die Seite ist neu geladen",
+            p("device")
+        ),
         "LEFTOVER_HELD" => format!(
             "Die Watchdogs von {} hält der laufende Auftrag #{} ausgesetzt; er setzt sie an seinem Ende wieder",
             p("device"),
@@ -191,14 +199,23 @@ pub fn server(problem: &impl Problem) -> String {
             p("cause")
         ),
         "BUSY" => format!("Auf {} läuft schon ein Auftrag", p("device")),
-        "BATCH_STOPPED" => format!("Gemeinsames Anwenden abgebrochen: {} ging nicht", p("device")),
+        "BATCH_STOPPED" => format!(
+            "Gemeinsames Anwenden abgebrochen: {} ging nicht",
+            p("device")
+        ),
         "BATCH_INCOMPLETE" => format!(
             "Nicht durch: {}; alle Geräte laden die Konfiguration von vorher",
             p("devices")
         ),
-        "SCRIPT_NOT_STARTED" => format!("Skript läuft nicht innerhalb von {} s nach dem Start", p("seconds")),
+        "SCRIPT_NOT_STARTED" => format!(
+            "Skript läuft nicht innerhalb von {} s nach dem Start",
+            p("seconds")
+        ),
         "UNKNOWN_JOB" => format!("Auftrag {} gibt es nicht (mehr)", p("id")),
-        "NO_SAVED_JOB" => format!("Für Gerät {} wartet kein gespeicherter Auftrag (mehr)", p("device")),
+        "NO_SAVED_JOB" => format!(
+            "Für Gerät {} wartet kein gespeicherter Auftrag (mehr)",
+            p("device")
+        ),
         "CANCELLED" => "Abgebrochen".into(),
         "PING" => format!("Ping fehlgeschlagen: {}", p("cause")),
         "NETBOX_WRITE_NOT_ALLOWED" => "Schreiben in NetBox ist gesperrt (allow_netbox_write, \
@@ -242,11 +259,7 @@ pub fn server(problem: &impl Problem) -> String {
             p("port"),
             p("bridge")
         ),
-        "PORT_ADDRESSED" => format!(
-            "{} hat schon die Adresse {}",
-            p("port"),
-            p("address")
-        ),
+        "PORT_ADDRESSED" => format!("{} hat schon die Adresse {}", p("port"), p("address")),
         "TAG_MISSING" => format!("Den Tag {} gibt es in NetBox nicht", p("tag")),
         "PRIMARY_ADDRESS" => format!(
             "{} ist die Primary IP von {}: zuerst eine andere Primary IP setzen (Loopback)",
@@ -283,12 +296,19 @@ pub fn server(problem: &impl Problem) -> String {
             )
         }
         "PORT_UPLINK" => format!("{} ist ein Uplink (dhcp-client oder nat)", p("port")),
-        "PORT_HAS_VLAN" => format!("{} hat VLAN {} schon, untagged und ohne weitere", p("port"), p("vlan")),
+        "PORT_HAS_VLAN" => format!(
+            "{} hat VLAN {} schon, untagged und ohne weitere",
+            p("port"),
+            p("vlan")
+        ),
         "NO_SITE" => format!("{} hat in NetBox keine Site", p("device")),
         "NO_DEVICE_NAME" => "Das Gerät braucht einen Namen".to_string(),
         "DEVICE_NAME_TAKEN" => format!("NetBox hat schon ein Gerät {}", p("name")),
         "UNKNOWN_WLAN_GROUP" => {
-            format!("WLAN-Gruppe {} gibt es nicht oder sie hat keinen Controller", p("id"))
+            format!(
+                "WLAN-Gruppe {} gibt es nicht oder sie hat keinen Controller",
+                p("id")
+            )
         }
         "NO_PLATFORM" => format!("NetBox hat keine Plattform „{}“", p("name")),
         "UNKNOWN_PREFIX" => format!("Prefix {} ist keines der Site des Geräts", p("id")),
@@ -387,7 +407,10 @@ pub fn server(problem: &impl Problem) -> String {
             "Das Gerät hat Ports am VXLAN {}, aber keine primäre IPv4-Adresse als VTEP",
             p("vxlan")
         ),
-        "CHANNEL_WIDTH" => format!("Kanalbreite {} MHz kann ein wireless-Radio nicht", p("width")),
+        "CHANNEL_WIDTH" => format!(
+            "Kanalbreite {} MHz kann ein wireless-Radio nicht",
+            p("width")
+        ),
         "NO_RADIO_PROFILE" => format!(
             "Radio {} hat eine RF-Rolle, aber das Board hat kein Profil für Richtfunk \
              (hw_facts.rs)",

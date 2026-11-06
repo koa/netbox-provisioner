@@ -103,11 +103,7 @@ async fn download_and_verify(zip_path: &Path, release: &ChrRelease) -> anyhow::R
         return Ok(());
     }
     let url = format!("https://download.mikrotik.com/routeros/{version}/chr-{version}.img.zip");
-    let bytes = reqwest::get(url)
-        .await?
-        .error_for_status()?
-        .bytes()
-        .await?;
+    let bytes = reqwest::get(url).await?.error_for_status()?.bytes().await?;
     let digest = format!("{:x}", Sha256::digest(&bytes));
     anyhow::ensure!(
         digest == *sha256,

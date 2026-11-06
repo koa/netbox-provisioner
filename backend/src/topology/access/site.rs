@@ -1,7 +1,7 @@
 use crate::topology::{
-    findings::Finding,
     SiteData, SiteId, Topology,
     access::{AccessTopology, device::DeviceAccess},
+    findings::Finding,
 };
 use async_graphql::Object;
 use std::sync::Arc;

@@ -276,17 +276,19 @@ impl DeviceAccess {
                 }
             }
         }
-        let loopback = rows.iter().find(|(row, _)| row.task == InterfaceTask::Loopback);
-        let loopback_missing = loopback.is_none_or(|(row, _)| {
-            !row.addresses.iter().any(|a| !a.address.contains(':'))
-        }) || device_findings.iter().any(|f| {
-            matches!(
-                f.kind,
-                FindingKind::NoLoopback(_)
-                    | FindingKind::NoPrimaryIpv4(_)
-                    | FindingKind::PrimaryIpv4NotOnLoopback(_)
-            )
-        });
+        let loopback = rows
+            .iter()
+            .find(|(row, _)| row.task == InterfaceTask::Loopback);
+        let loopback_missing = loopback
+            .is_none_or(|(row, _)| !row.addresses.iter().any(|a| !a.address.contains(':')))
+            || device_findings.iter().any(|f| {
+                matches!(
+                    f.kind,
+                    FindingKind::NoLoopback(_)
+                        | FindingKind::NoPrimaryIpv4(_)
+                        | FindingKind::PrimaryIpv4NotOnLoopback(_)
+                )
+            });
         let loopback_actions = loopback_missing
             .then_some(RowAction {
                 kind: ActionKind::Suggestion,
@@ -362,7 +364,11 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
                 .iter()
                 .flat_map(InterfaceAccess::connected_interfaces)
                 .find(|far| far.device().is_some_and(|d| d.has_routeros()));
-            radio_path(router_port, bridge_port, radio.map(|radio| (*radio).clone()))
+            radio_path(
+                router_port,
+                bridge_port,
+                radio.map(|radio| (*radio).clone()),
+            )
         } else {
             let bridge_port = members
                 .iter()
@@ -402,7 +408,11 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
             .map(|port| PortRow {
                 interface: interface_ref(port),
                 label: port.label().map(Into::into),
-                far_ends: port.connected_interfaces().iter().map(interface_ref).collect(),
+                far_ends: port
+                    .connected_interfaces()
+                    .iter()
+                    .map(interface_ref)
+                    .collect(),
                 actions: Vec::new(),
             })
             .collect(),
@@ -414,7 +424,10 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
         internet: interface.is_internet(),
         mtu: interface.mtu(),
         untagged_vlan: interface.untagged_vlan().as_ref().and_then(vlan_ref),
-        tagged_vlans: interface.tagged_vlans().filter_map(|v| vlan_ref(&v)).collect(),
+        tagged_vlans: interface
+            .tagged_vlans()
+            .filter_map(|v| vlan_ref(&v))
+            .collect(),
         far_ends: far_end_refs,
         radio_path,
         gateways,
@@ -430,16 +443,17 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
 /// or network out, a task for an unknown interface (also a free one), then its PoE and tags. No
 /// helper for uplinks.
 fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) -> Vec<RowAction> {
-    let action = |kind, helper, interface: Option<u32>, peer: Option<InterfaceRef>, vlan| RowAction {
-        kind,
-        helper,
-        interface,
-        peer,
-        vlan,
-        seen: None,
-        address: None,
-        lease: None,
-    };
+    let action =
+        |kind, helper, interface: Option<u32>, peer: Option<InterfaceRef>, vlan| RowAction {
+            kind,
+            helper,
+            interface,
+            peer,
+            vlan,
+            seen: None,
+            address: None,
+            lease: None,
+        };
     // the port (the row's interface or one of its bridge ports) cabled to a router, and that
     // router's port
     let link = std::iter::once(&row.interface)
@@ -501,7 +515,10 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
             // „Funkbrücke“ on the bridge device, or from the router port for the bridge device
             // cabled to it (`peer`)
             if incomplete || !row.findings.is_empty() {
-                let bridge_port = row.radio_path.as_ref().and_then(|path| path.bridge_port.clone());
+                let bridge_port = row
+                    .radio_path
+                    .as_ref()
+                    .and_then(|path| path.bridge_port.clone());
                 if bridge_device {
                     actions.push(action(
                         ActionKind::Suggestion,
@@ -514,7 +531,10 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
                     actions.push(action(
                         ActionKind::Suggestion,
                         ActionHelper::RadioBridge,
-                        row.radio_path.as_ref().and_then(|p| p.router_port.as_ref()).map(|p| p.id),
+                        row.radio_path
+                            .as_ref()
+                            .and_then(|p| p.router_port.as_ref())
+                            .map(|p| p.id),
                         Some(bridge_port),
                         None,
                     ));
@@ -572,7 +592,10 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
             let port = topology.get_interface_by_id(InterfaceId(row.interface.id));
             let ethernet_port = port.as_ref().is_some_and(|i| i.is_ethernet_port());
             // no cable, or one ending open at a patch panel
-            let free = port.as_ref().and_then(crate::helper::new_device::landing).is_some();
+            let free = port
+                .as_ref()
+                .and_then(crate::helper::new_device::landing)
+                .is_some();
             actions.push(RowAction {
                 kind: ActionKind::AssignRole,
                 ..customer_net()
@@ -619,7 +642,13 @@ fn actions(topology: &Arc<Topology>, row: &InterfaceRow, bridge_device: bool) ->
     }
     if !matches!(row.task, InterfaceTask::Loopback | InterfaceTask::Uplink) {
         actions.extend(port_actions(topology, &row.interface));
-        actions.push(action(ActionKind::Edit, ActionHelper::Flags, own, None, None));
+        actions.push(action(
+            ActionKind::Edit,
+            ActionHelper::Flags,
+            own,
+            None,
+            None,
+        ));
     }
     actions
 }
@@ -776,9 +805,7 @@ impl FindingKind {
             | FindingKind::ForwardWithoutSite(_)
             | FindingKind::ForwardPortTaken(_)
             | FindingKind::ForwardIncomplete(_) => Vec::new(),
-            FindingKind::PrimaryIpv4NotOnLoopback(f) => {
-                f.interface.iter().map(|i| i.id).collect()
-            }
+            FindingKind::PrimaryIpv4NotOnLoopback(f) => f.interface.iter().map(|i| i.id).collect(),
             FindingKind::AddressWithoutPrefix(f) => vec![f.interface.id],
             FindingKind::DhcpPoolEmpty(f) => vec![f.interface.id],
             FindingKind::PortLikeName(f) => vec![f.interface.id],

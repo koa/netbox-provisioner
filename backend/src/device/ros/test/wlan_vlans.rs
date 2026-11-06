@@ -4,16 +4,15 @@
 use crate::{
     device::ros::{
         CapsManDeviceDataCurrent, CapsManDeviceDataTarget, SetupError, WifiDeviceDataCurrent,
-        WifiDeviceDataTarget,
-        WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
+        WifiDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
         graphql::{provided_by_routeros, reprovisioned_menus, restarts_radio},
         hw_facts::{RadioPackage, build_wifi_ports, build_wireless_ports},
         l2::{KeepNameGenerator, L2Setup},
         needed_radio_package,
     },
     topology::{
-        Device, Interface, IpAddressData, PhysicalPortId, TopologyHolder, VlanData,
-        VlanGroupData, VxlanData, WlanAuth, WlanData, WlanGroupData, WlanWpaSettings,
+        Device, Interface, IpAddressData, PhysicalPortId, TopologyHolder, VlanData, VlanGroupData,
+        VxlanData, WlanAuth, WlanData, WlanGroupData, WlanWpaSettings,
         access::device::DeviceAccess, builder::TopologyBuilder,
     },
 };
@@ -109,7 +108,11 @@ async fn wlan_group_with(
             name: "Berg".into(),
             mgmt_vlan: None,
             controller: devices[0],
-            aps: if controller_is_ap { devices.into() } else { devices[1..].into() },
+            aps: if controller_is_ap {
+                devices.into()
+            } else {
+                devices[1..].into()
+            },
             wlans: wlans.into(),
         },
     );
@@ -139,7 +142,12 @@ async fn wlan_group_with(
         (devices[2], PhysicalPortId::Wifi(1)),
         (devices[3], PhysicalPortId::Wlan(1)),
     ] {
-        interface(&mut builder, device, "ether1", Some(PhysicalPortId::Ethernet(1)));
+        interface(
+            &mut builder,
+            device,
+            "ether1",
+            Some(PhysicalPortId::Ethernet(1)),
+        );
         interface(&mut builder, device, &radio.to_string(), Some(radio));
     }
     for (idx, (device, name)) in devices
@@ -216,7 +224,10 @@ async fn controller_names_cap_interfaces_after_the_cap() {
     let [controller, ..] = wlan_group(&[104, 105]).await;
     let target = wifi(&controller, b"CCR2004-1G-12S+2XS", RadioPackage::WifiQcom).unwrap();
     let provisioning = target.provisioning.values().next().unwrap();
-    assert_eq!(provisioning.name_format.as_deref(), Some(b"cap-%I-%r".as_slice()));
+    assert_eq!(
+        provisioning.name_format.as_deref(),
+        Some(b"cap-%I-%r".as_slice())
+    );
 }
 
 /// With one VLAN, the CAP sets it on its radios, and the controller none.
@@ -285,20 +296,39 @@ async fn bound_radio_stays_and_its_configuration_is_changed() {
         cap: Default::default(),
         capsman: Default::default(),
         wifi: radios.clone(),
-        configuration: Box::new([configuration("capsman", "dp-caps"), configuration("own", "dp-own")]),
+        configuration: Box::new([
+            configuration("capsman", "dp-caps"),
+            configuration("own", "dp-own"),
+        ]),
         certificate: Box::new([]),
     };
     let bound = [AsciiString::from("wifi1"), AsciiString::from("wifi2")];
     let mut target = WifiDeviceDataTarget::new(b"C52iG-5HaxD2HaxD");
     target
-        .generate_from(&ap_ax, &setup, Some(&current), &[], Some(RadioPackage::WifiQcom), &bound)
+        .generate_from(
+            &ap_ax,
+            &setup,
+            Some(&current),
+            &[],
+            Some(RadioPackage::WifiQcom),
+            &bound,
+        )
         .unwrap();
-    assert_eq!(target.wifi[&Some(AsciiString::from("wifi1"))], radios[0].data);
-    assert_eq!(target.wifi[&Some(AsciiString::from("wifi2"))], radios[1].data);
+    assert_eq!(
+        target.wifi[&Some(AsciiString::from("wifi1"))],
+        radios[0].data
+    );
+    assert_eq!(
+        target.wifi[&Some(AsciiString::from("wifi2"))],
+        radios[1].data
+    );
     // `capsman` gets the datapath NetBox wants, `own` stays with its datapath
     let capsman = &target.configuration[&AsciiString::from("capsman")].0;
     assert_eq!(capsman.datapath, Some("bridge-caps".into()));
-    assert_eq!(target.configuration[&AsciiString::from("own")].0.datapath, Some("dp-own".into()));
+    assert_eq!(
+        target.configuration[&AsciiString::from("own")].0.datapath,
+        Some("dp-own".into())
+    );
     assert!(target.datapath.contains_key(&AsciiString::from("dp-own")));
     assert!(!target.datapath.contains_key(&AsciiString::from("dp-caps")));
 
@@ -311,9 +341,11 @@ async fn bound_radio_stays_and_its_configuration_is_changed() {
             .chain([(ReferenceType::Interface, b"bridge-caps".into())]),
     )
     .unwrap();
-    let position = |found: &dyn Fn(&ResourceMutation) -> bool| sorted.iter().position(|m| found(m)).unwrap();
+    let position =
+        |found: &dyn Fn(&ResourceMutation) -> bool| sorted.iter().position(|m| found(m)).unwrap();
     let configuration_set = position(&|m| {
-        m.resource == b"interface/wifi/configuration" && m.fields.iter().any(|f| f.key == b"datapath")
+        m.resource == b"interface/wifi/configuration"
+            && m.fields.iter().any(|f| f.key == b"datapath")
     });
     let datapath_removal = position(&|m| {
         m.resource == b"interface/wifi/datapath"
@@ -325,7 +357,9 @@ async fn bound_radio_stays_and_its_configuration_is_changed() {
     for mutation in sorted.iter() {
         generator.append_mutation(mutation).unwrap();
     }
-    println!("--- Szenario: gebundene Radios, ihre Konfiguration bekommt den Datapath ---\n{script}");
+    println!(
+        "--- Szenario: gebundene Radios, ihre Konfiguration bekommt den Datapath ---\n{script}"
+    );
     // nothing set on the bound radios
     assert!(
         !sorted
@@ -405,10 +439,20 @@ async fn ac_cap_moving_to_wireless_frees_the_names() {
         certificate: Box::new([]),
     };
     let mut wifi = WifiDeviceDataTarget::new(b"RBwAPG-5HacD2HnD");
-    wifi.generate_from(&ap_legacy, &setup, Some(&current), &[], Some(RadioPackage::Wireless), &[])
-        .unwrap();
+    wifi.generate_from(
+        &ap_legacy,
+        &setup,
+        Some(&current),
+        &[],
+        Some(RadioPackage::Wireless),
+        &[],
+    )
+    .unwrap();
     for name in ["wifi1", "wifi2"] {
-        assert_eq!(wifi.wifi[&Some(AsciiString::from(name))].name, AsciiString::from(name));
+        assert_eq!(
+            wifi.wifi[&Some(AsciiString::from(name))].name,
+            AsciiString::from(name)
+        );
     }
 
     let mut radios = build_wireless_ports(b"RB912UAG-2HPnD");
@@ -543,7 +587,14 @@ async fn cap_radios_managed_by_capsman_sort() {
     };
     let mut target = WifiDeviceDataTarget::new(b"C52iG-5HaxD2HaxD");
     target
-        .generate_from(&ap_ax, &setup, Some(&current), &[], Some(RadioPackage::WifiQcom), &[])
+        .generate_from(
+            &ap_ax,
+            &setup,
+            Some(&current),
+            &[],
+            Some(RadioPackage::WifiQcom),
+            &[],
+        )
         .unwrap();
     let mutations = target.generate_mutations(&current).unwrap();
     assert!(
@@ -579,7 +630,14 @@ async fn cap_radios_get_the_configuration_after_it_is_added() {
     };
     let mut target = WifiDeviceDataTarget::new(b"C52iG-5HaxD2HaxD");
     target
-        .generate_from(&ap_ax, &setup, Some(&current), &[], Some(RadioPackage::WifiQcom), &[])
+        .generate_from(
+            &ap_ax,
+            &setup,
+            Some(&current),
+            &[],
+            Some(RadioPackage::WifiQcom),
+            &[],
+        )
         .unwrap();
     let mutations = target.generate_mutations(&current).unwrap();
     let bridge = (ReferenceType::Interface, b"bridge-caps".into());
@@ -588,7 +646,8 @@ async fn cap_radios_get_the_configuration_after_it_is_added() {
         provided_by_routeros().into_iter().chain([bridge]),
     )
     .unwrap();
-    let position = |found: &dyn Fn(&ResourceMutation) -> bool| sorted.iter().position(|m| found(m)).unwrap();
+    let position =
+        |found: &dyn Fn(&ResourceMutation) -> bool| sorted.iter().position(|m| found(m)).unwrap();
     let added = position(&|m| m.resource == b"interface/wifi/configuration");
     let radio = position(&|m| {
         m.resource == b"interface/wifi" && m.fields.iter().any(|f| f.key == b"configuration")
@@ -643,14 +702,30 @@ async fn controller_running_its_own_radios_bridges_them() {
     ] {
         let [controller, ..] = wlan_group_with(vlans, true, &[PhysicalPortId::Wifi(1)]).await;
         let target = wifi(&controller, b"C52iG-5HaxD2HaxD", RadioPackage::WifiQcom).unwrap();
-        assert!(!matches!(target.cap.enabled, YesNo::Yes), "{:?}", target.cap);
+        assert!(
+            !matches!(target.cap.enabled, YesNo::Yes),
+            "{:?}",
+            target.cap
+        );
         for (name, vlan) in expected {
             let configuration = &target.configuration[&AsciiString::from(*name)].0;
-            assert_eq!(configuration.datapath_bridge, Some("bridge-caps".into()), "{name}");
-            assert_eq!(configuration.datapath_vlan_id, Some(HasNone::Value(*vlan)), "{name}");
+            assert_eq!(
+                configuration.datapath_bridge,
+                Some("bridge-caps".into()),
+                "{name}"
+            );
+            assert_eq!(
+                configuration.datapath_vlan_id,
+                Some(HasNone::Value(*vlan)),
+                "{name}"
+            );
         }
         // no CAP configuration for them, CAPsMAN binds them
-        assert!(!target.configuration.contains_key(&AsciiString::from("capsman")));
+        assert!(
+            !target
+                .configuration
+                .contains_key(&AsciiString::from("capsman"))
+        );
         assert_eq!(target.wifi[&Some("wifi1".into())].configuration, None);
     }
 }

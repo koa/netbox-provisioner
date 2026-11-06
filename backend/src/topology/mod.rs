@@ -23,17 +23,17 @@ use tokio::{
 };
 
 pub mod access;
+pub mod builder;
 pub mod fetch;
 pub mod findings;
 pub mod forwards;
+mod graphql;
 pub mod interfaces;
-pub mod vlan_domain;
 pub mod management;
 pub mod natural;
-mod graphql;
-pub mod builder;
 #[cfg(test)]
 pub(crate) mod test;
+pub mod vlan_domain;
 
 #[derive(Debug, Default, Clone)]
 pub struct TopologyHolder {
@@ -183,7 +183,10 @@ impl Topology {
             ("interfaces", *interfaces == other.interfaces),
             ("front_ports", *front_ports == other.front_ports),
             ("rear_ports", *rear_ports == other.rear_ports),
-            ("circuit_terminations", *circuit_terminations == other.circuit_terminations),
+            (
+                "circuit_terminations",
+                *circuit_terminations == other.circuit_terminations,
+            ),
             ("cables", *cables == other.cables),
             ("vxlans", *vxlans == other.vxlans),
             ("wlan_groups", *wlan_groups == other.wlan_groups),
@@ -237,7 +240,9 @@ impl Topology {
     }
     /// The IP address NetBox has with the host `host`, of any length.
     pub(crate) fn ip_address_with_host(&self, host: std::net::IpAddr) -> Option<&IpAddressData> {
-        self.ip_addresses.values().find(|address| address.ip.addr() == host)
+        self.ip_addresses
+            .values()
+            .find(|address| address.ip.addr() == host)
     }
     /// The smallest prefix NetBox has that holds `net`, `net` itself included.
     pub(crate) fn smallest_prefix_holding(&self, net: IpNet) -> Option<&IpPrefixData> {
@@ -725,16 +730,13 @@ static SFP_PLUS_PORT_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^sfp-sfpplus([0-9]+)$").unwrap());
 static SFP28_PORT_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^sfp28-([0-9]+)$").unwrap());
-static SFP_PORT_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new("^sfp([0-9]+)$").unwrap());
+static SFP_PORT_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new("^sfp([0-9]+)$").unwrap());
 static COMBO_PORT_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^combo([0-9]+)$").unwrap());
 static QSFP_PLUS_PORT_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^qsfpplus([0-9]+)-([0-9]+)$").unwrap());
-static WIFI_PORT_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new("^wifi([0-9]+)$").unwrap());
-static WLAN_PORT_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new("^wlan([0-9]+)$").unwrap());
+static WIFI_PORT_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new("^wifi([0-9]+)$").unwrap());
+static WLAN_PORT_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new("^wlan([0-9]+)$").unwrap());
 static W60G_PORT_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^wlan60-([0-9]+)$").unwrap());
 impl PhysicalPortId {
@@ -846,9 +848,23 @@ impl Display for PhysicalPortId {
 
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct InterfaceId(pub u32);
-#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Eq,
+    Hash,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub struct DeviceId(pub u32);
-#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct SiteId(pub u32);
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct VxlanId(pub u32);

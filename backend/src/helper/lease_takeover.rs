@@ -83,15 +83,23 @@ pub async fn options() -> Result<LeaseTakeoverOptions, Error> {
         })
         .collect::<Vec<_>>();
     roles.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(LeaseTakeoverOptions { device_types, roles })
+    Ok(LeaseTakeoverOptions {
+        device_types,
+        roles,
+    })
 }
 
-pub async fn plan(topology: &Arc<Topology>, input: &LeaseTakeoverInput) -> Result<NetboxPlan, Error> {
+pub async fn plan(
+    topology: &Arc<Topology>,
+    input: &LeaseTakeoverInput,
+) -> Result<NetboxPlan, Error> {
     let rest = NetboxRest::reader()?;
     let device_type = rest
         .get(&format!("dcim/device-types/{}/", input.device_type))
         .await?;
-    let role = rest.get(&format!("dcim/device-roles/{}/", input.role)).await?;
+    let role = rest
+        .get(&format!("dcim/device-roles/{}/", input.role))
+        .await?;
     let text = |value: &Value| value.as_str().map(Box::from).unwrap_or_default();
     let facts = Facts {
         device_type: text(&device_type["model"]),
@@ -131,7 +139,10 @@ pub(crate) fn base(
     if name.is_empty() {
         return Err(Error::NoDeviceName);
     }
-    if topology.list_devices().any(|d| d.name().eq_ignore_ascii_case(name)) {
+    if topology
+        .list_devices()
+        .any(|d| d.name().eq_ignore_ascii_case(name))
+    {
         return Err(Error::DeviceNameTaken(name.into()));
     }
     // the network of the router's DHCP server that holds it

@@ -10,7 +10,8 @@ use backend::network_state::edges::{Edge, EdgeState, Lsdb, edges};
 use backend::network_state::lsa::Lsa;
 use backend::topology::builder::TopologyBuilder;
 use backend::topology::{
-    Cable, CablePort, Device, DeviceId, Interface, InterfaceId, IpAddressData, PhysicalPortId, TopologyHolder,
+    Cable, CablePort, Device, DeviceId, Interface, InterfaceId, IpAddressData, PhysicalPortId,
+    TopologyHolder,
 };
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
@@ -104,9 +105,9 @@ async fn run(
         .send_command(
             command.as_bytes(),
             |cmd| {
-                attributes
-                    .iter()
-                    .fold(cmd, |cmd, (key, value)| cmd.attribute(key.as_bytes(), value.as_bytes()))
+                attributes.iter().fold(cmd, |cmd, (key, value)| {
+                    cmd.attribute(key.as_bytes(), value.as_bytes())
+                })
             },
             (),
         )
@@ -131,11 +132,13 @@ async fn lsdb(device: &MikrotikDevice<SimpleResult>) -> Lsdb {
 
 /// The state of the edge r1–r2 and of r2–r3.
 fn states(edges: &[Edge], far_edge: (InterfaceId, InterfaceId)) -> (EdgeState, EdgeState) {
-    let is_far = |edge: &&Edge| {
-        (edge.a, edge.b) == far_edge || (edge.b, edge.a) == far_edge
-    };
+    let is_far = |edge: &&Edge| (edge.a, edge.b) == far_edge || (edge.b, edge.a) == far_edge;
     let far = edges.iter().find(is_far).expect("the edge r2–r3").state;
-    let near = edges.iter().find(|edge| !is_far(edge)).expect("the edge r1–r2").state;
+    let near = edges
+        .iter()
+        .find(|edge| !is_far(edge))
+        .expect("the edge r1–r2")
+        .state;
     (near, far)
 }
 
@@ -169,9 +172,18 @@ async fn the_lsdb_gives_the_state_of_each_edge() {
         apply_directly(&nodes[&router], &access).await;
         devices.push(access);
     }
-    let r1 = nodes[&routers[0]].connect_api(crate::TEST_PASSWORD).await.expect("r1 api");
-    let r2 = nodes[&routers[1]].connect_api(crate::TEST_PASSWORD).await.expect("r2 api");
-    let r3 = nodes[&routers[2]].connect_api(crate::TEST_PASSWORD).await.expect("r3 api");
+    let r1 = nodes[&routers[0]]
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("r1 api");
+    let r2 = nodes[&routers[1]]
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("r2 api");
+    let r3 = nodes[&routers[2]]
+        .connect_api(crate::TEST_PASSWORD)
+        .await
+        .expect("r3 api");
     for instance in ["default-v2", "default-v3"] {
         wait_for_ospf_full(&r2, instance, Duration::from_secs(180))
             .await

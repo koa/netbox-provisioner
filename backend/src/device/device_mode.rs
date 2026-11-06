@@ -15,13 +15,13 @@
 //! the user for the confirmation and checks the result afterwards.
 use crate::{
     Error,
-    device_state::DeviceModeState,
     config::CONFIG,
     device::{
         power::PowerChain,
         raw::{Row, field, rows},
         update::{DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason},
     },
+    device_state::DeviceModeState,
     graphql::scalars::ScalarDuration,
     job::Log,
     topology::access::device::DeviceAccess,
@@ -194,14 +194,17 @@ pub async fn change_to(
             |cmd| {
                 changes
                     .iter()
-                    .fold(cmd, |cmd, change| cmd.attribute(change.feature.as_bytes(), b"yes".as_slice()))
+                    .fold(cmd, |cmd, change| {
+                        cmd.attribute(change.feature.as_bytes(), b"yes".as_slice())
+                    })
                     .attribute(b"activation-timeout".as_slice(), confirm_timeout.as_bytes())
             },
             (),
             None,
         )
         .await;
-    let refused = |message: &str| Error::Refused(format!("/system/device-mode/update: {message}").into());
+    let refused =
+        |message: &str| Error::Refused(format!("/system/device-mode/update: {message}").into());
     match timeout(Duration::from_secs(30), countdown.next()).await {
         Ok(Some(SimpleResult::Sentence(_))) => {}
         Ok(Some(SimpleResult::Trap { message, .. })) => return Err(refused(&message)),
@@ -251,7 +254,11 @@ pub async fn change_to(
             left = mode.changes;
         }
         if Instant::now() > deadline {
-            let features = left.iter().map(|c| &*c.feature).collect::<Vec<_>>().join(", ");
+            let features = left
+                .iter()
+                .map(|c| &*c.feature)
+                .collect::<Vec<_>>()
+                .join(", ");
             return Err(Error::DeviceModeUnchanged(features.into()));
         }
     }
@@ -289,7 +296,11 @@ mod tests {
             }]
         );
         // home mode has the scheduler off; a 16 MiB device gets no partitions
-        let home = mode(&[("mode", "home"), ("scheduler", "false"), ("partitions", "false")]);
+        let home = mode(&[
+            ("mode", "home"),
+            ("scheduler", "false"),
+            ("partitions", "false"),
+        ]);
         assert_eq!(
             missing(&home, &wanted_for(false, false)),
             [DeviceModeChange {

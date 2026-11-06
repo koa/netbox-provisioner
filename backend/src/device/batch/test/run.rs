@@ -36,10 +36,17 @@ struct Fake {
 
 impl Fake {
     fn call(&self, what: &str) {
-        self.calls.lock().unwrap().push(format!("{what} {}", self.name));
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("{what} {}", self.name));
     }
     fn fails(&self, fails: bool) -> Result<(), Error> {
-        if fails { Err(Error::MissingCredentials) } else { Ok(()) }
+        if fails {
+            Err(Error::MissingCredentials)
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -74,7 +81,12 @@ impl Applying for Fake {
         self.fails(self.arm_fails)?;
         Ok(!self.no_scheduler)
     }
-    async fn write(&self, _lead: Duration, _rearm: Option<Duration>, _log: &Log) -> Result<(), Error> {
+    async fn write(
+        &self,
+        _lead: Duration,
+        _rearm: Option<Duration>,
+        _log: &Log,
+    ) -> Result<(), Error> {
         self.call("write");
         self.fails(self.write_fails)
     }
@@ -100,7 +112,13 @@ impl Watched for Fake {
     }
     async fn check(&self, _settled: Instant) -> Option<Result<Box<str>, Error>> {
         // a script not started leaves its device as it was
-        (!self.lost).then(|| Ok(if self.left || self.start_fails { "set x".into() } else { "".into() }))
+        (!self.lost).then(|| {
+            Ok(if self.left || self.start_fails {
+                "set x".into()
+            } else {
+                "".into()
+            })
+        })
     }
     fn pending(&self) -> Option<(Pending, Instant)> {
         // seen at the first check: a device's fallback fires at one time, however often asked
@@ -108,7 +126,11 @@ impl Watched for Fake {
         self.pending.map(|pending| (pending, seen))
     }
     async fn last_look(&self) -> Result<Box<str>, Error> {
-        if self.lost { Err(Error::MissingCredentials) } else { Ok("".into()) }
+        if self.lost {
+            Err(Error::MissingCredentials)
+        } else {
+            Ok("".into())
+        }
     }
     async fn stop(&self, _fires: Instant, _delay: Duration, _log: &Log) -> Result<(), Error> {
         self.call("stop");
@@ -123,8 +145,18 @@ impl Watched for Fake {
 async fn batch(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>, Vec<Log>) {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let delays = Arc::new(Mutex::new(Vec::new()));
-    let near = Fake { name: "near", calls: calls.clone(), delays: delays.clone(), ..near };
-    let far = Fake { name: "far", calls: calls.clone(), delays: delays.clone(), ..far };
+    let near = Fake {
+        name: "near",
+        calls: calls.clone(),
+        delays: delays.clone(),
+        ..near
+    };
+    let far = Fake {
+        name: "far",
+        calls: calls.clone(),
+        delays: delays.clone(),
+        ..far
+    };
     let logs = vec![Log::new("near"), Log::new("far")];
     let results = run(
         vec![near, far],
@@ -166,8 +198,16 @@ async fn all_back_takes_every_fallback_away() {
     assert_eq!(
         calls,
         [
-            "plan near", "plan far", "arm near", "write near", "arm far", "write far",
-            "start near", "start far", "stop near", "stop far"
+            "plan near",
+            "plan far",
+            "arm near",
+            "write near",
+            "arm far",
+            "write far",
+            "start near",
+            "start far",
+            "stop near",
+            "stop far"
         ]
     );
     assert!(results.iter().all(Result::is_ok), "{results:?}");
@@ -176,13 +216,26 @@ async fn all_back_takes_every_fallback_away() {
 /// A device whose device mode has the scheduler off has no fallback to take away or leave.
 #[tokio::test]
 async fn a_device_without_scheduler_has_no_fallback_to_stop() {
-    let (calls, results, _) = batch(Fake { no_scheduler: true, ..Fake::default() }, Fake::default()).await;
+    let (calls, results, _) = batch(
+        Fake {
+            no_scheduler: true,
+            ..Fake::default()
+        },
+        Fake::default(),
+    )
+    .await;
     assert!(calls.contains(&"stop far".to_string()), "{calls:?}");
     assert!(!calls.contains(&"stop near".to_string()), "{calls:?}");
     assert!(results.iter().all(Result::is_ok), "{results:?}");
     let (_, _, logs) = batch(
-        Fake { no_scheduler: true, ..Fake::default() },
-        Fake { lost: true, ..Fake::default() },
+        Fake {
+            no_scheduler: true,
+            ..Fake::default()
+        },
+        Fake {
+            lost: true,
+            ..Fake::default()
+        },
     )
     .await;
     assert_eq!(left(&logs[0]), []);
@@ -191,10 +244,22 @@ async fn a_device_without_scheduler_has_no_fallback_to_stop() {
 
 #[tokio::test]
 async fn one_not_back_leaves_every_fallback() {
-    let (calls, results, logs) = batch(Fake::default(), Fake { lost: true, ..Fake::default() }).await;
-    assert!(!calls.iter().any(|call| call.starts_with("stop")), "{calls:?}");
+    let (calls, results, logs) = batch(
+        Fake::default(),
+        Fake {
+            lost: true,
+            ..Fake::default()
+        },
+    )
+    .await;
     assert!(
-        results.iter().all(|r| matches!(r, Err(Error::BatchIncomplete(d)) if &**d == "far")),
+        !calls.iter().any(|call| call.starts_with("stop")),
+        "{calls:?}"
+    );
+    assert!(
+        results
+            .iter()
+            .all(|r| matches!(r, Err(Error::BatchIncomplete(d)) if &**d == "far")),
         "{results:?}"
     );
     assert_eq!(left(&logs[0]), [FallbackLeftReason::BatchIncomplete]);
@@ -204,9 +269,24 @@ async fn one_not_back_leaves_every_fallback() {
 /// lab-w60-b: reached over another way, but its script never ran
 #[tokio::test]
 async fn one_back_but_not_in_line_leaves_every_fallback() {
-    let (calls, results, logs) = batch(Fake::default(), Fake { left: true, ..Fake::default() }).await;
-    assert!(!calls.iter().any(|call| call.starts_with("stop")), "{calls:?}");
-    assert!(results.iter().all(|r| matches!(r, Err(Error::BatchIncomplete(_)))), "{results:?}");
+    let (calls, results, logs) = batch(
+        Fake::default(),
+        Fake {
+            left: true,
+            ..Fake::default()
+        },
+    )
+    .await;
+    assert!(
+        !calls.iter().any(|call| call.starts_with("stop")),
+        "{calls:?}"
+    );
+    assert!(
+        results
+            .iter()
+            .all(|r| matches!(r, Err(Error::BatchIncomplete(_)))),
+        "{results:?}"
+    );
     assert_eq!(left(&logs[0]), [FallbackLeftReason::BatchIncomplete]);
     assert_eq!(left(&logs[1]), [FallbackLeftReason::NotApplied]);
 }
@@ -214,15 +294,33 @@ async fn one_back_but_not_in_line_leaves_every_fallback() {
 /// the others' scripts go on; the one not started leaves its device not in line
 #[tokio::test]
 async fn a_script_not_started_sends_all_back() {
-    let (calls, results, logs) = batch(Fake { start_fails: true, ..Fake::default() }, Fake::default()).await;
+    let (calls, results, logs) = batch(
+        Fake {
+            start_fails: true,
+            ..Fake::default()
+        },
+        Fake::default(),
+    )
+    .await;
     assert!(calls.contains(&"start far".to_string()), "{calls:?}");
-    assert!(!calls.iter().any(|call| call.starts_with("stop") || call.starts_with("remove")), "{calls:?}");
-    assert!(results.iter().all(|r| matches!(r, Err(Error::BatchIncomplete(d)) if &**d == "near")), "{results:?}");
+    assert!(
+        !calls
+            .iter()
+            .any(|call| call.starts_with("stop") || call.starts_with("remove")),
+        "{calls:?}"
+    );
+    assert!(
+        results
+            .iter()
+            .all(|r| matches!(r, Err(Error::BatchIncomplete(d)) if &**d == "near")),
+        "{results:?}"
+    );
     assert_eq!(left(&logs[0]), [FallbackLeftReason::NotApplied]);
     assert_eq!(left(&logs[1]), [FallbackLeftReason::BatchIncomplete]);
-    let started_with_error = logs[0].events().into_iter().any(|event| {
-        matches!(event, Event::ApplyStarted(started) if started.error.is_some())
-    });
+    let started_with_error = logs[0]
+        .events()
+        .into_iter()
+        .any(|event| matches!(event, Event::ApplyStarted(started) if started.error.is_some()));
     assert!(started_with_error);
 }
 
@@ -230,8 +328,17 @@ async fn a_script_not_started_sends_all_back() {
 #[tokio::test]
 async fn a_radio_change_lengthens_every_fallback() {
     let delays = Arc::new(Mutex::new(Vec::new()));
-    let near = Fake { name: "near", radio: true, delays: delays.clone(), ..Fake::default() };
-    let far = Fake { name: "far", delays: delays.clone(), ..Fake::default() };
+    let near = Fake {
+        name: "near",
+        radio: true,
+        delays: delays.clone(),
+        ..Fake::default()
+    };
+    let far = Fake {
+        name: "far",
+        delays: delays.clone(),
+        ..Fake::default()
+    };
     let results = run(
         vec![near, far],
         vec![crate::topology::DeviceId(1), crate::topology::DeviceId(2)],
@@ -251,72 +358,188 @@ async fn a_radio_change_lengthens_every_fallback() {
     assert!(results.iter().all(Result::is_ok), "{results:?}");
     let delays = delays.lock().unwrap();
     assert_eq!(delays.len(), 2);
-    assert!(delays.iter().all(|d| *d > Duration::from_millis(400)), "{delays:?}");
+    assert!(
+        delays.iter().all(|d| *d > Duration::from_millis(400)),
+        "{delays:?}"
+    );
 }
 
 /// A changed radio holds the watchdogs before the fallbacks, restores them once all are
 /// back or nothing is applied, and leaves them while the fallbacks may still fire.
 #[tokio::test]
 async fn a_changed_radio_holds_the_watchdogs_until_all_are_back() {
-    let radio = || Fake { radio: true, ..Fake::default() };
+    let radio = || Fake {
+        radio: true,
+        ..Fake::default()
+    };
     let (calls, results, _) = batch(radio(), Fake::default()).await;
     assert_eq!(
         calls,
         [
-            "plan near", "plan far", "hold near", "arm near", "write near", "arm far",
-            "write far", "start near", "start far", "stop near", "stop far", "release near"
+            "plan near",
+            "plan far",
+            "hold near",
+            "arm near",
+            "write near",
+            "arm far",
+            "write far",
+            "start near",
+            "start far",
+            "stop near",
+            "stop far",
+            "release near"
         ]
     );
     assert!(results.iter().all(Result::is_ok), "{results:?}");
-    let (calls, _, _) = batch(radio(), Fake { lost: true, ..Fake::default() }).await;
-    assert_eq!(calls.last().map(String::as_str), Some("keep near"), "{calls:?}");
-    let (calls, _, _) = batch(radio(), Fake { write_fails: true, ..Fake::default() }).await;
-    assert_eq!(calls.last().map(String::as_str), Some("release near"), "{calls:?}");
+    let (calls, _, _) = batch(
+        radio(),
+        Fake {
+            lost: true,
+            ..Fake::default()
+        },
+    )
+    .await;
+    assert_eq!(
+        calls.last().map(String::as_str),
+        Some("keep near"),
+        "{calls:?}"
+    );
+    let (calls, _, _) = batch(
+        radio(),
+        Fake {
+            write_fails: true,
+            ..Fake::default()
+        },
+    )
+    .await;
+    assert_eq!(
+        calls.last().map(String::as_str),
+        Some("release near"),
+        "{calls:?}"
+    );
 }
 
 #[tokio::test]
 async fn a_failing_write_starts_nothing() {
-    let (calls, results, _) = batch(Fake { write_fails: true, ..Fake::default() }, Fake::default()).await;
+    let (calls, results, _) = batch(
+        Fake {
+            write_fails: true,
+            ..Fake::default()
+        },
+        Fake::default(),
+    )
+    .await;
     assert_eq!(
         calls,
         [
-            "plan near", "plan far", "arm near", "write near", "arm far", "write far",
-            "remove near", "stop near", "remove far", "stop far"
+            "plan near",
+            "plan far",
+            "arm near",
+            "write near",
+            "arm far",
+            "write far",
+            "remove near",
+            "stop near",
+            "remove far",
+            "stop far"
         ]
     );
-    assert!(matches!(&results[0], Err(Error::MissingCredentials)), "{results:?}");
-    assert!(matches!(&results[1], Err(Error::BatchStopped(d)) if &**d == "near"), "{results:?}");
+    assert!(
+        matches!(&results[0], Err(Error::MissingCredentials)),
+        "{results:?}"
+    );
+    assert!(
+        matches!(&results[1], Err(Error::BatchStopped(d)) if &**d == "near"),
+        "{results:?}"
+    );
 }
 
 #[tokio::test]
 async fn a_failing_plan_applies_nothing() {
-    let (calls, results, _) = batch(Fake { plan_fails: true, ..Fake::default() }, Fake::default()).await;
+    let (calls, results, _) = batch(
+        Fake {
+            plan_fails: true,
+            ..Fake::default()
+        },
+        Fake::default(),
+    )
+    .await;
     assert_eq!(calls, ["plan near", "plan far"]);
-    assert!(matches!(&results[0], Err(Error::MissingCredentials)), "{results:?}");
-    assert!(matches!(&results[1], Err(Error::BatchStopped(d)) if &**d == "near"), "{results:?}");
+    assert!(
+        matches!(&results[0], Err(Error::MissingCredentials)),
+        "{results:?}"
+    );
+    assert!(
+        matches!(&results[1], Err(Error::BatchStopped(d)) if &**d == "near"),
+        "{results:?}"
+    );
 }
 
 #[tokio::test]
 async fn each_failing_plan_keeps_its_own_error() {
-    let failing = || Fake { plan_fails: true, ..Fake::default() };
+    let failing = || Fake {
+        plan_fails: true,
+        ..Fake::default()
+    };
     let (_, results, _) = batch(failing(), failing()).await;
-    assert!(results.iter().all(|r| matches!(r, Err(Error::MissingCredentials))), "{results:?}");
+    assert!(
+        results
+            .iter()
+            .all(|r| matches!(r, Err(Error::MissingCredentials))),
+        "{results:?}"
+    );
 }
 
 #[tokio::test]
 async fn a_failing_fallback_takes_the_others_away() {
-    let (calls, results, _) = batch(Fake { arm_fails: true, ..Fake::default() }, Fake::default()).await;
+    let (calls, results, _) = batch(
+        Fake {
+            arm_fails: true,
+            ..Fake::default()
+        },
+        Fake::default(),
+    )
+    .await;
     assert_eq!(
         calls,
-        ["plan near", "plan far", "arm near", "arm far", "write far", "remove near", "remove far", "stop far"]
+        [
+            "plan near",
+            "plan far",
+            "arm near",
+            "arm far",
+            "write far",
+            "remove near",
+            "remove far",
+            "stop far"
+        ]
     );
-    assert!(matches!(&results[1], Err(Error::BatchStopped(_))), "{results:?}");
+    assert!(
+        matches!(&results[1], Err(Error::BatchStopped(_))),
+        "{results:?}"
+    );
 }
 
 #[tokio::test]
 async fn a_device_in_line_is_left_out() {
-    let (calls, results, _) = batch(Fake { nothing_to_do: true, ..Fake::default() }, Fake::default()).await;
-    assert_eq!(calls, ["plan near", "plan far", "arm far", "write far", "start far", "stop far"]);
+    let (calls, results, _) = batch(
+        Fake {
+            nothing_to_do: true,
+            ..Fake::default()
+        },
+        Fake::default(),
+    )
+    .await;
+    assert_eq!(
+        calls,
+        [
+            "plan near",
+            "plan far",
+            "arm far",
+            "write far",
+            "start far",
+            "stop far"
+        ]
+    );
     assert!(results.iter().all(Result::is_ok), "{results:?}");
 }
 
@@ -325,10 +548,28 @@ async fn a_device_in_line_is_left_out() {
 #[tokio::test]
 async fn a_fired_fallback_ends_the_wait() {
     let started = Instant::now();
-    let near = Fake { pending: Some(Pending::Gone), left: true, ..Fake::default() };
-    let (calls, results, logs) = batch(near, Fake { lost: true, ..Fake::default() }).await;
-    assert!(started.elapsed() < Duration::from_millis(250), "{:?}", started.elapsed());
-    assert!(!calls.iter().any(|call| call.starts_with("stop")), "{calls:?}");
+    let near = Fake {
+        pending: Some(Pending::Gone),
+        left: true,
+        ..Fake::default()
+    };
+    let (calls, results, logs) = batch(
+        near,
+        Fake {
+            lost: true,
+            ..Fake::default()
+        },
+    )
+    .await;
+    assert!(
+        started.elapsed() < Duration::from_millis(250),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(
+        !calls.iter().any(|call| call.starts_with("stop")),
+        "{calls:?}"
+    );
     assert!(results.iter().all(Result::is_err));
     assert_eq!(left(&logs[1]), [FallbackLeftReason::NotReached]);
 }
@@ -338,10 +579,27 @@ async fn a_fired_fallback_ends_the_wait() {
 #[tokio::test]
 async fn a_fallback_brought_forward_bounds_the_wait() {
     let started = Instant::now();
-    let near = Fake { pending: Some(Pending::Armed(Some(Duration::from_millis(50)))), ..Fake::default() };
-    let (calls, results, _) = batch(near, Fake { lost: true, ..Fake::default() }).await;
-    assert!(started.elapsed() < Duration::from_millis(250), "{:?}", started.elapsed());
-    assert!(!calls.iter().any(|call| call.starts_with("stop")), "{calls:?}");
+    let near = Fake {
+        pending: Some(Pending::Armed(Some(Duration::from_millis(50)))),
+        ..Fake::default()
+    };
+    let (calls, results, _) = batch(
+        near,
+        Fake {
+            lost: true,
+            ..Fake::default()
+        },
+    )
+    .await;
+    assert!(
+        started.elapsed() < Duration::from_millis(250),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(
+        !calls.iter().any(|call| call.starts_with("stop")),
+        "{calls:?}"
+    );
     assert!(results.iter().all(Result::is_err));
 }
 
@@ -351,22 +609,33 @@ async fn resumed(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>,
     use crate::device_state::ApplyState;
     let calls = Arc::new(Mutex::new(Vec::new()));
     let logs = vec![Log::new("near"), Log::new("far")];
-    let running = [Fake { name: "near", calls: calls.clone(), ..near }, Fake { name: "far", calls: calls.clone(), ..far }]
-        .into_iter()
-        .zip(&logs)
-        .enumerate()
-        .map(|(index, (member, log))| {
-            log.resume_in(ApplyState::ScriptRunning);
-            Running {
-                index,
-                name: member.name.into(),
-                log: log.clone(),
-                fallback: !member.no_scheduler,
-                member,
-                checked: None,
-            }
-        })
-        .collect();
+    let running = [
+        Fake {
+            name: "near",
+            calls: calls.clone(),
+            ..near
+        },
+        Fake {
+            name: "far",
+            calls: calls.clone(),
+            ..far
+        },
+    ]
+    .into_iter()
+    .zip(&logs)
+    .enumerate()
+    .map(|(index, (member, log))| {
+        log.resume_in(ApplyState::ScriptRunning);
+        Running {
+            index,
+            name: member.name.into(),
+            log: log.clone(),
+            fallback: !member.no_scheduler,
+            member,
+            checked: None,
+        }
+    })
+    .collect();
     let timing = Timing {
         delay: Duration::from_millis(300),
         window: Duration::from_millis(100),
@@ -377,7 +646,15 @@ async fn resumed(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>,
         margin: Duration::ZERO,
     };
     let fires = Instant::now() + Duration::from_millis(300);
-    let results = watch(running, &logs, &timing, fires, timing.delay, vec![None, None]).await;
+    let results = watch(
+        running,
+        &logs,
+        &timing,
+        fires,
+        timing.delay,
+        vec![None, None],
+    )
+    .await;
     for log in &logs {
         assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     }
@@ -392,9 +669,21 @@ async fn a_resumed_batch_keeps_its_rules() {
     let (calls, results, _) = resumed(Fake::default(), Fake::default()).await;
     assert_eq!(calls, ["stop near", "stop far"]);
     assert!(results.iter().all(Result::is_ok), "{results:?}");
-    let (calls, results, logs) = resumed(Fake::default(), Fake { lost: true, ..Fake::default() }).await;
+    let (calls, results, logs) = resumed(
+        Fake::default(),
+        Fake {
+            lost: true,
+            ..Fake::default()
+        },
+    )
+    .await;
     assert!(calls.is_empty(), "{calls:?}");
-    assert!(results.iter().all(|r| matches!(r, Err(Error::BatchIncomplete(_)))), "{results:?}");
+    assert!(
+        results
+            .iter()
+            .all(|r| matches!(r, Err(Error::BatchIncomplete(_)))),
+        "{results:?}"
+    );
     assert_eq!(left(&logs[0]), [FallbackLeftReason::BatchIncomplete]);
     assert_eq!(left(&logs[1]), [FallbackLeftReason::NotReached]);
 }

@@ -15,7 +15,7 @@ pub struct RefreshNeighborsVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "RefreshNeighborsVariables",
+    variables = "RefreshNeighborsVariables"
 )]
 pub struct RefreshNeighbors {
     #[arguments(ids: $ids)]
@@ -32,7 +32,7 @@ pub struct NeighborFindingsVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "SubscriptionAuthenticated",
-    variables = "NeighborFindingsVariables",
+    variables = "NeighborFindingsVariables"
 )]
 pub struct NeighborFindings {
     pub topology: NeighborsTopology,
@@ -42,7 +42,7 @@ pub struct NeighborFindings {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "NeighborFindingsVariables",
+    variables = "NeighborFindingsVariables"
 )]
 pub struct NeighborsTopology {
     pub netbox_url: String,

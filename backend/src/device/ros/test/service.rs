@@ -7,7 +7,12 @@ use mikrotik_model::{
     model::{IpServiceByName, IpServiceCfg},
 };
 
-fn service(name: &str, disabled: bool, available_from: Option<&str>, address: Option<&str>) -> IpServiceByName {
+fn service(
+    name: &str,
+    disabled: bool,
+    available_from: Option<&str>,
+    address: Option<&str>,
+) -> IpServiceByName {
     IpServiceByName {
         name: name.into(),
         data: IpServiceCfg {
@@ -36,10 +41,12 @@ fn service_script(networks: Option<&[IpNet]>, services: Vec<IpServiceByName>) ->
 
 /// RouterOS's services of 7.24.5, all on and open.
 fn factory() -> Vec<IpServiceByName> {
-    ["ftp", "ssh", "telnet", "www", "www-ssl", "winbox", "api", "api-ssl"]
-        .into_iter()
-        .map(|name| service(name, name == "www-ssl", None, None))
-        .collect()
+    [
+        "ftp", "ssh", "telnet", "www", "www-ssl", "winbox", "api", "api-ssl",
+    ]
+    .into_iter()
+    .map(|name| service(name, name == "www-ssl", None, None))
+    .collect()
 }
 
 #[test]
@@ -82,7 +89,10 @@ fn the_api_answers_the_networks() {
     services[6] = service("api", false, Some("10.0.0.0/8"), None);
     services[5] = service("winbox", false, Some("10.0.0.0/8"), None);
     let script = service_script(Some(&networks), services);
-    assert!(script.contains("set [ find name=api dynamic!=yes] available-from=\"192.168.0.0/16,"), "{script}");
+    assert!(
+        script.contains("set [ find name=api dynamic!=yes] available-from=\"192.168.0.0/16,"),
+        "{script}"
+    );
     assert!(!script.contains("winbox"), "{script}");
     // as RouterOS reports it after the apply: nothing more to do
     let mut services = factory();
@@ -115,11 +125,19 @@ fn the_api_stays_open_for_a_client_outside() {
     current.ip_service = factory().into();
     target.setup_services(&current.ip_service, Some(&networks));
     let inside = ["192.168.100.1".parse().unwrap()];
-    assert_eq!(target.keep_api_open_for(&current.ip_service, &inside, &networks), None);
-    let clients = ["192.168.100.1".parse().unwrap(), "2a02:16a:fe00:8000::1".parse().unwrap()];
+    assert_eq!(
+        target.keep_api_open_for(&current.ip_service, &inside, &networks),
+        None
+    );
+    let clients = [
+        "192.168.100.1".parse().unwrap(),
+        "2a02:16a:fe00:8000::1".parse().unwrap(),
+    ];
     assert_eq!(
         target.keep_api_open_for(&current.ip_service, &clients, &networks),
-        Some(ApplyWarning::ApiClientsOutside(ApiClientsOutside { clients: vec!["2a02:16a:fe00:8000::1".into()] }))
+        Some(ApplyWarning::ApiClientsOutside(ApiClientsOutside {
+            clients: vec!["2a02:16a:fe00:8000::1".into()]
+        }))
     );
     let mutations = target.generate_mutations(&current).unwrap();
     let mut script = String::new();
@@ -128,15 +146,27 @@ fn the_api_stays_open_for_a_client_outside() {
         generator.append_mutation(mutation).unwrap();
     }
     assert!(!script.contains("name=api dynamic!=yes]"), "{script}");
-    assert!(script.contains("name=telnet dynamic!=yes] disabled=yes"), "{script}");
+    assert!(
+        script.contains("name=telnet dynamic!=yes] disabled=yes"),
+        "{script}"
+    );
 }
 
 #[test]
 fn a_remote_gives_its_address() {
     use crate::device::ros::graphql::remote_address;
-    assert_eq!(remote_address("10.0.2.2:40374"), Some("10.0.2.2".parse().unwrap()));
-    assert_eq!(remote_address("[2a02:16a:fe00:8000::1]:40374"), Some("2a02:16a:fe00:8000::1".parse().unwrap()));
+    assert_eq!(
+        remote_address("10.0.2.2:40374"),
+        Some("10.0.2.2".parse().unwrap())
+    );
+    assert_eq!(
+        remote_address("[2a02:16a:fe00:8000::1]:40374"),
+        Some("2a02:16a:fe00:8000::1".parse().unwrap())
+    );
     // as lab-wap (7.23.8) reports its cloud connection: no brackets, and the port `:0` makes
     // it a valid address of its own
-    assert_eq!(remote_address("2a02:610:7501:1000::201:0"), Some("2a02:610:7501:1000::201".parse().unwrap()));
+    assert_eq!(
+        remote_address("2a02:610:7501:1000::201:0"),
+        Some("2a02:610:7501:1000::201".parse().unwrap())
+    );
 }

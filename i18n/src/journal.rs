@@ -85,7 +85,9 @@ fn what(left: Left) -> &'static str {
     match left {
         Left::ApplyFallback => "der Fallback des Anwendens (lädt die Konfiguration von vorher)",
         Left::UpdateFallback => "der Fallback des Updates (bootet die alte Partition)",
-        Left::WatchdogSafetyNet => "das Sicherheitsnetz der Watchdogs (stellt sie nach 2 h selbst wieder her)",
+        Left::WatchdogSafetyNet => {
+            "das Sicherheitsnetz der Watchdogs (stellt sie nach 2 h selbst wieder her)"
+        }
     }
 }
 
@@ -103,7 +105,10 @@ fn items(left: &[Left]) -> String {
 
 /// a fallback a job left is gone and the device booted since
 pub fn fired(left: &[Left]) -> String {
-    format!("Ausgelöst, ohne dass ein Job es sah (das Gerät ist seither neu gestartet): {}", items(left))
+    format!(
+        "Ausgelöst, ohne dass ein Job es sah (das Gerät ist seither neu gestartet): {}",
+        items(left)
+    )
 }
 /// on the device, but no job left it
 pub fn found(left: &[Left]) -> String {
@@ -115,7 +120,10 @@ pub fn found(left: &[Left]) -> String {
 }
 /// a job left it, it is gone without a reboot since
 pub fn removed(left: &[Left]) -> String {
-    format!("Nicht mehr da, ohne Neustart seither (von Hand entfernt oder abgelaufen): {}", items(left))
+    format!(
+        "Nicht mehr da, ohne Neustart seither (von Hand entfernt oder abgelaufen): {}",
+        items(left)
+    )
 }
 
 /// The device page's „Verlauf“ (`components::history`): the entries from the journal.

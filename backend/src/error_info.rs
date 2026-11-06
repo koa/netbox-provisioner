@@ -79,11 +79,16 @@ impl From<&Error> for ErrorInfo {
             Error::ErrorGeneratingString(error) => ("SCRIPT", cause(error)),
             Error::Proxy(address, error) => (
                 "PROXY",
-                vec![("address", address.to_string()), ("cause", error.to_string())],
+                vec![
+                    ("address", address.to_string()),
+                    ("cause", error.to_string()),
+                ],
             ),
             Error::ApplyNotAllowed => ("APPLY_NOT_ALLOWED", vec![]),
             Error::UnknownDevice(id) => ("UNKNOWN_DEVICE", vec![("id", id.to_string())]),
-            Error::UnknownDeviceName(name) => ("UNKNOWN_DEVICE_NAME", vec![("device", name.to_string())]),
+            Error::UnknownDeviceName(name) => {
+                ("UNKNOWN_DEVICE_NAME", vec![("device", name.to_string())])
+            }
             Error::UnknownSite(id) => ("UNKNOWN_SITE", vec![("id", id.to_string())]),
             Error::UnknownInterface(id) => ("UNKNOWN_INTERFACE", vec![("id", id.to_string())]),
             Error::NoTopology => ("NO_TOPOLOGY", vec![]),
@@ -103,11 +108,17 @@ impl From<&Error> for ErrorInfo {
             Error::ConsoleNoAnswer(macs) => ("CONSOLE_NO_ANSWER", vec![("macs", macs.to_string())]),
             Error::SetupCommand(command, error) => (
                 "SETUP_COMMAND",
-                vec![("command", command.to_string()), ("cause", error.to_string())],
+                vec![
+                    ("command", command.to_string()),
+                    ("cause", error.to_string()),
+                ],
             ),
             Error::NeighborNoAnswer(neighbor, address) => (
                 "NEIGHBOR_NO_ANSWER",
-                vec![("neighbor", neighbor.to_string()), ("address", address.to_string())],
+                vec![
+                    ("neighbor", neighbor.to_string()),
+                    ("address", address.to_string()),
+                ],
             ),
             Error::NeighborNoForwarding(neighbor, forwarding) => (
                 "NEIGHBOR_NO_FORWARDING",
@@ -116,17 +127,19 @@ impl From<&Error> for ErrorInfo {
                     ("forwarding", forwarding.to_string()),
                 ],
             ),
-            Error::ConsoleSessionEnded(command) => {
-                ("CONSOLE_SESSION_ENDED", vec![("command", command.to_string())])
-            }
+            Error::ConsoleSessionEnded(command) => (
+                "CONSOLE_SESSION_ENDED",
+                vec![("command", command.to_string())],
+            ),
             Error::Refused(error) => ("REFUSED", cause(error)),
             Error::CannotRepartition(count) => {
                 ("CANNOT_REPARTITION", vec![("count", count.to_string())])
             }
             Error::DeviceModeNotConfirmed => ("DEVICE_MODE_NOT_CONFIRMED", vec![]),
-            Error::DeviceModeUnchanged(features) => {
-                ("DEVICE_MODE_UNCHANGED", vec![("features", features.to_string())])
-            }
+            Error::DeviceModeUnchanged(features) => (
+                "DEVICE_MODE_UNCHANGED",
+                vec![("features", features.to_string())],
+            ),
             Error::Download(url, error) => (
                 "DOWNLOAD",
                 vec![("url", url.to_string()), ("cause", error.to_string())],
@@ -155,17 +168,29 @@ impl From<&Error> for ErrorInfo {
                 "UNEXPECTED_AFTER_REBOOT",
                 [("version", version.to_string())]
                     .into_iter()
-                    .chain(firmware.iter().map(|firmware| ("firmware", firmware.to_string())))
+                    .chain(
+                        firmware
+                            .iter()
+                            .map(|firmware| ("firmware", firmware.to_string())),
+                    )
                     .collect(),
             ),
             Error::NotBackAfterReboot => ("NOT_BACK_AFTER_REBOOT", vec![]),
             Error::RebootNotSent => ("REBOOT_NOT_SENT", vec![]),
-            Error::UpdateFailedBefore(message) => ("UPDATE_FAILED_BEFORE", vec![("message", message.to_string())]),
+            Error::UpdateFailedBefore(message) => (
+                "UPDATE_FAILED_BEFORE",
+                vec![("message", message.to_string())],
+            ),
             Error::UpdateRolledBack { partition, version } => (
                 "UPDATE_ROLLED_BACK",
-                vec![("partition", partition.to_string()), ("version", version.to_string())],
+                vec![
+                    ("partition", partition.to_string()),
+                    ("version", version.to_string()),
+                ],
             ),
-            Error::NoPowerSupply(device) => ("NO_POWER_SUPPLY", vec![("device", device.to_string())]),
+            Error::NoPowerSupply(device) => {
+                ("NO_POWER_SUPPLY", vec![("device", device.to_string())])
+            }
             Error::PoePortNotFound { device, port } => (
                 "POE_PORT_NOT_FOUND",
                 vec![("device", device.to_string()), ("port", port.to_string())],
@@ -177,18 +202,25 @@ impl From<&Error> for ErrorInfo {
             ),
             Error::NoDowngrade { running, target } => (
                 "NO_DOWNGRADE",
-                vec![("running", running.to_string()), ("target", target.to_string())],
+                vec![
+                    ("running", running.to_string()),
+                    ("target", target.to_string()),
+                ],
             ),
             Error::NoVersion(version) => ("NO_VERSION", vec![("version", version.to_string())]),
-            Error::NoUpdateFallback(device) => ("NO_UPDATE_FALLBACK", vec![("device", device.to_string())]),
-            Error::OspfNeighborsMissing(neighbors) => {
-                ("OSPF_NEIGHBORS_MISSING", vec![("neighbors", neighbors.to_string())])
+            Error::NoUpdateFallback(device) => {
+                ("NO_UPDATE_FALLBACK", vec![("device", device.to_string())])
             }
+            Error::OspfNeighborsMissing(neighbors) => (
+                "OSPF_NEIGHBORS_MISSING",
+                vec![("neighbors", neighbors.to_string())],
+            ),
             Error::Busy(device) => ("BUSY", vec![("device", device.to_string())]),
             Error::BatchStopped(device) => ("BATCH_STOPPED", vec![("device", device.to_string())]),
-            Error::ScriptNotStarted(waited) => {
-                ("SCRIPT_NOT_STARTED", vec![("seconds", waited.as_secs().to_string())])
-            }
+            Error::ScriptNotStarted(waited) => (
+                "SCRIPT_NOT_STARTED",
+                vec![("seconds", waited.as_secs().to_string())],
+            ),
             Error::BatchIncomplete(devices) => {
                 ("BATCH_INCOMPLETE", vec![("devices", devices.to_string())])
             }
@@ -230,14 +262,18 @@ impl From<&Error> for ErrorInfo {
             Error::TagMissing(tag) => ("TAG_MISSING", vec![("tag", tag.to_string())]),
             Error::PrimaryAddress { address, device } => (
                 "PRIMARY_ADDRESS",
-                vec![("address", address.to_string()), ("device", device.to_string())],
+                vec![
+                    ("address", address.to_string()),
+                    ("device", device.to_string()),
+                ],
             ),
             Error::NothingToDisconnect(port) => {
                 ("NOTHING_TO_DISCONNECT", vec![("port", port.to_string())])
             }
-            Error::NoCustomerNet(interface) => {
-                ("NO_CUSTOMER_NET", vec![("interface", interface.to_string())])
-            }
+            Error::NoCustomerNet(interface) => (
+                "NO_CUSTOMER_NET",
+                vec![("interface", interface.to_string())],
+            ),
             Error::NoBridge(port) => ("NO_BRIDGE", vec![("port", port.to_string())]),
             Error::AddressInNetbox(address) => {
                 ("ADDRESS_IN_NETBOX", vec![("address", address.to_string())])
@@ -270,24 +306,30 @@ impl From<&Error> for ErrorInfo {
             ),
             Error::NoSite(device) => ("NO_SITE", vec![("device", device.to_string())]),
             Error::NoDeviceName => ("NO_DEVICE_NAME", vec![]),
-            Error::DeviceNameTaken(name) => {
-                ("DEVICE_NAME_TAKEN", vec![("name", name.to_string())])
-            }
+            Error::DeviceNameTaken(name) => ("DEVICE_NAME_TAKEN", vec![("name", name.to_string())]),
             Error::UnknownWlanGroup(id) => ("UNKNOWN_WLAN_GROUP", vec![("id", id.to_string())]),
             Error::NoPlatform(name) => ("NO_PLATFORM", vec![("name", name.to_string())]),
             Error::UnknownPrefix(id) => ("UNKNOWN_PREFIX", vec![("id", id.to_string())]),
             Error::UnknownVlan(id) => ("UNKNOWN_VLAN", vec![("id", id.to_string())]),
             Error::NetworkLength { length, parent } => (
                 "NETWORK_LENGTH",
-                vec![("length", length.to_string()), ("parent", parent.to_string())],
+                vec![
+                    ("length", length.to_string()),
+                    ("parent", parent.to_string()),
+                ],
             ),
             Error::NoParent => ("NO_PARENT", Vec::new()),
             Error::NoFreeNetwork { parent, length } => (
                 "NO_FREE_NETWORK",
-                vec![("parent", parent.to_string()), ("length", length.to_string())],
+                vec![
+                    ("parent", parent.to_string()),
+                    ("length", length.to_string()),
+                ],
             ),
             Error::NotEthernet(port) => ("NOT_ETHERNET", vec![("port", port.to_string())]),
-            Error::NoSingleRadio(device) => ("NO_SINGLE_RADIO", vec![("device", device.to_string())]),
+            Error::NoSingleRadio(device) => {
+                ("NO_SINGLE_RADIO", vec![("device", device.to_string())])
+            }
             Error::RadioUnpaired(port) => ("RADIO_UNPAIRED", vec![("port", port.to_string())]),
             Error::NoRouterPort(device) => ("NO_ROUTER_PORT", vec![("device", device.to_string())]),
             Error::WirelessLinkElsewhere { port, far } => {
@@ -335,7 +377,10 @@ impl From<&SetupError> for ErrorInfo {
             SetupError::PortNotFound(port) => ("PORT_NOT_FOUND", one("port", port)),
             SetupError::MissingPrefixOnIpAddress { ip, interface } => (
                 "NO_PREFIX",
-                vec![("net", ip.to_string()), ("interface", interface.to_string())],
+                vec![
+                    ("net", ip.to_string()),
+                    ("interface", interface.to_string()),
+                ],
             ),
             SetupError::MissingAddressOnPrefix { prefix } => {
                 ("NO_ADDRESS_ON_PREFIX", one("prefix", prefix))
@@ -356,7 +401,10 @@ impl From<&SetupError> for ErrorInfo {
             ),
             SetupError::MultipleNetworksOnVlan { vlan, networks } => (
                 "NETWORKS_ON_VLAN",
-                vec![("vlan", vlan.to_string()), ("networks", networks.join(", "))],
+                vec![
+                    ("vlan", vlan.to_string()),
+                    ("networks", networks.join(", ")),
+                ],
             ),
             SetupError::MultipleDhcpServersOnVlan { vlan, servers } => (
                 "DHCP_SERVERS_ON_VLAN",
@@ -373,9 +421,18 @@ impl From<&SetupError> for ErrorInfo {
                     "PORT_IN_BRIDGES",
                     vec![
                         ("port", port.to_string()),
-                        ("vlans", lines(&|v| v.vlan.map(|id| id.to_string()).unwrap_or_default())),
-                        ("vlanNames", lines(&|v| v.vlan_name.as_deref().unwrap_or_default().into())),
-                        ("bridges", lines(&|v| v.bridge.as_deref().unwrap_or_default().into())),
+                        (
+                            "vlans",
+                            lines(&|v| v.vlan.map(|id| id.to_string()).unwrap_or_default()),
+                        ),
+                        (
+                            "vlanNames",
+                            lines(&|v| v.vlan_name.as_deref().unwrap_or_default().into()),
+                        ),
+                        (
+                            "bridges",
+                            lines(&|v| v.bridge.as_deref().unwrap_or_default().into()),
+                        ),
                     ],
                 )
             }
@@ -388,7 +445,9 @@ impl From<&SetupError> for ErrorInfo {
             SetupError::InvalidFrequencyMode(mode) => ("FREQUENCY_MODE", one("mode", mode)),
             SetupError::MissingPackage(package) => ("MISSING_PACKAGE", one("package", package)),
             SetupError::MissingController(device) => ("NO_CONTROLLER", one("device", device)),
-            SetupError::WlanVlansNotTagged(device) => ("WLAN_VLANS_UNTAGGED", one("device", device)),
+            SetupError::WlanVlansNotTagged(device) => {
+                ("WLAN_VLANS_UNTAGGED", one("device", device))
+            }
             SetupError::MtuMismatch {
                 port,
                 mtu,
@@ -428,7 +487,10 @@ impl From<&SetupError> for ErrorInfo {
                     ("port", port.to_string()),
                     ("speed", speed.clone()),
                     ("farEnd", far_end.to_string()),
-                    ("farSpeed", far_speed.as_deref().unwrap_or_default().to_string()),
+                    (
+                        "farSpeed",
+                        far_speed.as_deref().unwrap_or_default().to_string(),
+                    ),
                 ],
             ),
         };
@@ -436,7 +498,11 @@ impl From<&SetupError> for ErrorInfo {
     }
 }
 
-fn info(code: &'static str, params: Vec<(&'static str, String)>, error: &dyn std::fmt::Display) -> ErrorInfo {
+fn info(
+    code: &'static str,
+    params: Vec<(&'static str, String)>,
+    error: &dyn std::fmt::Display,
+) -> ErrorInfo {
     ErrorInfo {
         code,
         params: params
@@ -496,7 +562,9 @@ mod test {
     #[test]
     fn every_code_is_worded_in_german() {
         let source: &'static str = include_str!("error_info.rs");
-        let start = source.find("impl From<&Error> for ErrorInfo").expect("From<&Error>");
+        let start = source
+            .find("impl From<&Error> for ErrorInfo")
+            .expect("From<&Error>");
         let end = source.find("\nfn info(").expect("fn info");
         let codes = source[start..end]
             .split('"')
@@ -512,14 +580,27 @@ mod test {
             .into_iter()
             .filter(|&code| code != "NO_BOOTSTRAP_PATH")
             .filter(|&code| {
-                let info = ErrorInfo { code, params: vec![], message: "untranslated".into() };
+                let info = ErrorInfo {
+                    code,
+                    params: vec![],
+                    message: "untranslated".into(),
+                };
                 i18n::error::server(&info) == "untranslated"
             })
             .collect::<Vec<_>>();
-        assert!(unworded.is_empty(), "codes without German text: {unworded:?}");
-        for obstacle in [BootstrapObstacle::NoIpv4Port, BootstrapObstacle::NoReachableNeighbor] {
+        assert!(
+            unworded.is_empty(),
+            "codes without German text: {unworded:?}"
+        );
+        for obstacle in [
+            BootstrapObstacle::NoIpv4Port,
+            BootstrapObstacle::NoReachableNeighbor,
+        ] {
             let info = ErrorInfo::from(&Error::NoBootstrapPath("lab-ap1".into(), obstacle));
-            let info = ErrorInfo { message: "untranslated".into(), ..info };
+            let info = ErrorInfo {
+                message: "untranslated".into(),
+                ..info
+            };
             assert_ne!(i18n::error::server(&info), "untranslated", "{obstacle:?}");
         }
     }

@@ -1,7 +1,7 @@
 use super::*;
 use crate::topology::{
-    Cable, CablePort, CircuitTermination, Device, DeviceId, FrontPort, Interface,
-    InterfaceId, PhysicalPortId, PortType, RearPort, builder::TopologyBuilder,
+    Cable, CablePort, CircuitTermination, Device, DeviceId, FrontPort, Interface, InterfaceId,
+    PhysicalPortId, PortType, RearPort, builder::TopologyBuilder,
 };
 use std::{str::FromStr, sync::Arc};
 
@@ -108,16 +108,21 @@ fn the_neighbor_of_the_cable_is_no_finding() {
     let mut net = net();
     cable(&mut net.builder, net.r1e1, net.r2e1);
     assert_eq!(net.clone().compare(&[seen("e01", "r2", "e01-r1")]), vec![]);
-    assert_eq!(net.compare(&[seen("e01,bridge", "r2", "bridge/ether1")]), vec![]);
+    assert_eq!(
+        net.compare(&[seen("e01,bridge", "r2", "bridge/ether1")]),
+        vec![]
+    );
 }
 
 #[test]
 fn a_neighbor_without_cable_is_a_missing_cable() {
     let kinds = net().compare(&[seen("ether2", "r2", "ether2")]);
-    assert!(matches!(&kinds[..], [NeighborFindingKind::CableMissing(c)]
+    assert!(
+        matches!(&kinds[..], [NeighborFindingKind::CableMissing(c)]
         if &*c.port.name == "ether2"
             && c.seen[0].interface.as_ref().is_some_and(|i| &*i.name == "ether2")),
-        "{kinds:#?}");
+        "{kinds:#?}"
+    );
 }
 
 #[test]
@@ -125,10 +130,16 @@ fn another_device_or_port_than_the_cable_is_an_error() {
     let mut net = net();
     cable(&mut net.builder, net.r1e1, net.r2e1);
     let kinds = net.clone().compare(&[seen("e01", "r3", "ether1")]);
-    assert!(matches!(&kinds[..], [NeighborFindingKind::CableElsewhere(_)]), "{kinds:#?}");
+    assert!(
+        matches!(&kinds[..], [NeighborFindingKind::CableElsewhere(_)]),
+        "{kinds:#?}"
+    );
     let kinds = net.compare(&[seen("e01", "r2", "ether2")]);
-    assert!(matches!(&kinds[..], [NeighborFindingKind::OtherFarPort(o)]
-        if &*o.seen.interface_name == "ether2"), "{kinds:#?}");
+    assert!(
+        matches!(&kinds[..], [NeighborFindingKind::OtherFarPort(o)]
+        if &*o.seen.interface_name == "ether2"),
+        "{kinds:#?}"
+    );
 }
 
 #[test]
@@ -136,40 +147,67 @@ fn a_cabled_router_not_seen_is_a_hint() {
     let mut net = net();
     cable(&mut net.builder, net.r1e1, net.r2e1);
     let kinds = net.compare(&[]);
-    assert!(matches!(&kinds[..], [NeighborFindingKind::NeighborNotSeen(n)]
-        if &*n.far_end.device.name == "r2"), "{kinds:#?}");
+    assert!(
+        matches!(&kinds[..], [NeighborFindingKind::NeighborNotSeen(n)]
+        if &*n.far_end.device.name == "r2"),
+        "{kinds:#?}"
+    );
 }
 
 #[test]
 fn neighbors_not_in_netbox_are_a_hint() {
     let kinds = net().compare(&[seen("ether2", "customer-ap", "eth0")]);
-    assert!(matches!(&kinds[..], [NeighborFindingKind::NeighborsNotInNetbox(n)]
-        if n.seen.len() == 1), "{kinds:#?}");
+    assert!(
+        matches!(&kinds[..], [NeighborFindingKind::NeighborsNotInNetbox(n)]
+        if n.seen.len() == 1),
+        "{kinds:#?}"
+    );
 }
 
 /// `port` -- front port of a panel, its rear port -- `end` of a circuit: a building's
 /// side of a fiber to another one.
 fn panel_to_circuit(builder: &mut TopologyBuilder, port: InterfaceId, end: CablePort) {
     let panel = builder.devices.next_id();
-    builder.devices.insert(panel, Device { name: "panel".into(), ..Device::default() });
+    builder.devices.insert(
+        panel,
+        Device {
+            name: "panel".into(),
+            ..Device::default()
+        },
+    );
     let front = builder.front_ports.next_id();
     let rear = builder.rear_ports.next_id();
     builder.front_ports.insert(
         front,
-        FrontPort { name: "1".into(), device: panel, rear_port: Some(rear), cable: None },
+        FrontPort {
+            name: "1".into(),
+            device: panel,
+            rear_port: Some(rear),
+            cable: None,
+        },
     );
     builder.rear_ports.insert(
         rear,
-        RearPort { name: "1".into(), device: panel, front_port: Some(front), cable: None },
+        RearPort {
+            name: "1".into(),
+            device: panel,
+            front_port: Some(front),
+            cable: None,
+        },
     );
     for (a, b) in [
         (CablePort::Interface(port), CablePort::FrontPort(front)),
         (CablePort::RearPort(rear), end),
     ] {
         let id = builder.cables.next_id();
-        builder
-            .cables
-            .insert(id, Cable { port_a: Box::new([a]), port_b: Box::new([b]), kind: None });
+        builder.cables.insert(
+            id,
+            Cable {
+                port_a: Box::new([a]),
+                port_b: Box::new([b]),
+                kind: None,
+            },
+        );
     }
 }
 
@@ -183,15 +221,22 @@ fn a_cable_path_goes_through_a_circuit() {
     for (end, peer) in [(a, z), (z, a)] {
         net.builder.circuit_terminations.insert(
             end,
-            CircuitTermination { circuit: "fiber-1".into(), peer: Some(peer), cable: None },
+            CircuitTermination {
+                circuit: "fiber-1".into(),
+                peer: Some(peer),
+                cable: None,
+            },
         );
     }
     panel_to_circuit(&mut net.builder, net.r1e1, CablePort::CircuitTermination(a));
     panel_to_circuit(&mut net.builder, net.r2e1, CablePort::CircuitTermination(z));
     assert_eq!(net.clone().compare(&[seen("e01", "r2", "e01-r1")]), vec![]);
     let kinds = net.compare(&[]);
-    assert!(matches!(&kinds[..], [NeighborFindingKind::NeighborNotSeen(n)]
-        if &*n.far_end.device.name == "r2"), "{kinds:#?}");
+    assert!(
+        matches!(&kinds[..], [NeighborFindingKind::NeighborNotSeen(n)]
+        if &*n.far_end.device.name == "r2"),
+        "{kinds:#?}"
+    );
 }
 
 /// A radio port sees the router behind the other end of its link: no cable is missing.

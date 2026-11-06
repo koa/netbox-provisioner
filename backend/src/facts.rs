@@ -308,7 +308,8 @@ fn new_store() -> Mutex<Store> {
 #[cfg(not(test))]
 static STORE: LazyLock<Mutex<Store>> = LazyLock::new(new_store);
 
-static CHANGES: LazyLock<broadcast::Sender<(u64, Change)>> = LazyLock::new(|| broadcast::channel(1024).0);
+static CHANGES: LazyLock<broadcast::Sender<(u64, Change)>> =
+    LazyLock::new(|| broadcast::channel(1024).0);
 /// The number of the last change announced: who read before a number didn't see changes after it.
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -329,7 +330,10 @@ fn store() -> std::sync::MutexGuard<'static, Store> {
 
 impl Store {
     fn generation(&self, device: Option<DeviceId>) -> u64 {
-        self.everywhere + device.and_then(|d| self.generations.get(&d).copied()).unwrap_or(0)
+        self.everywhere
+            + device
+                .and_then(|d| self.generations.get(&d).copied())
+                .unwrap_or(0)
     }
     fn sweep(&mut self, now: Instant) {
         if now.saturating_duration_since(self.swept) < SWEEP {
@@ -347,7 +351,12 @@ impl Store {
             slot.done.is_some() || slot.running.is_some()
         });
         METRICS.entries.reset();
-        for key in self.slots.iter().filter(|(_, s)| s.done.is_some()).map(|(k, _)| k) {
+        for key in self
+            .slots
+            .iter()
+            .filter(|(_, s)| s.done.is_some())
+            .map(|(k, _)| k)
+        {
             METRICS.entries.with_label_values(&[key.kind.label()]).inc();
         }
     }
@@ -392,10 +401,16 @@ impl Reading {
     /// Whether `change` concerns what was read.
     pub fn concerns(&self, change: &Change) -> bool {
         match change {
-            Change::Stored(key) => key.device.is_some_and(|device| self.peeked.contains(&(device, key.kind))),
+            Change::Stored(key) => key
+                .device
+                .is_some_and(|device| self.peeked.contains(&(device, key.kind))),
             Change::Invalidated(device, kinds) => {
-                self.keys.iter().any(|key| key.device == Some(*device) && kinds.contains(&key.kind))
-                    || kinds.iter().any(|kind| self.peeked.contains(&(*device, *kind)))
+                self.keys
+                    .iter()
+                    .any(|key| key.device == Some(*device) && kinds.contains(&key.kind))
+                    || kinds
+                        .iter()
+                        .any(|kind| self.peeked.contains(&(*device, *kind)))
             }
             Change::Job(device) => self.all_jobs || self.devices.contains(device),
             Change::Topology => true,
@@ -446,7 +461,10 @@ pub fn events_from(job: u32, after: u32) -> u32 {
     READING
         .try_with(|reading| {
             let reading = reading.lock_anyway();
-            reading.delivered.get(&job).map_or(after, |delivered| after.max(*delivered))
+            reading
+                .delivered
+                .get(&job)
+                .map_or(after, |delivered| after.max(*delivered))
         })
         .unwrap_or(after)
 }
@@ -516,7 +534,9 @@ where
             .value
             .downcast_ref::<Result<Arc<T>, Arc<Error>>>()
             .and_then(&max_age);
-        judged.map_or(freshness, Freshness::MaxAge).takes(done.as_of, now)
+        judged
+            .map_or(freshness, Freshness::MaxAge)
+            .takes(done.as_of, now)
     };
     let mut ask = Some(ask);
     loop {
@@ -552,7 +572,11 @@ where
         };
         match waiting {
             Waiting::Join(started, mut answer) => {
-                let came = if ask.is_none() { Came::Asked } else { Came::Joined };
+                let came = if ask.is_none() {
+                    Came::Asked
+                } else {
+                    Came::Joined
+                };
                 let value = match answer.wait_for(Option::is_some).await {
                     Ok(value) => value.clone().expect("waited for it"),
                     // its task panicked
@@ -578,7 +602,9 @@ fn age_of<T: Send + Sync + 'static>(
     value: &Stored,
     max_age: &impl Fn(&Result<Arc<T>, Arc<Error>>) -> Option<Duration>,
 ) -> Option<Duration> {
-    let judged = value.downcast_ref::<Result<Arc<T>, Arc<Error>>>().and_then(max_age);
+    let judged = value
+        .downcast_ref::<Result<Arc<T>, Arc<Error>>>()
+        .and_then(max_age);
     match judged.map_or(freshness, Freshness::MaxAge) {
         Freshness::MaxAge(age) => Some(age),
         Freshness::Since(_) => None,
@@ -590,7 +616,12 @@ enum Waiting {
     Before(watch::Receiver<Option<Stored>>),
 }
 
-fn fact<T: Send + Sync + 'static>(key: &FactKey, value: Stored, as_of: Instant, came: Came) -> Fact<T> {
+fn fact<T: Send + Sync + 'static>(
+    key: &FactKey,
+    value: Stored,
+    as_of: Instant,
+    came: Came,
+) -> Fact<T> {
     METRICS
         .requests
         .with_label_values(&[key.kind.label(), came.label()])
@@ -604,8 +635,13 @@ fn fact<T: Send + Sync + 'static>(key: &FactKey, value: Stored, as_of: Instant, 
 
 /// Asks `key`, hands the answer to who waits and stores it unless a job on the device ended
 /// meanwhile.
-async fn run<T, F>(key: FactKey, started: Instant, generation: u64, ask: F, sender: watch::Sender<Option<Stored>>)
-where
+async fn run<T, F>(
+    key: FactKey,
+    started: Instant,
+    generation: u64,
+    ask: F,
+    sender: watch::Sender<Option<Stored>>,
+) where
     T: Send + Sync + 'static,
     F: Future<Output = Result<T, Error>> + Send + 'static,
 {
@@ -626,7 +662,10 @@ where
         .duration
         .with_label_values(&[label, outcome, key.path])
         .observe(took.as_secs_f64());
-    METRICS.total.with_label_values(&[&device, label, outcome]).inc();
+    METRICS
+        .total
+        .with_label_values(&[&device, label, outcome])
+        .inc();
     let value: Stored = Arc::new(result.map(Arc::new).map_err(Arc::new));
     let kept = {
         let mut store = store();
@@ -662,7 +701,8 @@ pub fn invalidate(device: DeviceId, kinds: &'static [FactKind]) {
             store.dropped.insert((Some(device), *kind), now);
         }
         for (key, slot) in &mut store.slots {
-            if key.device == Some(device) && kinds.contains(&key.kind) && slot.done.take().is_some() {
+            if key.device == Some(device) && kinds.contains(&key.kind) && slot.done.take().is_some()
+            {
                 METRICS.entries.with_label_values(&[key.kind.label()]).dec();
             }
         }
@@ -694,7 +734,10 @@ pub fn peek<T: Send + Sync + 'static>(key: &FactKey) -> Option<Fact<T>> {
     if done.as_of.elapsed() > LIMIT {
         return None;
     }
-    let value = done.value.downcast_ref::<Result<Arc<T>, Arc<Error>>>()?.clone();
+    let value = done
+        .value
+        .downcast_ref::<Result<Arc<T>, Arc<Error>>>()?
+        .clone();
     Some(Fact {
         value,
         as_of: done.as_of,
@@ -721,7 +764,10 @@ pub fn peek_newest<T: Send + Sync + 'static>(
         .filter_map(|(key, slot)| Some((key, slot.done.as_ref()?)))
         .filter(|(_, done)| done.as_of.elapsed() <= LIMIT)
         .max_by_key(|(_, done)| done.as_of)?;
-    let value = done.value.downcast_ref::<Result<Arc<T>, Arc<Error>>>()?.clone();
+    let value = done
+        .value
+        .downcast_ref::<Result<Arc<T>, Arc<Error>>>()?
+        .clone();
     Some(Fact {
         value,
         as_of: done.as_of,
@@ -818,14 +864,23 @@ static METRICS: LazyLock<Metrics> = LazyLock::new(|| Metrics {
     )
     .expect("counter"),
     requests: IntCounterVec::new(
-        Opts::new("fact_cache_requests_total", "Users of a fact, by how they got it"),
+        Opts::new(
+            "fact_cache_requests_total",
+            "Users of a fact, by how they got it",
+        ),
         &["kind", "result"],
     )
     .expect("counter"),
-    entries: IntGaugeVec::new(Opts::new("fact_cache_entries", "Facts in the store"), &["kind"])
-        .expect("gauge"),
-    running: IntGaugeVec::new(Opts::new("fact_queries_running", "Askings running"), &["kind"])
-        .expect("gauge"),
+    entries: IntGaugeVec::new(
+        Opts::new("fact_cache_entries", "Facts in the store"),
+        &["kind"],
+    )
+    .expect("gauge"),
+    running: IntGaugeVec::new(
+        Opts::new("fact_queries_running", "Askings running"),
+        &["kind"],
+    )
+    .expect("gauge"),
 });
 
 /// Puts the metrics of the facts into `registry` (`/metrics`).

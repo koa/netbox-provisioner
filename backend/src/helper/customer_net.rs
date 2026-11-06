@@ -159,7 +159,9 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
     let device = topology
         .get_device_by_id(&DeviceId(input.device))
         .ok_or(Error::UnknownDevice(input.device))?;
-    let site = device.site().ok_or_else(|| Error::NoSite(device.name().into()))?;
+    let site = device
+        .site()
+        .ok_or_else(|| Error::NoSite(device.name().into()))?;
     let parent_of = |id: u32, v6: bool| {
         topology
             .prefix_data(IpPrefixId(id))
@@ -219,7 +221,10 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
         }
     };
     // an address of the family a network is wanted for: the port has its network
-    for (wanted, family) in [(parent.is_some(), ipv4 as fn(&_) -> _), (parent_v6.is_some(), ipv6)] {
+    for (wanted, family) in [
+        (parent.is_some(), ipv4 as fn(&_) -> _),
+        (parent_v6.is_some(), ipv6),
+    ] {
         if let Some(interface) = existing.as_ref().filter(|_| wanted)
             && let Some(address) = family(interface)
         {
@@ -246,7 +251,10 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
 
     let dhcp = input.dhcp.then_some(InterfaceTag::Dhcp);
     let (on, interface_name) = match &existing {
-        Some(interface) => (Target::Existing(interface.id().0), Box::from(interface.name())),
+        Some(interface) => (
+            Target::Existing(interface.id().0),
+            Box::from(interface.name()),
+        ),
         None => {
             let vlan = vlan.as_ref().expect("a VLAN without its interface");
             let name: Box<str> = vlan.name().unwrap_or_default().into();
@@ -367,7 +375,10 @@ async fn next_free(
             continue;
         }
         let addresses = rest
-            .find("ipam/ip-addresses/", &[("parent", &net.to_string()), ("limit", "1")])
+            .find(
+                "ipam/ip-addresses/",
+                &[("parent", &net.to_string()), ("limit", "1")],
+            )
             .await?;
         if addresses["count"].as_u64() == Some(0) {
             return Ok(net);
@@ -436,7 +447,10 @@ mod test {
         assert!(interface.is_enable_dhcp_server());
         let address = ipv4(&interface).expect("the gateway");
         assert_eq!(address.to_string(), "198.51.100.1/24");
-        let prefix = interface.ips()[0].prefix().and_then(|p| p.data().cloned()).unwrap();
+        let prefix = interface.ips()[0]
+            .prefix()
+            .and_then(|p| p.data().cloned())
+            .unwrap();
         assert_eq!(prefix.site, Some(site));
     }
 
@@ -448,8 +462,13 @@ mod test {
         for device in topology.list_devices().filter(|d| d.has_routeros()) {
             let options = options(&device);
             for choice in &options.interfaces {
-                let interface = topology.get_interface_by_id(InterfaceId(choice.id)).unwrap();
-                assert!(open(&interface) && interface.bridge().is_none(), "{choice:?}");
+                let interface = topology
+                    .get_interface_by_id(InterfaceId(choice.id))
+                    .unwrap();
+                assert!(
+                    open(&interface) && interface.bridge().is_none(),
+                    "{choice:?}"
+                );
             }
             let site = device.site().map(|s| s.id());
             for (parents, v6) in [(&options.parents, false), (&options.parents_v6, true)] {
@@ -477,11 +496,14 @@ mod test {
     fn a_client_network_without_ipv6_is_open() {
         let topology = example_topology();
         let client = |v6: bool| {
-            topology.list_devices().flat_map(|d| d.interfaces()).find(|interface| {
-                interface.is_enable_dhcp_server()
-                    && ipv4(interface).is_some()
-                    && ipv6(interface).is_some() == v6
-            })
+            topology
+                .list_devices()
+                .flat_map(|d| d.interfaces())
+                .find(|interface| {
+                    interface.is_enable_dhcp_server()
+                        && ipv4(interface).is_some()
+                        && ipv6(interface).is_some() == v6
+                })
         };
         if let Some(interface) = client(false) {
             assert!(open(&interface), "{}", interface.name());

@@ -296,9 +296,15 @@ mod tests {
         let cut_log = Log::new("t4");
         let cut = ap.power_cut("t4-switch", &cut_log);
         tokio::pin!(cut);
-        assert!(timeout(Duration::from_millis(100), cut.as_mut()).await.is_err());
+        assert!(
+            timeout(Duration::from_millis(100), cut.as_mut())
+                .await
+                .is_err()
+        );
         drop(update);
-        let cut = timeout(Duration::from_secs(1), cut).await.expect("cut after the update");
+        let cut = timeout(Duration::from_secs(1), cut)
+            .await
+            .expect("cut after the update");
         assert_eq!(
             cut_log.events(),
             [Event::WaitingForPower(WaitingForPower {
@@ -308,9 +314,15 @@ mod tests {
         );
         let update = ap.updating(&log);
         tokio::pin!(update);
-        assert!(timeout(Duration::from_millis(100), update.as_mut()).await.is_err());
+        assert!(
+            timeout(Duration::from_millis(100), update.as_mut())
+                .await
+                .is_err()
+        );
         drop(cut);
-        let _update = timeout(Duration::from_secs(1), update).await.expect("update after the cut");
+        let _update = timeout(Duration::from_secs(1), update)
+            .await
+            .expect("update after the cut");
     }
 
     #[tokio::test]
@@ -346,7 +358,9 @@ mod tests {
             .expect("no wait");
         let events = log.events();
         assert!(
-            !events.iter().any(|e| matches!(e, Event::WaitingForPower(_))),
+            !events
+                .iter()
+                .any(|e| matches!(e, Event::WaitingForPower(_))),
             "{events:?}"
         );
     }

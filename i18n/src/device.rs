@@ -128,8 +128,7 @@ pub fn device_mode_missing(features: &[String]) -> String {
 pub const UNREACHABLE: &str = "Gerät nicht erreichbar";
 pub const UNREACHABLE_HINT: &str = "Mit einer anderen Adresse oder anderen Zugangsdaten versuchen:";
 pub const NOT_GENERATED: &str = "Keine Konfiguration erzeugt";
-pub const NOT_GENERATED_HINT: &str =
-    "Der Fehler steht oben.";
+pub const NOT_GENERATED_HINT: &str = "Der Fehler steht oben.";
 pub const IN_LINE: &str = "Gerät entspricht NetBox";
 
 pub fn update_to(version: &str) -> String {
@@ -156,7 +155,11 @@ pub fn downgrade_confirm(version: &str) -> String {
 }
 
 pub fn packages(installed: &[String], wanted: &[String]) -> String {
-    format!(" (Pakete: {}; nach dem Update: {})", installed.join(", "), wanted.join(", "))
+    format!(
+        " (Pakete: {}; nach dem Update: {})",
+        installed.join(", "),
+        wanted.join(", ")
+    )
 }
 
 /// what the channel select shows, e.g. `stable: 7.20.8`
@@ -219,10 +222,13 @@ pub mod warning {
         format!("Soll der Strom an {port} wirklich abgeschaltet werden?")
     }
 
-
     /// the board's radios run with `package`
     pub fn cap_off_outside_wlan_group(package: &str) -> String {
-        let menu = if package == "wireless" { "/interface wireless" } else { "/interface wifi" };
+        let menu = if package == "wireless" {
+            "/interface wireless"
+        } else {
+            "/interface wifi"
+        };
         format!(
             "Das Gerät ist in NetBox in keiner WLAN-Gruppe und nutzt keinen seiner Funk-Ports: \
              sein CAP ({menu} cap) ist danach aus, es sendet kein WLAN. Für einen Access Point \
@@ -237,7 +243,11 @@ pub mod warning {
             Some(port) => format!("Der PoE-Watchdog an {port}"),
             None => "Der Ping-Watchdog".to_string(),
         };
-        let device = if device.is_empty() { String::new() } else { format!(" ({device})") };
+        let device = if device.is_empty() {
+            String::new()
+        } else {
+            format!(" ({device})")
+        };
         format!(
             "{watchdog} soll {address}{device} überwachen, aber die Adresse antwortet vom Gerät \
              aus nicht: er bleibt, wie er ist, bis sie antwortet (ein Gerät ohne erstes \
@@ -247,7 +257,11 @@ pub mod warning {
 
     /// clients of the plain API outside `api_networks`, connected now
     pub fn api_clients_outside(clients: &[impl AsRef<str>]) -> String {
-        let clients = clients.iter().map(AsRef::as_ref).collect::<Vec<_>>().join(", ");
+        let clients = clients
+            .iter()
+            .map(AsRef::as_ref)
+            .collect::<Vec<_>>()
+            .join(", ");
         format!(
             "Die API (Port 8728) soll nur noch aus api_networks antworten, aber gerade ist sie \
              auch mit {clients} verbunden, darunter vielleicht der Provisioner selbst: sie bleibt, \
@@ -265,7 +279,9 @@ pub mod leftovers {
 
     /// `next_run`: as the device reports it
     fn next(next_run: Option<&str>) -> String {
-        next_run.map(|run| format!(" Nächster Lauf laut Gerät: {run}.")).unwrap_or_default()
+        next_run
+            .map(|run| format!(" Nächster Lauf laut Gerät: {run}."))
+            .unwrap_or_default()
     }
     pub fn apply_fallback(next_run: Option<&str>) -> String {
         format!(

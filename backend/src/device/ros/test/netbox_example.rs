@@ -111,11 +111,7 @@ fn generate(device: &DeviceAccess) -> Result<String, String> {
             .collect(),
     };
     let w60g_current = W60GDeviceDataCurrent {
-        radio: w60g
-            .radio
-            .values()
-            .cloned()
-            .collect(),
+        radio: w60g.radio.values().cloned().collect(),
     };
     target
         .generate_from(device, EndpointNameGenerator)

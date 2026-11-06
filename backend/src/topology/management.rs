@@ -44,7 +44,10 @@ impl ManagementTree {
             .collect::<BTreeSet<_>>();
         // hops from the nearest root, then the parent: of the neighbors one hop nearer, one
         // it is cabled to (not one across a radio bridge's segment), then by name
-        let mut depth = roots.iter().map(|root| (*root, 0)).collect::<HashMap<_, _>>();
+        let mut depth = roots
+            .iter()
+            .map(|root| (*root, 0))
+            .collect::<HashMap<_, _>>();
         let mut todo = devices
             .iter()
             .filter(|device| roots.contains(&device.id()))

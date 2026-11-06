@@ -13,9 +13,9 @@ use crate::chr_network::golden_image::GoldenImage;
 use crate::chr_network::scenario::boot_scenario;
 use crate::chr_network::vm::{RunningNode, mac_of};
 use crate::chr_network::wait::wait_for_ospf_full;
+use backend::device::bootstrap::{MacTelnetSetup, set_up};
 use backend::device::ros::graphql::DeviceCfg;
 use backend::device::ros::l2::KeepNameGenerator;
-use backend::device::bootstrap::{MacTelnetSetup, set_up};
 use backend::device::terminal::{Terminal, Tunnel};
 use backend::topology::builder::TopologyBuilder;
 use backend::topology::{
@@ -74,7 +74,8 @@ fn build_chain(link_len: u8) -> ChainTopology {
             builder.ip_addresses.insert(
                 ip_id,
                 IpAddressData {
-                    ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(10, 0, net3, octet4)), link_len).unwrap(),
+                    ip: IpNet::new(IpAddr::V4(Ipv4Addr::new(10, 0, net3, octet4)), link_len)
+                        .unwrap(),
                     interface: None,
                     prefix: None,
                 },
@@ -191,7 +192,8 @@ async fn bootstrap_node_directly(
     // CHR has no /system/routerboard at all (it's not a physical
     // RouterBOARD), so the board model has to be supplied explicitly rather
     // than detected live - it's the same board this node was booted with.
-    let mut cfg = DeviceCfg::fetch_with_board_model(&typed_client, b"RB750Gr3", &device_access).await?;
+    let mut cfg =
+        DeviceCfg::fetch_with_board_model(&typed_client, b"RB750Gr3", &device_access).await?;
     eprintln!("  [{}] generating target config...", node.name);
     cfg.generate_from(&device_access, KeepNameGenerator)?;
     eprintln!("  [{}] generating mutations...", node.name);
@@ -280,10 +282,19 @@ async fn mac_telnet_login(from: &RunningNode, mac: &str) -> bool {
     .await
     .expect("ssh");
     terminal.sync(Duration::from_secs(20)).await.expect("sync");
-    terminal.send_line(&format!("/tool mac-telnet {mac}")).await.unwrap();
-    terminal.expect(&["Login:"], Duration::from_secs(20)).await.expect("login prompt");
+    terminal
+        .send_line(&format!("/tool mac-telnet {mac}"))
+        .await
+        .unwrap();
+    terminal
+        .expect(&["Login:"], Duration::from_secs(20))
+        .await
+        .expect("login prompt");
     terminal.send_line("admin").await.unwrap();
-    terminal.expect(&["Password:"], Duration::from_secs(20)).await.expect("password prompt");
+    terminal
+        .expect(&["Password:"], Duration::from_secs(20))
+        .await
+        .expect("password prompt");
     terminal.send_line(crate::TEST_PASSWORD).await.unwrap();
     let connected = terminal
         .expect(&["Connected to"], Duration::from_secs(30))
@@ -504,7 +515,12 @@ async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
         31 => ("10.0.22.0", "10.0.22.1/31"),
         _ => ("10.0.22.1", "10.0.22.2/24"),
     };
-    run(&target_simple, "/ip/address/remove", &[("numbers", &address_id(&target_simple, target_address).await)]).await;
+    run(
+        &target_simple,
+        "/ip/address/remove",
+        &[("numbers", &address_id(&target_simple, target_address).await)],
+    )
+    .await;
     drop(target_simple);
     let mut terminal = Terminal::connect(
         ([127, 0, 0, 1], nodes[&a].ssh_port).into(),
@@ -535,7 +551,10 @@ async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     let rescued = loop {
         let attempt = async {
-            let stream = tunnel.open(target_ip, 8728).await.map_err(|e| e.to_string())?;
+            let stream = tunnel
+                .open(target_ip, 8728)
+                .await
+                .map_err(|e| e.to_string())?;
             mikrotik_api::prelude::MikrotikDevice::<mikrotik_api::simple::SimpleResult>::connect_with_stream(
                 stream,
                 b"admin",
@@ -546,11 +565,15 @@ async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
         };
         match tokio::time::timeout(Duration::from_secs(15), attempt).await {
             Ok(Ok(device)) => break device,
-            result if tokio::time::Instant::now() > deadline => panic!("target not reached through a: {result:?}"),
+            result if tokio::time::Instant::now() > deadline => {
+                panic!("target not reached through a: {result:?}")
+            }
             _ => tokio::time::sleep(Duration::from_secs(2)).await,
         }
     };
-    let mut s = rescued.send_simple_command(b"/system/identity/print".as_slice(), ()).await;
+    let mut s = rescued
+        .send_simple_command(b"/system/identity/print".as_slice(), ())
+        .await;
     while let Some(r) = s.next().await {
         eprintln!("rescued target: {r:?}");
     }
@@ -587,7 +610,8 @@ async fn address_id(
             id = row.get(".id").cloned().flatten();
         }
     }
-    id.unwrap_or_else(|| panic!("no address {address}")).to_string()
+    id.unwrap_or_else(|| panic!("no address {address}"))
+        .to_string()
 }
 
 /// Runs `command` with `attributes`, printing the answers.
@@ -600,9 +624,9 @@ async fn run(
         .send_command(
             command.as_bytes(),
             |cmd| {
-                attributes
-                    .iter()
-                    .fold(cmd, |cmd, (key, value)| cmd.attribute(key.as_bytes(), value.as_bytes()))
+                attributes.iter().fold(cmd, |cmd, (key, value)| {
+                    cmd.attribute(key.as_bytes(), value.as_bytes())
+                })
             },
             (),
         )

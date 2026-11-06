@@ -47,10 +47,13 @@ pub struct DiscardSavedJobVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "DiscardSavedJobVariables",
+    variables = "DiscardSavedJobVariables"
 )]
 pub struct DiscardSavedJob {
     #[arguments(deviceId: $device_id)]
-    #[expect(dead_code, reason = "selected because a mutation needs a field; the page reloads")]
+    #[expect(
+        dead_code,
+        reason = "selected because a mutation needs a field; the page reloads"
+    )]
     pub discard_saved_job: bool,
 }

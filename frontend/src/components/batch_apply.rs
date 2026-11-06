@@ -22,7 +22,9 @@ use patternfly_yew::prelude::{
     CodeBlockCode, Spinner, SpinnerSize,
 };
 use std::collections::{BTreeSet, HashMap};
-use yew::{Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
+use yew::{
+    Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local,
+};
 use yew_nested_router::components::Link;
 
 /// A job of a started batch, as the device page shows it next to the others.
@@ -50,7 +52,11 @@ pub struct BatchApplyProps {
 pub enum Planned {
     Loading,
     /// the planned changes (empty: in line) and the warnings
-    Ready { script: String, warnings: Vec<String>, connected: Option<String> },
+    Ready {
+        script: String,
+        warnings: Vec<String>,
+        connected: Option<String>,
+    },
     /// why it can't be applied
     Problem(String),
 }
@@ -168,7 +174,9 @@ impl Component for BatchApply {
         }
         let candidates = match &self.candidates {
             None => html!(<Spinner size={SpinnerSize::Md}/>),
-            Some(Err(error)) => html!(<Alert inline=true r#type={AlertType::Danger} title={error.clone()}/>),
+            Some(Err(error)) => {
+                html!(<Alert inline=true r#type={AlertType::Danger} title={error.clone()}/>)
+            }
             Some(Ok(candidates)) if candidates.is_empty() => html!(<p>{t::NO_CANDIDATES}</p>),
             Some(Ok(candidates)) => html! {
                 <ul class="batch-candidates">
@@ -209,7 +217,10 @@ impl Component for BatchApply {
 impl BatchApply {
     fn pick(&mut self, ctx: &Context<Self>, id: i32) {
         self.picked.insert(id);
-        if !matches!(self.planned.get(&id), Some(Planned::Ready { .. } | Planned::Loading)) {
+        if !matches!(
+            self.planned.get(&id),
+            Some(Planned::Ready { .. } | Planned::Loading)
+        ) {
             self.planned.insert(id, Planned::Loading);
             fetch_planned(ctx.link().clone(), id);
         }
@@ -270,13 +281,13 @@ fn fetch_candidates(scope: Scope<BatchApply>, id: u32) {
         let variables = DeviceVariables { id: id as i32 };
         let result = request(scope.clone(), BatchCandidates::build(variables))
             .await
-        .map_err(|e| e.message())
-        .map(|data| {
-            data.topology
-                .device_by_id
-                .map(|d| d.batch_candidates)
-                .unwrap_or_default()
-        });
+            .map_err(|e| e.message())
+            .map(|data| {
+                data.topology
+                    .device_by_id
+                    .map(|d| d.batch_candidates)
+                    .unwrap_or_default()
+            });
         scope.send_message(BatchMessage::Candidates(result));
     });
 }
@@ -299,7 +310,9 @@ fn fetch_planned(scope: Scope<BatchApply>, id: i32) {
                 match access {
                     None => Planned::Problem(problem.unwrap_or_else(|| t::NO_ACCESS.into())),
                     Some(access) => match access.generate_cfg {
-                        None => Planned::Problem(problem.unwrap_or_else(|| device::NOT_GENERATED.into())),
+                        None => Planned::Problem(
+                            problem.unwrap_or_else(|| device::NOT_GENERATED.into()),
+                        ),
                         Some(cfg) => Planned::Ready {
                             script: cfg.script,
                             warnings: cfg.warnings.iter().map(describe_warning).collect(),
@@ -319,15 +332,18 @@ fn fetch_planned(scope: Scope<BatchApply>, id: i32) {
 
 fn start(scope: Scope<BatchApply>, ids: Vec<i32>) {
     spawn_local(async move {
-        let result = request(scope.clone(), ApplyBatch::build(ApplyBatchVariables { ids }))
-            .await
-            .map(|data| {
-                data.apply_batch
-                    .into_iter()
-                    // a batch's jobs are each a device's
-                    .filter_map(|job| Some((job.id, job.device_id?, job.device_name?)))
-                    .collect()
-            });
+        let result = request(
+            scope.clone(),
+            ApplyBatch::build(ApplyBatchVariables { ids }),
+        )
+        .await
+        .map(|data| {
+            data.apply_batch
+                .into_iter()
+                // a batch's jobs are each a device's
+                .filter_map(|job| Some((job.id, job.device_id?, job.device_name?)))
+                .collect()
+        });
         scope.send_message(BatchMessage::Started(result));
     });
 }

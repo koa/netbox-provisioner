@@ -2,14 +2,15 @@
 //! the controller, which has the WLAN's VLAN (VXLAN of its group) with an address.
 use crate::{
     device::ros::{
-        BaseDeviceDataTarget, CapsManDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
+        BaseDeviceDataTarget, CapsManDeviceDataTarget, WirelessDeviceDataCurrent,
+        WirelessDeviceDataTarget,
         hw_facts::RadioPackage,
         l2::{EndpointNameGenerator, KeepNameGenerator, KeptNames, L2Port, L2Setup, NameGenerator},
         needed_radio_package,
     },
     topology::{
-        Device, Interface, IpAddressData, PhysicalPortId, TopologyHolder, VlanData,
-        VlanGroupData, VxlanData, WlanAuth, WlanData, WlanGroupData, WlanWpaSettings,
+        Device, Interface, IpAddressData, PhysicalPortId, TopologyHolder, VlanData, VlanGroupData,
+        VxlanData, WlanAuth, WlanData, WlanGroupData, WlanWpaSettings,
         access::device::DeviceAccess, builder::TopologyBuilder,
     },
 };
@@ -17,9 +18,8 @@ use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
-        CapsAuthenticationTypes, CapsManDatapathVlanMode, CapsManProvisioningNameFormat, InterfaceBridgeCfg,
-        InterfaceBridgeProtocolMode,
-        InterfaceWirelessByDefaultName,
+        CapsAuthenticationTypes, CapsManDatapathVlanMode, CapsManProvisioningNameFormat,
+        InterfaceBridgeCfg, InterfaceBridgeProtocolMode, InterfaceWirelessByDefaultName,
     },
     value::HasNone,
 };
@@ -123,12 +123,36 @@ async fn wlan_group_with(radios: u16) -> (DeviceAccess, DeviceAccess, DeviceAcce
         );
     };
     interface(controller, "wlan", None, Some(vlan), Box::new([gateway]));
-    interface(legacy_cap, "ether1", Some(PhysicalPortId::Ethernet(1)), None, Box::new([]));
+    interface(
+        legacy_cap,
+        "ether1",
+        Some(PhysicalPortId::Ethernet(1)),
+        None,
+        Box::new([]),
+    );
     for radio in 1..=radios {
-        interface(legacy_cap, &format!("wlan{radio}"), Some(PhysicalPortId::Wlan(radio)), None, Box::new([]));
+        interface(
+            legacy_cap,
+            &format!("wlan{radio}"),
+            Some(PhysicalPortId::Wlan(radio)),
+            None,
+            Box::new([]),
+        );
     }
-    interface(wifi_cap, "ether1", Some(PhysicalPortId::Ethernet(1)), None, Box::new([]));
-    interface(wifi_cap, "wifi1", Some(PhysicalPortId::Wifi(1)), None, Box::new([]));
+    interface(
+        wifi_cap,
+        "ether1",
+        Some(PhysicalPortId::Ethernet(1)),
+        None,
+        Box::new([]),
+    );
+    interface(
+        wifi_cap,
+        "wifi1",
+        Some(PhysicalPortId::Wifi(1)),
+        None,
+        Box::new([]),
+    );
     for (device, name, loopback) in [
         (controller, "lab-core", loopbacks[0]),
         (legacy_cap, "lab-ap1", loopbacks[1]),
@@ -164,8 +188,15 @@ async fn legacy_cap_has_the_wlan_vlan() {
     assert!(wifi_cap.wifi_cap_of().is_some());
 
     let setup = L2Setup::new(&legacy_cap, KeepNameGenerator).unwrap();
-    assert_eq!(setup.tagged_bridges.len(), 1, "a bridge for the WLAN's VLAN");
-    assert_eq!(setup.tagged_bridges[0].name, AsciiString::from("bridge-caps"));
+    assert_eq!(
+        setup.tagged_bridges.len(),
+        1,
+        "a bridge for the WLAN's VLAN"
+    );
+    assert_eq!(
+        setup.tagged_bridges[0].name,
+        AsciiString::from("bridge-caps")
+    );
 
     let controller_setup = L2Setup::new(&controller, KeepNameGenerator).unwrap();
     let vteps = controller_setup
@@ -247,7 +278,10 @@ async fn controller_runs_the_legacy_capsman() {
     assert_eq!(datapath.local_forwarding, Some(true));
     let provisioning = target.provisioning.values().next().unwrap();
     assert_eq!(provisioning.master_configuration, name);
-    assert_eq!(provisioning.name_format, CapsManProvisioningNameFormat::PrefixIdentity);
+    assert_eq!(
+        provisioning.name_format,
+        CapsManProvisioningNameFormat::PrefixIdentity
+    );
     assert_eq!(provisioning.name_prefix, "cap".into());
 }
 
@@ -302,11 +336,19 @@ async fn managed_legacy_radio_keeps_its_name() {
 #[tokio::test]
 async fn caps_bridge_runs_no_stp() {
     let (_, legacy_cap, wifi_cap) = wlan_group().await;
-    for (device, model) in [(&legacy_cap, b"SXT G-5HPacD".as_slice()), (&wifi_cap, b"C52iG-5HaxD2HaxD")] {
+    for (device, model) in [
+        (&legacy_cap, b"SXT G-5HPacD".as_slice()),
+        (&wifi_cap, b"C52iG-5HaxD2HaxD"),
+    ] {
         let mut target = BaseDeviceDataTarget::new(model).unwrap();
         target.generate_from(device, KeepNameGenerator).unwrap();
         let bridge = &target.bridge[&AsciiString::from("bridge-caps")].0;
-        assert_eq!(bridge.protocol_mode, InterfaceBridgeProtocolMode::None, "{}", device.name());
+        assert_eq!(
+            bridge.protocol_mode,
+            InterfaceBridgeProtocolMode::None,
+            "{}",
+            device.name()
+        );
         // RouterOS keeps the STP settings hidden and can't clear them (`forward-delay=""` is
         // invalid), so they stay at its defaults rather than being emptied
         let defaults = InterfaceBridgeCfg::default();
@@ -341,9 +383,18 @@ async fn swapped_radio_names_stay_in_the_cap() {
     current.wireless_cap.interfaces = ["wlan2".into(), "wlan1".into()].into();
     let kept = current.managed_radios();
     let managed = kept.keys().cloned().collect::<HashSet<_>>();
-    let setup = L2Setup::new(&legacy_cap, KeptNames { inner: EndpointNameGenerator, kept }).unwrap();
+    let setup = L2Setup::new(
+        &legacy_cap,
+        KeptNames {
+            inner: EndpointNameGenerator,
+            kept,
+        },
+    )
+    .unwrap();
     let mut target = WirelessDeviceDataTarget::new(b"RBwAPG-5HacT2HnD");
-    target.generate_from(&legacy_cap, &setup, Some(&current)).unwrap();
+    target
+        .generate_from(&legacy_cap, &setup, Some(&current))
+        .unwrap();
     target.keep_managed_radios(&current, &managed);
     assert_eq!(
         target.wireless_cap.interfaces,

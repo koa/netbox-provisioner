@@ -12,14 +12,22 @@ pub struct MapVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "QueryAuthenticated", variables = "MapVariables")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "QueryAuthenticated",
+    variables = "MapVariables"
+)]
 pub struct NetworkMap {
     pub allow_netbox_write: bool,
     pub topology: MapTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "TopologyHolder", variables = "MapVariables")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "TopologyHolder",
+    variables = "MapVariables"
+)]
 pub struct MapTopology {
     #[arguments(siteId: $site)]
     pub network_state: NetworkState,
@@ -66,13 +74,21 @@ pub struct MapEdge {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "QueryAuthenticated", variables = "MapVariables")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "QueryAuthenticated",
+    variables = "MapVariables"
+)]
 pub struct NetworkMapDetails {
     pub topology: DetailsTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "TopologyHolder", variables = "MapVariables")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "TopologyHolder",
+    variables = "MapVariables"
+)]
 pub struct DetailsTopology {
     #[arguments(siteId: $site)]
     pub network_state_details: NetworkStateDetails,
@@ -131,7 +147,7 @@ pub struct PublishLayoutVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "PublishLayoutVariables",
+    variables = "PublishLayoutVariables"
 )]
 pub struct PublishLayout {
     #[arguments(positions: $positions)]

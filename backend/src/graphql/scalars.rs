@@ -76,9 +76,18 @@ mod tests {
 
     #[test]
     fn parses_macs() {
-        assert_eq!(parse(" d4:01:c3:29:67:64 ").as_deref(), Some("D4:01:C3:29:67:64"));
-        assert_eq!(parse("D4-01-C3-29-67-64").as_deref(), Some("D4:01:C3:29:67:64"));
-        assert_eq!(parse("00:0a:00:01:00:0f").as_deref(), Some("00:0A:00:01:00:0F"));
+        assert_eq!(
+            parse(" d4:01:c3:29:67:64 ").as_deref(),
+            Some("D4:01:C3:29:67:64")
+        );
+        assert_eq!(
+            parse("D4-01-C3-29-67-64").as_deref(),
+            Some("D4:01:C3:29:67:64")
+        );
+        assert_eq!(
+            parse("00:0a:00:01:00:0f").as_deref(),
+            Some("00:0A:00:01:00:0F")
+        );
         assert_eq!(parse("D4:01:C3:29:67"), None);
         assert_eq!(parse("D4:01:C3:29:67:6G"), None);
     }

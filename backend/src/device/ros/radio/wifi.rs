@@ -83,7 +83,10 @@ impl WifiDeviceDataTarget {
             self.wifi.insert(port.default_name.clone(), data);
         }
         let in_wlan = device.wifi_cap_of().is_some() || device.wlan_controller_of().is_some();
-        for certificate in current.iter().flat_map(|current| current.certificate.iter()) {
+        for certificate in current
+            .iter()
+            .flat_map(|current| current.certificate.iter())
+        {
             if in_wlan || !capsman_certificates.contains(&certificate.0.name) {
                 self.certificate
                     .insert(certificate.0.name.clone(), certificate.clone());
@@ -104,10 +107,9 @@ impl WifiDeviceDataTarget {
             let wlan_bridge = group.wlan().find_map(|wlan| l2.bridge_of_wlan(&wlan));
             let tags = radio_package.is_some_and(RadioPackage::tags_vlans);
             // an AP without radios in NetBox (a controller also marked as AP) has none to tag
-            let has_radios = device
-                .interfaces()
-                .iter()
-                .any(|interface| matches!(interface.external_port(), Some(PhysicalPortId::Wifi(_))));
+            let has_radios = device.interfaces().iter().any(|interface| {
+                matches!(interface.external_port(), Some(PhysicalPortId::Wifi(_)))
+            });
             if wlan_vlans == WlanVlans::PerWlan && !tags && has_radios {
                 return Err(SetupError::WlanVlansNotTagged(device.name().into()));
             }
@@ -124,7 +126,11 @@ impl WifiDeviceDataTarget {
                     .ok_or(SetupError::PortNotFound(port))?;
                 let placement = l2.placement_of_port(port);
                 // with a VLAN per WLAN, the controller's configurations have them
-                let vlan = match (placement.and_then(|(_, bridge)| bridge), wlan_bridge, wlan_vlans) {
+                let vlan = match (
+                    placement.and_then(|(_, bridge)| bridge),
+                    wlan_bridge,
+                    wlan_vlans,
+                ) {
                     (None, Some(_), WlanVlans::One(Some(vlan))) if tags => Some(vlan),
                     _ => None,
                 };
@@ -142,7 +148,9 @@ impl WifiDeviceDataTarget {
                     datapath.vlan_id = vlan.map(HasNone::Value);
                     datapath.disabled = false;
                     // virtual interfaces of the CAP use the one of the first radio
-                    self.cap.slaves_datapath.get_or_insert_with(|| bridge.clone());
+                    self.cap
+                        .slaves_datapath
+                        .get_or_insert_with(|| bridge.clone());
                 }
                 let configuration_name = match cap_configurations
                     .iter()
@@ -211,7 +219,9 @@ impl WifiDeviceDataTarget {
                     .flat_map(|current| current.datapath.iter())
                     .find(|used| used.0.name == datapath)
             {
-                self.datapath.entry(datapath).or_insert_with(|| used.clone());
+                self.datapath
+                    .entry(datapath)
+                    .or_insert_with(|| used.clone());
             }
         }
         if let Some(group) = device.wlan_controller_of() {
@@ -253,9 +263,11 @@ impl WifiDeviceDataTarget {
                 configuration.datapath_bridge = own_bridge.cloned();
                 match wlan.auth() {
                     Some(WlanAuth::Wpa(settings)) => {
-                        configuration.security_authentication_types =
-                            [WifiAuthenticationTypes::Wpa2Psk, WifiAuthenticationTypes::Wpa3Psk]
-                                .into();
+                        configuration.security_authentication_types = [
+                            WifiAuthenticationTypes::Wpa2Psk,
+                            WifiAuthenticationTypes::Wpa3Psk,
+                        ]
+                        .into();
                         configuration.security_passphrase = Some(settings.psk().into());
                     }
                     Some(WlanAuth::Open(settings)) if settings.use_owe => {

@@ -135,7 +135,11 @@ pub mod event {
     }
     pub fn script_progress(p: Progress) -> Vec<String> {
         let mut out = Vec::new();
-        let read = if p.after_fallback { "Nach dem Fallback vom Gerät gelesen: " } else { "" };
+        let read = if p.after_fallback {
+            "Nach dem Fallback vom Gerät gelesen: "
+        } else {
+            ""
+        };
         out.push(match (p.done, p.error) {
             (_, Some((line, error))) => format!(
                 "{read}Das Skript hat in Zeile {line} von {} angehalten: {error}; die Zeilen \
@@ -153,9 +157,9 @@ pub mod event {
             },
         });
         match p.probe {
-            None => out.push(
-                "Ohne Ping zum Provisioner: das Gerät kennt seine Adresse nicht".into(),
-            ),
+            None => {
+                out.push("Ohne Ping zum Provisioner: das Gerät kennt seine Adresse nicht".into())
+            }
             Some((address, false)) => out.push(format!(
                 "Der Provisioner ({address}) antwortete schon vor dem Skript nicht auf Ping, \
                  die Marken sagen nichts darüber, wo das Gerät abgeschnitten wurde"
@@ -178,7 +182,9 @@ pub mod event {
             }
         }
         if let Some(seconds) = p.rearmed {
-            out.push(format!("Am Ende hat das Skript den Fallback auf {seconds} s verkürzt"));
+            out.push(format!(
+                "Am Ende hat das Skript den Fallback auf {seconds} s verkürzt"
+            ));
         }
         out
     }
@@ -202,10 +208,14 @@ pub mod event {
         format!("Skript gestartet, wendet in {seconds} s an")
     }
     pub fn apply_not_started(problem: &str) -> String {
-        format!("Skript nicht gestartet: {problem}; das Gerät bleibt, wie es ist, und alle gehen zurück")
+        format!(
+            "Skript nicht gestartet: {problem}; das Gerät bleibt, wie es ist, und alle gehen zurück"
+        )
     }
     pub fn batch_stopped(device: &str) -> String {
-        format!("Gemeinsames Anwenden abgebrochen, bevor etwas angewendet wurde: {device} ging nicht")
+        format!(
+            "Gemeinsames Anwenden abgebrochen, bevor etwas angewendet wurde: {device} ging nicht"
+        )
     }
     pub fn batch_incomplete(unreached: &[String], not_applied: &[String]) -> String {
         let mut parts = Vec::new();
@@ -246,7 +256,8 @@ pub mod event {
                 "Erreichbar, aber die Änderungen sind nicht angewendet, der Fallback bleibt".into()
             }
             FallbackLeft::BatchIncomplete => {
-                "Ein anderes Gerät des gemeinsamen Anwendens ist nicht durch, der Fallback bleibt".into()
+                "Ein anderes Gerät des gemeinsamen Anwendens ist nicht durch, der Fallback bleibt"
+                    .into()
             }
             FallbackLeft::Other(other) => format!("Fallback bleibt ({other})"),
         };
@@ -256,7 +267,10 @@ pub mod event {
     }
 
     pub fn setup_started(neighbor: &str, port: &str, macs: &[String]) -> String {
-        format!("Konsole auf {neighbor}, MAC-Telnet an {port} zu {}", macs.join(", "))
+        format!(
+            "Konsole auf {neighbor}, MAC-Telnet an {port} zu {}",
+            macs.join(", ")
+        )
     }
     pub fn waiting_for_api(seconds: u64, address: &str) -> String {
         format!("Wartet bis zu {seconds} s, bis das Gerät an {address} die API öffnet")
@@ -282,17 +296,24 @@ pub mod event {
         format!("Das Gerät wird {}", parts.join(" und "))
     }
     pub fn waiting_for_supplier(device: &str) -> String {
-        format!("Wartet, bis {device} (versorgt das Gerät über PoE) nach seinem Neustart zurück ist")
+        format!(
+            "Wartet, bis {device} (versorgt das Gerät über PoE) nach seinem Neustart zurück ist"
+        )
     }
     pub fn waiting_for_consumer(device: &str) -> String {
-        format!("Wartet mit dem Neustart, bis {device} (über PoE versorgt) sein Update abgeschlossen hat")
+        format!(
+            "Wartet mit dem Neustart, bis {device} (über PoE versorgt) sein Update abgeschlossen hat"
+        )
     }
     pub fn waiting_for(device: &str, reason: &str) -> String {
         format!("Wartet auf {device} ({reason})")
     }
 
     pub fn update_start(version: &str, architecture: &str, packages: &[String]) -> String {
-        format!("RouterOS {version} ({architecture}), Pakete: {}", list(packages))
+        format!(
+            "RouterOS {version} ({architecture}), Pakete: {}",
+            list(packages)
+        )
     }
     pub fn update_step(version: &str, files: &[String], uninstall: &[String]) -> String {
         let mut text = format!("Update auf {version}: {}", list(files));
@@ -305,10 +326,15 @@ pub mod event {
         format!("SSH: {setting}={value} wieder gesetzt")
     }
     pub fn ssh_for_upload(setting: &str, value: &str) -> String {
-        format!("SSH: {setting}={value} für die Anmeldung mit Passwort (der Benutzer hat SSH-Schlüssel)")
+        format!(
+            "SSH: {setting}={value} für die Anmeldung mit Passwort (der Benutzer hat SSH-Schlüssel)"
+        )
     }
     pub fn downloaded(file: &str, bytes: u64) -> String {
-        format!("{file}: {:.1} MB heruntergeladen", bytes as f64 / 1_000_000.0)
+        format!(
+            "{file}: {:.1} MB heruntergeladen",
+            bytes as f64 / 1_000_000.0
+        )
     }
     pub fn uploading(file: &str, bytes: u64, total: u64) -> String {
         if bytes == 0 {
@@ -373,9 +399,13 @@ pub mod event {
     }
     pub fn leftover_cleared(cleared: Cleared) -> String {
         match cleared {
-            Cleared::StopApplyFallback => "Fallback des Anwendens gestoppt, die Konfiguration bleibt".into(),
+            Cleared::StopApplyFallback => {
+                "Fallback des Anwendens gestoppt, die Konfiguration bleibt".into()
+            }
             Cleared::ApplyFallbackNow => "Konfiguration von vor dem Anwenden geladen".into(),
-            Cleared::StopUpdateFallback => "Fallback des Updates gestoppt, das laufende RouterOS bleibt".into(),
+            Cleared::StopUpdateFallback => {
+                "Fallback des Updates gestoppt, das laufende RouterOS bleibt".into()
+            }
             Cleared::RestoreWatchdogs => "Watchdogs wiederhergestellt".into(),
             Cleared::RemovePackages => "Hochgeladene Pakete entfernt".into(),
             Cleared::Other(other) => format!("Aufgeräumt: {other}"),
@@ -404,15 +434,21 @@ pub mod event {
         )
     }
     pub fn update_fallback_disarmed(partition: &str) -> String {
-        format!("Gerät erreicht, es schaltet nicht mehr selbst zurück; {partition} bleibt als Weg zurück")
+        format!(
+            "Gerät erreicht, es schaltet nicht mehr selbst zurück; {partition} bleibt als Weg zurück"
+        )
     }
     pub fn update_without_fallback(partitions: i64, neighbors: &[String]) -> String {
         let partitions = match partitions {
             0 => "Ohne zweite Partition (das Gerät hat keine)".to_string(),
-            n => format!("Ohne zweite Partition ({n}, es braucht zwei: Partitionen auf der Geräteseite)"),
+            n => format!(
+                "Ohne zweite Partition ({n}, es braucht zwei: Partitionen auf der Geräteseite)"
+            ),
         };
         match neighbors {
-            [] => format!("{partitions} und ohne Nachbarn, der es erreicht: ohne Weg zurück, so bestätigt"),
+            [] => format!(
+                "{partitions} und ohne Nachbarn, der es erreicht: ohne Weg zurück, so bestätigt"
+            ),
             neighbors => format!(
                 "{partitions}; findet es nicht ins Netz zurück, erreicht der Provisioner es über {}",
                 neighbors.join(", ")
@@ -494,7 +530,11 @@ pub mod event {
         address
             .map(|address| format!("watch-address {address}"))
             .into_iter()
-            .chain(ports.iter().map(|(port, address)| format!("PoE-Ping an {port} auf {address}")))
+            .chain(
+                ports
+                    .iter()
+                    .map(|(port, address)| format!("PoE-Ping an {port} auf {address}")),
+            )
             .collect::<Vec<_>>()
             .join(", ")
     }
@@ -527,7 +567,9 @@ pub mod event {
     }
     /// the job's entry in NetBox' journal couldn't be written; the next state tries again
     pub fn journal_not_written(error: &str) -> String {
-        format!("Eintrag im NetBox-Journal nicht geschrieben, der nächste Stand versucht es wieder: {error}")
+        format!(
+            "Eintrag im NetBox-Journal nicht geschrieben, der nächste Stand versucht es wieder: {error}"
+        )
     }
     pub fn resumed(seconds_ago: u64) -> String {
         format!(
@@ -550,7 +592,10 @@ pub mod event {
         if features.is_empty() {
             "Der Device-Mode hat schon alles, was der Provisioner braucht".into()
         } else {
-            format!("Device-Mode geändert, eingeschaltet: {}", features.join(", "))
+            format!(
+                "Device-Mode geändert, eingeschaltet: {}",
+                features.join(", ")
+            )
         }
     }
 }

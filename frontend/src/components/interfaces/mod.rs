@@ -13,9 +13,7 @@ pub mod table;
 
 use crate::{
     components::{
-        adjust_target::SelectedTarget,
-        findings::finding_list,
-        helper_flow::HelperFlow,
+        adjust_target::SelectedTarget, findings::finding_list, helper_flow::HelperFlow,
         netbox_helper::HelperPreset,
     },
     error::FrontendError,
@@ -40,9 +38,7 @@ use patternfly_yew::prelude::{
 use rows::{Action, Row, Task, View};
 use std::{collections::BTreeMap, rc::Rc};
 use table::{Entry, TaskTable};
-use yew::{
-    Callback, Component, Context, Html, Properties, html, html_nested,
-};
+use yew::{Callback, Component, Context, Html, Properties, html, html_nested};
 
 const FILTER_KEY: &str = "interfaces.task";
 const ONLY_FINDINGS_KEY: &str = "interfaces.onlyFindings";
@@ -114,8 +110,8 @@ impl Component for Interfaces {
     type Properties = InterfacesProps;
 
     fn create(_ctx: &Context<Self>) -> Self {
-        let filter = stored(FILTER_KEY)
-            .and_then(|key| Task::ALL.into_iter().find(|task| task.key() == key));
+        let filter =
+            stored(FILTER_KEY).and_then(|key| Task::ALL.into_iter().find(|task| task.key() == key));
         Self {
             view: None,
             live: Live::Pending,
@@ -141,7 +137,11 @@ impl Component for Interfaces {
             InterfacesMsg::SubscribeLive => {
                 self.live = Live::Pending;
                 let props = ctx.props();
-                self.live_subscription = Some(live::subscribe_live(ctx.link(), props.id, props.target.clone()));
+                self.live_subscription = Some(live::subscribe_live(
+                    ctx.link(),
+                    props.id,
+                    props.target.clone(),
+                ));
             }
             InterfacesMsg::CheckLive => {
                 self.live = Live::Pending;
@@ -157,7 +157,10 @@ impl Component for Interfaces {
             }
             InterfacesMsg::Open(port, action) => {
                 self.flow = Some(Flow {
-                    title: t::flow_title(action.label(), port.as_ref().map(|(_, name)| name.as_str())),
+                    title: t::flow_title(
+                        action.label(),
+                        port.as_ref().map(|(_, name)| name.as_str()),
+                    ),
                     preset: action.preset.clone(),
                     row: port.map(|(id, _)| (id, action)),
                 });
@@ -196,20 +199,24 @@ impl Component for Interfaces {
             Some(Ok(view)) => self.sections(ctx, view),
         };
         let props = ctx.props();
-        let flow = self.flow.as_ref().map(|flow| html! {
-            <HelperFlow
-                id={props.id}
-                target={props.target.clone()}
-                preset={flow.preset.clone()}
-                title={flow.title.clone()}
-                onclose={ctx.link().callback(|()| InterfacesMsg::Close)}
-                on_written={ctx.link().callback(|()| InterfacesMsg::Written)}
-                on_done={ctx.link().callback(InterfacesMsg::Done)}
-                on_apply={props.on_apply.clone()}
-            />
+        let flow = self.flow.as_ref().map(|flow| {
+            html! {
+                <HelperFlow
+                    id={props.id}
+                    target={props.target.clone()}
+                    preset={flow.preset.clone()}
+                    title={flow.title.clone()}
+                    onclose={ctx.link().callback(|()| InterfacesMsg::Close)}
+                    on_written={ctx.link().callback(|()| InterfacesMsg::Written)}
+                    on_done={ctx.link().callback(InterfacesMsg::Done)}
+                    on_apply={props.on_apply.clone()}
+                />
+            }
         });
         let as_of = match &self.live {
-            Live::Checked(checked) => html!(<span class="interfaces-as-of">{as_of(&local_time(checked.read_at))}</span>),
+            Live::Checked(checked) => {
+                html!(<span class="interfaces-as-of">{as_of(&local_time(checked.read_at))}</span>)
+            }
             _ => html!(),
         };
         let check_live = html! {
@@ -251,7 +258,12 @@ impl Interfaces {
         // a task with errors first
         tasks.sort_by_key(|task| {
             let errors = if *task == Task::Loopback {
-                has_error(loopback.iter().flat_map(|r| &r.findings).chain(&view.device_findings))
+                has_error(
+                    loopback
+                        .iter()
+                        .flat_map(|r| &r.findings)
+                        .chain(&view.device_findings),
+                )
             } else {
                 view.rows
                     .iter()
@@ -342,7 +354,13 @@ impl Interfaces {
     }
 
     /// The section of `task`; none when „nur mit Befund“ leaves nothing in it.
-    fn section(&self, ctx: &Context<Self>, task: Task, view: &View, netbox: &Rc<str>) -> Option<Html> {
+    fn section(
+        &self,
+        ctx: &Context<Self>,
+        task: Task,
+        view: &View,
+        netbox: &Rc<str>,
+    ) -> Option<Html> {
         let rows = view
             .rows
             .iter()
@@ -355,9 +373,18 @@ impl Interfaces {
             if self.only_findings && findings == 0 {
                 return None;
             }
-            let on_action = ctx.link().callback(|action| InterfacesMsg::Open(None, action));
+            let on_action = ctx
+                .link()
+                .callback(|action| InterfacesMsg::Open(None, action));
             let changed = loopback.is_some_and(|row| self.changed.contains_key(&row.interface.id));
-            loopback::view(netbox, loopback, &view.device_findings, &view.loopback_actions, changed, &on_action)
+            loopback::view(
+                netbox,
+                loopback,
+                &view.device_findings,
+                &view.loopback_actions,
+                changed,
+                &on_action,
+            )
         } else {
             if rows.is_empty() {
                 return None;
@@ -397,8 +424,9 @@ impl Interfaces {
             };
             let undo = self.changed.get(&id).map(|action| {
                 let (name, action) = (name.clone(), action.clone());
-                ctx.link()
-                    .callback(move |()| InterfacesMsg::Open(Some((id, name.clone())), action.clone()))
+                ctx.link().callback(move |()| {
+                    InterfacesMsg::Open(Some((id, name.clone())), action.clone())
+                })
             });
             Entry {
                 live: self.live.row(id),
@@ -435,8 +463,11 @@ fn subscribe_view(ctx: &Context<Interfaces>) -> Subscription {
     let variables = DeviceInterfacesVariables {
         device: ctx.props().id as i32,
     };
-    watch_data(ctx.link(), DeviceInterfaces::build(variables), move |data| {
-        scope.send_message(InterfacesMsg::Data(data.and_then(View::of)));
-    })
+    watch_data(
+        ctx.link(),
+        DeviceInterfaces::build(variables),
+        move |data| {
+            scope.send_message(InterfacesMsg::Data(data.and_then(View::of)));
+        },
+    )
 }
-

@@ -161,13 +161,24 @@ pub(crate) async fn login(
             .unwrap_or(Err(Error::Timeout(address)))
         }
     };
-    let fact = facts::get_judged(key.clone(), Freshness::MaxAge(Duration::ZERO), judge_login, ask()).await;
+    let fact = facts::get_judged(
+        key.clone(),
+        Freshness::MaxAge(Duration::ZERO),
+        judge_login,
+        ask(),
+    )
+    .await;
     if let (Came::Hit, Ok(login)) = (fact.came, &fact.value) {
         // the connection may have gone since (a reboot, a tunnel closed)
-        let alive = tokio::time::timeout(Duration::from_secs(5), SystemIdentityCfg::fetch(&login.client)).await;
+        let alive = tokio::time::timeout(
+            Duration::from_secs(5),
+            SystemIdentityCfg::fetch(&login.client),
+        )
+        .await;
         if !matches!(alive, Ok(Ok(_))) {
             facts::forget(&key);
-            return facts::get_judged(key, Freshness::MaxAge(Duration::ZERO), judge_login, ask()).await;
+            return facts::get_judged(key, Freshness::MaxAge(Duration::ZERO), judge_login, ask())
+                .await;
         }
     }
     fact
@@ -188,7 +199,12 @@ fn judge_login(login: &Result<Arc<Login>, Arc<Error>>) -> Option<Duration> {
 
 /// Whether a login to `device` at `address` along `path` went within [`LOGIN_WENT`]: such a
 /// way is tried first.
-pub(crate) fn went_lately(device: &DeviceAccess, address: IpAddr, path: &Path, credentials: &Credentials) -> bool {
+pub(crate) fn went_lately(
+    device: &DeviceAccess,
+    address: IpAddr,
+    path: &Path,
+    credentials: &Credentials,
+) -> bool {
     let key = FactKey::new(
         FactKind::Login,
         Some(device.id()),
@@ -281,7 +297,9 @@ impl AccessibleDevice {
         path: Path,
         credentials: Credentials,
     ) -> Result<AccessibleDevice, Error> {
-        let login = login(&device_config, address, &path, &credentials).await.result()?;
+        let login = login(&device_config, address, &path, &credentials)
+            .await
+            .result()?;
         Ok(AccessibleDevice {
             address,
             path,
@@ -389,17 +407,32 @@ pub(crate) async fn connect<D: ParsedMessage>(
     let (username, password) = resolve(credentials)?;
     let Path::Neighbor(plan) = path else {
         let stream = open_stream(address, path, 8728).await?;
-        return Ok(RawDevice::connect_with_stream(stream, username.as_bytes(), password.map(str::as_bytes)).await?);
+        return Ok(RawDevice::connect_with_stream(
+            stream,
+            username.as_bytes(),
+            password.map(str::as_bytes),
+        )
+        .await?);
     };
     for attempt in 1..=NEIGHBOR_LOGIN_TRIES {
         let stream = open_stream(address, path, 8728).await?;
-        let login = RawDevice::connect_with_stream(stream, username.as_bytes(), password.map(str::as_bytes));
+        let login = RawDevice::connect_with_stream(
+            stream,
+            username.as_bytes(),
+            password.map(str::as_bytes),
+        );
         match tokio::time::timeout(NEIGHBOR_LOGIN_TIMEOUT, login).await {
             Ok(connected) => return Ok(connected?),
-            Err(_) => log::info!("{address}: no answer to the login over {} ({attempt})", plan.neighbor),
+            Err(_) => log::info!(
+                "{address}: no answer to the login over {} ({attempt})",
+                plan.neighbor
+            ),
         }
     }
-    Err(Error::NeighborNoAnswer(plan.neighbor.as_str().into(), address))
+    Err(Error::NeighborNoAnswer(
+        plan.neighbor.as_str().into(),
+        address,
+    ))
 }
 
 /// How long a login over a neighbor may take, each of [`NEIGHBOR_LOGIN_TRIES`]: across the
@@ -415,16 +448,20 @@ const NEIGHBOR_LOGIN_TRIES: u32 = 3;
 async fn open_stream(address: IpAddr, path: &Path, port: u16) -> Result<Box<dyn Io>, Error> {
     Ok(match path {
         // boxed: the tunnel reads the neighbor's `/ip ssh` over a routed connection first
-        Path::Neighbor(plan) => {
-            Box::new(Box::pin(bootstrap::tunnel(plan)).await?.into_stream(address, port).await?)
-        }
+        Path::Neighbor(plan) => Box::new(
+            Box::pin(bootstrap::tunnel(plan))
+                .await?
+                .into_stream(address, port)
+                .await?,
+        ),
         Path::Routed => match proxied_stream(address, port).await? {
             Some(stream) => Box::new(stream),
             None => {
-                let stream = tokio::time::timeout(OPEN_TIMEOUT, TcpStream::connect((address, port)))
-                    .await
-                    .map_err(|_| Error::Timeout(address))?
-                    .map_err(|e| terminal::TerminalError::Ssh(e.into()))?;
+                let stream =
+                    tokio::time::timeout(OPEN_TIMEOUT, TcpStream::connect((address, port)))
+                        .await
+                        .map_err(|_| Error::Timeout(address))?
+                        .map_err(|e| terminal::TerminalError::Ssh(e.into()))?;
                 let _ = stream.set_nodelay(true);
                 Box::new(stream)
             }

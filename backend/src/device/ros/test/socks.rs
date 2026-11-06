@@ -8,7 +8,11 @@ use mikrotik_model::{
     value::Id,
 };
 
-fn rule(action: IpSocksAccessAction, src_address: Option<&str>, comment: Option<&str>) -> IpSocksAccessCfg {
+fn rule(
+    action: IpSocksAccessAction,
+    src_address: Option<&str>,
+    comment: Option<&str>,
+) -> IpSocksAccessCfg {
     IpSocksAccessCfg {
         action,
         comment: comment.map(Into::into),
@@ -22,7 +26,10 @@ fn rule(action: IpSocksAccessAction, src_address: Option<&str>, comment: Option<
 
 /// The script lines of `/ip/socks/access`, the proxy set up with `networks`.
 fn access_script(networks: &[&str], rules: Vec<IpSocksAccessCfg>) -> String {
-    let networks = networks.iter().map(|n| n.parse::<IpNet>().unwrap()).collect::<Vec<_>>();
+    let networks = networks
+        .iter()
+        .map(|n| n.parse::<IpNet>().unwrap())
+        .collect::<Vec<_>>();
     let mut target = BaseDeviceDataTarget::new(b"CRS326-24G-2S+").unwrap();
     let mut current: BaseDeviceDataCurrent = empty_current(&target);
     current.socks_access = rules
@@ -43,13 +50,19 @@ fn access_script(networks: &[&str], rules: Vec<IpSocksAccessCfg>) -> String {
 
 #[test]
 fn only_the_networks_of_the_api_get_through() {
-    let script = access_script(&["192.168.0.0/16", "2a02:16a:fe00:8000::/50", "10.1.2.3/32"], vec![]);
+    let script = access_script(
+        &["192.168.0.0/16", "2a02:16a:fe00:8000::/50", "10.1.2.3/32"],
+        vec![],
+    );
     assert!(script.contains("action=allow comment=\"netbox-provisioner: provisioner 192.168.0.0/16\" disabled=no src-address=\"192.168.0.0/16\""));
     assert!(script.contains("src-address=\"2a02:16a:fe00:8000::/50\""));
     // as RouterOS keeps it, or the next diff would set it again (CHR 7.24.5)
     assert!(script.contains("src-address=\"10.1.2.3\""));
     let deny = script.find("action=deny").expect("a deny for the rest");
-    assert!(script.rfind("action=allow").unwrap() < deny, "the deny comes after the allows");
+    assert!(
+        script.rfind("action=allow").unwrap() < deny,
+        "the deny comes after the allows"
+    );
 }
 
 #[test]
@@ -72,8 +85,13 @@ fn a_hand_made_rule_stays_before_the_deny() {
             ),
         ],
     );
-    assert!(!script.contains("10.9.0.0/16"), "the hand-made rule is left alone");
+    assert!(
+        !script.contains("10.9.0.0/16"),
+        "the hand-made rule is left alone"
+    );
     assert!(script.contains("set [ find .id=*2] comment=\"netbox-provisioner: provisioner 192.168.0.0/16\" src-address=\"192.168.0.0/16\""));
-    assert!(script.contains("move [find comment=\"netbox-provisioner: provisioner 192.168.0.0/16\"] destination=*1"));
+    assert!(script.contains(
+        "move [find comment=\"netbox-provisioner: provisioner 192.168.0.0/16\"] destination=*1"
+    ));
     assert!(script.ends_with("move [find comment=\"netbox-provisioner: last rest\"]\n"));
 }

@@ -52,7 +52,12 @@ pub fn enabled() -> bool {
 
 /// Writes the entry of `job` on `device` each time `changes` ticks, until the job has ended;
 /// then drops the device's oldest entries beyond [`KEEP`].
-pub async fn follow(job: Arc<Job>, device: DeviceId, started: Started, mut changes: watch::Receiver<()>) {
+pub async fn follow(
+    job: Arc<Job>,
+    device: DeviceId,
+    started: Started,
+    mut changes: watch::Receiver<()>,
+) {
     let rest = match NetboxRest::journal(format!("netbox-provisioner job {}", job.job_id())) {
         Ok(rest) => rest,
         Err(error) => return not_written(&job, error),
@@ -98,10 +103,24 @@ fn not_written(job: &Job, error: NetboxError) {
 }
 
 /// Updates the entry `id`, or creates it; a resumed job's entry deleted meanwhile anew.
-async fn save(job: &Job, rest: &NetboxRest, device: DeviceId, id: &mut Option<u64>, entry: &Entry) -> Result<(), NetboxError> {
+async fn save(
+    job: &Job,
+    rest: &NetboxRest,
+    device: DeviceId,
+    id: &mut Option<u64>,
+    entry: &Entry,
+) -> Result<(), NetboxError> {
     if let Some(existing) = *id {
-        match rest.update(&format!("extras/journal-entries/{existing}/"), entry.fields()).await {
-            Err(NetboxError::Rest { status, .. }) if status == reqwest::StatusCode::NOT_FOUND => *id = None,
+        match rest
+            .update(
+                &format!("extras/journal-entries/{existing}/"),
+                entry.fields(),
+            )
+            .await
+        {
+            Err(NetboxError::Rest { status, .. }) if status == reqwest::StatusCode::NOT_FOUND => {
+                *id = None
+            }
             result => return result.map(|_| ()),
         }
     }
@@ -130,9 +149,14 @@ async fn prune(rest: &NetboxRest, device: DeviceId) -> Result<(), NetboxError> {
             device.0
         ))
         .await?;
-    let old = entries["results"].as_array().into_iter().flatten().skip(KEEP);
+    let old = entries["results"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .skip(KEEP);
     for id in old.filter_map(|entry| entry["id"].as_u64()) {
-        rest.delete(&format!("extras/journal-entries/{id}/")).await?;
+        rest.delete(&format!("extras/journal-entries/{id}/"))
+            .await?;
     }
     Ok(())
 }
@@ -189,7 +213,12 @@ pub async fn entries(device: DeviceId) -> Result<Vec<JournalEntry>, NetboxError>
         ))
         .await?;
     let web = web_url();
-    Ok(entries["results"].as_array().into_iter().flatten().filter_map(|entry| parse(entry, &web)).collect())
+    Ok(entries["results"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| parse(entry, &web))
+        .collect())
 }
 
 /// An entry as NetBox gives it, `web` NetBox' web UI; `None` without a readable
@@ -202,11 +231,13 @@ fn parse(entry: &Value, web: &str) -> Option<JournalEntry> {
         id,
         created: entry["created"].as_str()?.into(),
         kind: record["job"].as_str().and_then(kind_named),
-        observation: record["observation"].is_object().then(|| JournalObservation {
-            found: journal_lefts(&record["observation"]["found"]),
-            fired: journal_lefts(&record["observation"]["fired"]),
-            removed: journal_lefts(&record["observation"]["removed"]),
-        }),
+        observation: record["observation"]
+            .is_object()
+            .then(|| JournalObservation {
+                found: journal_lefts(&record["observation"]["found"]),
+                fired: journal_lefts(&record["observation"]["fired"]),
+                removed: journal_lefts(&record["observation"]["removed"]),
+            }),
         outcome: by_name(
             &[
                 JournalOutcome::Running,
@@ -232,7 +263,11 @@ fn journal_lefts(value: &Value) -> Vec<JournalLeft> {
         .flatten()
         .filter_map(|left| {
             by_name(
-                &[JournalLeft::ApplyFallback, JournalLeft::UpdateFallback, JournalLeft::WatchdogSafetyNet],
+                &[
+                    JournalLeft::ApplyFallback,
+                    JournalLeft::UpdateFallback,
+                    JournalLeft::WatchdogSafetyNet,
+                ],
                 left.as_str()?,
             )
         })
@@ -252,7 +287,9 @@ pub struct JournalObservation {
 
 /// The one of `all` whose `Debug` is `name`.
 fn by_name<T: Copy + std::fmt::Debug>(all: &[T], name: &str) -> Option<T> {
-    all.iter().copied().find(|value| format!("{value:?}") == name)
+    all.iter()
+        .copied()
+        .find(|value| format!("{value:?}") == name)
 }
 
 /// Sets the provisioner's entries still running from before this start to interrupted, but
@@ -265,18 +302,28 @@ pub async fn close_interrupted(resumed: &[u64]) {
     let result = async {
         let rest = NetboxRest::journal("netbox-provisioner restarted")?;
         let entries = rest
-            .get(&format!("extras/journal-entries/?tag={TAG}&kind=info&limit=1000"))
+            .get(&format!(
+                "extras/journal-entries/?tag={TAG}&kind=info&limit=1000"
+            ))
             .await?;
         for entry in entries["results"].as_array().into_iter().flatten() {
-            let (Some(id), Some(record)) = (entry["id"].as_u64(), entry["custom_fields"]["provisioner_job"].as_object())
-            else {
+            let (Some(id), Some(record)) = (
+                entry["id"].as_u64(),
+                entry["custom_fields"]["provisioner_job"].as_object(),
+            ) else {
                 continue;
             };
-            if record.get("outcome").and_then(Value::as_str) != Some("Running") || resumed.contains(&id) {
+            if record.get("outcome").and_then(Value::as_str) != Some("Running")
+                || resumed.contains(&id)
+            {
                 continue;
             }
-            let fields = interrupted(entry["comments"].as_str().unwrap_or_default(), record.clone());
-            rest.update(&format!("extras/journal-entries/{id}/"), fields).await?;
+            let fields = interrupted(
+                entry["comments"].as_str().unwrap_or_default(),
+                record.clone(),
+            );
+            rest.update(&format!("extras/journal-entries/{id}/"), fields)
+                .await?;
         }
         Ok::<_, NetboxError>(())
     }
@@ -289,14 +336,33 @@ pub async fn close_interrupted(resumed: &[u64]) {
 /// The fields of an entry whose job the restart interrupted: its heading says so, the rest
 /// stays.
 fn interrupted(comments: &str, mut record: serde_json::Map<String, Value>) -> Value {
-    let kind = record.get("job").and_then(Value::as_str).and_then(kind_named);
+    let kind = record
+        .get("job")
+        .and_then(Value::as_str)
+        .and_then(kind_named);
     let rest = comments.split_once("\n\n").map_or("", |(_, rest)| rest);
     let heading = kind.map_or_else(
-        || comments.split_once("\n\n").map_or(comments, |(heading, _)| heading).to_string(),
+        || {
+            comments
+                .split_once("\n\n")
+                .map_or(comments, |(heading, _)| heading)
+                .to_string()
+        },
         |kind| i18n::journal::heading(kind_name(kind), Outcome::Interrupted),
     );
-    record.insert("outcome".into(), json!(format!("{:?}", Outcome::Interrupted)));
-    record.insert("at".into(), json!(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()));
+    record.insert(
+        "outcome".into(),
+        json!(format!("{:?}", Outcome::Interrupted)),
+    );
+    record.insert(
+        "at".into(),
+        json!(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+        ),
+    );
     let comments = match rest {
         "" => heading,
         rest => format!("{heading}\n\n{rest}"),
@@ -433,7 +499,9 @@ impl Entry {
                 }
                 Event::UpdateDone(done) => results.push(t::update(&done.from, &done.to)),
                 Event::Downgraded(done) => results.push(t::update(&done.from, &done.to)),
-                Event::PowerCycled(cycled) => results.push(t::power_cycled(&cycled.device, &cycled.port)),
+                Event::PowerCycled(cycled) => {
+                    results.push(t::power_cycled(&cycled.device, &cycled.port))
+                }
                 Event::ApplyChecked(checked) if checked.error.is_none() => results.push(
                     match checked.remaining.is_empty() {
                         true => i18n::job::APPLIED,
@@ -441,9 +509,9 @@ impl Entry {
                     }
                     .into(),
                 ),
-                Event::FallbackFired(fired) => {
-                    results.push(i18n::job::event::fallback_fired(Duration::from(fired.after).as_secs()))
-                }
+                Event::FallbackFired(fired) => results.push(i18n::job::event::fallback_fired(
+                    Duration::from(fired.after).as_secs(),
+                )),
                 Event::NetboxWritten(_) => written += 1,
                 _ => {}
             }
@@ -464,7 +532,9 @@ fn outcome(state: JobState, events: &[Event]) -> Outcome {
         JobState::Cancelled => Outcome::Cancelled,
         JobState::Done => {
             let incomplete = events.iter().any(|event| match event {
-                Event::ApplyChecked(checked) => !checked.remaining.is_empty() || checked.error.is_some(),
+                Event::ApplyChecked(checked) => {
+                    !checked.remaining.is_empty() || checked.error.is_some()
+                }
                 Event::FallbackFired(_) | Event::BatchIncomplete(_) => true,
                 _ => false,
             });
@@ -505,7 +575,11 @@ fn names(left: &[Left]) -> Vec<String> {
     left.iter().map(|left| format!("{left:?}")).collect()
 }
 
-const ALL_LEFT: [Left; 3] = [Left::ApplyFallback, Left::UpdateFallback, Left::WatchdogSafetyNet];
+const ALL_LEFT: [Left; 3] = [
+    Left::ApplyFallback,
+    Left::UpdateFallback,
+    Left::WatchdogSafetyNet,
+];
 
 fn lefts(value: &Value) -> Vec<Left> {
     value
@@ -556,13 +630,22 @@ fn script_lines(progress: &Progress) -> Vec<String> {
         section: script.section,
         done: script.done,
         error: script.error_line.zip(script.error.as_deref()),
-        probe: script.probe.as_deref().map(|probe| (probe, script.probe_answered)),
+        probe: script
+            .probe
+            .as_deref()
+            .map(|probe| (probe, script.probe_answered)),
         lost: &script.lost,
         back: &script.back,
-        rearmed: script.rearmed.map(|rearmed| Duration::from(rearmed).as_secs()),
+        rearmed: script
+            .rearmed
+            .map(|rearmed| Duration::from(rearmed).as_secs()),
         after_fallback: true,
     });
-    lines.push(format!("{}:\n\n```\n{}\n```", i18n::job::event::MARKS, script.marks.trim_end()));
+    lines.push(format!(
+        "{}:\n\n```\n{}\n```",
+        i18n::job::event::MARKS,
+        script.marks.trim_end()
+    ));
     lines
 }
 
@@ -579,7 +662,12 @@ pub struct Observation {
 }
 
 /// Compares `now` (what is on the device, its `uptime`) with `expected` at `at` (seconds).
-fn observation(expected: &[(Left, u64)], now: &[Left], uptime: Option<Duration>, at: u64) -> Option<Observation> {
+fn observation(
+    expected: &[(Left, u64)],
+    now: &[Left],
+    uptime: Option<Duration>,
+    at: u64,
+) -> Option<Observation> {
     let mut seen = Observation::default();
     for left in now {
         if !expected.iter().any(|(known, _)| known == left) {
@@ -590,7 +678,8 @@ fn observation(expected: &[(Left, u64)], now: &[Left], uptime: Option<Duration>,
         if now.contains(left) {
             continue;
         }
-        let booted_since = uptime.is_some_and(|uptime| uptime.as_secs() < at.saturating_sub(*since));
+        let booted_since =
+            uptime.is_some_and(|uptime| uptime.as_secs() < at.saturating_sub(*since));
         match left {
             Left::ApplyFallback | Left::UpdateFallback if booted_since => seen.fired.push(*left),
             _ => seen.removed.push(*left),
@@ -656,7 +745,12 @@ static OBSERVING: std::sync::Mutex<Vec<DeviceId>> = std::sync::Mutex::new(Vec::n
 /// fallback that fired or one taken away. Called with the leftovers read while no job of
 /// this provisioner runs on the device; nothing while the newest entry still runs. `marks`:
 /// the progress files on the device, for an apply fallback that fired the marks of its run.
-pub async fn observe(device: DeviceId, now: Vec<Left>, uptime: Option<Duration>, marks: Vec<Box<str>>) {
+pub async fn observe(
+    device: DeviceId,
+    now: Vec<Left>,
+    uptime: Option<Duration>,
+    marks: Vec<Box<str>>,
+) {
     if !enabled() {
         return;
     }
@@ -700,9 +794,13 @@ pub async fn observe(device: DeviceId, now: Vec<Left>, uptime: Option<Duration>,
     }
     .await;
     if let Err(error) = result {
-        warn!("observation of device {} not written to its journal: {error}", device.0);
+        warn!(
+            "observation of device {} not written to its journal: {error}",
+            device.0
+        );
     }
-    OBSERVING.lock_anyway()
+    OBSERVING
+        .lock_anyway()
         .retain(|observed| *observed != device);
 }
 
@@ -722,17 +820,35 @@ fn left(events: &[Event]) -> Vec<Left> {
             _ => {}
         }
     }
-    [(apply, Left::ApplyFallback), (update, Left::UpdateFallback), (safety_net, Left::WatchdogSafetyNet)]
-        .into_iter()
-        .filter_map(|(is, left)| is.then_some(left))
-        .collect()
+    [
+        (apply, Left::ApplyFallback),
+        (update, Left::UpdateFallback),
+        (safety_net, Left::WatchdogSafetyNet),
+    ]
+    .into_iter()
+    .filter_map(|(is, left)| is.then_some(left))
+    .collect()
 }
 
 /// The kind by its name in `provisioner_job` (`Apply`).
 fn kind_named(name: &str) -> Option<JobKind> {
     use JobKind::*;
     by_name(
-        &[Update, Downgrade, Apply, Cleanup, Bootstrap, Reboot, PowerCycle, DeviceMode, Repartition, BootPartition, NetboxWrite, NetboxUndo, SiteDiff],
+        &[
+            Update,
+            Downgrade,
+            Apply,
+            Cleanup,
+            Bootstrap,
+            Reboot,
+            PowerCycle,
+            DeviceMode,
+            Repartition,
+            BootPartition,
+            NetboxWrite,
+            NetboxUndo,
+            SiteDiff,
+        ],
         name,
     )
 }

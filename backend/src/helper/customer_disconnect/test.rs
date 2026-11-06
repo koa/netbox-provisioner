@@ -6,11 +6,17 @@ fn steps(plan: &NetboxPlan) -> Vec<String> {
         .iter()
         .map(|step| match step {
             PlanStep::DeleteAddress(d) => {
-                format!("delete {} {} {}", d.interface.device.name, d.interface.name, d.address)
+                format!(
+                    "delete {} {} {}",
+                    d.interface.device.name, d.interface.name, d.address
+                )
             }
             PlanStep::DeletePrefix(d) => format!("delete prefix {}", d.prefix),
             PlanStep::UpdateInterface(u) => {
-                format!("update {} {} -{:?}", u.interface.device.name, u.interface.name, u.tags_removed)
+                format!(
+                    "update {} {} -{:?}",
+                    u.interface.device.name, u.interface.name, u.tags_removed
+                )
             }
             PlanStep::UpdatePortVlan(u) => format!(
                 "vlan {} {} {:?} -> {:?}",
@@ -20,7 +26,10 @@ fn steps(plan: &NetboxPlan) -> Vec<String> {
                 u.vlan.as_ref().map(|v| v.vid)
             ),
             PlanStep::DeleteInterface(d) => {
-                format!("delete interface {} {}", d.interface.device.name, d.interface.name)
+                format!(
+                    "delete interface {} {}",
+                    d.interface.device.name, d.interface.name
+                )
             }
             other => format!("{other:?}"),
         })
@@ -79,7 +88,12 @@ fn a_vlan_interface_goes_with_the_vlan_of_its_ports() {
     data.name = "vlan-clients".into();
     data.port_type = None;
     let vlan = data.vlan;
-    for (_, port) in net.builder.interfaces.iter_mut().filter(|(_, i)| i.bridge == Some(bridge)) {
+    for (_, port) in net
+        .builder
+        .interfaces
+        .iter_mut()
+        .filter(|(_, i)| i.bridge == Some(bridge))
+    {
         port.bridge = None;
         port.vlan = vlan;
     }
@@ -121,7 +135,10 @@ fn nothing_left_is_an_error_of_its_own() {
         device: r1.0,
         interface: bridge.id().0,
     };
-    assert!(matches!(plan(&topology, &input), Err(Error::NoCustomerNet(_))));
+    assert!(matches!(
+        plan(&topology, &input),
+        Err(Error::NoCustomerNet(_))
+    ));
 }
 
 /// The customer port of r2 with its L3 on r1: only its VLAN goes.

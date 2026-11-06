@@ -2,8 +2,8 @@ use super::*;
 use crate::{
     topology::test::example_topology,
     topology::{
-        Cable, CablePort, Device, Interface, InterfaceId, IpAddressData, IpPrefixData,
-        IpPrefixId, PhysicalPortId, VlanId, builder::TopologyBuilder,
+        Cable, CablePort, Device, Interface, InterfaceId, IpAddressData, IpPrefixData, IpPrefixId,
+        PhysicalPortId, VlanId, builder::TopologyBuilder,
     },
 };
 use std::{collections::BTreeMap, str::FromStr};
@@ -188,7 +188,10 @@ fn a_link_without_ospf_is_a_hint() {
     assert_eq!(unannounced.len(), 2, "{unannounced:#?}");
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert_eq!(findings[0].severity, Severity::Hint);
-    assert!(matches!(findings[0].kind, FindingKind::AddressWithoutOspf(_)));
+    assert!(matches!(
+        findings[0].kind,
+        FindingKind::AddressWithoutOspf(_)
+    ));
 }
 
 #[test]
@@ -214,17 +217,23 @@ fn ospf_to_a_bridge_device_without_address_is_no_finding() {
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert_eq!(findings[0].severity, Severity::Error);
     assert_eq!(&*findings[0].devices, [r2]);
-    assert!(matches!(&findings[0].kind, FindingKind::LoopbackWithoutOspf(l)
-        if &*l.address.address == "172.16.1.2/32"));
+    assert!(
+        matches!(&findings[0].kind, FindingKind::LoopbackWithoutOspf(l)
+        if &*l.address.address == "172.16.1.2/32")
+    );
     // without its loopback it is reached by DHCP
     net = Net::new();
     net.interface(e2).use_ospf = false;
     net.interface(e2).ips = Box::new([]);
     net.builder.devices.get_mut(&r2).unwrap().primary_ip_v4 = None;
-    net.builder.interfaces.retain(|_, i| !(i.device == r2 && &*i.name == "lo"));
+    net.builder
+        .interfaces
+        .retain(|_, i| !(i.device == r2 && &*i.name == "lo"));
     let findings = net.findings();
     assert!(
-        findings.iter().all(|f| !matches!(f.kind, FindingKind::LoopbackWithoutOspf(_))),
+        findings
+            .iter()
+            .all(|f| !matches!(f.kind, FindingKind::LoopbackWithoutOspf(_))),
         "{findings:#?}"
     );
 }
@@ -236,17 +245,25 @@ fn primary_ipv4_and_loopback() {
     net.builder.devices.get_mut(&r1).unwrap().primary_ip_v4 = None;
     let on_port = net.interface(e2).ips[0];
     net.builder.devices.get_mut(&r2).unwrap().primary_ip_v4 = Some(on_port);
-    net.builder.interfaces.retain(|_, i| !(i.device == r2 && &*i.name == "lo"));
+    net.builder
+        .interfaces
+        .retain(|_, i| !(i.device == r2 && &*i.name == "lo"));
     let kinds = net
         .findings()
         .into_iter()
         .map(|f| (f.severity, f.kind))
         .collect::<Vec<_>>();
     assert_eq!(kinds.len(), 3, "{kinds:#?}");
-    assert!(matches!(&kinds[0], (Severity::Error, FindingKind::NoPrimaryIpv4(n)) if &*n.device.name == "r1"));
-    assert!(matches!(&kinds[1], (Severity::Warning, FindingKind::NoLoopback(n)) if &*n.device.name == "r2"));
-    assert!(matches!(&kinds[2], (Severity::Warning, FindingKind::PrimaryIpv4NotOnLoopback(p))
-        if p.interface.as_ref().is_some_and(|i| &*i.name == "ether1")));
+    assert!(
+        matches!(&kinds[0], (Severity::Error, FindingKind::NoPrimaryIpv4(n)) if &*n.device.name == "r1")
+    );
+    assert!(
+        matches!(&kinds[1], (Severity::Warning, FindingKind::NoLoopback(n)) if &*n.device.name == "r2")
+    );
+    assert!(
+        matches!(&kinds[2], (Severity::Warning, FindingKind::PrimaryIpv4NotOnLoopback(p))
+        if p.interface.as_ref().is_some_and(|i| &*i.name == "ether1"))
+    );
 }
 
 /// `TopologyBuilder` makes a prefix for every address, so the test takes it away after and
@@ -262,8 +279,10 @@ fn an_address_without_its_prefix_is_an_error_where_dhcp_needs_it() {
     let findings = topology.with_findings().findings().to_vec();
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert_eq!(findings[0].severity, Severity::Error);
-    assert!(matches!(&findings[0].kind, FindingKind::AddressWithoutPrefix(a)
-        if a.dhcp && &*a.address.address == "172.17.1.1/30"));
+    assert!(
+        matches!(&findings[0].kind, FindingKind::AddressWithoutPrefix(a)
+        if a.dhcp && &*a.address.address == "172.17.1.1/30")
+    );
 }
 
 /// The cabled /30 has both hosts taken; the generator makes no DHCP server there. A port with
@@ -298,7 +317,9 @@ fn a_network_without_room_next_to_a_served_one_is_no_finding() {
     interface.enable_dhcp_server = true;
     let findings = net.findings();
     assert!(
-        !findings.iter().any(|f| matches!(&f.kind, FindingKind::DhcpPoolEmpty(_))),
+        !findings
+            .iter()
+            .any(|f| matches!(&f.kind, FindingKind::DhcpPoolEmpty(_))),
         "{findings:#?}"
     );
 }
@@ -317,7 +338,9 @@ fn dhcp_on_a_host_address_is_an_error() {
     topology.ip_addresses.get_mut(&address).unwrap().prefix = None;
     let findings = topology.with_findings().findings().to_vec();
     assert!(
-        findings.iter().any(|f| matches!(&f.kind, FindingKind::DhcpPoolEmpty(d)
+        findings
+            .iter()
+            .any(|f| matches!(&f.kind, FindingKind::DhcpPoolEmpty(d)
             if &*d.address.address == "172.16.1.60/32" && d.prefix.is_none())),
         "{findings:#?}"
     );
@@ -334,7 +357,13 @@ fn a_wlan_without_vlan_is_an_error() {
     let (group, vlan_group) = (builder.wlan_groups.next_id(), builder.vlan_groups.next_id());
     let vlan = builder.vlans.next_id();
     let (with, without) = (builder.wlans.next_id(), builder.wlans.next_id());
-    builder.vlan_groups.insert(vlan_group, VlanGroupData { name: "group".into(), vlans: Box::new([vlan]) });
+    builder.vlan_groups.insert(
+        vlan_group,
+        VlanGroupData {
+            name: "group".into(),
+            vlans: Box::new([vlan]),
+        },
+    );
     builder.vlans.insert(
         vlan,
         VlanData {
@@ -386,17 +415,26 @@ fn a_wlan_without_vlan_is_an_error() {
 fn a_wlan_group_without_controller_is_an_error_at_its_aps() {
     let mut net = Net::new();
     let builder = &mut net.builder;
-    let (group, unused) = (crate::topology::WlanGroupId(7), crate::topology::WlanGroupId(8));
-    builder.wlan_groups_without_controller.insert(group, "Spitzwies".into());
-    builder.wlan_groups_without_controller.insert(unused, "leer".into());
+    let (group, unused) = (
+        crate::topology::WlanGroupId(7),
+        crate::topology::WlanGroupId(8),
+    );
+    builder
+        .wlan_groups_without_controller
+        .insert(group, "Spitzwies".into());
+    builder
+        .wlan_groups_without_controller
+        .insert(unused, "leer".into());
     builder.devices.get_mut(&net.r2).unwrap().wlan_ap_of = Some(group);
     let r2 = net.r2;
     let findings = net.findings();
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert_eq!(findings[0].severity, Severity::Error);
     assert_eq!(&*findings[0].devices, [r2]);
-    assert!(matches!(&findings[0].kind, FindingKind::WlanGroupWithoutController(w)
-        if w.group.id == 7 && &*w.group.name == "Spitzwies"));
+    assert!(
+        matches!(&findings[0].kind, FindingKind::WlanGroupWithoutController(w)
+        if w.group.id == 7 && &*w.group.name == "Spitzwies")
+    );
 }
 
 /// An AP needs the country of its site: none (no region) or one the generator doesn't know is
@@ -414,7 +452,11 @@ fn an_ap_without_a_known_country_is_an_error() {
             .into_iter()
             .filter(|f| matches!(f.kind, FindingKind::NoCountry(_)))
             .collect::<Vec<_>>();
-        assert_eq!(findings.len(), usize::from(found), "{country:?}: {findings:#?}");
+        assert_eq!(
+            findings.len(),
+            usize::from(found),
+            "{country:?}: {findings:#?}"
+        );
         if let Some(finding) = findings.first() {
             assert_eq!(finding.severity, Severity::Error);
             assert_eq!(&*finding.devices, [r2]);
@@ -494,8 +536,10 @@ fn nat_without_internet_is_a_warning() {
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert_eq!(findings[0].severity, Severity::Warning);
     assert_eq!(&*findings[0].devices, [r1]);
-    assert!(matches!(&findings[0].kind, FindingKind::NatWithoutInternet(f)
-        if &*f.interface.name == "ether5"));
+    assert!(
+        matches!(&findings[0].kind, FindingKind::NatWithoutInternet(f)
+        if &*f.interface.name == "ether5")
+    );
     assert_eq!(uplink(true).1, vec![]);
 }
 
@@ -540,8 +584,10 @@ fn a_radio_without_peer_and_router_is_incomplete() {
     assert_eq!(incomplete.len(), 1, "{incomplete:#?}");
     assert_eq!(incomplete[0].severity, Severity::Warning);
     assert_eq!(&*incomplete[0].devices, [r2]);
-    assert!(matches!(&incomplete[0].kind, FindingKind::RadioPathIncomplete(r)
-        if r.missing == [RadioPathPart::RouterCable, RadioPathPart::WirelessLink]));
+    assert!(
+        matches!(&incomplete[0].kind, FindingKind::RadioPathIncomplete(r)
+        if r.missing == [RadioPathPart::RouterCable, RadioPathPart::WirelessLink])
+    );
 }
 
 /// A radio bridge device is reached at its loopback only: without one an error.
@@ -586,7 +632,13 @@ fn new_vlan(net: &mut Net, vid: u16, vxlan: bool) -> VlanId {
     use crate::topology::{VlanData, VlanGroupData, VxlanData};
     let builder = &mut net.builder;
     let (id, group) = (builder.vlans.next_id(), builder.vlan_groups.next_id());
-    builder.vlan_groups.insert(group, VlanGroupData { name: "group".into(), vlans: Box::new([id]) });
+    builder.vlan_groups.insert(
+        group,
+        VlanGroupData {
+            name: "group".into(),
+            vlans: Box::new([id]),
+        },
+    );
     let vxlan = vxlan.then(|| {
         let vxlan = builder.vxlans.next_id();
         builder.vxlans.insert(
@@ -615,7 +667,12 @@ fn new_vlan(net: &mut Net, vid: u16, vxlan: bool) -> VlanId {
 
 /// A customer port `ether2` on `device` with `vlan` untagged and `ip`, if any.
 fn customer_port(net: &mut Net, device: DeviceId, vlan: VlanId, ip: Option<&str>) -> InterfaceId {
-    let id = port(&mut net.builder, device, "ether2", ip.unwrap_or("10.9.9.9/24"));
+    let id = port(
+        &mut net.builder,
+        device,
+        "ether2",
+        ip.unwrap_or("10.9.9.9/24"),
+    );
     let interface = net.interface(id);
     interface.use_ospf = false;
     interface.vlan = Some(vlan);
@@ -641,8 +698,10 @@ fn two_gateways_in_a_vxlan_are_an_error() {
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert_eq!(findings[0].severity, Severity::Error);
     assert_eq!(&*findings[0].devices, [r1, r2]);
-    assert!(matches!(&findings[0].kind, FindingKind::VlanWithSeveralGateways(f)
-        if f.vlan.vid == 10 && f.interfaces.len() == 2));
+    assert!(
+        matches!(&findings[0].kind, FindingKind::VlanWithSeveralGateways(f)
+        if f.vlan.vid == 10 && f.interfaces.len() == 2)
+    );
 }
 
 /// Without a VNI a VLAN on two devices without a cable carrying it is two networks: one gateway
@@ -714,7 +773,10 @@ fn port_like_names_and_vlans_without_group() {
     let findings = topology.with_findings().findings().to_vec();
     assert_eq!(findings.len(), 2, "{findings:#?}");
     assert!(matches!(findings[0].kind, FindingKind::PortLikeName(_)));
-    assert!(matches!(findings[1].kind, FindingKind::VlanWithoutGroup(VlanWithoutGroup { vlan: 99, .. })));
+    assert!(matches!(
+        findings[1].kind,
+        FindingKind::VlanWithoutGroup(VlanWithoutGroup { vlan: 99, .. })
+    ));
 }
 
 #[test]
@@ -776,7 +838,9 @@ fn findings_of_netbox_example() {
     for finding in topology.findings() {
         let kind = format!("{:?}", finding.kind);
         let name = kind.split('(').next().unwrap_or_default().to_string();
-        *counts.entry(format!("{:?} {name}", finding.severity)).or_default() += 1;
+        *counts
+            .entry(format!("{:?} {name}", finding.severity))
+            .or_default() += 1;
         lines.push(format!("{:?} {kind}", finding.severity));
     }
     let summary = counts
@@ -784,8 +848,7 @@ fn findings_of_netbox_example() {
         .map(|(kind, count)| format!("{count:4} {kind}"))
         .collect::<Vec<_>>()
         .join("\n");
-    let out_dir =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/netbox-example");
+    let out_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/netbox-example");
     std::fs::create_dir_all(&out_dir).expect("output directory");
     std::fs::write(
         out_dir.join("findings.txt"),

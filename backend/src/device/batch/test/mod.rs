@@ -19,14 +19,23 @@ fn device(builder: &mut TopologyBuilder, name: &str) -> DeviceId {
     );
     id
 }
-fn port(builder: &mut TopologyBuilder, device: DeviceId, name: &str, link: Option<WirelessLinkEnd>) -> InterfaceId {
+fn port(
+    builder: &mut TopologyBuilder,
+    device: DeviceId,
+    name: &str,
+    link: Option<WirelessLinkEnd>,
+) -> InterfaceId {
     let id = builder.interfaces.next_id();
     builder.interfaces.insert(
         id,
         Interface {
             name: name.into(),
             device,
-            port_type: Some(if link.is_some() { PortType::Wireless } else { PortType::Ethernet }),
+            port_type: Some(if link.is_some() {
+                PortType::Wireless
+            } else {
+                PortType::Ethernet
+            }),
             wireless_link: link,
             ..Interface::default()
         },
@@ -102,7 +111,10 @@ fn finds_the_other_end_of_a_radio_link() {
     );
     let topology = Arc::new(b.build());
     let get = |id| topology.get_device_by_id(&id).expect("device");
-    let partners: Vec<_> = wireless_partners(&get(ap)).iter().map(|d| d.name().to_string()).collect();
+    let partners: Vec<_> = wireless_partners(&get(ap))
+        .iter()
+        .map(|d| d.name().to_string())
+        .collect();
     assert_eq!(partners, ["link-5-station"]);
     assert!(wireless_partners(&get(burri)).is_empty());
 }

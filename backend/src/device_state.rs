@@ -162,7 +162,12 @@ impl States for UpdateState {
             Uploading => &[WaitingToReboot, NotUpdated],
             WaitingToReboot => &[Rebooting, NotUpdated],
             // the next step (RouterOS 6 to 7), or through; without a fallback straight on
-            Rebooting => &[Downloading, StoppingFallback, WaitingForNeighbors, NotUpdated],
+            Rebooting => &[
+                Downloading,
+                StoppingFallback,
+                WaitingForNeighbors,
+                NotUpdated,
+            ],
             NotUpdated => &[],
             StoppingFallback => &[WaitingForNeighbors],
             WaitingForNeighbors => &[Firmware],
@@ -175,8 +180,14 @@ impl States for UpdateState {
     fn cancel(self) -> Cancel {
         use UpdateState::*;
         match self {
-            Reading | WaitingForChain | RememberingNeighbors | Downloading | Uploading | WaitingToReboot
-            | WaitingForNeighbors | WaitingToRebootFirmware => Cancel::Ends,
+            Reading
+            | WaitingForChain
+            | RememberingNeighbors
+            | Downloading
+            | Uploading
+            | WaitingToReboot
+            | WaitingForNeighbors
+            | WaitingToRebootFirmware => Cancel::Ends,
             _ => Cancel::AfterState,
         }
     }
@@ -188,7 +199,6 @@ impl States for UpdateState {
             _ => Restart::Interrupted,
         }
     }
-
 }
 
 /// A reboot, a repartition or a boot from another partition (`update::reboot`, `partitions`).
@@ -221,7 +231,6 @@ impl States for RebootState {
     fn restart(self) -> Restart {
         Restart::Interrupted
     }
-
 }
 
 /// A supplier cutting the power of a device it feeds (`power_cycle`): a job of the supplier.
@@ -257,7 +266,6 @@ impl States for PowerCycleState {
     fn restart(self) -> Restart {
         Restart::Interrupted
     }
-
 }
 
 /// A change of the device mode (`device_mode::change`).
@@ -297,7 +305,6 @@ impl States for DeviceModeState {
     fn restart(self) -> Restart {
         Restart::Interrupted
     }
-
 }
 
 /// A setup over mac-telnet from a neighbor (`bootstrap`), which keeps the neighbor busy.
@@ -317,7 +324,10 @@ pub enum BootstrapState {
 }
 
 impl States for BootstrapState {
-    const FIRST: &'static [Self] = &[BootstrapState::SuspendingWatchdogs, BootstrapState::CheckingNeighbor];
+    const FIRST: &'static [Self] = &[
+        BootstrapState::SuspendingWatchdogs,
+        BootstrapState::CheckingNeighbor,
+    ];
     const FROM_ANY: &'static [Self] = &[BootstrapState::RestoringWatchdogs];
     fn next(self) -> &'static [Self] {
         use BootstrapState::*;
@@ -339,7 +349,6 @@ impl States for BootstrapState {
     fn restart(self) -> Restart {
         Restart::Interrupted
     }
-
 }
 
 /// Taking away what a job left on the device (`leftovers::clear`).
@@ -371,7 +380,6 @@ impl States for CleanupState {
     fn restart(self) -> Restart {
         Restart::Interrupted
     }
-
 }
 
 /// Writing a helper's plan to NetBox, or taking such a write back (`helper::write`, `undo`).
@@ -405,7 +413,6 @@ impl States for NetboxState {
     fn restart(self) -> Restart {
         Restart::Interrupted
     }
-
 }
 
 /// [`JobPhase`] over the kinds' state types: one variant each, `From`, the checks handed on to
@@ -498,8 +505,8 @@ job_phase!(
 #[cfg(test)]
 mod tests {
     use super::{
-        ApplyState, BootstrapState, CleanupState, DeviceModeState, JobPhase, NetboxState, PowerCycleState,
-        RebootState, States, UpdateState,
+        ApplyState, BootstrapState, CleanupState, DeviceModeState, JobPhase, NetboxState,
+        PowerCycleState, RebootState, States, UpdateState,
     };
     use std::collections::BTreeSet;
 
@@ -551,13 +558,49 @@ mod tests {
     fn apply_paths() {
         use ApplyState::*;
         // alone, through
-        assert!(path(&[Planning, ArmingFallback, WritingScript, StartingScript, ScriptRunning, StoppingFallback, Checking, Finishing]));
+        assert!(path(&[
+            Planning,
+            ArmingFallback,
+            WritingScript,
+            StartingScript,
+            ScriptRunning,
+            StoppingFallback,
+            Checking,
+            Finishing
+        ]));
         // with a radio, not reached
-        assert!(path(&[Planning, SuspendingWatchdogs, ArmingFallback, WritingScript, StartingScript, ScriptRunning, NotReached]));
+        assert!(path(&[
+            Planning,
+            SuspendingWatchdogs,
+            ArmingFallback,
+            WritingScript,
+            StartingScript,
+            ScriptRunning,
+            NotReached
+        ]));
         // the fallback not taken away yet: looking again
-        assert!(path(&[Planning, ArmingFallback, WritingScript, StartingScript, ScriptRunning, StoppingFallback, ScriptRunning, StoppingFallback, Checking, Finishing]));
+        assert!(path(&[
+            Planning,
+            ArmingFallback,
+            WritingScript,
+            StartingScript,
+            ScriptRunning,
+            StoppingFallback,
+            ScriptRunning,
+            StoppingFallback,
+            Checking,
+            Finishing
+        ]));
         // a batch, through
-        assert!(path(&[Planning, ArmingFallback, WritingScript, StartingScript, ScriptRunning, StoppingFallback, Finishing]));
+        assert!(path(&[
+            Planning,
+            ArmingFallback,
+            WritingScript,
+            StartingScript,
+            ScriptRunning,
+            StoppingFallback,
+            Finishing
+        ]));
         // no script without a fallback being armed first
         assert!(!path(&[Planning, WritingScript]));
         // started in the middle
@@ -592,21 +635,71 @@ mod tests {
         use UpdateState::*;
         // RouterOS 6 to 7 with the firmware, watchdogs suspended
         assert!(path(&[
-            Reading, SuspendingWatchdogs, WaitingForChain, RememberingNeighbors, ArmingFallback,
-            Downloading, Uploading, WaitingToReboot, Rebooting, Downloading, Uploading, WaitingToReboot,
-            Rebooting, StoppingFallback, WaitingForNeighbors, Firmware, WaitingToRebootFirmware,
-            RebootingFirmware, RestoringWatchdogs,
+            Reading,
+            SuspendingWatchdogs,
+            WaitingForChain,
+            RememberingNeighbors,
+            ArmingFallback,
+            Downloading,
+            Uploading,
+            WaitingToReboot,
+            Rebooting,
+            Downloading,
+            Uploading,
+            WaitingToReboot,
+            Rebooting,
+            StoppingFallback,
+            WaitingForNeighbors,
+            Firmware,
+            WaitingToRebootFirmware,
+            RebootingFirmware,
+            RestoringWatchdogs,
         ]));
         // a downgrade
-        assert!(path(&[Reading, WaitingForChain, RememberingNeighbors, Downloading, Uploading, WaitingToReboot, Rebooting, WaitingForNeighbors]));
+        assert!(path(&[
+            Reading,
+            WaitingForChain,
+            RememberingNeighbors,
+            Downloading,
+            Uploading,
+            WaitingToReboot,
+            Rebooting,
+            WaitingForNeighbors
+        ]));
         // rolled back, the watchdogs set again
-        assert!(path(&[Reading, WaitingForChain, RememberingNeighbors, ArmingFallback, Downloading, Uploading, WaitingToReboot, Rebooting, NotUpdated, RestoringWatchdogs]));
+        assert!(path(&[
+            Reading,
+            WaitingForChain,
+            RememberingNeighbors,
+            ArmingFallback,
+            Downloading,
+            Uploading,
+            WaitingToReboot,
+            Rebooting,
+            NotUpdated,
+            RestoringWatchdogs
+        ]));
         // only the firmware
-        assert!(path(&[Reading, WaitingForChain, Firmware, WaitingToRebootFirmware, RebootingFirmware]));
+        assert!(path(&[
+            Reading,
+            WaitingForChain,
+            Firmware,
+            WaitingToRebootFirmware,
+            RebootingFirmware
+        ]));
         // no reboot without the packages up
-        assert!(!path(&[Reading, WaitingForChain, RememberingNeighbors, ArmingFallback, Downloading, Rebooting]));
+        assert!(!path(&[
+            Reading,
+            WaitingForChain,
+            RememberingNeighbors,
+            ArmingFallback,
+            Downloading,
+            Rebooting
+        ]));
         // an apply's state in an update
-        assert!(!JobPhase::from(ApplyState::Planning).may_follow(Some(UpdateState::Reading.into())));
+        assert!(
+            !JobPhase::from(ApplyState::Planning).may_follow(Some(UpdateState::Reading.into()))
+        );
     }
 
     #[test]
@@ -635,8 +728,17 @@ mod tests {
             BootstrapState::WaitingForApi,
             BootstrapState::RestoringWatchdogs,
         ]);
-        all_reachable(&[CleanupState::Clearing, CleanupState::WaitingForChain, CleanupState::Rebooting]);
-        all_reachable(&[NetboxState::Planning, NetboxState::Writing, NetboxState::Undoing, NetboxState::Refetching]);
+        all_reachable(&[
+            CleanupState::Clearing,
+            CleanupState::WaitingForChain,
+            CleanupState::Rebooting,
+        ]);
+        all_reachable(&[
+            NetboxState::Planning,
+            NetboxState::Writing,
+            NetboxState::Undoing,
+            NetboxState::Refetching,
+        ]);
         // the topology read again after a failed write too
         assert!(path(&[NetboxState::Planning, NetboxState::Refetching]));
         assert!(path(&[NetboxState::Undoing, NetboxState::Refetching]));

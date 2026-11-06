@@ -21,7 +21,7 @@ pub struct NetboxPlanVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "NetboxPlanVariables",
+    variables = "NetboxPlanVariables"
 )]
 pub struct NetboxPlanQuery {
     pub allow_netbox_write: bool,
@@ -227,7 +227,7 @@ pub struct NetboxPlanPreviewVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "NetboxPlanPreviewVariables",
+    variables = "NetboxPlanPreviewVariables"
 )]
 pub struct NetboxPlanPreview {
     pub topology: PreviewTopology,
@@ -239,7 +239,7 @@ pub struct NetboxPlanPreview {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "NetboxPlanPreviewVariables",
+    variables = "NetboxPlanPreviewVariables"
 )]
 pub struct PreviewTopology {
     #[arguments(id: $id)]
@@ -250,7 +250,7 @@ pub struct PreviewTopology {
 #[cynic(
     schema = "authenticated",
     graphql_type = "NetboxPlan",
-    variables = "NetboxPlanPreviewVariables",
+    variables = "NetboxPlanPreviewVariables"
 )]
 pub struct PlanPreview {
     pub preview: FindingKinds,
@@ -291,7 +291,7 @@ pub struct WriteNetboxPlanVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "WriteNetboxPlanVariables",
+    variables = "WriteNetboxPlanVariables"
 )]
 pub struct WriteNetboxPlan {
     #[arguments(helper: $helper, fingerprint: $fingerprint)]
@@ -307,7 +307,7 @@ pub struct UndoNetboxWriteVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "UndoNetboxWriteVariables",
+    variables = "UndoNetboxWriteVariables"
 )]
 pub struct UndoNetboxWrite {
     #[arguments(jobId: $job_id)]
@@ -323,7 +323,7 @@ pub struct HelperJobsVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "HelperJobsVariables",
+    variables = "HelperJobsVariables"
 )]
 pub struct HelperJobs {
     #[arguments(deviceId: $device_id)]

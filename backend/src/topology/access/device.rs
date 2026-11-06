@@ -9,11 +9,11 @@ use crate::{
     facts::{self, FactKey, FactKind, Freshness},
     topology::{
         CablePort, Device, DeviceId, DeviceRole, Topology,
-        findings::Finding,
         access::{
             AccessTopology, AdhocCredentials, interface::InterfaceAccess,
             ip_addresses::IpAddressAccess, site::SiteAccess, wlan_group::WlanGroupAccess,
         },
+        findings::Finding,
     },
 };
 use async_graphql::Object;
@@ -109,7 +109,11 @@ impl DeviceAccess {
             return Ok(None);
         };
         // one trying at a time: who comes meanwhile joins it (`facts`)
-        let key = FactKey::new(FactKind::Route, Some(self.id()), route_detail(target, &credentials));
+        let key = FactKey::new(
+            FactKind::Route,
+            Some(self.id()),
+            route_detail(target, &credentials),
+        );
         let way = facts::get(
             key,
             Freshness::MaxAge(Duration::ZERO),
@@ -266,7 +270,9 @@ impl DeviceAccess {
     /// bruteforce protection (config context `ssh_stage_time`, else a minute, as MikroTik's
     /// guide has it).
     pub fn ssh_stage_time(&self) -> Duration {
-        self.data().and_then(|d| d.ssh_stage_time).unwrap_or(Duration::from_secs(60))
+        self.data()
+            .and_then(|d| d.ssh_stage_time)
+            .unwrap_or(Duration::from_secs(60))
     }
     /// How long a source the bruteforce protection caught stays blocked (config context
     /// `ssh_blacklist_time`, else 10 minutes: MikroTik's guide has 10 days, which locks an
@@ -342,7 +348,10 @@ impl DeviceAccess {
         partners.sort_by(|a, b| a.name().cmp(b.name()));
         for device in partners {
             if seen.insert(device.id()) {
-                candidates.push(BatchCandidate { device, partner: true });
+                candidates.push(BatchCandidate {
+                    device,
+                    partner: true,
+                });
             }
         }
         let mut others: Vec<DeviceAccess> = sites
@@ -353,7 +362,10 @@ impl DeviceAccess {
         others.sort_by(|a, b| a.name().cmp(b.name()));
         for device in others {
             if seen.insert(device.id()) {
-                candidates.push(BatchCandidate { device, partner: false });
+                candidates.push(BatchCandidate {
+                    device,
+                    partner: false,
+                });
             }
         }
         candidates
@@ -365,12 +377,18 @@ impl DeviceAccess {
     }
     /// Why there is no `bootstrapPlan`.
     async fn bootstrap_problem(&self) -> Option<ErrorInfo> {
-        bootstrap::plan(self).err().map(|error| ErrorInfo::from(&error))
+        bootstrap::plan(self)
+            .err()
+            .map(|error| ErrorInfo::from(&error))
     }
     /// The provisioner's entries in the device's journal in NetBox, newest first: what its
     /// jobs did (`crate::journal`, the device page's „Verlauf“).
-    async fn journal(&self) -> Result<Vec<crate::journal::JournalEntry>, crate::error_info::ApiError> {
-        Ok(crate::journal::entries(self.id).await.map_err(Error::Netbox)?)
+    async fn journal(
+        &self,
+    ) -> Result<Vec<crate::journal::JournalEntry>, crate::error_info::ApiError> {
+        Ok(crate::journal::entries(self.id)
+            .await
+            .map_err(Error::Netbox)?)
     }
     /// The RouterOS device feeding this one over PoE and its port: a cold boot
     /// (`Mutation.powerCycle`) is possible.
@@ -400,28 +418,30 @@ impl DeviceAccess {
         use crate::device::watchdog;
         let powered = watchdog::addresses(self);
         let watchers = watchdog::watchers(self, &crate::graphql::management_tree(self));
-        let read = watchers.iter().map(|watchdog::Watcher { device, supplier }| {
-            let powered = if *supplier { powered.as_slice() } else { &[] };
-            async move {
-                let read = async {
-                    let link = device
-                        .connect(None, None, None)
-                        .await?
-                        .ok_or(Error::MissingCredentials)?;
-                    watchdog::read(&link.connect_again().await?, powered).await
-                };
-                let (watching, problem) = match read.await {
-                    Ok(watching) => (watching, None),
-                    Err(error) => (Default::default(), Some(ErrorInfo::from(&error))),
-                };
-                watchdog::Watchdog {
-                    device: device.name().into(),
-                    supplier: *supplier,
-                    watching,
-                    problem,
+        let read = watchers
+            .iter()
+            .map(|watchdog::Watcher { device, supplier }| {
+                let powered = if *supplier { powered.as_slice() } else { &[] };
+                async move {
+                    let read = async {
+                        let link = device
+                            .connect(None, None, None)
+                            .await?
+                            .ok_or(Error::MissingCredentials)?;
+                        watchdog::read(&link.connect_again().await?, powered).await
+                    };
+                    let (watching, problem) = match read.await {
+                        Ok(watching) => (watching, None),
+                        Err(error) => (Default::default(), Some(ErrorInfo::from(&error))),
+                    };
+                    watchdog::Watchdog {
+                        device: device.name().into(),
+                        supplier: *supplier,
+                        watching,
+                        problem,
+                    }
                 }
-            }
-        });
+            });
         async_graphql::futures_util::future::join_all(read)
             .await
             .into_iter()
@@ -468,7 +488,9 @@ impl DeviceAccess {
         crate::helper::poe::options(self)
     }
     /// The radio bridge devices of the network, for the helper „Funkbrücke“.
-    async fn radio_bridge_candidates(&self) -> Vec<crate::helper::radio_bridge::RadioBridgeCandidate> {
+    async fn radio_bridge_candidates(
+        &self,
+    ) -> Vec<crate::helper::radio_bridge::RadioBridgeCandidate> {
         crate::helper::radio_bridge::candidates(self.topology())
     }
     /// Its interfaces whose tags count, for the helper „Flags“.

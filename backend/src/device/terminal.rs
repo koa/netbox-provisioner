@@ -62,7 +62,10 @@ pub enum TerminalError {
     #[error("ssh: no login within {0:?}")]
     LoginTimeout(Duration),
     #[error("upload: no answer within {waited:?} at {step}")]
-    UploadNoAnswer { step: &'static str, waited: Duration },
+    UploadNoAnswer {
+        step: &'static str,
+        waited: Duration,
+    },
     #[error("upload stalled: nothing went through for {waited:?} after {sent} of {total} bytes")]
     UploadStalled {
         sent: usize,
@@ -200,9 +203,16 @@ impl Tunnel {
 
     /// A connection to `port` at `address`, made by the forwarding device, that keeps the
     /// session to it for itself: it ends with the connection.
-    pub async fn into_stream(self, address: IpAddr, port: u16) -> Result<TunnelStream, TerminalError> {
+    pub async fn into_stream(
+        self,
+        address: IpAddr,
+        port: u16,
+    ) -> Result<TunnelStream, TerminalError> {
         let stream = self.open(address, port).await?;
-        Ok(TunnelStream { _tunnel: self, stream })
+        Ok(TunnelStream {
+            _tunnel: self,
+            stream,
+        })
     }
 
     /// A connection to `port` at `address`, made by the forwarding device.
@@ -463,7 +473,11 @@ impl Terminal {
         };
         let mut text = String::new();
         for line in pending[..end].split_inclusive('\n') {
-            self.blank = if line.trim().is_empty() { self.blank + 1 } else { 0 };
+            self.blank = if line.trim().is_empty() {
+                self.blank + 1
+            } else {
+                0
+            };
             if self.blank < 2 {
                 text.push_str(line);
             }
@@ -531,7 +545,8 @@ impl Terminal {
     ) -> Result<Result<String, usize>, TerminalError> {
         self.syncs += 1;
         let n = self.syncs;
-        self.send_line(&format!(r#":put ("in" . "sync" . {n})"#)).await?;
+        self.send_line(&format!(r#":put ("in" . "sync" . {n})"#))
+            .await?;
         let done = format!("insync{n}");
         let patterns = [&[done.as_str()], ends].concat();
         match self.expect(&patterns, within).await? {

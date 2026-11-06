@@ -3,8 +3,8 @@
 use super::{
     schema::schema,
     types::{
-        DeviceModeChange, ErrorInfo, JobId, JobKind, JobPhase, JobState, LeftoverAction,
-        Partition, Watching, WideInt,
+        DeviceModeChange, ErrorInfo, JobId, JobKind, JobPhase, JobState, LeftoverAction, Partition,
+        Watching, WideInt,
     },
 };
 
@@ -18,7 +18,7 @@ pub struct JobEventsVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "SubscriptionAuthenticated",
-    variables = "JobEventsVariables",
+    variables = "JobEventsVariables"
 )]
 pub struct JobEvents {
     #[arguments(id: $id)]
@@ -534,7 +534,7 @@ pub struct CancelJobVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "MutationAuthenticated",
-    variables = "CancelJobVariables",
+    variables = "CancelJobVariables"
 )]
 pub struct CancelJob {
     #[arguments(id: $id)]

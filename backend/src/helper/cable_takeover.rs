@@ -27,7 +27,10 @@ pub struct CableTakeoverInput {
     pub peer: u32,
 }
 
-pub async fn plan(topology: &Arc<Topology>, input: &CableTakeoverInput) -> Result<NetboxPlan, Error> {
+pub async fn plan(
+    topology: &Arc<Topology>,
+    input: &CableTakeoverInput,
+) -> Result<NetboxPlan, Error> {
     let cleared = clear(topology, input)?;
     let after = match &cleared {
         Some(cleared) => cleared.preview_topology()?,
@@ -43,10 +46,11 @@ pub async fn plan(topology: &Arc<Topology>, input: &CableTakeoverInput) -> Resul
         return Ok(connection);
     };
     let offset = plan.steps.len();
-    plan.steps.extend(connection.steps.into_iter().map(|mut step| {
-        step.shift(offset);
-        step
-    }));
+    plan.steps
+        .extend(connection.steps.into_iter().map(|mut step| {
+            step.shift(offset);
+            step
+        }));
     plan.description = format!("Kabel übernehmen: {}", connection.description).into();
     plan.checked_with = connection.checked_with;
     plan.undocumented.extend(connection.undocumented);
@@ -55,7 +59,10 @@ pub async fn plan(topology: &Arc<Topology>, input: &CableTakeoverInput) -> Resul
 
 /// „Verbindung abräumen“ at each end whose cable or transfer addresses go elsewhere, one after
 /// the other on NetBox as the one before leaves it; none if NetBox has no such link.
-fn clear(topology: &Arc<Topology>, input: &CableTakeoverInput) -> Result<Option<NetboxPlan>, Error> {
+fn clear(
+    topology: &Arc<Topology>,
+    input: &CableTakeoverInput,
+) -> Result<Option<NetboxPlan>, Error> {
     let end = |id| {
         topology
             .get_interface_by_id(InterfaceId(id))
@@ -63,7 +70,10 @@ fn clear(topology: &Arc<Topology>, input: &CableTakeoverInput) -> Result<Option<
     };
     let (port, peer) = (end(input.port)?, end(input.peer)?);
     let device = port.device().ok_or(Error::UnknownInterface(input.port))?;
-    let cabled_together = port.connected_interfaces().iter().any(|i| i.id() == peer.id());
+    let cabled_together = port
+        .connected_interfaces()
+        .iter()
+        .any(|i| i.id() == peer.id());
     let mut plan: Option<NetboxPlan> = None;
     for end in [&port, &peer] {
         if patched(end) {
@@ -79,7 +89,11 @@ fn clear(topology: &Arc<Topology>, input: &CableTakeoverInput) -> Result<Option<
             None => topology.clone(),
         };
         let input = DisconnectInput {
-            device: end.device().ok_or(Error::UnknownInterface(end.id().0))?.id().0,
+            device: end
+                .device()
+                .ok_or(Error::UnknownInterface(end.id().0))?
+                .id()
+                .0,
             interface: end.id().0,
         };
         let cleared = match disconnect::plan(&now, &input) {

@@ -6,7 +6,9 @@ use crate::chr_network::qemu::nix_unavailable;
 use crate::chr_network::vm::boot_node;
 use crate::chr_network::wait::wait_until;
 use backend::device::ros::fallback::{NAME, Pending, arm, disarm, pending};
-use backend::device::ros::progress::{Instrument, file_path, instrument, provisioner_address, read};
+use backend::device::ros::progress::{
+    Instrument, file_path, instrument, provisioner_address, read,
+};
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
 use std::time::Duration;
@@ -68,10 +70,18 @@ async fn fallback_is_stopped_or_restores() {
     // stopped: no scheduler, no backup left
     arm(&device, Duration::from_secs(60)).await.unwrap();
     assert_eq!(names(&device, "/system/scheduler").await, [FALLBACK]);
-    assert!(names(&device, "/file").await.contains(&format!("{FALLBACK}.backup")));
+    assert!(
+        names(&device, "/file")
+            .await
+            .contains(&format!("{FALLBACK}.backup"))
+    );
     disarm(&device).await.unwrap();
     assert!(names(&device, "/system/scheduler").await.is_empty());
-    assert!(!names(&device, "/file").await.contains(&format!("{FALLBACK}.backup")));
+    assert!(
+        !names(&device, "/file")
+            .await
+            .contains(&format!("{FALLBACK}.backup"))
+    );
 
     // left alone: the config from before comes back with a reboot
     arm(&device, Duration::from_secs(10)).await.unwrap();
@@ -136,7 +146,10 @@ async fn marks_outlast_the_fallback() {
         },
     );
     for (path, attributes) in [
-        ("/system/script/add", vec![("name", "marks"), ("source", source.as_str())]),
+        (
+            "/system/script/add",
+            vec![("name", "marks"), ("source", source.as_str())],
+        ),
         ("/execute", vec![("script", "/system script run marks")]),
     ] {
         let mut stream = device
@@ -161,7 +174,10 @@ async fn marks_outlast_the_fallback() {
     wait_until(
         || async {
             let api = node.connect_api(crate::TEST_PASSWORD);
-            Ok(!matches!(tokio::time::timeout(Duration::from_secs(5), api).await, Ok(Ok(_))))
+            Ok(!matches!(
+                tokio::time::timeout(Duration::from_secs(5), api).await,
+                Ok(Ok(_))
+            ))
         },
         Duration::from_secs(60),
     )
@@ -181,14 +197,27 @@ async fn marks_outlast_the_fallback() {
     .await
     .expect("the backup was not loaded");
     // the 20 s from the script's end, not the 600 s armed
-    assert!(cut.elapsed() < Duration::from_secs(200), "{:?}", cut.elapsed());
+    assert!(
+        cut.elapsed() < Duration::from_secs(200),
+        "{:?}",
+        cut.elapsed()
+    );
     let device = node.connect_api(crate::TEST_PASSWORD).await.unwrap();
     assert_eq!(pending(&device, None).await.unwrap(), Pending::Gone);
-    let progress = read(&device, "t1").await.unwrap().expect("no marks after the fallback");
+    let progress = read(&device, "t1")
+        .await
+        .unwrap()
+        .expect("no marks after the fallback");
     eprintln!("{}", progress.text);
     assert!(progress.done);
     assert_eq!(progress.lines, 6);
-    assert!(progress.reach.first().is_some_and(|(line, lost)| *lost && *line >= 4), "{progress:?}");
+    assert!(
+        progress
+            .reach
+            .first()
+            .is_some_and(|(line, lost)| *lost && *line >= 4),
+        "{progress:?}"
+    );
     assert_eq!(progress.rearmed, Some(20));
     assert!(progress.rearmed_at.is_some(), "{progress:?}");
 }
@@ -226,7 +255,10 @@ async fn a_clock_jump_leaves_the_fallback_time() {
     );
     let jump = ":delay 1s; /system clock set time=([/system clock get time] + 01:00:00)";
     for (path, attributes) in [
-        ("/system/script/add", vec![("name", "jump"), ("source", source.as_str())]),
+        (
+            "/system/script/add",
+            vec![("name", "jump"), ("source", source.as_str())],
+        ),
         ("/execute", vec![("script", "/system script run jump")]),
     ] {
         command(&device, path, &attributes).await;
@@ -253,11 +285,7 @@ async fn a_clock_jump_leaves_the_fallback_time() {
 }
 
 /// Runs `path` with `attributes`, failing on a trap.
-async fn command(
-    device: &MikrotikDevice<SimpleResult>,
-    path: &str,
-    attributes: &[(&str, &str)],
-) {
+async fn command(device: &MikrotikDevice<SimpleResult>, path: &str, attributes: &[(&str, &str)]) {
     let mut stream = device
         .send_command(
             path.as_bytes(),

@@ -1,16 +1,18 @@
 use crate::{
     Error,
     config::CONFIG,
-    device_state::{BootstrapState, DeviceModeState, JobPhase, NetboxState, PowerCycleState, RebootState, UpdateState},
-    error_info::ApiError,
+    context::UserInfo,
     device::{
         AccessibleDevice, Connecting, bootstrap, device_mode, partitions,
         power::PowerChain,
         update::{self, DeviceLink},
-        update_fallback,
-        watchdog,
+        update_fallback, watchdog,
     },
-    context::UserInfo,
+    device_state::{
+        BootstrapState, DeviceModeState, JobPhase, NetboxState, PowerCycleState, RebootState,
+        UpdateState,
+    },
+    error_info::ApiError,
     graphql::scalars::ScalarMac,
     helper::{self, Helper, NetboxPlan},
     job::{self, Job, JobKind, JobSubject, Log},
@@ -23,12 +25,12 @@ use crate::{
         management::ManagementTree,
     },
 };
-use std::{sync::Arc, time::SystemTime};
 use async_graphql::{
-    Context, EmptyMutation, EmptySubscription, Guard, InputObject, Object, Schema, SimpleObject, Subscription,
-    futures_util::Stream,
+    Context, EmptyMutation, EmptySubscription, Guard, InputObject, Object, Schema, SimpleObject,
+    Subscription, futures_util::Stream,
 };
 use serde_json::json;
+use std::{sync::Arc, time::SystemTime};
 pub mod live;
 pub mod scalars;
 pub type AuthenticatedGraphqlSchema =
@@ -148,7 +150,11 @@ impl SubscriptionAuthenticated {
         })
     }
     /// `jobs` of the query, again whenever one of them started, logged or ended.
-    async fn jobs(&self, device_id: Option<u32>, site_id: Option<u32>) -> impl Stream<Item = Vec<Arc<Job>>> + use<> {
+    async fn jobs(
+        &self,
+        device_id: Option<u32>,
+        site_id: Option<u32>,
+    ) -> impl Stream<Item = Vec<Arc<Job>>> + use<> {
         let subject = job_subject(device_id, site_id);
         live::rounds(move || std::future::ready(job::list_shown(subject)))
     }
@@ -233,7 +239,10 @@ impl MutationAuthenticated {
             .ok_or(Error::UnknownDevice(id))
     }
     async fn site(&self, id: u32) -> Result<SiteAccess, Error> {
-        self.topology.site(SiteId(id)).await.ok_or(Error::UnknownSite(id))
+        self.topology
+            .site(SiteId(id))
+            .await
+            .ok_or(Error::UnknownSite(id))
     }
 }
 
@@ -298,7 +307,9 @@ pub async fn resume_saved_jobs(topology: &TopologyHolder) {
             saved_job::hold_back(entry.device, saved_job::HeldBack::DeviceGone);
             continue;
         };
-        let after = SystemTime::now().duration_since(saved.saved_at).unwrap_or_default();
+        let after = SystemTime::now()
+            .duration_since(saved.saved_at)
+            .unwrap_or_default();
         let started = match &saved.work {
             SavedWork::Apply { apply, .. } if apply.batch.is_some() => {
                 if let Some(batch) = &apply.batch {
@@ -309,46 +320,74 @@ pub async fn resume_saved_jobs(topology: &TopologyHolder) {
             SavedWork::Apply { apply, .. } => {
                 let (saved, apply) = (saved.clone(), apply.clone());
                 saved_job::take(entry.device);
-                job::start(&device.clone(), JobKind::Apply, Started::Resumed { entry: saved.journal_entry }, |log| async move {
-                    log.emit(job::Resumed { after: after.into() });
-                    if let Some(hold) = &apply.hold {
-                        crate::device::radio_hold::RadioHold::announce_saved(device.name(), hold, &log);
-                    }
-                    log.keep(saved);
-                    // saved taking the fallback away too: that only follows a look at the
-                    // marks, which comes first again
-                    log.resume_in(crate::device_state::ApplyState::ScriptRunning);
-                    resume_apply(&device, &apply, &log).await
-                })
+                job::start(
+                    &device.clone(),
+                    JobKind::Apply,
+                    Started::Resumed {
+                        entry: saved.journal_entry,
+                    },
+                    |log| async move {
+                        log.emit(job::Resumed {
+                            after: after.into(),
+                        });
+                        if let Some(hold) = &apply.hold {
+                            crate::device::radio_hold::RadioHold::announce_saved(
+                                device.name(),
+                                hold,
+                                &log,
+                            );
+                        }
+                        log.keep(saved);
+                        // saved taking the fallback away too: that only follows a look at the
+                        // marks, which comes first again
+                        log.resume_in(crate::device_state::ApplyState::ScriptRunning);
+                        resume_apply(&device, &apply, &log).await
+                    },
+                )
             }
             SavedWork::Update { state, update } => {
                 let (saved, state, update) = (saved.clone(), *state, update.clone());
                 saved_job::take(entry.device);
-                job::start(&device.clone(), JobKind::Update, Started::Resumed { entry: saved.journal_entry }, |log| async move {
-                    log.emit(job::Resumed { after: after.into() });
-                    for (device, watching) in &update.watchers {
-                        log.emit(watchdog::WatchdogSuspended {
-                            device: device.clone(),
-                            watching: watching.clone(),
-                            safety_net: watchdog::SAFETY_NET.into(),
+                job::start(
+                    &device.clone(),
+                    JobKind::Update,
+                    Started::Resumed {
+                        entry: saved.journal_entry,
+                    },
+                    |log| async move {
+                        log.emit(job::Resumed {
+                            after: after.into(),
                         });
-                    }
-                    let rebooting_since = saved_job::instant(saved.saved_at);
-                    log.keep(saved);
-                    log.resume_in(state);
-                    resume_update(&device, state, &update, rebooting_since, &log).await
-                })
+                        for (device, watching) in &update.watchers {
+                            log.emit(watchdog::WatchdogSuspended {
+                                device: device.clone(),
+                                watching: watching.clone(),
+                                safety_net: watchdog::SAFETY_NET.into(),
+                            });
+                        }
+                        let rebooting_since = saved_job::instant(saved.saved_at);
+                        log.keep(saved);
+                        log.resume_in(state);
+                        resume_update(&device, state, &update, rebooting_since, &log).await
+                    },
+                )
             }
         };
         if let Err(error) = started {
-            log::warn!("Cannot go on with the job of device {}: {error}", entry.device.0);
+            log::warn!(
+                "Cannot go on with the job of device {}: {error}",
+                entry.device.0
+            );
         }
     }
     for batch in batches {
         resume_batch(topology, &waiting, &batch).await;
     }
     // what is still waiting didn't go on: its entry is closed with the others
-    let still_waiting: Vec<DeviceId> = saved_job::waiting().iter().map(|entry| entry.device).collect();
+    let still_waiting: Vec<DeviceId> = saved_job::waiting()
+        .iter()
+        .map(|entry| entry.device)
+        .collect();
     let resumed: Vec<u64> = waiting
         .iter()
         .filter(|entry| !still_waiting.contains(&entry.device))
@@ -360,16 +399,29 @@ pub async fn resume_saved_jobs(topology: &TopologyHolder) {
 /// A batch saved before the restart, its devices `batch` ([`resume_saved_jobs`]): all of
 /// them saved and in NetBox, they go on together; else none does, and their fallbacks take
 /// all of it back.
-async fn resume_batch(topology: &TopologyHolder, waiting: &[saved_job::Waiting], batch: &[DeviceId]) {
+async fn resume_batch(
+    topology: &TopologyHolder,
+    waiting: &[saved_job::Waiting],
+    batch: &[DeviceId],
+) {
     let mut members = Vec::new();
     for id in batch {
-        let saved = waiting.iter().find(|entry| entry.device == *id).and_then(|entry| entry.saved.as_ref().ok());
+        let saved = waiting
+            .iter()
+            .find(|entry| entry.device == *id)
+            .and_then(|entry| entry.saved.as_ref().ok());
         let apply = saved.and_then(|saved| match &saved.work {
-            SavedWork::Apply { apply, .. } if apply.batch.as_ref().is_some_and(|b| b.devices == batch) => Some(apply),
+            SavedWork::Apply { apply, .. }
+                if apply.batch.as_ref().is_some_and(|b| b.devices == batch) =>
+            {
+                Some(apply)
+            }
             _ => None,
         });
         match (saved, apply, topology.devices_by_id(*id).await) {
-            (Some(saved), Some(apply), Some(device)) => members.push((device, saved.clone(), (**apply).clone())),
+            (Some(saved), Some(apply), Some(device)) => {
+                members.push((device, saved.clone(), (**apply).clone()))
+            }
             _ => {
                 for id in batch {
                     saved_job::hold_back(*id, saved_job::HeldBack::BatchIncomplete);
@@ -378,7 +430,11 @@ async fn resume_batch(topology: &TopologyHolder, waiting: &[saved_job::Waiting],
             }
         }
     }
-    let Some(delay) = members.first().and_then(|(_, _, apply)| apply.batch.as_ref()).map(|batch| batch.delay) else {
+    let Some(delay) = members
+        .first()
+        .and_then(|(_, _, apply)| apply.batch.as_ref())
+        .map(|batch| batch.delay)
+    else {
         return;
     };
     let fires = members
@@ -389,21 +445,41 @@ async fn resume_batch(topology: &TopologyHolder, waiting: &[saved_job::Waiting],
     for id in batch {
         saved_job::take(*id);
     }
-    let devices: Vec<DeviceAccess> = members.iter().map(|(device, _, _)| device.clone()).collect();
-    let entries: Vec<Option<u64>> = members.iter().map(|(_, saved, _)| saved.journal_entry).collect();
-    let started = job::start_all(&devices, JobKind::Apply, |index| Started::Resumed { entry: entries[index] }, |logs| async move {
-        for (log, (device, saved, apply)) in logs.iter().zip(&members) {
-            let after = SystemTime::now().duration_since(saved.saved_at).unwrap_or_default();
-            log.emit(job::Resumed { after: after.into() });
-            if let Some(hold) = &apply.hold {
-                crate::device::radio_hold::RadioHold::announce_saved(device.name(), hold, log);
+    let devices: Vec<DeviceAccess> = members
+        .iter()
+        .map(|(device, _, _)| device.clone())
+        .collect();
+    let entries: Vec<Option<u64>> = members
+        .iter()
+        .map(|(_, saved, _)| saved.journal_entry)
+        .collect();
+    let started = job::start_all(
+        &devices,
+        JobKind::Apply,
+        |index| Started::Resumed {
+            entry: entries[index],
+        },
+        |logs| async move {
+            for (log, (device, saved, apply)) in logs.iter().zip(&members) {
+                let after = SystemTime::now()
+                    .duration_since(saved.saved_at)
+                    .unwrap_or_default();
+                log.emit(job::Resumed {
+                    after: after.into(),
+                });
+                if let Some(hold) = &apply.hold {
+                    crate::device::radio_hold::RadioHold::announce_saved(device.name(), hold, log);
+                }
+                log.keep(saved.clone());
+                log.resume_in(crate::device_state::ApplyState::ScriptRunning);
             }
-            log.keep(saved.clone());
-            log.resume_in(crate::device_state::ApplyState::ScriptRunning);
-        }
-        let members = members.into_iter().map(|(device, _, apply)| (device, apply)).collect();
-        crate::device::batch::resume(members, logs, fires, delay).await
-    });
+            let members = members
+                .into_iter()
+                .map(|(device, _, apply)| (device, apply))
+                .collect();
+            crate::device::batch::resume(members, logs, fires, delay).await
+        },
+    );
     if let Err(error) = started {
         log::warn!("Cannot go on with the batch of devices {batch:?}: {error}");
     }
@@ -446,7 +522,9 @@ async fn connect_until(
         device: device.name().into(),
     });
     loop {
-        let reached = log.unless_cancelled(device.connect(None, credentials.clone(), None)).await?;
+        let reached = log
+            .unless_cancelled(device.connect(None, credentials.clone(), None))
+            .await?;
         match reached {
             Ok(Some(link)) => {
                 log.emit(link.connected_device());
@@ -454,7 +532,8 @@ async fn connect_until(
             }
             Ok(None) => return Err(Error::MissingCredentials),
             Err(_) if std::time::Instant::now() < until => {
-                log.unless_cancelled(tokio::time::sleep(RESUME_RETRY)).await?;
+                log.unless_cancelled(tokio::time::sleep(RESUME_RETRY))
+                    .await?;
             }
             Err(error) => return Err(error),
         }
@@ -464,10 +543,15 @@ async fn connect_until(
 /// An apply saved before the restart ([`resume_saved_jobs`]): connects until the device
 /// answers, the script may have cut it off for a while. Not back before the fallback would
 /// have brought it back, it ends as an apply not reached does, the fallback left.
-async fn resume_apply(device: &DeviceAccess, saved: &saved_job::SavedApply, log: &Log) -> Result<(), Error> {
+async fn resume_apply(
+    device: &DeviceAccess,
+    saved: &saved_job::SavedApply,
+    log: &Log,
+) -> Result<(), Error> {
     use crate::device::ros::graphql::{COME_BACK, FallbackLeftReason, fallback_left, give_up};
     let fires = saved_job::instant(saved.script.fires);
-    let link = match connect_until(device, saved.credentials.clone(), fires + COME_BACK, log).await {
+    let link = match connect_until(device, saved.credentials.clone(), fires + COME_BACK, log).await
+    {
         Ok(link) => link,
         Err(Error::Cancelled) => return Err(Error::Cancelled),
         Err(error) => {
@@ -497,7 +581,11 @@ async fn resume_update(
 ) -> Result<(), Error> {
     let mut suspended = Vec::new();
     for (name, watching) in &saved.watchers {
-        let reached = match device.topology().list_devices().find(|d| d.name() == &**name) {
+        let reached = match device
+            .topology()
+            .list_devices()
+            .find(|d| d.name() == &**name)
+        {
             Some(watcher) => connect_for_job(&watcher, None, None, None, log).await,
             None => Err(Error::UnknownDeviceName(name.clone())),
         };
@@ -519,7 +607,9 @@ async fn resume_update(
     let resumed = async {
         let link = connect_until(device, saved.credentials.clone(), until, log).await?;
         let credentials = saved.credentials.clone().unwrap_or_default();
-        let keep = |run: &saved_job::UpdateRun| log.keep(saved_update(device, &credentials, &saved.watchers, run));
+        let keep = |run: &saved_job::UpdateRun| {
+            log.keep(saved_update(device, &credentials, &saved.watchers, run))
+        };
         let since = tokio::time::Instant::from_std(rebooting_since);
         update::resume(&link, &power, state, &saved.run, since, &keep, log).await
     }
@@ -536,7 +626,10 @@ const RESUME_RETRY: std::time::Duration = std::time::Duration::from_secs(10);
 pub(crate) fn management_tree(device: &DeviceAccess) -> ManagementTree {
     ManagementTree::of(
         device.topology(),
-        CONFIG.management_proxy.as_ref().map(|proxy| proxy.device.as_ref()),
+        CONFIG
+            .management_proxy
+            .as_ref()
+            .map(|proxy| proxy.device.as_ref()),
     )
 }
 
@@ -572,16 +665,25 @@ impl MutationAuthenticated {
         let device = helper.device(&current)?;
         let user = user_label(ctx);
         let topology = self.topology.clone();
-        Ok(job::start(&device, JobKind::NetboxWrite, Started::By(user_label(ctx)), |log| async move {
-            let result = helper::write(&helper, &current, &fingerprint, &user, &log).await;
-            log.enter(NetboxState::Refetching);
-            refetch(&topology).await;
-            result
-        })?)
+        Ok(job::start(
+            &device,
+            JobKind::NetboxWrite,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                let result = helper::write(&helper, &current, &fingerprint, &user, &log).await;
+                log.enter(NetboxState::Refetching);
+                refetch(&topology).await;
+                result
+            },
+        )?)
     }
     /// Takes back what the `NetboxWrite` job `job_id` wrote, the last first.
     #[graphql(guard = "NetboxWritesAllowed")]
-    async fn undo_netbox_write(&self, ctx: &Context<'_>, job_id: u32) -> Result<Arc<Job>, ApiError> {
+    async fn undo_netbox_write(
+        &self,
+        ctx: &Context<'_>,
+        job_id: u32,
+    ) -> Result<Arc<Job>, ApiError> {
         let written = job::get(job_id)
             .filter(|job| job.job_kind() == JobKind::NetboxWrite && !job.is_running())
             .ok_or(Error::UnknownJob(job_id))?;
@@ -594,12 +696,17 @@ impl MutationAuthenticated {
             .await?;
         let user = user_label(ctx);
         let topology = self.topology.clone();
-        Ok(job::start(&device, JobKind::NetboxUndo, Started::By(user_label(ctx)), |log| async move {
-            let result = helper::undo(job_id, &objects, &user, &log).await;
-            log.enter(NetboxState::Refetching);
-            refetch(&topology).await;
-            result
-        })?)
+        Ok(job::start(
+            &device,
+            JobKind::NetboxUndo,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                let result = helper::undo(job_id, &objects, &user, &log).await;
+                log.enter(NetboxState::Refetching);
+                refetch(&topology).await;
+                result
+            },
+        )?)
     }
     /// Publishes `positions` as the network map's official layout, custom field `map_position`
     /// of each device (`docs/concepts/network-map.md`). One write per device, not a `NetboxPlan`:
@@ -608,9 +715,16 @@ impl MutationAuthenticated {
     /// either, since a handful of fast field writes don't need one; the topology is fetched
     /// again before returning so the next `networkState` already has them.
     #[graphql(guard = "NetboxWritesAllowed")]
-    async fn publish_layout(&self, ctx: &Context<'_>, positions: Vec<DevicePositionInput>) -> Result<u32, ApiError> {
-        let rest = netbox::rest::NetboxRest::writer(format!("Netz-Karte, Layout publiziert ({})", user_label(ctx)))
-            .map_err(Error::Netbox)?;
+    async fn publish_layout(
+        &self,
+        ctx: &Context<'_>,
+        positions: Vec<DevicePositionInput>,
+    ) -> Result<u32, ApiError> {
+        let rest = netbox::rest::NetboxRest::writer(format!(
+            "Netz-Karte, Layout publiziert ({})",
+            user_label(ctx)
+        ))
+        .map_err(Error::Netbox)?;
         for position in &positions {
             rest.update(
                 &format!("dcim/devices/{}/", position.device_id),
@@ -629,18 +743,31 @@ impl MutationAuthenticated {
     /// its own meanwhile (`BUSY` either way): an apply or a reboot of it would cut the session,
     /// and its commands would land on the neighbor's console.
     #[graphql(guard = "WritesAllowed")]
-    async fn bootstrap(&self, ctx: &Context<'_>, id: u32, mac: ScalarMac) -> Result<Arc<Job>, ApiError> {
+    async fn bootstrap(
+        &self,
+        ctx: &Context<'_>,
+        id: u32,
+        mac: ScalarMac,
+    ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let mut plan = bootstrap::working_plan(&device).await?;
         plan.setup.macs = [mac.0].into();
         let neighbor = plan.neighbor_device().clone();
         let watchers = Watchers::suppliers(&device);
-        Ok(job::start_through(&device.clone(), &neighbor, JobKind::Bootstrap, Started::By(user_label(ctx)), |log| async move {
-            let suspended = watchers.suspend(&log, BootstrapState::SuspendingWatchdogs).await?;
-            let set_up = bootstrap::bootstrap(&device, &plan, &log).await;
-            restore_watchdogs(suspended, &log, BootstrapState::RestoringWatchdogs).await;
-            set_up
-        })?)
+        Ok(job::start_through(
+            &device.clone(),
+            &neighbor,
+            JobKind::Bootstrap,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                let suspended = watchers
+                    .suspend(&log, BootstrapState::SuspendingWatchdogs)
+                    .await?;
+                let set_up = bootstrap::bootstrap(&device, &plan, &log).await;
+                restore_watchdogs(suspended, &log, BootstrapState::RestoringWatchdogs).await;
+                set_up
+            },
+        )?)
     }
     /// Starts updating RouterOS (and the RouterBOARD firmware) to the newest release of
     /// `channel`, with the packages the device needs (`allow_apply` must be set); without
@@ -667,34 +794,48 @@ impl MutationAuthenticated {
         let power = PowerChain::of(&device);
         let way_back = update_fallback::WayBack::of(&device, without_fallback == Some(true));
         let watchers = Watchers::of(&device, suspend_watchdogs == Some(true));
-        Ok(job::start(&device.clone(), JobKind::Update, Started::By(user_label(ctx)), |log| async move {
-            log.enter(UpdateState::Reading);
-            let access = device.clone();
-            let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
-            let wanted = device.wanted_packages().await?;
-            let version = match channel {
-                Some(channel) => update::newest(7, channel).await?,
-                None => update::read_state(&device.api().await?).await?.version,
-            };
-            log.emit(update::UpdateTarget {
-                version: version.to_string().into(),
-                channel: channel.map(|channel| channel.name().into()),
-            });
-            let suspended = watchers.suspend(&log, UpdateState::SuspendingWatchdogs).await?;
-            let watching: Vec<_> = suspended.iter().map(|s| (s.device.clone(), s.watching.clone())).collect();
-            let credentials = device.credentials_name().map(Box::from);
-            // without credentials by name (ad hoc ones) it can't connect again after a restart
-            let keep = |run: &saved_job::UpdateRun| {
-                if let Some(credentials) = &credentials {
-                    log.keep(saved_update(&access, credentials, &watching, run));
-                }
-            };
-            let fallback = CONFIG.update_fallback();
-            let updated =
-                update::update_keeping(&device, &power, &version, &wanted, fallback, &way_back, &keep, &log).await;
-            restore_watchdogs(suspended, &log, UpdateState::RestoringWatchdogs).await;
-            updated
-        })?)
+        Ok(job::start(
+            &device.clone(),
+            JobKind::Update,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                log.enter(UpdateState::Reading);
+                let access = device.clone();
+                let device =
+                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
+                        .await?;
+                let wanted = device.wanted_packages().await?;
+                let version = match channel {
+                    Some(channel) => update::newest(7, channel).await?,
+                    None => update::read_state(&device.api().await?).await?.version,
+                };
+                log.emit(update::UpdateTarget {
+                    version: version.to_string().into(),
+                    channel: channel.map(|channel| channel.name().into()),
+                });
+                let suspended = watchers
+                    .suspend(&log, UpdateState::SuspendingWatchdogs)
+                    .await?;
+                let watching: Vec<_> = suspended
+                    .iter()
+                    .map(|s| (s.device.clone(), s.watching.clone()))
+                    .collect();
+                let credentials = device.credentials_name().map(Box::from);
+                // without credentials by name (ad hoc ones) it can't connect again after a restart
+                let keep = |run: &saved_job::UpdateRun| {
+                    if let Some(credentials) = &credentials {
+                        log.keep(saved_update(&access, credentials, &watching, run));
+                    }
+                };
+                let fallback = CONFIG.update_fallback();
+                let updated = update::update_keeping(
+                    &device, &power, &version, &wanted, fallback, &way_back, &keep, &log,
+                )
+                .await;
+                restore_watchdogs(suspended, &log, UpdateState::RestoringWatchdogs).await;
+                updated
+            },
+        )?)
     }
     /// Starts taking RouterOS 7 on device `id` back to the older `version` (`allow_apply` must
     /// be set): the packages it runs, of that version, then `/system/package/downgrade`. The
@@ -713,18 +854,29 @@ impl MutationAuthenticated {
         without_fallback: Option<bool>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
-        let version = update::Version::parse(&version).ok_or_else(|| Error::NoVersion(version.into()))?;
+        let version =
+            update::Version::parse(&version).ok_or_else(|| Error::NoVersion(version.into()))?;
         let power = PowerChain::of(&device);
         let way_back = update_fallback::WayBack::of(&device, without_fallback == Some(true));
         let watchers = Watchers::of(&device, suspend_watchdogs == Some(true));
-        Ok(job::start(&device.clone(), JobKind::Downgrade, Started::By(user_label(ctx)), |log| async move {
-            log.enter(UpdateState::Reading);
-            let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
-            let suspended = watchers.suspend(&log, UpdateState::SuspendingWatchdogs).await?;
-            let downgraded = update::downgrade(&device, &power, &version, &way_back, &log).await;
-            restore_watchdogs(suspended, &log, UpdateState::RestoringWatchdogs).await;
-            downgraded
-        })?)
+        Ok(job::start(
+            &device.clone(),
+            JobKind::Downgrade,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                log.enter(UpdateState::Reading);
+                let device =
+                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
+                        .await?;
+                let suspended = watchers
+                    .suspend(&log, UpdateState::SuspendingWatchdogs)
+                    .await?;
+                let downgraded =
+                    update::downgrade(&device, &power, &version, &way_back, &log).await;
+                restore_watchdogs(suspended, &log, UpdateState::RestoringWatchdogs).await;
+                downgraded
+            },
+        )?)
     }
     /// Starts switching off and on the PoE of the device feeding device `id`
     /// (`DeviceAccess.powerSupply`; `allow_apply` must be set): a cold boot, which confirms a
@@ -738,16 +890,27 @@ impl MutationAuthenticated {
             .ok_or_else(|| Error::NoPowerSupply(device.name().into()))?;
         let power = PowerChain::of(&device);
         let name: Box<str> = device.name().into();
-        Ok(job::start(&supplier.clone(), JobKind::PowerCycle, Started::By(user_label(ctx)), |log| async move {
-            log.enter(PowerCycleState::Reading);
-            let link = connect_for_job(&supplier, None, None, None, &log).await?;
-            let cut =
-                crate::device::power_cycle::power_cycle(&link.api().await?, &supply, &factory, &power, &name, &log)
-                    .await?;
-            let back = crate::device::power_cycle::wait_for_fed(&device, &log).await;
-            drop(cut);
-            back
-        })?)
+        Ok(job::start(
+            &supplier.clone(),
+            JobKind::PowerCycle,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                log.enter(PowerCycleState::Reading);
+                let link = connect_for_job(&supplier, None, None, None, &log).await?;
+                let cut = crate::device::power_cycle::power_cycle(
+                    &link.api().await?,
+                    &supply,
+                    &factory,
+                    &power,
+                    &name,
+                    &log,
+                )
+                .await?;
+                let back = crate::device::power_cycle::wait_for_fed(&device, &log).await;
+                drop(cut);
+                back
+            },
+        )?)
     }
     /// Starts taking care of something a job left on device `id` (`AccessibleDevice.leftovers`;
     /// `allow_apply` must be set). Target and credentials as for `DeviceAccess.access`.
@@ -769,12 +932,23 @@ impl MutationAuthenticated {
         if action == crate::device::leftovers::LeftoverAction::RestoreWatchdogs
             && let Some(held) = job::holding_watchdogs(&name)
         {
-            return Err(Error::LeftoverHeld { device: name, job: held.job }.into());
+            return Err(Error::LeftoverHeld {
+                device: name,
+                job: held.job,
+            }
+            .into());
         }
-        Ok(job::start(&device.clone(), JobKind::Cleanup, Started::By(user_label(ctx)), |log| async move {
-            let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
-            crate::device::leftovers::clear(&link, &name, action, &power, &log).await
-        })?)
+        Ok(job::start(
+            &device.clone(),
+            JobKind::Cleanup,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                let link =
+                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
+                        .await?;
+                crate::device::leftovers::clear(&link, &name, action, &power, &log).await
+            },
+        )?)
     }
     /// Starts a reboot of a device (`allow_apply` must be set) and waits until it is back.
     /// Target and credentials as for `DeviceAccess.access`.
@@ -789,11 +963,18 @@ impl MutationAuthenticated {
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
-        Ok(job::start(&device.clone(), JobKind::Reboot, Started::By(user_label(ctx)), |log| async move {
-            log.enter(RebootState::Reading);
-            let device = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
-            update::reboot(&device, &power, &log).await
-        })?)
+        Ok(job::start(
+            &device.clone(),
+            JobKind::Reboot,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                log.enter(RebootState::Reading);
+                let device =
+                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
+                        .await?;
+                update::reboot(&device, &power, &log).await
+            },
+        )?)
     }
     /// Starts turning on the features of the device mode the provisioner needs
     /// (`DeviceAccess.access.deviceMode.changes`; `allow_apply` must be set). The device asks for
@@ -810,11 +991,18 @@ impl MutationAuthenticated {
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
-        Ok(job::start(&device.clone(), JobKind::DeviceMode, Started::By(user_label(ctx)), |log| async move {
-            log.enter(DeviceModeState::Reading);
-            let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
-            device_mode::change(&link, &device, &power, &log).await
-        })?)
+        Ok(job::start(
+            &device.clone(),
+            JobKind::DeviceMode,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                log.enter(DeviceModeState::Reading);
+                let link =
+                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
+                        .await?;
+                device_mode::change(&link, &device, &power, &log).await
+            },
+        )?)
     }
     /// Starts splitting the flash in two partitions (`DeviceAccess.access.partitions.canSplit`;
     /// `allow_apply` must be set): the device reformats its flash and reboots. Target and
@@ -830,11 +1018,18 @@ impl MutationAuthenticated {
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
-        Ok(job::start(&device.clone(), JobKind::Repartition, Started::By(user_label(ctx)), |log| async move {
-            log.enter(RebootState::Reading);
-            let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
-            partitions::repartition(&link, &power, &log).await
-        })?)
+        Ok(job::start(
+            &device.clone(),
+            JobKind::Repartition,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                log.enter(RebootState::Reading);
+                let link =
+                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
+                        .await?;
+                partitions::repartition(&link, &power, &log).await
+            },
+        )?)
     }
     /// Starts booting the device from `partition` (one of `DeviceAccess.access.partitions` with
     /// a RouterOS on it; `allow_apply` must be set), e.g. back to the RouterOS from before an
@@ -851,11 +1046,18 @@ impl MutationAuthenticated {
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let power = PowerChain::of(&device);
-        Ok(job::start(&device.clone(), JobKind::BootPartition, Started::By(user_label(ctx)), |log| async move {
-            log.enter(RebootState::Reading);
-            let link = connect_for_job(&device, target, credential_name, adhoc_credentials, &log).await?;
-            partitions::boot_from(&link, &power, &partition, &log).await
-        })?)
+        Ok(job::start(
+            &device.clone(),
+            JobKind::BootPartition,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                log.enter(RebootState::Reading);
+                let link =
+                    connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
+                        .await?;
+                partitions::boot_from(&link, &power, &partition, &log).await
+            },
+        )?)
     }
     /// Stops a job (`Query.job`) at the next point where that is safe: an update between its
     /// steps or while it waits, removing the packages it uploaded unless the device reboots
@@ -887,7 +1089,11 @@ impl MutationAuthenticated {
             crate::device::site_diff::run(site, log)
         }))
     }
-    async fn apply_batch(&self, ctx: &Context<'_>, ids: Vec<u32>) -> Result<Vec<Arc<Job>>, ApiError> {
+    async fn apply_batch(
+        &self,
+        ctx: &Context<'_>,
+        ids: Vec<u32>,
+    ) -> Result<Vec<Arc<Job>>, ApiError> {
         let mut devices = Vec::new();
         for id in ids {
             let device = self.device(id).await?;
@@ -897,9 +1103,12 @@ impl MutationAuthenticated {
         }
         let members = devices.clone();
         let user = user_label(ctx);
-        Ok(job::start_all(&devices, JobKind::Apply, |_| Started::By(user.clone()), |logs| {
-            crate::device::batch::apply(members, logs)
-        })?)
+        Ok(job::start_all(
+            &devices,
+            JobKind::Apply,
+            |_| Started::By(user.clone()),
+            |logs| crate::device::batch::apply(members, logs),
+        )?)
     }
     /// Drops the live checks of a device's interfaces: who shows them reads them anew, a
     /// subscription right away („Erneut prüfen“).
@@ -933,12 +1142,17 @@ impl MutationAuthenticated {
         adhoc_credentials: Option<AdhocCredentials>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
-        Ok(job::start(&device.clone(), JobKind::Apply, Started::By(user_label(ctx)), |log| async move {
-            connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
-                .await?
-                .apply(&log)
-                .await
-        })?)
+        Ok(job::start(
+            &device.clone(),
+            JobKind::Apply,
+            Started::By(user_label(ctx)),
+            |log| async move {
+                connect_for_job(&device, target, credential_name, adhoc_credentials, &log)
+                    .await?
+                    .apply(&log)
+                    .await
+            },
+        )?)
     }
 }
 #[Object]

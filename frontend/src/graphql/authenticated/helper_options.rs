@@ -14,7 +14,7 @@ use super::{
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct LinkPorts {
     pub topology: LinkPortsTopology,
@@ -24,7 +24,7 @@ pub struct LinkPorts {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct LinkPortsTopology {
     #[arguments(id: $id)]
@@ -73,7 +73,7 @@ pub struct LinkPort {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct FlagInterfaces {
     pub topology: FlagInterfacesTopology,
@@ -83,7 +83,7 @@ pub struct FlagInterfaces {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct FlagInterfacesTopology {
     #[arguments(id: $id)]
@@ -112,7 +112,7 @@ pub struct FlagInterface {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct PoeOptionsQuery {
     pub topology: PoeOptionsTopology,
@@ -122,7 +122,7 @@ pub struct PoeOptionsQuery {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct PoeOptionsTopology {
     #[arguments(id: $id)]
@@ -173,7 +173,7 @@ pub struct PoeObservedVariables {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "PoeObservedVariables",
+    variables = "PoeObservedVariables"
 )]
 pub struct PoeObservedQuery {
     pub topology: PoeObservedTopology,
@@ -183,7 +183,7 @@ pub struct PoeObservedQuery {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "PoeObservedVariables",
+    variables = "PoeObservedVariables"
 )]
 pub struct PoeObservedTopology {
     #[arguments(id: $id)]
@@ -194,7 +194,7 @@ pub struct PoeObservedTopology {
 #[cynic(
     schema = "authenticated",
     graphql_type = "DeviceAccess",
-    variables = "PoeObservedVariables",
+    variables = "PoeObservedVariables"
 )]
 pub struct PoeObservedDevice {
     #[arguments(
@@ -223,7 +223,7 @@ pub struct PoeObserved {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct RadioBridgeCandidates {
     pub topology: RadioBridgeTopology,
@@ -233,7 +233,7 @@ pub struct RadioBridgeCandidates {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct RadioBridgeTopology {
     #[arguments(id: $id)]
@@ -262,7 +262,7 @@ pub struct RadioBridgeCandidate {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct CustomerNetOptionsQuery {
     pub topology: CustomerNetTopology,
@@ -272,7 +272,7 @@ pub struct CustomerNetOptionsQuery {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct CustomerNetTopology {
     #[arguments(id: $id)]
@@ -322,7 +322,7 @@ pub struct CustomerNetParent {
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct PortVlanOptionsQuery {
     pub topology: PortVlanTopology,
@@ -332,7 +332,7 @@ pub struct PortVlanOptionsQuery {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "DeviceVariables",
+    variables = "DeviceVariables"
 )]
 pub struct PortVlanTopology {
     #[arguments(id: $id)]

@@ -105,8 +105,15 @@ pub fn flag_interfaces(device: &DeviceAccess) -> Vec<FlagInterface> {
                 .map(|net| net.to_string().into())
                 .collect(),
             bridge: interface.bridge().map(|bridge| bridge.name().into()),
-            connected: interface.connected_interfaces().iter().map(interface_ref).collect(),
-            tags: ALL_TAGS.into_iter().filter(|tag| tag.is_set(interface)).collect(),
+            connected: interface
+                .connected_interfaces()
+                .iter()
+                .map(interface_ref)
+                .collect(),
+            tags: ALL_TAGS
+                .into_iter()
+                .filter(|tag| tag.is_set(interface))
+                .collect(),
         })
         .filter(|interface| interface.bridge.is_none() || !interface.tags.is_empty())
         .collect();
@@ -212,7 +219,12 @@ mod test {
             device: device.id().0,
             changes: vec![change(InterfaceTag::Ospf, true)],
         };
-        assert!(super::plan(&topology, &unchanged).expect("plan").steps.is_empty());
+        assert!(
+            super::plan(&topology, &unchanged)
+                .expect("plan")
+                .steps
+                .is_empty()
+        );
     }
 
     /// An interface of another device is refused.
@@ -229,6 +241,9 @@ mod test {
                 set: true,
             }],
         };
-        assert!(matches!(plan(&topology, &input), Err(Error::UnknownInterface(_))));
+        assert!(matches!(
+            plan(&topology, &input),
+            Err(Error::UnknownInterface(_))
+        ));
     }
 }
