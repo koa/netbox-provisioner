@@ -1,7 +1,7 @@
 # Firewall
 
-Was der Generator an Firewall schreibt (`device/ros/firewall.rs`, `masquerade` in
-`device/ros/mod.rs`). Die interne Firewall ist noch Konzept:
+Was der Generator an Firewall schreibt (`device/ros/firewall.rs`, auch `masquerade`
+und die Liste `uplink`). Die interne Firewall ist noch Konzept:
 [concepts/firewall.md](concepts/firewall.md), Aufgabe C3 in [todo.md](todo.md).
 
 ## Eigene und fremde Regeln

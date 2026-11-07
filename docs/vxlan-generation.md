@@ -3,7 +3,7 @@
 Code: `backend/src/topology/fetch.rs` (VXLAN aus VLAN-Gruppe), `backend/src/topology/access/vlan.rs`
 (`VlanAccess::devices`/`tunnel`), `backend/src/topology/access/vxlan.rs` (`VxlanAccess::vteps`),
 `backend/src/device/ros/l2/mod.rs` (`L2Setup::new`, `check_l2_domain`),
-`backend/src/device/ros/mod.rs` (`setup_l2`).
+`backend/src/device/ros/l2/target.rs` (`setup_l2`).
 
 ## NetBox-Modell
 

@@ -13,15 +13,15 @@
 //! The NetBox services with tag `forward` (`topology::forwards`) open ports through it: an
 //! IPv4 one by a port forwarding on its site's router with `nat`, which `forward dstnat` lets
 //! in, an IPv6 one by an accept on `forward` before its drop.
-use super::{BaseDeviceDataTarget, UPLINK_LIST, firewall_comment};
+use super::{BaseDeviceDataTarget, firewall_comment};
 use crate::topology::{ServicePort, access::device::DeviceAccess, forwards::PortForward};
 use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
-        IpFirewallFilterAction, IpFirewallFilterCfg, IpFirewallFilterCfgBuilder,
-        IpFirewallNatAction, IpFirewallNatCfg, Ipv6FirewallFilterAction, Ipv6FirewallFilterCfg,
-        Ipv6FirewallFilterCfgBuilder,
+        InterfaceListByName, InterfaceListCfg, InterfaceListMemberCfg, IpFirewallFilterAction,
+        IpFirewallFilterCfg, IpFirewallFilterCfgBuilder, IpFirewallNatAction, IpFirewallNatCfg,
+        Ipv6FirewallFilterAction, Ipv6FirewallFilterCfg, Ipv6FirewallFilterCfgBuilder,
     },
     resource::{DeserializeRosBuilder, OWNED_LAST},
 };
@@ -329,5 +329,54 @@ impl BaseDeviceDataTarget {
         self.interface_list_member
             .keys()
             .any(|(_, list)| *list.0 == *UPLINK_LIST)
+    }
+}
+
+/// The interface list of the `nat` uplinks: firewall rules set up by hand refer to it
+/// (router-faesigrund-keller's IPv6 filter rejects what comes in there).
+pub(super) const UPLINK_LIST: &[u8; 6] = b"uplink";
+
+impl BaseDeviceDataTarget {
+    /// Puts the uplink `if_name` (NetBox tag `internet` or `nat`) in the list `uplink`, which
+    /// the perimeter firewall guards.
+    pub(super) fn add_to_uplinks(&mut self, if_name: &AsciiString) {
+        let list = AsciiString::from(UPLINK_LIST);
+        self.interface_list.entry(list.clone()).or_insert_with(|| {
+            InterfaceListByName(InterfaceListCfg {
+                comment: Some(b"interfaces to the internet: perimeter firewall".into()),
+                exclude: Default::default(),
+                include: Default::default(),
+                name: list.clone(),
+            })
+        });
+        self.interface_list_member.insert(
+            (if_name.clone(), list.clone()),
+            InterfaceListMemberCfg {
+                comment: None,
+                disabled: false,
+                interface: if_name.clone(),
+                list,
+            },
+        );
+    }
+    /// Masquerades what leaves through the uplink `if_name` (NetBox tag `nat`).
+    pub(super) fn masquerade(&mut self, if_name: &AsciiString) {
+        self.ip_firewall_nat.push(IpFirewallNatCfg {
+            action: IpFirewallNatAction::Masquerade,
+            chain: b"srcnat".into(),
+            comment: Some(firewall_comment(&["masquerade", &if_name.to_string()])),
+            disabled: false,
+            dst_address: None,
+            dst_port: None,
+            in_interface: None,
+            in_interface_list: None,
+            jump_target: None,
+            out_interface: Some(if_name.clone()),
+            out_interface_list: None,
+            protocol: None,
+            src_address: None,
+            to_addresses: None,
+            to_ports: None,
+        });
     }
 }

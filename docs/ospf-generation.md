@@ -1,6 +1,7 @@
 # IP-Adressen, DHCP und OSPF-Generierung
 
-Code: `backend/src/device/ros/mod.rs` (`setup_ip_addresses`, `setup_ospf`), `device/ros/dhcp.rs`
+Code: `backend/src/device/ros/addresses.rs` (`setup_ip_addresses`), `device/ros/ospf.rs`
+(`setup_ospf`), `device/ros/dhcp.rs`
 (`GapFinder`).
 
 Beide Schritte laufen über `L2Setup::logical_interfaces()` (siehe

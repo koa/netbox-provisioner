@@ -10,8 +10,11 @@
 //! Without a `speed` the port negotiates, and RouterOS keeps whatever `speed` it has without
 //! using it; it refuses one empty ("ambiguous value of speed"), so the model keeps it then
 //! (`speed: k`).
-use super::SetupError;
-use crate::topology::{Duplex, PhysicalPortId, access::interface::InterfaceAccess};
+use super::{BaseDeviceDataTarget, SetupError};
+use crate::topology::{
+    Duplex, PhysicalPortId,
+    access::{device::DeviceAccess, interface::InterfaceAccess},
+};
 use mikrotik_model::model::EthernetSpeed;
 
 /// What the cable at a cage carries, from its NetBox type.
@@ -137,4 +140,31 @@ pub(crate) fn fixed_speed(port: &InterfaceAccess) -> Result<Option<EthernetSpeed
         }
     }
     Ok(Some(speed))
+}
+
+impl BaseDeviceDataTarget {
+    /// The speed NetBox gives an Ethernet port, without auto-negotiation (`speed`).
+    pub(super) fn setup_speed(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
+        for port in device.interfaces() {
+            let Some(speed) = fixed_speed(&port)? else {
+                continue;
+            };
+            let ethernet_port = match port.external_port() {
+                Some(port_id) => self.get_ethernet_port(port_id)?,
+                None => None,
+            }
+            .ok_or_else(|| SetupError::SpeedNotSupported(port.name().into()))?;
+            if !ethernet_port.advertise.contains(&speed) {
+                return Err(SetupError::SpeedNotOnPort {
+                    port: port.name().into(),
+                    speed: label(port.speed().unwrap_or_default()),
+                });
+            }
+            ethernet_port.auto_negotiation = false;
+            ethernet_port.speed = Some(speed);
+            // RouterOS shows no `advertise` without auto-negotiation (klr-sw-1 qsfpplus1-1)
+            ethernet_port.advertise = Default::default();
+        }
+        Ok(())
+    }
 }

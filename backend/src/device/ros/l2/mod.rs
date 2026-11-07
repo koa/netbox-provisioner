@@ -18,6 +18,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 };
 
+mod target;
 #[cfg(test)]
 mod test;
 

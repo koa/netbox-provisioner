@@ -1,7 +1,7 @@
 # L2-Generierung (Bridges, VLANs, Ports)
 
 Code: `backend/src/device/ros/l2/mod.rs` (`L2Setup::new`, `L2Setup::logical_interfaces`),
-`backend/src/device/ros/mod.rs::setup_l2` (Realisierung als RouterOS-Config).
+`backend/src/device/ros/l2/target.rs::setup_l2` (Realisierung als RouterOS-Config).
 
 Das ist der komplexeste und zentralste Teil der Generierungs-Pipeline — fast alles andere
 (IP-Adressen, DHCP, OSPF, VXLAN/WLAN-Anbindung) baut auf dem Ergebnis von `L2Setup::new` auf.

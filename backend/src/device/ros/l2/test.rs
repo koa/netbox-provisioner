@@ -2169,7 +2169,7 @@ async fn test_renamed_ports_keep_their_bridge_ports() -> Result<(), Box<dyn Erro
         })
         .collect();
     assert!(current.bridge_port.len() >= 4, "{:?}", current.bridge_port);
-    let current = crate::device::ros::following_renames(&target_data, &current, &[]);
+    let current = crate::device::ros::cfg::following_renames(&target_data, &current, &[]);
     let mutations = target_data.generate_mutations(&current)?;
     let moved: Vec<_> = mutations
         .iter()

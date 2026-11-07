@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{
     device::ros::l2::{L2Setup, NameGenerator},
-    topology::access::AccessTopology,
+    topology::access::{AccessTopology, device::DeviceAccess},
 };
 use ipnet::IpNet;
 use mikrotik_model::{
@@ -101,6 +101,16 @@ impl BaseDeviceDataTarget {
                     .0
                     .interface = if_name.into();
             }
+        }
+    }
+
+    fn set_identity(&mut self, name: impl Into<AsciiString>) {
+        self.identity.name = name.into();
+    }
+    pub(super) fn set_name_and_loopback(&mut self, device: &DeviceAccess) {
+        self.set_identity(device.name());
+        if let Some(loopback_ip) = device.loopback_ip().and_then(|ip| ip.addr()) {
+            self.set_loopback_ip(loopback_ip);
         }
     }
 

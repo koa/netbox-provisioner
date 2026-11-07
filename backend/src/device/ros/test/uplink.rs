@@ -5,7 +5,7 @@
 //! `uplink` (`add_to_uplinks`).
 use super::empty_current;
 use crate::{
-    device::ros::{BaseDeviceDataTarget, UPLINK_LIST, l2::KeepNameGenerator},
+    device::ros::{BaseDeviceDataTarget, firewall::UPLINK_LIST, l2::KeepNameGenerator},
     topology::{Device, Interface, PhysicalPortId, TopologyHolder, builder::TopologyBuilder},
 };
 use mikrotik_model::{
