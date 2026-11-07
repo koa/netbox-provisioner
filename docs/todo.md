@@ -66,6 +66,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | Schritt 1–3 und 5 erledigt (Drag, `localStorage`, `publishLayout`, gegen das Lab geprüft), Schritt 4 ohne Budget (PSE→PD-Pfeile mit Soll-gegen-Ist aus `helper::poe::feeding`, Budget pro Board offen: `hw_facts.rs` fehlen die Watt-Werte je Board) |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | Regel, Plan und Rollout erledigt; offen: CHR-Test der Kette `entry -- a -- target`, Netz-Ansicht mit eingefärbten Knoten |
 | C14 | Metriken des mikrotik-metrik-exporter im Provisioner (erster Teil von C8): Funk-Clients mit DHCP-Hostname, Health, PoE, dazu System, Interfaces und DHCP-Leases; Labels `device` und `site` aus NetBox, Dashboards im Repo angepasst; danach weder Exporter noch `prometheus`-Benutzer nötig | [Überwachung](concepts/monitoring.md) | M–L | offen |
+| C17 | Einmal laden pro GraphQL-Operation: ein Rahmen pro Operation (Extension, `task_local`), Topologie einmal, Lese-Cache der Gerätemenüs in mikrotik-api, HTTP nach URL, Warten liest frisch | [Einmal laden pro Operation](concepts/operation-cache.md) | M | offen |
 
 ## D. In Arbeit, Rest offen
 
