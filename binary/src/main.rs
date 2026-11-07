@@ -1,7 +1,7 @@
 //! Scope: The server process: HTTP routes, the login check, the embedded frontend, start and
 //! shutdown; not the GraphQL schema (`backend::graphql`).
 use actix_4_jwt_auth::{
-    DecodedInfo, OIDCValidationError, Oidc, OidcBiscuitValidator, OidcConfig,
+    DecodedInfo, Oidc, OidcBiscuitValidator,
     biscuit::{ClaimPresenceOptions, Presence, TemporalOptions, Validation, ValidationOptions},
 };
 use actix_web::{
@@ -20,6 +20,7 @@ use async_graphql::futures_util::future::join_all;
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
 use env_logger::Env;
 use include_dir::{Dir, include_dir};
+use issuer_keys::{IssuerKeys, with_issuer_keys};
 use log::{error, trace, warn};
 use prometheus::{HistogramVec, histogram_opts};
 use std::{collections::HashMap, ffi::OsStr};
@@ -27,6 +28,7 @@ use thiserror::Error;
 use token_expiry::{Expiring, TokenExpiry};
 use tracing_actix_web::TracingLogger;
 
+mod issuer_keys;
 mod token_expiry;
 
 use backend::{
@@ -133,22 +135,23 @@ async fn graphql_anonymous(
 
 /// Subscriptions over a WebSocket (`graphql-transport-ws`, `backend::graphql::live`). A
 /// browser can't set headers on one: the token comes in the `connection_init` payload
-/// (`{"token": …}`) and is checked as `/graphql` checks its header. Every operation on the
+/// (`{"token": …}`) and is checked as `/graphql` checks its header, against the issuer's keys
+/// of the moment ([`IssuerKeys::for_token`]). Every operation on the
 /// connection ends at the token's expiry ([`Expiring`]).
 async fn graphql_ws(
     context: Data<ApplicationContext>,
     request: actix_web::HttpRequest,
     payload: actix_web::web::Payload,
 ) -> actix_web::Result<HttpResponse> {
-    let oidc = request.app_data::<Oidc>().cloned();
+    let keys = request.app_data::<Data<IssuerKeys>>().cloned();
     GraphQLSubscription::new(Expiring(context.schema.clone()))
         .on_connection_init(move |init| async move {
             let token = init
                 .get("token")
                 .and_then(|token| token.as_str())
                 .unwrap_or_default();
-            let oidc = oidc.ok_or_else(|| async_graphql::Error::new("no OIDC"))?;
-            let (user, expiry) = authenticate(oidc, token)?;
+            let keys = keys.ok_or_else(|| async_graphql::Error::new("no OIDC"))?;
+            let (user, expiry) = authenticate(keys.for_token(token).await, token)?;
             let mut data = async_graphql::Data::default();
             data.insert(expiry);
             if let Some(user) = user {
@@ -215,8 +218,8 @@ enum BackendError {
     /// `actix_web_prom`'s builder gives its errors boxed
     #[error("An Error from the prometheus middleware {0}")]
     PrometheusMiddleware(#[from] Box<dyn std::error::Error + Send + Sync>),
-    #[error("Error on OIDC Validation {0}")]
-    OidcValidationError(#[from] OIDCValidationError),
+    #[error("{0}")]
+    IssuerKeys(#[from] issuer_keys::KeysError),
     #[error("Error from netbox {0}")]
     Netbox(#[from] NetboxError),
     #[error("State directory: {0}")]
@@ -256,9 +259,8 @@ async fn main() -> Result<(), BackendError> {
     let schema = create_schema(topology.clone());
     let anonymous_schema = create_anonymous_schema();
 
-    let issuer = CONFIG.auth_issuer().to_string();
-    //info!("Issuer: {issuer}");
-    let oidc = Oidc::new(OidcConfig::Issuer(issuer.into())).await?;
+    let issuer_keys = IssuerKeys::fetch(CONFIG.auth_issuer()).await?;
+    issuer_keys.clone().keep_fresh();
 
     let biscuit_validator = OidcBiscuitValidator {
         options: validation_options(),
@@ -277,7 +279,7 @@ async fn main() -> Result<(), BackendError> {
             .wrap(TracingLogger::default())
             .wrap(Logger::default())
             .app_data(data.clone())
-            .app_data(oidc.clone())
+            .app_data(Data::from(issuer_keys.clone()))
             // `/…/`: workaround for proxy troubles
             .service(authenticated_graphql("/graphql", biscuit_validator.clone()))
             .service(authenticated_graphql(
@@ -318,8 +320,9 @@ async fn main() -> Result<(), BackendError> {
     Ok(())
 }
 
-/// The authenticated API: a valid token (`biscuit_validator`, why one is refused is logged by
-/// `log_refused_token`) of a user in `auth_users` (`require_allowed_user`), otherwise `403`.
+/// The authenticated API: a valid token (`biscuit_validator`, against the issuer's keys of the
+/// moment, `with_issuer_keys`; why one is refused is logged by `log_refused_token`) of a user in
+/// `auth_users` (`require_allowed_user`), otherwise `403`.
 fn authenticated_graphql(
     path: &'static str,
     biscuit_validator: OidcBiscuitValidator,
@@ -329,6 +332,7 @@ fn authenticated_graphql(
         .wrap(from_fn(require_allowed_user))
         .wrap(biscuit_validator)
         .wrap(from_fn(log_refused_token))
+        .wrap(from_fn(with_issuer_keys))
         .to(graphql)
 }
 

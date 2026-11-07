@@ -47,7 +47,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
-| A8 | Schlüssel des OIDC-Issuers neu laden: heute holt `binary` die JWKS einmal beim Start (`Oidc::new`). Nach einem Schlüsselwechsel beim Provider lehnt der Provisioner jedes Login bis zum Neustart ab, ein zurückgezogener Schlüssel gilt bis dahin weiter. Periodisch und bei unbekannter `kid` neu holen; `actix-4-jwt-auth` hält die Schlüssel unveränderlich (`Arc<JWKSet>`), also das `Oidc` austauschen (z.B. hinter einem `ArcSwap` als App-Data) oder die Prüfung selbst mit biscuit machen | S–M | offen |
 | A7 | WebFig über HTTPS: `www-ssl` statt `www`, mit einem Zertifikat pro Gerät, das der Provisioner anlegt (selbst signiert mit Browser-Warnung, oder von einer eigenen CA, deren Zertifikat die Admins einmal importieren); danach `www` aus. Heute geht WebFig im Klartext, nur aus `api_networks` | M | offen |
 | A9 | Admin-Passwort: Weicht das Passwort eines Geräts vom Standard-Passwort ab, setzt der Provisioner das Standard-Passwort. Passwortwechsel: Ein neues Standard-Passwort kann hinterlegt werden; der Provisioner probiert das alte weiter und setzt das neue bei der nächsten Gelegenheit | M | offen |
 

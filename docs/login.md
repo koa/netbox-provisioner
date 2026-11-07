@@ -14,8 +14,12 @@ Prüfung (biscuit) schaut einen Claim sonst nur an, wo er steht, ein Token ohne 
 Die WebSocket-Verbindung der Live-Ansichten bekommt das Token nur beim Aufbau
 (`connection_init`); jede Operation darauf, auch eine Query oder Mutation, endet beim Ablauf des
 Tokens (`exp` plus die 60 s) mit dem Fehler `TOKEN_EXPIRED`, und das UI baut die Verbindung mit
-dem aktuellen Token neu auf. Die Schlüssel des Issuers holt das Backend nur beim Start (A8): Nach
-einem Schlüsselwechsel beim Provider braucht es einen Neustart. Jeder OIDC-Provider, der das kann,
+dem aktuellen Token neu auf. Die Schlüssel des Issuers holt das Backend beim Start, danach jede
+Stunde und sofort, wenn ein Token einen unbekannten Schlüssel (`kid`) nennt, höchstens einmal pro
+Minute (`binary/src/issuer_keys.rs`): Ein neuer Schlüssel beim Provider gilt so ab dem ersten
+Login damit, ein zurückgezogener fällt spätestens nach einer Stunde weg; scheitert ein Abruf,
+bleiben die bisherigen. Im Lab geprüft: ein zusätzlicher Schlüssel höherer Priorität im Keycloak
+direkt nach dem Start, das Login danach ging ohne Fehler durch. Jeder OIDC-Provider, der das kann,
 funktioniert; das Lab verwendet Keycloak (`local/keycloak/`, Realm `lab`), produktiv ist Pocket-ID
 vorgesehen.
 
