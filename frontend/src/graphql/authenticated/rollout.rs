@@ -186,8 +186,16 @@ pub enum RolloutEvent {
     RolloutPaused(RolloutPaused),
     RolloutContinued(RolloutContinued),
     RolloutDone(RolloutDone),
+    PackageDownloaded(RolloutDownloaded),
     #[cynic(fallback)]
     Other,
+}
+
+/// A package the rollout downloaded before its first device.
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated", graphql_type = "PackageDownloaded")]
+pub struct RolloutDownloaded {
+    pub file: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

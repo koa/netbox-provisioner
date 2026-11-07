@@ -189,11 +189,13 @@ struct Tally {
     failed: u32,
 }
 
-/// Carries out `plan`: `start` starts the update job of a device by its id.
+/// Carries out `plan`: `prepare` before the first device (the downloads,
+/// [`super::download_all`]), then `start` starts the update job of a device by its id.
 pub async fn run<S, F, J>(
     plan: RolloutPlan,
     control: &Control,
     log: &Log,
+    prepare: impl Future<Output = Result<(), Error>>,
     start: S,
 ) -> Result<(), Error>
 where
@@ -202,6 +204,7 @@ where
     J: UpdateJob,
 {
     log.emit(RolloutPlanned { plan: plan.clone() });
+    prepare.await?;
     let (pilots, rest): (Vec<_>, Vec<_>) = plan
         .devices
         .iter()

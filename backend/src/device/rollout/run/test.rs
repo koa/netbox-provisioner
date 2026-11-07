@@ -103,6 +103,7 @@ fn device(id: u32, pilot: bool) -> PlannedDevice {
         version: Some("7.23.8".into()),
         architecture: Some("arm".into()),
         files: Vec::new(),
+        step: None,
         download: None,
         free_space: None,
         in_ram: false,
@@ -137,10 +138,16 @@ fn start(
     let control = Arc::new(Control::default());
     let (running_log, running_control) = (log.clone(), control.clone());
     let handle = tokio::spawn(async move {
-        run(plan, &running_control, &running_log, |device| {
-            let devices = devices.clone();
-            async move { devices.start(device).await }
-        })
+        run(
+            plan,
+            &running_control,
+            &running_log,
+            async { Ok(()) },
+            |device| {
+                let devices = devices.clone();
+                async move { devices.start(device).await }
+            },
+        )
         .await
     });
     (log, control, handle)

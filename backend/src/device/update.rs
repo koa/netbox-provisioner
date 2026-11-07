@@ -292,6 +292,23 @@ impl Channel {
 /// The newest release of RouterOS `major` in `channel`, from MikroTik. RouterOS 7 asks for
 /// `NEWESTa7.<channel>`; `NEWEST7.<channel>` stopped at 7.12.1.
 pub async fn newest(major: u32, channel: Channel) -> Result<Version, Error> {
+    let cached = {
+        let mut downloads = DOWNLOADS.lock_anyway();
+        (downloads.holders > 0).then(|| {
+            let key = (major, channel.name().into());
+            downloads.newest.entry(key).or_default().clone()
+        })
+    };
+    match cached {
+        Some(cell) => cell
+            .get_or_try_init(|| fetch_newest(major, channel))
+            .await
+            .cloned(),
+        None => fetch_newest(major, channel).await,
+    }
+}
+
+async fn fetch_newest(major: u32, channel: Channel) -> Result<Version, Error> {
     let prefix = if major >= 7 { "a" } else { "" };
     let url = format!("{NEWEST_URL}{prefix}{major}.{}", channel.name());
     let failed = |e: reqwest::Error| Error::Download(url.as_str().into(), e);
@@ -584,7 +601,10 @@ pub async fn package_size(version: &Version, file: &str) -> Result<Option<u64>, 
 }
 
 /// The packages downloaded while a rollout runs ([`DownloadCache`]), by version and file: its
-/// devices of an architecture share them instead of each downloading its own.
+/// devices of an architecture share them instead of each downloading its own. The newest
+/// release of each channel too: an update may cut the way to the internet (its device the
+/// uplink router), the others then go on with what was fetched (wng-926-sw1, Berg 926: its
+/// update failed asking MikroTik for the newest release).
 static DOWNLOADS: LazyLock<Mutex<Downloads>> = LazyLock::new(Default::default);
 
 type Download = Arc<tokio::sync::OnceCell<Arc<[u8]>>>;
@@ -593,6 +613,8 @@ type Download = Arc<tokio::sync::OnceCell<Arc<[u8]>>>;
 struct Downloads {
     holders: usize,
     files: HashMap<(Box<str>, Box<str>), Download>,
+    /// by major version and channel name
+    newest: HashMap<(u32, Box<str>), Arc<tokio::sync::OnceCell<Version>>>,
 }
 
 /// Keeps what updates download in memory while it lives (a rollout); dropped by the last
@@ -612,12 +634,13 @@ impl Drop for DownloadCache {
         downloads.holders -= 1;
         if downloads.holders == 0 {
             downloads.files.clear();
+            downloads.newest.clear();
         }
     }
 }
 
 /// `file` of `version`, from the [`DownloadCache`] while one is held.
-async fn download(version: &Version, file: &str) -> Result<Arc<[u8]>, Error> {
+pub(crate) async fn download(version: &Version, file: &str) -> Result<Arc<[u8]>, Error> {
     let cached = {
         let mut downloads = DOWNLOADS.lock_anyway();
         (downloads.holders > 0).then(|| {

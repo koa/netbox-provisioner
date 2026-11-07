@@ -76,6 +76,10 @@ pub const END: &str = "Rollout beenden";
 pub const CANCEL: &str = "Rollout abbrechen";
 pub const SKIP: &str = "Überspringen";
 pub const SHOW_JOB: &str = "Ablauf";
+/// Before the first device: the packages of all updates, so none needs the internet later.
+pub fn downloading(done: usize, all: usize) -> String {
+    format!("Lädt die Pakete aller Geräte herunter ({done} von {all}) …")
+}
 pub const HIDE_JOB: &str = "Ablauf ausblenden";
 pub fn job_of(device: &str) -> String {
     format!("Ablauf von {device}")

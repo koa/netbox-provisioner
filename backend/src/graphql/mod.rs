@@ -559,7 +559,8 @@ impl MutationAuthenticated {
             if let Some(pilots) = pilots {
                 rollout::choose_pilots(&mut plan, &pilots);
             }
-            rollout::run::run(plan, &running, &log, |id| {
+            let downloads = rollout::download_all(&plan, &log);
+            rollout::run::run(plan.clone(), &running, &log, downloads, |id| {
                 let (topology, user) = (topology.clone(), user.clone());
                 async move {
                     let device = topology

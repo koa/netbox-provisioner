@@ -123,7 +123,11 @@ Ein einzelnes Update lädt seine Pakete selbst herunter (`download`). Solange ei
 hält er einen Cache pro Version und Datei im Prozess (`update::DownloadCache`, je Datei ein
 `OnceCell`, so lädt auch ein gleichzeitiges zweites Update nicht noch einmal). Bei 30 Geräten
 mit 3 Architekturen sind das wenige Dutzend MB statt einige hundert; mit dem Rollout endet der
-Cache.
+Cache. Der Rollout lädt alle Pakete des Plans nach dem Plan und vor dem ersten Gerät herunter
+(`rollout::download_all`, die Seite zeigt „Lädt die Pakete aller Geräte herunter“), und der
+Cache hält auch das neueste Release jedes Kanals: Ein Update kann die Verbindung ins Internet
+kappen (der Uplink-Router startet neu), die übrigen brauchen dann keines mehr (wng-926-sw1,
+Berg 926: sein Update scheiterte an der Frage nach dem neuesten Release).
 
 ## Backend
 

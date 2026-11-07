@@ -1078,8 +1078,11 @@ which follows `rolloutJob` on opening. `RolloutDevice` comes again on each new s
 update job (`phase`, looked at every `TICK`), which the page shows as the device's state; a
 device rebooting, or one of its `PlannedDevice::cut_by` (it is behind them or powered by
 them), is marked offline; „Ablauf“ opens the device's update job below the table
-(`JobView`). While it runs, its updates share their downloads
-(`update::DownloadCache`). The leases are in-process only. They only hold back
+(`JobView`). While it runs, its updates share their downloads and the newest release
+of each channel (`update::DownloadCache`), all downloaded after the plan, before the first
+device (`rollout::download_all`, `PackageDownloaded` in the rollout's log): an update may cut
+the way to the internet (the uplink router rebooting), and wng-926-sw1's update failed asking
+MikroTik for the newest release. The leases are in-process only. They only hold back
 reboots the provisioner sends: a supplier with
 `/system/watchdog watch-address` behind the updating device reboots by itself and cuts its
 power mid-install (berghof-burri bricked burri-schopf that way; RouterBOOT then only asked for

@@ -82,6 +82,8 @@ struct Following {
     plan: Option<RolloutPlan>,
     /// the newest event of each device
     devices: HashMap<i32, RolloutDevice>,
+    /// the packages downloaded before the first device
+    downloaded: usize,
     /// waiting for „Weiter“
     paused: Option<RolloutPaused>,
     done: Option<RolloutDone>,
@@ -357,6 +359,7 @@ impl Rollout {
             error: None,
             plan: None,
             devices: HashMap::new(),
+            downloaded: 0,
             paused: None,
             done: None,
             lost: false,
@@ -494,6 +497,12 @@ impl Rollout {
                 {paused}
                 if let Some(plan) = &job.plan {
                     <p>{t::target(plan.channel.name(), &plan.target)}</p>
+                    if running && job.devices.is_empty() {
+                        <p>
+                            <Spinner size={SpinnerSize::Sm}/>{" "}
+                            {t::downloading(job.downloaded, package_count(plan))}
+                        </p>
+                    }
                     {table(plan, t::STATE, state)}
                     {shown}
                 } else if running {
@@ -519,6 +528,7 @@ impl Following {
                 RolloutEvent::RolloutPaused(paused) => self.paused = Some(paused),
                 RolloutEvent::RolloutContinued(_) => self.paused = None,
                 RolloutEvent::RolloutDone(done) => self.done = Some(done),
+                RolloutEvent::PackageDownloaded(_) => self.downloaded += 1,
                 RolloutEvent::Other => {}
             }
         }
@@ -702,6 +712,16 @@ fn skip_text(skip: &RolloutSkip) -> &'static str {
         RolloutSkip::NoSpace => t::SKIP_NO_SPACE,
         RolloutSkip::Other(_) => "",
     }
+}
+
+/// How many packages the updates of `plan` install, each file once.
+fn package_count(plan: &RolloutPlan) -> usize {
+    plan.devices
+        .iter()
+        .filter(|device| device.skip.is_none())
+        .flat_map(|device| &device.files)
+        .collect::<BTreeSet<_>>()
+        .len()
 }
 
 fn pilots_of(plan: &RolloutPlan) -> BTreeSet<i32> {

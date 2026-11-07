@@ -15,6 +15,7 @@ use crate::{
     },
     error_info::ErrorInfo,
     graphql::scalars::ScalarU64,
+    job::Log,
     topology::{
         access::{AccessTopology, DeviceTarget, device::DeviceAccess, site::SiteAccess},
         natural::naturalize,
@@ -53,6 +54,8 @@ pub struct PlannedDevice {
     /// the package files the update installs (only the packages where it stays at its
     /// version)
     pub files: Vec<Box<str>>,
+    /// the version of those files: the update's first step (the newest v6 for a v6 device)
+    pub step: Option<Box<str>>,
     /// their size, from MikroTik's server
     pub download: Option<ScalarU64>,
     /// where the packages are uploaded to: `free-hdd-space`, or `free-memory` where the root
@@ -239,6 +242,30 @@ fn cut_by(
     cut_by
 }
 
+/// Downloads every package the updates of `plan` install, into the [`update::DownloadCache`]
+/// its job holds, before the first update starts: an update may cut the way to the internet
+/// (its device the uplink router), the others then upload what is here.
+pub async fn download_all(plan: &RolloutPlan, log: &Log) -> Result<(), Error> {
+    let files = plan
+        .devices
+        .iter()
+        .filter(|device| device.skip.is_none())
+        .filter_map(|device| Some((device.step.clone()?, &device.files)))
+        .flat_map(|(step, files)| files.iter().map(move |file| (step.clone(), file.clone())))
+        .collect::<BTreeSet<_>>();
+    for (step, file) in files {
+        let version = Version::parse(&step).ok_or_else(|| Error::NoVersion(step.clone()))?;
+        let data = log
+            .unless_cancelled(update::download(&version, &file))
+            .await??;
+        log.emit(update::PackageDownloaded {
+            file,
+            bytes: (data.len() as u64).into(),
+        });
+    }
+    Ok(())
+}
+
 /// What one device runs and what an update would need there.
 struct Read {
     state: update::DeviceState,
@@ -341,6 +368,7 @@ fn planned_device(
         version: None,
         architecture: None,
         files: Vec::new(),
+        step: None,
         download: None,
         free_space: None,
         in_ram: false,
@@ -375,6 +403,7 @@ fn planned_device(
         planned.skip = Some(RolloutSkip::UpToDate);
         return planned;
     };
+    planned.step = Some(step.version.to_string().into());
     planned.files = step.files.into_vec();
     planned.download = read.download.map(ScalarU64);
     planned.skip = if read.leftovers {
