@@ -138,8 +138,13 @@ mod test {
 
     #[test]
     fn filters_are_url_encoded() {
+        // no roots: building the request needs no TLS, and the nix sandbox has no system CAs
+        let client = reqwest::Client::builder()
+            .tls_certs_only([])
+            .build()
+            .expect("client");
         let rest = NetboxRest {
-            client: reqwest::Client::new(),
+            client,
             api: "http://netbox.example/api/".into(),
             changelog_message: None,
         };
