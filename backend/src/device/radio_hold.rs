@@ -214,11 +214,11 @@ impl RadioHold {
             };
             match reached {
                 Some(watcher) => {
-                    others.push(Suspended {
-                        device: name.clone(),
-                        link: watcher,
-                        watching: watching.clone(),
-                    });
+                    others.push(Suspended::held_again(
+                        name.clone(),
+                        watcher,
+                        watching.clone(),
+                    ));
                 }
                 None => log.emit(WatchdogKept {
                     device: name.clone(),

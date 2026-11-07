@@ -106,6 +106,7 @@ pub enum Event {
     WatchdogLeft(WatchdogLeft),
     Resumed(Resumed),
     WatchdogKept(WatchdogKept),
+    WatchdogStillHeld(WatchdogStillHeld),
     JournalNotWritten(JournalNotWritten),
     NetboxWritten(NetboxWritten),
     NetboxUndone(NetboxUndone),
@@ -500,6 +501,13 @@ pub struct WatchdogKept {
     pub device: String,
     pub watching: Watching,
     pub safety_net: u64,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct WatchdogStillHeld {
+    pub device: String,
+    pub others: i32,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

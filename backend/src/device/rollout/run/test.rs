@@ -96,11 +96,13 @@ fn device(id: u32, pilot: bool) -> PlannedDevice {
         files: Vec::new(),
         download: None,
         free_space: None,
+        in_ram: false,
         fallback: RolloutFallback::Partition,
         skip: None,
         error: None,
         pilot,
         depth: Some(1),
+        related: Vec::new(),
     }
 }
 
@@ -258,4 +260,52 @@ async fn no_more_than_parallel_at_once() {
     assert_eq!(states(&log).len(), super::PARALLEL);
     log.cancel();
     let _ = handle.await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn related_devices_take_turns() {
+    // 1 and 2 are behind the switch 3, 4 is elsewhere
+    let goes = [(1, Goes::Hangs), (2, Goes::Hangs), (4, Goes::Hangs)];
+    let devices = Devices::new(&goes);
+    let mut switch = device(3, false);
+    switch.related = vec![1, 2];
+    let (log, _, handle) = start(
+        plan(vec![
+            device(1, false),
+            device(2, false),
+            switch,
+            device(4, false),
+        ]),
+        devices.clone(),
+    );
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    // the switch waits while what is behind it updates, the one elsewhere goes past it
+    assert_eq!(
+        states(&log),
+        [
+            (1, State::Started),
+            (2, State::Started),
+            (4, State::Started)
+        ]
+    );
+    log.cancel();
+    let _ = handle.await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_device_waits_for_the_one_in_front() {
+    let devices = Devices::new(&[]);
+    let mut switch = device(3, false);
+    switch.related = vec![1];
+    let (log, _, handle) = start(plan(vec![switch, device(1, false)]), devices);
+    handle.await.unwrap().unwrap();
+    assert_eq!(
+        states(&log),
+        [
+            (3, State::Started),
+            (3, State::Done),
+            (1, State::Started),
+            (1, State::Done)
+        ]
+    );
 }

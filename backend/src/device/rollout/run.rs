@@ -1,6 +1,7 @@
 //! Carrying out a rollout (`JobKind::Rollout`): an ordinary update job per device of the plan,
-//! the pilots first, then the rest in their order, up to [`PARALLEL`] at once; the leases keep
-//! a device from rebooting while one behind it updates (`dependency`). After the pilots and
+//! the pilots first, then the rest in their order, up to [`PARALLEL`] at once, but never two
+//! related ones (`PlannedDevice::related`: one behind the other, or powering it); the leases
+//! keep a device from rebooting while one behind it updates (`dependency`). After the pilots and
 //! after a device that failed it pauses until `continueRollout`; a failed device stays as it
 //! is. Cancelled, it cancels the update jobs it started and starts none.
 use super::{PlannedDevice, RolloutPlan};
@@ -266,7 +267,11 @@ where
         loop {
             let mut busy = Vec::new();
             while failed.is_none() && running.len() < PARALLEL {
-                let Some(device) = pending.pop_front() else {
+                // the first in the order that none of the running ones is related to
+                let free = pending
+                    .iter()
+                    .position(|device| !running.iter().any(|(other, _)| related(device, other)));
+                let Some(device) = free.and_then(|at| pending.remove(at)) else {
                     break;
                 };
                 if self.control.skipped(device.id) {
@@ -347,6 +352,11 @@ where
             error,
         });
     }
+}
+
+/// `a` and `b` don't update at the same time: one is behind the other or powers it.
+fn related(a: &PlannedDevice, b: &PlannedDevice) -> bool {
+    a.related.contains(&b.id) || b.related.contains(&a.id)
 }
 
 #[cfg(test)]

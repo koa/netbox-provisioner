@@ -49,13 +49,18 @@ pub fn position(position: usize, pilot: bool, depth: Option<i32>) -> String {
     };
     format!("{position}. ({why})")
 }
-/// download and free space in bytes
-pub fn space(download: Option<u64>, free: Option<u64>) -> String {
+/// download and free space in bytes; `in_ram`: the free space is memory (the root directory
+/// is in RAM on devices with 16 MiB of flash)
+pub fn space(download: Option<u64>, free: Option<u64>, in_ram: bool) -> String {
     let mib = |bytes: u64| format!("{:.1}", bytes as f64 / (1024.0 * 1024.0));
+    let free = free.map(|free| match in_ram {
+        true => format!("{} MiB RAM frei", mib(free)),
+        false => format!("{} MiB frei", mib(free)),
+    });
     match (download, free) {
-        (Some(download), Some(free)) => format!("{} MiB, {} MiB frei", mib(download), mib(free)),
+        (Some(download), Some(free)) => format!("{} MiB, {free}", mib(download)),
         (Some(download), None) => format!("{} MiB", mib(download)),
-        (None, Some(free)) => format!("{} MiB frei", mib(free)),
+        (None, Some(free)) => free,
         (None, None) => String::new(),
     }
 }

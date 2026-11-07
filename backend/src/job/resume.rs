@@ -317,11 +317,11 @@ async fn resume_update(
             None => Err(Error::UnknownDeviceName(name.clone())),
         };
         match reached {
-            Ok(link) => suspended.push(watchdog::Suspended {
-                device: name.clone(),
+            Ok(link) => suspended.push(watchdog::Suspended::held_again(
+                name.clone(),
                 link,
-                watching: watching.clone(),
-            }),
+                watching.clone(),
+            )),
             Err(error) => log.emit(watchdog::WatchdogNotRestored {
                 device: name.clone(),
                 watching: watching.clone(),

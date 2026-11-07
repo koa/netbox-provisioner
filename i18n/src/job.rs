@@ -593,6 +593,17 @@ pub mod event {
             der Scheduler auf {device} stellt {watching} nach {safety_net_minutes} min wieder her"
         )
     }
+    /// another job still needs the watchdogs of `device` suspended: the last one restores them
+    pub fn watchdog_still_held(device: &str, others: i32) -> String {
+        let jobs = match others {
+            1 => "ein anderer Job braucht".to_string(),
+            others => format!("{others} andere Jobs brauchen"),
+        };
+        format!(
+            "Watchdog von {device} bleibt ausgesetzt: {jobs} ihn noch so, der letzte stellt ihn \
+             wieder her"
+        )
+    }
     /// the job's entry in NetBox' journal couldn't be written; the next state tries again
     pub fn journal_not_written(error: &str) -> String {
         format!(

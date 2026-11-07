@@ -6,9 +6,10 @@
 use crate::{
     Error,
     device::{
-        dependency::{Paths, consumer_devices},
+        dependency::{Paths, consumer_devices, supplier_devices},
         leftovers, partitions,
         raw::{field, rows},
+        ros::progress,
         update::{self, Channel, Version, newest, next_step, package_size},
         update_fallback,
     },
@@ -54,8 +55,11 @@ pub struct PlannedDevice {
     pub files: Vec<Box<str>>,
     /// their size, from MikroTik's server
     pub download: Option<ScalarU64>,
-    /// `free-hdd-space`
+    /// where the packages are uploaded to: `free-hdd-space`, or `free-memory` where the root
+    /// directory is in RAM (`in_ram`)
     pub free_space: Option<ScalarU64>,
+    /// the root directory is in RAM (16 MiB of flash): the packages take memory
+    pub in_ram: bool,
     pub fallback: RolloutFallback,
     /// why it is left out; `null`: it is updated
     pub skip: Option<RolloutSkip>,
@@ -65,6 +69,9 @@ pub struct PlannedDevice {
     pub pilot: bool,
     /// hops from the nearest management root; `null` off NetBox's ways
     pub depth: Option<u32>,
+    /// the devices of the plan it doesn't update at the same time as (ids): those behind it on
+    /// the ways, those it powers and those powering it
+    pub related: Vec<u32>,
 }
 
 /// How the device comes back from an update that fails.
@@ -123,12 +130,18 @@ pub async fn plan(sites: &[SiteAccess], channel: Channel) -> Result<RolloutPlan,
         }
     }
     let depths = paths.depths();
+    let ids = devices
+        .iter()
+        .map(|device| (Box::<str>::from(device.name()), device.id().0))
+        .collect::<HashMap<_, _>>();
     let mut planned = devices
         .iter()
         .enumerate()
         .map(|(index, device)| {
             let result = read.remove(&index).unwrap_or(Err(Error::Cancelled));
-            planned_device(device, result, depths.get(device.name()).copied())
+            let mut planned = planned_device(device, result, depths.get(device.name()).copied());
+            planned.related = related(device, &paths, &ids);
+            planned
         })
         .collect::<Vec<_>>();
     let candidates = devices
@@ -176,12 +189,33 @@ pub fn choose_pilots(plan: &mut RolloutPlan, pilots: &[u32]) {
         });
 }
 
+/// The devices of the plan (`ids`, by name) `device` doesn't update at the same time as: those
+/// behind it on the ways, those it powers, those powering it. Updating them together, the one
+/// in front is away while the other uploads, and both suspend the same watchdogs (Berg 925,
+/// 2026-11-07: switch-mimi with the three APs behind it, two of them powered by it).
+fn related(device: &DeviceAccess, paths: &Paths, ids: &HashMap<Box<str>, u32>) -> Vec<u32> {
+    let names = paths
+        .behind(device.name())
+        .into_iter()
+        .chain(consumer_devices(device).iter().map(|d| d.name().into()))
+        .chain(supplier_devices(device).iter().map(|d| d.name().into()))
+        .collect::<BTreeSet<Box<str>>>();
+    let mut related = names
+        .iter()
+        .filter(|name| &***name != device.name())
+        .filter_map(|name| ids.get(name).copied())
+        .collect::<Vec<_>>();
+    related.sort_unstable();
+    related
+}
+
 /// What one device runs and what an update would need there.
 struct Read {
     state: update::DeviceState,
     step: Option<update::UpdateStep>,
     download: Option<u64>,
     free_space: Option<u64>,
+    in_ram: bool,
     partition: bool,
     leftovers: bool,
 }
@@ -208,10 +242,18 @@ async fn read(
         newest_v6.as_ref().unwrap_or(&target),
         &wanted,
     );
+    // the uploads go to the root, in RAM on a device with 16 MiB of flash (1og-sw2, a CRS with
+    // 2.8 MiB of flash free, takes its 11.7 MiB update there)
+    let in_ram = progress::root_in_ram(&raw).await?;
+    let free = if in_ram {
+        "free-memory"
+    } else {
+        "free-hdd-space"
+    };
     let free_space = rows(&raw, "/system/resource/print")
         .await?
         .first()
-        .and_then(|row| field(row, "free-hdd-space")?.parse().ok());
+        .and_then(|row| field(row, free)?.parse().ok());
     let partition = partitions::other(&partitions::list(&raw).await).is_some();
     let left = leftovers::read(&raw).await?;
     let mut download = Some(0);
@@ -235,6 +277,7 @@ async fn read(
         step,
         download,
         free_space,
+        in_ram,
         partition,
         leftovers: left.apply_fallback.is_some() || left.update_fallback.is_some(),
     })
@@ -259,6 +302,7 @@ fn planned_device(
         files: Vec::new(),
         download: None,
         free_space: None,
+        in_ram: false,
         fallback: if neighbor {
             RolloutFallback::Neighbor
         } else {
@@ -268,6 +312,7 @@ fn planned_device(
         error: None,
         pilot: false,
         depth,
+        related: Vec::new(),
     };
     let read = match read {
         Ok(read) => read,
@@ -280,6 +325,7 @@ fn planned_device(
     planned.version = Some(read.state.version.to_string().into());
     planned.architecture = Some(read.state.architecture.clone());
     planned.free_space = read.free_space.map(ScalarU64);
+    planned.in_ram = read.in_ram;
     if read.partition {
         planned.fallback = RolloutFallback::Partition;
     }

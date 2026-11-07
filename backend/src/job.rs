@@ -102,6 +102,7 @@ pub enum Event {
     WatchdogRestored(watchdog::WatchdogRestored),
     WatchdogNotRestored(watchdog::WatchdogNotRestored),
     WatchdogLeft(watchdog::WatchdogLeft),
+    WatchdogStillHeld(watchdog::WatchdogStillHeld),
     WatchdogKept(radio_hold::WatchdogKept),
     JournalNotWritten(journal::JournalNotWritten),
     Resumed(Resumed),
@@ -1018,6 +1019,7 @@ fn holds_watchdogs(events: &[Event], device: &str) -> bool {
         Event::WatchdogRestored(restored) if *restored.device == *device => false,
         Event::WatchdogNotRestored(failed) if *failed.device == *device => false,
         Event::WatchdogKept(kept) if *kept.device == *device => false,
+        Event::WatchdogStillHeld(held) if *held.device == *device => false,
         _ => held,
     })
 }

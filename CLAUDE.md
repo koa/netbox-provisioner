@@ -1056,11 +1056,13 @@ devices rebooting (`BehindUpdating`), an update waits to start while a supplier 
 rebooting devices cut it off (`BehindRebooting`), all under one lock. A device NetBox's ways
 don't reach at all holds nothing back. `rolloutPlan` (`device::rollout`, page `/rollout`)
 plans an update across sites, reading only: per RouterOS device the step, the download against
-`free-hdd-space`, the way back, leftovers; a pilot per architecture, then the farthest from a
+`free-hdd-space` (`free-memory` where the root directory is in RAM, `progress::root_in_ram`:
+16 MiB of flash, the uploads take memory), the way back, leftovers; a pilot per architecture, then the farthest from a
 root first, a CAPsMAN controller after its APs (`docs/concepts/network-update.md`).
 `startRollout` (`device::rollout::run`, `JobKind::Rollout`, `JobSubject::Network`, one at a
 time) plans again and starts an ordinary update job per device (`start_update`, the suppliers'
-watchdogs suspended), up to `PARALLEL` (4) at once; it pauses after the pilots and after a
+watchdogs suspended), up to `PARALLEL` (4) at once but never two related ones
+(`PlannedDevice::related`: behind it on the ways, powered by it or powering it); it pauses after the pilots and after a
 failed device until `continueRollout` (`Control`), `skipRolloutDevice` leaves a device out,
 cancelling it cancels the update jobs it started. Its events (`RolloutPlanned`,
 `RolloutDevice`, `RolloutPaused`, `RolloutContinued`, `RolloutDone`) are polled by the page,
@@ -1106,7 +1108,11 @@ device), and `updateRouteros(suspendWatchdogs: true)` sets them to `none` and
 can't be suspended is `WatchdogLeft` and the update goes on, a supplier stops it). A scheduler
 entry on each, added before they go, restores them after `SAFETY_NET` (2 h) should the
 provisioner not (CHR test `watchdog_is_restored_or_restores_itself`); a leftover entry is
-where `read` finds them. The setup (`bootstrap`) does the same without asking for the suppliers
+where `read` finds them. Jobs needing one device's watchdogs suspended at once share them
+(`watchdog::HELD`, one job at a time per device through `TURNS`): the first suspends, the
+others join with what still watches (their own PoE ports), only the last restores
+(`WatchdogStillHeld` for the others; CHR test `two_jobs_share_a_suspended_watchdog`); a job
+resumed after a restart holds again (`Suspended::held_again`). The setup (`bootstrap`) does the same without asking for the suppliers
 only (`Watchers::suppliers`, `BootstrapState::SuspendingWatchdogs`/`RestoringWatchdogs`): a
 device in factory state replacing a powered one doesn't answer the PoE ping of the old address
 and would lose its power every 5 min (lab test 2026-11-01). An apply whose plan changes a radio (a DFS AP listens 10 min or longer,

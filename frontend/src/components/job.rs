@@ -643,6 +643,7 @@ fn describe(event: &Logged) -> Html {
             &watching!(kept.watching),
             seconds(kept.safety_net) / 60,
         ),
+        Event::WatchdogStillHeld(held) => e::watchdog_still_held(&held.device, held.others),
         Event::Resumed(resumed) => e::resumed(seconds(resumed.after)),
         Event::NetboxWritten(written) if written.deleted => e::netbox_deleted(&written.display),
         Event::NetboxWritten(written) if written.changes.is_empty() => {

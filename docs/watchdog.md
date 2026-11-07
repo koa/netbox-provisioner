@@ -88,7 +88,12 @@ Die Geräteseite liest vor dem Update, was diese Geräte tatsächlich überwache
 (`DeviceAccess.watchdogs`), und zeigt es als Warnung mit dem Häkchen „Watchdogs während des
 Updates aussetzen“ (Standard an). Das Update setzt sie dann aus (`watch-address=none`,
 `power-cycle-ping-enabled=no`) und stellt sie danach wieder her, auch nach einem Fehler oder
-Abbruch. Ein Scheduler `netbox-provisioner-watchdog` auf jedem Gerät stellt sie nach 2 h selbst
+Abbruch. Brauchen mehrere Jobs dasselbe Gerät ausgesetzt (zwei Updates hinter demselben
+Switch, ein Rollout), setzt der erste aus, die anderen schliessen sich an und ergänzen, was noch
+überwacht (ihre eigenen PoE-Ports); erst der letzte stellt wieder her (`WatchdogStillHeld` bei
+den anderen). Vorher stellte der zuerst fertige Job die Watchdogs wieder scharf, während der
+andere noch installierte, und zwei gleichzeitige Jobs scheiterten am Scheduler-Eintrag (Berg
+925, 2026-11-07). Ein Scheduler `netbox-provisioner-watchdog` auf jedem Gerät stellt sie nach 2 h selbst
 wieder her, falls der Provisioner nicht dazu kommt. Ein liegengebliebener Scheduler ist, wo
 `read` die Werte findet. Adresse und Frist des PoE-Pings setzt das Wiederherstellen mit, denn
 ob RouterOS sie beim Ausschalten behält, ist nicht geprüft.

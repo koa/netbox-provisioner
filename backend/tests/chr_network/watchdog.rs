@@ -1,11 +1,19 @@
 //! Suspending a watchdog for an update (`backend::device::watchdog`) on a real CHR:
 //! restored by the provisioner it leaves nothing behind; left alone, the scheduler entry
-//! restores the watch address by itself.
+//! restores the watch address by itself; two jobs suspending it at once share it, the last
+//! restores it.
 use crate::chr_network::golden_image::ensure_golden_image;
 use crate::chr_network::qemu::nix_unavailable;
 use crate::chr_network::vm::boot_node;
 use crate::chr_network::wait::wait_until;
-use backend::device::watchdog::{Watching, read, restore, suspend};
+use backend::Error;
+use backend::device::update::DeviceLink;
+use backend::device::watchdog::{
+    WatchdogRestored, WatchdogStillHeld, WatcherLink, Watching, read, restore, restore_all,
+    suspend, suspend_all,
+};
+use backend::job::{Event, Log};
+use encoding_rs::mem::encode_latin1_lossy;
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
 use std::time::Duration;
@@ -118,4 +126,96 @@ async fn watchdog_is_restored_or_restores_itself() {
     )
     .await
     .expect("the scheduler entry did not restore the watch address");
+}
+
+/// Straight to the node's forwarded API port.
+struct Direct(u16);
+
+impl DeviceLink for Direct {
+    async fn api(&self) -> Result<MikrotikDevice<SimpleResult>, Error> {
+        Ok(MikrotikDevice::connect(
+            ("127.0.0.1", self.0),
+            b"admin",
+            Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
+        )
+        .await?)
+    }
+    async fn upload(
+        &self,
+        _name: &str,
+        _data: &[u8],
+        _progress: &(dyn Fn(usize) + Sync),
+    ) -> Result<(), Error> {
+        unreachable!("no upload while suspending watchdogs")
+    }
+}
+
+/// Two updates behind the same switch suspend its watchdog at once (a rollout, Berg 925): both
+/// get it suspended, the first to end leaves it so, the last restores it.
+#[tokio::test]
+#[ignore]
+async fn two_jobs_share_a_suspended_watchdog() {
+    if nix_unavailable() {
+        eprintln!("skipping: `nix` is not available in this environment");
+        return;
+    }
+    let golden = ensure_golden_image(&crate::cache_dir(), crate::TEST_PASSWORD)
+        .await
+        .expect("golden image build failed");
+    let work_dir = std::env::temp_dir().join("chr-network-watchdog-shared-test");
+    let node = boot_node(&golden, &work_dir, "shared", &[], crate::TEST_PASSWORD)
+        .await
+        .expect("node did not boot");
+    let device = node.connect_api(crate::TEST_PASSWORD).await.unwrap();
+    set_watch_address(&device, WATCHED).await;
+    let watcher = || {
+        vec![WatcherLink {
+            device: "shared".into(),
+            supplier: true,
+            powered: Vec::new(),
+            link: Ok(Direct(node.api_port)),
+        }]
+    };
+    let (first_log, second_log) = (Log::new("first"), Log::new("second"));
+    let (first, second) = tokio::join!(
+        suspend_all(watcher(), &first_log),
+        suspend_all(watcher(), &second_log)
+    );
+    let (first, second) = (first.expect("first"), second.expect("second"));
+    let watching = Watching {
+        watch_address: Some(WATCHED.into()),
+        poe_pings: Vec::new(),
+    };
+    assert_eq!(first.len(), 1);
+    assert_eq!(second.len(), 1);
+    assert_eq!(watch_address(&device).await, "none");
+    assert_eq!(entries(&device).await, [ENTRY]);
+
+    restore_all(first, &first_log).await;
+    assert!(
+        first_log
+            .events()
+            .contains(&Event::WatchdogStillHeld(WatchdogStillHeld {
+                device: "shared".into(),
+                others: 1,
+            })),
+        "{:?}",
+        first_log.events()
+    );
+    assert_eq!(watch_address(&device).await, "none");
+    assert_eq!(entries(&device).await, [ENTRY]);
+
+    restore_all(second, &second_log).await;
+    assert!(
+        second_log
+            .events()
+            .contains(&Event::WatchdogRestored(WatchdogRestored {
+                device: "shared".into(),
+                watching,
+            })),
+        "{:?}",
+        second_log.events()
+    );
+    assert_eq!(watch_address(&device).await, WATCHED);
+    assert!(entries(&device).await.is_empty());
 }

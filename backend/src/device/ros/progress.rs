@@ -24,15 +24,20 @@ use std::{collections::HashMap, fmt::Write, net::IpAddr, time::Duration};
 /// The file the marks go to (`.txt` keeps RouterOS from taking it as anything else).
 pub const FILE: &str = "netbox-provisioner-progress.txt";
 
+/// Whether the device's root directory is in RAM: it has a disk `flash` (16 MiB of flash), and
+/// what is uploaded to the root takes memory, not flash.
+pub async fn root_in_ram(raw: &RawDevice<SimpleResult>) -> Result<bool, Error> {
+    Ok(rows(raw, "/file/print")
+        .await?
+        .iter()
+        .any(|row| field(row, "name") == Some("flash") && field(row, "type") == Some("disk")))
+}
+
 /// Where [`FILE`] outlasts a reboot: under `flash/` where the device has that disk, its root is
 /// in RAM then (lab-w60-a, a wAP 60G, 7.23.8: the marks were gone after the fallback's reboot,
 /// only `flash/…` was left); in the root elsewhere (a CHR, newer RouterBOARDs).
 pub async fn file_path(raw: &RawDevice<SimpleResult>) -> Result<String, Error> {
-    let flash = rows(raw, "/file/print")
-        .await?
-        .iter()
-        .any(|row| field(row, "name") == Some("flash") && field(row, "type") == Some("disk"));
-    Ok(if flash {
+    Ok(if root_in_ram(raw).await? {
         format!("flash/{FILE}")
     } else {
         FILE.into()

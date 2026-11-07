@@ -42,6 +42,7 @@ pub struct PlannedDevice {
     pub files: Vec<String>,
     pub download: Option<WideInt>,
     pub free_space: Option<WideInt>,
+    pub in_ram: bool,
     pub fallback: RolloutFallback,
     pub skip: Option<RolloutSkip>,
     pub error: Option<ErrorInfo>,

@@ -15,6 +15,13 @@
 //! outcome. In case the provisioner doesn't get that far, a scheduler entry on the device
 //! restores them by itself [`SAFETY_NET`] later; it is added before they go and removed after
 //! they are back.
+//!
+//! Several jobs may need a device's watchdogs suspended at once (a rollout's updates behind the
+//! same switch, two updates side by side): the first suspends them, the others join ([`HELD`]),
+//! adding their own PoE ports, and only the last restores them. Each job restoring what it saw
+//! let a job that finished first set the watchdogs again while another still installed, and two
+//! jobs adding the scheduler entry at once failed (Berg 925, 2026-11-07).
+use crate::lock::LockAnyway;
 use crate::{
     Error,
     device::{
@@ -32,7 +39,12 @@ use crate::{
 };
 use async_graphql::SimpleObject;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
-use std::{collections::BTreeSet, net::IpAddr, time::Duration};
+use std::{
+    collections::{BTreeSet, HashMap},
+    net::IpAddr,
+    sync::{Arc, LazyLock, Mutex},
+    time::Duration,
+};
 
 /// The name of the scheduler entry restoring the watchdogs.
 pub(crate) const NAME: &str = "netbox-provisioner-watchdog";
@@ -97,6 +109,14 @@ pub struct WatchdogSuspended {
 pub struct WatchdogRestored {
     pub device: Box<str>,
     pub watching: Watching,
+}
+
+/// The watchdogs of `device` stay suspended: another job still needs them so.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct WatchdogStillHeld {
+    pub device: Box<str>,
+    /// how many other jobs hold them
+    pub others: u32,
 }
 
 /// The watchdogs of `device` couldn't be restored; its scheduler entry does it after the
@@ -174,6 +194,14 @@ pub async fn read(device: &RawDevice<SimpleResult>, powered: &[IpAddr]) -> Resul
     if let Some(watching) = pending(device).await? {
         return Ok(watching);
     }
+    read_live(device, powered).await
+}
+
+/// What watches now, whatever a scheduler entry would restore.
+async fn read_live(
+    device: &RawDevice<SimpleResult>,
+    powered: &[IpAddr],
+) -> Result<Watching, Error> {
     let rows_ = rows(device, "/system/watchdog/print").await?;
     let watch_address = rows_
         .first()
@@ -372,6 +400,111 @@ async fn set_poe_ping(
     Ok(())
 }
 
+/// The watchdogs suspended now, by device: how many jobs hold them, and what restores them.
+static HELD: LazyLock<Mutex<HashMap<Box<str>, Held>>> = LazyLock::new(Default::default);
+
+struct Held {
+    holders: u32,
+    watching: Watching,
+}
+
+/// One job at a time suspends or restores a device's watchdogs: they read and write the same
+/// scheduler entry.
+static TURNS: LazyLock<Mutex<HashMap<Box<str>, Turn>>> = LazyLock::new(Default::default);
+
+type Turn = Arc<tokio::sync::Mutex<()>>;
+
+fn turn(device: &str) -> Turn {
+    TURNS
+        .lock_anyway()
+        .entry(device.into())
+        .or_default()
+        .clone()
+}
+
+/// What another job holds suspended on `device`.
+fn held(device: &str) -> Option<Watching> {
+    HELD.lock_anyway()
+        .get(device)
+        .map(|held| held.watching.clone())
+}
+
+/// One more job holds `watching` suspended on `device` (all of it suspended now).
+fn join(device: &str, watching: &Watching) {
+    let mut held = HELD.lock_anyway();
+    let entry = held.entry(device.into()).or_insert(Held {
+        holders: 0,
+        watching: Watching::default(),
+    });
+    entry.holders += 1;
+    entry.watching = merged(&entry.watching, watching);
+}
+
+/// A job lets go of `device`: what to restore when it was the last (or held it unregistered,
+/// `own`), else how many still hold it.
+fn leave(device: &str, own: &Watching) -> Result<Watching, u32> {
+    let mut held = HELD.lock_anyway();
+    let Some(entry) = held.get_mut(device) else {
+        return Ok(own.clone());
+    };
+    entry.holders = entry.holders.saturating_sub(1);
+    if entry.holders > 0 {
+        return Err(entry.holders);
+    }
+    Ok(held
+        .remove(device)
+        .map(|held| held.watching)
+        .unwrap_or_default())
+}
+
+/// `held` with what of `more` it lacks: the watch address one of them knows, every port once.
+fn merged(held: &Watching, more: &Watching) -> Watching {
+    let mut watching = held.clone();
+    if watching.watch_address.is_none() {
+        watching.watch_address = more.watch_address.clone();
+    }
+    for ping in &more.poe_pings {
+        if !watching
+            .poe_pings
+            .iter()
+            .any(|known| known.port == ping.port)
+        {
+            watching.poe_pings.push(ping.clone());
+        }
+    }
+    watching
+}
+
+/// Suspends the watchdogs of `device` for one more job: on its own (a scheduler entry left
+/// from before counts, [`read`]), or joining the jobs holding them already, with what they
+/// don't hold yet (its own ports). What is suspended now.
+async fn suspend_held(
+    device: &str,
+    api: &RawDevice<SimpleResult>,
+    powered: &[IpAddr],
+) -> Result<Watching, Error> {
+    let watching = match held(device) {
+        None => {
+            let watching = read(api, powered).await?;
+            suspend(api, &watching, SAFETY_NET).await?;
+            watching
+        }
+        Some(held) => {
+            // what still watches: their address reads `none`, their ports are off
+            let live = read_live(api, powered).await?;
+            let watching = merged(&held, &live);
+            if watching != held {
+                suspend(api, &watching, SAFETY_NET).await?;
+            }
+            watching
+        }
+    };
+    if !watching.is_empty() {
+        join(device, &watching);
+    }
+    Ok(watching)
+}
+
 /// A device whose watchdogs an update suspended.
 pub struct Suspended<L> {
     pub device: Box<str>,
@@ -405,9 +538,11 @@ pub async fn suspend_all<L: super::update::DeviceLink>(
     {
         let result = async {
             let link = link?;
+            let turn = turn(&device);
+            let _turn = turn.lock().await;
             let api = link.api().await?;
-            let watching = read(&api, if supplier { &powered } else { &[] }).await?;
-            suspend(&api, &watching, SAFETY_NET).await?;
+            let powered: &[IpAddr] = if supplier { &powered } else { &[] };
+            let watching = suspend_held(&device, &api, powered).await?;
             Ok::<_, Error>((link, watching))
         }
         .await;
@@ -445,7 +580,8 @@ pub async fn suspend_all<L: super::update::DeviceLink>(
     Ok(suspended)
 }
 
-/// Restores what [`suspend_all`] suspended; one it can't is left to its scheduler entry.
+/// Restores what [`suspend_all`] suspended, unless another job still holds it; one it can't is
+/// left to its scheduler entry.
 pub async fn restore_all<L: super::update::DeviceLink>(suspended: Vec<Suspended<L>>, log: &Log) {
     for Suspended {
         device,
@@ -453,6 +589,15 @@ pub async fn restore_all<L: super::update::DeviceLink>(suspended: Vec<Suspended<
         watching,
     } in suspended
     {
+        let turn = turn(&device);
+        let _turn = turn.lock().await;
+        let watching = match leave(&device, &watching) {
+            Ok(watching) => watching,
+            Err(others) => {
+                log.emit(WatchdogStillHeld { device, others });
+                continue;
+            }
+        };
         match async { restore(&link.api().await?, &watching).await }.await {
             Ok(()) => log.emit(WatchdogRestored { device, watching }),
             Err(error) => log.emit(WatchdogNotRestored {
@@ -460,6 +605,21 @@ pub async fn restore_all<L: super::update::DeviceLink>(suspended: Vec<Suspended<
                 watching,
                 error: (&error).into(),
             }),
+        }
+    }
+}
+
+impl<L> Suspended<L> {
+    /// What a job saved before a restart holds suspended on `device`, held again: a job
+    /// suspending it meanwhile joins it, and restoring waits for the last.
+    pub(crate) fn held_again(device: Box<str>, link: L, watching: Watching) -> Self {
+        if !watching.is_empty() {
+            join(&device, &watching);
+        }
+        Suspended {
+            device,
+            link,
+            watching,
         }
     }
 }

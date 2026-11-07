@@ -71,7 +71,12 @@ Die Regel oben verhindert Schaden, sie legt aber noch keine gute Reihenfolge fes
 2. **Danach von aussen nach innen:** Geräte nach Abstand zur Wurzel absteigend sortiert (Blätter
    zuerst, Management-Proxy zuletzt). So wartet selten etwas auf die Regel, und ein Problem tritt
    zuerst an einem Gerät auf, hinter dem niemand hängt.
-3. **Parallel** bis zu `rollout_parallel` Geräte (Vorschlag: 4). Den Rest erledigen die Leases.
+3. **Parallel** bis zu `PARALLEL` (4) Geräte, aber nie zwei verwandte: Ein Gerät startet nicht,
+   solange eines läuft, das hinter ihm hängt, von ihm gespeist wird oder es speist
+   (`PlannedDevice::related`), und umgekehrt. Die Leases verhindern nur gefährliche Neustarts,
+   nicht gleichzeitige Updates; auf Berg 925 liefen switch-mimi und die drei APs dahinter (zwei
+   davon gespeist) als Piloten gleichzeitig, ihre Watchdog-Aussetzungen kamen sich in die Quere
+   (2026-11-07).
 4. **WLAN:** Die generierte Konfiguration setzt am CAPsMAN `upgrade-policy=suggest-same-version`.
    Ein CAP mit anderer Version als der Controller verbindet sich also weiter. Controller und CAPs
    müssen deshalb nicht im Gleichschritt laufen. Der Controller kommt nach seinen CAPs dran.
@@ -104,7 +109,10 @@ wenn der Benutzer das bestätigt.
 Umgesetzt lässt der Plan aus, was aktuell ist (`UpToDate`), nicht antwortet (`Unreachable`),
 Reste eines Jobs hat (`Leftovers`), weder eine zweite Partition noch einen Nachbarn als Weg
 zurück hat (`NoFallback`) oder weniger freien Speicher als die Pakete (Grösse per `HEAD` bei
-MikroTik, `NoSpace`). Die Reihenfolge (`order`): je Architektur ein Pilot, von den Geräten,
+MikroTik, `NoSpace`). Freier Speicher heisst `free-hdd-space`, auf Geräten mit 16 MiB Flash aber
+`free-memory`: Dort liegt das Wurzelverzeichnis im RAM (eine Disk `flash`,
+`progress::root_in_ram`), und der Upload belegt RAM (1og-sw2: 11.7 MiB Paket, 2.8 MiB Flash frei,
+einzeln problemlos aktualisiert). Die Reihenfolge (`order`): je Architektur ein Pilot, von den Geräten,
 hinter denen auf den Wegen niemand hängt und die nichts über PoE speisen, das am weitesten
 aussen; dann die übrigen nach Abstand zur Wurzel absteigend (abseits der Wege zuerst, bei
 Gleichstand nach Namen), ein CAPsMAN-Controller nach dem letzten seiner APs.

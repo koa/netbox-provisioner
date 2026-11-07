@@ -528,7 +528,11 @@ fn row(index: usize, device: &PlannedDevice, target: &str, last: Html) -> Html {
         format!(
             "{} ({})",
             device.files.join(", "),
-            t::space(device.download.map(|d| d.0), device.free_space.map(|f| f.0))
+            t::space(
+                device.download.map(|d| d.0),
+                device.free_space.map(|f| f.0),
+                device.in_ram,
+            )
         )
     };
     let class = match (&device.skip, device.pilot) {
