@@ -342,10 +342,15 @@ fn restored_by(script: &str) -> Option<Watching> {
 
 /// What a scheduler entry left from a suspend would restore, if there is one.
 pub(crate) async fn pending(device: &RawDevice<SimpleResult>) -> Result<Option<Watching>, Error> {
-    Ok(entries(device)
-        .await?
+    Ok(pending_in(&entries(device).await?))
+}
+
+/// [`pending`] from the rows of `/system/scheduler` read already.
+pub(crate) fn pending_in(schedulers: &[crate::device::raw::Row]) -> Option<Watching> {
+    schedulers
         .iter()
-        .find_map(|row| field(row, "on-event").and_then(restored_by)))
+        .filter(|row| field(row, "name") == Some(NAME))
+        .find_map(|row| field(row, "on-event").and_then(restored_by))
 }
 
 async fn entries(device: &RawDevice<SimpleResult>) -> Result<Vec<crate::device::raw::Row>, Error> {

@@ -71,7 +71,7 @@ pub fn create_anonymous_schema() -> AnonymousGraphqlSchema {
 #[Object]
 impl QueryAuthenticated {
     async fn topology(&self) -> TopologyHolder {
-        self.topology.clone()
+        self.topology.snapshot().await
     }
     async fn list_credentials(&self) -> Box<[&str]> {
         CONFIG
@@ -127,9 +127,10 @@ impl QueryAuthenticated {
         site_ids: Vec<u32>,
         channel: Option<update::Channel>,
     ) -> Result<crate::device::rollout::RolloutPlan, ApiError> {
+        let topology = self.topology.snapshot().await;
         let mut sites = Vec::new();
         for id in site_ids {
-            let site = self.topology.site(SiteId(id)).await;
+            let site = topology.site(SiteId(id)).await;
             sites.push(site.ok_or(Error::UnknownSite(id))?);
         }
         let channel = channel.or(CONFIG.routeros_channel).unwrap_or_default();
@@ -156,7 +157,10 @@ impl SubscriptionAuthenticated {
     /// `topology` of the query, again whenever what was read under it changed.
     async fn topology(&self) -> impl Stream<Item = TopologyHolder> + use<> {
         let topology = self.topology.clone();
-        live::rounds(move || std::future::ready(topology.clone()))
+        live::rounds(move || {
+            let topology = topology.clone();
+            async move { topology.snapshot().await }
+        })
     }
     /// `job` of the query, again whenever it logs or ends, its `events` then only the new ones;
     /// `null` once the server doesn't know it (it restarted). A site's job tells nobody: one
@@ -536,9 +540,11 @@ impl MutationAuthenticated {
         channel: Option<update::Channel>,
         pilots: Option<Vec<u32>>,
     ) -> Result<Arc<Job>, ApiError> {
+        let snapshot = self.topology.snapshot().await;
         let mut sites = Vec::new();
         for id in site_ids {
-            sites.push(self.site(id).await?);
+            let site = snapshot.site(SiteId(id)).await;
+            sites.push(site.ok_or(Error::UnknownSite(id))?);
         }
         let channel = channel.or(CONFIG.routeros_channel).unwrap_or_default();
         let user = user_label(ctx);
@@ -803,9 +809,13 @@ impl MutationAuthenticated {
         ctx: &Context<'_>,
         ids: Vec<u32>,
     ) -> Result<Vec<Arc<Job>>, ApiError> {
+        let topology = self.topology.snapshot().await;
         let mut devices = Vec::new();
         for id in ids {
-            let device = self.device(id).await?;
+            let device = topology
+                .devices_by_id(DeviceId(id))
+                .await
+                .ok_or(Error::UnknownDevice(id))?;
             if !devices.iter().any(|d: &DeviceAccess| d.id() == device.id()) {
                 devices.push(device);
             }

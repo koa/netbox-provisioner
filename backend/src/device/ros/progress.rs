@@ -27,10 +27,14 @@ pub const FILE: &str = "netbox-provisioner-progress.txt";
 /// Whether the device's root directory is in RAM: it has a disk `flash` (16 MiB of flash), and
 /// what is uploaded to the root takes memory, not flash.
 pub async fn root_in_ram(raw: &RawDevice<SimpleResult>) -> Result<bool, Error> {
-    Ok(rows(raw, "/file/print")
-        .await?
+    Ok(root_in_ram_of(&rows(raw, "/file/print").await?))
+}
+
+/// [`root_in_ram`] from the rows of `/file/print` read already.
+pub fn root_in_ram_of(files: &[crate::device::raw::Row]) -> bool {
+    files
         .iter()
-        .any(|row| field(row, "name") == Some("flash") && field(row, "type") == Some("disk")))
+        .any(|row| field(row, "name") == Some("flash") && field(row, "type") == Some("disk"))
 }
 
 /// Where [`FILE`] outlasts a reboot: under `flash/` where the device has that disk, its root is

@@ -12,7 +12,7 @@ use crate::{
     Error,
     device::{
         dependency::{PowerChain, RebootLease},
-        raw::{command, field, rows},
+        raw::{Row, command, field, rows},
         update_fallback,
     },
     device_state::{RebootState, UpdateState},
@@ -261,6 +261,8 @@ pub struct DeviceState {
     pub packages: Box<[Box<str>]>,
     /// `(current, upgrade)` RouterBOARD firmware; `None` without RouterBOARD (CHR)
     pub firmware: Option<(Box<str>, Box<str>)>,
+    /// `/system/routerboard model`; `None` without RouterBOARD (CHR)
+    pub model: Option<Box<str>>,
     pub uptime: Duration,
 }
 
@@ -501,9 +503,23 @@ async fn uninstall(device: &RawDevice<SimpleResult>, packages: &[Box<str>]) -> R
 
 pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState, Error> {
     let resource = rows(device, "/system/resource/print").await?;
-    let resource = resource
-        .first()
-        .ok_or(Error::MissingDeviceState("/system/resource"))?;
+    let packages = rows(device, "/system/package/print").await?;
+    // CHR has no RouterBOARD; the command fails there
+    let routerboard = rows(device, "/system/routerboard/print")
+        .await
+        .ok()
+        .and_then(|rows| rows.into_iter().next());
+    state_from(resource.first(), &packages, routerboard.as_ref())
+}
+
+/// [`DeviceState`] from the rows of `/system/resource`, `/system/package` and
+/// `/system/routerboard`, for who reads them for more anyway.
+pub(crate) fn state_from(
+    resource: Option<&Row>,
+    packages: &[Row],
+    routerboard: Option<&Row>,
+) -> Result<DeviceState, Error> {
+    let resource = resource.ok_or(Error::MissingDeviceState("/system/resource"))?;
     let version = field(resource, "version")
         .and_then(Version::parse)
         .ok_or(Error::MissingDeviceState("version"))?;
@@ -516,28 +532,25 @@ pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState,
             _ => None,
         })
         .ok_or(Error::MissingDeviceState("uptime"))?;
-    let packages = rows(device, "/system/package/print")
-        .await?
+    let packages = packages
         .iter()
         .filter(|row| field(row, "disabled") != Some("true"))
         .filter_map(|row| field(row, "name").map(Box::from))
         .collect();
-    // CHR has no RouterBOARD; the command fails there
-    let firmware = rows(device, "/system/routerboard/print")
-        .await
-        .ok()
-        .and_then(|rows| rows.into_iter().next())
-        .and_then(|row| {
-            Some((
-                field(&row, "current-firmware")?.into(),
-                field(&row, "upgrade-firmware")?.into(),
-            ))
-        });
+    let firmware = routerboard.and_then(|row| {
+        Some((
+            field(row, "current-firmware")?.into(),
+            field(row, "upgrade-firmware")?.into(),
+        ))
+    });
     Ok(DeviceState {
         version,
         architecture,
         packages,
         firmware,
+        model: routerboard
+            .and_then(|row| field(row, "model"))
+            .map(Box::from),
         uptime,
     })
 }
@@ -1303,6 +1316,7 @@ mod tests {
             architecture: arch.into(),
             packages: names(packages),
             firmware: None,
+            model: None,
             uptime: Duration::ZERO,
         }
     }

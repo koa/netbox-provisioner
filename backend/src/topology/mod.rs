@@ -41,8 +41,10 @@ pub struct TopologyHolder {
     /// held while NetBox is read: who finds the topology old while it is, waits for that
     /// reading instead of starting another
     fetching: Arc<Mutex<()>>,
-    /// a topology given once (`From<TopologyBuilder>`, tests), never read from NetBox: it went
-    /// out of date after 10 s like a fetched one and read NetBox without a `config.yaml`
+    /// a topology given once, never read from NetBox: a GraphQL request's (`snapshot`), which
+    /// loads it once however long the request takes, and the tests' (`From<TopologyBuilder>`),
+    /// which went out of date after 10 s like a fetched one and read NetBox without a
+    /// `config.yaml`
     fixed: bool,
 }
 
@@ -95,6 +97,16 @@ impl TopologyHolder {
             info!("Topology fetched");
         }
         self.data.lock().await
+    }
+
+    /// The topology as it is now (fetched again if it is old), kept for one GraphQL request:
+    /// within one, every resolver works on the same topology, read from NetBox at most once.
+    pub async fn snapshot(&self) -> TopologyHolder {
+        TopologyHolder {
+            data: Arc::new(Mutex::new(self.current().await)),
+            fetching: Default::default(),
+            fixed: true,
+        }
     }
 
     /// The topology as fetched last (again if it is old), `None` when NetBox couldn't be read.

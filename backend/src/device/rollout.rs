@@ -230,8 +230,20 @@ async fn read(
         .await?
         .ok_or(Error::MissingCredentials)?;
     let raw = link.connect_again().await?;
-    let state = update::read_state(&raw).await?;
-    let wanted = link.wanted_packages().await?;
+    // each menu once (`/system/resource` for the state and the free space, `/file` for the
+    // root and the leftover packages)
+    let resource = rows(&raw, "/system/resource/print").await?;
+    let packages = rows(&raw, "/system/package/print").await?;
+    // CHR has no RouterBOARD; the command fails there
+    let routerboard = rows(&raw, "/system/routerboard/print")
+        .await
+        .ok()
+        .and_then(|rows| rows.into_iter().next());
+    let files = rows(&raw, "/file/print").await?;
+    let state = update::state_from(resource.first(), &packages, routerboard.as_ref())?;
+    let wanted = link
+        .wanted_packages_for(state.model.as_deref().map(str::as_bytes))
+        .await?;
     let newest_v6 = match state.version.major() < 7 {
         true => Some(newest(6, Channel::LongTerm).await?),
         false => None,
@@ -244,18 +256,17 @@ async fn read(
     );
     // the uploads go to the root, in RAM on a device with 16 MiB of flash (1og-sw2, a CRS with
     // 2.8 MiB of flash free, takes its 11.7 MiB update there)
-    let in_ram = progress::root_in_ram(&raw).await?;
+    let in_ram = progress::root_in_ram_of(&files);
     let free = if in_ram {
         "free-memory"
     } else {
         "free-hdd-space"
     };
-    let free_space = rows(&raw, "/system/resource/print")
-        .await?
+    let free_space = resource
         .first()
         .and_then(|row| field(row, free)?.parse().ok());
     let partition = partitions::other(&partitions::list(&raw).await).is_some();
-    let left = leftovers::read(&raw).await?;
+    let left = leftovers::read_with_files(&raw, &files).await?;
     let mut download = Some(0);
     for file in step.iter().flat_map(|step| step.files.iter()) {
         let known = sizes.lock().ok().and_then(|sizes| sizes.get(file).copied());

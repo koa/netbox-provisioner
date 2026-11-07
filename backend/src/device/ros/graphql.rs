@@ -152,7 +152,9 @@ impl AccessibleDevice {
         let versions = async move {
             let as_of = tokio::time::Instant::now();
             let state = update::read_state(&device.connect_again().await?).await?;
-            let wanted = device.wanted_packages().await?;
+            let wanted = device
+                .wanted_packages_for(state.model.as_deref().map(str::as_bytes))
+                .await?;
             let newest_v6 = if state.version.major() < 7 {
                 Some(newest(6, update::Channel::LongTerm).await?)
             } else {

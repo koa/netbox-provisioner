@@ -542,7 +542,12 @@ the device in line puts that there after its end dropped the facts, `facts::put`
 `Job::keep_in_line`); for who asks it is no change
 (two live pages would keep asking for each other); „Neu laden“ drops the device's
 facts (`refreshDevice`), so every page showing it reads anew. While a subscription is open
-NetBox is read every 10 s (`live::watch_netbox`). Over HTTP a subscription is answered with
+NetBox is read every 10 s (`live::watch_netbox`). Within one GraphQL request every record is
+loaded once, unless waiting for a condition: `Query.topology` and each round of the
+subscription's are a `TopologyHolder::snapshot` (fixed, never fetched again however long the
+request takes), a mutation looking up several devices or sites takes one too, and what reads a
+device reads each menu once and hands the rows on (`update::state_from`,
+`leftovers::read_with_files`, `progress::root_in_ram_of`, `wanted_packages_for`). Over HTTP a subscription is answered with
 its first answer (`live::execute_once`): a view asking once shares the document and generated
 types with the views subscribing (`Findings`, `InterfaceView`, `SiteDevices`, `ListSites`).
 

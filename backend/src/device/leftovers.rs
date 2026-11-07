@@ -111,6 +111,14 @@ pub struct LeftoverCleared {
 
 /// Reads what is left on the device.
 pub async fn read(device: &RawDevice<SimpleResult>) -> Result<Leftovers, Error> {
+    read_with_files(device, &rows(device, "/file/print").await?).await
+}
+
+/// [`read`] with the rows of `/file/print` read already.
+pub async fn read_with_files(
+    device: &RawDevice<SimpleResult>,
+    files: &[Row],
+) -> Result<Leftovers, Error> {
     let schedulers = rows(device, "/system/scheduler/print").await?;
     let scheduled = |name: &str| {
         schedulers
@@ -122,23 +130,20 @@ pub async fn read(device: &RawDevice<SimpleResult>) -> Result<Leftovers, Error> 
                     .map(Box::from),
             })
     };
-    let watchdogs = match scheduled(watchdog::NAME) {
-        Some(entry) => watchdog::pending(device)
-            .await?
-            .map(|watching| WatchdogsLeft {
-                next_run: entry.next_run,
-                watching,
-                held_by: None,
-            }),
-        None => None,
-    };
+    let watchdogs = scheduled(watchdog::NAME).and_then(|entry| {
+        watchdog::pending_in(&schedulers).map(|watching| WatchdogsLeft {
+            next_run: entry.next_run,
+            watching,
+            held_by: None,
+        })
+    });
     let apply_script_running = rows(device, "/system/script/job/print")
         .await?
         .iter()
         .any(|job| field(job, "script") == Some(APPLY_SCRIPT));
-    let packages = packages(device)
-        .await?
+    let packages = files
         .iter()
+        .filter(|row| field(row, "name").is_some_and(installs_at_boot))
         .filter_map(|row| {
             Some(PackageLeft {
                 file: field(row, "name")?.into(),

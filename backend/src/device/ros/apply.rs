@@ -962,7 +962,14 @@ impl AccessibleDevice {
             .ok()
             .flatten()
             .map(|routerboard| routerboard.model.0);
-        let needed = model.and_then(|model| needed_radio_package(&self.device_config, &model));
+        self.wanted_packages_for(model.as_deref()).await
+    }
+    /// [`Self::wanted_packages`] of a board `model` read already (`DeviceState::model`).
+    pub async fn wanted_packages_for(
+        &self,
+        model: Option<&[u8]>,
+    ) -> Result<Box<[Box<str>]>, Error> {
+        let needed = model.and_then(|model| needed_radio_package(&self.device_config, model));
         // a legacy CAPsMAN NetBox doesn't know of (its CAPs' radios aren't in NetBox) stays
         // as it is (`DeviceCfg::fetch`), so does the package it runs in
         let needed = match needed {
