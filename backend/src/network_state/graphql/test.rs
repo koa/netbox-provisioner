@@ -4,8 +4,8 @@
 //! they relay between two OSPF neighbors.
 
 use super::*;
+use crate::device::poe::PoePorts;
 use crate::device::raw::Row;
-use crate::helper::poe::PoePorts;
 use crate::network_state::{edges::Lsdb, lsa::Lsa};
 use crate::topology::{
     Cable, CablePort, Device, Interface, InterfaceId, IpAddressData, IpAddressId, PhysicalPortId,

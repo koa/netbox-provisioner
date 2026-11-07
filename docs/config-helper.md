@@ -339,7 +339,7 @@ Die dritte Richtung „Kein PoE an diesem Port“ nimmt einen Eintrag wieder her
 Ports und am anderen Kabelende den passenden (`PD` gegenüber einem `PSE` und umgekehrt), denn ein
 Ende allein sagt nichts. Ein Gegenüber mit demselben oder keinem Modus bleibt.
 
-Geprüft gegen das Gerät wird in der Live-Prüfung der Interfaces (`helper::poe::mismatches`,
+Geprüft gegen das Gerät wird in der Live-Prüfung der Interfaces (`device::poe::mismatches`,
 `LiveRow.poe`), an jedem Port eines RouterOS-Geräts mit Modus in NetBox:
 - `PSE`, aber der Port hat kein `poe-out` (`/interface/ethernet`): das Board kann dort nicht
   speisen.

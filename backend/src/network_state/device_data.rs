@@ -5,13 +5,13 @@
 //! (`DeviceAccess::connect`), as a fact (`FactKind::DeviceMapData`) per device, so the map's
 //! viewers share a reading. Not judged, only shown: the generic rows of `/system/health/print`
 //! as `(name, value, unit)`, the few fields of `/system/resource/print` worth a column of their
-//! own, and every PoE-capable port (`helper::poe::PoePorts`).
+//! own, and every PoE-capable port (`device::poe::PoePorts`).
 
 use crate::{
     Error,
+    device::poe::{self, PoePorts},
     device::raw::{Row, field, rows},
     facts::{self, FactKey, FactKind, Freshness},
-    helper::poe::{self, PoePorts},
     topology::{
         DeviceId,
         access::{DeviceTarget, device::DeviceAccess},

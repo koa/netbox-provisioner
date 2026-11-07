@@ -14,7 +14,7 @@ use super::{
 };
 use crate::graphql::scalars::ScalarU64;
 use crate::{
-    helper::poe::{self, PoeProblem},
+    device::poe::{self, PoeProblem},
     topology::{
         DeviceId, PoeMode,
         access::device::DeviceAccess,
@@ -178,12 +178,12 @@ pub struct MapPoeEdge {
     status: Option<String>,
     /// `poe-out-power`, watts; only while `status` is `powered-on`
     power: Option<f64>,
-    /// where the device contradicts NetBox's PoE mode (`helper::poe::Feeding`)
+    /// where the device contradicts NetBox's PoE mode (`device::poe::Feeding`)
     problem: Option<PoeProblem>,
 }
 
 /// One [`MapPoeEdge`] per port of `candidates` currently feeding, or modeled in NetBox to
-/// (`helper::poe::feeding`), with a cable to the fed port.
+/// (`device::poe::feeding`), with a cable to the fed port.
 fn poe_edges(
     candidates: &[DeviceAccess],
     device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>,

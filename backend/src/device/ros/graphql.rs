@@ -138,8 +138,8 @@ impl AccessibleDevice {
     }
     /// The ports the device reports feeding something over PoE, and what is at their other
     /// end (helper „PoE“).
-    async fn poe_observed(&self) -> Result<Vec<crate::helper::poe::PoeObserved>, ApiError> {
-        Ok(crate::helper::poe::observed(&self.connect_again().await?, &self.device_config).await?)
+    async fn poe_observed(&self) -> Result<Vec<crate::device::poe::PoeObserved>, ApiError> {
+        Ok(crate::device::poe::observed(&self.connect_again().await?, &self.device_config).await?)
     }
     /// The partitions of the flash; `null` on a device without (16 MiB of flash, a CHR).
     async fn partitions(&self, ctx: &Context<'_>) -> Option<partitions::Partitions> {

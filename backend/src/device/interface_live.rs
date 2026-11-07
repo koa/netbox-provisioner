@@ -4,7 +4,7 @@
 //! The live checks of the interface view (`docs/interface-view.md`): who the device
 //! sees at each row's ports (`/ip/neighbor`, as „Nachbarn lesen“), its OSPF neighbors there, and
 //! whether the bridge devices of a radio link answer a ping at their loopback, and where the
-//! device contradicts NetBox's PoE modes (`helper::poe::mismatches`). Read only; the
+//! device contradicts NetBox's PoE modes (`device::poe::mismatches`). Read only; the
 //! rows are those of `topology::interfaces`, so the frontend joins both by the row's interface.
 //!
 //! An OSPF neighbor names the interface as RouterOS calls it: a port by its short name and label
@@ -12,13 +12,13 @@
 //! `link`). So beyond the port names it goes by the addresses `/ip/address` has there.
 use crate::{
     Error,
+    device::poe::{self, PoeMismatch, PoeProblem},
     device::{
         neighbors::{self, NeighborFinding, NeighborFindingKind, SeenNeighbor, port_named},
         raw::{Row, answering, field, rows},
         ros::dhcp::static_leases,
         update_fallback::is_adjacent,
     },
-    helper::poe::{self, PoeMismatch, PoeProblem},
     topology::{
         DeviceId, InterfaceId,
         access::device::DeviceAccess,

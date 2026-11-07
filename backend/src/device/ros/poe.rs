@@ -1,5 +1,5 @@
 //! Scope: The base config's step for PoE out and its warning; not reading PoE from a device
-//! (`helper::poe`).
+//! (`device::poe`).
 //!
 //! PoE out on the ports NetBox gives `pse`, and the warning where an apply would cut it.
 use super::{BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError};

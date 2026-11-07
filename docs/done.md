@@ -78,6 +78,7 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 | B22 | Die Layout-Algorithmen der Netzkarte (`graph`, `force_layout`, `seed_from_graph`, die Kreuzungen, `clustered_layout`) von `components/network_map.rs` nach `network_map/layout.rs`; reines Verschieben, `network_map.rs` von 1681 auf 884 Zeilen; im Lab die Karte geprüft | S | 2026-11-06 („move the network map's layout into a module of its own“) |
 | B28 | Nach Z38: Bytes (Speicher und Disk der Netzkarte, Paket-Download und -Upload) und die Hosts eines Pools (`PoolNearlyFull`) als Skalar `ScalarU64` statt `Int`, im Frontend `WideInt` darauf; im Lab an der Netzkarte geprüft | S | 2026-11-06 („give the 64-bit numbers a scalar of their own“) |
 | B23 | Wiederholungen bei Geräten und Firewall: die Ethernet-Ports je Board in `hw_facts.rs` als Tabelle von Abschnitten gleicher Ports (`Ports`, `build_runs`, je Namensmuster weiter nummeriert, PoE-out mit `PoeOut`) statt `repeat_n…chain…enumerate`, die gleichen Arme zusammengefasst (Ausgabe für jedes Board vorher und nachher verglichen: gleich); `Rule::v4`/`v6` in `ros/firewall.rs` über ein Makro `filter!` | S–M | 2026-11-06 („put the boards' ports in a table and the firewall families in one macro“) |
+| B31 | PoE vom Gerät lesen und mit NetBox vergleichen (`read_ports`, `feeding`, `mismatches`) aus `helper::poe` in ein eigenes Modul `device::poe`; Netzwerkkarte und Live-Prüfung nutzen es auch | S | 2026-11-07 („read poe from a device in device::poe“) |
 
 ## C. Konzepte
 

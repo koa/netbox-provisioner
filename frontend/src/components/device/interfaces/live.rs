@@ -198,7 +198,7 @@ pub fn details(netbox: &str, live: &RowLive, device: impl Fn(&Device) -> Html) -
                                     PoeProblem::NoLoad => t::PoeMismatch::NoLoad,
                                     PoeProblem::PdMissing => t::PoeMismatch::PdMissing,
                                     PoeProblem::FeedsInstead => t::PoeMismatch::FeedsInstead,
-                                    // `mismatches()` never produces this (helper::poe::feeding,
+                                    // `mismatches()` never produces this (device::poe::feeding,
                                     // for the network map); unreachable here, but the enum is
                                     // shared and must still match exhaustively.
                                     PoeProblem::Undocumented | PoeProblem::Other => t::PoeMismatch::Other,

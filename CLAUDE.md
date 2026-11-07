@@ -492,12 +492,12 @@ tokens; PNG draws that SVG onto a canvas at the map's own size.
 Health, resources and PoE are a second query, `Query.topology.networkStateDetails(siteId)`,
 asked and polled independently (its own 5 s loop in the frontend) so a slow round trip to every
 device never holds up the overview. `device_data::read_all` reads `/system/health/print`,
-`/system/resource/print` and every PoE-capable port (`helper::poe::read_ports`) of every device
+`/system/resource/print` and every PoE-capable port (`device::poe::read_ports`) of every device
 with OSPF of its own (not a plain switch on the map only as a relay), as the fact
 `FactKind::DeviceMapData` (`device_data::DEVICE_DATA_AGE`, 30 s; a device that doesn't answer is
 left out). `graphql::network_state_details` puts health and resources on `MapNodeDetails`, and
 turns the PoE readings into `MapPoeEdge` (`NetworkStateDetails.poeEdges`): one PSE→PD arrow per
-port `helper::poe::feeding` has modeled as `pse` or reporting `powered-on`, with a cable in
+port `device::poe::feeding` has modeled as `pse` or reporting `powered-on`, with a cable in
 NetBox to the fed port; `feeding` is the shared base `mismatches` (the device page's own PoE
 check) now filters for a problem, so neither changed what it reports, and the one addition for
 the map (`PoeProblem::Undocumented`, a port feeding with no PoE mode in NetBox at all) stays

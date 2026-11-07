@@ -158,7 +158,7 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   nur wo NetBox ein Kabel zum gespeisten Port hat. **Umgesetzt** (2026-11-02), vereinfacht:
   gestrichelt statt animiert (Strichelung ohne Animation ist dem Projekt genug, siehe
   `local.css`), Farbe statt Dicke für die Leistung (eine Zahl in der Beschriftung, nicht die
-  Linienstärke, ist genauer und einfacher). `helper::poe::feeding` liefert pro Port Modus, Status,
+  Linienstärke, ist genauer und einfacher). `device::poe::feeding` liefert pro Port Modus, Status,
   Leistung (`poe-out-power`), Gegenseite und eine Abweichung, wenn eine vorliegt; `mismatches`
   (Geräteseite, Soll-gegen-Ist-Check) ist jetzt ein Filter darüber, unverändert in dem, was es
   meldet.
@@ -340,7 +340,7 @@ Historie, ergänzend.
    auf der Karte ist); im Tooltip beim Überfahren statt einer Seitenleiste
    (Entschieden 2026-11-02). Unit-Tests der Zeilen-Auswertung (`device_data::test`).
 4. PoE-Kanten und -Budget. **Teilweise umgesetzt** (2026-11-02): PSE→PD-Pfeile mit Leistung
-   (`poe-out-power`) und Soll-gegen-Ist (`helper::poe::feeding`, geteilt mit `mismatches` der
+   (`poe-out-power`) und Soll-gegen-Ist (`device::poe::feeding`, geteilt mit `mismatches` der
    Geräteseite), im Tooltip die Leistung und, bei Abweichung, welche. Das Budget pro Board
    bleibt offen: `hw_facts.rs` hat die nötigen Werte noch nicht pro Board nachgetragen (siehe
    oben), das ist Dateneingabe aus dem Handbuch je Board, kein Code, und würde ohne echte Werte
