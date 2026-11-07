@@ -605,10 +605,10 @@ behind; by `next-run` and the clock 1og-sw1's fallback looked due at once, staye
 good apply back (CHR test `a_clock_jump_leaves_the_fallback_time`). Reached, even with a part left, the fallback goes; not reached, the apply
 waits for the device to be back with the config from before (`FallbackFired`) and shows the
 marks then (CHR tests `fallback_is_stopped_or_restores`, `marks_outlast_the_fallback`). A device
-without marks of the run counts as through after 90 s, as before them. An OSPF interface template RouterOS reports `inactive` is replaced
-(`ospf::replace_inactive_templates`, `DeviceCfg.inactive_ospf_templates`): it reports few fields,
-which the model completes with defaults, so it looked like the target's (berghof-haus-stall had
-no OSPFv2 with an empty diff). A diff that never gets empty after an apply usually means a field RouterOS accepts
+without marks of the run counts as through after 90 s, as before them. An OSPF interface template's `networks=""` matches no network, so RouterOS
+makes no interface of it; mikrotik-model tells it from a missing `networks` (`empty`) and the diff
+unsets it (berghof-haus-stall had no OSPFv2 with an empty diff, CHR test
+`an_empty_networks_is_unset_by_the_apply`). A diff that never gets empty after an apply usually means a field RouterOS accepts
 but doesn't report in that state (see the `k`/`o` notes in mikrotik-model's CLAUDE.md); compare
 with the device's own `print` (`examples/print_device.rs`, read-only) and on a CHR before
 changing defaults. A plan that changes a radio (`/interface/wireless…`, `/interface/wifi…`,

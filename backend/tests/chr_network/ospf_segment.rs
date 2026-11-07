@@ -23,7 +23,6 @@ use encoding_rs::mem::encode_latin1_lossy;
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
 use mikrotik_model::hwconfig::DeviceType;
-use mikrotik_model::resource::ResourceMutationOperation;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
@@ -331,27 +330,8 @@ async fn full_with(device: &MikrotikDevice<SimpleResult>, instance: &str, router
         })
 }
 
-/// The `inactive` and `.about` of the node's OSPFv2 interface template.
-async fn v2_template(device: &MikrotikDevice<SimpleResult>) -> (String, String) {
-    run(device, "/routing/ospf/interface-template/print", &[])
-        .await
-        .into_iter()
-        .find(|row| row.get("area").cloned().flatten().as_deref() == Some("backbone-v2"))
-        .map(|row| {
-            let field = |name: &str| {
-                row.get(name)
-                    .cloned()
-                    .flatten()
-                    .unwrap_or_default()
-                    .to_string()
-            };
-            (field("inactive"), field(".about"))
-        })
-        .unwrap_or_default()
-}
-
-/// The `.id`s the diff of the node removes from `/routing/ospf/interface-template`.
-async fn template_removals(
+/// The fields the diff of the node sets on `/routing/ospf/interface-template` entries it keeps.
+async fn template_updates(
     node: &RunningNode,
     device: &backend::topology::access::device::DeviceAccess,
 ) -> Vec<String> {
@@ -372,77 +352,61 @@ async fn template_removals(
         .expect("mutations")
         .iter()
         .filter(|m| m.resource.ends_with(b"routing/ospf/interface-template"))
-        .filter_map(|m| match &m.operation {
-            ResourceMutationOperation::RemoveByKey(key) => {
-                Some(String::from_utf8_lossy(&key.value).into_owned())
-            }
-            _ => None,
-        })
+        .flat_map(|m| m.fields.iter())
+        .map(|field| String::from_utf8_lossy(field.key).into_owned())
         .collect()
 }
 
-/// An OSPF interface template RouterOS reports inactive looks like the target's to the model,
-/// which completes its few fields with RouterOS's defaults: the diff replaces it, and the apply
-/// brings the router's OSPFv2 back (berghof-haus-stall, 7.24.6: no OSPFv2 interface, the diff
-/// empty). Here the instance being off makes it inactive.
+/// A template with `networks=""` (berghof-haus-stall, 7.24.6) matches no network: RouterOS
+/// makes no interface of it, the adjacency goes. The diff unsets it, and the apply brings the
+/// adjacency back.
 #[tokio::test]
 #[ignore]
-async fn an_inactive_ospf_template_is_replaced_by_the_apply() {
+async fn an_empty_networks_is_unset_by_the_apply() {
     if crate::chr_network::qemu::nix_unavailable() {
         eprintln!("skipping: `nix` is not available in this environment");
         return;
     }
-    let (nodes, holder, speakers, apis) = boot("chr-network-inactive-ospf-template").await;
+    let (nodes, holder, speakers, apis) = boot("chr-network-empty-networks").await;
     let (near, far) = (&apis[0], "192.168.255.24");
     let near_node = &nodes[&speakers[0]];
     let near_access = holder.devices_by_id(speakers[0]).await.unwrap();
-    wait_until(
-        || async { Ok(full_with(near, "default-v2", far).await) },
-        Duration::from_secs(180),
-    )
-    .await
-    .expect("near and far adjacent in v2");
-    assert!(
-        template_removals(near_node, &near_access).await.is_empty(),
-        "an active template stays"
-    );
+    let adjacent = || async { Ok(full_with(near, "default-v2", far).await) };
+    wait_until(adjacent, Duration::from_secs(180))
+        .await
+        .expect("near and far adjacent in v2");
+    assert!(template_updates(near_node, &near_access).await.is_empty());
 
+    let id = run(near, "/routing/ospf/interface-template/print", &[])
+        .await
+        .into_iter()
+        .find(|row| row.get("area").cloned().flatten().as_deref() == Some("backbone-v2"))
+        .and_then(|row| row.get(".id").cloned().flatten())
+        .expect("the v2 template");
     run(
         near,
-        "/routing/ospf/instance/disable",
-        &[("numbers", "default-v2")],
+        "/routing/ospf/interface-template/set",
+        &[("numbers", &id), ("networks", "")],
     )
     .await;
     wait_until(
-        || async {
-            let template = v2_template(near).await;
-            eprintln!("v2 template (inactive, .about): {template:?}");
-            Ok(template.0 == "true")
-        },
+        || async { Ok(!full_with(near, "default-v2", far).await) },
         Duration::from_secs(60),
     )
     .await
-    .expect("the template inactive");
+    .expect("the adjacency gone");
     assert_eq!(
-        template_removals(near_node, &near_access).await.len(),
-        1,
-        "the diff removes the inactive template"
+        template_updates(near_node, &near_access).await,
+        ["!networks"],
+        "the diff unsets the empty networks"
     );
 
     apply_directly(near_node, &near_access).await;
-    wait_until(
-        || async { Ok(full_with(near, "default-v2", far).await) },
-        Duration::from_secs(180),
-    )
-    .await
-    .expect("near and far adjacent in v2 again");
-    assert_eq!(
-        v2_template(near).await.0,
-        "false",
-        "the new template is active"
-    );
+    wait_until(adjacent, Duration::from_secs(180))
+        .await
+        .expect("near and far adjacent in v2 again");
     assert!(
-        template_removals(near_node, &near_access).await.is_empty(),
+        template_updates(near_node, &near_access).await.is_empty(),
         "and the diff empty for it"
     );
 }

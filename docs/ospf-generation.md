@@ -72,12 +72,11 @@ gar kein OSPF generiert.
    Brückengerät einer Funkstrecke: dort 0 auf beiden Templates, damit es nie DR oder BDR des
    Segments wird, das es mit den Routern an beiden Enden teilt
    ([Brückengeräte](config-helper.md#brückengeräte-mit-fester-adresse)).
-   Ein Template, das RouterOS als inaktiv meldet (`inactive`, z. B. „ospf area not active“),
-   wird entfernt und neu angelegt: RouterOS meldet es nur mit wenigen Feldern, das Modell
-   ergänzt die übrigen mit RouterOS' Standardwerten, so sah es aus wie das gewünschte, während
-   RouterOS kein Interface daraus machte (berghof-haus-stall, 7.24.6: kein OSPFv2 auf der
-   Bridge, „Abweichung von NetBox“ leer). So ist es eine Abweichung, die ein Apply behebt
-   (CHR-Test `an_inactive_ospf_template_is_replaced_by_the_apply`).
+   `networks` setzt der Provisioner nicht: ohne passt das Template auf jedes Netz der
+   Schnittstellen. Ein vorhandenes `networks=""` dagegen passt auf keines, RouterOS macht dann
+   kein Interface daraus (berghof-haus-stall, 7.24.6: kein OSPFv2 auf der Bridge). Die
+   Abweichung zeigt es als `!networks`, ein Apply entfernt es (CHR-Test
+   `an_empty_networks_is_unset_by_the_apply`).
 5. IPv6 ist auf jedem Gerät eingeschaltet (`/ipv6/settings disable-ipv6=no`, der Werkszustand).
    Mit abgeschaltetem IPv6 sind die IPv6-Adressen `invalid` und `default-v3` findet keinen
    Nachbarn, obwohl Adressen und Instanz angewendet aussehen (so auf lab-ap1).

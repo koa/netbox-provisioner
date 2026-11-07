@@ -1,21 +1,14 @@
 //! Scope: The base config's step for OSPF; nothing else.
 //!
 //! OSPF on the interfaces tagged `ospf`, v2 and v3.
-use super::{BaseDeviceDataCurrent, BaseDeviceDataTarget};
+use super::BaseDeviceDataTarget;
 use crate::{
     device::ros::l2::{L2Setup, NameGenerator},
     topology::access::device::DeviceAccess,
 };
-use mikrotik_model::{
-    ascii::AsciiString,
-    model::{
-        RoutingOriginateDefault, RoutingOspfInstanceByName, RoutingOspfInstanceCfg,
-        RoutingOspfInstanceVersion, RoutingOspfInterfaceTemplateById, RoutingRedistribute,
-    },
-    resource::{
-        KeyedResource, MutationOrdering, ResourceMutation, ResourceMutationOperation, RosResource,
-    },
-    value::{KeyValuePair, RosValue},
+use mikrotik_model::model::{
+    RoutingOriginateDefault, RoutingOspfInstanceByName, RoutingOspfInstanceCfg,
+    RoutingOspfInstanceVersion, RoutingRedistribute,
 };
 use std::collections::BTreeSet;
 
@@ -94,36 +87,4 @@ impl BaseDeviceDataTarget {
             }
         }
     }
-}
-
-/// Takes the inactive interface templates (their `.id`s in `inactive`) out of `current` and
-/// gives the mutations removing them, so the diff adds the target's anew. RouterOS reports
-/// such a template with few fields, which the model completes with RouterOS's defaults, so it
-/// looked like the target's while RouterOS made no interface of it (berghof-haus-stall, 7.24.6:
-/// no OSPFv2 on its bridge, the diff empty).
-pub(super) fn replace_inactive_templates(
-    current: &mut BaseDeviceDataCurrent,
-    inactive: &[AsciiString],
-) -> Vec<ResourceMutation<'static>> {
-    let (gone, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut current.ospf_interface)
-        .into_vec()
-        .into_iter()
-        .partition(|template| inactive.contains(template.key_value()));
-    current.ospf_interface = kept.into();
-    gone.iter()
-        .map(|template| {
-            ResourceMutation {
-                resource: RoutingOspfInterfaceTemplateById::path(),
-                operation: ResourceMutationOperation::RemoveByKey(KeyValuePair {
-                    key: RoutingOspfInterfaceTemplateById::key_name(),
-                    value: template.key_value().encode_ros(),
-                }),
-                fields: Box::new([]),
-                depends: Box::new([]),
-                provides: Box::new([]),
-                ordering: MutationOrdering::remove(template),
-            }
-            .into_owned()
-        })
-        .collect()
 }

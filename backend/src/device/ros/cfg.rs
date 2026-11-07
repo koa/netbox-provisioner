@@ -33,8 +33,8 @@ use mikrotik_model::{
     generator::Generator,
     model::{
         CertificateCfg, InterfaceWifiCapCfg, InterfaceWifiCapsmanCfg, InterfaceWifiCapsmanState,
-        InterfaceWifiState, InterfaceWirelessCapCfg, ReferenceType,
-        RoutingOspfInterfaceTemplateState, SystemPackageState, SystemRouterboardState, YesNo,
+        InterfaceWifiState, InterfaceWirelessCapCfg, ReferenceType, SystemPackageState,
+        SystemRouterboardState, YesNo,
     },
     resource::{ResourceMutation, ResourceMutationOperation, SingleResource, collect_resource},
 };
@@ -69,9 +69,6 @@ pub struct DeviceCfg {
     /// what `generate_live` found at the device: the addresses a watchdog would watch that
     /// don't answer, the API clients the restriction would lock out
     live_warnings: Vec<ApplyWarning>,
-    /// the `.id`s of the OSPF interface templates RouterOS reports inactive, which the diff
-    /// replaces (`ospf::replace_inactive_templates`)
-    inactive_ospf_templates: Box<[AsciiString]>,
 }
 
 impl DeviceCfg {
@@ -205,16 +202,12 @@ impl DeviceCfg {
         let mut current =
             following_renames(&self.base_target, &self.base_current, &self.radio_renames());
         super::syslog::after_switch_to_cef(&mut current);
-        let removals =
-            super::ospf::replace_inactive_templates(&mut current, &self.inactive_ospf_templates);
         let mut mutations = self
             .base_target
             .generate_mutations(&current)?
             .into_iter()
             .map(ResourceMutation::into_owned)
             .collect::<Vec<_>>();
-        // removed first, as the diff removes what it doesn't pair
-        mutations.splice(0..0, removals);
         // `/interface/wifi` before `/interface/wireless`: radios a removed `wifi-qcom-ac` left
         // give their names back to the `wlan<N>` taking them (the sort keeps this order)
         if let (Some(target), Some(current)) = (&self.wifi_target, &self.wifi_current) {
@@ -489,12 +482,6 @@ impl DeviceCfg {
         }
 
         let current = BaseDeviceDataCurrent::fetch(client).await?;
-        let inactive_ospf_templates = collect_resource::<RoutingOspfInterfaceTemplateState>(client)
-            .await?
-            .into_iter()
-            .filter(|template| template.inactive)
-            .map(|template| template.id)
-            .collect();
         let target = BaseDeviceDataTarget::new(model)?;
         let (wireless_current, wireless_target) =
             if needed == Some(RadioPackage::Wireless) && build_w60g_ports(model).is_empty() {
@@ -632,7 +619,6 @@ impl DeviceCfg {
             wifi_warnings: Vec::new(),
             idle_radios,
             live_warnings: Vec::new(),
-            inactive_ospf_templates,
         })
     }
 }
