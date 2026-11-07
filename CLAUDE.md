@@ -1155,9 +1155,12 @@ proxy's device, `partitions` where `/partitions` reports 128 MiB or more for the
 fallback, `docs/update-fallback.md`). A change needs a confirmation at the device
 (button, or a cold boot) while `/system/device-mode/update` counts down; closing its connection
 cancels it and a warm reboot doesn't confirm (CHR 7.24.5), so the `DeviceMode` job holds the
-connection until the device goes down, sends only features that are off (an update changing
-nothing counts down too), and is done when the device mode reads back with them on
-(`device_mode_change_confirmed_by_a_cold_boot`, `RunningNode::power_cycle`). Without the
+connection until the device goes down: the connection breaks, or falls silent for `SILENCE`
+(15 s; the countdown answers every second, and a device whose power is cut closes nothing,
+which the CHR test's `unplugged_relay` stands in for, QEMU closes its connections). It sends
+only features that are off (an update changing nothing counts down too), and is done when the
+device mode reads back with them on (`device_mode_change_confirmed_by_a_cold_boot`,
+`RunningNode::power_cycle`). Without the
 scheduler (`home`) RouterOS refuses a scheduler entry ("not allowed by device-mode",
 berghof-hansueli 7.21.5): the apply then goes on without a fallback, a warning in the job
 (`FallbackUnavailable`, `fallback::arm` reads the device mode first and saves no backup), with

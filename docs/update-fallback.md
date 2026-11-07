@@ -173,7 +173,10 @@ Nachbarn, über die es weitergeht.
 - **Job `DeviceMode`** (`changeDeviceMode`): sendet `/system/device-mode/update` nur mit den
   fehlenden Features (`activation-timeout=10m`) und meldet `DeviceModeConfirm`: am Gerät den Knopf
   drücken oder den Strom unterbrechen. Er hält die Verbindung bis dahin offen, denn RouterOS bricht
-  die Änderung ab, wenn sie schliesst. Danach wartet er, bis das Gerät mit den Features läuft, und
+  die Änderung ab, wenn sie schliesst. Dass das Gerät weg ist, sieht er am Abbruch der Verbindung
+  oder daran, dass der Countdown 15 s schweigt (er antwortet jede Sekunde): Ohne Strom schliesst
+  ein Gerät nichts, die Verbindung verstummt nur. Bis 2026-11-07 wartete er nur auf den Abbruch,
+  so lief ein bestätigter Wechsel in die Frist. Danach wartet er, bis das Gerät mit den Features läuft, und
   prüft dabei das Ergebnis, nicht den Neustart. Abbrechen schliesst die Verbindung und lässt den
   Device-Mode, wie er war; läuft die Frist ab, endet er mit `DEVICE_MODE_NOT_CONFIRMED`.
 

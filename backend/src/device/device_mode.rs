@@ -4,7 +4,10 @@
 //! down. Checked on a CHR (7.24.5):
 //! - the update answers `turn off power in 4m59s to activate changes` every second, as long as
 //!   its connection stays open; closing the connection cancels it (a cold boot afterwards changes
-//!   nothing), so the job holds it until the device goes down;
+//!   nothing), so the job holds it until the device goes down. A device whose power is cut
+//!   closes nothing, its connection only falls silent ([`SILENCE`]; the CHR's QEMU closes it
+//!   when killed, a RouterBOARD doesn't: a job on one waited out the countdown and was
+//!   cancelled, though the change had been confirmed);
 //! - when the time is up it ends with the trap `update canceled`;
 //! - a warm reboot (`/system/reboot`) doesn't confirm, a cold boot does, for all features of
 //!   the update at once;
@@ -33,6 +36,9 @@ use tokio::time::{Instant, sleep, timeout, timeout_at};
 
 /// How long the device waits for the confirmation (`activation-timeout`).
 pub const CONFIRM_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// No answer of the countdown for this long: the device went down (its power cut). It answers
+/// every second while it counts down.
+const SILENCE: Duration = Duration::from_secs(15);
 /// The flash RouterOS repartitions (`/partitions`, from 7.20 on): at least this many MiB.
 const PARTITIONS_MIN_MIB: u64 = 128;
 
@@ -220,15 +226,19 @@ pub async fn change_to(
     // cancels the change on the device
     let deadline = Instant::now() + CONFIRM_TIMEOUT + Duration::from_secs(30);
     loop {
+        let wait = deadline.min(Instant::now() + SILENCE);
         let next = log
-            .unless_cancelled(timeout_at(deadline, countdown.next()))
+            .unless_cancelled(timeout_at(wait, countdown.next()))
             .await?;
         match next {
             Ok(Some(SimpleResult::Sentence(_))) => {}
             // RouterOS ends the countdown with `update canceled`
-            Ok(Some(SimpleResult::Trap { .. }) | None) | Err(_) => {
+            Ok(Some(SimpleResult::Trap { .. }) | None) => {
                 return Err(Error::DeviceModeNotConfirmed);
             }
+            Err(_) if Instant::now() >= deadline => return Err(Error::DeviceModeNotConfirmed),
+            // silent: its power is cut
+            Err(_) => break,
             // the connection broke: the device went down
             Ok(Some(SimpleResult::Error(_))) => break,
         }

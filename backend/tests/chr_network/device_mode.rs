@@ -1,7 +1,9 @@
 //! Turning a feature on in the device mode (`backend::device::device_mode`) against a real CHR:
 //! the job asks for the change, tells the user to confirm it, and the confirmation is a cold
 //! boot (the VM's power cut, [`RunningNode::power_cycle`]). Cancelling before it leaves the
-//! device mode as it was, also when the power is cut afterwards.
+//! device mode as it was, also when the power is cut afterwards. The job reaches the node
+//! through [`unplugged_relay`]: killed, QEMU closes its connections, a RouterBOARD whose power
+//! is cut doesn't.
 use crate::chr_network::golden_image::ensure_golden_image;
 use crate::chr_network::qemu::nix_unavailable;
 use crate::chr_network::vm::{RunningNode, boot_node};
@@ -15,6 +17,8 @@ use encoding_rs::mem::encode_latin1_lossy;
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
 use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 use tokio_stream::StreamExt;
 
 /// Straight to the node's forwarded API port.
@@ -37,6 +41,37 @@ impl DeviceLink for Direct {
     ) -> Result<(), Error> {
         unreachable!("no upload in a device-mode change")
     }
+}
+
+/// A relay to the node's `port`, whose connections stay open when the node's side goes, until
+/// the job closes them: a RouterBOARD whose power is cut sends neither FIN nor RST, its
+/// connection only falls silent. Gives back the relay's port.
+async fn unplugged_relay(port: u16) -> u16 {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.expect("relay");
+    let relay = listener.local_addr().expect("relay port").port();
+    tokio::spawn(async move {
+        while let Ok((client, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let Ok(node) = TcpStream::connect(("127.0.0.1", port)).await else {
+                    return;
+                };
+                let (mut client_read, mut client_write) = client.into_split();
+                let (mut node_read, mut node_write) = node.into_split();
+                // to the node until the job closes, what the node no longer takes is lost
+                let up = tokio::spawn(async move {
+                    let mut buffer = [0; 4096];
+                    while let Ok(read @ 1..) = client_read.read(&mut buffer).await {
+                        let _ = node_write.write_all(&buffer[..read]).await;
+                    }
+                });
+                let _ = tokio::io::copy(&mut node_read, &mut client_write).await;
+                // the node's side is gone: the job's stays open and silent
+                let _ = up.await;
+                drop(client_write);
+            });
+        }
+    });
+    relay
 }
 
 /// `/system/device-mode` `feature` on the node.
@@ -97,7 +132,6 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     // off in the CHR's advanced mode, like on the lab's RouterBOARDs
     let wanted = [("partitions", DeviceModeReason::UpdateFallback)];
     let power = PowerChain::unpowered("mode");
-    let link = Direct(node.api_port);
     assert_eq!(feature(&node, "partitions").await, "false");
 
     // cancelled while it waits: a power cut afterwards changes nothing
@@ -116,12 +150,14 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     node.power_cycle().await.expect("power cycle");
     assert_eq!(feature(&node, "partitions").await, "false");
 
-    // confirmed by cutting the power while it counts down
+    // confirmed by cutting the power while it counts down; the job sees its connection fall
+    // silent, not closed
+    let unplugged = Direct(unplugged_relay(node.api_port).await);
     let log = reading();
     let job = tokio::spawn({
         let log = log.clone();
         let power = power.clone();
-        async move { change_to(&link, &wanted, &power, &log).await }
+        async move { change_to(&unplugged, &wanted, &power, &log).await }
     });
     confirm_asked(&log).await;
     node.power_cycle().await.expect("power cycle");
