@@ -79,6 +79,7 @@ Entscheidungen, deren Aufgaben alle erledigt sind (die übrigen stehen in
 | B28 | Nach Z38: Bytes (Speicher und Disk der Netzkarte, Paket-Download und -Upload) und die Hosts eines Pools (`PoolNearlyFull`) als Skalar `ScalarU64` statt `Int`, im Frontend `WideInt` darauf; im Lab an der Netzkarte geprüft | S | 2026-11-06 („give the 64-bit numbers a scalar of their own“) |
 | B23 | Wiederholungen bei Geräten und Firewall: die Ethernet-Ports je Board in `hw_facts.rs` als Tabelle von Abschnitten gleicher Ports (`Ports`, `build_runs`, je Namensmuster weiter nummeriert, PoE-out mit `PoeOut`) statt `repeat_n…chain…enumerate`, die gleichen Arme zusammengefasst (Ausgabe für jedes Board vorher und nachher verglichen: gleich); `Rule::v4`/`v6` in `ros/firewall.rs` über ein Makro `filter!` | S–M | 2026-11-06 („put the boards' ports in a table and the firewall families in one macro“) |
 | B31 | PoE vom Gerät lesen und mit NetBox vergleichen (`read_ports`, `feeding`, `mismatches`) aus `helper::poe` in ein eigenes Modul `device::poe`; Netzwerkkarte und Live-Prüfung nutzen es auch | S | 2026-11-07 („read poe from a device in device::poe“) |
+| B32 | Den gewöhnlichen Neustart (`update::reboot`: „Neu starten“, Repartitionierung, Partitionsstart) aus `device::update` nach `device::reboot` | S | 2026-11-07 („reboot a device in device::reboot“) |
 
 ## C. Konzepte
 

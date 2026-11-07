@@ -7,7 +7,7 @@ use crate::{
     device::{
         AccessibleDevice, bootstrap, connect_for_job,
         dependency::PowerChain,
-        device_mode, partitions, rollout,
+        device_mode, partitions, reboot, rollout,
         update::{self, DeviceLink},
         update_fallback,
         watchdog::{Watchers, restore_watchdogs},
@@ -680,7 +680,7 @@ impl MutationAuthenticated {
             JobKind::Reboot,
             Some(RebootState::Reading.into()),
             target,
-            |link, _, power, log| async move { update::reboot(&link, &power, &log).await },
+            |link, _, power, log| async move { reboot::reboot(&link, &power, &log).await },
         )
     }
     /// Starts turning on the features of the device mode the provisioner needs

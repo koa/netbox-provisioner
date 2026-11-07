@@ -34,6 +34,7 @@ pub mod poe;
 pub mod power_cycle;
 pub(crate) mod radio_hold;
 pub(crate) mod raw;
+pub mod reboot;
 pub mod rollout;
 pub mod ros;
 pub mod site_diff;

@@ -848,7 +848,7 @@ packages of a step before the first upload, and removes the uploaded ones when i
 the reboot: a part of them must not install at some later boot. An apply stops before its
 script, or after it while it waits, leaving the fallback, which brings the config from before
 back. A setup stops before or after its console session (whose output streams as
-`ConsoleOutput`, `Terminal::stream_to`), not within it. A reboot (`update::reboot`, "Neu starten" on the
+`ConsoleOutput`, `Terminal::stream_to`), not within it. A reboot (`reboot::reboot`, "Neu starten" on the
 device page, asked to confirm) takes the reboot lease like an update's and waits the same way.
 "Strom aus und ein" (`device::power_cycle`, `powerCycle`, asked to confirm) cold boots a device
 fed over PoE: the RouterOS device whose `pse` port is cabled to it (`DeviceAccess.powerSupply`)

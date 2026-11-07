@@ -12,7 +12,8 @@ use crate::chr_network::vm::{RunningNode, boot_node};
 use backend::Error;
 use backend::device::dependency::PowerChain;
 use backend::device::device_mode::{DeviceModeChanged, DeviceModeReason, change_to};
-use backend::device::update::{DeviceLink, Reboot, RebootReason};
+use backend::device::reboot::{Reboot, RebootReason};
+use backend::device::update::DeviceLink;
 use backend::device_state::DeviceModeState;
 use backend::job::{Event, Log};
 use encoding_rs::mem::encode_latin1_lossy;
@@ -170,7 +171,7 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     assert!(
         events.contains(&Event::Reboot(Reboot {
             reason: RebootReason::DeviceMode,
-            timeout: backend::device::update::REBOOT_TIMEOUT.into(),
+            timeout: backend::device::reboot::REBOOT_TIMEOUT.into(),
         })),
         "{events:?}"
     );

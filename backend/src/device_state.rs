@@ -205,7 +205,7 @@ impl States for UpdateState {
     }
 }
 
-/// A reboot, a repartition or a boot from another partition (`update::reboot`, `partitions`).
+/// A reboot, a repartition or a boot from another partition (`reboot::reboot`, `partitions`).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Enum)]
 pub enum RebootState {
     /// connecting, reading what the reboot needs (the partitions)

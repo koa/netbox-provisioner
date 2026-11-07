@@ -14,8 +14,9 @@ use crate::{
     device::{
         dependency::PowerChain,
         raw::{Row, command, field, rows},
+        reboot::{self, REBOOT_TIMEOUT, Reboot, RebootReason},
         ros::{apply::APPLY_SCRIPT, fallback},
-        update::{self, DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason, read_state},
+        update::{DeviceLink, read_state},
         update_fallback, watchdog,
     },
     device_state::CleanupState,
@@ -212,7 +213,7 @@ pub async fn clear(
                 reason: RebootReason::ApplyFallback,
                 timeout: REBOOT_TIMEOUT.into(),
             });
-            update::wait_until_back(link, log, before, sent, REBOOT_TIMEOUT, |_| Some(())).await?;
+            reboot::wait_until_back(link, log, before, sent, REBOOT_TIMEOUT, |_| Some(())).await?;
         }
         LeftoverAction::StopUpdateFallback => update_fallback::remove_scheduler(&device).await?,
         LeftoverAction::RestoreWatchdogs => {

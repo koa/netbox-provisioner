@@ -13,7 +13,7 @@ use crate::{
         bootstrap,
         dependency::{PowerChain, RebootLease},
         raw::command,
-        update::REBOOT_TIMEOUT,
+        reboot::REBOOT_TIMEOUT,
     },
     device_state::PowerCycleState,
     job::Log,

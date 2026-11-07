@@ -24,7 +24,8 @@ use crate::{
     device::{
         dependency::PowerChain,
         raw::{Row, field, rows},
-        update::{DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason},
+        reboot::{REBOOT_TIMEOUT, Reboot, RebootReason},
+        update::DeviceLink,
     },
     device_state::DeviceModeState,
     graphql::scalars::ScalarDuration,

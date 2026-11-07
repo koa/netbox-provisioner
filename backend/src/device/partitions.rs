@@ -16,7 +16,8 @@ use crate::{
     device::{
         dependency::PowerChain,
         raw::{Row, command, field, rows},
-        update::{DeviceLink, REBOOT_TIMEOUT, Reboot, RebootReason, read_state, wait_until_back},
+        reboot::{REBOOT_TIMEOUT, Reboot, RebootReason, wait_until_back},
+        update::{DeviceLink, read_state},
     },
     device_state::RebootState,
     error_info::ErrorInfo,

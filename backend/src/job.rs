@@ -18,7 +18,7 @@ use crate::{
     Error,
     device::{
         self, batch, bootstrap, dependency, device_mode, leftovers, partitions, power_cycle,
-        radio_hold,
+        radio_hold, reboot,
         ros::{apply, cfg::GeneratedCfg},
         terminal, update, update_fallback, watchdog,
     },
@@ -65,7 +65,7 @@ pub enum Event {
     PackageDownloaded(update::PackageDownloaded),
     PackageUploading(update::PackageUploading),
     PackageUploaded(update::PackageUploaded),
-    Reboot(update::Reboot),
+    Reboot(reboot::Reboot),
     PowerCycled(power_cycle::PowerCycled),
     RouterOsRunning(update::RouterOsRunning),
     FirmwareUpgrade(update::FirmwareUpgrade),
@@ -1175,7 +1175,7 @@ mod tests {
     }
     use crate::{
         device::{
-            update::{Reboot, RebootReason},
+            reboot::{Reboot, RebootReason},
             watchdog::{WatchdogRestored, WatchdogSuspended, Watching},
         },
         topology::{Device, DeviceId, TopologyHolder, builder::TopologyBuilder},
