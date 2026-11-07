@@ -542,7 +542,7 @@ async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
         neighbor_port: Some("ether3".into()),
         neighbor_address: a_address.parse().unwrap(),
     };
-    let result = set_up(&mut terminal, &setup, "admin", crate::TEST_PASSWORD).await;
+    let result = set_up(&mut terminal, &setup, "admin", crate::TEST_PASSWORD, None).await;
     eprintln!("--- rescue transcript ---\n{}", terminal.transcript());
     result.expect("rescue over mac-telnet");
     terminal.close().await;

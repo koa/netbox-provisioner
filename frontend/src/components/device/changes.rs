@@ -18,6 +18,9 @@ use yew::{Callback, Children, Html, Properties, function_component, html};
 pub struct GeneratedCfg {
     pub script: Box<str>,
     pub warnings: Vec<Warning>,
+    /// the login went with the previous password: applying sets the current one, also without a
+    /// script
+    pub previous_password: bool,
     /// when the device was read for it (milliseconds since the epoch, from the age it came with)
     pub as_of: f64,
 }
@@ -50,7 +53,8 @@ pub struct ChangesProps {
 pub fn Changes(props: &ChangesProps) -> Html {
     let cfg = props.cfg.as_ref();
     let script = cfg.map(|cfg| cfg.script.as_ref()).unwrap_or_default();
-    let nothing_to_do = script.trim().is_empty();
+    let previous_password = cfg.is_some_and(|cfg| cfg.previous_password);
+    let nothing_to_do = script.trim().is_empty() && !previous_password;
     let changes = match cfg {
         _ if !props.reachable => {
             html!(<Alert inline=true title={t::UNREACHABLE} r#type={AlertType::Warning}>
@@ -69,10 +73,17 @@ pub fn Changes(props: &ChangesProps) -> Html {
             html!(<Alert inline=true title={t::IN_LINE} r#type={AlertType::Success}/>)
         }
         Some(cfg) => html! {<>
+            if cfg.previous_password {
+                <Alert inline=true title={t::PREVIOUS_PASSWORD} r#type={AlertType::Info}>
+                    <p>{t::PREVIOUS_PASSWORD_HINT}</p>
+                </Alert>
+            }
             { for cfg.warnings.iter().map(|warning| html!(
                 <Alert inline=true title={apply_warning::describe(warning)} r#type={AlertType::Warning}/>
             ))}
-            <CodeBlock><CodeBlockCode>{ script }</CodeBlockCode></CodeBlock>
+            if !script.trim().is_empty() {
+                <CodeBlock><CodeBlockCode>{ script }</CodeBlockCode></CodeBlock>
+            }
         </>},
     };
     html! {

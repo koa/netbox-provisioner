@@ -745,6 +745,7 @@ fn overview_message(id: u32, response: Response<DeviceOverview>) -> ShowDeviceMe
                         a.generate_cfg.map(|cfg| GeneratedCfg {
                             script: cfg.script.into_boxed_str(),
                             warnings: cfg.warnings,
+                            previous_password: cfg.previous_password,
                             as_of: read_at(cfg.age),
                         }),
                     )

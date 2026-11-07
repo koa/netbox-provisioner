@@ -158,7 +158,7 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
             neighbor_port: None,
             neighbor_address: neighbor.parse().unwrap(),
         };
-        let result = set_up(&mut terminal, &setup, "admin", password).await;
+        let result = set_up(&mut terminal, &setup, "admin", password, None).await;
         let transcript = terminal.transcript();
         eprintln!("--- transcript {} ---\n{transcript}", node.name);
         result.unwrap_or_else(|e| panic!("setup of {} failed: {e}", node.name));
@@ -316,7 +316,7 @@ async fn mac_telnet_setup_survives_a_stalled_device() {
             target.stall(Duration::from_secs(10)).await
         };
         let (result, stalled) = tokio::join!(
-            set_up(&mut terminal, &setup, "admin", crate::TEST_PASSWORD),
+            set_up(&mut terminal, &setup, "admin", crate::TEST_PASSWORD, None),
             stall
         );
         stalled.expect("stall the target");
@@ -503,7 +503,7 @@ async fn mac_telnet_setup_takes_the_address_from_a_dhcp_client() {
         neighbor_port: Some("ether2".into()),
         neighbor_address: "192.168.77.1".parse().unwrap(),
     };
-    let result = set_up(&mut terminal, &setup, "admin", crate::TEST_PASSWORD).await;
+    let result = set_up(&mut terminal, &setup, "admin", crate::TEST_PASSWORD, None).await;
     let transcript = terminal.transcript();
     eprintln!("--- transcript ---\n{transcript}");
     result.unwrap_or_else(|e| panic!("setup failed: {e}"));

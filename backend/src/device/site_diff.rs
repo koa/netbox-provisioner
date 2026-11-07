@@ -173,9 +173,27 @@ pub fn menu_changes(mutations: &[ResourceMutation<'_>]) -> Vec<MenuChanges> {
         .collect()
 }
 
+/// The current password an apply sets where the login went with the previous one (A9), as a
+/// change of `user`, which the script doesn't have (the password stays out of it).
+pub(crate) fn add_password_change(menus: &mut Vec<MenuChanges>) {
+    let at = menus.partition_point(|menu| menu.menu.as_str() < "user");
+    match menus.get_mut(at) {
+        Some(menu) if menu.menu == "user" => menu.changed += 1,
+        _ => menus.insert(
+            at,
+            MenuChanges {
+                menu: "user".into(),
+                added: 0,
+                changed: 1,
+                removed: 0,
+            },
+        ),
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use super::{MenuChanges, menu_changes};
+    use super::{MenuChanges, add_password_change, menu_changes};
     use mikrotik_model::{
         resource::{ResourceMutation, ResourceMutationOperation},
         value::KeyValuePair,
@@ -200,6 +218,21 @@ mod test {
             key: b"address",
             value: b"192.168.1.1/24".as_slice().into(),
         }
+    }
+
+    #[test]
+    fn a_password_change_goes_in_order() {
+        let menu = |menu: &str| MenuChanges {
+            menu: menu.into(),
+            added: 1,
+            changed: 0,
+            removed: 0,
+        };
+        let mut menus = vec![menu("system/identity"), menu("zzz")];
+        add_password_change(&mut menus);
+        let names: Vec<_> = menus.iter().map(|menu| menu.menu.as_str()).collect();
+        assert_eq!(names, ["system/identity", "user", "zzz"]);
+        assert_eq!(menus[1].changed, 1);
     }
 
     #[test]

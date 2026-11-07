@@ -545,6 +545,10 @@ fn describe(event: &Logged) -> Html {
             None => e::radios_reprovisioned(radios.count.into(), &radios.menu),
             Some(error) => e::radios_not_reprovisioned(&radios.menu, &problem(error)),
         },
+        Event::PasswordSet(set) => match &set.error {
+            None => e::password_set(&set.user),
+            Some(error) => e::password_not_set(&set.user, &problem(error)),
+        },
         Event::Connecting(connecting) => e::connecting(&connecting.device),
         Event::Connected(connected) => e::connected(
             &connected.device,

@@ -69,7 +69,8 @@ pub enum ApplyState {
     NotReached,
     /// the diff, once the device settled
     Checking,
-    /// the CAPs' radios provisioned again, the watchdogs set again
+    /// the CAPs' radios provisioned again, the current password set (A9), the watchdogs set
+    /// again
     Finishing,
 }
 
@@ -78,7 +79,8 @@ impl States for ApplyState {
     fn next(self) -> &'static [Self] {
         use ApplyState::*;
         match self {
-            Planning => &[SuspendingWatchdogs, ArmingFallback],
+            // an empty diff with the previous password: setting the current one (A9)
+            Planning => &[SuspendingWatchdogs, ArmingFallback, Finishing],
             SuspendingWatchdogs => &[ArmingFallback],
             // in a batch another device failing takes it back
             ArmingFallback => &[WritingScript, TakingBack],
@@ -583,6 +585,8 @@ mod tests {
             ScriptRunning,
             NotReached
         ]));
+        // nothing to apply but the current password (A9)
+        assert!(path(&[Planning, Finishing]));
         // the fallback not taken away yet: looking again
         assert!(path(&[
             Planning,

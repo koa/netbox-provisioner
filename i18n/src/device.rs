@@ -131,6 +131,9 @@ pub const UNREACHABLE_HINT: &str = "Mit einer anderen Adresse oder anderen Zugan
 pub const NOT_GENERATED: &str = "Keine Konfiguration erzeugt";
 pub const NOT_GENERATED_HINT: &str = "Der Fehler steht oben.";
 pub const IN_LINE: &str = "Gerät entspricht NetBox";
+pub const PREVIOUS_PASSWORD: &str = "Das Gerät hat noch das vorherige Passwort";
+pub const PREVIOUS_PASSWORD_HINT: &str =
+    "Anwenden setzt am Schluss das aktuelle, über die API; im Skript steht es nicht.";
 
 pub fn update_to(version: &str) -> String {
     format!("Auf {version} aktualisieren")

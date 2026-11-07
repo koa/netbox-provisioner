@@ -417,6 +417,9 @@ pub struct GeneratedCfg {
     pub(super) menus: Vec<crate::device::site_diff::MenuChanges>,
     /// what applying it would do that the operator should know before
     pub(super) warnings: Vec<ApplyWarning>,
+    /// the login went with the credentials' previous password only: an apply sets the current
+    /// one (A9), also where the script is empty
+    pub(super) previous_password: bool,
     /// when the device was read for it
     #[graphql(skip)]
     pub(super) as_of: tokio::time::Instant,
@@ -430,6 +433,7 @@ impl GeneratedCfg {
             script: "".into(),
             menus: Vec::new(),
             warnings: Vec::new(),
+            previous_password: false,
             as_of,
         }
     }

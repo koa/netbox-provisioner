@@ -126,6 +126,7 @@ Anwenden melden ihre Zustände daran. Die Watchdogs werden **vor** dem Fallback 
 stateDiagram-v2
     [*] --> Planen
     Planen --> [*]: Diff leer → fertig
+    Planen --> Nacharbeit: Diff leer, Login mit dem vorherigen Passwort
     Planen --> WatchdogsAussetzen: Funkänderung
     Planen --> FallbackSetzen: sonst
     WatchdogsAussetzen --> FallbackSetzen: ausgesetzt (G)
@@ -146,7 +147,7 @@ stateDiagram-v2
     NichtErreicht --> [*]: Fallback ausgelöst und zurück (G) → fertig, mit Marken
     NichtErreicht --> [*]: nicht zurück nach der Frist (Z) → fertig, Fallback bleibt
     Nachprüfen --> Nacharbeit: Diff gelesen (G)
-    Nacharbeit --> [*]: CAPs neu provisioniert, Watchdogs gesetzt → fertig
+    Nacharbeit --> [*]: CAPs neu provisioniert, aktuelles Passwort gesetzt, Watchdogs gesetzt → fertig
 ```
 
 | Zustand | abbrechbar | Server gestartet | auf dem Gerät |

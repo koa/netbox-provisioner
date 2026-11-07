@@ -43,11 +43,16 @@ chart's Secret, `secret` the setting ({value} or {secretKeyRef}); only those giv
 {{- $all = append $all (dict "env" "APP_SETTINGS__MANAGEMENT_PROXY__PASSWORD" "key" "management_proxy_password" "secret" $s.management_proxy.password) -}}
 {{- end -}}
 {{- range $name, $c := $s.mikrotik_credentials -}}
-{{- if $c.password -}}
+{{- if or $c.password $c.previous_password -}}
 {{- if ne $name (lower $name) -}}
 {{- fail (printf "mikrotik_credentials.%s: a name with a secret password must be lowercase" $name) -}}
 {{- end -}}
+{{- end -}}
+{{- if $c.password -}}
 {{- $all = append $all (dict "env" (printf "APP_SETTINGS__MIKROTIK_CREDENTIALS__%s__PASSWORD" (upper $name)) "key" (printf "mikrotik_%s_password" $name) "secret" $c.password) -}}
+{{- end -}}
+{{- if $c.previous_password -}}
+{{- $all = append $all (dict "env" (printf "APP_SETTINGS__MIKROTIK_CREDENTIALS__%s__PREVIOUS_PASSWORD" (upper $name)) "key" (printf "mikrotik_%s_previous_password" $name) "secret" $c.previous_password) -}}
 {{- end -}}
 {{- end -}}
 {{- $given := list -}}

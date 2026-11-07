@@ -151,6 +151,7 @@ pub struct OverviewCfg {
     pub age: i32,
     pub script: String,
     pub warnings: Vec<ApplyWarning>,
+    pub previous_password: bool,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

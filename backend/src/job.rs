@@ -84,6 +84,7 @@ pub enum Event {
     FallbackFired(apply::FallbackFired),
     ScriptProgress(apply::ScriptProgress),
     RadiosReprovisioned(apply::RadiosReprovisioned),
+    PasswordSet(apply::PasswordSet),
     BatchApply(batch::BatchApply),
     BatchStopped(batch::BatchStopped),
     BatchIncomplete(batch::BatchIncomplete),

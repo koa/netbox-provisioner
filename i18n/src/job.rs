@@ -286,6 +286,12 @@ pub mod event {
     pub fn radios_not_reprovisioned(menu: &str, error: &str) -> String {
         format!("{menu} nicht neu provisioniert: {error}")
     }
+    pub fn password_set(user: &str) -> String {
+        format!("Aktuelles Passwort für {user} gesetzt")
+    }
+    pub fn password_not_set(user: &str, error: &str) -> String {
+        format!("Aktuelles Passwort für {user} nicht gesetzt: {error}")
+    }
 
     pub fn poe_chain(suppliers: &[String], consumers: &[String]) -> String {
         let mut parts = Vec::new();

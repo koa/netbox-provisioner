@@ -100,6 +100,9 @@ pub struct ManagementProxy {
 pub struct MikrotikCredentials {
     user: Option<Box<str>>,
     password: Option<Box<str>>,
+    /// the password before a change, while devices may still have it: a login with it goes,
+    /// and the device's apply sets `password` (A9)
+    previous_password: Option<Box<str>>,
 }
 
 impl MikrotikCredentials {
@@ -108,6 +111,9 @@ impl MikrotikCredentials {
     }
     pub fn password(&self) -> Option<&str> {
         self.password.as_ref().map(Box::as_ref)
+    }
+    pub fn previous_password(&self) -> Option<&str> {
+        self.previous_password.as_ref().map(Box::as_ref)
     }
 }
 
@@ -201,6 +207,10 @@ settings:
             ("APP_SETTINGS__ALLOW_APPLY", "true"),
             ("APP_SETTINGS__SERVER_PORT", "9000"),
             ("APP_SETTINGS__MIKROTIK_CREDENTIALS__LAB__PASSWORD", "0123"),
+            (
+                "APP_SETTINGS__MIKROTIK_CREDENTIALS__LAB__PREVIOUS_PASSWORD",
+                "old",
+            ),
             ("OTHER_SETTINGS__NETBOX_URL", "ignored"),
         ]
         .into_iter()
@@ -217,6 +227,7 @@ settings:
         assert_eq!(settings.server_port(), 9000);
         let lab = &settings.mikrotik_credentials["lab"];
         assert_eq!((lab.user(), lab.password()), ("admin", Some("0123")));
+        assert_eq!(lab.previous_password(), Some("old"));
     }
 
     #[test]

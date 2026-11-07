@@ -171,7 +171,7 @@ async fn update_older_chr_to_current() {
         neighbor_port: Some("ether2".into()),
         neighbor_address: "192.168.78.1".parse().unwrap(),
     };
-    set_up(&mut terminal, &setup, "admin", PASSWORD)
+    set_up(&mut terminal, &setup, "admin", PASSWORD, None)
         .await
         .expect("setup over mac-telnet");
     terminal.close().await;

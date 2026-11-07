@@ -751,6 +751,18 @@ device couldn't be reached is an error at `topology/deviceById/access` (`nullabl
 error would null the whole `deviceById`), which the page shows in its "unreachable" warning
 instead of the banner.
 
+A credentials entry may have a `previous_password` besides `password` (A9, a password change
+under way): `device::connect_any` logs in with the current one and, refused (`LoginFailed`),
+with that one, which the login keeps (`device::Password`, `AccessibleDevice::password`, so
+`connect_again` and the upload use the same); the neighbor's SSH logins (`with_any_password`)
+and the setup's mac-telnet login try it too. A device logged in with it is a deviation:
+`GeneratedCfg.previousPassword` (the device page's changes enable „Anwenden“ without a script,
+the site diff counts a change of `user`, `site_diff::add_password_change`), and the apply sets
+the current one over the API in `Finishing` (`set_current_password`, `PasswordSet`; an empty
+plan goes `Planning` to `Finishing`): after the fallback, whose backup would bring the old one
+back, before the other partition copies the config, never in the script (shown on the page and
+in the job). In a batch only members with changes set it.
+
 `device::update` brings RouterOS to the newest release of the channel picked in the UI
 (long-term, stable, testing, development; `routeros_channel` preselects it, long-term if unset), from
 `upgrade.mikrotik.com/routeros/NEWESTa7.<channel>` (`NEWEST7.*` stopped at 7.12.1; testing and

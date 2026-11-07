@@ -109,6 +109,17 @@ impl Path {
 pub struct Login {
     client: MikrotikDevice,
     identity: Box<str>,
+    /// it went with the credentials' `previous_password` only
+    password: Password,
+}
+
+/// Which password of a device's credentials a login went with (A9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Password {
+    Current,
+    /// `previous_password`: the device has the one before a change, its apply sets the
+    /// current one
+    Previous,
 }
 
 /// How long a login that went is taken as the way to the device (a page loaded again, a
@@ -145,7 +156,7 @@ pub(crate) async fn login(
         let (device, path, credentials) = (device.clone(), path.clone(), credentials.clone());
         async move {
             tokio::time::timeout(CONNECT_TIMEOUT, async {
-                let client = connect(address, &path, &credentials).await?;
+                let (client, password) = connect_any(address, &path, &credentials).await?;
                 let identity: Box<str> = SystemIdentityCfg::fetch(&client)
                     .await?
                     .map(|identity| identity.name.to_string().into())
@@ -157,7 +168,11 @@ pub(crate) async fn login(
                         other,
                     });
                 }
-                Ok(Login { client, identity })
+                Ok(Login {
+                    client,
+                    identity,
+                    password,
+                })
             })
             .await
             .unwrap_or(Err(Error::Timeout(address)))
@@ -223,6 +238,8 @@ pub struct AccessibleDevice {
     address: IpAddr,
     path: Path,
     credentials: Credentials,
+    /// which of the credentials' passwords the login went with
+    password: Password,
     client: MikrotikDevice,
     device_config: DeviceAccess,
     /// `/system/identity` of the device answering at `address`
@@ -306,6 +323,7 @@ impl AccessibleDevice {
             address,
             path,
             credentials,
+            password: login.password,
             client: login.client.clone(),
             device_config,
             identity: login.identity.clone(),
@@ -327,6 +345,7 @@ impl AccessibleDevice {
             address: self.address,
             path: self.path.clone(),
             credentials: self.credentials.clone(),
+            password: self.password,
             client: self.client.clone(),
             device_config: self.device_config.clone(),
             identity: self.identity.clone(),
@@ -350,7 +369,19 @@ impl AccessibleDevice {
     }
     /// A further connection to the same device, with another result type.
     pub(crate) async fn connect_again<D: ParsedMessage>(&self) -> Result<RawDevice<D>, Error> {
-        connect(self.address, &self.path, &self.credentials).await
+        connect_with(self.address, &self.path, &self.credentials, self.password).await
+    }
+    /// Which password the login went with: [`Password::Previous`] is a deviation an apply
+    /// takes away ([`Self::set_current_password`]).
+    pub fn password(&self) -> Password {
+        self.password
+    }
+    /// The user of the credentials it logged in with.
+    pub(crate) fn credentials_user(&self) -> Box<str> {
+        resolve(&self.credentials, Password::Current)
+            .map(|(user, _)| user)
+            .unwrap_or("admin")
+            .into()
     }
 
     pub async fn simple_ping(&self, count: u8) -> Result<Box<[PingResult]>, SurgeError> {
@@ -376,22 +407,28 @@ impl update::DeviceLink for AccessibleDevice {
         data: &[u8],
         progress: &(dyn Fn(usize) + Sync),
     ) -> Result<(), Error> {
-        let (user, password) = resolve(&self.credentials)?;
+        let (user, password) = resolve(&self.credentials, self.password)?;
         let stream = open_stream(self.address, &self.path, 22).await?;
         terminal::upload(stream, user, password, name, data, progress).await?;
         Ok(())
     }
 }
 
-/// User and password of `credentials`.
-fn resolve(credentials: &Credentials) -> Result<(&str, Option<&str>), Error> {
+/// User and `which` password of `credentials`; ad hoc ones have one only.
+fn resolve(credentials: &Credentials, which: Password) -> Result<(&str, Option<&str>), Error> {
     Ok(match credentials {
         Credentials::Named(name) => {
             let c = CONFIG
                 .mikrotik_credentials
                 .get(name.as_ref())
                 .ok_or(Error::MissingCredentials)?;
-            (c.user(), c.password())
+            match which {
+                Password::Current => (c.user(), c.password()),
+                Password::Previous => (
+                    c.user(),
+                    Some(c.previous_password().ok_or(Error::MissingCredentials)?),
+                ),
+            }
         }
         Credentials::Adhoc { username, password } => (
             username.as_ref().map(Box::as_ref).unwrap_or("admin"),
@@ -400,13 +437,46 @@ fn resolve(credentials: &Credentials) -> Result<(&str, Option<&str>), Error> {
     })
 }
 
-/// Logs in to the API of the device at `address` along `path`.
+/// Whether `credentials` have a password from before a change to try.
+fn has_previous(credentials: &Credentials) -> bool {
+    resolve(credentials, Password::Previous).is_ok()
+}
+
+/// Logs in to the API of the device at `address` along `path`, with the current password, and
+/// where that is refused with the previous one, if any (A9); which one went.
+async fn connect_any<D: ParsedMessage>(
+    address: IpAddr,
+    path: &Path,
+    credentials: &Credentials,
+) -> Result<(RawDevice<D>, Password), Error> {
+    use mikrotik_api::error::Error as ApiError;
+    match connect_with(address, path, credentials, Password::Current).await {
+        Err(Error::MikrotikApi(ApiError::LoginFailed)) if has_previous(credentials) => {
+            let client = connect_with(address, path, credentials, Password::Previous).await?;
+            log::info!("{address}: logged in with the previous password");
+            Ok((client, Password::Previous))
+        }
+        connected => Ok((connected?, Password::Current)),
+    }
+}
+
+/// [`connect_any`], whichever password went.
 pub(crate) async fn connect<D: ParsedMessage>(
     address: IpAddr,
     path: &Path,
     credentials: &Credentials,
 ) -> Result<RawDevice<D>, Error> {
-    let (username, password) = resolve(credentials)?;
+    Ok(connect_any(address, path, credentials).await?.0)
+}
+
+/// Logs in to the API of the device at `address` along `path` with `which` password.
+async fn connect_with<D: ParsedMessage>(
+    address: IpAddr,
+    path: &Path,
+    credentials: &Credentials,
+    which: Password,
+) -> Result<RawDevice<D>, Error> {
+    let (username, password) = resolve(credentials, which)?;
     let Path::Neighbor(plan) = path else {
         let stream = open_stream(address, path, 8728).await?;
         return Ok(RawDevice::connect_with_stream(

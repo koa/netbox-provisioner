@@ -8,7 +8,7 @@ use crate::{
     Error,
     config::CONFIG,
     device::{
-        AccessibleDevice, partitions,
+        AccessibleDevice, Password, partitions,
         radio_hold::RadioHold,
         raw,
         ros::{
@@ -29,7 +29,7 @@ use crate::{
     saved_job::{self, SavedApply, SavedJob, SavedWork, ScriptRun},
 };
 use async_graphql::{Enum, SimpleObject};
-use log::info;
+use log::{info, warn};
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::{
     model::{CapsManManagerCfg, SystemRouterboardState},
@@ -205,6 +205,14 @@ pub enum FallbackLeftReason {
 pub struct RadiosReprovisioned {
     pub menu: Box<str>,
     pub count: u32,
+    pub error: Option<ErrorInfo>,
+}
+
+/// The login went with the previous password: the current one is set over the API (`user`), or
+/// couldn't be (`error`). Never in the script, which the device page and the job show (A9).
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct PasswordSet {
+    pub user: Box<str>,
     pub error: Option<ErrorInfo>,
 }
 
@@ -518,6 +526,10 @@ impl AccessibleDevice {
         log.enter(ApplyState::Planning);
         let mut planned = self.plan_apply(log).await?;
         if planned.is_empty() {
+            if self.password() == Password::Previous {
+                log.enter(ApplyState::Finishing);
+                self.set_current_password(log).await;
+            }
             return Ok(());
         }
         log.check()?;
@@ -918,7 +930,9 @@ impl AccessibleDevice {
     pub(crate) async fn after_apply(&self, planned: &PlannedApply, log: &Log) -> Result<(), Error> {
         self.after_script(&planned.reprovisioned(), log).await
     }
-    /// [`Self::after_apply`] with the radios to provision again (`reprovisioned_menus`).
+    /// [`Self::after_apply`] with the radios to provision again (`reprovisioned_menus`); a
+    /// device logged in with the previous password gets the current one
+    /// ([`Self::set_current_password`]), before the other partition copies the config.
     pub(crate) async fn after_script(
         &self,
         reprovision: &[Box<str>],
@@ -928,7 +942,42 @@ impl AccessibleDevice {
             log.check()?;
             self.reprovision(reprovision, log).await;
         }
+        self.set_current_password(log).await;
         Ok(())
+    }
+    /// Sets the credentials' current password where the login went with the previous one
+    /// (`PasswordSet`), over the API: the password stays out of the script. Only after the
+    /// fallback is gone, whose backup would bring the previous one back. The connections of
+    /// this handle log in with the previous one still; the job's end drops the login facts.
+    pub(crate) async fn set_current_password(&self, log: &Log) {
+        if self.password() != Password::Previous {
+            return;
+        }
+        let set = async {
+            let (user, password) = crate::device::resolve(&self.credentials, Password::Current)?;
+            let raw = self.connect_again::<SimpleResult>().await?;
+            raw::command(
+                &raw,
+                "/user/set",
+                &[
+                    ("numbers", user),
+                    ("password", password.unwrap_or_default()),
+                ],
+            )
+            .await?;
+            Ok::<_, Error>(user)
+        };
+        let user = self.credentials_user();
+        match set.await {
+            Ok(_) => log.emit(PasswordSet { user, error: None }),
+            Err(error) => {
+                warn!("password of {} not set: {error}", self.device_config.name());
+                log.emit(PasswordSet {
+                    user,
+                    error: Some(ErrorInfo::from(&error)),
+                })
+            }
+        }
     }
     /// Provisions the radios of `menus` (`reprovisioned_menus`) again, which reconnects the
     /// CAPs' clients.

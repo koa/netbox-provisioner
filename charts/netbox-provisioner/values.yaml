@@ -38,6 +38,10 @@ settings:
   #     user: admin            # empty: admin
   #     password:
   #       secretKeyRef: {name: mikrotik, key: lab}
+  #     # the password before, while devices may still have it: logged in with it, a device
+  #     # shows a deviation, and its apply sets `password`
+  #     previous_password:
+  #       secretKeyRef: {name: mikrotik, key: lab-previous}
   mikrotik_credentials: {}
   # the device every other device is reached through (`/ip socks`); empty `device`: none
   management_proxy:

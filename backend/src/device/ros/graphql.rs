@@ -345,16 +345,21 @@ impl AccessibleDevice {
             device_cfg
                 .generate_live(&device.device_config, &device.connect_again().await?)
                 .await?;
-            let (script, menus) = {
+            let (script, mut menus) = {
                 let mutations = device_cfg.sorted_mutations()?;
                 (
                     render_script(&mutations)?,
                     crate::device::site_diff::menu_changes(&mutations),
                 )
             };
+            let previous_password = device.password() == crate::device::Password::Previous;
+            if previous_password {
+                crate::device::site_diff::add_password_change(&mut menus);
+            }
             Ok(GeneratedCfg {
                 script,
                 menus,
+                previous_password,
                 warnings: device_cfg
                     .warnings(async || device.connect_again::<SimpleResult>().await)
                     .await,

@@ -18,6 +18,13 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   Umgebungsvariablen mit `__` als Trenner der Ebenen, etwa `APP_SETTINGS__NETBOX_TOKEN` für
   `settings.netbox_token` (Schlüssel kommen kleingeschrieben an). In der Datei stehen
   Geheimnisse: NetBox-Tokens, `mikrotik_credentials`, das Passwort des Management-Proxys.
+- **Passwortwechsel der Geräte (A9):** ein Eintrag von `mikrotik_credentials` hat neben
+  `password` ein `previous_password` (im Chart ebenfalls `value` oder `secretKeyRef`). Für einen
+  Wechsel kommt das neue nach `password`, das alte nach `previous_password`. Der Provisioner
+  meldet sich zuerst mit dem neuen an, abgelehnt mit dem alten: über die API, beim SSH-Login am
+  Nachbarn (Tunnel, Konsole der Ersteinrichtung) und beim mac-telnet-Login der Ersteinrichtung.
+  Ein Gerät mit dem alten zeigt auf der Geräteseite eine Abweichung, sein Anwenden setzt das
+  neue; es geschieht nichts von selbst. Sind alle umgestellt, fällt `previous_password` weg.
 - **Zustand:** nur die weiterführbaren Aufträge in `state_dir` (Vorgabe `state` neben
   `config.yaml`, mit Sperrdatei gegen eine zweite Instanz;
   [Jobs](jobs.md#weiterführen-nach-einem-neustart)). Alle anderen Jobs leben im Prozess.

@@ -37,6 +37,13 @@ Von oben nach unten:
      Bestätigung.
    - **Änderungen:** die Warnungen zum Anwenden, das Skript und „Anwenden“, daneben „Gemeinsam
      anwenden“ für die Geräte einer Funkstrecke. Ist das Skript leer: „Gerät entspricht NetBox“.
+     Ging das Login nur mit dem vorherigen Passwort der Zugangsdaten (`previous_password`), steht
+     darüber „Das Gerät hat noch das vorherige Passwort“, und „Anwenden“ geht auch ohne Skript:
+     Es setzt am Schluss das aktuelle über die API (Event `PasswordSet`), nie im Skript, das
+     Seite und Auftrag zeigen. Erst nach dem Fallback, dessen Backup das alte zurückbrächte, und
+     vor der Kopie auf die andere Partition. „Abweichung von NetBox“ zählt es als Änderung in
+     `user`. Gemeinsam angewendet setzt es nur ein Gerät mit Änderungen; eines ohne ist kein
+     Mitglied und wird einzeln angewendet.
 7. **Log des Geräts:** die Einträge aus `/log`, eingeklappt.
 
 ## Nicht erreichbar
@@ -55,6 +62,7 @@ dem Grund. Darin:
 Statt der Primary IP aus NetBox eine andere Adresse, und statt der Zugangsdaten des Tenants
 (`mikrotik_credentials`) ein anderer benannter Eintrag oder Benutzer und Passwort ad hoc. Das
 braucht es, solange in NetBox eine Primary IP fehlt oder falsch ist, oder ein Gerät noch ein
-anderes Passwort hat. Das Formular steht in der Meldung „nicht erreichbar“ und, für ein
+anderes Passwort hat (für einen Passwortwechsel siehe `previous_password` in
+[Betrieb](deployment.md)). Das Formular steht in der Meldung „nicht erreichbar“ und, für ein
 erreichbares Gerät, aufklappbar im Kopf. Der Kopf zeigt immer, welcher Zugang gilt, damit niemand
 vergisst, dass er nicht über NetBox zugreift.

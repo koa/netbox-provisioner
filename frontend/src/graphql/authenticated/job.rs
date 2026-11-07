@@ -85,6 +85,7 @@ pub enum Event {
     FallbackFired(FallbackFired),
     ScriptProgress(ScriptProgress),
     RadiosReprovisioned(RadiosReprovisioned),
+    PasswordSet(PasswordSet),
     BatchApply(BatchApply),
     BatchStopped(BatchStopped),
     BatchIncomplete(BatchIncomplete),
@@ -343,6 +344,13 @@ pub struct ScriptProgress {
 pub struct RadiosReprovisioned {
     pub menu: String,
     pub count: i32,
+    pub error: Option<ErrorInfo>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct PasswordSet {
+    pub user: String,
     pub error: Option<ErrorInfo>,
 }
 
