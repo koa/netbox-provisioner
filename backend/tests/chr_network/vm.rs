@@ -3,14 +3,20 @@
 //! its own `qcow2` overlay, so a hard `kill -9` (or just dropping the
 //! [`RunningNode`]) is always safe - nothing here ever touches the golden
 //! image file itself.
+//!
+//! At most [`TESTS_AT_ONCE`] tests have VMs at a time (`CHR_TEST_PARALLEL`): unbounded, a plain
+//! `cargo test -- --ignored` booted every test's VMs at once, emulated without KVM, and 21 of
+//! 28 tests ran into their connect timeout.
 
 use crate::chr_network::golden_image::GoldenImage;
 use crate::chr_network::qemu::{free_tcp_port, qemu_command, qemu_img_command};
 use encoding_rs::mem::encode_latin1_lossy;
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use tokio::process::Child;
 use tokio::time::Instant;
@@ -170,6 +176,38 @@ pub fn mac_of(node: u8, slot: usize) -> mikrotik_model::MacAddress {
 
 static NEXT_NODE: AtomicU8 = AtomicU8::new(1);
 
+/// How many tests may have VMs at once, unless `CHR_TEST_PARALLEL` says otherwise.
+const TESTS_AT_ONCE: usize = 3;
+
+static TESTS: LazyLock<Arc<tokio::sync::Semaphore>> = LazyLock::new(|| {
+    let at_once = std::env::var("CHR_TEST_PARALLEL")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .filter(|at_once| *at_once > 0)
+        .unwrap_or(TESTS_AT_ONCE);
+    Arc::new(tokio::sync::Semaphore::new(at_once))
+});
+
+thread_local! {
+    /// The turn of the test on this thread (libtest runs each on its own, `#[tokio::test]`'s
+    /// runtime on it too), taken at its first boot and given back when the test's thread ends:
+    /// a test booting several nodes one after the other never waits for itself.
+    static TURN: RefCell<Option<tokio::sync::OwnedSemaphorePermit>> = const { RefCell::new(None) };
+}
+
+/// Waits for this test's turn to have VMs, once per test.
+async fn take_turn() {
+    if TURN.with(|turn| turn.borrow().is_some()) {
+        return;
+    }
+    let permit = TESTS
+        .clone()
+        .acquire_owned()
+        .await
+        .expect("the semaphore is never closed");
+    TURN.with(|turn| *turn.borrow_mut() = Some(permit));
+}
+
 /// Boots one disposable node. `wiring[i]` describes NIC slot `i + 1`
 /// (slot 0 is always the management NIC); `wiring.len()` should equal
 /// `board.build_ethernet_ports().len() - 1` for the node's board so every
@@ -195,6 +233,7 @@ pub async fn start_node(
     name: &str,
     wiring: &[PortWiring],
 ) -> anyhow::Result<RunningNode> {
+    take_turn().await;
     let index = NEXT_NODE.fetch_add(1, Ordering::Relaxed);
     tokio::fs::create_dir_all(work_dir).await?;
     let overlay_path = work_dir.join(format!("{name}.qcow2"));

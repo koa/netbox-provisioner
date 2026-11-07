@@ -196,6 +196,9 @@ async fn bootstrap_node_directly(
         DeviceCfg::fetch_with_board_model(&typed_client, b"RB750Gr3", &device_access).await?;
     eprintln!("  [{}] generating target config...", node.name);
     cfg.generate_from(&device_access, KeepNameGenerator)?;
+    // as `generate_for`, without `api_networks`: the services come from the device's, which
+    // RouterOS doesn't let remove (`ftp`)
+    cfg.setup_services(None);
     eprintln!("  [{}] generating mutations...", node.name);
     let mutations = cfg.generate_mutations()?;
     eprintln!("  [{}] sorting {} mutations...", node.name, mutations.len());

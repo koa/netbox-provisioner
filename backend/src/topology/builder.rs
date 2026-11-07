@@ -279,6 +279,7 @@ impl From<TopologyBuilder> for TopologyHolder {
         TopologyHolder {
             data: Arc::new(Mutex::new(Some(Arc::new(value.build())))),
             fetching: Default::default(),
+            fixed: true,
         }
     }
 }

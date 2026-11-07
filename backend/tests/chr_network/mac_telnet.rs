@@ -180,7 +180,8 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
             "the password must not be streamed"
         );
 
-        // reachable from the entry over the cable, with the password
+        // reachable from the entry over the cable, with the password; emulated without KVM,
+        // with other tests' VMs beside it, the address took longer than 30 s to answer
         let target = address.split('/').next().unwrap().to_string();
         wait_until(
             || {
@@ -188,7 +189,7 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
                 let entry_api = &entry_api;
                 async move { Ok(ping(entry_api, &target).await) }
             },
-            Duration::from_secs(30),
+            Duration::from_secs(120),
         )
         .await
         .unwrap_or_else(|e| panic!("{} not reachable at {target}: {e}", node.name));

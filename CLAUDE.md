@@ -376,7 +376,10 @@ instances under QEMU (software emulation, no KVM needed) and proves actual distr
 behavior, not just that the generator's output parses. `--ignored` by default (`cargo test -p
 backend --test chr_network -- --ignored`) since it needs `nix` on PATH and takes real wall-clock
 time to boot VMs; every test in it skips cleanly with a message if `nix` isn't available, and it
-must never slow down or break a normal `cargo test` run. `golden_image.rs` builds and caches
+must never slow down or break a normal `cargo test` run. At most 3 tests have VMs at once
+(`vm::TESTS_AT_ONCE`, `CHR_TEST_PARALLEL`; a test's turn is taken at its first boot and held by
+its libtest thread until it ends), so the plain command needs no `--test-threads`. A
+`TopologyHolder` from a `TopologyBuilder` is fixed and never reads NetBox. `golden_image.rs` builds and caches
 (default `../.chr-test-cache/`, override via `CHR_TEST_CACHE_DIR`) a disk image with the license
 accepted and the admin password set once; `vm.rs`'s `boot_node` boots a disposable `qcow2` overlay
 on top of that image per node (`kill -9`-safe, verified live), wiring NIC slots either to a

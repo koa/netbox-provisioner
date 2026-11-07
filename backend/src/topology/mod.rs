@@ -41,6 +41,9 @@ pub struct TopologyHolder {
     /// held while NetBox is read: who finds the topology old while it is, waits for that
     /// reading instead of starting another
     fetching: Arc<Mutex<()>>,
+    /// a topology given once (`From<TopologyBuilder>`, tests), never read from NetBox: it went
+    /// out of date after 10 s like a fetched one and read NetBox without a `config.yaml`
+    fixed: bool,
 }
 
 impl TopologyHolder {
@@ -80,7 +83,8 @@ impl TopologyHolder {
                 true
             }
         };
-        if outdated().await
+        if !self.fixed
+            && outdated().await
             && let _fetching = self.fetching.lock().await
             && outdated().await
         {
