@@ -4,7 +4,9 @@ Ein Update, ein Anwenden, eine Ersteinrichtung, ein Neustart und die übrigen Au
 laufen als **Jobs** (`backend::job`): Die Mutation gibt den Job sofort zurück, die Arbeit läuft im
 Hintergrund und meldet typisierte Events (`job::Event`), die das Frontend auf Deutsch zeigt
 (`components/job.rs`, `i18n::job`). Ein Gerät hat höchstens einen Job zur Zeit; ein Job einer
-Site (`SiteDiff`) liest nur und sperrt keines ihrer Geräte. Jede Art hat eine State-Machine
+Site (`SiteDiff`) liest nur und sperrt keines ihrer Geräte, ebenso der Job des Netzes
+(`Rollout`): Er startet für jedes Gerät einen eigenen Update-Job
+([Updates im ganzen Netz](concepts/network-update.md)). Jede Art hat eine State-Machine
 (`backend::device_state`), die sagt, welcher Zustand auf welchen folgen darf, was Abbrechen in
 einem Zustand tut und was ein Neustart des Servers mit dem Job macht.
 

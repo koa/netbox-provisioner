@@ -657,8 +657,14 @@ ul.rollout-sites {
 table.rollout-plan {
     margin-top: 1em;
 }
+table.rollout-plan th,
 table.rollout-plan td {
     vertical-align: top;
+    padding: 0.2em 1em 0.2em 0;
+    text-align: left;
+}
+table.rollout-plan .pf-v6-c-button.pf-m-link {
+    padding: 0;
 }
 tr.rollout-pilot td:first-child {
     font-weight: bold;

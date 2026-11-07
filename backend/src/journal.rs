@@ -848,6 +848,7 @@ fn kind_named(name: &str) -> Option<JobKind> {
             NetboxWrite,
             NetboxUndo,
             SiteDiff,
+            Rollout,
         ],
         name,
     )
@@ -869,6 +870,7 @@ fn kind_name(kind: JobKind) -> &'static str {
         JobKind::NetboxWrite => t::NETBOX_WRITE,
         JobKind::NetboxUndo => t::NETBOX_UNDO,
         JobKind::SiteDiff => t::SITE_DIFF,
+        JobKind::Rollout => t::ROLLOUT,
     }
 }
 

@@ -24,7 +24,8 @@ einen Eintrag ins Journal des Geräts in NetBox (`extras/journal-entries`, Z29).
   Job-Ansicht, solange der Provisioner den Job kennt.
 - **Gemeinsam anwenden:** ein Eintrag pro Gerät, der die anderen nennt.
 - **Nicht ins Journal:** die Abweichung einer Site (`SiteDiff`, liest nur, ist kein Job eines
-  Geräts). Die Kaltstarts per PoE (`PowerCycle`) stehen beim speisenden Gerät, wie der Job.
+  Geräts) und der Rollout (`Rollout`, Job des Netzes; seine Updates schreiben ihre Einträge wie
+  jedes andere). Die Kaltstarts per PoE (`PowerCycle`) stehen beim speisenden Gerät, wie der Job.
 
 ## Erkennen und Auswerten
 

@@ -161,6 +161,21 @@ pub async fn plan(sites: &[SiteAccess], channel: Channel) -> Result<RolloutPlan,
     })
 }
 
+/// Makes `pilots` (device ids) the pilots, those of them to be updated, in place of the
+/// proposed ones, first in their order.
+pub fn choose_pilots(plan: &mut RolloutPlan, pilots: &[u32]) {
+    for device in &mut plan.devices {
+        device.pilot = device.skip.is_none() && pilots.contains(&device.id);
+    }
+    // stable: the pilots keep their order, so do the rest
+    plan.devices
+        .sort_by_key(|device| match (device.pilot, device.skip.is_some()) {
+            (true, _) => 0,
+            (false, false) => 1,
+            (false, true) => 2,
+        });
+}
+
 /// What one device runs and what an update would need there.
 struct Read {
     state: update::DeviceState,
@@ -375,6 +390,8 @@ fn order(candidates: &[Candidate]) -> Vec<(usize, bool)> {
         .chain(ordered.into_iter().map(|index| (index, false)))
         .collect()
 }
+
+pub mod run;
 
 #[cfg(test)]
 mod test;

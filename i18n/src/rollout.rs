@@ -59,3 +59,38 @@ pub fn space(download: Option<u64>, free: Option<u64>) -> String {
         (None, None) => String::new(),
     }
 }
+
+pub const PILOT: &str = "Pilot";
+pub const START: &str = "Rollout starten";
+pub const NOT_ALLOWED: &str = "Schreiben auf Geräte ist abgeschaltet (allow_apply)";
+/// the job reads the devices again before it starts
+pub const PLANNING_AGAIN: &str = "Der Rollout liest die Geräte noch einmal …";
+pub const STATE: &str = "Stand";
+pub const CONTINUE: &str = "Weiter";
+pub const END: &str = "Rollout beenden";
+pub const CANCEL: &str = "Rollout abbrechen";
+pub const SKIP: &str = "Überspringen";
+pub const PAUSED_AFTER_PILOTS: &str = "Die Piloten sind durch. Prüfe sie auf ihren Seiten; \
+    „Weiter“ aktualisiert die übrigen Geräte.";
+pub fn paused_failed(device: &str) -> String {
+    format!(
+        "{device} ist fehlgeschlagen und bleibt, wie es ist; die laufenden Updates sind zu \
+         Ende. „Weiter“ macht mit den übrigen Geräten weiter."
+    )
+}
+pub const STATE_PENDING: &str = "wartet auf seine Reihe";
+pub const STATE_WAITING: &str = "wartet auf einen anderen Job des Geräts";
+pub const STATE_STARTED: &str = "Update läuft";
+pub const STATE_DONE: &str = "aktualisiert";
+pub const STATE_FAILED: &str = "fehlgeschlagen";
+pub const STATE_CANCELLED: &str = "abgebrochen";
+pub const STATE_SKIPPED: &str = "übersprungen";
+pub const CANCELLED: &str = "Der Rollout wurde abgebrochen; nicht gestartete Geräte bleiben, wie \
+    sie sind.";
+pub const LOST: &str = "Der Server kennt den Rollout nicht mehr (Neustart). Ein neuer Rollout \
+    lässt aus, was schon aktuell ist.";
+pub fn done(updated: i32, skipped: i32, failed: i32) -> String {
+    format!(
+        "Rollout fertig: {updated} aktualisiert, {skipped} übersprungen, {failed} fehlgeschlagen"
+    )
+}

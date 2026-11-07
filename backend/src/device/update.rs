@@ -18,6 +18,7 @@ use crate::{
     device_state::{RebootState, UpdateState},
     graphql::scalars::{ScalarDuration, ScalarU64},
     job::Log,
+    lock::LockAnyway,
     saved_job::UpdateRun,
 };
 use async_graphql::futures_util::StreamExt;
@@ -26,7 +27,12 @@ use log::warn;
 use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::value::{ParseRosValueResult, RosValue};
 use serde::Deserialize;
-use std::{cmp::Ordering, collections::BTreeSet, time::Duration};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeSet, HashMap},
+    sync::{Arc, LazyLock, Mutex},
+    time::Duration,
+};
 use tokio::time::{Instant, sleep, timeout};
 
 const DOWNLOAD_URL: &str = "https://download.mikrotik.com/routeros";
@@ -564,7 +570,55 @@ pub async fn package_size(version: &Version, file: &str) -> Result<Option<u64>, 
         .and_then(|length| length.to_str().ok()?.parse().ok()))
 }
 
-async fn download(version: &Version, file: &str) -> Result<Vec<u8>, Error> {
+/// The packages downloaded while a rollout runs ([`DownloadCache`]), by version and file: its
+/// devices of an architecture share them instead of each downloading its own.
+static DOWNLOADS: LazyLock<Mutex<Downloads>> = LazyLock::new(Default::default);
+
+type Download = Arc<tokio::sync::OnceCell<Arc<[u8]>>>;
+
+#[derive(Default)]
+struct Downloads {
+    holders: usize,
+    files: HashMap<(Box<str>, Box<str>), Download>,
+}
+
+/// Keeps what updates download in memory while it lives (a rollout); dropped by the last
+/// holder, the packages go.
+pub struct DownloadCache(());
+
+impl DownloadCache {
+    pub fn hold() -> Self {
+        DOWNLOADS.lock_anyway().holders += 1;
+        DownloadCache(())
+    }
+}
+
+impl Drop for DownloadCache {
+    fn drop(&mut self) {
+        let mut downloads = DOWNLOADS.lock_anyway();
+        downloads.holders -= 1;
+        if downloads.holders == 0 {
+            downloads.files.clear();
+        }
+    }
+}
+
+/// `file` of `version`, from the [`DownloadCache`] while one is held.
+async fn download(version: &Version, file: &str) -> Result<Arc<[u8]>, Error> {
+    let cached = {
+        let mut downloads = DOWNLOADS.lock_anyway();
+        (downloads.holders > 0).then(|| {
+            let key = (version.to_string().into(), file.into());
+            downloads.files.entry(key).or_default().clone()
+        })
+    };
+    match cached {
+        Some(cell) => cell.get_or_try_init(|| fetch(version, file)).await.cloned(),
+        None => fetch(version, file).await,
+    }
+}
+
+async fn fetch(version: &Version, file: &str) -> Result<Arc<[u8]>, Error> {
     let url = format!("{DOWNLOAD_URL}/{version}/{file}");
     let failed = |e: reqwest::Error| Error::Download(url.as_str().into(), e);
     Ok(http()
@@ -576,7 +630,8 @@ async fn download(version: &Version, file: &str) -> Result<Vec<u8>, Error> {
         .bytes()
         .await
         .map_err(failed)?
-        .to_vec())
+        .to_vec()
+        .into())
 }
 
 /// Reboots and waits (up to `wait`) until the device answers with `expect` (a version, a

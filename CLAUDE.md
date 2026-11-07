@@ -1057,8 +1057,15 @@ rebooting devices cut it off (`BehindRebooting`), all under one lock. A device N
 don't reach at all holds nothing back. `rolloutPlan` (`device::rollout`, page `/rollout`)
 plans an update across sites, reading only: per RouterOS device the step, the download against
 `free-hdd-space`, the way back, leftovers; a pilot per architecture, then the farthest from a
-root first, a CAPsMAN controller after its APs (`docs/concepts/network-update.md`). The leases
-are in-process only. They only hold back
+root first, a CAPsMAN controller after its APs (`docs/concepts/network-update.md`).
+`startRollout` (`device::rollout::run`, `JobKind::Rollout`, `JobSubject::Network`, one at a
+time) plans again and starts an ordinary update job per device (`start_update`, the suppliers'
+watchdogs suspended), up to `PARALLEL` (4) at once; it pauses after the pilots and after a
+failed device until `continueRollout` (`Control`), `skipRolloutDevice` leaves a device out,
+cancelling it cancels the update jobs it started. Its events (`RolloutPlanned`,
+`RolloutDevice`, `RolloutPaused`, `RolloutContinued`, `RolloutDone`) are polled by the page,
+which follows `rolloutJob` on opening. While it runs, its updates share their downloads
+(`update::DownloadCache`). The leases are in-process only. They only hold back
 reboots the provisioner sends: a supplier with
 `/system/watchdog watch-address` behind the updating device reboots by itself and cuts its
 power mid-install (berghof-burri bricked burri-schopf that way; RouterBOOT then only asked for

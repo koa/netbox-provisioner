@@ -109,6 +109,11 @@ pub enum Event {
     NetboxUndone(helper::NetboxUndone),
     SiteDiffStarted(device::site_diff::SiteDiffStarted),
     DeviceDiffed(device::site_diff::DeviceDiffed),
+    RolloutPlanned(device::rollout::run::RolloutPlanned),
+    RolloutDevice(device::rollout::run::RolloutDevice),
+    RolloutPaused(device::rollout::run::RolloutPaused),
+    RolloutContinued(device::rollout::run::RolloutContinued),
+    RolloutDone(device::rollout::run::RolloutDone),
 }
 
 /// The job goes on after a restart of the provisioner, in the state it was saved in
@@ -397,6 +402,8 @@ pub enum JobKind {
     NetboxUndo,
     /// how far each device of a site is from NetBox (`diffSite`), read only
     SiteDiff,
+    /// an update job per device of several sites (`startRollout`), a job of the network
+    Rollout,
 }
 
 impl JobKind {
@@ -474,7 +481,10 @@ impl JobKind {
                 InterfaceLive,
             ],
             // NetBox changes a fact's key (addresses, cables), not what the device says
-            JobKind::NetboxWrite | JobKind::NetboxUndo | JobKind::SiteDiff => &[],
+            // its update jobs drop what they change
+            JobKind::NetboxWrite | JobKind::NetboxUndo | JobKind::SiteDiff | JobKind::Rollout => {
+                &[]
+            }
         }
     }
 }
@@ -496,11 +506,13 @@ pub enum JobState {
 }
 
 /// What a job works on: a device, which runs one job at a time, or a site, whose job only reads
-/// its devices and so keeps none of them from a job of its own.
+/// its devices and so keeps none of them from a job of its own, or the network (a rollout),
+/// whose job starts a job of each device instead of working on it.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum JobSubject {
     Device(DeviceId),
     Site(SiteId),
+    Network,
 }
 
 pub struct Job {
@@ -553,7 +565,7 @@ impl Job {
     pub fn job_device(&self) -> Option<DeviceId> {
         match self.subject {
             JobSubject::Device(device) => Some(device),
-            JobSubject::Site(_) => None,
+            JobSubject::Site(_) | JobSubject::Network => None,
         }
     }
     pub fn is_running(&self) -> bool {
@@ -747,6 +759,33 @@ where
     job
 }
 
+/// Starts `work` for the network (`JobKind::Rollout`), named `name`. The network runs one job
+/// of a kind at a time, as a site does ([`start_site`]).
+pub fn start_network<F>(name: &str, kind: JobKind, work: impl FnOnce(Log) -> F) -> Arc<Job>
+where
+    F: Future<Output = Result<(), Error>> + Send + 'static,
+{
+    let mut jobs = JOBS.lock_anyway();
+    if let Some(running) = jobs.jobs.iter().find(|job| {
+        job.subject == JobSubject::Network && job.kind == kind && job.state() == JobState::Running
+    }) {
+        return running.clone();
+    }
+    let log = Log::new(name);
+    let work = work(log.clone());
+    let job = add(&mut jobs, JobSubject::Network, None, name, kind, log);
+    drop(jobs);
+    spawn(job.clone(), work);
+    job
+}
+
+/// The newest job of the network of `kind`, running or not.
+pub fn newest_of_network(kind: JobKind) -> Option<Arc<Job>> {
+    list(Some(JobSubject::Network))
+        .into_iter()
+        .find(|job| job.kind == kind)
+}
+
 /// The runtime the jobs run on. Started from a request, a job spawned on the runtime at hand
 /// would run on the worker's, which ends with the server: dropped there, it would neither come
 /// to its end nor to a state that goes on at the [`shutdown`].
@@ -888,7 +927,7 @@ fn add(
         .flatten()
         .filter_map(|subject| match subject {
             JobSubject::Device(device) => Some(device),
-            JobSubject::Site(_) => None,
+            JobSubject::Site(_) | JobSubject::Network => None,
         })
         .collect();
     let _ = job.log.devices.set(devices);
@@ -1080,7 +1119,7 @@ impl Job {
     async fn site_id(&self) -> Option<u32> {
         match self.subject {
             JobSubject::Site(site) => Some(site.0),
-            JobSubject::Device(_) => None,
+            JobSubject::Device(_) | JobSubject::Network => None,
         }
     }
     async fn site_name(&self) -> Option<&str> {

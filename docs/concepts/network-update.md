@@ -1,8 +1,9 @@
 # Konzept: Updates im ganzen Netz
 
-Status: zum Teil umgesetzt: die Regel beim Neustart (`device/dependency.rs`) und der Plan
-(`rolloutPlan`, `device/rollout.rs`, Seite `/rollout` „Netz aktualisieren“, im Site-Menü der
-Breadcrumb); der Rollout selbst fehlt noch. Aufgabe C10 in [todo.md](../todo.md).
+Status: umgesetzt: die Regel beim Neustart (`device/dependency.rs`), der Plan (`rolloutPlan`,
+`device/rollout.rs`) und der Rollout (`startRollout`, `device/rollout/run.rs`), auf der Seite
+`/rollout` „Netz aktualisieren“ (im Site-Menü der Breadcrumb). Offen: der CHR-Test der Kette
+und die Netz-Ansicht mit eingefärbten Knoten. Aufgabe C10 in [todo.md](../todo.md).
 Baut auf dem Server-Log (Events, Jobs) auf, das erledigt ist, und profitiert vom
 [Update-Fallback](../update-fallback.md).
 
@@ -110,22 +111,28 @@ Gleichstand nach Namen), ein CAPsMAN-Controller nach dem letzten seiner APs.
 
 ## Downloads
 
-Heute lädt jedes Update seine Pakete selbst herunter (`download`). Für einen Rollout kommt ein
-Cache pro Version und Datei im Prozess dazu (`HashMap<(Version, Box<str>), Arc<[u8]>>`). Bei 30
-Geräten mit 3 Architekturen sind das wenige Dutzend MB statt einige hundert.
+Ein einzelnes Update lädt seine Pakete selbst herunter (`download`). Solange ein Rollout läuft,
+hält er einen Cache pro Version und Datei im Prozess (`update::DownloadCache`, je Datei ein
+`OnceCell`, so lädt auch ein gleichzeitiges zweites Update nicht noch einmal). Bei 30 Geräten
+mit 3 Architekturen sind das wenige Dutzend MB statt einige hundert; mit dem Rollout endet der
+Cache.
 
 ## Backend
 
-- `JobKind::Rollout`, ein Job pro Rollout (über die gewählten Sites), neben den bestehenden Jobs
-  pro Gerät. Er startet für jedes
-  Gerät einen normalen `JobKind::Update`-Job, sodass die Geräteseite das Update wie heute zeigt
-  und abbrechen kann. Die Regel „ein Job pro Gerät“ bleibt, ein Gerät mit laufendem Job wartet im
-  Rollout.
-- Events des Rollouts: `RolloutPlanned { waves }`, `RolloutDevice { device, job, state }`,
-  `RolloutPaused { reason }`, `RolloutDone { updated, skipped, failed }`.
-- Mutationen: `planRollout(siteIds, channel)` (nur lesend, gibt den Plan zurück),
-  `startRollout(siteIds, channel)`, `continueRollout(jobId)`, `skipRolloutDevice(jobId, deviceId)`,
-  `cancelJob` wie bisher.
+- `JobKind::Rollout`, ein Job pro Rollout (über die gewählten Sites, `JobSubject::Network`,
+  einer zur Zeit), neben den Jobs pro Gerät. Er plant beim Start noch einmal und startet für
+  jedes Gerät einen normalen `JobKind::Update`-Job, mit ausgesetzten Watchdogs der Speiser,
+  sodass die Geräteseite das Update wie sonst zeigt und abbrechen kann. Die Regel „ein Job pro
+  Gerät“ bleibt, ein Gerät mit laufendem Job wartet im Rollout (`Waiting`). Bis zu `PARALLEL` (4)
+  zugleich; den Rest regeln die Leases.
+- Events des Rollouts: `RolloutPlanned { plan }`, `RolloutDevice { device, job, state, error }`,
+  `RolloutPaused { reason, device }`, `RolloutContinued`, `RolloutDone { updated, skipped,
+  failed }`.
+- Abfragen und Mutationen: `rolloutPlan(siteIds, channel)` (nur lesend), `rolloutJob` (der
+  neueste), `startRollout(siteIds, channel, pilots)`, `continueRollout(jobId)`,
+  `skipRolloutDevice(jobId, deviceId)`, `cancelJob` wie bisher (bricht auch die laufenden Updates
+  ab). Nach einem fehlgeschlagenen Gerät heisst „Weiter“: es bleibt, wie es ist, die übrigen
+  kommen dran.
 - `device/power.rs` ist zu `device/dependency.rs` geworden: Leases wie zuvor, die Prüfung
   zusätzlich über den Wegegraphen (`Paths`, je Update einmal gebaut; ohne Antwort eines Routers
   in 10 s gelten alle Kanten aus NetBox). Ein Gerät, das die Wege aus NetBox gar nicht erreichen,
@@ -133,10 +140,13 @@ Geräten mit 3 Architekturen sind das wenige Dutzend MB statt einige hundert.
 
 ## Frontend
 
-Eine Seite „Netz aktualisieren“: Sites und Kanal wählen, Plan ansehen (Tabelle: Gerät, Version
-jetzt → Ziel, Architektur, Fallback ja/nein, Welle, Grund für die Position), starten. Während er
-läuft: dieselbe Tabelle mit Zustand pro Gerät und Link auf den Job des Geräts. Später die
-[Netz-Ansicht](network-map.md) mit eingefärbten Knoten.
+Eine Seite „Netz aktualisieren“ (`pages/rollout.rs`): Sites und Kanal wählen, Plan ansehen
+(Tabelle: Gerät, Version jetzt → Ziel, Architektur, Pakete mit Grösse und freiem Speicher,
+Fallback, Grund für die Position), Piloten ändern, starten. Während er läuft: dieselbe Tabelle
+mit dem Stand pro Gerät (Link auf die Geräteseite mit dessen Job, „Überspringen“ für die noch
+nicht gestarteten), bei einer Pause „Weiter“ und „Rollout beenden“. Die Seite fragt die Events
+jede Sekunde ab, wie die Abweichung einer Site, und nimmt beim Öffnen den neuesten Rollout auf.
+Später die [Netz-Ansicht](network-map.md) mit eingefärbten Knoten.
 
 ## Testen
 

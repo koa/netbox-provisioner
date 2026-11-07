@@ -203,6 +203,7 @@ fn kind(kind: &JobKind) -> &str {
         JobKind::NetboxWrite => jobs::NETBOX_WRITE,
         JobKind::NetboxUndo => jobs::NETBOX_UNDO,
         JobKind::SiteDiff => jobs::SITE_DIFF,
+        JobKind::Rollout => jobs::ROLLOUT,
         JobKind::Other(other) => other,
     }
 }

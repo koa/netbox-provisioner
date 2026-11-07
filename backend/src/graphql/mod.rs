@@ -5,7 +5,7 @@ use crate::{
     device::{
         AccessibleDevice, Connecting, bootstrap,
         dependency::PowerChain,
-        device_mode, partitions,
+        device_mode, partitions, rollout,
         update::{self, DeviceLink},
         update_fallback,
         watchdog::{Watchers, restore_watchdogs},
@@ -133,7 +133,11 @@ impl QueryAuthenticated {
             sites.push(site.ok_or(Error::UnknownSite(id))?);
         }
         let channel = channel.or(CONFIG.routeros_channel).unwrap_or_default();
-        Ok(crate::device::rollout::plan(&sites, channel).await?)
+        Ok(rollout::plan(&sites, channel).await?)
+    }
+    /// The newest rollout job (`startRollout`), running or not.
+    async fn rollout_job(&self) -> Option<Arc<Job>> {
+        job::newest_of_network(JobKind::Rollout)
     }
     /// The jobs saved before the restart that didn't go on: their device is gone from NetBox,
     /// or the file couldn't be read. They stay until discarded (`discardSavedJob`).
@@ -241,19 +245,85 @@ where
     W: FnOnce(AccessibleDevice, DeviceAccess, PowerChain, Log) -> F + Send + 'static,
     F: Future<Output = Result<(), Error>> + Send + 'static,
 {
-    Ok(job::start(
-        &device.clone(),
-        kind,
-        Started::By(user_label(ctx)),
-        |log| async move {
-            if let Some(state) = state {
-                log.enter(state);
-            }
-            let power = PowerChain::of(&device).await;
-            let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
-            work(link, device, power, log).await
-        },
+    let started = Started::By(user_label(ctx));
+    Ok(start_device_job_as(
+        started, device, kind, state, target, work,
     )?)
+}
+
+/// [`start_device_job`] for whoever `started` names (a rollout's user).
+fn start_device_job_as<F, W>(
+    started: Started,
+    device: DeviceAccess,
+    kind: JobKind,
+    state: Option<JobPhase>,
+    target: Option<DeviceTarget>,
+    work: W,
+) -> Result<Arc<Job>, Error>
+where
+    W: FnOnce(AccessibleDevice, DeviceAccess, PowerChain, Log) -> F + Send + 'static,
+    F: Future<Output = Result<(), Error>> + Send + 'static,
+{
+    job::start(&device.clone(), kind, started, |log| async move {
+        if let Some(state) = state {
+            log.enter(state);
+        }
+        let power = PowerChain::of(&device).await;
+        let link = connect_for_job(&device, target.unwrap_or_default(), &log).await?;
+        work(link, device, power, log).await
+    })
+}
+
+/// The job of `updateRouteros`, for whoever `started` names.
+fn start_update(
+    started: Started,
+    device: DeviceAccess,
+    channel: Option<update::Channel>,
+    target: Option<DeviceTarget>,
+    suspend_watchdogs: bool,
+    without_fallback: bool,
+) -> Result<Arc<Job>, Error> {
+    let way_back = update_fallback::WayBack::of(&device, without_fallback);
+    let watchers = Watchers::of(&device, suspend_watchdogs);
+    start_device_job_as(
+        started,
+        device,
+        JobKind::Update,
+        Some(UpdateState::Reading.into()),
+        target,
+        move |device, access, power, log| async move {
+            let wanted = device.wanted_packages().await?;
+            let version = match channel {
+                Some(channel) => update::newest(7, channel).await?,
+                None => update::read_state(&device.api().await?).await?.version,
+            };
+            log.emit(update::UpdateTarget {
+                version: version.to_string().into(),
+                channel: channel.map(|channel| channel.name().into()),
+            });
+            let suspended = watchers
+                .suspend(&log, UpdateState::SuspendingWatchdogs)
+                .await?;
+            let watching: Vec<_> = suspended
+                .iter()
+                .map(|s| (s.device.clone(), s.watching.clone()))
+                .collect();
+            let credentials = device.credentials_name().map(Box::from);
+            // without credentials by name (ad hoc ones) it can't connect again after a restart
+            let keep = |run: &saved_job::UpdateRun| {
+                if let Some(credentials) = &credentials {
+                    log.keep(saved_update(&access, credentials, &watching, run));
+                }
+            };
+            let fallback = CONFIG.update_fallback();
+            let updated = update::update_keeping(
+                &device, &power, &version, &wanted, fallback, &way_back, &keep, &log,
+            )
+            .await;
+            restore_watchdogs(suspended, &log, UpdateState::RestoringWatchdogs).await;
+            updated
+        },
+    )
 }
 
 /// Connects to `device` for a job, which shows where it got to: a connection that takes long
@@ -442,47 +512,76 @@ impl MutationAuthenticated {
         without_fallback: Option<bool>,
     ) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
-        let way_back = update_fallback::WayBack::of(&device, without_fallback == Some(true));
-        let watchers = Watchers::of(&device, suspend_watchdogs == Some(true));
-        start_device_job(
-            ctx,
+        Ok(start_update(
+            Started::By(user_label(ctx)),
             device,
-            JobKind::Update,
-            Some(UpdateState::Reading.into()),
+            channel,
             target,
-            move |device, access, power, log| async move {
-                let wanted = device.wanted_packages().await?;
-                let version = match channel {
-                    Some(channel) => update::newest(7, channel).await?,
-                    None => update::read_state(&device.api().await?).await?.version,
-                };
-                log.emit(update::UpdateTarget {
-                    version: version.to_string().into(),
-                    channel: channel.map(|channel| channel.name().into()),
-                });
-                let suspended = watchers
-                    .suspend(&log, UpdateState::SuspendingWatchdogs)
-                    .await?;
-                let watching: Vec<_> = suspended
-                    .iter()
-                    .map(|s| (s.device.clone(), s.watching.clone()))
-                    .collect();
-                let credentials = device.credentials_name().map(Box::from);
-                // without credentials by name (ad hoc ones) it can't connect again after a restart
-                let keep = |run: &saved_job::UpdateRun| {
-                    if let Some(credentials) = &credentials {
-                        log.keep(saved_update(&access, credentials, &watching, run));
-                    }
-                };
-                let fallback = CONFIG.update_fallback();
-                let updated = update::update_keeping(
-                    &device, &power, &version, &wanted, fallback, &way_back, &keep, &log,
-                )
-                .await;
-                restore_watchdogs(suspended, &log, UpdateState::RestoringWatchdogs).await;
-                updated
-            },
-        )
+            suspend_watchdogs == Some(true),
+            without_fallback == Some(true),
+        )?)
+    }
+    /// Starts a rollout (`docs/concepts/network-update.md`): the RouterOS devices of the sites
+    /// to the newest release of `channel` (the config's without), an update job each, as
+    /// `rolloutPlan` plans it when the job starts; `pilots` (device ids) instead of the pilots
+    /// it proposes. The watchdogs of the suppliers are suspended for each update. The job pauses
+    /// after the pilots and after a device that failed (`RolloutPaused`) until
+    /// `continueRollout`; `cancelJob` ends it and cancels the updates it started. One rollout
+    /// at a time: while one runs, that one is given back.
+    #[graphql(guard = "WritesAllowed")]
+    async fn start_rollout(
+        &self,
+        ctx: &Context<'_>,
+        site_ids: Vec<u32>,
+        channel: Option<update::Channel>,
+        pilots: Option<Vec<u32>>,
+    ) -> Result<Arc<Job>, ApiError> {
+        let mut sites = Vec::new();
+        for id in site_ids {
+            sites.push(self.site(id).await?);
+        }
+        let channel = channel.or(CONFIG.routeros_channel).unwrap_or_default();
+        let user = user_label(ctx);
+        let topology = self.topology.clone();
+        let control = Arc::new(rollout::run::Control::default());
+        let running = control.clone();
+        let job = job::start_network("rollout", JobKind::Rollout, |log| async move {
+            let _downloads = update::DownloadCache::hold();
+            let mut plan = log
+                .unless_cancelled(rollout::plan(&sites, channel))
+                .await??;
+            if let Some(pilots) = pilots {
+                rollout::choose_pilots(&mut plan, &pilots);
+            }
+            rollout::run::run(plan, &running, &log, |id| {
+                let (topology, user) = (topology.clone(), user.clone());
+                async move {
+                    let device = topology
+                        .devices_by_id(DeviceId(id))
+                        .await
+                        .ok_or(Error::UnknownDevice(id))?;
+                    start_update(Started::By(user), device, Some(channel), None, true, false)
+                }
+            })
+            .await
+        });
+        rollout::run::Control::register(job.job_id(), control);
+        Ok(job)
+    }
+    /// Lets the paused rollout job `job_id` go on (`RolloutPaused`).
+    #[graphql(guard = "WritesAllowed")]
+    async fn continue_rollout(&self, job_id: u32) -> Result<bool, ApiError> {
+        let control = rollout::run::Control::of(job_id).ok_or(Error::UnknownJob(job_id))?;
+        control.go_on();
+        Ok(true)
+    }
+    /// Leaves device `device_id` out of the running rollout job `job_id`, unless its update
+    /// started already.
+    #[graphql(guard = "WritesAllowed")]
+    async fn skip_rollout_device(&self, job_id: u32, device_id: u32) -> Result<bool, ApiError> {
+        let control = rollout::run::Control::of(job_id).ok_or(Error::UnknownJob(job_id))?;
+        control.skip(device_id);
+        Ok(true)
     }
     /// Starts taking RouterOS 7 on device `id` back to the older `version` (`allow_apply` must
     /// be set): the packages it runs, of that version, then `/system/package/downgrade`. The

@@ -18,6 +18,7 @@ pub enum JobKind {
     NetboxWrite,
     NetboxUndo,
     SiteDiff,
+    Rollout,
     #[cynic(fallback)]
     Other(String),
 }

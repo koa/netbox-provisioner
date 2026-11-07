@@ -188,6 +188,7 @@ fn title(job: &Job) -> (String, AlertType) {
         JobKind::NetboxWrite => t::NETBOX_WRITE,
         JobKind::NetboxUndo => t::NETBOX_UNDO,
         JobKind::SiteDiff => t::SITE_DIFF,
+        JobKind::Rollout => t::ROLLOUT,
         JobKind::Other(other) => other,
     };
     let events = || job.events.iter().map(|event| &event.event);
