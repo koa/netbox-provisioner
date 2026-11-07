@@ -675,3 +675,7 @@ tr.rollout-left-out td {
 div.rollout-error {
     font-size: smaller;
 }
+div.rollout-offline {
+    font-weight: bold;
+    color: var(--pf-t--global--text--color--status--warning--default);
+}

@@ -5,7 +5,10 @@
 //! and the state of each device) and steers it: on after a pause, a device skipped, the end.
 //! Opened again, it follows the newest rollout.
 use crate::{
-    components::widgets::popup::Select,
+    components::{
+        job::{JobView, reboots, update_phase},
+        widgets::popup::Select,
+    },
     error::{FrontendError, ServerProblem},
     graphql::{
         POLL, RETRY, Sendable,
@@ -54,6 +57,8 @@ pub struct Rollout {
     /// the devices chosen as pilots in the plan shown
     pilots: BTreeSet<i32>,
     job: Option<Following>,
+    /// the device whose update job is shown below the table
+    shown: Option<i32>,
     /// what a click on start, continue, skip or cancel failed with
     error: Option<FrontendError>,
     /// the poll of the job followed goes on while set
@@ -99,6 +104,8 @@ pub enum RolloutMsg {
     Lost,
     Continue,
     Skip(i32),
+    /// shows the update job of a device below the table, or none
+    Show(Option<i32>),
     Cancel,
     Acted(Result<(), FrontendError>),
 }
@@ -138,6 +145,7 @@ impl Component for Rollout {
             plan: Plan::None,
             pilots: BTreeSet::new(),
             job: None,
+            shown: None,
             error: None,
             alive: Rc::new(Cell::new(false)),
             _subscription: subscription,
@@ -232,6 +240,7 @@ impl Component for Rollout {
                     ContinueRollout::build(ContinueRolloutVariables { job }),
                 );
             }
+            RolloutMsg::Show(device) => self.shown = device,
             RolloutMsg::Skip(device) => {
                 let Some(job) = self.job.as_ref().map(|job| job.id) else {
                     return false;
@@ -264,7 +273,9 @@ impl Component for Rollout {
                                     <input
                                         type="checkbox"
                                         checked={self.chosen.contains(&id)}
-                                        onchange={ctx.link().callback(move |_| RolloutMsg::Toggle(id))}
+                                        onchange={ctx.link().callback(
+                                            move |_| RolloutMsg::Toggle(id)
+                                        )}
                                     />
                                     {" "}{site.name.clone()}
                                 </label>
@@ -401,10 +412,31 @@ impl Rollout {
     /// The rollout job: its plan with the state of each device, the pause and the end.
     fn job_view(&self, ctx: &Context<Self>, job: &Following) -> Html {
         let running = job.state == JobState::Running && !job.lost;
-        let state = |device: &PlannedDevice| device_state(ctx, job, device, running);
+        let state = |device: &PlannedDevice| device_state(ctx, job, device, running, self.shown);
+        let shown = self.shown.and_then(|shown| {
+            let id = job.devices.get(&shown)?.job?;
+            let name = job
+                .plan
+                .as_ref()?
+                .devices
+                .iter()
+                .find(|d| d.id == shown)?
+                .name
+                .clone();
+            Some(html! {
+                <div class="rollout-job">
+                    <h3>{t::job_of(&name)}</h3>
+                    <JobView key={id} {id}/>
+                </div>
+            })
+        });
         let summary = match (&job.done, &job.state) {
             (Some(done), _) => html! {
-                <Alert inline=true r#type={AlertType::Success} title={t::done(done.updated, done.skipped, done.failed)}/>
+                <Alert
+                    inline=true
+                    r#type={AlertType::Success}
+                    title={t::done(done.updated, done.skipped, done.failed)}
+                />
             },
             (None, JobState::Cancelled) => html! {
                 <Alert inline=true r#type={AlertType::Warning} title={t::CANCELLED}/>
@@ -423,11 +455,17 @@ impl Rollout {
             };
             html! {
                 <Alert inline=true {r#type} title={text}>
-                    <Button variant={ButtonVariant::Primary} onclick={ctx.link().callback(|_| RolloutMsg::Continue)}>
+                    <Button
+                        variant={ButtonVariant::Primary}
+                        onclick={ctx.link().callback(|_| RolloutMsg::Continue)}
+                    >
                         {t::CONTINUE}
                     </Button>
                     {" "}
-                    <Button variant={ButtonVariant::Secondary} onclick={ctx.link().callback(|_| RolloutMsg::Cancel)}>
+                    <Button
+                        variant={ButtonVariant::Secondary}
+                        onclick={ctx.link().callback(|_| RolloutMsg::Cancel)}
+                    >
                         {t::END}
                     </Button>
                 </Alert>
@@ -436,7 +474,10 @@ impl Rollout {
         let cancel = (running && job.paused.is_none()).then(|| {
             html! {
                 <p>
-                    <Button variant={ButtonVariant::Secondary} onclick={ctx.link().callback(|_| RolloutMsg::Cancel)}>
+                    <Button
+                        variant={ButtonVariant::Secondary}
+                        onclick={ctx.link().callback(|_| RolloutMsg::Cancel)}
+                    >
                         {t::CANCEL}
                     </Button>
                 </p>
@@ -454,6 +495,7 @@ impl Rollout {
                 if let Some(plan) = &job.plan {
                     <p>{t::target(plan.channel.name(), &plan.target)}</p>
                     {table(plan, t::STATE, state)}
+                    {shown}
                 } else if running {
                     <p><Spinner size={SpinnerSize::Sm}/>{" "}{t::PLANNING_AGAIN}</p>
                 }
@@ -500,7 +542,9 @@ fn table(plan: &RolloutPlan, last: &str, cell: impl Fn(&PlannedDevice) -> Html) 
                 </tr>
             </thead>
             <tbody>
-                { for plan.devices.iter().enumerate().map(|(index, device)| row(index, device, &plan.target, cell(device))) }
+                { for plan.devices.iter().enumerate().map(|(index, device)| {
+                    row(index, device, &plan.target, cell(device))
+                }) }
             </tbody>
         </table>
     }
@@ -549,7 +593,9 @@ fn row(index: usize, device: &PlannedDevice, target: &str, last: Html) -> Html {
                 }
             </td>
             <td>
-                <Link<AppRoute> to={AppRoute::device(device.site_id as u32, device.id as u32)}>{device.name.clone()}</Link<AppRoute>>
+                <Link<AppRoute> to={AppRoute::device(device.site_id as u32, device.id as u32)}>
+                    {device.name.clone()}
+                </Link<AppRoute>>
             </td>
             <td>{device.site.clone()}</td>
             <td>{version}</td>
@@ -567,19 +613,40 @@ fn device_state(
     job: &Following,
     device: &PlannedDevice,
     running: bool,
+    shown: Option<i32>,
 ) -> Html {
-    if device.skip.is_some() {
-        return Html::default();
-    }
     let told = job.devices.get(&device.id);
-    let text = match told.map(|told| told.state) {
-        None => t::STATE_PENDING,
-        Some(State::Waiting) => t::STATE_WAITING,
-        Some(State::Started) => t::STATE_STARTED,
-        Some(State::Done) => t::STATE_DONE,
-        Some(State::Failed) => t::STATE_FAILED,
-        Some(State::Cancelled) => t::STATE_CANCELLED,
-        Some(State::Skipped) => t::STATE_SKIPPED,
+    let phase = told
+        .filter(|told| told.state == State::Started)
+        .and_then(|told| told.phase.as_ref());
+    let rebooting = |id: &i32| {
+        job.devices.get(id).is_some_and(|told| {
+            told.state == State::Started && told.phase.as_ref().is_some_and(reboots)
+        })
+    };
+    let offline = running.then(|| {
+        if phase.is_some_and(reboots) {
+            return Some(t::offline(None));
+        }
+        let by = device.cut_by.iter().find(|id| rebooting(id))?;
+        let name = job.plan.as_ref()?.devices.iter().find(|d| d.id == *by)?;
+        Some(t::offline(Some(&name.name)))
+    });
+    if device.skip.is_some() {
+        return match offline.flatten() {
+            Some(offline) => html!(<div class="rollout-offline">{offline}</div>),
+            None => Html::default(),
+        };
+    }
+    let text = match (told.map(|told| told.state), phase) {
+        (Some(State::Started), Some(phase)) => update_phase(phase),
+        (None, _) => t::STATE_PENDING.into(),
+        (Some(State::Waiting), _) => t::STATE_WAITING.into(),
+        (Some(State::Started), None) => t::STATE_STARTED.into(),
+        (Some(State::Done), _) => t::STATE_DONE.into(),
+        (Some(State::Failed), _) => t::STATE_FAILED.into(),
+        (Some(State::Cancelled), _) => t::STATE_CANCELLED.into(),
+        (Some(State::Skipped), _) => t::STATE_SKIPPED.into(),
     };
     let startable = matches!(told.map(|told| told.state), None | Some(State::Waiting));
     let id = device.id;
@@ -589,12 +656,36 @@ fn device_state(
                 <Spinner size={SpinnerSize::Sm}/>{" "}
             }
             {text}
+            if let Some(offline) = offline.flatten() {
+                <div class="rollout-offline">{offline}</div>
+            }
             if let Some(error) = told.and_then(|told| told.error.as_ref()) {
                 <div class="rollout-error">{ServerProblem::from(error).text()}</div>
             }
+            if told.is_some_and(|told| told.job.is_some()) {
+                {" "}
+                if shown == Some(id) {
+                    <Button
+                        variant={ButtonVariant::Link}
+                        onclick={ctx.link().callback(|_| RolloutMsg::Show(None))}
+                    >
+                        {t::HIDE_JOB}
+                    </Button>
+                } else {
+                    <Button
+                        variant={ButtonVariant::Link}
+                        onclick={ctx.link().callback(move |_| RolloutMsg::Show(Some(id)))}
+                    >
+                        {t::SHOW_JOB}
+                    </Button>
+                }
+            }
             if startable && running {
                 {" "}
-                <Button variant={ButtonVariant::Link} onclick={ctx.link().callback(move |_| RolloutMsg::Skip(id))}>
+                <Button
+                    variant={ButtonVariant::Link}
+                    onclick={ctx.link().callback(move |_| RolloutMsg::Skip(id))}
+                >
                     {t::SKIP}
                 </Button>
             }

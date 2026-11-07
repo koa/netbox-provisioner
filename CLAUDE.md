@@ -1074,7 +1074,11 @@ watchdogs suspended), up to `PARALLEL` (4) at once but never two related ones
 failed device until `continueRollout` (`Control`), `skipRolloutDevice` leaves a device out,
 cancelling it cancels the update jobs it started. Its events (`RolloutPlanned`,
 `RolloutDevice`, `RolloutPaused`, `RolloutContinued`, `RolloutDone`) are polled by the page,
-which follows `rolloutJob` on opening. While it runs, its updates share their downloads
+which follows `rolloutJob` on opening. `RolloutDevice` comes again on each new state of the
+update job (`phase`, looked at every `TICK`), which the page shows as the device's state; a
+device rebooting, or one of its `PlannedDevice::cut_by` (it is behind them or powered by
+them), is marked offline; „Ablauf“ opens the device's update job below the table
+(`JobView`). While it runs, its updates share their downloads
 (`update::DownloadCache`). The leases are in-process only. They only hold back
 reboots the provisioner sends: a supplier with
 `/system/watchdog watch-address` behind the updating device reboots by itself and cuts its

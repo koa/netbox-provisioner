@@ -8,6 +8,7 @@ use crate::{
         rollout::{PlannedDevice, RolloutFallback, RolloutPlan, RolloutSkip},
         update::Channel,
     },
+    device_state::UpdateState,
     error_info::ErrorInfo,
     job::{Event, JobState, Log},
 };
@@ -36,6 +37,7 @@ struct FakeJob {
     id: u32,
     state: JobState,
     cancelled: Arc<AtomicBool>,
+    phase: Arc<Mutex<Option<UpdateState>>>,
 }
 
 impl UpdateJob for FakeJob {
@@ -48,6 +50,9 @@ impl UpdateJob for FakeJob {
             false => (self.state, None),
         }
     }
+    fn phase(&self) -> Option<UpdateState> {
+        *self.phase.lock().unwrap()
+    }
     fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
     }
@@ -56,6 +61,8 @@ impl UpdateJob for FakeJob {
 struct Devices {
     goes: Mutex<HashMap<u32, Goes>>,
     cancelled: Arc<AtomicBool>,
+    /// the state every update is in
+    phase: Arc<Mutex<Option<UpdateState>>>,
 }
 
 impl Devices {
@@ -63,6 +70,7 @@ impl Devices {
         Arc::new(Devices {
             goes: Mutex::new(goes.iter().copied().collect()),
             cancelled: Arc::default(),
+            phase: Arc::default(),
         })
     }
     async fn start(&self, device: u32) -> Result<FakeJob, Error> {
@@ -81,6 +89,7 @@ impl Devices {
             id: 1000 + device,
             state,
             cancelled: self.cancelled.clone(),
+            phase: self.phase.clone(),
         })
     }
 }
@@ -103,6 +112,7 @@ fn device(id: u32, pilot: bool) -> PlannedDevice {
         pilot,
         depth: Some(1),
         related: Vec::new(),
+        cut_by: Vec::new(),
     }
 }
 
@@ -308,4 +318,35 @@ async fn a_device_waits_for_the_one_in_front() {
             (1, State::Done)
         ]
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn each_new_state_of_an_update_is_told() {
+    let devices = Devices::new(&[(1, Goes::Hangs)]);
+    let phase = devices.phase.clone();
+    let (log, _, handle) = start(plan(vec![device(1, false)]), devices);
+    let phases = |log: &Log| {
+        log.events()
+            .into_iter()
+            .filter_map(|event| match event {
+                Event::RolloutDevice(told) => Some(told.phase),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    *phase.lock().unwrap() = Some(UpdateState::Uploading);
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    *phase.lock().unwrap() = Some(UpdateState::Rebooting);
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert_eq!(
+        phases(&log),
+        [
+            None,
+            Some(UpdateState::Uploading),
+            Some(UpdateState::Rebooting)
+        ]
+    );
+    log.cancel();
+    let _ = handle.await;
 }

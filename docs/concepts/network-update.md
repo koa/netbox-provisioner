@@ -151,8 +151,10 @@ Cache.
 Eine Seite „Netz aktualisieren“ (`pages/rollout.rs`): Sites und Kanal wählen, Plan ansehen
 (Tabelle: Gerät, Version jetzt → Ziel, Architektur, Pakete mit Grösse und freiem Speicher,
 Fallback, Grund für die Position), Piloten ändern, starten. Während er läuft: dieselbe Tabelle
-mit dem Stand pro Gerät (Link auf die Geräteseite mit dessen Job, „Überspringen“ für die noch
-nicht gestarteten), bei einer Pause „Weiter“ und „Rollout beenden“. Die Seite fragt die Events
+mit dem Stand pro Gerät: die Phase seines Update-Jobs (Herunterladen, Hochladen, Neustart, …,
+alle 2 s nachgeführt), „offline“, solange es selbst oder ein Gerät, hinter dem es hängt oder das
+es speist, neu startet, „Ablauf“ klappt den Job des Geräts unter der Tabelle auf; „Überspringen“
+für die noch nicht gestarteten, bei einer Pause „Weiter“ und „Rollout beenden“. Die Seite fragt die Events
 jede Sekunde ab, wie die Abweichung einer Site, und nimmt beim Öffnen den neuesten Rollout auf.
 Später die [Netz-Ansicht](network-map.md) mit eingefärbten Knoten.
 

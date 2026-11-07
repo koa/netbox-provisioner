@@ -75,6 +75,11 @@ pub const CONTINUE: &str = "Weiter";
 pub const END: &str = "Rollout beenden";
 pub const CANCEL: &str = "Rollout abbrechen";
 pub const SKIP: &str = "Überspringen";
+pub const SHOW_JOB: &str = "Ablauf";
+pub const HIDE_JOB: &str = "Ablauf ausblenden";
+pub fn job_of(device: &str) -> String {
+    format!("Ablauf von {device}")
+}
 pub const PAUSED_AFTER_PILOTS: &str = "Die Piloten sind durch. Prüfe sie auf ihren Seiten; \
     „Weiter“ aktualisiert die übrigen Geräte.";
 pub fn paused_failed(device: &str) -> String {
@@ -86,6 +91,13 @@ pub fn paused_failed(device: &str) -> String {
 pub const STATE_PENDING: &str = "wartet auf seine Reihe";
 pub const STATE_WAITING: &str = "wartet auf einen anderen Job des Geräts";
 pub const STATE_STARTED: &str = "Update läuft";
+/// The device is offline: it reboots, or `by` does, which it is behind or powered by.
+pub fn offline(by: Option<&str>) -> String {
+    match by {
+        None => "offline: startet neu".into(),
+        Some(by) => format!("offline: {by} startet neu"),
+    }
+}
 pub const STATE_DONE: &str = "aktualisiert";
 pub const STATE_FAILED: &str = "fehlgeschlagen";
 pub const STATE_CANCELLED: &str = "abgebrochen";

@@ -2,7 +2,7 @@
 //! starting and steering it, and its job's events.
 use super::{
     schema::schema,
-    types::{Channel, ErrorInfo, JobState, WideInt},
+    types::{Channel, ErrorInfo, JobState, UpdateState, WideInt},
 };
 
 #[derive(cynic::QueryVariables, Debug)]
@@ -43,6 +43,7 @@ pub struct PlannedDevice {
     pub download: Option<WideInt>,
     pub free_space: Option<WideInt>,
     pub in_ram: bool,
+    pub cut_by: Vec<i32>,
     pub fallback: RolloutFallback,
     pub skip: Option<RolloutSkip>,
     pub error: Option<ErrorInfo>,
@@ -201,6 +202,7 @@ pub struct RolloutDevice {
     pub device: i32,
     pub state: RolloutDeviceState,
     pub job: Option<i32>,
+    pub phase: Option<UpdateState>,
     pub error: Option<ErrorInfo>,
 }
 

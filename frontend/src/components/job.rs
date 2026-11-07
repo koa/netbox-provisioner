@@ -8,7 +8,7 @@ use crate::{
                 CancelJob, CancelJobVariables, DeviceWait, Event, FallbackLeftReason, Job,
                 JobEvents, JobEventsVariables, Logged, RebootReason, ScriptProgress,
             },
-            types::{ErrorInfo, JobKind, JobPhase as Phase, JobState, LeftoverAction},
+            types::{ErrorInfo, JobKind, JobPhase as Phase, JobState, LeftoverAction, UpdateState},
         },
         live::{Subscription, watch_data},
         request,
@@ -238,10 +238,43 @@ fn title(job: &Job) -> (String, AlertType) {
 
 /// The state the job is in while it runs, or ended in when it didn't get through; nothing
 /// once done (its last state says nothing then).
+/// The name of an update's state (`Job.phase`, a rollout's `RolloutDevice.phase`).
+pub fn update_phase(state: &UpdateState) -> String {
+    use UpdateState as U;
+    use t::phase as p;
+    match state {
+        U::Reading => p::READING.into(),
+        U::SuspendingWatchdogs => p::SUSPENDING_WATCHDOGS.into(),
+        U::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
+        U::RememberingNeighbors => p::REMEMBERING_NEIGHBORS.into(),
+        U::ArmingFallback => p::ARMING_FALLBACK.into(),
+        U::Downloading => p::DOWNLOADING.into(),
+        U::Uploading => p::UPLOADING.into(),
+        U::WaitingToReboot => p::WAITING_TO_REBOOT.into(),
+        U::Rebooting => p::REBOOTING.into(),
+        U::NotUpdated => p::NOT_UPDATED.into(),
+        U::StoppingFallback => p::STOPPING_FALLBACK.into(),
+        U::WaitingForNeighbors => p::WAITING_FOR_NEIGHBORS.into(),
+        U::Firmware => p::FIRMWARE.into(),
+        U::WaitingToRebootFirmware => p::WAITING_TO_REBOOT_FIRMWARE.into(),
+        U::RebootingFirmware => p::REBOOTING_FIRMWARE.into(),
+        U::RestoringWatchdogs => p::RESTORING_WATCHDOGS.into(),
+        U::Other(other) => other.clone(),
+    }
+}
+
+/// Whether a device whose update is in `state` is offline: it reboots.
+pub fn reboots(state: &UpdateState) -> bool {
+    matches!(
+        state,
+        UpdateState::Rebooting | UpdateState::RebootingFirmware
+    )
+}
+
 fn phase_line(job: &Job, running: bool) -> Option<String> {
     use crate::graphql::authenticated::types::{
         ApplyState as A, BootstrapState as B, CleanupState as C, DeviceModeState as D,
-        NetboxState as N, PowerCycleState as P, RebootState as R, UpdateState as U,
+        NetboxState as N, PowerCycleState as P, RebootState as R,
     };
     use t::phase as p;
     if job.state == JobState::Done {
@@ -263,25 +296,7 @@ fn phase_line(job: &Job, running: bool) -> Option<String> {
             A::Finishing => p::FINISHING.into(),
             A::Other(o) => other(o),
         },
-        Phase::UpdatePhase(phase) => match &phase.update {
-            U::Reading => p::READING.into(),
-            U::SuspendingWatchdogs => p::SUSPENDING_WATCHDOGS.into(),
-            U::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
-            U::RememberingNeighbors => p::REMEMBERING_NEIGHBORS.into(),
-            U::ArmingFallback => p::ARMING_FALLBACK.into(),
-            U::Downloading => p::DOWNLOADING.into(),
-            U::Uploading => p::UPLOADING.into(),
-            U::WaitingToReboot => p::WAITING_TO_REBOOT.into(),
-            U::Rebooting => p::REBOOTING.into(),
-            U::NotUpdated => p::NOT_UPDATED.into(),
-            U::StoppingFallback => p::STOPPING_FALLBACK.into(),
-            U::WaitingForNeighbors => p::WAITING_FOR_NEIGHBORS.into(),
-            U::Firmware => p::FIRMWARE.into(),
-            U::WaitingToRebootFirmware => p::WAITING_TO_REBOOT_FIRMWARE.into(),
-            U::RebootingFirmware => p::REBOOTING_FIRMWARE.into(),
-            U::RestoringWatchdogs => p::RESTORING_WATCHDOGS.into(),
-            U::Other(o) => other(o),
-        },
+        Phase::UpdatePhase(phase) => update_phase(&phase.update),
         Phase::RebootPhase(phase) => match &phase.reboot {
             R::Reading => p::READING.into(),
             R::WaitingForChain => p::WAITING_FOR_CHAIN.into(),

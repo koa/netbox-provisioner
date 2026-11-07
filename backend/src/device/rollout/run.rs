@@ -7,6 +7,7 @@
 use super::{PlannedDevice, RolloutPlan};
 use crate::{
     Error,
+    device_state::{JobPhase, UpdateState},
     error_info::ErrorInfo,
     job::{self, Job, JobState, Log},
     lock::LockAnyway,
@@ -41,6 +42,8 @@ pub struct RolloutDevice {
     pub state: RolloutDeviceState,
     /// its update job, once started
     pub job: Option<u32>,
+    /// the state its update job is in while it runs, told again on each change
+    pub phase: Option<UpdateState>,
     /// why it failed
     pub error: Option<ErrorInfo>,
 }
@@ -156,6 +159,8 @@ impl Control {
 pub trait UpdateJob {
     fn id(&self) -> u32;
     fn outcome(&self) -> (JobState, Option<ErrorInfo>);
+    /// the state the update is in
+    fn phase(&self) -> Option<UpdateState>;
     fn cancel(&self);
 }
 
@@ -165,6 +170,12 @@ impl UpdateJob for Arc<Job> {
     }
     fn outcome(&self) -> (JobState, Option<ErrorInfo>) {
         Job::outcome(self)
+    }
+    fn phase(&self) -> Option<UpdateState> {
+        match self.log().phase()? {
+            JobPhase::Update(state) => Some(state),
+            _ => None,
+        }
     }
     fn cancel(&self) {
         job::cancel(self.job_id());
@@ -262,7 +273,8 @@ where
         &mut self,
         mut pending: VecDeque<&'p PlannedDevice>,
     ) -> Result<(VecDeque<&'p PlannedDevice>, Option<Box<str>>), Error> {
-        let mut running: Vec<(&PlannedDevice, J)> = Vec::new();
+        // each with the state of its update told last
+        let mut running: Vec<(&PlannedDevice, J, Option<UpdateState>)> = Vec::new();
         let mut failed = None;
         loop {
             let mut busy = Vec::new();
@@ -270,30 +282,30 @@ where
                 // the first in the order that none of the running ones is related to
                 let free = pending
                     .iter()
-                    .position(|device| !running.iter().any(|(other, _)| related(device, other)));
+                    .position(|device| !running.iter().any(|(other, ..)| related(device, other)));
                 let Some(device) = free.and_then(|at| pending.remove(at)) else {
                     break;
                 };
                 if self.control.skipped(device.id) {
-                    self.tell(device, RolloutDeviceState::Skipped, None, None);
+                    self.tell(device, RolloutDeviceState::Skipped, None, None, None);
                     self.tally.skipped += 1;
                     continue;
                 }
                 match (self.start)(device.id).await {
                     Ok(job) => {
-                        let id = Some(job.id());
-                        self.tell(device, RolloutDeviceState::Started, id, None);
-                        running.push((device, job));
+                        let (id, phase) = (Some(job.id()), job.phase());
+                        self.tell(device, RolloutDeviceState::Started, id, phase, None);
+                        running.push((device, job, phase));
                     }
                     Err(Error::Busy(_)) => {
                         if self.waiting.insert(device.id) {
-                            self.tell(device, RolloutDeviceState::Waiting, None, None);
+                            self.tell(device, RolloutDeviceState::Waiting, None, None, None);
                         }
                         busy.push(device);
                     }
                     Err(error) => {
                         let error = Some(ErrorInfo::from(&error));
-                        self.tell(device, RolloutDeviceState::Failed, None, error);
+                        self.tell(device, RolloutDeviceState::Failed, None, None, error);
                         self.tally.failed += 1;
                         failed = Some(device.name.clone());
                     }
@@ -307,14 +319,14 @@ where
                 return Ok((pending, failed));
             }
             if let Err(cancelled) = self.log.unless_cancelled(tokio::time::sleep(TICK)).await {
-                for (_, job) in &running {
+                for (_, job, _) in &running {
                     job.cancel();
                 }
                 return Err(cancelled);
             }
             let mut index = 0;
             while index < running.len() {
-                let (device, job) = &running[index];
+                let (device, job, told_phase) = &mut running[index];
                 let (state, error) = job.outcome();
                 let told = match state {
                     JobState::Running => None,
@@ -323,10 +335,17 @@ where
                     JobState::Cancelled => Some(RolloutDeviceState::Cancelled),
                 };
                 let Some(told) = told else {
+                    let phase = job.phase();
+                    if phase != *told_phase {
+                        *told_phase = phase;
+                        let (device, id) = (*device, Some(job.id()));
+                        self.tell(device, RolloutDeviceState::Started, id, phase, None);
+                    }
                     index += 1;
                     continue;
                 };
-                self.tell(device, told, Some(job.id()), error);
+                let (device, id) = (*device, Some(job.id()));
+                self.tell(device, told, id, None, error);
                 if told == RolloutDeviceState::Done {
                     self.tally.updated += 1;
                 } else {
@@ -342,6 +361,7 @@ where
         device: &PlannedDevice,
         state: RolloutDeviceState,
         job: Option<u32>,
+        phase: Option<UpdateState>,
         error: Option<ErrorInfo>,
     ) {
         self.log.emit(RolloutDevice {
@@ -349,6 +369,7 @@ where
             name: device.name.clone(),
             state,
             job,
+            phase,
             error,
         });
     }

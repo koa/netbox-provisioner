@@ -72,6 +72,9 @@ pub struct PlannedDevice {
     /// the devices of the plan it doesn't update at the same time as (ids): those behind it on
     /// the ways, those it powers and those powering it
     pub related: Vec<u32>,
+    /// the devices of the plan whose reboot takes it offline (ids): those it is behind on the
+    /// ways and those powering it
+    pub cut_by: Vec<u32>,
 }
 
 /// How the device comes back from an update that fails.
@@ -134,6 +137,11 @@ pub async fn plan(sites: &[SiteAccess], channel: Channel) -> Result<RolloutPlan,
         .iter()
         .map(|device| (Box::<str>::from(device.name()), device.id().0))
         .collect::<HashMap<_, _>>();
+    // what is behind each, worked out once
+    let behind = devices
+        .iter()
+        .map(|device| (Box::<str>::from(device.name()), paths.behind(device.name())))
+        .collect::<HashMap<_, _>>();
     let mut planned = devices
         .iter()
         .enumerate()
@@ -141,6 +149,7 @@ pub async fn plan(sites: &[SiteAccess], channel: Channel) -> Result<RolloutPlan,
             let result = read.remove(&index).unwrap_or(Err(Error::Cancelled));
             let mut planned = planned_device(device, result, depths.get(device.name()).copied());
             planned.related = related(device, &paths, &ids);
+            planned.cut_by = cut_by(device, &behind, &ids);
             planned
         })
         .collect::<Vec<_>>();
@@ -207,6 +216,27 @@ fn related(device: &DeviceAccess, paths: &Paths, ids: &HashMap<Box<str>, u32>) -
         .collect::<Vec<_>>();
     related.sort_unstable();
     related
+}
+
+/// The devices of `devices` whose reboot takes `device` offline, by their ids: it is behind
+/// them, or they power it.
+fn cut_by(
+    device: &DeviceAccess,
+    behind: &HashMap<Box<str>, BTreeSet<Box<str>>>,
+    ids: &HashMap<Box<str>, u32>,
+) -> Vec<u32> {
+    let mut cut_by = behind
+        .iter()
+        .filter(|(other, _)| &***other != device.name())
+        .filter(|(_, behind)| behind.contains(device.name()))
+        .map(|(other, _)| other.clone())
+        .chain(supplier_devices(device).iter().map(|d| d.name().into()))
+        .collect::<BTreeSet<Box<str>>>()
+        .iter()
+        .filter_map(|name| ids.get(name).copied())
+        .collect::<Vec<_>>();
+    cut_by.sort_unstable();
+    cut_by
 }
 
 /// What one device runs and what an update would need there.
@@ -324,6 +354,7 @@ fn planned_device(
         pilot: false,
         depth,
         related: Vec::new(),
+        cut_by: Vec::new(),
     };
     let read = match read {
         Ok(read) => read,
