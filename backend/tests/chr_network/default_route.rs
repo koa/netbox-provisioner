@@ -1,3 +1,5 @@
+//! Scope: CHR test of an internet uplink's default route over OSPF; nothing else.
+//!
 //! The default route of an internet uplink reaches the network over OSPF:
 //! `internet -- router -- inner`. `internet` is the provider, set up by hand with a DHCP server;
 //! `router` has its uplink tagged `internet`, `nat` and `dhcp-client` and the custom field

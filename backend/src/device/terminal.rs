@@ -1,3 +1,6 @@
+//! Scope: SSH to a device: the console, the tunnel to a neighbor and the upload by SCP; not what is
+//! typed into the console (`bootstrap`).
+//!
 //! An interactive RouterOS console over SSH, for what the API can't do: a `/tool mac-telnet`
 //! session to a device that has no IP address yet. Logs in with the [`LOGIN_FLAGS`], so the
 //! output is plain text the prompts can be matched in.

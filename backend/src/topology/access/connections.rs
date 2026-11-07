@@ -1,3 +1,4 @@
+//! Scope: What a cable path connects; not walking it (`cable`).
 use crate::topology::access::{
     cable::{CableAccess, CablePortAccess},
     device::DeviceAccess,

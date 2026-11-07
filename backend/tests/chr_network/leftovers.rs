@@ -1,3 +1,5 @@
+//! Scope: CHR tests of what a job leaves on a device; nothing else.
+//!
 //! What a job left on a device (`backend::device::leftovers`) on a real CHR: the apply
 //! fallback, the watchdogs' safety net and an uploaded package are found (the apply script
 //! only while it runs),

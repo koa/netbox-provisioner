@@ -1,3 +1,6 @@
+//! Scope: RouterOS commands no mikrotik-model type covers, sent as they are; not commands a model
+//! covers.
+//!
 //! Commands sent as they are over the API, where no model of mikrotik-model fits: actions
 //! (`/system/package/uninstall`, `/interface/wifi/radio/provision`), monitors and the few
 //! menus read only for one field. A refusal is [`Error::Refused`] naming the command.

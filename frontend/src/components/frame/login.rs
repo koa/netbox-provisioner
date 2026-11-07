@@ -1,3 +1,5 @@
+//! Scope: The screen without a session; nothing else.
+//!
 //! The screen without a session: it starts the login, or shows why it failed with a button to
 //! try again.
 use crate::{auth::start_login, i18n};

@@ -1,3 +1,5 @@
+//! Scope: Values the browser keeps for this user alone; nothing else.
+//!
 //! A value the browser keeps for this user alone, never sent to the backend or seen by anyone
 //! else; used for a page's own, unpublished preferences and overrides.
 

@@ -1,3 +1,5 @@
+//! Scope: The helper „Verbindung“ between two routers; not taking a link away (`disconnect`).
+//!
 //! Helper „Verbindung“, direct: two router ports become a link of the OSPF network. The cable
 //! between them if NetBox lacks it, the next free `/31` of the transfer pool with one address
 //! at each end (RFC 3021: no network or broadcast address), `ospf` at both ends, the same MTU at

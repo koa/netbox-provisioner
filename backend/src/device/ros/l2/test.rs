@@ -1,3 +1,4 @@
+//! Scope: Tests of `ros::l2`; nothing else.
 use crate::{
     device::ros::{
         BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, VlanOnBridge, test::empty_current,

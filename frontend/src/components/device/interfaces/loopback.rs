@@ -1,3 +1,5 @@
+//! Scope: The loopback's part of the interface view; nothing else.
+//!
 //! The loopback: a list of its facts, with the findings about the device as a whole.
 use super::{
     rows::{Action, Row},

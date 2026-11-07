@@ -1,3 +1,5 @@
+//! Scope: Tests of the WLANs' VLANs on CAPs and controllers; nothing else.
+//!
 //! A Wireless LAN Group whose WLANs have different VLANs: the controller of `/interface/wifi`
 //! sets each WLAN's VLAN, the CAPs' radios tag it (`wifi-qcom`); 802.11ac radios
 //! (`wifi-qcom-ac`) can't, a wAP ac runs them as `wlan<N>` of the legacy CAPsMAN instead.

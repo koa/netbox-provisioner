@@ -1,3 +1,4 @@
+//! Scope: The frontend's module tree and its start; nothing else.
 use crate::app::App;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 mod app;

@@ -1,3 +1,6 @@
+//! Scope: What all NetBox helpers share: the plan, its preview and the GraphQL input naming a
+//! helper; not one helper (its module).
+//!
 //! The helpers of `docs/config-helper.md`: for a standard case, a plan of the NetBox
 //! objects to create or change, shown with its effect (`NetboxPlan.preview`) before it is
 //! written. They write to NetBox only, never to a device; the device gets it by applying its

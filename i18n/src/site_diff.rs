@@ -1,3 +1,4 @@
+//! Scope: The texts of how far each device of a site is from NetBox; nothing else.
 pub const TITLE: &str = "Abweichung von NetBox";
 pub const INTRO: &str = "Rechnet für jedes Gerät, was ein Anwenden ändern würde, wie der Diff auf der Geräteseite. Läuft im Hintergrund weiter, auch wenn die Seite zu ist; auf den Geräten ändert sich nichts.";
 pub const START: &str = "Alle Geräte prüfen";

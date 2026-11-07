@@ -1,3 +1,6 @@
+//! Scope: The site's check of what its devices see at their ports; not showing the findings
+//! (`components::neighbors`).
+//!
 //! What the devices of a site see at their ports against NetBox's cables there
 //! (`AccessibleDevice.neighborFindings`): read on a click, every device at once, each shown as
 //! it answers, with when it was read. Subscribed afterwards: a cable taken over in NetBox drops

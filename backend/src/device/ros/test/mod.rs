@@ -1,3 +1,4 @@
+//! Scope: Tests of the base config, one module per topic; nothing that has a topic module.
 mod capsman;
 mod firewall;
 mod hand_made;

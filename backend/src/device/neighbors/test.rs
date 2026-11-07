@@ -1,3 +1,4 @@
+//! Scope: Tests of `device::neighbors`; nothing else.
 use super::*;
 use crate::topology::{
     Cable, CablePort, CircuitTermination, Device, DeviceId, FrontPort, Interface, InterfaceId,

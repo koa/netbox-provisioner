@@ -1,3 +1,6 @@
+//! Scope: The files of jobs that go on after a restart: what they hold, writing, reading and
+//! discarding them; not going on with them (`job::resume`).
+//!
 //! The jobs that go on after a restart of the provisioner (`docs/jobs.md`,
 //! „Weiterführen nach einem Neustart“): only an apply whose script runs or whose fallback is
 //! being taken away, and an update with its fallback set while it reboots or decides about

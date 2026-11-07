@@ -1,3 +1,5 @@
+//! Scope: The query for a device's interfaces by task; not the live checks (`interface_live`).
+//!
 //! A device's interfaces sorted by task (`DeviceAccess.interfaceView`,
 //! `components::device::interfaces`), the findings of `super::findings` grouped onto the rows.
 use super::{

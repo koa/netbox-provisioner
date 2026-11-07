@@ -1,3 +1,6 @@
+//! Scope: Keeping a subscription live: its rounds, what they read and when to answer again; not the
+//! fields it serves (`graphql`).
+//!
 //! Subscriptions (`docs/device-state.md`): `SubscriptionAuthenticated` has the fields
 //! of the query with the same types, each a stream of [`rounds`]. It gives the object, the
 //! selection under it is resolved by the same resolvers as in the query, and it gives it again

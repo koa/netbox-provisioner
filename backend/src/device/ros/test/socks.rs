@@ -1,3 +1,5 @@
+//! Scope: Tests of the management proxy's SOCKS; nothing else.
+//!
 //! `/ip/socks/access` of the management proxy (`setup_management_proxy`, A3): with
 //! `api_networks` an allow for each, then a deny for the rest, after the rules set up by hand.
 use crate::device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, test::empty_current};

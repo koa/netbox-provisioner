@@ -1,3 +1,4 @@
+//! Scope: Tests of `topology::interfaces`; nothing else.
 use super::*;
 use crate::topology::{
     Cable, CablePort, Device, DeviceId, Interface, InterfaceId, IpAddressData, IpPrefixData,

@@ -1,3 +1,6 @@
+//! Scope: The findings about NetBox for a site or the whole network; not their words
+//! (`i18n::findings`).
+//!
 //! What NetBox lacks or what doesn't fit together, for a site or the whole network
 //! (`TopologyHolder.findings`), every object a link to it in NetBox.
 use crate::{

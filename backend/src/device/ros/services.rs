@@ -1,3 +1,6 @@
+//! Scope: What the device offers and asks: `/ip/service`, the management proxy's SOCKS and DNS; not
+//! the firewall in front (`firewall`).
+//!
 //! What the device offers and asks: `/ip/service`, the management proxy's `/ip socks` and
 //! DNS.
 use super::{BaseDeviceDataTarget, firewall, firewall_comment};

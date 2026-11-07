@@ -1,3 +1,6 @@
+//! Scope: Every text the provisioner shows, in German, one module per page, component or record; no
+//! `Html` and no type of the frontend or backend (`frontend/src/i18n`).
+//!
 //! Every text the provisioner shows, in German, by the page, component or record showing it.
 //! The frontend takes its texts from here and writes none inline, and so does the backend
 //! where it writes text for people (the NetBox journal): it sends data, which is worded here

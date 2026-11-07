@@ -1,3 +1,5 @@
+//! Scope: Tests that what the provisioner doesn't manage stays as it is; nothing else.
+//!
 //! Addresses on interfaces set up by hand stay (`BaseDeviceDataTarget::keep_hand_made_addresses`):
 //! the tunnels of an uplink router, as BGP.
 use super::empty_current;

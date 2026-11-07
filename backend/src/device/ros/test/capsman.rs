@@ -1,3 +1,5 @@
+//! Scope: Tests of the legacy CAPsMAN and its CAPs; nothing else.
+//!
 //! A Wireless LAN Group with a CAP of the legacy CAPsMAN (a radio `wlan1` in NetBox) next to
 //! the controller, which has the WLAN's VLAN (VXLAN of its group) with an address.
 use crate::{

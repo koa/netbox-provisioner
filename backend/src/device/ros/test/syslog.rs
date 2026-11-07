@@ -1,3 +1,5 @@
+//! Scope: Tests of `/system/logging`; nothing else.
+//!
 //! `/system/logging` (`device::ros::syslog`): RouterOS's own actions and rules stay, the
 //! `remote` action goes to CEF, and with `device_syslog` the device logs to the server.
 use crate::{

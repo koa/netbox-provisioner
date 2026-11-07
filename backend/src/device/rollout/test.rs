@@ -1,3 +1,4 @@
+//! Scope: Tests of `device::rollout`; nothing else.
 use super::{Candidate, order};
 
 fn candidate(name: &str, architecture: &str, depth: u32, leaf: bool) -> Candidate {

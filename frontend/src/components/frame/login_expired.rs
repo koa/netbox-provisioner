@@ -1,3 +1,5 @@
+//! Scope: The note on every page once the server refuses the token; nothing else.
+//!
 //! The note on top of every page once the server refuses the token (E20, Z34): without a
 //! refresh token (Pocket-ID without `offline_access`) `yew-oauth2` keeps an expired one as
 //! authenticated, and every request gets `403`. "Erneut anmelden" leaves for the provider and

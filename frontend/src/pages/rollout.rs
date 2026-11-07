@@ -1,3 +1,5 @@
+//! Scope: The page of updates across the network; nothing else.
+//!
 //! Updates across the network (`/rollout`, `docs/concepts/network-update.md`): the sites and
 //! the channel chosen, what a rollout would do read from every RouterOS device of them
 //! (`rolloutPlan`, only reading) and shown in the order it would update them, the pilots

@@ -1,3 +1,5 @@
+//! Scope: The L3 and L2 MTU of the ports; nothing else.
+//!
 //! The L3 and L2 MTU of the ports, the same at both ends of a cable.
 use super::{BaseDeviceDataTarget, SetupError};
 use crate::topology::{

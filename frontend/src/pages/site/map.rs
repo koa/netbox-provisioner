@@ -1,3 +1,5 @@
+//! Scope: The page of a site's network map; not the map (`components::network_map`).
+//!
 //! A site's network map (`/site/<id>/map`).
 use crate::components::network_map::NetworkMap;
 use yew::{Html, Properties, function_component, html};

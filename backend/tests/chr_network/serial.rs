@@ -1,3 +1,5 @@
+//! Scope: Driving a CHR's first-boot dialog over its serial console; nothing else.
+//!
 //! Drives a freshly booted CHR's first-boot dialog (license paging + initial
 //! password set) over the QEMU `-serial tcp:...` console. Ported from a
 //! manually-driven session verified live against CHR 7.24.5; see the

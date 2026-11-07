@@ -1,3 +1,5 @@
+//! Scope: The queries for applying several devices together; nothing else.
+//!
 //! Applying the config to a device together with others (`components::device::batch_apply`): the
 //! devices to pick (`batchCandidates`), the plan of each (`generateCfg`), the batch started
 //! (`applyBatch`).

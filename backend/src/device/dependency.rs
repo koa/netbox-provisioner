@@ -1,3 +1,6 @@
+//! Scope: What a reboot or an update must wait for (PoE chains, the ways to the devices) and the
+//! leases holding them; not the update itself (`update`).
+//!
 //! What a reboot must wait for (`docs/concepts/network-update.md`). A device that powers
 //! another one (NetBox `poe_mode=pse` on the port cabled to it) must not reboot while that one
 //! updates: the consumer has the packages on its flash from the upload on and installs them at

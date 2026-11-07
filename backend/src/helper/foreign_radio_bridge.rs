@@ -1,3 +1,6 @@
+//! Scope: The helper „Funkbrücke“ for bridge devices without RouterOS; not the one with RouterOS
+//! (`radio_bridge`).
+//!
 //! Helper „Funkbrücke“ for two bridge devices without RouterOS (two UISP Wave Nano,
 //! `docs/foreign-radio-bridge.md`). They are set up by hand as an L2 bridge
 //! with a DHCP client, so the plan is the NetBox side and the routers':

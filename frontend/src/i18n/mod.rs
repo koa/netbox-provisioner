@@ -1,3 +1,6 @@
+//! Scope: The frontend's wording: the crate `i18n` passed on, and what builds `Html` or words the
+//! frontend's own types; no text a backend could use too (crate `i18n`).
+//!
 //! Every text the UI shows, in German. Most come from the crate `i18n`, shared with the
 //! backend, and are passed on here, so components keep writing `crate::i18n::…`; the modules
 //! below build `Html` or word the frontend's own types, so they stay here. Components write no

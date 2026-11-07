@@ -1,3 +1,5 @@
+//! Scope: The logged-in user as the resolvers get it from the token; not checking the token
+//! (`binary`).
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]

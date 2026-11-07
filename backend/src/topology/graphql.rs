@@ -1,3 +1,4 @@
+//! Scope: The topology's GraphQL fields; not a single record's (`access`).
 use crate::topology::{
     DeviceId, SiteId, TopologyHolder,
     access::{AccessTopology, device::DeviceAccess, site::SiteAccess},

@@ -1,3 +1,4 @@
+//! Scope: The texts of the login; nothing else.
 pub const AGAIN: &str = "Erneut anmelden";
 /// the server refuses the token on any page (`components::frame::login_expired`)
 pub const EXPIRED: &str = "Anmeldung abgelaufen";

@@ -1,3 +1,6 @@
+//! Scope: The fixtures several modules' tests share (the stored export as a topology); not tests
+//! themselves.
+//!
 //! Fixtures for tests across the crate.
 
 use crate::{

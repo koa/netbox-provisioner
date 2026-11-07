@@ -1,3 +1,6 @@
+//! Scope: Applying the generated config to one device and watching it go through; not generating it
+//! (`cfg`) nor several devices at once (`batch`).
+//!
 //! Applying the generated config (`AccessibleDevice::apply`): the script on the device, its
 //! fallback, the checks after it, and the job events of all that.
 use super::cfg::{DeviceCfg, in_script, render_script};

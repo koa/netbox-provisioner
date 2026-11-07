@@ -1,3 +1,5 @@
+//! Scope: Saving an `<svg>` on the page as a standalone SVG or PNG file; nothing else.
+//!
 //! Saving an on-page `<svg>` (the network map) as its own standalone file: as SVG itself, or
 //! rasterized to PNG. The live element only renders correctly because of this page's own
 //! stylesheet (CSS classes, design-token custom properties) and its parent document — neither of

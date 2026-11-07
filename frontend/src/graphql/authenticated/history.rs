@@ -1,3 +1,5 @@
+//! Scope: The query for the device's journal entries; nothing else.
+//!
 //! The device's journal entries for „Verlauf“ (`components::device::history`).
 use super::{schema::schema, types::JobKind};
 

@@ -1,3 +1,4 @@
+//! Scope: The custom GraphQL scalars; nothing else.
 use async_graphql::{InputValueError, InputValueResult, Scalar, ScalarType, Value};
 use mikrotik_model::MacAddress;
 use std::{str::FromStr, time::Duration};

@@ -1,3 +1,6 @@
+//! Scope: Booting disposable CHR VMs and limiting how many run at once; not the image
+//! (`golden_image`).
+//!
 //! Boots disposable per-node CHR VMs on top of a [`GoldenImage`], wired up
 //! per a small, explicit NIC-slot plan (see [`PortWiring`]). Every node gets
 //! its own `qcow2` overlay, so a hard `kill -9` (or just dropping the

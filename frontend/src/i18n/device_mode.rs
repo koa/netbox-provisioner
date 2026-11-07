@@ -1,3 +1,4 @@
+//! Scope: The words of the device mode's features; nothing else.
 use crate::graphql::authenticated::types::DeviceModeReason;
 use ::i18n::common::{DeviceModeNeed, device_mode_feature};
 

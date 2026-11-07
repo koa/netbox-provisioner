@@ -1,3 +1,6 @@
+//! Scope: The `/interface/wifi` radios and the controller of a Wireless LAN Group; not the legacy
+//! CAPsMAN (`capsman`).
+//!
 //! The `/interface/wifi` radios: CAPs and the controller of a Wireless LAN Group.
 
 use super::{WlanVlans, wifi_country, wlan_configuration_name, wlan_vlans};

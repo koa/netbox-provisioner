@@ -1,3 +1,6 @@
+//! Scope: The helper „PoE“; not reading PoE from a device, which the network map and the live
+//! checks use too.
+//!
 //! Helper „PoE“: who feeds whom. One port powers the device at the other end of its cable
 //! (NetBox `poe_mode=pse`), that device's port is fed (`pd`). The two ports are chosen by hand
 //! or taken from what a device reports (`observed`: `/interface/ethernet/poe/monitor`

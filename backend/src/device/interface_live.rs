@@ -1,3 +1,6 @@
+//! Scope: The live checks of the interface view: what the device sees and has at each row; not the
+//! rows from NetBox (`topology::interfaces`).
+//!
 //! The live checks of the interface view (`docs/interface-view.md`): who the device
 //! sees at each row's ports (`/ip/neighbor`, as „Nachbarn lesen“), its OSPF neighbors there, and
 //! whether the bridge devices of a radio link answer a ping at their loopback, and where the

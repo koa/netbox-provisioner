@@ -1,3 +1,5 @@
+//! Scope: The queries and mutations for a rollout; nothing else.
+//!
 //! Updates across the network (`pages::rollout`): what a rollout would do (`rolloutPlan`),
 //! starting and steering it, and its job's events.
 use super::{

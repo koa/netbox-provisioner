@@ -1,3 +1,4 @@
+//! Scope: A popup menu and the select built on it; nothing else.
 use crate::routes::AppRoute;
 use patternfly_yew::prelude::{Divider, Icon, MenuToggle, MenuToggleVariant};
 use std::fmt::Display;

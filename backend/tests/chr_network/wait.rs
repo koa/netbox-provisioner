@@ -1,3 +1,5 @@
+//! Scope: Polling a node until a condition holds; nothing else.
+//!
 //! Polling assertion helpers. Always used over direct access (never through
 //! the realistic SOCKS path in `apply.rs`) - waiting for network state to
 //! converge is setup/validation, not the access pattern under test.

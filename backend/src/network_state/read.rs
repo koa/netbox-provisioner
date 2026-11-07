@@ -1,3 +1,5 @@
+//! Scope: Reading the link-state database from one router; not parsing it (`lsa`).
+//!
 //! Reading the link-state database from one router of a site: the management proxy's device
 //! if it is there (it is reached directly), else the site's OSPF routers by name, the first
 //! that answers. As a fact (`FactKind::Lsdb`), so the map's viewers share a reading.

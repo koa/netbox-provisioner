@@ -1,3 +1,5 @@
+//! Scope: Locking a mutex poisoned by a panic; nothing else.
+//!
 //! A mutex poisoned by a panic (a job's work, `job::start`) holds data that is still usable:
 //! the server and the other jobs go on with it instead of panicking in turn.
 use std::sync::{Mutex, MutexGuard, PoisonError};

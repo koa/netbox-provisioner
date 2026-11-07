@@ -1,3 +1,4 @@
+//! Scope: Access to an IP range; nothing else.
 use crate::topology::{IpRangeData, IpRangeId, Topology, access::AccessTopology};
 use ipnet::IpNet;
 use std::{net::IpAddr, sync::Arc};

@@ -1,3 +1,5 @@
+//! Scope: The rows of the interface view; not a task's table (`table`).
+//!
 //! The rows of `DeviceAccess.interfaceView` as the card shows them: the task and the actions
 //! translated, the rest as the query has it. The findings are those of `topology.findings`, so
 //! `components::findings` words them as everywhere else.

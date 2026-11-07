@@ -1,3 +1,6 @@
+//! Scope: The network map's GraphQL fields: nodes, edges and their details; not reading the devices
+//! (`read`, `device_data`).
+//!
 //! `Query.topology.networkState`: a site's, or every site's, devices and edges with their state
 //! from the LSDB, for the network map (`docs/concepts/network-map.md`, step 2). Fast: only the
 //! LSDB, no device polled. `Query.topology.networkStateDetails` is health, resources and PoE

@@ -1,3 +1,6 @@
+//! Scope: The warnings of an apply the operator should know before; not computing them (the step
+//! that sees the case).
+//!
 //! What applying the generated config would do, or leave, that the operator should know before
 //! (`AccessibleDevice.generateCfg`). Data only: the frontend words it.
 use async_graphql::{SimpleObject, Union};

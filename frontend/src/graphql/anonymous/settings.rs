@@ -1,3 +1,5 @@
+//! Scope: The query for what the login needs; nothing else.
+//!
 //! What the login needs (`authentication`, `pages`).
 use super::schema::schema;
 

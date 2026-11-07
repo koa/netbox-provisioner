@@ -1,3 +1,4 @@
+//! Scope: Access to a WLAN; nothing else.
 use crate::topology::{
     Topology, WlanAuth, WlanData, WlanId,
     access::{AccessTopology, vlan::VlanAccess, wlan_group::WlanGroupAccess},

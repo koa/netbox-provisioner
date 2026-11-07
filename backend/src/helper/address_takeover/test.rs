@@ -1,3 +1,4 @@
+//! Scope: Tests of `helper::address_takeover`; nothing else.
 use super::*;
 use crate::topology::interfaces::test::Net;
 

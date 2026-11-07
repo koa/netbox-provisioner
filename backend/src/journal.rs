@@ -1,3 +1,6 @@
+//! Scope: A job's entry in its device's NetBox journal: writing, reading back and comparing with
+//! the device; not its German text (`i18n::journal`).
+//!
 //! A job's entry in its device's journal in NetBox (`docs/protocol.md`): created when the job
 //! starts, written again at each state it enters and at its end, so NetBox tells how far a job
 //! came after the provisioner forgot it. Written whenever `netbox_write_token` is set; a write

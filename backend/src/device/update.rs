@@ -1,3 +1,6 @@
+//! Scope: Bringing one device's RouterOS, packages and firmware to a version: download, upload,
+//! reboot and check; not the way back (`update_fallback`) nor the order across devices (`rollout`).
+//!
 //! RouterOS updates pushed by the provisioner: it downloads the packages from MikroTik, copies
 //! them onto the device over SCP and reboots it, so the device itself needs no route to the
 //! internet. The target is the newest release of a channel (long-term, stable, testing,

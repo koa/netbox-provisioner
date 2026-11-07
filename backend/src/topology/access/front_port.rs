@@ -1,3 +1,4 @@
+//! Scope: Access to a patch panel's front port; nothing else.
 use crate::topology::{
     FrontPort, FrontPortId, Topology,
     access::{AccessTopology, cable::CableAccess, device::DeviceAccess, rear_port::RearPortAccess},

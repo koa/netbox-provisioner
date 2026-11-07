@@ -1,3 +1,6 @@
+//! Scope: What the NetBox services with tag `forward` open from the internet; not the firewall
+//! rules for it (`ros::firewall`).
+//!
 //! What the NetBox services with tag `forward` open from the internet (`docs/firewall.md`): an
 //! IPv4 address gets a port forwarding on every router with `nat` of its site, or where its site
 //! has none, on every router with `nat` that announces the default route

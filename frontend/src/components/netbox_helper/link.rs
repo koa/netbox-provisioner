@@ -1,3 +1,5 @@
+//! Scope: The forms of „Verbindung“ and „Verbindung abräumen“; nothing else.
+//!
 //! „Verbindung“ and „Verbindung abräumen“: the ports of the device and of the routers
 //! (`linkPorts`), the ends chosen, and a button to take a link in the way out of NetBox.
 use super::{Choice, HelperKind, NetboxHelper, t};

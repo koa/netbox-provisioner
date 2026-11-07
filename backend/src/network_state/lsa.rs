@@ -1,3 +1,5 @@
+//! Scope: Parsing the OSPF link-state database; not judging it (`edges`).
+//!
 //! The OSPF link-state database as `/routing/ospf/lsa/print` gives it: a row per LSA, the
 //! content in `body`, a first line of `key=value` and an indented line per link or router.
 //!

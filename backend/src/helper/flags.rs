@@ -1,3 +1,5 @@
+//! Scope: The helper „Flags“; nothing else.
+//!
 //! Helper „Flags“: the tags `ospf`, `dhcp`, `dhcp-client`, `nat` and `internet` of a device's interfaces as
 //! switches (`docs/netbox-modeling.md`, Tags). The plan sets the ones switched and takes off the
 //! ones switched off; the findings of the device after it (`Topology.findings(after:)`) show

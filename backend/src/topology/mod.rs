@@ -1,3 +1,5 @@
+//! Scope: The topology in memory: its records, their ids and the holder that keeps it current; not
+//! reading it from NetBox (`fetch`) nor what is derived from it (the submodules).
 use crate::{
     netbox::{NetboxError, fetch_topology::FetchTopology},
     topology::fetch::build_topology,

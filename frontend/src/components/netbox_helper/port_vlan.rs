@@ -1,3 +1,5 @@
+//! Scope: The form of „VLAN am Port“; nothing else.
+//!
 //! „VLAN am Port“: a port, then the VLAN group, then its VLAN (`portVlanOptions`).
 use super::{Choice, NetboxHelper, t};
 use crate::{

@@ -1,3 +1,5 @@
+//! Scope: NetBox's order of names; nothing else.
+//!
 //! NetBox' order of names (`utilities/ordering.py`), so lists read as in NetBox: `naturalize`
 //! for devices, `naturalize_interface` for interfaces (`ether2` before `ether10`, all `ether`
 //! before `sfp-sfpplus`, a slot `1/` first).

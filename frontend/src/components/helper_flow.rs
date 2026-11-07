@@ -1,3 +1,5 @@
+//! Scope: A helper in a modal, step by step; not the helper's own form (`netbox_helper`).
+//!
 //! A helper in a modal, from a port's row of `components::device::interfaces` (its suggestion,
 //! taking the link out, a task for it, its settings): a stepper Plan → Vorschau → In NetBox
 //! schreiben → Anwenden above the helper's form, plan and preview (`NetboxHelper`, embedded).

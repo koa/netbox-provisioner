@@ -1,3 +1,5 @@
+//! Scope: The input naming a helper and its start; nothing else.
+//!
 //! The input naming a helper and its start (`Helper`, `@oneOf`): what its plan, its preview and
 //! the findings after it are computed for. `components::netbox_helper::choice::helper`
 //! builds it from the card's choice.

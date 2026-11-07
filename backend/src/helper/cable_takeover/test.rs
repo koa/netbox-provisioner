@@ -1,3 +1,4 @@
+//! Scope: Tests of `helper::cable_takeover`; nothing else.
 use super::*;
 use crate::{
     helper::{PlanStep, connection},

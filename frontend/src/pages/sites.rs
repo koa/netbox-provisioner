@@ -1,3 +1,4 @@
+//! Scope: The page of the sites; nothing else.
 use crate::{
     components::{
         findings::{self, FindingsList},

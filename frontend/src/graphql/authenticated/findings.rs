@@ -1,3 +1,5 @@
+//! Scope: The query for the findings about NetBox; nothing else.
+//!
 //! The findings about NetBox itself (`TopologyHolder.findings`, `components::findings`); the
 //! interface view groups the same type onto its rows (`super::interfaces`).
 use super::{

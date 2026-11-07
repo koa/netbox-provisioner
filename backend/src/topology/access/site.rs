@@ -1,3 +1,4 @@
+//! Scope: Access to a site and its devices; nothing else.
 use crate::topology::{
     SiteData, SiteId, Topology,
     access::{AccessTopology, device::DeviceAccess},

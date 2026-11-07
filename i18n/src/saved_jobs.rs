@@ -1,3 +1,4 @@
+//! Scope: The texts of the jobs saved before a restart; nothing else.
 pub fn title(device: &str) -> String {
     format!("Gespeicherter Auftrag für {device} nicht weitergeführt")
 }

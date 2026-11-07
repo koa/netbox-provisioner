@@ -1,3 +1,5 @@
+//! Scope: Tests of the internet uplink: DHCP clients, NAT and the default route; nothing else.
+//!
 //! The internet uplink (`dhcp-client`, `nat`): its IPv6 DHCP client with prefix delegation
 //! (`BaseDeviceDataTarget::enable_dhcp_v6_client`, `keep_dhcp_v6_clients`) and the list
 //! `uplink` (`add_to_uplinks`).

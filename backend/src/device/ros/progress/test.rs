@@ -1,3 +1,4 @@
+//! Scope: Tests of `ros::progress`; nothing else.
 use super::{Instrument, Progress, instrument};
 use crate::device::ros::fallback::Rearmed;
 use std::time::Duration;

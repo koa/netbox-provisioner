@@ -1,3 +1,6 @@
+//! Scope: Suspending ping watchdogs while an apply's radio stays off; not the watchdogs of an
+//! update (`device::watchdog`).
+//!
 //! The ping watchdogs an apply suspends while a radio it changes stays off
 //! (`docs/watchdog.md`). On a DFS channel the AP listens for radar 10 minutes or longer
 //! after a change ([`RADIO_RESTART`](super::ros::apply::RADIO_RESTART)), as long as

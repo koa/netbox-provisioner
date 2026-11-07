@@ -1,3 +1,4 @@
+//! Scope: The texts of the device page; not those of a card with a module of its own.
 pub const BOARD: &str = "Board";
 pub const CONNECTED: &str = "Verbunden mit";
 /// the device the connection reached (`access.connected`)

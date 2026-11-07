@@ -1,3 +1,4 @@
+//! Scope: Tests of `device::interface_live`; nothing else.
 use super::*;
 use crate::{
     device::neighbors::Neighbors,

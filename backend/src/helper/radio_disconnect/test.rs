@@ -1,3 +1,4 @@
+//! Scope: Tests of `helper::radio_disconnect`; nothing else.
 use super::*;
 use crate::topology::{
     interfaces::test::{Net, address},

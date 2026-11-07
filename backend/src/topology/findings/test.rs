@@ -1,3 +1,4 @@
+//! Scope: Tests of `topology::findings`; nothing else.
 use super::*;
 use crate::{
     topology::test::example_topology,

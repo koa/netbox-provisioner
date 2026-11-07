@@ -1,3 +1,5 @@
+//! Scope: Tests of the perimeter firewall and the forwards; nothing else.
+//!
 //! The perimeter firewall (`device::ros::firewall`, `docs/firewall.md`).
 use super::empty_current;
 use crate::{

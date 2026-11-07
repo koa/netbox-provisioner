@@ -1,3 +1,6 @@
+//! Scope: The CHR harness's root and its tests of the harness itself; a test of a provisioner
+//! feature has a module of its own.
+//!
 //! Multi-CHR network test harness: boots several MikroTik CHR instances
 //! under QEMU, wires them up per a `TopologyBuilder` scenario, and proves
 //! real distributed network behavior (OSPF convergence across hops) rather

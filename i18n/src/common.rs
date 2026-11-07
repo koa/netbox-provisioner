@@ -1,3 +1,4 @@
+//! Scope: Texts several pages use; not a text one page alone uses (its module).
 /// Why the provisioner needs a feature of the device mode (`DeviceModeReason`).
 pub enum DeviceModeNeed<'a> {
     ApplyFallback,

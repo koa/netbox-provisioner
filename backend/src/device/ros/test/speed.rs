@@ -1,3 +1,5 @@
+//! Scope: Tests of fixed port speeds; nothing else.
+//!
 //! The speed NetBox gives a port: without auto-negotiation, named with the medium of its cable.
 use crate::{
     device::ros::{BaseDeviceDataTarget, SetupError, l2::KeepNameGenerator},

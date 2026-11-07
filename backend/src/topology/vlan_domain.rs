@@ -1,3 +1,5 @@
+//! Scope: Where a VLAN is one network and which devices have L3 in it; nothing else.
+//!
 //! Where a VLAN is one network (its broadcast domain) and which devices have L3 in it: with a
 //! VNI on its group (`vxlan_vni`) every RouterOS device with the VLAN, which the VXLAN joins;
 //! without, the RouterOS devices with the VLAN that cables carrying it join (a VLAN used on

@@ -1,3 +1,4 @@
+//! Scope: The words of an apply's warnings; nothing else.
 use crate::graphql::authenticated::types::ApplyWarning as Warning;
 use ::i18n::device::warning as w;
 

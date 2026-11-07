@@ -1,3 +1,4 @@
+//! Scope: A question to confirm before an action; nothing else.
 use crate::i18n::common::CANCEL;
 use patternfly_yew::prelude::{Button, ButtonVariant};
 use web_sys::MouseEvent;

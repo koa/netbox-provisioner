@@ -1,3 +1,5 @@
+//! Scope: CHR tests of the initial setup over mac-telnet; nothing else.
+//!
 //! Initial setup over `/tool mac-telnet` (`backend::device::bootstrap::set_up`) against real
 //! CHRs: an entry node with a password, cabled to one node at factory settings (license not yet
 //! accepted, `admin` without password, so RouterOS asks for a new one) and one that has the

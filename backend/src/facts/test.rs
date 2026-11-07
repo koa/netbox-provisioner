@@ -1,3 +1,4 @@
+//! Scope: Tests of `facts`; nothing else.
 use super::{
     Came, Change, FactKey, FactKind, Freshness, LIMIT, Reading, dropped, get, invalidate, peek,
     peek_newest, reading,

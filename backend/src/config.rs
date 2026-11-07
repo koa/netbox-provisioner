@@ -1,3 +1,5 @@
+//! Scope: The settings of `config.yaml` and the environment, read once; not what is derived from
+//! them per device (`device`, `topology`).
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use std::{

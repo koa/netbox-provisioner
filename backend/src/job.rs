@@ -1,3 +1,7 @@
+//! Scope: Running work in the background as a job: starting, its log and events, cancelling, the
+//! list of jobs and the shutdown; not the work itself (`device::…`) nor its state machines
+//! (`device_state`).
+//!
 //! Long running work on a device (an update, an apply, the initial setup) runs as a job in the
 //! background: the request that starts it returns at once, the UI asks for the job's events as
 //! they come and can cancel it. Events carry what happened, not text: the UI words them (in

@@ -1,3 +1,4 @@
+//! Scope: An IP network as GraphQL type; nothing else.
 use async_graphql::Object;
 use ipnet::IpNet;
 

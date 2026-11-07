@@ -1,3 +1,4 @@
+//! Scope: The words of what the devices see at their ports; nothing else.
 use yew::{Html, html};
 
 pub const TITLE: &str = "Vergleich mit den Geräten";

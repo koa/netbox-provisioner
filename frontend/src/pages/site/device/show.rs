@@ -1,3 +1,4 @@
+//! Scope: The device page; not its cards (`components::device`).
 use crate::routes::AppRoute;
 use crate::target::SelectedTarget;
 use crate::{

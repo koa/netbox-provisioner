@@ -1,3 +1,5 @@
+//! Scope: Health, resources and PoE out of each device for the map; not the link state (`edges`).
+//!
 //! Health, resources and PoE out of a device, for the network map's nodes and PoE edges
 //! (`docs/concepts/network-map.md`, steps 3 and 4): read over the same way as everything else
 //! (`DeviceAccess::connect`), as a fact (`FactKind::DeviceMapData`) per device, so the map's

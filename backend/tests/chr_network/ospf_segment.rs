@@ -1,3 +1,5 @@
+//! Scope: CHR tests of a radio link's shared OSPF segment; nothing else.
+//!
 //! A radio link's segment: the routers at both ends and the two bridge devices of the link
 //! share one network, all four speaking OSPF on it. The bridge devices get priority 0 from the
 //! generator, so neither is ever DR or BDR, also not after the link was cut and came back: the

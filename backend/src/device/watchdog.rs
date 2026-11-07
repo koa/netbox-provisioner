@@ -1,3 +1,6 @@
+//! Scope: Suspending and restoring the watchdogs that may fire while a device updates; not the
+//! watchdogs' config (`ros::watchdog`).
+//!
 //! The watchdogs that may fire while a device updates (`docs/watchdog.md`). A device
 //! with `/system/watchdog watch-address` reboots when that address stops answering for
 //! `ping-timeout`; a PoE port with `power-cycle-ping` cuts the power of a device that stops

@@ -1,3 +1,4 @@
+//! Scope: The words of the interface view; nothing else.
 use crate::components::{
     device::interfaces::rows::{Kind, Task},
     netbox_helper::HelperKind,

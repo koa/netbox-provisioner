@@ -1,3 +1,6 @@
+//! Scope: The base config's step for the addresses on the interfaces, with their DHCP servers and
+//! clients; not computing a pool or the leases (`dhcp`).
+//!
 //! The device's addresses: from NetBox on its L3 interfaces and loopback, the DHCP clients,
 //! and the hand-made ones that stay.
 use super::{

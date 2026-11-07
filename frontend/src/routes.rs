@@ -1,3 +1,5 @@
+//! Scope: The routes of the UI; not what they show (`app`, `pages`).
+//!
 //! The routes of the UI: what the breadcrumb and the links lead to (`app` renders each one's
 //! page).
 use yew_nested_router::Target;

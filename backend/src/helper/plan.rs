@@ -1,3 +1,5 @@
+//! Scope: The steps of a plan for NetBox; not writing them (`write`).
+//!
 //! The steps of a [`super::NetboxPlan`]: what it creates, changes or deletes in NetBox.
 
 use super::flags;

@@ -1,3 +1,4 @@
+//! Scope: The words of a job's events and states; not its journal entry (`journal`).
 pub const CANCELLING: &str = "Wird abgebrochen …";
 pub const LOST: &str = "Auftrag unterbrochen";
 pub const LOST_TEXT: &str = "Der Provisioner wurde neu gestartet und kennt den Auftrag nicht \

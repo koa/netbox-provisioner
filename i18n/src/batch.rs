@@ -1,3 +1,4 @@
+//! Scope: The texts of applying several devices together; nothing else.
 pub const OPEN: &str = "Gemeinsam mit anderen Geräten anwenden …";
 pub const TITLE: &str = "Gemeinsam anwenden";
 pub const EXPLANATION: &str = "Alle ausgewählten Geräte und dieses bekommen ihre Änderungen \

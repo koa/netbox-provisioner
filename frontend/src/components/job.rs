@@ -1,3 +1,6 @@
+//! Scope: A job of the backend while it runs and after: its events and its state; not starting it
+//! (the page).
+//!
 //! A job of the backend (an update, an apply, a setup): its events while it runs, subscribed to
 //! (each answer brings the new ones), worded by `i18n::job`; with a button to cancel it.
 use crate::{

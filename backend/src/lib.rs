@@ -1,3 +1,5 @@
+//! Scope: The backend's module tree and its one `Error` with every case a variant; not how an error
+//! is reported (`error_info`).
 use crate::device::ros::SetupError;
 use mikrotik_model::resource::{MissingDependenciesError, ResourceMutationError};
 use thiserror::Error;

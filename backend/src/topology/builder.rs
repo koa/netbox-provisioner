@@ -1,3 +1,4 @@
+//! Scope: Building a topology by hand, for tests and the CHR harness; not from NetBox (`fetch`).
 use crate::topology::{
     Cable, CableId, CablePort, CircuitTermination, CircuitTerminationId, Device, DeviceId,
     ForwardData, FrontPort, FrontPortId, Interface, InterfaceId, IpAddressData, IpAddressId,

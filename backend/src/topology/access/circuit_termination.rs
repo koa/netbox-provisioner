@@ -1,3 +1,4 @@
+//! Scope: Access to a circuit's end; nothing else.
 use crate::topology::{
     CircuitTermination, CircuitTerminationId, Topology,
     access::{AccessTopology, cable::CableAccess},

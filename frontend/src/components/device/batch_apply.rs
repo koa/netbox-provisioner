@@ -1,3 +1,5 @@
+//! Scope: Applying a device together with others; nothing else.
+//!
 //! Applying the config to a device together with others (`applyBatch`): the other ends of its
 //! wireless links are picked, more devices of the sites can be added, and each picked device
 //! shows its planned changes before anything is applied.

@@ -1,3 +1,4 @@
+//! Scope: Access to a Wireless LAN Group; nothing else.
 use crate::topology::{
     Topology, WlanGroupData, WlanGroupId,
     access::{AccessTopology, device::DeviceAccess, vlan::VlanAccess, wlan::WlanAccess},

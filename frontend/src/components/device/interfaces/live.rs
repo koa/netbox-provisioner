@@ -1,3 +1,5 @@
+//! Scope: The live checks of the interface view's rows; not the rows (`rows`).
+//!
 //! The live checks of the rows (`AccessibleDevice.interfaceLive`): who the device sees at a
 //! row's ports, its OSPF neighbors there, the bridge devices of a radio link answering. Read
 //! after the view, in a subscription of their own (a job on the device or a change in NetBox

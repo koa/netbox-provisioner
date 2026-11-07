@@ -1,3 +1,6 @@
+//! Scope: What a reached device answers over GraphQL: its config, state and plans; not the work
+//! behind them.
+//!
 //! What a reached device answers over GraphQL (`AccessibleDevice`, `DeviceCfg`): its config,
 //! the generated script, RouterOS versions, partitions, the live checks, each as a fact.
 use super::cfg::{DeviceCfg, DeviceStats, GeneratedCfg, render_script};

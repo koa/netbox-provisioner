@@ -1,3 +1,5 @@
+//! Scope: Tests of the radios of bridge links and APs; not the WLANs' VLANs (`wlan_vlans`).
+//!
 //! Point-to-point radio bridges: a bridge of `ether1` and the radio, with the radio
 //! configured from its NetBox RF role and wireless link.
 

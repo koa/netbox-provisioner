@@ -1,3 +1,5 @@
+//! Scope: Access to the topology's records, one module per kind; not what is derived from several
+//! (`topology`'s other submodules).
 use crate::topology::{DeviceId, InterfaceId, Topology};
 use async_graphql::InputObject;
 use device::DeviceAccess;

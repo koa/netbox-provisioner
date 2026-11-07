@@ -1,3 +1,5 @@
+//! Scope: The device page's queries and mutations; not those of a card with a module of its own.
+//!
 //! The device page (`pages::site::device::show`): its overview, subscribed (the device, its jobs,
 //! what the provisioner would change, its RouterOS, partitions, device mode, leftovers and log),
 //! and the jobs it starts (apply, setup, update, downgrade, reboot, power cycle, …).

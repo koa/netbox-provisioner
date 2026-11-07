@@ -1,3 +1,4 @@
+//! Scope: Access to an IP address; nothing else.
 use crate::topology::{
     IpAddressData, IpAddressId, Topology,
     access::{

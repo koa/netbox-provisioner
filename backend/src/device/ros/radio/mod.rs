@@ -1,3 +1,6 @@
+//! Scope: What the radio stacks share: country, a WLAN's VLAN, the radio package; not one stack
+//! (its module).
+//!
 //! The radios: legacy `wireless`, `w60g`, `wifi` and the controllers (CAPsMAN), each in a
 //! module of its own; here what several of them need.
 

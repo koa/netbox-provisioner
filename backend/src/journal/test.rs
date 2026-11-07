@@ -1,3 +1,4 @@
+//! Scope: Tests of `journal`; nothing else.
 use super::{
     Entry, JournalLeft, JournalOutcome, Observation, Started, expected, fallback_run, interrupted,
     observation, outcome, parse, phase_name, script_lines,

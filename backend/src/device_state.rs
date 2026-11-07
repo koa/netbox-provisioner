@@ -1,3 +1,6 @@
+//! Scope: The state machine of each kind of job and its phase over GraphQL; not the work that
+//! enters the states.
+//!
 //! The states of a job, one state machine per kind (`docs/jobs.md`). A job
 //! reports each state it enters ([`crate::job::Log::enter`]); the tables here say which may
 //! follow which, whether cancelling ends a state right away, and what a restart of the server

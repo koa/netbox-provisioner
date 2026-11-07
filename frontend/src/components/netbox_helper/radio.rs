@@ -1,3 +1,5 @@
+//! Scope: The form of „Funkbrücke“; nothing else.
+//!
 //! „Funkbrücke“ on a bridge's page: its role, the other bridge (from its wireless link), and
 //! only where they aren't cabled the router ports (`radioBridgeCandidates`, `linkPorts`). The
 //! other bridge is of the same kind, with RouterOS or without; one without has no address of

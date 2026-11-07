@@ -1,3 +1,6 @@
+//! Scope: Carrying out a rollout plan: an update job per device, parallel, paused and continued;
+//! not planning (`rollout`) nor updating one device (`update`).
+//!
 //! Carrying out a rollout (`JobKind::Rollout`): an ordinary update job per device of the plan,
 //! the pilots first, then the rest in their order, up to [`PARALLEL`] at once, but never two
 //! related ones (`PlannedDevice::related`: one behind the other, or powering it); the leases

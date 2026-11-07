@@ -1,3 +1,5 @@
+//! Scope: CHR tests of the network map's edges; nothing else.
+//!
 //! The network map's edges from a real link-state database (`backend::network_state`): a chain
 //! `r1 -- r2 -- r3`, the LSDB read from r1 as the map reads it from one router. Both edges are
 //! up in v2 and v3; with r3's port down the edge r2–r3 is down and r1–r2 stays up (r3's LSAs

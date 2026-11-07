@@ -1,3 +1,5 @@
+//! Scope: The way from each RouterOS device to the management roots; nothing else.
+//!
 //! The way from each RouterOS device to the management roots (`docs/watchdog.md`):
 //! the devices whose OSPF announces the default route, and the management proxy's device.
 //! Two devices are neighbors where both have an `ospf` interface with an IPv4 address in the

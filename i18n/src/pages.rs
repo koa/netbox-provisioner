@@ -1,3 +1,4 @@
+//! Scope: The texts of the sites and devices pages; not those of a card with a module of its own.
 pub const NOT_FOUND: &str = "Seite nicht gefunden";
 
 pub fn device_count(count: usize) -> String {

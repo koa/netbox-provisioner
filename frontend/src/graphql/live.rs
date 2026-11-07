@@ -1,3 +1,5 @@
+//! Scope: Subscriptions over one WebSocket per tab; not the queries subscribed (`authenticated`).
+//!
 //! Subscriptions over one WebSocket per tab (`graphql-transport-ws` to `/graphql/ws`,
 //! `backend::graphql::live`): the server answers again whenever what an answer showed changed,
 //! whoever changed it. The connection is opened with the first subscription and comes back by

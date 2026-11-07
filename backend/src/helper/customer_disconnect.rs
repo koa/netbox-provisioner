@@ -1,3 +1,5 @@
+//! Scope: The helper „Kunden-Anschluss abräumen“; nothing else.
+//!
 //! Helper „Kunden-Anschluss abräumen“: takes a customer port's network out of NetBox, the
 //! inverse of „Kunden-Netz“ (`docs/interface-view.md`). From the row's interface (a
 //! port, a bridge or a VLAN interface): its addresses, each network's prefix once nothing else

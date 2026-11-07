@@ -1,3 +1,4 @@
+//! Scope: The texts of the breadcrumb; nothing else.
 pub const NOT_LOADED: &str = "Nicht geladen";
 pub const OVERVIEW: &str = "Übersicht";
 pub const ALL_DEVICES: &str = "Alle Geräte";

@@ -1,3 +1,4 @@
+//! Scope: Tests of `helper::customer_disconnect`; nothing else.
 use super::*;
 use crate::topology::interfaces::test::Net;
 

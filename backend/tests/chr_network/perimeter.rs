@@ -1,3 +1,5 @@
+//! Scope: CHR tests of the perimeter firewall; nothing else.
+//!
 //! The perimeter firewall (`docs/firewall.md`) on a CHR between the internet and a client:
 //! `internet -- router -- client`. `internet` stands for the internet and for the provisioner
 //! coming from there (its SOCKS proxy, from `100.64.0.1`, the `api_networks`); `router` has its

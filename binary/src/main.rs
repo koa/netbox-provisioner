@@ -1,3 +1,5 @@
+//! Scope: The server process: HTTP routes, the login check, the embedded frontend, start and
+//! shutdown; not the GraphQL schema (`backend::graphql`).
 use actix_4_jwt_auth::{
     DecodedInfo, OIDCValidationError, Oidc, OidcBiscuitValidator, OidcConfig,
     biscuit::{ClaimPresenceOptions, Presence, TemporalOptions, Validation, ValidationOptions},

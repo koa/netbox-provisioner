@@ -1,3 +1,5 @@
+//! Scope: The roots of the GraphQL schema: each query, mutation and subscription field with its
+//! guard; not the work behind a field (the module it calls).
 use crate::{
     Error,
     config::CONFIG,

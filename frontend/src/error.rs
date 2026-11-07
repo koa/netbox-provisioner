@@ -1,3 +1,5 @@
+//! Scope: The frontend's errors and their one-line text; not the server's codes' words
+//! (`i18n::error`).
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 

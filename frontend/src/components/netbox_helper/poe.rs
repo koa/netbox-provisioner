@@ -1,3 +1,5 @@
+//! Scope: The form of „PoE“; nothing else.
+//!
 //! „PoE“: the direction and both ports (`poeOptions`), or what the device reports feeding
 //! (`access.poeObserved`).
 use super::{Choice, NetEntry, NetboxHelper, t};

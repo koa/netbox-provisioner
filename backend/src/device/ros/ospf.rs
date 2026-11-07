@@ -1,3 +1,5 @@
+//! Scope: The base config's step for OSPF; nothing else.
+//!
 //! OSPF on the interfaces tagged `ospf`, v2 and v3.
 use super::BaseDeviceDataTarget;
 use crate::{

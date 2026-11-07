@@ -1,3 +1,5 @@
+//! Scope: Where the network map puts its nodes; not drawing them (`network_map`).
+//!
 //! The layout of the network map: a force-directed layout (Fruchterman–Reingold), and over
 //! several sites one circle per site laid out against the others, with fewer crossings.
 use super::{MARGIN, OUTSIDE};

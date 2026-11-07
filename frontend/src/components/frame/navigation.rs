@@ -1,3 +1,5 @@
+//! Scope: The breadcrumb; nothing else.
+//!
 //! The breadcrumb, after cable-editor: every item a dropdown leading to its siblings (another
 //! site, another device of the site).
 use crate::{

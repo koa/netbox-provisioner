@@ -1,3 +1,4 @@
+//! Scope: Access to a cable and its ends, and walking a cable path; nothing else.
 use crate::topology::{
     Cable, CableId, CablePort, Topology,
     access::{

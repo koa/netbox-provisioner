@@ -1,3 +1,5 @@
+//! Scope: The speed and medium of a port with a fixed speed; nothing else.
+//!
 //! A port NetBox gives a `speed` runs at it, without auto-negotiation: a QSFP+ breakout lane
 //! on a DAC (klr-sw-1 `qsfpplus1-1`, `auto-negotiation=no speed=10G-baseCR`) only comes up
 //! that way. RouterOS names the speed with the medium (`10G-baseCR` copper twinax,

@@ -1,3 +1,6 @@
+//! Scope: Where and as whom a device is reached when the operator picks another address or
+//! credentials; not the form for it (`components::device::adjust_target`).
+//!
 //! Where and as whom a device is reached, when the operator picks another address or other
 //! credentials than NetBox's (`components::device::adjust_target`); every view asking the device
 //! takes it.

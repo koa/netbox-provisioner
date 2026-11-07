@@ -1,3 +1,5 @@
+//! Scope: What is specific to a board model (ports, switch chips, PoE, radio packages); nothing
+//! that depends on NetBox.
 use crate::topology::PhysicalPortId;
 use mikrotik_model::{
     MacAddress,

@@ -1,3 +1,5 @@
+//! Scope: How far each device of a site is from NetBox; nothing else.
+//!
 //! How far each device of a site is from NetBox (`Mutation.diffSite`, `device::site_diff`): a
 //! job of the site reads every device in the background, the card shows each as it comes, the
 //! most changes first, with what needs a closer look (addresses removed, OSPF, bridge ports).

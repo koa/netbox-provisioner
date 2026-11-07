@@ -1,3 +1,5 @@
+//! Scope: The bridges, ports and VLANs of a device out of NetBox; not the L3 on them (`addresses`,
+//! `ospf`).
 use crate::device::ros::{CAPS_BRIDGE_NAME, SetupError, VlanOnBridge, hw_facts::SwitchChips};
 use crate::topology::access::AccessTopology;
 use crate::topology::access::ip_addresses::IpAddressAccess;

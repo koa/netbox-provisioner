@@ -1,3 +1,5 @@
+//! Scope: The form for another address or credentials of a device; not the target itself
+//! (`target`).
 use crate::components::widgets::popup::Select;
 use crate::error::FrontendError;
 use crate::graphql::{authenticated::adjust_target::ListCredentials, request};

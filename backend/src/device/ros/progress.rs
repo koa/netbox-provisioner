@@ -1,3 +1,6 @@
+//! Scope: The marks the apply script leaves on the device and reading them; not what is done with
+//! them (`apply`).
+//!
 //! Marks the apply script leaves on the device as it goes, in a file (`/file`), which outlasts
 //! the reboot of a fallback: how far it got, the line it stopped at and why, and after which
 //! line the provisioner stopped answering a ping from the device. The provisioner reads it

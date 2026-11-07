@@ -1,3 +1,4 @@
+//! Scope: Access to a prefix; nothing else.
 use crate::topology::{
     IpPrefixData, IpPrefixId, Topology,
     access::{AccessTopology, ip_addresses::IpAddressAccess, ip_ranges::IpRangeAccess},

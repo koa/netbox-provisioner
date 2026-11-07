@@ -1,3 +1,4 @@
+//! Scope: Tests of `device::batch` and the fixtures they share; the steps' rules are in `run`.
 mod run;
 
 use super::wireless_partners;

@@ -1,3 +1,5 @@
+//! Scope: The helper „Richtfunk abräumen“; nothing else.
+//!
 //! Helper „Richtfunk abräumen“: takes a radio link's network out of NetBox, so „Funkbrücke“ or
 //! another link can take its place (`docs/interface-view.md`). From one radio of the
 //! link, its L3 ends are the bridges of both bridge devices and the router ports (or their

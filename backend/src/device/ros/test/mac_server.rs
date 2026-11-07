@@ -1,3 +1,5 @@
+//! Scope: Tests of the maintenance list for mac-telnet and discovery; nothing else.
+//!
 //! mac-telnet on the ports to own devices and the free ones, not towards customers
 //! (`BaseDeviceDataTarget::setup_maintenance_ports`).
 use crate::{

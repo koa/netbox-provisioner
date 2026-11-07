@@ -1,3 +1,5 @@
+//! Scope: A device of a site as a card; nothing else.
+//!
 //! A device of a site as a card on the site page: its name linking to the device page, and
 //! whether it answers a ping.
 use crate::{

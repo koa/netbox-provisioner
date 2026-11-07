@@ -1,3 +1,5 @@
+//! Scope: The helper „Kabel übernehmen“; nothing else.
+//!
 //! Helper „Kabel übernehmen“: the device sees another router at a port than NetBox has there
 //! (`docs/interface-view.md`); NetBox takes over what the device sees. One plan of
 //! „Verbindung abräumen“ for each end whose link goes elsewhere in NetBox, then „Verbindung“

@@ -1,3 +1,6 @@
+//! Scope: The queries and mutations for a helper's plan, its preview, writing and undoing it; not
+//! the options (`helper_options`).
+//!
 //! A helper's plan (`netboxPlan`): its steps for NetBox, what it cuts off or leaves behind; its
 //! preview (the device's finding kinds after it, the script applying would run); writing it
 //! (`writeNetboxPlan`), taking it back (`undoNetboxWrite`) and the device's helper jobs

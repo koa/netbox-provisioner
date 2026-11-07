@@ -1,3 +1,6 @@
+//! Scope: What NetBox lacks or doesn't fit together, from the topology alone; not what a device
+//! says (`device::neighbors`, `device::interface_live`).
+//!
 //! What is missing in NetBox or doesn't fit together, computed from the topology alone (the
 //! Befund „NetBox in sich“ of `docs/config-helper.md`). Only the devices with RouterOS
 //! are looked at, the ones the provisioner manages. Data only: the frontend words it and links

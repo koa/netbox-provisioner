@@ -1,3 +1,4 @@
+//! Scope: Access to an interface and what is connected to it; nothing else.
 use crate::topology::{
     Interface, InterfaceId, PhysicalPortId, PoeMode, PortType, Radio, Topology, WirelessLinkEnd,
     access::{

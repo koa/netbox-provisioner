@@ -1,3 +1,5 @@
+//! Scope: Every device of the stored NetBox export through the generator; nothing else.
+//!
 //! Runs every RouterOS device of the stored production NetBox response
 //! (`docs/netbox-response-example.json`) through the whole generator: L2 planning,
 //! mutation diff against a reset device and dependency sorting. Catches what the

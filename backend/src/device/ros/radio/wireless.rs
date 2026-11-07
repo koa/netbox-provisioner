@@ -1,3 +1,5 @@
+//! Scope: The legacy `/interface/wireless` radios; nothing else.
+//!
 //! The legacy `/interface/wireless` radios: bridge links and CAPs of the legacy CAPsMAN.
 
 use super::{country_settings, link_key};

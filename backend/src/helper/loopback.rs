@@ -1,3 +1,5 @@
+//! Scope: The helper „Loopback“; nothing else.
+//!
 //! Helper „Loopback“: the device gets `lo` (virtual) with the next free address of each
 //! loopback pool (`/32`, `/128`), and those become its primary IPs, its router ID and
 //! management address (`docs/netbox-modeling.md`). What it has already stays: an `lo`, an

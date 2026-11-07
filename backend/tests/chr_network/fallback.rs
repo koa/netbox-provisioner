@@ -1,3 +1,5 @@
+//! Scope: CHR tests of an apply's fallback; nothing else.
+//!
 //! The fallback of an apply (`backend::device::ros::fallback`) on a real CHR: stopped, it
 //! leaves nothing behind; left alone, it loads the backup from before and the device reboots
 //! with the old config.

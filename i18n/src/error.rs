@@ -1,3 +1,4 @@
+//! Scope: The words of every error the UI shows; nothing else.
 /// An error the backend reports (`backend::error_info::ErrorInfo`): what [`server`] words.
 pub trait Problem {
     /// e.g. `DEVICE_API`

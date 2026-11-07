@@ -1,3 +1,6 @@
+//! Scope: The state of NetBox's cables and wireless links from the link-state database; not reading
+//! it (`read`).
+//!
 //! The state of NetBox's edges (cables and wireless links) from the link-state database
 //! (`docs/concepts/network-map.md`): OSPFv2 says whether the routers of both ends share the
 //! segment of the near end's address, OSPFv3 is the second opinion.

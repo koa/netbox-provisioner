@@ -1,3 +1,4 @@
+//! Scope: The texts of the modal a helper runs in; not the helpers' own (`helper`).
 pub const PLAN: &str = "Plan";
 pub const PREVIEW: &str = "Vorschau";
 pub const WRITE: &str = "In NetBox schreiben";

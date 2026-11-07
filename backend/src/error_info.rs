@@ -1,3 +1,6 @@
+//! Scope: How an `Error` reaches the API, as code and parameters; not the error cases themselves
+//! (`Error` in `lib.rs`) nor their German words (`i18n::error`).
+//!
 //! Errors as the API reports them: in the extensions of a GraphQL error (`ApiError`), as a
 //! job's `error`, in job events and as `bootstrapProblem`. `code` names the case, `params` hold
 //! the values a text about it needs; the frontend words it by `code` and shows `message`, the

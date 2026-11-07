@@ -1,3 +1,4 @@
+//! Scope: Tests of `rollout::run` with stand-in update jobs; nothing else.
 use super::{
     Control, RolloutDevice, RolloutDeviceState as State, RolloutDone, RolloutPause, RolloutPaused,
     UpdateJob, run,

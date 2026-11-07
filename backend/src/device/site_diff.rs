@@ -1,3 +1,6 @@
+//! Scope: How far each device of a site is from NetBox, as a job of the site; not the diff of one
+//! device (`ros::cfg`).
+//!
 //! How far each device of a site is from NetBox (`diffSite`, „Abweichung von NetBox“ in
 //! `docs/config-helper.md`): a job of the site reads its RouterOS devices, a few at
 //! a time, and reports for each, as it is read, what an apply would change by menu, or why it

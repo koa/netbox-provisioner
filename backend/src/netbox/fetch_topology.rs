@@ -1,3 +1,5 @@
+//! Scope: The GraphQL query the topology is built from; not building it (`topology::fetch`).
+//!
 //! What the topology is built from: one query over NetBox's GraphQL (`netbox::fetch_topology`),
 //! checked against `schema.graphqls` (registered by `build.rs` as the default schema) when the
 //! backend compiles. Kept as it came (`Topology.source`): a helper's preview applies its plan to

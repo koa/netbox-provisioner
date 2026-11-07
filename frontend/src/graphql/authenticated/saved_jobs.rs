@@ -1,3 +1,5 @@
+//! Scope: The queries for the jobs saved before a restart; nothing else.
+//!
 //! The jobs saved before a restart that didn't go on (`components::saved_jobs`).
 use super::{schema::schema, types::JobPhase};
 

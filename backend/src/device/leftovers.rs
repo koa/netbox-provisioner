@@ -1,3 +1,5 @@
+//! Scope: What a job left on a device and clearing it; not the jobs that leave it.
+//!
 //! What a job left on a device when it didn't see its work to the end (cancelled, the
 //! provisioner restarted or the device unreached): the scheduler entries of the apply fallback,
 //! the update fallback and the watchdogs' safety net, the apply's script still running and

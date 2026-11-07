@@ -1,3 +1,6 @@
+//! Scope: The perimeter firewall's rules and the forwards from the internet; not the routing
+//! (`ospf`).
+//!
 //! The perimeter firewall (`docs/firewall.md`): the rules on every device with an interface to
 //! the internet (NetBox tag `internet`, or `nat`, which needs it), for IPv4 and IPv6 alike,
 //! all on `input` and `forward` from the interface list `uplink`. Only what comes from there is

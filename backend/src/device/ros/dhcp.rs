@@ -1,3 +1,6 @@
+//! Scope: Computing a DHCP server's pool and static leases out of a prefix; not setting the server
+//! up (`addresses`).
+//!
 //! The pool of a DHCP server: the addresses of a prefix nothing else takes.
 
 use crate::topology::access::ip_prefix::IpPrefixAccess;

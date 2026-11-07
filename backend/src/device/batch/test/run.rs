@@ -1,3 +1,5 @@
+//! Scope: Tests of `batch::run` with stand-ins for the devices; nothing else.
+//!
 //! The rules of a batch, with stand-ins for the devices.
 use crate::device::batch::{Applying, Planning, Running, Timing, Watched, run, watch};
 use crate::{

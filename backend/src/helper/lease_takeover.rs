@@ -1,3 +1,5 @@
+//! Scope: The helper „Lease übernehmen“; nothing else.
+//!
 //! Helper „Lease übernehmen“: a static DHCP lease only the router has (the interface view's live
 //! check, `LiveRow.device_only_leases`) as its client in NetBox, so the next apply keeps it
 //! instead of removing it (`docs/config-helper.md#lease-übernehmen`). A lease is a

@@ -1,3 +1,5 @@
+//! Scope: Access to a device and what it has; not a whole topic about it (`topology::interfaces`,
+//! `findings`).
 use crate::error_info::ErrorInfo;
 use crate::{
     Error,

@@ -1,3 +1,5 @@
+//! Scope: The QEMU plumbing the harness shares; not booting a node (`vm`).
+//!
 //! Shared QEMU plumbing for the multi-CHR test harness.
 
 /// The `nix` package source is the only one available in CI/sandboxes that

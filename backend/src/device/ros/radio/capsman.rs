@@ -1,3 +1,5 @@
+//! Scope: The controller of the legacy CAPsMAN; not its CAPs' radios (`wireless`).
+//!
 //! The controller of the legacy CAPsMAN (`/caps-man`).
 
 use super::{country_settings, wlan_configuration_name};

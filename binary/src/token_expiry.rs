@@ -1,3 +1,5 @@
+//! Scope: Ending a WebSocket's operations when its token expires; nothing else.
+//!
 //! A WebSocket connection checks its token once, at `connection_init`, and could then go on
 //! for as long as the tab stays open: queries and mutations too, the socket carries every
 //! operation (`graphql-transport-ws`). [`Expiring`] holds each operation to the token's `exp`

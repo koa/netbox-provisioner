@@ -1,3 +1,4 @@
+//! Scope: The words of the findings about NetBox; nothing else.
 use yew::{Html, html};
 
 pub const TITLE: &str = "Befunde in NetBox";

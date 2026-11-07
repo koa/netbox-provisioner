@@ -1,3 +1,5 @@
+//! Scope: Applying through an entry node's SOCKS proxy; nothing else.
+//!
 //! The "realistic path" apply helper: pushes config to a target node through
 //! a designated entry node's SOCKS proxy, instead of dialing the target
 //! directly - mirroring how a real deployment only has one management entry

@@ -1,3 +1,5 @@
+//! Scope: Which helper is shown, what it is opened with and its input; not a form.
+//!
 //! What a helper is opened with (`HelperPreset`), which one is shown (`HelperKind`), what it is
 //! planned for (`HelperChoice`) and that as the input of a query (`helper`).
 use super::{flags::Flag, new_device::SeenPreset, t};

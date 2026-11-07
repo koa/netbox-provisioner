@@ -1,3 +1,5 @@
+//! Scope: The queries for the network map; nothing else.
+//!
 //! The network map (`components::network_map`): the devices and links as the provisioner reads
 //! them (`networkState`), the slower details beside (`networkStateDetails`), and the layout
 //! published to NetBox (`publishLayout`).

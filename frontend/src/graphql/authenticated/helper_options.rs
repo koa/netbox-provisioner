@@ -1,3 +1,6 @@
+//! Scope: The queries for what the helpers offer to choose from; not a helper's plan
+//! (`netbox_plan`).
+//!
 //! What the NetBox helpers offer to choose from (`components::netbox_helper`, its radio bridge
 //! also in `components::helper_flow`): ports, PoE ports, radio bridges, prefixes, VLANs, device
 //! types and roles.

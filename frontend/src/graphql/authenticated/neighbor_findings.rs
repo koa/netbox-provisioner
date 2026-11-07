@@ -1,3 +1,5 @@
+//! Scope: The query for what the devices see at their ports against NetBox's cables; nothing else.
+//!
 //! What the devices see at their ports compared with NetBox's cables (`neighborFindings`,
 //! `components::site::neighbor_check`); the interface view's live checks group the same type onto
 //! their rows (`super::interface_live`).

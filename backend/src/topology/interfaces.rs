@@ -1,3 +1,6 @@
+//! Scope: A device's interfaces sorted by task, with their findings and actions; not the live
+//! checks (`device::interface_live`).
+//!
 //! The interfaces of a device by their task (`docs/interface-view.md`): loopback,
 //! uplink, direct link, radio link, customer port, unknown. Each row is an L3 interface, a
 //! bridge with its ports in the same row, with the findings about it; the findings are the

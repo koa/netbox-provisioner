@@ -1,3 +1,5 @@
+//! Scope: What a job left on the device and its actions; nothing else.
+//!
 //! What a job left on the device (`AccessibleDevice.leftovers`), each with what the operator
 //! can do about it; nothing is cleared by itself. Watchdogs a running job of another device
 //! holds suspended are no leftover: they are shown apart, without a button.

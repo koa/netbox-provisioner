@@ -1,3 +1,6 @@
+//! Scope: The apply's fallback on the device: backup, scheduler, bringing it forward and taking it
+//! away; not watching the apply (`apply`).
+//!
 //! The way back from an apply that cuts the device off: before the config changes, the device
 //! saves a backup and schedules loading it after a deadline (`/system/scheduler`, which runs
 //! a script with `interval` once that long after it was added, and removes itself first). When

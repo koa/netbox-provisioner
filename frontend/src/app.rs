@@ -1,3 +1,6 @@
+//! Scope: The frame of every page: the login's settings, the OIDC session, the router and each
+//! route's page; not a page itself (`pages`).
+//!
 //! The frame of every page: the login's settings from the backend, the OIDC session, the router,
 //! and each route's page below the breadcrumb.
 use crate::{

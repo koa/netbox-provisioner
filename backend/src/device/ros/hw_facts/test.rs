@@ -1,3 +1,4 @@
+//! Scope: Tests of `ros::hw_facts`; nothing else.
 use super::{RadioPackage, SwitchChip, SwitchChips, build_ethernet_ports, radio_package};
 use crate::topology::PhysicalPortId;
 use mikrotik_model::value::{Auto, HasNone};

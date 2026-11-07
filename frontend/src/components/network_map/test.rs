@@ -1,3 +1,5 @@
+//! Scope: Tests of the network map's layout; nothing else.
+//!
 //! `force_layout` is continuous, not exact, so these check properties (pinned nodes don't move,
 //! positions stay in bounds, connected nodes end up closer than unconnected ones), not exact
 //! coordinates.

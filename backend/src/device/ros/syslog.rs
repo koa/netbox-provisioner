@@ -1,3 +1,5 @@
+//! Scope: The base config's step for `/system/logging`; nothing else.
+//!
 //! `/system/logging`: RouterOS's own actions and rules, and with `device_syslog` set the
 //! device's log to a syslog server in CEF, where Loki parses it.
 use super::{BaseDeviceDataCurrent, BaseDeviceDataTarget};

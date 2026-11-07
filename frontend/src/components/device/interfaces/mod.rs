@@ -1,3 +1,6 @@
+//! Scope: The device's interfaces by task as a card; not the helpers its actions open
+//! (`helper_flow`).
+//!
 //! The device's interfaces by task (`DeviceAccess.interfaceView`,
 //! `docs/interface-view.md`): a section per task, each with a table whose rows open to
 //! their findings. What NetBox has comes first; the live checks (`live.rs`) follow in a query

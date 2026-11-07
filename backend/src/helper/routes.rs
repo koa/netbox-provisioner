@@ -1,3 +1,6 @@
+//! Scope: What the network routes against what NetBox documents; not choosing an address (the
+//! helper).
+//!
 //! What the network routes, against what NetBox documents: an address free in NetBox may be in
 //! use by a device NetBox doesn't know of, which OSPF announces. Read from one router of the
 //! OSPF area (`Routes::read`), which knows the routes of all. Read only.

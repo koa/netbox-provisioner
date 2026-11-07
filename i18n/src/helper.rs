@@ -1,3 +1,4 @@
+//! Scope: The texts of the NetBox helpers; not the modal around them (`helper_flow`).
 pub const TITLE: &str = "NetBox ergänzen";
 pub const LOOPBACK: &str = "Loopback";
 pub const CONNECTION: &str = "Verbindung";

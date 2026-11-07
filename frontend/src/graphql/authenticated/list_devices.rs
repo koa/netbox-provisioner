@@ -1,3 +1,5 @@
+//! Scope: The queries for the sites and their devices; nothing else.
+//!
 //! The sites with their devices (sites page, breadcrumb) and a site's devices (devices page).
 use super::{schema::schema, types::Severity};
 

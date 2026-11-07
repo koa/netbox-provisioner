@@ -1,3 +1,5 @@
+//! Scope: The form of „Neues Gerät“; nothing else.
+//!
 //! „Neues Gerät“: name, device type, role, its port and the WLAN group of an access point
 //! (`newDeviceOptions`). The device type is preselected when one's model or part number is the
 //! board the router sees at the port. The texts are planned when left or confirmed with Enter,

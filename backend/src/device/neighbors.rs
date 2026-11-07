@@ -1,3 +1,6 @@
+//! Scope: What a device sees at its ports against NetBox's cables; not the helpers that fix them
+//! (`helper`).
+//!
 //! What a device sees at its ports (`/ip/neighbor`: MNDP, LLDP, CDP) against the cables NetBox
 //! has there (the Befund „NetBox gegen Gerät“ of `docs/config-helper.md`, neighbors →
 //! cables). Read-only. A neighbor is matched by its identity (the NetBox name the generated

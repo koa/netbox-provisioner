@@ -1,3 +1,5 @@
+//! Scope: The form of „Lease übernehmen“; nothing else.
+//!
 //! „Lease übernehmen“: the client of a static DHCP lease only the router has, with its name,
 //! device type and role (`leaseTakeoverOptions`); its address and MAC come from the live check.
 //! A device type named „Generic“ and the role `client` are preselected where NetBox has them.

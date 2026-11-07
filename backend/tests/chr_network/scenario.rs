@@ -1,3 +1,5 @@
+//! Scope: The VMs' wiring from a `TopologyBuilder`; not booting them (`vm`).
+//!
 //! Derives VM wiring directly from a [`TopologyBuilder`] - the same type
 //! production code and existing fixtures already use to describe a network
 //! - instead of a second, parallel scenario-description DSL.

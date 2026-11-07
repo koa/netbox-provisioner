@@ -1,3 +1,6 @@
+//! Scope: The helper „Funkbrücke“ for bridge devices with RouterOS; not the one without
+//! (`foreign_radio_bridge`).
+//!
 //! Helper „Funkbrücke“: two radio bridge devices between two routers, each bridging its
 //! Ethernet port and its radio, become a link NetBox describes whole
 //! (`docs/radio-bridge-generation.md`). The forwarding stays L2; the bridges are OSPF routers

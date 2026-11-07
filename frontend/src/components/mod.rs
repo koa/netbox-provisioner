@@ -1,3 +1,5 @@
+//! Scope: The components that aren't a page, by what they show; not a page (`pages`).
+//!
 //! The components, by what they show: `frame` is around every page (breadcrumb, login),
 //! `widgets` are general building blocks without a subject of their own, `device` and `site`
 //! show what belongs to one device or one site. A component shown for several subjects (a job,

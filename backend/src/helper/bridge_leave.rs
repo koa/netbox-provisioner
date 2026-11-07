@@ -1,3 +1,5 @@
+//! Scope: The helper „Aus Bridge lösen“; nothing else.
+//!
 //! Helper „Aus Bridge lösen“: takes a port out of its bridge in NetBox, with the VLANs of the
 //! port itself, so it is free again (`docs/interface-view.md`). Its cable stays. The
 //! bridge stays too: its last port gone, the plan names it (`NetboxPlan.emptied_bridge`), its

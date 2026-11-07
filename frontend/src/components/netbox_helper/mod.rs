@@ -1,3 +1,6 @@
+//! Scope: The helpers that complete NetBox for a device and what they all share; not one helper's
+//! form (its module).
+//!
 //! The helpers that complete NetBox for the device (`Query.netboxPlan`), one chosen at a time:
 //! what it would write, on a click the preview (the findings and the script applying would
 //! bring after it), then writing it as a job, and taking the last one back (`plan`). They write

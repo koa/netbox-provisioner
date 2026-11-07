@@ -1,3 +1,5 @@
+//! Scope: A helper's plan, its preview and writing it; not its form.
+//!
 //! The plan of the chosen helper (`netboxPlan`), its preview (`netboxPlanPreview`) and the last
 //! write that can be taken back.
 use super::{

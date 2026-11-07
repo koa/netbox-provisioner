@@ -1,3 +1,4 @@
+//! Scope: Tests of `helper::new_device`; nothing else.
 use super::*;
 use crate::topology::test::example_topology;
 

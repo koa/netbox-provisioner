@@ -1,3 +1,5 @@
+//! Scope: The table of one task of the interface view; not its rows (`rows`).
+//!
 //! The table of a task: a row per L3 interface, its findings when opened.
 use super::{
     live::{self, RowLive},

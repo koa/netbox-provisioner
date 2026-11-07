@@ -1,3 +1,5 @@
+//! Scope: A job's entry in the device's journal in NetBox, in Markdown; not the job view (`job`).
+//!
 //! A job's entry in the device's journal in NetBox (`backend::journal`), in Markdown: what
 //! people read in NetBox about what the provisioner did there.
 

@@ -1,3 +1,6 @@
+//! Scope: The initial setup of a device not reachable over IP, from a neighbor over mac-telnet; not
+//! the config applied after it (`ros`).
+//!
 //! Initial setup of a device that can't be reached over IP yet (factory settings, or not
 //! configured for its place in the network): a neighbor that is already reachable opens a
 //! `/tool mac-telnet` session to the device, logs in (setting the password from the device's

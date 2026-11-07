@@ -1,3 +1,4 @@
+//! Scope: The texts of the rollout page; nothing else.
 pub const TITLE: &str = "Netz aktualisieren";
 pub const INTRO: &str = "Bringt die RouterOS-Geräte der gewählten Sites auf das neueste Release \
     eines Kanals, mit einem normalen Update pro Gerät: zuerst je ein Pilot pro Architektur, dann \

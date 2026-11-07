@@ -1,3 +1,5 @@
+//! Scope: The device page's „Verlauf“; nothing else.
+//!
 //! The device page's „Verlauf“: the provisioner's entries in the device's journal in NetBox
 //! (`DeviceAccess.journal`, `docs/protocol.md`), newest first, each linking to NetBox. Read again
 //! whenever a job of the page ends (`refresh`).

@@ -1,3 +1,5 @@
+//! Scope: CHR tests of suspending watchdogs; nothing else.
+//!
 //! Suspending a watchdog for an update (`backend::device::watchdog`) on a real CHR:
 //! restored by the provisioner it leaves nothing behind; left alone, the scheduler entry
 //! restores the watch address by itself; two jobs suspending it at once share it, the last

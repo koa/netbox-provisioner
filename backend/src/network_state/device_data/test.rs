@@ -1,3 +1,4 @@
+//! Scope: Tests of `network_state::device_data`; nothing else.
 use super::*;
 
 fn row(fields: &[(&str, &str)]) -> Row {

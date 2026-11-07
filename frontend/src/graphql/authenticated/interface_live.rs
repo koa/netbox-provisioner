@@ -1,3 +1,5 @@
+//! Scope: The subscription for the live checks of the interface view; not the view (`interfaces`).
+//!
 //! The live checks of the interface view's rows (`AccessibleDevice.interfaceLive`,
 //! `components::device::interfaces::live`), with the neighbor findings of
 //! `super::neighbor_findings`.

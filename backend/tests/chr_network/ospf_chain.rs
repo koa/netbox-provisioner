@@ -1,3 +1,5 @@
+//! Scope: The harness's proof scenario, an apply over a routed path; nothing else.
+//!
 //! The harness's proof scenario (project plan Schritt 7): a 3-node chain
 //! `entry -- a -- target` (not 2 nodes - a direct cable would degenerate the
 //! "realistic path" into a same-subnet relay that never actually exercises

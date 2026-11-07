@@ -1,3 +1,5 @@
+//! Scope: NetBox's REST API for what GraphQL can't; not deciding what to write (`helper`).
+//!
 //! NetBox' REST API, for what GraphQL can't: reading the free addresses of a prefix and
 //! writing (the helpers, `crate::helper`). Every write carries a `changelog_message`, so
 //! NetBox' changelog tells which helper did it for whom although all go with one token.

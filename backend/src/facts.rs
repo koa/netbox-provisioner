@@ -1,3 +1,6 @@
+//! Scope: The store of what was asked of devices and MikroTik: how fresh, who asks, when it is
+//! dropped and who is told; not the asking itself (the modules that read).
+//!
 //! What the provisioner found out from devices and MikroTik, kept for a while
 //! (`docs/device-state.md`).
 //!

@@ -1,3 +1,6 @@
+//! Scope: The NAND partitions: reading, splitting, copying to the other one and booting from it;
+//! not the update fallback using them (`update_fallback`).
+//!
 //! Partitions of the NAND flash (`/partitions`), for the planned update fallback
 //! (`docs/update-fallback.md`): a second partition keeps the RouterOS from before. A
 //! device with at least 128 MiB of NAND lists its one partition there; a CHR has no such menu, a

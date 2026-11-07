@@ -1,3 +1,5 @@
+//! Scope: Building and caching the golden CHR image; not booting it (`vm`).
+//!
 //! Builds and caches a "golden" CHR disk image: license accepted, admin
 //! password set, otherwise factory-default. Every test run boots a
 //! disposable `qcow2` overlay on top of this image (see `vm.rs`) rather than

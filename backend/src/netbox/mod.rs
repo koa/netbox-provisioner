@@ -1,5 +1,6 @@
+//! Scope: Talking to NetBox: its URLs, the authorization and the types of its scalars and custom
+//! fields; not what is built from the answer (`topology`).
 use crate::config::CONFIG;
-use async_graphql::{ComplexObject, SimpleObject};
 use cynic::{GraphQlError, GraphQlResponse, QueryBuilder};
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use serde::{Deserialize, Serialize};
@@ -90,21 +91,6 @@ impl<'de> Deserialize<'de> for Decimal {
             Raw::Number(value) => Ok(Decimal(value)),
             Raw::Text(text) => text.parse().map(Decimal).map_err(serde::de::Error::custom),
         }
-    }
-}
-
-#[derive(Debug, SimpleObject)]
-#[graphql(complex)]
-pub struct Device {
-    name: Box<str>,
-    #[graphql(skip)]
-    management_address: IpAddr,
-    credentials: Box<str>,
-}
-#[ComplexObject]
-impl Device {
-    async fn management_address(&self) -> String {
-        self.management_address.to_string()
     }
 }
 

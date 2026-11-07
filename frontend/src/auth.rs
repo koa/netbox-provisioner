@@ -1,3 +1,6 @@
+//! Scope: The login: leaving for the provider and whether the server takes the token; not the
+//! screens for it (`components::frame`).
+//!
 //! The login: leaving for the provider ([`start_login`]), and whether the server takes the token
 //! (E20): the requests (`graphql::post`) and the WebSocket (`graphql::live`) [`report`] it, the
 //! note `components::frame::login_expired` [`watch`]es it.

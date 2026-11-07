@@ -1,3 +1,5 @@
+//! Scope: The schema's types several queries share; not a type one query alone uses (its module).
+//!
 //! Types of the backend's schema that several queries share (cynic, [`super::schema`]).
 use super::schema::schema;
 

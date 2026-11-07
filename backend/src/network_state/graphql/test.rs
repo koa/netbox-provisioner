@@ -1,3 +1,5 @@
+//! Scope: Tests of `network_state::graphql`; nothing else.
+//!
 //! Devices without OSPF, and their edges, stay off the map (`build`'s `on_map_devices`), unless
 //! they relay between two OSPF neighbors.
 

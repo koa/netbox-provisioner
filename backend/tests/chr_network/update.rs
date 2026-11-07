@@ -1,3 +1,5 @@
+//! Scope: CHR tests of RouterOS updates; nothing else.
+//!
 //! RouterOS update pushed by the provisioner (`backend::device::update`) against a real CHR: a
 //! factory node of an older release, given a password and an address over mac-telnet from an
 //! entry node like a new device in the network, is updated to the current release - packages

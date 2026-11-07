@@ -1,3 +1,4 @@
+//! Scope: Tests of `network_state::edges`; nothing else.
 use super::*;
 use crate::network_state::lsa::Lsa;
 use crate::topology::{

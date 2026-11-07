@@ -1,3 +1,5 @@
+//! Scope: Tests of the MTU; nothing else.
+//!
 //! The L3 MTU NetBox gives a physical port, with the L2 MTU raised to carry it.
 use crate::{
     device::ros::{

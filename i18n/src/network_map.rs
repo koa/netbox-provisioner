@@ -1,3 +1,4 @@
+//! Scope: The texts of the network map; nothing else.
 pub const TITLE: &str = "Netz-Karte";
 pub const INTRO: &str = "Die Geräte der Site und ihre Kabel und Funkstrecken aus NetBox, ihr Zustand aus der OSPF-Datenbank eines Routers; Geräte ohne OSPF werden nicht dargestellt. Liest nur, alle paar Sekunden neu.";
 pub const INTRO_ALL: &str = "Alle Geräte des OSPF-Netzes über alle Sites, ihre Kabel und Funkstrecken aus NetBox, ihr Zustand aus der OSPF-Datenbank eines Routers; Geräte ohne OSPF werden nicht dargestellt. Liest nur, alle paar Sekunden neu.";

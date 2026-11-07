@@ -1,3 +1,4 @@
+//! Scope: Tests of `helper::port_vlan`; nothing else.
 use super::*;
 use crate::topology::{
     VlanData, VlanGroupData, VlanGroupId, VxlanData, VxlanId, interfaces::test::Net,

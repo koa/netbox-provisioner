@@ -1,3 +1,5 @@
+//! Scope: Tests of PoE out and its warning; nothing else.
+//!
 //! Applying a config can switch PoE out off, which NetBox doesn't show as a change.
 use crate::{
     device::ros::{

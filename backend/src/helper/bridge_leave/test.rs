@@ -1,3 +1,4 @@
+//! Scope: Tests of `helper::bridge_leave`; nothing else.
 use super::*;
 use crate::topology::{access::interface::InterfaceAccess, interfaces::test::Net};
 

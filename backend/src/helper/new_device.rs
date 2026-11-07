@@ -1,3 +1,5 @@
+//! Scope: The helper „Neues Gerät“; nothing else.
+//!
 //! Helper „Neues Gerät“: a RouterOS device for NetBox, cabled to a free port of a router whose
 //! page asks (`docs/config-helper.md#neues-gerät`): one without cable, or one whose
 //! cable ends open at a patch panel (`landing`), the new cable then starts there. One plan: the device (device type

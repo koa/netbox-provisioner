@@ -1,3 +1,5 @@
+//! Scope: The 60 GHz radios of a bridge link; nothing else.
+//!
 //! The 60 GHz radios (`/interface/w60g`) of a bridge link.
 
 use super::{country_settings, link_key};

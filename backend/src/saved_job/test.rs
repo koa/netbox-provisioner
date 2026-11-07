@@ -1,3 +1,4 @@
+//! Scope: Tests of `saved_job`; nothing else.
 use super::*;
 
 /// A directory of its own under the system's temporary one, empty.

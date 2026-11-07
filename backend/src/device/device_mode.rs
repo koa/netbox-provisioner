@@ -1,3 +1,5 @@
+//! Scope: The device mode: which features the provisioner needs and changing them; nothing else.
+//!
 //! The device mode (`/system/device-mode`, RouterOS 7.17 and later) switches features off that
 //! the provisioner needs, and only changes with a confirmation at the device: pressing its reset
 //! or mode button, or a cold boot (cutting the power), while `/system/device-mode/update` counts

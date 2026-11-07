@@ -1,3 +1,5 @@
+//! Scope: The network map as SVG with its nodes, edges and dragging; not its layout (`layout`).
+//!
 //! The network map (`Query.topology.networkState`, `docs/concepts/network-map.md`): devices
 //! and NetBox's cables and wireless links as an SVG, coloured by what the OSPF database of one
 //! router says; devices without OSPF, and their edges, are left out. Scoped to one site, or

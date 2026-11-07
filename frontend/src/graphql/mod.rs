@@ -1,3 +1,5 @@
+//! Scope: Sending GraphQL requests and what all of them share; not the queries (`anonymous`,
+//! `authenticated`).
 use crate::{auth, error::FrontendError};
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use serde::{Serialize, de::DeserializeOwned};

@@ -1,3 +1,5 @@
+//! Scope: Tests of `/ip/service`; nothing else.
+//!
 //! `/ip/service` (`setup_services`): telnet and ftp off, www on, with `api_networks` the plain
 //! API and www only from those; everything else as the device has it.
 use crate::device::ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, test::empty_current};

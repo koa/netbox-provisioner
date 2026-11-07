@@ -1,3 +1,5 @@
+//! Scope: The jobs saved before a restart that didn't go on; nothing else.
+//!
 //! The jobs saved before a restart of the provisioner that didn't go on (`savedJobs`): their
 //! device is gone from NetBox, or the file couldn't be read. Each stays until the operator
 //! discards it; what the job left on the device stays there either way.

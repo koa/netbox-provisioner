@@ -1,3 +1,5 @@
+//! Scope: The helper „Adresse übernehmen“; nothing else.
+//!
 //! Helper „Adresse übernehmen“: an address only the device has (the interface view's live
 //! check, `LiveRow.device_only_addresses`) on its NetBox interface, so the next apply keeps it
 //! instead of removing it (`docs/interface-view.md`). Its network becomes a prefix

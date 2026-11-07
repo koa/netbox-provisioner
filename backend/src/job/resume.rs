@@ -1,3 +1,5 @@
+//! Scope: Starting the jobs saved before a restart again; not saving them (`saved_job`).
+//!
 //! Going on after a restart with the jobs saved before it (`saved_job`): an apply watching
 //! its script, an update waiting for its reboot, a batch's applies together.
 use crate::{

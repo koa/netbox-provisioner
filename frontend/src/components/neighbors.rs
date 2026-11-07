@@ -1,3 +1,6 @@
+//! Scope: What the devices see at their ports against NetBox's cables, for a site or a device; not
+//! asking for it (`site::neighbor_check`).
+//!
 //! What the devices see at their ports against NetBox's cables, worded with links into NetBox:
 //! for the site's neighbor check (`site::neighbor_check`) and the live checks of a device's
 //! interfaces (`device::interfaces`).

@@ -1,3 +1,5 @@
+//! Scope: Reaching a device: credentials, the ways to it, the login and the connected
+//! `AccessibleDevice`; not what is done with it once connected (the submodules).
 use crate::{
     Error,
     config::CONFIG,

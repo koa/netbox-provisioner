@@ -1,3 +1,6 @@
+//! Scope: The whole config of a device as it is and as NetBox has it, and the script between them;
+//! not a single topic of it (its module).
+//!
 //! The config of a device as it is and as NetBox has it (`DeviceCfg`), and the script
 //! between them (`GeneratedCfg`).
 use crate::device::ros::l2::{EndpointNameGenerator, KeptNames, L2Setup, NameGenerator};

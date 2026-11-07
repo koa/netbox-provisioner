@@ -1,3 +1,5 @@
+//! Scope: CHR tests of the device mode; nothing else.
+//!
 //! Turning a feature on in the device mode (`backend::device::device_mode`) against a real CHR:
 //! the job asks for the change, tells the user to confirm it, and the confirmation is a cold
 //! boot (the VM's power cut, [`RunningNode::power_cycle`]). Cancelling before it leaves the

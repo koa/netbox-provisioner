@@ -1,3 +1,6 @@
+//! Scope: The generator's frame: the models of the menus it writes (`mikrotik_model!`), names
+//! several steps share and the order of the base config's steps; not a step's own content (its
+//! topic module).
 use crate::{
     Error,
     device::ros::{

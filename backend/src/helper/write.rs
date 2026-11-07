@@ -1,3 +1,5 @@
+//! Scope: Writing a plan to NetBox and taking it back; not computing it (the helper).
+//!
 //! Writing a plan to NetBox (`write`) and taking it back (`undo`), each step an event of the
 //! job (`NetboxWritten`, `NetboxUndone`).
 

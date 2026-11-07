@@ -1,3 +1,4 @@
+//! Scope: The words of picking another address or credentials; nothing else.
 use crate::target::{SelectedCredentials, SelectedTarget};
 
 pub const SHOW: &str = "Ändern";

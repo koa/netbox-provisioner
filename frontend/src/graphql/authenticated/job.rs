@@ -1,3 +1,5 @@
+//! Scope: The subscription for a job and its events; nothing else.
+//!
 //! A job and its events (`job`, `components::job`), subscribed: each answer brings the events
 //! after `after`; and the button to cancel it (`cancelJob`).
 use super::{

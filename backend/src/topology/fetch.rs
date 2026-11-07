@@ -1,3 +1,4 @@
+//! Scope: Building the topology from NetBox's answer; not the query (`netbox::fetch_topology`).
 use crate::{
     netbox::{
         NetboxError, fetch_topology,

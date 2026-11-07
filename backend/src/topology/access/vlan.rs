@@ -1,3 +1,4 @@
+//! Scope: Access to a VLAN; nothing else.
 use crate::topology::{
     InterfaceId, Topology, VlanData, VlanGroupId, VlanId,
     access::{AccessTopology, device::DeviceAccess, vxlan::VxlanAccess, wlan::WlanAccess},

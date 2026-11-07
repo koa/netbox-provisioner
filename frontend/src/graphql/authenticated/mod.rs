@@ -1,3 +1,6 @@
+//! Scope: The queries of the authenticated endpoint, one module per area; not sending them
+//! (`graphql`).
+//!
 //! The queries of the authenticated endpoint (`/graphql`), checked against its schema
 //! (`schema.graphql`, `schema`); one module per page or component.
 

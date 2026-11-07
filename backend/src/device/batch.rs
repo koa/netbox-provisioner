@@ -1,3 +1,6 @@
+//! Scope: Applying several devices together with one fallback for all; not applying one device
+//! (`ros::apply`).
+//!
 //! Applying the config to several devices together, with one fallback for all of them: the
 //! two ends of a radio link only work again with both changed, and the far one is often only
 //! reached across the link. A single apply would take the far end's fallback away once it is

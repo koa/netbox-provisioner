@@ -1,3 +1,5 @@
+//! Scope: The helper „Verbindung abräumen“; nothing else.
+//!
 //! Helper „Verbindung abräumen“: takes a link NetBox has wrong out of NetBox, so „Verbindung“
 //! can make the right one. For a port: its cable, its addresses from the transfer pool and those
 //! of the other end in the same network, and each such network's prefix once nothing else is in

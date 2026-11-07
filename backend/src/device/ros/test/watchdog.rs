@@ -1,3 +1,5 @@
+//! Scope: Tests of the watchdogs' config; nothing else.
+//!
 //! The watchdogs a device gets from where it is on the way to the management roots.
 use crate::{
     device::ros::{

@@ -1,3 +1,5 @@
+//! Scope: The form of „Flags“; nothing else.
+//!
 //! „Flags“: the interfaces' tags as switches, with the device's findings as they would be
 //! after them (`topology.findings(after:)`).
 use super::{HelperChoice, NetboxHelper, choice::helper, t};

@@ -1,3 +1,6 @@
+//! Scope: The way back from an update: the scheduler on the old partition and the OSPF neighbors
+//! after it; not the update (`update`).
+//!
 //! The way back from a RouterOS update (`docs/update-fallback.md`, stage 1): on a
 //! device with two [`partitions`](super::partitions), the running RouterOS is copied to the
 //! other one with its configuration (`/partitions copy-to`) before the update. A scheduler run

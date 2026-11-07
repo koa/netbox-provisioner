@@ -1303,6 +1303,9 @@ QEMU's, the golden image's dhcp-client is bound to it).
   `graphql::authenticated::types`, sent by `graphql::request` (`request_response` keeps the
   data next to the errors), subscribed by `graphql::live::watch`. A union gets a `fallback`
   case, an enum `Other(String)`.
+- Every module (file) begins with `//! Scope:`, one sentence saying what belongs in it and what
+  doesn't (where that goes instead). New code goes where a scope takes it; a new module gets
+  its sentence, and code a scope rules out moves.
 - Before adding a helper, look whether one exists (`grep` the crate); one used from several
   modules belongs in a module of its own, not in the first one that needed it.
 

@@ -1,3 +1,4 @@
+//! Scope: Access to a patch panel's rear port; nothing else.
 use crate::topology::{
     RearPort, RearPortId, Topology,
     access::{

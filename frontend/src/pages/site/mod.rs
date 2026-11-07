@@ -1,3 +1,4 @@
+//! Scope: The page of a site with its devices; not its cards (`components::site`).
 use crate::{
     components::{
         findings::{self, FindingsList},
