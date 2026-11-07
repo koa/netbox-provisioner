@@ -18,14 +18,15 @@ use crate::{
             device::{
                 AllowApply, ApplyDeviceCfg, BootPartition, BootPartitionVariables,
                 BootstrapCandidates, BootstrapDevice, BootstrapPlan, BootstrapVariables,
-                ChangeDeviceMode, Channel, ChannelUpdate, ClearLeftover, ClearLeftoverVariables,
-                Connected, DeviceMode, DeviceOverview, Discovered, DowngradeRouteros,
-                DowngradeVariables, Leftovers as Left, LogEntry, Partitions, PowerCycle,
-                PowerSupply, RebootDevice, RefreshDevice, RepartitionDevice, Routeros,
-                TargetVariables, UpdateRouteros, UpdateVariables, Watchdog,
+                ChangeDeviceMode, ChannelUpdate, ClearLeftover, ClearLeftoverVariables, Connected,
+                DeviceMode, DeviceOverview, Discovered, DowngradeRouteros, DowngradeVariables,
+                Leftovers as Left, LogEntry, Partitions, PowerCycle, PowerSupply, RebootDevice,
+                RefreshDevice, RepartitionDevice, Routeros, TargetVariables, UpdateRouteros,
+                UpdateVariables, Watchdog,
             },
             types::{
-                ApplyWarning as Warning, DeviceVariables, ErrorInfo, JobState, LeftoverAction, Mac,
+                ApplyWarning as Warning, Channel, DeviceVariables, ErrorInfo, JobState,
+                LeftoverAction, Mac,
             },
         },
         live::{Subscription, local_time, read_at, same_reading, watch},
@@ -1338,14 +1339,7 @@ fn bootstrap(scope: Scope<ShowDevice>, id: u32, mac: String) {
 
 /// What the channel select shows, e.g. `stable: 7.20.8`.
 fn channel_label(channel: &ChannelUpdate) -> Box<str> {
-    let name = match &channel.channel {
-        Channel::LongTerm => "long-term",
-        Channel::Stable => "stable",
-        Channel::Testing => "testing",
-        Channel::Development => "development",
-        Channel::Other(other) => other,
-    };
-    t::channel(name, &channel.newest).into()
+    t::channel(channel.channel.name(), &channel.newest).into()
 }
 
 /// Updates to the newest release of `channel`, or without one only adjusts the packages;

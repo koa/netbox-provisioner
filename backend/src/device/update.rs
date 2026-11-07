@@ -549,6 +549,21 @@ fn http() -> &'static reqwest::Client {
     })
 }
 
+/// The size of a package file on MikroTik's server, without downloading it.
+pub async fn package_size(version: &Version, file: &str) -> Result<Option<u64>, Error> {
+    let url = format!("{DOWNLOAD_URL}/{version}/{file}");
+    let failed = |e: reqwest::Error| Error::Download(url.as_str().into(), e);
+    Ok(http()
+        .head(&url)
+        .send()
+        .await
+        .and_then(|r| r.error_for_status())
+        .map_err(failed)?
+        .headers()
+        .get(reqwest::header::CONTENT_LENGTH)
+        .and_then(|length| length.to_str().ok()?.parse().ok()))
+}
+
 async fn download(version: &Version, file: &str) -> Result<Vec<u8>, Error> {
     let url = format!("{DOWNLOAD_URL}/{version}/{file}");
     let failed = |e: reqwest::Error| Error::Download(url.as_str().into(), e);

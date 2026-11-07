@@ -2,8 +2,8 @@
 //! page).
 use yew_nested_router::Target;
 
-/// `/sites`, `/network-map` (every site), `/site/<site>` (its devices), `/site/<site>/map`,
-/// `/site/<site>/device/<device>/show`
+/// `/sites`, `/network-map` (every site), `/rollout` (updates across sites), `/site/<site>`
+/// (its devices), `/site/<site>/map`, `/site/<site>/device/<device>/show`
 #[derive(Debug, Clone, Default, PartialEq, Eq, Target)]
 pub enum AppRoute {
     NotFound,
@@ -11,6 +11,7 @@ pub enum AppRoute {
     Sites,
     #[target(rename = "network-map")]
     NetworkMap,
+    Rollout,
     Site {
         id: u32,
         #[target(nested)]

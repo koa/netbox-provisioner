@@ -512,6 +512,31 @@ pub struct JobId {
     pub id: i32,
 }
 
+/// A release channel of RouterOS (`Channel`); one a newer backend sends keeps its name.
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum Channel {
+    LongTerm,
+    Stable,
+    Testing,
+    Development,
+    #[cynic(fallback)]
+    Other(String),
+}
+
+impl Channel {
+    /// as MikroTik names it, e.g. `long-term`
+    pub fn name(&self) -> &str {
+        match self {
+            Channel::LongTerm => "long-term",
+            Channel::Stable => "stable",
+            Channel::Testing => "testing",
+            Channel::Development => "development",
+            Channel::Other(other) => other,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{PoeProblem, WideInt};

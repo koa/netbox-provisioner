@@ -4,8 +4,8 @@
 use super::{
     schema::schema,
     types::{
-        ApplyWarning, DeviceModeChange, DeviceRef, DeviceTarget, DeviceVariablesFields, ErrorInfo,
-        JobId, JobState, LeftoverAction, Mac, Partition, Watching,
+        ApplyWarning, Channel, DeviceModeChange, DeviceRef, DeviceTarget, DeviceVariablesFields,
+        ErrorInfo, JobId, JobState, LeftoverAction, Mac, Partition, Watching,
     },
 };
 
@@ -229,18 +229,6 @@ pub struct ChannelUpdate {
     pub newest: String,
     pub upgrade: bool,
     pub update: bool,
-}
-
-/// A release channel of RouterOS (`Channel`); one a newer backend sends keeps its name.
-#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
-pub enum Channel {
-    LongTerm,
-    Stable,
-    Testing,
-    Development,
-    #[cynic(fallback)]
-    Other(String),
 }
 
 #[derive(cynic::QueryFragment, Debug)]

@@ -15,6 +15,7 @@ pub mod list_devices;
 pub mod neighbor_findings;
 pub mod netbox_plan;
 pub mod network_map;
+pub mod rollout;
 pub mod saved_jobs;
 pub mod schema;
 pub mod site_diff;

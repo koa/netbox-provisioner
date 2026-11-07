@@ -12,6 +12,7 @@ use crate::{
     i18n,
     pages::{
         network_map::AllSitesMap,
+        rollout::Rollout,
         site::{Devices, device::show::ShowDevice, map::SiteMap},
         sites::Sites,
     },
@@ -137,7 +138,9 @@ fn content(route: AppRoute) -> Html {
             view: SiteView::Device { id: device, .. },
         } => (Some(*id), Some(*device)),
         AppRoute::Site { id, .. } => (Some(*id), None),
-        AppRoute::Sites | AppRoute::NetworkMap | AppRoute::NotFound => (None, None),
+        AppRoute::Sites | AppRoute::NetworkMap | AppRoute::Rollout | AppRoute::NotFound => {
+            (None, None)
+        }
     };
     let map = matches!(
         route,
@@ -147,9 +150,11 @@ fn content(route: AppRoute) -> Html {
                 ..
             }
     );
+    let rollout = route == AppRoute::Rollout;
     let content = match route {
         AppRoute::Sites => html! {<Sites/>},
         AppRoute::NetworkMap => html! {<AllSitesMap/>},
+        AppRoute::Rollout => html! {<Rollout/>},
         AppRoute::Site { id, view } => site_content(view, id),
         AppRoute::NotFound => html! {<h1>{i18n::pages::NOT_FOUND}</h1>},
     };
@@ -158,7 +163,7 @@ fn content(route: AppRoute) -> Html {
             <div class="pf-v6-c-page__main-container">
                 <main class="pf-v6-c-page__main" id="main-content" tabindex="-1">
                     <PageSection r#type={PageSectionType::Breadcrumbs}>
-                        <div class="breadcrumb-bar"><Navigation {site} {device} {map}/></div>
+                        <div class="breadcrumb-bar"><Navigation {site} {device} {map} {rollout}/></div>
                     </PageSection>
                     <PageSection>{content}</PageSection>
                 </main>

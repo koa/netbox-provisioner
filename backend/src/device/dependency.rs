@@ -159,6 +159,32 @@ impl Paths {
         }
         false
     }
+    /// The hops from the nearest root to each device a root reaches.
+    pub fn depths(&self) -> HashMap<Box<str>, u32> {
+        let mut depths = self
+            .roots
+            .iter()
+            .map(|root| (root.clone(), 0))
+            .collect::<HashMap<_, _>>();
+        let mut todo = self.roots.iter().cloned().collect::<VecDeque<_>>();
+        while let Some(near) = todo.pop_front() {
+            let next = depths[&near] + 1;
+            for far in self.links.get(&near).into_iter().flatten() {
+                if !depths.contains_key(far) {
+                    depths.insert(far.clone(), next);
+                    todo.push_back(far.clone());
+                }
+            }
+        }
+        depths
+    }
+    /// The devices a root reaches only through `device`.
+    pub fn behind(&self, device: &str) -> BTreeSet<Box<str>> {
+        self.cut_off(
+            self.links.keys().map(|device| &**device),
+            &BTreeSet::from([device]),
+        )
+    }
     /// Of `devices`, those a root reaches now but not with `away` gone. A device reached
     /// without a way NetBox knows (not at all now) is no one's to wait for.
     fn cut_off<'a>(
@@ -217,15 +243,7 @@ impl PowerChain {
         PowerChain {
             device: device.name().into(),
             suppliers: names(supplier_devices(device)),
-            consumers: names(walk(device, |device| {
-                device
-                    .interfaces()
-                    .iter()
-                    .filter(|port| port.enable_poe())
-                    .flat_map(|port| port.connected_interfaces())
-                    .filter_map(|far| far.device())
-                    .collect()
-            })),
+            consumers: names(consumer_devices(device)),
             paths: Arc::new(paths),
         }
     }
@@ -348,6 +366,19 @@ pub fn supplier_devices(device: &DeviceAccess) -> Vec<DeviceAccess> {
             .iter()
             .flat_map(|port| port.connected_interfaces())
             .filter(|far| far.enable_poe())
+            .filter_map(|far| far.device())
+            .collect()
+    })
+}
+
+/// The devices `device` powers, directly or further down.
+pub fn consumer_devices(device: &DeviceAccess) -> Vec<DeviceAccess> {
+    walk(device, |device| {
+        device
+            .interfaces()
+            .iter()
+            .filter(|port| port.enable_poe())
+            .flat_map(|port| port.connected_interfaces())
             .filter_map(|far| far.device())
             .collect()
     })

@@ -647,3 +647,25 @@ ul.device-history {
     padding: var(--pf-t--global--spacer--sm);
     background-color: var(--pf-t--global--background--color--secondary--default);
 }
+
+/* Netz aktualisieren (`pages::rollout`) */
+ul.rollout-sites {
+    list-style: none;
+    padding: 0;
+    margin-bottom: 1em;
+}
+table.rollout-plan {
+    margin-top: 1em;
+}
+table.rollout-plan td {
+    vertical-align: top;
+}
+tr.rollout-pilot td:first-child {
+    font-weight: bold;
+}
+tr.rollout-left-out td {
+    color: var(--pf-t--global--text--color--subtle);
+}
+div.rollout-error {
+    font-size: smaller;
+}

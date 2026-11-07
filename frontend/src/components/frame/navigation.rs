@@ -79,6 +79,9 @@ pub struct NavigationProps {
     /// the page is a network map: of every site without `site`, else of the site
     #[prop_or_default]
     pub map: bool,
+    /// the page is the rollout over several sites
+    #[prop_or_default]
+    pub rollout: bool,
 }
 
 /// The breadcrumb of a page: the site (or the map of every site), and on a site's pages its
@@ -154,7 +157,12 @@ impl Navigation {
             text: i18n::menu::ALL_SITES_MAP.into(),
             target: AppRoute::NetworkMap,
         };
-        let site_entries = [overview, all_map]
+        let rollout = MenuEntry {
+            selected: props.rollout,
+            text: i18n::menu::ROLLOUT.into(),
+            target: AppRoute::Rollout,
+        };
+        let site_entries = [overview, all_map, rollout]
             .into_iter()
             .chain(sites.iter().map(|entry| MenuEntry {
                 selected: site.is_some_and(|site| site.id == entry.id),
@@ -167,6 +175,8 @@ impl Navigation {
             .collect::<Box<[_]>>();
         let site_title = if all_sites_map {
             i18n::menu::ALL_SITES_MAP.to_string()
+        } else if props.rollout {
+            i18n::menu::ROLLOUT.to_string()
         } else {
             i18n::menu::site(site.map(|site| site.name.as_str()), props.site.is_some())
         };

@@ -119,6 +119,22 @@ impl QueryAuthenticated {
     async fn jobs(&self, device_id: Option<u32>, site_id: Option<u32>) -> Vec<Arc<Job>> {
         job::list_shown(job_subject(device_id, site_id))
     }
+    /// What a rollout over the sites `siteIds` would do, to the newest release of `channel`
+    /// (`routeros_channel` of the config without): every RouterOS device of them read, in the
+    /// order it would update, those left out last (`device::rollout`). Only reads.
+    async fn rollout_plan(
+        &self,
+        site_ids: Vec<u32>,
+        channel: Option<update::Channel>,
+    ) -> Result<crate::device::rollout::RolloutPlan, ApiError> {
+        let mut sites = Vec::new();
+        for id in site_ids {
+            let site = self.topology.site(SiteId(id)).await;
+            sites.push(site.ok_or(Error::UnknownSite(id))?);
+        }
+        let channel = channel.or(CONFIG.routeros_channel).unwrap_or_default();
+        Ok(crate::device::rollout::plan(&sites, channel).await?)
+    }
     /// The jobs saved before the restart that didn't go on: their device is gone from NetBox,
     /// or the file couldn't be read. They stay until discarded (`discardSavedJob`).
     async fn saved_jobs(&self) -> Vec<crate::saved_job::Waiting> {

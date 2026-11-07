@@ -1,7 +1,8 @@
 # Konzept: Updates im ganzen Netz
 
-Status: zum Teil umgesetzt: die Regel beim Neustart (`device/dependency.rs`). Aufgabe C10 in
-[todo.md](../todo.md).
+Status: zum Teil umgesetzt: die Regel beim Neustart (`device/dependency.rs`) und der Plan
+(`rolloutPlan`, `device/rollout.rs`, Seite `/rollout` „Netz aktualisieren“, im Site-Menü der
+Breadcrumb); der Rollout selbst fehlt noch. Aufgabe C10 in [todo.md](../todo.md).
 Baut auf dem Server-Log (Events, Jobs) auf, das erledigt ist, und profitiert vom
 [Update-Fallback](../update-fallback.md).
 
@@ -98,6 +99,14 @@ Pro Gerät, parallel:
 
 Nicht erreichbare Geräte stehen im Plan rot und werden ausgelassen. Der Rollout startet trotzdem,
 wenn der Benutzer das bestätigt.
+
+Umgesetzt lässt der Plan aus, was aktuell ist (`UpToDate`), nicht antwortet (`Unreachable`),
+Reste eines Jobs hat (`Leftovers`), weder eine zweite Partition noch einen Nachbarn als Weg
+zurück hat (`NoFallback`) oder weniger freien Speicher als die Pakete (Grösse per `HEAD` bei
+MikroTik, `NoSpace`). Die Reihenfolge (`order`): je Architektur ein Pilot, von den Geräten,
+hinter denen auf den Wegen niemand hängt und die nichts über PoE speisen, das am weitesten
+aussen; dann die übrigen nach Abstand zur Wurzel absteigend (abseits der Wege zuerst, bei
+Gleichstand nach Namen), ein CAPsMAN-Controller nach dem letzten seiner APs.
 
 ## Downloads
 

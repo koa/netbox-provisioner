@@ -1054,7 +1054,11 @@ update lease from before the upload to the end and a reboot lease per reboot, an
 while a consumer holds an update lease or a device updating is reached only through it and the
 devices rebooting (`BehindUpdating`), an update waits to start while a supplier reboots or the
 rebooting devices cut it off (`BehindRebooting`), all under one lock. A device NetBox's ways
-don't reach at all holds nothing back. The leases are in-process only. They only hold back
+don't reach at all holds nothing back. `rolloutPlan` (`device::rollout`, page `/rollout`)
+plans an update across sites, reading only: per RouterOS device the step, the download against
+`free-hdd-space`, the way back, leftovers; a pilot per architecture, then the farthest from a
+root first, a CAPsMAN controller after its APs (`docs/concepts/network-update.md`). The leases
+are in-process only. They only hold back
 reboots the provisioner sends: a supplier with
 `/system/watchdog watch-address` behind the updating device reboots by itself and cuts its
 power mid-install (berghof-burri bricked burri-schopf that way; RouterBOOT then only asked for
