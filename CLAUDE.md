@@ -1214,7 +1214,9 @@ script checks for the entry itself. With the fallback armed, the update waits fo
 until the device could be back from it. Back on the old partition is `UPDATE_ROLLED_BACK`.
 Reached on the new partition, the scheduler is removed: no switching back once the provisioner
 sees the device. Then the OSPF neighbors it was adjacent with before have to be again within
-3 min, else `OSPF_NEIGHBORS_MISSING`: `Full`, or `TwoWay` where DR and BDR are two others of the
+3 min (24 min, `RADIO_RESTART`, on a device with a 5 GHz radio: a DFS AP listens for radar
+after its boot, lab-sxt-a's update failed twice so), else `OSPF_NEIGHBORS_MISSING`: `Full`, or
+`TwoWay` where DR and BDR are two others of the
 segment (`update_fallback::adjacent`), since two DROthers stay there and a reboot elects anew
 (berghof-stall-haus, 7.23.8: a v3 neighbor `Full` as DR before stayed `TwoWay`). The way back is the device page's "Von partN starten"
 (`bootPartition`), never automatic. A device without two partitions updates as before and gets

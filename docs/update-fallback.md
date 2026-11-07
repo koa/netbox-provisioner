@@ -19,7 +19,10 @@ ganz ohne Weg zurück braucht eine Bestätigung.
 
 **Erfolg** heisst deshalb: Das Gerät ist mit der erwarteten Version erreichbar, *und* die
 OSPF-Nachbarn, mit denen es vor dem Update benachbart war, sind es wieder (`/routing/ospf/neighbor`
-vor dem Update gelesen). Benachbart heisst `Full`, oder `TwoWay`, wenn DR und BDR zwei andere des
+vor dem Update gelesen), innert 3 min, auf einem Gerät mit 5-GHz-Funk innert 24 min: Ein AP auf
+einem DFS-Kanal hört nach dem Start erst auf Radar, bevor er sendet (lab-sxt-a: zweimal
+`OSPF_NEIGHBORS_MISSING`, die Nachbarn kamen Minuten später). Benachbart heisst `Full`, oder
+`TwoWay`, wenn DR und BDR zwei andere des
 Segments sind: Zwei DROther bleiben in `TwoWay`, und nach dem Neustart wird neu gewählt, so dass
 einer, der als DR `Full` war, dort landen kann (berghof-stall-haus, 7.23.8).
 

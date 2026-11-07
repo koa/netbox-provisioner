@@ -21,6 +21,7 @@ use crate::{
         bootstrap,
         partitions::{self, copy_to, other},
         raw::{Row, command, field, rows},
+        ros::apply::RADIO_RESTART,
     },
     graphql::scalars::ScalarDuration,
     job::Log,
@@ -287,19 +288,42 @@ pub(crate) fn is_adjacent(rows: &[Row], row: &Row) -> bool {
     }
 }
 
+/// Whether the device has a 5 GHz radio on: `/interface/wireless` with a `5ghz` band, or an
+/// `/interface/wifi` radio with `5ghz` among its bands. A menu its packages lack doesn't count.
+async fn has_5ghz_radio(device: &RawDevice<SimpleResult>) -> bool {
+    let five = |value: Option<&str>| value.is_some_and(|value| value.contains("5ghz"));
+    let wireless = rows(device, "/interface/wireless/print")
+        .await
+        .unwrap_or_default()
+        .iter()
+        .any(|row| field(row, "disabled") != Some("true") && five(field(row, "band")));
+    wireless
+        || rows(device, "/interface/wifi/radio/print")
+            .await
+            .unwrap_or_default()
+            .iter()
+            .any(|row| five(field(row, "bands")))
+}
+
 /// What of `before` isn't in `now`.
 pub fn missing(before: &BTreeSet<Box<str>>, now: &BTreeSet<Box<str>>) -> Vec<Box<str>> {
     before.difference(now).cloned().collect()
 }
 
-/// Waits (up to [`OSPF_TIMEOUT`]) until the neighbors `before` are adjacent again; the ones that
-/// aren't by then.
+/// Waits (up to [`OSPF_TIMEOUT`], [`RADIO_RESTART`] on a device with a 5 GHz radio) until the
+/// neighbors `before` are adjacent again; the ones that aren't by then. A 5 GHz AP on a DFS
+/// channel listens for radar after its boot before it sends, 10 min near the weather radar
+/// band: lab-sxt-a's update failed twice with its neighbors back a few minutes later.
 pub async fn wait_for_ospf(
     device: &RawDevice<SimpleResult>,
     before: &BTreeSet<Box<str>>,
     log: &Log,
 ) -> Result<Vec<Box<str>>, Error> {
-    let deadline = Instant::now() + OSPF_TIMEOUT;
+    let limit = match has_5ghz_radio(device).await {
+        true => RADIO_RESTART,
+        false => OSPF_TIMEOUT,
+    };
+    let deadline = Instant::now() + limit;
     loop {
         let missing = missing(before, &ospf_up(device).await?);
         if missing.is_empty() || Instant::now() > deadline {
