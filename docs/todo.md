@@ -56,7 +56,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B30 | Die Karten der Geräteseite aus `pages/site/device/show.rs` nach `components::device`: RouterOS-Update und Downgrade, Device-Mode, Partitionen, Änderungen, Setup, Strom aus/ein, Watchdogs | M–L | offen |
 
 ## C. Konzepte zum Umsetzen
 

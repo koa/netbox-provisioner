@@ -3,14 +3,19 @@ use crate::routes::AppRoute;
 use crate::target::SelectedTarget;
 use crate::{
     components::{
-        device::adjust_target::AdjustTarget,
-        device::batch_apply::{BatchApply, BatchJob},
-        device::history::History,
-        device::interfaces::Interfaces,
-        device::leftovers::{Leftover, Leftovers},
+        device::{
+            adjust_target::AdjustTarget,
+            batch_apply::BatchJob,
+            changes::{Changes, GeneratedCfg},
+            device_mode::DeviceMode,
+            history::History,
+            interfaces::Interfaces,
+            leftovers::{Leftover, Leftovers},
+            partitions::Partitions,
+            routeros::{Routeros, UpdateRequest},
+            setup::Setup,
+        },
         job::JobView,
-        widgets::confirm::Confirm,
-        widgets::popup::Select,
     },
     error::{FrontendError, ServerProblem},
     graphql::{
@@ -19,32 +24,24 @@ use crate::{
             device::{
                 AllowApply, ApplyDeviceCfg, BootPartition, BootPartitionVariables,
                 BootstrapCandidates, BootstrapDevice, BootstrapPlan, BootstrapVariables,
-                ChangeDeviceMode, ChannelUpdate, ClearLeftover, ClearLeftoverVariables, Connected,
-                DeviceMode, DeviceOverview, Discovered, DowngradeRouteros, DowngradeVariables,
-                Leftovers as Left, LogEntry, Partitions, PowerCycle, PowerSupply, RebootDevice,
-                RefreshDevice, RepartitionDevice, Routeros, TargetVariables, UpdateRouteros,
-                UpdateVariables, Watchdog,
+                ChangeDeviceMode, ClearLeftover, ClearLeftoverVariables, Connected,
+                DeviceMode as Mode, DeviceOverview, Discovered, DowngradeRouteros,
+                DowngradeVariables, Leftovers as Left, LogEntry, Partitions as Parts, PowerCycle,
+                PowerSupply, RebootDevice, RefreshDevice, RepartitionDevice, Routeros as Ros,
+                TargetVariables, UpdateRouteros, UpdateVariables, Watchdog,
             },
-            types::{
-                ApplyWarning as Warning, Channel, DeviceVariables, ErrorInfo, JobState,
-                LeftoverAction, Mac,
-            },
+            types::{DeviceVariables, ErrorInfo, JobState, LeftoverAction, Mac},
         },
         live::{Subscription, watch},
         path_segment, request,
     },
-    i18n::{
-        apply_warning,
-        common::CANCEL,
-        device::{self as t, setup},
-        device_mode, target,
-    },
-    reading_time::{local_time, read_at, same_reading},
+    i18n::{device as t, target},
+    reading_time::{read_at, same_reading},
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
-    CodeBlockCode, Spinner, SpinnerSize, TextInput,
+    CodeBlockCode, Spinner, SpinnerSize,
 };
 use yew::{Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
 use yew_nested_router::components::Link;
@@ -65,33 +62,11 @@ pub struct ShowDevice {
     batch_finished: usize,
     /// what the bootstrap neighbor sees on its port; `None` while it is asked
     candidates: Option<Result<Vec<Discovered>, String>>,
-    /// a MAC typed in instead of picking a candidate
-    manual_mac: String,
-    /// the RouterOS channel to update in; `None` until the device's default is known
-    channel: Option<Channel>,
-    /// the older version to downgrade to, typed or the one before an update of this run
-    downgrade_version: String,
-    /// "Auf … downgraden" was clicked, waiting for the confirmation
-    confirm_downgrade: bool,
-    /// "Neu starten" was clicked, waiting for the confirmation
-    confirm_reboot: bool,
-    /// "Strom aus und ein" was clicked, waiting for the confirmation
-    confirm_power_cycle: bool,
     /// the supplier's job switching the power off and on, next to this device's own
     power_job: Option<i32>,
-    /// "Device-Mode anpassen" was clicked, waiting for the confirmation
-    confirm_device_mode: bool,
-    /// "In zwei Partitionen aufteilen" was clicked, waiting for the confirmation
-    confirm_repartition: bool,
-    /// the partition to boot from, asked before
-    confirm_boot: Option<String>,
     /// the form for another address or other credentials is open (in the head; on an
     /// unreachable device it is always shown, in the warning)
     show_target: bool,
-    /// suspend the watchdogs that may fire while this one updates
-    suspend_watchdogs: bool,
-    /// update although nothing brings the device back (no two partitions, no neighbor)
-    without_fallback: bool,
     /// counts the jobs over (NetBox written, the device changed): the interfaces are read again
     jobs_finished: u32,
     /// the job running is an apply (alone or in a batch)
@@ -103,14 +78,6 @@ pub struct ShowDevice {
     /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
     allow_apply: bool,
 }
-/// the planned changes and what applying them would do that NetBox can't show (PoE switched off)
-#[derive(Debug)]
-struct GeneratedCfg {
-    script: Box<str>,
-    warnings: Vec<Warning>,
-    /// when the device was read for it (milliseconds since the epoch, from the age it came with)
-    as_of: f64,
-}
 #[derive(Debug, Default)]
 pub struct ShowDeviceData {
     configured_name: Box<str>,
@@ -121,15 +88,15 @@ pub struct ShowDeviceData {
     connected: Option<Connected>,
     /// why it couldn't be reached
     access_problem: Option<Box<str>>,
-    routeros: Option<Routeros>,
+    routeros: Option<Ros>,
     /// what a job that didn't see its work to the end left on the device
     leftovers: Option<Left>,
     /// the newest entries of the device's log, oldest first
     log: Vec<LogEntry>,
     /// `None` before RouterOS 7.17, or when it couldn't be read
-    device_mode: Option<DeviceMode>,
+    device_mode: Option<Mode>,
     /// `None` without partitions (16 MiB of flash), or when they couldn't be read
-    partitions: Option<Partitions>,
+    partitions: Option<Parts>,
     bootstrap_plan: Option<BootstrapPlan>,
     bootstrap_problem: Option<ErrorInfo>,
     /// the watchdogs that may fire while this one updates, of the devices powering it and of
@@ -161,39 +128,22 @@ pub enum ShowDeviceMessage {
     AdjustTarget(SelectedTarget),
     Apply,
     Candidates(Result<Vec<Discovered>, String>),
-    ManualMac(String),
     /// set up the device with this MAC
     Bootstrap(String),
-    /// the label of a channel entry (`channel_label`)
-    SelectChannel(Box<str>),
-    Update,
-    /// bring the packages in line at the running version
-    AdjustPackages,
+    /// update in a channel, or only the packages
+    Update(UpdateRequest),
     /// take care of something a job left on the device
     ClearLeftover(Leftover),
-    DowngradeVersion(String),
-    /// ask before downgrading (`true`), or not anymore
-    ConfirmDowngrade(bool),
-    Downgrade,
-    /// ask before rebooting (`true`), or not anymore
-    ConfirmReboot(bool),
+    /// downgrade to the version (`channel` of the request is `None`)
+    Downgrade(String, UpdateRequest),
     Reboot,
-    ConfirmPowerCycle(bool),
     PowerCycle,
     PowerCycleStarted(Result<i32, FrontendError>),
-    /// ask before changing the device mode (`true`), or not anymore
-    ConfirmDeviceMode(bool),
     ChangeDeviceMode,
-    /// ask before splitting the flash (`true`), or not anymore
-    ConfirmRepartition(bool),
     Repartition,
-    /// ask before booting from a partition (`Some`), or not anymore
-    ConfirmBoot(Option<String>),
     BootPartition(String),
     /// open or close the form for another address or other credentials
     ShowTarget(bool),
-    SuspendWatchdogs(bool),
-    WithoutFallback(bool),
     JobStarted(Result<i32, FrontendError>),
     /// a job of another device running through this one (its id and that device)
     JobThrough(i32, String),
@@ -223,19 +173,8 @@ impl Component for ShowDevice {
             batch_jobs: Vec::new(),
             batch_finished: 0,
             candidates: None,
-            manual_mac: String::new(),
-            channel: None,
-            downgrade_version: String::new(),
-            confirm_downgrade: false,
-            confirm_reboot: false,
-            confirm_power_cycle: false,
             power_job: None,
-            confirm_device_mode: false,
-            confirm_repartition: false,
-            confirm_boot: None,
             show_target: false,
-            suspend_watchdogs: true,
-            without_fallback: false,
             jobs_finished: 0,
             applying: false,
             applied: 0,
@@ -268,38 +207,15 @@ impl Component for ShowDevice {
                 self.allow_apply = allow;
                 true
             }
-            ShowDeviceMessage::SelectChannel(label) => {
-                self.channel = self
-                    .data
-                    .as_ref()
-                    .and_then(|data| data.routeros.as_ref())
-                    .and_then(|r| r.channels.iter().find(|c| channel_label(c) == label))
-                    .map(|c| c.channel.clone());
-                true
-            }
             ShowDeviceMessage::Apply => {
                 self.job_running = true;
                 self.applying = true;
                 apply(ctx.link().clone(), self.id, &self.alternate_target);
                 true
             }
-            ShowDeviceMessage::Update => {
-                let Some(channel) = self.channel.clone() else {
-                    return false;
-                };
-                self.start_update(ctx, Some(channel));
-                true
-            }
-            ShowDeviceMessage::AdjustPackages => {
-                self.start_update(ctx, None);
-                true
-            }
-            ShowDeviceMessage::SuspendWatchdogs(suspend) => {
-                self.suspend_watchdogs = suspend;
-                true
-            }
-            ShowDeviceMessage::WithoutFallback(without) => {
-                self.without_fallback = without;
+            ShowDeviceMessage::Update(request) => {
+                self.job_running = true;
+                update(ctx.link().clone(), self.id, request, &self.alternate_target);
                 true
             }
             ShowDeviceMessage::ClearLeftover(leftover) => {
@@ -312,46 +228,23 @@ impl Component for ShowDevice {
                 );
                 true
             }
-            ShowDeviceMessage::DowngradeVersion(version) => {
-                self.downgrade_version = version;
-                true
-            }
-            ShowDeviceMessage::ConfirmDowngrade(confirm) => {
-                self.confirm_downgrade = confirm;
-                true
-            }
-            ShowDeviceMessage::Downgrade => {
-                self.confirm_downgrade = false;
+            ShowDeviceMessage::Downgrade(version, request) => {
                 self.job_running = true;
-                let version = self.downgrade_version.trim().to_string();
-                let suspend = self.suspend();
-                let without = self.without_fallback;
                 downgrade(
                     ctx.link().clone(),
                     self.id,
                     version,
-                    suspend,
-                    without,
+                    request,
                     &self.alternate_target,
                 );
                 true
             }
-            ShowDeviceMessage::ConfirmReboot(confirm) => {
-                self.confirm_reboot = confirm;
-                true
-            }
             ShowDeviceMessage::Reboot => {
-                self.confirm_reboot = false;
                 self.job_running = true;
                 reboot(ctx.link().clone(), self.id, &self.alternate_target);
                 true
             }
-            ShowDeviceMessage::ConfirmPowerCycle(confirm) => {
-                self.confirm_power_cycle = confirm;
-                true
-            }
             ShowDeviceMessage::PowerCycle => {
-                self.confirm_power_cycle = false;
                 cut_power(ctx.link().clone(), self.id);
                 true
             }
@@ -362,32 +255,17 @@ impl Component for ShowDevice {
                 }
                 true
             }
-            ShowDeviceMessage::ConfirmDeviceMode(confirm) => {
-                self.confirm_device_mode = confirm;
-                true
-            }
             ShowDeviceMessage::ChangeDeviceMode => {
-                self.confirm_device_mode = false;
                 self.job_running = true;
                 change_mode(ctx.link().clone(), self.id, &self.alternate_target);
                 true
             }
-            ShowDeviceMessage::ConfirmRepartition(confirm) => {
-                self.confirm_repartition = confirm;
-                true
-            }
             ShowDeviceMessage::Repartition => {
-                self.confirm_repartition = false;
                 self.job_running = true;
                 repartition(ctx.link().clone(), self.id, &self.alternate_target);
                 true
             }
-            ShowDeviceMessage::ConfirmBoot(partition) => {
-                self.confirm_boot = partition;
-                true
-            }
             ShowDeviceMessage::BootPartition(partition) => {
-                self.confirm_boot = None;
                 self.job_running = true;
                 boot_from(
                     ctx.link().clone(),
@@ -460,10 +338,6 @@ impl Component for ShowDevice {
                 self.candidates = Some(candidates);
                 true
             }
-            ShowDeviceMessage::ManualMac(mac) => {
-                self.manual_mac = mac;
-                true
-            }
             ShowDeviceMessage::Bootstrap(mac) => {
                 self.job_running = true;
                 bootstrap(ctx.link().clone(), self.id, mac);
@@ -513,8 +387,8 @@ impl Component for ShowDevice {
 }
 
 impl ShowDevice {
-    /// Takes a new overview: the setup's candidates asked again where it is unreachable, the
-    /// channel and version to go back to preset, a job running elsewhere shown.
+    /// Takes a new overview: the setup's candidates asked again where it is unreachable, a job
+    /// running elsewhere shown.
     fn take_data(
         &mut self,
         ctx: &Context<Self>,
@@ -524,14 +398,6 @@ impl ShowDevice {
         if data.access.is_none() && data.bootstrap_plan.is_some() {
             self.candidates = None;
             fetch_candidates(ctx.link().clone(), self.id);
-        }
-        if self.channel.is_none() {
-            self.channel = data.routeros.as_ref().map(|r| r.default_channel.clone());
-        }
-        if self.downgrade_version.is_empty()
-            && let Some(previous) = data.routeros.as_ref().and_then(|r| r.previous.clone())
-        {
-            self.downgrade_version = previous;
         }
         if self
             .data
@@ -561,20 +427,6 @@ impl ShowDevice {
         }
         self.data = Some(data);
         self.error = error;
-    }
-    /// Starts updating to the newest release of `channel`, or only the packages without one.
-    fn start_update(&mut self, ctx: &Context<Self>, channel: Option<Channel>) {
-        self.job_running = true;
-        let suspend = self.suspend();
-        let without = self.without_fallback;
-        update(
-            ctx.link().clone(),
-            self.id,
-            channel,
-            suspend,
-            without,
-            &self.alternate_target,
-        );
     }
     /// The job shown, or those of a batch side by side.
     fn job_view(&self, ctx: &Context<Self>) -> Option<Html> {
@@ -618,9 +470,44 @@ impl ShowDevice {
                 </Alert>
             }
         });
-        let routeros = self.routeros_view(ctx, data, running);
-        let device_mode = self.device_mode_view(ctx, data, running);
-        let partitions = self.partitions_view(ctx, data, running);
+        let routeros = data.routeros.as_ref().map(|routeros| {
+            html! {
+                <Routeros
+                    routeros={routeros.clone()}
+                    watchdogs={data.watchdogs.clone()}
+                    power_supply={data.power_supply.clone()}
+                    no_way_back={no_way_back(data)}
+                    disabled={running}
+                    allow_apply={self.allow_apply}
+                    power_job={self.power_job}
+                    on_update={ctx.link().callback(ShowDeviceMessage::Update)}
+                    on_downgrade={ctx.link().callback(|(version, request)| {
+                        ShowDeviceMessage::Downgrade(version, request)
+                    })}
+                    on_reboot={ctx.link().callback(|()| ShowDeviceMessage::Reboot)}
+                    on_power_cycle={ctx.link().callback(|()| ShowDeviceMessage::PowerCycle)}
+                />
+            }
+        });
+        let device_mode = data.device_mode.as_ref().map(|mode| {
+            html! {
+                <DeviceMode
+                    mode={mode.clone()}
+                    disabled={running}
+                    on_change={ctx.link().callback(|()| ShowDeviceMessage::ChangeDeviceMode)}
+                />
+            }
+        });
+        let partitions = data.partitions.as_ref().map(|partitions| {
+            html! {
+                <Partitions
+                    partitions={partitions.clone()}
+                    disabled={running}
+                    on_split={ctx.link().callback(|()| ShowDeviceMessage::Repartition)}
+                    on_boot={ctx.link().callback(ShowDeviceMessage::BootPartition)}
+                />
+            }
+        });
         let device =
             (routeros.is_some() || device_mode.is_some() || partitions.is_some()).then(|| {
                 html! {
@@ -657,7 +544,28 @@ impl ShowDevice {
             />
             <div class="device-columns">
                 {device}
-                {self.changes_view(ctx, data, running)}
+                <Changes
+                    id={self.id}
+                    reachable={data.access.is_some()}
+                    cfg={data.access.as_ref().and_then(|(_, cfg)| cfg.clone())}
+                    access_problem={data.access_problem.clone()}
+                    disabled={running}
+                    on_reload={ctx.link().callback(|()| ShowDeviceMessage::Reload)}
+                    on_apply={ctx.link().callback(|()| ShowDeviceMessage::Apply)}
+                    on_batch_started={ctx.link().callback(ShowDeviceMessage::BatchStarted)}
+                    setup={html! {
+                        <Setup
+                            name={data.configured_name.to_string()}
+                            plan={data.bootstrap_plan.clone()}
+                            problem={data.bootstrap_problem.clone()}
+                            candidates={self.candidates.clone()}
+                            disabled={running}
+                            on_setup={ctx.link().callback(ShowDeviceMessage::Bootstrap)}
+                        />
+                    }}
+                >
+                    {self.target_form(ctx)}
+                </Changes>
             </div>
             {log_view(&data.log)}
             <History id={self.id} refresh={self.jobs_finished}/>
@@ -716,304 +624,6 @@ impl ShowDevice {
             </Card>
         }
     }
-    /// RouterOS: version and packages, update, downgrade, the watchdogs, reboot and power cycle.
-    fn routeros_view(
-        &self,
-        ctx: &Context<Self>,
-        data: &ShowDeviceData,
-        running: bool,
-    ) -> Option<Html> {
-        let routeros = data.routeros.as_ref()?;
-        // nothing brings the device back from an update: only once confirmed
-        let no_way_back = self.no_way_back(data);
-        let update_locked = no_way_back && !self.without_fallback;
-        let selected = routeros
-            .channels
-            .iter()
-            .find(|c| Some(&c.channel) == self.channel.as_ref());
-        let entries: Vec<Box<str>> = routeros.channels.iter().map(channel_label).collect();
-        let action = selected.filter(|c| c.update).map(|c| {
-            if c.upgrade {
-                t::update_to(&c.newest)
-            } else {
-                t::ADJUST_PACKAGES.to_string()
-            }
-        });
-        // without changing the version, whatever the channel; unless that is what the
-        // channel's update does anyway
-        let adjust_packages =
-            routeros.adjust_packages && !selected.is_some_and(|c| c.update && !c.upgrade);
-        let reboot = Confirm {
-            asking: self.confirm_reboot,
-            question: t::REBOOT_CONFIRM.into(),
-            now: t::REBOOT_NOW,
-            ask: t::REBOOT.into(),
-            disabled: running,
-        }
-        .view(
-            ctx.link().callback(|_| ShowDeviceMessage::Reboot),
-            ctx.link().callback(ShowDeviceMessage::ConfirmReboot),
-        );
-        Some(html! {<>
-            <dt>{t::ROUTEROS}</dt><dd>
-                { routeros.version.clone() }
-                {t::packages(&routeros.packages, &routeros.wanted)}
-                <div class="routeros-update">
-                    <Select<Box<str>>
-                        selected={selected.map(channel_label)}
-                        entries={entries}
-                        onselect={ctx.link().callback(ShowDeviceMessage::SelectChannel)}
-                    />
-                    if let Some(action) = action {
-                        {" "}
-                        <Button
-                            variant={ButtonVariant::Secondary}
-                            label={action}
-                            disabled={update_locked || running}
-                            onclick={ctx.link().callback(|_| ShowDeviceMessage::Update)}
-                        />
-                    } else if !adjust_packages {
-                        {t::UP_TO_DATE}
-                    }
-                    if adjust_packages {
-                        {" "}
-                        <Button
-                            variant={ButtonVariant::Secondary}
-                            label={t::ADJUST_PACKAGES}
-                            disabled={update_locked || running}
-                            onclick={ctx.link().callback(|_| ShowDeviceMessage::AdjustPackages)}
-                        />
-                    }
-                </div>
-                if !routeros.version.starts_with("6.") {
-                    { self.downgrade_view(ctx, update_locked || running) }
-                }
-                if no_way_back {
-                    { self.no_way_back_view(ctx) }
-                }
-                { self.watchdogs_view(ctx, &data.watchdogs) }
-                <div class="device-reboot">
-                    {reboot}
-                    if let Some(supply) = &data.power_supply {
-                        {" "}
-                        { self.power_cycle_view(ctx, supply, self.allow_apply) }
-                    }
-                </div>
-            </dd>
-        </>})
-    }
-    /// The device mode, with the features the provisioner needs turned on where some are off.
-    fn device_mode_view(
-        &self,
-        ctx: &Context<Self>,
-        data: &ShowDeviceData,
-        running: bool,
-    ) -> Option<Html> {
-        let mode = data.device_mode.as_ref()?;
-        let changes = mode.changes.iter().map(|c| (c.feature.as_str(), &c.reason));
-        let missing = device_mode::features(changes);
-        let adjust = Confirm {
-            asking: self.confirm_device_mode,
-            question: t::DEVICE_MODE_CONFIRM.into(),
-            now: t::DEVICE_MODE_NOW,
-            ask: t::DEVICE_MODE_ADJUST.into(),
-            disabled: running,
-        };
-        Some(html! {<>
-            <dt>{t::DEVICE_MODE}</dt><dd>
-                { mode.mode.clone() }
-                if !missing.is_empty() {
-                    { t::device_mode_missing(&missing) }
-                    <div class="device-mode">
-                        { adjust.view(
-                            ctx.link().callback(|_| ShowDeviceMessage::ChangeDeviceMode),
-                            ctx.link().callback(ShowDeviceMessage::ConfirmDeviceMode),
-                        ) }
-                    </div>
-                }
-            </dd>
-        </>})
-    }
-    /// The partitions, each with a RouterOS to boot from, and splitting a single one.
-    fn partitions_view(
-        &self,
-        ctx: &Context<Self>,
-        data: &ShowDeviceData,
-        running: bool,
-    ) -> Option<Html> {
-        let partitions = data.partitions.as_ref()?;
-        let split = Confirm {
-            asking: self.confirm_repartition,
-            question: t::PARTITIONS_CONFIRM.into(),
-            now: t::PARTITIONS_NOW,
-            ask: t::PARTITIONS_SPLIT.into(),
-            disabled: running,
-        };
-        Some(html! {<>
-            <dt>{t::PARTITIONS}</dt><dd>
-                { for partitions.partitions.iter().map(|p| {
-                    // a RouterOS to boot, e.g. the one from before an update
-                    let bootable = !p.running && !p.version.is_empty();
-                    let boot = bootable.then(|| {
-                        let (now, ask) = (p.name.clone(), p.name.clone());
-                        Confirm {
-                            asking: self.confirm_boot.as_ref() == Some(&p.name),
-                            question: t::PARTITION_BOOT_CONFIRM.into(),
-                            now: t::PARTITION_BOOT_NOW,
-                            ask: t::partition_boot(&p.name),
-                            disabled: running,
-                        }
-                        .view(
-                            ctx.link().callback(move |_| ShowDeviceMessage::BootPartition(now.clone())),
-                            ctx.link().callback(move |asking: bool| {
-                                ShowDeviceMessage::ConfirmBoot(asking.then(|| ask.clone()))
-                            }),
-                        )
-                    });
-                    html!(
-                    <div>
-                        { t::partition(&p.name, &p.version, p.size_mib, p.active, p.running) }
-                        if let Some(boot) = boot {
-                            {" "}{boot}
-                        }
-                    </div>
-                )})}
-                if partitions.can_split {
-                    <div class="partitions-split">
-                        { split.view(
-                            ctx.link().callback(|_| ShowDeviceMessage::Repartition),
-                            ctx.link().callback(ShowDeviceMessage::ConfirmRepartition),
-                        ) }
-                    </div>
-                }
-            </dd>
-        </>})
-    }
-    /// „Änderungen“: what an apply would change (or why the device can't be reached, with
-    /// its setup), and the buttons to apply.
-    fn changes_view(&self, ctx: &Context<Self>, data: &ShowDeviceData, running: bool) -> Html {
-        let cfg = data.access.as_ref().and_then(|(_, cfg)| cfg.as_ref());
-        let script = cfg.map(|cfg| cfg.script.as_ref()).unwrap_or_default();
-        let nothing_to_do = script.trim().is_empty();
-        let changes = match cfg {
-            _ if data.access.is_none() => {
-                html!(<Alert inline=true title={t::UNREACHABLE} r#type={AlertType::Warning}>
-                if let Some(problem) = &data.access_problem {
-                    <p>{problem.as_ref()}</p>
-                }
-                {self.setup_view(ctx, data, running)}
-                <p>{t::UNREACHABLE_HINT}</p>
-                {self.target_form(ctx)}
-            </Alert>)
-            }
-            None => html!(<Alert inline=true title={t::NOT_GENERATED} r#type={AlertType::Warning}>
-                <p>{t::NOT_GENERATED_HINT}</p>
-            </Alert>),
-            Some(_) if nothing_to_do => {
-                html!(<Alert inline=true title={t::IN_LINE} r#type={AlertType::Success}/>)
-            }
-            Some(cfg) => html! {<>
-                { for cfg.warnings.iter().map(|warning| html!(
-                    <Alert inline=true title={apply_warning::describe(warning)} r#type={AlertType::Warning}/>
-                ))}
-                <CodeBlock><CodeBlockCode>{ script }</CodeBlockCode></CodeBlock>
-            </>},
-        };
-        html! {
-            <Card class="device-cfg">
-                <CardHeader><CardTitle>{t::CHANGES}</CardTitle></CardHeader>
-                <CardBody>
-                    <p class="as-of">
-                        if let Some(generated) = cfg {
-                            {t::as_of(&local_time(generated.as_of))}
-                        }
-                        <Button
-                            variant={ButtonVariant::Link}
-                            label={t::RELOAD}
-                            disabled={running}
-                            onclick={ctx.link().callback(|_| ShowDeviceMessage::Reload)}
-                        />
-                    </p>
-                    {changes}
-                    if data.access.is_some() {
-                        <Button
-                            variant={ButtonVariant::Primary}
-                            label={t::APPLY}
-                            disabled={nothing_to_do || running}
-                            onclick={ctx.link().callback(|_| ShowDeviceMessage::Apply)}
-                        />
-                        <BatchApply
-                            id={self.id}
-                            disabled={running}
-                            on_started={ctx.link().callback(ShowDeviceMessage::BatchStarted)}
-                        />
-                    }
-                </CardBody>
-            </Card>
-        }
-    }
-    /// The initial setup of an unreachable device over its neighbor: what the neighbor sees
-    /// at its port, or a MAC to type; or why there is none.
-    fn setup_view(&self, ctx: &Context<Self>, data: &ShowDeviceData, running: bool) -> Html {
-        let plan = match (&data.bootstrap_plan, &data.bootstrap_problem) {
-            (Some(plan), _) => plan,
-            (None, Some(problem)) => {
-                return html!(<p>{setup::impossible(&ServerProblem::from(problem).text())}</p>);
-            }
-            (None, None) => return html!(),
-        };
-        let name = data.configured_name.clone();
-        let candidates = match &self.candidates {
-            None => {
-                html!(<p><Spinner size={SpinnerSize::Md}/>{setup::searching(&plan.neighbor, &plan.neighbor_port)}</p>)
-            }
-            Some(Err(error)) => html!(<p>{setup::search_failed(&plan.neighbor, error)}</p>),
-            Some(Ok(found)) if found.is_empty() => {
-                html!(<p>{setup::nothing_found(&plan.neighbor, &plan.neighbor_port)}</p>)
-            }
-            Some(Ok(found)) => html! {
-                <table class="bootstrap-candidates">
-                    <thead><tr>
-                        <th>{setup::IDENTITY}</th><th>{setup::BOARD}</th><th>{setup::ROUTEROS}</th><th>{setup::MAC}</th><th>{setup::PORT}</th><th/>
-                    </tr></thead>
-                    <tbody>
-                    { for found.iter().map(|c| {
-                        let mac = c.mac.0.clone();
-                        html! {<tr>
-                            <td>{&c.identity}</td><td>{&c.board}</td><td>{&c.version}</td>
-                            <td><code>{&c.mac.0}</code></td><td>{&c.interface}</td>
-                            <td><Button
-                                variant={ButtonVariant::Secondary}
-                                label={setup::set_up_as(&name)}
-                                disabled={running}
-                                onclick={ctx.link().callback(move |_| ShowDeviceMessage::Bootstrap(mac.clone()))}
-                            /></td>
-                        </tr>}
-                    })}
-                    </tbody>
-                </table>
-            },
-        };
-        let manual = self.manual_mac.clone();
-        html! {<>
-            <p>{setup::plan(&plan.neighbor, &plan.neighbor_port, &plan.port, &plan.address)}</p>
-            <p>{setup::RESCUE}</p>
-            {candidates}
-            <div class="bootstrap-manual">
-                <TextInput
-                    value={self.manual_mac.clone()}
-                    placeholder={setup::MAC_PLACEHOLDER}
-                    onchange={ctx.link().callback(ShowDeviceMessage::ManualMac)}
-                />
-                <Button
-                    variant={ButtonVariant::Secondary}
-                    label={setup::WITH_MAC}
-                    disabled={running || manual.trim().is_empty()}
-                    onclick={ctx.link().callback(move |_| ShowDeviceMessage::Bootstrap(manual.clone()))}
-                />
-            </div>
-        </>}
-    }
     /// Subscribes to the overview with the target chosen, ending the subscription before.
     fn start_live(&mut self, ctx: &Context<Self>) {
         let (id, scope) = (self.id, ctx.link().clone());
@@ -1027,159 +637,19 @@ impl ShowDevice {
             })
         }));
     }
-    /// A version to type (or the one before an update of this run) and „Auf … downgraden“,
-    /// asked to confirm.
-    fn downgrade_view(&self, ctx: &Context<Self>, disabled: bool) -> Html {
-        let version = self.downgrade_version.trim();
-        if self.confirm_downgrade {
-            return html! {
-                <div class="routeros-downgrade">
-                    {t::downgrade_confirm(version)}
-                    <Button
-                        variant={ButtonVariant::Danger}
-                        label={t::DOWNGRADE_NOW}
-                        disabled={disabled}
-                        onclick={ctx.link().callback(|_| ShowDeviceMessage::Downgrade)}
-                    />
-                    {" "}
-                    <Button
-                        variant={ButtonVariant::Link}
-                        label={CANCEL}
-                        onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmDowngrade(false))}
-                    />
-                </div>
-            };
-        }
-        let label = match version.is_empty() {
-            true => t::DOWNGRADE.to_string(),
-            false => t::downgrade_to(version),
-        };
-        html! {
-            <div class="routeros-downgrade">
-                <TextInput
-                    value={self.downgrade_version.clone()}
-                    placeholder={t::DOWNGRADE_PLACEHOLDER}
-                    onchange={ctx.link().callback(ShowDeviceMessage::DowngradeVersion)}
-                />
-                {" "}
-                <Button
-                    variant={ButtonVariant::Secondary}
-                    label={label}
-                    disabled={disabled || version.is_empty()}
-                    onclick={ctx.link().callback(|_| ShowDeviceMessage::ConfirmDowngrade(true))}
-                />
-            </div>
-        }
-    }
-    /// „Strom aus und ein“ over the device feeding it, asked before; also while the device's
-    /// own job runs (a device mode change waits for it), and the supplier's job below it.
-    fn power_cycle_view(
-        &self,
-        ctx: &Context<Self>,
-        supply: &PowerSupply,
-        allow_apply: bool,
-    ) -> Html {
-        let job = self.power_job.map(|id| {
-            html! {
-                <JobView key={id} id={id} on_finished={yew::Callback::noop()}/>
-            }
-        });
-        let cycle = Confirm {
-            asking: self.confirm_power_cycle,
-            question: t::power_cycle_confirm(&supply.device.name, &supply.port),
-            now: t::POWER_CYCLE_NOW,
-            ask: t::POWER_CYCLE.into(),
-            disabled: !allow_apply,
-        };
-        html! {<>
-            { cycle.view(
-                ctx.link().callback(|_| ShowDeviceMessage::PowerCycle),
-                ctx.link().callback(ShowDeviceMessage::ConfirmPowerCycle),
-            ) }
-            {job}
-        </>}
-    }
-    /// Whether an update would leave the device without a way back: no second partition with
-    /// the running RouterOS to switch back to, and no neighbor reaching it (also when the
-    /// partitions couldn't be read, as the backend then finds none either).
-    fn no_way_back(&self, data: &ShowDeviceData) -> bool {
-        let partitions = data
-            .partitions
-            .as_ref()
-            .map(|p| p.partitions.as_slice())
-            .unwrap_or_default();
-        let two =
-            matches!(partitions, [a, b] if (a.running && a.active) || (b.running && b.active));
-        !two && data.update_neighbors.is_empty()
-    }
-    fn no_way_back_view(&self, ctx: &Context<Self>) -> Html {
-        let without = self.without_fallback;
-        html! {
-            <Alert inline=true title={t::NO_WAY_BACK_TITLE} r#type={AlertType::Danger}>
-                <p>{t::NO_WAY_BACK}</p>
-                <label class="suspend-watchdogs">
-                    <input
-                        type="checkbox"
-                        checked={without}
-                        onchange={ctx.link().callback(move |_| ShowDeviceMessage::WithoutFallback(!without))}
-                    />
-                    {" "}{t::UPDATE_WITHOUT_WAY_BACK}
-                </label>
-            </Alert>
-        }
-    }
-    /// Whether an update suspends the watchdogs: asked for, and one watches something.
-    fn suspend(&self) -> bool {
-        self.suspend_watchdogs
-            && self.data.as_ref().is_some_and(|data| {
-                data.watchdogs
-                    .iter()
-                    .any(|w| w.watching.watch_address.is_some() || !w.watching.poe_pings.is_empty())
-            })
-    }
-    /// The watchdogs that may fire while this device updates, where one watches something or
-    /// can't be read, with the choice to suspend them during an update.
-    fn watchdogs_view(&self, ctx: &Context<Self>, watchdogs: &[Watchdog]) -> Html {
-        let watching: Vec<Html> = watchdogs
-            .iter()
-            .flat_map(|w| {
-                let address = w.watching.watch_address.as_deref().map(
-                    |address| html!(<p>{t::watchdog_watching(&w.device, w.supplier, address)}</p>),
-                );
-                let ports = w.watching.poe_pings.iter().map(|ping| {
-                    html!(<p>{t::watchdog_poe_ping(&w.device, &ping.port, &ping.address)}</p>)
-                });
-                address.into_iter().chain(ports).collect::<Vec<_>>()
-            })
-            .collect();
-        let unread: Vec<Html> = watchdogs
-            .iter()
-            .filter_map(|w| {
-                let problem = w.problem.as_ref()?;
-                Some(html!(<p>{t::watchdog_unread(&w.device, &ServerProblem::from(problem).text())}</p>))
-            })
-            .collect();
-        if watching.is_empty() && unread.is_empty() {
-            return Html::default();
-        }
-        let suspend = self.suspend_watchdogs;
-        html! {
-            <Alert inline=true title={t::WATCHDOG_TITLE} r#type={AlertType::Warning}>
-                { for watching.iter().cloned() }
-                { for unread.iter().cloned() }
-                if !watching.is_empty() {
-                    <label class="suspend-watchdogs">
-                        <input
-                            type="checkbox"
-                            checked={suspend}
-                            onchange={ctx.link().callback(move |_| ShowDeviceMessage::SuspendWatchdogs(!suspend))}
-                        />
-                        {" "}{t::SUSPEND_WATCHDOGS}
-                    </label>
-                }
-            </Alert>
-        }
-    }
+}
+
+/// Whether an update would leave the device without a way back: no second partition with
+/// the running RouterOS to switch back to, and no neighbor reaching it (also when the
+/// partitions couldn't be read, as the backend then finds none either).
+fn no_way_back(data: &ShowDeviceData) -> bool {
+    let partitions = data
+        .partitions
+        .as_ref()
+        .map(|p| p.partitions.as_slice())
+        .unwrap_or_default();
+    let two = matches!(partitions, [a, b] if (a.running && a.active) || (b.running && b.active));
+    !two && data.update_neighbors.is_empty()
 }
 
 /// The newest entries of the device's log, folded.
@@ -1339,28 +809,16 @@ fn bootstrap(scope: Scope<ShowDevice>, id: u32, mac: String) {
     });
 }
 
-/// What the channel select shows, e.g. `stable: 7.20.8`.
-fn channel_label(channel: &ChannelUpdate) -> Box<str> {
-    t::channel(channel.channel.name(), &channel.newest).into()
-}
-
-/// Updates to the newest release of `channel`, or without one only adjusts the packages;
-/// `suspend`: with the suppliers' watchdogs suspended.
-fn update(
-    scope: Scope<ShowDevice>,
-    id: u32,
-    channel: Option<Channel>,
-    suspend: bool,
-    without_fallback: bool,
-    target: &SelectedTarget,
-) {
+/// Updates to the newest release of the request's channel, or without one only adjusts the
+/// packages.
+fn update(scope: Scope<ShowDevice>, id: u32, asked: UpdateRequest, target: &SelectedTarget) {
     let (id, target) = (id as i32, target.input());
     let update = UpdateRouteros::build(UpdateVariables {
         id,
-        channel,
+        channel: asked.channel,
         target,
-        suspend_watchdogs: suspend.then_some(true),
-        without_fallback: without_fallback.then_some(true),
+        suspend_watchdogs: asked.suspend_watchdogs.then_some(true),
+        without_fallback: asked.without_fallback.then_some(true),
     });
     spawn_local(async move {
         let result = request(scope.clone(), update)
@@ -1370,13 +828,13 @@ fn update(
     });
 }
 
-/// Takes RouterOS back to the older `version`; `suspend`, `without_fallback` as for [`update`].
+/// Takes RouterOS back to the older `version`, with the choices `asked` as for
+/// [`update`].
 fn downgrade(
     scope: Scope<ShowDevice>,
     id: u32,
     version: String,
-    suspend: bool,
-    without_fallback: bool,
+    asked: UpdateRequest,
     target: &SelectedTarget,
 ) {
     let (id, target) = (id as i32, target.input());
@@ -1384,8 +842,8 @@ fn downgrade(
         id,
         version,
         target,
-        suspend_watchdogs: suspend.then_some(true),
-        without_fallback: without_fallback.then_some(true),
+        suspend_watchdogs: asked.suspend_watchdogs.then_some(true),
+        without_fallback: asked.without_fallback.then_some(true),
     });
     spawn_local(async move {
         let result = request(scope.clone(), downgrade)
