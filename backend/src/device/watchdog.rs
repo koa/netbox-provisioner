@@ -27,13 +27,14 @@
 use crate::lock::LockAnyway;
 use crate::{
     Error,
+    device::connect_for_job,
     device::{
         AccessibleDevice,
         raw::{command, field, rows},
     },
     device_state::JobPhase,
     error_info::ErrorInfo,
-    graphql::{connect_for_job, management_tree, scalars::ScalarDuration},
+    graphql::scalars::ScalarDuration,
     job::Log,
     topology::{
         access::{DeviceTarget, device::DeviceAccess},
@@ -643,7 +644,7 @@ impl Watchers {
     pub(crate) fn of(device: &DeviceAccess, suspend: bool) -> Self {
         Self {
             watchers: match suspend {
-                true => watchers(device, &management_tree(device)),
+                true => watchers(device, &ManagementTree::of_device(device)),
                 false => Vec::new(),
             },
             powered: addresses(device),

@@ -24,7 +24,7 @@ use crate::{
         update,
     },
     device_state::BootstrapState,
-    error_info::{ApiError, BootstrapObstacle},
+    error_info::ApiError,
     facts::{self, FactKey, FactKind, Freshness},
     graphql::scalars::{ScalarDuration, ScalarMac},
     job::Log,
@@ -37,6 +37,36 @@ use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::MacAddress;
 use std::{collections::HashSet, net::IpAddr, str::FromStr, time::Duration};
 use tokio::time::{Instant, sleep, timeout};
+
+/// Why a device has no way to its initial setup (`Error::NoBootstrapPath`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BootstrapObstacle {
+    /// no port with an IPv4 address in NetBox, on the port or its bridge
+    NoIpv4Port,
+    /// no cable from such a port to a device the provisioner reaches, in the same network
+    NoReachableNeighbor,
+}
+
+impl BootstrapObstacle {
+    /// its name in the `obstacle` param
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            BootstrapObstacle::NoIpv4Port => "NO_IPV4_PORT",
+            BootstrapObstacle::NoReachableNeighbor => "NO_REACHABLE_NEIGHBOR",
+        }
+    }
+}
+
+impl std::fmt::Display for BootstrapObstacle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            BootstrapObstacle::NoIpv4Port => "no port with an IPv4 address in NetBox",
+            BootstrapObstacle::NoReachableNeighbor => {
+                "no cable from a port with IPv4 address to a reachable device"
+            }
+        })
+    }
+}
 
 /// Marks what the setup added besides the address, so it can be told apart on the device.
 const COMMENT: &str = "netbox-provisioner setup";

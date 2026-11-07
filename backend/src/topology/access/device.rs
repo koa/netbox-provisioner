@@ -417,7 +417,10 @@ impl DeviceAccess {
     async fn watchdogs(&self) -> Vec<crate::device::watchdog::Watchdog> {
         use crate::device::watchdog;
         let powered = watchdog::addresses(self);
-        let watchers = watchdog::watchers(self, &crate::graphql::management_tree(self));
+        let watchers = watchdog::watchers(
+            self,
+            &crate::topology::management::ManagementTree::of_device(self),
+        );
         let read = watchers
             .iter()
             .map(|watchdog::Watcher { device, supplier }| {

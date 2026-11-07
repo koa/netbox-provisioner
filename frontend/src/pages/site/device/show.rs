@@ -30,7 +30,7 @@ use crate::{
                 LeftoverAction, Mac,
             },
         },
-        live::{Subscription, local_time, read_at, same_reading, watch},
+        live::{Subscription, watch},
         path_segment, request,
     },
     i18n::{
@@ -39,6 +39,7 @@ use crate::{
         device::{self as t, setup},
         device_mode, target,
     },
+    reading_time::{local_time, read_at, same_reading},
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{

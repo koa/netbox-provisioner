@@ -25,6 +25,7 @@
 use crate::{
     Error,
     config::CONFIG,
+    device::connect_for_job,
     device::{
         AccessibleDevice, bootstrap,
         radio_hold::RadioHold,
@@ -41,7 +42,6 @@ use crate::{
     },
     device_state::{ApplyState, JobPhase},
     error_info::ErrorInfo,
-    graphql::connect_for_job,
     job::Log,
     lock::LockAnyway,
     saved_job::{self, SavedApply, SavedBatch, SavedJob, SavedWork, ScriptRun},

@@ -9,6 +9,7 @@ mod graphql;
 mod i18n;
 mod local_storage;
 pub mod pages;
+mod reading_time;
 mod routes;
 mod svg_export;
 mod target;

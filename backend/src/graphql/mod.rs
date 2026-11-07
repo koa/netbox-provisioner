@@ -5,7 +5,7 @@ use crate::{
     config::CONFIG,
     context::UserInfo,
     device::{
-        AccessibleDevice, Connecting, bootstrap,
+        AccessibleDevice, bootstrap, connect_for_job,
         dependency::PowerChain,
         device_mode, partitions, rollout,
         update::{self, DeviceLink},
@@ -25,7 +25,6 @@ use crate::{
     topology::{
         DeviceId, SiteId, TopologyHolder,
         access::{DeviceTarget, device::DeviceAccess, site::SiteAccess},
-        management::ManagementTree,
     },
 };
 use async_graphql::{
@@ -329,36 +328,6 @@ fn start_update(
             restore_watchdogs(suspended, &log, UpdateState::RestoringWatchdogs).await;
             updated
         },
-    )
-}
-
-/// Connects to `device` for a job, which shows where it got to: a connection that takes long
-/// (the NetBox address first, then each neighbor's tunnel) is otherwise a job without events.
-pub(crate) async fn connect_for_job(
-    device: &DeviceAccess,
-    target: DeviceTarget,
-    log: &Log,
-) -> Result<AccessibleDevice, Error> {
-    log.emit(Connecting {
-        device: device.name().into(),
-    });
-    let link = log
-        .unless_cancelled(device.connect(target))
-        .await??
-        .ok_or(Error::MissingCredentials)?;
-    log.emit(link.connected_device());
-    Ok(link)
-}
-
-/// The way of `device`'s watchdogs to the management roots, the management proxy's device
-/// among them (`topology::management`).
-pub(crate) fn management_tree(device: &DeviceAccess) -> ManagementTree {
-    ManagementTree::of(
-        device.topology(),
-        CONFIG
-            .management_proxy
-            .as_ref()
-            .map(|proxy| proxy.device.as_ref()),
     )
 }
 

@@ -17,7 +17,10 @@ use crate::{
 };
 use async_graphql::{Context, Object, SimpleObject};
 use mikrotik_api::simple::SimpleResult;
-use mikrotik_model::{hwconfig::DeviceType, model::SystemIdentityCfg};
+use mikrotik_model::{
+    hwconfig::DeviceType,
+    model::{SystemIdentityCfg, SystemRouterboardState},
+};
 use std::{sync::Arc, time::Duration};
 
 pub struct GraphqlDeviceType(DeviceType);
@@ -480,4 +483,20 @@ pub struct ChannelUpdate {
     upgrade: bool,
     /// whether an update changes anything (version or packages)
     update: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct GraphqlSystemRouterboard(pub(crate) SystemRouterboardState);
+
+#[Object]
+impl GraphqlSystemRouterboard {
+    async fn device_type(&self) -> String {
+        self.0.model.to_string()
+    }
+    async fn serial_number(&self) -> String {
+        self.0.serial_number.to_string()
+    }
+    async fn firmware_type(&self) -> String {
+        self.0.firmware_type.to_string()
+    }
 }

@@ -30,7 +30,8 @@ use super::{
 };
 use crate::{
     Error,
-    graphql::{connect_for_job, scalars::ScalarDuration},
+    device::connect_for_job,
+    graphql::scalars::ScalarDuration,
     job::Log,
     lock::LockAnyway,
     saved_job::SavedHold,
@@ -284,14 +285,15 @@ fn depending(
 ) -> Vec<DeviceAccess> {
     let topology = device.topology();
     let mut claimed = claimed.lock_anyway();
-    let mut depending: Vec<DeviceAccess> = crate::graphql::management_tree(device)
-        .depending_on(device.id())
-        .into_iter()
-        .filter(|id| !applied.contains(id))
-        .filter_map(|id| topology.get_device_by_id(&id))
-        .filter(DeviceAccess::has_routeros)
-        .filter(|watcher| claimed.insert(watcher.id()))
-        .collect();
+    let mut depending: Vec<DeviceAccess> =
+        crate::topology::management::ManagementTree::of_device(device)
+            .depending_on(device.id())
+            .into_iter()
+            .filter(|id| !applied.contains(id))
+            .filter_map(|id| topology.get_device_by_id(&id))
+            .filter(DeviceAccess::has_routeros)
+            .filter(|watcher| claimed.insert(watcher.id()))
+            .collect();
     depending.sort_by_cached_key(|watcher| naturalize(watcher.name()));
     depending
 }

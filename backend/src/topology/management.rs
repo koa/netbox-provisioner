@@ -5,6 +5,7 @@
 //! Two devices are neighbors where both have an `ospf` interface with an IPv4 address in the
 //! same network; each device's parent is its neighbor nearest to a root (by hops, then one it
 //! is cabled to, then by NetBox's order of the names). The ping watchdog of a device watches its parent.
+use crate::config::CONFIG;
 use crate::topology::{
     DeviceId, Topology,
     access::{device::DeviceAccess, interface::InterfaceAccess},
@@ -25,6 +26,18 @@ pub struct ManagementTree {
 }
 
 impl ManagementTree {
+    /// The way of `device`'s watchdogs to the management roots, the management proxy's device
+    /// among them.
+    pub(crate) fn of_device(device: &DeviceAccess) -> ManagementTree {
+        ManagementTree::of(
+            device.topology(),
+            CONFIG
+                .management_proxy
+                .as_ref()
+                .map(|proxy| proxy.device.as_ref()),
+        )
+    }
+
     /// The tree towards the devices with `propagate_default_route` and the device named
     /// `proxy_device` (the management proxy's), if any.
     pub fn of(topology: &Arc<Topology>, proxy_device: Option<&str>) -> ManagementTree {

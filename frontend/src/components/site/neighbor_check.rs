@@ -20,10 +20,11 @@ use crate::{
             NeighborFinding as Finding, NeighborFindingKind as Kind, NeighborFindings,
             NeighborFindingsVariables, RefreshNeighbors, RefreshNeighborsVariables,
         },
-        live::{Subscription, local_time, read_at, same_reading, watch_data},
+        live::{Subscription, watch_data},
         request,
     },
     i18n::{device::as_of, neighbors as t},
+    reading_time::{local_time, read_at, same_reading},
 };
 use cynic::{MutationBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{

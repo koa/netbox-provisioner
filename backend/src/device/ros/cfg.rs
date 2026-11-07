@@ -12,10 +12,11 @@ use crate::{
     Error,
     config::CONFIG,
     device::{
-        GraphqlSystemRouterboard, raw,
+        raw,
         ros::{
             BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent,
             W60GDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
+            graphql::GraphqlSystemRouterboard,
             hw_facts::{RadioPackage, SwitchChips, build_w60g_ports, radio_package},
             needed_radio_package,
             warning::{ApplyWarning, CapOffOutsideWlanGroup},
@@ -163,8 +164,10 @@ impl DeviceCfg {
     /// their way to it too.
     pub fn generate_for(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
         self.generate_from(device, EndpointNameGenerator)?;
-        self.base_target
-            .setup_watchdog(device, &crate::graphql::management_tree(device))?;
+        self.base_target.setup_watchdog(
+            device,
+            &crate::topology::management::ManagementTree::of_device(device),
+        )?;
         if let Some(proxy) = CONFIG
             .management_proxy
             .as_ref()

@@ -4,6 +4,7 @@
 //! its script, an update waiting for its reboot, a batch's applies together.
 use crate::{
     Error,
+    device::connect_for_job,
     device::{
         AccessibleDevice, Connecting,
         dependency::PowerChain,
@@ -11,7 +12,6 @@ use crate::{
         watchdog::{self, restore_watchdogs},
     },
     device_state::UpdateState,
-    graphql::connect_for_job,
     job::{self, JobKind, Log},
     journal::Started,
     saved_job::{self, SavedWork},

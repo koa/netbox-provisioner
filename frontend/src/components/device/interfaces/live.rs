@@ -23,10 +23,11 @@ use crate::{
             neighbor_findings::{NeighborFinding, SeenNeighbor as Seen},
             types::{DeviceRef as Device, PoeProblem, Severity},
         },
-        live::{Subscription, read_at, watch},
+        live::{Subscription, watch},
         request,
     },
     i18n::interfaces as t,
+    reading_time::read_at,
 };
 use cynic::{MutationBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{Icon, Spinner, SpinnerSize};

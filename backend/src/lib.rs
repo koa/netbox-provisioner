@@ -72,7 +72,7 @@ pub enum Error {
     #[error("Console: {0}")]
     Terminal(#[from] device::terminal::TerminalError),
     #[error("No way known to set up {0}: {1}")]
-    NoBootstrapPath(Box<str>, error_info::BootstrapObstacle),
+    NoBootstrapPath(Box<str>, device::bootstrap::BootstrapObstacle),
     /// over mac-telnet to these MACs, with every credentials tried
     #[error("Login over mac-telnet to {0} refused")]
     ConsoleLoginRefused(Box<str>),

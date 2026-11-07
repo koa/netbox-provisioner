@@ -5,18 +5,15 @@ use crate::{
     config::CONFIG,
     facts::{self, Came, Fact, FactKey, FactKind, Freshness},
     graphql::scalars::ScalarDuration,
-    topology::access::device::DeviceAccess,
+    job::Log,
+    topology::access::{DeviceTarget, device::DeviceAccess},
 };
-use async_graphql::{ComplexObject, Object, SimpleObject};
+use async_graphql::{ComplexObject, SimpleObject};
 use mikrotik_api::{
     prelude::{MikrotikDevice as RawDevice, ParsedMessage},
     simple::SimpleResult,
 };
-use mikrotik_model::{
-    MikrotikDevice,
-    model::{SystemIdentityCfg, SystemRouterboardState},
-    resource::SingleResource,
-};
+use mikrotik_model::{MikrotikDevice, model::SystemIdentityCfg, resource::SingleResource};
 use std::{net::IpAddr, sync::Arc, time::Duration};
 use surge_ping::{IcmpPacket, SurgeError, ping};
 use tokio::{
@@ -514,20 +511,22 @@ pub async fn proxied_stream(
         }
     }
 }
-#[derive(Clone, Debug)]
-struct GraphqlSystemRouterboard(SystemRouterboardState);
-
-#[Object]
-impl GraphqlSystemRouterboard {
-    async fn device_type(&self) -> String {
-        self.0.model.to_string()
-    }
-    async fn serial_number(&self) -> String {
-        self.0.serial_number.to_string()
-    }
-    async fn firmware_type(&self) -> String {
-        self.0.firmware_type.to_string()
-    }
+/// Connects to `device` for a job, which shows where it got to: a connection that takes long
+/// (the NetBox address first, then each neighbor's tunnel) is otherwise a job without events.
+pub(crate) async fn connect_for_job(
+    device: &DeviceAccess,
+    target: DeviceTarget,
+    log: &Log,
+) -> Result<AccessibleDevice, Error> {
+    log.emit(Connecting {
+        device: device.name().into(),
+    });
+    let link = log
+        .unless_cancelled(device.connect(target))
+        .await??
+        .ok_or(Error::MissingCredentials)?;
+    log.emit(link.connected_device());
+    Ok(link)
 }
 
 #[cfg(test)]

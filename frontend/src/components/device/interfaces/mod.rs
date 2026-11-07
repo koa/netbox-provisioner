@@ -27,10 +27,11 @@ use crate::{
             interfaces::{DeviceInterfaces, DeviceInterfacesVariables},
             types::Severity,
         },
-        live::{Subscription, local_time, same_reading, watch_data},
+        live::{Subscription, watch_data},
     },
     i18n::{device::as_of, interfaces as t},
     local_storage::{store, stored},
+    reading_time::{local_time, same_reading},
 };
 use cynic::SubscriptionBuilder;
 use live::Live;

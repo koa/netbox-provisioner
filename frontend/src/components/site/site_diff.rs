@@ -18,10 +18,11 @@ use crate::{
             },
             types::{JobKind, JobState},
         },
-        live::{Subscription, read_at, watch},
+        live::{Subscription, watch},
         request,
     },
     i18n::site_diff as t,
+    reading_time::read_at,
     routes::AppRoute,
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};

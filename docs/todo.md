@@ -56,6 +56,10 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
+| B29 | `device/ros/mod.rs` nach seinem Scope aufteilen: die `mikrotik_model!`-Modelle nach `ros/model.rs`, die Schritte in ihre Themenmodule (`setup_speed` nach `speed.rs`, `masquerade` und `add_to_uplinks` nach `firewall.rs`, Identity und Loopback nach `addresses.rs`, Maintenance-Ports und L2-Aufruf) | M | offen |
+| B30 | Die Karten der Geräteseite aus `pages/site/device/show.rs` nach `components::device`: RouterOS-Update und Downgrade, Device-Mode, Partitionen, Änderungen, Setup, Strom aus/ein, Watchdogs | M–L | offen |
+| B31 | PoE vom Gerät lesen und mit NetBox vergleichen (`read_ports`, `feeding`, `mismatches`) aus `helper::poe` in ein eigenes Modul `device::poe`; Netzwerkkarte und Live-Prüfung nutzen es auch | S | offen |
+| B32 | Den gewöhnlichen Neustart (`update::reboot`: „Neu starten“, Repartitionierung, Partitionsstart) aus `device::update` nach `device::reboot` | S | offen |
 
 ## C. Konzepte zum Umsetzen
 
