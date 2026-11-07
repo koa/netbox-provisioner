@@ -8,6 +8,7 @@ mod hand_made;
 mod mac_server;
 mod mtu;
 mod netbox_example;
+mod ospf;
 mod poe;
 mod radio;
 mod service;

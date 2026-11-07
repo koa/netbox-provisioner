@@ -10,15 +10,20 @@
 
 use crate::chr_network::default_route::apply_directly;
 use crate::chr_network::scenario::boot_scenario;
+use crate::chr_network::vm::RunningNode;
 use crate::chr_network::wait::wait_until;
+use backend::device::ros::cfg::DeviceCfg;
+use backend::device::ros::l2::KeepNameGenerator;
 use backend::topology::builder::TopologyBuilder;
 use backend::topology::{
     Cable, CablePort, Device, DeviceId, DeviceRole, Interface, IpAddressData, PhysicalPortId,
     TopologyHolder,
 };
+use encoding_rs::mem::encode_latin1_lossy;
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
 use mikrotik_model::hwconfig::DeviceType;
+use mikrotik_model::resource::ResourceMutationOperation;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
@@ -173,13 +178,17 @@ async fn role(device: &MikrotikDevice<SimpleResult>) -> (String, String) {
         .unwrap_or_default()
 }
 
-#[tokio::test]
-#[ignore]
-async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
-    if crate::chr_network::qemu::nix_unavailable() {
-        eprintln!("skipping: `nix` is not available in this environment");
-        return;
-    }
+/// The segment booted, the switch bridging its four ports and every speaker applied: the nodes
+/// (they stop when dropped), the topology and the speakers' APIs in the order of
+/// [`Segment::speakers`].
+async fn boot(
+    test: &str,
+) -> (
+    HashMap<DeviceId, RunningNode>,
+    TopologyHolder,
+    [DeviceId; 4],
+    Vec<MikrotikDevice<SimpleResult>>,
+) {
     let golden = crate::chr_network::golden_image::ensure_golden_image(
         &crate::cache_dir(),
         crate::TEST_PASSWORD,
@@ -196,7 +205,7 @@ async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
         .chain(speakers)
         .map(|device| (device, DeviceType::RB750Gr3))
         .collect();
-    let work_dir = Path::new("/tmp").join("chr-network-ospf-segment-test");
+    let work_dir = Path::new("/tmp").join(test);
     let nodes = boot_scenario(&golden, &builder, &boards, &work_dir, crate::TEST_PASSWORD)
         .await
         .expect("scenario boot failed");
@@ -232,6 +241,17 @@ async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
                 .expect("api"),
         );
     }
+    (nodes, holder, speakers, apis)
+}
+
+#[tokio::test]
+#[ignore]
+async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
+    if crate::chr_network::qemu::nix_unavailable() {
+        eprintln!("skipping: `nix` is not available in this environment");
+        return;
+    }
+    let (_nodes, _, _, apis) = boot("chr-network-ospf-segment-test").await;
     let [_, bridge_a, bridge_b, _] = &apis[..] else {
         unreachable!()
     };
@@ -296,4 +316,133 @@ async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
     )
     .await
     .expect("the routers are DR and BDR again");
+}
+
+/// Whether the node is adjacent (`Full`) with the router `router_id` in `instance`.
+async fn full_with(device: &MikrotikDevice<SimpleResult>, instance: &str, router_id: &str) -> bool {
+    run(device, "/routing/ospf/neighbor/print", &[])
+        .await
+        .iter()
+        .any(|row| {
+            let field = |name: &str| row.get(name).cloned().flatten();
+            field("instance").as_deref() == Some(instance)
+                && field("router-id").as_deref() == Some(router_id)
+                && field("state").as_deref() == Some("Full")
+        })
+}
+
+/// The `inactive` and `.about` of the node's OSPFv2 interface template.
+async fn v2_template(device: &MikrotikDevice<SimpleResult>) -> (String, String) {
+    run(device, "/routing/ospf/interface-template/print", &[])
+        .await
+        .into_iter()
+        .find(|row| row.get("area").cloned().flatten().as_deref() == Some("backbone-v2"))
+        .map(|row| {
+            let field = |name: &str| {
+                row.get(name)
+                    .cloned()
+                    .flatten()
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            (field("inactive"), field(".about"))
+        })
+        .unwrap_or_default()
+}
+
+/// The `.id`s the diff of the node removes from `/routing/ospf/interface-template`.
+async fn template_removals(
+    node: &RunningNode,
+    device: &backend::topology::access::device::DeviceAccess,
+) -> Vec<String> {
+    let client = mikrotik_model::MikrotikDevice::connect(
+        ("127.0.0.1", node.api_port),
+        b"admin",
+        Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
+    )
+    .await
+    .expect("typed api");
+    let mut cfg = DeviceCfg::fetch_with_board_model(&client, b"RB750Gr3", device)
+        .await
+        .expect("fetch");
+    cfg.generate_from(device, KeepNameGenerator)
+        .expect("generate");
+    cfg.setup_services(None);
+    cfg.generate_mutations()
+        .expect("mutations")
+        .iter()
+        .filter(|m| m.resource.ends_with(b"routing/ospf/interface-template"))
+        .filter_map(|m| match &m.operation {
+            ResourceMutationOperation::RemoveByKey(key) => {
+                Some(String::from_utf8_lossy(&key.value).into_owned())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// An OSPF interface template RouterOS reports inactive looks like the target's to the model,
+/// which completes its few fields with RouterOS's defaults: the diff replaces it, and the apply
+/// brings the router's OSPFv2 back (berghof-haus-stall, 7.24.6: no OSPFv2 interface, the diff
+/// empty). Here the instance being off makes it inactive.
+#[tokio::test]
+#[ignore]
+async fn an_inactive_ospf_template_is_replaced_by_the_apply() {
+    if crate::chr_network::qemu::nix_unavailable() {
+        eprintln!("skipping: `nix` is not available in this environment");
+        return;
+    }
+    let (nodes, holder, speakers, apis) = boot("chr-network-inactive-ospf-template").await;
+    let (near, far) = (&apis[0], "192.168.255.24");
+    let near_node = &nodes[&speakers[0]];
+    let near_access = holder.devices_by_id(speakers[0]).await.unwrap();
+    wait_until(
+        || async { Ok(full_with(near, "default-v2", far).await) },
+        Duration::from_secs(180),
+    )
+    .await
+    .expect("near and far adjacent in v2");
+    assert!(
+        template_removals(near_node, &near_access).await.is_empty(),
+        "an active template stays"
+    );
+
+    run(
+        near,
+        "/routing/ospf/instance/disable",
+        &[("numbers", "default-v2")],
+    )
+    .await;
+    wait_until(
+        || async {
+            let template = v2_template(near).await;
+            eprintln!("v2 template (inactive, .about): {template:?}");
+            Ok(template.0 == "true")
+        },
+        Duration::from_secs(60),
+    )
+    .await
+    .expect("the template inactive");
+    assert_eq!(
+        template_removals(near_node, &near_access).await.len(),
+        1,
+        "the diff removes the inactive template"
+    );
+
+    apply_directly(near_node, &near_access).await;
+    wait_until(
+        || async { Ok(full_with(near, "default-v2", far).await) },
+        Duration::from_secs(180),
+    )
+    .await
+    .expect("near and far adjacent in v2 again");
+    assert_eq!(
+        v2_template(near).await.0,
+        "false",
+        "the new template is active"
+    );
+    assert!(
+        template_removals(near_node, &near_access).await.is_empty(),
+        "and the diff empty for it"
+    );
 }
