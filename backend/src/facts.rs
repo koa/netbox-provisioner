@@ -659,7 +659,7 @@ async fn run<T, F>(
     // doesn't count the first sample of a new series, so the first failure would be lost
     for each in OUTCOMES {
         METRICS.duration.with_label_values(&[label, each, key.path]);
-        METRICS.total.with_label_values(&[&device, label, each]);
+        METRICS.total.with_label_values(&[device.as_str(), label, each]);
     }
     METRICS
         .duration
@@ -667,7 +667,7 @@ async fn run<T, F>(
         .observe(took.as_secs_f64());
     METRICS
         .total
-        .with_label_values(&[&device, label, outcome])
+        .with_label_values(&[device.as_str(), label, outcome])
         .inc();
     let value: Stored = Arc::new(result.map(Arc::new).map_err(Arc::new));
     let kept = {

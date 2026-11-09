@@ -319,6 +319,7 @@ impl AccessibleDevice {
         let login = login(&device_config, address, &path, &credentials)
             .await
             .result()?;
+        // TODO: Warum wird der Login hier zerlegt und cloned?
         Ok(AccessibleDevice {
             address,
             path,
@@ -339,6 +340,7 @@ impl AccessibleDevice {
     }
     /// Another handle on the same connection, for work that outlives the request (a fact
     /// asked on its own, `facts::get`).
+    // TODO: Das erscheint mir falsch. Warum werden hier zustandsdaten kopiert, statt die ganzen Daten in ein Arc<> zu packen?
     pub(crate) fn duplicate(&self) -> AccessibleDevice {
         use std::sync::atomic::{AtomicBool, Ordering};
         AccessibleDevice {
