@@ -1,3 +1,5 @@
 # formatting-only commits, skipped by `git blame` (git config blame.ignoreRevsFile .git-blame-ignore-revs)
 # format with cargo fmt
 47dda32a66c01f3cb2edfdc822d3b98eebd03da7
+# format facts.rs with cargo fmt
+9049da088326e3ae9623524d7e22633e51a6905c
