@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/koa/netbox-provisioner
-  # defaults to the chart's appVersion; a snapshot is `sha-<commit>`
+  # defaults to the chart's appVersion; a snapshot is `sha-<full commit id>`
   tag: ""
   pullPolicy: IfNotPresent
 imagePullSecrets: []

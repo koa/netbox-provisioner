@@ -141,9 +141,13 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
   was sich geändert hat, ohne geänderte Abhängigkeiten also nur die eigenen Crates und das
   Frontend.
   - Ein Push auf `master` veröffentlicht einen **Snapshot**: das Image
-    `ghcr.io/koa/netbox-provisioner:sha-<kurz>` und das Chart in `oci://ghcr.io/koa/charts` als
-    Vorabversion der nächsten Release (`version` in `Chart.yaml`), nach Zeit geordnet
-    (`0.1.0-snapshot.20261024123456.sha-abc1234`), mit dem Snapshot-Image als Vorgabe.
+    `ghcr.io/koa/netbox-provisioner:sha-<Commit-ID>` und das Chart in `oci://ghcr.io/koa/charts`
+    als Vorabversion der nächsten Release (`version` in `Chart.yaml`), benannt nach der
+    vollständigen Commit-ID (`0.1.0-snapshot.sha-<40 Zeichen>`, aus dem lokalen
+    `git rev-parse HEAD`), mit dem Snapshot-Image als Vorgabe. Nach Zeit geordnet sind die
+    Snapshots so nicht mehr: Helm ohne feste Version nimmt nicht den neuesten, sondern den
+    lexikalisch grössten; einen Snapshot zieht man daher immer mit seiner Version.
+    `cleanup.sh` wählt den neuesten nach `created_at` und bleibt richtig.
   - Ein Tag `vX.Y.Z` veröffentlicht Image und Chart als **Release** `X.Y.Z`
     (`.github/scripts/publish.sh`, mit `skopeo`, ohne Docker). Nach einer Release gehört
     `version` in `Chart.yaml` auf die nächste. Release-Images werden nie gelöscht.

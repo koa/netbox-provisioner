@@ -1351,9 +1351,9 @@ QEMU's, the golden image's dhcp-client is bound to it).
 - Update this file in the same commit as the change it describes.
 - Commits by Claude end with the `Co-Authored-By: Claude …` trailer, without a session link.
 - Push to `master` only when asked: a push to `master` publishes image and Helm chart as a
-  snapshot (`ghcr.io/koa/netbox-provisioner:sha-<commit>`, chart in `oci://ghcr.io/koa/charts`
-  as prerelease of `Chart.yaml`'s `version`), a tag `vX.Y.Z` as the release X.Y.Z, so this
-  matters more here than in the other two repos. Snapshots are for a quick try: a daily
+  snapshot (`ghcr.io/koa/netbox-provisioner:sha-<full commit id>`, chart in
+  `oci://ghcr.io/koa/charts` as `<Chart.yaml's version>-snapshot.sha-<full commit id>`), a tag
+  `vX.Y.Z` as the release X.Y.Z, so this matters more here than in the other two repos. Snapshots are for a quick try: a daily
   cleanup (`cleanup.yaml`) deletes all but the newest.
 - Format with `cargo fmt` before every commit (`nix flake check` runs `cargo fmt --check`); a
   formatting-only commit goes into `.git-blame-ignore-revs`. rustfmt leaves `html!` bodies
