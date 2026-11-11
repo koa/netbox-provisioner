@@ -137,7 +137,7 @@ meldet keinen) oder eines, das die Tabelle nicht nennt, behält, was jedes Board
 | Marvell Prestera | CRS3xx/4xx/5xx/8xx, CCR2116, CCR2216 | ✓ | ✓ |
 | 88E6393X, 88E6191X, 88E6190 | RB5009, L009, CCR2004-16G-2S+ | ✓ | ✓ |
 | MT7621, MT7531, EN7523, RTL8367 | hEX, hEX S, RB4011 | ✓ | ✗ |
-| CRS1xx/2xx | CRS109 | ✗ | ✓ |
+| CRS1xx/2xx | CRS109, CRS125 | im Switch-Menü | ✓ |
 | QCA8337, Atheros8327/8316 | hAP ac, hEX PoE, wAP ac, CCR1009-8G | ✗ | ✗ |
 | Atheros8227/7240 | hAP lite, hEX lite | ✗ | ✗ |
 | IPQ-PPE, QCA8386, 98PX1012 | hAP ax², cAP ax, CCR2004-1G-12S+2XS | nichts in Hardware | |
@@ -173,9 +173,30 @@ Hardware nähme und mit nicht (MT7621-Familie, QCA8337-Familie und Atheros8227 b
 Bridge). Wird Snooping abgeschaltet, meldet RouterOS die Multicast-Felder nicht mehr (CHR
 7.24.5), es bleibt also kein Diff.
 
-Nicht ausgenutzt: Auf einem CRS1xx/2xx liessen sich VLANs im Switch-Menü
-(`/interface/ethernet/switch`) in Hardware bauen; eine VLAN-Filtering-Bridge läuft dort auf der
-CPU (E17 in [todo.md](todo.md)).
+**VLANs im Switch-Menü eines CRS1xx/2xx** (`L2Setup::switch_vlans`, `device/ros/switch_menu.rs`).
+Eine VLAN-Filtering-Bridge läuft dort auf der CPU; die VLANs baut stattdessen der Switch selbst
+(MikroTiks Handbuch, „CRS1xx/2xx series switches examples“). Das gilt für eine getaggte Bridge,
+deren Ports alle Ethernet-Ports am Switch-Chip sind und die ausser Adressen nichts enthält
+(`L2Setup::vlans_in_switch_menu`); eine mit VXLAN, Funk oder CAPsMAN bleibt
+VLAN-Filtering-Bridge, sie läuft so oder so auf der CPU. Die Bridge bleibt dann ohne
+VLAN-Filtering (RSTP), ihre Ports ohne `pvid` und `/interface/bridge/vlan` leer, und pro VLAN
+entsteht:
+
+- `/interface/ethernet/switch/vlan` mit allen Ports des VLANs, dazu `switch1-cpu`, wenn das Gerät
+  selbst im VLAN ist (ein `/interface/vlan` auf der Bridge, wie bei jeder getaggten Bridge);
+- `…/egress-vlan-tag` mit den Ports, die es getaggt führen, und `switch1-cpu`;
+- `…/ingress-vlan-translation` für die Access-Ports: ungetaggte Frames (`customer-vid=0`)
+  bekommen die VLAN-ID.
+
+Der Switch verwirft, was an einem dieser Ports ausserhalb seiner VLANs ankommt
+(`drop-if-invalid-or-src-port-not-member-of-vlan-on-ports`). lab-crs125 (CRS125-24G-1S, 7.24.6)
+behält so alle Bridge-Ports in Hardware (`hw=yes`). Das Switch-Menü selbst kennt dort kein
+`set <numbers>` (`/console/inspect`), mikrotik-model führt es deshalb als Einzelmenü; ein Board
+mit mehreren Switches könnte es so nicht nehmen.
+
+Beim Wechsel von einer VLAN-Filtering-Bridge meldet RouterOS `ether-type`, `frame-types`,
+`ingress-filtering` und `pvid` der Bridge nicht mehr; der Diff leert sie deshalb nicht
+(`l2::after_vlan_filtering_off`), sonst stünde `ether-type=""` im Skript.
 
 ## Schritt 5: Realisierung als RouterOS-Config (`BaseDeviceDataTarget::setup_l2`)
 

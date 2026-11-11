@@ -45,6 +45,7 @@ pub mod progress;
 pub(crate) mod radio;
 mod services;
 pub(crate) mod speed;
+mod switch_menu;
 pub(crate) mod syslog;
 #[cfg(test)]
 mod test;
@@ -193,6 +194,26 @@ mikrotik_model!(
                 ip_address_ranges,
                 hw_supported_modes
             )
+        )),
+    ),
+);
+
+mikrotik_model!(
+    name = SwitchMenuData,
+    detect = new,
+    fields(
+        switch(single = "interface/ethernet/switch"),
+        switch_vlan(by_key(
+            path = "interface/ethernet/switch/vlan",
+            key = vlanId
+        )),
+        egress_vlan_tag(by_id(
+            path = "interface/ethernet/switch/egress-vlan-tag",
+            keys(vlan_id)
+        )),
+        ingress_vlan_translation(by_id(
+            path = "interface/ethernet/switch/ingress-vlan-translation",
+            keys(ports, customer_vid)
         )),
     ),
 );

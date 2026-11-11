@@ -2,7 +2,9 @@
 //! ports' generated names; not computing it (`l2`).
 use super::{L2Port, L2Setup, NameGenerator, SimpleBridgePort};
 use crate::{
-    device::ros::{BaseDeviceDataTarget, SetupError, hw_facts::RadioPackage},
+    device::ros::{
+        BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, hw_facts::RadioPackage,
+    },
     topology::{PhysicalPortId, access::device::DeviceAccess},
 };
 use mikrotik_model::{
@@ -98,13 +100,31 @@ impl BaseDeviceDataTarget {
             }
         }
         for bridge in setup.tagged_bridges.iter() {
+            // a CRS1xx/2xx switches the VLANs itself (`switch_menu`), its bridge stays in
+            // hardware only without VLAN filtering
+            let in_switch_menu = setup.vlans_in_switch_menu(bridge);
             let bridge_cfg = self.bridge.entry(bridge.name.clone()).or_default();
-            bridge_cfg.0.vlan_filtering = true;
-            bridge_cfg.0.mvrp = Some(false);
-            if setup.snoops_multicast(bridge.switch_ports(), bridge.carries_radio(), true) {
+            if in_switch_menu {
+                bridge_cfg.0.vlan_filtering = false;
+                bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Rstp;
+                // as a simple bridge's: without VLAN filtering they aren't reported
+                bridge_cfg.0.ether_type = None;
+                bridge_cfg.0.frame_types = None;
+                bridge_cfg.0.ingress_filtering = None;
+                bridge_cfg.0.pvid = None;
+                bridge_cfg.0.mvrp = None;
+            } else {
+                bridge_cfg.0.vlan_filtering = true;
+                bridge_cfg.0.mvrp = Some(false);
+                bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
+            }
+            if setup.snoops_multicast(
+                bridge.switch_ports(),
+                bridge.carries_radio(),
+                !in_switch_menu,
+            ) {
                 bridge_cfg.0.snoop_multicast();
             }
-            bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
             // A bridge whose only way to other bridges is one VXLAN (a CAP's `bridge-caps`;
             // its radios are clients) closes no loop, and STP over the VXLAN, a segment it
             // shares with every bridge of the WLAN group, blocked its port (ap-buero-1og,
@@ -136,14 +156,7 @@ impl BaseDeviceDataTarget {
             let mut tags_of_port = HashMap::<AsciiString, (Option<u16>, Vec<u16>)>::new();
             let mut ports_of_vlan = HashMap::<u16, (Vec<AsciiString>, Vec<AsciiString>)>::new();
             for (&vlan_id, entry) in &bridge.ports {
-                let is_physical_name = entry.ports.iter().any(|p| {
-                    matches!(
-                        p,
-                        L2Port::TaggedEthernet { name, .. } | L2Port::UntaggedEthernet { name, .. }
-                            if *name == entry.if_name
-                    )
-                });
-                if !is_physical_name && entry.has_l3() {
+                if entry.has_vlan_interface() {
                     self.vlan.entry(entry.if_name.clone()).or_insert_with(|| {
                         InterfaceVlanByName(InterfaceVlanCfg {
                             interface: bridge.name.clone(),
@@ -238,6 +251,16 @@ impl BaseDeviceDataTarget {
                     }
                 }
             }
+            if in_switch_menu {
+                // the switch tags and filters (`switch_menu`): plain ports of the bridge
+                for port_name in tags_of_port.into_keys() {
+                    self.bridge_port
+                        .entry((bridge.name.clone(), port_name))
+                        .or_default()
+                        .frame_types = VlanFrameTypes::AdmitAll;
+                }
+                continue;
+            }
             for (port_name, (untagged, tagged)) in tags_of_port {
                 let is_radio = radio_access_ports.contains(&port_name);
                 let bridge_port = self
@@ -274,5 +297,37 @@ impl BaseDeviceDataTarget {
             }
         }
         Ok(())
+    }
+}
+
+/// `current` as the diff sees it: a bridge the target takes VLAN filtering from hides its
+/// `ether-type`, `frame-types`, `ingress-filtering` and `pvid` (lab-sxt-a, 7.24.6), which the
+/// target leaves out, so the `set` doesn't clear them with `=""` (E17: lab-crs125's bridge
+/// to the switch menus). Only for that change: a bridge that stays with VLAN filtering keeps
+/// its values in the diff, a target that sets one still sets it.
+pub(in crate::device::ros) fn after_vlan_filtering_off(
+    target: &BaseDeviceDataTarget,
+    current: &mut BaseDeviceDataCurrent,
+) {
+    for bridge in current.bridge.iter_mut() {
+        let current = &mut bridge.0;
+        let Some(target) = target.bridge.get(&current.name).map(|bridge| &bridge.0) else {
+            continue;
+        };
+        if !current.vlan_filtering || target.vlan_filtering {
+            continue;
+        }
+        if target.ether_type.is_none() {
+            current.ether_type = None;
+        }
+        if target.frame_types.is_none() {
+            current.frame_types = None;
+        }
+        if target.ingress_filtering.is_none() {
+            current.ingress_filtering = None;
+        }
+        if target.pvid.is_none() {
+            current.pvid = None;
+        }
     }
 }

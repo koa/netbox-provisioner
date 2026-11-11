@@ -1,6 +1,9 @@
 //! Scope: The bridges, ports and VLANs of a device out of NetBox; not the L3 on them (`addresses`,
 //! `ospf`).
-use crate::device::ros::{CAPS_BRIDGE_NAME, SetupError, VlanOnBridge, hw_facts::SwitchChips};
+use crate::device::ros::{
+    CAPS_BRIDGE_NAME, SetupError, VlanOnBridge,
+    hw_facts::{SwitchChip, SwitchChips},
+};
 use crate::topology::access::AccessTopology;
 use crate::topology::access::ip_addresses::IpAddressAccess;
 use crate::topology::access::vxlan::VxlanAccess;
@@ -19,6 +22,7 @@ use std::{
 };
 
 mod target;
+pub(in crate::device::ros) use target::after_vlan_filtering_off;
 #[cfg(test)]
 mod test;
 
@@ -178,6 +182,32 @@ impl TaggedBridgeEntry {
             _ => false,
         })
     }
+    /// Whether it gets a VLAN interface on its bridge: the device is in it ([`Self::has_l3`])
+    /// and its name isn't one of its ports' (a port named like the VLAN carries it itself).
+    pub fn has_vlan_interface(&self) -> bool {
+        let is_physical_name = self.ports.iter().any(|p| {
+            matches!(
+                p,
+                L2Port::TaggedEthernet { name, .. } | L2Port::UntaggedEthernet { name, .. }
+                    if *name == self.if_name
+            )
+        });
+        !is_physical_name && self.has_l3()
+    }
+}
+
+/// A VLAN a CRS1xx/2xx switch carries in its own menus instead of its bridge (E17,
+/// [`L2Setup::switch_vlans`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SwitchVlan {
+    pub vlan_id: u16,
+    /// the ports that tag it
+    pub tagged: BTreeSet<AsciiString>,
+    /// its access ports
+    pub untagged: BTreeSet<AsciiString>,
+    /// the device is in it, over a VLAN interface on the bridge: the switch's CPU port is a
+    /// tagged member
+    pub cpu: bool,
 }
 
 /// A VLAN-filtering RouterOS bridge, keyed by numeric VLAN ID. A key's VLAN ID is
@@ -784,6 +814,67 @@ impl<G: NameGenerator> L2Setup<G> {
             |bridge| mergeable(&mut bridge.switch_ports(), bridge.carries_radio()),
             |bridge| mergeable(&mut bridge.switch_ports(), bridge.carries_radio()),
         )
+    }
+
+    /// Whether the VLANs of `bridge` go into the switch's own menus
+    /// ([`SwitchChip::vlans_in_switch_menu`], E17): every port of it is an Ethernet port on
+    /// such a chip, every VLAN has an ID of RouterOS's range, and nothing but addresses is in
+    /// it besides (a VXLAN, radio or CAPsMAN needs the CPU, which bridges them in software
+    /// anyway). Such a bridge stays without VLAN filtering.
+    pub fn vlans_in_switch_menu(&self, bridge: &TaggedBridge) -> bool {
+        bridge.switch_ports().next().is_some()
+            && bridge
+                .ports
+                .keys()
+                .all(|vlan_id| (1..=4094).contains(vlan_id))
+            && bridge
+                .ports
+                .values()
+                .flat_map(|entry| &entry.ports)
+                .all(|port| match port {
+                    L2Port::TaggedEthernet { port, .. } | L2Port::UntaggedEthernet { port, .. } => {
+                        !port.is_radio()
+                            && self
+                                .switch_chips
+                                .chip_of(*port)
+                                .is_some_and(SwitchChip::vlans_in_switch_menu)
+                    }
+                    L2Port::Ip { .. } => true,
+                    _ => false,
+                })
+    }
+
+    /// The VLANs of the bridges whose VLANs go into the switch's menus
+    /// ([`Self::vlans_in_switch_menu`]), by VLAN ID.
+    pub fn switch_vlans(&self) -> Box<[SwitchVlan]> {
+        let mut vlans = self
+            .tagged_bridges
+            .iter()
+            .filter(|bridge| self.vlans_in_switch_menu(bridge))
+            .flat_map(|bridge| &bridge.ports)
+            .map(|(&vlan_id, entry)| {
+                let mut vlan = SwitchVlan {
+                    vlan_id,
+                    tagged: BTreeSet::new(),
+                    untagged: BTreeSet::new(),
+                    cpu: entry.has_vlan_interface(),
+                };
+                for port in &entry.ports {
+                    match port {
+                        L2Port::TaggedEthernet { name, .. } => {
+                            vlan.tagged.insert(name.clone());
+                        }
+                        L2Port::UntaggedEthernet { name, .. } => {
+                            vlan.untagged.insert(name.clone());
+                        }
+                        _ => {}
+                    }
+                }
+                vlan
+            })
+            .collect::<Vec<_>>();
+        vlans.sort_by_key(|vlan| vlan.vlan_id);
+        vlans.into()
     }
 
     /// Whether a bridge with these ports snoops IGMP/MLD. Without it Android and ChromeOS got

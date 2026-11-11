@@ -5,7 +5,8 @@
 //! between them (`GeneratedCfg`).
 use crate::device::ros::l2::{EndpointNameGenerator, KeptNames, L2Setup, NameGenerator};
 use crate::device::ros::{
-    CapsManDeviceDataCurrent, CapsManDeviceDataTarget, WifiDeviceDataCurrent, WifiDeviceDataTarget,
+    CapsManDeviceDataCurrent, CapsManDeviceDataTarget, SwitchMenuDataCurrent, SwitchMenuDataTarget,
+    WifiDeviceDataCurrent, WifiDeviceDataTarget,
 };
 use crate::{
     Error,
@@ -62,6 +63,9 @@ pub struct DeviceCfg {
     /// the legacy CAPsMAN, on a controller with CAPs of it
     capsman_current: Option<CapsManDeviceDataCurrent>,
     capsman_target: Option<CapsManDeviceDataTarget>,
+    /// the VLAN menus of a CRS1xx/2xx switch (`switch_menu`), on such a board only
+    switch_menu_current: Option<SwitchMenuDataCurrent>,
+    switch_menu_target: Option<SwitchMenuDataTarget>,
     /// the radios (default names) CAPsMAN has bound, which RouterOS flags dynamic and
     /// refuses to change
     bound_radios: Box<[AsciiString]>,
@@ -143,6 +147,11 @@ impl DeviceCfg {
         if let Some(capsman_target) = self.capsman_target.as_mut() {
             capsman_target.generate_from(device)?;
         }
+        if let (Some(target), Some(current)) =
+            (self.switch_menu_target.as_mut(), &self.switch_menu_current)
+        {
+            target.generate_from(&l2.switch_vlans(), current);
+        }
         self.base_target
             .setup_ports(device, &l2, self.radio_package)?;
         // radios are interfaces the provisioner manages as well
@@ -219,6 +228,7 @@ impl DeviceCfg {
         let mut current =
             following_renames(&self.base_target, &self.base_current, &self.radio_renames());
         super::syslog::after_switch_to_cef(&mut current);
+        super::l2::after_vlan_filtering_off(&self.base_target, &mut current);
         let mut mutations = self
             .base_target
             .generate_mutations(&current)?
@@ -237,6 +247,10 @@ impl DeviceCfg {
             mutations.extend(target.generate_mutations(current)?);
         }
         if let (Some(target), Some(current)) = (&self.capsman_target, &self.capsman_current) {
+            mutations.extend(target.generate_mutations(current)?);
+        }
+        if let (Some(target), Some(current)) = (&self.switch_menu_target, &self.switch_menu_current)
+        {
             mutations.extend(target.generate_mutations(current)?);
         }
         Ok(mutations.into())
@@ -375,9 +389,14 @@ impl DeviceCfg {
 /// `capsman` a bound radio reports without such an entry (cAP ax, 7.23.7): the target always
 /// has that configuration, and taking it as there let router-stall-burri's radios get
 /// `configuration=capsman` before it was added, which RouterOS refused.
-pub(crate) fn provided_by_routeros() -> [(ReferenceType, std::borrow::Cow<'static, [u8]>); 6] {
+pub(crate) fn provided_by_routeros() -> [(ReferenceType, std::borrow::Cow<'static, [u8]>); 7] {
     [
         (ReferenceType::Interface, b"lo".into()),
+        // a CRS1xx/2xx switch's port towards the CPU (`switch_menu`)
+        (
+            ReferenceType::Interface,
+            super::switch_menu::CPU_PORT.into(),
+        ),
         // `/ipv6/nd`'s own entry: every interface
         (ReferenceType::Interface, b"all".into()),
         (ReferenceType::RoutingTable, b"main".into()),
@@ -607,6 +626,16 @@ impl DeviceCfg {
         } else {
             (None, None)
         };
+        // the switch menus only on a board whose VLANs go there: the others have none of these
+        let (switch_menu_current, switch_menu_target) =
+            if SwitchChips::of(model).have_switch_menu_vlans() {
+                (
+                    Some(SwitchMenuDataCurrent::fetch(client).await?),
+                    Some(SwitchMenuDataTarget::detect_device(client).await?),
+                )
+            } else {
+                (None, None)
+            };
         // A device in no Wireless LAN Group serves no WLAN where NetBox uses none of its radios:
         // the target switches a CAP of `/interface/wifi` off, one of `/interface/wireless`
         // stays as it is, off after the initial setup. On an AP missing from its group in
@@ -646,6 +675,8 @@ impl DeviceCfg {
             w60g_target,
             capsman_current,
             capsman_target,
+            switch_menu_current,
+            switch_menu_target,
             bound_radios,
             wifi_warnings: Vec::new(),
             idle_radios,

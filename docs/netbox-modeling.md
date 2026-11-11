@@ -178,7 +178,7 @@ Das **Board-Modell** kommt nicht aus NetBox, sondern wird live vom Gerät gelese
 als `model` meldet (Gross- und Kleinschreibung, Leerzeichen und ein führendes `RB` zählen
 nicht; eine Revision wie `r2` schon): Sonst warnt der Kopf der Geräteseite. Unterstützt sind nur die Modelle in
 `backend/src/device/ros/hw_facts.rs`: `RB750Gr3`, `RB960PGS`, `RB962UiGS-5HacT2HnT`,
-`RBwAPG-5HacD2HnD`, `RBwAPG-5HacT2HnD` (erster wAP ac, nur `wireless`), `RBcAP2n` (cAP 2n, nur `wireless`), `Groove A-52HPn` (nur `wireless`), `RB750GL`, `C52iG-5HaxD2HaxD`, `cAPGi-5HaxD2HaxD`, `CRS109-8G-1S-2HnD`, `CRS309-1G-8S+`, `CRS318-16P-2S+`,
+`RBwAPG-5HacD2HnD`, `RBwAPG-5HacT2HnD` (erster wAP ac, nur `wireless`), `RBcAP2n` (cAP 2n, nur `wireless`), `Groove A-52HPn` (nur `wireless`), `RB750GL`, `C52iG-5HaxD2HaxD`, `cAPGi-5HaxD2HaxD`, `CRS109-8G-1S-2HnD`, `CRS125-24G-1S`, `CRS309-1G-8S+`, `CRS318-16P-2S+`,
 `CRS326-24G-2S+`, `CRS354-48G-4S+2Q+`, `CCR1009-7G-1C-1S+`, `CCR1009-8G-1S-1S+`, `CCR2004-1G-12S+2XS`, dazu die Boards
 der [Funkbrücken](#funkbrücke) und `RB912UAG-2HPnD`. Für jedes andere Modell bricht die
 Generierung mit `NoPortsFound` ab.
@@ -356,7 +356,9 @@ eingetragen.
   Bridges VLANs einer einzigen Bridge, denn jeder Chip ausser CRS1xx/2xx übernimmt nur eine
   Bridge in Hardware; eine Bridge ohne VLAN bekommt eine lokale VLAN-ID ab 4094 abwärts
   ([l2-generation.md](l2-generation.md#nach-dem-switch-chip-l2setupfor_switch_chips)). In NetBox
-  ändert sich dafür nichts.
+  ändert sich dafür nichts. Auf einem CRS1xx/2xx kommen die VLANs stattdessen ins Switch-Menü,
+  die Bridge bleibt ohne VLAN-Filtering
+  ([l2-generation.md](l2-generation.md#nach-dem-switch-chip-l2setupfor_switch_chips)).
 - Führt eine modellierte Bridge eine VLAN, kommen bridge-lose Ports und VLAN-Interfaces mit
   derselben VLAN in diese Bridge statt in die Standard-Bridge. Ein bridge-loser Trunk-Port darf
   dadurch nicht auf zwei Bridges verteilt werden (`PortInMultipleBridges`).

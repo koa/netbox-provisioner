@@ -341,6 +341,23 @@ async fn test_ipv6_is_turned_on() -> Result<(), Box<dyn Error>> {
 /// `/routing/ospf/*`-Befehle.
 #[tokio::test]
 async fn test_scenario_switch_multi_vlan() -> Result<(), Box<dyn Error>> {
+    let device = switch_with_household_vlans().await;
+    let setup = L2Setup::new(&device, KeepNameGenerator)?;
+    assert_eq!(setup.tagged_bridges.len(), 1);
+    assert_eq!(setup.tagged_bridges[0].ports.len(), 2);
+
+    let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
+    target_data.generate_from(&device, KeepNameGenerator)?;
+    println!(
+        "--- Szenario: Switch mit 2 Haushalts-VLANs (tagged Uplink, untagged Access, OSPF auf der Bridge) ---"
+    );
+    dump_mutations(&target_data, &empty_current)?;
+    Ok(())
+}
+
+/// A switch with the household VLANs 10 and 20 on its bridge: each an access port (ether2,
+/// ether3) and an address of the device, ether1 the uplink tagging both.
+async fn switch_with_household_vlans() -> DeviceAccess {
     let mut builder = TopologyBuilder::default();
     let d1 = builder.devices.next_id();
 
@@ -437,22 +454,155 @@ async fn test_scenario_switch_multi_vlan() -> Result<(), Box<dyn Error>> {
         },
     );
 
-    let device = Into::<TopologyHolder>::into(builder)
+    Into::<TopologyHolder>::into(builder)
         .devices_by_id(d1)
         .await
-        .expect("device not found");
+        .expect("device not found")
+}
 
-    let setup = L2Setup::new(&device, KeepNameGenerator)?;
-    assert_eq!(setup.tagged_bridges.len(), 1);
-    assert_eq!(setup.tagged_bridges[0].ports.len(), 2);
-
-    let (mut target_data, empty_current) = setup_testdata(b"CRS326-24G-2S+")?;
-    target_data.generate_from(&device, KeepNameGenerator)?;
-    println!(
-        "--- Szenario: Switch mit 2 Haushalts-VLANs (tagged Uplink, untagged Access, OSPF auf der Bridge) ---"
+/// A CRS1xx/2xx runs a VLAN-filtering bridge on the CPU (E17): its VLANs go to the switch's
+/// menus, each with its access port untagged, the uplink tagged, and the CPU port tagged as
+/// the device has an address in it. The bridge stays without VLAN filtering, its ports plain,
+/// and `/interface/bridge/vlan` empty; the VLAN interfaces stay on the bridge.
+#[tokio::test]
+async fn vlans_of_a_crs1xx_go_to_the_switch_menu() {
+    let device = switch_with_household_vlans().await;
+    let l2 = L2Setup::new(&device, KeepNameGenerator)
+        .unwrap()
+        .for_switch_chips(SwitchChips::of(b"CRS125-24G-1S"));
+    let vlans = l2.switch_vlans();
+    let names = |ports: &std::collections::BTreeSet<AsciiString>| {
+        ports.iter().map(ToString::to_string).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        vlans
+            .iter()
+            .map(|vlan| (
+                vlan.vlan_id,
+                names(&vlan.tagged),
+                names(&vlan.untagged),
+                vlan.cpu
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (
+                10,
+                vec!["ether1".to_string()],
+                vec!["ether2".to_string()],
+                true
+            ),
+            (
+                20,
+                vec!["ether1".to_string()],
+                vec!["ether3".to_string()],
+                true
+            ),
+        ]
     );
-    dump_mutations(&target_data, &empty_current)?;
-    Ok(())
+
+    let (mut target, current) = setup_testdata(b"CRS125-24G-1S").unwrap();
+    target.setup_addressing(&device, &l2).unwrap();
+    target.setup_ports(&device, &l2, None).unwrap();
+    dump_mutations(&target, &current).unwrap();
+    let bridge = &target.bridge[&AsciiString::from("bridge")].0;
+    assert!(!bridge.vlan_filtering);
+    assert_eq!(bridge.pvid, None);
+    assert!(target.bridge_vlan.is_empty());
+    assert!(target.bridge_port.values().all(|port| port.frame_types
+        == mikrotik_model::model::VlanFrameTypes::AdmitAll
+        && port.pvid == 1));
+    assert_eq!(target.vlan.len(), 2);
+
+    let switch_current = crate::device::ros::SwitchMenuDataCurrent {
+        switch: Default::default(),
+        switch_vlan: Box::new([]),
+        egress_vlan_tag: Box::new([]),
+        ingress_vlan_translation: Box::new([]),
+    };
+    let mut switch = crate::device::ros::SwitchMenuDataTarget::new(b"CRS125-24G-1S");
+    switch.generate_from(&vlans, &switch_current);
+    let tagged = switch
+        .egress_vlan_tag
+        .values()
+        .map(|tag| (tag.vlan_id, names(&tag.tagged_ports)))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        tagged,
+        [
+            (10, vec!["ether1".to_string(), "switch1-cpu".to_string()]),
+            (20, vec!["ether1".to_string(), "switch1-cpu".to_string()]),
+        ]
+    );
+    let untagged = switch
+        .ingress_vlan_translation
+        .values()
+        .map(|t| (names(&t.ports), t.customer_vid, t.new_customer_vid))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        untagged,
+        [
+            (vec!["ether2".to_string()], Some(0), Some(10)),
+            (vec!["ether3".to_string()], Some(0), Some(20)),
+        ]
+    );
+    assert_eq!(
+        switch
+            .switch
+            .drop_if_invalid_or_src_port_not_member_of_vlan_on_ports
+            .as_ref()
+            .map(names),
+        Some(vec!["ether1".into(), "ether2".into(), "ether3".into()])
+    );
+}
+
+/// The same switch on a CRS3xx keeps its VLAN-filtering bridge: nothing for the switch menus.
+#[tokio::test]
+async fn vlans_of_a_crs3xx_stay_on_the_bridge() {
+    let device = switch_with_household_vlans().await;
+    let l2 = L2Setup::new(&device, KeepNameGenerator)
+        .unwrap()
+        .for_switch_chips(SwitchChips::of(b"CRS326-24G-2S+"));
+    assert!(l2.switch_vlans().is_empty());
+}
+
+/// lab-crs125 (7.24.6): its VLAN-filtering bridge turned into one for the switch menus, and the
+/// diff cleared `ether-type`, `frame-types`, `ingress-filtering` and `pvid`, which RouterOS
+/// hides without VLAN filtering. Only `vlan-filtering` and the protocol change.
+#[tokio::test]
+async fn vlan_filtering_goes_off_without_clearing() {
+    let device = switch_with_household_vlans().await;
+    let (mut target, mut current) = setup_testdata(b"CRS125-24G-1S").unwrap();
+    let mut filtering = target.clone();
+    let l2 = L2Setup::new(&device, KeepNameGenerator).unwrap();
+    filtering.setup_addressing(&device, &l2).unwrap();
+    filtering.setup_ports(&device, &l2, None).unwrap();
+    // as the device reports it, with its name (the target has it as the key)
+    current.bridge = filtering
+        .bridge
+        .iter()
+        .map(|(name, bridge)| {
+            let mut bridge = bridge.clone();
+            bridge.0.name = name.clone();
+            bridge
+        })
+        .collect();
+    let l2 = l2.for_switch_chips(SwitchChips::of(b"CRS125-24G-1S"));
+    target.setup_addressing(&device, &l2).unwrap();
+    target.setup_ports(&device, &l2, None).unwrap();
+    super::after_vlan_filtering_off(&target, &mut current);
+    let mutations = target.generate_mutations(&current).unwrap();
+    let bridge = mutations
+        .iter()
+        .find(|m| m.resource == b"interface/bridge")
+        .expect("the bridge changes");
+    assert_eq!(
+        bridge
+            .fields
+            .iter()
+            .map(|field| String::from_utf8_lossy(field.key).into_owned())
+            .collect::<Vec<_>>(),
+        ["protocol-mode", "vlan-filtering"]
+    );
 }
 
 /// Szenario "DHCP-Haushalt": ein Haushalts-VLAN mit einem `IpRangeData` (`is_dhcp`),

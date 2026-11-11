@@ -67,7 +67,9 @@ board's switch chips offload, port by port, is in `hw_facts::SwitchChips` (from 
 manual; every chip but a CRS1xx/2xx's offloads one bridge only). `L2Setup::for_switch_chips`
 turns the bridges on chips that filter VLANs in hardware into VLANs of one bridge
 (`into_one_bridge`) and `snoops_multicast` leaves snooping off where it would cost the
-hardware; the generated examples don't know the board and keep their bridges.
+hardware; on a CRS1xx/2xx `switch_vlans` puts the VLANs into the switch's own menus
+(`switch_menu.rs`) and the bridge stays without VLAN filtering. The generated examples don't
+know the board and keep their bridges.
 What the provisioner does beyond generating has a doc of its own in `docs/` too (device page,
 jobs, device state, interface view, config helper, update fallback, watchdog, deployment;
 listed in `docs/overview.md`), in German, describing what is built; update it with the code.

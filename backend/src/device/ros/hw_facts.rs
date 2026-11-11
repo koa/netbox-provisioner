@@ -109,7 +109,7 @@ pub fn radio_package(model: &[u8]) -> Option<RadioPackage> {
 /// | `Prestera` | yes | yes |
 /// | `Marvell88E6` | yes | yes |
 /// | `MediaTek` | yes | no |
-/// | `Crs1xx` | no | yes |
+/// | `Crs1xx` | in the switch menus | yes |
 /// | `Qca8337` | no | no |
 /// | `Atheros8227` | no | no |
 /// | `IpqPpe` | nothing is offloaded | |
@@ -149,6 +149,12 @@ impl SwitchChip {
             self,
             SwitchChip::Prestera | SwitchChip::Marvell88E6 | SwitchChip::MediaTek
         )
+    }
+    /// Whether VLANs belong in the switch's own menus (`/interface/ethernet/switch/vlan`,
+    /// `egress-vlan-tag`, `ingress-vlan-translation`): a VLAN-filtering bridge runs on the CPU
+    /// there (E17; MikroTik's manual „Basic VLAN switching“, 7.24).
+    pub fn vlans_in_switch_menu(self) -> bool {
+        matches!(self, SwitchChip::Crs1xx)
     }
     /// Whether a bridge with IGMP/MLD snooping stays in hardware.
     pub fn offloads_igmp_snooping(self) -> bool {
@@ -269,6 +275,11 @@ impl SwitchChips {
         })
     }
     /// The chip `port` is on, `None` for a radio or a port of the CPU.
+    /// Whether a chip of the board takes VLANs in its own menus
+    /// ([`SwitchChip::vlans_in_switch_menu`]): the device has those menus to read.
+    pub fn have_switch_menu_vlans(self) -> bool {
+        self.0.iter().any(|(chip, _)| chip.vlans_in_switch_menu())
+    }
     pub fn chip_of(self, port: PhysicalPortId) -> Option<SwitchChip> {
         self.0
             .iter()
@@ -456,6 +467,11 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         ],
         b"CRS109-8G-1S-2HnD" => &[
             ports(Ether, &ADVERTISE_1G, 1588, 8),
+            ports(Sfp, &ADVERTISE_1G_SFP, 1588, 1),
+        ],
+        // lab-crs125 (7.14.1): PoE in on ether1, no PoE out
+        b"CRS125-24G-1S" => &[
+            ports(Ether, &ADVERTISE_1G, 1588, 24),
             ports(Sfp, &ADVERTISE_1G_SFP, 1588, 1),
         ],
         _ => &[],
