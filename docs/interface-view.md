@@ -65,7 +65,10 @@ Ports nach Kurzname und Label (`e01-sxt-a`), Bridges und VLAN-Interfaces so, wie
 L2-Generierung sie erzeugt (`bridge-link` für NetBox' `link`), darum zählen ausser dem Portnamen
 die Adressen, die `/ip/address` dort hat. Sein Gerät ist das mit der Router-ID als Primary IPv4.
 Benachbart heisst `Full`, oder `TwoWay` zwischen zwei DROther, wie nach einem Update
-(`update_fallback::is_adjacent`).
+(`update_fallback::is_adjacent`). Ist an einer Zeile ein Nachbar benachbart, deren Interface in
+NetBox kein `ospf` hat, warnt sie (`LiveRow.ospfUntagged`, E8): Das nächste Anwenden nimmt OSPF
+dort weg und trennt ihn. Im Lab geprüft: `ospf` an lab-wap `ether1` mit „Flags“ vorübergehend
+weggenommen (nicht angewendet), die Zeile warnte, danach rückgängig gemacht.
 
 ### Loopback
 

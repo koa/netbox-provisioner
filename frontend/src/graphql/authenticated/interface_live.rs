@@ -90,6 +90,7 @@ pub struct LiveRow {
     pub seen: Vec<SeenNeighbor>,
     pub ospf: Vec<OspfNeighbor>,
     pub ospf_missing: Vec<DeviceRef>,
+    pub ospf_untagged: bool,
     pub bridges: Vec<BridgeAnswer>,
     pub findings: Vec<NeighborFinding>,
     pub device_only_addresses: Vec<DeviceOnlyAddress>,

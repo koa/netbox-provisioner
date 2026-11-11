@@ -160,6 +160,10 @@ pub const SEES: &str = "Gerät sieht";
 pub const SEES_NOBODY: &str = "niemanden";
 pub const OSPF: &str = "OSPF";
 pub const OSPF_MISSING: &str = "kein OSPF-Nachbar:";
+/// an adjacency at an interface NetBox has without `ospf`
+pub const OSPF_UNTAGGED: &str = "NetBox hat hier kein ospf: das nächste Anwenden nimmt OSPF \
+    hier weg und trennt diese Nachbarn (Tag ospf über „Flags“ setzen, oder die Nachbarschaft \
+    ist nicht gewollt)";
 pub const BRIDGES: &str = "Brückengeräte";
 pub const DEVICE_ONLY: &str = "Nur auf dem Gerät";
 /// an address only the device has: the next apply removes it

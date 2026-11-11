@@ -66,6 +66,8 @@ fn rows_get_their_neighbors_ospf_and_bridges() {
         // the radio link: r2 by its address, b2 by its loopback, but only in ExStart
         ospf("ether3", "10.0.0.9", "172.17.1.10", "Full"),
         ospf("ether3", "172.16.1.4", "172.17.1.12", "ExStart"),
+        // the uplink, without `ospf` in NetBox
+        ospf("ether2", "192.0.2.1", "192.0.2.1", "Full"),
     ];
     let answering = BTreeSet::from(["172.16.1.4".parse().unwrap()]);
     let rows = r1.interface_rows();
@@ -85,6 +87,7 @@ fn rows_get_their_neighbors_ospf_and_bridges() {
     assert!(direct.ospf[0].adjacent);
     assert_eq!(direct.ospf[0].device.as_ref().map(|d| &*d.name), Some("r2"));
     assert!(direct.ospf_missing.is_empty());
+    assert!(!direct.ospf_untagged);
     assert!(direct.bridges.is_empty());
 
     let radio = live_row(&live, &r1, "ether3");
@@ -103,9 +106,10 @@ fn rows_get_their_neighbors_ospf_and_bridges() {
             .collect::<Vec<_>>(),
         [("b1", None, false), ("b2", Some("172.16.1.4"), true)]
     );
-    // the uplink: no OSPF expected, nothing seen
+    // the uplink: no OSPF expected, nothing seen, but an adjacency the next apply cuts
     let uplink = live_row(&live, &r1, "ether2");
     assert!(uplink.ospf_missing.is_empty() && uplink.seen.is_empty());
+    assert!(uplink.ospf_untagged);
 }
 
 #[test]

@@ -69,6 +69,8 @@ pub struct LiveRow {
     pub seen: Vec<Seen>,
     pub ospf: Vec<OspfNeighbor>,
     pub ospf_missing: Vec<Device>,
+    /// an adjacency where NetBox has no `ospf`: the next apply cuts it
+    pub ospf_untagged: bool,
     pub bridges: Vec<BridgeAnswer>,
     pub findings: Vec<NeighborFinding>,
     /// the addresses only the device has there: the next apply removes them
@@ -98,8 +100,8 @@ impl Live {
 
 impl LiveRow {
     /// Its failures as severities: the neighbor findings, a missing OSPF neighbor and a bridge
-    /// device not answering are errors, an address or lease only the device has and a PoE mode
-    /// it contradicts a warning.
+    /// device not answering are errors, an address or lease only the device has, a PoE mode
+    /// it contradicts and an adjacency without `ospf` in NetBox a warning.
     pub fn severities(&self) -> Vec<Severity> {
         self.findings
             .iter()
@@ -114,6 +116,7 @@ impl LiveRow {
             .chain(self.device_only.iter().map(|_| Severity::Warning))
             .chain(self.device_only_leases.iter().map(|_| Severity::Warning))
             .chain(self.poe.iter().map(|_| Severity::Warning))
+            .chain(self.ospf_untagged.then_some(Severity::Warning))
             .collect()
     }
 }
@@ -160,6 +163,12 @@ pub fn details(netbox: &str, live: &RowLive, device: impl Fn(&Device) -> Html) -
                     { for row.ospf_missing.iter().map(|d| html! {
                         <div>{ok(false)}{" "}{t::OSPF_MISSING}{" "}{device(d)}</div>
                     }) }
+                    if row.ospf_untagged {
+                        <div>
+                            <span class="live-failed">{Icon::ExclamationTriangle}</span>{" "}
+                            {t::OSPF_UNTAGGED}
+                        </div>
+                    }
                 </dd>
             }
             if !row.bridges.is_empty() {
@@ -313,6 +322,7 @@ impl Checked {
                     seen: row.seen,
                     ospf: row.ospf,
                     ospf_missing: row.ospf_missing,
+                    ospf_untagged: row.ospf_untagged,
                     bridges: row.bridges,
                     findings: row.findings,
                     device_only: row.device_only_addresses,

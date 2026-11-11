@@ -248,7 +248,8 @@ topology change): who the device sees (`neighbors::read`), its OSPF
 neighbors there, and the radio link's bridge devices answering a ping (`raw::answering`). An
 OSPF neighbor's interface is RouterOS' name, which for a bridge or VLAN interface is L2's
 (`bridge-link` for NetBox' `link`), so it is matched by port name, else by the addresses
-`/ip/address` has on it; never by NetBox' name alone. A live row also carries actions
+`/ip/address` has on it; never by NetBox' name alone. An adjacency at a row whose interface
+NetBox has without `ospf` is `LiveRow.ospf_untagged`, a warning: the next apply cuts it. A live row also carries actions
 (`LiveRow.actions`, shown before the row's own and replacing one with the same helper): where
 the device sees exactly one router, no radio bridge device, at a port NetBox has no cable at,
 „Verbindung“ with both ends; where NetBox's cable goes elsewhere (`CableElsewhere`,

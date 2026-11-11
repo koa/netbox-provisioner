@@ -55,6 +55,9 @@ pub struct LiveRow {
     pub ospf: Vec<OspfNeighbor>,
     /// the routers NetBox puts at the other end (OSPF on the row) with no adjacency there
     pub ospf_missing: Vec<DeviceRef>,
+    /// an OSPF neighbor is adjacent at the row, whose interface NetBox has without `ospf`: the
+    /// next apply takes OSPF off there and cuts it (E8)
+    pub ospf_untagged: bool,
     /// the bridge devices of a radio link, asked at their primary IPv4
     pub bridges: Vec<BridgeAnswer>,
     /// the neighbor findings about its ports, the worst first
@@ -328,6 +331,7 @@ pub fn check(
                     })
                 })
                 .collect();
+            let ospf_untagged = !row.ospf && ospf_here.iter().any(|n| n.adjacent);
             let bridges = bridge_devices(device, row)
                 .into_iter()
                 .filter_map(|id| topology.get_device_by_id(&DeviceId(id)))
@@ -388,6 +392,7 @@ pub fn check(
                 seen,
                 ospf: ospf_here,
                 ospf_missing,
+                ospf_untagged,
                 bridges,
                 findings,
                 device_only_addresses,
