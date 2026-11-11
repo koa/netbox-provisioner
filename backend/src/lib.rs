@@ -298,6 +298,18 @@ pub enum Error {
     /// „Kunden-Netz“ without a prefix to take a network from
     #[error("No prefix chosen")]
     NoParent,
+    /// „Kunden-Netz“: a DHCP range asked without an IPv4 network with `dhcp`
+    #[error("A DHCP range needs an IPv4 network with dhcp")]
+    DhcpRangeWithoutDhcp,
+    /// „Kunden-Netz“: a DHCP range from the `first` to the `last` address of the network
+    /// (numbers in it) that isn't within its hosts after the gateway
+    #[error(
+        "DHCP range {first} to {last} is not within the hosts of a /{length} after its gateway"
+    )]
+    DhcpRangeOutside { first: u32, last: u32, length: u8 },
+    /// NetBox has no IP range role with the slug `dhcp`
+    #[error("NetBox has no IP range role dhcp")]
+    NoDhcpRole,
     /// a port (`device port`) whose NetBox type is no Ethernet
     #[error("{0} is no Ethernet port")]
     NotEthernet(Box<str>),

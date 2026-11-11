@@ -19,7 +19,8 @@ pub const CUSTOMER_NET: &str = "Kunden-Netz";
 pub const CUSTOMER_NET_HINT: &str = "Legt ein Netz für einen Port oder ein VLAN an: das \
     nächste freie Netz der gewählten Länge im gewählten Prefix der Site, die erste Adresse \
     als Gateway (auf einem VLAN an einem neuen virtuellen Interface mit dem Namen des VLANs) \
-    und, falls gewählt, das Tag dhcp. Der DHCP-Pool ist dann der Rest des Netzes. Mit einem \
+    und, falls gewählt, das Tag dhcp. Der DHCP-Pool ist dann der Rest des Netzes, mit „DHCP-Range \
+    anlegen“ eine IP-Range mit Rolle dhcp (leer die obere Hälfte des Netzes). Mit einem \
     IPv6-Prefix dazu das nächste freie /64 mit ::1 als Gateway, per SLAAC angekündigt; ein \
     Kunden-Netz mit IPv4 bekommt so auch später noch sein IPv6.";
 pub const NET_TARGET: &str = "Port oder VLAN";
@@ -38,6 +39,11 @@ pub const NO_PARENTS: &str = "Die Site hat kein IPv4-Prefix, das Netze aufnehmen
 pub const LENGTH: &str = "Länge";
 pub const LENGTH_PLACEHOLDER: &str = "24";
 pub const DHCP_SERVER: &str = "DHCP-Server (Tag dhcp)";
+pub const DHCP_RANGE: &str = "DHCP-Range anlegen (IP-Range mit Rolle dhcp)";
+pub const DHCP_RANGE_FIRST: &str = "Erste Adresse (Nummer im Netz)";
+pub const DHCP_RANGE_LAST: &str = "Letzte Adresse (Nummer im Netz)";
+/// the placeholder of both: the upper half of the network
+pub const DHCP_RANGE_PLACEHOLDER: &str = "obere Hälfte";
 pub const CHOOSE_NET: &str = "Port oder VLAN und ein IPv4- oder IPv6-Prefix wählen.";
 /// the port given by its row
 pub const CHOOSE_NET_PREFIX: &str = "Ein IPv4- oder IPv6-Prefix wählen.";
@@ -526,6 +532,9 @@ pub fn create_cable(a: (&str, &str), b: (&str, &str)) -> String {
     format!("Kabel {} {} – {} {} anlegen", a.0, a.1, b.0, b.1)
 }
 /// with the DHCP lease time in seconds, where the prefix gets one
+pub fn create_ip_range(start: &str, end: &str, description: &str) -> String {
+    format!("DHCP-Range {start} bis {end} „{description}“ anlegen")
+}
 pub fn create_prefix(prefix: &str, pool: &str, description: &str, lease: Option<i32>) -> String {
     let created = if pool.is_empty() {
         // a network NetBox has no prefix around (`helper::address_takeover`)

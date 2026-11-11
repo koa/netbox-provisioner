@@ -31,8 +31,8 @@ pub mod routes;
 mod write;
 
 pub use plan::{
-    CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreatePrefix,
-    CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
+    CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreateIpRange,
+    CreatePrefix, CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
     DeleteWirelessLink, PlanStep, SetPrimaryIp, Target, UpdateInterface, UpdatePort,
     UpdatePortVlan, UpdateWirelessLink,
 };
@@ -390,6 +390,16 @@ impl NetboxPlan {
                             "tags": [],
                             "custom_field_data": { "dhcp_lease_time": create.dhcp_lease_time },
                             "scope": create.site.map(|site| json!({ "__typename": "SiteType", "id": site.to_string() })),
+                        }));
+                    }
+                }
+                PlanStep::CreateIpRange(create) => {
+                    if let Some(ranges) = json["ip_range_list"].as_array_mut() {
+                        ranges.push(json!({
+                            "id": created_id(index),
+                            "role": { "slug": "dhcp" },
+                            "start_address": create.start,
+                            "end_address": create.end,
                         }));
                     }
                 }

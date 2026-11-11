@@ -4,8 +4,8 @@
 //! job (`NetboxWritten`, `NetboxUndone`).
 
 use super::{
-    CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreatePrefix,
-    CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
+    CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreateIpRange,
+    CreatePrefix, CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
     DeleteWirelessLink, Helper, PlanStep, SetPrimaryIp, Target, UpdateInterface, UpdatePort,
     UpdatePortVlan, UpdateWirelessLink, flags,
 };
@@ -133,6 +133,7 @@ async fn write_step(
         }
         PlanStep::CreateCable(create) => Some(create_cable(rest, create, log).await?),
         PlanStep::CreatePrefix(create) => Some(create_prefix(rest, create, log).await?),
+        PlanStep::CreateIpRange(create) => Some(create_ip_range(rest, create, log).await?),
         PlanStep::UpdateInterface(update) => {
             update_interface(rest, update, log).await?;
             None
@@ -393,6 +394,46 @@ async fn create_prefix(rest: &NetboxRest, create: &CreatePrefix, log: &Log) -> R
     }
     let object = rest.create("ipam/prefixes/", body).await?;
     logged_create(log, "ipam/prefixes", &object)
+}
+
+/// Creates the IP range once its network has none, with the role `dhcp` NetBox has to have
+/// (`docs/netbox-modeling.md`).
+async fn create_ip_range(
+    rest: &NetboxRest,
+    create: &CreateIpRange,
+    log: &Log,
+) -> Result<u32, Error> {
+    let net = create
+        .start
+        .parse::<ipnet::IpNet>()
+        .map_err(|_| Error::NetboxChanged(create.start.clone()))?
+        .trunc()
+        .to_string();
+    let ranges = rest
+        .find("ipam/ip-ranges/", &[("parent", &net), ("limit", "1")])
+        .await?;
+    if ranges["count"].as_u64() != Some(0) {
+        return Err(Error::NetboxChanged(
+            format!("{net} has an IP range").into(),
+        ));
+    }
+    let roles = rest.find("ipam/roles/", &[("slug", "dhcp")]).await?;
+    let role = roles["results"][0]["id"]
+        .as_u64()
+        .ok_or(Error::NoDhcpRole)?;
+    let object = rest
+        .create(
+            "ipam/ip-ranges/",
+            json!({
+                "start_address": create.start,
+                "end_address": create.end,
+                "role": role,
+                "status": "active",
+                "description": create.description,
+            }),
+        )
+        .await?;
+    logged_create(log, "ipam/ip-ranges", &object)
 }
 
 /// Creates the wireless link once neither end has one.

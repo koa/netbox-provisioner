@@ -298,6 +298,20 @@ impl From<&Error> for ErrorInfo {
                 ],
             ),
             Error::NoParent => ("NO_PARENT", Vec::new()),
+            Error::DhcpRangeWithoutDhcp => ("DHCP_RANGE_WITHOUT_DHCP", Vec::new()),
+            Error::DhcpRangeOutside {
+                first,
+                last,
+                length,
+            } => (
+                "DHCP_RANGE_OUTSIDE",
+                vec![
+                    ("first", first.to_string()),
+                    ("last", last.to_string()),
+                    ("length", length.to_string()),
+                ],
+            ),
+            Error::NoDhcpRole => ("NO_DHCP_ROLE", Vec::new()),
             Error::NoFreeNetwork { parent, length } => (
                 "NO_FREE_NETWORK",
                 vec![

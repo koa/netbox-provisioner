@@ -100,6 +100,9 @@ pub(super) fn describe(step: &Step) -> String {
             &create.description,
             create.dhcp_lease_time,
         ),
+        Step::CreateIpRange(create) => {
+            t::create_ip_range(&create.start, &create.end, &create.description)
+        }
         Step::UpdateInterface(update) => t::update_interface(
             (&update.interface.device.name, &update.interface.name),
             update

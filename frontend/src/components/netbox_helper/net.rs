@@ -1,7 +1,7 @@
 //! Scope: The form of „Kunden-Netz“; nothing else.
 //!
 //! „Kunden-Netz“: a port or VLAN and a prefix of the site (`customerNetOptions`).
-use super::{NetEntry, NetTarget, NetboxHelper, t};
+use super::{NetEntry, NetRange, NetTarget, NetboxHelper, t};
 use crate::{
     components::widgets::popup::Select,
     error::FrontendError,
@@ -24,6 +24,9 @@ pub enum NetMsg {
     ParentV6(Option<u32>),
     Length(String),
     Dhcp(bool),
+    Range(bool),
+    RangeFirst(String),
+    RangeLast(String),
 }
 
 /// What „Kunden-Netz“ is choosing.
@@ -34,6 +37,21 @@ pub struct NetChoice {
     pub(super) length: String,
     pub(super) parent_v6: Option<u32>,
     pub(super) dhcp: bool,
+    /// a DHCP range, with its first and last address as typed (empty: the upper half's)
+    pub(super) range: bool,
+    pub(super) range_first: String,
+    pub(super) range_last: String,
+}
+
+impl NetChoice {
+    /// The DHCP range asked for: only for an IPv4 network with a DHCP server.
+    pub(super) fn dhcp_range(&self) -> Option<NetRange> {
+        let number = |text: &str| text.trim().trim_start_matches('.').parse().ok();
+        (self.range && self.dhcp && self.parent.is_some()).then(|| NetRange {
+            first: number(&self.range_first),
+            last: number(&self.range_last),
+        })
+    }
 }
 
 impl Default for NetChoice {
@@ -44,6 +62,9 @@ impl Default for NetChoice {
             length: String::new(),
             parent_v6: None,
             dhcp: true,
+            range: false,
+            range_first: String::new(),
+            range_last: String::new(),
         }
     }
 }
@@ -70,6 +91,18 @@ impl NetboxHelper {
             }
             NetMsg::Dhcp(dhcp) => {
                 self.net.dhcp = dhcp;
+                self.choose(ctx);
+            }
+            NetMsg::Range(range) => {
+                self.net.range = range;
+                self.choose(ctx);
+            }
+            NetMsg::RangeFirst(first) => {
+                self.net.range_first = first;
+                self.choose(ctx);
+            }
+            NetMsg::RangeLast(last) => {
+                self.net.range_last = last;
                 self.choose(ctx);
             }
         }
@@ -125,6 +158,9 @@ impl NetboxHelper {
         let parent = selected(&parents, self.net.parent);
         let parent_v6 = selected(&parents_v6, self.net.parent_v6);
         let dhcp = self.net.dhcp;
+        let range = self.net.range;
+        // a range is the pool of an IPv4 network's DHCP server
+        let range_possible = dhcp && self.net.parent.is_some();
         html! {
             <Form>
                 if !self.fixed_port {
@@ -182,6 +218,34 @@ impl NetboxHelper {
                         {" "}{t::DHCP_SERVER}
                     </label>
                 </FormGroup>
+                if range_possible {
+                    <FormGroup>
+                        <label class="net-dhcp">
+                            <input
+                                type="checkbox"
+                                checked={range}
+                                onchange={ctx.link().callback(move |_| NetMsg::Range(!range))}
+                            />
+                            {" "}{t::DHCP_RANGE}
+                        </label>
+                    </FormGroup>
+                    if range {
+                        <FormGroup label={t::DHCP_RANGE_FIRST}>
+                            <TextInput
+                                value={self.net.range_first.clone()}
+                                placeholder={t::DHCP_RANGE_PLACEHOLDER}
+                                onchange={ctx.link().callback(NetMsg::RangeFirst)}
+                            />
+                        </FormGroup>
+                        <FormGroup label={t::DHCP_RANGE_LAST}>
+                            <TextInput
+                                value={self.net.range_last.clone()}
+                                placeholder={t::DHCP_RANGE_PLACEHOLDER}
+                                onchange={ctx.link().callback(NetMsg::RangeLast)}
+                            />
+                        </FormGroup>
+                    }
+                }
             </Form>
         }
     }

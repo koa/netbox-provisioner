@@ -54,6 +54,7 @@ pub enum PlanStep {
     SetPrimaryIp(SetPrimaryIp),
     CreateCable(CreateCable),
     CreatePrefix(CreatePrefix),
+    CreateIpRange(CreateIpRange),
     UpdateInterface(UpdateInterface),
     DeleteCable(DeleteCable),
     DeleteAddress(DeleteAddress),
@@ -120,6 +121,14 @@ pub struct CreatePrefix {
     pub pool: String,
     pub description: String,
     pub dhcp_lease_time: Option<i32>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct CreateIpRange {
+    pub start: String,
+    pub end: String,
+    pub description: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

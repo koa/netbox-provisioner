@@ -18,6 +18,7 @@ pub enum PlanStep {
     SetPrimaryIp(SetPrimaryIp),
     CreateCable(CreateCable),
     CreatePrefix(CreatePrefix),
+    CreateIpRange(CreateIpRange),
     UpdateInterface(UpdateInterface),
     DeleteCable(DeleteCable),
     DeleteAddress(DeleteAddress),
@@ -241,6 +242,17 @@ pub struct CreatePrefix {
     /// the custom field `dhcp_lease_time` (seconds), for a network whose DHCP server has to
     /// hand out short leases
     pub dhcp_lease_time: Option<u32>,
+}
+
+/// A new IP range with the role `dhcp` (E6): the pool of the network's DHCP server instead of
+/// the free rest of it. Planned with its network, so NetBox has no range there yet.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct CreateIpRange {
+    /// `192.0.2.128/24`
+    pub start: Box<str>,
+    /// `192.0.2.254/24`
+    pub end: Box<str>,
+    pub description: Box<str>,
 }
 
 /// Changes of an interface: a new label (empty to take it off), a new MTU, a PoE mode (each

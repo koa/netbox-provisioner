@@ -372,6 +372,14 @@ pub fn server(problem: &impl Problem) -> String {
             p("cause")
         ),
         "NO_PARENT" => "Ein IPv4- oder IPv6-Prefix wählen, aus dem das Netz kommt".into(),
+        "DHCP_RANGE_WITHOUT_DHCP" => "Eine DHCP-Range braucht ein IPv4-Netz mit DHCP-Server".into(),
+        "DHCP_RANGE_OUTSIDE" => format!(
+            "DHCP-Range {} bis {} liegt nicht zwischen dem Gateway und dem Ende eines /{}",
+            p("first"),
+            p("last"),
+            p("length")
+        ),
+        "NO_DHCP_ROLE" => "NetBox hat keine IP-Range-Rolle mit Slug dhcp".into(),
         "NO_FREE_NETWORK" => format!("In {} ist kein /{} mehr frei", p("parent"), p("length")),
         "NO_ROUTERBOARD" => "Das Gerät meldet kein RouterBOARD".into(),
         "NO_PREFIX" => format!(

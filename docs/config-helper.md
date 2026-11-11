@@ -271,10 +271,15 @@ des Geräts an (Kunden-Netze gehören zum Standort), gewählt wird von Hand, nic
 Plan: nächstes freies Netz darin (Länge wählbar, Vorgabe `/24`), Gateway-Adresse (erste Adresse)
 am Port bzw. an einem neuen virtuellen VLAN-Interface, `dhcp`. Dazu oder allein ein
 **IPv6-Prefix** der Site: das nächste freie `/64` mit `::1` als Gateway am selben Interface, das
-`dhcp` per SLAAC ankündigt. Der DHCP-Pool ist der freie Rest des Netzes; eine IP-Range mit Rolle
-`dhcp` legt der Helfer nicht an (E6). **Entschieden 2026-11-06** (Z35): ein Häkchen „DHCP-Range
-anlegen“ mit Start und Ende, vorgegeben die obere Hälfte des Netzes (bei einem `/24`
-`.128`–`.254`), änderbar; die untere bleibt für feste Adressen.
+`dhcp` per SLAAC ankündigt. Ohne Range ist der DHCP-Pool der freie Rest des Netzes. Mit dem
+Häkchen „DHCP-Range anlegen“ (nur bei IPv4 und DHCP-Server, Z35) legt der Plan danach eine
+IP-Range mit Rolle `dhcp` an (`CreateIpRange`), die dann der Pool ist: erste und letzte Adresse
+als Nummer im Netz (bei einem `/24` das letzte Oktett), leer die obere Hälfte (bei einem `/24`
+`.128`–`.254`); die untere bleibt für feste Adressen. Eine Nummer vor `2` (Netz, Gateway) oder
+nach der vorletzten Adresse lehnt der Plan ab (`DHCP_RANGE_OUTSIDE`); das Schreiben verlangt die
+Rolle `dhcp` in NetBox (`NO_DHCP_ROLE`) und keine Range im Netz. Im Lab geprüft an lab-wap
+`ether2` mit erster Adresse 100: Pool `.100-.254` im Skript der Vorschau und nach dem Schreiben,
+Rückgängig nimmt die Range mit; nicht angewendet.
 
 `helper/customer_net.rs`:
 - **Auswahl:** freie Ports und Bridges (ohne IPv4, oder ein Kunden-Netz mit `dhcp` ohne IPv6;

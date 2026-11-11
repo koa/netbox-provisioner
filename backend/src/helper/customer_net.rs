@@ -4,7 +4,8 @@
 //! site chosen by hand (`docs/config-helper.md`). The next free network of the chosen
 //! length in it, scoped to the site, its first address as gateway on the port or on a virtual
 //! interface of the VLAN (a new one named like the VLAN, `docs/netbox-modeling.md`), and the
-//! tag `dhcp` if wanted. Without an IP range the DHCP pool is the rest of the network.
+//! tag `dhcp` if wanted. Without an IP range the DHCP pool is the rest of the network; one
+//! with the role `dhcp` (E6) may come with it, the upper half of the network unless chosen.
 //!
 //! IPv6 likewise, out of an IPv6 prefix of the site chosen by hand: the next free `/64`, its
 //! first address as gateway on the same interface, which `dhcp` announces for SLAAC. Either
@@ -13,8 +14,8 @@
 //! As with the links, a network NetBox has free may be in use: one the network routes in part
 //! (`routes::Routes::overlapping`) or with addresses in NetBox is passed over.
 use super::{
-    CreateAddress, CreateInterface, CreatePrefix, NetboxPlan, PlanStep, Target, UpdateInterface,
-    device_ref, flags::InterfaceTag, routes::Routes,
+    CreateAddress, CreateInterface, CreateIpRange, CreatePrefix, NetboxPlan, PlanStep, Target,
+    UpdateInterface, device_ref, flags::InterfaceTag, routes::Routes,
 };
 use crate::{
     Error,
@@ -29,8 +30,11 @@ use crate::{
     },
 };
 use async_graphql::{InputObject, OneofObject, SimpleObject};
-use ipnet::IpNet;
-use std::{net::IpAddr, sync::Arc};
+use ipnet::{IpNet, Ipv4Net};
+use std::{
+    net::{IpAddr, Ipv4Addr},
+    sync::Arc,
+};
 
 /// Where the network goes.
 #[derive(Debug, Clone, PartialEq, Eq, OneofObject)]
@@ -53,6 +57,16 @@ pub struct CustomerNetInput {
     pub parent_v6: Option<u32>,
     /// the tag `dhcp`: a DHCP server on the network
     pub dhcp: bool,
+    /// an IP range with the role `dhcp` in the IPv4 network, the server's pool
+    pub dhcp_range: Option<DhcpRangeInput>,
+}
+
+/// The first and last address of a DHCP range as numbers in the network (`.128` of a `/24` is
+/// 128), none for the upper half's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, InputObject)]
+pub struct DhcpRangeInput {
+    pub first: Option<u32>,
+    pub last: Option<u32>,
 }
 
 /// What „Kunden-Netz“ can choose from for a device.
@@ -174,6 +188,9 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
     };
     let parent = input.parent.map(|id| parent_of(id, false)).transpose()?;
     let parent_v6 = input.parent_v6.map(|id| parent_of(id, true)).transpose()?;
+    if input.dhcp_range.is_some() && (parent.is_none() || !input.dhcp) {
+        return Err(Error::DhcpRangeWithoutDhcp);
+    }
     if parent.is_none() && parent_v6.is_none() {
         return Err(Error::NoParent);
     }
@@ -287,6 +304,10 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
             prefix: net.to_string().into(),
             on,
         }));
+        if let (IpNet::V4(net), Some(range)) = (net, input.dhcp_range) {
+            plan.steps
+                .push(PlanStep::CreateIpRange(dhcp_range(net, range, &what)?));
+        }
     }
     if let Some(interface) = &existing
         && input.dhcp
@@ -306,6 +327,34 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
         }));
     }
     Ok(plan)
+}
+
+/// The DHCP range `range` asks for in `net`: from the address after the gateway to the one
+/// before the broadcast, by default the upper half.
+fn dhcp_range(
+    net: Ipv4Net,
+    range: DhcpRangeInput,
+    description: &str,
+) -> Result<CreateIpRange, Error> {
+    let size = 1u32 << (32 - net.prefix_len());
+    let first = range.first.unwrap_or(size / 2);
+    let last = range.last.unwrap_or(size - 2);
+    if first < 2 || last < first || last > size - 2 {
+        return Err(Error::DhcpRangeOutside {
+            first,
+            last,
+            length: net.prefix_len(),
+        });
+    }
+    let address = |n: u32| {
+        let ip = Ipv4Addr::from(u32::from(net.network()) + n);
+        format!("{ip}/{}", net.prefix_len()).into()
+    };
+    Ok(CreateIpRange {
+        start: address(first),
+        end: address(last),
+        description: description.into(),
+    })
 }
 
 /// The virtual interface of `vlan` on `device`: untagged in it, no port or bridge.
@@ -481,6 +530,37 @@ mod test {
                     assert_eq!(matches!(data.prefix, IpNet::V6(_)), v6, "{parent:?}");
                 }
             }
+        }
+    }
+
+    /// The range is the upper half unless chosen, never the network, gateway or broadcast.
+    #[test]
+    fn the_dhcp_range_is_the_upper_half_unless_chosen() {
+        let range = |net: &str, first, last| {
+            dhcp_range(net.parse().unwrap(), DhcpRangeInput { first, last }, "test")
+                .map(|range| format!("{} {}", range.start, range.end))
+        };
+        assert_eq!(
+            range("192.0.2.0/24", None, None).unwrap(),
+            "192.0.2.128/24 192.0.2.254/24"
+        );
+        assert_eq!(
+            range("192.0.4.0/22", None, None).unwrap(),
+            "192.0.6.0/22 192.0.7.254/22"
+        );
+        assert_eq!(
+            range("192.0.2.0/24", Some(100), Some(199)).unwrap(),
+            "192.0.2.100/24 192.0.2.199/24"
+        );
+        assert_eq!(
+            range("192.0.2.8/30", None, None).unwrap(),
+            "192.0.2.10/30 192.0.2.10/30"
+        );
+        for (first, last) in [(Some(1), None), (None, Some(255)), (Some(200), Some(100))] {
+            assert!(matches!(
+                range("192.0.2.0/24", first, last),
+                Err(Error::DhcpRangeOutside { length: 24, .. })
+            ));
         }
     }
 

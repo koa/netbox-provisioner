@@ -298,7 +298,9 @@ gateway as the first address, `dhcp` if asked; candidates overlapping a route mo
 the parent are passed over (`Routes::overlapping`). IPv6 likewise from a chosen IPv6 site prefix
 (`parentsV6`, `parentV6`): the next free `/64`, `::1` as gateway, announced for SLAAC by `dhcp`.
 Either family may come alone, so a client network (`dhcp`) with IPv4 but no IPv6 is offered too
-(`open`) and gets its IPv6 later. `helper::poe` sets `poe_mode` `pse` and
+(`open`) and gets its IPv6 later. With `dhcpRange` (E6, IPv4 with `dhcp` only) the plan adds
+an IP range with the role `dhcp` (`CreateIpRange`, the server's pool then): first and last
+address as numbers in the network, the upper half without. `helper::poe` sets `poe_mode` `pse` and
 `pd` on two Ethernet ports (`is_ethernet`, any device; `Interface.poe`, `UpdateInterface.poe`),
 cabling them if both are free; `poeOptions` offers the device's ports and the site's devices,
 `AccessibleDevice.poeObserved` what the device feeds now (`poe/monitor` `powered-on`, the far

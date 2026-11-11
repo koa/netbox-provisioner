@@ -65,6 +65,14 @@ pub struct CustomerNetInput {
     pub length: Option<i32>,
     pub parent_v6: Option<i32>,
     pub dhcp: bool,
+    pub dhcp_range: Option<DhcpRangeInput>,
+}
+
+#[derive(cynic::InputObject, Debug, Clone)]
+#[cynic(schema = "authenticated")]
+pub struct DhcpRangeInput {
+    pub first: Option<i32>,
+    pub last: Option<i32>,
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]

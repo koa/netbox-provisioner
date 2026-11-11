@@ -39,7 +39,7 @@ use crate::{
     i18n::helper as t,
     target::SelectedTarget,
 };
-use choice::{Choice, HelperChoice, NetEntry, helper};
+use choice::{Choice, HelperChoice, NetEntry, NetRange, helper};
 use cynic::MutationBuilder;
 use flags::{Flag, FlagFindings, FlagInterface, FlagsMsg, fetch_flag_interfaces};
 use lease::{LeaseChoice, LeaseMsg, fetch_lease_options};
@@ -756,6 +756,7 @@ impl NetboxHelper {
                     length: self.net.length.trim().trim_start_matches('/').parse().ok(),
                     parent_v6: self.net.parent_v6,
                     dhcp: self.net.dhcp,
+                    dhcp_range: self.net.dhcp_range(),
                 }),
             HelperKind::Poe => match self.poe.direction {
                 PoeDirection::Off => Some(HelperChoice::PoeRemove {

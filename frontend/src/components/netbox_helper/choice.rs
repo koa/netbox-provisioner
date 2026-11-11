@@ -128,6 +128,7 @@ pub enum HelperChoice {
         length: Option<u8>,
         parent_v6: Option<u32>,
         dhcp: bool,
+        dhcp_range: Option<NetRange>,
     },
     Poe {
         pse: u32,
@@ -188,6 +189,14 @@ pub enum NetTarget {
     Vlan(u32),
 }
 
+/// The DHCP range of „Kunden-Netz“: first and last address as numbers in the network, none for
+/// the upper half's.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct NetRange {
+    pub first: Option<u32>,
+    pub last: Option<u32>,
+}
+
 /// A port, VLAN or prefix in a select of „Kunden-Netz“.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetEntry<T> {
@@ -243,6 +252,7 @@ pub(crate) fn helper(choice: HelperChoice, id: u32) -> input::Helper {
             length,
             parent_v6,
             dhcp,
+            dhcp_range,
         } => Helper::CustomerNet(CustomerNetInput {
             device,
             target: match target {
@@ -253,6 +263,10 @@ pub(crate) fn helper(choice: HelperChoice, id: u32) -> input::Helper {
             length: length.map(i32::from),
             parent_v6: parent_v6.map(|id| id as i32),
             dhcp,
+            dhcp_range: dhcp_range.map(|range| DhcpRangeInput {
+                first: range.first.map(|n| n as i32),
+                last: range.last.map(|n| n as i32),
+            }),
         }),
         HelperChoice::Poe { pse, pd } => Helper::Poe(PoeInput {
             device,
