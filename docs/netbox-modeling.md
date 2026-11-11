@@ -173,8 +173,10 @@ Gerät nicht erreichbar. Im Frontend kann man dann noch Ad-hoc-Zugangsdaten eing
 | Custom Field `wlan_group`    | nur für Access Points, siehe [WLAN](#wlan)                              |
 | Custom Field `propagate_default_route` | nur am Router mit dem Internet-Uplink: OSPF gibt seine Default-Route weiter; sonst keine (`originate-default=never`) |
 
-Das **Board-Modell** kommt nicht aus NetBox (der Device Type wird nicht ausgewertet), sondern wird
-live vom Gerät gelesen (`/system/routerboard`). Unterstützt sind nur die Modelle in
+Das **Board-Modell** kommt nicht aus NetBox, sondern wird live vom Gerät gelesen
+(`/system/routerboard`). Das `model` des Device Types soll genau das sein, was das Gerät dort
+als `model` meldet (Gross- und Kleinschreibung, Leerzeichen und ein führendes `RB` zählen
+nicht; eine Revision wie `r2` schon): Sonst warnt der Kopf der Geräteseite. Unterstützt sind nur die Modelle in
 `backend/src/device/ros/hw_facts.rs`: `RB750Gr3`, `RB960PGS`, `RB962UiGS-5HacT2HnT`,
 `RBwAPG-5HacD2HnD`, `RBwAPG-5HacT2HnD` (erster wAP ac, nur `wireless`), `RBcAP2n` (cAP 2n, nur `wireless`), `Groove A-52HPn` (nur `wireless`), `RB750GL`, `C52iG-5HaxD2HaxD`, `cAPGi-5HaxD2HaxD`, `CRS109-8G-1S-2HnD`, `CRS309-1G-8S+`, `CRS318-16P-2S+`,
 `CRS326-24G-2S+`, `CRS354-48G-4S+2Q+`, `CCR1009-7G-1C-1S+`, `CCR1009-8G-1S-1S+`, `CCR2004-1G-12S+2XS`, dazu die Boards
@@ -646,7 +648,8 @@ reicht also nicht, sie zu setzen:
   Brückengerät (Interface-Ansicht, „Neues Gerät“ ohne „Verbindung“); die anderen werden gelesen,
   aber nirgends verwendet.
   Router und Switch unterscheiden sich nur durch ihre Interfaces.
-- **Device Type**: wird gelesen (für den Config-Helper), das Board kommt aber live vom Gerät.
+- **Device Type**: wird gelesen (für den Config-Helper und den Abgleich mit dem Board), das
+  Board kommt aber live vom Gerät.
 - **Prefixe**: Beschreibung und Scope (Site) werden gelesen, aber noch nicht ausgewertet; die
   Tags `loopback`/`transfer` nur für die Befunde.
 - **802.1Q Mode**: siehe oben; nur die VLAN-Zuweisungen zählen.

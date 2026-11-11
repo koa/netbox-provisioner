@@ -56,6 +56,21 @@ impl RadioPackage {
     }
 }
 
+/// Whether `a` and `b` name the same board: case, spaces and a leading `RB` don't count, as
+/// RouterOS 6 reports some boards without it (`912UAG-2HPnD`). A revision does
+/// (`SXT G-5HPacD r2` is not `RBSXTG-5HPacD`).
+pub fn same_board(a: &str, b: &str) -> bool {
+    let plain = |model: &str| {
+        let model = model
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .to_ascii_uppercase();
+        model.strip_prefix("RB").map(str::to_owned).unwrap_or(model)
+    };
+    plain(a) == plain(b)
+}
+
 /// The package for the board's radios; `None` for a board without any.
 pub fn radio_package(model: &[u8]) -> Option<RadioPackage> {
     match model {

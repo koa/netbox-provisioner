@@ -356,6 +356,8 @@ pub struct Device {
     pub loopback_ip: Option<IpAddressId>,
     pub credentials: Option<Box<str>>,
     pub has_routeros: bool,
+    /// the `model` of its NetBox device type, as `/system/routerboard` should report it
+    pub device_type: Box<str>,
     pub serial: Option<Box<str>>,
     pub wlan_controller_of: Option<WlanGroupId>,
     pub wlan_ap_of: Option<WlanGroupId>,

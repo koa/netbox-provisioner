@@ -1,5 +1,9 @@
 //! Scope: The texts of the device page; not those of a card with a module of its own.
 pub const BOARD: &str = "Board";
+/// the board reported isn't the device's NetBox device type
+pub fn other_device_type(netbox: &str) -> String {
+    format!("NetBox hat als Device Type „{netbox}“: in NetBox korrigieren")
+}
 pub const CONNECTED: &str = "Verbunden mit";
 /// the device the connection reached (`access.connected`)
 pub fn connected(address: &str, neighbor: Option<&str>, identity: &str) -> String {

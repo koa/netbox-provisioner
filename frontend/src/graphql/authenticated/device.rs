@@ -137,6 +137,8 @@ pub struct Connected {
 #[cynic(schema = "authenticated")]
 pub struct DeviceStats {
     pub routerboard: Routerboard,
+    pub netbox_device_type: String,
+    pub board_matches: bool,
 }
 
 #[derive(cynic::QueryFragment, Debug)]

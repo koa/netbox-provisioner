@@ -658,16 +658,29 @@ impl DeviceCfg {
 #[derive(Clone, Debug, SimpleObject)]
 pub struct DeviceStats {
     routerboard: GraphqlSystemRouterboard,
+    /// the `model` of the device's NetBox device type
+    netbox_device_type: Box<str>,
+    /// the board reported is the device type's (`hw_facts::same_board`); else NetBox has the
+    /// wrong one (E8)
+    board_matches: bool,
 }
 impl DeviceStats {
-    pub async fn fetch(client: &MikrotikDevice) -> Result<DeviceStats, Error> {
+    pub async fn fetch(
+        client: &MikrotikDevice,
+        device: &DeviceAccess,
+    ) -> Result<DeviceStats, Error> {
+        let routerboard = SystemRouterboardState::fetch(client)
+            .await?
+            // a CHR has none
+            .ok_or(SetupError::RouterboardNotDefined)?;
+        let netbox_device_type: Box<str> = device.device_type().into();
         Ok(Self {
-            routerboard: GraphqlSystemRouterboard(
-                SystemRouterboardState::fetch(client)
-                    .await?
-                    // a CHR has none
-                    .ok_or(SetupError::RouterboardNotDefined)?,
+            board_matches: super::hw_facts::same_board(
+                &routerboard.model.to_string(),
+                &netbox_device_type,
             ),
+            routerboard: GraphqlSystemRouterboard(routerboard),
+            netbox_device_type,
         })
     }
 }

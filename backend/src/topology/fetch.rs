@@ -296,6 +296,7 @@ impl Builder {
                 loopback_ip,
                 credentials,
                 has_routeros: platform == "routeros",
+                device_type: device.device_type.model.into_boxed_str(),
                 serial,
                 wlan_controller_of,
                 wlan_ap_of,

@@ -744,7 +744,10 @@ partition copy (`COPY_TIMEOUT`) and mikrotik-model's `/system/script/run` of an 
 (`SCRIPT_RUN_TIMEOUT`, 10 min). Downloads from MikroTik have 20 s to connect and 60 s per read
 (`update::http`). A new wait on a device needs one of these, or its own timeout.
 
-Only `/system/identity` tells which device answers at an address. `AccessibleDevice::create_client`
+The board `/system/routerboard` reports is compared with the NetBox device type's `model`
+(`DeviceStats.boardMatches`, `hw_facts::same_board`: case, spaces and a leading `RB` don't
+count, a revision does); the device page's head warns where they differ, NetBox is fixed by
+hand. Only `/system/identity` tells which device answers at an address. `AccessibleDevice::create_client`
 reads it, and one named like another NetBox device is `WrongDevice` (an address taken twice, a
 DHCP client left on), which `connect` treats as a failed way and tries the next. Any other
 identity (a factory `MikroTik` after the initial setup, an old name) only shows: the device page

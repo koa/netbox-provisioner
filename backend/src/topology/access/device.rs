@@ -66,6 +66,10 @@ impl DeviceAccess {
     pub fn name(&self) -> &str {
         self.data().map(|d| d.name()).unwrap_or_default()
     }
+    /// the `model` of its NetBox device type
+    pub fn device_type(&self) -> &str {
+        self.data().map(|d| &*d.device_type).unwrap_or_default()
+    }
     pub fn serial(&self) -> Option<&str> {
         self.data().and_then(|d| d.serial.as_deref())
     }

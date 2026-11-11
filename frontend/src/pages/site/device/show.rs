@@ -78,12 +78,23 @@ pub struct ShowDevice {
     /// writing to devices is allowed (`allow_apply`); else the buttons that write are disabled
     allow_apply: bool,
 }
+/// What a device that answered reports.
+#[derive(Debug)]
+struct Reached {
+    /// its board, as `/system/routerboard` reports it
+    board: Box<str>,
+    /// the `model` of its NetBox device type
+    netbox_device_type: Box<str>,
+    board_matches: bool,
+    /// its planned changes (`None`: the generator failed)
+    cfg: Option<GeneratedCfg>,
+}
+
 #[derive(Debug, Default)]
 pub struct ShowDeviceData {
     configured_name: Box<str>,
-    /// board and planned changes (`None`: the generator failed); `None` if the device couldn't
-    /// be reached
-    access: Option<(Box<str>, Option<GeneratedCfg>)>,
+    /// board and planned changes; `None` if the device couldn't be reached
+    access: Option<Reached>,
     /// the device the connection reached, `None` if it couldn't be reached
     connected: Option<Connected>,
     /// why it couldn't be reached
@@ -418,11 +429,15 @@ impl ShowDevice {
         let as_of = |data: &ShowDeviceData| {
             data.access
                 .as_ref()
-                .and_then(|(_, cfg)| cfg.as_ref())
+                .and_then(|reached| reached.cfg.as_ref())
                 .map(|cfg| cfg.as_of)
         };
         let before = self.data.as_ref().and_then(as_of);
-        if let Some(cfg) = data.access.as_mut().and_then(|(_, cfg)| cfg.as_mut()) {
+        if let Some(cfg) = data
+            .access
+            .as_mut()
+            .and_then(|reached| reached.cfg.as_mut())
+        {
             cfg.as_of = same_reading(before, cfg.as_of);
         }
         self.data = Some(data);
@@ -547,7 +562,7 @@ impl ShowDevice {
                 <Changes
                     id={self.id}
                     reachable={data.access.is_some()}
-                    cfg={data.access.as_ref().and_then(|(_, cfg)| cfg.clone())}
+                    cfg={data.access.as_ref().and_then(|reached| reached.cfg.clone())}
                     access_problem={data.access_problem.clone()}
                     disabled={running}
                     on_reload={ctx.link().callback(|()| ShowDeviceMessage::Reload)}
@@ -580,18 +595,19 @@ impl ShowDevice {
     /// The head: name, board, the device the connection reached and how it is reached.
     fn head_view(&self, ctx: &Context<Self>, data: &ShowDeviceData) -> Html {
         let reachable = data.access.is_some();
-        let board = data
-            .access
-            .as_ref()
-            .map(|(board, _)| board.as_ref())
-            .unwrap_or_default();
         html! {
             <Card class="device-head">
                 <CardHeader><CardTitle>{ data.configured_name.as_ref() }</CardTitle></CardHeader>
                 <CardBody>
                     <dl class="device-overview">
-                        if reachable {
-                            <dt>{t::BOARD}</dt><dd>{ board }</dd>
+                        if let Some(reached) = &data.access {
+                            <dt>{t::BOARD}</dt><dd>
+                                { reached.board.as_ref() }
+                                if !reached.board_matches {
+                                    <Alert inline=true r#type={AlertType::Warning}
+                                        title={t::other_device_type(&reached.netbox_device_type)}/>
+                                }
+                            </dd>
                         }
                         if let Some(connected) = &data.connected {
                             <dt>{t::CONNECTED}</dt><dd>
@@ -739,18 +755,18 @@ fn overview_message(id: u32, response: Response<DeviceOverview>) -> ShowDeviceMe
                 leftovers: d.access.as_mut().and_then(|a| a.leftovers.take()),
                 device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
                 partitions: d.access.as_mut().and_then(|a| a.partitions.take()),
-                access: d.access.map(|a| {
-                    (
-                        a.device_stats.routerboard.device_type.into_boxed_str(),
-                        a.generate_cfg.map(|cfg| GeneratedCfg {
-                            script: cfg.script.into_boxed_str(),
-                            warnings: cfg.warnings,
-                            previous_password: cfg.previous_password,
-                            www_certificate_needed: cfg.www_certificate
-                                == crate::graphql::authenticated::device::WwwCertificate::Needed,
-                            as_of: read_at(cfg.age),
-                        }),
-                    )
+                access: d.access.map(|a| Reached {
+                    board: a.device_stats.routerboard.device_type.into_boxed_str(),
+                    netbox_device_type: a.device_stats.netbox_device_type.into_boxed_str(),
+                    board_matches: a.device_stats.board_matches,
+                    cfg: a.generate_cfg.map(|cfg| GeneratedCfg {
+                        script: cfg.script.into_boxed_str(),
+                        warnings: cfg.warnings,
+                        previous_password: cfg.previous_password,
+                        www_certificate_needed: cfg.www_certificate
+                            == crate::graphql::authenticated::device::WwwCertificate::Needed,
+                        as_of: read_at(cfg.age),
+                    }),
                 }),
                 bootstrap_plan: d.bootstrap_plan,
                 bootstrap_problem: d.bootstrap_problem,

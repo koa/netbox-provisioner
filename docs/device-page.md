@@ -14,7 +14,8 @@ Von oben nach unten:
 
 1. **Sperre:** Ist Schreiben auf Geräte gesperrt (`allow_apply`), sagt ein Hinweis, wo es
    freigegeben wird.
-2. **Kopf:** Name, Board, „Verbunden mit“ (Adresse, Nachbar, Identity; eine Warnung, wenn die
+2. **Kopf:** Name, Board (eine Warnung, wenn es nicht das `model` des Device Types in NetBox
+   ist, `DeviceStats.boardMatches`, `hw_facts::same_board`), „Verbunden mit“ (Adresse, Nachbar, Identity; eine Warnung, wenn die
    Identity nicht der Name in NetBox ist) und „Zugang“ (siehe unten).
 3. **Liegengebliebenes:** eine Warnung, wenn ein Auftrag etwas auf dem Gerät zurückgelassen hat
    (`components::device::leftovers`, `AccessibleDevice.leftovers`): Fallback des Anwendens mit

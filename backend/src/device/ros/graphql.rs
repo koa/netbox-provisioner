@@ -84,7 +84,7 @@ impl AccessibleDevice {
     }
 
     async fn device_stats(&self) -> Result<DeviceStats, ApiError> {
-        Ok(DeviceStats::fetch(&self.client).await?)
+        Ok(DeviceStats::fetch(&self.client, &self.device_config).await?)
     }
 
     async fn config(&self) -> Result<DeviceCfg, ApiError> {

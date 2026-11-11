@@ -1,5 +1,7 @@
 //! Scope: Tests of `ros::hw_facts`; nothing else.
-use super::{RadioPackage, SwitchChip, SwitchChips, build_ethernet_ports, radio_package};
+use super::{
+    RadioPackage, SwitchChip, SwitchChips, build_ethernet_ports, radio_package, same_board,
+};
 use crate::topology::PhysicalPortId;
 use mikrotik_model::value::{Auto, HasNone};
 
@@ -169,4 +171,15 @@ fn hap_ac_poe_port_has_its_power_cycle_settings() {
     assert_eq!(ether5.power_cycle_interval, Some(HasNone::NoneValue));
     assert_eq!(ether5.power_cycle_ping_enabled, Some(false));
     assert_eq!(ports[5].data.power_cycle_ping_enabled, None);
+}
+
+/// The lab's boards as `/system/routerboard` reports them against NetBox's device types.
+#[test]
+fn a_board_is_its_device_type_without_rb_and_spaces() {
+    assert!(same_board("RB750Gr3", "RB750Gr3"));
+    assert!(same_board("912UAG-2HPnD", "RB912UAG-2HPnD"));
+    assert!(same_board("CRS318-16P-2S+", "crs318-16p-2s+"));
+    // a revision is another board, NetBox has the first
+    assert!(!same_board("SXT G-5HPacD r2", "RBSXTG-5HPacD"));
+    assert!(!same_board("RBwAPG-5HacD2HnD", "Generic"));
 }
