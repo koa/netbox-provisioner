@@ -50,6 +50,9 @@ pub trait States: Copy + Eq + Debug + 'static {
 pub enum ApplyState {
     /// reading the device and NetBox, rendering the script
     Planning,
+    /// WebFig's certificate issued, imported and attached to `www-ssl` before the plan (A7,
+    /// `www_certificate::install`), then planning again
+    InstallingCertificate,
     /// a radio changes: the watchdogs it may set off are suspended (`RadioHold`)
     SuspendingWatchdogs,
     /// the backup and the scheduler entry loading it (`arm_fallback_on`)
@@ -80,7 +83,13 @@ impl States for ApplyState {
         use ApplyState::*;
         match self {
             // an empty diff with the previous password: setting the current one (A9)
-            Planning => &[SuspendingWatchdogs, ArmingFallback, Finishing],
+            Planning => &[
+                InstallingCertificate,
+                SuspendingWatchdogs,
+                ArmingFallback,
+                Finishing,
+            ],
+            InstallingCertificate => &[Planning],
             SuspendingWatchdogs => &[ArmingFallback],
             // in a batch another device failing takes it back
             ArmingFallback => &[WritingScript, TakingBack],
@@ -99,7 +108,9 @@ impl States for ApplyState {
     fn cancel(self) -> Cancel {
         use ApplyState::*;
         match self {
-            StartingScript | StoppingFallback | Finishing | TakingBack => Cancel::AfterState,
+            StartingScript | StoppingFallback | Finishing | TakingBack | InstallingCertificate => {
+                Cancel::AfterState
+            }
             _ => Cancel::Ends,
         }
     }
@@ -548,6 +559,7 @@ mod tests {
         use ApplyState::*;
         all_reachable(&[
             Planning,
+            InstallingCertificate,
             SuspendingWatchdogs,
             ArmingFallback,
             WritingScript,
@@ -587,6 +599,19 @@ mod tests {
         ]));
         // nothing to apply but the current password (A9)
         assert!(path(&[Planning, Finishing]));
+        // WebFig's certificate first (A7)
+        assert!(path(&[
+            Planning,
+            InstallingCertificate,
+            Planning,
+            ArmingFallback,
+            WritingScript,
+            StartingScript,
+            ScriptRunning,
+            StoppingFallback,
+            Checking,
+            Finishing
+        ]));
         // the fallback not taken away yet: looking again
         assert!(path(&[
             Planning,

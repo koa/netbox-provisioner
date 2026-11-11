@@ -85,6 +85,7 @@ pub enum Event {
     ScriptProgress(apply::ScriptProgress),
     RadiosReprovisioned(apply::RadiosReprovisioned),
     PasswordSet(apply::PasswordSet),
+    WwwCertificateInstalled(crate::device::www_certificate::WwwCertificateInstalled),
     BatchApply(batch::BatchApply),
     BatchStopped(batch::BatchStopped),
     BatchIncomplete(batch::BatchIncomplete),

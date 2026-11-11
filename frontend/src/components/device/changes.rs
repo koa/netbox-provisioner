@@ -21,6 +21,9 @@ pub struct GeneratedCfg {
     /// the login went with the previous password: applying sets the current one, also without a
     /// script
     pub previous_password: bool,
+    /// WebFig over HTTPS needs its certificate: applying installs it first, also without a
+    /// script
+    pub www_certificate_needed: bool,
     /// when the device was read for it (milliseconds since the epoch, from the age it came with)
     pub as_of: f64,
 }
@@ -53,8 +56,8 @@ pub struct ChangesProps {
 pub fn Changes(props: &ChangesProps) -> Html {
     let cfg = props.cfg.as_ref();
     let script = cfg.map(|cfg| cfg.script.as_ref()).unwrap_or_default();
-    let previous_password = cfg.is_some_and(|cfg| cfg.previous_password);
-    let nothing_to_do = script.trim().is_empty() && !previous_password;
+    let outside_script = cfg.is_some_and(|cfg| cfg.previous_password || cfg.www_certificate_needed);
+    let nothing_to_do = script.trim().is_empty() && !outside_script;
     let changes = match cfg {
         _ if !props.reachable => {
             html!(<Alert inline=true title={t::UNREACHABLE} r#type={AlertType::Warning}>
@@ -73,6 +76,11 @@ pub fn Changes(props: &ChangesProps) -> Html {
             html!(<Alert inline=true title={t::IN_LINE} r#type={AlertType::Success}/>)
         }
         Some(cfg) => html! {<>
+            if cfg.www_certificate_needed {
+                <Alert inline=true title={t::WWW_CERTIFICATE_NEEDED} r#type={AlertType::Info}>
+                    <p>{t::WWW_CERTIFICATE_NEEDED_HINT}</p>
+                </Alert>
+            }
             if cfg.previous_password {
                 <Alert inline=true title={t::PREVIOUS_PASSWORD} r#type={AlertType::Info}>
                     <p>{t::PREVIOUS_PASSWORD_HINT}</p>

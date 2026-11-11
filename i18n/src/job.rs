@@ -286,6 +286,12 @@ pub mod event {
     pub fn radios_not_reprovisioned(menu: &str, error: &str) -> String {
         format!("{menu} nicht neu provisioniert: {error}")
     }
+    pub fn www_certificate_installed(name: &str, days: i64) -> String {
+        format!("Zertifikat für WebFig über HTTPS angelegt ({name}, {days} Tage gültig)")
+    }
+    pub fn www_certificate_not_installed(error: &str) -> String {
+        format!("Kein Zertifikat für WebFig über HTTPS, WebFig bleibt, wie es ist: {error}")
+    }
     pub fn password_set(user: &str) -> String {
         format!("Aktuelles Passwort für {user} gesetzt")
     }
@@ -656,6 +662,7 @@ pub mod phase {
     }
 
     pub const PLANNING: &str = "Planen";
+    pub const INSTALLING_CERTIFICATE: &str = "Zertifikat anlegen";
     pub const SUSPENDING_WATCHDOGS: &str = "Watchdogs aussetzen";
     pub const ARMING_FALLBACK: &str = "Fallback setzen";
     pub const WRITING_SCRIPT: &str = "Skript schreiben";

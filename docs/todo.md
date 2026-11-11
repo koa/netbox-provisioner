@@ -47,7 +47,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
-| A7 | WebFig über HTTPS: `www-ssl` statt `www`, mit einem Zertifikat pro Gerät, das der Provisioner anlegt (selbst signiert mit Browser-Warnung, oder von einer eigenen CA, deren Zertifikat die Admins einmal importieren); danach `www` aus. Heute geht WebFig im Klartext, nur aus `api_networks` | M | offen |
 
 ## B. Bereinigungen
 

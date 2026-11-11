@@ -132,6 +132,9 @@ pub const NOT_GENERATED: &str = "Keine Konfiguration erzeugt";
 pub const NOT_GENERATED_HINT: &str = "Der Fehler steht oben.";
 pub const IN_LINE: &str = "Gerät entspricht NetBox";
 pub const PREVIOUS_PASSWORD: &str = "Das Gerät hat noch das vorherige Passwort";
+pub const WWW_CERTIFICATE_NEEDED: &str = "WebFig über HTTPS braucht ein Zertifikat";
+pub const WWW_CERTIFICATE_NEEDED_HINT: &str = "Anwenden stellt es von der CA aus und legt es zuerst \
+     an; danach schaltet die Konfiguration www-ssl ein und www (HTTP) aus.";
 pub const PREVIOUS_PASSWORD_HINT: &str =
     "Anwenden setzt am Schluss das aktuelle, über die API; im Skript steht es nicht.";
 

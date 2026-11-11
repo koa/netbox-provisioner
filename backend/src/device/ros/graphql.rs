@@ -354,12 +354,17 @@ impl AccessibleDevice {
             };
             let previous_password = device.password() == crate::device::Password::Previous;
             if previous_password {
-                crate::device::site_diff::add_password_change(&mut menus);
+                crate::device::site_diff::add_change(&mut menus, "user");
+            }
+            let www_certificate = device_cfg.www_certificate();
+            if www_certificate == crate::device::www_certificate::WwwCertificate::Needed {
+                crate::device::site_diff::add_change(&mut menus, "certificate");
             }
             Ok(GeneratedCfg {
                 script,
                 menus,
                 previous_password,
+                www_certificate,
                 warnings: device_cfg
                     .warnings(async || device.connect_again::<SimpleResult>().await)
                     .await,

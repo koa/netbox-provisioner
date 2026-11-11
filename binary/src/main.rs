@@ -224,6 +224,8 @@ enum BackendError {
     Netbox(#[from] NetboxError),
     #[error("State directory: {0}")]
     StateDir(#[from] backend::saved_job::StoreError),
+    #[error("{0}")]
+    Backend(#[from] backend::Error),
 }
 
 #[actix_web::main]
@@ -250,6 +252,7 @@ async fn main() -> Result<(), BackendError> {
     backend::facts::register(&registry);
     // before anything else: a second provisioner on the same state_dir stops here
     backend::saved_job::open(CONFIG.state_dir())?;
+    backend::device::www_certificate::check_ca()?;
     let topology = TopologyHolder::default();
     // ensure initial fetch
     topology.fetch().await?;

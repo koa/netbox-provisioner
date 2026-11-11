@@ -92,6 +92,15 @@ pub enum Error {
     ConsoleSessionEnded(Box<str>),
     #[error("The device refused: {0}")]
     Refused(Box<str>),
+    /// what reading the CA of `www_ca` answered
+    #[error("The CA for WebFig over HTTPS can't be read: {0}")]
+    WwwCaInvalid(Box<str>),
+    /// what rcgen answered
+    #[error("No certificate for WebFig issued: {0}")]
+    WwwCertificateNotIssued(Box<str>),
+    /// the certificate's name: imported without its key
+    #[error("The certificate {0} was imported without its key")]
+    WwwCertificateNotImported(Box<str>),
     /// the partitions the device has (one is needed, with the device mode allowing more)
     #[error("Cannot split the flash: {0} partitions, or the device mode doesn't allow partitions")]
     CannotRepartition(u32),

@@ -173,16 +173,17 @@ pub fn menu_changes(mutations: &[ResourceMutation<'_>]) -> Vec<MenuChanges> {
         .collect()
 }
 
-/// The current password an apply sets where the login went with the previous one (A9), as a
-/// change of `user`, which the script doesn't have (the password stays out of it).
-pub(crate) fn add_password_change(menus: &mut Vec<MenuChanges>) {
-    let at = menus.partition_point(|menu| menu.menu.as_str() < "user");
+/// A change an apply makes outside the script, counted in `menu`: the current password where
+/// the login went with the previous one (A9, `user`; the password stays out of the script),
+/// WebFig's certificate (A7, `certificate`).
+pub(crate) fn add_change(menus: &mut Vec<MenuChanges>, name: &str) {
+    let at = menus.partition_point(|menu| menu.menu.as_str() < name);
     match menus.get_mut(at) {
-        Some(menu) if menu.menu == "user" => menu.changed += 1,
+        Some(menu) if menu.menu == name => menu.changed += 1,
         _ => menus.insert(
             at,
             MenuChanges {
-                menu: "user".into(),
+                menu: name.into(),
                 added: 0,
                 changed: 1,
                 removed: 0,
@@ -193,7 +194,7 @@ pub(crate) fn add_password_change(menus: &mut Vec<MenuChanges>) {
 
 #[cfg(test)]
 mod test {
-    use super::{MenuChanges, add_password_change, menu_changes};
+    use super::{MenuChanges, add_change, menu_changes};
     use mikrotik_model::{
         resource::{ResourceMutation, ResourceMutationOperation},
         value::KeyValuePair,
@@ -229,7 +230,7 @@ mod test {
             removed: 0,
         };
         let mut menus = vec![menu("system/identity"), menu("zzz")];
-        add_password_change(&mut menus);
+        add_change(&mut menus, "user");
         let names: Vec<_> = menus.iter().map(|menu| menu.menu.as_str()).collect();
         assert_eq!(names, ["system/identity", "user", "zzz"]);
         assert_eq!(menus[1].changed, 1);

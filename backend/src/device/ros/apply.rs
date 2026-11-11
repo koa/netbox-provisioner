@@ -18,6 +18,7 @@ use crate::{
             progress::{self, Instrument, Progress},
         },
         watchdog::Watching,
+        www_certificate::{self, WwwCertificate},
     },
     device_state::ApplyState,
     error_info::ErrorInfo,
@@ -524,6 +525,7 @@ impl AccessibleDevice {
     /// (`WritesAllowed`).
     pub async fn apply(&self, log: &Log) -> Result<(), Error> {
         log.enter(ApplyState::Planning);
+        self.prepare_certificate(log).await?;
         let mut planned = self.plan_apply(log).await?;
         if planned.is_empty() {
             if self.password() == Password::Previous {
@@ -840,6 +842,23 @@ impl AccessibleDevice {
             log.enter(ApplyState::Finishing);
             return (self.after_script(&script.reprovision, log).await, back);
         }
+    }
+    /// Installs WebFig's certificate where the device needs one (A7, `InstallingCertificate`,
+    /// then `Planning` again): before the plan, which turns `www-ssl` on only with it attached.
+    /// Outside the fallback's reach, which is harmless: an unused certificate, or one attached
+    /// to a `www-ssl` that is off or had a valid one. Nothing without a CA in the config.
+    pub(crate) async fn prepare_certificate(&self, log: &Log) -> Result<(), Error> {
+        if CONFIG.www_ca.is_none() {
+            return Ok(());
+        }
+        let raw = self.connect_again::<SimpleResult>().await?;
+        let found = www_certificate::read(&raw, &self.device_config).await?;
+        if found.state() == WwwCertificate::Needed {
+            log.enter(ApplyState::InstallingCertificate);
+            www_certificate::install(&raw, &self.device_config, &found, log).await;
+            log.enter(ApplyState::Planning);
+        }
+        Ok(())
     }
     /// The diff to apply, planned (`ApplyPlanned`); an empty one is nothing to do.
     pub(crate) async fn plan_apply(&self, log: &Log) -> Result<PlannedApply, Error> {

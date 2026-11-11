@@ -757,7 +757,7 @@ with that one, which the login keeps (`device::Password`, `AccessibleDevice::pas
 `connect_again` and the upload use the same); the neighbor's SSH logins (`with_any_password`)
 and the setup's mac-telnet login try it too. A device logged in with it is a deviation:
 `GeneratedCfg.previousPassword` (the device page's changes enable „Anwenden“ without a script,
-the site diff counts a change of `user`, `site_diff::add_password_change`), and the apply sets
+the site diff counts a change of `user`, `site_diff::add_change`), and the apply sets
 the current one over the API in `Finishing` (`set_current_password`, `PasswordSet`; an empty
 plan goes `Planning` to `Finishing`): after the fallback, whose backup would bring the old one
 back, before the other partition copies the config, never in the script (shown on the page and
@@ -1000,7 +1000,20 @@ router at its site), `ForwardWithoutSite`, `ForwardPortTaken` (a port per router
 `/ip/service` (`setup_services`, in `generate_for`) starts from the device's services, so what
 an operator set stays, and turns telnet and ftp off (A2; packages go up by SCP over SSH). www
 (WebFig over plain HTTP) stays on, turned on where it was off: in the field it is often the
-only way in, Winbox isn't at hand; www-ssl would need a certificate on every device (A7).
+only way in, Winbox isn't at hand. With `www_ca` (A7, `device::www_certificate`) the apply
+first issues each device a certificate of that CA for its NetBox addresses and name (rcgen,
+ECDSA, 397 days, anew within 30 days of its end, for other names or another CA), uploads it
+(`/file/add contents`, `/certificate/import`, which takes the files away) and attaches it to
+`www-ssl` over the API (`ApplyState::InstallingCertificate`, before the plan, outside the
+fallback, `WwwCertificateInstalled`); mikrotik-model doesn't model `certificate`, so the diff
+leaves it. Only with a usable one attached (`DeviceCfg.www_certificate`, `InPlace`, read in
+`generate_live`) the config turns `www-ssl` on, restricted like `www`, and `www` off
+(`services::use_www_ssl`); `Needed` enables „Anwenden“ without a script and is a change of
+`certificate` in the site diff. RouterOS removes a certificate in use and leaves the service a
+dangling `*N` (CHR 7.24.6), so the provisioner's older ones go only once no other service names
+them (CHR test `webfig_gets_a_certificate_of_the_ca`, HTTPS checked against the CA). CAPsMAN
+keeps a removed certificate's id in `generated-*`, which RouterOS gives a new one later, so the
+provisioner's are never CAPsMAN's (`cfg::capsman_generated`): lab-wap's apply removed WebFig's.
 With `api_networks` the plain API and www answer only those, written as `address`, which RouterOS
 7.24 still takes for its `available-from`, unless the device reports `available-from` already
 (an open service reports neither). `generate_live` reads the API's open connections (dynamic

@@ -73,15 +73,7 @@ impl BaseDeviceDataTarget {
     /// `address`, which RouterOS 7.24 still takes for `available-from`, unless the device
     /// reports `available-from` already: an open service reports neither.
     pub fn setup_services(&mut self, current: &[IpServiceByName], api_networks: Option<&[IpNet]>) {
-        let api_networks = api_networks
-            .filter(|networks| !networks.is_empty())
-            .map(|networks| {
-                let list = networks
-                    .iter()
-                    .map(|net| net.trunc().to_string())
-                    .collect::<Vec<_>>();
-                AsciiString::from(list.join(",").as_str())
-            });
+        let api_networks = network_list(api_networks);
         self.ip_service = current
             .iter()
             .map(|service| (service.name.clone(), service.data.clone()))
@@ -99,7 +91,8 @@ impl BaseDeviceDataTarget {
             match &**name {
                 b"telnet" | b"ftp" => service.disabled = true,
                 // WebFig over plain HTTP: what's left in the field where Winbox isn't at hand,
-                // so on, from the same networks as the API (www-ssl would need a certificate)
+                // so on, from the same networks as the API, until the device has a certificate
+                // for www-ssl (`use_www_ssl`)
                 b"www" => {
                     service.disabled = false;
                     restrict(service);
@@ -107,6 +100,29 @@ impl BaseDeviceDataTarget {
                 b"api" => restrict(service),
                 _ => {}
             }
+        }
+    }
+
+    /// WebFig over HTTPS only (A7), once the device has a certificate of the CA attached to
+    /// `www-ssl` (`device::www_certificate`): `www-ssl` on, from `api_networks` like `www` was,
+    /// and `www` off. The certificate itself isn't in the model, the diff leaves it.
+    pub fn use_www_ssl(&mut self, current: &[IpServiceByName], api_networks: Option<&[IpNet]>) {
+        let api_networks = network_list(api_networks);
+        let www_ssl = AsciiString::from("www-ssl");
+        if let Some(current) = current.iter().find(|service| service.name == www_ssl) {
+            let mut service = current.data.clone();
+            service.disabled = false;
+            if let Some(networks) = api_networks {
+                if service.available_from.is_some() {
+                    service.available_from = Some(networks);
+                } else {
+                    service.address = Some(networks);
+                }
+            }
+            self.ip_service.insert(www_ssl, service);
+        }
+        if let Some(www) = self.ip_service.get_mut(&AsciiString::from("www")) {
+            www.disabled = true;
         }
     }
 
@@ -215,4 +231,17 @@ impl BaseDeviceDataTarget {
                 .collect();
         }
     }
+}
+
+/// `api_networks` as RouterOS takes them in `address`/`available-from`; `None` for none.
+fn network_list(api_networks: Option<&[IpNet]>) -> Option<AsciiString> {
+    api_networks
+        .filter(|networks| !networks.is_empty())
+        .map(|networks| {
+            let list = networks
+                .iter()
+                .map(|net| net.trunc().to_string())
+                .collect::<Vec<_>>();
+            AsciiString::from(list.join(",").as_str())
+        })
 }

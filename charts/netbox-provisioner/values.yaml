@@ -66,6 +66,14 @@ settings:
   # Must hold the provisioner's address as each device sees it (its own, or the management
   # proxy's), or an apply locks it out and the fallback takes the apply back
   api_networks: []
+  # the CA issuing each device's certificate for WebFig over HTTPS (PEM, with a subject key
+  # identifier); with it, an apply installs one per device, turns www-ssl on and www (HTTP)
+  # off. The admins import `certificate` into their browsers once. Empty: WebFig stays on HTTP
+  www_ca:
+    certificate: ""
+    key:
+      value: ""
+      secretKeyRef: {}
   # the syslog server every device logs to, in CEF (for Loki); empty `remote`: the devices log
   # only locally
   device_syslog:

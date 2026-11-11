@@ -105,6 +105,12 @@ impl From<&Error> for ErrorInfo {
                 vec![("command", command.to_string())],
             ),
             Error::Refused(error) => ("REFUSED", cause(error)),
+            Error::WwwCaInvalid(error) => ("WWW_CA_INVALID", cause(error)),
+            Error::WwwCertificateNotIssued(error) => ("WWW_CERTIFICATE_NOT_ISSUED", cause(error)),
+            Error::WwwCertificateNotImported(name) => (
+                "WWW_CERTIFICATE_NOT_IMPORTED",
+                vec![("name", name.to_string())],
+            ),
             Error::CannotRepartition(count) => {
                 ("CANNOT_REPARTITION", vec![("count", count.to_string())])
             }

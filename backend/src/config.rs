@@ -30,6 +30,9 @@ pub struct Settings {
     pub netbox_write_token: Option<String>,
 
     pub mikrotik_credentials: HashMap<Box<str>, MikrotikCredentials>,
+    /// with it, WebFig goes over HTTPS with a certificate of this CA on every device, and plain
+    /// HTTP (`www`) off (A7)
+    pub www_ca: Option<WwwCa>,
 
     /// The device every other device is reached through, e.g. the entry router of a network
     /// not routed to the provisioner.
@@ -94,6 +97,14 @@ pub struct ManagementProxy {
     pub address: SocketAddr,
     pub user: Box<str>,
     pub password: Box<str>,
+}
+
+/// The CA issuing the devices' certificates for WebFig over HTTPS (A7), both PEM; the admins
+/// import `certificate` into their browsers once.
+#[derive(Deserialize)]
+pub struct WwwCa {
+    pub certificate: Box<str>,
+    pub key: Box<str>,
 }
 
 #[derive(Deserialize)]
@@ -252,5 +263,30 @@ settings:
             syslog.topics().collect::<Vec<_>>(),
             ["info", "warning", "error", "critical"]
         );
+    }
+
+    /// The chart writes the certificate into the file and hands the key over as a variable;
+    /// both keep their lines, which PEM needs.
+    #[test]
+    fn www_ca_takes_its_key_from_the_environment() {
+        let yaml = format!(
+            "{YAML}  www_ca:\n    certificate: \"-----BEGIN CERTIFICATE-----\\nAAAA\\n\
+             -----END CERTIFICATE-----\\n\"\n"
+        );
+        let key = "-----BEGIN PRIVATE KEY-----\nBBBB\n-----END PRIVATE KEY-----\n";
+        let env = [("APP_SETTINGS__WWW_CA__KEY".to_owned(), key.to_owned())]
+            .into_iter()
+            .collect();
+        let settings = settings_from(
+            File::from_str(&yaml, FileFormat::Yaml),
+            environment().source(Some(env)),
+        )
+        .unwrap();
+        let ca = settings.www_ca.expect("www_ca");
+        assert_eq!(
+            &*ca.certificate,
+            "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"
+        );
+        assert_eq!(&*ca.key, key);
     }
 }

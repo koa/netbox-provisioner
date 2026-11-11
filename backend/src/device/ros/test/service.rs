@@ -172,3 +172,32 @@ fn a_remote_gives_its_address() {
         Some("2a02:610:7501:1000::201".parse().unwrap())
     );
 }
+
+/// With a certificate attached (A7) WebFig moves to www-ssl, from the networks of the API, and
+/// plain HTTP goes off.
+#[test]
+fn webfig_moves_to_https_with_a_certificate() {
+    let networks = ["192.168.0.0/16"].map(|n| n.parse::<IpNet>().unwrap());
+    let mut target = BaseDeviceDataTarget::new(b"CRS326-24G-2S+").unwrap();
+    let mut current: BaseDeviceDataCurrent = empty_current(&target);
+    current.ip_service = factory().into();
+    target.setup_services(&current.ip_service, Some(&networks));
+    target.use_www_ssl(&current.ip_service, Some(&networks));
+    let mut script = String::new();
+    let mut generator = Generator::new(&mut script);
+    for mutation in target.generate_mutations(&current).unwrap().iter() {
+        if mutation.resource == b"ip/service" {
+            generator.append_mutation(mutation).unwrap();
+        }
+    }
+    assert!(
+        script.contains("set [ find name=www dynamic!=yes] disabled=yes address="),
+        "{script}"
+    );
+    assert!(
+        script.contains(
+            "set [ find name=www-ssl dynamic!=yes] disabled=no address=\"192.168.0.0/16\""
+        ),
+        "{script}"
+    );
+}

@@ -184,6 +184,17 @@ pub fn server(problem: &impl Problem) -> String {
             p("neighbors")
         ),
         "REFUSED" => format!("Das Gerät lehnt ab: {}", p("cause")),
+        "WWW_CA_INVALID" => format!(
+            "Die CA für WebFig über HTTPS (www_ca) lässt sich nicht lesen: {}",
+            p("cause")
+        ),
+        "WWW_CERTIFICATE_NOT_ISSUED" => {
+            format!("Kein Zertifikat für WebFig ausgestellt: {}", p("cause"))
+        }
+        "WWW_CERTIFICATE_NOT_IMPORTED" => format!(
+            "Das Zertifikat {} kam ohne seinen Schlüssel auf das Gerät",
+            p("name")
+        ),
         "CANNOT_REPARTITION" => format!(
             "Der Flash lässt sich nicht aufteilen: {} Partitionen, oder der Device-Mode erlaubt keine",
             p("count")

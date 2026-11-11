@@ -287,6 +287,7 @@ fn phase_line(job: &Job, running: bool) -> Option<String> {
     let state = match job.phase.as_ref()? {
         Phase::ApplyPhase(phase) => match &phase.apply {
             A::Planning => p::PLANNING.into(),
+            A::InstallingCertificate => p::INSTALLING_CERTIFICATE.into(),
             A::SuspendingWatchdogs => p::SUSPENDING_WATCHDOGS.into(),
             A::ArmingFallback => p::ARMING_FALLBACK.into(),
             A::WritingScript => p::WRITING_SCRIPT.into(),
@@ -544,6 +545,13 @@ fn describe(event: &Logged) -> Html {
         Event::RadiosReprovisioned(radios) => match &radios.error {
             None => e::radios_reprovisioned(radios.count.into(), &radios.menu),
             Some(error) => e::radios_not_reprovisioned(&radios.menu, &problem(error)),
+        },
+        Event::WwwCertificateInstalled(installed) => match (&installed.error, &installed.name) {
+            (Some(error), _) => e::www_certificate_not_installed(&problem(error)),
+            (None, name) => e::www_certificate_installed(
+                name.as_deref().unwrap_or_default(),
+                installed.days.into(),
+            ),
         },
         Event::PasswordSet(set) => match &set.error {
             None => e::password_set(&set.user),

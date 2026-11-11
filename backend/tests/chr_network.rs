@@ -30,6 +30,7 @@ mod chr_network {
     pub mod vm;
     pub mod wait;
     pub mod watchdog;
+    pub mod www_ssl;
 }
 
 use backend::topology::builder::TopologyBuilder;

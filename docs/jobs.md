@@ -119,12 +119,18 @@ Die Übergänge sind mit ihrer Quelle bezeichnet: **(B)** Bedienung, **(G)** Beo
   Menschen, nicht des Auftrags.
 
 `device_state::ApplyState` (Name im Code in Klammern); das einzelne und das gemeinsame
-Anwenden melden ihre Zustände daran. Die Watchdogs werden **vor** dem Fallback ausgesetzt;
+Anwenden melden ihre Zustände daran. Mit `www_ca` legt das Anwenden vor dem Plan das
+Zertifikat für WebFig über HTTPS an, wo es fehlt ([Betrieb](deployment.md)), ausserhalb des
+Fallbacks: harmlos, solange `www-ssl` aus ist oder ein gültiges hatte; erst der Plan danach
+schaltet `www-ssl` ein (Event `WwwCertificateInstalled`, ein Fehler hält das Anwenden nicht
+auf, WebFig bleibt dann wie es ist). Die Watchdogs werden **vor** dem Fallback ausgesetzt;
 „zurückgeladen“ ist kein Zustand, sondern ein Ende (der Auftrag liest die Marken und endet).
 
 ```mermaid
 stateDiagram-v2
     [*] --> Planen
+    Planen --> ZertifikatAnlegen: WebFig-Zertifikat fehlt (CA in der Konfiguration)
+    ZertifikatAnlegen --> Planen: angelegt und an www-ssl, oder Event mit Fehler
     Planen --> [*]: Diff leer → fertig
     Planen --> Nacharbeit: Diff leer, Login mit dem vorherigen Passwort
     Planen --> WatchdogsAussetzen: Funkänderung
@@ -153,6 +159,7 @@ stateDiagram-v2
 | Zustand | abbrechbar | Server gestartet | auf dem Gerät |
 |---|---|---|---|
 | `Planen` (`Planning`) | ja, Ende | unterbrochen | – |
+| `ZertifikatAnlegen` (`InstallingCertificate`) | nach dem Zustand | unterbrochen | + Zertifikat an `www-ssl`, − alte des Provisioners |
 | `WatchdogsAussetzen` (`SuspendingWatchdogs`) | ja, Watchdogs zurück | unterbrochen | + Sicherheitsnetz (bei den Überwachenden) |
 | `FallbackSetzen` (`ArmingFallback`) | ja, Fallback weg | unterbrochen, Fallback beobachten | + Apply-Fallback |
 | `SkriptSchreiben` (`WritingScript`) | ja, Fallback weg | unterbrochen | – |

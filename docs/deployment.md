@@ -25,6 +25,17 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   Nachbarn (Tunnel, Konsole der Ersteinrichtung) und beim mac-telnet-Login der Ersteinrichtung.
   Ein Gerät mit dem alten zeigt auf der Geräteseite eine Abweichung, sein Anwenden setzt das
   neue; es geschieht nichts von selbst. Sind alle umgestellt, fällt `previous_password` weg.
+- **WebFig über HTTPS (A7):** mit `www_ca` (`certificate` und `key`, PEM; im Chart das
+  Zertifikat als Wert, der Schlüssel als `value` oder `secretKeyRef`, `www_ca_key`) stellt der
+  Provisioner jedem Gerät ein Zertifikat aus: ECDSA P-256, 397 Tage, mit allen Adressen des
+  Geräts aus NetBox (ohne Link-Local) und seinem Namen, wo der ein DNS-Name ist. Die CA braucht
+  einen Subject Key Identifier (`openssl req -x509` setzt ihn). Das Anwenden legt es an, wenn
+  keines passt (andere Adressen, andere CA, weniger als 30 Tage übrig), hängt es an `www-ssl`
+  und entfernt ältere des Provisioners (`netbox-provisioner-www-<Sekunde>`), die kein anderer
+  Dienst nennt; erst dann schaltet die Konfiguration `www-ssl` ein (wie `www` auf
+  `api_networks` beschränkt) und `www` aus. Die Admins importieren das CA-Zertifikat einmal in
+  den Browser. Ohne `www_ca` bleibt WebFig auf HTTP. Eine CA, die sich nicht lesen lässt, hält
+  den Start auf.
 - **Zustand:** nur die weiterführbaren Aufträge in `state_dir` (Vorgabe `state` neben
   `config.yaml`, mit Sperrdatei gegen eine zweite Instanz;
   [Jobs](jobs.md#weiterführen-nach-einem-neustart)). Alle anderen Jobs leben im Prozess.

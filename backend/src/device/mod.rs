@@ -42,6 +42,7 @@ pub mod terminal;
 pub mod update;
 pub mod update_fallback;
 pub mod watchdog;
+pub mod www_certificate;
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum Credentials {
     Named(Box<str>),

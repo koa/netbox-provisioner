@@ -152,6 +152,15 @@ pub struct OverviewCfg {
     pub script: String,
     pub warnings: Vec<ApplyWarning>,
     pub previous_password: bool,
+    pub www_certificate: WwwCertificate,
+}
+
+#[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum WwwCertificate {
+    Off,
+    InPlace,
+    Needed,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

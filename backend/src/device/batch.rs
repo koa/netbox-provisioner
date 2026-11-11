@@ -213,6 +213,7 @@ impl Planning for Linked {
     type Planned = Reached;
     async fn plan(self, log: &Log) -> Result<Option<Reached>, Error> {
         let link = connect_for_job(&self.device, DeviceTarget::default(), log).await?;
+        link.prepare_certificate(log).await?;
         let planned = link.plan_apply(log).await?;
         if planned.is_empty() {
             return Ok(None);
@@ -950,7 +951,9 @@ async fn take_back<M: Applying>(
         if !matches!(
             m.log.phase(),
             Some(JobPhase::Apply(
-                ApplyState::Planning | ApplyState::SuspendingWatchdogs
+                ApplyState::Planning
+                    | ApplyState::InstallingCertificate
+                    | ApplyState::SuspendingWatchdogs
             ))
         ) {
             m.log.enter(ApplyState::TakingBack);

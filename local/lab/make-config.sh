@@ -18,6 +18,13 @@ fi
 device_password="$(cat "$root/.lab-netbox/device-password")"
 # the address lab-np2 sees this machine at; the devices behind it see lab-np2's
 own_address="$(python3 -c 'import socket; s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("172.17.1.82", 9)); print(s.getsockname()[0])')"
+# the CA of WebFig over HTTPS, made once; import www-ca.pem into the browser to trust it
+if [ ! -s "$root/.lab-netbox/www-ca.key" ]; then
+  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 \
+    -subj "/CN=netbox-provisioner lab CA" \
+    -keyout "$root/.lab-netbox/www-ca.key" -out "$root/.lab-netbox/www-ca.pem" 2>/dev/null
+fi
+pem() { sed 's/^/      /' "$1"; }
 cat >"$out/config.yaml" <<YAML
 settings:
   auth_client_id: netbox-provisioner
@@ -42,6 +49,11 @@ settings:
   # the plain API answers only the provisioner: directly at lab-np2, through its SOCKS behind it
   # (over IPv6 if the device has an address there)
   api_networks: [192.168.0.0/16, "2a02:16a:fe00:8000::/50", "$own_address/32"]
+  www_ca:
+    certificate: |
+$(pem "$root/.lab-netbox/www-ca.pem")
+    key: |
+$(pem "$root/.lab-netbox/www-ca.key")
   mikrotik_credentials:
     lab:
       user: admin

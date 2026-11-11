@@ -746,6 +746,8 @@ fn overview_message(id: u32, response: Response<DeviceOverview>) -> ShowDeviceMe
                             script: cfg.script.into_boxed_str(),
                             warnings: cfg.warnings,
                             previous_password: cfg.previous_password,
+                            www_certificate_needed: cfg.www_certificate
+                                == crate::graphql::authenticated::device::WwwCertificate::Needed,
                             as_of: read_at(cfg.age),
                         }),
                     )

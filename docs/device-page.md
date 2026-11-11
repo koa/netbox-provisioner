@@ -44,6 +44,10 @@ Von oben nach unten:
      vor der Kopie auf die andere Partition. „Abweichung von NetBox“ zählt es als Änderung in
      `user`. Gemeinsam angewendet setzt es nur ein Gerät mit Änderungen; eines ohne ist kein
      Mitglied und wird einzeln angewendet.
+     Mit einer CA für WebFig (`www_ca`) und ohne passendes Zertifikat am Gerät steht dort „WebFig
+     über HTTPS braucht ein Zertifikat“, und „Anwenden“ geht auch ohne Skript: Es stellt eines
+     aus und legt es vor dem Plan an, der dann `www-ssl` ein- und `www` ausschaltet.
+     „Abweichung von NetBox“ zählt es als Änderung in `certificate`.
 7. **Log des Geräts:** die Einträge aus `/log`, eingeklappt.
 
 ## Nicht erreichbar

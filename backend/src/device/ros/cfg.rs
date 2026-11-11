@@ -20,6 +20,7 @@ use crate::{
             needed_radio_package,
             warning::{ApplyWarning, CapOffOutsideWlanGroup},
         },
+        www_certificate::{self, WwwCertificate},
     },
     topology::{PhysicalPortId, access::device::DeviceAccess},
 };
@@ -71,6 +72,20 @@ pub struct DeviceCfg {
     /// what `generate_live` found at the device: the addresses a watchdog would watch that
     /// don't answer, the API clients the restriction would lock out
     live_warnings: Vec<ApplyWarning>,
+    /// what `generate_live` found of WebFig's certificate (A7); `Off` before it
+    www_certificate: WwwCertificate,
+}
+
+/// The certificates CAPsMAN names as generated for itself. It keeps the id of one removed
+/// since, which RouterOS gives a new certificate later, so the provisioner's own are never
+/// among them: lab-wap's CAPsMAN named WebFig's that way (7.24.6), and its apply removed it.
+pub(in crate::device) fn capsman_generated(names: [Option<AsciiString>; 2]) -> Box<[AsciiString]> {
+    names
+        .into_iter()
+        .flatten()
+        .filter(|name| !name.is_empty())
+        .filter(|name| !name.0.starts_with(www_certificate::PREFIX.as_bytes()))
+        .collect()
 }
 
 impl DeviceCfg {
@@ -295,7 +310,18 @@ impl DeviceCfg {
                     networks,
                 ));
         }
+        self.www_certificate = www_certificate::read(raw, device).await?.state();
+        if self.www_certificate == WwwCertificate::InPlace {
+            self.base_target.use_www_ssl(
+                &self.base_current.ip_service,
+                CONFIG.api_networks.as_deref(),
+            );
+        }
         Ok(())
+    }
+    /// What `generate_live` found of WebFig's certificate.
+    pub(crate) fn www_certificate(&self) -> WwwCertificate {
+        self.www_certificate
     }
     /// The diff from [`Self::generate_mutations`] in an order where everything a command
     /// refers to exists before it.
@@ -420,6 +446,8 @@ pub struct GeneratedCfg {
     /// the login went with the credentials' previous password only: an apply sets the current
     /// one (A9), also where the script is empty
     pub(super) previous_password: bool,
+    /// WebFig over HTTPS: `NEEDED` is installed by an apply, also where the script is empty
+    pub(super) www_certificate: WwwCertificate,
     /// when the device was read for it
     #[graphql(skip)]
     pub(super) as_of: tokio::time::Instant,
@@ -434,6 +462,7 @@ impl GeneratedCfg {
             menus: Vec::new(),
             warnings: Vec::new(),
             previous_password: false,
+            www_certificate: WwwCertificate::Off,
             as_of,
         }
     }
@@ -505,11 +534,7 @@ impl DeviceCfg {
             .ok()
             .flatten()
             .map(|state| {
-                [state.generated_ca_certificate, state.generated_certificate]
-                    .into_iter()
-                    .flatten()
-                    .filter(|name| !name.is_empty())
-                    .collect()
+                capsman_generated([state.generated_ca_certificate, state.generated_certificate])
             })
             .unwrap_or_default();
         // where CAP or CAPsMAN are still on without NetBox asking for them, or CAPsMAN's
@@ -625,6 +650,7 @@ impl DeviceCfg {
             wifi_warnings: Vec::new(),
             idle_radios,
             live_warnings: Vec::new(),
+            www_certificate: WwwCertificate::Off,
         })
     }
 }
