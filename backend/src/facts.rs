@@ -105,6 +105,9 @@ pub enum FactKind {
     Lsdb,
     /// a device's health and resources for the network map (`network_state::device_data`)
     DeviceMapData,
+    /// a device's WLAN clients, interface counters and leases for `/metrics`
+    /// (`device::metrics`)
+    DeviceMetrics,
 }
 
 impl FactKind {
@@ -122,6 +125,7 @@ impl FactKind {
         FactKind::InterfaceLive,
         FactKind::Lsdb,
         FactKind::DeviceMapData,
+        FactKind::DeviceMetrics,
     ];
 }
 
@@ -142,6 +146,7 @@ impl FactKind {
             FactKind::InterfaceLive => "interface_live",
             FactKind::Lsdb => "lsdb",
             FactKind::DeviceMapData => "device_map_data",
+            FactKind::DeviceMetrics => "device_metrics",
         }
     }
 }

@@ -61,6 +61,8 @@ settings:
   apply_fallback_seconds: ""
   # seconds after an update's boot to reach the device again (empty: 900)
   update_fallback_seconds: ""
+  # seconds between two readings of every device for /metrics (empty: 60, 0: none)
+  device_metrics_seconds: ""
   # the networks the plain API and WebFig (www) of every device answer (prefixes); empty: as
   # the devices have it.
   # Must hold the provisioner's address as each device sees it (its own, or the management

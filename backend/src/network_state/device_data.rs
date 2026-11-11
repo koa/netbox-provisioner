@@ -40,7 +40,10 @@ pub struct Resources {
     pub free_memory: u64,
     pub total_memory: u64,
     pub free_hdd_space: u64,
+    pub total_hdd_space: u64,
     pub version: Box<str>,
+    /// `board-name`, as `/system/resource` reports it (`hAP ax^2`)
+    pub board_name: Box<str>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -63,7 +66,9 @@ pub async fn read_all(devices: &[DeviceAccess]) -> BTreeMap<DeviceId, Arc<Device
         .collect()
 }
 
-async fn read_one(device: &DeviceAccess) -> Option<Arc<DeviceMapData>> {
+/// The reading of `device`, shared with `/metrics` (`crate::metrics`); `None` where it isn't
+/// reached or doesn't answer.
+pub(crate) async fn read_one(device: &DeviceAccess) -> Option<Arc<DeviceMapData>> {
     let key = FactKey::new(FactKind::DeviceMapData, Some(device.id()), "");
     let accessible = match device.connect(DeviceTarget::default()).await {
         Ok(Some(accessible)) => accessible,
@@ -115,7 +120,11 @@ fn from_rows(health_rows: &[Row], resource_rows: &[Row]) -> DeviceMapData {
         free_hdd_space: field(row, "free-hdd-space")
             .and_then(|v| v.parse().ok())
             .unwrap_or_default(),
+        total_hdd_space: field(row, "total-hdd-space")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_default(),
         version: field(row, "version").unwrap_or_default().into(),
+        board_name: field(row, "board-name").unwrap_or_default().into(),
     });
     DeviceMapData {
         health,

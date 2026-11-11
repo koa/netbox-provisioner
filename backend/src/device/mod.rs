@@ -28,6 +28,7 @@ pub mod dependency;
 pub mod device_mode;
 pub mod interface_live;
 pub mod leftovers;
+pub mod metrics;
 pub mod neighbors;
 pub mod partitions;
 pub mod poe;

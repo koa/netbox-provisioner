@@ -44,6 +44,10 @@ data:
       {{- with $s.update_fallback_seconds }}
       update_fallback_seconds: {{ . | int }}
       {{- end }}
+      {{- /* not `with`: 0 turns the readings off */}}
+      {{- if ne (toString $s.device_metrics_seconds) "" }}
+      device_metrics_seconds: {{ $s.device_metrics_seconds | int }}
+      {{- end }}
       {{- with $s.api_networks }}
       api_networks: {{ . | toJson }}
       {{- end }}

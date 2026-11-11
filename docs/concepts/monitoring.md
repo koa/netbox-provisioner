@@ -1,6 +1,8 @@
 # Konzept: Überwachung
 
-Status: Konzept, nicht umgesetzt. Aufgaben C8 und C14 in [todo.md](../todo.md). Baut auf der [Netz-Karte](network-map.md) auf.
+Status: Konzept, zum Teil umgesetzt: Health, PoE, WLAN-Clients, System, Interfaces und Leases
+liefert der Provisioner an `/metrics` ([Gerätemetriken](../device-metrics.md), C14). Der Rest ist
+Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](network-map.md) auf.
 
 ## Ziel
 

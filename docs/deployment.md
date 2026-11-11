@@ -10,7 +10,8 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   Schritt); `binary/build.rs` prüft nur, dass `frontend/dist` da ist. Zum Bauen braucht es Rust
   mit dem Ziel `wasm32-unknown-unknown`, `trunk`, `dart-sass` und `wasm-bindgen-cli`.
 - **Ports:** API und UI auf `server_port` (Vorgabe 8080), Management auf `server_mgmt_port`
-  (Vorgabe +1000, also 9080) mit `/metrics` (Prometheus) und `/health`. Das Grafana-Dashboard
+  (Vorgabe +1000, also 9080) mit `/metrics` (Prometheus; dort auch die
+  [Gerätemetriken](device-metrics.md)) und `/health`. Das Grafana-Dashboard
   der Geräteabfragen ([Gerätezustand](device-state.md#dashboard)) liegt im Chart
   ([dashboards/device-queries.json](../charts/netbox-provisioner/dashboards/device-queries.json));
   ohne Chart über Dashboards → Import, Datenquelle Prometheus wählen.
