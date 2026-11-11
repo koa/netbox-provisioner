@@ -1137,7 +1137,15 @@ RouterOS device, `power-cycle-ping` on that device. The parent comes from
 the management proxy's (`generate_for` adds it, `generate_from` knows only the first), two
 RouterOS devices are neighbors where both have an `ospf` interface in the same IPv4 network
 (a radio bridge's segment makes all four ends neighbors), the parent is the neighbor nearest
-a root, a cabled one first (lab-sxt-b watched lab-np1 across its own radio before). The PoE
+a root, a cabled one first (lab-sxt-b watched lab-np1 across its own radio before). The
+device's custom field `watchdog_target` (`topology::WatchdogTarget`: empty the parent, `none`
+nothing, else a fixed IPv4) replaces that (`watched_address`); an update suspends the devices
+whose fixed target is one of its addresses and not its dependents watching something else
+(`device::watchdog::watchers`). A device with `ospf` reaching no root is the finding
+`NoWayToRoot` (warning, not with a `watchdog_target`), an unreadable value
+`WatchdogTargetInvalid` (error, watched as if empty). The findings know the management proxy's
+device from the topology (`Topology::management_proxy`, given to `build_topology_from`,
+`TopologyBuilder.management_proxy` in tests), as `ManagementTree::of_device` does. The PoE
 port pings the powered device's IPv4 at the cable (the setup gives it, the loopback comes with
 the first apply). Only addresses that answer three pings from the device are set
 (`DeviceCfg::generate_live`, in the plan, every check and `generateCfg`): a silent one keeps

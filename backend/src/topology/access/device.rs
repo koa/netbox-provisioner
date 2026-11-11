@@ -264,6 +264,12 @@ impl DeviceAccess {
     pub fn map_position(&self) -> Option<(i32, i32)> {
         self.data().and_then(|d| d.map_position)
     }
+    /// What its ping watchdog watches (custom field `watchdog_target`).
+    pub fn watchdog_target(&self) -> crate::topology::WatchdogTarget {
+        self.data()
+            .map(|d| d.watchdog_target.clone())
+            .unwrap_or_default()
+    }
     /// The DNS servers of the device's client networks (config context `dns_servers`).
     pub fn dns_servers(&self) -> &[IpAddr] {
         self.data().map(|d| &*d.dns_servers).unwrap_or_default()

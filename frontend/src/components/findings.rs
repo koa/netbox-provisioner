@@ -203,6 +203,10 @@ impl Links<'_> {
             Kind::PortLikeName(f) => t::port_like_name(self.interface(&f.interface)),
             Kind::RadioWithoutRole(f) => t::radio_without_role(self.interface(&f.interface)),
             Kind::NatWithoutInternet(f) => t::nat_without_internet(self.interface(&f.interface)),
+            Kind::NoWayToRoot(f) => t::no_way_to_root(self.device(&f.device)),
+            Kind::WatchdogTargetInvalid(f) => {
+                t::watchdog_target_invalid(self.device(&f.device), &f.value)
+            }
             Kind::LoopbackWithoutOspf(f) => {
                 t::loopback_without_ospf(self.device(&f.device), self.address(&f.address))
             }

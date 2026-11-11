@@ -116,6 +116,8 @@ impl Net {
         port(&mut builder, r1, "ether5", None, false);
         let elsewhere = port(&mut builder, r2, "ether3", None, false);
         builder.interfaces.get_mut(&elsewhere).unwrap().vlan = Some(vlan);
+        // the management root the others' watchdogs reach
+        builder.management_proxy = Some("r1".into());
         Net {
             builder,
             r1,

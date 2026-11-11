@@ -166,6 +166,9 @@ pub struct Topology {
     /// the NetBox response it is built from, which a helper's plan is tried on
     /// (`helper::preview`); none in tests built from parts
     source: Option<Source>,
+    /// the management proxy's device (`management_proxy.device` of the config), a management
+    /// root (`topology::management`); given when built, the findings need it
+    management_proxy: Option<Box<str>>,
 }
 
 impl Topology {
@@ -194,6 +197,7 @@ impl Topology {
             services,
             findings,
             source: _,
+            management_proxy: _,
         } = self;
         [
             ("devices", *devices == other.devices),
@@ -304,6 +308,10 @@ impl Topology {
     /// This topology built again from its NetBox response after `change` (the JSON of
     /// `FetchTopology`): what NetBox will be after a helper's plan. `None` for a topology not
     /// built from a response (tests built from parts).
+    /// The management proxy's device, a management root (`topology::management`).
+    pub fn management_proxy(&self) -> Option<&str> {
+        self.management_proxy.as_deref()
+    }
     pub(crate) fn rebuilt_with(
         &self,
         change: impl FnOnce(&mut serde_json::Value),
@@ -313,7 +321,11 @@ impl Topology {
             let mut json = serde_json::to_value(&*source.0)?;
             change(&mut json);
             let data: FetchTopology = serde_json::from_value(json)?;
-            Ok(fetch::build_topology_from(data, Instant::now()))
+            Ok(fetch::build_topology_from(
+                data,
+                Instant::now(),
+                self.management_proxy.clone(),
+            ))
         })())
     }
 
@@ -361,6 +373,36 @@ pub struct Device {
     /// Custom field `map_position`: where an admin published it on the network map (pixels,
     /// rounded: it only needs to seed the layout, not reproduce the exact spot sub-pixel).
     pub map_position: Option<(i32, i32)>,
+    /// Custom field `watchdog_target`: what its ping watchdog watches.
+    pub watchdog_target: WatchdogTarget,
+}
+
+/// What a device's ping watchdog watches (custom field `watchdog_target`, `docs/watchdog.md`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum WatchdogTarget {
+    /// empty: its parent on the way to a management root (`topology::management`)
+    #[default]
+    Parent,
+    /// `none`: nothing
+    Off,
+    /// a fixed IPv4
+    Address(std::net::Ipv4Addr),
+    /// anything else, which NetBox's validation should have refused: watched as [`Self::Parent`],
+    /// and an error among the findings
+    Invalid(Box<str>),
+}
+
+impl WatchdogTarget {
+    pub fn parse(value: Option<&str>) -> WatchdogTarget {
+        match value.map(str::trim) {
+            None | Some("") => WatchdogTarget::Parent,
+            Some("none") => WatchdogTarget::Off,
+            Some(value) => value.parse().map_or_else(
+                |_| WatchdogTarget::Invalid(value.into()),
+                WatchdogTarget::Address,
+            ),
+        }
+    }
 }
 
 /// Device-role slugs relevant to config generation. Other NetBox roles (anything not

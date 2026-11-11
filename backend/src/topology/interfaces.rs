@@ -791,6 +791,8 @@ impl FindingKind {
                 | FindingKind::PrimaryIpv4NotOnLoopback(_)
                 | FindingKind::LoopbackWithoutOspf(_)
                 | FindingKind::NoCountry(_)
+                | FindingKind::NoWayToRoot(_)
+                | FindingKind::WatchdogTargetInvalid(_)
         )
     }
     /// The NetBox ids of the interfaces it names.
@@ -807,7 +809,9 @@ impl FindingKind {
             | FindingKind::ForwardWithoutRouter(_)
             | FindingKind::ForwardWithoutSite(_)
             | FindingKind::ForwardPortTaken(_)
-            | FindingKind::ForwardIncomplete(_) => Vec::new(),
+            | FindingKind::ForwardIncomplete(_)
+            | FindingKind::NoWayToRoot(_)
+            | FindingKind::WatchdogTargetInvalid(_) => Vec::new(),
             FindingKind::PrimaryIpv4NotOnLoopback(f) => f.interface.iter().map(|i| i.id).collect(),
             FindingKind::AddressWithoutPrefix(f) => vec![f.interface.id],
             FindingKind::DhcpPoolEmpty(f) => vec![f.interface.id],

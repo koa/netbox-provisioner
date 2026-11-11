@@ -59,6 +59,9 @@ pub struct JSON {
     /// On a device: its position on the network map, published by an admin
     /// (`Mutation.publishLayout`, `docs/concepts/network-map.md`).
     pub map_position: Option<MapPosition>,
+    /// On a device: what its ping watchdog watches, empty its parent, `none` nothing, else
+    /// an IPv4 (`topology::WatchdogTarget`).
+    pub watchdog_target: Option<Box<str>>,
 }
 
 /// On a device, custom field `map_position`: where an admin published it on the network map.

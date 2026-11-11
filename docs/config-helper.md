@@ -49,6 +49,10 @@ ist eine Prüfung:
   Fehler, wo das Gerät `ospf` hat, sonst eine Warnung) oder mit Primary IPv4 nicht auf `lo`.
 - Eine Primary IPv4 auf `lo` ohne `ospf` an irgendeinem Interface (`LoopbackWithoutOspf`, Fehler):
   Niemand kündigt sie an, der Provisioner erreicht das Gerät dort nicht.
+- Ein Gerät mit `ospf`, das über seine OSPF-Nachbarn keine Wurzel erreicht und selbst keine ist
+  (`NoWayToRoot`, Warnung): Sein Ping-Watchdog überwacht nichts ([Watchdog](watchdog.md)). Kein
+  Befund, wo `watchdog_target` sagt, was es überwacht; ein unlesbarer Wert dort ist
+  `WatchdogTargetInvalid` (Fehler).
 - Adresse ohne Prefix gleicher Länge (`AddressWithoutPrefix`); `dhcp` an einem Interface, in dessen
   Prefix keine Adresse für einen Pool frei ist (`DhcpPoolEmpty`, ein /30 mit beiden Hosts belegt,
   ein /31): Der Generator setzt dort keinen DHCP-Server auf, ohne Fehler, und der Befund rechnet

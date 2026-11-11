@@ -34,6 +34,8 @@ pub struct TopologyBuilder {
     pub ip_prefixes: MapBuilder<IpPrefixId, IpPrefixData>,
     pub ip_ranges: MapBuilder<IpRangeId, IpRangeData>,
     pub forwards: MapBuilder<ServiceId, ForwardData>,
+    /// the management proxy's device (`Topology::management_proxy`)
+    pub management_proxy: Option<Box<str>>,
 }
 
 #[derive(Clone)]
@@ -271,6 +273,7 @@ impl TopologyBuilder {
             services: self.forwards.into(),
             findings: Box::default(),
             source: None,
+            management_proxy: self.management_proxy,
         }
         .with_findings()
     }

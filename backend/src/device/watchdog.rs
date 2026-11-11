@@ -37,6 +37,7 @@ use crate::{
     graphql::scalars::ScalarDuration,
     job::Log,
     topology::{
+        WatchdogTarget,
         access::{DeviceTarget, device::DeviceAccess},
         management::ManagementTree,
     },
@@ -148,8 +149,10 @@ pub struct Watcher {
     pub supplier: bool,
 }
 
-/// The RouterOS devices whose watchdogs may fire while `device` is away: the ones powering it
-/// and the ones depending on it on the way to the management roots, nearest suppliers first.
+/// The RouterOS devices whose watchdogs may fire while `device` is away: the ones powering it,
+/// the ones depending on it on the way to the management roots (but those whose
+/// `watchdog_target` names something else) and the ones whose `watchdog_target` is an address
+/// of it, nearest suppliers first.
 pub fn watchers(device: &DeviceAccess, tree: &ManagementTree) -> Vec<Watcher> {
     let suppliers = super::dependency::supplier_devices(device)
         .into_iter()
@@ -160,8 +163,28 @@ pub fn watchers(device: &DeviceAccess, tree: &ManagementTree) -> Vec<Watcher> {
         .map(DeviceAccess::id)
         .collect::<BTreeSet<_>>();
     let topology = device.topology();
+    let own = addresses(device);
+    let watching_it = topology
+        .list_devices()
+        .filter(|other| other.id() != device.id())
+        .filter(|other| {
+            matches!(other.watchdog_target(),
+                WatchdogTarget::Address(address) if own.contains(&address.into()))
+        })
+        .map(|other| other.id());
     let mut depending = tree
         .depending_on(device.id())
+        .into_iter()
+        .filter_map(|id| topology.get_device_by_id(&id))
+        .filter(|other| {
+            matches!(
+                other.watchdog_target(),
+                WatchdogTarget::Parent | WatchdogTarget::Invalid(_)
+            )
+        })
+        .map(|other| other.id())
+        .chain(watching_it)
+        .collect::<BTreeSet<_>>()
         .into_iter()
         .filter(|id| !ids.contains(id))
         .filter_map(|id| topology.get_device_by_id(&id))

@@ -80,6 +80,8 @@ pub enum FindingKind {
     ForwardWithoutSite(ForwardWithoutSite),
     ForwardPortTaken(ForwardPortTaken),
     ForwardIncomplete(ForwardIncomplete),
+    NoWayToRoot(NoWayToRoot),
+    WatchdogTargetInvalid(WatchdogTargetInvalid),
     #[cynic(fallback)]
     Unknown,
 }
@@ -118,6 +120,8 @@ impl FindingKind {
             FindingKind::ForwardWithoutSite(_) => "ForwardWithoutSite",
             FindingKind::ForwardPortTaken(_) => "ForwardPortTaken",
             FindingKind::ForwardIncomplete(_) => "ForwardIncomplete",
+            FindingKind::NoWayToRoot(_) => "NoWayToRoot",
+            FindingKind::WatchdogTargetInvalid(_) => "WatchdogTargetInvalid",
             FindingKind::Unknown => "Unknown",
         }
     }
@@ -249,6 +253,19 @@ pub struct NatWithoutInternet {
 pub struct LoopbackWithoutOspf {
     pub device: DeviceRef,
     pub address: AddressRef,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct NoWayToRoot {
+    pub device: DeviceRef,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct WatchdogTargetInvalid {
+    pub device: DeviceRef,
+    pub value: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

@@ -1,6 +1,6 @@
 # Custom Fields in NetBox
 
-Der Provisioner liest zehn Custom Fields und schreibt zwei (`provisioner_job`, `map_position`). Alle sind optional: Ein Feld, das in NetBox fehlt oder
+Der Provisioner liest elf Custom Fields und schreibt zwei (`provisioner_job`, `map_position`). Alle sind optional: Ein Feld, das in NetBox fehlt oder
 leer ist, schaltet nur die jeweilige Funktion ab, die Generierung bricht deswegen nicht ab. Wo ein
 leeres Feld trotzdem zu einem Fehler führt, steht es unten beim Feld.
 
@@ -16,6 +16,7 @@ werden, beschreibt [netbox-modeling.md](netbox-modeling.md).
 | `wlan_group`           | Device             | Object → Wireless LAN Group     | Gerät ist Access Point dieser WLAN-Gruppe   |
 | `propagate_default_route` | Device          | Boolean                         | OSPF gibt die Default-Route des Geräts weiter |
 | `map_position`         | Device             | JSON                             | Position auf der Netz-Karte, von dort publiziert |
+| `watchdog_target`      | Device             | Text (mit Regex)                | was der Ping-Watchdog überwacht             |
 | `controller`           | Wireless LAN Group | Object → Device                 | CAPsMAN-Controller der Gruppe               |
 | `wlan_mgmt`            | Wireless LAN Group | Object → VLAN                   | Management-VLAN der Gruppe                  |
 | `vxlan_vni`            | VLAN Group         | Integer                         | VLANs der Gruppe über VXLAN verbinden       |
@@ -94,6 +95,21 @@ Die Position des Geräts auf der Netz-Karte (`docs/concepts/network-map.md`), `{
 in Pixeln der SVG-Karte. Von Hand nichts eintragen: Ein Admin „publiziert“ die Anordnung aus der
 Karte heraus (Mutation `publishLayout`, `allow_netbox_write`), das Feld ist nur deren Ziel. Ohne
 Wert legt die Karte das Gerät selbst an (kräftebasiertes Layout).
+
+### `watchdog_target` (Device, Text)
+
+Was der Ping-Watchdog des Geräts überwacht ([Watchdog](watchdog.md)): leer seinen Parent auf dem
+Weg zu einer Wurzel (wie ohne das Feld), `none` nichts, sonst die eingetragene IPv4. Für
+Sonderfälle: ein Router ohne OSPF-Weg zu einer Wurzel (Befund `NoWayToRoot`), oder einer, der
+einen anderen Nachbarn überwachen soll. Eine feste Adresse gilt auch, wo die PoE-Regel sonst
+nichts überwachen liesse; ein Update ihres Geräts setzt den Watchdog aus wie den eines Kindes.
+Anderes als leer, `none` oder eine IPv4 ist der Befund `WatchdogTargetInvalid` (Fehler), der
+Watchdog überwacht dann wie ohne das Feld. Damit es nicht so weit kommt, beim Anlegen die
+**Validation regex** setzen:
+
+```
+^(none|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]))$
+```
 
 ### `controller` (Wireless LAN Group, Object → Device)
 

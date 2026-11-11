@@ -168,5 +168,6 @@ pub(crate) fn example_topology() -> Arc<Topology> {
     Arc::new(build_topology_from(
         response.data.expect("response without data"),
         Instant::now(),
+        None,
     ))
 }

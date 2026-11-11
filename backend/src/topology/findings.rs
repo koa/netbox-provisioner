@@ -9,12 +9,13 @@ use crate::graphql::scalars::ScalarU64;
 use crate::{
     device::ros::{DEFAULT_MTU, dhcp_pool_v4},
     topology::{
-        DeviceId, PortType, PrefixPool, ServiceId, SiteId, Topology,
+        DeviceId, PortType, PrefixPool, ServiceId, SiteId, Topology, WatchdogTarget,
         access::{
             AccessTopology, device::DeviceAccess, interface::InterfaceAccess,
             ip_addresses::IpAddressAccess, vlan::VlanAccess, wlan_group::WlanGroupAccess,
         },
         interfaces::InterfaceTask,
+        management::ManagementTree,
         vlan_domain,
     },
 };
@@ -73,6 +74,8 @@ pub enum FindingKind {
     ForwardWithoutSite(ForwardWithoutSite),
     ForwardPortTaken(ForwardPortTaken),
     ForwardIncomplete(ForwardIncomplete),
+    NoWayToRoot(NoWayToRoot),
+    WatchdogTargetInvalid(WatchdogTargetInvalid),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Enum)]
@@ -144,6 +147,21 @@ pub struct NoPrimaryIpv4 {
 pub struct LoopbackWithoutOspf {
     pub device: DeviceRef,
     pub address: AddressRef,
+}
+/// The device has an `ospf` interface, but no way over OSPF neighbors to a management root (a
+/// device with `propagate_default_route`, the management proxy's) and isn't one itself: its
+/// ping watchdog watches nothing (`docs/watchdog.md`). Not where `watchdog_target` says what
+/// it watches.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct NoWayToRoot {
+    pub device: DeviceRef,
+}
+/// The custom field `watchdog_target` is neither empty, `none` nor an IPv4: the watchdog
+/// watches the parent as if it were empty.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct WatchdogTargetInvalid {
+    pub device: DeviceRef,
+    pub value: Box<str>,
 }
 /// The primary IPv4 is not on `lo` (on `interface`, or on none).
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -406,8 +424,44 @@ fn collect(topo: &Arc<Topology>) -> Box<[Finding]> {
     for device in &devices {
         device_findings(device, &mut findings);
     }
+    watchdogs(topo, &devices, &mut findings);
     findings.sort_by_key(|finding| finding.severity);
     findings.into_boxed_slice()
+}
+
+/// The watchdog targets of `devices`: none where one is expected (`NoWayToRoot`), or one that
+/// can't be read (`WatchdogTargetInvalid`).
+fn watchdogs(topo: &Arc<Topology>, devices: &[DeviceAccess], findings: &mut Vec<Finding>) {
+    let tree = ManagementTree::of(topo, topo.management_proxy());
+    for device in devices {
+        let kind = match device.watchdog_target() {
+            WatchdogTarget::Invalid(value) => {
+                FindingKind::WatchdogTargetInvalid(WatchdogTargetInvalid {
+                    device: device_ref(device),
+                    value,
+                })
+            }
+            WatchdogTarget::Parent
+                if device.interfaces().iter().any(InterfaceAccess::use_ospf)
+                    && !tree.is_root(device.id())
+                    && tree.parent(device.id()).is_none() =>
+            {
+                FindingKind::NoWayToRoot(NoWayToRoot {
+                    device: device_ref(device),
+                })
+            }
+            _ => continue,
+        };
+        let severity = match kind {
+            FindingKind::WatchdogTargetInvalid(_) => Severity::Error,
+            _ => Severity::Warning,
+        };
+        findings.push(Finding {
+            severity,
+            devices: [device.id()].into(),
+            kind,
+        });
+    }
 }
 
 fn pools(topo: &Topology, findings: &mut Vec<Finding>) {

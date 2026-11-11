@@ -12,6 +12,7 @@ use super::{
     warning::{ApplyWarning, WatchTargetSilent},
 };
 use crate::topology::{
+    WatchdogTarget,
     access::{device::DeviceAccess, interface::InterfaceAccess},
     management::{ManagementTree, shared_interfaces},
 };
@@ -158,13 +159,19 @@ fn cable_address(port: &InterfaceAccess) -> Option<IpAddr> {
         .or_else(|| port.device().and_then(|device| address(&device)))
 }
 
-/// What the ping watchdog of `device` watches: the primary IPv4 of its parent. None for a
+/// What the ping watchdog of `device` watches: what its custom field `watchdog_target` names
+/// (nothing, or a fixed IPv4), else the primary IPv4 of its parent. None for a
 /// root, a device no root is reached from, and one that reaches its parent only through ports
 /// powering a device: rebooting would cut that device's power, maybe while it installs an
 /// update (berghof-burri bricked burri-schopf that way). That is also the far router of a radio
 /// bridge it powers, which shares the bridge's network with the near router. The port's power
 /// cycling looks after the powered device instead.
 pub fn watched_address(device: &DeviceAccess, tree: &ManagementTree) -> Option<IpAddr> {
+    match device.watchdog_target() {
+        WatchdogTarget::Off => return None,
+        WatchdogTarget::Address(address) => return Some(address.into()),
+        WatchdogTarget::Parent | WatchdogTarget::Invalid(_) => {}
+    }
     let parent = tree.parent(device.id())?;
     let parent = device.topology().get_device_by_id(&parent)?;
     if shared_interfaces(device, &parent)

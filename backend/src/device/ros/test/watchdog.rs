@@ -1,4 +1,5 @@
-//! Scope: Tests of the watchdogs' config; nothing else.
+//! Scope: Tests of the watchdogs' config and of who watches a device (`device::watchdog::
+//! watchers`); nothing else.
 //!
 //! The watchdogs a device gets from where it is on the way to the management roots.
 use crate::{
@@ -10,7 +11,8 @@ use crate::{
     },
     topology::{
         Cable, CablePort, Device, DeviceId, Interface, InterfaceId, IpAddressData, PhysicalPortId,
-        PoeMode, PortType, TopologyHolder, builder::TopologyBuilder, management::ManagementTree,
+        PoeMode, PortType, TopologyHolder, WatchdogTarget, builder::TopologyBuilder,
+        management::ManagementTree,
     },
 };
 use mikrotik_model::ascii::AsciiString;
@@ -386,4 +388,47 @@ async fn the_cabled_neighbor_is_the_parent() {
             None
         ]
     );
+}
+
+/// `watchdog_target` replaces the parent: `none` watches nothing, an IPv4 that address, even
+/// where the parent couldn't be watched.
+#[tokio::test]
+async fn watchdog_target_replaces_the_parent() {
+    let mut net = Net::new();
+    let target = |net: &mut Net, id: DeviceId, value| {
+        net.builder.devices.get_mut(&id).unwrap().watchdog_target = WatchdogTarget::parse(value);
+    };
+    let (np, st, far) = (net.np, net.st, net.far);
+    target(&mut net, np, Some("none"));
+    target(&mut net, st, Some("192.0.2.1"));
+    target(&mut net, far, Some("172.16.1.1"));
+    assert_eq!(
+        net.watchdogs(None).await.watched,
+        [
+            None,
+            None,
+            ip("172.16.1.2"),
+            ip("192.0.2.1"),
+            ip("172.16.1.1")
+        ]
+    );
+}
+
+/// An update of a device suspends the watchdogs whose `watchdog_target` is one of its
+/// addresses, not those of its dependents that watch something else.
+#[tokio::test]
+async fn a_fixed_target_watches_its_device() {
+    let mut net = Net::new();
+    let (core, np, far) = (net.core, net.np, net.far);
+    net.builder.devices.get_mut(&np).unwrap().watchdog_target = WatchdogTarget::Off;
+    net.builder.devices.get_mut(&far).unwrap().watchdog_target =
+        WatchdogTarget::parse(Some("172.16.1.1"));
+    let topology: TopologyHolder = net.builder.into();
+    let device = topology.devices_by_id(core).await.unwrap();
+    let tree = ManagementTree::of(device.topology(), None);
+    let watchers = crate::device::watchdog::watchers(&device, &tree)
+        .into_iter()
+        .map(|watcher| (Box::<str>::from(watcher.device.name()), watcher.supplier))
+        .collect::<Vec<_>>();
+    assert_eq!(watchers, [("far".into(), false)]);
 }

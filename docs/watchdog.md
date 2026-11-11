@@ -133,15 +133,19 @@ ein Update (nur die Speiser: Das Gerät hat noch keine Adresse, über die andere
 und stellt sie danach wieder her, auch nach einem Fehler; dasselbe Sicherheitsnetz von 2 h. Lässt
 sich ein Speiser nicht aussetzen, beginnt die Einrichtung nicht.
 
-## Entschieden (2026-11-06)
+## Sonderfälle und Befunde
 
-- **Befund „kein Weg zu einer Wurzel“** (Z36, E1): nur für Geräte mit `ospf`-Interface, die
-  keinen Weg zu einer Wurzel haben und kein `propagate_default_route`. APs, Switches und CAPs
-  ohne `ospf` haben nie einen Parent; eine Warnung für jedes wäre Rauschen.
-- **Sonderfälle** über ein Custom Field `watchdog_target` (Text) am Gerät: leer automatisch,
-  `none` aus, sonst eine feste IPv4. In NetBox mit einer Validierungs-Regex, damit nur diese
-  Werte gehen; ein Feld statt Auswahl und IP, so gibt es keine widersprüchlichen Kombinationen.
-  Muss auch in die produktive NetBox importiert werden.
+- **`watchdog_target`** (Custom Field am Gerät, Text, [Custom Fields](custom-fields.md)): leer
+  wie oben, `none` überwacht nichts, eine IPv4 diese Adresse (auch wo die PoE-Regel sonst nichts
+  liesse). Ein Feld statt Auswahl und IP, so gibt es keine widersprüchlichen Kombinationen; die
+  Regex in NetBox lässt nur diese Werte zu. Ein Update eines Geräts setzt die Watchdogs aus, deren
+  `watchdog_target` eine seiner Adressen ist, und nicht die seiner Kinder, die etwas anderes
+  überwachen. Die PoE-Pings der Ports betrifft das Feld nicht.
+- **Befund „kein Weg zu einer Wurzel“** (`NoWayToRoot`, Warnung): ein Gerät mit `ospf`, das über
+  seine OSPF-Nachbarn keine Wurzel erreicht und selbst keine ist, mit leerem `watchdog_target`.
+  APs, Switches und CAPs ohne `ospf` haben nie einen Parent; eine Warnung für jedes wäre
+  Rauschen. Der Management-Proxy zählt als Wurzel, wie oben. Ein unlesbares `watchdog_target`
+  ist der Fehler `WatchdogTargetInvalid`; überwacht wird dann wie bei leerem Feld.
 
 ## Grenzen
 

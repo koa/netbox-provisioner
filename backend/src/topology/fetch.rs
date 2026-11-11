@@ -27,14 +27,23 @@ use tokio::time::Instant;
 pub async fn build_topology() -> Result<Topology, NetboxError> {
     let fetch_time = Instant::now();
     let data = fetch_topology().await?;
-    Ok(build_topology_from(data, fetch_time))
+    let proxy = crate::config::CONFIG
+        .management_proxy
+        .as_ref()
+        .map(|proxy| proxy.device.clone());
+    Ok(build_topology_from(data, fetch_time, proxy))
 }
 
 /// Builds the in-memory topology from an already fetched NetBox response - split
 /// from `build_topology` so a stored response (`docs/netbox-response-example.json`)
 /// can be turned into a topology offline. Each kind of object is a pass of its own
-/// ([`Builder`]), in the order they refer to each other.
-pub(crate) fn build_topology_from(data: FetchTopology, fetch_time: Instant) -> Topology {
+/// ([`Builder`]), in the order they refer to each other. `management_proxy` names the
+/// management proxy's device.
+pub(crate) fn build_topology_from(
+    data: FetchTopology,
+    fetch_time: Instant,
+    management_proxy: Option<Box<str>>,
+) -> Topology {
     // kept whole for a helper's preview; building takes the strings out of the other copy,
     // building from references would copy the same strings one by one
     let source = super::Source(Arc::new(data.clone()));
@@ -71,7 +80,7 @@ pub(crate) fn build_topology_from(data: FetchTopology, fetch_time: Instant) -> T
         builder.add_ip_address(ip_address);
     }
     let services = forwards(data.service_list);
-    builder.build(fetch_time, source, services)
+    builder.build(fetch_time, source, services, management_proxy)
 }
 
 /// The topology's maps while [`build_topology_from`] fills them, and what one pass gathers
@@ -306,6 +315,9 @@ impl Builder {
                     .propagate_default_route
                     .unwrap_or(false),
                 map_position: device.custom_field_data.map_position.map(|p| (p.x, p.y)),
+                watchdog_target: super::WatchdogTarget::parse(
+                    device.custom_field_data.watchdog_target.as_deref(),
+                ),
             },
         );
     }
@@ -680,6 +692,7 @@ impl Builder {
         fetch_time: Instant,
         source: super::Source,
         services: HashMap<ServiceId, ForwardData>,
+        management_proxy: Option<Box<str>>,
     ) -> Topology {
         let mut children_prefix = HashMap::<_, Vec<_>>::new();
         for (id, prefix_data) in &mut self.ip_prefixes {
@@ -715,6 +728,7 @@ impl Builder {
         Topology {
             fetch_time,
             source: Some(source),
+            management_proxy,
             devices: self.devices,
             sites: self
                 .sites

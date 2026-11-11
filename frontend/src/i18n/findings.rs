@@ -140,6 +140,12 @@ pub fn port_like_name(interface: Html) -> Html {
 pub fn loopback_without_ospf(device: Html, address: Html) -> Html {
     html!(<>{device}{" hat seine Primary IPv4 "}{address}{" auf lo, aber kein Interface mit ospf: Niemand kündigt sie an, der Provisioner erreicht das Gerät dort nicht."}</>)
 }
+pub fn no_way_to_root(device: Html) -> Html {
+    html!(<>{device}{" hat ospf, erreicht über seine OSPF-Nachbarn aber kein Gerät mit propagate_default_route und nicht das des Management-Proxys: Sein Ping-Watchdog überwacht nichts. Fehlt eine Verbindung, oder soll er etwas Bestimmtes überwachen, dann das Custom Field watchdog_target setzen (none oder eine IPv4)."}</>)
+}
+pub fn watchdog_target_invalid(device: Html, value: &str) -> Html {
+    html!(<>{device}{format!(" hat watchdog_target „{value}“, das ist weder leer, none noch eine IPv4: Der Ping-Watchdog überwacht wie ohne das Feld den Parent.")}</>)
+}
 pub fn radio_without_role(interface: Html) -> Html {
     html!(<>{interface}{" ist ein Ende eines Wireless Links, hat aber keine RF-Rolle (AP oder Station): Der Provisioner richtet die Funkbrücke nicht ein, das Radio behält seine Konfiguration."}</>)
 }

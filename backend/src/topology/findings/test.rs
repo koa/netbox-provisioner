@@ -41,6 +41,8 @@ impl Net {
         pool(&mut builder, "172.16.1.0/24", PrefixPool::Loopback);
         pool(&mut builder, "2001:db8::/120", PrefixPool::Loopback);
         pool(&mut builder, "172.17.1.0/24", PrefixPool::Transfer);
+        // a management root, which r2 reaches over the link
+        builder.management_proxy = Some("r1".into());
         Net {
             builder,
             r1,
@@ -171,6 +173,13 @@ fn a_cable_between_different_networks_is_an_error() {
     let e2 = net.e2;
     let other = address(&mut net.builder, "172.17.1.5/30");
     net.interface(e2).ips = Box::new([other]);
+    // a root of its own: it no longer reaches r1's
+    let r2 = net.r2;
+    net.builder
+        .devices
+        .get_mut(&r2)
+        .unwrap()
+        .propagate_default_route = true;
     let findings = net.findings();
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert!(matches!(findings[0].kind, FindingKind::NoCommonSubnet(_)));
@@ -542,6 +551,47 @@ fn nat_without_internet_is_a_warning() {
         if &*f.interface.name == "ether5")
     );
     assert_eq!(uplink(true).1, vec![]);
+}
+
+/// Without a management root on its way the watchdog watches nothing: a warning at a device
+/// with `ospf`, unless `watchdog_target` says what it watches; one that can't be read is an
+/// error.
+#[test]
+fn a_device_without_a_way_to_a_root_is_a_warning() {
+    fn findings(change: impl Fn(&mut Net)) -> Vec<Finding> {
+        let mut net = Net::new();
+        net.builder.management_proxy = None;
+        change(&mut net);
+        net.findings()
+    }
+    let none = findings(|_| {});
+    assert_eq!(none.len(), 2, "{none:#?}");
+    assert!(
+        none.iter()
+            .all(|finding| finding.severity == Severity::Warning
+                && matches!(&finding.kind, FindingKind::NoWayToRoot(_)))
+    );
+    // a root, and the device its parent reaches
+    let rooted = findings(|net| {
+        net.builder
+            .devices
+            .get_mut(&net.r2)
+            .unwrap()
+            .propagate_default_route = true;
+    });
+    assert_eq!(rooted, vec![]);
+    let set = |net: &mut Net, target: Option<&str>| {
+        for id in [net.r1, net.r2] {
+            net.builder.devices.get_mut(&id).unwrap().watchdog_target =
+                WatchdogTarget::parse(target);
+        }
+    };
+    assert_eq!(findings(|net| set(net, Some("none"))), vec![]);
+    assert_eq!(findings(|net| set(net, Some("172.16.1.9"))), vec![]);
+    let invalid = findings(|net| set(net, Some("off")));
+    assert_eq!(invalid.len(), 2, "{invalid:#?}");
+    assert!(invalid.iter().all(|finding| finding.severity == Severity::Error
+        && matches!(&finding.kind, FindingKind::WatchdogTargetInvalid(f) if &*f.value == "off")));
 }
 
 /// A radio of `device` with a wireless link whose other end NetBox doesn't have.
