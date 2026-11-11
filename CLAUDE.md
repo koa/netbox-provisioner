@@ -1297,6 +1297,16 @@ QEMU's, the golden image's dhcp-client is bound to it).
 
 ## Code conventions
 
+- No tuples in a function's parameters or result where the parts have a meaning of their own:
+  a struct names them (`DeviceStats`, `Reached`, `SwitchVlan`). Tuples stay where an API wants
+  them (mikrotik-model's `by_id` keys, `BTreeMap` entries) and for a pair inside one function.
+- A string that doesn't change is a `Box<str>`, a list a `Box<[_]>`; `String` and `Vec` only
+  where it grows or an API requires it (cynic's `QueryFragment`s: cynic takes `Box<str>` for no
+  GraphQL `String`). A value read from RouterOS and written back unseen stays bytes
+  (`AsciiString`, `Box<[u8]>`), without a round trip through UTF-8.
+- No `dyn` where a static type does: a generic (`impl Fn`) for a callback, an enum for a few
+  kinds. Exceptions are where an API takes nothing else (async-graphql's `Extension`, the
+  Prometheus middleware's error).
 - Tests of more than a few cases go in a module of their own: `<module>/test.rs`, or for a
   module with several, a directory `<module>/test/` (`device/ros/test/`, one file per topic),
   never `*_test.rs` files next to the code. Fixtures several modules' tests use belong in

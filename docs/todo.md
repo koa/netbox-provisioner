@@ -53,6 +53,9 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
+| B33 | Tuples in Funktionsergebnissen durch Structs ersetzen ([Code-Regeln](../CLAUDE.md#code-conventions)): 37 Funktionen ausserhalb der Tests (Stand 2026-11-11), am meisten in `device/batch.rs` (`pending`), `job.rs` (`outcome`, `unexpected`, `subject_of`), `rollout/run.rs`, `topology/interfaces.rs` (`interface_rows`), `topology/mod.rs` (`pool_prefixes`, `customer_parents`), im Frontend `network_map/layout.rs`, `netbox_helper/{link,flags}.rs`, `adjust_target.rs` (Vierer-Tuple) | M | offen |
+| B34 | `String`/`Vec` in Feldern durch `Box<str>`/`Box<[_]>` ersetzen, wo der Wert nicht wächst ([Code-Regeln](../CLAUDE.md#code-conventions)): ohne die cynic-Fragmente (dort verlangt cynic `String`) rund 50 `String`-Felder im Backend (`network_state/graphql.rs`, `device/bootstrap.rs`, `config.rs`, `helper/`), 47 `Vec`-Felder, im Frontend rund 50 ausserhalb von `graphql/` (`components/netbox_helper` 31) | M | offen |
+| B35 | `dyn` durch statische Typen ersetzen ([Code-Regeln](../CLAUDE.md#code-conventions)): die Fortschritts- und `keep`-Callbacks (`&dyn Fn`) in `device/update.rs`, `device/mod.rs`, `device/terminal.rs` als Generics, `Box<dyn Io>` in `device/mod.rs::open_stream` als Enum, `&dyn Display`/`&dyn Fn` in `error_info.rs`, `&mut dyn Iterator` in `l2/mod.rs`, `Rc<dyn Fn>` in `frontend/src/graphql/live.rs`, `Box<dyn Error>` in 21 L2-Tests. Bleiben dürfen async-graphqls `Arc<dyn Extension>` und der Fehler der Prometheus-Middleware. `facts.rs` (`dyn Any`, `dyn Collector`) ist deine Datei | S | offen |
 
 ## C. Konzepte zum Umsetzen
 
