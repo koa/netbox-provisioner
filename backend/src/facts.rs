@@ -659,7 +659,9 @@ async fn run<T, F>(
     // doesn't count the first sample of a new series, so the first failure would be lost
     for each in OUTCOMES {
         METRICS.duration.with_label_values(&[label, each, key.path]);
-        METRICS.total.with_label_values(&[device.as_str(), label, each]);
+        METRICS
+            .total
+            .with_label_values(&[device.as_str(), label, each]);
     }
     METRICS
         .duration
