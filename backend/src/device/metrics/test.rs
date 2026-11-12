@@ -1,7 +1,8 @@
 //! Scope: Tests of `device::metrics`'s parsing; nothing else.
 
 use super::{
-    Capsman, bits_per_second, ethernet_link, interface_counters, standalone_client, wireless_radio,
+    Capsman, CapsmanRows, bits_per_second, capsman_radio_rows, ethernet_link, interface_counters,
+    standalone_client, wireless_radio,
 };
 use crate::device::raw::{Row, is_missing_menu};
 use mikrotik_model::mikrotik_api::TrapCategory;
@@ -129,4 +130,86 @@ fn ethernet_links() {
     assert_eq!(bits_per_second("100Mbps"), Some(100_000_000));
     assert_eq!(bits_per_second("10Kbps"), Some(10_000));
     assert_eq!(bits_per_second("auto"), None);
+}
+
+/// On a CAP of the legacy CAPsMAN (ap-klr-solar) a radio has no SSID of its own: it is the
+/// CAPsMAN's, and so are its clients.
+#[test]
+fn a_radio_the_capsman_manages() {
+    let radio = wireless_radio(
+        &row(&[("name", "wlan13"), ("ssid", ""), ("band", "")]),
+        &row(&[("channel", "2412/20/gn"), ("noise-floor", "-110")]),
+    )
+    .unwrap();
+    assert_eq!(radio.capsman, Capsman::Legacy);
+    assert_eq!(radio.frequency_mhz, Some(2412));
+    let ssids = HashMap::from([("w01", "lab-link-2")]);
+    let client = row(&[
+        ("interface", "wlan13"),
+        ("mac-address", "E4:8D:8C:76:C5:0E"),
+        ("bytes", "1,2"),
+        ("packets", "3,4"),
+        ("signal-strength", "-60"),
+        ("uptime", "1s"),
+    ]);
+    assert!(standalone_client(&client, &ssids).is_none());
+}
+
+/// The controller's view of a legacy CAP's radios: SSID and band of the actual configuration,
+/// a virtual interface on its master's CAP and band, only running ones.
+#[test]
+fn the_radios_of_the_legacy_caps() {
+    let interfaces = [
+        row(&[
+            ("name", "cap-solar-1"),
+            ("running", "true"),
+            ("current-channel", "2437/20-Ce/gn(20dBm)"),
+            ("master-interface", "none"),
+        ]),
+        row(&[
+            ("name", "cap-solar-gast"),
+            ("running", "true"),
+            ("current-channel", "2437/20-Ce/gn(20dBm)"),
+            ("master-interface", "cap-solar-1"),
+        ]),
+        row(&[
+            ("name", "cap-solar-2"),
+            ("running", "false"),
+            ("master-interface", "none"),
+        ]),
+    ];
+    let actual = [
+        row(&[
+            ("name", "cap-solar-1"),
+            ("configuration.ssid", "berg"),
+            ("channel.band", "2ghz-b/g/n"),
+        ]),
+        row(&[("name", "cap-solar-gast"), ("configuration.ssid", "gast")]),
+    ];
+    let radios = [row(&[
+        ("interface", "cap-solar-1"),
+        ("remote-cap-identity", "ap-klr-solar"),
+    ])];
+    let found = capsman_radio_rows(&CapsmanRows {
+        interfaces: &interfaces,
+        actual: &actual,
+        radios: &radios,
+    });
+    let summary = found
+        .iter()
+        .map(|radio| {
+            format!(
+                "{} {} {} {} {:?}",
+                radio.name, radio.ssid, radio.ap, radio.band, radio.frequency_mhz
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        summary,
+        [
+            "cap-solar-1 berg ap-klr-solar 2ghz-b/g/n Some(2437)",
+            "cap-solar-gast gast ap-klr-solar 2ghz-b/g/n Some(2437)",
+        ]
+    );
+    assert!(found.iter().all(|radio| radio.capsman == Capsman::Legacy));
 }

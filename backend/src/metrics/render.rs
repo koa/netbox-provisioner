@@ -2,7 +2,10 @@
 //!
 //! Names after Prometheus' conventions: the unit in the name, `_total` for a counter of the
 //! device (RouterOS counts, Prometheus takes the rate). Every metric has `device` and `site`
-//! from NetBox. A value the device doesn't report is left out, not given as 0.
+//! from NetBox. A value the device doesn't report is left out, not given as 0. A WLAN client
+//! and a radio also have `wlan_group`: the NetBox Wireless LAN Group of the device (as
+//! controller or AP) with a WLAN of that SSID and, for a CAP's client, that CAP among its APs;
+//! empty where none or several fit (a radio link).
 
 use crate::{
     device::metrics::{
@@ -37,6 +40,30 @@ pub(crate) struct DeviceSample {
     /// health, resources and PoE (the network map's reading)
     pub map: Option<Arc<DeviceMapData>>,
     pub metrics: Option<Arc<DeviceMetrics>>,
+    /// the Wireless LAN Groups the device is the controller or an AP of
+    pub wlan_groups: Box<[WlanGroupSample]>,
+}
+
+/// What names a WLAN client's or radio's group: its WLANs and APs.
+#[derive(Debug, Clone)]
+pub(crate) struct WlanGroupSample {
+    pub name: Box<str>,
+    pub ssids: Box<[Box<str>]>,
+    /// NetBox's names, which the provisioner gives the CAPs as identity
+    pub aps: Box<[Box<str>]>,
+}
+
+/// The one group of `groups` with a WLAN `ssid` and, with an `ap`, that AP; empty if none or
+/// several fit.
+pub(crate) fn wlan_group_of<'g>(groups: &'g [WlanGroupSample], ssid: &str, ap: &str) -> &'g str {
+    let mut fitting = groups.iter().filter(|group| {
+        group.ssids.iter().any(|s| &**s == ssid)
+            && (ap.is_empty() || group.aps.iter().any(|a| &**a == ap))
+    });
+    match (fitting.next(), fitting.next()) {
+        (Some(group), None) => &group.name,
+        _ => "",
+    }
 }
 
 impl DeviceSample {
@@ -51,6 +78,24 @@ impl DeviceSample {
             up: false,
             map: None,
             metrics: None,
+            wlan_groups: device
+                .topology()
+                .list_wlan_groups()
+                .filter(|group| {
+                    group.controller().is_some_and(|c| c.id() == device.id())
+                        || group.aps().iter().any(|ap| ap.id() == device.id())
+                })
+                .filter_map(|group| {
+                    Some(WlanGroupSample {
+                        name: group.name()?.into(),
+                        ssids: group
+                            .wlan()
+                            .filter_map(|w| w.ssid().map(Box::from))
+                            .collect(),
+                        aps: group.aps().iter().map(|ap| Box::from(ap.name())).collect(),
+                    })
+                })
+                .collect(),
         }
     }
 }
@@ -130,6 +175,7 @@ const WLAN_CLIENT: &[&str] = &[
     "device",
     "site",
     "interface",
+    "wlan_group",
     "ap",
     "ssid",
     "capsman",
@@ -321,8 +367,17 @@ impl Default for Families {
                 info: Family::new(
                     Gauge,
                     "mikrotik_wireless_radio_info",
-                    "a running radio of /interface/wireless, always 1",
-                    &["device", "site", "interface", "ssid", "band"],
+                    "a running radio of /interface/wireless or a CAP of /caps-man, always 1",
+                    &[
+                        "device",
+                        "site",
+                        "interface",
+                        "ssid",
+                        "band",
+                        "wlan_group",
+                        "ap",
+                        "capsman",
+                    ],
                 ),
                 frequency: Family::new(
                     Gauge,
@@ -414,11 +469,13 @@ impl Families {
                 self.ethernet.push(device, site, link);
             }
             for radio in &metrics.radios {
-                self.radio.push(device, site, radio);
+                let group = wlan_group_of(&sample.wlan_groups, &radio.ssid, &radio.ap);
+                self.radio.push(device, site, group, radio);
             }
             for client in &metrics.wlan_clients {
+                let group = wlan_group_of(&sample.wlan_groups, &client.ssid, &client.ap);
                 self.wlan
-                    .push(device, site, client, leases.get(&client.mac_address));
+                    .push(device, site, group, client, leases.get(&client.mac_address));
             }
             for lease in &metrics.leases {
                 let address = lease.address.to_string();
@@ -600,12 +657,24 @@ impl EthernetFamilies {
 }
 
 impl RadioFamilies {
-    fn push(&mut self, device: &str, site: &str, radio: &WirelessRadio) {
+    fn push(&mut self, device: &str, site: &str, wlan_group: &str, radio: &WirelessRadio) {
         let port = || labels([device, site, &radio.name]);
-        self.info.push(
-            labels([device, site, &radio.name, &radio.ssid, &radio.band]),
-            1.0,
-        );
+        // a CAP's radio its CAPsMAN manages: the controller has its SSID
+        if !radio.ssid.is_empty() {
+            self.info.push(
+                labels([
+                    device,
+                    site,
+                    &radio.name,
+                    &radio.ssid,
+                    &radio.band,
+                    wlan_group,
+                    &radio.ap,
+                    capsman_label(radio.capsman),
+                ]),
+                1.0,
+            );
+        }
         if let Some(frequency) = radio.frequency_mhz {
             self.frequency.push(port(), f64::from(frequency) * 1e6);
         }
@@ -615,8 +684,23 @@ impl RadioFamilies {
     }
 }
 
+fn capsman_label(capsman: Capsman) -> &'static str {
+    match capsman {
+        Capsman::Wifi => "wifi",
+        Capsman::Legacy => "legacy",
+        Capsman::Standalone => "none",
+    }
+}
+
 impl WlanFamilies {
-    fn push(&mut self, device: &str, site: &str, client: &WlanClient, lease: Option<&&Lease>) {
+    fn push(
+        &mut self,
+        device: &str,
+        site: &str,
+        wlan_group: &str,
+        client: &WlanClient,
+        lease: Option<&&Lease>,
+    ) {
         let mac = client.mac_address.to_string();
         let address = lease
             .map(|lease| lease.address.to_string())
@@ -624,16 +708,13 @@ impl WlanFamilies {
         let hostname = lease
             .and_then(|lease| lease.hostname.as_deref())
             .unwrap_or_default();
-        let capsman = match client.capsman {
-            Capsman::Wifi => "wifi",
-            Capsman::Legacy => "legacy",
-            Capsman::Standalone => "none",
-        };
+        let capsman = capsman_label(client.capsman);
         let client_labels = || {
             labels([
                 device,
                 site,
                 &client.interface,
+                wlan_group,
                 &client.ap,
                 &client.ssid,
                 capsman,

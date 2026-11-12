@@ -58,8 +58,8 @@ Prometheus-Konventionen: Einheit im Namen, `_total` für einen Zähler des Gerä
 | `mikrotik_interface_link_downs_total` | Counter | `interface` | |
 | `mikrotik_ethernet_link_up` | Gauge | `interface` | `/interface/ethernet/monitor`, `status` `link-ok` |
 | `mikrotik_ethernet_rate_bits_per_second` | Gauge | `interface` | `rate`, nur mit Link |
-| `mikrotik_wireless_radio_info` | Gauge (1) | `interface`, `ssid`, `band` | laufende Radios von `/interface/wireless` |
-| `mikrotik_wireless_radio_frequency_hertz` | Gauge | `interface` | `monitor`, `channel` |
+| `mikrotik_wireless_radio_info` | Gauge (1) | `interface`, `ssid`, `band`, `wlan_group`, `ap`, `capsman` | laufende Radios von `/interface/wireless` und, am Controller, der CAPs von `/caps-man` |
+| `mikrotik_wireless_radio_frequency_hertz` | Gauge | `interface` | `monitor`, `channel`; am Controller `current-channel` |
 | `mikrotik_wireless_radio_noise_floor_dbm` | Gauge | `interface` | `monitor`, `noise-floor` |
 | `mikrotik_wlan_client_{rx,tx}_{bytes,packets}_total` | Counter | siehe unten | Registrierungstabellen |
 | `mikrotik_wlan_client_signal_dbm` | Gauge | siehe unten | |
@@ -69,12 +69,26 @@ Prometheus-Konventionen: Einheit im Namen, `_total` für einen Zähler des Gerä
 
 **WLAN-Clients** stehen beim Gerät, dessen Registrierungstabelle sie hat: beim Controller für
 seine CAPs, beim AP für seine eigenen Radios, bei einer Funkstrecke beim AP-Ende. Labels:
-`interface` (wo er registriert ist), `ap` (Identity des CAPs; leer für ein eigenes Radio),
+`interface` (wo er registriert ist), `wlan_group` (siehe unten), `ap` (Identity des CAPs;
+leer für ein eigenes Radio),
 `ssid`, `capsman` (`wifi` für `/interface/wifi`, `legacy` für `/caps-man`, `none` für ein
 Radio von `/interface/wireless` ohne CAPsMAN: Funkstrecke, Standalone-AP),
 `mac_address`, `client_hostname` und `client_ip` aus einem gebundenen Lease irgendeines Geräts
 mit derselben MAC (der Lease liegt meist auf dem Router, nicht auf dem AP). Ein Client an einem
 virtuellen Interface gehört zum Radio seines Master-Interfaces.
+
+**Radios eines Legacy-CAPsMAN:** Auf dem CAP hat ein Radio, das der CAPsMAN verwaltet, keine
+eigene SSID (ap-klr-solar); es hat dort Frequenz und Rauschpegel, aber kein `info`, und seine
+Clients fehlen dort. Beides kommt vom Controller: `/caps-man/interface` (laufend,
+`current-channel`), SSID und Band aus `/caps-man/actual-interface-configuration` (nur diese
+Felder gelesen, die Zeilen haben auch die Passphrase), der CAP aus `/caps-man/radio`; ein
+virtuelles Interface hat CAP und Band seines Masters. Die Radios von `/interface/wifi` fehlen
+noch in `mikrotik_wireless_radio_*`.
+
+**WLAN-Gruppe** (`wlan_group`, an WLAN-Clients und `mikrotik_wireless_radio_info`): der Name
+der Wireless LAN Group in NetBox, deren Controller oder AP das Gerät ist, mit einem WLAN dieser
+SSID und, bei einem Client eines CAPs, diesem CAP unter ihren APs (die Identity des CAPs ist sein
+NetBox-Name). Passen keine oder mehrere, bleibt es leer, etwa bei einer Funkstrecke.
 
 ## Von den Exportern
 

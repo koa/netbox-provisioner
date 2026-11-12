@@ -84,11 +84,16 @@ pub struct WlanClient {
     pub uptime: Duration,
 }
 
-/// A running radio of `/interface/wireless`.
+/// A running radio of `/interface/wireless`, or of a CAP of the legacy CAPsMAN (`/caps-man`)
+/// at its controller.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WirelessRadio {
     pub name: Box<str>,
+    /// empty on a CAP for a radio its CAPsMAN manages: the controller has it
     pub ssid: Box<str>,
+    /// the identity of the CAP it is on; empty for a radio of the device itself
+    pub ap: Box<str>,
+    pub capsman: Capsman,
     /// `band`: `5ghz-a/n/ac`, …
     pub band: Box<str>,
     pub frequency_mhz: Option<u32>,
@@ -148,8 +153,9 @@ async fn read(device: &AccessibleDevice) -> Result<DeviceMetrics, Error> {
     let api = device.connect_again().await?;
     let mut wlan_clients = wifi_clients(client).await?;
     wlan_clients.extend(legacy_clients(client).await?);
-    let (standalone, radios) = wireless(&api).await?;
+    let (standalone, mut radios) = wireless(&api).await?;
     wlan_clients.extend(standalone);
+    radios.extend(capsman_radios(&api).await?);
     let interfaces = raw::rows(&api, "/interface/print")
         .await?
         .iter()
@@ -163,7 +169,7 @@ async fn read(device: &AccessibleDevice) -> Result<DeviceMetrics, Error> {
         .collect();
     Ok(DeviceMetrics {
         wlan_clients: wlan_clients.into(),
-        radios,
+        radios: radios.into(),
         interfaces,
         ethernet,
         leases,
@@ -264,9 +270,13 @@ async fn legacy_clients(client: &MikrotikDevice) -> Result<Vec<WlanClient>, Erro
 
 /// The clients and running radios of `/interface/wireless`: its registration table, `print`
 /// for SSID and band, `monitor` for noise floor and frequency.
+///
+/// A radio a CAPsMAN manages has no SSID of its own there (ap-klr-solar, a CAP of the legacy
+/// CAPsMAN): its SSID and its clients are the controller's (`legacy_clients`,
+/// `capsman_radios`), so its clients are left out here.
 async fn wireless(
     api: &RawDevice<SimpleResult>,
-) -> Result<(Vec<WlanClient>, Box<[WirelessRadio]>), Error> {
+) -> Result<(Vec<WlanClient>, Vec<WirelessRadio>), Error> {
     let radios = raw::command_if_present(api, "/interface/wireless/print", &[]).await?;
     let running = radios
         .iter()
@@ -274,11 +284,12 @@ async fn wireless(
         .filter_map(|row| raw::field(row, "name"))
         .collect::<Vec<_>>();
     if running.is_empty() {
-        return Ok((Vec::new(), Box::new([])));
+        return Ok((Vec::new(), Vec::new()));
     }
     let ssids = radios
         .iter()
         .filter_map(|row| Some((raw::field(row, "name")?, raw::field(row, "ssid")?)))
+        .filter(|(_, ssid)| !ssid.is_empty())
         .collect::<HashMap<_, _>>();
     let clients = raw::rows(api, "/interface/wireless/registration-table/print")
         .await?
@@ -308,12 +319,14 @@ pub(crate) fn standalone_client(row: &raw::Row, ssids: &HashMap<&str, &str>) -> 
         _ => None,
     };
     let interface = field("interface")?;
+    // a radio a CAPsMAN manages: the controller has the client
+    let ssid = ssids.get(interface)?;
     let bytes = pair("bytes")?;
     let packets = pair("packets")?;
     Some(WlanClient {
         mac_address: field("mac-address")?.parse().ok()?,
         interface: interface.into(),
-        ssid: ssids.get(interface).copied().unwrap_or_default().into(),
+        ssid: (*ssid).into(),
         ap: Box::from(""),
         capsman: Capsman::Standalone,
         rx_bytes: bytes.rx,
@@ -330,18 +343,128 @@ pub(crate) fn standalone_client(row: &raw::Row, ssids: &HashMap<&str, &str>) -> 
     })
 }
 
-/// A running radio from its row of `print` and of `monitor`.
+/// A running radio from its row of `print` and of `monitor`; one without SSID is managed by a
+/// CAPsMAN.
 pub(crate) fn wireless_radio(print: &raw::Row, monitor: &raw::Row) -> Option<WirelessRadio> {
+    let ssid = raw::field(print, "ssid").unwrap_or_default();
     Some(WirelessRadio {
         name: raw::field(print, "name")?.into(),
-        ssid: raw::field(print, "ssid").unwrap_or_default().into(),
+        ssid: ssid.into(),
+        ap: Box::from(""),
+        capsman: match ssid.is_empty() {
+            true => Capsman::Legacy,
+            false => Capsman::Standalone,
+        },
         band: raw::field(print, "band").unwrap_or_default().into(),
-        // `5500/20-Ceee/ac/DP(13dBm)`
-        frequency_mhz: raw::field(monitor, "channel")
-            .and_then(|channel| channel.split('/').next())
-            .and_then(|frequency| frequency.parse().ok()),
+        frequency_mhz: raw::field(monitor, "channel").and_then(channel_frequency),
         noise_floor: raw::field(monitor, "noise-floor").and_then(|value| value.parse().ok()),
     })
+}
+
+/// The frequency of a channel as RouterOS writes it: `5500/20-Ceee/ac/DP(13dBm)`.
+fn channel_frequency(channel: &str) -> Option<u32> {
+    channel.split('/').next()?.parse().ok()
+}
+
+/// The running radios of the legacy CAPsMAN's CAPs, at the controller: SSID and band from
+/// `/caps-man/actual-interface-configuration` (asked for those fields only: its rows hold the
+/// passphrase), the frequency from `current-channel`, the CAP from `/caps-man/radio`. A
+/// virtual interface's CAP and band are those of its master.
+async fn capsman_radios(api: &RawDevice<SimpleResult>) -> Result<Vec<WirelessRadio>, Error> {
+    let interfaces = raw::command_if_present(
+        api,
+        "/caps-man/interface/print",
+        &[(".proplist", "name,running,current-channel,master-interface")],
+    )
+    .await?;
+    if !interfaces
+        .iter()
+        .any(|row| raw::field(row, "running") == Some("true"))
+    {
+        return Ok(Vec::new());
+    }
+    let actual = raw::command(
+        api,
+        "/caps-man/actual-interface-configuration/print",
+        &[(".proplist", "name,configuration.ssid,channel.band")],
+    )
+    .await?;
+    let radios = raw::command(
+        api,
+        "/caps-man/radio/print",
+        &[(".proplist", "interface,remote-cap-identity")],
+    )
+    .await?;
+    Ok(capsman_radio_rows(&CapsmanRows {
+        interfaces: &interfaces,
+        actual: &actual,
+        radios: &radios,
+    }))
+}
+
+/// The rows `capsman_radios` reads.
+pub(crate) struct CapsmanRows<'r> {
+    pub interfaces: &'r [raw::Row],
+    pub actual: &'r [raw::Row],
+    pub radios: &'r [raw::Row],
+}
+
+pub(crate) fn capsman_radio_rows(rows: &CapsmanRows) -> Vec<WirelessRadio> {
+    fn by_name(table: &[raw::Row]) -> HashMap<&str, &raw::Row> {
+        table
+            .iter()
+            .filter_map(|row| Some((raw::field(row, "name")?, row)))
+            .collect()
+    }
+    /// `field` of `interface`'s row, unless empty.
+    fn of<'r>(
+        table: &HashMap<&str, &'r raw::Row>,
+        interface: &str,
+        field: &str,
+    ) -> Option<&'r str> {
+        table
+            .get(interface)
+            .and_then(|row| raw::field(row, field))
+            .filter(|value| !value.is_empty())
+    }
+    let actual = by_name(rows.actual);
+    let masters = by_name(rows.interfaces)
+        .into_iter()
+        .filter_map(|(name, row)| Some((name, raw::field(row, "master-interface")?)))
+        .filter(|(_, master)| *master != "none")
+        .collect::<HashMap<_, _>>();
+    let caps = rows
+        .radios
+        .iter()
+        .filter_map(|row| {
+            Some((
+                raw::field(row, "interface")?,
+                raw::field(row, "remote-cap-identity")?,
+            ))
+        })
+        .collect::<HashMap<_, _>>();
+    rows.interfaces
+        .iter()
+        .filter(|row| raw::field(row, "running") == Some("true"))
+        .filter_map(|row| {
+            let name = raw::field(row, "name")?;
+            let radio = masters.get(name).copied().unwrap_or(name);
+            Some(WirelessRadio {
+                name: name.into(),
+                ssid: of(&actual, name, "configuration.ssid")
+                    .unwrap_or_default()
+                    .into(),
+                ap: caps.get(radio).copied().unwrap_or_default().into(),
+                capsman: Capsman::Legacy,
+                band: of(&actual, name, "channel.band")
+                    .or_else(|| of(&actual, radio, "channel.band"))
+                    .unwrap_or_default()
+                    .into(),
+                frequency_mhz: raw::field(row, "current-channel").and_then(channel_frequency),
+                noise_floor: None,
+            })
+        })
+        .collect()
 }
 
 /// The link of every Ethernet port, from one `monitor` of all of them.

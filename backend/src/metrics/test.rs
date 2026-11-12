@@ -1,6 +1,6 @@
 //! Scope: Tests of the rendering of `/metrics`; nothing else.
 
-use super::render::{DeviceSample, Snapshot, families};
+use super::render::{DeviceSample, Snapshot, WlanGroupSample, families, wlan_group_of};
 use crate::{
     device::metrics::{
         Capsman, DeviceMetrics, EthernetLink, InterfaceCounters, Lease, WirelessRadio, WlanClient,
@@ -15,6 +15,14 @@ use std::{sync::Arc, time::Duration};
 
 fn client() -> MacAddress {
     MacAddress::new([0x02, 0, 0, 0, 0, 0x01])
+}
+
+fn group(name: &str, ssids: &[&str], aps: &[&str]) -> WlanGroupSample {
+    WlanGroupSample {
+        name: name.into(),
+        ssids: ssids.iter().map(|ssid| Box::from(*ssid)).collect(),
+        aps: aps.iter().map(|ap| Box::from(*ap)).collect(),
+    }
 }
 
 fn row(fields: &[(&str, &str)]) -> Row {
@@ -101,6 +109,7 @@ fn snapshot() -> Snapshot {
                 hostname: Some("laptop".into()),
             }]),
         })),
+        wlan_groups: Box::new([]),
     };
     let ap = DeviceSample {
         device: "ap".into(),
@@ -122,17 +131,40 @@ fn snapshot() -> Snapshot {
                 signal_to_noise: None,
                 uptime: Duration::from_secs(90),
             }]),
-            radios: Box::new([WirelessRadio {
-                name: "w01".into(),
-                ssid: "lab-link-2".into(),
-                band: "5ghz-a/n/ac".into(),
-                frequency_mhz: Some(5500),
-                noise_floor: Some(-106),
-            }]),
+            radios: Box::new([
+                WirelessRadio {
+                    name: "w01".into(),
+                    ssid: "lab-link-2".into(),
+                    ap: "".into(),
+                    capsman: Capsman::Standalone,
+                    band: "5ghz-a/n/ac".into(),
+                    frequency_mhz: Some(5500),
+                    noise_floor: Some(-106),
+                },
+                WirelessRadio {
+                    name: "wlan13".into(),
+                    ssid: "".into(),
+                    ap: "".into(),
+                    capsman: Capsman::Legacy,
+                    band: "".into(),
+                    frequency_mhz: Some(2412),
+                    noise_floor: Some(-110),
+                },
+                WirelessRadio {
+                    name: "cap-stall-1".into(),
+                    ssid: "berg".into(),
+                    ap: "cap-stall".into(),
+                    capsman: Capsman::Legacy,
+                    band: "2ghz-b/g/n".into(),
+                    frequency_mhz: Some(2437),
+                    noise_floor: None,
+                },
+            ]),
             ethernet: Box::new([]),
             interfaces: Box::new([]),
             leases: Box::new([]),
         })),
+        wlan_groups: Box::new([group("wlan-berg", &["berg"], &["cap-stall"])]),
     };
     let down = DeviceSample {
         device: "gone".into(),
@@ -140,6 +172,7 @@ fn snapshot() -> Snapshot {
         up: false,
         map: None,
         metrics: None,
+        wlan_groups: Box::new([]),
     };
     Snapshot {
         devices: Box::new([router, ap, down]),
@@ -212,6 +245,7 @@ fn a_wlan_client_is_named_by_its_lease() {
         "device=ap",
         "site=berg",
         "interface=cap-stall-1",
+        "wlan_group=wlan-berg",
         "ap=cap-stall",
         "ssid=berg",
         "capsman=wifi",
@@ -317,30 +351,80 @@ fn health_resources_poe_and_interfaces() {
     );
 }
 
-/// A running radio of `/interface/wireless`: SSID and band as labels, the frequency in Hz.
+/// A running radio: SSID and band as labels, the frequency in Hz; a CAP's radio its CAPsMAN
+/// manages (no SSID) has no `info`, the controller's has its CAP.
 #[test]
 fn a_wireless_radio() {
     let families = families(&snapshot());
     assert_eq!(
         samples(&families, "mikrotik_wireless_radio_info"),
-        [(
-            labels(&[
-                "device=ap",
-                "site=berg",
-                "interface=w01",
-                "ssid=lab-link-2",
-                "band=5ghz-a/n/ac",
-            ]),
-            1.0
-        )]
+        [
+            (
+                labels(&[
+                    "device=ap",
+                    "site=berg",
+                    "interface=w01",
+                    "ssid=lab-link-2",
+                    "band=5ghz-a/n/ac",
+                    "wlan_group=",
+                    "ap=",
+                    "capsman=none",
+                ]),
+                1.0
+            ),
+            (
+                labels(&[
+                    "device=ap",
+                    "site=berg",
+                    "interface=cap-stall-1",
+                    "ssid=berg",
+                    "band=2ghz-b/g/n",
+                    "wlan_group=wlan-berg",
+                    "ap=cap-stall",
+                    "capsman=legacy",
+                ]),
+                1.0
+            )
+        ]
     );
     let radio = labels(&["device=ap", "site=berg", "interface=w01"]);
     assert_eq!(
         samples(&families, "mikrotik_wireless_radio_frequency_hertz"),
-        [(radio.clone(), 5.5e9)]
+        [
+            (
+                labels(&["device=ap", "site=berg", "interface=cap-stall-1"]),
+                2.437e9
+            ),
+            (radio.clone(), 5.5e9),
+            (
+                labels(&["device=ap", "site=berg", "interface=wlan13"]),
+                2.412e9
+            ),
+        ]
     );
     assert_eq!(
         samples(&families, "mikrotik_wireless_radio_noise_floor_dbm"),
-        [(radio, -106.0)]
+        [
+            (radio, -106.0),
+            (
+                labels(&["device=ap", "site=berg", "interface=wlan13"]),
+                -110.0
+            ),
+        ]
     );
+}
+
+/// The group of a client or radio: the one with its SSID and, for a CAP's client, that CAP;
+/// none where several or none fit.
+#[test]
+fn the_wlan_group_by_ssid_and_ap() {
+    let groups = [
+        group("wlan-berg", &["berg", "gast"], &["cap-stall"]),
+        group("wlan-tal", &["tal", "gast"], &["cap-hof"]),
+    ];
+    assert_eq!(wlan_group_of(&groups, "berg", ""), "wlan-berg");
+    assert_eq!(wlan_group_of(&groups, "gast", "cap-hof"), "wlan-tal");
+    assert_eq!(wlan_group_of(&groups, "gast", ""), "");
+    assert_eq!(wlan_group_of(&groups, "berg", "cap-hof"), "");
+    assert_eq!(wlan_group_of(&groups, "lab-link-2", ""), "");
 }

@@ -431,11 +431,14 @@ on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 60, `0` off) and keeps the round, a scrape renders the last one (`render::families`, an
 unchecked collector without fixed descriptors). Health, resources and PoE are the network map's
 fact (`network_state::device_data::read_one`); WLAN clients (`/interface/wifi`, `/caps-man` and
-`/interface/wireless`, `capsman="none"`), the running wireless radios, `/interface/print`
+`/interface/wireless`, `capsman="none"`), the running wireless radios (a CAP's radio the
+legacy CAPsMAN manages has no SSID there and no `info`, nor its clients; the controller
+reports them from `/caps-man`, `capsman_radios`), `/interface/print`
 counters, Ethernet links (one `monitor ... once` of all ports) and bound leases are
 `device::metrics` (`FactKind::DeviceMetrics`); a menu a package brings has no rows without it
 (`raw::command_if_present`). A WLAN client takes hostname and address from a lease of any device
-by MAC. Names follow Prometheus' conventions (unit in the name, `_total` for device counters),
+by MAC, and a client or radio its `wlan_group` from NetBox (`render::wlan_group_of`: the one
+group of the device with that SSID and, for a CAP's client, that CAP; else empty). Names follow Prometheus' conventions (unit in the name, `_total` for device counters),
 every metric has `device` and `site` from NetBox. The dashboards `mikrotik-overview.json` and
 `mikrotik-health.json` (from the user's exports of the old exporters' dashboards) are built on
 them, checked in Grafana 13.3 against the lab.
