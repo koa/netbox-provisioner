@@ -198,7 +198,11 @@ pub(crate) fn families(snapshot: &Snapshot) -> Vec<MetricFamily> {
     for device in &snapshot.devices {
         out.device(device, &leases);
     }
+    // a family no device has a value of (no fan anywhere) is refused by the text encoder
     out.render()
+        .into_iter()
+        .filter(|family| !family.get_metric().is_empty())
+        .collect()
 }
 
 /// The families of a scrape, by topic.

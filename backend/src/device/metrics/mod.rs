@@ -46,10 +46,6 @@ use mikrotik_model::{
 };
 use std::{collections::HashMap, net::IpAddr, time::Duration};
 
-/// How old a reading may be: Prometheus scrapes every minute or so, and the collector reads
-/// once per interval (`crate::metrics`).
-pub const DEVICE_METRICS_AGE: Duration = Duration::from_secs(30);
-
 #[derive(Debug, Clone, Default)]
 pub struct DeviceMetrics {
     pub wlan_clients: Box<[WlanClient]>,
@@ -146,12 +142,12 @@ pub struct Lease {
 }
 
 impl AccessibleDevice {
-    /// The device's [`DeviceMetrics`], at most [`DEVICE_METRICS_AGE`] old.
-    pub async fn metrics(&self) -> Fact<DeviceMetrics> {
+    /// The device's [`DeviceMetrics`], as fresh as `freshness` asks (a scrape: begun since it).
+    pub async fn metrics(&self, freshness: Freshness) -> Fact<DeviceMetrics> {
         let key = FactKey::new(FactKind::DeviceMetrics, Some(self.device_config.id()), "");
         let device = self.duplicate();
         let ask = async move { read(&device).await };
-        facts::get(key, Freshness::MaxAge(DEVICE_METRICS_AGE), ask).await
+        facts::get(key, freshness, ask).await
     }
 }
 

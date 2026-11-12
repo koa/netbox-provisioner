@@ -427,9 +427,11 @@ realistic-path apply retries "General SOCKS server failure" against a deadline r
 on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 
 `backend/src/metrics/` is the devices' metrics at `/metrics` (C14, `docs/device-metrics.md`):
-`start` reads every device with RouterOS and credentials every `device_metrics_seconds` (default
-60, `0` off) and keeps the round, a scrape renders the last one (`render::families`, an
-unchecked collector without fixed descriptors). Health, resources and PoE are the network map's
+each scrape reads every device with RouterOS and credentials (`scrape`, its own handler at the
+mgmt port's `/metrics`, `device_metrics: false` off), one login each, within `DEVICE_TIMEOUT`
+(below the ServiceMonitor's `scrapeTimeout`), and renders that with the registry
+(`render::families`); the facts are taken `Freshness::Since` the scrape's start, so nothing is
+older and each device is asked once per scrape. Health, resources and PoE are the network map's
 fact (`network_state::device_data::read_one`); WLAN clients (`/interface/wifi`, `/caps-man` and
 `/interface/wireless`, `capsman="none"`), the running wireless radios (a CAP's radio the
 legacy CAPsMAN manages has no SSID there and no `info`, nor its clients; the controller

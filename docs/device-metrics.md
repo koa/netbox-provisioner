@@ -12,23 +12,25 @@ sind danach nicht mehr nötig. Der Provisioner liest mit seinen eigenen Zugangsd
 
 ## Sammeln
 
-- **Ein Sammler im Backend** (`crate::metrics`) liest alle `device_metrics_seconds` Sekunden
-  (Vorgabe 60, `0` schaltet ihn ab) jedes Gerät, das in NetBox RouterOS und Zugangsdaten hat,
-  alle zugleich. Eine Runde beginnt erst, wenn die letzte fertig ist. Ein Gerät, das in
-  30 s (`DEVICE_TIMEOUT`) nicht antwortet, zählt in dieser Runde als nicht erreicht.
-- Ein Scrape gibt die **letzte Runde** aus; er fragt selbst kein Gerät. Prometheus' Intervall
-  und das des Sammlers sind also unabhängig. Bis zur ersten Runde fehlen die Gerätemetriken.
+- **Jeder Scrape liest** (`crate::metrics::scrape`, eigener Handler für `/metrics` am
+  mgmt-Port) jedes Gerät, das in NetBox RouterOS und Zugangsdaten hat, alle zugleich, über ein
+  Login pro Gerät. Ein Gerät, das in 20 s (`DEVICE_TIMEOUT`) nicht antwortet, zählt in diesem
+  Scrape als nicht erreicht; der ServiceMonitor wartet darum 25 s (`scrapeTimeout`).
+  `device_metrics: false` liest keine Geräte, `/metrics` hat dann nur die eigenen Metriken.
 - Gelesen wird über denselben Weg wie überall (`DeviceAccess::connect`), als Fakten des
-  [Gerätezustands](device-state.md): Health, Ressourcen und PoE teilt der Sammler mit der
+  [Gerätezustands](device-state.md): Health, Ressourcen und PoE teilt der Scrape mit der
   Netz-Karte (`FactKind::DeviceMapData`, `network_state::device_data`), WLAN-Clients, Radios,
-  Interfaces, Ethernet-Links und Leases sind ein eigener Fakt (`FactKind::DeviceMetrics`, `device::metrics`), beide höchstens
-  30 s alt. Dauer und Erfolg der Lesungen stehen deshalb auch in `device_query_duration_seconds`
-  (`kind="device_metrics"`).
+  Interfaces, Ethernet-Links und Leases sind ein eigener Fakt (`FactKind::DeviceMetrics`,
+  `device::metrics`). Ein Scrape nimmt nur Fakten, die nach seinem Beginn begonnen haben
+  (`Freshness::Since`): Nichts ist älter als der Scrape, und eine Lesung, die seither schon
+  läuft (ein zweiter Scrape, die Netz-Karte), wird mitgenommen, so fragt ein Scrape jedes Gerät
+  einmal. Dauer und Erfolg der Lesungen stehen deshalb auch in
+  `device_query_duration_seconds` (`kind="device_metrics"`).
 - Es wird nur gelesen, jedes Menü mit seinem Typ aus mikrotik-model; nur die Monitore
   (`/interface/ethernet/monitor` und `/interface/wireless/monitor` mit `once`, alle Ports in
   einem Befehl) gehen über `device::raw`. Ein Menü, das ein Gerät nicht hat (kein `wifi`- oder
   `wireless`-Paket, kein Legacy-CAPsMAN), hat keine Zeilen (`rows_if_present`,
-  `is_missing_menu`); jeder andere Fehler macht das Gerät für die Runde unerreicht.
+  `is_missing_menu`); jeder andere Fehler macht das Gerät für den Scrape unerreicht.
 
 ## Metriken
 
@@ -38,7 +40,7 @@ Prometheus-Konventionen: Einheit im Namen, `_total` für einen Zähler des Gerä
 
 | Metrik | Typ | weitere Labels | woher |
 |---|---|---|---|
-| `mikrotik_up` | Gauge | | 1, wenn das Gerät die letzte Runde beantwortet hat |
+| `mikrotik_up` | Gauge | | 1, wenn das Gerät den Scrape beantwortet hat |
 | `mikrotik_system_info` | Gauge (1) | `version`, `board` | `/system/resource`, `board-name` |
 | `mikrotik_system_uptime_seconds` | Gauge | | |
 | `mikrotik_system_cpu_load_ratio` | Gauge | | `cpu-load` / 100 |
@@ -126,7 +128,7 @@ Grafana-Sidecar wie `device-queries.json`, beide mit den Variablen Datenquelle, 
 - **Mikrotik Geräte** (`mikrotik-health.json`): Health, PoE pro Port (ein Panel je Port) und das
   Log aus Loki (Variable `loki`), dessen Label `hostname` die Identity des Geräts ist, also sein
   NetBox-Name. Die Logins des Provisioners blendet es aus: Variable „Benutzer des
-  Provisioners“ (Vorgabe `admin`), etwa zwei pro Gerät und Runde.
+  Provisioners“ (Vorgabe `admin`), einige pro Gerät und Scrape.
 
 ## Geprüft
 

@@ -9,6 +9,7 @@
 
 use crate::{
     Error,
+    device::AccessibleDevice,
     device::poe::{self, PoePorts},
     device::raw::{Row, field, rows},
     facts::{self, FactKey, FactKind, Freshness},
@@ -66,22 +67,30 @@ pub async fn read_all(devices: &[DeviceAccess]) -> BTreeMap<DeviceId, Arc<Device
         .collect()
 }
 
-/// The reading of `device`, shared with `/metrics` (`crate::metrics`); `None` where it isn't
-/// reached or doesn't answer.
+/// The reading of `device`, at most [`DEVICE_DATA_AGE`] old; `None` where it isn't reached
+/// or doesn't answer.
 pub(crate) async fn read_one(device: &DeviceAccess) -> Option<Arc<DeviceMapData>> {
-    let key = FactKey::new(FactKind::DeviceMapData, Some(device.id()), "");
     let accessible = match device.connect(DeviceTarget::default()).await {
         Ok(Some(accessible)) => accessible,
         _ => return None,
     };
+    read_accessible(device, &accessible, Freshness::MaxAge(DEVICE_DATA_AGE)).await
+}
+
+/// The reading of `device`, logged in as `accessible`, as fresh as `freshness` asks; shared
+/// with `/metrics` (`crate::metrics`).
+pub(crate) async fn read_accessible(
+    device: &DeviceAccess,
+    accessible: &AccessibleDevice,
+    freshness: Freshness,
+) -> Option<Arc<DeviceMapData>> {
+    let key = FactKey::new(FactKind::DeviceMapData, Some(device.id()), "");
+    let accessible = accessible.duplicate();
     let ask = async move {
         let api = accessible.connect_again().await?;
         read(&api).await
     };
-    facts::get(key, Freshness::MaxAge(DEVICE_DATA_AGE), ask)
-        .await
-        .value
-        .ok()
+    facts::get(key, freshness, ask).await.value.ok()
 }
 
 async fn read(api: &RawDevice<SimpleResult>) -> Result<DeviceMapData, Error> {

@@ -61,8 +61,8 @@ settings:
   apply_fallback_seconds: ""
   # seconds after an update's boot to reach the device again (empty: 900)
   update_fallback_seconds: ""
-  # seconds between two readings of every device for /metrics (empty: 60, 0: none)
-  device_metrics_seconds: ""
+  # whether a scrape of /metrics reads every device (false: the provisioner's own metrics only)
+  device_metrics: true
   # the networks the plain API and WebFig (www) of every device answer (prefixes); empty: as
   # the devices have it.
   # Must hold the provisioner's address as each device sees it (its own, or the management
@@ -119,6 +119,9 @@ httpRoute:
 serviceMonitor:
   enabled: false
   interval: 30s
+  # each scrape reads every device, each within 20 s (metrics::DEVICE_TIMEOUT); at most the
+  # interval
+  scrapeTimeout: 25s
   labels: {}
 
 # The Grafana dashboards of the chart (dashboards/) as a ConfigMap for the Grafana sidecar,

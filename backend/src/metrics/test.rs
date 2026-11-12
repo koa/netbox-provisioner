@@ -428,3 +428,18 @@ fn the_wlan_group_by_ssid_and_ap() {
     assert_eq!(wlan_group_of(&groups, "berg", "cap-hof"), "");
     assert_eq!(wlan_group_of(&groups, "lab-link-2", ""), "");
 }
+
+/// A scrape's families go through the text encoder, which refuses a family without a value:
+/// the sample's devices have no fan.
+#[test]
+fn the_families_encode_without_the_empty_ones() {
+    let families = families(&snapshot());
+    assert!(
+        families
+            .iter()
+            .all(|family| !family.get_metric().is_empty())
+    );
+    let mut text = Vec::new();
+    prometheus::Encoder::encode(&prometheus::TextEncoder::new(), &families, &mut text).unwrap();
+    assert!(!String::from_utf8_lossy(&text).contains("mikrotik_health_fan_rpm"));
+}

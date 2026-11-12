@@ -1,13 +1,14 @@
-//! Scope: The devices' metrics at `/metrics`: the collector reading every device in turn and
-//! the last round it keeps; not the reading itself (`device::metrics`,
+//! Scope: The devices' metrics at `/metrics`: each scrape reading every device and rendering
+//! that with the registry's own metrics; not the reading itself (`device::metrics`,
 //! `network_state::device_data`) nor the provisioner's own metrics (`facts`, HTTP).
 //!
 //! What the mikrotik-metrik-exporter served (C14, `docs/device-metrics.md`), with `device` and
-//! `site` from NetBox: every `device_metrics_seconds` (default 60, `0` off) the collector reads
-//! every device with RouterOS and credentials, all at once, each within
-//! [`DEVICE_TIMEOUT`], and keeps the round; a scrape renders the last one
-//! ([`render::families`]). It only reads, as the network map does, and shares that reading
-//! (health, resources, PoE).
+//! `site` from NetBox: each scrape reads every device with RouterOS and credentials, all at
+//! once, each within [`DEVICE_TIMEOUT`] (`device_metrics: false` reads none). The readings are
+//! facts begun after the scrape began (`Freshness::Since`): nothing older is served, and a
+//! reading of the same device and menus begun since (a second scrape, the network map) is
+//! joined, so each scrape asks each device once. It only reads, as the network map does, and
+//! shares that reading (health, resources, PoE).
 
 mod render;
 #[cfg(test)]
@@ -17,7 +18,7 @@ pub(crate) use render::{DeviceSample, Snapshot};
 
 use crate::{
     config::CONFIG,
-    lock::LockAnyway,
+    facts::Freshness,
     network_state::device_data,
     topology::{
         TopologyHolder,
@@ -25,54 +26,34 @@ use crate::{
     },
 };
 use async_graphql::futures_util::future::join_all;
-use log::warn;
-use prometheus::{
-    Registry,
-    core::{Collector, Desc},
-    proto::MetricFamily,
-};
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use prometheus::{Encoder, Registry, TextEncoder};
+use std::time::Duration;
+use tokio::time::Instant;
 
-/// How long one device may take in a round; one that takes longer counts as down.
-pub const DEVICE_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long one device may take in a scrape; one that takes longer counts as down. Below the
+/// chart's `serviceMonitor.scrapeTimeout`, or Prometheus gives up on the whole scrape first.
+pub const DEVICE_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// The last round, rendered at each scrape.
-static LAST: Mutex<Option<Arc<Snapshot>>> = Mutex::new(None);
-
-/// Reads every device once per `device_metrics_seconds`, a round not before the last one ended.
-pub fn start(topology: TopologyHolder) {
-    let Some(every) = CONFIG.device_metrics_every() else {
-        return;
-    };
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(every);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            let devices = topology.devices().await;
-            let snapshot = round(&devices).await;
-            *LAST.lock_anyway() = Some(Arc::new(snapshot));
-        }
-    });
-}
-
-/// Puts the devices' metrics into `registry` (`/metrics`).
-pub fn register(registry: &Registry) {
-    if let Err(error) = registry.register(Box::new(DevicesCollector)) {
-        warn!("cannot register the device metrics: {error}");
+/// The text of `/metrics`: `registry`'s metrics and every device's, read now.
+pub async fn scrape(registry: &Registry, topology: &TopologyHolder) -> prometheus::Result<String> {
+    let mut families = registry.gather();
+    if CONFIG.device_metrics() {
+        let since = Instant::now();
+        let devices = topology.devices().await;
+        families.extend(render::families(&round(&devices, since).await));
     }
+    let mut text = Vec::new();
+    TextEncoder::new().encode(&families, &mut text)?;
+    Ok(String::from_utf8_lossy(&text).into_owned())
 }
 
-/// One reading of every device that has RouterOS and credentials.
-async fn round(devices: &[DeviceAccess]) -> Snapshot {
+/// One reading of every device that has RouterOS and credentials, begun after `since`.
+async fn round(devices: &[DeviceAccess], since: Instant) -> Snapshot {
     let reads = devices
         .iter()
         .filter(|device| device.has_routeros() && device.credentials().is_some())
         .map(|device| async move {
-            tokio::time::timeout(DEVICE_TIMEOUT, sample(device))
+            tokio::time::timeout(DEVICE_TIMEOUT, sample(device, since))
                 .await
                 .unwrap_or_else(|_| DeviceSample::down(device))
         });
@@ -81,33 +62,20 @@ async fn round(devices: &[DeviceAccess]) -> Snapshot {
     }
 }
 
-/// What `device` answers; down where it can't be reached or doesn't answer the reading.
-async fn sample(device: &DeviceAccess) -> DeviceSample {
+/// What `device` answers, over one login; down where it can't be reached or doesn't answer
+/// the reading.
+async fn sample(device: &DeviceAccess, since: Instant) -> DeviceSample {
     let accessible = match device.connect(DeviceTarget::default()).await {
         Ok(Some(accessible)) => accessible,
         _ => return DeviceSample::down(device),
     };
-    let metrics = accessible.metrics().await.value.ok();
-    let map = device_data::read_one(device).await;
+    let freshness = Freshness::Since(since);
+    let metrics = accessible.metrics(freshness).await.value.ok();
+    let map = device_data::read_accessible(device, &accessible, freshness).await;
     DeviceSample {
         up: metrics.is_some(),
         map,
         metrics,
         ..DeviceSample::down(device)
-    }
-}
-
-/// Renders the last round at each scrape. Its metrics change with the devices, so it has no
-/// fixed descriptors (an unchecked collector).
-struct DevicesCollector;
-
-impl Collector for DevicesCollector {
-    fn desc(&self) -> Vec<&Desc> {
-        Vec::new()
-    }
-    fn collect(&self) -> Vec<MetricFamily> {
-        let last = LAST.lock_anyway().clone();
-        last.map(|snapshot| render::families(&snapshot))
-            .unwrap_or_default()
     }
 }

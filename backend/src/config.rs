@@ -63,9 +63,9 @@ pub struct Settings {
     /// towards the device), or the apply locks it out and the fallback takes the apply back.
     /// The management proxy's SOCKS takes only these sources too.
     pub api_networks: Option<Box<[ipnet::IpNet]>>,
-    /// Seconds between two readings of every device for `/metrics` (`crate::metrics`, default
-    /// 60); `0` reads none.
-    device_metrics_seconds: Option<u64>,
+    /// Whether a scrape of `/metrics` reads every device (`crate::metrics`, default `true`);
+    /// `false` serves the provisioner's own metrics only.
+    device_metrics: Option<bool>,
     /// Where the jobs that go on after a restart are saved (`saved_job`), and the lock that
     /// keeps a second provisioner off them (default `state`, next to `config.yaml`).
     state_dir: Option<std::path::PathBuf>,
@@ -135,12 +135,9 @@ impl Settings {
     pub fn apply_fallback(&self) -> std::time::Duration {
         std::time::Duration::from_secs(self.apply_fallback_seconds.unwrap_or(90))
     }
-    /// How often the devices are read for `/metrics`; `None` not at all.
-    pub fn device_metrics_every(&self) -> Option<std::time::Duration> {
-        match self.device_metrics_seconds.unwrap_or(60) {
-            0 => None,
-            seconds => Some(std::time::Duration::from_secs(seconds)),
-        }
+    /// Whether `/metrics` reads the devices.
+    pub fn device_metrics(&self) -> bool {
+        self.device_metrics.unwrap_or(true)
     }
     pub fn update_fallback(&self) -> std::time::Duration {
         std::time::Duration::from_secs(self.update_fallback_seconds.unwrap_or(900))

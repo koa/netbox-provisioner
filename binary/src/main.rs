@@ -202,6 +202,26 @@ async fn health() -> &'static str {
     "Ok"
 }
 
+/// What `/metrics` renders: the registry's metrics and the devices' (`backend::metrics`).
+struct Scrape {
+    registry: prometheus::Registry,
+    topology: TopologyHolder,
+}
+
+/// Every scrape reads the devices anew (`backend::metrics::scrape`).
+#[get("/metrics")]
+async fn metrics(scrape: Data<Scrape>) -> HttpResponse {
+    match backend::metrics::scrape(&scrape.registry, &scrape.topology).await {
+        Ok(text) => HttpResponse::Ok()
+            .content_type(prometheus::TEXT_FORMAT)
+            .body(text),
+        Err(error) => {
+            error!("cannot render /metrics: {error}");
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
 #[derive(Clone)]
 struct ApplicationContext {
     graphql_request_histogram: HistogramVec,
@@ -250,7 +270,6 @@ async fn main() -> Result<(), BackendError> {
     let registry = prometheus.registry.clone();
     registry.register(Box::new(graphql_request_histogram.clone()))?;
     backend::facts::register(&registry);
-    backend::metrics::register(&registry);
     // before anything else: a second provisioner on the same state_dir stops here
     backend::saved_job::open(CONFIG.state_dir())?;
     backend::device::www_certificate::check_ca()?;
@@ -259,7 +278,6 @@ async fn main() -> Result<(), BackendError> {
     topology.fetch().await?;
     backend::job::resume::resume_saved_jobs(&topology).await;
     backend::graphql::live::watch_netbox(topology.clone());
-    backend::metrics::start(topology.clone());
 
     let schema = create_schema(topology.clone());
     let anonymous_schema = create_anonymous_schema();
@@ -307,14 +325,21 @@ async fn main() -> Result<(), BackendError> {
 
     let prometheus = PrometheusMetricsBuilder::new("")
         .const_labels(labels)
-        .registry(registry)
-        .endpoint("/metrics")
+        .registry(registry.clone())
+        .exclude("/metrics")
         .build()
         .unwrap();
-    let mgmt_server = HttpServer::new(move || App::new().wrap(prometheus.clone()).service(health))
-        .bind((bind_addr, mgmt_port))?
-        .workers(2)
-        .run();
+    let scrape = Data::new(Scrape { registry, topology });
+    let mgmt_server = HttpServer::new(move || {
+        App::new()
+            .wrap(prometheus.clone())
+            .app_data(scrape.clone())
+            .service(health)
+            .service(metrics)
+    })
+    .bind((bind_addr, mgmt_port))?
+    .workers(2)
+    .run();
     let served = join_all(vec![main_server, mgmt_server]).await;
     // the servers stopped (SIGTERM, SIGINT): jobs that go on after a restart stay, the
     // others are cancelled, within the chart's termination grace period
