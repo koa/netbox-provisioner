@@ -345,12 +345,12 @@ async fn bound_radio_stays_and_its_configuration_is_changed() {
     )
     .unwrap();
     let position =
-        |found: &dyn Fn(&ResourceMutation) -> bool| sorted.iter().position(|m| found(m)).unwrap();
-    let configuration_set = position(&|m| {
+        |found: fn(&ResourceMutation) -> bool| sorted.iter().position(|m| found(m)).unwrap();
+    let configuration_set = position(|m| {
         m.resource == b"interface/wifi/configuration"
             && m.fields.iter().any(|f| f.key == b"datapath")
     });
-    let datapath_removal = position(&|m| {
+    let datapath_removal = position(|m| {
         m.resource == b"interface/wifi/datapath"
             && matches!(&m.operation, ResourceMutationOperation::RemoveByKey(key) if key.value.as_ref() == b"dp-caps")
     });
@@ -650,9 +650,9 @@ async fn cap_radios_get_the_configuration_after_it_is_added() {
     )
     .unwrap();
     let position =
-        |found: &dyn Fn(&ResourceMutation) -> bool| sorted.iter().position(|m| found(m)).unwrap();
-    let added = position(&|m| m.resource == b"interface/wifi/configuration");
-    let radio = position(&|m| {
+        |found: fn(&ResourceMutation) -> bool| sorted.iter().position(|m| found(m)).unwrap();
+    let added = position(|m| m.resource == b"interface/wifi/configuration");
+    let radio = position(|m| {
         m.resource == b"interface/wifi" && m.fields.iter().any(|f| f.key == b"configuration")
     });
     assert!(added < radio, "{sorted:?}");

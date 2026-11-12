@@ -1326,8 +1326,10 @@ QEMU's, the golden image's dhcp-client is bound to it).
   GraphQL `String`). A value read from RouterOS and written back unseen stays bytes
   (`AsciiString`, `Box<[u8]>`), without a round trip through UTF-8.
 - No `dyn` where a static type does: a generic (`impl Fn`) for a callback, an enum for a few
-  kinds. Exceptions are where an API takes nothing else (async-graphql's `Extension`, the
-  Prometheus middleware's error).
+  kinds (`device::DeviceStream`), a local generic `fn` where a closure would take a `dyn`.
+  Exceptions are where an API takes nothing else (async-graphql's `Extension`, the
+  Prometheus middleware's error) and `facts.rs` (the user's); callbacks of different types in
+  one collection are yew's `Callback` (`frontend/src/graphql/live.rs`).
 - Tests of more than a few cases go in a module of their own: `<module>/test.rs`, or for a
   module with several, a directory `<module>/test/` (`device/ros/test/`, one file per topic),
   never `*_test.rs` files next to the code. Fixtures several modules' tests use belong in

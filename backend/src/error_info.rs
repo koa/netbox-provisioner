@@ -39,7 +39,9 @@ impl i18n::error::Problem for ErrorInfo {
 
 impl From<&Error> for ErrorInfo {
     fn from(error: &Error) -> Self {
-        let cause = |cause: &dyn std::fmt::Display| vec![("cause", cause.to_string())];
+        fn cause(cause: impl std::fmt::Display) -> Vec<(&'static str, String)> {
+            vec![("cause", cause.to_string())]
+        }
         let (code, params) = match error {
             Error::SetupError(error) => return error.into(),
             Error::Shared(error) => return (&**error).into(),
@@ -362,7 +364,9 @@ impl From<&Error> for ErrorInfo {
 
 impl From<&SetupError> for ErrorInfo {
     fn from(error: &SetupError) -> Self {
-        let one = |name, value: &dyn std::fmt::Display| vec![(name, value.to_string())];
+        fn one(name: &'static str, value: impl std::fmt::Display) -> Vec<(&'static str, String)> {
+            vec![(name, value.to_string())]
+        }
         let (code, params) = match error {
             SetupError::Access(error) => ("DEVICE_MODEL", one("cause", error)),
             SetupError::RouterboardNotDefined => ("NO_ROUTERBOARD", vec![]),
@@ -407,7 +411,7 @@ impl From<&SetupError> for ErrorInfo {
             // one line per VLAN in each of `vlans`, `vlanNames`, `bridges`; empty: untagged,
             // no name, no bridge
             SetupError::PortInMultipleBridges { port, vlans } => {
-                let lines = |value: &dyn Fn(&crate::device::ros::VlanOnBridge) -> String| {
+                let lines = |value: fn(&crate::device::ros::VlanOnBridge) -> String| {
                     vlans.iter().map(value).collect::<Vec<_>>().join("\n")
                 };
                 (
@@ -416,15 +420,15 @@ impl From<&SetupError> for ErrorInfo {
                         ("port", port.to_string()),
                         (
                             "vlans",
-                            lines(&|v| v.vlan.map(|id| id.to_string()).unwrap_or_default()),
+                            lines(|v| v.vlan.map(|id| id.to_string()).unwrap_or_default()),
                         ),
                         (
                             "vlanNames",
-                            lines(&|v| v.vlan_name.as_deref().unwrap_or_default().into()),
+                            lines(|v| v.vlan_name.as_deref().unwrap_or_default().into()),
                         ),
                         (
                             "bridges",
-                            lines(&|v| v.bridge.as_deref().unwrap_or_default().into()),
+                            lines(|v| v.bridge.as_deref().unwrap_or_default().into()),
                         ),
                     ],
                 )
@@ -494,7 +498,7 @@ impl From<&SetupError> for ErrorInfo {
 fn info(
     code: &'static str,
     params: Vec<(&'static str, String)>,
-    error: &dyn std::fmt::Display,
+    error: impl std::fmt::Display,
 ) -> ErrorInfo {
     ErrorInfo {
         code,

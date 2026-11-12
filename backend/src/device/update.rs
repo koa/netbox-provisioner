@@ -60,7 +60,7 @@ pub trait DeviceLink {
         &self,
         name: &str,
         data: &[u8],
-        progress: &(dyn Fn(usize) + Sync),
+        progress: &(impl Fn(usize) + Sync),
     ) -> Result<(), Error>;
 }
 
@@ -685,7 +685,7 @@ pub async fn update_keeping(
     wanted: &[Box<str>],
     fallback: Duration,
     way_back: &update_fallback::WayBack,
-    keep: &(dyn Fn(&UpdateRun) + Sync),
+    keep: &(impl Fn(&UpdateRun) + Sync),
     log: &Log,
 ) -> Result<(), Error> {
     let mut state = read_state(&link.api().await?).await?;
@@ -765,7 +765,7 @@ pub async fn resume(
     state: UpdateState,
     run: &UpdateRun,
     rebooting_since: Instant,
-    keep: &(dyn Fn(&UpdateRun) + Sync),
+    keep: &(impl Fn(&UpdateRun) + Sync),
     log: &Log,
 ) -> Result<(), Error> {
     let version = |text: &str| Version::parse(text).ok_or_else(|| Error::NoVersion(text.into()));
@@ -843,7 +843,7 @@ async fn after_steps(
     link: &impl DeviceLink,
     stepped: Result<DeviceState, Error>,
     run: Option<&UpdateRun>,
-    keep: &(dyn Fn(&UpdateRun) + Sync),
+    keep: &(impl Fn(&UpdateRun) + Sync),
     ospf: &BTreeSet<Box<str>>,
     log: &Log,
 ) -> Result<DeviceState, Error> {
@@ -1021,7 +1021,7 @@ async fn steps(
     armed: Option<&str>,
     wait: Duration,
     run: Option<&UpdateRun>,
-    keep: &(dyn Fn(&UpdateRun) + Sync),
+    keep: &(impl Fn(&UpdateRun) + Sync),
     log: &Log,
 ) -> Result<DeviceState, Error> {
     while let Some(step) = next_step(&state, target, newest_v6, wanted) {

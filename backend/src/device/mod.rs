@@ -232,9 +232,62 @@ pub(crate) fn went_lately(
     facts::peek::<Login>(&key).is_some_and(|fact| fact.value.is_ok() && fact.age() <= LOGIN_WENT)
 }
 
-/// A connection to a device, whatever [`Path`] it takes.
-pub trait Io: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
-impl<T: AsyncRead + AsyncWrite + Unpin + Send + 'static> Io for T {}
+/// A connection to a device, whatever [`Path`] it takes ([`open_stream`]).
+pub enum DeviceStream {
+    /// Made by the neighbor (boxed: it carries the SSH session).
+    Tunnel(Box<terminal::TunnelStream>),
+    /// Through the management proxy.
+    Proxied(Socks5Stream<TcpStream>),
+    Direct(TcpStream),
+}
+
+impl AsyncRead for DeviceStream {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            DeviceStream::Tunnel(stream) => std::pin::Pin::new(stream).poll_read(cx, buf),
+            DeviceStream::Proxied(stream) => std::pin::Pin::new(stream).poll_read(cx, buf),
+            DeviceStream::Direct(stream) => std::pin::Pin::new(stream).poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for DeviceStream {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            DeviceStream::Tunnel(stream) => std::pin::Pin::new(stream).poll_write(cx, buf),
+            DeviceStream::Proxied(stream) => std::pin::Pin::new(stream).poll_write(cx, buf),
+            DeviceStream::Direct(stream) => std::pin::Pin::new(stream).poll_write(cx, buf),
+        }
+    }
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            DeviceStream::Tunnel(stream) => std::pin::Pin::new(stream).poll_flush(cx),
+            DeviceStream::Proxied(stream) => std::pin::Pin::new(stream).poll_flush(cx),
+            DeviceStream::Direct(stream) => std::pin::Pin::new(stream).poll_flush(cx),
+        }
+    }
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            DeviceStream::Tunnel(stream) => std::pin::Pin::new(stream).poll_shutdown(cx),
+            DeviceStream::Proxied(stream) => std::pin::Pin::new(stream).poll_shutdown(cx),
+            DeviceStream::Direct(stream) => std::pin::Pin::new(stream).poll_shutdown(cx),
+        }
+    }
+}
 
 pub struct AccessibleDevice {
     address: IpAddr,
@@ -409,7 +462,7 @@ impl update::DeviceLink for AccessibleDevice {
         &self,
         name: &str,
         data: &[u8],
-        progress: &(dyn Fn(usize) + Sync),
+        progress: &(impl Fn(usize) + Sync),
     ) -> Result<(), Error> {
         let (user, password) = resolve(&self.credentials, self.password)?;
         let stream = open_stream(self.address, &self.path, 22).await?;
@@ -521,17 +574,17 @@ const NEIGHBOR_LOGIN_TRIES: u32 = 3;
 
 /// A connection to `port` at `address` along `path`: routed through the management proxy
 /// unless it is the proxy, or made by the neighbor.
-async fn open_stream(address: IpAddr, path: &Path, port: u16) -> Result<Box<dyn Io>, Error> {
+async fn open_stream(address: IpAddr, path: &Path, port: u16) -> Result<DeviceStream, Error> {
     Ok(match path {
         // boxed: the tunnel reads the neighbor's `/ip ssh` over a routed connection first
-        Path::Neighbor(plan) => Box::new(
+        Path::Neighbor(plan) => DeviceStream::Tunnel(Box::new(
             Box::pin(bootstrap::tunnel(plan))
                 .await?
                 .into_stream(address, port)
                 .await?,
-        ),
+        )),
         Path::Routed => match proxied_stream(address, port).await? {
-            Some(stream) => Box::new(stream),
+            Some(stream) => DeviceStream::Proxied(stream),
             None => {
                 let stream =
                     tokio::time::timeout(OPEN_TIMEOUT, TcpStream::connect((address, port)))
@@ -539,7 +592,7 @@ async fn open_stream(address: IpAddr, path: &Path, port: u16) -> Result<Box<dyn 
                         .map_err(|_| Error::Timeout(address))?
                         .map_err(|e| terminal::TerminalError::Ssh(e.into()))?;
                 let _ = stream.set_nodelay(true);
-                Box::new(stream)
+                DeviceStream::Direct(stream)
             }
         },
     })

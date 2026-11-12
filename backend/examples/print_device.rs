@@ -9,7 +9,7 @@
 //! Anything but a `.../print` is refused, so this can't change a device.
 use backend::{
     config::CONFIG,
-    device::{Io, proxied_stream, terminal::Tunnel},
+    device::{DeviceStream, proxied_stream, terminal::Tunnel},
 };
 use mikrotik_api::prelude::MikrotikDevice;
 use mikrotik_api::simple::SimpleResult;
@@ -27,9 +27,9 @@ async fn main() -> anyhow::Result<()> {
             .mikrotik_credentials
             .get(name.as_str())
             .ok_or_else(|| anyhow::anyhow!("no credentials {name}"))?;
-        let ssh: Box<dyn Io> = match proxied_stream(neighbor, 22).await? {
-            Some(stream) => Box::new(stream),
-            None => Box::new(tokio::net::TcpStream::connect((neighbor, 22)).await?),
+        let ssh = match proxied_stream(neighbor, 22).await? {
+            Some(stream) => DeviceStream::Proxied(stream),
+            None => DeviceStream::Direct(tokio::net::TcpStream::connect((neighbor, 22)).await?),
         };
         Some(Tunnel::connect_with_stream(ssh, credentials.user(), credentials.password()).await?)
     } else {

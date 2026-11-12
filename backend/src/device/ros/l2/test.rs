@@ -24,7 +24,6 @@ use mikrotik_model::{
 };
 use std::{
     collections::HashMap,
-    error::Error,
     net::{IpAddr, Ipv4Addr},
 };
 
@@ -50,7 +49,7 @@ async fn test_l2_one_vlan() {
 }
 
 #[tokio::test]
-async fn test_l2_no_vlan() -> Result<(), Box<dyn Error>> {
+async fn test_l2_no_vlan() -> Result<(), crate::Error> {
     let device = create_device_with_ports(1, 0, 3).await;
     let setup = L2Setup::new(&device, KeepNameGenerator)?;
 
@@ -120,7 +119,7 @@ async fn test_l2_untagged_switch() {
 }
 
 #[tokio::test]
-async fn test_l2_multi_untagged_switch() -> Result<(), Box<dyn Error>> {
+async fn test_l2_multi_untagged_switch() -> Result<(), crate::Error> {
     let device = create_device_with_ports(5, 0, 24).await;
     let setup = L2Setup::new(&device, KeepNameGenerator)?;
 
@@ -156,7 +155,7 @@ async fn test_l2_multi_untagged_switch() -> Result<(), Box<dyn Error>> {
 /// end-to-end abdeckt. Zeigt die generierten `/interface/ethernet`, `/ip/address`
 /// und `/routing/ospf/*`-Befehle.
 #[tokio::test]
-async fn test_scenario_core_router() -> Result<(), Box<dyn Error>> {
+async fn test_scenario_core_router() -> Result<(), crate::Error> {
     let mut builder = TopologyBuilder::default();
     let d1 = builder.devices.next_id();
 
@@ -276,7 +275,7 @@ async fn ospf_router(propagate: bool) -> DeviceAccess {
 /// Ein Router mit OSPF gibt eine Default-Route nur weiter, wenn NetBox es ihm erlaubt
 /// (`propagate_default_route`); sonst ginge eine vom Uplink über OSPF in das Netz dahinter.
 #[tokio::test]
-async fn test_ospf_originates_default_only_with_flag() -> Result<(), Box<dyn Error>> {
+async fn test_ospf_originates_default_only_with_flag() -> Result<(), crate::Error> {
     for (propagate, expected) in [
         (false, RoutingOriginateDefault::Never),
         (true, RoutingOriginateDefault::IfInstalled),
@@ -295,7 +294,7 @@ async fn test_ospf_originates_default_only_with_flag() -> Result<(), Box<dyn Err
 /// Die von Hand konfigurierten BGP-Routen (klr-sw-3) gehen über OSPF ins übrige Netz, wie in
 /// `examples/` 01 bis 03, in beiden Instanzen.
 #[tokio::test]
-async fn test_ospf_redistributes_bgp() -> Result<(), Box<dyn Error>> {
+async fn test_ospf_redistributes_bgp() -> Result<(), crate::Error> {
     let device = ospf_router(false).await;
     let (mut target_data, _) = setup_testdata(b"CCR1009-7G-1C-1S+")?;
     target_data.generate_from(&device, KeepNameGenerator)?;
@@ -319,7 +318,7 @@ async fn test_ospf_redistributes_bgp() -> Result<(), Box<dyn Error>> {
 /// Mit abgeschaltetem IPv6 sind die IPv6-Adressen ungültig und OSPFv3 kommt nie hoch, obwohl
 /// beide angewendet aussehen: der Generator schaltet es ein.
 #[tokio::test]
-async fn test_ipv6_is_turned_on() -> Result<(), Box<dyn Error>> {
+async fn test_ipv6_is_turned_on() -> Result<(), crate::Error> {
     let device = ospf_router(false).await;
     let (mut target_data, mut current) = setup_testdata(b"CCR1009-7G-1C-1S+")?;
     target_data.generate_from(&device, KeepNameGenerator)?;
@@ -340,7 +339,7 @@ async fn test_ipv6_is_turned_on() -> Result<(), Box<dyn Error>> {
 /// `/interface/bridge/port`, `/interface/bridge/vlan`, `/interface/vlan` und
 /// `/routing/ospf/*`-Befehle.
 #[tokio::test]
-async fn test_scenario_switch_multi_vlan() -> Result<(), Box<dyn Error>> {
+async fn test_scenario_switch_multi_vlan() -> Result<(), crate::Error> {
     let device = switch_with_household_vlans().await;
     let setup = L2Setup::new(&device, KeepNameGenerator)?;
     assert_eq!(setup.tagged_bridges.len(), 1);
@@ -611,7 +610,7 @@ async fn vlan_filtering_goes_off_without_clearing() {
 /// nur isoliert in `device/ros/test.rs` getestet), inkl. `/ip/pool`,
 /// `/ip/dhcp-server` und `/ip/dhcp-server/network`.
 #[tokio::test]
-async fn test_scenario_dhcp_household() -> Result<(), Box<dyn Error>> {
+async fn test_scenario_dhcp_household() -> Result<(), crate::Error> {
     let mut builder = TopologyBuilder::default();
     let d1 = builder.devices.next_id();
 
@@ -921,7 +920,7 @@ fn has_vxlan(setup: &L2Setup<KeepNameGenerator>) -> bool {
 /// hat, wird es getunnelt. Die Ports bleiben untagged im VLAN, das VXLAN-Interface
 /// wird getaggtes Mitglied (das VXLAN ist ein VLAN-Trunk der Gruppe).
 #[tokio::test]
-async fn test_scenario_switch_vxlan_port_group() -> Result<(), Box<dyn Error>> {
+async fn test_scenario_switch_vxlan_port_group() -> Result<(), crate::Error> {
     let (device, _) = build_tunnel_topology(|_, _| {}).await;
 
     let setup = L2Setup::new(&device, KeepNameGenerator)?;
@@ -976,7 +975,7 @@ async fn test_scenario_switch_vxlan_port_group() -> Result<(), Box<dyn Error>> {
 /// once per device, so the old VXLAN goes before the new one comes, its vteps (removed with it)
 /// before it, and the port and VLAN follow onto the new one.
 #[tokio::test]
-async fn test_renamed_vxlan_frees_its_vni_first() -> Result<(), Box<dyn Error>> {
+async fn test_renamed_vxlan_frees_its_vni_first() -> Result<(), crate::Error> {
     let (device, _) = build_tunnel_topology(|_, _| {}).await;
     let (mut target_data, mut current) = setup_testdata(b"CRS326-24G-2S+")?;
     target_data.generate_from(&device, KeepNameGenerator)?;
@@ -1049,38 +1048,42 @@ async fn test_renamed_vxlan_frees_its_vni_first() -> Result<(), Box<dyn Error>> 
         crate::device::ros::cfg::provided_by_routeros(),
     )
     .unwrap();
-    let position = |what: &str, found: &dyn Fn(&ResourceMutation) -> bool| {
+    fn position(
+        sorted: &[&ResourceMutation],
+        what: &str,
+        found: impl Fn(&ResourceMutation) -> bool,
+    ) -> usize {
         sorted
             .iter()
             .position(|m| found(m))
             .unwrap_or_else(|| panic!("no {what} in {sorted:?}"))
-    };
+    }
     let names = |m: &ResourceMutation, name: &AsciiString| {
         m.fields
             .iter()
             .any(|field| field.key == b"interface" && field.value.as_ref() == name.0.as_ref())
     };
-    let vtep_removal = position("vtep removal", &|m| {
+    let vtep_removal = position(&sorted, "vtep removal", |m| {
         m.resource == b"interface/vxlan/vteps"
             && matches!(m.operation, ResourceMutationOperation::RemoveByKey(_))
     });
-    let vxlan_removal = position("vxlan removal", &|m| {
+    let vxlan_removal = position(&sorted, "vxlan removal", |m| {
         m.resource == b"interface/vxlan"
             && matches!(&m.operation, ResourceMutationOperation::RemoveByKey(key) if key.value.as_ref() == old_name.0.as_ref())
     });
-    let vxlan_add = position("vxlan add", &|m| {
+    let vxlan_add = position(&sorted, "vxlan add", |m| {
         m.resource == b"interface/vxlan" && m.operation == ResourceMutationOperation::Add
     });
-    let vtep_add = position("vtep add", &|m| {
+    let vtep_add = position(&sorted, "vtep add", |m| {
         m.resource == b"interface/vxlan/vteps"
             && m.operation == ResourceMutationOperation::Add
             && names(m, &new_name)
     });
     // a port left dangling by the removal is set onto the new one (`set *id interface=`)
-    let port_add = position("port onto the new vxlan", &|m| {
+    let port_add = position(&sorted, "port onto the new vxlan", |m| {
         m.resource == b"interface/bridge/port" && names(m, &new_name)
     });
-    let vlan_set = position("vlan onto the new vxlan", &|m| {
+    let vlan_set = position(&sorted, "vlan onto the new vxlan", |m| {
         m.resource == b"interface/bridge/vlan"
             && matches!(m.operation, ResourceMutationOperation::UpdateByKey(_))
     });
@@ -1103,7 +1106,7 @@ async fn test_renamed_vxlan_frees_its_vni_first() -> Result<(), Box<dyn Error>> 
 
 /// A new VNI under the same name is set in place: what refers to the VXLAN stays.
 #[tokio::test]
-async fn test_vxlan_with_new_vni_is_set_in_place() -> Result<(), Box<dyn Error>> {
+async fn test_vxlan_with_new_vni_is_set_in_place() -> Result<(), crate::Error> {
     let (device, _) = build_tunnel_topology(|_, _| {}).await;
     let (mut target_data, mut current) = setup_testdata(b"CRS326-24G-2S+")?;
     target_data.generate_from(&device, KeepNameGenerator)?;
@@ -1141,7 +1144,7 @@ async fn test_vxlan_with_new_vni_is_set_in_place() -> Result<(), Box<dyn Error>>
 /// ports without a VLAN of their own are in the bridge's VLAN, so the VXLAN joins
 /// them in that bridge rather than landing alone on the default bridge.
 #[tokio::test]
-async fn test_vlan_on_bridge_applies_to_its_ports() -> Result<(), Box<dyn Error>> {
+async fn test_vlan_on_bridge_applies_to_its_ports() -> Result<(), crate::Error> {
     let (device, _) = build_tunnel_topology(|builder, ids| {
         for interface in builder.interfaces.values_mut() {
             if interface.device == ids.switch && interface.bridge == Some(ids.switch_bridge) {
@@ -1166,7 +1169,7 @@ async fn test_vlan_on_bridge_applies_to_its_ports() -> Result<(), Box<dyn Error>
 }
 
 #[tokio::test]
-async fn test_vlan_on_a_single_device_stays_local() -> Result<(), Box<dyn Error>> {
+async fn test_vlan_on_a_single_device_stays_local() -> Result<(), crate::Error> {
     let (device, _) = build_tunnel_topology(|builder, ids| {
         builder.interfaces.get_mut(&ids.ap_port).unwrap().vlan = None;
     })
@@ -1176,7 +1179,7 @@ async fn test_vlan_on_a_single_device_stays_local() -> Result<(), Box<dyn Error>
 }
 
 #[tokio::test]
-async fn test_vlan_group_without_vni_stays_local() -> Result<(), Box<dyn Error>> {
+async fn test_vlan_group_without_vni_stays_local() -> Result<(), crate::Error> {
     let (device, _) = build_tunnel_topology(|builder, ids| {
         builder.vlans.get_mut(&ids.vlan).unwrap().vxlan = None;
     })
@@ -1235,7 +1238,7 @@ async fn test_two_networks_in_one_l2_domain_are_rejected() {
 /// Two addresses of the same network on both ends (gateway plus a switch's own
 /// address) are one network, not two.
 #[tokio::test]
-async fn test_same_network_on_two_devices_is_fine() -> Result<(), Box<dyn Error>> {
+async fn test_same_network_on_two_devices_is_fine() -> Result<(), crate::Error> {
     let (device, _) = build_tunnel_topology(|builder, ids| {
         add_vlan_interface(builder, ids.switch, ids.vlan, "lan", [10, 192, 3, 2], false);
         add_vlan_interface(builder, ids.ap, ids.vlan, "lan", [10, 192, 3, 1], true);
@@ -1509,7 +1512,7 @@ async fn create_default_bridge_device(explicit_bridge: bool) -> DeviceAccess {
 /// ist. Das VXLAN ist pro VLAN getaggt (nicht als `1-4094`-Bereich, den RouterOS
 /// neben den Access-Port-Einträgen mit "vlan already added" ablehnt).
 #[tokio::test]
-async fn test_scenario_default_bridge_without_netbox_bridge() -> Result<(), Box<dyn Error>> {
+async fn test_scenario_default_bridge_without_netbox_bridge() -> Result<(), crate::Error> {
     let device = create_default_bridge_device(false).await;
 
     let setup = L2Setup::new(&device, KeepNameGenerator)?;
@@ -1579,7 +1582,7 @@ async fn test_scenario_default_bridge_without_netbox_bridge() -> Result<(), Box<
 }
 
 #[tokio::test]
-async fn test_default_bridge_merges_into_explicit_bridge_of_same_vlan() -> Result<(), Box<dyn Error>>
+async fn test_default_bridge_merges_into_explicit_bridge_of_same_vlan() -> Result<(), crate::Error>
 {
     let device = create_default_bridge_device(true).await;
 
@@ -1618,7 +1621,7 @@ fn count_ips(ports: &std::collections::BTreeSet<L2Port>) -> usize {
 fn dump_mutations(
     target_data: &BaseDeviceDataTarget,
     empty_current: &BaseDeviceDataCurrent,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), crate::Error> {
     let mutations = target_data.generate_mutations(empty_current)?;
     let mutations = ResourceMutation::sort_mutations_with_provided_dependencies(
         mutations.as_ref(),
@@ -1636,7 +1639,7 @@ fn dump_mutations(
 
 fn setup_testdata(
     model: &[u8],
-) -> Result<(BaseDeviceDataTarget, BaseDeviceDataCurrent), Box<dyn Error>> {
+) -> Result<(BaseDeviceDataTarget, BaseDeviceDataCurrent), crate::Error> {
     let target_data = BaseDeviceDataTarget::new(model)?;
     let empty_current = empty_current(&target_data);
     Ok((target_data, empty_current))
@@ -1919,7 +1922,7 @@ fn name_parts_are_ascii_kebab() {
 /// the address stays on the (renamed) port. These names used to be unrecognized,
 /// which moved the address onto an empty `bridge-combo1` and cut the link.
 #[tokio::test]
-async fn test_non_ether_ports_keep_their_address() -> Result<(), Box<dyn Error>> {
+async fn test_non_ether_ports_keep_their_address() -> Result<(), crate::Error> {
     for (model, port_name, port, address, expected_name) in [
         (
             b"CCR1009-7G-1C-1S+".as_slice(),
@@ -2291,7 +2294,7 @@ async fn a_client_with_a_mac_is_a_static_lease() {
 /// Paired by the names from before, every port looked like another and one was set onto an
 /// interface another port still held ("device already added as bridge port", 7.23.x).
 #[tokio::test]
-async fn test_renamed_ports_keep_their_bridge_ports() -> Result<(), Box<dyn Error>> {
+async fn test_renamed_ports_keep_their_bridge_ports() -> Result<(), crate::Error> {
     let device = create_device_with_ports(1, 0, 4).await;
     let (mut target_data, mut current) = setup_testdata(b"CRS326-24G-2S+")?;
     target_data.generate_from(&device, KeepNameGenerator)?;

@@ -802,17 +802,21 @@ impl<G: NameGenerator> L2Setup<G> {
     /// stays out: it runs on the CPU anyway.
     pub fn for_switch_chips(mut self, chips: SwitchChips) -> Self {
         self.switch_chips = chips;
-        let mergeable = |ports: &mut dyn Iterator<Item = PhysicalPortId>, carries_radio: bool| {
+        fn mergeable(
+            chips: SwitchChips,
+            ports: impl Iterator<Item = PhysicalPortId>,
+            carries_radio: bool,
+        ) -> bool {
             let mut on_chips = ports.filter_map(|port| chips.chip_of(port)).peekable();
             on_chips.peek().is_some()
                 && on_chips.all(|chip| {
                     chip.offloads_vlan_filtering()
                         && (chip.offloads_igmp_snooping() || !carries_radio)
                 })
-        };
+        }
         self.into_one_bridge(
-            |bridge| mergeable(&mut bridge.switch_ports(), bridge.carries_radio()),
-            |bridge| mergeable(&mut bridge.switch_ports(), bridge.carries_radio()),
+            |bridge| mergeable(chips, bridge.switch_ports(), bridge.carries_radio()),
+            |bridge| mergeable(chips, bridge.switch_ports(), bridge.carries_radio()),
         )
     }
 

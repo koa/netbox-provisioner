@@ -146,7 +146,7 @@ impl DeviceLink for Direct {
         &self,
         _name: &str,
         _data: &[u8],
-        _progress: &(dyn Fn(usize) + Sync),
+        _progress: &(impl Fn(usize) + Sync),
     ) -> Result<(), Error> {
         unreachable!("no upload while suspending watchdogs")
     }

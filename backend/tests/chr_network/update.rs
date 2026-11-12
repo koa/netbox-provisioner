@@ -59,7 +59,7 @@ impl DeviceLink for DirectLink {
         &self,
         name: &str,
         data: &[u8],
-        progress: &(dyn Fn(usize) + Sync),
+        progress: &(impl Fn(usize) + Sync),
     ) -> Result<(), Error> {
         let stream = TcpStream::connect(("127.0.0.1", self.ssh_port))
             .await
@@ -96,7 +96,7 @@ impl DeviceLink for TunnelLink {
         &self,
         name: &str,
         data: &[u8],
-        progress: &(dyn Fn(usize) + Sync),
+        progress: &(impl Fn(usize) + Sync),
     ) -> Result<(), Error> {
         let stream = self.tunnel.open(self.address, 22).await?;
         Ok(upload(stream, "admin", Some(PASSWORD), name, data, progress).await?)

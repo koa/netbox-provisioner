@@ -290,7 +290,7 @@ pub async fn upload<S>(
     password: Option<&str>,
     name: &str,
     data: &[u8],
-    progress: &(dyn Fn(usize) + Sync),
+    progress: &(impl Fn(usize) + Sync),
 ) -> Result<(), TerminalError>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,

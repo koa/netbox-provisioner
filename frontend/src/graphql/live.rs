@@ -23,7 +23,7 @@ use std::{
     rc::Rc,
 };
 use yew::{
-    Component,
+    Callback, Component,
     html::Scope,
     platform::{spawn_local, time::sleep},
 };
@@ -77,12 +77,12 @@ fn start<T: DeserializeOwned + 'static, S: Component>(
     payload: Value,
     deliver: impl Fn(Result<Response<T>, FrontendError>) + 'static,
 ) -> Subscription {
-    let deliver: Rc<dyn Fn(Value)> = Rc::new(move |answer| {
+    let deliver = Callback::from(move |answer| {
         deliver(serde_json::from_value(answer).map_err(FrontendError::from));
     });
     CONNECTION.with(|connection| {
         let scope = scope.clone();
-        *connection.token.borrow_mut() = Some(Rc::new(move || token(&scope)));
+        *connection.token.borrow_mut() = Some(Callback::from(move |()| token(&scope)));
         let id = connection.next.get() + 1;
         connection.next.set(id);
         connection.send(subscribe_message(id, &payload));
@@ -99,10 +99,11 @@ fn start<T: DeserializeOwned + 'static, S: Component>(
 
 struct Query {
     payload: Value,
-    deliver: Rc<dyn Fn(Value)>,
+    deliver: Callback<Value>,
 }
 
-type Token = Rc<dyn Fn() -> Option<String>>;
+/// The user's token as it is now.
+type Token = Callback<(), Option<String>>;
 
 #[derive(Default)]
 struct Connection {
@@ -164,7 +165,7 @@ async fn session(connection: &Rc<Connection>) -> bool {
         .token
         .borrow()
         .as_ref()
-        .and_then(|token| token())
+        .and_then(|token| token.emit(()))
         .unwrap_or_default();
     let init = json!({"type": "connection_init", "payload": {"token": token}});
     if write.send(Message::Text(init.to_string())).await.is_err() {
@@ -215,7 +216,7 @@ async fn session(connection: &Rc<Connection>) -> bool {
                         .map(|q| q.deliver.clone())
                 });
                 if let Some(deliver) = deliver {
-                    deliver(message["payload"].clone());
+                    deliver.emit(message["payload"].clone());
                 }
             }
             // a subscription the server refused (not valid): as a response with its errors
@@ -229,7 +230,7 @@ async fn session(connection: &Rc<Connection>) -> bool {
                         .map(|q| q.deliver.clone())
                 });
                 if let Some(deliver) = deliver {
-                    deliver(json!({"data": null, "errors": message["payload"]}));
+                    deliver.emit(json!({"data": null, "errors": message["payload"]}));
                 }
             }
             Some("ping") => connection.send(json!({"type": "pong"})),
