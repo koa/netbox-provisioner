@@ -127,7 +127,11 @@ Grafana-Sidecar wie `device-queries.json`, beide mit den Variablen Datenquelle, 
 - **Mikrotik Übersicht** (`mikrotik-overview.json`, aus „Mikrotik Exporter“): System, Netz,
   Ports, Leases, Funk und Signal der Clients. „Used memory“ zeigte den Speicherplatz und
   heisst nun „Used storage“; der Verkehr ist in Bit/s (vorher Byte/s mit der Einheit bps). Weg
-  sind der Ping (C8) und ein Zabbix-Panel ohne Daten.
+  sind der Ping (C8) und ein Zabbix-Panel ohne Daten. „Interface status“ ist eine Tabelle
+  (Port, Status, Rate, nach Port sortiert) statt der zwei für Link und Rate. Die Tabellen fassen
+  die Serien nach ihren eigenen Labels zusammen (`max by (interface)`, bei den Leases
+  `by (address, …)`): Die Ziel-Labels, die Prometheus anhängt (`namespace`, `pod`, `service`
+  …), sind keine Spalten.
 - **Mikrotik Geräte** (`mikrotik-health.json`): Health, PoE pro Port (ein Panel je Port) und das
   Log aus Loki (Variable `loki`), dessen Label `hostname` die Identity des Geräts ist, also sein
   NetBox-Name. Die Logins des Provisioners blendet es aus: Variable „Benutzer des

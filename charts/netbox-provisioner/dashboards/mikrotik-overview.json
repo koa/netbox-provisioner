@@ -1142,7 +1142,7 @@
             "uid": "${datasource}"
           },
           "refId": "A",
-          "expr": "mikrotik_dhcp_lease{device=\"$device\"}",
+          "expr": "max by (address, hostname, mac_address, server) (mikrotik_dhcp_lease{device=\"$device\"})",
           "editorMode": "code",
           "legendFormat": "__auto",
           "format": "table",
@@ -1246,17 +1246,7 @@
           "options": {
             "excludeByName": {
               "Time": true,
-              "Value": true,
-              "__name__": true,
-              "device": true,
-              "site": true,
-              "job": true,
-              "instance": true,
-              "namespace": true,
-              "pod": true,
-              "service": true,
-              "container": true,
-              "endpoint": true
+              "Value": true
             },
             "indexByName": {
               "address": 0,
@@ -1504,15 +1494,15 @@
     },
     {
       "type": "table",
-      "title": "Interface status (operational)",
+      "title": "Interface status",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
       },
       "gridPos": {
-        "h": 9,
-        "w": 6,
-        "x": 12,
+        "h": 16,
+        "w": 12,
+        "x": 0,
         "y": 35
       },
       "targets": [
@@ -1522,7 +1512,20 @@
             "uid": "${datasource}"
           },
           "refId": "A",
-          "expr": "mikrotik_ethernet_link_up{device=\"$device\"}",
+          "expr": "max by (interface) (mikrotik_ethernet_link_up{device=\"$device\"})",
+          "editorMode": "code",
+          "legendFormat": "__auto",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "max by (interface) (mikrotik_ethernet_rate_bits_per_second{device=\"$device\"})",
           "editorMode": "code",
           "legendFormat": "__auto",
           "format": "table",
@@ -1532,23 +1535,6 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "no link",
-                  "color": "red",
-                  "index": 0
-                },
-                "1": {
-                  "text": "link ok",
-                  "color": "green",
-                  "index": 1
-                }
-              }
-            }
-          ],
           "custom": {
             "align": "left"
           }
@@ -1565,6 +1551,52 @@
                 "value": 130
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "no link",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "link ok",
+                        "color": "green",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rate"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              }
+            ]
           }
         ]
       },
@@ -1572,97 +1604,40 @@
       "pluginVersion": "",
       "transformations": [
         {
+          "id": "merge",
+          "options": {}
+        },
+        {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true,
-              "__name__": true,
-              "device": true,
-              "site": true,
-              "job": true,
-              "instance": true
+              "Time": true
+            },
+            "indexByName": {
+              "interface": 0,
+              "Value #A": 1,
+              "Value #B": 2
             },
             "renameByName": {
               "interface": "Port",
-              "Value": "Link"
+              "Value #A": "Status",
+              "Value #B": "Rate"
             }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Port"
+              }
+            ]
           }
         }
       ],
       "id": 18
-    },
-    {
-      "type": "table",
-      "title": "Interface  rate",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 6,
-        "x": 18,
-        "y": 35
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "refId": "A",
-          "expr": "mikrotik_ethernet_rate_bits_per_second{device=\"$device\"}",
-          "editorMode": "code",
-          "legendFormat": "__auto",
-          "format": "table",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bps",
-          "custom": {
-            "align": "left"
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Port"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 130
-              }
-            ]
-          }
-        ]
-      },
-      "options": {},
-      "pluginVersion": "",
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "__name__": true,
-              "device": true,
-              "site": true,
-              "job": true,
-              "instance": true
-            },
-            "renameByName": {
-              "interface": "Port",
-              "Value": "Rate"
-            }
-          }
-        }
-      ],
-      "id": 19
     },
     {
       "type": "row",
