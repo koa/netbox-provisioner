@@ -393,9 +393,11 @@ fn capsman_interface(fields: &[(&str, &str)]) -> mikrotik_model::model::CapsManI
     parse(&with_fields(CAPSMAN_INTERFACE, fields))
 }
 
-/// The fields RouterOS gives every row of `/caps-man/actual-interface-configuration`, made up.
+/// The fields RouterOS gives every row of `/caps-man/actual-interface-configuration`, made up
+/// but the country, which the legacy CAPsMAN writes in lowercase.
 const ACTUAL_CONFIGURATION: &[(&str, &str)] = &[
     (".id", "*1"),
+    ("configuration.country", "switzerland"),
     ("arp-timeout", "auto"),
     ("disabled", "false"),
     ("l2mtu", "1600"),

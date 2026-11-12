@@ -139,3 +139,10 @@ Signal/Rauschen); der PoE-Strom passt zu Spannung und Leistung (lab-np2 → lab-
 Lab-Provisioner: jedes Panel mit Daten, ausser Leases, Lüfter und dem Log (kein Loki dort).
 Im Lab gibt es weder Clients von `/interface/wifi` oder `/caps-man` noch einen gebundenen Lease:
 diese sind nur mit Unit-Tests geprüft (`metrics::test`, `device::metrics::test`).
+
+Auf einem CHR (`chr_network::wifi_country`, 7.24.6, mit dem `wireless`-Paket): Der Legacy-CAPsMAN
+schreibt das Land klein (`switzerland`, `WifiCountryLower`) in `/caps-man/configuration`,
+`/caps-man/interface` und `/caps-man/actual-interface-configuration`, der Wifi-CAPsMAN gross
+(`Switzerland`, `/interface/wifi/configuration`); beide lehnen die andere Schreibweise ab. Ein
+CAPsMAN-Interface ohne gebundenen CAP lässt sich lesen, obwohl ihm Zustand, Raten und
+`disabled` fehlen.

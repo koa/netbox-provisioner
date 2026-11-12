@@ -30,6 +30,7 @@ mod chr_network {
     pub mod vm;
     pub mod wait;
     pub mod watchdog;
+    pub mod wifi_country;
     pub mod www_ssl;
 }
 
