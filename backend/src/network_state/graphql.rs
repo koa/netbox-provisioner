@@ -10,7 +10,7 @@
 use super::{
     device_data::{self, DeviceMapData},
     edges::{DownReason, EdgeKind, EdgeState, Lsdb, edges},
-    read::{read, readers},
+    read::{LsdbRead, read, readers},
 };
 use crate::graphql::scalars::ScalarU64;
 use crate::{
@@ -228,6 +228,13 @@ fn supports_ospf(device: &DeviceAccess, readers: &[DeviceAccess]) -> bool {
             && device.interfaces().iter().any(|i| i.use_ospf()))
 }
 
+/// The devices to show and the OSPF ones reached ([`on_map_devices`]).
+struct OnMap {
+    on_map: BTreeSet<DeviceId>,
+    /// those of the OSPF devices a run of plain devices confirms adjacent
+    reached: BTreeSet<DeviceId>,
+}
+
 /// The devices to show: those with OSPF themselves (`supports_ospf`), and every plain device
 /// (a switch, an unmanaged device) on a run of cables between two that are OSPF neighbors over
 /// the segment it carries (an L2 segment over several cables, `docs/concepts/network-map.md`) —
@@ -240,7 +247,7 @@ fn on_map_devices(
     readers: &[DeviceAccess],
     lsdb: &Lsdb,
     adjacency: &BTreeMap<DeviceId, BTreeSet<DeviceId>>,
-) -> (BTreeSet<DeviceId>, BTreeSet<DeviceId>) {
+) -> OnMap {
     let is_ospf = |id: DeviceId| by_id.get(&id).is_some_and(|d| supports_ospf(d, readers));
     let mut on_map = by_id
         .values()
@@ -282,7 +289,7 @@ fn on_map_devices(
             reached.extend(boundary);
         }
     }
-    (on_map, reached)
+    OnMap { on_map, reached }
 }
 
 /// The state of `devices` (a site's, or every device, with RouterOS or not) as the LSDB of one
@@ -292,7 +299,7 @@ pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
     let readers = readers(&devices);
     let lsdb_result = read(&readers).await;
     let (read_from, age, lsdb, error) = match lsdb_result {
-        Ok(Some((device, fact))) => {
+        Ok(Some(LsdbRead { device, lsdb: fact })) => {
             let age = fact.age().as_secs() as u32;
             (Some(device), age, fact.value.ok(), None)
         }
@@ -345,7 +352,10 @@ fn build(
             .or_default()
             .insert(device_a.id());
     }
-    let (on_map, mut up) = on_map_devices(&by_id, readers, lsdb, &adjacency);
+    let OnMap {
+        on_map,
+        reached: mut up,
+    } = on_map_devices(&by_id, readers, lsdb, &adjacency);
 
     let mut nodes = BTreeMap::<DeviceId, DeviceAccess>::new();
     for device in by_id.values() {
@@ -420,7 +430,10 @@ fn build(
                 routeros: device.has_routeros(),
                 state,
                 site_name: device.site().map(|s| s.name().to_string()),
-                position: device.map_position().map(|(x, y)| MapPosition { x, y }),
+                position: device.map_position().map(|position| MapPosition {
+                    x: position.x,
+                    y: position.y,
+                }),
             }
         })
         .collect::<Vec<_>>();

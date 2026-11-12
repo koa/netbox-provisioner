@@ -57,7 +57,7 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
     let pools = topology.pool_prefixes(PrefixPool::Transfer, false);
     let in_pool = |ip: &IpAddressAccess| {
         ip.net()
-            .is_some_and(|net| pools.iter().any(|(_, pool)| pool.contains(&net.addr())))
+            .is_some_and(|net| pools.iter().any(|pool| pool.net.contains(&net.addr())))
     };
     let own: Vec<IpAddressAccess> = port.ips().into_iter().filter(in_pool).collect();
     let networks: Vec<IpNet> = own
@@ -219,7 +219,7 @@ mod test {
         let pools = topology.pool_prefixes(PrefixPool::Transfer, false);
         let in_pool = |ip: &IpAddressAccess| {
             ip.net()
-                .is_some_and(|net| pools.iter().any(|(_, pool)| pool.contains(&net.addr())))
+                .is_some_and(|net| pools.iter().any(|pool| pool.net.contains(&net.addr())))
         };
         let (port, far) = topology
             .list_devices()

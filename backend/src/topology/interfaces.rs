@@ -213,7 +213,7 @@ impl DeviceAccess {
 
     /// Its rows without findings and actions, each with the NetBox ids of its interface and
     /// bridge ports (what the live checks group by).
-    pub fn interface_rows(&self) -> Vec<(InterfaceRow, BTreeSet<u32>)> {
+    pub fn interface_rows(&self) -> Vec<RowOf> {
         let mut interfaces = self.interfaces().into_vec();
         interfaces.sort_by_cached_key(|i| naturalize_interface(i.name()));
         interfaces
@@ -247,7 +247,7 @@ impl DeviceAccess {
             }
             let concerned = finding.kind.interfaces();
             let mut placed = false;
-            for (row, members) in rows.iter_mut() {
+            for RowOf { row, members } in rows.iter_mut() {
                 if members.iter().any(|id| concerned.contains(id)) {
                     row.findings.push(finding.clone());
                     placed = true;
@@ -259,7 +259,7 @@ impl DeviceAccess {
         }
         let topology = self.topology();
         let bridge_device = self.is_bridge_device();
-        for (row, _) in rows.iter_mut() {
+        for RowOf { row, .. } in rows.iter_mut() {
             row.actions = actions(topology, row, bridge_device);
             let customer = row.task == InterfaceTask::Customer;
             for port in &mut row.port_rows {
@@ -281,9 +281,9 @@ impl DeviceAccess {
         }
         let loopback = rows
             .iter()
-            .find(|(row, _)| row.task == InterfaceTask::Loopback);
+            .find(|of| of.row.task == InterfaceTask::Loopback);
         let loopback_missing = loopback
-            .is_none_or(|(row, _)| !row.addresses.iter().any(|a| !a.address.contains(':')))
+            .is_none_or(|of| !of.row.addresses.iter().any(|a| !a.address.contains(':')))
             || device_findings.iter().any(|f| {
                 matches!(
                     f.kind,
@@ -306,7 +306,7 @@ impl DeviceAccess {
             .into_iter()
             .collect();
         InterfaceView {
-            rows: rows.into_iter().map(|(row, _)| row).collect(),
+            rows: rows.into_iter().map(|of| of.row).collect(),
             device_findings,
             other_findings,
             loopback_actions,
@@ -314,8 +314,14 @@ impl DeviceAccess {
     }
 }
 
+/// A row and the NetBox ids of its interface and bridge ports ([`DeviceAccess::interface_rows`]).
+pub struct RowOf {
+    pub row: InterfaceRow,
+    pub members: BTreeSet<u32>,
+}
+
 /// The row of `interface` with its bridge `ports`, and the NetBox ids of all of them.
-fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow, BTreeSet<u32>) {
+fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> RowOf {
     let members = std::iter::once(interface).chain(ports).collect::<Vec<_>>();
     let far_ends = members
         .iter()
@@ -438,8 +444,8 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> (InterfaceRow,
         findings: Vec::new(),
         actions: Vec::new(),
     };
-    let ids = members.iter().map(|member| member.id().0).collect();
-    (row, ids)
+    let members = members.iter().map(|member| member.id().0).collect();
+    RowOf { row, members }
 }
 
 /// What the helpers can do for `row`: a suggestion where something is missing, taking the link

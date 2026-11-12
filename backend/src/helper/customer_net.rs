@@ -157,9 +157,9 @@ pub fn options(device: &DeviceAccess) -> CustomerNetOptions {
             .map(|site| device.topology().customer_parents(site.id(), v6))
             .unwrap_or_default()
             .into_iter()
-            .map(|(id, prefix)| CustomerNetParent {
-                id: id.0,
-                prefix: prefix.to_string().into(),
+            .map(|parent| CustomerNetParent {
+                id: parent.id.0,
+                prefix: parent.net.to_string().into(),
             })
             .collect()
     };

@@ -69,7 +69,7 @@ impl W60GDeviceDataTarget {
                     radio_port.isolate_stations = Some(true);
                 }
                 radio_port.put_stations_in_bridge =
-                    placement.and_then(|(_, bridge)| bridge.cloned());
+                    placement.and_then(|placement| placement.bridge.cloned());
                 radio_port.ssid = Some(link.ssid.as_ref().into());
                 radio_port.password = link_key(link)?.map(Into::into);
                 radio_port.region = Some(match &link.country {
@@ -77,7 +77,7 @@ impl W60GDeviceDataTarget {
                         ParseRosValueResult::Value(region) => region,
                         _ => return Err(SetupError::UnknownCountry(region.clone())),
                     },
-                    None => country_settings(device)?.1,
+                    None => country_settings(device)?.w60g,
                 });
             }
         }

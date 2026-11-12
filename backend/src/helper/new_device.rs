@@ -137,7 +137,7 @@ pub async fn options(topology: &Arc<Topology>) -> Result<NewDeviceOptions, Error
 }
 
 pub async fn plan(topology: &Arc<Topology>, input: &NewDeviceInput) -> Result<NetboxPlan, Error> {
-    let (router, port) = router_port(topology, input)?;
+    let RouterPort { router, port } = router_port(topology, input)?;
     let facts = read_facts(&router, input).await?;
     let mut plan = base(topology, input, &facts)?;
     let preview = plan.preview_topology()?;
@@ -208,11 +208,14 @@ pub fn landing(port: &InterfaceAccess) -> Option<Landing> {
     ))
 }
 
+/// The router and its free port ([`router_port`]).
+struct RouterPort {
+    router: DeviceAccess,
+    port: InterfaceAccess,
+}
+
 /// The router and its free port.
-fn router_port(
-    topology: &Arc<Topology>,
-    input: &NewDeviceInput,
-) -> Result<(DeviceAccess, InterfaceAccess), Error> {
+fn router_port(topology: &Arc<Topology>, input: &NewDeviceInput) -> Result<RouterPort, Error> {
     let port = topology
         .get_interface_by_id(InterfaceId(input.port))
         .ok_or(Error::UnknownInterface(input.port))?;
@@ -226,7 +229,7 @@ fn router_port(
             far: port.connected_interfaces().first().map(super::port_name),
         });
     }
-    Ok((router, port))
+    Ok(RouterPort { router, port })
 }
 
 /// NetBox's device type, role and platform for the input, and the router's tenant: its own,
@@ -271,7 +274,7 @@ pub(crate) fn base(
     input: &NewDeviceInput,
     facts: &Facts,
 ) -> Result<NetboxPlan, Error> {
-    let (router, port) = router_port(topology, input)?;
+    let RouterPort { router, port } = router_port(topology, input)?;
     let name = input.name.trim();
     if name.is_empty() {
         return Err(Error::NoDeviceName);

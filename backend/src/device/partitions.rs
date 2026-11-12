@@ -193,7 +193,11 @@ pub struct PartitionSynced {
 /// power) runs the same configuration. Nothing where there is no other partition.
 pub(crate) async fn sync_other(device: &RawDevice<SimpleResult>, log: &Log) {
     let list = list(device).await;
-    let Some((partition, config_only)) = to_sync(&list) else {
+    let Some(ToSync {
+        partition,
+        config_only,
+    }) = to_sync(&list)
+    else {
         return;
     };
     let running = list.iter().find(|p| p.running).map(|p| p.version.clone());
@@ -209,13 +213,23 @@ pub(crate) async fn sync_other(device: &RawDevice<SimpleResult>, log: &Log) {
     });
 }
 
-/// The partition [`sync_other`] brings in line, and whether only its configuration: it holds
-/// the RouterOS the device runs.
-fn to_sync(partitions: &[Partition]) -> Option<(Box<str>, bool)> {
+/// The partition [`sync_other`] brings in line.
+#[derive(Debug, PartialEq)]
+struct ToSync {
+    partition: Box<str>,
+    /// only its configuration: it holds the RouterOS the device runs
+    config_only: bool,
+}
+
+/// The partition [`sync_other`] brings in line, if any.
+fn to_sync(partitions: &[Partition]) -> Option<ToSync> {
     let target = other(partitions)?;
     let running = partitions.iter().find(|p| p.running)?;
     let config_only = !target.version.is_empty() && target.version == running.version;
-    Some((target.name.clone(), config_only))
+    Some(ToSync {
+        partition: target.name.clone(),
+        config_only,
+    })
 }
 
 /// [`copy_to`] `target`, which then holds the `running` RouterOS.
@@ -408,7 +422,7 @@ pub async fn boot_from(
 
 #[cfg(test)]
 mod tests {
-    use super::{Partition, can_split, other, partition, to_sync};
+    use super::{Partition, ToSync, can_split, other, partition, to_sync};
 
     fn named(name: &str, active: bool, running: bool) -> Partition {
         Partition {
@@ -445,16 +459,25 @@ mod tests {
         let v23 = "RouterOS v7.23.8 2026-10-08 09:46:16";
         assert_eq!(
             to_sync(&[with("part0", true, v24), with("part1", false, v24)]),
-            Some(("part1".into(), true))
+            Some(ToSync {
+                partition: "part1".into(),
+                config_only: true
+            })
         );
         // the RouterOS from before an update, or none: all of it
         assert_eq!(
             to_sync(&[with("part0", false, v23), with("part1", true, v24)]),
-            Some(("part0".into(), false))
+            Some(ToSync {
+                partition: "part0".into(),
+                config_only: false
+            })
         );
         assert_eq!(
             to_sync(&[with("part0", true, v24), with("part1", false, "")]),
-            Some(("part1".into(), false))
+            Some(ToSync {
+                partition: "part1".into(),
+                config_only: false
+            })
         );
         // one partition, or the device runs one it doesn't boot from: nothing
         assert_eq!(to_sync(&[with("part0", true, v24)]), None);

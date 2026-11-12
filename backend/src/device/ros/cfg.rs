@@ -255,8 +255,8 @@ impl DeviceCfg {
         }
         Ok(mutations.into())
     }
-    /// The radios the plan renames, old name to new (`following_renames`).
-    fn radio_renames(&self) -> Vec<(AsciiString, AsciiString)> {
+    /// The radios the plan renames (`following_renames`).
+    fn radio_renames(&self) -> Vec<Rename> {
         let wifi = self
             .wifi_target
             .as_ref()
@@ -265,7 +265,10 @@ impl DeviceCfg {
             .flat_map(|(target, current)| {
                 current.wifi.iter().filter_map(|radio| {
                     let new = &target.wifi.get(&radio.default_name)?.name;
-                    (new != &radio.data.name).then(|| (radio.data.name.clone(), new.clone()))
+                    (new != &radio.data.name).then(|| Rename {
+                        old: radio.data.name.clone(),
+                        new: new.clone(),
+                    })
                 })
             });
         let wireless = self
@@ -276,7 +279,10 @@ impl DeviceCfg {
             .flat_map(|(target, current)| {
                 current.wireless.iter().filter_map(|radio| {
                     let new = &target.wireless.get(&radio.default_name.clone())?.name;
-                    (new != &radio.data.name).then(|| (radio.data.name.clone(), new.clone()))
+                    (new != &radio.data.name).then(|| Rename {
+                        old: radio.data.name.clone(),
+                        new: new.clone(),
+                    })
                 })
             });
         wifi.chain(wireless).collect()
@@ -367,7 +373,7 @@ impl DeviceCfg {
         }
         let names = ports
             .iter()
-            .map(|(name, _)| name.clone())
+            .map(|port| port.name.clone())
             .collect::<Vec<_>>();
         let powered = match raw().await {
             Ok(raw) => powered_ports(&raw, &names).await,
@@ -727,16 +733,22 @@ pub(super) fn remote_address(remote: &str) -> Option<IpAddr> {
         .ok()
 }
 
+/// An interface the plan renames.
+pub(super) struct Rename {
+    old: AsciiString,
+    new: AsciiString,
+}
+
 /// `current` as it is once the interfaces `target` renames have their new names: what refers
 /// to them follows a rename on RouterOS, so a bridge port, a list member or a bridge VLAN on a
 /// renamed interface stays as it is instead of looking like an entry on another interface.
 /// Paired by the names from before, every port of a renamed set looked like another, and one
 /// was set onto an interface another port still held ("device already added as bridge port").
-/// `more` are renames besides the ethernet ports' (the radios'), old name to new.
+/// `more` are renames besides the ethernet ports' (the radios').
 pub(super) fn following_renames(
     target: &BaseDeviceDataTarget,
     current: &BaseDeviceDataCurrent,
-    more: &[(AsciiString, AsciiString)],
+    more: &[Rename],
 ) -> BaseDeviceDataCurrent {
     let renames: HashMap<&AsciiString, &AsciiString> = current
         .ethernet
@@ -745,7 +757,7 @@ pub(super) fn following_renames(
             let new = &target.ethernet.get(&port.default_name)?.name;
             (new != &port.data.name).then_some((&port.data.name, new))
         })
-        .chain(more.iter().map(|(old, new)| (old, new)))
+        .chain(more.iter().map(|rename| (&rename.old, &rename.new)))
         .collect();
     let mut current = current.clone();
     if renames.is_empty() {

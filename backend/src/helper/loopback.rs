@@ -12,6 +12,7 @@ use super::{
     CreateAddress, CreateInterface, NetboxPlan, PlanStep, SetPrimaryIp, Target, device_ref,
     routes::Routes,
 };
+use crate::topology::PrefixRef;
 use crate::{
     Error,
     netbox::rest::NetboxRest,
@@ -81,7 +82,8 @@ pub(crate) async fn add_to(
                     rest = Some(NetboxRest::reader()?);
                 }
                 let rest = rest.as_ref().expect("read above");
-                let (prefix, host) = next_free(device, rest, routes, plan, v6).await?;
+                let FreeAddress { prefix, host } =
+                    next_free(device, rest, routes, plan, v6).await?;
                 let address = IpNet::new(host, if v6 { 128 } else { 32 })
                     .map_err(|error| Error::Preview(error.to_string().into()))?
                     .to_string();
@@ -118,6 +120,13 @@ pub(crate) async fn add_to(
     Ok(())
 }
 
+/// An address NetBox has free in a pool ([`next_free`]).
+struct FreeAddress {
+    /// the pool's prefix it is in
+    prefix: IpNet,
+    host: IpAddr,
+}
+
 /// How many free addresses of a pool prefix are looked at: past that many in use but not
 /// documented, NetBox is too far off for a helper to pick one.
 const CANDIDATES: usize = 32;
@@ -131,8 +140,8 @@ async fn next_free(
     routes: &Routes,
     plan: &mut NetboxPlan,
     v6: bool,
-) -> Result<(IpNet, IpAddr), Error> {
-    for (id, prefix) in device.topology().pool_prefixes(PrefixPool::Loopback, v6) {
+) -> Result<FreeAddress, Error> {
+    for PrefixRef { id, net: prefix } in device.topology().pool_prefixes(PrefixPool::Loopback, v6) {
         let free = rest
             .get(&format!(
                 "ipam/prefixes/{}/available-ips/?limit={CANDIDATES}",
@@ -155,7 +164,12 @@ async fn next_free(
             }
             match routes.in_use(candidate.addr(), prefix) {
                 Some(taken) => plan.undocumented.push(taken),
-                None => return Ok((prefix, candidate.addr())),
+                None => {
+                    return Ok(FreeAddress {
+                        prefix,
+                        host: candidate.addr(),
+                    });
+                }
             }
         }
     }

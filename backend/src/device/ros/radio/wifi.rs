@@ -130,19 +130,19 @@ impl WifiDeviceDataTarget {
                 let placement = l2.placement_of_port(port);
                 // with a VLAN per WLAN, the controller's configurations have them
                 let vlan = match (
-                    placement.and_then(|(_, bridge)| bridge),
+                    placement.and_then(|placement| placement.bridge),
                     wlan_bridge,
                     wlan_vlans,
                 ) {
                     (None, Some(_), WlanVlans::One(Some(vlan))) if tags => Some(vlan),
                     _ => None,
                 };
-                let bridge = match placement {
+                let bridge = match placement.map(|placement| placement.bridge) {
                     None => None,
-                    Some((_, Some(bridge))) => Some(bridge),
+                    Some(Some(bridge)) => Some(bridge),
                     // an access port of the bridge, which `setup_l2` adds
-                    Some((_, None)) if !tags => None,
-                    Some((_, None)) => wlan_bridge,
+                    Some(None) if !tags => None,
+                    Some(None) => wlan_bridge,
                 };
                 if let Some(bridge) = bridge {
                     let datapath = &mut self.datapath.entry(bridge.clone()).or_default().0;

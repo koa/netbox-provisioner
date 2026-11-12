@@ -96,7 +96,7 @@ impl Paths {
             .ok()
             .and_then(Result::ok)
             .flatten()
-            .and_then(|(_, fact)| fact.value.ok());
+            .and_then(|read| read.lsdb.value.ok());
         let proxy = CONFIG.management_proxy.as_ref().map(|proxy| &*proxy.device);
         let tree = ManagementTree::of(device.topology(), proxy);
         let topology = device.topology();

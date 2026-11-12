@@ -151,7 +151,7 @@ async fn graphql_ws(
                 .and_then(|token| token.as_str())
                 .unwrap_or_default();
             let keys = keys.ok_or_else(|| async_graphql::Error::new("no OIDC"))?;
-            let (user, expiry) = authenticate(keys.for_token(token).await, token)?;
+            let Authenticated { user, expiry } = authenticate(keys.for_token(token).await, token)?;
             let mut data = async_graphql::Data::default();
             data.insert(expiry);
             if let Some(user) = user {
@@ -162,10 +162,16 @@ async fn graphql_ws(
         .start(&request, payload)
 }
 
+/// The user of a token and when it expires ([`authenticate`]).
+struct Authenticated {
+    user: Option<UserInfo>,
+    expiry: TokenExpiry,
+}
+
 /// Checks `token` as the middleware of `/graphql` does (signature, `validation_options`,
 /// `auth_users`) and gives the user info in it and when it expires. The extractor reads the
 /// token from a request's header only, so it gets a request carrying it.
-fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<(Option<UserInfo>, TokenExpiry)> {
+fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<Authenticated> {
     use actix_web::FromRequest;
     let carrier = actix_web::test::TestRequest::default()
         .insert_header(("Authorization", format!("Bearer {token}")))
@@ -191,10 +197,10 @@ fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<(Option<UserIn
         .expiry
         .ok_or_else(|| async_graphql::Error::new("token without exp"))?;
     let expiry = TokenExpiry(*expiry + chrono::Duration::seconds(LEEWAY_SECONDS));
-    Ok((
-        serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok(),
+    Ok(Authenticated {
+        user: serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok(),
         expiry,
-    ))
+    })
 }
 
 #[get("/health")]

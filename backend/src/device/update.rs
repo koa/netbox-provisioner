@@ -411,7 +411,7 @@ fn v7_step(
 pub(crate) async fn allow_password_login(
     device: &RawDevice<SimpleResult>,
     log: Option<&Log>,
-) -> Result<Option<(&'static str, &'static str)>, Error> {
+) -> Result<Option<SshRelaxed>, Error> {
     let ssh = rows(device, "/ip/ssh/print").await?;
     let Some(ssh) = ssh.first() else {
         return Ok(None);
@@ -434,16 +434,26 @@ pub(crate) async fn allow_password_login(
             restored: false,
         });
     }
-    Ok(Some((setting, off)))
+    Ok(Some(SshRelaxed {
+        setting,
+        value: off,
+    }))
+}
+
+/// A setting of `/ip/ssh` [`allow_password_login`] switched.
+pub(crate) struct SshRelaxed {
+    setting: &'static str,
+    /// the value it had
+    value: &'static str,
 }
 
 /// Puts back what [`allow_password_login`] switched.
 pub(crate) async fn restore_password_login(
     device: &RawDevice<SimpleResult>,
-    relaxed: Option<(&'static str, &'static str)>,
+    relaxed: Option<SshRelaxed>,
     log: Option<&Log>,
 ) -> Result<(), Error> {
-    let Some((setting, value)) = relaxed else {
+    let Some(SshRelaxed { setting, value }) = relaxed else {
         return Ok(());
     };
     set_ssh(device, setting, value).await?;

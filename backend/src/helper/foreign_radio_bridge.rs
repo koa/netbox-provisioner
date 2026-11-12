@@ -26,6 +26,7 @@ use super::{
     device_ref, flags::InterfaceTag, port_name, radio_bridge, radio_bridge::RadioBridgeInput,
     routes::Routes,
 };
+use crate::helper::FreeNetwork;
 use crate::{
     Error,
     topology::{
@@ -81,7 +82,7 @@ pub(super) async fn plan_with(
         (&ap, input.ap_router_port, &station),
         (&station, input.station_router_port, &ap),
     ] {
-        let (ether, router_port) =
+        let radio_bridge::RouterCable { ether, router_port } =
             radio_bridge::router_cable(topology, &mut plan, device, other, router_port)?;
         // its networks, `dhcp` and `ospf` would go on the bridge and all its ports (1og-sw2
         // ether13 in its client bridge): the port leaves it first („Aus Bridge lösen“)
@@ -98,10 +99,10 @@ pub(super) async fn plan_with(
         });
     }
     let pairs = pairs(&ap, &station)?;
-    for (ap_radio, station_radio) in &pairs {
+    for pair in &pairs {
         for (radio, role) in [
-            (ap_radio, RadioRole::Ap),
-            (station_radio, RadioRole::Station),
+            (&pair.ap, RadioRole::Ap),
+            (&pair.station, RadioRole::Station),
         ] {
             let radio_role = radio.data().and_then(|d| d.radio.as_ref()).map(|r| r.role);
             if radio_role != Some(role) {
@@ -128,7 +129,11 @@ pub(super) async fn plan_with(
     // the preview generates for the AP's router: the bridge has no config to generate
     plan.device = routers[0].clone();
     // the radios are set by hand: nothing to apply together
-    for (ap_radio, station_radio) in &pairs {
+    for RadioPair {
+        ap: ap_radio,
+        station: station_radio,
+    } in &pairs
+    {
         radio_bridge::radios(
             &mut plan,
             [(ap_radio, &ap), (station_radio, &station)],
@@ -151,12 +156,15 @@ pub(super) async fn plan_with(
     Ok(plan)
 }
 
+/// A radio of the AP and the station's that make a link ([`pairs`]).
+struct RadioPair {
+    ap: InterfaceAccess,
+    station: InterfaceAccess,
+}
+
 /// The radios of the AP and the station that make a link: by the wireless link one has, else
 /// by name (a Wave Nano's 60 GHz `wlan0` and its 5 GHz backup `wlan1`). Each radio has one.
-fn pairs(
-    ap: &DeviceAccess,
-    station: &DeviceAccess,
-) -> Result<Vec<(InterfaceAccess, InterfaceAccess)>, Error> {
+fn pairs(ap: &DeviceAccess, station: &DeviceAccess) -> Result<Vec<RadioPair>, Error> {
     // in NetBox' order, so the plan's steps are too
     let radios = |device: &DeviceAccess| {
         let mut radios = device
@@ -188,11 +196,14 @@ fn pairs(
                 .find(|peer| peer.name() == radio.name() && peer.wireless_link().is_none())
                 .ok_or_else(|| Error::RadioUnpaired(port_name(radio)))?,
         };
-        pairs.push((radio.clone(), peer.clone()));
+        pairs.push(RadioPair {
+            ap: radio.clone(),
+            station: peer.clone(),
+        });
     }
     if let Some(unpaired) = station_radios
         .iter()
-        .find(|radio| !pairs.iter().any(|(_, peer)| peer.id() == radio.id()))
+        .find(|radio| !pairs.iter().any(|pair| pair.station.id() == radio.id()))
     {
         return Err(Error::RadioUnpaired(port_name(unpaired)));
     }
@@ -215,7 +226,8 @@ async fn networks(
         .find(|net| nets[1].iter().any(|other| other.trunc() == *net));
     if shared.is_none() {
         let routes = radio_bridge::read(topology, plan, routes).await?;
-        let (pool, net) = radio_bridge::next_free_network(topology, routes, plan, 31).await?;
+        let FreeNetwork { pool, net } =
+            radio_bridge::next_free_network(topology, routes, plan, 31).await?;
         plan.steps.push(PlanStep::CreatePrefix(CreatePrefix {
             prefix: net.to_string().into(),
             pool: pool.to_string().into(),
@@ -248,7 +260,7 @@ async fn networks(
         match own[..] {
             [] => {
                 let routes = radio_bridge::read(topology, plan, routes).await?;
-                let (pool, net) =
+                let FreeNetwork { pool, net } =
                     radio_bridge::next_free_network(topology, routes, plan, DHCP_LENGTH).await?;
                 plan.steps.push(PlanStep::CreatePrefix(CreatePrefix {
                     prefix: net.to_string().into(),
@@ -600,9 +612,9 @@ mod test {
             (&ap, &station, "switch-schmidrueti ether1"),
             (&station, &ap, "1og-sw2 ether13"),
         ] {
-            let (_, port) = radio_bridge::router_cable(&topology, &mut plan, device, other, None)
+            let cable = radio_bridge::router_cable(&topology, &mut plan, device, other, None)
                 .expect("a router port");
-            assert_eq!(&*port_name(&port), router_port);
+            assert_eq!(&*port_name(&cable.router_port), router_port);
         }
         let input = RadioBridgeInput {
             ap: ap.id().0,
@@ -641,7 +653,7 @@ mod test {
         let pairs = pairs(&ap, &station)
             .expect("pairs")
             .iter()
-            .map(|(a, b)| (a.name().to_string(), b.name().to_string()))
+            .map(|pair| (pair.ap.name().to_string(), pair.station.name().to_string()))
             .collect::<Vec<_>>();
         assert_eq!(
             pairs,

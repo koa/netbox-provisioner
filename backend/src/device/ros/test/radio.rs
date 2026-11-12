@@ -7,7 +7,7 @@ use crate::{
     device::ros::{
         BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent, W60GDeviceDataTarget,
         WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
-        l2::{EndpointNameGenerator, L2Setup},
+        l2::{EndpointNameGenerator, L2Setup, PortPlacement},
     },
     topology::{
         Device, Interface, PhysicalPortId, Radio, RadioLink, RadioRole, TopologyHolder,
@@ -140,7 +140,7 @@ async fn test_60ghz_ap_joins_its_stations_into_the_bridge() {
 
     let radio = &target.radio[&AsciiString::from("wlan60-1")].0;
     // found by its name, so it keeps it in the bridge too
-    let (name, bridge) = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
+    let PortPlacement { name, bridge } = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
     assert_eq!(name, &AsciiString::from("wlan60-1"));
     assert_eq!(&radio.name, name);
     assert_eq!(radio.mode, Some(InterfaceW60GMode::Bridge));
@@ -345,7 +345,7 @@ async fn test_rf_role_on_a_board_without_radio_profile_is_an_error() {
 async fn test_radio_bridge_without_addresses_gets_a_dhcp_client() {
     let device = radio_bridge(PhysicalPortId::W60g(1), None, None).await;
     let l2 = L2Setup::new(&device, EndpointNameGenerator).unwrap();
-    let (_, bridge) = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
+    let PortPlacement { bridge, .. } = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
     let mut target = BaseDeviceDataTarget::new(b"RBwAPG-60ad").unwrap();
     target
         .generate_from(&device, EndpointNameGenerator)
@@ -362,8 +362,12 @@ async fn test_radio_bridge_without_addresses_gets_a_dhcp_client() {
 async fn test_60ghz_bridge_port_leaves_hw_offloading_alone() {
     let device = radio_bridge(PhysicalPortId::W60g(1), None, None).await;
     let l2 = L2Setup::new(&device, EndpointNameGenerator).unwrap();
-    let (radio, bridge) = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
-    let (ether, _) = l2.placement_of_port(PhysicalPortId::Ethernet(1)).unwrap();
+    let PortPlacement {
+        name: radio,
+        bridge,
+    } = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
+    let PortPlacement { name: ether, .. } =
+        l2.placement_of_port(PhysicalPortId::Ethernet(1)).unwrap();
     let bridge = bridge.unwrap().clone();
     let mut target = BaseDeviceDataTarget::new(b"RBwAPG-60ad").unwrap();
     target
@@ -438,7 +442,7 @@ async fn test_radio_bridge_with_a_static_address_runs_ospf() {
     let holder = Into::<TopologyHolder>::into(builder);
     let device = holder.devices_by_id(device).await.expect("device");
     let l2 = L2Setup::new(&device, EndpointNameGenerator).unwrap();
-    let (_, bridge) = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
+    let PortPlacement { bridge, .. } = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
     let bridge = bridge.unwrap().clone();
     let mut target = BaseDeviceDataTarget::new(b"RBwAPG-60ad").unwrap();
     target

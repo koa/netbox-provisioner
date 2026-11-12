@@ -320,8 +320,8 @@ async fn managed_legacy_radio_keeps_its_name() {
     let netbox_name: Box<str> = names.generate_interface_name(&interface).into();
     assert_ne!(&*netbox_name, "wlan1");
     let setup = L2Setup::new(&legacy_cap, KeptNames { inner: names, kept }).unwrap();
-    if let Some((name, _)) = setup.placement_of_port(PhysicalPortId::Wlan(1)) {
-        assert_eq!(name, &wlan1);
+    if let Some(placement) = setup.placement_of_port(PhysicalPortId::Wlan(1)) {
+        assert_eq!(placement.name, &wlan1);
     }
     target
         .generate_from(&legacy_cap, &setup, Some(&current))

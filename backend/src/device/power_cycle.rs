@@ -46,9 +46,17 @@ pub struct PowerCycled {
     pub seconds: u32,
 }
 
+/// Where a device gets its power from ([`supply`]).
+pub struct Supplier {
+    pub device: DeviceAccess,
+    pub supply: PowerSupply,
+    /// the factory name of the port
+    pub factory: Box<str>,
+}
+
 /// The RouterOS device whose `pse` port is cabled to `device`, that port and its factory name;
 /// the first where several are.
-pub fn supply(device: &DeviceAccess) -> Option<(DeviceAccess, PowerSupply, Box<str>)> {
+pub fn supply(device: &DeviceAccess) -> Option<Supplier> {
     device
         .interfaces()
         .iter()
@@ -65,7 +73,11 @@ pub fn supply(device: &DeviceAccess) -> Option<(DeviceAccess, PowerSupply, Box<s
                 },
                 port: far.name().into(),
             };
-            Some((supplier, supply, factory))
+            Some(Supplier {
+                device: supplier,
+                supply,
+                factory,
+            })
         })
 }
 

@@ -10,7 +10,7 @@ fn two_links(topology: &Arc<Topology>) -> [(InterfaceAccess, InterfaceAccess); 2
     let pools = topology.pool_prefixes(PrefixPool::Transfer, false);
     let in_pool = |ip: &IpAddressAccess| {
         ip.net()
-            .is_some_and(|net| pools.iter().any(|(_, pool)| pool.contains(&net.addr())))
+            .is_some_and(|net| pools.iter().any(|pool| pool.net.contains(&net.addr())))
     };
     let mut links = topology
         .list_devices()

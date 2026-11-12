@@ -28,6 +28,8 @@ use super::{
     PlanStep, Target, UpdateInterface, UpdatePort, UpdateWirelessLink, device_ref,
     flags::InterfaceTag, loopback, new_psk, port_name, routes::Routes,
 };
+use crate::helper::FreeNetwork;
+use crate::topology::PrefixRef;
 use crate::{
     Error,
     netbox::rest::NetboxRest,
@@ -101,7 +103,7 @@ pub(crate) async fn plan_with(
     if !ap.has_routeros() {
         return super::foreign_radio_bridge::plan_with(topology, input, routes).await;
     }
-    let (mut plan, sides) = link_plan(topology, input)?;
+    let LinkPlan { mut plan, sides } = link_plan(topology, input)?;
     for side in &sides {
         loopback::add_to(&mut plan, &side.device, routes).await?;
     }
@@ -161,12 +163,16 @@ pub(super) fn labels(
     }
 }
 
+/// The steps for cables, bridges and radios ([`link_plan`]).
+struct LinkPlan {
+    plan: NetboxPlan,
+    /// the two sides they found
+    sides: Vec<Side>,
+}
+
 /// The steps for cables, bridges and radios, which need nothing but NetBox as the topology has
 /// it, and the two sides they found.
-fn link_plan(
-    topology: &Arc<Topology>,
-    input: &RadioBridgeInput,
-) -> Result<(NetboxPlan, Vec<Side>), Error> {
+fn link_plan(topology: &Arc<Topology>, input: &RadioBridgeInput) -> Result<LinkPlan, Error> {
     let device = |id| {
         topology
             .get_device_by_id(&DeviceId(id))
@@ -215,7 +221,7 @@ fn link_plan(
     if radios(&mut plan, [ends[0], ends[1]], input.ssid.as_deref(), true)? {
         plan.apply_together = vec![device_ref(&ap), device_ref(&station)];
     }
-    Ok((plan, sides))
+    Ok(LinkPlan { plan, sides })
 }
 
 /// The radio, the Ethernet port, the router port and the bridge of `device`, with the steps for
@@ -240,7 +246,8 @@ fn side(
     let [radio] = radios[..] else {
         return Err(Error::NoSingleRadio(device.name().into()));
     };
-    let (ether, router_port) = router_cable(topology, plan, device, other, router_port)?;
+    let RouterCable { ether, router_port } =
+        router_cable(topology, plan, device, other, router_port)?;
 
     let existing = interfaces
         .iter()
@@ -312,6 +319,12 @@ fn side(
     })
 }
 
+/// The Ethernet port of a bridge cabled to a router, and that router's port ([`router_cable`]).
+pub(super) struct RouterCable {
+    pub ether: InterfaceAccess,
+    pub router_port: InterfaceAccess,
+}
+
 /// The Ethernet port of the bridge `device` cabled to a router and that router's port: the
 /// one given (`router_port`, cabled to a free Ethernet port where no cable goes there), else the
 /// RouterOS device an Ethernet port is cabled to that is neither `device` nor `other`.
@@ -321,7 +334,7 @@ pub(super) fn router_cable(
     device: &DeviceAccess,
     other: &DeviceAccess,
     router_port: Option<u32>,
-) -> Result<(InterfaceAccess, InterfaceAccess), Error> {
+) -> Result<RouterCable, Error> {
     let interfaces = device.interfaces();
     let ethernet = || interfaces.iter().filter(|i| i.is_any_ethernet_port());
     let to_router = |port: &InterfaceAccess| {
@@ -364,10 +377,15 @@ pub(super) fn router_cable(
                     free.clone()
                 }
             };
-            Ok((ether, router_port))
+            Ok(RouterCable { ether, router_port })
         }
         None => ethernet()
-            .find_map(|port| to_router(port).map(|far| (port.clone(), far)))
+            .find_map(|port| {
+                to_router(port).map(|far| RouterCable {
+                    ether: port.clone(),
+                    router_port: far,
+                })
+            })
             .ok_or_else(|| Error::NoRouterPort(device.name().into())),
     }
 }
@@ -513,7 +531,8 @@ async fn segment(
         Some(net) => (net, net.to_string()),
         None => {
             let routes = read(topology, plan, routes).await?;
-            let (pool, net) = next_free_network(topology, routes, plan, SEGMENT_LENGTH).await?;
+            let FreeNetwork { pool, net } =
+                next_free_network(topology, routes, plan, SEGMENT_LENGTH).await?;
             plan.steps.push(PlanStep::CreatePrefix(CreatePrefix {
                 prefix: net.to_string().into(),
                 pool: pool.to_string().into(),
@@ -679,7 +698,7 @@ pub(super) async fn next_free_network(
     routes: &Routes,
     plan: &mut NetboxPlan,
     length: u8,
-) -> Result<(IpNet, IpNet), Error> {
+) -> Result<FreeNetwork, Error> {
     let planned = plan
         .steps
         .iter()
@@ -690,7 +709,7 @@ pub(super) async fn next_free_network(
         .collect::<Vec<_>>();
     let rest = NetboxRest::reader()?;
     let mut looked_at = 0;
-    for (id, pool) in topology.pool_prefixes(PrefixPool::Transfer, false) {
+    for PrefixRef { id, net: pool } in topology.pool_prefixes(PrefixPool::Transfer, false) {
         let free = rest
             .get(&format!("ipam/prefixes/{}/available-prefixes/", id.0))
             .await?;
@@ -724,7 +743,7 @@ pub(super) async fn next_free_network(
                 )
                 .await?;
             if addresses["count"].as_u64() == Some(0) {
-                return Ok((pool, net));
+                return Ok(FreeNetwork { pool, net });
             }
         }
     }
@@ -1005,7 +1024,7 @@ mod test {
             find(&topology, "schopf-hegglin"),
         );
         // without loopbacks and segment: the export's devices lack `lo`, a new one asks NetBox
-        let (plan, _) = link_plan(&topology, &input(&ap, &station)).expect("plan");
+        let LinkPlan { plan, .. } = link_plan(&topology, &input(&ap, &station)).expect("plan");
         let ports = plan
             .steps
             .iter()

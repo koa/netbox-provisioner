@@ -89,7 +89,7 @@ pub struct DeviceModeChanged {
 }
 
 /// The features the provisioner needs on `device`; `partitions`: its flash can take two.
-pub fn wanted(device: &DeviceAccess, partitions: bool) -> Vec<(&'static str, DeviceModeReason)> {
+pub fn wanted(device: &DeviceAccess, partitions: bool) -> Vec<DeviceModeChange> {
     let proxy = CONFIG
         .management_proxy
         .as_ref()
@@ -97,26 +97,27 @@ pub fn wanted(device: &DeviceAccess, partitions: bool) -> Vec<(&'static str, Dev
     wanted_for(proxy, partitions)
 }
 
-fn wanted_for(proxy: bool, partitions: bool) -> Vec<(&'static str, DeviceModeReason)> {
-    let mut wanted = vec![("scheduler", DeviceModeReason::ApplyFallback)];
+fn wanted_for(proxy: bool, partitions: bool) -> Vec<DeviceModeChange> {
+    let feature = |feature: &str, reason| DeviceModeChange {
+        feature: feature.into(),
+        reason,
+    };
+    let mut wanted = vec![feature("scheduler", DeviceModeReason::ApplyFallback)];
     if proxy {
-        wanted.push(("socks", DeviceModeReason::ManagementProxy));
+        wanted.push(feature("socks", DeviceModeReason::ManagementProxy));
     }
     if partitions {
-        wanted.push(("partitions", DeviceModeReason::UpdateFallback));
+        wanted.push(feature("partitions", DeviceModeReason::UpdateFallback));
     }
     wanted
 }
 
 /// The `wanted` features that are off in `mode` (a row of `/system/device-mode/print`).
-fn missing(mode: &Row, wanted: &[(&'static str, DeviceModeReason)]) -> Vec<DeviceModeChange> {
+fn missing(mode: &Row, wanted: &[DeviceModeChange]) -> Vec<DeviceModeChange> {
     wanted
         .iter()
-        .filter(|(feature, _)| field(mode, feature) == Some("false"))
-        .map(|&(feature, reason)| DeviceModeChange {
-            feature: feature.into(),
-            reason,
-        })
+        .filter(|wanted| field(mode, &wanted.feature) == Some("false"))
+        .cloned()
         .collect()
 }
 
@@ -146,7 +147,7 @@ pub async fn read(
 
 async fn read_with(
     device: &RawDevice<SimpleResult>,
-    wanted: &[(&'static str, DeviceModeReason)],
+    wanted: &[DeviceModeChange],
 ) -> Result<Option<DeviceMode>, Error> {
     let mode = match rows(device, "/system/device-mode/print").await {
         Ok(rows) => rows.into_iter().next(),
@@ -178,7 +179,7 @@ pub async fn change(
 /// [`change`] with the features given.
 pub async fn change_to(
     link: &impl DeviceLink,
-    wanted: &[(&'static str, DeviceModeReason)],
+    wanted: &[DeviceModeChange],
     power: &PowerChain,
     log: &Log,
 ) -> Result<(), Error> {

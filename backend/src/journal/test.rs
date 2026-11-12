@@ -1,7 +1,7 @@
 //! Scope: Tests of `journal`; nothing else.
 use super::{
-    Entry, JournalLeft, JournalOutcome, Observation, Started, expected, fallback_run, interrupted,
-    observation, outcome, parse, phase_name, script_lines,
+    Entry, Expected, JournalLeft, JournalOutcome, Observation, Started, expected, fallback_run,
+    interrupted, observation, outcome, parse, phase_name, script_lines,
 };
 use crate::{
     device::{batch::BatchApply, ros::apply, update::UpdateDone},
@@ -213,7 +213,10 @@ fn what_the_entries_left_counts_until_a_job_touches_it() {
     let update = record("Done", &[], &["UpdateFallback", "WatchdogSafetyNet"], 200);
     assert_eq!(
         expected(&[&apply, &update]),
-        Some(vec![(Left::ApplyFallback, 100)])
+        Some(vec![Expected {
+            left: Left::ApplyFallback,
+            since: 100
+        }])
     );
     let cleanup = record("Done", &[], &["ApplyFallback"], 300);
     assert_eq!(expected(&[&apply, &update, &cleanup]), Some(vec![]));
@@ -224,7 +227,10 @@ fn what_the_entries_left_counts_until_a_job_touches_it() {
 
 #[test]
 fn a_fallback_gone_after_a_reboot_fired() {
-    let expected = [(Left::ApplyFallback, 1000)];
+    let expected = [Expected {
+        left: Left::ApplyFallback,
+        since: 1000,
+    }];
     let seen = observation(&expected, &[], Some(Duration::from_secs(60)), 1300).unwrap();
     assert_eq!(
         seen,

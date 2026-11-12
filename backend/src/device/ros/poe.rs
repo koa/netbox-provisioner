@@ -10,6 +10,13 @@ use crate::{
 use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetPoeOut};
 use std::collections::HashSet;
 
+/// A port whose PoE out the target switches off ([`BaseDeviceDataTarget::poe_switched_off`]).
+pub struct SwitchedOff {
+    /// its name at the device
+    pub name: AsciiString,
+    pub cut: PoeCut,
+}
+
 impl BaseDeviceDataTarget {
     /// PoE out of every port NetBox has: `auto-on` with `poe_mode=pse`, `forced-on` if its
     /// `poe_type` is passive as well, else `off`. `auto-on` feeds only a load it detects, which
@@ -40,8 +47,8 @@ impl BaseDeviceDataTarget {
     }
 
     /// Every port whose PoE out is on and that this target switches off (NetBox has no
-    /// `poe_mode=pse` there), by its name at the device.
-    pub fn poe_switched_off(&self, current: &BaseDeviceDataCurrent) -> Vec<(AsciiString, PoeCut)> {
+    /// `poe_mode=pse` there).
+    pub fn poe_switched_off(&self, current: &BaseDeviceDataCurrent) -> Vec<SwitchedOff> {
         let mut ports = Vec::new();
         for (default_name, target) in &self.ethernet {
             let Some(current) = current
@@ -61,7 +68,10 @@ impl BaseDeviceDataTarget {
                     port: target.name.to_string().into(),
                     default_name: default_name.to_string().into(),
                 };
-                ports.push((current.data.name.clone(), cut));
+                ports.push(SwitchedOff {
+                    name: current.data.name.clone(),
+                    cut,
+                });
             }
         }
         ports
@@ -76,8 +86,8 @@ impl BaseDeviceDataTarget {
     ) -> Vec<ApplyWarning> {
         self.poe_switched_off(current)
             .into_iter()
-            .filter(|(name, _)| powered.contains(name))
-            .map(|(_, cut)| ApplyWarning::PoeCut(cut))
+            .filter(|port| powered.contains(&port.name))
+            .map(|port| ApplyWarning::PoeCut(port.cut))
             .collect()
     }
 }

@@ -208,12 +208,20 @@ pub enum CableEnd {
 }
 
 impl CableEnd {
-    /// NetBox' object type and the path of its objects below `api/`.
-    pub(super) fn netbox(self) -> (&'static str, &'static str) {
+    /// NetBox' object type.
+    pub(super) fn object_type(self) -> &'static str {
         match self {
-            CableEnd::Interface => ("dcim.interface", "dcim/interfaces"),
-            CableEnd::FrontPort => ("dcim.frontport", "dcim/front-ports"),
-            CableEnd::RearPort => ("dcim.rearport", "dcim/rear-ports"),
+            CableEnd::Interface => "dcim.interface",
+            CableEnd::FrontPort => "dcim.frontport",
+            CableEnd::RearPort => "dcim.rearport",
+        }
+    }
+    /// The path of its objects below `api/`.
+    pub(super) fn path(self) -> &'static str {
+        match self {
+            CableEnd::Interface => "dcim/interfaces",
+            CableEnd::FrontPort => "dcim/front-ports",
+            CableEnd::RearPort => "dcim/rear-ports",
         }
     }
     /// The `__typename` of the preview's JSON.

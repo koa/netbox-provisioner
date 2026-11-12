@@ -179,7 +179,7 @@ struct Phases {
     /// `current` is the state a job going on after a restart was saved in: entering it again
     /// once is no transition ([`Log::resume_in`])
     resumed: bool,
-    unexpected: Vec<(Option<JobPhase>, JobPhase)>,
+    unexpected: Vec<Transition>,
 }
 
 impl Log {
@@ -219,7 +219,10 @@ impl Log {
                 self.label, phases.current
             );
             let before = phases.current;
-            phases.unexpected.push((before, phase));
+            phases.unexpected.push(Transition {
+                from: before,
+                to: phase,
+            });
         }
         phases.current = Some(phase);
         if !phase.undoes_for_others() {
@@ -323,8 +326,8 @@ impl Log {
         let phases = self.phase.lock_anyway();
         phases.own.or(phases.current)
     }
-    /// The transitions the tables didn't allow, from (`None`: none yet) and to.
-    pub fn unexpected(&self) -> Vec<(Option<JobPhase>, JobPhase)> {
+    /// The transitions the tables didn't allow.
+    pub fn unexpected(&self) -> Vec<Transition> {
         self.phase.lock_anyway().unexpected.clone()
     }
     /// Asks the work to stop ([`cancel`] for a job).
@@ -532,7 +535,7 @@ pub struct Job {
     /// setup's neighbor, whose console runs `/tool mac-telnet`
     through: Option<JobSubject>,
     log: Log,
-    outcome: Mutex<(JobState, Option<ErrorInfo>)>,
+    outcome: Mutex<Outcome>,
     took: Mutex<Option<Duration>>,
     started: tokio::time::Instant,
 }
@@ -541,6 +544,22 @@ struct Jobs {
     next: u32,
     /// oldest first
     jobs: Vec<Arc<Job>>,
+}
+
+/// A change of a job's state ([`Log::unexpected`]).
+#[derive(Debug, Clone, Copy)]
+pub struct Transition {
+    /// `None`: none yet
+    pub from: Option<JobPhase>,
+    pub to: JobPhase,
+}
+
+/// How a job stands or ended ([`Job::outcome`]).
+#[derive(Debug, Clone)]
+pub struct Outcome {
+    pub state: JobState,
+    /// the error it failed with
+    pub error: Option<ErrorInfo>,
 }
 
 /// Every lock here (the jobs, a job's outcome and events) takes a poisoned mutex's data as it
@@ -594,7 +613,7 @@ impl Job {
             .collect()
     }
     fn state(&self) -> JobState {
-        self.outcome.lock_anyway().0
+        self.outcome.lock_anyway().state
     }
     /// The state it is in, or once over the one its own work ended in ([`Log::ended_in`]).
     pub fn shown_phase(&self) -> Option<JobPhase> {
@@ -620,7 +639,7 @@ impl Job {
             ),
             None => info!("{}: job {} {state:?}", self.name, self.id),
         }
-        *self.outcome.lock_anyway() = (state, error);
+        *self.outcome.lock_anyway() = Outcome { state, error };
         // what the job may have changed is asked anew; only now, what was asked while it ran
         // isn't kept either (`facts`)
         if let JobSubject::Device(device) = self.subject {
@@ -687,7 +706,7 @@ impl Job {
         &self.log
     }
     /// how it stands or ended, with the error it failed with
-    pub fn outcome(&self) -> (JobState, Option<ErrorInfo>) {
+    pub fn outcome(&self) -> Outcome {
         self.outcome.lock_anyway().clone()
     }
     /// how long it ran, once ended
@@ -736,7 +755,11 @@ where
 {
     let log = Log::new(device.name());
     let work = work(log.clone());
-    let job = register(&[(subject_of(device), log)], through.map(subject_of), kind)?.swap_remove(0);
+    let member = Member {
+        of: subject_of(device),
+        log,
+    };
+    let job = register(&[member], through.map(subject_of), kind)?.swap_remove(0);
     write_journal(&job, &started);
     spawn(job.clone(), work);
     Ok(job)
@@ -834,8 +857,24 @@ fn write_journal(job: &Arc<Job>, started: &Started) {
     }
 }
 
-fn subject_of(device: &DeviceAccess) -> (JobSubject, &str) {
-    (JobSubject::Device(device.id()), device.name())
+/// What a job is of, with its name.
+#[derive(Clone, Copy)]
+struct Named<'a> {
+    subject: JobSubject,
+    name: &'a str,
+}
+
+/// A job to [`register`].
+struct Member<'a> {
+    of: Named<'a>,
+    log: Log,
+}
+
+fn subject_of(device: &DeviceAccess) -> Named<'_> {
+    Named {
+        subject: JobSubject::Device(device.id()),
+        name: device.name(),
+    }
 }
 
 /// Starts `work` for all of `devices` together (a batch), each with a job of its own (`started`:
@@ -855,7 +894,14 @@ where
         .map(|device| Log::new(device.name()))
         .collect();
     let work = work(logs.clone());
-    let members: Vec<_> = devices.iter().map(subject_of).zip(logs).collect();
+    let members: Vec<_> = devices
+        .iter()
+        .zip(logs)
+        .map(|(device, log)| Member {
+            of: subject_of(device),
+            log,
+        })
+        .collect();
     let jobs = register(&members, None, kind)?;
     jobs.iter()
         .enumerate()
@@ -887,12 +933,12 @@ where
 
 /// Adds a running job for each of `members`, none if one of their devices runs a job already.
 fn register(
-    members: &[((JobSubject, &str), Log)],
-    through: Option<(JobSubject, &str)>,
+    members: &[Member],
+    through: Option<Named>,
     kind: JobKind,
 ) -> Result<Vec<Arc<Job>>, Error> {
     let mut jobs = JOBS.lock_anyway();
-    for (subject, name) in members.iter().map(|(member, _)| *member).chain(through) {
+    for Named { subject, name } in members.iter().map(|member| member.of).chain(through) {
         if jobs
             .jobs
             .iter()
@@ -901,10 +947,13 @@ fn register(
             return Err(Error::Busy(name.into()));
         }
     }
-    let through = through.map(|(subject, _)| subject);
+    let through = through.map(|through| through.subject);
     Ok(members
         .iter()
-        .map(|((subject, name), log)| add(&mut jobs, *subject, through, name, kind, log.clone()))
+        .map(|member| {
+            let Named { subject, name } = member.of;
+            add(&mut jobs, subject, through, name, kind, member.log.clone())
+        })
         .collect())
 }
 
@@ -925,7 +974,10 @@ fn add(
         kind,
         through,
         log,
-        outcome: Mutex::new((JobState::Running, None)),
+        outcome: Mutex::new(Outcome {
+            state: JobState::Running,
+            error: None,
+        }),
         took: Mutex::new(None),
         started: tokio::time::Instant::now(),
     });
@@ -1144,7 +1196,7 @@ impl Job {
     }
     /// why it failed
     async fn error(&self) -> Option<ErrorInfo> {
-        self.outcome.lock_anyway().1.clone()
+        self.outcome.lock_anyway().error.clone()
     }
     /// the state it is in (`device_state`), or the one its own work ended in (not restoring
     /// the watchdogs after it); `null` before its first and for a site's job
@@ -1404,7 +1456,13 @@ mod tests {
         })
         .unwrap();
         wait_for(panicked.id, JobState::Failed).await;
-        let error = panicked.outcome.lock().unwrap().1.clone().expect("error");
+        let error = panicked
+            .outcome
+            .lock()
+            .unwrap()
+            .error
+            .clone()
+            .expect("error");
         assert_eq!(error.code, "PANIC");
         assert!(
             error.message.contains("Send command failed"),
@@ -1479,7 +1537,7 @@ mod tests {
         assert!(start(&neighbor, JobKind::Apply, by(), |_| async { Ok(()) }).is_err());
         assert!(start(&new, JobKind::Apply, by(), |_| async { Ok(()) }).is_err());
         // the neighbor's page finds it
-        let subject = super::subject_of(&neighbor).0;
+        let subject = super::subject_of(&neighbor).subject;
         assert!(list(Some(subject)).iter().any(|listed| listed.id == job.id));
         cancel(job.id);
         wait_for(job.id, JobState::Cancelled).await;

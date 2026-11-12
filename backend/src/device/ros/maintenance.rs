@@ -44,8 +44,8 @@ impl BaseDeviceDataTarget {
                 .iter()
                 .any(|far| far.device().is_some_and(|d| d.has_routeros()))
                 || port.radio().is_some_and(|radio| radio.link.is_some());
-            if own && let Some((name, _)) = l2.placement_of_port(id) {
-                members.insert(name.clone());
+            if own && let Some(placement) = l2.placement_of_port(id) {
+                members.insert(placement.name.clone());
             }
         }
         for (default_name, ethernet) in &self.ethernet {

@@ -171,6 +171,13 @@ pub struct Topology {
     management_proxy: Option<Box<str>>,
 }
 
+/// A prefix of NetBox ([`Topology::pool_prefixes`], [`Topology::customer_parents`]).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PrefixRef {
+    pub id: IpPrefixId,
+    pub net: IpNet,
+}
+
 impl Topology {
     /// What it holds differently from `other`, read at another time (or from another
     /// response): none if the same.
@@ -273,21 +280,24 @@ impl Topology {
             .filter(|prefix| prefix.prefix.contains(&net))
             .max_by_key(|prefix| prefix.prefix.prefix_len())
     }
-    pub(crate) fn pool_prefixes(&self, pool: PrefixPool, v6: bool) -> Vec<(IpPrefixId, IpNet)> {
+    pub(crate) fn pool_prefixes(&self, pool: PrefixPool, v6: bool) -> Vec<PrefixRef> {
         let mut prefixes = self
             .ip_prefixes
             .iter()
             .filter(|(_, prefix)| {
                 prefix.pool == Some(pool) && matches!(prefix.prefix, IpNet::V6(_)) == v6
             })
-            .map(|(id, prefix)| (*id, prefix.prefix))
+            .map(|(id, prefix)| PrefixRef {
+                id: *id,
+                net: prefix.prefix,
+            })
             .collect::<Vec<_>>();
-        prefixes.sort_by_key(|(_, net)| (net.network(), net.prefix_len()));
+        prefixes.sort_by_key(|prefix| (prefix.net.network(), prefix.net.prefix_len()));
         prefixes
     }
     /// The prefixes scoped to `site` that can hold networks, IPv4 or IPv6 (`v6`): no pool's,
     /// none that is a network itself (with an address of its own length), by address.
-    pub(crate) fn customer_parents(&self, site: SiteId, v6: bool) -> Vec<(IpPrefixId, IpNet)> {
+    pub(crate) fn customer_parents(&self, site: SiteId, v6: bool) -> Vec<PrefixRef> {
         let mut prefixes = self
             .ip_prefixes
             .iter()
@@ -297,9 +307,12 @@ impl Topology {
                     && prefix.addresses.is_empty()
                     && matches!(prefix.prefix, IpNet::V6(_)) == v6
             })
-            .map(|(id, prefix)| (*id, prefix.prefix))
+            .map(|(id, prefix)| PrefixRef {
+                id: *id,
+                net: prefix.prefix,
+            })
             .collect::<Vec<_>>();
-        prefixes.sort_by_key(|(_, net)| (net.network(), net.prefix_len()));
+        prefixes.sort_by_key(|prefix| (prefix.net.network(), prefix.net.prefix_len()));
         prefixes
     }
     pub(crate) fn prefix_data(&self, id: IpPrefixId) -> Option<&IpPrefixData> {
@@ -374,7 +387,7 @@ pub struct Device {
     pub propagate_default_route: bool,
     /// Custom field `map_position`: where an admin published it on the network map (pixels,
     /// rounded: it only needs to seed the layout, not reproduce the exact spot sub-pixel).
-    pub map_position: Option<(i32, i32)>,
+    pub map_position: Option<crate::netbox::MapPosition>,
     /// Custom field `watchdog_target`: what its ping watchdog watches.
     pub watchdog_target: WatchdogTarget,
 }

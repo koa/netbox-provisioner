@@ -157,11 +157,14 @@ pub fn evaluate(device: &DeviceAccess, table: &NeighborTable) -> Neighbors {
             seen: BTreeMap::new(),
         };
     }
-    let (seen_at, netbox_ports) = seen_at(device, &table.interfaces, &table.neighbors);
+    let SeenPorts {
+        seen_at,
+        netbox_ports,
+    } = seen_at(device, &table.interfaces, &table.neighbors);
     let seen = seen_at
         .iter()
-        .filter_map(|(default_name, (_, seen))| {
-            Some((netbox_ports.get(default_name)?.id().0, seen.clone()))
+        .filter_map(|(default_name, port)| {
+            Some((netbox_ports.get(default_name)?.id().0, port.seen.clone()))
         })
         .collect();
     Neighbors {
@@ -171,15 +174,25 @@ pub fn evaluate(device: &DeviceAccess, table: &NeighborTable) -> Neighbors {
 }
 
 /// Who the device sees at each port, by the port's default name (its own name where it has
-/// none), with the port's own name.
-type SeenAt = BTreeMap<String, (Box<str>, Vec<SeenNeighbor>)>;
+/// none).
+type SeenAt = BTreeMap<String, SeenPort>;
+
+/// Who the device sees at one of its ports.
+struct SeenPort {
+    /// the port's own name
+    name: Box<str>,
+    seen: Vec<SeenNeighbor>,
+}
+
+/// [`SeenAt`] and NetBox's ports ([`seen_at`]).
+struct SeenPorts {
+    seen_at: SeenAt,
+    /// NetBox's ports by name
+    netbox_ports: BTreeMap<String, InterfaceAccess>,
+}
 
 /// [`SeenAt`], and NetBox's ports by name.
-fn seen_at(
-    device: &DeviceAccess,
-    interfaces: &[Row],
-    neighbors: &[Row],
-) -> (SeenAt, BTreeMap<String, InterfaceAccess>) {
+fn seen_at(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> SeenPorts {
     let topology_devices = device.topology().list_devices().collect::<Vec<_>>();
     let default_names = interfaces
         .iter()
@@ -220,8 +233,11 @@ fn seen_at(
         let netbox_interface = netbox_device.and_then(|d| port_named(d, interface_name));
         seen_at
             .entry(default_name.to_string())
-            .or_insert_with(|| (name.into(), Vec::new()))
-            .1
+            .or_insert_with(|| SeenPort {
+                name: name.into(),
+                seen: Vec::new(),
+            })
+            .seen
             .push(SeenNeighbor {
                 identity: identity.into(),
                 interface_name: interface_name.into(),
@@ -230,7 +246,10 @@ fn seen_at(
                 interface: netbox_interface.as_ref().map(interface_ref),
             });
     }
-    (seen_at, netbox_ports)
+    SeenPorts {
+        seen_at,
+        netbox_ports,
+    }
 }
 
 /// [`evaluate`] on what the device answered: `interfaces` from `/interface/print`, `neighbors`
@@ -240,9 +259,12 @@ pub fn compare(
     interfaces: &[Row],
     neighbors: &[Row],
 ) -> Vec<NeighborFinding> {
-    let (seen_at, netbox_ports) = seen_at(device, interfaces, neighbors);
+    let SeenPorts {
+        seen_at,
+        netbox_ports,
+    } = seen_at(device, interfaces, neighbors);
     let mut findings = Vec::new();
-    for (default_name, (name, seen)) in &seen_at {
+    for (default_name, SeenPort { name, seen }) in &seen_at {
         let interface = netbox_ports.get(default_name);
         let port = PortRef {
             name: name.clone(),

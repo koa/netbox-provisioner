@@ -11,7 +11,9 @@ use crate::chr_network::qemu::nix_unavailable;
 use crate::chr_network::vm::{RunningNode, boot_node};
 use backend::Error;
 use backend::device::dependency::PowerChain;
-use backend::device::device_mode::{DeviceModeChanged, DeviceModeReason, change_to};
+use backend::device::device_mode::{
+    DeviceModeChange, DeviceModeChanged, DeviceModeReason, change_to,
+};
 use backend::device::reboot::{Reboot, RebootReason};
 use backend::device::update::DeviceLink;
 use backend::device_state::DeviceModeState;
@@ -133,7 +135,10 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
         .await
         .expect("node boot failed");
     // off in the CHR's advanced mode, like on the lab's RouterBOARDs
-    let wanted = [("partitions", DeviceModeReason::UpdateFallback)];
+    let wanted = [DeviceModeChange {
+        feature: "partitions".into(),
+        reason: DeviceModeReason::UpdateFallback,
+    }];
     let power = PowerChain::unpowered("mode");
     assert_eq!(feature(&node, "partitions").await, "false");
 
@@ -141,7 +146,7 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     let log = reading();
     let job = tokio::spawn({
         let log = log.clone();
-        let (link, power) = (Direct(node.api_port), power.clone());
+        let (link, power, wanted) = (Direct(node.api_port), power.clone(), wanted.clone());
         async move { change_to(&link, &wanted, &power, &log).await }
     });
     confirm_asked(&log).await;
@@ -159,7 +164,7 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     let log = reading();
     let job = tokio::spawn({
         let log = log.clone();
-        let power = power.clone();
+        let (power, wanted) = (power.clone(), wanted.clone());
         async move { change_to(&unplugged, &wanted, &power, &log).await }
     });
     confirm_asked(&log).await;

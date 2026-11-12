@@ -56,6 +56,12 @@ impl AccessTopology for DeviceAccess {
     }
 }
 
+/// How `connect` reaches a device ([`DeviceAccess::find_way`]).
+pub struct Way {
+    pub address: IpAddr,
+    pub path: Path,
+}
+
 impl DeviceAccess {
     pub(crate) fn topology(&self) -> &Arc<Topology> {
         &self.topology
@@ -128,7 +134,7 @@ impl DeviceAccess {
         .await
         .result()?;
         match &*way {
-            Some((address, path)) => {
+            Some(Way { address, path }) => {
                 AccessibleDevice::create_client(self.clone(), *address, path.clone(), credentials)
                     .await
                     .map(Some)
@@ -145,7 +151,7 @@ impl DeviceAccess {
         self,
         target: Option<IpAddr>,
         credentials: Credentials,
-    ) -> Result<Option<(IpAddr, Path)>, Error> {
+    ) -> Result<Option<Way>, Error> {
         let mut ways = Vec::new();
         if let Some(address) = target.or(bootstrap::reachable_address(&self)) {
             ways.push((address, Path::Routed));
@@ -173,7 +179,7 @@ impl DeviceAccess {
             let fact = login(&self, address, &path, &credentials).await;
             let age = fact.age();
             match fact.value {
-                Ok(_) => return Ok(Some((address, path))),
+                Ok(_) => return Ok(Some(Way { address, path })),
                 Err(e) => {
                     info!(
                         "{}: {address} {} not reachable ({e}{})",
@@ -265,7 +271,7 @@ impl DeviceAccess {
         self.data().is_some_and(|d| d.propagate_default_route)
     }
     /// Its position on the network map, published by an admin (custom field `map_position`).
-    pub fn map_position(&self) -> Option<(i32, i32)> {
+    pub fn map_position(&self) -> Option<crate::netbox::MapPosition> {
         self.data().and_then(|d| d.map_position)
     }
     /// What its ping watchdog watches (custom field `watchdog_target`).
@@ -403,7 +409,7 @@ impl DeviceAccess {
     /// The RouterOS device feeding this one over PoE and its port: a cold boot
     /// (`Mutation.powerCycle`) is possible.
     async fn power_supply(&self) -> Option<crate::device::power_cycle::PowerSupply> {
-        crate::device::power_cycle::supply(self).map(|(_, supply, _)| supply)
+        crate::device::power_cycle::supply(self).map(|supplier| supplier.supply)
     }
     /// The neighbors this device stays reachable through when an update leaves it without
     /// OSPF (`device::update_fallback::neighbors`): its way back where it has no two

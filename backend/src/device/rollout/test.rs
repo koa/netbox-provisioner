@@ -15,7 +15,7 @@ fn candidate(name: &str, architecture: &str, depth: u32, leaf: bool) -> Candidat
 fn names(candidates: &[Candidate]) -> Vec<(&str, bool)> {
     order(candidates)
         .into_iter()
-        .map(|(index, pilot)| (&*candidates[index].name, pilot))
+        .map(|in_order| (&*candidates[in_order.index].name, in_order.pilot))
         .collect()
 }
 

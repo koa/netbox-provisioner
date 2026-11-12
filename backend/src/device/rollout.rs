@@ -172,13 +172,13 @@ pub async fn plan(sites: &[SiteAccess], channel: Channel) -> Result<RolloutPlan,
         })
         .collect::<Vec<_>>();
     let order = order(&candidates);
-    for (index, pilot) in &order {
-        planned[*index].pilot = *pilot;
+    for in_order in &order {
+        planned[in_order.index].pilot = in_order.pilot;
     }
     let positions = order
         .iter()
         .enumerate()
-        .map(|(position, (index, _))| (*index, position))
+        .map(|(position, in_order)| (in_order.index, position))
         .collect::<HashMap<_, _>>();
     let mut sorted = planned.into_iter().enumerate().collect::<Vec<_>>();
     sorted.sort_by_key(|(index, _)| positions.get(index).copied().unwrap_or(usize::MAX));
@@ -447,11 +447,18 @@ struct Candidate {
     update: bool,
 }
 
+/// A candidate in the [`order`] of the update.
+struct InOrder {
+    /// its place in the candidates
+    index: usize,
+    pilot: bool,
+}
+
 /// The order of the candidates to update, by index, with whether each is a pilot: one per
 /// architecture first (one nothing depends on where there is one), then the rest from the
 /// outside in (the farthest from a root first, one off the ways first of all), a controller
 /// after its access points.
-fn order(candidates: &[Candidate]) -> Vec<(usize, bool)> {
+fn order(candidates: &[Candidate]) -> Vec<InOrder> {
     let mut rest = (0..candidates.len())
         .filter(|index| candidates[*index].update)
         .collect::<Vec<_>>();
@@ -506,8 +513,11 @@ fn order(candidates: &[Candidate]) -> Vec<(usize, bool)> {
     ordered.extend(waiting);
     pilots
         .into_iter()
-        .map(|pilot| (pilot, true))
-        .chain(ordered.into_iter().map(|index| (index, false)))
+        .map(|index| InOrder { index, pilot: true })
+        .chain(ordered.into_iter().map(|index| InOrder {
+            index,
+            pilot: false,
+        }))
         .collect()
 }
 

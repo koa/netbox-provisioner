@@ -12,7 +12,7 @@ use crate::{
     Error,
     device_state::{JobPhase, UpdateState},
     error_info::ErrorInfo,
-    job::{self, Job, JobState, Log},
+    job::{self, Job, JobState, Log, Outcome},
     lock::LockAnyway,
 };
 use async_graphql::{Enum, SimpleObject};
@@ -158,10 +158,18 @@ impl Control {
     }
 }
 
+/// How a [`Run::wave`] ended.
+struct Wave<'p> {
+    /// the devices not started
+    left: VecDeque<&'p PlannedDevice>,
+    /// the one that failed
+    failed: Option<Box<str>>,
+}
+
 /// The update job of a device, as the rollout follows it.
 pub trait UpdateJob {
     fn id(&self) -> u32;
-    fn outcome(&self) -> (JobState, Option<ErrorInfo>);
+    fn outcome(&self) -> Outcome;
     /// the state the update is in
     fn phase(&self) -> Option<UpdateState>;
     fn cancel(&self);
@@ -171,7 +179,7 @@ impl UpdateJob for Arc<Job> {
     fn id(&self) -> u32 {
         self.job_id()
     }
-    fn outcome(&self) -> (JobState, Option<ErrorInfo>) {
+    fn outcome(&self) -> Outcome {
         Job::outcome(self)
     }
     fn phase(&self) -> Option<UpdateState> {
@@ -224,7 +232,7 @@ where
     let mut after_pilots = !remaining.is_empty();
     let mut rest = Some(rest);
     loop {
-        let (left, failed) = run.wave(remaining).await?;
+        let Wave { left, failed } = run.wave(remaining).await?;
         remaining = left;
         if let Some(failed) = failed {
             control
@@ -278,7 +286,7 @@ where
     async fn wave<'p>(
         &mut self,
         mut pending: VecDeque<&'p PlannedDevice>,
-    ) -> Result<(VecDeque<&'p PlannedDevice>, Option<Box<str>>), Error> {
+    ) -> Result<Wave<'p>, Error> {
         // each with the state of its update told last
         let mut running: Vec<(&PlannedDevice, J, Option<UpdateState>)> = Vec::new();
         let mut failed = None;
@@ -322,7 +330,10 @@ where
                 pending.push_front(device);
             }
             if running.is_empty() && (pending.is_empty() || failed.is_some()) {
-                return Ok((pending, failed));
+                return Ok(Wave {
+                    left: pending,
+                    failed,
+                });
             }
             if let Err(cancelled) = self.log.unless_cancelled(tokio::time::sleep(TICK)).await {
                 for (_, job, _) in &running {
@@ -333,7 +344,7 @@ where
             let mut index = 0;
             while index < running.len() {
                 let (device, job, told_phase) = &mut running[index];
-                let (state, error) = job.outcome();
+                let Outcome { state, error } = job.outcome();
                 let told = match state {
                     JobState::Running => None,
                     JobState::Done => Some(RolloutDeviceState::Done),

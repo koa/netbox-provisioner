@@ -47,14 +47,15 @@ impl CapsManDeviceDataTarget {
             return Ok(());
         };
         self.manager.enabled = true;
-        let country = match CapsManWifiCountry::parse_ros(country_settings(device)?.0.as_bytes()) {
-            ParseRosValueResult::Value(country) => country,
-            _ => {
-                return Err(SetupError::UnknownCountry(
-                    country_settings(device)?.0.into(),
-                ));
-            }
-        };
+        let country =
+            match CapsManWifiCountry::parse_ros(country_settings(device)?.wireless.as_bytes()) {
+                ParseRosValueResult::Value(country) => country,
+                _ => {
+                    return Err(SetupError::UnknownCountry(
+                        country_settings(device)?.wireless.into(),
+                    ));
+                }
+            };
         let mut names = Vec::new();
         for wlan in group.wlan() {
             let ssid = wlan.ssid().unwrap_or_default();

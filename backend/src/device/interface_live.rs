@@ -10,6 +10,7 @@
 //! An OSPF neighbor names the interface as RouterOS calls it: a port by its short name and label
 //! (`e01-sxt-a`), a bridge or VLAN interface by what L2 generated (`bridge-link` for NetBox'
 //! `link`). So beyond the port names it goes by the addresses `/ip/address` has there.
+use crate::topology::interfaces::RowOf;
 use crate::{
     Error,
     device::poe::{self, PoeMismatch, PoeProblem},
@@ -154,7 +155,7 @@ pub async fn read(
     let rows = device.interface_rows();
     let bridges = rows
         .iter()
-        .flat_map(|(row, _)| bridge_devices(device, row))
+        .flat_map(|of| bridge_devices(device, &of.row))
         .collect::<BTreeSet<_>>();
     let loopbacks = bridges
         .iter()
@@ -177,15 +178,11 @@ pub async fn read(
 
 /// Puts each PoE mismatch on the row of its port, with „PoE-Eintrag entfernen“, or „PoE
 /// vervollständigen“ (`PdMissing`: „PoE“ from the port, the far end from its cable).
-pub fn place_poe(
-    live: &mut InterfaceLive,
-    rows: &[(InterfaceRow, BTreeSet<u32>)],
-    poe: Vec<PoeMismatch>,
-) {
+pub fn place_poe(live: &mut InterfaceLive, rows: &[RowOf], poe: Vec<PoeMismatch>) {
     for mismatch in poe {
         let Some(row) = rows
             .iter()
-            .position(|(_, members)| members.contains(&mismatch.port.id))
+            .position(|of| of.members.contains(&mismatch.port.id))
             .and_then(|index| live.rows.get_mut(index))
         else {
             continue;
@@ -217,7 +214,7 @@ pub struct Dhcp {
 /// [`read`] on what the device answered.
 pub fn check(
     device: &DeviceAccess,
-    rows: &[(InterfaceRow, BTreeSet<u32>)],
+    rows: &[RowOf],
     neighbors: neighbors::Neighbors,
     ospf: &[Row],
     addresses: &[Row],
@@ -302,7 +299,7 @@ pub fn check(
     let mut placed = vec![false; neighbors.findings.len()];
     let live_rows = rows
         .iter()
-        .map(|(row, members)| {
+        .map(|RowOf { row, members }| {
             let seen = members
                 .iter()
                 .flat_map(|id| neighbors.seen.get(id).cloned().unwrap_or_default())

@@ -6,6 +6,7 @@
 //! are looked at, the ones the provisioner manages. Data only: the frontend words it and links
 //! each object to NetBox.
 use crate::graphql::scalars::ScalarU64;
+use crate::topology::interfaces::RowOf;
 use crate::{
     device::ros::{DEFAULT_MTU, dhcp_pool_v4},
     topology::{
@@ -1063,7 +1064,7 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
 /// What a bridge device's radio link lacks, said once per link: from the end with the lower
 /// id, or from this one where the other is missing.
 fn radio_path(device: &DeviceAccess, findings: &mut Vec<Finding>) {
-    for (row, _) in device.interface_rows() {
+    for RowOf { row, .. } in device.interface_rows() {
         let Some(path) = row
             .radio_path
             .filter(|_| row.task == InterfaceTask::RadioLink)

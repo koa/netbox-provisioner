@@ -56,14 +56,12 @@ pub(crate) fn needs_country(device: &DeviceAccess) -> bool {
 /// RouterOS's `/interface/wireless` country and `/interface/w60g` region for the
 /// country of the device's site (the ISO 3166 code of its topmost region). The text of the
 /// finding `NoCountry` lists the known codes (`frontend/src/i18n/findings.rs`).
-pub(crate) fn country_settings(
-    device: &DeviceAccess,
-) -> Result<(&'static str, InterfaceW60GRegion), SetupError> {
+pub(crate) fn country_settings(device: &DeviceAccess) -> Result<CountrySettings, SetupError> {
     use InterfaceW60GRegion::Eu;
     let code = device
         .country()
         .ok_or_else(|| SetupError::MissingCountry(device.name().into()))?;
-    Ok(match code.to_ascii_lowercase().as_str() {
+    let (wireless, w60g) = match code.to_ascii_lowercase().as_str() {
         "ch" => ("switzerland", Eu),
         "li" => ("liechtenstein", Eu),
         "de" => ("germany", Eu),
@@ -71,7 +69,16 @@ pub(crate) fn country_settings(
         "fr" => ("france", Eu),
         "it" => ("italy", Eu),
         _ => return Err(SetupError::UnknownCountry(code.into())),
-    })
+    };
+    Ok(CountrySettings { wireless, w60g })
+}
+
+/// The country of a device's site as RouterOS takes it ([`country_settings`]).
+pub(crate) struct CountrySettings {
+    /// `/interface/wireless`'s country (lowercase, as the legacy CAPsMAN's)
+    pub wireless: &'static str,
+    /// `/interface/w60g`'s region
+    pub w60g: InterfaceW60GRegion,
 }
 
 /// The VLANs the WLANs of a group put their clients in.
@@ -146,7 +153,7 @@ pub fn needed_radio_package(device: &DeviceAccess, model: &[u8]) -> Option<Radio
 /// The RouterOS name of the device's country for `/interface/wifi` (capitalized, unlike the
 /// legacy `/interface/wireless` one).
 fn wifi_country(device: &DeviceAccess) -> Result<WifiCountry, SetupError> {
-    let (name, _) = country_settings(device)?;
+    let name = country_settings(device)?.wireless;
     let mut name = name.to_string();
     name[..1].make_ascii_uppercase();
     match WifiCountry::parse_ros(name.as_bytes()) {

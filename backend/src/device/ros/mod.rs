@@ -365,7 +365,10 @@ impl BaseDeviceDataTarget {
         ethernet_ports: impl IntoIterator<Item = InterfaceEthernetByDefaultName>,
     ) -> Self {
         // `setup_syslog` adds the server
-        let (logging_action, logging) = syslog::routeros_logging();
+        let syslog::Logging {
+            actions: logging_action,
+            rules: logging,
+        } = syslog::routeros_logging();
         Self {
             ethernet: ethernet_ports
                 .into_iter()

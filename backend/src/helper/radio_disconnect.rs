@@ -113,7 +113,7 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
                 || ends
                     .iter()
                     .any(|end| is_bridge(end) && networks(end).contains(net))
-                || pools.iter().any(|(_, pool)| pool.contains(&net.addr()))
+                || pools.iter().any(|pool| pool.net.contains(&net.addr()))
         })
         .collect::<Vec<_>>();
     let in_segment = |ip: &IpAddressAccess| {

@@ -40,7 +40,9 @@ impl BaseDeviceDataTarget {
                 .iter()
                 .filter_map(|interface| match interface.external_port() {
                     Some(port @ PhysicalPortId::Wifi(_)) => match setup.placement_of_port(port) {
-                        Some((name, None)) => Some(name.clone()),
+                        Some(placement) if placement.bridge.is_none() => {
+                            Some(placement.name.clone())
+                        }
                         _ => None,
                     },
                     _ => None,

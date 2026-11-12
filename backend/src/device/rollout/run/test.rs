@@ -10,8 +10,7 @@ use crate::{
         update::Channel,
     },
     device_state::UpdateState,
-    error_info::ErrorInfo,
-    job::{Event, JobState, Log},
+    job::{Event, JobState, Log, Outcome},
 };
 use std::{
     collections::HashMap,
@@ -45,11 +44,12 @@ impl UpdateJob for FakeJob {
     fn id(&self) -> u32 {
         self.id
     }
-    fn outcome(&self) -> (JobState, Option<ErrorInfo>) {
-        match self.cancelled.load(Ordering::SeqCst) {
-            true => (JobState::Cancelled, None),
-            false => (self.state, None),
-        }
+    fn outcome(&self) -> Outcome {
+        let state = match self.cancelled.load(Ordering::SeqCst) {
+            true => JobState::Cancelled,
+            false => self.state,
+        };
+        Outcome { state, error: None }
     }
     fn phase(&self) -> Option<UpdateState> {
         *self.phase.lock().unwrap()

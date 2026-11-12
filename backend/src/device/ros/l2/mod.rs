@@ -1156,22 +1156,24 @@ impl<G: NameGenerator> L2Setup<G> {
         })
     }
 
-    /// Where a physical port ended up: its generated interface name, and the bridge
-    /// it is a member of (`None` for a standalone port).
-    pub fn placement_of_port(
-        &self,
-        port: PhysicalPortId,
-    ) -> Option<(&AsciiString, Option<&AsciiString>)> {
+    /// Where a physical port ended up.
+    pub fn placement_of_port(&self, port: PhysicalPortId) -> Option<PortPlacement<'_>> {
         let standalone = self
             .single_ports
             .iter()
             .find(|entry| entry.port == port)
-            .map(|entry| (&entry.name, None));
+            .map(|entry| PortPlacement {
+                name: &entry.name,
+                bridge: None,
+            });
         let in_simple_bridge = || {
             self.simple_bridges.iter().find_map(|bridge| {
                 bridge.ports.iter().find_map(|member| match member {
                     SimpleBridgePort::Ethernet { name, port: p, .. } if *p == port => {
-                        Some((name, Some(&bridge.name)))
+                        Some(PortPlacement {
+                            name,
+                            bridge: Some(&bridge.name),
+                        })
                     }
                     _ => None,
                 })
@@ -1188,7 +1190,10 @@ impl<G: NameGenerator> L2Setup<G> {
                         | L2Port::UntaggedEthernet { name, port: p, .. }
                             if *p == port =>
                         {
-                            Some((name, Some(&bridge.name)))
+                            Some(PortPlacement {
+                                name,
+                                bridge: Some(&bridge.name),
+                            })
                         }
                         _ => None,
                     })
@@ -1198,6 +1203,15 @@ impl<G: NameGenerator> L2Setup<G> {
             .or_else(in_simple_bridge)
             .or_else(in_tagged_bridge)
     }
+}
+
+/// Where a physical port ended up ([`L2Setup::placement_of_port`]).
+#[derive(Debug, Clone, Copy)]
+pub struct PortPlacement<'a> {
+    /// its generated interface name
+    pub name: &'a AsciiString,
+    /// the bridge it is a member of (`None` for a standalone port)
+    pub bridge: Option<&'a AsciiString>,
 }
 
 /// Rejects a VLAN whose L2 domain - every device it is tunneled to, or just this

@@ -79,7 +79,7 @@ pub(crate) fn empty_current(target: &BaseDeviceDataTarget) -> BaseDeviceDataCurr
         watchdog: Default::default(),
         logging_action: routeros_logging_actions(),
         logging: crate::device::ros::syslog::routeros_logging()
-            .1
+            .rules
             .into_values()
             .enumerate()
             .map(|(id, data)| SystemLoggingById {
@@ -93,7 +93,7 @@ pub(crate) fn empty_current(target: &BaseDeviceDataTarget) -> BaseDeviceDataCurr
 /// RouterOS's logging actions on a reset device: `remote` in the default format, which hides
 /// the CEF fields (CHR 7.24.5).
 fn routeros_logging_actions() -> Box<[SystemLoggingActionByName]> {
-    let mut actions = crate::device::ros::syslog::routeros_logging().0;
+    let mut actions = crate::device::ros::syslog::routeros_logging().actions;
     let remote = &mut actions
         .get_mut(&b"remote".as_slice().into())
         .expect("RouterOS's remote action")

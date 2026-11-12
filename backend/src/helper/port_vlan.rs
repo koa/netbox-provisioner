@@ -12,6 +12,7 @@
 //! (`docs/l2-generation.md`), and so does the VXLAN. The plan checks the same for its port and
 //! then runs the L2 setup on its preview, for what these rules miss.
 use super::{NetboxPlan, PlanStep, UpdatePortVlan, port_name};
+use crate::topology::access::vlan::VlanGroupRef;
 use crate::{
     Error,
     device::ros::l2::{KeepNameGenerator, L2Setup},
@@ -127,7 +128,7 @@ fn conflict(
     let topology = device.topology();
     let group = |vlan: &VlanAccess| {
         vlan.group()
-            .map(|(_, name)| Box::from(name))
+            .map(|group| Box::from(group.name))
             .unwrap_or_default()
     };
     // RouterOS knows the VID only: two VLANs with one VID on a device are one
@@ -166,10 +167,10 @@ fn conflict(
             })
     };
     let target = bridge_of(vlan).map(|b| b.id());
-    let group_id = vlan.group().map(|(id, _)| id);
+    let group_id = vlan.group().map(|group| group.id);
     for other in topology.list_vlans() {
         if other.id == vlan.id
-            || other.group().map(|(id, _)| id) != group_id
+            || other.group().map(|group| group.id) != group_id
             || !has(device, &other, port)
             || !tunneled(&other)
         {
@@ -199,7 +200,8 @@ pub fn options(device: &DeviceAccess) -> PortVlanOptions {
         if conflict(device, &vlan, None).is_err() {
             continue;
         }
-        let (Some((id, name)), Some(vlan_ref)) = (vlan.group(), vlan_ref(&vlan)) else {
+        let (Some(VlanGroupRef { id, name }), Some(vlan_ref)) = (vlan.group(), vlan_ref(&vlan))
+        else {
             continue;
         };
         match groups.iter_mut().find(|group| group.id == id.0) {
@@ -224,7 +226,7 @@ pub fn options(device: &DeviceAccess) -> PortVlanOptions {
         .iter()
         .filter(|vlan| vlan.wlan().next().is_some())
         .chain(&own)
-        .filter_map(|vlan| vlan.group().map(|(id, _)| id.0))
+        .filter_map(|vlan| vlan.group().map(|group| group.id.0))
         .find(|id| groups.iter().any(|group| group.id == *id));
     PortVlanOptions {
         ports: ports

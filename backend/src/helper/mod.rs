@@ -48,6 +48,7 @@ use crate::{
     },
 };
 use async_graphql::{ComplexObject, OneofObject, SimpleObject};
+use ipnet::IpNet;
 use serde_json::{Value, json};
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
@@ -168,6 +169,14 @@ impl Helper {
                 .ok_or(Error::UnknownDevice(input.device)),
         }
     }
+}
+
+/// A network NetBox has free in a pool (`connection::next_free`,
+/// `radio_bridge::next_free_network`).
+pub(crate) struct FreeNetwork {
+    /// the pool's prefix it is in
+    pub pool: IpNet,
+    pub net: IpNet,
 }
 
 /// What a helper writes to NetBox for `device`, in this order: each step leaves NetBox valid.

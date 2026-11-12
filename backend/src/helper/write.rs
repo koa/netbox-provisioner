@@ -338,16 +338,14 @@ async fn set_primary_ip(
 async fn create_cable(rest: &NetboxRest, create: &CreateCable, log: &Log) -> Result<u32, Error> {
     let ends = [(create.a_end, &create.a), (CableEnd::Interface, &create.b)];
     for (kind, end) in ends {
-        let current = rest
-            .get(&format!("{}/{}/", kind.netbox().1, end.id))
-            .await?;
+        let current = rest.get(&format!("{}/{}/", kind.path(), end.id)).await?;
         if !current["cable"].is_null() {
             return Err(Error::NetboxChanged(
                 format!("{} {} has a cable", end.device.name, end.name).into(),
             ));
         }
     }
-    let end = |(kind, interface): (CableEnd, &InterfaceRef)| json!([{ "object_type": kind.netbox().0, "object_id": interface.id }]);
+    let end = |(kind, interface): (CableEnd, &InterfaceRef)| json!([{ "object_type": kind.object_type(), "object_id": interface.id }]);
     let object = rest
         .create(
             "dcim/cables/",

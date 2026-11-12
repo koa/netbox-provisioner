@@ -396,7 +396,7 @@ pub struct Entry {
 
 impl Entry {
     fn of(job: &Job, started: &Started) -> Entry {
-        let (state, error) = job.outcome();
+        let crate::job::Outcome { state, error } = job.outcome();
         let events = job.log().events();
         Entry {
             kind: job.job_kind(),
@@ -593,18 +593,26 @@ fn lefts(value: &Value) -> Vec<Left> {
         .collect()
 }
 
+/// A [`Left`] the device should have ([`expected`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Expected {
+    left: Left,
+    /// when the entry that left it was written (seconds)
+    since: u64,
+}
+
 /// What the device should have of the kinds of [`Left`] by the provisioner's entries
 /// (`records`, their `provisioner_job`, oldest first), each with when the entry that left it
 /// was written; `None` while the newest is still running.
-fn expected(records: &[&Value]) -> Option<Vec<(Left, u64)>> {
-    let mut expected: Vec<(Left, u64)> = Vec::new();
+fn expected(records: &[&Value]) -> Option<Vec<Expected>> {
+    let mut expected: Vec<Expected> = Vec::new();
     for record in records {
         let at = record["at"].as_u64().unwrap_or_default();
         let touched = lefts(&record["touched"]);
-        expected.retain(|(left, _)| !touched.contains(left));
+        expected.retain(|expected| !touched.contains(&expected.left));
         for left in lefts(&record["left"]) {
-            if !expected.iter().any(|(known, _)| *known == left) {
-                expected.push((left, at));
+            if !expected.iter().any(|known| known.left == left) {
+                expected.push(Expected { left, since: at });
             }
         }
     }
@@ -666,23 +674,22 @@ pub struct Observation {
 
 /// Compares `now` (what is on the device, its `uptime`) with `expected` at `at` (seconds).
 fn observation(
-    expected: &[(Left, u64)],
+    expected: &[Expected],
     now: &[Left],
     uptime: Option<Duration>,
     at: u64,
 ) -> Option<Observation> {
     let mut seen = Observation::default();
     for left in now {
-        if !expected.iter().any(|(known, _)| known == left) {
+        if !expected.iter().any(|known| known.left == *left) {
             seen.found.push(*left);
         }
     }
-    for (left, since) in expected {
+    for &Expected { ref left, since } in expected {
         if now.contains(left) {
             continue;
         }
-        let booted_since =
-            uptime.is_some_and(|uptime| uptime.as_secs() < at.saturating_sub(*since));
+        let booted_since = uptime.is_some_and(|uptime| uptime.as_secs() < at.saturating_sub(since));
         match left {
             Left::ApplyFallback | Left::UpdateFallback if booted_since => seen.fired.push(*left),
             _ => seen.removed.push(*left),

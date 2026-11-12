@@ -31,7 +31,7 @@ const DEFAULT_PORT: u16 = 514;
 /// `remote` action stays in CEF even without a server (`remote=0.0.0.0` and no rule sends to
 /// it): RouterOS hides `syslog-time-format` in the default format and refuses to clear it
 /// (`=""`, `!syslog-time-format`, CHR 7.24.5), so the way back from CEF would fail.
-pub(super) fn routeros_logging() -> (Actions, Rules) {
+pub(super) fn routeros_logging() -> Logging {
     let action = |name: &[u8], target| {
         (
             AsciiString::from(name),
@@ -71,7 +71,13 @@ pub(super) fn routeros_logging() -> (Actions, Rules) {
     .into_iter()
     .map(|(action, topic)| rule(action, [topic]))
     .collect();
-    (actions, rules)
+    Logging { actions, rules }
+}
+
+/// The actions and rules of `/system/logging` ([`routeros_logging`]).
+pub(super) struct Logging {
+    pub actions: Actions,
+    pub rules: Rules,
 }
 
 /// `current` as the diff sees it: an action not yet in CEF hides its delimiter, which then is

@@ -86,8 +86,8 @@ impl WirelessDeviceDataTarget {
                 *wlan = profile.clone();
                 configure_bridge_radio(wlan, device, port, radio)?;
             }
-            if let Some((name, _)) = l2.placement_of_port(port) {
-                wlan.name = name.clone();
+            if let Some(placement) = l2.placement_of_port(port) {
+                wlan.name = placement.name.clone();
             }
             let mtu = port_mtu(&interface)?;
             let l2mtu = profiles.get(&key).and_then(|p| p.l_2_mtu).or(wlan.l_2_mtu);
@@ -157,7 +157,7 @@ impl WirelessDeviceDataTarget {
             // device): names and default names may be crossed (bachmann-keller-ap's `wlan1`
             // is `wlan2`), so the CAP never swaps one for the other
             let name = match l2.placement_of_port(port) {
-                Some((name, _)) => name.clone(),
+                Some(placement) => placement.name.clone(),
                 None => self
                     .wireless
                     .get(&Some(default_name.clone()))
@@ -207,7 +207,7 @@ fn configure_bridge_radio(
     }
     wlan.country = Some(match &link.country {
         Some(country) => country.as_ref().into(),
-        None => country_settings(device)?.0.into(),
+        None => country_settings(device)?.wireless.into(),
     });
     if let Some(mode) = &link.frequency_mode {
         wlan.frequency_mode = Some(

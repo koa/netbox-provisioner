@@ -631,6 +631,17 @@ enum LoggedIn {
     WithoutPassword,
 }
 
+/// A login on the console ([`log_in`]).
+struct ConsoleLogin<'a> {
+    /// who logged in
+    user: &'a str,
+    how: LoggedIn,
+    /// the MAC that answered
+    mac: &'a MacAddress,
+    /// with the factory settings
+    factory: bool,
+}
+
 /// Logs in to the device at one of `setup.macs` from the neighbor's console `terminal` (factory
 /// settings, or else `user` with `password`), makes sure `user` has `password` and gives the
 /// port its address. Back at the neighbor's prompt afterwards.
@@ -682,16 +693,18 @@ async fn set_up_marked(
     // that is up they run from the start, until all of them are through in one session.
     let deadline = Instant::now() + LOGIN_TIMEOUT;
     loop {
-        let (login_user, how, mac, factory) =
-            log_in(terminal, setup, user, (password, previous), deadline).await?;
-        let commands = setup_commands(setup, user, password, login_user, how, mac, factory);
+        let login = log_in(terminal, setup, user, password, previous, deadline).await?;
+        let commands = setup_commands(setup, user, password, &login);
         match run_in_session(terminal, &commands, password).await? {
             None => return Ok(()),
             Some(ended_before) if Instant::now() > deadline => {
                 return Err(Error::ConsoleSessionEnded(ended_before));
             }
             Some(ended_before) => {
-                info!("mac-telnet session to {mac} ended before {ended_before}, again");
+                info!(
+                    "mac-telnet session to {} ended before {ended_before}, again",
+                    login.mac
+                );
             }
         }
     }
@@ -702,15 +715,15 @@ async fn set_up_marked(
 /// current one), for a device that has them already but no address yet.
 /// Only a session that is up decides: RouterOS also says "incorrect username or password"
 /// when the device answered too late, so every pair of credentials and MAC is tried again
-/// until `deadline`, and counts as refused only if its last try was. `true` at the end: logged
-/// in with the factory settings.
+/// until `deadline`, and counts as refused only if its last try was.
 async fn log_in<'a>(
     terminal: &mut Terminal,
     setup: &'a MacTelnetSetup,
     user: &'a str,
-    (password, previous): (&'a str, Option<&'a str>),
+    password: &'a str,
+    previous: Option<&'a str>,
     deadline: Instant,
-) -> Result<(&'a str, LoggedIn, &'a MacAddress, bool), Error> {
+) -> Result<ConsoleLogin<'a>, Error> {
     let mut attempts = vec![("admin", "")];
     if !password.is_empty() || user != "admin" {
         attempts.push((user, password));
@@ -745,7 +758,12 @@ async fn log_in<'a>(
                     .await?
                     {
                         Login::Done(how) => {
-                            return Ok((login_user, how, mac, login_password.is_empty()));
+                            return Ok(ConsoleLogin {
+                                user: login_user,
+                                how,
+                                mac,
+                                factory: login_password.is_empty(),
+                            });
                         }
                         Login::Refused => {
                             refused.insert((attempt, index));
@@ -769,19 +787,22 @@ async fn log_in<'a>(
     }
 }
 
-/// What the device needs, logged in as `login_user` at `mac`: `user` with `password`, the
-/// address on the port and the API open to the neighbor. Each command does nothing where it
-/// is done already. Not `factory`: a device with its credentials, which lost its address (an
+/// What the device needs, logged in as `login`: `user` with `password`, the address on the
+/// port and the API open to the neighbor. Each command does nothing where it is done already.
+/// Not with the factory settings: a device with its credentials, which lost its address (an
 /// update gone wrong, the rescue of the update fallback), keeps the rest of its config.
 fn setup_commands(
     setup: &MacTelnetSetup,
     user: &str,
     password: &str,
-    login_user: &str,
-    how: LoggedIn,
-    mac: &MacAddress,
-    factory: bool,
+    login: &ConsoleLogin,
 ) -> Vec<String> {
+    let ConsoleLogin {
+        user: login_user,
+        ref how,
+        mac,
+        factory,
+    } = *login;
     // the port under the name the device has for it: a device with an old config has its
     // ports renamed (berghof-hansueli: no `ether1`, "input does not match any value of
     // interface")
@@ -1106,7 +1127,9 @@ const MIN_API_ATTEMPT: Duration = Duration::from_secs(3);
 
 #[cfg(test)]
 mod tests {
-    use super::{LoggedIn, MacTelnetSetup, console_error, hidden, quote, setup_commands};
+    use super::{
+        ConsoleLogin, LoggedIn, MacTelnetSetup, console_error, hidden, quote, setup_commands,
+    };
 
     #[test]
     fn recognizes_console_errors() {
@@ -1156,15 +1179,13 @@ mod tests {
             neighbor_port: None,
         };
         let mac = "D4:CA:6D:C4:3A:18".parse().unwrap();
-        let commands = setup_commands(
-            &setup,
-            "admin",
-            "pw",
-            "admin",
-            LoggedIn::WithPassword,
-            &mac,
-            false,
-        );
+        let login = ConsoleLogin {
+            user: "admin",
+            how: LoggedIn::WithPassword,
+            mac: &mac,
+            factory: false,
+        };
+        let commands = setup_commands(&setup, "admin", "pw", &login);
         let api = commands
             .iter()
             .find(|c| c.contains("available-from"))

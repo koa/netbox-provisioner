@@ -605,7 +605,11 @@ impl MutationAuthenticated {
     #[graphql(guard = "WritesAllowed")]
     async fn power_cycle(&self, ctx: &Context<'_>, id: u32) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
-        let (supplier, supply, factory) = crate::device::power_cycle::supply(&device)
+        let crate::device::power_cycle::Supplier {
+            device: supplier,
+            supply,
+            factory,
+        } = crate::device::power_cycle::supply(&device)
             .ok_or_else(|| Error::NoPowerSupply(device.name().into()))?;
         let name: Box<str> = device.name().into();
         Ok(job::start(

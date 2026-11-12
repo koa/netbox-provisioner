@@ -29,9 +29,15 @@ pub fn readers(devices: &[DeviceAccess]) -> Vec<DeviceAccess> {
     readers
 }
 
+/// An LSDB and the device it is from ([`read`]).
+pub struct LsdbRead {
+    pub device: DeviceAccess,
+    pub lsdb: Fact<Lsdb>,
+}
+
 /// The LSDB of the first of `readers` that answers, and which one it was; the last failure
 /// if none does (none without readers).
-pub async fn read(readers: &[DeviceAccess]) -> Result<Option<(DeviceAccess, Fact<Lsdb>)>, Error> {
+pub async fn read(readers: &[DeviceAccess]) -> Result<Option<LsdbRead>, Error> {
     let mut failure = None;
     for device in readers {
         let accessible = match device.connect(DeviceTarget::default()).await {
@@ -53,7 +59,12 @@ pub async fn read(readers: &[DeviceAccess]) -> Result<Option<(DeviceAccess, Fact
         let key = FactKey::new(FactKind::Lsdb, Some(device.id()), "");
         let fact = facts::get(key, Freshness::MaxAge(LSDB_AGE), ask).await;
         match fact.value {
-            Ok(_) => return Ok(Some((device.clone(), fact))),
+            Ok(_) => {
+                return Ok(Some(LsdbRead {
+                    device: device.clone(),
+                    lsdb: fact,
+                }));
+            }
             Err(_) => failure = fact.result().err(),
         }
     }

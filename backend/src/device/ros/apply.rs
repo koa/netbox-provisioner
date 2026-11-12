@@ -973,7 +973,8 @@ impl AccessibleDevice {
             return;
         }
         let set = async {
-            let (user, password) = crate::device::resolve(&self.credentials, Password::Current)?;
+            let crate::device::UserPassword { user, password } =
+                crate::device::resolve(&self.credentials, Password::Current)?;
             let raw = self.connect_again::<SimpleResult>().await?;
             raw::command(
                 &raw,

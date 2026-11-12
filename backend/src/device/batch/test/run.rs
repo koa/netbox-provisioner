@@ -1,7 +1,7 @@
 //! Scope: Tests of `batch::run` with stand-ins for the devices; nothing else.
 //!
 //! The rules of a batch, with stand-ins for the devices.
-use crate::device::batch::{Applying, Planning, Running, Timing, Watched, run, watch};
+use crate::device::batch::{Applying, PendingSeen, Planning, Running, Timing, Watched, run, watch};
 use crate::{
     Error,
     device::ros::{apply::FallbackLeftReason, fallback::Pending},
@@ -122,10 +122,11 @@ impl Watched for Fake {
             })
         })
     }
-    fn pending(&self) -> Option<(Pending, Instant)> {
+    fn pending(&self) -> Option<PendingSeen> {
         // seen at the first check: a device's fallback fires at one time, however often asked
         let seen = *self.seen.lock().unwrap().get_or_insert_with(Instant::now);
-        self.pending.map(|pending| (pending, seen))
+        self.pending
+            .map(|pending| PendingSeen { pending, at: seen })
     }
     async fn last_look(&self) -> Result<Box<str>, Error> {
         if self.lost {

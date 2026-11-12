@@ -157,7 +157,10 @@ async fn read(device: &AccessibleDevice) -> Result<DeviceMetrics, Error> {
     let capsman = LegacyCapsman::read(client).await?;
     let mut wlan_clients = wifi_clients(client).await?;
     wlan_clients.extend(legacy_clients(client, &capsman).await?);
-    let (standalone, mut radios) = wireless(client, &api).await?;
+    let Wireless {
+        clients: standalone,
+        mut radios,
+    } = wireless(client, &api).await?;
     wlan_clients.extend(standalone);
     radios.extend(capsman_radios(client, &capsman).await?);
     let interfaces = collect_resource::<InterfaceState>(client).await?;
@@ -299,6 +302,13 @@ async fn legacy_clients(
         .collect())
 }
 
+/// What [`wireless`] found.
+struct Wireless {
+    clients: Vec<WlanClient>,
+    /// the radios running
+    radios: Vec<WirelessRadio>,
+}
+
 /// The clients and running radios of `/interface/wireless`: its registration table, the
 /// radios for SSID and band, `monitor` for noise floor and frequency.
 ///
@@ -308,14 +318,17 @@ async fn legacy_clients(
 async fn wireless(
     client: &MikrotikDevice,
     api: &RawDevice<SimpleResult>,
-) -> Result<(Vec<WlanClient>, Vec<WirelessRadio>), Error> {
+) -> Result<Wireless, Error> {
     let radios = rows_if_present::<InterfaceWireless>(client).await?;
     let running = radios
         .iter()
         .filter(|radio| radio.status.running)
         .collect::<Vec<_>>();
     if running.is_empty() {
-        return Ok((Vec::new(), Vec::new()));
+        return Ok(Wireless {
+            clients: Vec::new(),
+            radios: Vec::new(),
+        });
     }
     let ssids = radios
         .iter()
@@ -343,7 +356,10 @@ async fn wireless(
         .zip(&monitor)
         .map(|(radio, monitor)| wireless_radio(radio, monitor))
         .collect();
-    Ok((clients, running_radios))
+    Ok(Wireless {
+        clients,
+        radios: running_radios,
+    })
 }
 
 /// A client of `/interface/wireless/registration-table`, its SSID that of its interface; none

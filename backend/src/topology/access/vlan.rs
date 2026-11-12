@@ -38,6 +38,13 @@ impl AccessTopology for VlanAccess {
     }
 }
 
+/// A VLAN group by id and name ([`VlanAccess::group`]).
+#[derive(Debug, Clone, Copy)]
+pub struct VlanGroupRef<'a> {
+    pub id: VlanGroupId,
+    pub name: &'a str,
+}
+
 impl VlanAccess {
     pub fn name(&self) -> Option<&str> {
         self.data().map(|v| v.name.as_ref())
@@ -55,11 +62,14 @@ impl VlanAccess {
     pub fn tunnel(&self) -> Option<VxlanAccess> {
         self.vxlan().filter(|_| self.devices().len() > 1)
     }
-    /// Its VLAN group, by id and name.
-    pub fn group(&self) -> Option<(VlanGroupId, &str)> {
+    /// Its VLAN group.
+    pub fn group(&self) -> Option<VlanGroupRef<'_>> {
         let group = self.data()?.group;
         let data = self.topology.vlan_groups.get(&group)?;
-        Some((group, data.name.as_ref()))
+        Some(VlanGroupRef {
+            id: group,
+            name: data.name.as_ref(),
+        })
     }
     /// Every device this VLAN is used on: carried by one of its interfaces, or a
     /// WLAN or management VLAN of the WLAN group it is an AP or the controller of.

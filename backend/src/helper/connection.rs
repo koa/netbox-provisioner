@@ -12,6 +12,8 @@ use super::{
     CreateAddress, CreateCable, CreatePrefix, NetboxPlan, PlanStep, Target, UpdateInterface,
     device_ref, flags::InterfaceTag, port_name, routes::Routes,
 };
+use crate::helper::FreeNetwork;
+use crate::topology::PrefixRef;
 use crate::{
     Error,
     netbox::rest::NetboxRest,
@@ -96,7 +98,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &ConnectionInput) -> Result<N
             let rest = NetboxRest::reader()?;
             let routes = Routes::read(topology).await?;
             plan.checked_with = Some(routes.router.clone());
-            let (pool, net) = next_free(topology, &rest, &routes, &mut plan).await?;
+            let FreeNetwork { pool, net } = next_free(topology, &rest, &routes, &mut plan).await?;
             plan.steps.push(PlanStep::CreatePrefix(CreatePrefix {
                 prefix: net.to_string().into(),
                 pool: pool.to_string().into(),
@@ -221,9 +223,9 @@ async fn next_free(
     rest: &NetboxRest,
     routes: &Routes,
     plan: &mut NetboxPlan,
-) -> Result<(IpNet, IpNet), Error> {
+) -> Result<FreeNetwork, Error> {
     let mut looked_at = 0;
-    for (id, pool) in topology.pool_prefixes(PrefixPool::Transfer, false) {
+    for PrefixRef { id, net: pool } in topology.pool_prefixes(PrefixPool::Transfer, false) {
         let free = rest
             .get(&format!("ipam/prefixes/{}/available-prefixes/", id.0))
             .await?;
@@ -259,7 +261,7 @@ async fn next_free(
                 )
                 .await?;
             if addresses["count"].as_u64() == Some(0) {
-                return Ok((pool, net));
+                return Ok(FreeNetwork { pool, net });
             }
         }
     }

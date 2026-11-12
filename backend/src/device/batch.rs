@@ -111,7 +111,7 @@ pub(crate) trait Watched: Send + Sync {
         settled: Instant,
     ) -> impl Future<Output = Option<Result<Box<str>, Error>>> + Send;
     /// Where the fallback stood at the last check that reached the device, and when that was.
-    fn pending(&self) -> Option<(Pending, Instant)>;
+    fn pending(&self) -> Option<PendingSeen>;
     /// A last look at a device [`Self::check`] never found in line.
     fn last_look(&self) -> impl Future<Output = Result<Box<str>, Error>> + Send;
     /// Takes the fallback away (`FallbackStopped`, or `FallbackLeft`).
@@ -200,9 +200,17 @@ pub(crate) struct Reached {
     log: Log,
 }
 
+/// Where a member's fallback stood ([`Planning::pending`]).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PendingSeen {
+    pub pending: Pending,
+    /// when the check that saw it reached the device
+    pub at: Instant,
+}
+
 #[derive(Default)]
 struct Seen {
-    pending: Option<(Pending, Instant)>,
+    pending: Option<PendingSeen>,
     /// where the script brought the fallback forward
     rearmed: Option<Rearmed>,
     /// `ScriptProgress` emitted
@@ -318,7 +326,7 @@ impl Watched for Reached {
         let run = self.run.lock_anyway().clone()?;
         check_on(&self.link, &run, &self.seen, &self.log, settled).await
     }
-    fn pending(&self) -> Option<(Pending, Instant)> {
+    fn pending(&self) -> Option<PendingSeen> {
         self.seen.lock_anyway().pending
     }
     async fn last_look(&self) -> Result<Box<str>, Error> {
@@ -353,7 +361,10 @@ async fn check_on(
     .ok()?;
     {
         let mut seen = seen.lock_anyway();
-        seen.pending = Some((look.pending, Instant::now()));
+        seen.pending = Some(PendingSeen {
+            pending: look.pending,
+            at: Instant::now(),
+        });
         if let Some(rearmed) = look.progress.as_ref().and_then(Progress::rearm) {
             seen.rearmed = Some(rearmed);
         }
@@ -463,7 +474,7 @@ impl Watched for Rejoined {
         )
         .await
     }
-    fn pending(&self) -> Option<(Pending, Instant)> {
+    fn pending(&self) -> Option<PendingSeen> {
         self.seen.lock_anyway().pending
     }
     async fn last_look(&self) -> Result<Box<str>, Error> {
@@ -555,12 +566,19 @@ pub(crate) struct Running<M> {
     checked: Option<Result<Box<str>, Error>>,
 }
 
+/// A member that failed and how.
+struct Failure {
+    /// its place in the batch
+    member: usize,
+    error: Error,
+}
+
 /// The first failure of `results` (by member), if any.
-fn first_failure(results: Vec<Result<(), Error>>) -> Option<(usize, Error)> {
+fn first_failure(results: Vec<Result<(), Error>>) -> Option<Failure> {
     results
         .into_iter()
         .enumerate()
-        .find_map(|(i, r)| r.err().map(|e| (i, e)))
+        .find_map(|(member, r)| r.err().map(|error| Failure { member, error }))
 }
 
 /// The batch over `members` (named `names`, logging to `logs`).
@@ -705,7 +723,11 @@ pub(crate) async fn run<M: Planning>(
         m.fallback = fallback.unwrap_or(false);
     }
     let armed: Vec<bool> = running.iter().map(|m| m.fallback).collect();
-    if let Some((failed, error)) = first_failure(prepared.into_iter().map(|(_, r)| r).collect()) {
+    if let Some(Failure {
+        member: failed,
+        error,
+    }) = first_failure(prepared.into_iter().map(|(_, r)| r).collect())
+    {
         // nothing applied yet: taking it away is all there is to do
         take_back(&running, &armed, fires, delay).await;
         release_all(&running, true).await;
@@ -826,12 +848,12 @@ pub(crate) async fn watch<M: Watched>(
         }
         let pending: Vec<_> = running.iter().filter_map(|m| m.member.pending()).collect();
         // one that fired takes the batch back, waiting on the others is for nothing
-        let fired = pending.iter().any(|(pending, _)| *pending == Pending::Gone);
+        let fired = pending.iter().any(|seen| seen.pending == Pending::Gone);
         let give_up = pending
             .iter()
-            .filter_map(|(pending, at)| match pending {
+            .filter_map(|seen| match seen.pending {
                 Pending::Armed(Some(fires_in)) => {
-                    let at = *at + *fires_in;
+                    let at = seen.at + fires_in;
                     Some(at.checked_sub(timing.margin).unwrap_or(at))
                 }
                 _ => None,

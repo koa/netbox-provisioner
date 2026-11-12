@@ -315,7 +315,7 @@ impl Builder {
                     .custom_field_data
                     .propagate_default_route
                     .unwrap_or(false),
-                map_position: device.custom_field_data.map_position.map(|p| (p.x, p.y)),
+                map_position: device.custom_field_data.map_position,
                 watchdog_target: super::WatchdogTarget::parse(
                     device.custom_field_data.watchdog_target.as_deref(),
                 ),
