@@ -7,10 +7,7 @@
 use crate::Error;
 use async_graphql::futures_util::StreamExt;
 use async_graphql::futures_util::future::join_all;
-use mikrotik_api::{
-    prelude::{MikrotikDevice as RawDevice, TrapCategory},
-    simple::SimpleResult,
-};
+use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use std::{
     collections::{BTreeSet, HashMap},
     net::IpAddr,
@@ -25,41 +22,6 @@ pub(crate) async fn command(
     device: &RawDevice<SimpleResult>,
     path: &str,
     attributes: &[(&str, &str)],
-) -> Result<Vec<Row>, Error> {
-    answer(device, path, attributes, Missing::Refused).await
-}
-
-/// [`command`], with no rows where the device hasn't the menu (its package missing,
-/// [`is_missing_menu`]).
-pub(crate) async fn command_if_present(
-    device: &RawDevice<SimpleResult>,
-    path: &str,
-    attributes: &[(&str, &str)],
-) -> Result<Vec<Row>, Error> {
-    answer(device, path, attributes, Missing::Empty).await
-}
-
-/// What a menu the device hasn't answers.
-#[derive(Clone, Copy, PartialEq)]
-enum Missing {
-    Refused,
-    Empty,
-}
-
-/// RouterOS's answer to a menu it hasn't: `no such command prefix` without a category (the
-/// package missing), or a missing item or command.
-pub(crate) fn is_missing_menu(category: Option<TrapCategory>, message: &[u8]) -> bool {
-    match category {
-        None => message == b"no such command prefix",
-        Some(category) => category == TrapCategory::MissingItemOrCommand,
-    }
-}
-
-async fn answer(
-    device: &RawDevice<SimpleResult>,
-    path: &str,
-    attributes: &[(&str, &str)],
-    missing: Missing,
 ) -> Result<Vec<Row>, Error> {
     let mut stream = device
         .send_command(
@@ -77,11 +39,7 @@ async fn answer(
         match result {
             SimpleResult::Sentence(row) => rows.push(row),
             SimpleResult::Error(error) => return Err(error.into()),
-            SimpleResult::Trap { category, message } => {
-                if missing == Missing::Empty && is_missing_menu(category, message.as_bytes()) {
-                    // the other trap of the pair follows; the menu has no rows
-                    continue;
-                }
+            SimpleResult::Trap { message, .. } => {
                 return Err(Error::Refused(format!("{path}: {message}").into()));
             }
         }

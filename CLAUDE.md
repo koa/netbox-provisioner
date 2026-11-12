@@ -433,10 +433,11 @@ unchecked collector without fixed descriptors). Health, resources and PoE are th
 fact (`network_state::device_data::read_one`); WLAN clients (`/interface/wifi`, `/caps-man` and
 `/interface/wireless`, `capsman="none"`), the running wireless radios (a CAP's radio the
 legacy CAPsMAN manages has no SSID there and no `info`, nor its clients; the controller
-reports them from `/caps-man`, `capsman_radios`), `/interface/print`
+reports them from `/caps-man`, `capsman_radios`), `/interface`
 counters, Ethernet links (one `monitor ... once` of all ports) and bound leases are
-`device::metrics` (`FactKind::DeviceMetrics`); a menu a package brings has no rows without it
-(`raw::command_if_present`). A WLAN client takes hostname and address from a lease of any device
+`device::metrics` (`FactKind::DeviceMetrics`), each menu read with its mikrotik-model type and
+only the two monitors raw; a menu a package brings has no rows without it
+(`rows_if_present`, `is_missing_menu`). A WLAN client takes hostname and address from a lease of any device
 by MAC, and a client or radio its `wlan_group` from NetBox (`render::wlan_group_of`: the one
 group of the device with that SSID and, for a CAP's client, that CAP; else empty). Names follow Prometheus' conventions (unit in the name, `_total` for device counters),
 every metric has `device` and `site` from NetBox. The dashboards `mikrotik-overview.json` and
@@ -1329,9 +1330,12 @@ QEMU's, the golden image's dhcp-client is bound to it).
   never `*_test.rs` files next to the code. Fixtures several modules' tests use belong in
   `topology::test` (`example_topology`, the stored export as a topology);
   `topology::builder::TopologyBuilder` isn't `cfg(test)`, the CHR tests build with it too.
-- A RouterOS command no mikrotik-model type covers (actions, monitors, a menu read for one
-  field) goes through `device::raw` (`command`, `rows`, `field`), which turns a `!trap` into
-  `Error::Refused` naming the command; don't write another loop over `SimpleResult`.
+- Every `print` reads a mikrotik-model type (`collect_resource`); a menu without one gets its
+  model in mikrotik-model (`ros_model/*.txt`), not a raw print, and a passphrase in the rows or
+  a read for one field is no reason for raw. Only what a `print` can't cover (monitors,
+  actions like `power-cycle`) goes through `device::raw` (`command`, `rows`, `field`), which
+  turns a `!trap` into `Error::Refused` naming the command; don't write another loop over
+  `SimpleResult`. Older raw prints are moved to models in task B36 (todo.md).
 - The backend sends data, the frontend words it: no sentence for the user is built in the
   backend (no German there at all; the journal takes its text from the crate `i18n`). What the UI shows is a typed GraphQL object or union with
   the values the text needs (`job::Event`, `ApplyWarning`), an enum for a case to tell apart

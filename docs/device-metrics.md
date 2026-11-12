@@ -24,10 +24,11 @@ sind danach nicht mehr nötig. Der Provisioner liest mit seinen eigenen Zugangsd
   Interfaces, Ethernet-Links und Leases sind ein eigener Fakt (`FactKind::DeviceMetrics`, `device::metrics`), beide höchstens
   30 s alt. Dauer und Erfolg der Lesungen stehen deshalb auch in `device_query_duration_seconds`
   (`kind="device_metrics"`).
-- Es wird nur gelesen, auch die Monitore (`/interface/ethernet/monitor` und
-  `/interface/wireless/monitor` mit `once`, alle Ports in einem Befehl). Ein Menü, das ein Gerät
-  nicht hat (kein `wifi`- oder `wireless`-Paket, kein Legacy-CAPsMAN), hat keine Zeilen
-  (`raw::command_if_present`); jeder andere Fehler macht das Gerät für die Runde unerreicht.
+- Es wird nur gelesen, jedes Menü mit seinem Typ aus mikrotik-model; nur die Monitore
+  (`/interface/ethernet/monitor` und `/interface/wireless/monitor` mit `once`, alle Ports in
+  einem Befehl) gehen über `device::raw`. Ein Menü, das ein Gerät nicht hat (kein `wifi`- oder
+  `wireless`-Paket, kein Legacy-CAPsMAN), hat keine Zeilen (`rows_if_present`,
+  `is_missing_menu`); jeder andere Fehler macht das Gerät für die Runde unerreicht.
 
 ## Metriken
 
@@ -52,7 +53,7 @@ Prometheus-Konventionen: Einheit im Namen, `_total` für einen Zähler des Gerä
 | `mikrotik_poe_out_voltage_volts` | Gauge | `interface` | |
 | `mikrotik_poe_out_current_amperes` | Gauge | `interface` | RouterOS meldet mA |
 | `mikrotik_poe_out_power_watts` | Gauge | `interface` | |
-| `mikrotik_interface_running` | Gauge | `interface`, `type` | `/interface/print` |
+| `mikrotik_interface_running` | Gauge | `interface`, `type` | `/interface` |
 | `mikrotik_interface_{rx,tx}_{bytes,packets}_total` | Counter | `interface` | |
 | `mikrotik_interface_{rx,tx}_{errors,drops}_total` | Counter | `interface` | nur wo gemeldet |
 | `mikrotik_interface_link_downs_total` | Counter | `interface` | |
@@ -80,8 +81,8 @@ virtuellen Interface gehört zum Radio seines Master-Interfaces.
 **Radios eines Legacy-CAPsMAN:** Auf dem CAP hat ein Radio, das der CAPsMAN verwaltet, keine
 eigene SSID (ap-klr-solar); es hat dort Frequenz und Rauschpegel, aber kein `info`, und seine
 Clients fehlen dort. Beides kommt vom Controller: `/caps-man/interface` (laufend,
-`current-channel`), SSID und Band aus `/caps-man/actual-interface-configuration` (nur diese
-Felder gelesen, die Zeilen haben auch die Passphrase), der CAP aus `/caps-man/radio`; ein
+`current-channel`), SSID und Band aus `/caps-man/actual-interface-configuration` (die Zeilen
+haben auch die Passphrase; sie bleibt im Speicher und wird nirgends ausgegeben), der CAP aus `/caps-man/radio`; ein
 virtuelles Interface hat CAP und Band seines Masters. Die Radios von `/interface/wifi` fehlen
 noch in `mikrotik_wireless_radio_*`.
 
