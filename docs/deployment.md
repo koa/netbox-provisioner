@@ -77,20 +77,19 @@ normales OCI-Image.
 - **Bibliotheken:** `mikrotik-model` und `mikrotik-api` sind Git-Abhängigkeiten in `Cargo.toml`
   (GitHub, Zweig `master`), festgelegt in `Cargo.lock` und mit den anderen Crates
   vendort. Eine Änderung dort kommt erst ins Image, wenn sie gepusht und
-  `cargo update -p mikrotik-model` (oder `mikrotik-api`) hier committet ist. Lokal im Workspace
-  nimmt Cargo die Nachbarverzeichnisse, über eine `.cargo/config.toml` im Workspace-Ordner
-  (ausserhalb der Repositories):
+  `cargo update -p mikrotik-model` (oder `mikrotik-api`) hier committet ist. Wird eine
+  Bibliothek geändert, zeigt ihre Abhängigkeit in `backend/Cargo.toml` vorübergehend auf das
+  Nachbarverzeichnis:
 
   ```toml
-  [patch."https://github.com/koa/mikrotik-api"]
-  mikrotik-api = { path = "mikrotik-api" }
-
-  [patch."https://github.com/koa/mikrotik-model"]
-  mikrotik-model = { path = "mikrotik-model" }
+  mikrotik-model = { version = "0.1.0", path = "../../mikrotik-model" }
   ```
 
-  Ein solcher Build nimmt die Git-Quellen der vier Crates aus `Cargo.lock`; committet wird nur
-  die Fassung mit Git-Quellen, die Checks laufen mit `--locked` und lehnen die andere ab.
+  Bei mikrotik-api zusätzlich in `mikrotik-model/Cargo.toml` (`path = "../mikrotik-api"`),
+  sonst gäbe es zwei mikrotik-api. Die Pfade und das `Cargo.lock` dazu werden nie committet.
+  Zum Commit wird zuerst die Bibliothek committet und gepusht, dann die Git-Referenz
+  zurückgestellt, `cargo update -p <Bibliothek>` ausgeführt und der Provisioner mit dem neuen
+  `Cargo.lock` committet; die Checks laufen mit `--locked` und lehnen ein Lock mit Pfaden ab.
 - `packages.provisioner` ist das Binary als `netbox-provisioner`, dazu eine `devShell`.
 
 **Fehlersuche ohne Shell:** `kubectl debug -it <pod> --image=busybox --target=<container>`

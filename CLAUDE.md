@@ -35,15 +35,15 @@ check takes the fitting deps as `cargoArtifacts` and runs the same cargo command
 packages, target) the deps were built with, or cargo rebuilds them. `mikrotik-model` and
 `mikrotik-api` are git dependencies (GitHub, branch `master`), pinned by `Cargo.lock` and
 vendored by crane like any crate: a change there reaches the image only after it is pushed and
-`cargo update -p mikrotik-model` (or `mikrotik-api`) is committed here. Local builds in the
-workspace take the sibling checkouts instead, through `[patch]` in the workspace's
-`.cargo/config.toml` (outside the repositories). Such a build drops the git `source` lines of
-the four crates (`mikrotik-api`, `mikrotik-model` and its generator and macro) from
-`Cargo.lock`: commit only the git version (restore those lines, or update the lock with that
-file moved aside); the Nix checks run with `--locked` and refuse the other. (`paths` instead of
-`[patch]` keeps the lock, but warns on every build that mikrotik-model's own path crates changed
-source, a future hard error.) `nix build`/`nix flake check` always build the pushed revisions in
-`Cargo.lock`. A change of
+`cargo update -p mikrotik-model` (or `mikrotik-api`) is committed here. While a library is
+changed, its dependency in `backend/Cargo.toml` points to the sibling checkout
+(`path = "../../mikrotik-model"`; for mikrotik-api also in `mikrotik-model/Cargo.toml`, or
+there are two mikrotik-api), so every build of the working tree has the change. That path and
+its `Cargo.lock` are never committed: the library is committed and pushed first, then the git
+reference restored, `cargo update -p <library>` run and the provisioner committed with that
+lock; the Nix checks run with `--locked` and refuse a lock with paths. No `[patch]` in a
+`.cargo/config.toml`: it reaches only builds started below it. `nix build`/`nix flake check`
+always build the pushed revisions in `Cargo.lock`. A change of
 `frontend/node/package-lock.json` needs the new `npmDeps` hash in `flake.nix` (the build names
 it). The Helm chart is `charts/netbox-provisioner`: every setting of `config.yaml` is a value
 of its own (`settings`), the chart writes them to a ConfigMap without the secrets; a secret

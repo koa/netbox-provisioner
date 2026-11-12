@@ -99,12 +99,12 @@ Probes, Netzwerk und Beenden in [docs/deployment.md](docs/deployment.md).
 
 Das Projekt braucht die beiden Bibliotheken [mikrotik-model](https://github.com/koa/mikrotik-model)
 und [mikrotik-api](https://github.com/koa/mikrotik-api), als Git-Abhängigkeiten (Zweig `master`, festgelegt in
-`Cargo.lock`). Um sie mitzuändern, liegen sie als Nachbarverzeichnisse daneben, und eine `.cargo/config.toml`
-im Workspace-Ordner leitet die lokalen Builds dorthin um ([docs/deployment.md](docs/deployment.md)):
+`Cargo.lock`). Um sie mitzuändern, liegen sie als Nachbarverzeichnisse daneben; solange eine
+geändert wird, zeigt `backend/Cargo.toml` vorübergehend mit `path` auf sie
+([docs/deployment.md](docs/deployment.md)):
 
 ```
 workspace/
-├── .cargo/config.toml
 ├── mikrotik-api/
 ├── mikrotik-model/
 └── netbox-provisioner/
