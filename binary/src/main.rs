@@ -5,7 +5,7 @@ use actix_4_jwt_auth::{
     biscuit::{ClaimPresenceOptions, Presence, TemporalOptions, Validation, ValidationOptions},
 };
 use actix_web::{
-    App, HttpResponse, HttpServer,
+    App, HttpRequest, HttpResponse, HttpServer,
     body::{BoxBody, MessageBody},
     dev::{HttpServiceFactory, ServiceRequest, ServiceResponse},
     get,
@@ -208,10 +208,16 @@ struct Scrape {
     topology: TopologyHolder,
 }
 
-/// Every scrape reads the devices anew (`backend::metrics::scrape`).
+/// Every scrape reads the devices anew (`backend::metrics::scrape`), within the time
+/// Prometheus waits.
 #[get("/metrics")]
-async fn metrics(scrape: Data<Scrape>) -> HttpResponse {
-    match backend::metrics::scrape(&scrape.registry, &scrape.topology).await {
+async fn metrics(request: HttpRequest, scrape: Data<Scrape>) -> HttpResponse {
+    let scrape_timeout = request
+        .headers()
+        .get("X-Prometheus-Scrape-Timeout-Seconds")
+        .and_then(|value| value.to_str().ok()?.parse::<f64>().ok())
+        .and_then(|seconds| std::time::Duration::try_from_secs_f64(seconds).ok());
+    match backend::metrics::scrape(&scrape.registry, &scrape.topology, scrape_timeout).await {
         Ok(text) => HttpResponse::Ok()
             .content_type(prometheus::TEXT_FORMAT)
             .body(text),

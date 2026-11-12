@@ -30,30 +30,50 @@ use prometheus::{Encoder, Registry, TextEncoder};
 use std::time::Duration;
 use tokio::time::Instant;
 
-/// How long one device may take in a scrape; one that takes longer counts as down. Below the
-/// chart's `serviceMonitor.scrapeTimeout`, or Prometheus gives up on the whole scrape first.
+/// How long the devices may take in a scrape at most; one that takes longer counts as down.
 pub const DEVICE_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// The text of `/metrics`: `registry`'s metrics and every device's, read now.
-pub async fn scrape(registry: &Registry, topology: &TopologyHolder) -> prometheus::Result<String> {
+/// What a scrape keeps of the time Prometheus gives it for rendering and sending.
+const SCRAPE_MARGIN: Duration = Duration::from_secs(1);
+
+/// The text of `/metrics`: `registry`'s metrics and every device's, read now. `scrape_timeout`
+/// is how long Prometheus waits (`X-Prometheus-Scrape-Timeout-Seconds`): the devices not done
+/// [`SCRAPE_MARGIN`] before count as down, so one slow device doesn't fail the whole scrape
+/// (Prometheus would take all its series as gone).
+pub async fn scrape(
+    registry: &Registry,
+    topology: &TopologyHolder,
+    scrape_timeout: Option<Duration>,
+) -> prometheus::Result<String> {
+    let since = Instant::now();
     let mut families = registry.gather();
     if CONFIG.device_metrics() {
-        let since = Instant::now();
+        let budget = device_budget(scrape_timeout);
         let devices = topology.devices().await;
-        families.extend(render::families(&round(&devices, since).await));
+        families.extend(render::families(
+            &round(&devices, since, since + budget).await,
+        ));
     }
     let mut text = Vec::new();
     TextEncoder::new().encode(&families, &mut text)?;
     Ok(String::from_utf8_lossy(&text).into_owned())
 }
 
-/// One reading of every device that has RouterOS and credentials, begun after `since`.
-async fn round(devices: &[DeviceAccess], since: Instant) -> Snapshot {
+/// How long the devices may take in a scrape Prometheus waits `scrape_timeout` for.
+pub(crate) fn device_budget(scrape_timeout: Option<Duration>) -> Duration {
+    scrape_timeout
+        .map(|timeout| timeout.saturating_sub(SCRAPE_MARGIN))
+        .map_or(DEVICE_TIMEOUT, |budget| budget.min(DEVICE_TIMEOUT))
+}
+
+/// One reading of every device that has RouterOS and credentials, begun after `since`; a
+/// device not done by `deadline` is down.
+async fn round(devices: &[DeviceAccess], since: Instant, deadline: Instant) -> Snapshot {
     let reads = devices
         .iter()
         .filter(|device| device.has_routeros() && device.credentials().is_some())
         .map(|device| async move {
-            tokio::time::timeout(DEVICE_TIMEOUT, sample(device, since))
+            tokio::time::timeout_at(deadline, sample(device, since))
                 .await
                 .unwrap_or_else(|_| DeviceSample::down(device))
         });

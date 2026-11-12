@@ -14,8 +14,11 @@ sind danach nicht mehr nötig. Der Provisioner liest mit seinen eigenen Zugangsd
 
 - **Jeder Scrape liest** (`crate::metrics::scrape`, eigener Handler für `/metrics` am
   mgmt-Port) jedes Gerät, das in NetBox RouterOS und Zugangsdaten hat, alle zugleich, über ein
-  Login pro Gerät. Ein Gerät, das in 20 s (`DEVICE_TIMEOUT`) nicht antwortet, zählt in diesem
-  Scrape als nicht erreicht; der ServiceMonitor wartet darum 25 s (`scrapeTimeout`).
+  Login pro Gerät. Der Scrape antwortet, bevor Prometheus aufgibt: 1 s vor dem Timeout, das
+  Prometheus mitschickt (`X-Prometheus-Scrape-Timeout-Seconds`, Vorgabe dort 10 s), höchstens
+  nach 20 s (`DEVICE_TIMEOUT`, der ServiceMonitor wartet 25 s). Ein Gerät, das bis dahin nicht
+  fertig ist, zählt in diesem Scrape als nicht erreicht (`mikrotik_up` 0, sonst keine Serie);
+  ein gescheiterter Scrape nähme dagegen allen Geräten ihre Serien.
   `device_metrics: false` liest keine Geräte, `/metrics` hat dann nur die eigenen Metriken.
 - Gelesen wird über denselben Weg wie überall (`DeviceAccess::connect`), als Fakten des
   [Gerätezustands](device-state.md): Health, Ressourcen und PoE teilt der Scrape mit der

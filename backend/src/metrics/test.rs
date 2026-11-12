@@ -1,6 +1,7 @@
 //! Scope: Tests of the rendering of `/metrics`; nothing else.
 
 use super::render::{DeviceSample, Snapshot, WlanGroupSample, families, wlan_group_of};
+use super::{DEVICE_TIMEOUT, device_budget};
 use crate::{
     device::metrics::{
         Capsman, DeviceMetrics, EthernetLink, InterfaceCounters, Lease, WirelessRadio, WlanClient,
@@ -442,4 +443,20 @@ fn the_families_encode_without_the_empty_ones() {
     let mut text = Vec::new();
     prometheus::Encoder::encode(&prometheus::TextEncoder::new(), &families, &mut text).unwrap();
     assert!(!String::from_utf8_lossy(&text).contains("mikrotik_health_fan_rpm"));
+}
+
+/// A scrape answers before Prometheus gives up on it: Prometheus' default 10 s leave the devices
+/// 9 s, the chart's 25 s at most `DEVICE_TIMEOUT`, as does a scrape without the header.
+#[test]
+fn the_devices_have_the_time_prometheus_waits() {
+    assert_eq!(
+        device_budget(Some(Duration::from_secs(10))),
+        Duration::from_secs(9)
+    );
+    assert_eq!(device_budget(Some(Duration::from_secs(25))), DEVICE_TIMEOUT);
+    assert_eq!(device_budget(None), DEVICE_TIMEOUT);
+    assert_eq!(
+        device_budget(Some(Duration::from_millis(500))),
+        Duration::ZERO
+    );
 }

@@ -428,8 +428,9 @@ on the first attempt, same as the isolated two-node apply test's ARP warm-up.
 
 `backend/src/metrics/` is the devices' metrics at `/metrics` (C14, `docs/device-metrics.md`):
 each scrape reads every device with RouterOS and credentials (`scrape`, its own handler at the
-mgmt port's `/metrics`, `device_metrics: false` off), one login each, within `DEVICE_TIMEOUT`
-(below the ServiceMonitor's `scrapeTimeout`), and renders that with the registry
+mgmt port's `/metrics`, `device_metrics: false` off), one login each, a device not done 1 s
+before Prometheus' `X-Prometheus-Scrape-Timeout-Seconds` (at most `DEVICE_TIMEOUT`,
+`device_budget`) down: a failed scrape would drop every device's series. It renders that with the registry
 (`render::families`); the facts are taken `Freshness::Since` the scrape's start, so nothing is
 older and each device is asked once per scrape. Health, resources and PoE are the network map's
 fact (`network_state::device_data::read_one`); WLAN clients (`/interface/wifi`, `/caps-man` and
