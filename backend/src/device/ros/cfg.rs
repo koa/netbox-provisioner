@@ -12,7 +12,7 @@ use crate::{
     Error,
     config::CONFIG,
     device::{
-        raw,
+        access,
         ros::{
             BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent,
             W60GDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
@@ -27,14 +27,14 @@ use crate::{
 };
 use async_graphql::SimpleObject;
 use log::info;
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::{
-    MikrotikDevice,
+    action::PoeMonitorOnce,
     ascii::AsciiString,
+    command::Reads,
     generator::Generator,
     model::{
         CertificateCfg, InterfaceWifiCapCfg, InterfaceWifiCapsmanCfg, InterfaceWifiCapsmanState,
-        InterfaceWifiState, InterfaceWirelessCapCfg, ReferenceType, SystemPackageState,
+        InterfaceWifiState, InterfaceWirelessCapCfg, IpService, ReferenceType, SystemPackageState,
         SystemRouterboardState, YesNo,
     },
     resource::{ResourceMutation, ResourceMutationOperation, SingleResource, collect_resource},
@@ -295,11 +295,11 @@ impl DeviceCfg {
     pub async fn generate_live(
         &mut self,
         device: &DeviceAccess,
-        raw: &RawDevice<SimpleResult>,
+        raw: &impl Reads,
     ) -> Result<(), Error> {
         self.generate_for(device)?;
         let addresses = self.base_target.watched_addresses();
-        let answering = raw::answering(raw, &addresses).await;
+        let answering = access::answering(raw, &addresses).await;
         let topology = device.topology().clone();
         self.live_warnings =
             self.base_target
@@ -317,11 +317,11 @@ impl DeviceCfg {
             .as_deref()
             .filter(|networks| !networks.is_empty())
         {
-            let clients = raw::rows(raw, "/ip/service/print")
+            let clients = collect_resource::<IpService>(raw)
                 .await?
                 .iter()
-                .filter(|row| raw::field(row, "name") == Some("api"))
-                .filter_map(|row| raw::field(row, "remote").and_then(remote_address))
+                .filter(|service| *service.status.name.0 == *b"api")
+                .filter_map(|service| remote_address(&service.status.remote.as_ref()?.to_string()))
                 .collect::<Vec<_>>();
             self.live_warnings
                 .extend(self.base_target.keep_api_open_for(
@@ -363,10 +363,7 @@ impl DeviceCfg {
     /// What the operator should know before applying (`BaseDeviceDataTarget::poe_warnings`).
     /// Whether a port losing PoE out powers something is asked at the device, over `raw`,
     /// only where a port loses it.
-    pub async fn warnings(
-        &self,
-        raw: impl AsyncFnOnce() -> Result<RawDevice<SimpleResult>, Error>,
-    ) -> Vec<ApplyWarning> {
+    pub async fn warnings(&self, raw: &impl Reads) -> Vec<ApplyWarning> {
         let ports = self.base_target.poe_switched_off(&self.base_current);
         if ports.is_empty() {
             return [
@@ -379,10 +376,7 @@ impl DeviceCfg {
             .iter()
             .map(|port| port.name.clone())
             .collect::<Vec<_>>();
-        let powered = match raw().await {
-            Ok(raw) => powered_ports(&raw, &names).await,
-            Err(error) => Err(error),
-        };
+        let powered = powered_ports(raw, &names).await;
         let powered = powered.unwrap_or_else(|error| {
             // better a warning too many than power cut unasked
             info!("cannot read the PoE status: {error}");
@@ -437,7 +431,7 @@ pub(super) fn render_script(mutations: &[ResourceMutation]) -> Result<Box<str>, 
 /// The ports of `names` whose PoE out powers something (`poe-out-status=powered-on`), not
 /// only waits for a load.
 async fn powered_ports(
-    raw: &RawDevice<SimpleResult>,
+    raw: &impl Reads,
     names: &[AsciiString],
 ) -> Result<HashSet<AsciiString>, Error> {
     let numbers = names
@@ -446,16 +440,12 @@ async fn powered_ports(
         .collect::<Vec<_>>()
         .join(",");
     let mut powered = HashSet::new();
-    let rows = raw::command(
-        raw,
-        "/interface/ethernet/poe/monitor",
-        &[("numbers", &numbers), ("once", "")],
-    )
-    .await?;
+    let rows = access::observe(raw, &PoeMonitorOnce { numbers: &numbers }).await?;
     for row in rows {
-        if let (Some(name), Some("powered-on")) =
-            (raw::field(&row, "name"), raw::field(&row, "poe-out-status"))
-        {
+        if let (Some(name), Some("powered-on")) = (
+            access::field(&row, "name"),
+            access::field(&row, "poe-out-status"),
+        ) {
             powered.insert(AsciiString::from(name));
         }
     }
@@ -515,7 +505,7 @@ impl DeviceCfg {
     /// Reads a device's current config over `client`, any connection to it (the CHR harness
     /// reaches its nodes over their own forwarded ports).
     pub async fn fetch(
-        client: &MikrotikDevice,
+        client: &impl Reads,
         device: &DeviceAccess,
     ) -> Result<DeviceCfg, SetupError> {
         let routerboard = <SystemRouterboardState as SingleResource>::fetch(client)
@@ -527,7 +517,7 @@ impl DeviceCfg {
     /// [`Self::fetch`] for the board `model`, which a CHR (no `/system/routerboard`) can't
     /// report itself.
     pub async fn fetch_with_board_model(
-        client: &MikrotikDevice,
+        client: &impl Reads,
         model: &[u8],
         device: &DeviceAccess,
     ) -> Result<DeviceCfg, SetupError> {
@@ -706,10 +696,7 @@ pub struct DeviceStats {
     board_matches: bool,
 }
 impl DeviceStats {
-    pub async fn fetch(
-        client: &MikrotikDevice,
-        device: &DeviceAccess,
-    ) -> Result<DeviceStats, Error> {
+    pub async fn fetch(client: &impl Reads, device: &DeviceAccess) -> Result<DeviceStats, Error> {
         let routerboard = SystemRouterboardState::fetch(client)
             .await?
             // a CHR has none

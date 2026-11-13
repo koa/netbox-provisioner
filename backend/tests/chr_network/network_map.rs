@@ -6,8 +6,10 @@
 //! stay in r1's LSDB until they age out, which must not count); back up, both are up again.
 
 use crate::chr_network::default_route::apply_directly;
+use crate::chr_network::node::set_keyed;
 use crate::chr_network::scenario::boot_scenario;
 use crate::chr_network::wait::{wait_for_ospf_full, wait_until};
+use backend::device::access::Session;
 use backend::network_state::edges::{Edge, EdgeState, Lsdb, edges};
 use backend::network_state::lsa::Lsa;
 use backend::topology::builder::TopologyBuilder;
@@ -15,13 +17,12 @@ use backend::topology::{
     Cable, CablePort, Device, DeviceId, Interface, InterfaceId, IpAddressData, PhysicalPortId,
     TopologyHolder,
 };
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
 use mikrotik_model::hwconfig::DeviceType;
+use mikrotik_model::model::{InterfaceEthernetByDefaultName, RoutingOspfLsaState};
+use mikrotik_model::resource::collect_resource;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
-use tokio_stream::StreamExt;
 
 struct Chain {
     builder: TopologyBuilder,
@@ -98,38 +99,24 @@ fn build() -> Chain {
     }
 }
 
-async fn run(
-    device: &MikrotikDevice<SimpleResult>,
-    command: &str,
-    attributes: &[(&str, &str)],
-) -> Vec<HashMap<Box<str>, Option<Box<str>>>> {
-    let mut s = device
-        .send_command(
-            command.as_bytes(),
-            |cmd| {
-                attributes.iter().fold(cmd, |cmd, (key, value)| {
-                    cmd.attribute(key.as_bytes(), value.as_bytes())
-                })
-            },
-            (),
-        )
-        .await;
-    let mut rows = Vec::new();
-    while let Some(r) = s.next().await {
-        match r {
-            SimpleResult::Sentence(row) => rows.push(row),
-            other => panic!("{command}: {other:?}"),
-        }
-    }
-    rows
+async fn lsdb(device: &Session) -> Lsdb {
+    collect_resource::<RoutingOspfLsaState>(device)
+        .await
+        .expect("lsas")
+        .iter()
+        .filter_map(Lsa::from_state)
+        .collect()
 }
 
-async fn lsdb(device: &MikrotikDevice<SimpleResult>) -> Lsdb {
-    run(device, "/routing/ospf/lsa/print", &[])
-        .await
-        .into_iter()
-        .filter_map(|row| Lsa::from_row(|key| row.get(key).cloned().flatten().map(String::from)))
-        .collect()
+/// Turns the Ethernet port with the factory name `port` off or on.
+async fn set_port_disabled(device: &Session, port: &str, disabled: bool) {
+    set_keyed(
+        device,
+        &port.into(),
+        |ethernet: &mut InterfaceEthernetByDefaultName| ethernet.data.disabled = disabled,
+    )
+    .await
+    .expect("port switched");
 }
 
 /// The state of the edge r1–r2 and of r2–r3.
@@ -208,7 +195,7 @@ async fn the_lsdb_gives_the_state_of_each_edge() {
     };
     wait_for((EdgeState::Up, EdgeState::Up), "both up").await;
 
-    run(&r3, "/interface/ethernet/disable", &[("numbers", "ether2")]).await;
+    set_port_disabled(&r3, "ether2", true).await;
     wait_until(
         || async {
             let (near, far) = states(&edges(&devices, &lsdb(&r1).await), far_edge);
@@ -220,6 +207,6 @@ async fn the_lsdb_gives_the_state_of_each_edge() {
     .await
     .expect("r2–r3 down, r1–r2 up");
 
-    run(&r3, "/interface/ethernet/enable", &[("numbers", "ether2")]).await;
+    set_port_disabled(&r3, "ether2", false).await;
     wait_for((EdgeState::Up, EdgeState::Up), "both up again").await;
 }

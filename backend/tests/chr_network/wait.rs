@@ -4,12 +4,12 @@
 //! the realistic SOCKS path in `apply.rs`) - waiting for network state to
 //! converge is setup/validation, not the access pattern under test.
 
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
+use backend::device::access::Session;
+use mikrotik_model::model::{OspfNeighborState, RoutingOspfNeighborState};
+use mikrotik_model::resource::collect_resource;
 use std::future::Future;
 use std::time::Duration;
 use tokio::time::Instant;
-use tokio_stream::StreamExt;
 
 /// Polls `check` until it returns `Ok(true)` or `timeout` elapses. An
 /// `Err` from `check` itself is propagated immediately rather than retried -
@@ -38,36 +38,22 @@ where
 /// instance whenever any interface has OSPF enabled, regardless of whether
 /// IPv6 is actually in play - a v6-only scenario would need to wait on
 /// `default-v3` instead) to reach `Full`, and for there to be at least one.
-/// No typed `/routing/ospf/neighbor` model exists in mikrotik-model yet, so
-/// this uses a raw `SimpleResult` command rather than the typed fetch layer.
 pub async fn wait_for_ospf_full(
-    device: &MikrotikDevice<SimpleResult>,
+    device: &Session,
     instance: &str,
     timeout: Duration,
 ) -> anyhow::Result<()> {
     wait_until(
         || async {
-            let mut stream = device
-                .send_simple_command(b"/routing/ospf/neighbor/print".as_slice(), ())
-                .await;
-            let mut rows = Vec::new();
-            while let Some(result) = stream.next().await {
-                match result {
-                    SimpleResult::Sentence(row) => rows.push(row),
-                    SimpleResult::Trap { message, .. } => {
-                        anyhow::bail!("ospf neighbor print failed: {message}")
-                    }
-                    SimpleResult::Error(e) => return Err(e.into()),
-                }
-            }
-            let rows: Vec<_> = rows
-                .into_iter()
-                .filter(|row| row.get("instance").and_then(|v| v.as_deref()) == Some(instance))
-                .collect();
-            Ok(!rows.is_empty()
-                && rows
+            let neighbors = collect_resource::<RoutingOspfNeighborState>(device).await?;
+            let neighbors = neighbors
+                .iter()
+                .filter(|neighbor| *neighbor.instance.0 == *instance.as_bytes())
+                .collect::<Vec<_>>();
+            Ok(!neighbors.is_empty()
+                && neighbors
                     .iter()
-                    .all(|row| row.get("state").and_then(|v| v.as_deref()) == Some("Full")))
+                    .all(|neighbor| neighbor.state == OspfNeighborState::Full))
         },
         timeout,
     )

@@ -5,60 +5,33 @@
 //! only while it runs),
 //! and each action takes its leftover away; "Jetzt zurück" loads the config from before.
 use crate::chr_network::golden_image::ensure_golden_image;
+use crate::chr_network::node::{
+    Direct, add, add_script, execute, identity, set_identity, set_single,
+};
 use crate::chr_network::qemu::nix_unavailable;
 use crate::chr_network::vm::boot_node;
 use backend::Error;
+use backend::device::access::{Session, act};
 use backend::device::dependency::PowerChain;
 use backend::device::leftovers::{LeftoverAction, LeftoverCleared, clear, read};
 use backend::device::ros::fallback;
 use backend::device::update::DeviceLink;
 use backend::device::watchdog::{Watching, suspend};
 use backend::job::{Event, Log};
-use encoding_rs::mem::encode_latin1_lossy;
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_model::action::ScriptJobRemove;
+use mikrotik_model::model::{File, FileCfg, SystemScriptJobState, SystemWatchdogCfg};
+use mikrotik_model::resource::collect_resource;
+use mikrotik_model::value::{HasNone, RosValue};
 use std::time::Duration;
-use tokio_stream::StreamExt;
 
-struct Direct(u16);
-
-impl DeviceLink for Direct {
-    async fn api(&self) -> Result<MikrotikDevice<SimpleResult>, Error> {
-        Ok(MikrotikDevice::connect(
-            ("127.0.0.1", self.0),
-            b"admin",
-            Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
-        )
-        .await?)
+/// Adds the file `name`, a directory without `contents`.
+async fn add_file(device: &Session, name: &str, contents: Option<&str>) {
+    let mut file = FileCfg::new(name.into());
+    match contents {
+        Some(contents) => file.contents = Some(contents.into()),
+        None => file._type = Some("directory".into()),
     }
-    async fn upload(
-        &self,
-        _name: &str,
-        _data: &[u8],
-        _progress: &(impl Fn(usize) + Sync),
-    ) -> Result<(), Error> {
-        unreachable!("no upload when clearing leftovers")
-    }
-}
-
-/// Runs `command` with `attributes`, failing on a trap.
-async fn run(device: &MikrotikDevice<SimpleResult>, command: &str, attributes: &[(&str, &str)]) {
-    let mut stream = device
-        .send_command(
-            command.as_bytes(),
-            |cmd| {
-                attributes.iter().fold(cmd, |cmd, (key, value)| {
-                    cmd.attribute(key.as_bytes(), value.as_bytes())
-                })
-            },
-            (),
-        )
-        .await;
-    while let Some(result) = stream.next().await {
-        if let SimpleResult::Trap { message, .. } = result {
-            panic!("{command}: {message}");
-        }
-    }
+    add(device, &file).await.expect("file added");
 }
 
 fn unpowered() -> PowerChain {
@@ -68,37 +41,13 @@ fn unpowered() -> PowerChain {
 /// A package for the CAPs, in a directory (`sd1-part1/upgrade/…` on a router with an SD card).
 const CAP_PACKAGE: &str = "upgrade/routeros-7.99-arm.npk";
 
-async fn files(device: &MikrotikDevice<SimpleResult>) -> Vec<String> {
-    let mut stream = device
-        .send_simple_command(b"/file/print".as_slice(), ())
-        .await;
-    let mut names = Vec::new();
-    while let Some(result) = stream.next().await {
-        if let SimpleResult::Sentence(row) = result
-            && let Some(Some(name)) = row.get("name")
-        {
-            names.push(name.to_string());
-        }
-    }
-    names
-}
-
-async fn identity(device: &MikrotikDevice<SimpleResult>) -> String {
-    let mut stream = device
-        .send_simple_command(b"/system/identity/print".as_slice(), ())
-        .await;
-    let mut name = String::new();
-    while let Some(result) = stream.next().await {
-        if let SimpleResult::Sentence(row) = result {
-            name = row
-                .get("name")
-                .cloned()
-                .flatten()
-                .unwrap_or_default()
-                .to_string();
-        }
-    }
-    name
+async fn files(device: &Session) -> Vec<String> {
+    collect_resource::<File>(device)
+        .await
+        .expect("files")
+        .iter()
+        .map(|file| file.cfg.name.to_string())
+        .collect()
 }
 
 #[tokio::test]
@@ -127,21 +76,12 @@ async fn leftovers_are_found_and_cleared() {
             .unwrap(),
         None
     );
-    run(
-        &device,
-        "/system/script/add",
-        &[
-            ("name", "netbox-provisioner-apply"),
-            ("source", ":delay 600s"),
-        ],
-    )
-    .await;
-    run(
-        &device,
-        "/system/watchdog/set",
-        &[("watch-address", "10.0.2.2")],
-    )
-    .await;
+    add_script(&device, "netbox-provisioner-apply", ":delay 600s").await;
+    set_single(&device, |watchdog: &mut SystemWatchdogCfg| {
+        watchdog.watch_address = HasNone::Value("10.0.2.2".parse().unwrap())
+    })
+    .await
+    .expect("watch address");
     let watching = Watching {
         watch_address: Some("10.0.2.2".into()),
         poe_pings: Vec::new(),
@@ -149,25 +89,10 @@ async fn leftovers_are_found_and_cleared() {
     suspend(&device, &watching, Duration::from_secs(7200))
         .await
         .unwrap();
-    run(
-        &device,
-        "/file/add",
-        &[("name", "routeros-7.99.npk"), ("contents", "not a package")],
-    )
-    .await;
+    add_file(&device, "routeros-7.99.npk", Some("not a package")).await;
     // what a CAPsMAN router keeps for its CAPs, on purpose: no leftover, never removed
-    run(
-        &device,
-        "/file/add",
-        &[("name", "upgrade"), ("type", "directory")],
-    )
-    .await;
-    run(
-        &device,
-        "/file/add",
-        &[("name", CAP_PACKAGE), ("contents", "not a package")],
-    )
-    .await;
+    add_file(&device, "upgrade", None).await;
+    add_file(&device, CAP_PACKAGE, Some("not a package")).await;
     let left = read(&device).await.unwrap();
     eprintln!("{left:#?}");
     assert!(left.apply_fallback.is_some());
@@ -204,30 +129,22 @@ async fn leftovers_are_found_and_cleared() {
     let left = read(&device).await.unwrap();
     assert!(left.is_empty(), "{left:?}");
     assert!(files(&device).await.iter().any(|name| name == CAP_PACKAGE));
-    run(
-        &device,
-        "/execute",
-        &[("script", "/system script run netbox-provisioner-apply")],
-    )
-    .await;
+    execute(&device, "/system script run netbox-provisioner-apply").await;
     tokio::time::sleep(Duration::from_secs(2)).await;
     assert!(read(&device).await.unwrap().apply_script_running);
-    let mut jobs = device
-        .send_simple_command(b"/system/script/job/print".as_slice(), ())
-        .await;
-    let mut ids = Vec::new();
-    while let Some(result) = jobs.next().await {
-        // the API session is a job too
-        if let SimpleResult::Sentence(row) = result
-            && row.get("script").cloned().flatten().as_deref() == Some("netbox-provisioner-apply")
-            && let Some(Some(id)) = row.get(".id")
-        {
-            ids.push(id.to_string());
-        }
-    }
-    drop(jobs);
-    for id in ids {
-        run(&device, "/system/script/job/remove", &[(".id", &id)]).await;
+    // the API session is a job too
+    let jobs = collect_resource::<SystemScriptJobState>(&device)
+        .await
+        .expect("script jobs");
+    for job in jobs.iter().filter(|job| {
+        job.script
+            .as_ref()
+            .is_some_and(|script| *script.0 == *b"netbox-provisioner-apply")
+    }) {
+        let number = String::from_utf8_lossy(&job.id.encode_ros()).into_owned();
+        act(&device, &ScriptJobRemove { number: &number })
+            .await
+            .expect("job removed");
     }
     // a leftover cleared elsewhere in the meantime
     let result = clear(
@@ -248,12 +165,7 @@ async fn leftovers_are_found_and_cleared() {
         None
     );
     let before = identity(&device).await;
-    run(
-        &device,
-        "/system/identity/set",
-        &[("name", "after-the-apply")],
-    )
-    .await;
+    set_identity(&device, "after-the-apply").await;
     drop(device);
     let log = Log::new("leftovers");
     clear(

@@ -8,12 +8,10 @@ use crate::{
     job::Log,
     topology::access::{DeviceTarget, device::DeviceAccess},
 };
+use access::{Reader, Session};
 use async_graphql::{ComplexObject, SimpleObject};
-use mikrotik_api::{
-    prelude::{MikrotikDevice as RawDevice, ParsedMessage},
-    simple::SimpleResult,
-};
-use mikrotik_model::{MikrotikDevice, model::SystemIdentityCfg, resource::SingleResource};
+use mikrotik_api::prelude::{Connection, Generation};
+use mikrotik_model::{model::SystemIdentityCfg, resource::SingleResource};
 use std::{net::IpAddr, sync::Arc, time::Duration};
 use surge_ping::{IcmpPacket, SurgeError, ping};
 use tokio::{
@@ -22,6 +20,9 @@ use tokio::{
 };
 use tokio_socks::tcp::Socks5Stream;
 
+pub mod access;
+#[cfg(test)]
+pub(crate) mod answer;
 pub mod batch;
 pub mod bootstrap;
 pub mod dependency;
@@ -34,7 +35,6 @@ pub mod partitions;
 pub mod poe;
 pub mod power_cycle;
 pub(crate) mod radio_hold;
-pub(crate) mod raw;
 pub mod reboot;
 pub mod rollout;
 pub mod ros;
@@ -109,7 +109,7 @@ impl Path {
 /// A login to a device's API: the connection, and the identity of the device answering.
 #[derive(Clone)]
 pub struct Login {
-    client: MikrotikDevice,
+    client: Reader,
     identity: Box<str>,
     /// it went with the credentials' `previous_password` only
     password: Password,
@@ -158,8 +158,14 @@ pub(crate) async fn login(
         let (device, path, credentials) = (device.clone(), path.clone(), credentials.clone());
         async move {
             tokio::time::timeout(CONNECT_TIMEOUT, async {
-                let LoggedIn { client, password } =
-                    connect_any(address, &path, &credentials).await?;
+                let LoggedIn { client, password } = connect_any(
+                    address,
+                    &path,
+                    &credentials,
+                    access::generation(device.id()),
+                )
+                .await?;
+                let client = Reader::new(client);
                 let identity: Box<str> = SystemIdentityCfg::fetch(&client)
                     .await?
                     .map(|identity| identity.name.to_string().into())
@@ -296,7 +302,7 @@ pub struct AccessibleDevice {
     credentials: Credentials,
     /// which of the credentials' passwords the login went with
     password: Password,
-    client: MikrotikDevice,
+    client: Reader,
     device_config: DeviceAccess,
     /// `/system/identity` of the device answering at `address`
     identity: Box<str>,
@@ -425,9 +431,22 @@ impl AccessibleDevice {
             same_name: *self.identity == *self.device_config.name(),
         }
     }
-    /// A further connection to the same device, with another result type.
-    pub(crate) async fn connect_again<D: ParsedMessage>(&self) -> Result<RawDevice<D>, Error> {
-        connect_with(self.address, &self.path, &self.credentials, self.password).await
+    /// What reads over the login, shared by everyone reading the device in this request.
+    pub(crate) fn reader(&self) -> &Reader {
+        &self.client
+    }
+    /// A job's own connection to the same device ([`Session`]).
+    pub(crate) async fn connect_again(&self) -> Result<Session, Error> {
+        let generation = access::generation(self.device_config.id());
+        let connection = connect_with(
+            self.address,
+            &self.path,
+            &self.credentials,
+            self.password,
+            generation,
+        )
+        .await?;
+        Ok(Session::new(connection))
     }
     /// Which password the login went with: [`Password::Previous`] is a deviation an apply
     /// takes away ([`Self::set_current_password`]).
@@ -456,7 +475,7 @@ impl AccessibleDevice {
     }
 }
 impl update::DeviceLink for AccessibleDevice {
-    async fn api(&self) -> Result<RawDevice<SimpleResult>, Error> {
+    async fn api(&self) -> Result<Session, Error> {
         self.connect_again().await
     }
     async fn upload(
@@ -508,22 +527,32 @@ fn has_previous(credentials: &Credentials) -> bool {
 }
 
 /// An API login and the password it went with ([`connect_any`]).
-struct LoggedIn<D: ParsedMessage> {
-    client: RawDevice<D>,
+struct LoggedIn {
+    client: Connection,
     password: Password,
 }
 
 /// Logs in to the API of the device at `address` along `path`, with the current password, and
 /// where that is refused with the previous one, if any (A9); which one went.
-async fn connect_any<D: ParsedMessage>(
+async fn connect_any(
     address: IpAddr,
     path: &Path,
     credentials: &Credentials,
-) -> Result<LoggedIn<D>, Error> {
+    generation: Generation,
+) -> Result<LoggedIn, Error> {
     use mikrotik_api::error::Error as ApiError;
-    match connect_with(address, path, credentials, Password::Current).await {
+    match connect_with(
+        address,
+        path,
+        credentials,
+        Password::Current,
+        generation.clone(),
+    )
+    .await
+    {
         Err(Error::MikrotikApi(ApiError::LoginFailed)) if has_previous(credentials) => {
-            let client = connect_with(address, path, credentials, Password::Previous).await?;
+            let client =
+                connect_with(address, path, credentials, Password::Previous, generation).await?;
             log::info!("{address}: logged in with the previous password");
             Ok(LoggedIn {
                 client,
@@ -537,41 +566,61 @@ async fn connect_any<D: ParsedMessage>(
     }
 }
 
-/// [`connect_any`], whichever password went.
-pub(crate) async fn connect<D: ParsedMessage>(
+/// A job's own connection to `device` at `address` along `path` ([`connect_any`], whichever
+/// password went), without the checks of [`login`].
+pub(crate) async fn connect(
+    device: &DeviceAccess,
     address: IpAddr,
     path: &Path,
     credentials: &Credentials,
-) -> Result<RawDevice<D>, Error> {
-    Ok(connect_any(address, path, credentials).await?.client)
+) -> Result<Session, Error> {
+    let generation = access::generation(device.id());
+    Ok(Session::new(
+        connect_any(address, path, credentials, generation)
+            .await?
+            .client,
+    ))
+}
+
+/// [`connect`], for what only reads.
+pub(crate) async fn connect_reader(
+    device: &DeviceAccess,
+    address: IpAddr,
+    path: &Path,
+    credentials: &Credentials,
+) -> Result<Reader, Error> {
+    Ok(connect(device, address, path, credentials).await?.reader())
 }
 
 /// Logs in to the API of the device at `address` along `path` with `which` password.
-async fn connect_with<D: ParsedMessage>(
+async fn connect_with(
     address: IpAddr,
     path: &Path,
     credentials: &Credentials,
     which: Password,
-) -> Result<RawDevice<D>, Error> {
+    generation: Generation,
+) -> Result<Connection, Error> {
     let UserPassword {
         user: username,
         password,
     } = resolve(credentials, which)?;
     let Path::Neighbor(plan) = path else {
         let stream = open_stream(address, path, 8728).await?;
-        return Ok(RawDevice::connect_with_stream(
+        return Ok(Connection::connect_with_stream(
             stream,
             username.as_bytes(),
             password.map(str::as_bytes),
+            generation,
         )
         .await?);
     };
     for attempt in 1..=NEIGHBOR_LOGIN_TRIES {
         let stream = open_stream(address, path, 8728).await?;
-        let login = RawDevice::connect_with_stream(
+        let login = Connection::connect_with_stream(
             stream,
             username.as_bytes(),
             password.map(str::as_bytes),
+            generation.clone(),
         );
         match tokio::time::timeout(NEIGHBOR_LOGIN_TIMEOUT, login).await {
             Ok(connected) => return Ok(connected?),

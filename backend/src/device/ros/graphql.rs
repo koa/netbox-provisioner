@@ -9,17 +9,18 @@ use crate::{
     Error,
     config::CONFIG,
     device::{
-        AccessibleDevice, PingResult, device_mode, neighbors, partitions, raw,
+        AccessibleDevice, PingResult, device_mode, neighbors, partitions,
         ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, fallback, progress},
         update,
     },
     error_info::ApiError,
 };
 use async_graphql::{Context, Object, SimpleObject};
-use mikrotik_api::simple::SimpleResult;
 use mikrotik_model::{
     hwconfig::DeviceType,
-    model::{SystemIdentityCfg, SystemRouterboardState},
+    model::{LogState, LogTopic, SystemIdentityCfg, SystemRouterboardState},
+    resource::collect_resource,
+    value::RosValue,
 };
 use std::{sync::Arc, time::Duration};
 
@@ -105,9 +106,7 @@ impl AccessibleDevice {
     /// before RouterOS 7.17, which has no device mode.
     async fn device_mode(&self, ctx: &Context<'_>) -> Option<device_mode::DeviceMode> {
         let device = self.duplicate();
-        let mode = async move {
-            device_mode::read(&device.connect_again().await?, &device.device_config).await
-        };
+        let mode = async move { device_mode::read(device.reader(), &device.device_config).await };
         let fact = facts::get(
             self.fact_key(FactKind::DeviceMode),
             self.freshness(DEVICE_MODE_AGE),
@@ -139,12 +138,12 @@ impl AccessibleDevice {
     /// The ports the device reports feeding something over PoE, and what is at their other
     /// end (helper „PoE“).
     async fn poe_observed(&self) -> Result<Vec<crate::device::poe::PoeObserved>, ApiError> {
-        Ok(crate::device::poe::observed(&self.connect_again().await?, &self.device_config).await?)
+        Ok(crate::device::poe::observed(self.reader(), &self.device_config).await?)
     }
     /// The partitions of the flash; `null` on a device without (16 MiB of flash, a CHR).
     async fn partitions(&self, ctx: &Context<'_>) -> Option<partitions::Partitions> {
         let device = self.duplicate();
-        let read = async move { partitions::read(&device.connect_again().await?).await };
+        let read = async move { partitions::read(device.reader()).await };
         let fact = facts::get(
             self.fact_key(FactKind::Partitions),
             self.freshness(PARTITIONS_AGE),
@@ -157,7 +156,7 @@ impl AccessibleDevice {
         let device = self.duplicate();
         let versions = async move {
             let as_of = tokio::time::Instant::now();
-            let state = update::read_state(&device.connect_again().await?).await?;
+            let state = update::read_state(device.reader()).await?;
             let wanted = device
                 .wanted_packages_for(state.model.as_deref().map(str::as_bytes))
                 .await?;
@@ -226,15 +225,15 @@ impl AccessibleDevice {
         }
         let device = self.duplicate();
         let read = async move {
-            let raw = device.connect_again().await?;
-            let left = crate::device::leftovers::read(&raw).await?;
+            let raw = device.reader();
+            let left = crate::device::leftovers::read(raw).await?;
             if crate::journal::enabled() {
                 // what no job of this provisioner explains goes into the journal (Z31)
-                let uptime = fallback::uptime(&raw).await.ok().flatten();
+                let uptime = fallback::uptime(raw).await.ok().flatten();
                 // where the apply fallback is gone, it may have fired: the marks of its script
                 let marks = match left.apply_fallback {
                     Some(_) => Vec::new(),
-                    None => progress::contents(&raw).await.unwrap_or_default(),
+                    None => progress::contents(raw).await.unwrap_or_default(),
                 };
                 tokio::spawn(crate::journal::observe(
                     device.device_config.id(),
@@ -266,26 +265,19 @@ impl AccessibleDevice {
         #[graphql(default = 30)] last: u32,
     ) -> Option<Vec<LogEntry>> {
         let read = async {
-            let rows = raw::rows(&self.connect_again().await?, "/log/print").await?;
-            let rows: Vec<_> = rows
+            let entries: Vec<_> = collect_resource::<LogState>(self.reader())
+                .await?
                 .into_iter()
-                .filter(|row| {
-                    !raw::field(row, "topics")
-                        .unwrap_or_default()
-                        .split(',')
-                        .any(|t| t == "account")
-                })
+                .filter(|entry| !entry.topics.contains(&LogTopic::Account))
                 .collect();
-            let skip = rows.len().saturating_sub(last as usize);
-            let text =
-                |row: &raw::Row, name| Box::<str>::from(raw::field(row, name).unwrap_or_default());
+            let skip = entries.len().saturating_sub(last as usize);
             Ok::<_, Error>(
-                rows[skip..]
+                entries[skip..]
                     .iter()
-                    .map(|row| LogEntry {
-                        time: text(row, "time"),
-                        topics: text(row, "topics"),
-                        message: text(row, "message"),
+                    .map(|entry| LogEntry {
+                        time: entry.time.to_string().into(),
+                        topics: String::from_utf8_lossy(&entry.topics.encode_ros()).into(),
+                        message: entry.message.to_string().into(),
                     })
                     .collect(),
             )
@@ -343,7 +335,7 @@ impl AccessibleDevice {
             let as_of = tokio::time::Instant::now();
             let mut device_cfg = DeviceCfg::fetch(&device.client, &device.device_config).await?;
             device_cfg
-                .generate_live(&device.device_config, &device.connect_again().await?)
+                .generate_live(&device.device_config, device.reader())
                 .await?;
             let (script, mut menus) = {
                 let mutations = device_cfg.sorted_mutations()?;
@@ -365,9 +357,7 @@ impl AccessibleDevice {
                 menus: menus.into(),
                 previous_password,
                 www_certificate,
-                warnings: device_cfg
-                    .warnings(async || device.connect_again::<SimpleResult>().await)
-                    .await,
+                warnings: device_cfg.warnings(device.reader()).await,
                 as_of,
             })
         };
@@ -380,11 +370,7 @@ impl AccessibleDevice {
     ) -> facts::Fact<crate::device::interface_live::InterfaceLive> {
         let device = self.duplicate();
         let read = async move {
-            crate::device::interface_live::read(
-                &device.connect_again().await?,
-                &device.device_config,
-            )
-            .await
+            crate::device::interface_live::read(device.reader(), &device.device_config).await
         };
         facts::get(
             self.fact_key(FactKind::InterfaceLive),
@@ -396,7 +382,7 @@ impl AccessibleDevice {
     /// What the device answers for the neighbor check (`FactKind::Neighbors`).
     async fn neighbor_table(&self) -> facts::Fact<neighbors::NeighborTable> {
         let device = self.duplicate();
-        let read = async move { neighbors::read_table(&device.connect_again().await?).await };
+        let read = async move { neighbors::read_table(device.reader()).await };
         facts::get(
             self.fact_key(FactKind::Neighbors),
             self.freshness(NEIGHBORS_AGE),

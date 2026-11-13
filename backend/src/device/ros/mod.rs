@@ -13,7 +13,7 @@ use crate::{
 };
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use mikrotik_model::{
-    MacAddress, MikrotikDevice,
+    MacAddress,
     ascii::{self, AsciiString},
     mikrotik_model,
     model::{

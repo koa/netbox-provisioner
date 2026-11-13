@@ -30,7 +30,7 @@ use crate::{
     device::connect_for_job,
     device::{
         AccessibleDevice,
-        raw::{command, field, rows},
+        access::{Session, remove_if_present},
     },
     device_state::JobPhase,
     error_info::ErrorInfo,
@@ -43,7 +43,18 @@ use crate::{
     },
 };
 use async_graphql::SimpleObject;
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use mikrotik_model::{
+    ascii::AsciiString,
+    command::{Reads, Writes},
+    model::{
+        InterfaceEthernetPoe, InterfaceEthernetPoeByName, SystemScheduler, SystemSchedulerByName,
+        SystemSchedulerCfg, SystemWatchdogCfg,
+    },
+    resource::{
+        Creatable, KeyedResource, SingleResource, Updatable, apply_mutation, collect_resource,
+    },
+    value::{HasNone, ParseRosValueResult, RosValue},
+};
 use std::{
     collections::{BTreeSet, HashMap},
     net::IpAddr,
@@ -217,7 +228,7 @@ pub fn addresses(device: &DeviceAccess) -> Vec<IpAddr> {
 /// What the watchdogs watch, of the ports only those pinging one of `powered` (none read
 /// without). While a scheduler entry of a suspend the provisioner didn't see to the end is
 /// there, what it restores.
-pub async fn read(device: &RawDevice<SimpleResult>, powered: &[IpAddr]) -> Result<Watching, Error> {
+pub async fn read(device: &impl Reads, powered: &[IpAddr]) -> Result<Watching, Error> {
     if let Some(watching) = pending(device).await? {
         return Ok(watching);
     }
@@ -225,37 +236,36 @@ pub async fn read(device: &RawDevice<SimpleResult>, powered: &[IpAddr]) -> Resul
 }
 
 /// What watches now, whatever a scheduler entry would restore.
-async fn read_live(
-    device: &RawDevice<SimpleResult>,
-    powered: &[IpAddr],
-) -> Result<Watching, Error> {
-    let rows_ = rows(device, "/system/watchdog/print").await?;
-    let watch_address = rows_
-        .first()
-        .and_then(|row| field(row, "watch-address"))
-        .filter(|address| !address.is_empty() && *address != "none")
-        .map(Box::from);
+async fn read_live(device: &impl Reads, powered: &[IpAddr]) -> Result<Watching, Error> {
+    let watch_address = match SystemWatchdogCfg::fetch(device).await? {
+        Some(SystemWatchdogCfg {
+            watch_address: HasNone::Value(address),
+            ..
+        }) => Some(address.to_string().into()),
+        _ => None,
+    };
     let mut poe_pings = Vec::new();
     if !powered.is_empty() {
-        for row in rows(device, "/interface/ethernet/poe/print").await? {
-            if field(&row, "power-cycle-ping-enabled") != Some("true") {
+        for port in collect_resource::<InterfaceEthernetPoe>(device).await? {
+            let port = port.cfg;
+            if port.power_cycle_ping_enabled != Some(true) {
                 continue;
             }
-            let (Some(port), Some(address), Some(timeout)) = (
-                field(&row, "name"),
-                field(&row, "power-cycle-ping-address"),
-                field(&row, "power-cycle-ping-timeout"),
+            let (Some(address), Some(timeout)) = (
+                &port.power_cycle_ping_address,
+                port.power_cycle_ping_timeout,
             ) else {
                 continue;
             };
             if address
+                .to_string()
                 .parse()
                 .is_ok_and(|address: IpAddr| powered.contains(&address))
             {
                 poe_pings.push(PoePing {
-                    port: port.into(),
-                    address: address.into(),
-                    timeout: timeout.into(),
+                    port: port.name.to_string().into(),
+                    address: address.to_string().into(),
+                    timeout: String::from_utf8_lossy(&timeout.encode_ros()).into(),
                 });
             }
         }
@@ -269,7 +279,7 @@ async fn read_live(
 /// Schedules restoring `watching` after `safety_net`, then suspends it; nothing to do when it
 /// is empty.
 pub async fn suspend(
-    device: &RawDevice<SimpleResult>,
+    device: &impl Writes,
     watching: &Watching,
     safety_net: Duration,
 ) -> Result<(), Error> {
@@ -277,20 +287,14 @@ pub async fn suspend(
         return Ok(());
     }
     remove_entry(device).await?;
-    command(
-        device,
-        "/system/scheduler/add",
-        &[
-            ("name", NAME),
-            ("interval", &format!("{}s", safety_net.as_secs().max(1))),
-            ("on-event", &script(watching)),
-            (
-                "comment",
-                "restores the watchdogs suspended for an update of a device this one powers or reaches the network through",
-            ),
-        ],
-    )
-    .await?;
+    let mut entry = SystemSchedulerCfg::new(NAME.into());
+    entry.interval = Some(safety_net.max(Duration::from_secs(1)));
+    entry.on_event = Some(script(watching).into());
+    entry.comment = Some(
+        "restores the watchdogs suspended for an update of a device this one powers or reaches the network through"
+            .into(),
+    );
+    apply_mutation(device, &entry.calculate_create()).await?;
     if watching.watch_address.is_some() {
         set_watch_address(device, "none").await?;
     }
@@ -301,7 +305,7 @@ pub async fn suspend(
 }
 
 /// Watches `watching` again and removes the scheduler entry.
-pub async fn restore(device: &RawDevice<SimpleResult>, watching: &Watching) -> Result<(), Error> {
+pub async fn restore(device: &impl Writes, watching: &Watching) -> Result<(), Error> {
     if let Some(address) = &watching.watch_address {
         set_watch_address(device, address).await?;
     }
@@ -368,67 +372,65 @@ fn restored_by(script: &str) -> Option<Watching> {
 }
 
 /// What a scheduler entry left from a suspend would restore, if there is one.
-pub(crate) async fn pending(device: &RawDevice<SimpleResult>) -> Result<Option<Watching>, Error> {
-    Ok(pending_in(&entries(device).await?))
+pub(crate) async fn pending(device: &impl Reads) -> Result<Option<Watching>, Error> {
+    Ok(pending_in(
+        &collect_resource::<SystemScheduler>(device).await?,
+    ))
 }
 
-/// [`pending`] from the rows of `/system/scheduler` read already.
-pub(crate) fn pending_in(schedulers: &[crate::device::raw::Row]) -> Option<Watching> {
+/// [`pending`] from the entries of `/system/scheduler` read already.
+pub(crate) fn pending_in(schedulers: &[SystemScheduler]) -> Option<Watching> {
     schedulers
         .iter()
-        .filter(|row| field(row, "name") == Some(NAME))
-        .find_map(|row| field(row, "on-event").and_then(restored_by))
+        .filter(|entry| *entry.cfg.name.0 == *NAME.as_bytes())
+        .find_map(|entry| restored_by(&entry.cfg.on_event.as_ref()?.to_string()))
 }
 
-async fn entries(device: &RawDevice<SimpleResult>) -> Result<Vec<crate::device::raw::Row>, Error> {
-    Ok(rows(device, "/system/scheduler/print")
+async fn remove_entry(device: &impl Writes) -> Result<(), Error> {
+    remove_if_present::<SystemSchedulerByName>(device, &AsciiString::from(NAME)).await
+}
+
+/// Watches `address`, or nothing with `none`.
+async fn set_watch_address(device: &impl Writes, address: &str) -> Result<(), Error> {
+    let current = SystemWatchdogCfg::fetch(device)
         .await?
-        .into_iter()
-        .filter(|row| field(row, "name") == Some(NAME))
-        .collect())
-}
-
-async fn remove_entry(device: &RawDevice<SimpleResult>) -> Result<(), Error> {
-    for row in entries(device).await? {
-        if let Some(id) = field(&row, ".id") {
-            command(device, "/system/scheduler/remove", &[(".id", id)]).await?;
-        }
-    }
-    Ok(())
-}
-
-async fn set_watch_address(device: &RawDevice<SimpleResult>, address: &str) -> Result<(), Error> {
-    command(
-        device,
-        "/system/watchdog/set",
-        &[("watch-address", address)],
-    )
-    .await?;
+        .ok_or(Error::MissingDeviceState("/system/watchdog"))?;
+    let mut target = current.clone();
+    target.watch_address = match address {
+        "none" => HasNone::NoneValue,
+        address => HasNone::Value(address.parse().map_err(|_| {
+            Error::Refused(format!("/system/watchdog: no address {address}").into())
+        })?),
+    };
+    apply_mutation(device, &target.calculate_update(&current)).await?;
     Ok(())
 }
 
 /// Switches the power cycling of `port` off, or on as `ping` says.
 async fn set_poe_ping(
-    device: &RawDevice<SimpleResult>,
+    device: &impl Writes,
     port: &str,
     ping: Option<&PoePing>,
 ) -> Result<(), Error> {
-    let rows_ = rows(device, "/interface/ethernet/poe/print").await?;
-    let id = rows_
-        .iter()
-        .find(|row| field(row, "name") == Some(port))
-        .and_then(|row| field(row, ".id"))
+    let current = InterfaceEthernetPoeByName::fetch(device, &AsciiString::from(port))
+        .await?
         .ok_or_else(|| Error::Refused(format!("/interface/ethernet/poe: no port {port}").into()))?;
-    let attributes = match ping {
-        None => vec![(".id", id), ("power-cycle-ping-enabled", "no")],
-        Some(ping) => vec![
-            (".id", id),
-            ("power-cycle-ping-enabled", "yes"),
-            ("power-cycle-ping-address", &*ping.address),
-            ("power-cycle-ping-timeout", &*ping.timeout),
-        ],
-    };
-    command(device, "/interface/ethernet/poe/set", &attributes).await?;
+    let mut target = current.clone();
+    match ping {
+        None => target.0.power_cycle_ping_enabled = Some(false),
+        Some(ping) => {
+            let ParseRosValueResult::Value(timeout) = Duration::parse_ros(ping.timeout.as_bytes())
+            else {
+                return Err(Error::Refused(
+                    format!("/interface/ethernet/poe: no timeout {}", ping.timeout).into(),
+                ));
+            };
+            target.0.power_cycle_ping_enabled = Some(true);
+            target.0.power_cycle_ping_address = Some(ping.address.as_ref().into());
+            target.0.power_cycle_ping_timeout = Some(timeout);
+        }
+    }
+    apply_mutation(device, &target.calculate_update(&current)).await?;
     Ok(())
 }
 
@@ -510,11 +512,7 @@ fn merged(held: &Watching, more: &Watching) -> Watching {
 /// Suspends the watchdogs of `device` for one more job: on its own (a scheduler entry left
 /// from before counts, [`read`]), or joining the jobs holding them already, with what they
 /// don't hold yet (its own ports). What is suspended now.
-async fn suspend_held(
-    device: &str,
-    api: &RawDevice<SimpleResult>,
-    powered: &[IpAddr],
-) -> Result<Watching, Error> {
+async fn suspend_held(device: &str, api: &Session, powered: &[IpAddr]) -> Result<Watching, Error> {
     let watching = match held(device) {
         None => {
             let watching = read(api, powered).await?;

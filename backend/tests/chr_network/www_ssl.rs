@@ -5,53 +5,23 @@
 //! HTTPS to a client trusting the CA, and gives way to a new one when the device's names
 //! change: the old one, no service naming it anymore, is removed.
 use crate::chr_network::golden_image::ensure_golden_image;
+use crate::chr_network::node::{add, set_keyed};
 use crate::chr_network::qemu::nix_unavailable;
 use crate::chr_network::vm::boot_node;
+use backend::device::access::{Session, act, field, observe};
 use backend::device::www_certificate::{
     Ca, Names, Pem, WwwCertificate, WwwCertificateInstalled, install_for, read_for,
 };
 use backend::job::{Event, Log};
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_model::action::{CertificateImport, FetchProbe};
+use mikrotik_model::model::{Certificate, File, FileCfg, IpServiceByName};
+use mikrotik_model::resource::{KeyedResource, collect_resource};
+use mikrotik_model::value::HasNone;
 use rcgen::{
     BasicConstraints, CertificateParams, DnType, IsCa, KeyPair, KeyUsagePurpose,
     PKCS_ECDSA_P256_SHA256,
 };
-use std::collections::HashMap;
 use std::time::Duration;
-use tokio_stream::StreamExt;
-
-/// The rows `command` with `attributes` answers, failing on a trap.
-async fn rows(
-    device: &MikrotikDevice<SimpleResult>,
-    command: &str,
-    attributes: &[(&str, &str)],
-) -> Box<[HashMap<Box<str>, Option<Box<str>>>]> {
-    let mut stream = device
-        .send_command(
-            command.as_bytes(),
-            |cmd| {
-                attributes.iter().fold(cmd, |cmd, (key, value)| {
-                    cmd.attribute(key.as_bytes(), value.as_bytes())
-                })
-            },
-            (),
-        )
-        .await;
-    let mut rows = Vec::new();
-    while let Some(result) = stream.next().await {
-        match result {
-            SimpleResult::Sentence(row) => rows.push(row),
-            SimpleResult::Trap { message, .. } => panic!("{command}: {message}"),
-            SimpleResult::Error(error) => panic!("{command}: {error:?}"),
-        }
-    }
-    rows.into()
-}
-
-fn field<'r>(row: &'r HashMap<Box<str>, Option<Box<str>>>, key: &str) -> Option<&'r str> {
-    row.get(key).and_then(Option::as_deref)
-}
 
 /// A CA as `openssl req -x509` makes one, as PEM.
 fn test_ca() -> Pem {
@@ -69,19 +39,23 @@ fn test_ca() -> Pem {
     }
 }
 
-async fn www_ssl_certificate(device: &MikrotikDevice<SimpleResult>) -> Option<Box<str>> {
-    rows(device, "/ip/service/print", &[])
+async fn www_ssl_certificate(device: &Session) -> Option<Box<str>> {
+    let service = IpServiceByName::fetch(device, &"www-ssl".into())
         .await
-        .into_iter()
-        .find(|row| field(row, "name") == Some("www-ssl"))
-        .and_then(|row| field(&row, "certificate").map(Box::from))
+        .expect("services")
+        .expect("www-ssl");
+    match service.data.certificate {
+        Some(HasNone::Value(name)) => Some(name.to_string().into()),
+        _ => None,
+    }
 }
 
-async fn own_certificates(device: &MikrotikDevice<SimpleResult>) -> Box<[Box<str>]> {
-    rows(device, "/certificate/print", &[])
+async fn own_certificates(device: &Session) -> Box<[Box<str>]> {
+    collect_resource::<Certificate>(device)
         .await
+        .expect("certificates")
         .into_iter()
-        .filter_map(|row| field(&row, "name").map(Box::<str>::from))
+        .map(|certificate| Box::<str>::from(certificate.cfg.name.to_string()))
         .filter(|name| name.starts_with("netbox-provisioner-www"))
         .collect()
 }
@@ -124,12 +98,16 @@ async fn webfig_gets_a_certificate_of_the_ca() {
     let first = first.name.unwrap();
     assert_eq!(www_ssl_certificate(&device).await.as_ref(), Some(&first));
     assert_eq!(own_certificates(&device).await, [first.clone()].into());
-    let files = rows(&device, "/file/print", &[]).await;
+    let files = collect_resource::<File>(&device)
+        .await
+        .expect("files")
+        .into_iter()
+        .map(|file| file.cfg.name.to_string())
+        .collect::<Vec<_>>();
     assert!(
         !files
             .iter()
-            .any(|row| field(row, "name")
-                .is_some_and(|name| name.contains("netbox-provisioner-www"))),
+            .any(|name| name.contains("netbox-provisioner-www")),
         "the import takes the files away: {files:?}"
     );
     let found = read_for(&device, &names, Some(&ca)).await.unwrap();
@@ -140,38 +118,29 @@ async fn webfig_gets_a_certificate_of_the_ca() {
     );
 
     // a client trusting the CA gets in over HTTPS (the generated config turns www-ssl on)
-    rows(
+    set_keyed(
         &device,
-        "/ip/service/set",
-        &[("numbers", "www-ssl"), ("disabled", "no")],
+        &"www-ssl".into(),
+        |service: &mut IpServiceByName| service.data.disabled = false,
     )
-    .await;
-    rows(
-        &device,
-        "/file/add",
-        &[("name", "test-ca.crt"), ("contents", &ca_pem.certificate)],
-    )
-    .await;
-    rows(
-        &device,
-        "/certificate/import",
-        &[
-            ("file-name", "test-ca.crt"),
-            ("passphrase", ""),
-            ("name", "test-ca"),
-        ],
-    )
-    .await;
-    let fetched = rows(
-        &device,
-        "/tool/fetch",
-        &[
-            ("url", "https://127.0.0.1/"),
-            ("check-certificate", "yes"),
-            ("output", "none"),
-        ],
-    )
-    .await;
+    .await
+    .expect("www-ssl on");
+    let mut ca_file = FileCfg::new("test-ca.crt".into());
+    ca_file.contents = Some(ca_pem.certificate.as_ref().into());
+    add(&device, &ca_file).await.expect("CA uploaded");
+    let import = CertificateImport {
+        file_name: "test-ca.crt",
+        passphrase: "",
+        name: "test-ca",
+    };
+    act(&device, &import).await.expect("CA imported");
+    let https = FetchProbe {
+        url: "https://127.0.0.1/",
+        src_address: None,
+        duration: None,
+        check_certificate: true,
+    };
+    let fetched = observe(&device, &https).await.expect("WebFig over HTTPS");
     assert!(
         fetched
             .iter()

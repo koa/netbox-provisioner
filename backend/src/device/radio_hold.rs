@@ -42,7 +42,6 @@ use crate::{
     },
 };
 use async_graphql::SimpleObject;
-use mikrotik_api::simple::SimpleResult;
 use std::{collections::BTreeSet, sync::Mutex};
 
 /// The watchdog of `device` stays suspended while the fallback may still fire; its scheduler
@@ -75,7 +74,7 @@ impl RadioHold {
     ) -> Result<RadioHold, Error> {
         let device: Box<str> = link.device_config.name().into();
         let own = async {
-            let api = link.connect_again::<SimpleResult>().await?;
+            let api = link.connect_again().await?;
             let watching = watchdog::read(&api, &[]).await?;
             watchdog::suspend(&api, &watching, SAFETY_NET).await?;
             Ok::<_, Error>(watching)
@@ -139,7 +138,7 @@ impl RadioHold {
     pub(crate) async fn release(self, link: &AccessibleDevice, log: &Log) {
         if let Some(old) = self.own {
             let restored = async {
-                let api = link.connect_again::<SimpleResult>().await?;
+                let api = link.connect_again().await?;
                 let watching = link.watch_after_hold(&api, &old).await?;
                 watchdog::restore(&api, &watching).await?;
                 Ok::<_, Error>(watching)

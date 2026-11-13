@@ -12,10 +12,9 @@
 //! 28 tests ran into their connect timeout.
 
 use crate::chr_network::golden_image::GoldenImage;
+use crate::chr_network::node::login;
 use crate::chr_network::qemu::{free_tcp_port, qemu_command, qemu_img_command};
-use encoding_rs::mem::encode_latin1_lossy;
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
+use backend::device::access::Session;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -68,10 +67,7 @@ pub struct RunningNode {
 }
 
 impl RunningNode {
-    pub async fn connect_api(
-        &self,
-        password: &str,
-    ) -> anyhow::Result<MikrotikDevice<SimpleResult>> {
+    pub async fn connect_api(&self, password: &str) -> anyhow::Result<Session> {
         connect_api_with_retry(self.api_port, password, Duration::from_secs(30))
             .await
             .map_err(|e| e.context(format!("connecting to node {:?}", self.name)))
@@ -153,17 +149,11 @@ async fn connect_api_with_retry(
     api_port: u16,
     password: &str,
     timeout: Duration,
-) -> anyhow::Result<MikrotikDevice<SimpleResult>> {
+) -> anyhow::Result<Session> {
     let deadline = Instant::now() + timeout;
     loop {
-        match MikrotikDevice::connect(
-            ("127.0.0.1", api_port),
-            b"admin",
-            Some(encode_latin1_lossy(password)),
-        )
-        .await
-        {
-            Ok(device) => return Ok(device),
+        match login(api_port, password).await {
+            Ok(session) => return Ok(session),
             Err(_) if Instant::now() < deadline => {
                 tokio::time::sleep(Duration::from_millis(300)).await;
             }

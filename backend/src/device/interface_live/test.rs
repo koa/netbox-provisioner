@@ -1,26 +1,55 @@
 //! Scope: Tests of `device::interface_live`; nothing else.
 use super::*;
 use crate::{
-    device::neighbors::Neighbors,
+    device::{answer::parsed, neighbors::Neighbors},
     topology::interfaces::test::{Net, address},
 };
 use std::{collections::BTreeMap, sync::Arc};
 
-fn row(fields: &[(&str, &str)]) -> Row {
-    fields
-        .iter()
-        .map(|(k, v)| (Box::from(*k), Some(Box::from(*v))))
-        .collect()
-}
-
-fn ospf(interface: &str, router_id: &str, address: &str, state: &str) -> Row {
-    row(&[
+fn ospf(interface: &str, router_id: &str, address: &str, state: &str) -> RoutingOspfNeighborState {
+    parsed(&[
+        (".id", "*1"),
         ("instance", "default-v2"),
+        ("area", "backbone"),
         ("interface", interface),
         ("router-id", router_id),
         ("address", address),
         ("state", state),
     ])
+}
+
+fn device_address(address: &str, interface: &str, dynamic: bool) -> DeviceAddress {
+    DeviceAddress {
+        interface: interface.into(),
+        address: address.parse().unwrap(),
+        dynamic,
+        disabled: false,
+    }
+}
+
+/// A lease from the fields RouterOS reports.
+fn lease(fields: &[(&str, &str)]) -> DeviceLease {
+    let field = |name: &str| {
+        fields
+            .iter()
+            .find(|(key, _)| *key == name)
+            .map(|(_, value)| Box::<str>::from(*value))
+    };
+    DeviceLease {
+        address: field("address").unwrap().parse().unwrap(),
+        mac: field("mac-address"),
+        client_id: field("client-id"),
+        server: field("server"),
+        host_name: field("host-name"),
+        comment: field("comment"),
+        disabled: field("disabled").as_deref() == Some("true"),
+        dynamic: field("dynamic").as_deref() == Some("true"),
+        settings: fields
+            .iter()
+            .filter(|(key, value)| *key == "block-access" && *value == "true")
+            .map(|(key, _)| Box::from(*key))
+            .collect(),
+    }
 }
 
 fn live_row<'l>(live: &'l InterfaceLive, device: &DeviceAccess, name: &str) -> &'l LiveRow {
@@ -170,10 +199,7 @@ fn an_ospf_neighbor_goes_to_the_interface_with_the_address() {
     };
     // L2 names the customer bridge otherwise than NetBox
     let ospf = [ospf("bridge-clients-10", "172.16.1.2", "10.10.0.2", "Full")];
-    let addresses = [row(&[
-        ("address", "10.10.0.1/24"),
-        ("interface", "bridge-clients-10"),
-    ])];
+    let addresses = [device_address("10.10.0.1/24", "bridge-clients-10", false)];
     let live = check(
         &r1,
         &r1.interface_rows(),
@@ -338,22 +364,11 @@ fn device_only_addresses_go_to_their_row() {
     let net = Net::new();
     let topology = Arc::new(net.builder.build());
     let r1 = topology.get_device_by_id(&net.r1).unwrap();
-    let address = |address: &str, interface: &str| {
-        row(&[
-            ("address", address),
-            ("interface", interface),
-            ("dynamic", "false"),
-            ("disabled", "false"),
-        ])
-    };
+    let address = |address: &str, interface: &str| device_address(address, interface, false);
     let addresses = [
         address("192.168.5.1/24", "ether2"),
         address("172.17.1.10/29", "ether2"),
-        row(&[
-            ("address", "192.168.6.1/24"),
-            ("interface", "ether2"),
-            ("dynamic", "true"),
-        ]),
+        device_address("192.168.6.1/24", "ether2", true),
         address("fe80::1/64", "ether2"),
         address("172.17.1.0/31", "ether1"),
         address("10.10.0.1/24", "bridge-clients"),
@@ -426,21 +441,11 @@ fn device_only_leases_go_to_the_row_of_their_server() {
     let net = Net::new();
     let topology = Arc::new(net.builder.build());
     let r1 = topology.get_device_by_id(&net.r1).unwrap();
-    let lease = |fields: &[(&str, &str)]| {
-        let mut all = vec![
-            ("dynamic", "false"),
-            ("disabled", "false"),
-            ("address-lists", ""),
-            ("dhcp-option", ""),
-        ];
-        all.extend_from_slice(fields);
-        row(&all)
-    };
     let dhcp = Dhcp {
-        servers: vec![row(&[
-            ("name", "dhcp-bridge-clients"),
-            ("interface", "bridge-clients"),
-        ])]
+        servers: vec![DhcpServer {
+            name: "dhcp-bridge-clients".into(),
+            interface: "bridge-clients".into(),
+        }]
         .into(),
         leases: vec![
             lease(&[
@@ -461,7 +466,7 @@ fn device_only_leases_go_to_the_row_of_their_server() {
                 ("mac-address", "AA:BB:CC:DD:EE:03"),
                 ("comment", "kamera"),
             ]),
-            row(&[
+            lease(&[
                 ("address", "10.10.0.53"),
                 ("mac-address", "AA:BB:CC:DD:EE:04"),
                 ("dynamic", "true"),
@@ -550,13 +555,17 @@ fn a_padded_host_name_is_cut() {
 #[test]
 fn interfaces_of_another_type_are_hand_made() {
     let interfaces = [
-        row(&[("name", "ether1"), ("type", "ether")]),
-        row(&[("name", "lo"), ("type", "loopback")]),
-        row(&[("name", "bridge"), ("type", "bridge")]),
-        row(&[("name", "gre-colab"), ("type", "gre-tunnel")]),
-        row(&[("name", "ipipv6-loch"), ("type", "ipipv6-tunnel")]),
-        row(&[("name", "pppoe-out1"), ("type", "pppoe-out")]),
-    ];
+        ("ether1", "ether"),
+        ("lo", "loopback"),
+        ("bridge", "bridge"),
+        ("gre-colab", "gre-tunnel"),
+        ("ipipv6-loch", "ipipv6-tunnel"),
+        ("pppoe-out1", "pppoe-out"),
+    ]
+    .map(|(name, kind)| TypedInterface {
+        name: name.into(),
+        kind: kind.into(),
+    });
     let hand_made = hand_made_interfaces(&interfaces);
     assert_eq!(
         hand_made.iter().map(|name| &**name).collect::<Vec<_>>(),

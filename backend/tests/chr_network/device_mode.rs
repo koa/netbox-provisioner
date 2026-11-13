@@ -7,46 +7,24 @@
 //! through [`unplugged_relay`]: killed, QEMU closes its connections, a RouterBOARD whose power
 //! is cut doesn't.
 use crate::chr_network::golden_image::ensure_golden_image;
+use crate::chr_network::node::{Direct, add};
 use crate::chr_network::qemu::nix_unavailable;
 use crate::chr_network::vm::{RunningNode, boot_node};
 use backend::Error;
 use backend::device::dependency::PowerChain;
 use backend::device::device_mode::{
-    DeviceModeChange, DeviceModeChanged, DeviceModeReason, change_to,
+    DeviceModeChange, DeviceModeChanged, DeviceModeFeature, DeviceModeReason, change_to,
 };
 use backend::device::reboot::{Reboot, RebootReason};
-use backend::device::update::DeviceLink;
 use backend::device_state::DeviceModeState;
 use backend::job::{Event, Log};
-use encoding_rs::mem::encode_latin1_lossy;
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_model::action::DeviceModeUpdate;
+use mikrotik_model::model::{DeviceMode, File, SystemDeviceModeState, SystemSchedulerCfg};
+use mikrotik_model::resource::{SingleResource, collect_resource};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_stream::StreamExt;
-
-/// Straight to the node's forwarded API port.
-struct Direct(u16);
-
-impl DeviceLink for Direct {
-    async fn api(&self) -> Result<MikrotikDevice<SimpleResult>, Error> {
-        Ok(MikrotikDevice::connect(
-            ("127.0.0.1", self.0),
-            b"admin",
-            Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
-        )
-        .await?)
-    }
-    async fn upload(
-        &self,
-        _name: &str,
-        _data: &[u8],
-        _progress: &(impl Fn(usize) + Sync),
-    ) -> Result<(), Error> {
-        unreachable!("no upload in a device-mode change")
-    }
-}
 
 /// A relay to the node's `port`, whose connections stay open when the node's side goes, until
 /// the job closes them: a RouterBOARD whose power is cut sends neither FIN nor RST, its
@@ -79,23 +57,13 @@ async fn unplugged_relay(port: u16) -> u16 {
     relay
 }
 
-/// `/system/device-mode` `feature` on the node.
-async fn feature(node: &RunningNode, feature: &str) -> String {
+/// `/system/device-mode` of the node.
+async fn device_mode(node: &RunningNode) -> SystemDeviceModeState {
     let device = node.connect_api(crate::TEST_PASSWORD).await.expect("api");
-    let mut rows = device
-        .send_simple_command(b"/system/device-mode/print".as_slice(), ())
-        .await;
-    while let Some(row) = rows.next().await {
-        if let SimpleResult::Sentence(row) = row {
-            return row
-                .get(feature)
-                .cloned()
-                .flatten()
-                .unwrap_or_default()
-                .into();
-        }
-    }
-    panic!("no device mode")
+    SystemDeviceModeState::fetch(&device)
+        .await
+        .expect("device mode read")
+        .expect("a device mode")
 }
 
 /// Waits until the job asks for the confirmation.
@@ -136,11 +104,11 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
         .expect("node boot failed");
     // off in the CHR's advanced mode, like on the lab's RouterBOARDs
     let wanted = [DeviceModeChange {
-        feature: "partitions".into(),
+        feature: DeviceModeFeature::Partitions,
         reason: DeviceModeReason::UpdateFallback,
     }];
     let power = PowerChain::unpowered("mode");
-    assert_eq!(feature(&node, "partitions").await, "false");
+    assert_eq!(device_mode(&node).await.partitions, Some(false));
 
     // cancelled while it waits: a power cut afterwards changes nothing
     let log = reading();
@@ -156,7 +124,7 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     tokio::time::sleep(Duration::from_secs(2)).await;
     node.power_cycle().await.expect("power cycle");
-    assert_eq!(feature(&node, "partitions").await, "false");
+    assert_eq!(device_mode(&node).await.partitions, Some(false));
 
     // confirmed by cutting the power while it counts down; the job sees its connection fall
     // silent, not closed
@@ -171,7 +139,7 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     node.power_cycle().await.expect("power cycle");
     job.await.expect("job").expect("device-mode change");
     assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
-    assert_eq!(feature(&node, "partitions").await, "true");
+    assert_eq!(device_mode(&node).await.partitions, Some(true));
     let events = log.events();
     assert!(
         events.contains(&Event::Reboot(Reboot {
@@ -218,53 +186,39 @@ async fn home_mode_has_no_fallback() {
     // the update counts down as long as its connection stays open; a cold boot confirms it
     let counting = node.connect_api(crate::TEST_PASSWORD).await.expect("api");
     let update = tokio::spawn(async move {
-        let mut answers = counting
-            .send_command(
-                b"/system/device-mode/update".as_slice(),
-                |cmd| cmd.attribute(b"mode".as_slice(), b"home".as_slice()),
-                (),
-            )
-            .await;
+        let home = DeviceModeUpdate {
+            mode: Some(&DeviceMode::Home),
+            features: &[],
+            activation_timeout: Duration::from_secs(300),
+        };
+        let mut answers = counting.hold(&home).await;
         while answers.next().await.is_some() {}
     });
     tokio::time::sleep(Duration::from_secs(5)).await;
     node.power_cycle().await.expect("power cycle");
     update.abort();
-    assert_eq!(feature(&node, "mode").await, "home");
-    assert_eq!(feature(&node, "scheduler").await, "false");
+    let mode = device_mode(&node).await;
+    assert_eq!(mode.mode, DeviceMode::Home);
+    assert_eq!(mode.scheduler, Some(false));
 
     let device = node.connect_api(crate::TEST_PASSWORD).await.expect("api");
-    let mut answers = device
-        .send_command(
-            b"/system/scheduler/add".as_slice(),
-            |cmd| {
-                cmd.attribute(b"name".as_slice(), b"probe".as_slice())
-                    .attribute(b"interval".as_slice(), b"1h".as_slice())
-                    .attribute(b"on-event".as_slice(), b":nothing".as_slice())
-            },
-            (),
-        )
-        .await;
-    let mut refused = Vec::new();
-    while let Some(answer) = answers.next().await {
-        refused.push(format!("{answer:?}"));
-    }
+    let mut probe = SystemSchedulerCfg::new("probe".into());
+    probe.interval = Some(Duration::from_secs(3600));
+    probe.on_event = Some(":nothing".into());
+    let refused = add(&device, &probe)
+        .await
+        .expect_err("the scheduler is off in `home`");
     assert!(
-        refused.iter().any(|a| a.contains("device-mode")),
-        "{refused:?}"
+        format!("{refused:#}").contains("device-mode"),
+        "{refused:#}"
     );
     let armed = backend::device::ros::fallback::arm(&device, Duration::from_secs(60))
         .await
         .expect("arm");
     assert_eq!(armed.as_deref(), Some("home"));
-    let mut files = device
-        .send_simple_command(b"/file/print".as_slice(), ())
-        .await;
-    while let Some(file) = files.next().await {
-        assert!(
-            !format!("{file:?}").contains("netbox-provisioner"),
-            "{file:?}"
-        );
+    for file in collect_resource::<File>(&device).await.expect("files") {
+        let name = file.cfg.name.to_string();
+        assert!(!name.contains("netbox-provisioner"), "{name}");
     }
     // taking a fallback away that isn't there works too
     backend::device::ros::fallback::disarm(&device)

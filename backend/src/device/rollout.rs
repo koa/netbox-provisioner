@@ -11,7 +11,6 @@ use crate::{
     device::{
         dependency::{Paths, consumer_devices, supplier_devices},
         leftovers, partitions,
-        raw::{field, rows},
         ros::progress,
         update::{self, Channel, Version, newest, next_step, package_size},
         update_fallback,
@@ -25,6 +24,10 @@ use crate::{
     },
 };
 use async_graphql::{Enum, SimpleObject};
+use mikrotik_model::{
+    model::{File, SystemPackageState, SystemResourceState, SystemRouterboardState},
+    resource::{SingleResource, collect_resource},
+};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::{Arc, Mutex},
@@ -289,18 +292,15 @@ async fn read(
         .connect(DeviceTarget::default())
         .await?
         .ok_or(Error::MissingCredentials)?;
-    let raw = link.connect_again().await?;
+    let raw = link.reader();
     // each menu once (`/system/resource` for the state and the free space, `/file` for the
     // root and the leftover packages)
-    let resource = rows(&raw, "/system/resource/print").await?;
-    let packages = rows(&raw, "/system/package/print").await?;
+    let resource = SystemResourceState::fetch(raw).await?;
+    let packages = collect_resource::<SystemPackageState>(raw).await?;
     // CHR has no RouterBOARD; the command fails there
-    let routerboard = rows(&raw, "/system/routerboard/print")
-        .await
-        .ok()
-        .and_then(|rows| rows.into_iter().next());
-    let files = rows(&raw, "/file/print").await?;
-    let state = update::state_from(resource.first(), &packages, routerboard.as_ref())?;
+    let routerboard = SystemRouterboardState::fetch(raw).await.ok().flatten();
+    let files = collect_resource::<File>(raw).await?;
+    let state = update::state_from(resource.as_ref(), &packages, routerboard.as_ref())?;
     let wanted = link
         .wanted_packages_for(state.model.as_deref().map(str::as_bytes))
         .await?;
@@ -317,16 +317,12 @@ async fn read(
     // the uploads go to the root, in RAM on a device with 16 MiB of flash (1og-sw2, a CRS with
     // 2.8 MiB of flash free, takes its 11.7 MiB update there)
     let in_ram = progress::root_in_ram_of(&files);
-    let free = if in_ram {
-        "free-memory"
-    } else {
-        "free-hdd-space"
-    };
-    let free_space = resource
-        .first()
-        .and_then(|row| field(row, free)?.parse().ok());
-    let partition = partitions::other(&partitions::list(&raw).await).is_some();
-    let left = leftovers::read_with_files(&raw, &files).await?;
+    let free_space = resource.as_ref().and_then(|resource| match in_ram {
+        true => resource.free_memory,
+        false => resource.free_hdd_space,
+    });
+    let partition = partitions::other(&partitions::list(raw).await).is_some();
+    let left = leftovers::read_with_files(raw, &files).await?;
     let mut download = Some(0);
     for file in step.iter().flat_map(|step| step.files.iter()) {
         let known = sizes.lock().ok().and_then(|sizes| sizes.get(file).copied());
@@ -396,7 +392,7 @@ fn planned_device(
         }
     };
     planned.version = Some(read.state.version.to_string().into());
-    planned.architecture = Some(read.state.architecture.clone());
+    planned.architecture = Some(update::architecture_name(read.state.architecture).into());
     planned.free_space = read.free_space.map(ScalarU64);
     planned.in_ram = read.in_ram;
     if read.partition {

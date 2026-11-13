@@ -18,9 +18,9 @@ use crate::{
     Error,
     config::CONFIG,
     device::{
+        access::remove_if_present,
         bootstrap,
         partitions::{self, copy_to, other},
-        raw::{Row, command, field, rows},
         ros::apply::RADIO_RESTART,
     },
     graphql::scalars::ScalarDuration,
@@ -28,7 +28,15 @@ use crate::{
     topology::access::device::DeviceAccess,
 };
 use async_graphql::SimpleObject;
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use mikrotik_model::{
+    ascii::AsciiString,
+    command::{Reads, Writes},
+    model::{
+        InterfaceWifiRadioState, InterfaceWireless, OspfNeighborState, RoutingOspfNeighborState,
+        SystemSchedulerByName, SystemSchedulerCfg,
+    },
+    resource::{Creatable, apply_mutation, collect_resource},
+};
 use std::{collections::BTreeSet, time::Duration};
 use tokio::time::{Instant, sleep};
 
@@ -121,7 +129,7 @@ pub fn arm_v6(way_back: &WayBack, log: &Log) -> Result<(), Error> {
 /// A downgrade copies nothing to the other partition, which may hold the RouterOS to go back
 /// to; without two partitions its way back is as for an update ([`WayBack`]).
 pub async fn check_downgrade(
-    device: &RawDevice<SimpleResult>,
+    device: &impl Reads,
     way_back: &WayBack,
     log: &Log,
 ) -> Result<(), Error> {
@@ -142,7 +150,7 @@ pub struct OspfNeighborsBack {
 /// the device has two partitions; `None` (and [`UpdateWithoutFallback`]) where not, or
 /// [`Error::NoUpdateFallback`] without `way_back` either, before anything changes.
 pub async fn arm(
-    device: &RawDevice<SimpleResult>,
+    device: &impl Writes,
     delay: Duration,
     way_back: &WayBack,
     log: &Log,
@@ -168,20 +176,12 @@ pub async fn arm(
             )
         })?;
     let on_event = script(&target, delay);
-    command(
-        device,
-        "/system/scheduler/add",
-        &[
-            ("name", NAME),
-            ("start-time", "startup"),
-            ("on-event", &on_event),
-            (
-                "comment",
-                "boots the RouterOS from before the update, unless the provisioner stops it",
-            ),
-        ],
-    )
-    .await?;
+    let mut entry = SystemSchedulerCfg::new(NAME.into());
+    entry.start_time = Some("startup".into());
+    entry.on_event = Some(on_event.into());
+    entry.comment =
+        Some("boots the RouterOS from before the update, unless the provisioner stops it".into());
+    apply_mutation(device, &entry.calculate_create()).await?;
     log.emit(UpdateFallbackArmed {
         partition: target.clone(),
         version,
@@ -205,11 +205,7 @@ fn script(target: &str, delay: Duration) -> String {
 }
 
 /// Removes the scheduler: the device is reached with the update. The old partition stays.
-pub async fn disarm(
-    device: &RawDevice<SimpleResult>,
-    partition: &str,
-    log: &Log,
-) -> Result<(), Error> {
+pub async fn disarm(device: &impl Writes, partition: &str, log: &Log) -> Result<(), Error> {
     remove_scheduler(device).await?;
     log.emit(UpdateFallbackDisarmed {
         partition: partition.into(),
@@ -217,21 +213,12 @@ pub async fn disarm(
     Ok(())
 }
 
-pub(crate) async fn remove_scheduler(device: &RawDevice<SimpleResult>) -> Result<(), Error> {
-    let ids = rows(device, "/system/scheduler/print")
-        .await?
-        .iter()
-        .filter(|row| field(row, "name") == Some(NAME))
-        .filter_map(|row| field(row, ".id").map(String::from))
-        .collect::<Vec<_>>();
-    for id in ids {
-        command(device, "/system/scheduler/remove", &[(".id", &id)]).await?;
-    }
-    Ok(())
+pub(crate) async fn remove_scheduler(device: &impl Writes) -> Result<(), Error> {
+    remove_if_present::<SystemSchedulerByName>(device, &AsciiString::from(NAME)).await
 }
 
 /// The partition the device runs; `None` without partitions.
-pub async fn running(device: &RawDevice<SimpleResult>) -> Option<Box<str>> {
+pub async fn running(device: &impl Reads) -> Option<Box<str>> {
     partitions::list(device)
         .await
         .into_iter()
@@ -241,9 +228,9 @@ pub async fn running(device: &RawDevice<SimpleResult>) -> Option<Box<str>> {
 
 /// The OSPF neighbors this device is adjacent with (see [`adjacent`]), as `<instance>
 /// <router-id>` (an instance per OSPF version); empty without OSPF.
-pub async fn ospf_up(device: &RawDevice<SimpleResult>) -> Result<BTreeSet<Box<str>>, Error> {
+pub async fn ospf_up(device: &impl Reads) -> Result<BTreeSet<Box<str>>, Error> {
     Ok(adjacent(
-        &rows(device, "/routing/ospf/neighbor/print").await?,
+        &collect_resource::<RoutingOspfNeighborState>(device).await?,
     ))
 }
 
@@ -251,58 +238,71 @@ pub async fn ospf_up(device: &RawDevice<SimpleResult>) -> Result<BTreeSet<Box<st
 /// or `TwoWay` where the DR and the BDR are two others on the segment. Two DROthers stay in
 /// `TwoWay` for good, and a reboot elects anew, so one that was `Full` as DR may end there
 /// (berghof-stall-haus, 7.23.8). v2 names the DR by its address, v3 by its router ID.
-fn adjacent(rows: &[Row]) -> BTreeSet<Box<str>> {
+fn adjacent(rows: &[RoutingOspfNeighborState]) -> BTreeSet<Box<str>> {
     rows.iter()
         .filter(|row| is_adjacent(rows, row))
-        .map(|row| {
-            format!(
-                "{} {}",
-                field(row, "instance").unwrap_or_default(),
-                field(row, "router-id").unwrap_or_default()
-            )
-            .into()
-        })
+        .map(|row| format!("{} {}", row.instance, row.router_id).into())
         .collect()
 }
 
 /// Whether `row` of `rows` (`/routing/ospf/neighbor`) is where OSPF leaves it (see
 /// [`adjacent`]).
-pub(crate) fn is_adjacent(rows: &[Row], row: &Row) -> bool {
-    let same_segment = |a: &Row, b: &Row| {
-        field(a, "instance") == field(b, "instance")
-            && field(a, "interface") == field(b, "interface")
+pub(crate) fn is_adjacent(
+    rows: &[RoutingOspfNeighborState],
+    row: &RoutingOspfNeighborState,
+) -> bool {
+    let same_segment = |a: &RoutingOspfNeighborState, b: &RoutingOspfNeighborState| {
+        a.instance == b.instance && a.interface == b.interface
     };
-    // `id` (the DR or BDR) is none, or a neighbor of the segment other than `row`
-    let another = |id: Option<&str>| match id {
-        None | Some("" | "0.0.0.0") => true,
-        Some(id) => rows.iter().any(|other| {
-            !std::ptr::eq(other, row)
-                && same_segment(other, row)
-                && (field(other, "address") == Some(id) || field(other, "router-id") == Some(id))
-        }),
+    // `id` (the DR or BDR, an address in v2, a router ID in v3) is none, or a neighbor of the
+    // segment other than `row`
+    let another = |id: Option<&AsciiString>| {
+        let id = id.map(ToString::to_string).unwrap_or_default();
+        match id.as_str() {
+            "" | "0.0.0.0" => true,
+            id => rows.iter().any(|other| {
+                !std::ptr::eq(other, row)
+                    && same_segment(other, row)
+                    && (other.address.to_string() == id || other.router_id.to_string() == id)
+            }),
+        }
     };
-    match field(row, "state") {
-        Some("Full") => true,
-        Some("TwoWay") => another(field(row, "dr")) && another(field(row, "bdr")),
+    match row.state {
+        OspfNeighborState::Full => true,
+        OspfNeighborState::TwoWay => another(row.dr.as_ref()) && another(row.bdr.as_ref()),
         _ => false,
     }
 }
 
 /// Whether the device has a 5 GHz radio on: `/interface/wireless` with a `5ghz` band, or an
 /// `/interface/wifi` radio with `5ghz` among its bands. A menu its packages lack doesn't count.
-async fn has_5ghz_radio(device: &RawDevice<SimpleResult>) -> bool {
-    let five = |value: Option<&str>| value.is_some_and(|value| value.contains("5ghz"));
-    let wireless = rows(device, "/interface/wireless/print")
+async fn has_5ghz_radio(device: &impl Reads) -> bool {
+    use mikrotik_model::model::WirelessBand as Band;
+    let wireless = collect_resource::<InterfaceWireless>(device)
         .await
         .unwrap_or_default()
         .iter()
-        .any(|row| field(row, "disabled") != Some("true") && five(field(row, "band")));
+        .any(|radio| {
+            !radio.cfg.disabled
+                && matches!(
+                    radio.cfg.band,
+                    Some(
+                        Band::_5GhzA
+                            | Band::_5GhzAN
+                            | Band::_5GhzANAc
+                            | Band::_5GhzNAc
+                            | Band::_5GhzOnlyac
+                            | Band::_5GhzOnlyn
+                    )
+                )
+        });
+    // `bands` is text in the model: `5ghz-a`, `5ghz-ax`, ...
     wireless
-        || rows(device, "/interface/wifi/radio/print")
+        || collect_resource::<InterfaceWifiRadioState>(device)
             .await
             .unwrap_or_default()
             .iter()
-            .any(|row| five(field(row, "bands")))
+            .any(|radio| radio.bands.iter().any(|band| band.0.starts_with(b"5ghz")))
 }
 
 /// What of `before` isn't in `now`.
@@ -315,7 +315,7 @@ pub fn missing(before: &BTreeSet<Box<str>>, now: &BTreeSet<Box<str>>) -> Vec<Box
 /// channel listens for radar after its boot before it sends, 10 min near the weather radar
 /// band: lab-sxt-a's update failed twice with its neighbors back a few minutes later.
 pub async fn wait_for_ospf(
-    device: &RawDevice<SimpleResult>,
+    device: &impl Reads,
     before: &BTreeSet<Box<str>>,
     log: &Log,
 ) -> Result<Vec<Box<str>>, Error> {
@@ -336,7 +336,8 @@ pub async fn wait_for_ospf(
 #[cfg(test)]
 mod tests {
     use super::{adjacent, missing, script};
-    use crate::device::raw::Row;
+    use crate::device::answer::parsed;
+    use mikrotik_model::model::RoutingOspfNeighborState;
     use std::{collections::BTreeSet, time::Duration};
 
     #[test]
@@ -373,19 +374,18 @@ mod tests {
         dr: &str,
         bdr: &str,
         state: &str,
-    ) -> Row {
-        [
+    ) -> RoutingOspfNeighborState {
+        parsed(&[
+            (".id", "*1"),
             ("instance", instance),
+            ("area", "backbone"),
             ("interface", "bridge-bridge"),
             ("address", address),
             ("router-id", router_id),
             ("dr", dr),
             ("bdr", bdr),
             ("state", state),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.into(), Some(v.into())))
-        .collect()
+        ])
     }
 
     /// berghof-stall-haus after its update (7.23.8): v3 elected 172.16.1.15 and 172.16.1.7, so

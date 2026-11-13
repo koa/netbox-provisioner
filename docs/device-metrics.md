@@ -29,11 +29,11 @@ sind danach nicht mehr nötig. Der Provisioner liest mit seinen eigenen Zugangsd
   läuft (ein zweiter Scrape, die Netz-Karte), wird mitgenommen, so fragt ein Scrape jedes Gerät
   einmal. Dauer und Erfolg der Lesungen stehen deshalb auch in
   `device_query_duration_seconds` (`kind="device_metrics"`).
-- Es wird nur gelesen, jedes Menü mit seinem Typ aus mikrotik-model; nur die Monitore
+- Es wird nur gelesen, jedes Menü mit seinem Typ aus mikrotik-model; die Monitore
   (`/interface/ethernet/monitor` und `/interface/wireless/monitor` mit `once`, alle Ports in
-  einem Befehl) gehen über `device::raw`. Ein Menü, das ein Gerät nicht hat (kein `wifi`- oder
-  `wireless`-Paket, kein Legacy-CAPsMAN), hat keine Zeilen (`rows_if_present`,
-  `is_missing_menu`); jeder andere Fehler macht das Gerät für den Scrape unerreicht.
+  einem Befehl) sind Aktionen seines Katalogs ([Zugriff auf die Geräte](device-access.md)). Ein
+  Menü, das ein Gerät nicht hat (kein `wifi`- oder `wireless`-Paket, kein Legacy-CAPsMAN), hat
+  keine Zeilen (`access::collect_if_present`, `is_missing_menu`); jeder andere Fehler macht das Gerät für den Scrape unerreicht.
 
 ## Metriken
 

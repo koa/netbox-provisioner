@@ -9,13 +9,13 @@
 
 use crate::chr_network::qemu::{free_tcp_port, qemu_command};
 use crate::chr_network::serial::run_first_boot_setup;
+use backend::device::access::{Session, act};
 use encoding_rs::mem::encode_latin1_lossy;
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_api::prelude::{Connection, Generation};
+use mikrotik_model::action::Shutdown;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tokio_stream::StreamExt;
 
 /// A CHR release image, `https://download.mikrotik.com/routeros/<version>/chr-<version>.img.zip`.
 pub struct ChrRelease {
@@ -197,17 +197,15 @@ async fn boot_set_password_and_shutdown(image_path: &Path, password: &str) -> an
     // that same connection to shut down cleanly. A hard kill at this point
     // would risk corrupting the disk (the exact failure mode that destroyed
     // one hand-built CHR image earlier in this project's testing).
-    let device: MikrotikDevice<SimpleResult> = MikrotikDevice::connect(
+    let connection = Connection::connect(
         ("127.0.0.1", api_port),
         b"admin",
         Some(encode_latin1_lossy(password)),
+        Generation::default(),
     )
     .await?;
-    let _ = device
-        .send_simple_command(b"/system/shutdown".as_slice(), ())
-        .await
-        .next()
-        .await;
+    // the connection goes with the device: whatever it answers doesn't count
+    let _ = act(&Session::new(connection), &Shutdown).await;
 
     tokio::time::timeout(Duration::from_secs(30), child.wait())
         .await

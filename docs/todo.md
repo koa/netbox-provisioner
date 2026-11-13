@@ -53,19 +53,18 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B36 | Zugriff auf die Geräte, Schritte 1–3: `Connection` mit Fassaden und `Command`/`Effect` in mikrotik-api, Befehle jedes Menüs, fehlende Modelle und Aktionskatalog in mikrotik-model, `Reader`/`Session` im Provisioner statt `device::raw` (68 Raw-`print`s in 20 Dateien, Stand 2026-11-13); alte Methoden `#[deprecated]`, dann entfernt. Ein Befehl in einem Skript, das auf dem Gerät läuft, ist kein API-Read und bleibt ([Zugriff auf die Geräte](concepts/device-access.md)) | L | in Arbeit |
+| B37 | mikrotik-model: dieselbe Wertemenge in mehreren Menüs als ein benanntes Enum in `enums.yaml` statt je eines `enum=` pro Feld (Benutzer, 2026-11-13; eine Durchsicht fand rund 20, z. B. `arp`, `vlan-mode`, `guard-interval`, `installation`, `tls-mode`, `loop-protect`, `poe-out`; Fehltreffer wie einwertige Enums aussortieren). Das Funk-Band (`WirelessBand`) ist schon so. Die Typnamen im Provisioner ändern mit | M | offen |
 
 ## C. Konzepte zum Umsetzen
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
 | C3 | Interne Firewall: `guest` und `protected` am Gateway-Interface, Freigaben als Custom Fields (Z4), nur ein Router pro Netz | [Firewall](concepts/firewall.md#interne-firewall) | M | offen |
-| C5 | Befehle ohne Strings: Stufe 1, getypte Befehle aus dem Modell (Stufe 2 nicht geplant, Z7) | [Befehle ohne Strings](concepts/command-dsl.md) | M–L | offen |
 | C7 | Self-Service und Personas: Rollen aus OIDC, NetBox-Owner als Anwohner, Leserechte in NetBox nur auf eigene WLANs (Z10, Z11), Leases, SSID/PSK, Ports, eigene APs, Apply sofort (Z12) | [Self-Service](concepts/self-service.md) | L | offen |
 | C8 | Überwachung: Collector, Prometheus-Metriken (Alarme dort, Z13), Ping zum Uplink-Gateway (Z14), Zustandsseite, Ansicht für Anwohner | [Überwachung](concepts/monitoring.md) | L | offen |
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | Schritt 1–3 und 5 erledigt (Drag, `localStorage`, `publishLayout`, gegen das Lab geprüft), Schritt 4 ohne Budget (PSE→PD-Pfeile mit Soll-gegen-Ist aus `device::poe::feeding`, Budget pro Board offen: `hw_facts.rs` fehlen die Watt-Werte je Board) |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | Regel, Plan und Rollout erledigt; offen: CHR-Test der Kette `entry -- a -- target`, Netz-Ansicht mit eingefärbten Knoten |
-| C17 | Zugriff auf die Geräte, Schritt 4: geteilte Lese-Verbindung pro Gerät (Pool), Menü-Facts mit Generation, Rahmen pro GraphQL-Operation (Topologie einmal, HTTP nach URL, Warten liest frisch) | [Zugriff auf die Geräte](concepts/device-access.md) | M | offen, nach B36 |
+| C17 | Zugriff auf die Geräte, Schritt 4: geteilte Lese-Verbindung pro Gerät (Pool), Menü-Facts mit Generation, Rahmen pro GraphQL-Operation (Topologie einmal, HTTP nach URL, Warten liest frisch) | [Zugriff auf die Geräte](concepts/device-access.md) | M | offen |
 | C18 | Reiner L2-Switch als „Extender“: Ein alter Switch ohne L3-Offload oder mit anderen Problemen (CRS2xx, CRS354) hängt an einem modernen Switch oder Router, der seine L3-Funktionen über einen Trunk übernimmt: Port oder Bridge, mit IP oder VLAN (Z39) | [Reiner L2-Switch](concepts/l2-extender.md) | M–L | offen |
 
 ## D. In Arbeit, Rest offen

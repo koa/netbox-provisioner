@@ -22,8 +22,8 @@ use crate::{
     Error,
     config::CONFIG,
     device::{
+        access::{Session, collect_if_present},
         dependency::PowerChain,
-        raw::{Row, field, rows},
         reboot::{REBOOT_TIMEOUT, Reboot, RebootReason},
         update::DeviceLink,
     },
@@ -33,7 +33,14 @@ use crate::{
     topology::access::device::DeviceAccess,
 };
 use async_graphql::{Enum, SimpleObject, futures_util::StreamExt};
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use mikrotik_api::simple::SimpleResult;
+use mikrotik_model::{
+    action::DeviceModeUpdate,
+    command::Reads,
+    model::{PartitionsState, SystemDeviceModeState},
+    resource::{self, SingleResource},
+    value::RosValue,
+};
 use std::time::Duration;
 use tokio::time::{Instant, sleep, timeout, timeout_at};
 
@@ -60,9 +67,35 @@ pub enum DeviceModeReason {
 /// A feature of the device mode the provisioner needs on.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct DeviceModeChange {
-    /// its name in `/system/device-mode`, e.g. `partitions`
-    pub feature: Box<str>,
+    pub feature: DeviceModeFeature,
     pub reason: DeviceModeReason,
+}
+
+/// A feature of `/system/device-mode` the provisioner may need.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
+pub enum DeviceModeFeature {
+    Scheduler,
+    Socks,
+    Partitions,
+}
+
+impl DeviceModeFeature {
+    /// Its name in `/system/device-mode`.
+    fn name(self) -> &'static str {
+        match self {
+            DeviceModeFeature::Scheduler => "scheduler",
+            DeviceModeFeature::Socks => "socks",
+            DeviceModeFeature::Partitions => "partitions",
+        }
+    }
+    /// Whether `mode` has it on; `None` where this RouterOS doesn't know it.
+    fn in_mode(self, mode: &SystemDeviceModeState) -> Option<bool> {
+        match self {
+            DeviceModeFeature::Scheduler => mode.scheduler,
+            DeviceModeFeature::Socks => mode.socks,
+            DeviceModeFeature::Partitions => mode.partitions,
+        }
+    }
 }
 
 /// The device mode of a device and what it lacks.
@@ -98,65 +131,65 @@ pub fn wanted(device: &DeviceAccess, partitions: bool) -> Vec<DeviceModeChange> 
 }
 
 fn wanted_for(proxy: bool, partitions: bool) -> Vec<DeviceModeChange> {
-    let feature = |feature: &str, reason| DeviceModeChange {
-        feature: feature.into(),
-        reason,
-    };
-    let mut wanted = vec![feature("scheduler", DeviceModeReason::ApplyFallback)];
+    let feature = |feature, reason| DeviceModeChange { feature, reason };
+    let mut wanted = vec![feature(
+        DeviceModeFeature::Scheduler,
+        DeviceModeReason::ApplyFallback,
+    )];
     if proxy {
-        wanted.push(feature("socks", DeviceModeReason::ManagementProxy));
+        wanted.push(feature(
+            DeviceModeFeature::Socks,
+            DeviceModeReason::ManagementProxy,
+        ));
     }
     if partitions {
-        wanted.push(feature("partitions", DeviceModeReason::UpdateFallback));
+        wanted.push(feature(
+            DeviceModeFeature::Partitions,
+            DeviceModeReason::UpdateFallback,
+        ));
     }
     wanted
 }
 
-/// The `wanted` features that are off in `mode` (a row of `/system/device-mode/print`).
-fn missing(mode: &Row, wanted: &[DeviceModeChange]) -> Vec<DeviceModeChange> {
+/// The `wanted` features that are off in `mode`.
+fn missing(mode: &SystemDeviceModeState, wanted: &[DeviceModeChange]) -> Vec<DeviceModeChange> {
     wanted
         .iter()
-        .filter(|wanted| field(mode, &wanted.feature) == Some("false"))
+        .filter(|wanted| wanted.feature.in_mode(mode) == Some(false))
         .cloned()
         .collect()
 }
 
 /// Whether the device can have partitions: RouterOS lists one there on NAND flash (none on
 /// 16 MiB devices, which have NOR), and repartitions from [`PARTITIONS_MIN_MIB`] on.
-async fn supports_partitions(device: &RawDevice<SimpleResult>) -> bool {
+async fn supports_partitions(device: &impl Reads) -> bool {
     // a CHR has no `/partitions`
-    let Ok(partitions) = rows(device, "/partitions/print").await else {
+    let Ok(partitions) = collect_if_present::<PartitionsState>(device).await else {
         return false;
     };
-    let size: u64 = partitions
-        .iter()
-        .filter_map(|row| field(row, "size")?.parse::<u64>().ok())
-        .sum();
+    let size: u64 = partitions.iter().filter_map(|p| p.size).sum();
     size >= PARTITIONS_MIN_MIB
 }
 
 /// The device mode of `device` and what it lacks for `access`; `None` before RouterOS 7.17,
 /// which has none (and locks nothing).
-pub async fn read(
-    device: &RawDevice<SimpleResult>,
-    access: &DeviceAccess,
-) -> Result<Option<DeviceMode>, Error> {
+pub async fn read(device: &impl Reads, access: &DeviceAccess) -> Result<Option<DeviceMode>, Error> {
     let wanted = wanted(access, supports_partitions(device).await);
     read_with(device, &wanted).await
 }
 
 async fn read_with(
-    device: &RawDevice<SimpleResult>,
+    device: &impl Reads,
     wanted: &[DeviceModeChange],
 ) -> Result<Option<DeviceMode>, Error> {
-    let mode = match rows(device, "/system/device-mode/print").await {
-        Ok(rows) => rows.into_iter().next(),
+    let mode = match SystemDeviceModeState::fetch(device).await {
+        Ok(mode) => mode,
         // no such menu
-        Err(Error::Refused(_)) => None,
-        Err(error) => return Err(error),
+        Err(resource::Error::Trap(_)) => None,
+        Err(error) => return Err(error.into()),
     };
     Ok(mode.map(|mode| DeviceMode {
-        mode: field(&mode, "mode").unwrap_or_default().into(),
+        mode: String::from_utf8_lossy(&mode.mode.encode_ros()).into(),
         changes: missing(&mode, wanted).into(),
     }))
 }
@@ -196,23 +229,12 @@ pub async fn change_to(
     log.enter(DeviceModeState::WaitingForChain);
     let _rebooting = log.unless_cancelled(power.rebooting(log)).await?;
     log.enter(DeviceModeState::Requesting);
-    let confirm_timeout = format!("{}s", CONFIRM_TIMEOUT.as_secs());
+    let features = changes
+        .iter()
+        .map(|change| change.feature.name())
+        .collect::<Vec<_>>();
     // the countdown has its own deadline below, not the API's limit without a reply
-    let mut countdown = device
-        .send_command_with_reply_timeout(
-            b"/system/device-mode/update".as_slice(),
-            |cmd| {
-                changes
-                    .iter()
-                    .fold(cmd, |cmd, change| {
-                        cmd.attribute(change.feature.as_bytes(), b"yes".as_slice())
-                    })
-                    .attribute(b"activation-timeout".as_slice(), confirm_timeout.as_bytes())
-            },
-            (),
-            None,
-        )
-        .await;
+    let mut countdown = hold_countdown(&device, &features).await;
     let refused =
         |message: &str| Error::Refused(format!("/system/device-mode/update: {message}").into());
     match timeout(Duration::from_secs(30), countdown.next()).await {
@@ -270,7 +292,7 @@ pub async fn change_to(
         if Instant::now() > deadline {
             let features = left
                 .iter()
-                .map(|c| &*c.feature)
+                .map(|c| c.feature.name())
                 .collect::<Vec<_>>()
                 .join(", ");
             return Err(Error::DeviceModeUnchanged(features.into()));
@@ -280,16 +302,28 @@ pub async fn change_to(
     Ok(())
 }
 
+/// Sends `/system/device-mode/update` turning `features` on; its countdown answers for as long as
+/// `device` holds it.
+async fn hold_countdown(
+    device: &Session,
+    features: &[&str],
+) -> mikrotik_api::prelude::Replies<SimpleResult> {
+    let update = DeviceModeUpdate {
+        mode: None,
+        features,
+        activation_timeout: CONFIRM_TIMEOUT,
+    };
+    device.hold(&update).await
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{DeviceModeChange, DeviceModeReason, missing, wanted_for};
-    use crate::device::raw::Row;
+    use super::{DeviceModeChange, DeviceModeFeature, DeviceModeReason, missing, wanted_for};
+    use crate::device::answer::parsed;
+    use mikrotik_model::model::SystemDeviceModeState;
 
-    fn mode(fields: &[(&str, &str)]) -> Row {
-        fields
-            .iter()
-            .map(|&(name, value)| (name.into(), Some(value.into())))
-            .collect()
+    fn mode(fields: &[(&str, &str)]) -> SystemDeviceModeState {
+        parsed(fields)
     }
 
     #[test]
@@ -305,7 +339,7 @@ mod tests {
         assert_eq!(
             missing(&lab_core, &wanted),
             [DeviceModeChange {
-                feature: "partitions".into(),
+                feature: DeviceModeFeature::Partitions,
                 reason: DeviceModeReason::UpdateFallback,
             }]
         );
@@ -318,7 +352,7 @@ mod tests {
         assert_eq!(
             missing(&home, &wanted_for(false, false)),
             [DeviceModeChange {
-                feature: "scheduler".into(),
+                feature: DeviceModeFeature::Scheduler,
                 reason: DeviceModeReason::ApplyFallback,
             }]
         );

@@ -5,68 +5,56 @@
 //! restores the watch address by itself; two jobs suspending it at once share it, the last
 //! restores it.
 use crate::chr_network::golden_image::ensure_golden_image;
+use crate::chr_network::node::{Direct, set_single};
 use crate::chr_network::qemu::nix_unavailable;
 use crate::chr_network::vm::boot_node;
 use crate::chr_network::wait::wait_until;
-use backend::Error;
-use backend::device::update::DeviceLink;
+use backend::device::access::Session;
 use backend::device::watchdog::{
     WatchdogRestored, WatchdogStillHeld, WatcherLink, Watching, read, restore, restore_all,
     suspend, suspend_all,
 };
 use backend::job::{Event, Log};
-use encoding_rs::mem::encode_latin1_lossy;
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_model::model::{SystemScheduler, SystemWatchdogCfg};
+use mikrotik_model::resource::{SingleResource, collect_resource};
+use mikrotik_model::value::HasNone;
+use std::net::IpAddr;
 use std::time::Duration;
-use tokio_stream::StreamExt;
 
 const ENTRY: &str = "netbox-provisioner-watchdog";
 /// QEMU's user network gateway: it answers pings, so the watchdog never fires.
 const WATCHED: &str = "10.0.2.2";
 
-/// The rows of `path`, each as its `field`.
-async fn column(device: &MikrotikDevice<SimpleResult>, path: &str, field: &str) -> Vec<String> {
-    let command = format!("{path}/print");
-    let mut stream = device.send_simple_command(command.as_bytes(), ()).await;
-    let mut values = Vec::new();
-    while let Some(result) = stream.next().await {
-        if let SimpleResult::Sentence(row) = result
-            && let Some(Some(value)) = row.get(field)
-        {
-            values.push(value.to_string());
-        }
-    }
-    values
+/// The node's `watch-address`.
+async fn watch_address(device: &Session) -> HasNone<IpAddr> {
+    SystemWatchdogCfg::fetch(device)
+        .await
+        .expect("watchdog read")
+        .expect("a watchdog")
+        .watch_address
 }
 
-async fn watch_address(device: &MikrotikDevice<SimpleResult>) -> String {
-    column(device, "/system/watchdog", "watch-address")
-        .await
-        .concat()
+fn watched() -> HasNone<IpAddr> {
+    HasNone::Value(WATCHED.parse().unwrap())
 }
 
-async fn entries(device: &MikrotikDevice<SimpleResult>) -> Vec<String> {
-    column(device, "/system/scheduler", "name")
+/// The scheduler entries named [`ENTRY`].
+async fn entries(device: &Session) -> Vec<String> {
+    collect_resource::<SystemScheduler>(device)
         .await
-        .into_iter()
+        .expect("schedulers")
+        .iter()
+        .map(|entry| entry.cfg.name.to_string())
         .filter(|name| name == ENTRY)
         .collect()
 }
 
-async fn set_watch_address(device: &MikrotikDevice<SimpleResult>, address: &str) {
-    let mut stream = device
-        .send_command(
-            b"/system/watchdog/set".as_slice(),
-            |cmd| cmd.attribute(b"watch-address".as_slice(), address.as_bytes()),
-            (),
-        )
-        .await;
-    while let Some(result) = stream.next().await {
-        if let SimpleResult::Trap { message, .. } = result {
-            panic!("watch-address not set: {message}");
-        }
-    }
+async fn set_watch_address(device: &Session, address: HasNone<IpAddr>) {
+    set_single(device, |watchdog: &mut SystemWatchdogCfg| {
+        watchdog.watch_address = address
+    })
+    .await
+    .expect("watch-address not set");
 }
 
 #[tokio::test]
@@ -86,7 +74,7 @@ async fn watchdog_is_restored_or_restores_itself() {
     let device = node.connect_api(crate::TEST_PASSWORD).await.unwrap();
 
     // without a watch address nothing changes
-    assert_eq!(watch_address(&device).await, "none");
+    assert_eq!(watch_address(&device).await, HasNone::NoneValue);
     let nothing = read(&device, &[]).await.unwrap();
     assert!(nothing.is_empty());
     suspend(&device, &nothing, Duration::from_secs(60))
@@ -95,7 +83,7 @@ async fn watchdog_is_restored_or_restores_itself() {
     assert!(entries(&device).await.is_empty());
 
     // suspended and restored by the provisioner
-    set_watch_address(&device, WATCHED).await;
+    set_watch_address(&device, watched()).await;
     let watching = read(&device, &[]).await.unwrap();
     assert_eq!(
         watching,
@@ -107,49 +95,27 @@ async fn watchdog_is_restored_or_restores_itself() {
     suspend(&device, &watching, Duration::from_secs(600))
         .await
         .unwrap();
-    assert_eq!(watch_address(&device).await, "none");
+    assert_eq!(watch_address(&device).await, HasNone::NoneValue);
     assert_eq!(entries(&device).await, [ENTRY]);
     // a suspend the provisioner didn't see to the end still knows the address
     assert_eq!(read(&device, &[]).await.unwrap(), watching);
     restore(&device, &watching).await.unwrap();
-    assert_eq!(watch_address(&device).await, WATCHED);
+    assert_eq!(watch_address(&device).await, watched());
     assert!(entries(&device).await.is_empty());
 
     // left alone: the scheduler entry restores it after the safety net and goes
     suspend(&device, &watching, Duration::from_secs(20))
         .await
         .unwrap();
-    assert_eq!(watch_address(&device).await, "none");
+    assert_eq!(watch_address(&device).await, HasNone::NoneValue);
     wait_until(
         || async {
-            Ok(watch_address(&device).await == WATCHED && entries(&device).await.is_empty())
+            Ok(watch_address(&device).await == watched() && entries(&device).await.is_empty())
         },
         Duration::from_secs(120),
     )
     .await
     .expect("the scheduler entry did not restore the watch address");
-}
-
-/// Straight to the node's forwarded API port.
-struct Direct(u16);
-
-impl DeviceLink for Direct {
-    async fn api(&self) -> Result<MikrotikDevice<SimpleResult>, Error> {
-        Ok(MikrotikDevice::connect(
-            ("127.0.0.1", self.0),
-            b"admin",
-            Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
-        )
-        .await?)
-    }
-    async fn upload(
-        &self,
-        _name: &str,
-        _data: &[u8],
-        _progress: &(impl Fn(usize) + Sync),
-    ) -> Result<(), Error> {
-        unreachable!("no upload while suspending watchdogs")
-    }
 }
 
 /// Two updates behind the same switch suspend its watchdog at once (a rollout, Berg 925): both
@@ -169,7 +135,7 @@ async fn two_jobs_share_a_suspended_watchdog() {
         .await
         .expect("node did not boot");
     let device = node.connect_api(crate::TEST_PASSWORD).await.unwrap();
-    set_watch_address(&device, WATCHED).await;
+    set_watch_address(&device, watched()).await;
     let watcher = || {
         vec![WatcherLink {
             device: "shared".into(),
@@ -190,7 +156,7 @@ async fn two_jobs_share_a_suspended_watchdog() {
     };
     assert_eq!(first.len(), 1);
     assert_eq!(second.len(), 1);
-    assert_eq!(watch_address(&device).await, "none");
+    assert_eq!(watch_address(&device).await, HasNone::NoneValue);
     assert_eq!(entries(&device).await, [ENTRY]);
 
     restore_all(first, &first_log).await;
@@ -204,7 +170,7 @@ async fn two_jobs_share_a_suspended_watchdog() {
         "{:?}",
         first_log.events()
     );
-    assert_eq!(watch_address(&device).await, "none");
+    assert_eq!(watch_address(&device).await, HasNone::NoneValue);
     assert_eq!(entries(&device).await, [ENTRY]);
 
     restore_all(second, &second_log).await;
@@ -218,6 +184,6 @@ async fn two_jobs_share_a_suspended_watchdog() {
         "{:?}",
         second_log.events()
     );
-    assert_eq!(watch_address(&device).await, WATCHED);
+    assert_eq!(watch_address(&device).await, watched());
     assert!(entries(&device).await.is_empty());
 }

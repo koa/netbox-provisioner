@@ -6,8 +6,7 @@ use crate::{
     device::metrics::{
         Capsman, DeviceMetrics, EthernetLink, InterfaceCounters, Lease, WirelessRadio, WlanClient,
     },
-    device::poe::PoePorts,
-    device::raw::Row,
+    device::poe::{PoePorts, monitor_reading},
     network_state::device_data::{DeviceMapData, HealthRow, Resources},
 };
 use mikrotik_model::MacAddress;
@@ -24,13 +23,6 @@ fn group(name: &str, ssids: &[&str], aps: &[&str]) -> WlanGroupSample {
         ssids: ssids.iter().map(|ssid| Box::from(*ssid)).collect(),
         aps: aps.iter().map(|ap| Box::from(*ap)).collect(),
     }
-}
-
-fn row(fields: &[(&str, &str)]) -> Row {
-    fields
-        .iter()
-        .map(|(name, value)| (Box::from(*name), Some(Box::from(*value))))
-        .collect()
 }
 
 /// The router with the lease of the client, the AP the client is on, a device that didn't
@@ -55,7 +47,7 @@ fn snapshot() -> Snapshot {
             ]
             .into(),
             resources: Some(Resources {
-                uptime: "1d2h3m4s".into(),
+                uptime: Duration::from_secs(93784),
                 cpu_load: 12,
                 free_memory: 1000,
                 total_memory: 4000,
@@ -66,7 +58,7 @@ fn snapshot() -> Snapshot {
             }),
             poe: PoePorts {
                 ethernet: Box::default(),
-                monitor: vec![row(&[
+                monitor: vec![monitor_reading(&[
                     ("name", "e07-lab-crs125"),
                     ("poe-out-status", "powered-on"),
                     ("poe-out-voltage", "24.1"),

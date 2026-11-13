@@ -8,9 +8,10 @@ use crate::{
     Error,
     config::CONFIG,
     device::{
-        AccessibleDevice, Password, partitions,
+        AccessibleDevice, Password,
+        access::{act, answering, remove_if_present},
+        partitions,
         radio_hold::RadioHold,
-        raw,
         ros::{
             fallback::{self, Disarmed, Pending, Rearmed},
             hw_facts::RadioPackage,
@@ -31,12 +32,19 @@ use crate::{
 };
 use async_graphql::{Enum, SimpleObject};
 use log::{info, warn};
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::{
-    model::{CapsManManagerCfg, SystemRouterboardState},
-    resource::{ResourceMutation, SingleResource},
+    action::{self, Execute, RadioMenu, RadioProvision},
+    ascii::AsciiString,
+    command::{Reads, Writes},
+    model::{
+        CapsManManagerCfg, CapsManRadioState, InterfaceWifiRadioState, SystemRouterboardState,
+        SystemScriptByName, SystemScriptCfg, SystemScriptJobState,
+    },
+    resource::{Creatable, ResourceMutation, SingleResource, apply_mutation, collect_resource},
+    value::RosValue,
 };
 use rand::{RngExt, distr::Alphanumeric};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
     sync::atomic::Ordering,
@@ -200,11 +208,29 @@ pub enum FallbackLeftReason {
     BatchIncomplete,
 }
 
+/// The radios of a CAPsMAN, which [`provision_radios`] provisions again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum, Serialize, Deserialize)]
+pub enum CapsmanRadios {
+    /// `/interface/wifi/radio`
+    Wifi,
+    /// `/caps-man/radio`, the legacy CAPsMAN's
+    Legacy,
+}
+
+impl CapsmanRadios {
+    fn menu(self) -> RadioMenu {
+        match self {
+            CapsmanRadios::Wifi => RadioMenu::Wifi,
+            CapsmanRadios::Legacy => RadioMenu::CapsMan,
+        }
+    }
+}
+
 /// A controller provisioned `count` CAP radios of `menu` again, since the WLANs changed (their
 /// clients reconnect); or couldn't (`error`).
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct RadiosReprovisioned {
-    pub menu: Box<str>,
+    pub menu: CapsmanRadios,
     pub count: u32,
     pub error: Option<ErrorInfo>,
 }
@@ -219,7 +245,7 @@ pub struct PasswordSet {
 
 /// The `radio` menus of the CAPsMANs whose WLANs `mutations` change: a CAP only takes a new
 /// WLAN (a slave configuration) when its radios are provisioned again.
-pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<&'static str> {
+pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<CapsmanRadios> {
     let touches = |menu: &str| {
         mutations
             .iter()
@@ -235,8 +261,8 @@ pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<&'stati
             })
     };
     [
-        ("interface/wifi", "/interface/wifi/radio"),
-        ("caps-man", "/caps-man/radio"),
+        ("interface/wifi", CapsmanRadios::Wifi),
+        ("caps-man", CapsmanRadios::Legacy),
     ]
     .into_iter()
     .filter(|(menu, _)| touches(menu))
@@ -245,25 +271,33 @@ pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<&'stati
 }
 
 /// Provisions the CAPs' radios of `menu` again (not the controller's own); how many there are.
-async fn provision_radios(raw: &RawDevice<SimpleResult>, menu: &str) -> Result<usize, Error> {
-    let rows = raw::rows(raw, &format!("{menu}/print")).await?;
-    let ids = rows
-        .iter()
-        .filter(|row| {
-            // `/caps-man/radio` names the CAP in `remote-cap-identity`, `/interface/wifi/radio`
-            // in `cap`
-            raw::field(row, "local") != Some("true")
-                && ["remote-cap-identity", "cap"]
-                    .iter()
-                    .any(|name| raw::field(row, name).is_some_and(|cap| !cap.is_empty()))
-        })
-        .filter_map(|row| raw::field(row, ".id"))
-        .collect::<Vec<_>>();
+async fn provision_radios(raw: &impl Writes, menu: CapsmanRadios) -> Result<usize, Error> {
+    // `/caps-man/radio` names the CAP in `remote-cap-identity`, `/interface/wifi/radio` in `cap`
+    let ids = match menu {
+        CapsmanRadios::Wifi => collect_resource::<InterfaceWifiRadioState>(raw)
+            .await?
+            .iter()
+            .filter(|radio| radio.local != Some(true))
+            .filter(|radio| radio.cap.as_ref().is_some_and(|cap| !cap.0.is_empty()))
+            .map(|radio| String::from_utf8_lossy(&radio.id.encode_ros()).into_owned())
+            .collect::<Vec<_>>(),
+        CapsmanRadios::Legacy => collect_resource::<CapsManRadioState>(raw)
+            .await?
+            .iter()
+            .filter(|radio| *radio.local.0 != *b"true")
+            .filter(|radio| !radio.remote_cap_identity.0.is_empty())
+            .map(|radio| String::from_utf8_lossy(&radio.id.encode_ros()).into_owned())
+            .collect::<Vec<_>>(),
+    };
     if ids.is_empty() {
         return Ok(0);
     }
     let numbers = ids.join(",");
-    raw::command(raw, &format!("{menu}/provision"), &[("numbers", &numbers)]).await?;
+    let provision = RadioProvision {
+        menu: menu.menu(),
+        numbers: &numbers,
+    };
+    act(raw, &provision).await?;
     Ok(ids.len())
 }
 
@@ -300,13 +334,13 @@ pub(crate) fn fallback_window(radio_wait: Option<Duration>) -> Duration {
 /// batch writes all its devices' scripts first and then starts them at once (`ApplyWritten`
 /// to `log`), the wait is for starting all of them before the first changes cut a connection.
 pub(crate) async fn write_script(
-    raw: &RawDevice<SimpleResult>,
+    raw: &impl Writes,
     planned: &PlannedApply,
     lead: Duration,
     rearm: Option<Duration>,
     log: Option<&Log>,
 ) -> Result<Box<str>, Error> {
-    let _ = raw::command(raw, "/system/script/remove", &[("numbers", APPLY_SCRIPT)]).await;
+    let _ = remove_script(raw).await;
     let run = rand::rng()
         .sample_iter(Alphanumeric)
         .take(8)
@@ -326,12 +360,9 @@ pub(crate) async fn write_script(
             fallback: fallback::NAME,
         },
     );
-    raw::command(
-        raw,
-        "/system/script/add",
-        &[("name", APPLY_SCRIPT), ("source", &source)],
-    )
-    .await?;
+    let mut script = SystemScriptCfg::new(APPLY_SCRIPT.into());
+    script.source = Some(source.as_str().into());
+    apply_mutation(raw, &script.calculate_create()).await?;
     if let Some(log) = log {
         log.emit(ApplyWritten { lead: lead.into() });
     }
@@ -343,7 +374,7 @@ pub(crate) async fn write_script(
 /// brings it forward to), over `raw`; `false` where the device mode doesn't allow it
 /// (`FallbackUnavailable`), a warning only.
 pub(crate) async fn arm_fallback_on(
-    raw: &RawDevice<SimpleResult>,
+    raw: &impl Writes,
     delay: Duration,
     window: Duration,
     radio_wait: Option<Duration>,
@@ -369,7 +400,7 @@ pub(crate) struct Look {
 }
 
 /// The marks of `run` and the fallback on the device, over `raw`.
-pub(crate) async fn look_on(raw: &RawDevice<SimpleResult>, run: &str) -> Result<Look, Error> {
+pub(crate) async fn look_on(raw: &impl Reads, run: &str) -> Result<Look, Error> {
     let progress = progress::read(raw, run).await?;
     let rearmed = progress.as_ref().and_then(Progress::rearm);
     Ok(Look {
@@ -380,30 +411,27 @@ pub(crate) async fn look_on(raw: &RawDevice<SimpleResult>, run: &str) -> Result<
 
 /// Starts the script [`write_script`] left, in the background (`:execute`,
 /// nothing waits on the connection), and makes sure it runs; `false` when it doesn't (yet).
-pub(crate) async fn start_script(raw: &RawDevice<SimpleResult>) -> Result<bool, Error> {
+pub(crate) async fn start_script(raw: &impl Writes) -> Result<bool, Error> {
     let run = format!("/system script run \"{APPLY_SCRIPT}\"");
-    raw::command(raw, "/execute", &[("script", &run)]).await?;
+    act(raw, &Execute { script: &run }).await?;
     script_running(raw).await
 }
 
 /// Whether the apply script runs on the device.
-pub(crate) async fn script_running(raw: &RawDevice<SimpleResult>) -> Result<bool, Error> {
-    Ok(raw::rows(raw, "/system/script/job/print")
+pub(crate) async fn script_running(raw: &impl Reads) -> Result<bool, Error> {
+    Ok(collect_resource::<SystemScriptJobState>(raw)
         .await?
         .iter()
-        .any(|job| raw::field(job, "script") == Some(APPLY_SCRIPT)))
+        .any(|job| {
+            job.script
+                .as_ref()
+                .is_some_and(|script| *script.0 == *APPLY_SCRIPT.as_bytes())
+        }))
 }
 
 /// Takes the apply script away, before it is started; nothing to do for one never written.
-pub(crate) async fn remove_script(raw: &RawDevice<SimpleResult>) -> Result<(), Error> {
-    for script in raw::rows(raw, "/system/script/print").await? {
-        if raw::field(&script, "name") == Some(APPLY_SCRIPT)
-            && let Some(id) = raw::field(&script, ".id")
-        {
-            raw::command(raw, "/system/script/remove", &[("numbers", id)]).await?;
-        }
-    }
-    Ok(())
+pub(crate) async fn remove_script(raw: &impl Writes) -> Result<(), Error> {
+    remove_if_present::<SystemScriptByName>(raw, &AsciiString::from(APPLY_SCRIPT)).await
 }
 
 /// When to stop trying to reach a device whose fallback `fires` then.
@@ -472,15 +500,10 @@ impl PlannedApply {
         Ok(())
     }
     /// The radios to provision again after it (`reprovisioned_menus`).
-    pub(crate) fn reprovisioned(&self) -> Vec<Box<str>> {
+    pub(crate) fn reprovisioned(&self) -> Vec<CapsmanRadios> {
         self.cfg
             .sorted_mutations()
-            .map(|mutations| {
-                reprovisioned_menus(&mutations)
-                    .into_iter()
-                    .map(Box::from)
-                    .collect()
-            })
+            .map(|mutations| reprovisioned_menus(&mutations))
             .unwrap_or_default()
     }
     /// The device is in line already.
@@ -590,7 +613,7 @@ impl AccessibleDevice {
     }
     /// [`partitions::sync_other`] over a new connection.
     pub(crate) async fn sync_partition(&self, log: &Log) {
-        match self.connect_again::<SimpleResult>().await {
+        match self.connect_again().await {
             Ok(raw) => partitions::sync_other(&raw, log).await,
             Err(error) => log.emit(partitions::PartitionSynced {
                 partition: None,
@@ -638,7 +661,7 @@ impl AccessibleDevice {
         let delay = SCRIPT_LIMIT + window;
         let armed_at = Instant::now();
         let fires = armed_at + delay;
-        let raw = match self.connect_again::<SimpleResult>().await {
+        let raw = match self.connect_again().await {
             Ok(raw) => raw,
             Err(error) => return (Err(error), Back::Reached),
         };
@@ -668,7 +691,7 @@ impl AccessibleDevice {
             Err(error) => {
                 // nothing applied: the fallback has nothing to bring back
                 log.enter(ApplyState::TakingBack);
-                if armed && let Ok(raw) = self.connect_again::<SimpleResult>().await {
+                if armed && let Ok(raw) = self.connect_again().await {
                     let _ = fallback::disarm(&raw).await;
                 }
                 log.emit(ApplyRunning {
@@ -727,7 +750,7 @@ impl AccessibleDevice {
                 return (Err(error), Back::Fallback);
             }
             let look = tokio::time::timeout(CHECK_TIMEOUT, async {
-                look_on(&self.connect_again::<SimpleResult>().await?, run).await
+                look_on(&self.connect_again().await?, run).await
             })
             .await
             .unwrap_or(Err(Error::Timeout(self.address)));
@@ -776,7 +799,7 @@ impl AccessibleDevice {
             }
             // through and reached: the fallback goes first, the diff may take a while
             if armed {
-                let raw = match self.connect_again::<SimpleResult>().await {
+                let raw = match self.connect_again().await {
                     Ok(raw) => raw,
                     Err(_) => continue,
                 };
@@ -851,7 +874,7 @@ impl AccessibleDevice {
         if CONFIG.www_ca.is_none() {
             return Ok(());
         }
-        let raw = self.connect_again::<SimpleResult>().await?;
+        let raw = self.connect_again().await?;
         let found = www_certificate::read(&raw, &self.device_config).await?;
         if found.state() == WwwCertificate::Needed {
             log.enter(ApplyState::InstallingCertificate);
@@ -863,8 +886,7 @@ impl AccessibleDevice {
     /// The diff to apply, planned (`ApplyPlanned`); an empty one is nothing to do.
     pub(crate) async fn plan_apply(&self, log: &Log) -> Result<PlannedApply, Error> {
         let mut cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
-        cfg.generate_live(&self.device_config, &self.connect_again().await?)
-            .await?;
+        cfg.generate_live(&self.device_config, &self.client).await?;
         let mutations = cfg.sorted_mutations()?;
         let script = render_script(&mutations)?;
         let restarts_radio = restarts_radio(&mutations);
@@ -899,7 +921,7 @@ impl AccessibleDevice {
     ) -> Result<(), Error> {
         let give_up = give_up(fires);
         loop {
-            let disarmed = match self.connect_again::<SimpleResult>().await {
+            let disarmed = match self.connect_again().await {
                 Ok(raw) => fallback::disarm_unless_due(&raw, rearmed).await,
                 Err(error) => Err(error),
             };
@@ -954,7 +976,7 @@ impl AccessibleDevice {
     /// ([`Self::set_current_password`]), before the other partition copies the config.
     pub(crate) async fn after_script(
         &self,
-        reprovision: &[Box<str>],
+        reprovision: &[CapsmanRadios],
         log: &Log,
     ) -> Result<(), Error> {
         if self.device_config.wlan_controller_of().is_some() {
@@ -975,16 +997,12 @@ impl AccessibleDevice {
         let set = async {
             let crate::device::UserPassword { user, password } =
                 crate::device::resolve(&self.credentials, Password::Current)?;
-            let raw = self.connect_again::<SimpleResult>().await?;
-            raw::command(
-                &raw,
-                "/user/set",
-                &[
-                    ("numbers", user),
-                    ("password", password.unwrap_or_default()),
-                ],
-            )
-            .await?;
+            let raw = self.connect_again().await?;
+            let set = action::UserPassword {
+                user,
+                password: password.unwrap_or_default(),
+            };
+            act(&raw, &set).await?;
             Ok::<_, Error>(user)
         };
         let user = self.credentials_user();
@@ -1001,24 +1019,24 @@ impl AccessibleDevice {
     }
     /// Provisions the radios of `menus` (`reprovisioned_menus`) again, which reconnects the
     /// CAPs' clients.
-    async fn reprovision(&self, menus: &[Box<str>], log: &Log) {
+    async fn reprovision(&self, menus: &[CapsmanRadios], log: &Log) {
         if menus.is_empty() {
             return;
         }
-        let failed = |menu: &str, error: Error| RadiosReprovisioned {
-            menu: menu.into(),
+        let failed = |menu: CapsmanRadios, error: Error| RadiosReprovisioned {
+            menu,
             count: 0,
             error: Some(ErrorInfo::from(&error)),
         };
-        let raw = match self.connect_again::<SimpleResult>().await {
+        let raw = match self.connect_again().await {
             Ok(raw) => raw,
-            Err(error) => return log.emit(failed(&menus[0], error)),
+            Err(error) => return log.emit(failed(menus[0], error)),
         };
-        for menu in menus {
+        for &menu in menus {
             match provision_radios(&raw, menu).await {
                 Ok(0) => {}
                 Ok(count) => log.emit(RadiosReprovisioned {
-                    menu: menu.clone(),
+                    menu,
                     count: count as u32,
                     error: None,
                 }),
@@ -1069,20 +1087,18 @@ impl AccessibleDevice {
     /// (none, where it has none), else `old`, as the device had it.
     pub(crate) async fn watch_after_hold(
         &self,
-        raw: &RawDevice<SimpleResult>,
+        raw: &impl Reads,
         old: &Watching,
     ) -> Result<Watching, Error> {
-        let mut cfg = DeviceCfg::fetch(&self.connect_again().await?, &self.device_config).await?;
+        let mut cfg = DeviceCfg::fetch(raw, &self.device_config).await?;
         cfg.generate_for(&self.device_config)?;
         Ok(
             match cfg.base_target.watchdog.watch_address.value().copied() {
                 None => Watching::default(),
-                Some(address) if raw::answering(raw, &[address]).await.contains(&address) => {
-                    Watching {
-                        watch_address: Some(address.to_string().into()),
-                        poe_pings: Vec::new(),
-                    }
-                }
+                Some(address) if answering(raw, &[address]).await.contains(&address) => Watching {
+                    watch_address: Some(address.to_string().into()),
+                    poe_pings: Vec::new(),
+                },
                 Some(_) => old.clone(),
             },
         )
@@ -1097,8 +1113,7 @@ impl AccessibleDevice {
         tokio::time::timeout(CHECK_TIMEOUT, async {
             let client = self.connect_again().await?;
             let mut cfg = DeviceCfg::fetch(&client, &self.device_config).await?;
-            cfg.generate_live(&self.device_config, &self.connect_again().await?)
-                .await?;
+            cfg.generate_live(&self.device_config, &client).await?;
             if self.watchdog_held.load(Ordering::Relaxed) {
                 cfg.base_target.watchdog.watch_address =
                     cfg.base_current.watchdog.watch_address.clone();

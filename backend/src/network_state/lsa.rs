@@ -22,6 +22,7 @@
 //! `intra-area-prefix`, …) are left out.
 
 use ipnet::Ipv4Net;
+use mikrotik_model::model::{OspfLsaType, RoutingOspfLsaState};
 use std::{collections::BTreeSet, net::Ipv4Addr};
 
 /// The OSPF instance an LSA is of, by its version.
@@ -67,29 +68,29 @@ pub enum Lsa {
 }
 
 impl Lsa {
-    /// One row of `/routing/ospf/lsa/print` by its fields; none for another type, another
-    /// instance than `default-v2`/`default-v3` (the generator's) or one it can't read.
-    pub fn from_row(field: impl Fn(&str) -> Option<String>) -> Option<Lsa> {
-        let version = match field("instance")?.as_str() {
-            "default-v2" => OspfVersion::V2,
-            "default-v3" => OspfVersion::V3,
+    /// One row of `/routing/ospf/lsa/print`; none for another type, another instance than
+    /// `default-v2`/`default-v3` (the generator's) or one it can't read.
+    pub fn from_state(lsa: &RoutingOspfLsaState) -> Option<Lsa> {
+        let version = match &*lsa.instance.0 {
+            b"default-v2" => OspfVersion::V2,
+            b"default-v3" => OspfVersion::V3,
             _ => return None,
         };
-        let body = field("body").unwrap_or_default();
+        let body = lsa.body.to_string();
         let mut lines = body.lines().map(str::trim).filter(|line| !line.is_empty());
         let header = lines.next().unwrap_or_default();
-        match field("type")?.as_str() {
-            "router" => Some(Lsa::Router {
+        match lsa._type {
+            OspfLsaType::Router => Some(Lsa::Router {
                 version,
-                originator: field("originator")?.parse().ok()?,
+                originator: lsa.originator,
                 links: lines
                     .filter_map(|line| router_link(version, line))
                     .collect(),
             }),
-            "network" => Some(Lsa::Network {
+            OspfLsaType::Network => Some(Lsa::Network {
                 version,
-                originator: field("originator")?.parse().ok()?,
-                id: field("id")?.parse().ok()?,
+                originator: lsa.originator,
+                id: lsa.id,
                 netmask: value(header, "netmask").and_then(|mask| mask.parse().ok()),
                 routers: lines
                     .filter_map(|line| value(line, "router-id"))
@@ -143,14 +144,25 @@ fn value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
         .map(|(_, v)| v)
 }
 
+/// An LSA from the fields RouterOS reports, those always there but the ones given made up,
+/// for tests.
+#[cfg(test)]
+pub(crate) fn lsa_state(fields: &[(&str, &str)]) -> RoutingOspfLsaState {
+    let always = [
+        ("sequence", "0x80000001"),
+        ("age", "10"),
+        ("checksum", "0x1234"),
+        ("dynamic", "true"),
+    ];
+    crate::device::answer::parsed_with(fields, &always)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::collections::HashMap;
 
     pub(crate) fn row(fields: &[(&str, &str)]) -> Option<Lsa> {
-        let fields: HashMap<_, _> = fields.iter().copied().collect();
-        Lsa::from_row(|key| fields.get(key).map(|v| v.to_string()))
+        Lsa::from_state(&lsa_state(fields))
     }
 
     #[test]
@@ -239,6 +251,7 @@ mod test {
             ("default-v2", "external"),
             ("default-v3", "link"),
             ("other", "router"),
+            ("default-v2", "summary-network"),
         ] {
             assert_eq!(
                 row(&[

@@ -21,6 +21,7 @@ fn service(
             disabled,
             available_from: available_from.map(Into::into),
             address: address.map(Into::into),
+            certificate: None,
         },
     }
 }

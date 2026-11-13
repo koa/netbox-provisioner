@@ -14,10 +14,19 @@
 
 use crate::{
     Error,
-    device::raw::{command, field, rows},
+    device::access::{act, remove_if_present},
 };
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
-use mikrotik_model::value::{ParseRosValueResult, RosValue};
+use mikrotik_model::{
+    action::BackupSave,
+    ascii::AsciiString,
+    command::{Reads, Writes},
+    model::{
+        FileByName, SystemDeviceModeState, SystemResourceState, SystemSchedulerByName,
+        SystemSchedulerCfg,
+    },
+    resource::{self, Creatable, KeyedResource, SingleResource, apply_mutation},
+    value::RosValue,
+};
 use rand::{RngExt, distr::Alphanumeric};
 use std::time::Duration;
 
@@ -36,10 +45,7 @@ fn backup_file() -> String {
 /// provisioner didn't see to the end is replaced. `Some(mode)` and nothing saved where the
 /// device mode `mode` has the scheduler off (`home`): RouterOS refuses the entry ("not allowed
 /// by device-mode", berghof-hansueli, 7.21.5), so there is no fallback.
-pub async fn arm(
-    raw: &RawDevice<SimpleResult>,
-    delay: Duration,
-) -> Result<Option<Box<str>>, Error> {
+pub async fn arm(raw: &impl Writes, delay: Duration) -> Result<Option<Box<str>>, Error> {
     if let Some(mode) = without_scheduler(raw).await? {
         return Ok(Some(mode));
     }
@@ -51,17 +57,15 @@ pub async fn arm(
         .take(24)
         .map(char::from)
         .collect::<String>();
-    command(
-        raw,
-        "/system/backup/save",
-        &[("name", NAME), ("password", &password)],
-    )
-    .await?;
+    let save = BackupSave {
+        name: NAME,
+        password: &password,
+    };
+    act(raw, &save).await?;
     let file = backup_file();
-    let saved = rows(raw, "/file/print")
+    let saved = FileByName::fetch(raw, &AsciiString::from(file.as_str()))
         .await?
-        .iter()
-        .any(|row| field(row, "name") == Some(file.as_str()));
+        .is_some();
     if !saved {
         return Err(Error::Refused(format!("no {file} after saving it").into()));
     }
@@ -70,35 +74,27 @@ pub async fn arm(
         "/system scheduler remove [find name=\"{NAME}\"]; \
          /system backup load name=\"{file}\" password=\"{password}\""
     );
-    let interval = format!("{}s", delay.as_secs().max(1));
-    command(
-        raw,
-        "/system/scheduler/add",
-        &[
-            ("name", NAME),
-            ("interval", &interval),
-            ("on-event", &on_event),
-            (
-                "comment",
-                "loads the config from before the apply, unless the provisioner stops it",
-            ),
-        ],
-    )
-    .await?;
+    let mut entry = SystemSchedulerCfg::new(NAME.into());
+    entry.interval = Some(delay.max(Duration::from_secs(1)));
+    entry.on_event = Some(on_event.into());
+    entry.comment =
+        Some("loads the config from before the apply, unless the provisioner stops it".into());
+    apply_mutation(raw, &entry.calculate_create()).await?;
     Ok(None)
 }
 
 /// The device mode, where it has the scheduler off; `None` with the scheduler on, or before
 /// RouterOS 7.17, which has no device mode.
-async fn without_scheduler(raw: &RawDevice<SimpleResult>) -> Result<Option<Box<str>>, Error> {
-    let mode = match rows(raw, "/system/device-mode/print").await {
-        Ok(rows) => rows.into_iter().next(),
-        Err(Error::Refused(_)) => None,
-        Err(error) => return Err(error),
+async fn without_scheduler(raw: &impl Reads) -> Result<Option<Box<str>>, Error> {
+    let mode = match SystemDeviceModeState::fetch(raw).await {
+        Ok(mode) => mode,
+        // no such menu
+        Err(resource::Error::Trap(_)) => None,
+        Err(error) => return Err(error.into()),
     };
     Ok(mode
-        .filter(|mode| field(mode, "scheduler") == Some("false"))
-        .map(|mode| field(&mode, "mode").unwrap_or_default().into()))
+        .filter(|mode| mode.scheduler == Some(false))
+        .map(|mode| String::from_utf8_lossy(&mode.mode.encode_ros()).into()))
 }
 
 /// Where the fallback stands on the device.
@@ -124,14 +120,8 @@ pub struct Rearmed {
 /// that jumps forward (NTP setting it after the apply) leaves `next-run` behind, which then
 /// looked due (1og-sw1: „fires in 0 s“ at 51 s, so the fallback stayed and took a good apply
 /// back; on a CHR 7.24.5 an hour's jump left `next-run` and the entry didn't run).
-pub async fn pending(
-    raw: &RawDevice<SimpleResult>,
-    rearmed: Option<Rearmed>,
-) -> Result<Pending, Error> {
-    let entry = rows(raw, "/system/scheduler/print")
-        .await?
-        .into_iter()
-        .find(|row| field(row, "name") == Some(NAME));
+pub async fn pending(raw: &impl Reads, rearmed: Option<Rearmed>) -> Result<Pending, Error> {
+    let entry = SystemSchedulerByName::fetch(raw, &AsciiString::from(NAME)).await?;
     if entry.is_none() {
         return Ok(Pending::Gone);
     }
@@ -144,15 +134,10 @@ pub async fn pending(
 }
 
 /// The device's uptime (`/system/resource`).
-pub(crate) async fn uptime(raw: &RawDevice<SimpleResult>) -> Result<Option<Duration>, Error> {
-    Ok(rows(raw, "/system/resource/print")
+pub(crate) async fn uptime(raw: &impl Reads) -> Result<Option<Duration>, Error> {
+    Ok(SystemResourceState::fetch(raw)
         .await?
-        .first()
-        .and_then(|resource| field(resource, "uptime"))
-        .and_then(|uptime| match Duration::parse_ros(uptime.as_bytes()) {
-            ParseRosValueResult::Value(uptime) => Some(uptime),
-            _ => None,
-        }))
+        .map(|resource| resource.uptime))
 }
 
 /// What [`disarm_unless_due`] found.
@@ -168,7 +153,7 @@ pub(crate) enum Disarmed {
 
 /// Takes the fallback away unless it fires within [`DUE`] or has fired.
 pub(crate) async fn disarm_unless_due(
-    raw: &RawDevice<SimpleResult>,
+    raw: &impl Writes,
     rearmed: Option<Rearmed>,
 ) -> Result<Disarmed, Error> {
     match pending(raw, rearmed).await? {
@@ -179,30 +164,11 @@ pub(crate) async fn disarm_unless_due(
 }
 
 /// Takes the fallback away: the device is reachable with the new config.
-pub async fn disarm(raw: &RawDevice<SimpleResult>) -> Result<(), Error> {
+pub async fn disarm(raw: &impl Writes) -> Result<(), Error> {
     remove_scheduler(raw).await?;
-    let file = backup_file();
-    let ids = rows(raw, "/file/print")
-        .await?
-        .iter()
-        .filter(|row| field(row, "name") == Some(file.as_str()))
-        .filter_map(|row| field(row, ".id").map(String::from))
-        .collect::<Vec<_>>();
-    for id in ids {
-        command(raw, "/file/remove", &[(".id", &id)]).await?;
-    }
-    Ok(())
+    remove_if_present::<FileByName>(raw, &AsciiString::from(backup_file().as_str())).await
 }
 
-async fn remove_scheduler(raw: &RawDevice<SimpleResult>) -> Result<(), Error> {
-    let ids = rows(raw, "/system/scheduler/print")
-        .await?
-        .iter()
-        .filter(|row| field(row, "name") == Some(NAME))
-        .filter_map(|row| field(row, ".id").map(String::from))
-        .collect::<Vec<_>>();
-    for id in ids {
-        command(raw, "/system/scheduler/remove", &[(".id", &id)]).await?;
-    }
-    Ok(())
+async fn remove_scheduler(raw: &impl Writes) -> Result<(), Error> {
+    remove_if_present::<SystemSchedulerByName>(raw, &AsciiString::from(NAME)).await
 }

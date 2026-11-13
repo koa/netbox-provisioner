@@ -13,7 +13,8 @@ use crate::{
 };
 use async_graphql::futures_util::StreamExt;
 use async_graphql::{Enum, SimpleObject};
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_api::{command::Write, prelude::Command, simple::SimpleResult};
+use mikrotik_model::{action::Reboot as RebootNow, command::Writes};
 use std::time::Duration;
 use tokio::time::{Instant, sleep, timeout};
 
@@ -61,30 +62,32 @@ pub(crate) async fn reboot_and_wait<T, F>(
 where
     F: Fn(&DeviceState) -> Option<T>,
 {
-    restart_and_wait(link, rebooting, log, reason, wait, "/system/reboot", check).await
+    restart_and_wait(link, rebooting, log, reason, wait, &RebootNow, check).await
 }
 
-/// [`reboot_and_wait`] with `path` as the command that reboots (`/system/package/downgrade`).
-pub(crate) async fn restart_and_wait<T, F>(
+/// [`reboot_and_wait`] with `restart` as the command that reboots (`/system/package/downgrade`).
+pub(crate) async fn restart_and_wait<T, F, C>(
     link: &impl DeviceLink,
     _rebooting: RebootLease,
     log: &Log,
     reason: RebootReason,
     wait: Duration,
-    path: &str,
+    restart: &C,
     check: F,
 ) -> Result<T, Error>
 where
     F: Fn(&DeviceState) -> Option<T>,
+    C: Command<Effect = Write, Reply = SimpleResult> + Sync,
 {
     let device = link.api().await?;
     let before = read_state(&device).await?.uptime;
     let sent = Instant::now();
-    let mut answer = device.send_simple_command(path.as_bytes(), ()).await;
+    let mut answer = device.write(restart).await;
     // the answer, or the connection breaking with the reboot
     if let Ok(Some(SimpleResult::Trap { message, .. })) =
         timeout(Duration::from_secs(10), answer.next()).await
     {
+        let path = String::from_utf8_lossy(&restart.path()).into_owned();
         return Err(Error::Refused(format!("{path}: {message}").into()));
     }
     drop(answer);

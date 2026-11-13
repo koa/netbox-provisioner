@@ -44,27 +44,27 @@ fn cable(builder: &mut TopologyBuilder, a: InterfaceId, b: InterfaceId) {
         },
     );
 }
-fn row(fields: &[(&str, &str)]) -> Row {
-    fields
-        .iter()
-        .map(|(k, v)| (Box::from(*k), Some(Box::from(*v))))
-        .collect()
+fn device_port(name: &str, default_name: Option<&str>) -> Port {
+    Port {
+        name: name.into(),
+        default_name: default_name.map(Box::from),
+    }
 }
 /// r1's ports as RouterOS names them: `ether1` renamed to `e01`, `ether2` as it is.
-fn interfaces() -> Vec<Row> {
+fn interfaces() -> Vec<Port> {
     vec![
-        row(&[("name", "e01"), ("default-name", "ether1")]),
-        row(&[("name", "ether2"), ("default-name", "ether2")]),
-        row(&[("name", "bridge")]),
+        device_port("e01", Some("ether1")),
+        device_port("ether2", Some("ether2")),
+        device_port("bridge", None),
     ]
 }
-fn seen(local: &str, identity: &str, remote: &str) -> Row {
-    row(&[
-        ("interface", local),
-        ("identity", identity),
-        ("interface-name", remote),
-        ("board", "RB5009UG+S+"),
-    ])
+fn seen(local: &str, identity: &str, remote: &str) -> Seen {
+    Seen {
+        interface: local.into(),
+        identity: identity.into(),
+        interface_name: remote.into(),
+        board: "RB5009UG+S+".into(),
+    }
 }
 
 /// r1 ether1 -- r2 ether1, r2 has ether2 too; r3 has ether1.
@@ -93,7 +93,7 @@ fn net() -> Net {
     }
 }
 impl Net {
-    fn compare(self, neighbors: &[Row]) -> Vec<NeighborFindingKind> {
+    fn compare(self, neighbors: &[Seen]) -> Vec<NeighborFindingKind> {
         let r1 = Arc::new(self.builder.build())
             .get_device_by_id(&self.r1)
             .unwrap();

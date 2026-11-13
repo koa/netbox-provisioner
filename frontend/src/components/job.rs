@@ -570,8 +570,8 @@ fn describe(event: &Logged) -> Html {
             None => e::apply_started(seconds(started.starts_in)),
         },
         Event::RadiosReprovisioned(radios) => match &radios.error {
-            None => e::radios_reprovisioned(radios.count.into(), &radios.menu),
-            Some(error) => e::radios_not_reprovisioned(&radios.menu, &problem(error)),
+            None => e::radios_reprovisioned(radios.count.into(), radios.menu.menu()),
+            Some(error) => e::radios_not_reprovisioned(radios.menu.menu(), &problem(error)),
         },
         Event::WwwCertificateInstalled(installed) => match (&installed.error, &installed.name) {
             (Some(error), _) => e::www_certificate_not_installed(&problem(error)),
@@ -650,12 +650,7 @@ fn describe(event: &Logged) -> Html {
             }
         }),
         Event::DeviceModeConfirm(confirm) => e::device_mode_confirm(
-            &device_mode::features(
-                confirm
-                    .changes
-                    .iter()
-                    .map(|c| (c.feature.as_str(), &c.reason)),
-            ),
+            &device_mode::features(confirm.changes.iter().map(|c| (&c.feature, &c.reason))),
             confirm.timeout / 60_000_000_000,
         ),
         Event::PowerCycled(cycled) => e::power_cycled(
@@ -730,10 +725,7 @@ fn describe(event: &Logged) -> Html {
             &done.missing_files,
         ),
         Event::DeviceModeChanged(changed) => e::device_mode_changed(&device_mode::features(
-            changed
-                .changes
-                .iter()
-                .map(|c| (c.feature.as_str(), &c.reason)),
+            changed.changes.iter().map(|c| (&c.feature, &c.reason)),
         )),
     };
     html!({ text })

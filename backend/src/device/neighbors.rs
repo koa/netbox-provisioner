@@ -13,7 +13,6 @@
 //! a wireless link, not a cable: no cable is checked there.
 use crate::{
     Error,
-    device::raw::{Row, field, rows},
     topology::{
         DeviceRole, PhysicalPortId,
         access::{device::DeviceAccess, interface::InterfaceAccess},
@@ -21,7 +20,11 @@ use crate::{
     },
 };
 use async_graphql::{SimpleObject, Union};
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use mikrotik_model::{
+    command::Reads,
+    model::{InterfaceList, InterfaceState, IpNeighborDiscoverySettingsCfg, IpNeighborState},
+    resource::{SingleResource, collect_resource},
+};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -109,10 +112,7 @@ pub struct Neighbors {
 }
 
 /// Reads the device's ports and neighbors and compares them with NetBox: who is seen where.
-pub async fn read(
-    client: &RawDevice<SimpleResult>,
-    device: &DeviceAccess,
-) -> Result<Neighbors, Error> {
+pub async fn read(client: &impl Reads, device: &DeviceAccess) -> Result<Neighbors, Error> {
     Ok(evaluate(device, &read_table(client).await?))
 }
 
@@ -121,28 +121,78 @@ pub async fn read(
 pub struct NeighborTable {
     /// the interface list discovery runs on, when the device doesn't have it: it sees nobody
     discovery_off: Option<Box<str>>,
-    interfaces: Box<[Row]>,
-    neighbors: Box<[Row]>,
+    interfaces: Box<[Port]>,
+    neighbors: Box<[Seen]>,
 }
 
-pub async fn read_table(client: &RawDevice<SimpleResult>) -> Result<NeighborTable, Error> {
-    let settings = rows(client, "/ip/neighbor/discovery-settings/print").await?;
-    let lists = rows(client, "/interface/list/print").await?;
-    if let Some(list) = settings
-        .first()
-        .and_then(|row| field(row, "discover-interface-list"))
-        && !lists.iter().any(|row| field(row, "name") == Some(list))
+/// A port of the device (`/interface`).
+pub struct Port {
+    pub name: Box<str>,
+    /// its factory name, none for what was added (a bridge)
+    pub default_name: Option<Box<str>>,
+}
+
+impl From<&InterfaceState> for Port {
+    fn from(interface: &InterfaceState) -> Self {
+        Port {
+            name: interface.name.to_string().into(),
+            default_name: interface
+                .default_name
+                .as_ref()
+                .map(|name| name.to_string().into()),
+        }
+    }
+}
+
+/// A neighbor the device sees (`/ip/neighbor`).
+pub struct Seen {
+    /// the device's ports it is seen at, comma separated
+    pub interface: Box<str>,
+    pub identity: Box<str>,
+    /// its port, as it names it
+    pub interface_name: Box<str>,
+    pub board: Box<str>,
+}
+
+impl From<&IpNeighborState> for Seen {
+    fn from(neighbor: &IpNeighborState) -> Self {
+        let text = |value: Option<&mikrotik_model::ascii::AsciiString>| -> Box<str> {
+            value.map(ToString::to_string).unwrap_or_default().into()
+        };
+        Seen {
+            interface: neighbor.interface.to_string().into(),
+            identity: text(neighbor.identity.as_ref()),
+            interface_name: text(neighbor.interface_name.as_ref()),
+            board: text(neighbor.board.as_ref()),
+        }
+    }
+}
+
+pub async fn read_table(client: &impl Reads) -> Result<NeighborTable, Error> {
+    let settings = IpNeighborDiscoverySettingsCfg::fetch(client).await?;
+    let lists = collect_resource::<InterfaceList>(client).await?;
+    if let Some(list) = settings.map(|settings| settings.discover_interface_list)
+        && !list.0.is_empty()
+        && !lists.iter().any(|known| known.cfg.name == list)
     {
         return Ok(NeighborTable {
-            discovery_off: Some(list.into()),
+            discovery_off: Some(list.to_string().into()),
             interfaces: Box::default(),
             neighbors: Box::default(),
         });
     }
     Ok(NeighborTable {
         discovery_off: None,
-        interfaces: rows(client, "/interface/print").await?.into(),
-        neighbors: rows(client, "/ip/neighbor/print").await?.into(),
+        interfaces: collect_resource::<InterfaceState>(client)
+            .await?
+            .iter()
+            .map(Port::from)
+            .collect(),
+        neighbors: collect_resource::<IpNeighborState>(client)
+            .await?
+            .iter()
+            .map(Seen::from)
+            .collect(),
     })
 }
 
@@ -192,11 +242,11 @@ struct SeenPorts {
 }
 
 /// [`SeenAt`], and NetBox's ports by name.
-fn seen_at(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> SeenPorts {
+fn seen_at(device: &DeviceAccess, interfaces: &[Port], neighbors: &[Seen]) -> SeenPorts {
     let topology_devices = device.topology().list_devices().collect::<Vec<_>>();
     let default_names = interfaces
         .iter()
-        .filter_map(|row| Some((field(row, "name")?, field(row, "default-name")?)))
+        .filter_map(|port| Some((&*port.name, port.default_name.as_deref()?)))
         .collect::<HashMap<_, _>>();
     let netbox_ports = device
         .interfaces()
@@ -207,8 +257,8 @@ fn seen_at(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> Seen
 
     // what the device sees, by the default name of its port (its own name where it has none)
     let mut seen_at = SeenAt::new();
-    for row in neighbors {
-        let interface = field(row, "interface").unwrap_or_default();
+    for neighbor in neighbors {
+        let interface = &*neighbor.interface;
         let Some((name, default_name)) = interface
             .split(',')
             .filter_map(|name| {
@@ -227,8 +277,8 @@ fn seen_at(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> Seen
         else {
             continue;
         };
-        let identity = field(row, "identity").unwrap_or_default();
-        let interface_name = field(row, "interface-name").unwrap_or_default();
+        let identity = &*neighbor.identity;
+        let interface_name = &*neighbor.interface_name;
         let netbox_device = topology_devices.iter().find(|d| d.name() == identity);
         let netbox_interface = netbox_device.and_then(|d| port_named(d, interface_name));
         seen_at
@@ -241,7 +291,7 @@ fn seen_at(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> Seen
             .push(SeenNeighbor {
                 identity: identity.into(),
                 interface_name: interface_name.into(),
-                board: field(row, "board").unwrap_or_default().into(),
+                board: neighbor.board.clone(),
                 device: netbox_device.map(device_ref),
                 interface: netbox_interface.as_ref().map(interface_ref),
             });
@@ -256,8 +306,8 @@ fn seen_at(device: &DeviceAccess, interfaces: &[Row], neighbors: &[Row]) -> Seen
 /// from `/ip/neighbor/print`.
 pub fn compare(
     device: &DeviceAccess,
-    interfaces: &[Row],
-    neighbors: &[Row],
+    interfaces: &[Port],
+    neighbors: &[Seen],
 ) -> Vec<NeighborFinding> {
     let SeenPorts {
         seen_at,

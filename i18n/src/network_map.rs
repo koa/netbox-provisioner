@@ -39,7 +39,7 @@ pub const LEGEND: &str = "Legende";
 /// Not judged, only shown (`docs/concepts/network-map.md`, step 3): memory and disk as MiB,
 /// for readability, nothing more.
 pub fn resources(
-    uptime: &str,
+    uptime_seconds: u64,
     cpu_load: i32,
     free_memory: u64,
     total_memory: u64,
@@ -47,6 +47,13 @@ pub fn resources(
     version: &str,
 ) -> String {
     let mib = |bytes: u64| bytes / (1024 * 1024);
+    let minutes = uptime_seconds / 60;
+    let hours = minutes / 60;
+    let uptime = match hours {
+        0 => format!("{minutes} min"),
+        1..24 => format!("{hours} h {} min", minutes % 60),
+        _ => format!("{} T {} h", hours / 24, hours % 24),
+    };
     format!(
         "{version}, seit {uptime}, CPU {cpu_load} %, RAM {} von {} MiB frei, Disk {} MiB frei",
         mib(free_memory),

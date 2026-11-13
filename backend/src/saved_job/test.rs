@@ -54,7 +54,7 @@ fn a_saved_job_is_read_back() {
                 armed_at: SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_000),
                 fires: SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_210),
                 unmarked: SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_090),
-                reprovision: vec!["/interface/wifi/radio".into()].into(),
+                reprovision: vec![CapsmanRadios::Wifi].into(),
             },
             hold: Some(SavedHold {
                 own: Some(Watching {

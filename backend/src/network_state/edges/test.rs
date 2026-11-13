@@ -1,6 +1,6 @@
 //! Scope: Tests of `network_state::edges`; nothing else.
 use super::*;
-use crate::network_state::lsa::Lsa;
+use crate::network_state::lsa::{Lsa, lsa_state};
 use crate::topology::{
     Cable, CablePort, Device, Interface, IpAddressData, IpAddressId, PhysicalPortId, PortType,
     Topology, builder::TopologyBuilder,
@@ -111,12 +111,7 @@ impl Net {
 }
 
 fn row(fields: &[(&str, &str)]) -> Option<Lsa> {
-    Lsa::from_row(|key| {
-        fields
-            .iter()
-            .find(|(k, _)| *k == key)
-            .map(|(_, v)| v.to_string())
-    })
+    Lsa::from_state(&lsa_state(fields))
 }
 
 fn router(

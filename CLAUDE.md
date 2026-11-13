@@ -247,7 +247,7 @@ hands the findings on to the type of `Findings` by serializing them (`rows::find
 rows, `DeviceAccess::interface_rows`; the fact `InterfaceLive`, up to 1 min old and shown with
 its time, dropped by „Erneut prüfen“ (`refreshInterfaceLive`), every job on the device and a
 topology change): who the device sees (`neighbors::read`), its OSPF
-neighbors there, and the radio link's bridge devices answering a ping (`raw::answering`). An
+neighbors there, and the radio link's bridge devices answering a ping (`access::answering`). An
 OSPF neighbor's interface is RouterOS' name, which for a bridge or VLAN interface is L2's
 (`bridge-link` for NetBox' `link`), so it is matched by port name, else by the addresses
 `/ip/address` has on it; never by NetBox' name alone. An adjacency at a row whose interface
@@ -399,8 +399,8 @@ instead of dialing the target directly (RouterOS defaults `/ip socks` to SOCKS4,
 `enable_socks` must keep requesting `version=5`) - every other access in a scenario (setup,
 `fetch_config` reads, final assertions) is allowed to go directly to a node's own hostfwd port;
 only the actual apply-under-test call is meant to take this realistic, routed-only path.
-`wait.rs`'s `wait_for_ospf_full` polls `/routing/ospf/neighbor/print` (no typed model exists for
-it yet) for a given OSPF instance name - the generator always provisions both a `default-v2` and a
+`wait.rs`'s `wait_for_ospf_full` polls `/routing/ospf/neighbor` (`RoutingOspfNeighborState`)
+for a given OSPF instance name - the generator always provisions both a `default-v2` and a
 `default-v3` instance the moment any interface has OSPF enabled, regardless of whether IPv6 is
 actually in play, so a v4-only scenario must wait on `default-v2` specifically rather than "every
 neighbor". `ospf_chain.rs`'s `three_node_ospf_chain_apply_via_entry` is the harness's end-to-end
@@ -439,8 +439,8 @@ legacy CAPsMAN manages has no SSID there and no `info`, nor its clients; the con
 reports them from `/caps-man`, `capsman_radios`), `/interface`
 counters, Ethernet links (one `monitor ... once` of all ports) and bound leases are
 `device::metrics` (`FactKind::DeviceMetrics`), each menu read with its mikrotik-model type and
-only the two monitors raw; a menu a package brings has no rows without it
-(`rows_if_present`, `is_missing_menu`). A WLAN client takes hostname and address from a lease of any device
+the two monitors as actions of its catalog; a menu a package brings has no rows without it
+(`access::collect_if_present`, `is_missing_menu`). A WLAN client takes hostname and address from a lease of any device
 by MAC, and a client or radio its `wlan_group` from NetBox (`render::wlan_group_of`: the one
 group of the device with that SSID and, for a CAP's client, that CAP; else empty). Names follow Prometheus' conventions (unit in the name, `_total` for device counters),
 every metric has `device` and `site` from NetBox. The dashboards `mikrotik-overview.json` and
@@ -761,8 +761,8 @@ connection, directly or through the management proxy, has 20 s (`device::OPEN_TI
 try); an SSH key exchange and login 30 s (`terminal::SSH_LOGIN_TIMEOUT`, also the tunnel's);
 an API login 30 s and every API command 120 s without a reply (mikrotik-api's `LOGIN_TIMEOUT`,
 `REPLY_TIMEOUT`, `Error::ReplyTimeout`; a reply restarts it, so a monitor that keeps answering
-goes on). A command that rightly stays silent longer says so with
-`send_command_with_reply_timeout`: the device-mode countdown (`None`, its own deadline), the
+goes on). A command that rightly stays silent longer says so in its
+`Command::reply_timeout`: the device-mode countdown (`None`, its own deadline), the
 partition copy (`COPY_TIMEOUT`) and mikrotik-model's `/system/script/run` of an apply
 (`SCRIPT_RUN_TIMEOUT`, 10 min). Downloads from MikroTik have 20 s to connect and 60 s per read
 (`update::http`). A new wait on a device needs one of these, or its own timeout.
@@ -885,7 +885,7 @@ the update its `UpdateTarget` and `WatchdogNotSet` for a watcher without one, an
 `UploadNoAnswer` with the step). A job without events was indistinguishable from a hung
 one (the upload of 11 MB over berghof-burri's radio took 15 s, but looked stuck).
 A command on an API connection that is gone answers `ConnectionClosed` (mikrotik-api; it
-used to panic in `send_command`). `cancelJob` sets a flag the work checks
+used to panic). `cancelJob` sets a flag the work checks
 between steps (`Log::check`) and while it waits (`Log::unless_cancelled`), so a step that must
 not stop halfway (the upload with `/ip ssh` switched) completes first. The update downloads all
 packages of a step before the first upload, and removes the uploaded ones when it stops before
@@ -1034,8 +1034,8 @@ first issues each device a certificate of that CA for its NetBox addresses and n
 ECDSA, 397 days, anew within 30 days of its end, for other names or another CA), uploads it
 (`/file/add contents`, `/certificate/import`, which takes the files away) and attaches it to
 `www-ssl` over the API (`ApplyState::InstallingCertificate`, before the plan, outside the
-fallback, `WwwCertificateInstalled`); mikrotik-model doesn't model `certificate`, so the diff
-leaves it. Only with a usable one attached (`DeviceCfg.www_certificate`, `InPlace`, read in
+fallback, `WwwCertificateInstalled`); the services' target keeps the `certificate` the device
+has, so the diff leaves it. Only with a usable one attached (`DeviceCfg.www_certificate`, `InPlace`, read in
 `generate_live`) the config turns `www-ssl` on, restricted like `www`, and `www` off
 (`services::use_www_ssl`); `Needed` enables „Anwenden“ without a script and is a change of
 `certificate` in the site diff. RouterOS removes a certificate in use and leaves the service a
@@ -1336,16 +1336,21 @@ QEMU's, the golden image's dhcp-client is bound to it).
   never `*_test.rs` files next to the code. Fixtures several modules' tests use belong in
   `topology::test` (`example_topology`, the stored export as a topology);
   `topology::builder::TopologyBuilder` isn't `cfg(test)`, the CHR tests build with it too.
-- Every `print` reads a mikrotik-model type (`collect_resource`); a menu without one gets its
-  model in mikrotik-model (`ros_model/*.txt`), not a raw print, and a passphrase in the rows or
-  a read for one field is no reason for raw. Only what a `print` can't cover (monitors,
-  actions like `power-cycle`) goes through `device::raw` (`command`, `rows`, `field`), which
-  turns a `!trap` into `Error::Refused` naming the command; don't write another loop over
-  `SimpleResult`. Older raw prints are moved to models in task B36 (todo.md).
-  Device access is being rebuilt (`docs/concepts/device-access.md`): every command a type
-  with its effect, actions in mikrotik-model's catalog. A `RawCommand` is a code smell: each
-  one is a command missing from the catalog, and if they multiply, the concept needs another
-  look before one more is written.
+- Every command to a device is a type with its effect (`docs/device-access.md`): every
+  `print` reads a mikrotik-model type (`collect_resource`, `SingleResource::fetch`,
+  `KeyedResource::fetch`), every change is a mutation of one (`calculate_create`,
+  `calculate_update`, `apply_mutation`), and every other command an action of mikrotik-model's
+  catalog (`action.rs`: monitors, `power-cycle`, `/execute`, …), sent with `access::act` or
+  `observe`, which turn a `!trap` into `Error::Refused` naming the command. A menu or action
+  without a type gets one in mikrotik-model (`ros_model/*.txt`, `action.rs`), with a decode
+  test of what a device answered; a passphrase in the rows or a read for one field is no
+  reason for raw. The provisioner reads through a `Reader` and writes through a `Session`
+  (`device::access`), and the CHR harness reaches its nodes the same way
+  (`tests/chr_network/node.rs`), so it tests the typed commands too. A `RawCommand` is a code
+  smell: each one is a command missing from the catalog, and if they multiply, the concept
+  needs another look before one more is written. The exceptions are `examples/print_device.rs`
+  (a raw print is its point) and the harness's `wifi_country.rs` (it checks RouterOS refusing
+  a spelling the typed model can't write); don't write a loop over `SimpleResult`.
 - The backend sends data, the frontend words it: no sentence for the user is built in the
   backend (no German there at all; the journal takes its text from the crate `i18n`). What the UI shows is a typed GraphQL object or union with
   the values the text needs (`job::Event`, `ApplyWarning`), an enum for a case to tell apart

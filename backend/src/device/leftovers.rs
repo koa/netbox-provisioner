@@ -12,8 +12,8 @@
 use crate::{
     Error,
     device::{
+        access::act,
         dependency::PowerChain,
-        raw::{Row, command, field, rows},
         reboot::{self, REBOOT_TIMEOUT, Reboot, RebootReason},
         ros::{apply::APPLY_SCRIPT, fallback},
         update::{DeviceLink, read_state},
@@ -23,7 +23,12 @@ use crate::{
     job::Log,
 };
 use async_graphql::{Enum, SimpleObject};
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use mikrotik_model::{
+    action::Execute,
+    command::Reads,
+    model::{File, FileByName, SystemScheduler, SystemScriptJobState},
+    resource::{ResourceMutation, apply_mutation, collect_resource},
+};
 use tokio::time::Instant;
 
 /// What is left on the device; `None` fields aren't there.
@@ -113,22 +118,23 @@ pub struct LeftoverCleared {
 }
 
 /// Reads what is left on the device.
-pub async fn read(device: &RawDevice<SimpleResult>) -> Result<Leftovers, Error> {
-    read_with_files(device, &rows(device, "/file/print").await?).await
+pub async fn read(device: &impl Reads) -> Result<Leftovers, Error> {
+    read_with_files(device, &collect_resource::<File>(device).await?).await
 }
 
-/// [`read`] with the rows of `/file/print` read already.
-pub async fn read_with_files(
-    device: &RawDevice<SimpleResult>,
-    files: &[Row],
-) -> Result<Leftovers, Error> {
-    let schedulers = rows(device, "/system/scheduler/print").await?;
+/// [`read`] with `/file` read already.
+pub async fn read_with_files(device: &impl Reads, files: &[File]) -> Result<Leftovers, Error> {
+    let schedulers = collect_resource::<SystemScheduler>(device).await?;
     let scheduled = |name: &str| {
         schedulers
             .iter()
-            .find(|row| field(row, "name") == Some(name))
-            .map(|row| ScheduledLeft {
-                next_run: field(row, "next-run")
+            .find(|entry| *entry.cfg.name.0 == *name.as_bytes())
+            .map(|entry| ScheduledLeft {
+                next_run: entry
+                    .status
+                    .next_run
+                    .as_ref()
+                    .map(ToString::to_string)
                     .filter(|run| !run.is_empty())
                     .map(Box::from),
             })
@@ -140,18 +146,20 @@ pub async fn read_with_files(
             held_by: None,
         })
     });
-    let apply_script_running = rows(device, "/system/script/job/print")
+    let apply_script_running = collect_resource::<SystemScriptJobState>(device)
         .await?
         .iter()
-        .any(|job| field(job, "script") == Some(APPLY_SCRIPT));
+        .any(|job| {
+            job.script
+                .as_ref()
+                .is_some_and(|script| *script.0 == *APPLY_SCRIPT.as_bytes())
+        });
     let packages = files
         .iter()
-        .filter(|row| field(row, "name").is_some_and(installs_at_boot))
-        .filter_map(|row| {
-            Some(PackageLeft {
-                file: field(row, "name")?.into(),
-                size: field(row, "size").map(Box::from),
-            })
+        .filter(|file| installs_at_boot(&file.cfg.name.to_string()))
+        .map(|file| PackageLeft {
+            file: file.cfg.name.to_string().into(),
+            size: file.status.size.map(|size| size.to_string().into()),
         })
         .collect();
     Ok(Leftovers {
@@ -164,11 +172,11 @@ pub async fn read_with_files(
 }
 
 /// The `.npk` files on the device that install at the next boot.
-async fn packages(device: &RawDevice<SimpleResult>) -> Result<Vec<Row>, Error> {
-    Ok(rows(device, "/file/print")
+async fn packages(device: &impl Reads) -> Result<Vec<File>, Error> {
+    Ok(collect_resource::<File>(device)
         .await?
         .into_iter()
-        .filter(|row| field(row, "name").is_some_and(installs_at_boot))
+        .filter(|file| installs_at_boot(&file.cfg.name.to_string()))
         .collect())
 }
 
@@ -195,18 +203,18 @@ pub async fn clear(
         LeftoverAction::StopApplyFallback => fallback::disarm(&device).await?,
         LeftoverAction::ApplyFallbackNow => {
             // what the scheduler would run: remove itself, load the backup (which reboots)
-            let on_event = rows(&device, "/system/scheduler/print")
+            let on_event = collect_resource::<SystemScheduler>(&device)
                 .await?
                 .iter()
-                .find(|row| field(row, "name") == Some(fallback::NAME))
-                .and_then(|row| field(row, "on-event").map(String::from))
+                .find(|entry| *entry.cfg.name.0 == *fallback::NAME.as_bytes())
+                .and_then(|entry| entry.cfg.on_event.as_ref().map(ToString::to_string))
                 .ok_or_else(gone)?;
             // what the device powers goes down with it
             log.enter(CleanupState::WaitingForChain);
             let _rebooting = log.unless_cancelled(power.rebooting(log)).await?;
             let before = read_state(&device).await?.uptime;
             let sent = Instant::now();
-            command(&device, "/execute", &[("script", &on_event)]).await?;
+            act(&device, &Execute { script: &on_event }).await?;
             drop(device);
             log.enter(CleanupState::Rebooting);
             log.emit(Reboot {
@@ -221,10 +229,9 @@ pub async fn clear(
             watchdog::restore(&device, &watching).await?;
         }
         LeftoverAction::RemovePackages => {
-            for row in packages(&device).await? {
-                if let Some(id) = field(&row, ".id") {
-                    command(&device, "/file/remove", &[(".id", id)]).await?;
-                }
+            for file in packages(&device).await? {
+                let remove = ResourceMutation::remove::<FileByName>(&file.cfg.name);
+                apply_mutation(&device, &remove).await?;
             }
         }
     }

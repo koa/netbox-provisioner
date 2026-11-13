@@ -7,9 +7,11 @@
 //! a device: through an SSH tunnel to the entry, which stays open while the node reboots.
 use crate::chr_network::golden_image::{CHR, CHR_OLDER, ensure_factory_image, ensure_golden_image};
 use crate::chr_network::mac_telnet::wait_for_boot;
+use crate::chr_network::node::{add_address, forward_ssh, login, login_over};
 use crate::chr_network::qemu::{free_tcp_port, nix_unavailable};
 use crate::chr_network::vm::{PortWiring, boot_node, mac_of, start_node};
 use backend::Error;
+use backend::device::access::Session;
 use backend::device::bootstrap::{MacTelnetSetup, set_up};
 use backend::device::dependency::PowerChain;
 use backend::device::terminal::{Terminal, Tunnel, upload};
@@ -19,12 +21,10 @@ use backend::device::update::{
 use backend::device::update_fallback::{UpdateWithoutFallback, WayBack};
 use backend::device_state::UpdateState;
 use backend::job::{Event, Log};
-use encoding_rs::mem::encode_latin1_lossy;
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_model::model::File;
+use mikrotik_model::resource::collect_resource;
 use std::net::IpAddr;
 use tokio::net::TcpStream;
-use tokio_stream::StreamExt;
 
 const PASSWORD: &str = "Updated-1";
 
@@ -47,13 +47,8 @@ struct DirectLink {
 }
 
 impl DeviceLink for DirectLink {
-    async fn api(&self) -> Result<MikrotikDevice<SimpleResult>, Error> {
-        Ok(MikrotikDevice::connect(
-            ("127.0.0.1", self.api_port),
-            b"admin",
-            Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
-        )
-        .await?)
+    async fn api(&self) -> Result<Session, Error> {
+        Ok(login(self.api_port, crate::TEST_PASSWORD).await?)
     }
     async fn upload(
         &self,
@@ -83,14 +78,9 @@ struct TunnelLink {
 }
 
 impl DeviceLink for TunnelLink {
-    async fn api(&self) -> Result<MikrotikDevice<SimpleResult>, Error> {
+    async fn api(&self) -> Result<Session, Error> {
         let stream = self.tunnel.open(self.address, 8728).await?;
-        Ok(MikrotikDevice::connect_with_stream(
-            stream,
-            b"admin",
-            Some(encode_latin1_lossy(PASSWORD)),
-        )
-        .await?)
+        Ok(login_over(stream, PASSWORD).await?)
     }
     async fn upload(
         &self,
@@ -134,25 +124,8 @@ async fn update_older_chr_to_current() {
         .connect_api(crate::TEST_PASSWORD)
         .await
         .expect("entry api");
-    let mut s = entry_api
-        .send_command(
-            b"/ip/address/add".as_slice(),
-            |cmd| {
-                cmd.attribute(b"address".as_slice(), b"192.168.78.1/30".as_slice())
-                    .attribute(b"interface".as_slice(), b"ether2".as_slice())
-            },
-            (),
-        )
-        .await;
-    while s.next().await.is_some() {}
-    let mut s = entry_api
-        .send_command(
-            b"/ip/ssh/set".as_slice(),
-            |cmd| cmd.attribute(b"forwarding-enabled".as_slice(), b"local".as_slice()),
-            (),
-        )
-        .await;
-    while s.next().await.is_some() {}
+    add_address(&entry_api, "192.168.78.1/30", "ether2").await;
+    forward_ssh(&entry_api).await;
     wait_for_boot(&old).await;
 
     // like a new device: password and address over mac-telnet first
@@ -242,12 +215,9 @@ async fn update_older_chr_to_current() {
             .any(|e| matches!(e, Event::PackageUploaded(_)))
     );
     let api = link.api().await.unwrap();
-    let mut files = api.send_simple_command(b"/file/print".as_slice(), ()).await;
-    while let Some(row) = files.next().await {
-        if let SimpleResult::Sentence(row) = row {
-            let name = row.get("name").cloned().flatten().unwrap_or_default();
-            assert!(!name.ends_with(".npk"), "{name} left on the device");
-        }
+    for file in collect_resource::<File>(&api).await.expect("files") {
+        let name = file.cfg.name.to_string();
+        assert!(!name.ends_with(".npk"), "{name} left on the device");
     }
     drop(api);
     assert_eq!(

@@ -11,16 +11,13 @@ use crate::{
     device::metrics::{
         Capsman, DeviceMetrics, EthernetLink, InterfaceCounters, Lease, WirelessRadio, WlanClient,
     },
-    device::raw::{Row, field},
+    device::poe::status_text,
     network_state::device_data::{DeviceMapData, HealthRow, Resources},
     topology::access::device::DeviceAccess,
 };
-use mikrotik_model::{
-    MacAddress,
-    value::{ParseRosValueResult, RosValue},
-};
+use mikrotik_model::{MacAddress, model::InterfaceEthernetPoeMonitor};
 use prometheus::{CounterVec, GaugeVec, Opts, core::Collector, proto::MetricFamily};
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc};
 
 /// One round of the collector.
 #[derive(Debug, Clone, Default)]
@@ -565,10 +562,7 @@ impl SystemFamilies {
             labels([device, site, &resources.version, &resources.board_name]),
             1.0,
         );
-        if let ParseRosValueResult::Value(uptime) = Duration::parse_ros(resources.uptime.as_bytes())
-        {
-            self.uptime.push(base(), uptime.as_secs_f64());
-        }
+        self.uptime.push(base(), resources.uptime.as_secs_f64());
         self.cpu_load
             .push(base(), f64::from(resources.cpu_load) / 100.0);
         self.memory_free.push(base(), resources.free_memory as f64);
@@ -600,24 +594,21 @@ impl HealthFamilies {
 }
 
 impl PoeFamilies {
-    /// A row of `/interface/ethernet/poe/monitor`; `poe-out-current` is in mA.
-    fn push(&mut self, device: &str, site: &str, row: &Row) {
-        let Some(interface) = field(row, "name") else {
-            return;
-        };
-        let number = |name| field(row, name).and_then(|value| value.parse::<f64>().ok());
-        if let Some(status) = field(row, "poe-out-status") {
-            self.status
-                .push(labels([device, site, interface, status]), 1.0);
-        }
+    /// A reading of `/interface/ethernet/poe/monitor`; `poe-out-current` is in mA.
+    fn push(&mut self, device: &str, site: &str, reading: &InterfaceEthernetPoeMonitor) {
+        let interface = reading.name.to_string();
+        let interface = interface.as_str();
+        let status = status_text(&reading.poe_out_status);
+        self.status
+            .push(labels([device, site, interface, &status]), 1.0);
         let port = || labels([device, site, interface]);
-        if let Some(voltage) = number("poe-out-voltage") {
+        if let Some(voltage) = reading.poe_out_voltage {
             self.voltage.push(port(), voltage);
         }
-        if let Some(current) = number("poe-out-current") {
+        if let Some(current) = reading.poe_out_current {
             self.current.push(port(), current / 1000.0);
         }
-        if let Some(power) = number("poe-out-power") {
+        if let Some(power) = reading.poe_out_power {
             self.power.push(port(), power);
         }
     }

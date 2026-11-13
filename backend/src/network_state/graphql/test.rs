@@ -4,9 +4,11 @@
 //! they relay between two OSPF neighbors.
 
 use super::*;
-use crate::device::poe::PoePorts;
-use crate::device::raw::Row;
-use crate::network_state::{edges::Lsdb, lsa::Lsa};
+use crate::device::poe::{EthernetPort, PoePorts, monitor_reading};
+use crate::network_state::{
+    edges::Lsdb,
+    lsa::{Lsa, lsa_state},
+};
 use crate::topology::{
     Cable, CablePort, Device, Interface, InterfaceId, IpAddressData, IpAddressId, PhysicalPortId,
     PortType, Topology, builder::TopologyBuilder,
@@ -200,13 +202,6 @@ fn poe_net() -> (Vec<DeviceAccess>, Arc<Topology>) {
     (devices, topology)
 }
 
-fn poe_row(fields: &[(&str, &str)]) -> Row {
-    fields
-        .iter()
-        .map(|(k, v)| (Box::from(*k), Some(Box::from(*v))))
-        .collect()
-}
-
 /// r1 feeds r2 over their cable, `pse`/`pd` as NetBox has it, reporting `powered-on` with 3.9 W:
 /// one PSE→PD arrow (`docs/concepts/network-map.md`, step 4).
 #[test]
@@ -214,13 +209,13 @@ fn a_feeding_port_gets_a_poe_edge() {
     let (devices, _topology) = poe_net();
     let data = Arc::new(DeviceMapData {
         poe: PoePorts {
-            ethernet: vec![poe_row(&[
-                ("name", "ether1"),
-                ("default-name", "ether1"),
-                ("poe-out", "auto-on"),
-            ])]
+            ethernet: vec![EthernetPort {
+                name: "ether1".into(),
+                default_name: "ether1".into(),
+                poe_out: true,
+            }]
             .into(),
-            monitor: vec![poe_row(&[
+            monitor: vec![monitor_reading(&[
                 ("name", "ether1"),
                 ("poe-out-status", "powered-on"),
                 ("poe-out-power", "3.9"),
@@ -255,13 +250,13 @@ fn a_poe_edge_needs_no_reading_from_the_far_device() {
     let (devices, _topology) = poe_net();
     let data = Arc::new(DeviceMapData {
         poe: PoePorts {
-            ethernet: vec![poe_row(&[
-                ("name", "ether1"),
-                ("default-name", "ether1"),
-                ("poe-out", "auto-on"),
-            ])]
+            ethernet: vec![EthernetPort {
+                name: "ether1".into(),
+                default_name: "ether1".into(),
+                poe_out: true,
+            }]
             .into(),
-            monitor: vec![poe_row(&[
+            monitor: vec![monitor_reading(&[
                 ("name", "ether1"),
                 ("poe-out-status", "waiting-for-load"),
             ])]
@@ -280,12 +275,7 @@ fn a_poe_edge_needs_no_reading_from_the_far_device() {
 }
 
 fn row(fields: &[(&str, &str)]) -> Option<Lsa> {
-    Lsa::from_row(|key| {
-        fields
-            .iter()
-            .find(|(k, _)| *k == key)
-            .map(|(_, v)| v.to_string())
-    })
+    Lsa::from_state(&lsa_state(fields))
 }
 
 fn router(originator: &'static str, body: &'static str) -> [(&'static str, &'static str); 5] {

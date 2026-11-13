@@ -12,7 +12,7 @@ use super::{
     edges::{DownReason, EdgeKind, EdgeState, Lsdb, edges},
     read::{LsdbRead, read, readers},
 };
-use crate::graphql::scalars::ScalarU64;
+use crate::graphql::scalars::{ScalarDuration, ScalarU64};
 use crate::{
     device::poe::{self, PoeProblem},
     topology::{
@@ -22,6 +22,7 @@ use crate::{
     },
 };
 use async_graphql::{Enum, SimpleObject};
+use mikrotik_model::model::InterfaceEthernetPoePoeOutStatus;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr},
@@ -106,7 +107,8 @@ pub struct MapHealth {
 
 #[derive(SimpleObject)]
 pub struct MapResources {
-    uptime: Box<str>,
+    /// since the last boot
+    uptime: ScalarDuration,
     cpu_load: u32,
     free_memory: ScalarU64,
     total_memory: ScalarU64,
@@ -126,7 +128,7 @@ impl From<&DeviceMapData> for (Vec<MapHealth>, Option<MapResources>) {
             })
             .collect();
         let resources = data.resources.as_ref().map(|r| MapResources {
-            uptime: r.uptime.clone(),
+            uptime: r.uptime.into(),
             cpu_load: r.cpu_load,
             free_memory: r.free_memory.into(),
             total_memory: r.total_memory.into(),
@@ -195,14 +197,19 @@ fn poe_edges(
         };
         for feeding in poe::feeding(device, &data.poe) {
             let Some(pd) = feeding.far else { continue };
-            if feeding.mode != Some(PoeMode::Pse) && feeding.status.as_deref() != Some("powered-on")
+            if feeding.mode != Some(PoeMode::Pse)
+                && feeding.status != Some(InterfaceEthernetPoePoeOutStatus::PoweredOn)
             {
                 continue;
             }
             found.push(MapPoeEdge {
                 pse: feeding.port,
                 pd,
-                status: feeding.status.map(Into::into),
+                status: feeding
+                    .status
+                    .as_ref()
+                    .map(poe::status_text)
+                    .map(Into::into),
                 power: feeding.power,
                 problem: feeding.problem,
             });

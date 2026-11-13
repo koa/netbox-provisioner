@@ -1,21 +1,15 @@
 //! Scope: Tests of `network_state::device_data`; nothing else.
 use super::*;
-
-fn row(fields: &[(&str, &str)]) -> Row {
-    fields
-        .iter()
-        .map(|(k, v)| ((*k).into(), Some((*v).into())))
-        .collect()
-}
+use crate::device::answer::parsed as row;
 
 /// As lab-core (CCR2004) reports it, with one PSU unplugged.
 #[test]
 fn health_rows_keep_name_value_and_unit() {
-    let health = [
+    let health: [SystemHealthState; 2] = [
         row(&[("name", "cpu-temperature"), ("value", "45"), ("type", "C")]),
         row(&[("name", "psu1-state"), ("value", "fail")]),
     ];
-    let data = from_rows(&health, &[]);
+    let data = from_states(&health, None);
     assert_eq!(data.health.len(), 2);
     assert_eq!(&*data.health[0].name, "cpu-temperature");
     assert_eq!(&*data.health[0].value, "45");
@@ -28,18 +22,19 @@ fn health_rows_keep_name_value_and_unit() {
 }
 
 #[test]
-fn resources_take_the_first_row() {
-    let resources = [row(&[
-        ("uptime", "1d02:03:04"),
+fn resources_take_their_fields() {
+    let resources: SystemResourceState = row(&[
+        ("uptime", "1d2h3m4s"),
         ("cpu-load", "3"),
         ("free-memory", "58720256"),
         ("total-memory", "134217728"),
         ("free-hdd-space", "16777216"),
         ("version", "7.23.8 (stable)"),
-    ])];
-    let data = from_rows(&[], &resources);
+        ("architecture-name", "arm64"),
+    ]);
+    let data = from_states(&[], Some(&resources));
     let resources = data.resources.expect("a resource row");
-    assert_eq!(&*resources.uptime, "1d02:03:04");
+    assert_eq!(resources.uptime, Duration::from_secs(93784));
     assert_eq!(resources.cpu_load, 3);
     assert_eq!(resources.free_memory, 58720256);
     assert_eq!(resources.total_memory, 134217728);
@@ -49,5 +44,5 @@ fn resources_take_the_first_row() {
 
 #[test]
 fn no_resource_row_is_none() {
-    assert!(from_rows(&[], &[]).resources.is_none());
+    assert!(from_states(&[], None).resources.is_none());
 }

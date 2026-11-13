@@ -20,6 +20,7 @@ mod chr_network {
     pub mod leftovers;
     pub mod mac_telnet;
     pub mod network_map;
+    pub mod node;
     pub mod ospf_chain;
     pub mod ospf_segment;
     pub mod perimeter;
@@ -37,10 +38,13 @@ mod chr_network {
 use backend::topology::builder::TopologyBuilder;
 use backend::topology::{Device, Interface, PhysicalPortId};
 use chr_network::golden_image::ensure_golden_image;
+use chr_network::node::{add, add_address, answers_ping};
 use chr_network::qemu::{free_tcp_port, nix_unavailable};
 use chr_network::scenario::boot_scenario;
 use chr_network::vm::{PortWiring, boot_node};
 use mikrotik_model::hwconfig::DeviceType;
+use mikrotik_model::model::SystemIdentityCfg;
+use mikrotik_model::resource::SingleResource;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -87,12 +91,10 @@ async fn boot_single_overlay_node() {
         .connect_api(TEST_PASSWORD)
         .await
         .expect("api connect failed");
-    let mut stream = device
-        .send_simple_command(b"/system/identity/print".as_slice(), ())
-        .await;
-    use tokio_stream::StreamExt;
-    let result = stream.next().await.expect("no reply");
-    eprintln!("identity: {result:?}");
+    let identity = SystemIdentityCfg::fetch(&device)
+        .await
+        .expect("identity read");
+    eprintln!("identity: {identity:?}");
 }
 
 #[tokio::test]
@@ -143,8 +145,6 @@ async fn kill_minus_9_does_not_corrupt_golden_image() {
 #[tokio::test]
 #[ignore]
 async fn two_nodes_directly_cabled_can_ping() {
-    use tokio_stream::StreamExt;
-
     if nix_unavailable() {
         eprintln!("skipping: `nix` is not available in this environment");
         return;
@@ -178,38 +178,10 @@ async fn two_nodes_directly_cabled_can_ping() {
     let device_a = node_a.connect_api(TEST_PASSWORD).await.expect("a api");
     let device_b = node_b.connect_api(TEST_PASSWORD).await.expect("b api");
 
-    run_to_done(
-        &device_a,
-        b"/ip/address/add",
-        &[(b"address", b"10.10.10.1/24"), (b"interface", b"ether2")],
-    )
-    .await;
-    run_to_done(
-        &device_b,
-        b"/ip/address/add",
-        &[(b"address", b"10.10.10.2/24"), (b"interface", b"ether2")],
-    )
-    .await;
+    add_address(&device_a, "10.10.10.1/24", "ether2").await;
+    add_address(&device_b, "10.10.10.2/24", "ether2").await;
 
-    let mut stream = device_a
-        .send_command(
-            b"/ping".as_slice(),
-            |cmd| {
-                cmd.attribute(b"address".as_slice(), b"10.10.10.2".as_slice())
-                    .attribute(b"count".as_slice(), b"4".as_slice())
-            },
-            (),
-        )
-        .await;
-    let mut saw_reply = false;
-    while let Some(result) = stream.next().await {
-        eprintln!("ping result: {result:?}");
-        if let mikrotik_api::simple::SimpleResult::Sentence(row) = &result
-            && row.get("received").and_then(|v| v.as_deref()) == Some("1")
-        {
-            saw_reply = true;
-        }
-    }
+    let saw_reply = answers_ping(&device_a, "10.10.10.2".parse().unwrap(), 4).await;
     assert!(
         saw_reply,
         "node a never got a ping reply from node b over the cabled NIC"
@@ -224,8 +196,6 @@ async fn two_nodes_directly_cabled_can_ping() {
 #[tokio::test]
 #[ignore]
 async fn scenario_derived_wiring_can_ping() {
-    use tokio_stream::StreamExt;
-
     if nix_unavailable() {
         eprintln!("skipping: `nix` is not available in this environment");
         return;
@@ -296,38 +266,10 @@ async fn scenario_derived_wiring_can_ping() {
         .await
         .expect("b api");
 
-    run_to_done(
-        &device_a,
-        b"/ip/address/add",
-        &[(b"address", b"10.20.20.1/24"), (b"interface", b"ether2")],
-    )
-    .await;
-    run_to_done(
-        &device_b,
-        b"/ip/address/add",
-        &[(b"address", b"10.20.20.2/24"), (b"interface", b"ether2")],
-    )
-    .await;
+    add_address(&device_a, "10.20.20.1/24", "ether2").await;
+    add_address(&device_b, "10.20.20.2/24", "ether2").await;
 
-    let mut stream = device_a
-        .send_command(
-            b"/ping".as_slice(),
-            |cmd| {
-                cmd.attribute(b"address".as_slice(), b"10.20.20.2".as_slice())
-                    .attribute(b"count".as_slice(), b"4".as_slice())
-            },
-            (),
-        )
-        .await;
-    let mut saw_reply = false;
-    while let Some(result) = stream.next().await {
-        eprintln!("ping result: {result:?}");
-        if let mikrotik_api::simple::SimpleResult::Sentence(row) = &result
-            && row.get("received").and_then(|v| v.as_deref()) == Some("1")
-        {
-            saw_reply = true;
-        }
-    }
+    let saw_reply = answers_ping(&device_a, "10.20.20.2".parse().unwrap(), 4).await;
     assert!(
         saw_reply,
         "scenario-derived wiring never delivered a ping reply between the two nodes"
@@ -384,9 +326,9 @@ async fn entry_socks_proxy_speaks_socks5() {
 #[ignore]
 async fn socks_access_lets_only_the_allowed_sources_in() {
     use chr_network::apply::enable_socks;
-    use mikrotik_api::simple::SimpleResult;
+    use mikrotik_model::model::{IpSocksAccessAction, IpSocksAccessById, IpSocksAccessCfg};
+    use mikrotik_model::resource::{ResourceMutation, apply_mutation, collect_resource};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio_stream::StreamExt;
 
     if nix_unavailable() {
         eprintln!("skipping: `nix` is not available in this environment");
@@ -402,23 +344,17 @@ async fn socks_access_lets_only_the_allowed_sources_in() {
     let device = entry.connect_api(TEST_PASSWORD).await.expect("entry api");
     enable_socks(&device).await.expect("enable socks failed");
 
-    let run = async |path: &str, attributes: &[(&str, &str)]| {
-        let mut stream = device
-            .send_command(
-                path.as_bytes(),
-                |cmd| {
-                    attributes.iter().fold(cmd, |cmd, (key, value)| {
-                        cmd.attribute(key.as_bytes(), value.as_bytes())
-                    })
-                },
-                (),
-            )
-            .await;
-        while let Some(result) = stream.next().await {
-            if let SimpleResult::Trap { message, .. } = result {
-                panic!("{path} {attributes:?}: {message}");
-            }
-        }
+    let rule = async |action: IpSocksAccessAction, source: Option<&str>| {
+        let rule = IpSocksAccessCfg {
+            action,
+            comment: None,
+            disabled: false,
+            dst_address: None,
+            dst_port: None,
+            src_address: source.map(Into::into),
+            src_port: None,
+        };
+        add(&device, &rule).await.expect("a rule");
     };
     // a SOCKS5 greeting without authentication, then CONNECT to the VM's own API
     // (10.0.2.15:8728): the reply's code, or None when the connection is gone. The rules
@@ -446,55 +382,37 @@ async fn socks_access_lets_only_the_allowed_sources_in() {
         Some(reply[1])
     };
     let greeted = async || connect().await == Some(0);
-    // the rules as `.id` and what the device prints of them
-    let rules = async || {
-        let mut stream = device
-            .send_command(b"/ip/socks/access/print".as_slice(), |cmd| cmd, ())
-            .await;
-        let mut rules = Vec::new();
-        while let Some(result) = stream.next().await {
-            if let SimpleResult::Sentence(fields) = result {
-                rules.push(fields);
-            }
-        }
-        rules
-    };
     let clear = async || {
-        for rule in rules().await {
-            let id = rule
-                .get(".id")
-                .cloned()
-                .flatten()
-                .expect("a rule has an id");
-            run("/ip/socks/access/remove", &[(".id", &id)]).await;
+        for rule in collect_resource::<IpSocksAccessById>(&device)
+            .await
+            .expect("the rules")
+        {
+            apply_mutation(
+                &device,
+                &ResourceMutation::remove::<IpSocksAccessById>(&rule.id),
+            )
+            .await
+            .expect("rule removed");
         }
     };
 
     assert!(greeted().await, "no rules: every source is let in");
 
-    run(
-        "/ip/socks/access/add",
-        &[("action", "allow"), ("src-address", "192.0.2.1/32")],
-    )
-    .await;
+    rule(IpSocksAccessAction::Allow, Some("192.0.2.1/32")).await;
     assert!(
         greeted().await,
         "only an allow for another source: a source no rule names is let in"
     );
 
-    run("/ip/socks/access/add", &[("action", "deny")]).await;
+    rule(IpSocksAccessAction::Deny, None).await;
     assert!(
         !greeted().await,
         "allow for another source, then deny: the host is kept out"
     );
 
     clear().await;
-    run(
-        "/ip/socks/access/add",
-        &[("action", "allow"), ("src-address", "10.0.2.0/24")],
-    )
-    .await;
-    run("/ip/socks/access/add", &[("action", "deny")]).await;
+    rule(IpSocksAccessAction::Allow, Some("10.0.2.0/24")).await;
+    rule(IpSocksAccessAction::Deny, None).await;
     assert!(
         greeted().await,
         "allow for the host's network, then deny: the host is let in"
@@ -509,10 +427,11 @@ async fn socks_access_lets_only_the_allowed_sources_in() {
 #[ignore]
 async fn apply_via_entry_socks_proxy() {
     use chr_network::apply::{apply_mutations_via_entry, enable_socks};
+    use mikrotik_model::model::InterfaceBridgeByName;
+    use mikrotik_model::resource::KeyedResource;
     use mikrotik_model::resource::{ResourceMutation, ResourceMutationOperation};
     use mikrotik_model::value::KeyValuePair;
     use std::borrow::Cow;
-    use tokio_stream::StreamExt;
 
     if nix_unavailable() {
         eprintln!("skipping: `nix` is not available in this environment");
@@ -551,18 +470,8 @@ async fn apply_via_entry_socks_proxy() {
 
     // Direct setup on both ends is allowed: giving the target an address to
     // be reachable at, and turning on the entry's SOCKS proxy.
-    run_to_done(
-        &target_device,
-        b"/ip/address/add",
-        &[(b"address", b"10.30.30.2/24"), (b"interface", b"ether2")],
-    )
-    .await;
-    run_to_done(
-        &entry_device,
-        b"/ip/address/add",
-        &[(b"address", b"10.30.30.1/24"), (b"interface", b"ether2")],
-    )
-    .await;
+    add_address(&target_device, "10.30.30.2/24", "ether2").await;
+    add_address(&entry_device, "10.30.30.1/24", "ether2").await;
     enable_socks(&entry_device)
         .await
         .expect("enable socks failed");
@@ -574,21 +483,8 @@ async fn apply_via_entry_socks_proxy() {
     // clear reachability error. The real Schritt 7 scenario doesn't need
     // this explicitly: waiting for OSPF to reach Full already provides the
     // same warm-up time.
-    {
-        let mut stream = entry_device
-            .send_command(
-                b"/ping".as_slice(),
-                |cmd| {
-                    cmd.attribute(b"address".as_slice(), b"10.30.30.2".as_slice())
-                        .attribute(b"count".as_slice(), b"4".as_slice())
-                },
-                (),
-            )
-            .await;
-        while let Some(result) = stream.next().await {
-            eprintln!("warmup ping: {result:?}");
-        }
-    }
+    let warmed = answers_ping(&entry_device, "10.30.30.2".parse().unwrap(), 4).await;
+    eprintln!("warmup ping answered: {warmed}");
 
     // The actual call under test: apply to the target through the entry's
     // SOCKS proxy, never touching target's own hostfwd API port.
@@ -615,46 +511,12 @@ async fn apply_via_entry_socks_proxy() {
     // Verify directly against the target (allowed for assertions) that the
     // bridge really exists, proving the mutation actually reached it
     // through the proxy rather than silently no-opping.
-    let mut stream = target_device
-        .send_command(
-            b"/interface/bridge/print".as_slice(),
-            |cmd| cmd.query_equal(b"name".as_slice(), b"apply-via-entry-test".as_slice()),
-            (),
-        )
-        .await;
-    let mut found = false;
-    while let Some(result) = stream.next().await {
-        eprintln!("verify: {result:?}");
-        if matches!(result, mikrotik_api::simple::SimpleResult::Sentence(_)) {
-            found = true;
-        }
-    }
+    let found = InterfaceBridgeByName::fetch(&target_device, &"apply-via-entry-test".into())
+        .await
+        .expect("bridge read")
+        .is_some();
     assert!(
         found,
         "bridge applied via entry's SOCKS proxy was not found on the target"
     );
-}
-
-async fn run_to_done(
-    device: &mikrotik_api::prelude::MikrotikDevice<mikrotik_api::simple::SimpleResult>,
-    command: &'static [u8],
-    attrs: &[(&'static [u8], &'static [u8])],
-) {
-    use tokio_stream::StreamExt;
-    let attrs = attrs.to_vec();
-    let mut stream = device
-        .send_command(
-            command,
-            move |mut cmd| {
-                for (k, v) in &attrs {
-                    cmd = cmd.attribute(*k, *v);
-                }
-                cmd
-            },
-            (),
-        )
-        .await;
-    while let Some(result) = stream.next().await {
-        eprintln!("{command:?} -> {result:?}");
-    }
 }

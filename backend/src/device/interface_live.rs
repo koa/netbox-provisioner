@@ -15,8 +15,8 @@ use crate::{
     Error,
     device::poe::{self, PoeMismatch, PoeProblem},
     device::{
+        access::answering,
         neighbors::{self, NeighborFinding, NeighborFindingKind, SeenNeighbor, port_named},
-        raw::{Row, answering, field, rows},
         ros::dhcp::static_leases,
         update_fallback::is_adjacent,
     },
@@ -31,7 +31,15 @@ use crate::{
 };
 use async_graphql::SimpleObject;
 use ipnet::IpNet;
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use mikrotik_model::{
+    command::Reads,
+    model::{
+        InterfaceState, IpAddress, IpDhcpServer, IpDhcpServerLease, Ipv6Address,
+        RoutingOspfNeighborState,
+    },
+    resource::collect_resource,
+    value::{HasNone, RosValue},
+};
 use std::{collections::BTreeSet, net::IpAddr};
 
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -137,20 +145,45 @@ pub struct BridgeAnswer {
 }
 
 /// Reads the device and checks its rows.
-pub async fn read(
-    client: &RawDevice<SimpleResult>,
-    device: &DeviceAccess,
-) -> Result<InterfaceLive, Error> {
+pub async fn read(client: &impl Reads, device: &DeviceAccess) -> Result<InterfaceLive, Error> {
     let neighbors = neighbors::read(client, device).await?;
-    let ospf = rows(client, "/routing/ospf/neighbor/print").await?;
-    let mut addresses = rows(client, "/ip/address/print").await?;
-    addresses.extend(rows(client, "/ipv6/address/print").await?);
+    let ospf = collect_resource::<RoutingOspfNeighborState>(client).await?;
+    let mut addresses = collect_resource::<IpAddress>(client)
+        .await?
+        .iter()
+        .map(DeviceAddress::from)
+        .collect::<Vec<_>>();
+    addresses.extend(
+        collect_resource::<Ipv6Address>(client)
+            .await?
+            .iter()
+            .map(DeviceAddress::from),
+    );
     // an apply keeps the addresses on interfaces set up by hand: nothing to show of them
-    let hand_made = hand_made_interfaces(&rows(client, "/interface/print").await?);
-    addresses.retain(|row| !field(row, "interface").is_some_and(|name| hand_made.contains(name)));
+    let interfaces = collect_resource::<InterfaceState>(client)
+        .await?
+        .iter()
+        .map(|interface| TypedInterface {
+            name: interface.name.to_string().into(),
+            kind: interface._type.to_string().into(),
+        })
+        .collect::<Vec<_>>();
+    let hand_made = hand_made_interfaces(&interfaces);
+    addresses.retain(|address| !hand_made.contains(&address.interface));
     let dhcp = Dhcp {
-        servers: rows(client, "/ip/dhcp-server/print").await?.into(),
-        leases: rows(client, "/ip/dhcp-server/lease/print").await?.into(),
+        servers: collect_resource::<IpDhcpServer>(client)
+            .await?
+            .iter()
+            .map(|server| DhcpServer {
+                name: server.cfg.name.to_string().into(),
+                interface: server.cfg.interface.to_string().into(),
+            })
+            .collect(),
+        leases: collect_resource::<IpDhcpServerLease>(client)
+            .await?
+            .iter()
+            .map(DeviceLease::from)
+            .collect(),
     };
     let rows = device.interface_rows();
     let bridges = rows
@@ -207,8 +240,120 @@ pub fn place_poe(live: &mut InterfaceLive, rows: &[RowOf], poe: Vec<PoeMismatch>
 /// What the device answers about DHCP: its servers and leases.
 #[derive(Debug, Default)]
 pub struct Dhcp {
-    pub servers: Box<[Row]>,
-    pub leases: Box<[Row]>,
+    pub servers: Box<[DhcpServer]>,
+    pub leases: Box<[DeviceLease]>,
+}
+
+/// A DHCP server of the device (`/ip/dhcp-server`).
+#[derive(Debug)]
+pub struct DhcpServer {
+    pub name: Box<str>,
+    pub interface: Box<str>,
+}
+
+/// An address of the device (`/ip/address`, `/ipv6/address`).
+#[derive(Debug)]
+pub struct DeviceAddress {
+    /// the interface as RouterOS names it
+    pub interface: Box<str>,
+    pub address: IpNet,
+    pub dynamic: bool,
+    pub disabled: bool,
+}
+
+impl From<&IpAddress> for DeviceAddress {
+    fn from(address: &IpAddress) -> Self {
+        DeviceAddress {
+            interface: address.cfg.interface.to_string().into(),
+            address: IpNet::V4(address.cfg.address),
+            dynamic: address.status.dynamic,
+            disabled: address.status.disabled,
+        }
+    }
+}
+
+impl From<&Ipv6Address> for DeviceAddress {
+    fn from(address: &Ipv6Address) -> Self {
+        DeviceAddress {
+            interface: address.cfg.interface.to_string().into(),
+            address: IpNet::V6(address.cfg.address),
+            dynamic: address.status.dynamic,
+            disabled: address.cfg.disabled,
+        }
+    }
+}
+
+/// A lease of the device's DHCP servers (`/ip/dhcp-server/lease`).
+#[derive(Debug)]
+pub struct DeviceLease {
+    pub address: IpAddr,
+    pub mac: Option<Box<str>>,
+    pub client_id: Option<Box<str>>,
+    /// none: of all servers
+    pub server: Option<Box<str>>,
+    pub host_name: Option<Box<str>>,
+    pub comment: Option<Box<str>>,
+    pub disabled: bool,
+    pub dynamic: bool,
+    /// the settings it has that NetBox doesn't hold, by their RouterOS names
+    pub settings: Box<[Box<str>]>,
+}
+
+impl From<&IpDhcpServerLease> for DeviceLease {
+    fn from(lease: &IpDhcpServerLease) -> Self {
+        let cfg = &lease.cfg;
+        let text = |value: Option<&mikrotik_model::ascii::AsciiString>| {
+            value
+                .map(ToString::to_string)
+                .filter(|value| !value.is_empty())
+                .map(Box::from)
+        };
+        let settings = [
+            ("address-lists", !cfg.address_lists.is_empty()),
+            ("allow-dual-stack-queue", cfg.allow_dual_stack_queue),
+            ("always-broadcast", cfg.always_broadcast),
+            ("block-access", cfg.block_access),
+            ("dhcp-option", text(cfg.dhcp_option.as_ref()).is_some()),
+            (
+                "dhcp-option-set",
+                matches!(&cfg.dhcp_option_set, Some(HasNone::Value(set)) if !set.0.is_empty()),
+            ),
+            (
+                "insert-queue-before",
+                text(cfg.insert_queue_before.as_ref()).is_some(),
+            ),
+            ("lease-time", !cfg.lease_time.is_zero()),
+            ("queue-type", text(cfg.queue_type.as_ref()).is_some()),
+            ("rate-limit", text(cfg.rate_limit.as_ref()).is_some()),
+            ("routes", text(cfg.routes.as_ref()).is_some()),
+            ("use-src-mac", cfg.use_src_mac),
+        ];
+        DeviceLease {
+            address: cfg.address,
+            mac: cfg.mac_address.map(|mac| mac.to_string().into()),
+            client_id: text(cfg.client_id.as_ref()),
+            server: text(cfg.server.as_ref()),
+            host_name: lease
+                .status
+                .host_name
+                .as_ref()
+                .map(|name| String::from_utf8_lossy(&name.encode_ros()).into()),
+            comment: text(cfg.comment.as_ref()),
+            disabled: cfg.disabled,
+            dynamic: lease.status.dynamic,
+            settings: settings
+                .into_iter()
+                .filter(|(_, set)| *set)
+                .map(|(name, _)| Box::from(name))
+                .collect(),
+        }
+    }
+}
+
+/// An interface of the device and its RouterOS type (`/interface`).
+pub struct TypedInterface {
+    pub name: Box<str>,
+    pub kind: Box<str>,
 }
 
 /// [`read`] on what the device answered.
@@ -216,8 +361,8 @@ pub fn check(
     device: &DeviceAccess,
     rows: &[RowOf],
     neighbors: neighbors::Neighbors,
-    ospf: &[Row],
-    addresses: &[Row],
+    ospf: &[RoutingOspfNeighborState],
+    addresses: &[DeviceAddress],
     dhcp: &Dhcp,
     answering: &BTreeSet<IpAddr>,
 ) -> InterfaceLive {
@@ -228,14 +373,8 @@ pub fn check(
         port_named(device, name).map(|i| i.id().0).or_else(|| {
             let on_it = addresses
                 .iter()
-                .filter(|row| field(row, "interface") == Some(name))
-                .filter_map(|row| {
-                    field(row, "address")?
-                        .split('/')
-                        .next()?
-                        .parse::<IpAddr>()
-                        .ok()
-                })
+                .filter(|address| *address.interface == *name)
+                .map(|address| address.address.addr())
                 .collect::<Vec<_>>();
             device
                 .interfaces()
@@ -248,22 +387,17 @@ pub fn check(
                 .map(|i| i.id().0)
         })
     };
-    let ospf_device = |row: &Row| {
-        let router_id = field(row, "router-id").unwrap_or_default();
-        let address = field(row, "address").unwrap_or_default();
+    let ospf_device = |neighbor: &RoutingOspfNeighborState| {
+        let router_id = IpAddr::V4(neighbor.router_id);
         topology
             .list_devices()
-            .find(|d| {
-                d.primary_ip_v4()
-                    .and_then(|ip| ip.addr())
-                    .is_some_and(|ip| ip.to_string() == router_id)
-            })
+            .find(|d| d.primary_ip_v4().and_then(|ip| ip.addr()) == Some(router_id))
             .or_else(|| {
                 topology.list_devices().find(|d| {
                     d.interfaces()
                         .iter()
                         .flat_map(|i| i.ips())
-                        .any(|ip| ip.addr().is_some_and(|ip| ip.to_string() == address))
+                        .any(|ip| ip.addr() == Some(neighbor.address))
                 })
             })
     };
@@ -276,13 +410,8 @@ pub fn check(
         lease
             .server
             .as_deref()
-            .and_then(|server| {
-                dhcp.servers
-                    .iter()
-                    .find(|row| field(row, "name") == Some(server))
-            })
-            .and_then(|row| field(row, "interface"))
-            .and_then(netbox_interface)
+            .and_then(|server| dhcp.servers.iter().find(|known| *known.name == *server))
+            .and_then(|server| netbox_interface(&server.interface))
             .or_else(|| {
                 let address = lease.address.parse::<IpAddr>().ok()?;
                 device
@@ -307,15 +436,17 @@ pub fn check(
             let ospf_here = ospf
                 .iter()
                 .filter(|neighbor| {
-                    field(neighbor, "interface")
-                        .and_then(netbox_interface)
+                    neighbor
+                        .interface
+                        .as_ref()
+                        .and_then(|interface| netbox_interface(&interface.to_string()))
                         .is_some_and(|interface| members.contains(&interface))
                 })
                 .map(|neighbor| OspfNeighbor {
-                    instance: field(neighbor, "instance").unwrap_or_default().into(),
-                    address: field(neighbor, "address").unwrap_or_default().into(),
-                    router_id: field(neighbor, "router-id").unwrap_or_default().into(),
-                    state: field(neighbor, "state").unwrap_or_default().into(),
+                    instance: neighbor.instance.to_string().into(),
+                    address: neighbor.address.to_string().into(),
+                    router_id: neighbor.router_id.to_string().into(),
+                    state: String::from_utf8_lossy(&neighbor.state.encode_ros()).into(),
                     adjacent: is_adjacent(ospf, neighbor),
                     device: ospf_device(neighbor).as_ref().map(device_ref),
                 })
@@ -426,7 +557,6 @@ pub fn check(
     }
 }
 
-/// The settings of a lease row NetBox doesn't hold, by their RouterOS names.
 /// The host name a DHCP client sent, up to its first control character: RouterOS reports it as
 /// sent, and a client padding a fixed field sends NUL bytes after it (a Tinkerforge brick's
 /// `Tinkerforge5093BA` came with a row of them).
@@ -438,21 +568,6 @@ fn client_name(name: &str) -> Option<Box<str>> {
         .trim();
     (!name.is_empty()).then(|| name.into())
 }
-
-const LEASE_SETTINGS: &[&str] = &[
-    "address-lists",
-    "allow-dual-stack-queue",
-    "always-broadcast",
-    "block-access",
-    "dhcp-option",
-    "dhcp-option-set",
-    "insert-queue-before",
-    "lease-time",
-    "queue-type",
-    "rate-limit",
-    "routes",
-    "use-src-mac",
-];
 
 /// The static leases of the device (`/ip/dhcp-server/lease` rows) its NetBox target doesn't
 /// have: the addresses of no lease client in its DHCP networks (`device::ros::dhcp`).
@@ -467,34 +582,27 @@ fn device_only_leases(device: &DeviceAccess, dhcp: &Dhcp) -> Vec<DeviceOnlyLease
         .flat_map(|prefix| static_leases(&prefix))
         .map(|lease| IpAddr::V4(lease.address))
         .collect::<BTreeSet<_>>();
-    let set = |row: &Row, name: &str| {
-        field(row, name)
-            .is_some_and(|value| !value.is_empty() && !matches!(value, "false" | "none" | "0s"))
-    };
     dhcp.leases
         .iter()
-        .filter(|row| field(row, "dynamic") != Some("true"))
-        .filter_map(|row| {
-            let address = field(row, "address")?.parse::<IpAddr>().ok()?;
+        .filter(|lease| !lease.dynamic)
+        .filter_map(|lease| {
+            let address = lease.address;
             if expected.contains(&address) {
                 return None;
             }
-            let text = |name: &str| field(row, name).filter(|v| !v.is_empty()).map(Box::from);
             let netbox = topology.ip_address_with_host(address);
             Some(DeviceOnlyLease {
                 address: address.to_string().into(),
-                mac: text("mac-address"),
-                client_id: text("client-id"),
-                server: text("server"),
-                name: text("host-name")
-                    .and_then(|name| client_name(&name))
-                    .or_else(|| text("comment")),
-                disabled: field(row, "disabled") == Some("true"),
-                settings: LEASE_SETTINGS
-                    .iter()
-                    .filter(|name| set(row, name))
-                    .map(|name| Box::from(*name))
-                    .collect(),
+                mac: lease.mac.clone(),
+                client_id: lease.client_id.clone(),
+                server: lease.server.clone(),
+                name: lease
+                    .host_name
+                    .as_deref()
+                    .and_then(client_name)
+                    .or_else(|| lease.comment.clone()),
+                disabled: lease.disabled,
+                settings: lease.settings.clone(),
                 elsewhere: netbox
                     .and_then(|ip| topology.get_interface_by_id(ip.interface?)?.device())
                     .as_ref()
@@ -534,11 +642,11 @@ const MANAGED_TYPES: [&str; 8] = [
 
 /// The names of the interfaces of another type (`/interface` rows): tunnels, PPPoE clients and
 /// whatever else is set up by hand, whose addresses an apply keeps.
-fn hand_made_interfaces(interfaces: &[Row]) -> BTreeSet<Box<str>> {
+fn hand_made_interfaces(interfaces: &[TypedInterface]) -> BTreeSet<Box<str>> {
     interfaces
         .iter()
-        .filter(|row| field(row, "type").is_some_and(|kind| !MANAGED_TYPES.contains(&kind)))
-        .filter_map(|row| field(row, "name").map(Box::from))
+        .filter(|interface| !MANAGED_TYPES.contains(&&*interface.kind))
+        .map(|interface| interface.name.clone())
         .collect()
 }
 
@@ -546,7 +654,7 @@ fn hand_made_interfaces(interfaces: &[Row]) -> BTreeSet<Box<str>> {
 /// doesn't have on it, link-local ones left out (RouterOS makes them).
 fn device_only_addresses(
     device: &DeviceAccess,
-    addresses: &[Row],
+    addresses: &[DeviceAddress],
     netbox_interface: impl Fn(&str) -> Option<u32>,
 ) -> Vec<DeviceOnlyAddress> {
     let topology = device.topology();
@@ -559,9 +667,9 @@ fn device_only_addresses(
         .collect::<BTreeSet<_>>();
     addresses
         .iter()
-        .filter(|row| field(row, "dynamic") != Some("true"))
+        .filter(|row| !row.dynamic)
         .filter_map(|row| {
-            let address = field(row, "address")?.parse::<IpNet>().ok()?;
+            let address = row.address;
             let link_local = match address.addr() {
                 IpAddr::V6(v6) => v6.is_unicast_link_local(),
                 IpAddr::V4(_) => false,
@@ -569,13 +677,13 @@ fn device_only_addresses(
             if link_local || own.contains(&address.addr()) {
                 return None;
             }
-            let interface_name = field(row, "interface").unwrap_or_default();
+            let interface_name = &*row.interface;
             let netbox = topology.ip_address_with_host(address.addr());
             Some(DeviceOnlyAddress {
                 address: address.to_string().into(),
                 interface_name: interface_name.into(),
                 interface: netbox_interface(interface_name),
-                disabled: field(row, "disabled") == Some("true"),
+                disabled: row.disabled,
                 elsewhere: netbox
                     .and_then(|ip| topology.get_interface_by_id(ip.interface?)?.device())
                     .as_ref()

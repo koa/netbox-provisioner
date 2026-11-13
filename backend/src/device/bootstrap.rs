@@ -18,8 +18,7 @@ use crate::{
     Error,
     config::{CONFIG, MikrotikCredentials},
     device::{
-        Credentials, Path, connect, other_device_named, proxied_stream,
-        raw::{field, rows},
+        Credentials, Path, connect, connect_reader, other_device_named, proxied_stream,
         terminal::{LOGIN_FLAGS, Terminal, TerminalError, Tunnel},
         update,
     },
@@ -33,8 +32,15 @@ use crate::{
 use async_graphql::{ComplexObject, SimpleObject, futures_util::future::join_all};
 use ipnet::IpNet;
 use log::{info, warn};
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
-use mikrotik_model::MacAddress;
+use mikrotik_model::{
+    MacAddress,
+    command::Reads,
+    model::{
+        InterfaceEthernet, IpNeighborState, IpSshCfg, IpSshForwardingEnabled, SystemIdentityCfg,
+    },
+    resource::{SingleResource, collect_resource},
+    value::RosValue,
+};
 use std::{collections::HashSet, net::IpAddr, str::FromStr, time::Duration};
 use tokio::time::{Instant, sleep, timeout};
 
@@ -317,27 +323,37 @@ pub fn reachable_address(device: &DeviceAccess) -> Option<IpAddr> {
 
 async fn discover(plan: BootstrapPlan) -> Result<Vec<Discovered>, Error> {
     let credentials = neighbor_credentials(&plan)?;
-    let neighbor =
-        connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await?;
+    let neighbor = connect_reader(
+        &plan.neighbor_device,
+        plan.neighbor_address,
+        &Path::Routed,
+        &credentials,
+    )
+    .await?;
     // NetBox has the factory name, `/ip/neighbor` the one the provisioner gave the port
     let mut names = vec![plan.neighbor_port.to_string()];
     names.extend(neighbor_port_name(&plan).await.result()?.as_ref().clone());
     let mut found = Vec::new();
-    for row in rows(&neighbor, "/ip/neighbor/print").await? {
-        let interface = field(&row, "interface").unwrap_or_default();
-        let Some(mac) = field(&row, "mac-address").and_then(|mac| MacAddress::from_str(mac).ok())
+    for seen in collect_resource::<IpNeighborState>(&neighbor).await?.iter() {
+        let interface = seen.interface.to_string();
+        let Some(mac) = seen
+            .mac_address
+            .as_ref()
+            .and_then(|mac| MacAddress::from_str(&mac.to_string()).ok())
         else {
             continue;
         };
         if !interface.split(',').any(|i| names.iter().any(|n| n == i)) {
             continue;
         }
-        let text = |name| field(&row, name).unwrap_or_default().to_string();
+        let text = |value: Option<&mikrotik_model::ascii::AsciiString>| -> Box<str> {
+            value.map(ToString::to_string).unwrap_or_default().into()
+        };
         found.push(Discovered {
             mac: mac.into(),
-            identity: text("identity").into(),
-            board: text("board").into(),
-            version: text("version").into(),
+            identity: text(seen.identity.as_ref()),
+            board: text(seen.board.as_ref()),
+            version: text(seen.version.as_ref()),
             interface: interface.into(),
         });
     }
@@ -349,27 +365,35 @@ async fn discover(plan: BootstrapPlan) -> Result<Vec<Discovered>, Error> {
 /// the console session, so a neighbor without forwarding leaves the device untouched.
 async fn check_neighbor(plan: &BootstrapPlan) -> Result<String, Error> {
     let credentials = neighbor_credentials(plan)?;
-    let neighbor =
-        match connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await {
-            Ok(neighbor) => neighbor,
-            Err(error) => {
-                warn!("cannot check {} over the API: {error}", plan.neighbor);
-                // the name found out lately, e.g. while the page looked for the device
-                let key = port_names_key(plan);
-                let known = facts::peek::<Option<String>>(&key).and_then(|fact| fact.value.ok());
-                return Ok(known
-                    .and_then(|name| name.as_ref().clone())
-                    .unwrap_or_else(|| plan.neighbor_port.to_string()));
-            }
-        };
+    let neighbor = match connect_reader(
+        &plan.neighbor_device,
+        plan.neighbor_address,
+        &Path::Routed,
+        &credentials,
+    )
+    .await
+    {
+        Ok(neighbor) => neighbor,
+        Err(error) => {
+            warn!("cannot check {} over the API: {error}", plan.neighbor);
+            // the name found out lately, e.g. while the page looked for the device
+            let key = port_names_key(plan);
+            let known = facts::peek::<Option<String>>(&key).and_then(|fact| fact.value.ok());
+            return Ok(known
+                .and_then(|name| name.as_ref().clone())
+                .unwrap_or_else(|| plan.neighbor_port.to_string()));
+        }
+    };
     // RouterOS never answers a forward it doesn't allow, the tunnel would only time out
-    if let Some(row) = rows(&neighbor, "/ip/ssh/print").await?.first()
-        && let Some(forwarding) = field(row, "forwarding-enabled")
-        && !matches!(forwarding, "local" | "both")
+    if let Some(ssh) = IpSshCfg::fetch(&neighbor).await?
+        && !matches!(
+            ssh.forwarding_enabled,
+            IpSshForwardingEnabled::Local | IpSshForwardingEnabled::Both
+        )
     {
         return Err(Error::NeighborNoForwarding(
             plan.neighbor.as_str().into(),
-            forwarding.into(),
+            String::from_utf8_lossy(&ssh.forwarding_enabled.encode_ros()).into(),
         ));
     }
     Ok(match neighbor_port_name(plan).await.value {
@@ -405,12 +429,14 @@ fn port_names_key(plan: &BootstrapPlan) -> FactKey {
 /// looking for the device reads it, the setup right after takes it from there.
 async fn neighbor_port_name(plan: &BootstrapPlan) -> facts::Fact<Option<String>> {
     let (address, factory) = (plan.neighbor_address, plan.neighbor_port.clone());
+    let neighbor_device = plan.neighbor_device.clone();
     let credentials = neighbor_credentials(plan);
     facts::get(
         port_names_key(plan),
         Freshness::MaxAge(PORT_NAMES_AGE),
         async move {
-            let neighbor = connect::<SimpleResult>(address, &Path::Routed, &credentials?).await?;
+            let neighbor =
+                connect_reader(&neighbor_device, address, &Path::Routed, &credentials?).await?;
             port_name(&neighbor, &factory).await
         },
     )
@@ -420,15 +446,14 @@ async fn neighbor_port_name(plan: &BootstrapPlan) -> facts::Fact<Option<String>>
 /// The name the neighbor gives its Ethernet port with the factory name `factory_name`, if it
 /// has one.
 pub(crate) async fn port_name(
-    neighbor: &RawDevice<SimpleResult>,
+    neighbor: &impl Reads,
     factory_name: &str,
 ) -> Result<Option<String>, Error> {
-    Ok(rows(neighbor, "/interface/ethernet/print")
+    Ok(collect_resource::<InterfaceEthernet>(neighbor)
         .await?
         .iter()
-        .find(|row| field(row, "default-name") == Some(factory_name))
-        .and_then(|row| field(row, "name"))
-        .map(String::from))
+        .find(|port| *port.status.default_name.0 == *factory_name.as_bytes())
+        .map(|port| port.cfg.name.to_string()))
 }
 
 /// The MACs to try, for messages.
@@ -578,7 +603,13 @@ where
             .ok_or(Error::MissingCredentials)?
             .into(),
     );
-    let api = connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await?;
+    let api = connect(
+        &plan.neighbor_device,
+        plan.neighbor_address,
+        &Path::Routed,
+        &credentials,
+    )
+    .await?;
     let Some(relaxed) = update::allow_password_login(&api, log).await? else {
         return Err(TerminalError::LoginRefused(refused).into());
     };
@@ -1084,12 +1115,10 @@ async fn wait_for_api(
     let path = Path::Neighbor(plan.clone().into());
     loop {
         let attempt = async {
-            let client = connect::<SimpleResult>(address, &path, &credentials).await?;
-            let rows = rows(&client, "/system/identity/print").await?;
-            Ok(rows
-                .first()
-                .and_then(|row| field(row, "name"))
-                .map(Box::<str>::from))
+            let client = connect_reader(device, address, &path, &credentials).await?;
+            Ok(SystemIdentityCfg::fetch(&client)
+                .await?
+                .map(|identity| Box::<str>::from(identity.name.to_string())))
         };
         let limit = deadline
             .saturating_duration_since(Instant::now())

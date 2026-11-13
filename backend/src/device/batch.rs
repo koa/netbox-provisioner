@@ -27,7 +27,9 @@ use crate::{
     config::CONFIG,
     device::connect_for_job,
     device::{
-        AccessibleDevice, bootstrap,
+        AccessibleDevice,
+        access::Session,
+        bootstrap,
         radio_hold::RadioHold,
         ros::{
             apply::{
@@ -52,7 +54,6 @@ use crate::{
 };
 use async_graphql::{SimpleObject, futures_util::future::join_all};
 use log::info;
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use std::time::Instant;
 use std::{
     collections::{BTreeSet, HashMap},
@@ -190,7 +191,7 @@ pub(crate) struct Reached {
     claimed: Arc<Mutex<BTreeSet<DeviceId>>>,
     link: AccessibleDevice,
     planned: PlannedApply,
-    control: RawDevice<SimpleResult>,
+    control: Session,
     hold: Mutex<Option<RadioHold>>,
     /// the run of the script, to read its marks
     run: Mutex<Option<Box<str>>>,
@@ -226,7 +227,7 @@ impl Planning for Linked {
         if planned.is_empty() {
             return Ok(None);
         }
-        let control = link.connect_again::<SimpleResult>().await?;
+        let control = link.connect_again().await?;
         Ok(Some(Reached {
             device: self.device,
             batch: self.batch,
@@ -354,7 +355,7 @@ async fn check_on(
     settled: Instant,
 ) -> Option<Result<Box<str>, Error>> {
     let look = tokio::time::timeout(Duration::from_secs(25), async {
-        look_on(&link.connect_again::<SimpleResult>().await?, run).await
+        look_on(&link.connect_again().await?, run).await
     })
     .await
     .ok()?
@@ -389,7 +390,7 @@ async fn last_look_on(
     log: &Log,
 ) -> Result<Box<str>, Error> {
     if let Some(run) = run
-        && let Ok(raw) = link.connect_again::<SimpleResult>().await
+        && let Ok(raw) = link.connect_again().await
         && let Ok(look) = look_on(&raw, run).await
     {
         show(

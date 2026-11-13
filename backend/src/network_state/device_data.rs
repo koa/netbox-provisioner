@@ -3,15 +3,14 @@
 //! Health, resources and PoE out of a device, for the network map's nodes and PoE edges
 //! (`docs/concepts/network-map.md`, steps 3 and 4): read over the same way as everything else
 //! (`DeviceAccess::connect`), as a fact (`FactKind::DeviceMapData`) per device, so the map's
-//! viewers share a reading. Not judged, only shown: the generic rows of `/system/health/print`
-//! as `(name, value, unit)`, the few fields of `/system/resource/print` worth a column of their
-//! own, and every PoE-capable port (`device::poe::PoePorts`).
+//! viewers share a reading. Not judged, only shown: the rows of `/system/health/print` as name,
+//! value and unit, the few fields of `/system/resource/print` worth a column of their own, and
+//! every PoE-capable port (`device::poe::PoePorts`).
 
 use crate::{
     Error,
     device::AccessibleDevice,
     device::poe::{self, PoePorts},
-    device::raw::{Row, field, rows},
     facts::{self, FactKey, FactKind, Freshness},
     topology::{
         DeviceId,
@@ -19,7 +18,11 @@ use crate::{
     },
 };
 use async_graphql::futures_util::future::join_all;
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use mikrotik_model::{
+    command::Reads,
+    model::{SystemHealthState, SystemResourceState},
+    resource::{SingleResource, collect_resource},
+};
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 /// How old a reading may be: the map asks every few seconds, but health and resources change
@@ -36,7 +39,7 @@ pub struct HealthRow {
 
 #[derive(Debug, Clone, Default)]
 pub struct Resources {
-    pub uptime: Box<str>,
+    pub uptime: Duration,
     pub cpu_load: u32,
     pub free_memory: u64,
     pub total_memory: u64,
@@ -86,54 +89,45 @@ pub(crate) async fn read_accessible(
 ) -> Option<Arc<DeviceMapData>> {
     let key = FactKey::new(FactKind::DeviceMapData, Some(device.id()), "");
     let accessible = accessible.duplicate();
-    let ask = async move {
-        let api = accessible.connect_again().await?;
-        read(&api).await
-    };
+    let ask = async move { read(accessible.reader()).await };
     facts::get(key, freshness, ask).await.value.ok()
 }
 
-async fn read(api: &RawDevice<SimpleResult>) -> Result<DeviceMapData, Error> {
-    let health = rows(api, "/system/health/print").await?;
-    let resources = rows(api, "/system/resource/print").await?;
+async fn read(api: &impl Reads) -> Result<DeviceMapData, Error> {
+    let health = collect_resource::<SystemHealthState>(api).await?;
+    let resources = SystemResourceState::fetch(api).await?;
     let poe = poe::read_ports(api).await?;
     Ok(DeviceMapData {
         poe,
-        ..from_rows(&health, &resources)
+        ..from_states(&health, resources.as_ref())
     })
 }
 
 /// The pure part of [`read`]: testable with rows built by hand, no device needed.
-fn from_rows(health_rows: &[Row], resource_rows: &[Row]) -> DeviceMapData {
-    let health = health_rows
+fn from_states(
+    health: &[SystemHealthState],
+    resources: Option<&SystemResourceState>,
+) -> DeviceMapData {
+    let text = |value: &mikrotik_model::ascii::AsciiString| Box::<str>::from(value.to_string());
+    let health = health
         .iter()
         .filter_map(|row| {
             Some(HealthRow {
-                name: field(row, "name")?.into(),
-                value: field(row, "value")?.into(),
-                unit: field(row, "type").map(Into::into),
+                name: text(row.name.as_ref()?),
+                value: text(row.value.as_ref()?),
+                unit: row._type.as_ref().map(text),
             })
         })
         .collect();
-    let resources = resource_rows.first().map(|row| Resources {
-        uptime: field(row, "uptime").unwrap_or_default().into(),
-        cpu_load: field(row, "cpu-load")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or_default(),
-        free_memory: field(row, "free-memory")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or_default(),
-        total_memory: field(row, "total-memory")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or_default(),
-        free_hdd_space: field(row, "free-hdd-space")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or_default(),
-        total_hdd_space: field(row, "total-hdd-space")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or_default(),
-        version: field(row, "version").unwrap_or_default().into(),
-        board_name: field(row, "board-name").unwrap_or_default().into(),
+    let resources = resources.map(|resource| Resources {
+        uptime: resource.uptime,
+        cpu_load: resource.cpu_load.map(u32::from).unwrap_or_default(),
+        free_memory: resource.free_memory.unwrap_or_default(),
+        total_memory: resource.total_memory.unwrap_or_default(),
+        free_hdd_space: resource.free_hdd_space.unwrap_or_default(),
+        total_hdd_space: resource.total_hdd_space.unwrap_or_default(),
+        version: text(&resource.version),
+        board_name: resource.board_name.as_ref().map(text).unwrap_or_default(),
     });
     DeviceMapData {
         health,

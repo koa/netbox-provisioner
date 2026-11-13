@@ -6,15 +6,23 @@
 //! With `--via <neighbor address> <neighbor credentials>` first, the device is reached through
 //! an SSH tunnel to that neighbor, like a device after its initial setup.
 //!
-//! Anything but a `.../print` is refused, so this can't change a device.
+//! Anything but a `.../print` is refused, so this can't change a device. The prints are raw
+//! commands, the one place in the provisioner where that is the point: it shows what a menu
+//! answers, also one mikrotik-model has no type for yet.
 use backend::{
     config::CONFIG,
-    device::{DeviceStream, proxied_stream, terminal::Tunnel},
+    device::{
+        DeviceStream,
+        access::{Session, observe},
+        proxied_stream,
+        terminal::Tunnel,
+    },
 };
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_api::{
+    command::Observe,
+    prelude::{Connection, Generation, RawCommand},
+};
 use std::net::IpAddr;
-use tokio_stream::StreamExt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -45,24 +53,29 @@ async fn main() -> anyhow::Result<()> {
         credentials.user().as_bytes(),
         credentials.password().map(str::as_bytes),
     );
-    let device: MikrotikDevice<SimpleResult> = if let Some(tunnel) = &via {
-        MikrotikDevice::connect_with_stream(tunnel.open(address, 8728).await?, user, password)
-            .await?
+    let generation = Generation::default();
+    let connection = if let Some(tunnel) = &via {
+        let stream = tunnel.open(address, 8728).await?;
+        Connection::connect_with_stream(stream, user, password, generation).await?
     } else {
         match proxied_stream(address, 8728).await? {
-            Some(stream) => MikrotikDevice::connect_with_stream(stream, user, password).await?,
-            None => MikrotikDevice::connect((address, 8728), user, password).await?,
+            Some(stream) => {
+                Connection::connect_with_stream(stream, user, password, generation).await?
+            }
+            None => Connection::connect((address, 8728), user, password, generation).await?,
         }
     };
+    let device = Session::new(connection);
     for command in args {
         anyhow::ensure!(
             command.ends_with("/print"),
             "only print commands: {command}"
         );
         println!("{command}");
-        let mut rows = device.send_simple_command(command.as_bytes(), ()).await;
-        while let Some(row) = rows.next().await {
-            println!("  {row:?}");
+        let print = RawCommand::<Observe>::new(command.into_bytes());
+        match observe(&device, &print).await {
+            Ok(rows) => rows.iter().for_each(|row| println!("  {row:?}")),
+            Err(error) => println!("  {error}"),
         }
     }
     Ok(())

@@ -10,9 +10,9 @@
 use crate::{
     Error,
     device::{
+        access::{Session, act},
         bootstrap,
         dependency::{PowerChain, RebootLease},
-        raw::command,
         reboot::REBOOT_TIMEOUT,
     },
     device_state::PowerCycleState,
@@ -23,7 +23,7 @@ use crate::{
     },
 };
 use async_graphql::SimpleObject;
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use mikrotik_model::action::PowerCycle;
 use std::time::Duration;
 use tokio::time::{Instant, sleep, timeout};
 
@@ -85,7 +85,7 @@ pub fn supply(device: &DeviceAccess) -> Option<Supplier> {
 /// neither `power`'s device nor one it powers updates; the lease keeps them from updating
 /// until it is dropped.
 pub async fn power_cycle(
-    supplier: &RawDevice<SimpleResult>,
+    supplier: &Session,
     supply: &PowerSupply,
     factory: &str,
     power: &PowerChain,
@@ -104,12 +104,11 @@ pub async fn power_cycle(
             device: supply.device.name.clone(),
             port: supply.port.clone(),
         })?;
-    command(
-        supplier,
-        "/interface/ethernet/poe/power-cycle",
-        &[("numbers", &port), ("duration", &format!("{OFF_SECONDS}s"))],
-    )
-    .await?;
+    let cycle = PowerCycle {
+        port: &port,
+        duration: Duration::from_secs(OFF_SECONDS.into()),
+    };
+    act(supplier, &cycle).await?;
     log.emit(PowerCycled {
         supplier: supply.device.name.clone(),
         port: supply.port.clone(),

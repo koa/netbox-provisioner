@@ -2,14 +2,10 @@
 
 use super::{
     Capsman, LegacyCapsman, bits_per_second, capsman_radio_rows, ethernet_link, interface_counters,
-    is_missing_menu, standalone_client, wireless_radio,
+    standalone_client, wireless_radio,
 };
-use crate::device::raw::Row;
-use mikrotik_model::{
-    ascii::AsciiString,
-    mikrotik_api::TrapCategory,
-    resource::{AppendFieldResult, DeserializeRosBuilder, DeserializeRosResource},
-};
+use crate::device::{access::Row, answer::parsed as parse};
+use mikrotik_model::ascii::AsciiString;
 use std::{collections::HashMap, time::Duration};
 
 fn row(fields: &[(&str, &str)]) -> Row {
@@ -17,24 +13,6 @@ fn row(fields: &[(&str, &str)]) -> Row {
         .iter()
         .map(|(name, value)| (Box::from(*name), Some(Box::from(*value))))
         .collect()
-}
-
-/// `fields` as the model `R` reads them from the device.
-fn parse<R: DeserializeRosResource>(fields: &[(&str, &str)]) -> R
-where
-    <R::Builder as DeserializeRosBuilder<R>>::Context: Default,
-{
-    let mut builder = R::Builder::init(&Default::default());
-    for (name, value) in fields {
-        if let AppendFieldResult::InvalidValue(field) =
-            builder.append_field(name.as_bytes(), Some(value.as_bytes()))
-        {
-            panic!("{name}={value}: {}", String::from_utf8_lossy(field));
-        }
-    }
-    builder
-        .build()
-        .unwrap_or_else(|missing| panic!("missing {}", String::from_utf8_lossy(missing)))
 }
 
 fn ascii(value: &str) -> AsciiString {
@@ -60,17 +38,6 @@ fn interface_counters_of_an_interface() {
     assert_eq!(counters.tx_bytes, Some(3074323));
     assert_eq!(counters.rx_errors, None);
     assert_eq!(counters.link_downs, Some(0));
-}
-
-/// A missing package's menu has no rows; another refusal stays an error.
-#[test]
-fn a_missing_menu_is_told_apart() {
-    assert!(is_missing_menu(None, b"no such command prefix"));
-    assert!(is_missing_menu(
-        Some(TrapCategory::MissingItemOrCommand),
-        b""
-    ));
-    assert!(!is_missing_menu(None, b"not enough permissions (9)"));
 }
 
 /// lab-sxt-a's station on `w01` (7.24.6): bytes and packets `rx,tx`, the SSID its radio's.

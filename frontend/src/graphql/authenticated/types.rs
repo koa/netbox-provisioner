@@ -446,8 +446,19 @@ pub enum RadioRole {
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
 pub struct DeviceModeChange {
-    pub feature: String,
+    pub feature: DeviceModeFeature,
     pub reason: DeviceModeReason,
+}
+
+/// A feature of `/system/device-mode` the provisioner may need (`DeviceModeFeature`).
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum DeviceModeFeature {
+    Scheduler,
+    Socks,
+    Partitions,
+    #[cynic(fallback)]
+    Other(String),
 }
 
 /// A partition of the flash (`Partition`).

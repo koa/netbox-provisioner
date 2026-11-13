@@ -7,17 +7,16 @@
 use crate::{
     Error,
     config::CONFIG,
-    device::{
-        Credentials, Path,
-        bootstrap::reachable_address,
-        connect,
-        raw::{command, field},
-    },
+    device::{Credentials, Path, bootstrap::reachable_address, connect_reader},
     topology::{Topology, access::device::DeviceAccess},
 };
 use async_graphql::SimpleObject;
 use ipnet::IpNet;
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_model::{
+    model::{IpRoute, Ipv6Route},
+    resource::collect_resource,
+    value::RosValue,
+};
 use std::{net::IpAddr, sync::Arc, time::Duration};
 use tokio::time::timeout;
 
@@ -151,18 +150,25 @@ async fn read_from(router: &DeviceAccess) -> Result<Vec<Route>, Error> {
             .ok_or(Error::MissingCredentials)?
             .into(),
     );
-    let client = connect::<SimpleResult>(address, &Path::Routed, &credentials).await?;
-    let mut routes = Vec::new();
-    for menu in ["/ip/route/print", "/ipv6/route/print"] {
-        for row in command(&client, menu, &[(".proplist", "dst-address,gateway")]).await? {
-            if let Some(dst) = field(&row, "dst-address").and_then(|dst| dst.parse().ok()) {
-                routes.push(Route {
-                    dst,
-                    gateway: field(&row, "gateway").map(Box::from),
-                });
-            }
-        }
-    }
+    let client = connect_reader(router, address, &Path::Routed, &credentials).await?;
+    let text = |value: &[u8]| Box::<str>::from(String::from_utf8_lossy(value));
+    let mut routes = collect_resource::<IpRoute>(&client)
+        .await?
+        .iter()
+        .map(|route| Route {
+            dst: route.cfg.dst_address,
+            gateway: Some(text(&route.cfg.gateway.encode_ros())),
+        })
+        .collect::<Vec<_>>();
+    routes.extend(
+        collect_resource::<Ipv6Route>(&client)
+            .await?
+            .iter()
+            .map(|route| Route {
+                dst: route.cfg.dst_address.into(),
+                gateway: route.cfg.gateway.as_ref().map(|gateway| text(gateway)),
+            }),
+    );
     Ok(routes)
 }
 

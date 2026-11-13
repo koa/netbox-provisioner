@@ -12,37 +12,29 @@
 //! other access in a scenario - setup, `fetch_config` reads, final
 //! assertions - is allowed to go directly to a node's own hostfwd port.
 
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
-use mikrotik_model::resource::{ResourceMutation, apply_mutation};
+use crate::chr_network::node::{login_over, set_single};
+use backend::device::access::Session;
+use mikrotik_model::{
+    model::IpSocksCfg,
+    resource::{ResourceMutation, apply_mutation},
+};
 use std::net::{IpAddr, SocketAddr};
 use tokio_socks::tcp::Socks5Stream;
-use tokio_stream::StreamExt;
 
 /// Enables `/ip socks` on `device` (an entry node), reachable on the
 /// standard RouterOS SOCKS port (1080). Uses a direct connection - setting
 /// up the entry point itself is allowed to be direct, only the connection
 /// to the target through it is meant to be realistic.
-pub async fn enable_socks(device: &MikrotikDevice<SimpleResult>) -> anyhow::Result<()> {
-    let mut stream = device
-        .send_command(
-            b"/ip/socks/set".as_slice(),
-            |cmd| {
-                cmd.attribute(b"enabled".as_slice(), b"yes".as_slice())
-                    .attribute(b"port".as_slice(), b"1080".as_slice())
-                    // RouterOS defaults to SOCKS4 - tokio-socks (and the
-                    // "realistic path" connection below) speaks SOCKS5.
-                    .attribute(b"version".as_slice(), b"5".as_slice())
-            },
-            (),
-        )
-        .await;
-    while let Some(result) = stream.next().await {
-        if let SimpleResult::Trap { message, .. } = result {
-            anyhow::bail!("enabling /ip socks failed: {message}");
-        }
-    }
-    Ok(())
+pub async fn enable_socks(device: &Session) -> anyhow::Result<()> {
+    set_single(device, |socks: &mut IpSocksCfg| {
+        socks.enabled = true;
+        socks.port = 1080;
+        // RouterOS defaults to SOCKS4 - tokio-socks (and the "realistic path" connection
+        // below) speaks SOCKS5.
+        socks.version = 5;
+    })
+    .await
+    .map_err(|error| error.context("enabling /ip socks failed"))
 }
 
 /// Dials `target_ip:8728` through the SOCKS proxy at
@@ -52,21 +44,14 @@ async fn connect_via_entry(
     entry_socks_port: u16,
     target_ip: IpAddr,
     password: &str,
-) -> anyhow::Result<MikrotikDevice<SimpleResult>> {
+) -> anyhow::Result<Session> {
     let stream = Socks5Stream::connect(
         ("127.0.0.1", entry_socks_port),
         SocketAddr::new(target_ip, 8728),
     )
     .await?;
-    let device = MikrotikDevice::connect_with_stream(
-        stream,
-        b"admin",
-        Some(encoding_rs::mem::encode_latin1_lossy(password)),
-    )
-    .await?;
-    Ok(device)
+    Ok(login_over(stream, password).await?)
 }
-
 /// Applies `mutations` to `target_ip` entirely through `entry`'s SOCKS
 /// proxy - this is the one call in a scenario that must not use a target
 /// node's own direct hostfwd access, even though it technically exists.

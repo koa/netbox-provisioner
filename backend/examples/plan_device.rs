@@ -8,10 +8,10 @@
 //! Goes through the `management_proxy` of the config, if there is one.
 use backend::{
     config::CONFIG,
-    device::{proxied_stream, ros::cfg::DeviceCfg},
+    device::{access::Session, proxied_stream, ros::cfg::DeviceCfg},
     topology::fetch::build_topology,
 };
-use mikrotik_model::MikrotikDevice;
+use mikrotik_api::prelude::{Connection, Generation};
 use std::{net::IpAddr, sync::Arc};
 
 #[tokio::main]
@@ -38,10 +38,12 @@ async fn main() -> anyhow::Result<()> {
         credentials.user().as_bytes(),
         credentials.password().map(str::as_bytes),
     );
-    let client = match proxied_stream(address, 8728).await? {
-        Some(stream) => MikrotikDevice::connect_with_stream(stream, user, password).await?,
-        None => MikrotikDevice::connect((address, 8728), user, password).await?,
+    let generation = Generation::default();
+    let connection = match proxied_stream(address, 8728).await? {
+        Some(stream) => Connection::connect_with_stream(stream, user, password, generation).await?,
+        None => Connection::connect((address, 8728), user, password, generation).await?,
     };
+    let client = Session::new(connection);
     let mut cfg = DeviceCfg::fetch(&client, &device).await?;
     cfg.generate_for(&device)?;
     println!("{}", cfg.script()?);

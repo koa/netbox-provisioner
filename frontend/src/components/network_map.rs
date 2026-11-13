@@ -827,7 +827,7 @@ fn map(
                 if let Some(detail) = detail {
                     if let Some(r) = &detail.resources {
                         <div>{t::resources(
-                            &r.uptime,
+                            r.uptime / 1_000_000_000,
                             r.cpu_load,
                             r.free_memory.0,
                             r.total_memory.0,

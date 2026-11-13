@@ -4,50 +4,37 @@
 //! leaves nothing behind; left alone, it loads the backup from before and the device reboots
 //! with the old config.
 use crate::chr_network::golden_image::ensure_golden_image;
+use crate::chr_network::node::{add_script, execute, identity, set_identity};
 use crate::chr_network::qemu::nix_unavailable;
 use crate::chr_network::vm::boot_node;
 use crate::chr_network::wait::wait_until;
+use backend::device::access::Session;
 use backend::device::ros::fallback::{NAME, Pending, arm, disarm, pending};
 use backend::device::ros::progress::{
     Instrument, file_path, instrument, provisioner_address, read,
 };
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_model::model::{File, SystemScheduler};
+use mikrotik_model::resource::collect_resource;
 use std::time::Duration;
-use tokio_stream::StreamExt;
 
-/// The `name`s under `path` (`/system/scheduler`, `/file`).
-async fn names(device: &MikrotikDevice<SimpleResult>, path: &str) -> Vec<String> {
-    let command = format!("{path}/print");
-    let mut stream = device.send_simple_command(command.as_bytes(), ()).await;
-    let mut names = Vec::new();
-    while let Some(result) = stream.next().await {
-        if let SimpleResult::Sentence(row) = result
-            && let Some(Some(name)) = row.get("name")
-        {
-            names.push(name.to_string());
-        }
-    }
-    names
+/// The names of the scheduler entries.
+async fn schedulers(device: &Session) -> Vec<String> {
+    collect_resource::<SystemScheduler>(device)
+        .await
+        .expect("schedulers")
+        .iter()
+        .map(|entry| entry.cfg.name.to_string())
+        .collect()
 }
 
-async fn identity(device: &MikrotikDevice<SimpleResult>) -> String {
-    names(device, "/system/identity").await.concat()
-}
-
-async fn set_identity(device: &MikrotikDevice<SimpleResult>, name: &str) {
-    let mut stream = device
-        .send_command(
-            b"/system/identity/set".as_slice(),
-            |cmd| cmd.attribute(b"name".as_slice(), name.as_bytes()),
-            (),
-        )
-        .await;
-    while let Some(result) = stream.next().await {
-        if let SimpleResult::Trap { message, .. } = result {
-            panic!("identity not set: {message}");
-        }
-    }
+/// The names of the files.
+async fn files(device: &Session) -> Vec<String> {
+    collect_resource::<File>(device)
+        .await
+        .expect("files")
+        .iter()
+        .map(|file| file.cfg.name.to_string())
+        .collect()
 }
 
 const FALLBACK: &str = "netbox-provisioner-fallback";
@@ -71,19 +58,11 @@ async fn fallback_is_stopped_or_restores() {
 
     // stopped: no scheduler, no backup left
     arm(&device, Duration::from_secs(60)).await.unwrap();
-    assert_eq!(names(&device, "/system/scheduler").await, [FALLBACK]);
-    assert!(
-        names(&device, "/file")
-            .await
-            .contains(&format!("{FALLBACK}.backup"))
-    );
+    assert_eq!(schedulers(&device).await, [FALLBACK]);
+    assert!(files(&device).await.contains(&format!("{FALLBACK}.backup")));
     disarm(&device).await.unwrap();
-    assert!(names(&device, "/system/scheduler").await.is_empty());
-    assert!(
-        !names(&device, "/file")
-            .await
-            .contains(&format!("{FALLBACK}.backup"))
-    );
+    assert!(schedulers(&device).await.is_empty());
+    assert!(!files(&device).await.contains(&format!("{FALLBACK}.backup")));
 
     // left alone: the config from before comes back with a reboot
     arm(&device, Duration::from_secs(10)).await.unwrap();
@@ -103,7 +82,7 @@ async fn fallback_is_stopped_or_restores() {
     .expect("the backup was not loaded");
     let device = node.connect_api(crate::TEST_PASSWORD).await.unwrap();
     // the scheduler was saved before it was added, the backup stays until the next apply
-    assert!(names(&device, "/system/scheduler").await.is_empty());
+    assert!(schedulers(&device).await.is_empty());
 }
 
 /// The marks of an apply script (`backend::device::ros::progress`) on a real CHR: a script
@@ -147,30 +126,8 @@ async fn marks_outlast_the_fallback() {
             fallback: NAME,
         },
     );
-    for (path, attributes) in [
-        (
-            "/system/script/add",
-            vec![("name", "marks"), ("source", source.as_str())],
-        ),
-        ("/execute", vec![("script", "/system script run marks")]),
-    ] {
-        let mut stream = device
-            .send_command(
-                path.as_bytes(),
-                |cmd| {
-                    attributes
-                        .iter()
-                        .fold(cmd, |cmd, (k, v)| cmd.attribute(k.as_bytes(), v.as_bytes()))
-                },
-                (),
-            )
-            .await;
-        while let Some(result) = stream.next().await {
-            if let SimpleResult::Trap { message, .. } = result {
-                panic!("{path}: {message}");
-            }
-        }
-    }
+    add_script(&device, "marks", &source).await;
+    execute(&device, "/system script run marks").await;
     drop(device);
     let cut = std::time::Instant::now();
     wait_until(
@@ -256,15 +213,8 @@ async fn a_clock_jump_leaves_the_fallback_time() {
         },
     );
     let jump = ":delay 1s; /system clock set time=([/system clock get time] + 01:00:00)";
-    for (path, attributes) in [
-        (
-            "/system/script/add",
-            vec![("name", "jump"), ("source", source.as_str())],
-        ),
-        ("/execute", vec![("script", "/system script run jump")]),
-    ] {
-        command(&device, path, &attributes).await;
-    }
+    add_script(&device, "jump", &source).await;
+    execute(&device, "/system script run jump").await;
     let mut rearmed = None;
     for _ in 0..60 {
         rearmed = read(&device, "j1").await.unwrap().and_then(|p| p.rearm());
@@ -274,7 +224,7 @@ async fn a_clock_jump_leaves_the_fallback_time() {
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
     let rearmed = rearmed.expect("the script didn't bring the fallback forward");
-    command(&device, "/execute", &[("script", jump)]).await;
+    execute(&device, jump).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
     let Pending::Armed(Some(fires_in)) = pending(&device, Some(rearmed)).await.unwrap() else {
         panic!("no time of the fallback");
@@ -284,24 +234,4 @@ async fn a_clock_jump_leaves_the_fallback_time() {
         "{fires_in:?}"
     );
     disarm(&device).await.unwrap();
-}
-
-/// Runs `path` with `attributes`, failing on a trap.
-async fn command(device: &MikrotikDevice<SimpleResult>, path: &str, attributes: &[(&str, &str)]) {
-    let mut stream = device
-        .send_command(
-            path.as_bytes(),
-            |cmd| {
-                attributes
-                    .iter()
-                    .fold(cmd, |cmd, (k, v)| cmd.attribute(k.as_bytes(), v.as_bytes()))
-            },
-            (),
-        )
-        .await;
-    while let Some(result) = stream.next().await {
-        if let SimpleResult::Trap { message, .. } = result {
-            panic!("{path}: {message}");
-        }
-    }
 }

@@ -14,14 +14,12 @@
 //! Checked on a CHR (7.24.5): a menu line (`/ip/address`) inside `:onerror … in={}` keeps its
 //! context across the script's own `:set`/`:if` lines, `$e` holds RouterOS' message, `/ping
 //! … count=1` gives the number of replies, and `/file set … contents=` takes text.
-use crate::{
-    Error,
-    device::{
-        raw::{field, rows},
-        ros::fallback::Rearmed,
-    },
+use crate::{Error, device::ros::fallback::Rearmed};
+use mikrotik_model::{
+    command::Reads,
+    model::{File, UserActiveState},
+    resource::collect_resource,
 };
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use std::{collections::HashMap, fmt::Write, net::IpAddr, time::Duration};
 
 /// The file the marks go to (`.txt` keeps RouterOS from taking it as anything else).
@@ -29,21 +27,26 @@ pub const FILE: &str = "netbox-provisioner-progress.txt";
 
 /// Whether the device's root directory is in RAM: it has a disk `flash` (16 MiB of flash), and
 /// what is uploaded to the root takes memory, not flash.
-pub async fn root_in_ram(raw: &RawDevice<SimpleResult>) -> Result<bool, Error> {
-    Ok(root_in_ram_of(&rows(raw, "/file/print").await?))
+pub async fn root_in_ram(raw: &impl Reads) -> Result<bool, Error> {
+    Ok(root_in_ram_of(&collect_resource::<File>(raw).await?))
 }
 
-/// [`root_in_ram`] from the rows of `/file/print` read already.
-pub fn root_in_ram_of(files: &[crate::device::raw::Row]) -> bool {
-    files
-        .iter()
-        .any(|row| field(row, "name") == Some("flash") && field(row, "type") == Some("disk"))
+/// [`root_in_ram`] from `/file` read already.
+pub fn root_in_ram_of(files: &[File]) -> bool {
+    files.iter().any(|file| {
+        *file.cfg.name.0 == *b"flash"
+            && file
+                .cfg
+                ._type
+                .as_ref()
+                .is_some_and(|kind| *kind.0 == *b"disk")
+    })
 }
 
 /// Where [`FILE`] outlasts a reboot: under `flash/` where the device has that disk, its root is
 /// in RAM then (lab-w60-a, a wAP 60G, 7.23.8: the marks were gone after the fallback's reboot,
 /// only `flash/…` was left); in the root elsewhere (a CHR, newer RouterBOARDs).
-pub async fn file_path(raw: &RawDevice<SimpleResult>) -> Result<String, Error> {
+pub async fn file_path(raw: &impl Reads) -> Result<String, Error> {
     Ok(if root_in_ram(raw).await? {
         format!("flash/{FILE}")
     } else {
@@ -268,7 +271,7 @@ fn without_line(message: &str) -> String {
 }
 
 /// The marks on the device, if there are any of `run` (in the root or under `flash/`).
-pub async fn read(raw: &RawDevice<SimpleResult>, run: &str) -> Result<Option<Progress>, Error> {
+pub async fn read(raw: &impl Reads, run: &str) -> Result<Option<Progress>, Error> {
     Ok(contents(raw)
         .await?
         .iter()
@@ -276,25 +279,26 @@ pub async fn read(raw: &RawDevice<SimpleResult>, run: &str) -> Result<Option<Pro
 }
 
 /// What the progress files on the device hold, of whichever run.
-pub async fn contents(raw: &RawDevice<SimpleResult>) -> Result<Vec<Box<str>>, Error> {
-    Ok(rows(raw, "/file/print")
+pub async fn contents(raw: &impl Reads) -> Result<Vec<Box<str>>, Error> {
+    Ok(collect_resource::<File>(raw)
         .await?
         .iter()
-        .filter(|row| {
-            field(row, "name").is_some_and(|name| name.trim_start_matches("flash/") == FILE)
-        })
-        .filter_map(|row| field(row, "contents"))
-        .map(Box::from)
+        .filter(|file| file.cfg.name.to_string().trim_start_matches("flash/") == FILE)
+        .filter_map(|file| file.cfg.contents.as_ref())
+        .map(|contents| contents.to_string().into())
         .collect())
 }
 
 /// The provisioner's address as the device sees it: the one most of the device's API
 /// sessions come from (the provisioner holds several), behind the SOCKS proxy the proxy's.
-pub async fn provisioner_address(raw: &RawDevice<SimpleResult>) -> Result<Option<IpAddr>, Error> {
+pub async fn provisioner_address(raw: &impl Reads) -> Result<Option<IpAddr>, Error> {
     let mut counts = HashMap::<IpAddr, usize>::new();
-    for row in rows(raw, "/user/active/print").await? {
-        if field(&row, "via") == Some("api")
-            && let Some(address) = field(&row, "address").and_then(|a| a.parse().ok())
+    for session in collect_resource::<UserActiveState>(raw).await? {
+        if session.via.as_ref().is_some_and(|via| *via.0 == *b"api")
+            && let Some(address) = session
+                .address
+                .as_ref()
+                .and_then(|address| address.to_string().parse().ok())
         {
             *counts.entry(address).or_default() += 1;
         }

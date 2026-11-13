@@ -7,7 +7,7 @@ use crate::{
     device::ros::{
         CapsManDeviceDataCurrent, CapsManDeviceDataTarget, SetupError, WifiDeviceDataCurrent,
         WifiDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
-        apply::{reprovisioned_menus, restarts_radio},
+        apply::{CapsmanRadios, reprovisioned_menus, restarts_radio},
         cfg::provided_by_routeros,
         hw_facts::{RadioPackage, build_wifi_ports, build_wireless_ports},
         l2::{KeepNameGenerator, L2Setup},
@@ -502,7 +502,7 @@ async fn new_wlan_reprovisions_the_caps() {
     .concat();
     assert_eq!(
         reprovisioned_menus(&mutations),
-        ["/interface/wifi/radio", "/caps-man/radio"]
+        [CapsmanRadios::Wifi, CapsmanRadios::Legacy]
     );
     let cap_only = mutations
         .iter()
@@ -542,7 +542,7 @@ fn an_empty_update_changes_no_radio() {
         }]),
         ..empty(b"caps-man/configuration")
     };
-    assert_eq!(reprovisioned_menus(&[changed]), ["/caps-man/radio"]);
+    assert_eq!(reprovisioned_menus(&[changed]), [CapsmanRadios::Legacy]);
 }
 
 /// With three WLANs the provisioning has two slaves; the sort finds each configuration

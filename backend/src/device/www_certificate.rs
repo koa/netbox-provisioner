@@ -6,21 +6,27 @@
 //! it with its key (`/file/add`, then `/certificate/import`, which takes the files away) and
 //! attaches it to `www-ssl` over the API, before the apply plans. Only once the device has
 //! such a certificate attached the generated config turns `www-ssl` on and `www` off
-//! (`services::use_www_ssl`): mikrotik-model doesn't model `certificate`, so the diff leaves
-//! it as attached here. RouterOS lets a certificate in use be removed (the service then
+//! (`services::use_www_ssl`): the services' target keeps the `certificate` the device has, so
+//! the diff leaves it as attached here. RouterOS lets a certificate in use be removed (the service then
 //! reports a dangling id, CHR 7.24.6), so older ones go only when no other service names them, once
 //! `www-ssl` has the new one.
 use crate::{
     Error,
     config::CONFIG,
-    device::raw::{self, Row, field},
+    device::access::{act, remove_if_present},
     error_info::ErrorInfo,
     job::Log,
     topology::access::device::DeviceAccess,
 };
 use async_graphql::{Enum, SimpleObject};
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
-use mikrotik_model::value::{ParseRosValueResult, RosValue};
+use mikrotik_model::{
+    action::CertificateImport,
+    ascii::AsciiString,
+    command::{Reads, Writes},
+    model::{Certificate, CertificateByName, FileByName, FileCfg, IpService, IpServiceByName},
+    resource::{Creatable, KeyedResource, Updatable, apply_mutation, collect_resource},
+    value::HasNone,
+};
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, Issuer, KeyPair, KeyUsagePurpose,
     PKCS_ECDSA_P256_SHA256, SanType,
@@ -173,25 +179,31 @@ fn parse_names(text: &str) -> Names {
     names
 }
 
-fn on_device(row: &Row) -> Option<OnDevice> {
-    let name = field(row, "name")?;
+fn on_device(certificate: &Certificate) -> Option<OnDevice> {
+    let name = certificate.cfg.name.to_string();
     if !name.starts_with(PREFIX) {
         return None;
     }
+    let status = &certificate.status;
     Some(OnDevice {
         name: name.into(),
-        akid: field(row, "akid").map(Box::from),
-        names: field(row, "subject-alt-name")
-            .map(parse_names)
+        akid: status.akid.as_ref().map(|akid| akid.to_string().into()),
+        names: status
+            .subject_alt_name
+            .as_ref()
+            .map(|names| parse_names(&names.to_string()))
             .unwrap_or_default(),
-        expires_after: field(row, "expires-after").and_then(|text| {
-            match Duration::parse_ros(text.as_bytes()) {
-                ParseRosValueResult::Value(duration) => Some(duration),
-                _ => None,
-            }
-        }),
-        private_key: field(row, "private-key") == Some("true"),
+        expires_after: status.expires_after,
+        private_key: status.private_key == Some(true),
     })
+}
+
+/// The certificate `service` uses, if any.
+fn certificate_of(service: &IpService) -> Option<Box<str>> {
+    match &service.cfg.certificate {
+        Some(HasNone::Value(name)) => Some(name.to_string().into()),
+        _ => None,
+    }
 }
 
 /// The certificate of `certificates` to use: signed by the CA (`key_id`), with its key, for
@@ -223,19 +235,12 @@ impl Found {
 
 /// Reads the provisioner's certificates of `device` over `raw`, against the config's CA;
 /// `Off` without one.
-pub(crate) async fn read(
-    raw: &RawDevice<SimpleResult>,
-    device: &DeviceAccess,
-) -> Result<Found, Error> {
+pub(crate) async fn read(raw: &impl Reads, device: &DeviceAccess) -> Result<Found, Error> {
     read_for(raw, &wanted(device), ca().transpose()?).await
 }
 
 /// [`read`] for a certificate holding `names`, of `ca`.
-pub async fn read_for(
-    raw: &RawDevice<SimpleResult>,
-    names: &Names,
-    ca: Option<&Ca>,
-) -> Result<Found, Error> {
+pub async fn read_for(raw: &impl Reads, names: &Names, ca: Option<&Ca>) -> Result<Found, Error> {
     let Some(ca) = ca else {
         return Ok(Found {
             state: WwwCertificate::Off,
@@ -243,25 +248,26 @@ pub async fn read_for(
             unused: Box::default(),
         });
     };
-    let certificates = raw::rows(raw, "/certificate/print")
+    let certificates = collect_resource::<Certificate>(raw)
         .await?
         .iter()
         .filter_map(on_device)
         .collect::<Box<[_]>>();
-    let services = raw::rows(raw, "/ip/service/print").await?;
+    let services = collect_resource::<IpService>(raw).await?;
+    let www_ssl = |service: &IpService| *service.status.name.0 == *b"www-ssl";
     // `www-ssl`'s own is free once the new one is attached
-    let named: BTreeSet<&str> = services
+    let named: BTreeSet<Box<str>> = services
         .iter()
-        .filter(|row| field(row, "name") != Some("www-ssl"))
-        .filter_map(|row| field(row, "certificate"))
+        .filter(|service| !www_ssl(service))
+        .filter_map(certificate_of)
         .collect();
     let attached = services
         .iter()
-        .find(|row| field(row, "name") == Some("www-ssl"))
-        .and_then(|row| field(row, "certificate"));
+        .find(|service| www_ssl(service))
+        .and_then(certificate_of);
     let usable = usable(&certificates, names, &ca.key_id).map(|cert| cert.name.clone());
     let state = match (&usable, attached) {
-        (Some(usable), Some(attached)) if **usable == *attached => WwwCertificate::InPlace,
+        (Some(usable), Some(attached)) if *usable == attached => WwwCertificate::InPlace,
         _ => WwwCertificate::Needed,
     };
     Ok(Found {
@@ -269,7 +275,7 @@ pub async fn read_for(
         usable,
         unused: certificates
             .iter()
-            .filter(|cert| !named.contains(&*cert.name))
+            .filter(|cert| !named.contains(&cert.name))
             .map(|cert| cert.name.clone())
             .collect(),
     })
@@ -331,12 +337,7 @@ pub struct WwwCertificateInstalled {
 /// attaches the usable one, else issues one and attaches that, then removes the provisioner's
 /// certificates no service names anymore. A failure is an event only, the apply goes on with
 /// WebFig as it is.
-pub(crate) async fn install(
-    raw: &RawDevice<SimpleResult>,
-    device: &DeviceAccess,
-    found: &Found,
-    log: &Log,
-) {
+pub(crate) async fn install(raw: &impl Writes, device: &DeviceAccess, found: &Found, log: &Log) {
     match ca().transpose() {
         Ok(Some(ca)) => install_for(raw, device.name(), &wanted(device), ca, found, log).await,
         Ok(None) => {}
@@ -350,7 +351,7 @@ pub(crate) async fn install(
 
 /// [`install`] of a certificate for `names` of the device `device`, issued by `ca`.
 pub async fn install_for(
-    raw: &RawDevice<SimpleResult>,
+    raw: &impl Writes,
     device: &str,
     names: &Names,
     ca: &Ca,
@@ -365,19 +366,14 @@ pub async fn install_for(
             Some(name) => name.clone(),
             None => upload(raw, names, ca).await?,
         };
-        raw::command(
-            raw,
-            "/ip/service/set",
-            &[("numbers", "www-ssl"), ("certificate", &name)],
-        )
-        .await?;
+        attach(raw, &name).await?;
         Ok::<_, Error>(name)
     };
     match installed.await {
         Ok(name) => {
             for old in found.unused.iter().filter(|old| **old != name) {
                 if let Err(error) =
-                    raw::command(raw, "/certificate/remove", &[("numbers", old)]).await
+                    remove_if_present::<CertificateByName>(raw, &AsciiString::from(&**old)).await
                 {
                     log::warn!("{device}: certificate {old} not removed: {error}");
                 }
@@ -399,8 +395,19 @@ pub async fn install_for(
     }
 }
 
+/// Attaches the certificate `name` to `www-ssl`.
+async fn attach(raw: &impl Writes, name: &str) -> Result<(), Error> {
+    let current = IpServiceByName::fetch(raw, &AsciiString::from("www-ssl"))
+        .await?
+        .ok_or_else(|| Error::Refused("/ip/service: no www-ssl".into()))?;
+    let mut target = current.clone();
+    target.data.certificate = Some(HasNone::Value(name.into()));
+    apply_mutation(raw, &target.calculate_update(&current)).await?;
+    Ok(())
+}
+
 /// Issues a certificate for `names` and imports it with its key under a new name.
-async fn upload(raw: &RawDevice<SimpleResult>, names: &Names, ca: &Ca) -> Result<Box<str>, Error> {
+async fn upload(raw: &impl Writes, names: &Names, ca: &Ca) -> Result<Box<str>, Error> {
     let now = SystemTime::now();
     let pem = issue(ca, names, now)?;
     let name = format!(
@@ -410,21 +417,24 @@ async fn upload(raw: &RawDevice<SimpleResult>, names: &Names, ca: &Ca) -> Result
     let files = [format!("{name}.crt"), format!("{name}.key")];
     let imported = async {
         for (file, contents) in files.iter().zip([&pem.certificate, &pem.key]) {
-            raw::command(raw, "/file/add", &[("name", file), ("contents", contents)]).await?;
+            let mut entry = FileCfg::new(file.as_str().into());
+            entry.contents = Some((&**contents).into());
+            apply_mutation(raw, &entry.calculate_create()).await?;
         }
         for file in &files {
-            raw::command(
-                raw,
-                "/certificate/import",
-                &[("file-name", file), ("passphrase", ""), ("name", &name)],
-            )
-            .await?;
+            let import = CertificateImport {
+                file_name: file,
+                passphrase: "",
+                name: &name,
+            };
+            act(raw, &import).await?;
         }
-        let with_key = raw::rows(raw, "/certificate/print")
+        let with_key = collect_resource::<Certificate>(raw)
             .await?
             .iter()
-            .any(|row| {
-                field(row, "name") == Some(&name) && field(row, "private-key") == Some("true")
+            .any(|certificate| {
+                *certificate.cfg.name.0 == *name.as_bytes()
+                    && certificate.status.private_key == Some(true)
             });
         if !with_key {
             return Err(Error::WwwCertificateNotImported(name.as_str().into()));
@@ -434,10 +444,11 @@ async fn upload(raw: &RawDevice<SimpleResult>, names: &Names, ca: &Ca) -> Result
     let result = imported.await;
     // the import takes the files away; after a failure they may be left, and the key with them
     for file in &files {
-        let _ = raw::command(raw, "/file/remove", &[("numbers", file)]).await;
+        let _ = remove_if_present::<FileByName>(raw, &AsciiString::from(file.as_str())).await;
     }
     if let Err(error) = result {
-        let _ = raw::command(raw, "/certificate/remove", &[("numbers", &name)]).await;
+        let _ =
+            remove_if_present::<CertificateByName>(raw, &AsciiString::from(name.as_str())).await;
         return Err(error);
     }
     Ok(name.into())

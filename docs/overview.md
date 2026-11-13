@@ -14,6 +14,7 @@ Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
 
 - [Geräteseite](device-page.md): Aufbau der Seite eines Geräts, Zugang, Ersteinrichtung.
 - [Jobs und Gerätezustand](jobs.md): Jobs, ihre State-Machines, Weiterführen nach einem Neustart, Liegengebliebenes.
+- [Zugriff auf die Geräte](device-access.md): Befehle als Typen mit ihrer Wirkung, Verbindungen, der Aktionskatalog, `Reader` und `Session`, der CHR-Harness.
 - [Gerätezustand](device-state.md): der Cache der Erkenntnisse über die Geräte, ihr Verwerfen, die Live-Aktualisierung der Seiten, Metriken und Grafana-Dashboard.
 - [Interfaces nach Aufgabe](interface-view.md): die Karte „Interfaces“, Aufgaben, Prüfungen, Aktionen pro Port.
 - [Config-Helper](config-helper.md): Befunde über NetBox und gegen das Gerät, die Helfer, die NetBox ergänzen, Pools.

@@ -49,7 +49,7 @@ impl Component for DeviceMode {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let mode = &ctx.props().mode;
-        let changes = mode.changes.iter().map(|c| (c.feature.as_str(), &c.reason));
+        let changes = mode.changes.iter().map(|c| (&c.feature, &c.reason));
         let missing = device_mode::features(changes);
         let adjust = Confirm {
             asking: self.confirm,

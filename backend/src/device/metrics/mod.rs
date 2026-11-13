@@ -18,31 +18,34 @@
 //! - **Interfaces:** `/interface`, which carries the counters without `stats`.
 //! - **Ethernet links:** `/interface/ethernet/monitor` of every `ether` interface, link and rate.
 //!
-//! Every menu is read with its mikrotik-model type; only the monitors go through `device::raw`.
+//! Every menu is read with its mikrotik-model type; the monitors are actions of mikrotik-model's
+//! catalog.
 //! - **Leases:** the bound ones of `/ip/dhcp-server/lease`, to name a WLAN client by its DHCP
 //!   hostname wherever its lease is (on the router, not the AP).
 //!
 //! A menu the device doesn't have (no `wifi` package, no legacy CAPsMAN) has no rows
-//! (`is_missing_menu`).
+//! (`access::collect_if_present`).
 
-use super::{AccessibleDevice, raw};
+use super::{
+    AccessibleDevice,
+    access::{Reader, Row, collect_if_present, field, observe},
+};
 use crate::{
     Error,
     facts::{self, Fact, FactKey, FactKind, Freshness},
 };
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
 use mikrotik_model::value::RosValue;
 use mikrotik_model::{
-    MacAddress, MikrotikDevice,
+    MacAddress,
+    action::{EthernetMonitorOnce, WirelessMonitorOnce},
     ascii::AsciiString,
-    mikrotik_api::TrapCategory,
     model::{
         CapsManActualInterfaceConfiguration, CapsManInterface, CapsManRadioState,
         CapsManRegistrationTableState, InterfaceState, InterfaceWifi, InterfaceWifiRadioState,
         InterfaceWifiRegistrationTableState, InterfaceWireless,
         InterfaceWirelessRegistrationTableState, IpDhcpServerLease,
     },
-    resource::{self, DeserializeRosResource, RosResource, collect_resource},
+    resource::collect_resource,
 };
 use std::{collections::HashMap, net::IpAddr, time::Duration};
 
@@ -152,21 +155,20 @@ impl AccessibleDevice {
 }
 
 async fn read(device: &AccessibleDevice) -> Result<DeviceMetrics, Error> {
-    let client = &device.client;
-    let api = device.connect_again().await?;
+    let client = device.reader();
     let capsman = LegacyCapsman::read(client).await?;
     let mut wlan_clients = wifi_clients(client).await?;
     wlan_clients.extend(legacy_clients(client, &capsman).await?);
     let Wireless {
         clients: standalone,
         mut radios,
-    } = wireless(client, &api).await?;
+    } = wireless(client).await?;
     wlan_clients.extend(standalone);
     radios.extend(capsman_radios(client, &capsman).await?);
     let interfaces = collect_resource::<InterfaceState>(client).await?;
-    let ethernet = ethernet_links(&api, &interfaces).await?;
+    let ethernet = ethernet_links(client, &interfaces).await?;
     let interfaces = interfaces.iter().map(interface_counters).collect();
-    let leases = rows_if_present::<IpDhcpServerLease>(client)
+    let leases = collect_if_present::<IpDhcpServerLease>(client)
         .await?
         .into_iter()
         .filter_map(bound_lease)
@@ -181,37 +183,17 @@ async fn read(device: &AccessibleDevice) -> Result<DeviceMetrics, Error> {
 }
 
 /// The rows of `R`'s menu; none where the device hasn't the menu (its package missing).
-async fn rows_if_present<R: DeserializeRosResource + RosResource>(
-    client: &MikrotikDevice,
-) -> Result<Box<[R]>, Error> {
-    match collect_resource::<R>(client).await {
-        Err(resource::Error::Trap(trap)) if is_missing_menu(trap.category, &trap.message) => {
-            Ok(Box::new([]))
-        }
-        rows => Ok(rows?),
-    }
-}
-
-/// RouterOS's answer to a menu it hasn't: `no such command prefix` without a category (the
-/// package missing), or a missing item or command.
-pub(crate) fn is_missing_menu(category: Option<TrapCategory>, message: &[u8]) -> bool {
-    match category {
-        None => message == b"no such command prefix",
-        Some(category) => category == TrapCategory::MissingItemOrCommand,
-    }
-}
-
-async fn wifi_clients(client: &MikrotikDevice) -> Result<Vec<WlanClient>, Error> {
-    let registrations = rows_if_present::<InterfaceWifiRegistrationTableState>(client).await?;
+async fn wifi_clients(client: &Reader) -> Result<Vec<WlanClient>, Error> {
+    let registrations = collect_if_present::<InterfaceWifiRegistrationTableState>(client).await?;
     if registrations.is_empty() {
         return Ok(Vec::new());
     }
-    let masters = rows_if_present::<InterfaceWifi>(client)
+    let masters = collect_if_present::<InterfaceWifi>(client)
         .await?
         .into_iter()
         .filter_map(|wifi| Some((wifi.cfg.name.clone(), wifi.cfg.master_interface.clone()?)))
         .collect::<HashMap<_, _>>();
-    let caps = rows_if_present::<InterfaceWifiRadioState>(client)
+    let caps = collect_if_present::<InterfaceWifiRadioState>(client)
         .await?
         .into_iter()
         .filter_map(|radio| Some((radio.interface.clone(), radio.cap.clone()?)))
@@ -246,11 +228,11 @@ pub(crate) struct LegacyCapsman {
 }
 
 impl LegacyCapsman {
-    async fn read(client: &MikrotikDevice) -> Result<Self, Error> {
-        let interfaces = rows_if_present::<CapsManInterface>(client).await?;
+    async fn read(client: &Reader) -> Result<Self, Error> {
+        let interfaces = collect_if_present::<CapsManInterface>(client).await?;
         let radios = match interfaces.is_empty() {
             true => Box::new([]) as Box<[_]>,
-            false => rows_if_present::<CapsManRadioState>(client).await?,
+            false => collect_if_present::<CapsManRadioState>(client).await?,
         };
         Ok(LegacyCapsman { interfaces, radios })
     }
@@ -276,13 +258,13 @@ impl LegacyCapsman {
 }
 
 async fn legacy_clients(
-    client: &MikrotikDevice,
+    client: &Reader,
     capsman: &LegacyCapsman,
 ) -> Result<Vec<WlanClient>, Error> {
     if capsman.interfaces.is_empty() {
         return Ok(Vec::new());
     }
-    let registrations = rows_if_present::<CapsManRegistrationTableState>(client).await?;
+    let registrations = collect_if_present::<CapsManRegistrationTableState>(client).await?;
     Ok(registrations
         .iter()
         .map(|client| WlanClient {
@@ -315,11 +297,8 @@ struct Wireless {
 /// A radio a CAPsMAN manages has no SSID of its own there (ap-klr-solar, a CAP of the legacy
 /// CAPsMAN): its SSID and its clients are the controller's (`legacy_clients`,
 /// `capsman_radios`), so its clients are left out here.
-async fn wireless(
-    client: &MikrotikDevice,
-    api: &RawDevice<SimpleResult>,
-) -> Result<Wireless, Error> {
-    let radios = rows_if_present::<InterfaceWireless>(client).await?;
+async fn wireless(client: &Reader) -> Result<Wireless, Error> {
+    let radios = collect_if_present::<InterfaceWireless>(client).await?;
     let running = radios
         .iter()
         .filter(|radio| radio.status.running)
@@ -345,12 +324,8 @@ async fn wireless(
         .map(|radio| radio.cfg.name.to_string())
         .collect::<Vec<_>>();
     // answered in the order of `numbers`
-    let monitor = raw::command(
-        api,
-        "/interface/wireless/monitor",
-        &[("numbers", &names.join(",")), ("once", "")],
-    )
-    .await?;
+    let numbers = names.join(",");
+    let monitor = observe(client, &WirelessMonitorOnce { numbers: &numbers }).await?;
     let running_radios = running
         .iter()
         .zip(&monitor)
@@ -393,7 +368,7 @@ pub(crate) fn standalone_client(
 }
 
 /// A running radio and its row of `monitor`; one without SSID is managed by a CAPsMAN.
-pub(crate) fn wireless_radio(radio: &InterfaceWireless, monitor: &raw::Row) -> WirelessRadio {
+pub(crate) fn wireless_radio(radio: &InterfaceWireless, monitor: &Row) -> WirelessRadio {
     let ssid = radio
         .cfg
         .ssid
@@ -409,8 +384,8 @@ pub(crate) fn wireless_radio(radio: &InterfaceWireless, monitor: &raw::Row) -> W
         },
         ssid: ssid.into(),
         band: radio.cfg.band.as_ref().map(ros_text).unwrap_or_default(),
-        frequency_mhz: raw::field(monitor, "channel").and_then(channel_frequency),
-        noise_floor: raw::field(monitor, "noise-floor").and_then(|value| value.parse().ok()),
+        frequency_mhz: field(monitor, "channel").and_then(channel_frequency),
+        noise_floor: field(monitor, "noise-floor").and_then(|value| value.parse().ok()),
     }
 }
 
@@ -429,7 +404,7 @@ fn channel_frequency(channel: &str) -> Option<u32> {
 /// frequency from `current-channel`, the CAP from `/caps-man/radio`. A virtual interface's CAP
 /// and band are those of its master.
 async fn capsman_radios(
-    client: &MikrotikDevice,
+    client: &Reader,
     capsman: &LegacyCapsman,
 ) -> Result<Vec<WirelessRadio>, Error> {
     if !capsman.interfaces.iter().any(|i| i.status.running) {
@@ -480,7 +455,7 @@ pub(crate) fn capsman_radio_rows(
 /// The link of every Ethernet port (`ether` in `/interface`), from one `monitor` of all of
 /// them.
 async fn ethernet_links(
-    api: &RawDevice<SimpleResult>,
+    client: &Reader,
     interfaces: &[InterfaceState],
 ) -> Result<Box<[EthernetLink]>, Error> {
     let names = interfaces
@@ -491,26 +466,21 @@ async fn ethernet_links(
     if names.is_empty() {
         return Ok(Box::new([]));
     }
-    Ok(raw::command(
-        api,
-        "/interface/ethernet/monitor",
-        &[("numbers", &names.join(",")), ("once", "")],
-    )
-    .await?
-    .iter()
-    .filter_map(ethernet_link)
-    .collect())
+    let numbers = names.join(",");
+    Ok(observe(client, &EthernetMonitorOnce { numbers: &numbers })
+        .await?
+        .iter()
+        .filter_map(ethernet_link)
+        .collect())
 }
 
 /// A row of `/interface/ethernet/monitor`.
-pub(crate) fn ethernet_link(row: &raw::Row) -> Option<EthernetLink> {
-    let up = raw::field(row, "status") == Some("link-ok");
+pub(crate) fn ethernet_link(row: &Row) -> Option<EthernetLink> {
+    let up = field(row, "status") == Some("link-ok");
     Some(EthernetLink {
-        name: raw::field(row, "name")?.into(),
+        name: field(row, "name")?.into(),
         up,
-        rate_bits_per_second: raw::field(row, "rate")
-            .filter(|_| up)
-            .and_then(bits_per_second),
+        rate_bits_per_second: field(row, "rate").filter(|_| up).and_then(bits_per_second),
     })
 }
 

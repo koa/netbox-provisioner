@@ -6,25 +6,30 @@
 //! `propagate_default_route`, so it gets its default from DHCP (through its own perimeter
 //! firewall) and originates it; `inner` learns it over OSPF.
 
+use crate::chr_network::node::add;
 use crate::chr_network::scenario::boot_scenario;
 use crate::chr_network::vm::RunningNode;
 use crate::chr_network::wait::{wait_for_ospf_full, wait_until};
+use backend::device::access::Session;
 use backend::device::ros::cfg::DeviceCfg;
 use backend::device::ros::l2::KeepNameGenerator;
 use backend::topology::builder::TopologyBuilder;
 use backend::topology::{
     Cable, CablePort, Device, DeviceId, Interface, IpAddressData, PhysicalPortId, TopologyHolder,
 };
-use encoding_rs::mem::encode_latin1_lossy;
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
 use mikrotik_model::hwconfig::DeviceType;
-use mikrotik_model::model::ReferenceType;
-use mikrotik_model::resource::{ResourceMutation, ResourceMutationOperation, apply_mutation};
+use mikrotik_model::model::{
+    IpAddressCfg, IpDhcpClientState, IpDhcpServerBootpLeaseTime, IpDhcpServerBootpSupport,
+    IpDhcpServerCfg, IpDhcpServerNetworkCfg, IpDhcpServerUseRadius, IpPoolCfg, IpRoute,
+    ReferenceType, RoutingOspfInstanceCfg, RoutingOspfLsaState,
+};
+use mikrotik_model::resource::{
+    ResourceMutation, ResourceMutationOperation, apply_mutation, collect_resource,
+};
+use mikrotik_model::value::RosValue;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
-use tokio_stream::StreamExt;
 
 struct Net {
     builder: TopologyBuilder,
@@ -110,32 +115,6 @@ fn build() -> Net {
     }
 }
 
-async fn run(
-    device: &MikrotikDevice<SimpleResult>,
-    command: &str,
-    attributes: &[(&str, &str)],
-) -> Vec<HashMap<Box<str>, Option<Box<str>>>> {
-    let mut s = device
-        .send_command(
-            command.as_bytes(),
-            |cmd| {
-                attributes.iter().fold(cmd, |cmd, (key, value)| {
-                    cmd.attribute(key.as_bytes(), value.as_bytes())
-                })
-            },
-            (),
-        )
-        .await;
-    let mut rows = Vec::new();
-    while let Some(r) = s.next().await {
-        match r {
-            SimpleResult::Sentence(row) => rows.push(row),
-            other => panic!("{command}: {other:?}"),
-        }
-    }
-    rows
-}
-
 /// Whether the dhcp-client mutation is about the harness's management port ether1 (its own
 /// client there, which the generator would remove and so cut the test off).
 fn on_management_port(mutation: &ResourceMutation) -> bool {
@@ -158,13 +137,7 @@ pub async fn apply_directly(
     node: &RunningNode,
     device: &backend::topology::access::device::DeviceAccess,
 ) {
-    let client = mikrotik_model::MikrotikDevice::connect(
-        ("127.0.0.1", node.api_port),
-        b"admin",
-        Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
-    )
-    .await
-    .expect("typed api");
+    let client = node.connect_api(crate::TEST_PASSWORD).await.expect("api");
     let mut cfg = DeviceCfg::fetch_with_board_model(&client, b"RB750Gr3", device)
         .await
         .expect("fetch");
@@ -185,7 +158,6 @@ pub async fn apply_directly(
         ],
     )
     .expect("sort");
-    let simple = node.connect_api(crate::TEST_PASSWORD).await.expect("api");
     for mutation in sorted {
         let moves_management = mutation.resource == b"ip/dhcp-client".as_slice()
             && matches!(&mutation.operation, ResourceMutationOperation::UpdateByKey(key) if key.key == b".id".as_slice());
@@ -224,39 +196,34 @@ pub async fn apply_directly(
             mutation.operation,
             mutation.fields
         );
-        apply_mutation(&simple, &mutation)
+        apply_mutation(&client, &mutation)
             .await
             .unwrap_or_else(|e| panic!("[{}] apply: {e:#}", node.name));
     }
 }
 
-/// The routes to `dst` in the node's `menu` (`ip` or `ipv6`), as gateway and flags. The
-/// harness's management port has a DHCP default of its own (distance 1), which stays active: the
-/// checks look for the route by its gateway.
-async fn default_routes(
-    device: &MikrotikDevice<SimpleResult>,
-    menu: &str,
-    dst: &str,
-) -> Vec<String> {
-    run(device, &format!("/{menu}/route/print"), &[])
+/// The IPv4 routes to `dst` in the node, as gateway and flags. The harness's management port
+/// has a DHCP default of its own (distance 1), which stays active: the checks look for the
+/// route by its gateway.
+async fn default_routes(device: &Session, dst: &str) -> Vec<String> {
+    let dst = dst.parse().expect("a network");
+    collect_resource::<IpRoute>(device)
         .await
-        .into_iter()
-        .filter(|row| row.get("dst-address").cloned().flatten().as_deref() == Some(dst))
-        .map(|row| {
-            let flag = |name: &'static str| {
-                if row.get(name).cloned().flatten().as_deref() == Some("true") {
-                    name
-                } else {
-                    ""
-                }
+        .expect("routes")
+        .iter()
+        .filter(|route| route.cfg.dst_address == dst)
+        .map(|route| {
+            let flag = |on: Option<bool>, name: &'static str| match on {
+                Some(true) => name,
+                _ => "",
             };
             format!(
                 "{} {} {} {} {}",
-                row.get("gateway").cloned().flatten().unwrap_or_default(),
-                flag("active"),
-                flag("dhcp"),
-                flag("ospf"),
-                flag("static"),
+                String::from_utf8_lossy(&route.cfg.gateway.encode_ros()),
+                flag(route.status.active, "active"),
+                flag(route.status.dhcp, "dhcp"),
+                flag(route.status.ospf, "ospf"),
+                flag(route.status._static, "static"),
             )
         })
         .collect()
@@ -299,30 +266,24 @@ async fn the_default_route_of_an_internet_uplink_goes_out_over_ospf() {
         .connect_api(crate::TEST_PASSWORD)
         .await
         .expect("internet api");
-    for (command, attributes) in [
-        (
-            "/ip/address/add",
-            &[("address", "100.64.0.1/29"), ("interface", "ether2")][..],
-        ),
-        (
-            "/ip/pool/add",
-            &[("name", "isp"), ("ranges", "100.64.0.2-100.64.0.6")],
-        ),
-        (
-            "/ip/dhcp-server/network/add",
-            &[("address", "100.64.0.0/29"), ("gateway", "100.64.0.1")],
-        ),
-        (
-            "/ip/dhcp-server/add",
-            &[
-                ("name", "isp"),
-                ("interface", "ether2"),
-                ("address-pool", "isp"),
-            ],
-        ),
-    ] {
-        run(&internet_api, command, attributes).await;
-    }
+    let address = IpAddressCfg::new("100.64.0.1/29".parse().unwrap(), "ether2".into());
+    add(&internet_api, &address).await.expect("address");
+    let mut pool = IpPoolCfg::new("isp".into());
+    pool.ranges = ["100.64.0.2-100.64.0.6".into()].into();
+    add(&internet_api, &pool).await.expect("pool");
+    let mut network = IpDhcpServerNetworkCfg::new("100.64.0.0/29".parse().unwrap(), false, 29);
+    network.gateway = ["100.64.0.1".parse().unwrap()].into();
+    add(&internet_api, &network).await.expect("dhcp network");
+    let server = IpDhcpServerCfg::new(
+        "isp".into(),
+        IpDhcpServerBootpLeaseTime::Forever,
+        IpDhcpServerBootpSupport::Static,
+        false,
+        "ether2".into(),
+        "isp".into(),
+        IpDhcpServerUseRadius::No,
+    );
+    add(&internet_api, &server).await.expect("dhcp server");
 
     apply_directly(&nodes[&router], &router_access).await;
     apply_directly(&nodes[&inner], &inner_access).await;
@@ -338,15 +299,15 @@ async fn the_default_route_of_an_internet_uplink_goes_out_over_ospf() {
     wait_for_ospf_full(&inner_api, "default-v2", Duration::from_secs(90))
         .await
         .expect("ospf between router and inner");
-    let clients = run(&router_api, "/ip/dhcp-client/print", &[]).await;
+    let clients = collect_resource::<IpDhcpClientState>(&router_api).await;
     eprintln!("router dhcp-clients: {clients:#?}");
     eprintln!(
         "router ospf: {:#?}",
-        run(&router_api, "/routing/ospf/instance/print", &[]).await
+        collect_resource::<RoutingOspfInstanceCfg>(&router_api).await
     );
     let router_has = wait_until(
         || async {
-            Ok(default_routes(&router_api, "ip", "0.0.0.0/0")
+            Ok(default_routes(&router_api, "0.0.0.0/0")
                 .await
                 .iter()
                 .any(|r| r.starts_with("100.64.0.1 ") && r.contains("dhcp")))
@@ -356,12 +317,12 @@ async fn the_default_route_of_an_internet_uplink_goes_out_over_ospf() {
     .await;
     eprintln!(
         "router default: {:?}",
-        default_routes(&router_api, "ip", "0.0.0.0/0").await
+        default_routes(&router_api, "0.0.0.0/0").await
     );
     router_has.expect("the router never got its default route from DHCP");
     let inner_has = wait_until(
         || async {
-            Ok(default_routes(&inner_api, "ip", "0.0.0.0/0")
+            Ok(default_routes(&inner_api, "0.0.0.0/0")
                 .await
                 .iter()
                 .any(|r| r.starts_with("10.0.41.0%") && r.contains("ospf")))
@@ -371,11 +332,11 @@ async fn the_default_route_of_an_internet_uplink_goes_out_over_ospf() {
     .await;
     eprintln!(
         "inner default: {:?}",
-        default_routes(&inner_api, "ip", "0.0.0.0/0").await
+        default_routes(&inner_api, "0.0.0.0/0").await
     );
     eprintln!(
         "router lsa: {:#?}",
-        run(&router_api, "/routing/ospf/lsa/print", &[]).await
+        collect_resource::<RoutingOspfLsaState>(&router_api).await
     );
     inner_has.expect("inner never learned the default route over OSPF");
 }

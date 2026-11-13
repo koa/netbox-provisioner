@@ -12,10 +12,12 @@
 //! internet: forwarded at the uplink over IPv4, let through to its address over IPv6.
 
 use crate::chr_network::apply::{apply_mutations_via_entry, enable_socks};
-use crate::chr_network::mac_telnet::ping;
+use crate::chr_network::node::{add, add_address, answers_ping, login_over};
 use crate::chr_network::scenario::boot_scenario;
 use crate::chr_network::vm::RunningNode;
 use crate::chr_network::wait::wait_until;
+use backend::Error;
+use backend::device::access::{Session, field, observe};
 use backend::device::ros::cfg::DeviceCfg;
 use backend::device::ros::l2::KeepNameGenerator;
 use backend::topology::access::device::DeviceAccess;
@@ -24,19 +26,20 @@ use backend::topology::{
     Cable, CablePort, Device, DeviceId, ForwardData, Interface, IpAddressData, PhysicalPortId,
     SiteData, TopologyHolder,
 };
-use encoding_rs::mem::encode_latin1_lossy;
 use ipnet::IpNet;
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
+use mikrotik_model::action::FetchProbe;
 use mikrotik_model::hwconfig::DeviceType;
-use mikrotik_model::model::ReferenceType;
-use mikrotik_model::resource::{ResourceMutation, ResourceMutationOperation};
+use mikrotik_model::model::{
+    IpFirewallAddressList, IpFirewallFilter, IpFirewallNat, IpRouteCfg, Ipv6AddressCfg,
+    Ipv6FirewallAddressList, Ipv6FirewallFilter, Ipv6RouteCfg, ReferenceType,
+};
+use mikrotik_model::resource::{ResourceMutation, ResourceMutationOperation, collect_resource};
+use mikrotik_model::value::IpOrInterface;
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::time::Duration;
 use tokio_socks::tcp::Socks5Stream;
-use tokio_stream::StreamExt;
 
 /// The router's uplink address, where the provisioner reaches it from `internet`.
 const UPLINK: &str = "100.64.0.2";
@@ -164,89 +167,135 @@ fn build() -> Net {
     }
 }
 
-/// Runs `command` with `attributes`, giving back its rows; a trap fails the test.
-async fn run(
-    device: &MikrotikDevice<SimpleResult>,
-    command: &str,
-    attributes: &[(&str, &str)],
-) -> Vec<HashMap<Box<str>, Option<Box<str>>>> {
-    let mut s = device
-        .send_command(
-            command.as_bytes(),
-            |cmd| {
-                attributes.iter().fold(cmd, |cmd, (key, value)| {
-                    cmd.attribute(key.as_bytes(), value.as_bytes())
-                })
-            },
-            (),
-        )
-        .await;
-    let mut rows = Vec::new();
-    while let Some(r) = s.next().await {
-        match r {
-            SimpleResult::Sentence(row) => rows.push(row),
-            other => panic!("{command}: {other:?}"),
-        }
-    }
-    rows
+/// Whether `address` answers a ping from `device`.
+async fn ping(device: &Session, address: &str) -> bool {
+    answers_ping(device, address.parse().expect("an address"), 2).await
+}
+
+/// Adds `address` (`a:b::c/len`) to `interface`, not advertised.
+async fn add_address_v6(device: &Session, address: &str, interface: &str) {
+    let address = Ipv6AddressCfg {
+        address: address.parse().expect("an IPv6 network"),
+        interface: interface.into(),
+        advertise: false,
+        ..Ipv6AddressCfg::default()
+    };
+    add(device, &address).await.expect("IPv6 address added");
+}
+
+/// Adds a static route to `dst` over `gateway`.
+async fn add_route(device: &Session, dst: &str, gateway: &str) {
+    let route = IpRouteCfg {
+        check_gateway: None,
+        comment: None,
+        dst_address: dst.parse().expect("a network"),
+        gateway: IpOrInterface::Ip(gateway.parse().expect("an address")),
+        local_address: None,
+        routing_table: None,
+        scope: None,
+        suppress_hw_offload: None,
+        target_scope: None,
+        vrf_interface: None,
+    };
+    add(device, &route).await.expect("route added");
+}
+
+/// Adds a static IPv6 route to `dst` over `gateway`.
+async fn add_route_v6(device: &Session, dst: &str, gateway: &str) {
+    let route = Ipv6RouteCfg {
+        dst_address: dst.parse().expect("an IPv6 network"),
+        gateway: Some(gateway.into()),
+        comment: None,
+    };
+    add(device, &route).await.expect("IPv6 route added");
 }
 
 /// Whether a TCP connection from `device` (from `source`) to `url` gets through: a dropped
 /// one stays `connecting` until the fetch gives up, one that gets through goes on to
-/// `requesting` (or fails on the answer, SSH and the API speak no HTTP).
-async fn reaches(device: &MikrotikDevice<SimpleResult>, url: &str, source: &str) -> bool {
-    let mut s = device
-        .send_command(
-            b"/tool/fetch".as_slice(),
-            |cmd| {
-                cmd.attribute(b"url".as_slice(), url.as_bytes())
-                    .attribute(b"src-address".as_slice(), source.as_bytes())
-                    .attribute(b"keep-result".as_slice(), b"no".as_slice())
-                    .attribute(b"duration".as_slice(), b"6s".as_slice())
-            },
-            (),
-        )
-        .await;
-    let mut reached = false;
-    while let Some(r) = s.next().await {
-        eprintln!("fetch {url} from {source}: {r:?}");
-        match r {
-            SimpleResult::Sentence(row) => {
-                let status = row.get("status").cloned().flatten().unwrap_or_default();
-                reached |= &*status != "connecting";
-            }
-            // the answer of a port speaking no HTTP
-            SimpleResult::Trap { message, .. } => reached |= message.contains("parsing"),
-            SimpleResult::Error(_) => {}
+/// `requesting` or ends in a trap (refused, or SSH and the API speaking no HTTP).
+async fn reaches(device: &Session, url: &str, source: &str) -> bool {
+    let probe = FetchProbe {
+        url,
+        src_address: Some(source.parse().expect("an address")),
+        duration: Some(Duration::from_secs(6)),
+        check_certificate: false,
+    };
+    match observe(device, &probe).await {
+        Ok(rows) => {
+            eprintln!("fetch {url} from {source}: {rows:?}");
+            rows.iter()
+                .any(|row| field(row, "status").is_some_and(|status| status != "connecting"))
         }
+        Err(Error::Refused(message)) => {
+            eprintln!("fetch {url} from {source}: {message}");
+            true
+        }
+        Err(error) => panic!("fetch {url} from {source}: {error}"),
     }
-    reached
 }
 
-/// The lists `address` is on in the router's `address-list` menu (`ip` or `ipv6`).
-async fn lists_of(device: &MikrotikDevice<SimpleResult>, menu: &str, address: &str) -> Vec<String> {
-    let mut lists = run(device, &format!("/{menu}/firewall/address-list/print"), &[])
-        .await
-        .into_iter()
-        .filter(|row| {
-            row.get("address")
-                .cloned()
-                .flatten()
-                .is_some_and(|a| a.split('/').next() == Some(address))
-        })
-        .filter_map(|row| row.get("list").cloned().flatten().map(String::from))
-        .collect::<Vec<_>>();
+/// An address family's firewall: `/ip/firewall` or `/ipv6/firewall`.
+#[derive(Debug, Clone, Copy)]
+enum Family {
+    V4,
+    V6,
+}
+
+/// The lists `address` is on in the router's address list of `family`.
+async fn lists_of(device: &Session, family: Family, address: &str) -> Vec<String> {
+    let mut lists: Vec<String> = match family {
+        Family::V4 => collect_resource::<IpFirewallAddressList>(device)
+            .await
+            .expect("address list")
+            .into_iter()
+            .filter(|entry| entry.cfg.address.to_string().split('/').next() == Some(address))
+            .map(|entry| entry.cfg.list.to_string())
+            .collect(),
+        Family::V6 => {
+            let address: IpAddr = address.parse().expect("an address");
+            collect_resource::<Ipv6FirewallAddressList>(device)
+                .await
+                .expect("address list")
+                .into_iter()
+                .filter(|entry| IpAddr::V6(entry.cfg.address.addr()) == address)
+                .map(|entry| entry.cfg.list.to_string())
+                .collect()
+        }
+    };
     lists.sort();
     lists
+}
+
+/// The comments of the rules in the router's filter of `family`, in their order.
+async fn filter_comments(device: &Session, family: Family) -> Vec<String> {
+    let comments = match family {
+        Family::V4 => collect_resource::<IpFirewallFilter>(device)
+            .await
+            .expect("filter")
+            .into_iter()
+            .map(|rule| rule.cfg.comment)
+            .collect::<Vec<_>>(),
+        Family::V6 => collect_resource::<Ipv6FirewallFilter>(device)
+            .await
+            .expect("filter")
+            .into_iter()
+            .map(|rule| rule.cfg.comment)
+            .collect(),
+    };
+    comments
+        .into_iter()
+        .flatten()
+        .map(|comment| comment.to_string())
+        .collect()
 }
 
 /// Waits for `address` on `ssh_blacklist`: an IPv6 entry shows up a moment after the
 /// connection that put it there (CHR 7.24.5, the one of the previous attempt came with the
 /// next).
-async fn blacklisted(device: &MikrotikDevice<SimpleResult>, menu: &str, address: &str) {
+async fn blacklisted(device: &Session, family: Family, address: &str) {
     wait_until(
         || async {
-            Ok(lists_of(device, menu, address)
+            Ok(lists_of(device, family, address)
                 .await
                 .iter()
                 .any(|list| list == "ssh_blacklist"))
@@ -254,25 +303,18 @@ async fn blacklisted(device: &MikrotikDevice<SimpleResult>, menu: &str, address:
         Duration::from_secs(10),
     )
     .await
-    .unwrap_or_else(|e| panic!("{address} never on the {menu} blacklist: {e}"));
+    .unwrap_or_else(|e| panic!("{address} never on the {family:?} blacklist: {e}"));
 }
 
 /// The router's typed connection through `internet`'s proxy to its uplink: the
 /// provisioner's way in.
-async fn typed_via_internet(
-    internet: &RunningNode,
-) -> anyhow::Result<mikrotik_model::MikrotikDevice> {
+async fn typed_via_internet(internet: &RunningNode) -> anyhow::Result<Session> {
     let stream = Socks5Stream::connect(
         ("127.0.0.1", internet.socks_port),
         SocketAddr::new(UPLINK.parse().unwrap(), 8728),
     )
     .await?;
-    Ok(mikrotik_model::MikrotikDevice::connect_with_stream(
-        stream,
-        b"admin",
-        Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
-    )
-    .await?)
+    Ok(login_over(stream, crate::TEST_PASSWORD).await?)
 }
 
 /// The router's diff as the provisioner sees it through `internet`, sorted, without what a
@@ -392,34 +434,12 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
         .await
         .expect("internet api");
     for address in ["100.64.0.1/29", "100.64.0.3/29"] {
-        run(
-            &internet_api,
-            "/ip/address/add",
-            &[("address", address), ("interface", "ether2")],
-        )
-        .await;
+        add_address(&internet_api, address, "ether2").await;
     }
     for address in ["2001:db8:64::1/64", "2001:db8:64::3/64"] {
-        run(
-            &internet_api,
-            "/ipv6/address/add",
-            &[
-                ("address", address),
-                ("interface", "ether2"),
-                ("advertise", "no"),
-            ],
-        )
-        .await;
+        add_address_v6(&internet_api, address, "ether2").await;
     }
-    run(
-        &internet_api,
-        "/ipv6/route/add",
-        &[
-            ("dst-address", "2001:db8:31::/64"),
-            ("gateway", "2001:db8:64::2"),
-        ],
-    )
-    .await;
+    add_route_v6(&internet_api, "2001:db8:31::/64", "2001:db8:64::2").await;
     enable_socks(&internet_api)
         .await
         .expect("socks on internet");
@@ -427,67 +447,17 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
         .connect_api(crate::TEST_PASSWORD)
         .await
         .expect("client api");
-    run(
-        &client_api,
-        "/ip/address/add",
-        &[("address", "10.0.31.2/24"), ("interface", "ether2")],
-    )
-    .await;
-    run(
-        &client_api,
-        "/ipv6/address/add",
-        &[
-            ("address", "2001:db8:31::2/64"),
-            ("interface", "ether2"),
-            ("advertise", "no"),
-        ],
-    )
-    .await;
-    run(
-        &client_api,
-        "/ip/route/add",
-        &[("dst-address", "100.64.0.0/29"), ("gateway", "10.0.31.1")],
-    )
-    .await;
-    run(
-        &client_api,
-        "/ipv6/route/add",
-        &[
-            ("dst-address", "2001:db8:64::/64"),
-            ("gateway", "2001:db8:31::1"),
-        ],
-    )
-    .await;
+    add_address(&client_api, "10.0.31.2/24", "ether2").await;
+    add_address_v6(&client_api, "2001:db8:31::2/64", "ether2").await;
+    add_route(&client_api, "100.64.0.0/29", "10.0.31.1").await;
+    add_route_v6(&client_api, "2001:db8:64::/64", "2001:db8:31::1").await;
     let router_api = nodes[&router]
         .connect_api(crate::TEST_PASSWORD)
         .await
         .expect("router api");
-    run(
-        &router_api,
-        "/ip/address/add",
-        &[("address", "100.64.0.2/29"), ("interface", "ether2")],
-    )
-    .await;
-    run(
-        &router_api,
-        "/ipv6/address/add",
-        &[
-            ("address", "2001:db8:31::1/64"),
-            ("interface", "ether3"),
-            ("advertise", "no"),
-        ],
-    )
-    .await;
-    run(
-        &router_api,
-        "/ipv6/address/add",
-        &[
-            ("address", "2001:db8:64::2/64"),
-            ("interface", "ether2"),
-            ("advertise", "no"),
-        ],
-    )
-    .await;
+    add_address(&router_api, "100.64.0.2/29", "ether2").await;
+    add_address_v6(&router_api, "2001:db8:31::1/64", "ether3").await;
+    add_address_v6(&router_api, "2001:db8:64::2/64", "ether2").await;
 
     // without the firewall the internet reaches the client and the router's API
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
@@ -530,13 +500,9 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
         );
     }
     assert!(left.is_empty(), "the diff after the apply isn't empty");
-    for menu in ["ip", "ipv6"] {
-        let comments = run(&router_api, &format!("/{menu}/firewall/filter/print"), &[])
-            .await
-            .into_iter()
-            .filter_map(|row| row.get("comment").cloned().flatten())
-            .collect::<Vec<_>>();
-        eprintln!("{menu} rules: {comments:#?}");
+    for family in [Family::V4, Family::V6] {
+        let comments = filter_comments(&router_api, family).await;
+        eprintln!("{family:?} rules: {comments:#?}");
         assert!(
             comments
                 .last()
@@ -578,7 +544,7 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
 
     // the client's service with `forward`: its WebFig from the internet at the uplink (IPv4,
     // forwarded) and at its own address (IPv6), its API not
-    let nat = run(&router_api, "/ip/firewall/nat/print", &[]).await;
+    let nat = collect_resource::<IpFirewallNat>(&router_api).await;
     eprintln!("nat: {nat:#?}");
     assert!(
         reaches(&internet_api, &format!("http://{UPLINK}/"), STRANGER).await,
@@ -611,20 +577,24 @@ async fn perimeter_firewall_keeps_the_internet_out_but_the_provisioner() {
             "SSH attempt {attempt} of the stranger didn't get through"
         );
     }
-    blacklisted(&router_api, "ip", STRANGER).await;
+    blacklisted(&router_api, Family::V4, STRANGER).await;
     assert_eq!(
-        lists_of(&router_api, "ip", STRANGER).await,
+        lists_of(&router_api, Family::V4, STRANGER).await,
         ["ssh_blacklist", "ssh_stage1", "ssh_stage2", "ssh_stage3"]
     );
     assert!(!reaches(&internet_api, &format!("http://{UPLINK}:22/"), STRANGER).await);
     for _ in 1..=5 {
         assert!(reaches(&internet_api, &format!("http://{UPLINK}:22/"), PROVISIONER).await);
     }
-    assert!(lists_of(&router_api, "ip", PROVISIONER).await.is_empty());
+    assert!(
+        lists_of(&router_api, Family::V4, PROVISIONER)
+            .await
+            .is_empty()
+    );
     // the same for IPv6
     for _ in 1..=4 {
         assert!(reaches(&internet_api, "http://[2001:db8:64::2]:22/", STRANGER_V6).await);
     }
-    blacklisted(&router_api, "ipv6", STRANGER_V6).await;
+    blacklisted(&router_api, Family::V6, STRANGER_V6).await;
     assert!(!reaches(&internet_api, "http://[2001:db8:64::2]:22/", STRANGER_V6).await);
 }

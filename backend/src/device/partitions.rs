@@ -14,8 +14,8 @@
 use crate::{
     Error,
     device::{
+        access::act,
         dependency::PowerChain,
-        raw::{Row, command, field, rows},
         reboot::{REBOOT_TIMEOUT, Reboot, RebootReason, wait_until_back},
         update::{DeviceLink, read_state},
     },
@@ -23,8 +23,16 @@ use crate::{
     error_info::ErrorInfo,
     job::Log,
 };
-use async_graphql::{SimpleObject, futures_util::StreamExt};
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use async_graphql::SimpleObject;
+use mikrotik_model::{
+    action::{
+        PartitionActivate, PartitionCopyTo, PartitionSaveConfigTo, Reboot as RebootNow, Repartition,
+    },
+    command::{Reads, Writes},
+    model::{File, PartitionsState, SystemDeviceModeState, SystemIdentityCfg},
+    resource::{SingleResource, collect_resource},
+    value::RosValue,
+};
 use std::time::Duration;
 use tokio::time::{Instant, timeout};
 
@@ -76,29 +84,34 @@ pub struct Repartitioned {
     pub missing_files: Box<[Box<str>]>,
 }
 
-fn partition(row: &Row) -> Partition {
-    let flag = |name| field(row, name) == Some("true");
+fn partition(read: &PartitionsState) -> Partition {
     Partition {
-        name: field(row, "name").unwrap_or_default().into(),
-        version: field(row, "version")
-            .filter(|version| *version != "EMPTY")
+        name: read.name.to_string().into(),
+        version: read
+            .version
+            .as_ref()
+            .map(ToString::to_string)
+            .filter(|version| version != "EMPTY")
             .unwrap_or_default()
             .into(),
-        size_mib: field(row, "size")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_default(),
-        active: flag("active"),
-        running: flag("running"),
-        fallback_to: field(row, "fallback-to").unwrap_or_default().into(),
+        size_mib: read.size.unwrap_or_default(),
+        active: read.active == Some(true),
+        running: read.running == Some(true),
+        fallback_to: read
+            .fallback_to
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default()
+            .into(),
     }
 }
 
 /// The partitions of the device; empty without NAND for them (and on a CHR, which has no
 /// `/partitions`).
-pub async fn list(device: &RawDevice<SimpleResult>) -> Vec<Partition> {
-    rows(device, "/partitions/print")
+pub async fn list(device: &impl Reads) -> Vec<Partition> {
+    collect_resource::<PartitionsState>(device)
         .await
-        .map(|rows| rows.iter().map(partition).collect())
+        .map(|read| read.iter().map(partition).collect())
         .unwrap_or_default()
 }
 
@@ -110,16 +123,16 @@ fn can_split(partitions: &[Partition], allowed: bool) -> bool {
         && partitions.iter().map(|p| p.size_mib).sum::<u64>() >= MIN_MIB
 }
 
-async fn allowed(device: &RawDevice<SimpleResult>) -> Result<bool, Error> {
-    Ok(rows(device, "/system/device-mode/print")
+async fn allowed(device: &impl Reads) -> Result<bool, Error> {
+    Ok(SystemDeviceModeState::fetch(device)
         .await
         .ok()
-        .and_then(|rows| rows.into_iter().next())
-        .is_some_and(|mode| field(&mode, "partitions") == Some("true")))
+        .flatten()
+        .is_some_and(|mode| mode.partitions == Some(true)))
 }
 
 /// The partitions; `None` on a device without (a CHR, 16 MiB of flash).
-pub async fn read(device: &RawDevice<SimpleResult>) -> Result<Option<Partitions>, Error> {
+pub async fn read(device: &impl Reads) -> Result<Option<Partitions>, Error> {
     let partitions = list(device).await;
     if partitions.is_empty() {
         return Ok(None);
@@ -141,41 +154,49 @@ pub(crate) fn other(partitions: &[Partition]) -> Option<&Partition> {
 }
 
 /// `/partitions copy-to`: the running RouterOS with its configuration to `target`.
-pub(crate) async fn copy_to(device: &RawDevice<SimpleResult>, target: &str) -> Result<(), Error> {
-    to_partition(device, "/partitions/copy-to", target).await
+pub(crate) async fn copy_to(device: &impl Writes, target: &str) -> Result<(), Error> {
+    to_partition(device, ToPartition::CopyTo, target).await
 }
 
-/// `path` (`copy-to`, `save-config-to`) with `target` as `number`. It runs like a monitor: it
-/// answers while it copies and is done at the end.
-async fn to_partition(
-    device: &RawDevice<SimpleResult>,
-    path: &str,
-    target: &str,
-) -> Result<(), Error> {
+/// What [`to_partition`] puts on another partition.
+#[derive(Debug, Clone, Copy)]
+enum ToPartition {
+    /// `copy-to`: RouterOS with its configuration
+    CopyTo,
+    /// `save-config-to`: the configuration alone
+    SaveConfigTo,
+}
+
+/// `copy-to` or `save-config-to` with `target` as `number`. It runs like a monitor: it answers
+/// while it copies and is done at the end.
+async fn to_partition(device: &impl Writes, what: ToPartition, target: &str) -> Result<(), Error> {
     let id = id_of(device, target).await?;
     // copying slow flash may stay silent for a while; the copy's own limit holds
-    let mut stream = device
-        .send_command_with_reply_timeout(
-            path.as_bytes(),
-            |cmd| cmd.attribute(b"number", id.as_bytes()),
-            (),
-            Some(COPY_TIMEOUT),
-        )
-        .await;
     let copied = timeout(COPY_TIMEOUT, async {
-        while let Some(result) = stream.next().await {
-            match result {
-                SimpleResult::Sentence(row) => log::info!("{path} {target}: {row:?}"),
-                SimpleResult::Error(error) => return Err(error.into()),
-                SimpleResult::Trap { message, .. } => {
-                    return Err(Error::Refused(format!("{path}: {message}").into()));
-                }
+        match what {
+            ToPartition::CopyTo => {
+                let copy = PartitionCopyTo {
+                    target: &id,
+                    reply_timeout: COPY_TIMEOUT,
+                };
+                act(device, &copy).await
+            }
+            ToPartition::SaveConfigTo => {
+                let save = PartitionSaveConfigTo {
+                    target: &id,
+                    reply_timeout: COPY_TIMEOUT,
+                };
+                act(device, &save).await
             }
         }
-        Ok(())
     })
     .await;
-    copied.map_err(|_| Error::Refused(format!("{path} {target} not done in time").into()))?
+    let rows = copied
+        .map_err(|_| Error::Refused(format!("{what:?} {target} not done in time").into()))??;
+    for row in rows {
+        log::info!("{what:?} {target}: {row:?}");
+    }
+    Ok(())
 }
 
 /// After an apply the other partition holds what the device runs now: with the same RouterOS
@@ -191,7 +212,7 @@ pub struct PartitionSynced {
 /// Brings the other of two partitions to what the device runs (`PartitionSynced`), so a device
 /// that boots it by itself (RouterBOOT takes it after a boot it thinks failed, as on unsteady
 /// power) runs the same configuration. Nothing where there is no other partition.
-pub(crate) async fn sync_other(device: &RawDevice<SimpleResult>, log: &Log) {
+pub(crate) async fn sync_other(device: &impl Writes, log: &Log) {
     let list = list(device).await;
     let Some(ToSync {
         partition,
@@ -202,7 +223,7 @@ pub(crate) async fn sync_other(device: &RawDevice<SimpleResult>, log: &Log) {
     };
     let running = list.iter().find(|p| p.running).map(|p| p.version.clone());
     let synced = if config_only {
-        to_partition(device, "/partitions/save-config-to", &partition).await
+        to_partition(device, ToPartition::SaveConfigTo, &partition).await
     } else {
         sync_copy(device, &partition, running).await
     };
@@ -234,7 +255,7 @@ fn to_sync(partitions: &[Partition]) -> Option<ToSync> {
 
 /// [`copy_to`] `target`, which then holds the `running` RouterOS.
 async fn sync_copy(
-    device: &RawDevice<SimpleResult>,
+    device: &impl Writes,
     target: &str,
     running: Option<Box<str>>,
 ) -> Result<(), Error> {
@@ -253,31 +274,28 @@ async fn sync_copy(
 }
 
 /// The `.id` of partition `name`, for `number` of `activate` and `copy-to`.
-pub(crate) async fn id_of(device: &RawDevice<SimpleResult>, name: &str) -> Result<Box<str>, Error> {
-    rows(device, "/partitions/print")
+pub(crate) async fn id_of(device: &impl Reads, name: &str) -> Result<Box<str>, Error> {
+    collect_resource::<PartitionsState>(device)
         .await?
         .iter()
-        .find(|row| field(row, "name") == Some(name))
-        .and_then(|row| field(row, ".id"))
-        .map(Box::from)
+        .find(|partition| *partition.name.0 == *name.as_bytes())
+        .map(|partition| String::from_utf8_lossy(&partition.id.encode_ros()).into())
         .ok_or_else(|| Error::Refused(format!("no partition {name}").into()))
 }
 
-async fn files(device: &RawDevice<SimpleResult>) -> Result<Vec<Box<str>>, Error> {
-    Ok(rows(device, "/file/print")
+async fn files(device: &impl Reads) -> Result<Vec<Box<str>>, Error> {
+    Ok(collect_resource::<File>(device)
         .await?
         .iter()
-        .filter_map(|row| field(row, "name").map(Box::from))
+        .map(|file| file.cfg.name.to_string().into())
         .collect())
 }
 
-async fn identity(device: &RawDevice<SimpleResult>) -> Result<Box<str>, Error> {
-    Ok(rows(device, "/system/identity/print")
+async fn identity(device: &impl Reads) -> Result<Box<str>, Error> {
+    Ok(SystemIdentityCfg::fetch(device)
         .await?
-        .first()
-        .and_then(|row| field(row, "name"))
-        .unwrap_or_default()
-        .into())
+        .map(|identity| identity.name.to_string().into())
+        .unwrap_or_default())
 }
 
 /// Splits the flash in [`COUNT`] partitions: the device reformats it and reboots, and is back
@@ -304,17 +322,12 @@ pub async fn repartition(
         files: before_files.len() as u32,
     });
     let sent = Instant::now();
-    let count = COUNT.to_string();
+    let split = Repartition {
+        partitions: COUNT as u8,
+    };
     // the answer, or the connection breaking with the reboot
-    if let Ok(Err(error @ Error::Refused(_))) = timeout(
-        Duration::from_secs(30),
-        command(
-            &device,
-            "/partitions/repartition",
-            &[("partitions", &count)],
-        ),
-    )
-    .await
+    if let Ok(Err(error @ Error::Refused(_))) =
+        timeout(Duration::from_secs(30), act(&device, &split)).await
     {
         return Err(error);
     }
@@ -383,14 +396,10 @@ pub async fn boot_from(
     log.enter(RebootState::Rebooting);
     let uptime = read_state(&device).await?.uptime;
     let id = id_of(&device, name).await?;
-    command(&device, "/partitions/activate", &[("number", &id)]).await?;
+    act(&device, &PartitionActivate { number: &id }).await?;
     let sent = Instant::now();
     // the answer, or the connection breaking with the reboot
-    let _ = timeout(
-        Duration::from_secs(10),
-        command(&device, "/system/reboot", &[]),
-    )
-    .await;
+    let _ = timeout(Duration::from_secs(10), act(&device, &RebootNow)).await;
     drop(device);
     log.emit(Reboot {
         reason: RebootReason::Partition,
@@ -423,6 +432,8 @@ pub async fn boot_from(
 #[cfg(test)]
 mod tests {
     use super::{Partition, ToSync, can_split, other, partition, to_sync};
+    use crate::device::answer::parsed;
+    use mikrotik_model::model::PartitionsState;
 
     fn named(name: &str, active: bool, running: bool) -> Partition {
         Partition {
@@ -487,17 +498,15 @@ mod tests {
     #[test]
     fn reads_lab_cores_partition_and_splits_only_one() {
         // `/partitions/print` on lab-core
-        let row = [
+        let row: PartitionsState = parsed(&[
+            (".id", "*1"),
             ("name", "part0"),
             ("fallback-to", "next"),
             ("version", "RouterOS v7.23.8 2026-10-08 09:46:16"),
             ("size", "128"),
             ("active", "true"),
             ("running", "true"),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.into(), Some(v.into())))
-        .collect();
+        ]);
         let part0 = partition(&row);
         assert_eq!(
             part0,
@@ -517,10 +526,12 @@ mod tests {
         // 16 MiB devices list none
         assert!(!can_split(&[], true));
         // a partition without RouterOS, as a C52iG-5HaxD2HaxD on 7.23.8 lists it
-        let row = [("name", "part1"), ("version", "EMPTY"), ("size", "64")]
-            .into_iter()
-            .map(|(k, v)| (k.into(), Some(v.into())))
-            .collect();
+        let row: PartitionsState = parsed(&[
+            (".id", "*2"),
+            ("name", "part1"),
+            ("version", "EMPTY"),
+            ("size", "64"),
+        ]);
         assert_eq!(partition(&row).version.as_ref(), "");
     }
 }

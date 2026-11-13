@@ -12,9 +12,11 @@
 
 use crate::chr_network::apply::{apply_mutations_via_entry, enable_socks};
 use crate::chr_network::golden_image::GoldenImage;
+use crate::chr_network::node::{identity, login, login_over};
 use crate::chr_network::scenario::boot_scenario;
 use crate::chr_network::vm::{RunningNode, mac_of};
 use crate::chr_network::wait::wait_for_ospf_full;
+use backend::device::access::Session;
 use backend::device::bootstrap::{MacTelnetSetup, set_up};
 use backend::device::ros::cfg::DeviceCfg;
 use backend::device::ros::l2::KeepNameGenerator;
@@ -23,18 +25,20 @@ use backend::topology::builder::TopologyBuilder;
 use backend::topology::{
     Cable, CablePort, Device, DeviceId, Interface, IpAddressData, PhysicalPortId, TopologyHolder,
 };
-use encoding_rs::mem::encode_latin1_lossy;
 use ipnet::IpNet;
 use mikrotik_model::hwconfig::DeviceType;
-use mikrotik_model::model::ReferenceType;
-use mikrotik_model::resource::{ResourceMutation, ResourceMutationOperation, apply_mutation};
-use mikrotik_model::value::KeyValuePair;
-use std::borrow::Cow;
+use mikrotik_model::model::{
+    InterfaceBridgeByName, InterfaceBridgeCfg, InterfaceEthernet, InterfaceListMember, IpAddress,
+    IpAddressById, IpNeighborDiscoverySettingsCfg, ReferenceType, RoutingOspfInterfaceState,
+    RoutingOspfNeighborState,
+};
+use mikrotik_model::resource::{
+    Creatable, KeyedResource, ResourceMutation, SingleResource, apply_mutation, collect_resource,
+};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::time::Duration;
-use tokio_stream::StreamExt;
 
 struct ChainTopology {
     builder: TopologyBuilder,
@@ -184,18 +188,12 @@ async fn bootstrap_node_directly(
         .devices_by_id(device_id)
         .await
         .expect("device not found in topology");
-    let typed_client: mikrotik_model::MikrotikDevice = mikrotik_model::MikrotikDevice::connect(
-        ("127.0.0.1", node.api_port),
-        b"admin",
-        Some(encode_latin1_lossy(password)),
-    )
-    .await?;
+    let client = node.connect_api(password).await?;
     eprintln!("  [{}] fetching current config...", node.name);
     // CHR has no /system/routerboard at all (it's not a physical
     // RouterBOARD), so the board model has to be supplied explicitly rather
     // than detected live - it's the same board this node was booted with.
-    let mut cfg =
-        DeviceCfg::fetch_with_board_model(&typed_client, b"RB750Gr3", &device_access).await?;
+    let mut cfg = DeviceCfg::fetch_with_board_model(&client, b"RB750Gr3", &device_access).await?;
     eprintln!("  [{}] generating target config...", node.name);
     cfg.generate_from(&device_access, KeepNameGenerator)?;
     // as `generate_for`, without `api_networks`: the services come from the device's, which
@@ -261,7 +259,6 @@ async fn bootstrap_node_directly(
         })
         .collect();
 
-    let simple_client = node.connect_api(password).await?;
     for (i, mutation) in sorted.iter().enumerate() {
         eprintln!(
             "  [{}] applying mutation {}/{}: {} {:?}",
@@ -271,7 +268,7 @@ async fn bootstrap_node_directly(
             String::from_utf8_lossy(mutation.resource),
             mutation.operation
         );
-        apply_mutation(&simple_client, mutation).await?;
+        apply_mutation(&client, mutation).await?;
     }
     Ok(())
 }
@@ -376,25 +373,17 @@ async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
             ("a", nodes[&a].api_port),
             ("target", nodes[&target].api_port),
         ] {
-            let c: mikrotik_api::prelude::MikrotikDevice<mikrotik_api::simple::SimpleResult> =
-                mikrotik_api::prelude::MikrotikDevice::connect(
-                    ("127.0.0.1", port),
-                    b"admin",
-                    Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
-                )
-                .await
-                .unwrap();
-            for cmd in [
-                "/routing/ospf/neighbor/print",
-                "/routing/ospf/interface/print",
-                "/interface/ethernet/print",
-            ] {
-                eprintln!("=== {name} {cmd} ===");
-                let mut s = c.send_simple_command(cmd.as_bytes(), ()).await;
-                while let Some(r) = s.next().await {
-                    eprintln!("{r:?}");
-                }
-            }
+            let c = login(port, crate::TEST_PASSWORD).await.unwrap();
+            eprintln!("=== {name} ===");
+            eprintln!(
+                "{:#?}",
+                collect_resource::<RoutingOspfNeighborState>(&c).await
+            );
+            eprintln!(
+                "{:#?}",
+                collect_resource::<RoutingOspfInterfaceState>(&c).await
+            );
+            eprintln!("{:#?}", collect_resource::<InterfaceEthernet>(&c).await);
         }
         panic!("ospf did not converge to Full on both hops in time: {e:#}");
     }
@@ -415,30 +404,22 @@ async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
     // mac-telnet on a's ports to its neighbors and on its ports not in NetBox (the harness's
     // management port ether1 among them), and it lets entry in over the cable
     let mut members = Vec::new();
-    let mut s = a_simple
-        .send_simple_command(b"/interface/list/member/print".as_slice(), ())
-        .await;
-    while let Some(r) = s.next().await {
-        if let mikrotik_api::simple::SimpleResult::Sentence(row) = r {
-            let field = |name| row.get(name).cloned().flatten().unwrap_or_default();
-            assert_eq!(field("list").as_ref(), "maintenance");
-            members.push(field("interface").to_string());
-        }
+    for member in collect_resource::<InterfaceListMember>(&a_simple)
+        .await
+        .expect("list members")
+    {
+        assert_eq!(member.cfg.list.to_string(), "maintenance");
+        members.push(member.cfg.interface.to_string());
     }
     members.sort();
     assert_eq!(members, ["e01", "e04", "e05", "ether2", "ether3"]);
     // neighbor discovery on the same list: without it the generated config left it naming
     // the factory list `LAN` it removes (discovery off)
-    let mut s = a_simple
-        .send_simple_command(b"/ip/neighbor/discovery-settings/print".as_slice(), ())
-        .await;
-    let mut discover = None;
-    while let Some(r) = s.next().await {
-        if let mikrotik_api::simple::SimpleResult::Sentence(row) = r {
-            discover = row.get("discover-interface-list").cloned().flatten();
-        }
-    }
-    assert_eq!(discover.as_deref(), Some("maintenance"));
+    let discovery = IpNeighborDiscoverySettingsCfg::fetch(&a_simple)
+        .await
+        .expect("discovery settings")
+        .expect("discovery settings");
+    assert_eq!(discovery.discover_interface_list.to_string(), "maintenance");
     assert!(
         mac_telnet_login(&nodes[&entry], &mac_of(nodes[&a].index, 1).to_string()).await,
         "no mac-telnet from entry to a over their cable"
@@ -453,17 +434,11 @@ async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
     // same settling behavior for ARP - so retry the known-transient "General
     // SOCKS server failure" against a generous deadline rather than treating
     // it as fatal immediately.
-    let proof_mutation = [ResourceMutation {
-        resource: b"interface/bridge",
-        operation: ResourceMutationOperation::Add,
-        fields: Box::new([KeyValuePair {
-            key: b"name",
-            value: Cow::Borrowed(b"applied-via-ospf-chain"),
-        }]),
-        depends: Box::new([]),
-        provides: Box::new([]),
-        ordering: Default::default(),
-    }];
+    let proof_bridge = InterfaceBridgeCfg {
+        name: PROOF_BRIDGE.into(),
+        ..InterfaceBridgeCfg::default()
+    };
+    let proof_mutation = [proof_bridge.calculate_create()];
     let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
     let mut attempt = 0;
     loop {
@@ -494,21 +469,8 @@ async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
         .connect_api(crate::TEST_PASSWORD)
         .await
         .expect("target api (direct, assertion-only)");
-    let mut stream = target_simple
-        .send_command(
-            b"/interface/bridge/print".as_slice(),
-            |cmd| cmd.query_equal(b"name".as_slice(), b"applied-via-ospf-chain".as_slice()),
-            (),
-        )
-        .await;
-    let mut found = false;
-    while let Some(result) = stream.next().await {
-        if matches!(result, mikrotik_api::simple::SimpleResult::Sentence(_)) {
-            found = true;
-        }
-    }
     assert!(
-        found,
+        has_proof_bridge(&target_simple).await,
         "config applied via entry's SOCKS proxy through a's OSPF route was not found on target"
     );
 
@@ -520,12 +482,13 @@ async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
         31 => ("10.0.22.0", "10.0.22.1/31"),
         _ => ("10.0.22.1", "10.0.22.2/24"),
     };
-    run(
+    let id = address_id(&target_simple, target_address).await;
+    apply_mutation(
         &target_simple,
-        "/ip/address/remove",
-        &[("numbers", &address_id(&target_simple, target_address).await)],
+        &ResourceMutation::remove::<IpAddressById>(&id),
     )
-    .await;
+    .await
+    .expect("address removed");
     drop(target_simple);
     let mut terminal = Terminal::connect(
         ([127, 0, 0, 1], nodes[&a].ssh_port).into(),
@@ -560,83 +523,48 @@ async fn ospf_chain_apply_via_entry(link_len: u8, work_dir: &str) {
                 .open(target_ip, 8728)
                 .await
                 .map_err(|e| e.to_string())?;
-            mikrotik_api::prelude::MikrotikDevice::<mikrotik_api::simple::SimpleResult>::connect_with_stream(
-                stream,
-                b"admin",
-                Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
-            )
-            .await
-            .map_err(|e| e.to_string())
+            login_over(stream, crate::TEST_PASSWORD)
+                .await
+                .map_err(|e| e.to_string())
         };
-        match tokio::time::timeout(Duration::from_secs(15), attempt).await {
-            Ok(Ok(device)) => break device,
-            result if tokio::time::Instant::now() > deadline => {
-                panic!("target not reached through a: {result:?}")
+        let result = tokio::time::timeout(Duration::from_secs(15), attempt)
+            .await
+            .unwrap_or_else(|_| Err("no answer within 15 s".into()));
+        match result {
+            Ok(device) => break device,
+            Err(error) if tokio::time::Instant::now() > deadline => {
+                panic!("target not reached through a: {error}")
             }
-            _ => tokio::time::sleep(Duration::from_secs(2)).await,
+            Err(_) => tokio::time::sleep(Duration::from_secs(2)).await,
         }
     };
-    let mut s = rescued
-        .send_simple_command(b"/system/identity/print".as_slice(), ())
-        .await;
-    while let Some(r) = s.next().await {
-        eprintln!("rescued target: {r:?}");
-    }
+    eprintln!("rescued target: {}", identity(&rescued).await);
     // the rest of its config stays: the bridge applied before is still there
-    let mut stream = rescued
-        .send_command(
-            b"/interface/bridge/print".as_slice(),
-            |cmd| cmd.query_equal(b"name".as_slice(), b"applied-via-ospf-chain".as_slice()),
-            (),
-        )
-        .await;
-    let mut kept = false;
-    while let Some(result) = stream.next().await {
-        kept |= matches!(result, mikrotik_api::simple::SimpleResult::Sentence(_));
-    }
-    assert!(kept, "the rescue changed more than the address");
+    assert!(
+        has_proof_bridge(&rescued).await,
+        "the rescue changed more than the address"
+    );
+}
+
+/// The bridge the apply through the chain adds on target.
+const PROOF_BRIDGE: &str = "applied-via-ospf-chain";
+
+async fn has_proof_bridge(device: &Session) -> bool {
+    InterfaceBridgeByName::fetch(device, &PROOF_BRIDGE.into())
+        .await
+        .expect("bridge read")
+        .is_some()
 }
 
 /// The `.id` of `address` in `/ip/address`.
-async fn address_id(
-    device: &mikrotik_api::prelude::MikrotikDevice<mikrotik_api::simple::SimpleResult>,
-    address: &str,
-) -> String {
-    let mut s = device
-        .send_command(
-            b"/ip/address/print".as_slice(),
-            |cmd| cmd.query_equal(b"address".as_slice(), address.as_bytes()),
-            (),
-        )
-        .await;
-    let mut id = None;
-    while let Some(r) = s.next().await {
-        if let mikrotik_api::simple::SimpleResult::Sentence(row) = r {
-            id = row.get(".id").cloned().flatten();
-        }
-    }
-    id.unwrap_or_else(|| panic!("no address {address}"))
-        .to_string()
-}
-
-/// Runs `command` with `attributes`, printing the answers.
-async fn run(
-    device: &mikrotik_api::prelude::MikrotikDevice<mikrotik_api::simple::SimpleResult>,
-    command: &str,
-    attributes: &[(&str, &str)],
-) {
-    let mut s = device
-        .send_command(
-            command.as_bytes(),
-            |cmd| {
-                attributes.iter().fold(cmd, |cmd, (key, value)| {
-                    cmd.attribute(key.as_bytes(), value.as_bytes())
-                })
-            },
-            (),
-        )
-        .await;
-    while let Some(r) = s.next().await {
-        eprintln!("{command}: {r:?}");
-    }
+async fn address_id(device: &Session, address: &str) -> mikrotik_model::ascii::AsciiString {
+    let address = address.parse().expect("an IPv4 network");
+    collect_resource::<IpAddress>(device)
+        .await
+        .expect("addresses")
+        .into_iter()
+        .find(|entry| entry.cfg.address == address)
+        .unwrap_or_else(|| panic!("no address {address}"))
+        .status
+        .id
 }

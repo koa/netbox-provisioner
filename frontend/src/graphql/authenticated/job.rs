@@ -340,10 +340,31 @@ pub struct ScriptProgress {
     pub marks: String,
 }
 
+/// The radios of a CAPsMAN provisioned again (`CapsmanRadios`).
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum CapsmanRadios {
+    Wifi,
+    Legacy,
+    #[cynic(fallback)]
+    Other(String),
+}
+
+impl CapsmanRadios {
+    /// The RouterOS menu, as the job names it.
+    pub fn menu(&self) -> &str {
+        match self {
+            CapsmanRadios::Wifi => "/interface/wifi/radio",
+            CapsmanRadios::Legacy => "/caps-man/radio",
+            CapsmanRadios::Other(other) => other,
+        }
+    }
+}
+
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
 pub struct RadiosReprovisioned {
-    pub menu: String,
+    pub menu: CapsmanRadios,
     pub count: i32,
     pub error: Option<ErrorInfo>,
 }

@@ -8,10 +8,10 @@ use super::{edges::Lsdb, lsa::Lsa};
 use crate::{
     Error,
     config::CONFIG,
-    device::raw,
     facts::{self, Fact, FactKey, FactKind, Freshness},
     topology::access::{DeviceTarget, device::DeviceAccess},
 };
+use mikrotik_model::{model::RoutingOspfLsaState, resource::collect_resource};
 use std::time::Duration;
 
 /// How old a reading may be: the map asks every few seconds, reading 500 LSAs takes 0.04 s.
@@ -49,11 +49,10 @@ pub async fn read(readers: &[DeviceAccess]) -> Result<Option<LsdbRead>, Error> {
             }
         };
         let ask = async move {
-            let api = accessible.connect_again().await?;
-            Ok(raw::rows(&api, "/routing/ospf/lsa/print")
+            Ok(collect_resource::<RoutingOspfLsaState>(accessible.reader())
                 .await?
-                .into_iter()
-                .filter_map(|row| Lsa::from_row(|key| raw::field(&row, key).map(String::from)))
+                .iter()
+                .filter_map(Lsa::from_state)
                 .collect::<Lsdb>())
         };
         let key = FactKey::new(FactKind::Lsdb, Some(device.id()), "");

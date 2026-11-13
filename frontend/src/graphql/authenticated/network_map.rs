@@ -122,7 +122,8 @@ pub struct MapHealth {
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
 pub struct MapResources {
-    pub uptime: String,
+    /// nanoseconds
+    pub uptime: u64,
     pub cpu_load: i32,
     pub free_memory: WideInt,
     pub total_memory: WideInt,

@@ -15,8 +15,8 @@
 use crate::{
     Error,
     device::{
+        access::act,
         dependency::{PowerChain, RebootLease},
-        raw::{Row, command, field, rows},
         reboot::{
             REBOOT_TIMEOUT, RebootReason, reboot_and_wait, restart_and_wait, wait_until_back,
         },
@@ -30,8 +30,17 @@ use crate::{
 };
 use async_graphql::{Enum, SimpleObject};
 use log::warn;
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
-use mikrotik_model::value::{ParseRosValueResult, RosValue};
+use mikrotik_model::{
+    action::{PackageDowngrade, PackageUninstall, RouterboardUpgrade},
+    command::{Reads, Writes},
+    model::{
+        File, FileByName, IpSshCfg, IpSshPasswordAuthentication,
+        SystemArchitecture as Architecture, SystemPackageState, SystemResourceState,
+        SystemRouterboardState, UserSshKeysState,
+    },
+    resource::{ResourceMutation, SingleResource, Updatable, apply_mutation, collect_resource},
+    value::RosValue,
+};
 use serde::Deserialize;
 use std::{
     cmp::Ordering,
@@ -53,7 +62,7 @@ const REBOOT_SENT_SETTLES: Duration = Duration::from_secs(30);
 #[allow(async_fn_in_trait)]
 pub trait DeviceLink {
     /// A fresh API connection (the device reboots in between).
-    async fn api(&self) -> Result<RawDevice<SimpleResult>, Error>;
+    async fn api(&self) -> Result<crate::device::access::Session, Error>;
     /// Copies a file to the device's root directory.
     /// `progress` gets the bytes sent now and then ([`terminal::upload`](super::terminal::upload)).
     async fn upload(
@@ -231,8 +240,8 @@ impl std::fmt::Display for Version {
 #[derive(Debug, Clone)]
 pub struct DeviceState {
     pub version: Version,
-    /// `/system/resource architecture-name`, e.g. `arm`, `mipsbe`, `x86_64`
-    pub architecture: Box<str>,
+    /// `/system/resource architecture-name`
+    pub architecture: Architecture,
     /// names of the installed packages that aren't disabled
     pub packages: Box<[Box<str>]>,
     /// `(current, upgrade)` RouterBOARD firmware; `None` without RouterBOARD (CHR)
@@ -318,11 +327,14 @@ pub fn next_step(
     newest_v6: &Version,
     wanted: &[Box<str>],
 ) -> Option<UpdateStep> {
-    let arch = state.architecture.as_ref();
+    let arch = state.architecture;
     if state.version.major() < 7 {
         if state.version < *newest_v6 {
             // the bundle contains every RouterOS 6 package
-            let arch = if arch.starts_with("x86") { "x86" } else { arch };
+            let arch = match arch {
+                Architecture::X8664 => "x86",
+                arch => architecture_name(arch),
+            };
             return Some(UpdateStep {
                 version: newest_v6.clone(),
                 files: [format!("routeros-{arch}-{newest_v6}.npk").into()].into(),
@@ -376,20 +388,32 @@ pub fn downgrade_step(state: &DeviceState, target: &Version) -> Result<UpdateSte
         .filter(|p| p.as_ref() != "routeros")
         .cloned()
         .collect();
-    Ok(v7_step(&others, &state.architecture, target, [].into()))
+    Ok(v7_step(&others, state.architecture, target, [].into()))
+}
+
+/// The architecture as RouterOS and MikroTik's package files name it.
+pub(crate) fn architecture_name(architecture: Architecture) -> &'static str {
+    match architecture {
+        Architecture::Arm => "arm",
+        Architecture::Arm64 => "arm64",
+        Architecture::Mipsbe => "mipsbe",
+        Architecture::Tile => "tile",
+        Architecture::X86 => "x86",
+        Architecture::X8664 => "x86_64",
+        Architecture::Mmips => "mmips",
+    }
 }
 
 fn v7_step(
     wanted: &[Box<str>],
-    arch: &str,
+    arch: Architecture,
     version: &Version,
     uninstall: Box<[Box<str>]>,
 ) -> UpdateStep {
     // x86 packages carry no architecture
-    let suffix = if arch.starts_with("x86") {
-        String::new()
-    } else {
-        format!("-{arch}")
+    let suffix = match arch {
+        Architecture::X86 | Architecture::X8664 => String::new(),
+        arch => format!("-{}", architecture_name(arch)),
     };
     UpdateStep {
         version: version.clone(),
@@ -409,152 +433,149 @@ fn v7_step(
 /// (sat-switch, 7.23.8: "ssh login refused" with a key for `admin`). Returns the setting and the
 /// value to put back afterwards ([`restore_password_login`]); `log` hears of both.
 pub(crate) async fn allow_password_login(
-    device: &RawDevice<SimpleResult>,
+    device: &impl Writes,
     log: Option<&Log>,
 ) -> Result<Option<SshRelaxed>, Error> {
-    let ssh = rows(device, "/ip/ssh/print").await?;
-    let Some(ssh) = ssh.first() else {
+    let Some(ssh) = IpSshCfg::fetch(device).await? else {
         return Ok(None);
     };
-    let (setting, on, off) = if field(ssh, "always-allow-password-login") == Some("false") {
-        ("always-allow-password-login", "yes", "no")
-    } else if field(ssh, "password-authentication") == Some("yes-if-no-key") {
-        ("password-authentication", "yes", "yes-if-no-key")
+    let relaxed = if ssh.always_allow_password_login == Some(false) {
+        SshRelaxed::AlwaysAllowPasswordLogin
+    } else if ssh.password_authentication == Some(IpSshPasswordAuthentication::YesIfNoKey) {
+        SshRelaxed::PasswordAuthentication
     } else {
         return Ok(None);
     };
-    if rows(device, "/user/ssh-keys/print").await?.is_empty() {
+    if collect_resource::<UserSshKeysState>(device)
+        .await?
+        .is_empty()
+    {
         return Ok(None);
     }
-    set_ssh(device, setting, on).await?;
-    if let Some(log) = log {
-        log.emit(SshPasswordLogin {
-            setting: setting.into(),
-            value: on.into(),
-            restored: false,
-        });
-    }
-    Ok(Some(SshRelaxed {
-        setting,
-        value: off,
-    }))
+    relaxed.set(device, true, log).await?;
+    Ok(Some(relaxed))
 }
 
 /// A setting of `/ip/ssh` [`allow_password_login`] switched.
-pub(crate) struct SshRelaxed {
-    setting: &'static str,
-    /// the value it had
-    value: &'static str,
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum SshRelaxed {
+    /// `always-allow-password-login` (up to 7.20), off before
+    AlwaysAllowPasswordLogin,
+    /// `password-authentication` (7.24), `yes-if-no-key` before
+    PasswordAuthentication,
+}
+
+impl SshRelaxed {
+    fn setting(self) -> &'static str {
+        match self {
+            SshRelaxed::AlwaysAllowPasswordLogin => "always-allow-password-login",
+            SshRelaxed::PasswordAuthentication => "password-authentication",
+        }
+    }
+    /// Switches the setting on (password logins allowed) or back; `log` hears of it.
+    async fn set(self, device: &impl Writes, on: bool, log: Option<&Log>) -> Result<(), Error> {
+        let current = IpSshCfg::fetch(device)
+            .await?
+            .ok_or(Error::MissingDeviceState("/ip/ssh"))?;
+        let mut target = current.clone();
+        let value = match (self, on) {
+            (SshRelaxed::AlwaysAllowPasswordLogin, on) => {
+                target.always_allow_password_login = Some(on);
+                if on { "yes" } else { "no" }
+            }
+            (SshRelaxed::PasswordAuthentication, true) => {
+                target.password_authentication = Some(IpSshPasswordAuthentication::Yes);
+                "yes"
+            }
+            (SshRelaxed::PasswordAuthentication, false) => {
+                target.password_authentication = Some(IpSshPasswordAuthentication::YesIfNoKey);
+                "yes-if-no-key"
+            }
+        };
+        apply_mutation(device, &target.calculate_update(&current)).await?;
+        if let Some(log) = log {
+            log.emit(SshPasswordLogin {
+                setting: self.setting().into(),
+                value: value.into(),
+                restored: !on,
+            });
+        }
+        Ok(())
+    }
 }
 
 /// Puts back what [`allow_password_login`] switched.
 pub(crate) async fn restore_password_login(
-    device: &RawDevice<SimpleResult>,
+    device: &impl Writes,
     relaxed: Option<SshRelaxed>,
     log: Option<&Log>,
 ) -> Result<(), Error> {
-    let Some(SshRelaxed { setting, value }) = relaxed else {
-        return Ok(());
-    };
-    set_ssh(device, setting, value).await?;
-    if let Some(log) = log {
-        log.emit(SshPasswordLogin {
-            setting: setting.into(),
-            value: value.into(),
-            restored: true,
-        });
+    match relaxed {
+        Some(relaxed) => relaxed.set(device, false, log).await,
+        None => Ok(()),
     }
-    Ok(())
-}
-
-async fn set_ssh(
-    device: &RawDevice<SimpleResult>,
-    setting: &str,
-    value: &str,
-) -> Result<(), Error> {
-    command(device, "/ip/ssh/set", &[(setting, value)]).await?;
-    Ok(())
 }
 
 /// Removes `files` from the device's root directory, where they are.
-async fn remove_files(device: &RawDevice<SimpleResult>, files: &[Box<str>]) -> Result<(), Error> {
-    for row in rows(device, "/file/print").await? {
-        let (Some(name), Some(id)) = (field(&row, "name"), field(&row, ".id")) else {
-            continue;
-        };
-        if !files.iter().any(|file| file.as_ref() == name) {
-            continue;
+async fn remove_files(device: &impl Writes, files: &[Box<str>]) -> Result<(), Error> {
+    for file in collect_resource::<File>(device).await? {
+        let name = file.cfg.name;
+        if files.iter().any(|f| f.as_bytes() == &*name.0) {
+            apply_mutation(device, &ResourceMutation::remove::<FileByName>(&name)).await?;
         }
-        command(device, "/file/remove", &[(".id", id)]).await?;
     }
     Ok(())
 }
 
 /// Marks the packages for removal at the next reboot.
-async fn uninstall(device: &RawDevice<SimpleResult>, packages: &[Box<str>]) -> Result<(), Error> {
-    for row in rows(device, "/system/package/print").await? {
-        let (Some(name), Some(id)) = (field(&row, "name"), field(&row, ".id")) else {
-            continue;
-        };
-        if !packages.iter().any(|p| p.as_ref() == name) {
+async fn uninstall(device: &impl Writes, packages: &[Box<str>]) -> Result<(), Error> {
+    for package in collect_resource::<SystemPackageState>(device).await? {
+        if !packages.iter().any(|p| p.as_bytes() == &*package.name.0) {
             continue;
         }
-        command(device, "/system/package/uninstall", &[("numbers", id)]).await?;
+        let number = package.id.encode_ros();
+        let number = String::from_utf8_lossy(&number);
+        act(device, &PackageUninstall { number: &number }).await?;
     }
     Ok(())
 }
 
-pub async fn read_state(device: &RawDevice<SimpleResult>) -> Result<DeviceState, Error> {
-    let resource = rows(device, "/system/resource/print").await?;
-    let packages = rows(device, "/system/package/print").await?;
+pub async fn read_state(device: &impl Reads) -> Result<DeviceState, Error> {
+    let resource = SystemResourceState::fetch(device).await?;
+    let packages = collect_resource::<SystemPackageState>(device).await?;
     // CHR has no RouterBOARD; the command fails there
-    let routerboard = rows(device, "/system/routerboard/print")
-        .await
-        .ok()
-        .and_then(|rows| rows.into_iter().next());
-    state_from(resource.first(), &packages, routerboard.as_ref())
+    let routerboard = SystemRouterboardState::fetch(device).await.ok().flatten();
+    state_from(resource.as_ref(), &packages, routerboard.as_ref())
 }
 
-/// [`DeviceState`] from the rows of `/system/resource`, `/system/package` and
-/// `/system/routerboard`, for who reads them for more anyway.
+/// [`DeviceState`] from `/system/resource`, `/system/package` and `/system/routerboard`, for who
+/// reads them for more anyway.
 pub(crate) fn state_from(
-    resource: Option<&Row>,
-    packages: &[Row],
-    routerboard: Option<&Row>,
+    resource: Option<&SystemResourceState>,
+    packages: &[SystemPackageState],
+    routerboard: Option<&SystemRouterboardState>,
 ) -> Result<DeviceState, Error> {
     let resource = resource.ok_or(Error::MissingDeviceState("/system/resource"))?;
-    let version = field(resource, "version")
-        .and_then(Version::parse)
+    let version = Version::parse(&resource.version.to_string())
         .ok_or(Error::MissingDeviceState("version"))?;
-    let architecture = field(resource, "architecture-name")
-        .unwrap_or_default()
-        .into();
-    let uptime = field(resource, "uptime")
-        .and_then(|uptime| match Duration::parse_ros(uptime.as_bytes()) {
-            ParseRosValueResult::Value(uptime) => Some(uptime),
-            _ => None,
-        })
-        .ok_or(Error::MissingDeviceState("uptime"))?;
     let packages = packages
         .iter()
-        .filter(|row| field(row, "disabled") != Some("true"))
-        .filter_map(|row| field(row, "name").map(Box::from))
+        .filter(|package| !package.disabled)
+        .map(|package| package.name.to_string().into())
         .collect();
-    let firmware = routerboard.and_then(|row| {
-        Some((
-            field(row, "current-firmware")?.into(),
-            field(row, "upgrade-firmware")?.into(),
-        ))
+    let firmware = routerboard.map(|routerboard| {
+        (
+            routerboard.current_firmware.to_string().into(),
+            routerboard.upgrade_firmware.to_string().into(),
+        )
     });
     Ok(DeviceState {
         version,
-        architecture,
+        architecture: resource.architecture_name,
         packages,
         firmware,
-        model: routerboard
-            .and_then(|row| field(row, "model"))
-            .map(Box::from),
-        uptime,
+        model: routerboard.map(|routerboard| routerboard.model.to_string().into()),
+        uptime: resource.uptime,
     })
 }
 
@@ -702,7 +723,7 @@ pub async fn update_keeping(
     let from: Box<str> = state.version.to_string().into();
     log.emit(UpdateStart {
         version: from.clone(),
-        architecture: state.architecture.clone(),
+        architecture: architecture_name(state.architecture).into(),
         packages: state.packages.clone(),
     });
     let newest_v6 = if state.version.major() < 7 {
@@ -912,7 +933,7 @@ async fn firmware_and_done(
         log.enter(UpdateState::Firmware);
         log.emit(upgrade_event(false));
         // the firmware loads at the next boot, whenever that is
-        rows(&link.api().await?, "/system/routerboard/upgrade").await?;
+        act(&link.api().await?, &RouterboardUpgrade).await?;
         log.enter(UpdateState::WaitingToRebootFirmware);
         let rebooting = log.unless_cancelled(power.rebooting(log)).await?;
         log.enter(UpdateState::RebootingFirmware);
@@ -956,7 +977,7 @@ pub async fn downgrade(
     let from: Box<str> = state.version.to_string().into();
     log.emit(UpdateStart {
         version: from.clone(),
-        architecture: state.architecture.clone(),
+        architecture: architecture_name(state.architecture).into(),
         packages: state.packages.clone(),
     });
     let step = downgrade_step(&state, target)?;
@@ -974,14 +995,13 @@ pub async fn downgrade(
     });
     let rebooting = put_packages(link, power, &step, log).await?;
     log.enter(UpdateState::Rebooting);
-    let path = "/system/package/downgrade";
     let restarted = restart_and_wait(
         link,
         rebooting,
         log,
         RebootReason::Downgrade,
         REBOOT_TIMEOUT,
-        path,
+        &PackageDowngrade,
         |state| (state.version == *target).then(|| state.clone()),
     )
     .await;
@@ -1122,11 +1142,11 @@ async fn put_packages(
             let expected = data.len().to_string();
             let deadline = Instant::now() + Duration::from_secs(60);
             loop {
-                let size = rows(&device, "/file/print")
+                let size = collect_resource::<File>(&device)
                     .await?
                     .iter()
-                    .find(|row| field(row, "name") == Some(file))
-                    .and_then(|row| field(row, "size").map(String::from));
+                    .find(|entry| *entry.cfg.name.0 == *file.as_bytes())
+                    .and_then(|entry| entry.status.size.map(|size| size.to_string()));
                 if size.as_deref() == Some(&expected) {
                     break;
                 }
@@ -1200,17 +1220,17 @@ async fn not_updated(link: &impl DeviceLink, partition: &str, error: Error, log:
 
 #[cfg(test)]
 mod tests {
-    use super::{DeviceState, UpdateStep, Version, downgrade_step, next_step};
+    use super::{Architecture, DeviceState, UpdateStep, Version, downgrade_step, next_step};
     use crate::Error;
     use std::time::Duration;
 
     fn v(text: &str) -> Version {
         Version::parse(text).unwrap()
     }
-    fn state(version: &str, arch: &str, packages: &[&str]) -> DeviceState {
+    fn state(version: &str, arch: Architecture, packages: &[&str]) -> DeviceState {
         DeviceState {
             version: v(version),
-            architecture: arch.into(),
+            architecture: arch,
             packages: names(packages),
             firmware: None,
             model: None,
@@ -1243,7 +1263,7 @@ mod tests {
         let wireless = names(&["wireless"]);
         assert_eq!(
             next_step(
-                &state("7.15.3", "arm", &["routeros", "wireless"]),
+                &state("7.15.3", Architecture::Arm, &["routeros", "wireless"]),
                 &target,
                 &v6,
                 &wireless
@@ -1256,7 +1276,7 @@ mod tests {
         );
         assert_eq!(
             next_step(
-                &state("7.24.5", "x86_64", &["routeros"]),
+                &state("7.24.5", Architecture::X8664, &["routeros"]),
                 &v("7.25"),
                 &v6,
                 &[]
@@ -1266,25 +1286,45 @@ mod tests {
             names(&["routeros-7.25.npk"])
         );
         assert_eq!(
-            next_step(&state("7.20.8", "arm", &["routeros"]), &target, &v6, &[]),
+            next_step(
+                &state("7.20.8", Architecture::Arm, &["routeros"]),
+                &target,
+                &v6,
+                &[]
+            ),
             None
         );
         // newer than the channel: no downgrade
         assert_eq!(
-            next_step(&state("7.21", "arm", &["routeros"]), &target, &v6, &[]),
+            next_step(
+                &state("7.21", Architecture::Arm, &["routeros"]),
+                &target,
+                &v6,
+                &[]
+            ),
             None
         );
         let sxt = ["system", "wireless", "routing", "dhcp", "security"];
         assert_eq!(
-            next_step(&state("6.45.1", "mipsbe", &sxt), &target, &v6, &wireless)
-                .unwrap()
-                .files,
+            next_step(
+                &state("6.45.1", Architecture::Mipsbe, &sxt),
+                &target,
+                &v6,
+                &wireless
+            )
+            .unwrap()
+            .files,
             names(&["routeros-mipsbe-6.49.19.npk"])
         );
         assert_eq!(
-            next_step(&state("6.49.19", "mipsbe", &sxt), &target, &v6, &wireless)
-                .unwrap()
-                .files,
+            next_step(
+                &state("6.49.19", Architecture::Mipsbe, &sxt),
+                &target,
+                &v6,
+                &wireless
+            )
+            .unwrap()
+            .files,
             names(&["routeros-7.20.8-mipsbe.npk", "wireless-7.20.8-mipsbe.npk"])
         );
     }
@@ -1297,7 +1337,7 @@ mod tests {
         // an unused radio package goes with the update
         assert_eq!(
             next_step(
-                &state("7.18.2", "arm", &["routeros", "wifi-qcom-ac"]),
+                &state("7.18.2", Architecture::Arm, &["routeros", "wifi-qcom-ac"]),
                 &target,
                 &v6,
                 &[]
@@ -1311,7 +1351,7 @@ mod tests {
         // at the version already: only the missing package, and what isn't needed goes
         assert_eq!(
             next_step(
-                &state("7.20.8", "arm", &["routeros", "wireless"]),
+                &state("7.20.8", Architecture::Arm, &["routeros", "wireless"]),
                 &target,
                 &v6,
                 &wifi
@@ -1324,7 +1364,7 @@ mod tests {
         );
         assert_eq!(
             next_step(
-                &state("7.20.8", "arm", &["routeros", "wifi-qcom-ac"]),
+                &state("7.20.8", Architecture::Arm, &["routeros", "wifi-qcom-ac"]),
                 &target,
                 &v6,
                 &wifi
@@ -1337,7 +1377,7 @@ mod tests {
     fn a_downgrade_takes_the_packages_the_device_runs() {
         assert_eq!(
             downgrade_step(
-                &state("7.25", "arm", &["routeros", "wifi-qcom-ac"]),
+                &state("7.25", Architecture::Arm, &["routeros", "wifi-qcom-ac"]),
                 &v("7.23.8")
             )
             .unwrap(),
@@ -1348,9 +1388,12 @@ mod tests {
             }
         );
         assert_eq!(
-            downgrade_step(&state("7.24.5", "x86_64", &["routeros"]), &v("7.23.8"))
-                .unwrap()
-                .files,
+            downgrade_step(
+                &state("7.24.5", Architecture::X8664, &["routeros"]),
+                &v("7.23.8")
+            )
+            .unwrap()
+            .files,
             names(&["routeros-7.23.8.npk"])
         );
         // only to an older RouterOS 7
@@ -1362,7 +1405,10 @@ mod tests {
         ] {
             assert!(
                 matches!(
-                    downgrade_step(&state(running, "arm", &["routeros"]), &v(target)),
+                    downgrade_step(
+                        &state(running, Architecture::Arm, &["routeros"]),
+                        &v(target)
+                    ),
                     Err(Error::NoDowngrade { .. })
                 ),
                 "{running} to {target}"

@@ -7,10 +7,7 @@
 //! Whether a port takes PoE in RouterOS doesn't report, and of other devices nothing is known.
 use crate::{
     Error,
-    device::{
-        neighbors::{PortRef, port_named},
-        raw::{Row, command, field, rows},
-    },
+    device::neighbors::{PortRef, Seen, port_named},
     topology::{
         PoeMode,
         access::device::DeviceAccess,
@@ -18,8 +15,17 @@ use crate::{
         natural::naturalize_interface,
     },
 };
+use InterfaceEthernetPoePoeOutStatus as Status;
 use async_graphql::{Enum, SimpleObject};
-use mikrotik_api::{prelude::MikrotikDevice as RawDevice, simple::SimpleResult};
+use mikrotik_model::{
+    command::Reads,
+    model::{
+        InterfaceEthernet, InterfaceEthernetPoeMonitor, InterfaceEthernetPoePoeOutStatus,
+        IpNeighborState,
+    },
+    resource::{collect_monitor_once, collect_resource},
+    value::RosValue,
+};
 use std::collections::HashMap;
 
 /// A port the device reports feeding something (`poe-out-status=powered-on`), and the port fed
@@ -35,48 +41,69 @@ pub struct PoeObserved {
 /// What the device reports of its Ethernet ports and their PoE out.
 #[derive(Debug, Clone, Default)]
 pub struct PoePorts {
-    /// `/interface/ethernet/print`: a port with PoE out has `poe-out`
-    pub ethernet: Box<[Row]>,
-    /// `/interface/ethernet/poe/monitor` of those ports
-    pub monitor: Box<[Row]>,
+    /// the Ethernet ports (`/interface/ethernet`)
+    pub ethernet: Box<[EthernetPort]>,
+    /// `/interface/ethernet/poe/monitor` of those with PoE out
+    pub monitor: Box<[InterfaceEthernetPoeMonitor]>,
+}
+
+/// An Ethernet port of the device.
+#[derive(Debug, Clone)]
+pub struct EthernetPort {
+    pub name: Box<str>,
+    /// its factory name, NetBox's
+    pub default_name: Box<str>,
+    /// it has PoE out (`poe-out`)
+    pub poe_out: bool,
+}
+
+impl From<&InterfaceEthernet> for EthernetPort {
+    fn from(port: &InterfaceEthernet) -> Self {
+        EthernetPort {
+            name: port.cfg.name.to_string().into(),
+            default_name: port.status.default_name.to_string().into(),
+            poe_out: port.cfg.poe_out.is_some(),
+        }
+    }
+}
+
+/// `poe-out-status` as RouterOS names it.
+pub(crate) fn status_text(status: &InterfaceEthernetPoePoeOutStatus) -> Box<str> {
+    String::from_utf8_lossy(&status.encode_ros()).into()
 }
 
 /// Reads the Ethernet ports and the state of their PoE out.
-pub async fn read_ports(client: &RawDevice<SimpleResult>) -> Result<PoePorts, Error> {
-    let ethernet = rows(client, "/interface/ethernet/print").await?;
+pub async fn read_ports(client: &impl Reads) -> Result<PoePorts, Error> {
+    let ethernet = collect_resource::<InterfaceEthernet>(client).await?;
+    // a port's entry in `/interface/ethernet/poe` has the port's id (lab-np2, 7.23.8)
     let with_poe = ethernet
         .iter()
-        .filter(|row| field(row, "poe-out").is_some())
-        .filter_map(|row| field(row, "name"))
+        .filter(|port| port.cfg.poe_out.is_some())
+        .map(|port| port.status.id)
         .collect::<Vec<_>>();
-    let monitor = match with_poe.is_empty() {
-        true => Vec::new(),
-        false => {
-            command(
-                client,
-                "/interface/ethernet/poe/monitor",
-                &[("numbers", &with_poe.join(",")), ("once", "")],
-            )
-            .await?
-        }
-    };
+    let monitor =
+        collect_monitor_once::<InterfaceEthernetPoeMonitor>(with_poe.into_iter(), client).await?;
     Ok(PoePorts {
-        ethernet: ethernet.into(),
-        monitor: monitor.into(),
+        ethernet: ethernet.iter().map(EthernetPort::from).collect(),
+        monitor,
     })
 }
 
 /// Reads which ports of the device feed something now, and what NetBox and the neighbors say is
 /// at their other end.
 pub async fn observed(
-    client: &RawDevice<SimpleResult>,
+    client: &impl Reads,
     device: &DeviceAccess,
 ) -> Result<Vec<PoeObserved>, Error> {
     let ports = read_ports(client).await?;
     if ports.monitor.is_empty() {
         return Ok(Vec::new());
     }
-    let neighbors = rows(client, "/ip/neighbor/print").await?;
+    let neighbors = collect_resource::<IpNeighborState>(client)
+        .await?
+        .iter()
+        .map(Seen::from)
+        .collect::<Vec<_>>();
     Ok(compare(device, &ports.ethernet, &ports.monitor, &neighbors))
 }
 
@@ -117,7 +144,7 @@ pub struct Feeding {
     pub port: InterfaceRef,
     pub mode: Option<PoeMode>,
     /// `poe-out-status` as the device reports it
-    pub status: Option<Box<str>>,
+    pub status: Option<InterfaceEthernetPoePoeOutStatus>,
     /// `poe-out-power`, watts; only while `status` is `powered-on`
     pub power: Option<f64>,
     /// the port at its cable's far end, if NetBox has one
@@ -135,49 +162,40 @@ pub fn feeding(device: &DeviceAccess, ports: &PoePorts) -> Vec<Feeding> {
         .filter(|interface| interface.is_ethernet() && interface.external_port().is_some())
         .filter_map(|interface| {
             let mode = interface.poe();
-            let row = ports
+            let port = ports
                 .ethernet
                 .iter()
-                .find(|row| field(row, "default-name") == Some(interface.name()))?;
-            let status = field(row, "name").and_then(|name| {
-                ports
-                    .monitor
-                    .iter()
-                    .find(|m| field(m, "name") == Some(name))
-                    .and_then(|m| field(m, "poe-out-status"))
-            });
-            let power = field(row, "name").and_then(|name| {
-                ports
-                    .monitor
-                    .iter()
-                    .find(|m| field(m, "name") == Some(name))
-                    .and_then(|m| field(m, "poe-out-power"))
-                    .and_then(|v| v.parse().ok())
-            });
+                .find(|port| *port.default_name == *interface.name())?;
+            let reading = ports
+                .monitor
+                .iter()
+                .find(|m| *m.name.0 == *port.name.as_bytes());
+            let status = reading.map(|m| m.poe_out_status);
+            let power = reading.and_then(|m| m.poe_out_power);
             let far = interface.connected_interfaces().into_iter().next();
-            if mode.is_none() && status != Some("powered-on") {
+            if mode.is_none() && status != Some(Status::PoweredOn) {
                 return None;
             }
-            let problem = match (mode, field(row, "poe-out").is_some(), status) {
+            let problem = match (mode, port.poe_out, status) {
                 (Some(PoeMode::Pse), false, _) => Some(PoeProblem::NoPoeOut),
-                (Some(PoeMode::Pse), true, Some("waiting-for-load")) if far.is_some() => {
+                (Some(PoeMode::Pse), true, Some(Status::WaitingForLoad)) if far.is_some() => {
                     Some(PoeProblem::NoLoad)
                 }
-                (Some(PoeMode::Pse), true, Some("powered-on"))
+                (Some(PoeMode::Pse), true, Some(Status::PoweredOn))
                     if far
                         .as_ref()
                         .is_some_and(|far| far.poe() != Some(PoeMode::Pd)) =>
                 {
                     Some(PoeProblem::PdMissing)
                 }
-                (Some(PoeMode::Pd), _, Some("powered-on")) => Some(PoeProblem::FeedsInstead),
-                (None, _, Some("powered-on")) => Some(PoeProblem::Undocumented),
+                (Some(PoeMode::Pd), _, Some(Status::PoweredOn)) => Some(PoeProblem::FeedsInstead),
+                (None, _, Some(Status::PoweredOn)) => Some(PoeProblem::Undocumented),
                 _ => None,
             };
             Some(Feeding {
                 port: interface_ref(interface),
                 mode,
-                status: status.map(Box::from),
+                status,
                 power,
                 far: far.as_ref().map(interface_ref),
                 problem,
@@ -198,7 +216,7 @@ pub fn mismatches(device: &DeviceAccess, ports: &PoePorts) -> Vec<PoeMismatch> {
             Some(problem) => Some(PoeMismatch {
                 port: f.port,
                 problem,
-                status: f.status,
+                status: f.status.as_ref().map(status_text),
             }),
         })
         .collect()
@@ -208,20 +226,21 @@ pub fn mismatches(device: &DeviceAccess, ports: &PoePorts) -> Vec<PoeMismatch> {
 /// `monitor` from the PoE monitor, `neighbors` from `/ip/neighbor/print`.
 fn compare(
     device: &DeviceAccess,
-    ethernet: &[Row],
-    monitor: &[Row],
-    neighbors: &[Row],
+    ethernet: &[EthernetPort],
+    monitor: &[InterfaceEthernetPoeMonitor],
+    neighbors: &[Seen],
 ) -> Vec<PoeObserved> {
     let default_names = ethernet
         .iter()
-        .filter_map(|row| Some((field(row, "name")?, field(row, "default-name")?)))
+        .map(|port| (&*port.name, &*port.default_name))
         .collect::<HashMap<_, _>>();
     let devices = device.topology().list_devices().collect::<Vec<_>>();
     let mut observed: Vec<PoeObserved> = monitor
         .iter()
-        .filter(|row| field(row, "poe-out-status") == Some("powered-on"))
-        .filter_map(|row| field(row, "name"))
+        .filter(|m| m.poe_out_status == Status::PoweredOn)
+        .map(|m| m.name.to_string())
         .map(|name| {
+            let name = name.as_str();
             let default_name = default_names.get(name).copied().unwrap_or(name);
             let interface = device
                 .interfaces()
@@ -233,13 +252,10 @@ fn compare(
             let seen = || {
                 neighbors
                     .iter()
-                    .filter(|row| {
-                        field(row, "interface").is_some_and(|i| i.split(',').any(|i| i == name))
-                    })
-                    .find_map(|row| {
-                        let identity = field(row, "identity")?;
-                        let far_device = devices.iter().find(|d| d.name() == identity)?;
-                        port_named(far_device, field(row, "interface-name")?)
+                    .filter(|seen| seen.interface.split(',').any(|i| i == name))
+                    .find_map(|seen| {
+                        let far_device = devices.iter().find(|d| d.name() == &*seen.identity)?;
+                        port_named(far_device, &seen.interface_name)
                     })
             };
             let (far, from_neighbor) = match cabled {
@@ -262,6 +278,13 @@ fn compare(
         .collect();
     observed.sort_by_cached_key(|o| naturalize_interface(&o.port.name));
     observed
+}
+
+/// A reading of the PoE monitor from the fields RouterOS reports (`poe-out` `auto-on` unless
+/// given), for tests.
+#[cfg(test)]
+pub(crate) fn monitor_reading(fields: &[(&str, &str)]) -> InterfaceEthernetPoeMonitor {
+    crate::device::answer::parsed_with(fields, &[("poe-out", "auto-on")])
 }
 
 #[cfg(test)]
@@ -299,11 +322,15 @@ mod test {
         );
         id
     }
-    fn row(fields: &[(&str, &str)]) -> Row {
-        fields
-            .iter()
-            .map(|(k, v)| (Box::from(*k), Some(Box::from(*v))))
-            .collect()
+    fn ethernet(name: &str, default_name: &str, poe_out: bool) -> EthernetPort {
+        EthernetPort {
+            name: name.into(),
+            default_name: default_name.into(),
+            poe_out,
+        }
+    }
+    fn status(name: &str, status: &str) -> InterfaceEthernetPoeMonitor {
+        monitor_reading(&[("name", name), ("poe-out-status", status)])
     }
 
     /// `sw` feeds on `ether2` (renamed, cabled to `ap` in NetBox) and `ether3` (no cable, `cam`
@@ -331,32 +358,21 @@ mod test {
         let topology = Arc::new(builder.build());
         let sw = topology.get_device_by_id(&sw).unwrap();
         let ethernet = [
-            row(&[
-                ("name", "e02-ap"),
-                ("default-name", "ether2"),
-                ("poe-out", "auto-on"),
-            ]),
-            row(&[
-                ("name", "ether3"),
-                ("default-name", "ether3"),
-                ("poe-out", "auto-on"),
-            ]),
-            row(&[
-                ("name", "ether4"),
-                ("default-name", "ether4"),
-                ("poe-out", "auto-on"),
-            ]),
+            ethernet("e02-ap", "ether2", true),
+            ethernet("ether3", "ether3", true),
+            ethernet("ether4", "ether4", true),
         ];
         let monitor = [
-            row(&[("name", "e02-ap"), ("poe-out-status", "powered-on")]),
-            row(&[("name", "ether3"), ("poe-out-status", "powered-on")]),
-            row(&[("name", "ether4"), ("poe-out-status", "waiting-for-load")]),
+            status("e02-ap", "powered-on"),
+            status("ether3", "powered-on"),
+            status("ether4", "waiting-for-load"),
         ];
-        let neighbors = [row(&[
-            ("interface", "ether3,bridge"),
-            ("identity", "cam"),
-            ("interface-name", "eth0"),
-        ])];
+        let neighbors = [Seen {
+            interface: "ether3,bridge".into(),
+            identity: "cam".into(),
+            interface_name: "eth0".into(),
+            board: "".into(),
+        }];
         let observed = compare(&sw, &ethernet, &monitor, &neighbors);
         let seen = observed
             .iter()
@@ -420,17 +436,10 @@ mod test {
         }
         let topology = Arc::new(builder.build());
         let sw = topology.get_device_by_id(&sw).unwrap();
-        let with_poe = |name: &str, renamed: &str| {
-            row(&[
-                ("name", renamed),
-                ("default-name", name),
-                ("poe-out", "auto-on"),
-            ])
-        };
-        let status = |name: &str, status: &str| row(&[("name", name), ("poe-out-status", status)]);
+        let with_poe = |name: &str, renamed: &str| ethernet(renamed, name, true);
         let ports_read = PoePorts {
             ethernet: vec![
-                row(&[("name", "ether2"), ("default-name", "ether2")]),
+                ethernet("ether2", "ether2", false),
                 with_poe("ether3", "e03-cam"),
                 with_poe("ether4", "ether4"),
                 with_poe("ether5", "ether5"),
@@ -473,14 +482,7 @@ mod test {
         builder.interfaces.get_mut(&modeled).unwrap().poe = Some(PoeMode::Pse);
         let topology = Arc::new(builder.build());
         let sw = topology.get_device_by_id(&sw).unwrap();
-        let with_poe = |name: &str| {
-            row(&[
-                ("name", name),
-                ("default-name", name),
-                ("poe-out", "auto-on"),
-            ])
-        };
-        let status = |name: &str, status: &str| row(&[("name", name), ("poe-out-status", status)]);
+        let with_poe = |name: &str| ethernet(name, name, true);
         let ports = PoePorts {
             ethernet: vec![with_poe("ether2"), with_poe("ether3")].into(),
             monitor: vec![

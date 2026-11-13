@@ -9,9 +9,11 @@
 //! point to point, and QEMU's multicast sockets would need the host's real network.
 
 use crate::chr_network::default_route::apply_directly;
+use crate::chr_network::node::{add, set_keyed};
 use crate::chr_network::scenario::boot_scenario;
 use crate::chr_network::vm::RunningNode;
 use crate::chr_network::wait::wait_until;
+use backend::device::access::Session;
 use backend::device::ros::cfg::DeviceCfg;
 use backend::device::ros::l2::KeepNameGenerator;
 use backend::topology::builder::TopologyBuilder;
@@ -19,14 +21,17 @@ use backend::topology::{
     Cable, CablePort, Device, DeviceId, DeviceRole, Interface, IpAddressData, PhysicalPortId,
     TopologyHolder,
 };
-use encoding_rs::mem::encode_latin1_lossy;
-use mikrotik_api::prelude::MikrotikDevice;
-use mikrotik_api::simple::SimpleResult;
 use mikrotik_model::hwconfig::DeviceType;
-use std::collections::HashMap;
+use mikrotik_model::model::{
+    InterfaceBridgeCfg, InterfaceBridgePortCfg, InterfaceEthernetByDefaultName, OspfInterfaceState,
+    OspfNeighborState, RoutingOspfInterfaceState, RoutingOspfInterfaceTemplate,
+    RoutingOspfInterfaceTemplateById, RoutingOspfNeighborState,
+};
+use mikrotik_model::resource::collect_resource;
+use std::collections::{BTreeSet, HashMap};
+use std::net::Ipv4Addr;
 use std::path::Path;
 use std::time::Duration;
-use tokio_stream::StreamExt;
 
 struct Segment {
     builder: TopologyBuilder,
@@ -124,57 +129,49 @@ fn build() -> Segment {
     }
 }
 
-async fn run(
-    device: &MikrotikDevice<SimpleResult>,
-    command: &str,
-    attributes: &[(&str, &str)],
-) -> Vec<HashMap<Box<str>, Option<Box<str>>>> {
-    let mut s = device
-        .send_command(
-            command.as_bytes(),
-            |cmd| {
-                attributes.iter().fold(cmd, |cmd, (key, value)| {
-                    cmd.attribute(key.as_bytes(), value.as_bytes())
-                })
-            },
-            (),
-        )
-        .await;
-    let mut rows = Vec::new();
-    while let Some(r) = s.next().await {
-        match r {
-            SimpleResult::Sentence(row) => rows.push(row),
-            other => panic!("{command}: {other:?}"),
-        }
-    }
-    rows
+/// The node's OSPFv2 interface on `ether2`: its state and the DR it knows there.
+#[derive(Debug, Default)]
+struct Role {
+    state: Option<OspfInterfaceState>,
+    /// shown with the roles while the test waits
+    #[allow(dead_code)]
+    dr: Option<Ipv4Addr>,
 }
 
-/// The state of the node's OSPFv2 interface on `ether2` (`dr`, `bdr`, `dr-other`, `waiting`, …),
-/// and the DR it knows there.
-async fn role(device: &MikrotikDevice<SimpleResult>) -> (String, String) {
-    run(device, "/routing/ospf/interface/print", &[])
+impl Role {
+    fn is(&self, state: OspfInterfaceState) -> bool {
+        self.state.as_ref() == Some(&state)
+    }
+}
+
+async fn role(device: &Session) -> Role {
+    collect_resource::<RoutingOspfInterfaceState>(device)
         .await
+        .expect("ospf interfaces")
         .into_iter()
-        .find(|row| {
-            row.get("interface").cloned().flatten().as_deref() == Some("ether2")
-                && row
-                    .get("address")
-                    .cloned()
-                    .flatten()
-                    .is_some_and(|a| a.starts_with("10.0.50."))
+        .find(|interface| {
+            *interface.interface.0 == *b"ether2"
+                && interface
+                    .address
+                    .as_ref()
+                    .is_some_and(|address| address.to_string().starts_with("10.0.50."))
         })
-        .map(|row| {
-            let field = |name: &str| {
-                row.get(name)
-                    .cloned()
-                    .flatten()
-                    .unwrap_or_default()
-                    .to_string()
-            };
-            (field("state"), field("dr"))
+        .map(|interface| Role {
+            state: Some(interface.state),
+            dr: interface.dr,
         })
         .unwrap_or_default()
+}
+
+/// Turns the Ethernet port with the factory name `port` off or on.
+async fn set_port_disabled(device: &Session, port: &str, disabled: bool) {
+    set_keyed(
+        device,
+        &port.into(),
+        |ethernet: &mut InterfaceEthernetByDefaultName| ethernet.data.disabled = disabled,
+    )
+    .await
+    .expect("port switched");
 }
 
 /// The segment booted, the switch bridging its four ports and every speaker applied: the nodes
@@ -186,7 +183,7 @@ async fn boot(
     HashMap<DeviceId, RunningNode>,
     TopologyHolder,
     [DeviceId; 4],
-    Vec<MikrotikDevice<SimpleResult>>,
+    Vec<Session>,
 ) {
     let golden = crate::chr_network::golden_image::ensure_golden_image(
         &crate::cache_dir(),
@@ -215,17 +212,18 @@ async fn boot(
         .connect_api(crate::TEST_PASSWORD)
         .await
         .expect("switch api");
-    run(&switch_api, "/interface/bridge/add", &[("name", "segment")]).await;
+    let bridge = InterfaceBridgeCfg {
+        name: "segment".into(),
+        ..InterfaceBridgeCfg::default()
+    };
+    add(&switch_api, &bridge).await.expect("bridge");
     for ether in 2..=5 {
-        run(
-            &switch_api,
-            "/interface/bridge/port/add",
-            &[
-                ("bridge", "segment"),
-                ("interface", &format!("ether{ether}")),
-            ],
-        )
-        .await;
+        let port = InterfaceBridgePortCfg {
+            bridge: "segment".into(),
+            interface: format!("ether{ether}").as_str().into(),
+            ..InterfaceBridgePortCfg::default()
+        };
+        add(&switch_api, &port).await.expect("bridge port");
     }
     for speaker in speakers {
         let access = holder.devices_by_id(speaker).await.unwrap();
@@ -262,12 +260,13 @@ async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
         eprintln!("roles (near, bridge-a, bridge-b, far): {roles:?}");
         roles
     };
-    let routers_elected = |roles: &[(String, String)]| {
-        let elected = |state: &str| state == "dr" || state == "bdr";
-        elected(&roles[0].0)
-            && elected(&roles[3].0)
-            && roles[1].0 == "dr-other"
-            && roles[2].0 == "dr-other"
+    let routers_elected = |roles: &[Role]| {
+        let elected =
+            |role: &Role| role.is(OspfInterfaceState::Dr) || role.is(OspfInterfaceState::Bdr);
+        elected(&roles[0])
+            && elected(&roles[3])
+            && roles[1].is(OspfInterfaceState::DrOther)
+            && roles[2].is(OspfInterfaceState::DrOther)
     };
 
     wait_until(
@@ -278,16 +277,15 @@ async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
     .expect("the routers are DR and BDR, the bridge devices neither");
 
     // the DR goes away: the other router takes over, and no bridge device steps up as BDR
-    let dr = if roles().await[0].0 == "dr" { 0 } else { 3 };
+    let dr = if roles().await[0].is(OspfInterfaceState::Dr) {
+        0
+    } else {
+        3
+    };
     let other = 3 - dr;
-    run(
-        &apis[dr],
-        "/interface/ethernet/disable",
-        &[("numbers", "ether2")],
-    )
-    .await;
+    set_port_disabled(&apis[dr], "ether2", true).await;
     wait_until(
-        || async { Ok(roles().await[other].0 == "dr") },
+        || async { Ok(roles().await[other].is(OspfInterfaceState::Dr)) },
         Duration::from_secs(120),
     )
     .await
@@ -295,20 +293,15 @@ async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
     // longer than the dead interval (40 s) and a wait after it
     tokio::time::sleep(Duration::from_secs(60)).await;
     for api in [bridge_a, bridge_b] {
-        assert_eq!(
-            role(api).await.0,
-            "dr-other",
-            "a bridge device is no BDR with one router left"
+        let role = role(api).await;
+        assert!(
+            role.is(OspfInterfaceState::DrOther),
+            "a bridge device is no BDR with one router left: {role:?}"
         );
     }
 
     // and back: the routers again, whichever is DR
-    run(
-        &apis[dr],
-        "/interface/ethernet/enable",
-        &[("numbers", "ether2")],
-    )
-    .await;
+    set_port_disabled(&apis[dr], "ether2", false).await;
     wait_until(
         || async { Ok(routers_elected(&roles().await)) },
         Duration::from_secs(180),
@@ -318,15 +311,15 @@ async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
 }
 
 /// Whether the node is adjacent (`Full`) with the router `router_id` in `instance`.
-async fn full_with(device: &MikrotikDevice<SimpleResult>, instance: &str, router_id: &str) -> bool {
-    run(device, "/routing/ospf/neighbor/print", &[])
+async fn full_with(device: &Session, instance: &str, router_id: Ipv4Addr) -> bool {
+    collect_resource::<RoutingOspfNeighborState>(device)
         .await
+        .expect("ospf neighbors")
         .iter()
-        .any(|row| {
-            let field = |name: &str| row.get(name).cloned().flatten();
-            field("instance").as_deref() == Some(instance)
-                && field("router-id").as_deref() == Some(router_id)
-                && field("state").as_deref() == Some("Full")
+        .any(|neighbor| {
+            *neighbor.instance.0 == *instance.as_bytes()
+                && neighbor.router_id == router_id
+                && neighbor.state == OspfNeighborState::Full
         })
 }
 
@@ -335,13 +328,7 @@ async fn template_updates(
     node: &RunningNode,
     device: &backend::topology::access::device::DeviceAccess,
 ) -> Vec<String> {
-    let client = mikrotik_model::MikrotikDevice::connect(
-        ("127.0.0.1", node.api_port),
-        b"admin",
-        Some(encode_latin1_lossy(crate::TEST_PASSWORD)),
-    )
-    .await
-    .expect("typed api");
+    let client = node.connect_api(crate::TEST_PASSWORD).await.expect("api");
     let mut cfg = DeviceCfg::fetch_with_board_model(&client, b"RB750Gr3", device)
         .await
         .expect("fetch");
@@ -368,7 +355,8 @@ async fn an_empty_networks_is_unset_by_the_apply() {
         return;
     }
     let (nodes, holder, speakers, apis) = boot("chr-network-empty-networks").await;
-    let (near, far) = (&apis[0], "192.168.255.24");
+    let near = &apis[0];
+    let far: Ipv4Addr = "192.168.255.24".parse().unwrap();
     let near_node = &nodes[&speakers[0]];
     let near_access = holder.devices_by_id(speakers[0]).await.unwrap();
     let adjacent = || async { Ok(full_with(near, "default-v2", far).await) };
@@ -377,18 +365,22 @@ async fn an_empty_networks_is_unset_by_the_apply() {
         .expect("near and far adjacent in v2");
     assert!(template_updates(near_node, &near_access).await.is_empty());
 
-    let id = run(near, "/routing/ospf/interface-template/print", &[])
+    let id = collect_resource::<RoutingOspfInterfaceTemplate>(near)
         .await
+        .expect("templates")
         .into_iter()
-        .find(|row| row.get("area").cloned().flatten().as_deref() == Some("backbone-v2"))
-        .and_then(|row| row.get(".id").cloned().flatten())
+        .find(|template| *template.cfg.area.0 == *b"backbone-v2")
+        .map(|template| template.status.id)
         .expect("the v2 template");
-    run(
+    set_keyed(
         near,
-        "/routing/ospf/interface-template/set",
-        &[("numbers", &id), ("networks", "")],
+        &id,
+        |template: &mut RoutingOspfInterfaceTemplateById| {
+            template.data.networks = Some(BTreeSet::new())
+        },
     )
-    .await;
+    .await
+    .expect("networks emptied");
     wait_until(
         || async { Ok(!full_with(near, "default-v2", far).await) },
         Duration::from_secs(60),

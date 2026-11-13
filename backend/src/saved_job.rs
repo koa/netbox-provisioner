@@ -14,7 +14,7 @@
 //! job takes them up again, or someone discards them (a device NetBox doesn't know anymore).
 //! Without [`open`] (tests, the CHR harness) nothing is written.
 use crate::{
-    device::watchdog::Watching,
+    device::{ros::apply::CapsmanRadios, watchdog::Watching},
     device_state::{ApplyState, JobPhase, JobPhaseObject, UpdateState},
     graphql::scalars::ScalarDuration,
     lock::LockAnyway,
@@ -157,7 +157,7 @@ pub struct ScriptRun {
     #[serde(with = "unix_seconds")]
     pub unmarked: SystemTime,
     /// the radios provisioned again after it (`reprovisioned_menus`)
-    pub reprovision: Box<[Box<str>]>,
+    pub reprovision: Box<[CapsmanRadios]>,
 }
 
 /// The watchdogs an apply holds suspended: the device's own (as it was), and others' by name.
