@@ -20,11 +20,11 @@ sind danach nicht mehr nötig. Der Provisioner liest mit seinen eigenen Zugangsd
   fertig ist, zählt in diesem Scrape als nicht erreicht (`mikrotik_up` 0, sonst keine Serie);
   ein gescheiterter Scrape nähme dagegen allen Geräten ihre Serien.
   `device_metrics: false` liest keine Geräte, `/metrics` hat dann nur die eigenen Metriken.
-- Gelesen wird über denselben Weg wie überall (`DeviceAccess::connect`), als Fakten des
-  [Gerätezustands](device-state.md): Health, Ressourcen und PoE teilt der Scrape mit der
-  Netz-Karte (`FactKind::DeviceMapData`, `network_state::device_data`), WLAN-Clients, Radios,
-  Interfaces, Ethernet-Links und Leases sind ein eigener Fakt (`FactKind::DeviceMetrics`,
-  `device::metrics`). Ein Scrape nimmt nur Fakten, die nach seinem Beginn begonnen haben
+- Gelesen wird über denselben Weg wie überall (`DeviceAccess::connect`), jedes Menü als Fakt des
+  [Gerätezustands](device-state.md): Health, Ressourcen und PoE liest der Scrape wie die
+  Netz-Karte (`network_state::device_data`) und teilt die Menüs mit ihr, WLAN-Clients, Radios,
+  Interfaces, Ethernet-Links und Leases liest `device::metrics`. Ein Scrape nimmt nur Fakten,
+  die nach seinem Beginn begonnen haben
   (`Freshness::Since`): Nichts ist älter als der Scrape, und eine Lesung, die seither schon
   läuft (ein zweiter Scrape, die Netz-Karte), wird mitgenommen, so fragt ein Scrape jedes Gerät
   einmal. Dauer und Erfolg der Lesungen stehen deshalb auch in

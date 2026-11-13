@@ -16,7 +16,7 @@ use crate::{
 };
 use mikrotik_model::{MacAddress, model::InterfaceEthernetPoeMonitor, value::RosValue};
 use prometheus::{CounterVec, GaugeVec, Opts, core::Collector, proto::MetricFamily};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 /// One round of the collector.
 #[derive(Debug, Clone, Default)]
@@ -34,8 +34,8 @@ pub(crate) struct DeviceSample {
     /// it answered the reading
     pub up: bool,
     /// health, resources and PoE (the network map's reading)
-    pub map: Option<Arc<DeviceMapData>>,
-    pub metrics: Option<Arc<DeviceMetrics>>,
+    pub map: Option<DeviceMapData>,
+    pub metrics: Option<DeviceMetrics>,
     /// the Wireless LAN Groups the device is the controller or an AP of
     pub wlan_groups: Box<[WlanGroupSample]>,
 }

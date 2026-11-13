@@ -304,7 +304,7 @@ async fn read(
     let files = collect_resource::<File>(raw).await?;
     let state = update::state_from(resource.as_ref(), &packages, routerboard.as_ref())?;
     let wanted = link
-        .wanted_packages_for(state.model.as_deref().map(str::as_bytes))
+        .wanted_packages_for(raw, state.model.as_deref().map(str::as_bytes))
         .await?;
     let newest_v6 = match state.version.major() < 7 {
         true => Some(newest(6, Channel::LongTerm).await?),

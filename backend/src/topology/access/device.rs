@@ -210,6 +210,13 @@ impl DeviceAccess {
     pub fn has_routeros(&self) -> bool {
         self.data().map(|d| d.has_routeros).unwrap_or(false)
     }
+    /// Why the device couldn't be reached the last time someone tried (`connect`), without
+    /// trying; none when it was, or nobody tried lately.
+    pub fn unreached(&self) -> Option<Arc<Error>> {
+        facts::peek_newest::<Option<Way>>(FactKind::Route, self.id(), |_| true)?
+            .value
+            .err()
+    }
     pub fn credentials(&self) -> Option<&str> {
         self.data().and_then(|d| Device::credentials(d))
     }
@@ -420,7 +427,7 @@ impl DeviceAccess {
     /// How far it is from NetBox as far as the provisioner knows, without asking it
     /// („Abweichung von NetBox“).
     async fn known_diff(&self) -> crate::device::site_diff::KnownDiff {
-        crate::device::site_diff::known(self)
+        crate::device::site_diff::known(self).await
     }
     /// `jobs(deviceId:)` of the query: those of this device, also those working through it.
     async fn jobs(&self) -> Vec<std::sync::Arc<crate::job::Job>> {

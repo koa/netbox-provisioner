@@ -244,9 +244,9 @@ its plan runs `L2Setup` on the preview for the rest); its query
 hands the findings on to the type of `Findings` by serializing them (`rows::findings`), so
 `components::findings` words them. The live checks of the rows are `device/interface_live.rs`
 (`AccessibleDevice.interfaceLive`, a subscription of its own after the view, grouped onto the same
-rows, `DeviceAccess::interface_rows`; the fact `InterfaceLive`, up to 1 min old and shown with
-its time, dropped by „Erneut prüfen“ (`refreshInterfaceLive`), every job on the device and a
-topology change): who the device sees (`neighbors::read`), its OSPF
+rows, `DeviceAccess::interface_rows`; worked out on each answer from menus up to 1 min old,
+shown with the time of the oldest, which „Erneut prüfen“ (`refreshInterfaceLive`) and every
+job on the device drop): who the device sees (`neighbors::read`), its OSPF
 neighbors there, and the radio link's bridge devices answering a ping (`access::answering`). An
 OSPF neighbor's interface is RouterOS' name, which for a bridge or VLAN interface is L2's
 (`bridge-link` for NetBox' `link`), so it is matched by port name, else by the addresses
@@ -270,11 +270,11 @@ leaves out every update without fields) or the error. A job's `deviceId`/`device
 
 `device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's
 cables (`AccessibleDevice.neighborFindings`, read-only; the site page asks every device at once,
-`components::site::neighbor_check`). What the device answers is the fact `Neighbors`
+`components::site::neighbor_check`). What the device answers is read from its menus' facts
 (`neighbors::read_table`, `neighborsAge`), compared with NetBox anew on each answer
 (`evaluate`), so the card subscribes after the click and a cable taken over in NetBox drops its
-finding; the click drops the facts first (`refreshNeighbors`), every job on a device drops its
-own. Ports on the device and the ports neighbors report carry the names
+finding; the click drops the device's menus first (`refreshNeighbors`), every job on a device
+drops its own. Ports on the device and the ports neighbors report carry the names
 the generated config gives them: match by NetBox's (default) name or the short name before the
 first `-` (`s01-core` is `sfp-sfpplus1`), never by MAC. A cable to a radio bridge device can't be
 seen (the router on the other side shows up instead). A `discover-interface-list` naming a list
@@ -438,7 +438,7 @@ fact (`network_state::device_data::read_one`); WLAN clients (`/interface/wifi`, 
 legacy CAPsMAN manages has no SSID there and no `info`, nor its clients; the controller
 reports them from `/caps-man`, `capsman_radios`), `/interface`
 counters, Ethernet links (one `monitor ... once` of all ports) and bound leases are
-`device::metrics` (`FactKind::DeviceMetrics`), each menu read with its mikrotik-model type and
+`device::metrics`, each menu read with its mikrotik-model type and
 the two monitors as actions of its catalog; a menu a package brings has no rows without it
 (`access::collect_if_present`, `is_missing_menu`). A WLAN client takes hostname and address from a lease of any device
 by MAC, and a client or radio its `wlan_group` from NetBox (`render::wlan_group_of`: the one
@@ -458,7 +458,7 @@ above 30 V, from the product pages (`hw_facts::poe_groups`); a port counts at th
 reports, as a netPower with two PSUs feeds 24 V and 48 V per port. A board without entered
 limits shows nothing. `read::read` gets the LSDB from one router (the
 management proxy's device if it has OSPF, else a site's or the whole topology's OSPF routers by
-name), as the fact `FactKind::Lsdb` (`read::LSDB_AGE`, 5 s). `graphql::network_state` turns that
+name), its menu up to `read::LSDB_AGE` (5 s) old. `graphql::network_state` turns that
 into `NetworkState` (nodes, edges, the router read from, the routers outside NetBox and where
 they come in), left out for a device without OSPF (no RouterOS, no primary IPv4, or no `ospf`
 interface anywhere, `graphql::supports_ospf`) and its edges, unless it is a plain switch
@@ -523,9 +523,8 @@ Health, resources and PoE are a second query, `Query.topology.networkStateDetail
 asked and polled independently (its own 5 s loop in the frontend) so a slow round trip to every
 device never holds up the overview. `device_data::read_all` reads `/system/health/print`,
 `/system/resource/print` and every PoE-capable port (`device::poe::read_ports`) of every device
-with OSPF of its own (not a plain switch on the map only as a relay), as the fact
-`FactKind::DeviceMapData` (`device_data::DEVICE_DATA_AGE`, 30 s; a device that doesn't answer is
-left out). `graphql::network_state_details` puts health and resources on `MapNodeDetails`, and
+with OSPF of its own (not a plain switch on the map only as a relay), menus up to
+`device_data::DEVICE_DATA_AGE` (30 s) old (a device that doesn't answer is left out). `graphql::network_state_details` puts health and resources on `MapNodeDetails`, and
 turns the PoE readings into `MapPoeEdge` (`NetworkStateDetails.poeEdges`): one PSE→PD arrow per
 port `device::poe::feeding` has modeled as `pse` or reporting `powered-on`, with a cable in
 NetBox to the fed port; `feeding` is the shared base `mismatches` (the device page's own PoE
@@ -549,12 +548,20 @@ the node, so the fill stays reachability (Z16).
 What is asked of devices and MikroTik goes through `facts` (`docs/device-state.md`):
 `facts::get(key, Freshness, ask)` gives a stored fact young enough for the user, joins the asking
 running already or asks, never twice at once per key, the asking spawned so a page closed leaves
-it to the others. Failures are facts too (`get_judged`: the age a stored one may have by what it
-says, a refused login 10 min, no answer 20 s). Each user says how old (`MaxAge`, `Since` for a job
-that plans from it); nothing is kept over 15 min. A job drops what its kind may change when it
-ends (`JobKind::invalidates`, raising the device's generation: what was asked meanwhile isn't
-stored); a topology changed in NetBox drops the facts worked out from it everywhere. Jobs that
-write read anew, they don't use the facts of the page. Times are `tokio::time::Instant`s, only
+it to the others. Only what was asked outside is stored (`FactKind`: `Menu`, `Login`, `Route`,
+`NewestVersion`): a `Menu` is the replies of one command that changes nothing (a print, a
+monitor once, a ping), kept unread (`mikrotik_api::device::Reply`) and keyed by the command's
+words and the credentials, which a `Reader` given an age (`Reader::at`) answers from;
+`Reader::stored` only looks. Everything worked out from them (the config and its diff, the
+RouterOS state, leftovers, the live checks, the map, metrics) is worked out on each use and
+copes with menus of different ages. Failures are facts too (`get_judged`: the age a stored one
+may have by what it says, a refused login 10 min, no answer 20 s; replies that are the
+connection failing none). Each user says how old (`MaxAge`, `Since` for a job that plans from
+it); nothing is kept over 15 min. A job drops what its kind may change when it ends
+(`JobKind::invalidates`, raising the device's generation: what was asked meanwhile isn't
+stored) and stores nothing; a write over the API drops the device's menus at the next read
+(`access::written_since_read`); a topology changed in NetBox drops nothing. Jobs that write read
+anew (`Session::reader`), they don't use the facts of the page. Times are `tokio::time::Instant`s, only
 ages go to the frontend. The metrics (`device_query_*`, `fact_cache_*`) go into `/metrics`
 (`facts::register`), every outcome's series created at 0 on a kind's first asking over a way
 (`increase` drops a new series' first sample); their Grafana dashboard is
@@ -576,10 +583,9 @@ the query's resolvers while `LiveExtension` notes the facts and job devices they
 (`facts::reading_in`), and it gives it again on a `facts::Change` concerning them (a job, facts
 dropped, the topology) or when the youngest fact read gets older than taken. A subscription has
 one root field: what a page needs hangs under it (the device's `jobs`). A fact stored anew
-concerns only who looked without asking (`facts::peek_newest`, e.g. the device's `knownDiff`
-that „Abweichung von NetBox“ shows over its last job's readings; an apply whose check found
-the device in line puts that there after its end dropped the facts, `facts::put`,
-`Job::keep_in_line`); for who asks it is no change
+concerns only who looked without asking (`facts::peek_newest`, `facts::note_peeked`, e.g. the
+device's `knownDiff` that „Abweichung von NetBox“ works out from the stored menus); for who
+asks it is no change
 (two live pages would keep asking for each other); „Neu laden“ drops the device's
 facts (`refreshDevice`), so every page showing it reads anew. While a subscription is open
 NetBox is read every 10 s (`live::watch_netbox`). Within one GraphQL request every record is

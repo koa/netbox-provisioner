@@ -5,11 +5,14 @@
 //! the generated script, RouterOS versions, partitions, the live checks, each as a fact.
 use super::cfg::{DeviceCfg, DeviceStats, GeneratedCfg, render_script};
 use crate::facts::{self, FactKey, FactKind, Freshness};
+use crate::topology::access::device::DeviceAccess;
 use crate::{
     Error,
     config::CONFIG,
     device::{
-        AccessibleDevice, PingResult, device_mode, neighbors, partitions,
+        AccessibleDevice, Password, PingResult,
+        access::Reader,
+        device_mode, neighbors, partitions,
         ros::{BaseDeviceDataCurrent, BaseDeviceDataTarget, fallback, progress},
         update,
     },
@@ -22,7 +25,7 @@ use mikrotik_model::{
     resource::collect_resource,
     value::RosValue,
 };
-use std::{sync::Arc, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 
 pub struct GraphqlDeviceType(DeviceType);
 impl From<DeviceType> for GraphqlDeviceType {
@@ -85,11 +88,13 @@ impl AccessibleDevice {
     }
 
     async fn device_stats(&self) -> Result<DeviceStats, ApiError> {
-        Ok(DeviceStats::fetch(&self.client, &self.device_config).await?)
+        let reader = self.reading(ROUTEROS_AGE);
+        Ok(DeviceStats::fetch(&reader, &self.device_config).await?)
     }
 
     async fn config(&self) -> Result<DeviceCfg, ApiError> {
-        Ok(DeviceCfg::fetch(&self.client, &self.device_config).await?)
+        let reader = self.reading(CONFIG_AGE);
+        Ok(DeviceCfg::fetch(&reader, &self.device_config).await?)
     }
     /// The script that would bring the device in line with NetBox, and what to know before
     /// applying it; `null` with the error in the response's errors when that fails, so a
@@ -99,41 +104,45 @@ impl AccessibleDevice {
             ctx,
             self.generated_cfg(self.freshness(CONFIG_AGE))
                 .await
-                .result(),
+                .map(Arc::new),
         )
     }
     /// The device mode and the features the provisioner needs that are off in it; `null`
     /// before RouterOS 7.17, which has no device mode.
     async fn device_mode(&self, ctx: &Context<'_>) -> Option<device_mode::DeviceMode> {
-        let device = self.duplicate();
-        let mode = async move { device_mode::read(device.reader(), &device.device_config).await };
-        let fact = facts::get(
-            self.fact_key(FactKind::DeviceMode),
-            self.freshness(DEVICE_MODE_AGE),
-            mode,
-        );
-        nullable(ctx, fact.await.result()).and_then(|mode| (*mode).clone())
+        let reader = self.reading(DEVICE_MODE_AGE);
+        nullable(ctx, device_mode::read(&reader, &self.device_config).await).flatten()
     }
     /// What the device sees at its ports against NetBox's cables there, the worst first: the
     /// device's answer kept (`neighborsAge`), against NetBox as it is now.
     async fn neighbor_findings(&self) -> Result<Vec<neighbors::NeighborFinding>, ApiError> {
-        let table = self.neighbor_table().await.result()?;
+        let table = neighbors::read_table(&self.reading(NEIGHBORS_AGE)).await?;
         Ok(neighbors::evaluate(&self.device_config, &table).findings)
     }
     /// seconds since the device was read for `neighborFindings`
     async fn neighbors_age(&self) -> u64 {
-        self.neighbor_table().await.age().as_secs()
+        self.age_of(NEIGHBORS_AGE, |reader| async move {
+            neighbors::read_table(&reader).await.map(|_| reader)
+        })
+        .await
     }
     /// The live checks of the interface view (`DeviceAccess.interfaceView`) by row: neighbors,
     /// OSPF, the bridge devices of radio links answering (`interfaceLiveAge`).
     async fn interface_live(
         &self,
     ) -> Result<crate::device::interface_live::InterfaceLive, ApiError> {
-        Ok((*self.interface_live_fact().await.result()?).clone())
+        let reader = self.reading(INTERFACE_LIVE_AGE);
+        Ok(crate::device::interface_live::read(&reader, &self.device_config).await?)
     }
     /// seconds since the device was read for `interfaceLive`
     async fn interface_live_age(&self) -> u64 {
-        self.interface_live_fact().await.age().as_secs()
+        let device = &self.device_config;
+        self.age_of(INTERFACE_LIVE_AGE, |reader| async move {
+            crate::device::interface_live::read(&reader, device)
+                .await
+                .map(|_| reader)
+        })
+        .await
     }
     /// The ports the device reports feeding something over PoE, and what is at their other
     /// end (helper „PoE“).
@@ -142,23 +151,17 @@ impl AccessibleDevice {
     }
     /// The partitions of the flash; `null` on a device without (16 MiB of flash, a CHR).
     async fn partitions(&self, ctx: &Context<'_>) -> Option<partitions::Partitions> {
-        let device = self.duplicate();
-        let read = async move { partitions::read(device.reader()).await };
-        let fact = facts::get(
-            self.fact_key(FactKind::Partitions),
-            self.freshness(PARTITIONS_AGE),
-            read,
-        );
-        nullable(ctx, fact.await.result()).and_then(|partitions| (*partitions).clone())
+        let reader = self.reading(PARTITIONS_AGE);
+        nullable(ctx, partitions::read(&reader).await).flatten()
     }
     /// The running RouterOS and its packages, and what an update in each channel would do.
-    async fn routeros(&self, ctx: &Context<'_>) -> Option<Arc<RouterOsVersions>> {
-        let device = self.duplicate();
-        let versions = async move {
-            let as_of = tokio::time::Instant::now();
-            let state = update::read_state(device.reader()).await?;
+    async fn routeros(&self, ctx: &Context<'_>) -> Option<RouterOsVersions> {
+        let reader = self.reading(ROUTEROS_AGE);
+        let device = self;
+        let versions = async {
+            let state = update::read_state(&reader).await?;
             let wanted = device
-                .wanted_packages_for(state.model.as_deref().map(str::as_bytes))
+                .wanted_packages_for(&reader, state.model.as_deref().map(str::as_bytes))
                 .await?;
             let newest_v6 = if state.version.major() < 7 {
                 Some(newest(6, update::Channel::LongTerm).await?)
@@ -195,7 +198,7 @@ impl AccessibleDevice {
                     update::Version::parse(previous).is_some_and(|v| v < state.version)
                 });
             Ok::<_, Error>(RouterOsVersions {
-                as_of,
+                as_of: reader.as_of(),
                 previous,
                 adjust_packages,
                 version: state.version.to_string().into(),
@@ -205,12 +208,7 @@ impl AccessibleDevice {
                 channels: channels.into(),
             })
         };
-        let fact = facts::get(
-            self.fact_key(FactKind::RouterosState),
-            self.freshness(ROUTEROS_AGE),
-            versions,
-        );
-        nullable(ctx, fact.await.result())
+        nullable(ctx, versions.await)
     }
     /// What a job that didn't see its work to the end left on the device, with what can be
     /// done about it; `null` with nothing left, and while a job of this provisioner runs on
@@ -223,9 +221,10 @@ impl AccessibleDevice {
         {
             return None;
         }
-        let device = self.duplicate();
-        let read = async move {
-            let raw = device.reader();
+        let reader = self.reading(LEFTOVERS_AGE);
+        let device = self;
+        let read = async {
+            let raw = &reader;
             let left = crate::device::leftovers::read(raw).await?;
             if crate::journal::enabled() {
                 // what no job of this provisioner explains goes into the journal (Z31)
@@ -244,12 +243,7 @@ impl AccessibleDevice {
             }
             Ok::<_, Error>(left)
         };
-        let fact = facts::get(
-            self.fact_key(FactKind::Leftovers),
-            self.freshness(LEFTOVERS_AGE),
-            read,
-        );
-        let mut left = (*nullable(ctx, fact.await.result())?).clone();
+        let mut left = nullable(ctx, read.await)?;
         // which job holds them changes without the device knowing
         if let Some(watchdogs) = &mut left.watchdogs {
             watchdogs.held_by = crate::job::holding_watchdogs(self.device_config.name());
@@ -288,13 +282,6 @@ impl AccessibleDevice {
 
 /// How old the generated config may be on the device page: what it showed a minute ago.
 const CONFIG_AGE: Duration = Duration::from_secs(60);
-/// Marks the facts of a helper's plan (`generating_for`) in their key: not the device's own.
-const PLAN: &str = " plan";
-
-/// Whether `key` is about a device as it is, not as a helper's plan would make it.
-pub(crate) fn of_device_as_is(key: &FactKey) -> bool {
-    !key.detail.contains(PLAN)
-}
 /// How old RouterOS version and packages may be: only jobs change them, and those drop them.
 const ROUTEROS_AGE: Duration = Duration::from_secs(10 * 60);
 const PARTITIONS_AGE: Duration = Duration::from_secs(10 * 60);
@@ -327,93 +314,67 @@ async fn newest(major: u32, channel: update::Channel) -> Result<update::Version,
 }
 
 impl AccessibleDevice {
-    /// The planned changes as `freshness` takes them (`FactKind::Config`): shared by the
-    /// device page and `diffSite`.
-    pub async fn generated_cfg(&self, freshness: Freshness) -> facts::Fact<GeneratedCfg> {
-        let device = self.duplicate();
-        let generated = async move {
-            let as_of = tokio::time::Instant::now();
-            let mut device_cfg = DeviceCfg::fetch(&device.client, &device.device_config).await?;
-            device_cfg
-                .generate_live(&device.device_config, device.reader())
-                .await?;
-            let (script, mut menus) = {
-                let mutations = device_cfg.sorted_mutations()?;
-                (
-                    render_script(&mutations)?,
-                    crate::device::site_diff::menu_changes(&mutations),
-                )
-            };
-            let previous_password = device.password() == crate::device::Password::Previous;
-            if previous_password {
-                crate::device::site_diff::add_change(&mut menus, "user");
-            }
-            let www_certificate = device_cfg.www_certificate();
-            if www_certificate == crate::device::www_certificate::WwwCertificate::Needed {
-                crate::device::site_diff::add_change(&mut menus, "certificate");
-            }
-            Ok(GeneratedCfg {
-                script,
-                menus: menus.into(),
-                previous_password,
-                www_certificate,
-                warnings: device_cfg.warnings(device.reader()).await,
-                as_of,
-            })
-        };
-        facts::get(self.fact_key(FactKind::Config), freshness, generated).await
+    /// The planned changes, from what the device answered as `freshness` takes it: shared by
+    /// the device page and `diffSite`.
+    pub async fn generated_cfg(&self, freshness: Freshness) -> Result<GeneratedCfg, Error> {
+        let reader = self.reader().at(freshness);
+        generate(&reader, &self.device_config, self.password()).await
     }
-    /// The live checks (`FactKind::InterfaceLive`): NetBox changing drops them, they compare
-    /// with it.
-    async fn interface_live_fact(
+    /// A reader of this login taking what it reads as old as `own` (or the younger age the
+    /// request asked for).
+    fn reading(&self, own: Duration) -> Reader {
+        self.reader().at(self.freshness(own))
+    }
+    /// Seconds since the oldest of what `work` read (with a reader as old as `own`) was asked;
+    /// 0 when it failed.
+    async fn age_of<F: Future<Output = Result<Reader, Error>>>(
         &self,
-    ) -> facts::Fact<crate::device::interface_live::InterfaceLive> {
-        let device = self.duplicate();
-        let read = async move {
-            crate::device::interface_live::read(device.reader(), &device.device_config).await
-        };
-        facts::get(
-            self.fact_key(FactKind::InterfaceLive),
-            self.freshness(INTERFACE_LIVE_AGE),
-            read,
-        )
-        .await
-    }
-    /// What the device answers for the neighbor check (`FactKind::Neighbors`).
-    async fn neighbor_table(&self) -> facts::Fact<neighbors::NeighborTable> {
-        let device = self.duplicate();
-        let read = async move { neighbors::read_table(device.reader()).await };
-        facts::get(
-            self.fact_key(FactKind::Neighbors),
-            self.freshness(NEIGHBORS_AGE),
-            read,
-        )
-        .await
-    }
-    /// The key of a fact about the device as this connection reads it: the credentials go in,
-    /// what typed-in ones read stays with them.
-    fn fact_key(&self, kind: FactKind) -> FactKey {
-        FactKey::new(
-            kind,
-            Some(self.device_config.id()),
-            format!(
-                "{} {}{}",
-                self.address,
-                self.credentials.fact_key(),
-                // a helper's plan: of that topology only
-                if self.preview {
-                    format!("{PLAN} {:p}", Arc::as_ptr(self.device_config.topology()))
-                } else {
-                    String::new()
-                }
-            ),
-        )
-        .via(self.path.label())
+        own: Duration,
+        work: impl FnOnce(Reader) -> F,
+    ) -> u64 {
+        match work(self.reading(own)).await {
+            Ok(reader) => reader.as_of().elapsed().as_secs(),
+            Err(_) => 0,
+        }
     }
     /// `own`, or the younger age the request asked for (`access(maxAge:)`).
     fn freshness(&self, own: Duration) -> Freshness {
         Freshness::MaxAge(own).at_most(self.max_age)
     }
+}
+
+/// The planned changes of `device` from what `reader` reads, logged in with `password`.
+pub(crate) async fn generate(
+    reader: &Reader,
+    device: &DeviceAccess,
+    password: Password,
+) -> Result<GeneratedCfg, Error> {
+    let mut device_cfg = DeviceCfg::fetch(reader, device).await?;
+    device_cfg.generate_live(device, reader).await?;
+    let (script, mut menus) = {
+        let mutations = device_cfg.sorted_mutations()?;
+        (
+            render_script(&mutations)?,
+            crate::device::site_diff::menu_changes(&mutations),
+        )
+    };
+    let previous_password = password == Password::Previous;
+    if previous_password {
+        crate::device::site_diff::add_change(&mut menus, "user");
+    }
+    let www_certificate = device_cfg.www_certificate();
+    if www_certificate == crate::device::www_certificate::WwwCertificate::Needed {
+        crate::device::site_diff::add_change(&mut menus, "certificate");
+    }
+    let warnings = device_cfg.warnings(reader).await;
+    Ok(GeneratedCfg {
+        script,
+        menus: menus.into(),
+        previous_password,
+        www_certificate,
+        warnings,
+        as_of: reader.as_of(),
+    })
 }
 
 /// An entry of the device's log, as RouterOS reports it.

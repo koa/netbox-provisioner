@@ -1,9 +1,9 @@
 # Zugriff auf die Geräte
 
 Wie der Provisioner mit den Geräten spricht: jeder Befehl ein Typ mit seiner Wirkung, jede
-Verbindung hinter einer Fassade mit Rechten. Gebaut in B36 (2026-11-13), nach dem Konzept
-[Zugriff auf die Geräte](concepts/device-access.md); was davon offen ist (geteilte
-Lese-Verbindung, Basis-Fakten, Rahmen pro Operation), steht dort als C17.
+Verbindung hinter einer Fassade mit Rechten, und gespeichert nur, was ein Gerät antwortete. Gebaut
+in B36 und C17 (2026-11-13), nach dem Konzept [Zugriff auf die Geräte](concepts/device-access.md);
+was davon offen ist (Rahmen pro Operation, ganze Listen statt Filter), steht dort.
 
 ## Befehle: was sie bewirken (mikrotik-api)
 
@@ -68,6 +68,37 @@ ihn ein `/system/identity`, ausser die Verbindung hat vor weniger als 2 s geantw
 (`LOGIN_CHECKED`): eine Seite holt den Login eines Geräts mehrmals (den Weg, dann den Login),
 und jede Netzkarten-Abfrage schickte so zwei Identity-Prints an jedes Gerät.
 
+## Basis-Fakten
+
+Gespeichert wird nur, was gemessen wurde (Benutzer, 2026-11-13): die Antworten eines Geräts auf
+einen Befehl, der nichts ändert (Print, Monitor einmal, Ping; Fact `Menu`), ein Login-Versuch
+(`Login`, auch keine Antwort oder eine Absage) und die neueste Version bei MikroTik
+(`NewestVersion`). Alles darüber wird bei jedem Zugriff daraus gerechnet.
+
+- mikrotik-api gibt die Antworten roh heraus (`Reply`, `Replies::unparsed`) und liest
+  gespeicherte mit jedem Typ wieder (`Replies::kept`); `Prepared` ist ein Befehl als seine
+  Wörter, ohne seinen Typ.
+- Ein `Reader` mit Alter (`Reader::at(freshness)`) schickt einen Befehl nur, wenn kein
+  passender Fakt da ist; sein Schlüssel sind die Zugangsdaten und die Wörter des Befehls (eigene
+  Zugangsdaten sehen vielleicht weniger). `as_of` sagt, wie alt das Älteste ist, das er las:
+  der Stand dessen, was daraus gerechnet wird. Ohne Alter liest er live (`Session::reader`, die
+  Jobs, das Log, die PoE-Beobachtung). `Reader::stored` schaut nur nach (`knownDiff`, der
+  Portname der Ersteinrichtung, wenn der Nachbar nicht antwortet); ein fehlendes Menü ist dann
+  eine abgebrochene Verbindung.
+- Antworten, die eine abgebrochene Verbindung sind, gelten nicht; ein fehlendes Menü (Paket
+  nicht installiert) ist eine Antwort.
+- Ungültig wird ein Menü durch jeden schreibenden API-Befehl an das Gerät, auf jeder Verbindung
+  (`access::generation`: ein Leser verwirft die Menüs, wenn seit seinem letzten Lesen
+  geschrieben wurde), durch das Ende jedes Jobs auf dem Gerät (`JobKind::invalidates`), durch
+  „Neu laden“, „Nochmals lesen“ und „Erneut prüfen“, und durch das Alter, das der Leser zulässt.
+  Ein Job holt an seinem Ende nichts und legt nichts ab; eine Änderung in NetBox verwirft nichts.
+- Eine Rechnung über mehrere Menüs muss aushalten, dass sie verschieden alt sind: Lesen über
+  Menüs war nie atomar.
+
+Ein Befehl, der dasselbe Menü mit Filter fragt, ist ein eigener Fakt (`/ip/service` mit
+`?name=` neben dem ganzen Print): mikrotik-model soll die ganze Liste lesen und selbst filtern
+(offen, im Konzept).
+
 ## Befehle pro Operation zählen
 
 `operation` legt um jede GraphQL-Operation (Query, Mutation, jede Antwort einer
@@ -75,15 +106,14 @@ Subscription) einen Rahmen (`tokio::task_local!`); `Reader` trägt darin jeden B
 und Pfad ein, auch aus dem Task, den `facts::get` zum Fragen startet, aus `job::run` und den
 Lesern des Rollout-Plans. Am Ende schreibt die Operation auf `debug` (`backend::operation`), wie
 viele Befehle sie an wie viele Geräte schickte, und jeden Pfad, der mehr als einmal an
-dasselbe Gerät ging. Jobs laufen ausserhalb und zählen nicht. Messung im Lab (2026-11-13,
-`LOG_LEVEL=info,backend::operation=debug`): die Netzkarte schickt jeden Pfad pro Gerät einmal
+dasselbe Gerät ging; gezählt wird der Pfad, Pings an verschiedene Adressen sind also mehrere
+`/ping`. Jobs laufen ausserhalb und zählen nicht. Messung im Lab
+(`LOG_LEVEL=info,backend::operation=debug`): die Netzkarte schickt jeden Pfad pro Gerät einmal
 (`NetworkMap` 1 Befehl, `NetworkMapDetails` 6 an 6 Geräte), der Rollout-Plan über die Site Lab
-53 an 6 Geräte ohne Doppel; die Geräteseite (`DeviceOverview`, lab-hex) 67 an 4 Geräte, davon
-auf dem Gerät `/system/routerboard` und `/ip/service` dreimal, `/system/resource`,
-`/system/package`, `/system/identity`, `/file`, `/certificate`, `/partitions` und
-`/interface/wifi/capsman` zweimal: verschiedene Facts (Config, RouterOS-Stand, Leftovers,
-Partitionen, Zertifikat) lesen dieselben Menüs, das ist, was die Basis-Fakten
-([Konzept](concepts/device-access.md)) beheben sollen.
+53 an 6 Geräte ohne Doppel. Die Geräteseite (`DeviceOverview`, lab-hex) schickte vor den
+Basis-Fakten 67 Befehle an 4 Geräte, zehn Menüs zwei- oder dreimal; mit ihnen 56, doppelt nur
+noch `/ip/service` (mit und ohne Filter, siehe oben) und `/system/identity` (der Login und
+seine Prüfung, ob die Verbindung noch lebt, wenn sie seit `LOGIN_CHECKED` nicht antwortete).
 
 ## Der CHR-Harness
 

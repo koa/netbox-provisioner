@@ -207,7 +207,7 @@ fn poe_net() -> (Vec<DeviceAccess>, Arc<Topology>) {
 #[test]
 fn a_feeding_port_gets_a_poe_edge() {
     let (devices, _topology) = poe_net();
-    let data = Arc::new(DeviceMapData {
+    let data = DeviceMapData {
         poe: PoePorts {
             ethernet: vec![EthernetPort {
                 name: "ether1".into(),
@@ -223,7 +223,7 @@ fn a_feeding_port_gets_a_poe_edge() {
             .into(),
         },
         ..DeviceMapData::default()
-    });
+    };
     let device_data = BTreeMap::from([(devices[0].id(), data)]);
     let details = build_details(&devices, &device_data);
     assert_eq!(
@@ -248,7 +248,7 @@ fn a_feeding_port_gets_a_poe_edge() {
 #[test]
 fn a_poe_edge_needs_no_reading_from_the_far_device() {
     let (devices, _topology) = poe_net();
-    let data = Arc::new(DeviceMapData {
+    let data = DeviceMapData {
         poe: PoePorts {
             ethernet: vec![EthernetPort {
                 name: "ether1".into(),
@@ -263,7 +263,7 @@ fn a_poe_edge_needs_no_reading_from_the_far_device() {
             .into(),
         },
         ..DeviceMapData::default()
-    });
+    };
     let device_data = BTreeMap::from([(devices[0].id(), data)]);
     let details = build_details(&devices, &device_data);
     assert_eq!(

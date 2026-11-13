@@ -24,7 +24,7 @@ use crate::{
     },
     device_state::BootstrapState,
     error_info::ApiError,
-    facts::{self, FactKey, FactKind, Freshness},
+    facts::Freshness,
     graphql::scalars::{ScalarDuration, ScalarMac},
     job::Log,
     topology::access::{device::DeviceAccess, interface::InterfaceAccess},
@@ -123,18 +123,7 @@ impl BootstrapPlan {
     /// What the neighbor discovers on its port (`/ip/neighbor`), the candidates to set up. Over
     /// a bridge (a radio link) that includes devices further away.
     async fn discovered(&self) -> Result<Vec<Discovered>, ApiError> {
-        let key = FactKey::new(
-            FactKind::Neighbors,
-            Some(self.neighbor_device.id()),
-            &self.neighbor_port,
-        );
-        let fact = facts::get(
-            key,
-            Freshness::MaxAge(DISCOVERED_AGE),
-            discover(self.clone()),
-        )
-        .await;
-        Ok(fact.result()?.to_vec())
+        Ok(discover(self).await?)
     }
 }
 
@@ -321,20 +310,26 @@ pub fn reachable_address(device: &DeviceAccess) -> Option<IpAddr> {
     }
 }
 
-async fn discover(plan: BootstrapPlan) -> Result<Vec<Discovered>, Error> {
-    let credentials = neighbor_credentials(&plan)?;
-    let neighbor = connect_reader(
+async fn discover(plan: &BootstrapPlan) -> Result<Vec<Discovered>, Error> {
+    let credentials = neighbor_credentials(plan)?;
+    // the login shared with the pages (`device::login`)
+    let neighbor = crate::device::login(
         &plan.neighbor_device,
         plan.neighbor_address,
         &Path::Routed,
         &credentials,
     )
-    .await?;
+    .await
+    .result()?
+    .client
+    .clone();
     // NetBox has the factory name, `/ip/neighbor` the one the provisioner gave the port
     let mut names = vec![plan.neighbor_port.to_string()];
-    names.extend(neighbor_port_name(&plan).await.result()?.as_ref().clone());
+    let port_names = neighbor.at(Freshness::MaxAge(PORT_NAMES_AGE));
+    names.extend(port_name(&port_names, &plan.neighbor_port).await?);
+    let seen = neighbor.at(Freshness::MaxAge(DISCOVERED_AGE));
     let mut found = Vec::new();
-    for seen in collect_resource::<IpNeighborState>(&neighbor).await?.iter() {
+    for seen in collect_resource::<IpNeighborState>(&seen).await?.iter() {
         let interface = seen.interface.to_string();
         let Some(mac) = seen
             .mac_address
@@ -377,10 +372,14 @@ async fn check_neighbor(plan: &BootstrapPlan) -> Result<String, Error> {
         Err(error) => {
             warn!("cannot check {} over the API: {error}", plan.neighbor);
             // the name found out lately, e.g. while the page looked for the device
-            let key = port_names_key(plan);
-            let known = facts::peek::<Option<String>>(&key).and_then(|fact| fact.value.ok());
-            return Ok(known
-                .and_then(|name| name.as_ref().clone())
+            let known = crate::device::access::Reader::stored(
+                plan.neighbor_device.id(),
+                &credentials.fact_key(),
+            );
+            return Ok(port_name(&known, &plan.neighbor_port)
+                .await
+                .ok()
+                .flatten()
                 .unwrap_or_else(|| plan.neighbor_port.to_string()));
         }
     };
@@ -396,11 +395,10 @@ async fn check_neighbor(plan: &BootstrapPlan) -> Result<String, Error> {
             String::from_utf8_lossy(&ssh.forwarding_enabled.encode_ros()).into(),
         ));
     }
-    Ok(match neighbor_port_name(plan).await.value {
-        Ok(name) => name
-            .as_ref()
-            .clone()
-            .unwrap_or_else(|| plan.neighbor_port.to_string()),
+    // the name the page found out lately, else asked
+    let port_names = neighbor.at(Freshness::MaxAge(PORT_NAMES_AGE));
+    Ok(match port_name(&port_names, &plan.neighbor_port).await {
+        Ok(name) => name.unwrap_or_else(|| plan.neighbor_port.to_string()),
         Err(error) => {
             warn!("cannot read the port names of {}: {error}", plan.neighbor);
             plan.neighbor_port.to_string()
@@ -415,32 +413,6 @@ fn neighbor_credentials(plan: &BootstrapPlan) -> Result<Credentials, Error> {
             .ok_or(Error::MissingCredentials)?
             .into(),
     ))
-}
-
-fn port_names_key(plan: &BootstrapPlan) -> FactKey {
-    FactKey::new(
-        FactKind::Interfaces,
-        Some(plan.neighbor_device.id()),
-        &plan.neighbor_port,
-    )
-}
-
-/// What the neighbor calls its port to the device, as a fact ([`PORT_NAMES_AGE`]): the page
-/// looking for the device reads it, the setup right after takes it from there.
-async fn neighbor_port_name(plan: &BootstrapPlan) -> facts::Fact<Option<String>> {
-    let (address, factory) = (plan.neighbor_address, plan.neighbor_port.clone());
-    let neighbor_device = plan.neighbor_device.clone();
-    let credentials = neighbor_credentials(plan);
-    facts::get(
-        port_names_key(plan),
-        Freshness::MaxAge(PORT_NAMES_AGE),
-        async move {
-            let neighbor =
-                connect_reader(&neighbor_device, address, &Path::Routed, &credentials?).await?;
-            port_name(&neighbor, &factory).await
-        },
-    )
-    .await
 }
 
 /// The name the neighbor gives its Ethernet port with the factory name `factory_name`, if it

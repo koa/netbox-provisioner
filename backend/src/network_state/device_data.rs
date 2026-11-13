@@ -2,8 +2,8 @@
 //!
 //! Health, resources and PoE out of a device, for the network map's nodes and PoE edges
 //! (`docs/network-map.md`, steps 3 and 4): read over the same way as everything else
-//! (`DeviceAccess::connect`), as a fact (`FactKind::DeviceMapData`) per device, so the map's
-//! viewers share a reading. Not judged, only shown: the rows of `/system/health/print` as name,
+//! (`DeviceAccess::connect`), each menu as a fact (`access::Reader::at`), so the map's viewers
+//! share a reading. Not judged, only shown: the rows of `/system/health/print` as name,
 //! value and unit, the few fields of `/system/resource/print` worth a column of their own, and
 //! every PoE-capable port (`device::poe::PoePorts`).
 
@@ -11,7 +11,7 @@ use crate::{
     Error,
     device::AccessibleDevice,
     device::poe::{self, PoeLoad, PoePorts},
-    facts::{self, FactKey, FactKind, Freshness},
+    facts::Freshness,
     topology::{
         DeviceId,
         access::{DeviceTarget, device::DeviceAccess},
@@ -23,7 +23,7 @@ use mikrotik_model::{
     model::{SystemHealthState, SystemResourceState, SystemRouterboardState},
     resource::{SingleResource, collect_resource},
 };
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 
 /// How old a reading may be: the map asks every few seconds, but health and resources change
 /// slowly, and polling 30-odd devices every few seconds would be about 4 requests a second
@@ -61,7 +61,7 @@ pub struct DeviceMapData {
 
 /// The health and resources of every device of `devices` that answers, by its id; one that
 /// doesn't is left out, same as a device the map leaves off entirely for lack of OSPF.
-pub async fn read_all(devices: &[DeviceAccess]) -> BTreeMap<DeviceId, Arc<DeviceMapData>> {
+pub async fn read_all(devices: &[DeviceAccess]) -> BTreeMap<DeviceId, DeviceMapData> {
     let reads = devices
         .iter()
         .map(|device| async move { (device.id(), read_one(device).await) });
@@ -74,25 +74,21 @@ pub async fn read_all(devices: &[DeviceAccess]) -> BTreeMap<DeviceId, Arc<Device
 
 /// The reading of `device`, at most [`DEVICE_DATA_AGE`] old; `None` where it isn't reached
 /// or doesn't answer.
-pub(crate) async fn read_one(device: &DeviceAccess) -> Option<Arc<DeviceMapData>> {
+pub(crate) async fn read_one(device: &DeviceAccess) -> Option<DeviceMapData> {
     let accessible = match device.connect(DeviceTarget::default()).await {
         Ok(Some(accessible)) => accessible,
         _ => return None,
     };
-    read_accessible(device, &accessible, Freshness::MaxAge(DEVICE_DATA_AGE)).await
+    read_accessible(&accessible, Freshness::MaxAge(DEVICE_DATA_AGE)).await
 }
 
 /// The reading of `device`, logged in as `accessible`, as fresh as `freshness` asks; shared
 /// with `/metrics` (`crate::metrics`).
 pub(crate) async fn read_accessible(
-    device: &DeviceAccess,
     accessible: &AccessibleDevice,
     freshness: Freshness,
-) -> Option<Arc<DeviceMapData>> {
-    let key = FactKey::new(FactKind::DeviceMapData, Some(device.id()), "");
-    let accessible = accessible.duplicate();
-    let ask = async move { read(accessible.reader()).await };
-    facts::get(key, freshness, ask).await.value.ok()
+) -> Option<DeviceMapData> {
+    read(&accessible.reader().at(freshness)).await.ok()
 }
 
 async fn read(api: &impl Reads) -> Result<DeviceMapData, Error> {

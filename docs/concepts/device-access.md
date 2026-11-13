@@ -1,10 +1,10 @@
 # Zugriff auf die Geräte
 
 Stand 2026-11-13, besprochen mit dem Benutzer (Basis-Fakten und Ableitungen am selben Tag
-nach der Messung). Die Schritte 1–3 (B36: Befehle als Typen mit
-ihrer Wirkung, `Connection`, Aktionskatalog, `Reader`/`Session`) sind gebaut und in
-[device-access.md](../device-access.md) beschrieben; offen ist Schritt 4 (C17: einmal laden pro
-GraphQL-Operation, früher `operation-cache.md`).
+nach der Messung). Gebaut und in [device-access.md](../device-access.md) beschrieben sind die
+Befehle als Typen mit ihrer Wirkung, `Connection`, Aktionskatalog, `Reader`/`Session` (B36) und
+die Basis-Fakten mit den Ableitungen (C17). Offen sind der Rahmen pro Operation, die ganzen
+Listen statt Filter und die Punkte unter „Offen“.
 
 ## Ziel
 
@@ -20,31 +20,29 @@ GraphQL-Operation, früher `operation-cache.md`).
 
 ## Heute
 
-- Jeder Befehl ist ein Typ mit seiner Wirkung, jede Verbindung hinter `Reader` oder `Session`
-  ([device-access.md](../device-access.md)); `Reader` liest noch ohne Cache.
+- Gespeichert sind nur Basis-Fakten (Menüs, Logins, neueste Version), die Ableitungen werden bei
+  jedem Zugriff gerechnet ([device-access.md](../device-access.md#basis-fakten)).
+- Als Pool dient der Fact `Login`, der eine Verbindung 60 s wieder gibt.
 - Die Topologie (`TopologyHolder::topo_lock`) wird neu aus NetBox gelesen, sobald sie älter als
-  10 s ist, auch mitten in einer Anfrage (Rollout-Plan über mehrere Sites).
-- Die Facts (`facts::get`) teilen Gelesenes über Anfragen hinweg, aber jedes nach seinem eigenen
-  Schlüssel: Config und RouterosState lesen beide `/system/routerboard`, RouterosState und die
-  Leftovers `/system/resource`, Config und Interfaces `/interface`, dazu `/file` und
-  `/system/scheduler` mehrfach. Wo eine Funktion doppelt las, reicht sie die Zeilen heute von
-  Hand weiter (`update::state_from`, `leftovers::read_with_files`, `progress::root_in_ram_of`,
-  `wanted_packages_for`).
-- Jede Abfrage öffnet ihre Verbindung selbst; NetBox-REST und MikroTik-HTTP werden pro Aufruf
-  gelesen.
+  10 s ist, auch mitten in einer Anfrage; die Resolver nehmen dafür von Hand einen
+  `TopologyHolder::snapshot`.
+- Wo eine Funktion ein Menü mehrfach brauchte, reicht sie die Zeilen noch von Hand weiter
+  (`update::state_from`, `leftovers::read_with_files`, `progress::root_in_ram_of`,
+  `wanted_packages_for`); mit den Basis-Fakten wäre das nicht mehr nötig.
+- NetBox-REST und die Paketgrössen bei MikroTik werden pro Aufruf gelesen.
 
-## Was Schritt 4 auf B36 baut
+## Ganze Listen statt Filter
 
-- Die `Generation` jeder `Connection` steigt bei jedem `Write`- und `SessionBound`-Befehl,
-  gesteuert von seinem `Effect`, nicht vom Pfad; alle Verbindungen eines Geräts teilen sie.
-- Der Pool gibt nur `Reader` heraus: eine GraphQL-Operation schreibt nie, ohne einen Job zu
-  starten. `Session` gibt es nur mit der Sperre des Geräts.
-- `Reader` liest künftig über die Basis-Fakten (`read` und `observe` mit `Freshness`);
-  `Session::reader` liest frisch, ohne Cache.
-- `Reader` und `Session` bleiben im Provisioner, nicht in mikrotik-api: sie kennen Pool,
-  Job-Sperre und Facts.
+mikrotik-model liest bei `PrintKeyed` (`KeyedResource::fetch`) mit `?name=` und einem Filter auf
+`dynamic`/`builtin`: so ist dasselbe Menü zwei Fakten (`/ip/service` auf jeder Geräteseite
+doppelt). Künftig liest es die ganze Liste und filtert selbst (Schlüssel vorhanden, `dynamic` und
+`builtin` an der rohen Zeile vor dem Parsen). Menüs, deren ganze Liste zu gross ist
+(`/ip/route`, `/ipv6/route`, `/log`, Host-Tabelle der Bridge, Leases), behalten den Filter des
+Geräts, markiert im Modell.
 
 ## Geteilte Lese-Verbindung (Pool)
+
+Heute dient der Fact `Login` als Pool (eine Verbindung, die vor höchstens 60 s ging). Offen:
 
 - Prozessweit, pro Geräte-ID eine Verbindung für Reads, die alle Operationen, Facts und Seiten
   teilen; ein neuer Login nur, wenn keine da ist oder `is_closed()`.
@@ -55,60 +53,6 @@ GraphQL-Operation, früher `operation-cache.md`).
   `WrongDevice` oder einem Login-Fehler.
 - Ein Semaphor pro Gerät hält die Reads eines Geräts nacheinander (schwache CPU und RAM), für
   alle Operationen gemeinsam.
-
-## Basis-Fakten und Ableitungen
-
-Gespeichert wird nur, was gemessen wurde: ein **Basis-Fakt** ist eine Frage an etwas draussen
-mit ihrer Antwort, auch einer Absage oder keiner. Alles darüber wird bei jedem Zugriff daraus
-abgeleitet und nicht gespeichert.
-
-Basis-Fakten, jeder unter dem Schlüssel dessen, was gefragt wurde:
-
-- der **Print eines Menüs**, immer die ganze Liste, ohne Filter und `.proplist`: wer nur einen
-  Teil braucht, filtert im gespeicherten Ergebnis. Ausnahme sind Menüs, deren ganze Liste zu
-  gross ist (`/ip/route` mit BGP, `/log`, Host-Tabelle der Bridge, Leases grosser Server): dort
-  gehört der Filter zum Schlüssel. Ein Menü, das fehlt (Paket nicht installiert,
-  `collect_if_present`), ist auch eine Antwort;
-- ein **Monitor als Single Shot** (`monitor … once`, PoE, Ethernet): strukturell dasselbe wie ein
-  Print;
-- ein **Ping** von einem Gerät an eine Adresse (Funkbrücken der Interface-Ansicht,
-  Watchdog-Ziele in `generate_live`);
-- ein **Login-Versuch** an einer Adresse auf einem Pfad mit Credentials: ging, verweigert,
-  keine Antwort, anderes Gerät. Auch die Unerreichbarkeit ist gemessen und gilt, solange die
-  `Freshness` des Lesers reicht (wie heute `judge_login`);
-- **HTTP zu MikroTik** (neueste Version eines Kanals, Paketgrössen), nach URL; sie darf in der
-  Regel länger gelten als eine Messung am Gerät.
-
-Wer liest, gibt die `Freshness` an (`MaxAge`, `Since`), wie heute; Mitlaufen bei einer
-laufenden Frage, Metriken und Live-Updates (`LiveExtension` notiert gelesene Fakten) gelten für
-Basis-Fakten wie heute für die Facts. Nicht gespeichert wird, was einen Vorgang über die Zeit
-beobachtet (der Countdown des Device-Mode, `observe` beim Warten auf eine Bedingung).
-
-**Ableitungen** sind die heutigen Facts, die aus Prints, Monitoren und Pings bestehen: Config
-(`DeviceCfg::fetch`), RouterosState, Leftovers, Partitions, DeviceMode, Interfaces, Neighbors,
-InterfaceLive, Lsdb, DeviceMapData, DeviceMetrics, Route (der erste Login, der geht). Sie lesen
-über `Reader` und rechnen; so liest eine Seite, die `/system/resource` für drei Ableitungen
-braucht, es einmal, auch bei vielen Benutzern. Die Abfragen über mehrere Menüs waren nie
-atomar: eine Ableitung muss Inkonsistenzen zwischen Menüs verschiedenen Alters aushalten
-(heute zwischen Menüs, die kurz nacheinander gelesen wurden).
-
-Ungültig wird ein Basis-Fakt:
-
-1. **durch Schreiben, auf jeder Verbindung**: er merkt sich die Generation, bei der er gelesen
-   wurde; ist der Zähler des Geräts seither gestiegen, gilt er nicht mehr. Ein Read, der
-   während eines Schreibens lief, wird nicht gespeichert.
-2. **durch das, was ein Job oder eine Mutation bewirkt**: sie holen danach nichts von sich aus
-   und legen nichts ab (`facts::put` und `keep_in_line` fallen weg), sie machen aber an jeder
-   Stelle ungültig, die etwas verändert haben kann. API-Befehle tun das über die Generation von
-   selbst; was ohne API-Befehl wirkt (das Apply-Script nach `/execute`, Fallback, Reboot,
-   Paketinstallation beim Booten, Power-Cycle des Speisers), erhöht die Generation dort, wo es
-   ausgelöst wird, und am Ende des Jobs noch einmal (wie heute `JobKind::invalidates`). Wer
-   danach liest, der Check des Applys oder die Geräteseite, fragt neu, und nur, was er braucht.
-3. **durch das Alter**: was niemand meldet (Winbox, Leases, Nachbarn, OSPF), begrenzt nur das
-   Alter, das der Leser zulässt (höchstens 15 min, wie heute).
-
-Eine Topologie-Änderung in NetBox macht keinen Basis-Fakt ungültig: was aus NetBox kommt,
-rechnen die Ableitungen beim nächsten Zugriff neu (heute `invalidate_everywhere` für Config).
 
 ## Der Rahmen pro Operation
 
@@ -135,27 +79,22 @@ Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern, `update::state_
 
 ## Offen
 
-- Welche Typen von mikrotik-model mit `.proplist` oder Filter lesen (dann zwei Schlüssel für
-  dasselbe Menü): beim Umbau prüfen und auf die ganze Liste umstellen.
-- `DeviceCfg::fetch` liest seit B36 über `Reads`, also künftig auch über die Basis-Fakten;
-  prüfen, ob es Menüs mit Filter liest.
-- Die Metriken `device_query_*` zählen heute nach Fact-Art; nach Menü wären es viele Reihen:
-  Pfade zu Gruppen zusammenfassen oder nur Art (Print, Monitor, Ping, Login, HTTP) als Label.
-- Die Rechenzeit der Ableitungen (der Diff jeder Geräteseite, der Site-Diff über alle Geräte)
-  messen, wenn sie nicht mehr gespeichert sind.
+- Die Metriken `device_query_*` zählen nach Fact-Art, also alle Menüs als `menu`; nach Pfad wären
+  es viele Reihen: Pfade zu Gruppen zusammenfassen oder nur Art (Print, Monitor, Ping) als Label.
+- Die Rechenzeit der Ableitungen messen (der Diff jeder Geräteseite, der Site-Diff über alle
+  Geräte), jetzt wo sie nicht mehr gespeichert sind.
+- Der Login prüft eine Verbindung, die seit `LOGIN_CHECKED` nicht antwortete, mit einem
+  `/system/identity`: auf der Geräteseite der einzige echte Doppel-Befehl. Zählte jede Antwort
+  auf der Verbindung als Prüfung, fiele er weg.
+- Nach einem Apply zeigt „Abweichung von NetBox“ „seit der Prüfung verändert“, bis jemand das
+  Gerät liest (früher legte das Apply seinen Befund ab, `keep_in_line`).
 
 ## Schritte
 
-1.–3. gebaut (B36, [device-access.md](../device-access.md)).
-4. **Provisioner**: Pool, Basis-Fakten, Generation, Operationsrahmen, HTTP im Rahmen (C17).
-   Gebaut ist der Zähler aus „Prüfen“ (`operation`, [device-access.md](../device-access.md)),
-   die Generation pro Gerät (`access::generation`), und als Pool dient der Fact `Login`, der
-   eine Verbindung 60 s wieder gibt. Die Messung (2026-11-13) zeigt Doppel nur noch auf der
-   Geräteseite: 10 Menüs des Geräts zwei- oder dreimal bei 67 Befehlen, je Laden der Seite.
-   Reihenfolge: (a) mikrotik-api gibt die rohen Antworten heraus und baut aus gespeicherten
-   wieder `Replies`; (b) Prints als Basis-Fakten im `Reader`, die Geräteseite messen; (c)
-   Monitor, Ping, Login und HTTP als Basis-Fakten; (d) die Ableitungen aus dem Store nehmen,
-   Jobs nur noch ungültig machen lassen (`put`, `keep_in_line` weg).
+1. mikrotik-model: ganze Listen statt Filter (oben), dann `/ip/service` auf der Geräteseite
+   messen.
+2. Provisioner: Rahmen pro Operation mit Topologie und HTTP, die Handarbeiten weg.
+3. Pool mit Leerlaufzeit und Semaphor pro Gerät, falls die Messung es noch braucht.
 
 ## Prüfen
 

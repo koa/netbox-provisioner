@@ -90,8 +90,8 @@ async fn sample(device: &DeviceAccess, since: Instant) -> DeviceSample {
         _ => return DeviceSample::down(device),
     };
     let freshness = Freshness::Since(since);
-    let metrics = accessible.metrics(freshness).await.value.ok();
-    let map = device_data::read_accessible(device, &accessible, freshness).await;
+    let metrics = accessible.metrics(freshness).await.ok();
+    let map = device_data::read_accessible(&accessible, freshness).await;
     DeviceSample {
         up: metrics.is_some(),
         map,

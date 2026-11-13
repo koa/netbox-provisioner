@@ -7,9 +7,11 @@
 //! couldn't be read. It only reads, so its devices stay free for jobs of their own.
 use crate::{
     Error,
-    device::ros::{
-        cfg::{GeneratedCfg, in_script},
-        graphql::of_device_as_is,
+    device::{
+        Credentials,
+        access::Reader,
+        known_password,
+        ros::{cfg::in_script, graphql::generate},
     },
     error_info::ErrorInfo,
     facts::{self, FactKind, Freshness},
@@ -101,7 +103,7 @@ fn diffed_device(device: &DeviceAccess) -> DiffedDevice {
     }
 }
 
-/// Read anew for the job (the device page shares it: `FactKind::Config`).
+/// Read anew for the job (the device page shares what it reads).
 async fn changes_of(
     device: DeviceAccess,
     started: tokio::time::Instant,
@@ -111,39 +113,52 @@ async fn changes_of(
         .await?
         .ok_or(Error::MissingCredentials)?
         .generated_cfg(Freshness::Since(started))
-        .await
-        .result()?;
+        .await?;
     Ok(generated.menu_changes().to_vec())
 }
 
 /// What the provisioner knows of how far a device is from NetBox, without asking it: the
-/// planned changes read last by anyone (`diffSite`, the device page), and since when what they
-/// were read for changed.
+/// planned changes from what anyone read of it last (`diffSite`, the device page: the facts it
+/// left), and since when what was read was dropped.
 #[derive(Debug, SimpleObject)]
 pub struct KnownDiff {
-    /// the changes read last by menu (none: it is as NetBox has it); `null` when none are
-    /// known (anymore)
+    /// the changes by menu (none: it is as NetBox has it); `null` when what they come from
+    /// isn't known (anymore)
     pub menus: Option<Vec<MenuChanges>>,
-    /// why the device couldn't be read last
+    /// why the device couldn't be reached last, when it couldn't
     pub error: Option<ErrorInfo>,
-    /// seconds since it was read
+    /// seconds since the oldest of what they come from was read
     pub age: Option<u64>,
-    /// seconds since what was read dropped: a job on the device ended, NetBox changed
+    /// seconds since what was read of it was dropped: a job on the device ended, it was read
+    /// anew
     pub changed_age: Option<u64>,
 }
 
-pub fn known(device: &DeviceAccess) -> KnownDiff {
-    let fact = facts::peek_newest::<GeneratedCfg>(FactKind::Config, device.id(), of_device_as_is);
-    let (menus, error) = match fact.as_ref().map(|fact| fact.result()) {
-        Some(Ok(generated)) => (Some(generated.menu_changes().to_vec()), None),
-        Some(Err(error)) => (None, Some(ErrorInfo::from(&error))),
-        None => (None, None),
+pub async fn known(device: &DeviceAccess) -> KnownDiff {
+    let changed_age = facts::dropped(FactKind::Menu, device.id()).map(|at| at.elapsed().as_secs());
+    let Some(credentials) = device.credentials() else {
+        return KnownDiff {
+            menus: None,
+            error: None,
+            age: None,
+            changed_age,
+        };
     };
-    KnownDiff {
-        menus,
-        error,
-        age: fact.map(|fact| fact.age().as_secs()),
-        changed_age: facts::dropped(FactKind::Config, device.id()).map(|at| at.elapsed().as_secs()),
+    let scope = Credentials::Named(credentials.into()).fact_key();
+    let reader = Reader::stored(device.id(), &scope);
+    match generate(&reader, device, known_password(device.id())).await {
+        Ok(generated) => KnownDiff {
+            menus: Some(generated.menu_changes().to_vec()),
+            error: None,
+            age: Some(reader.as_of().elapsed().as_secs()),
+            changed_age,
+        },
+        Err(_) => KnownDiff {
+            menus: None,
+            error: device.unreached().map(|error| ErrorInfo::from(&*error)),
+            age: None,
+            changed_age,
+        },
     }
 }
 

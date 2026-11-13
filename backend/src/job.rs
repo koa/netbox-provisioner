@@ -18,9 +18,7 @@ use crate::{
     Error,
     device::{
         self, batch, bootstrap, dependency, device_mode, leftovers, partitions, power_cycle,
-        radio_hold, reboot,
-        ros::{apply, cfg::GeneratedCfg},
-        terminal, update, update_fallback, watchdog,
+        radio_hold, reboot, ros::apply, terminal, update, update_fallback, watchdog,
     },
     device_state::{JobPhase, Restart},
     error_info::ErrorInfo,
@@ -424,74 +422,21 @@ impl JobKind {
     pub fn invalidates(self) -> &'static [FactKind] {
         use FactKind::*;
         match self {
-            // `Partitions`: the other one follows the apply (`PartitionSynced`)
-            JobKind::Apply => &[
-                Login,
-                Route,
-                Config,
-                Leftovers,
-                Partitions,
-                Interfaces,
-                Neighbors,
-                InterfaceLive,
-            ],
-            JobKind::Update | JobKind::Downgrade => &[
-                Login,
-                Route,
-                Config,
-                RouterosState,
-                Leftovers,
-                Partitions,
-                DeviceMode,
-                Interfaces,
-                Neighbors,
-                InterfaceLive,
-            ],
-            JobKind::Cleanup => &[
-                Login,
-                Route,
-                Config,
-                RouterosState,
-                Leftovers,
-                Neighbors,
-                InterfaceLive,
-            ],
-            JobKind::Bootstrap => &[
-                Login,
-                Route,
-                Config,
-                RouterosState,
-                Leftovers,
-                Interfaces,
-                Neighbors,
-                InterfaceLive,
-            ],
-            JobKind::Reboot => &[Login, Route, Config, Leftovers, Neighbors, InterfaceLive],
+            // what is read of the device; the way to it and its login, which an apply, an
+            // update or a reboot may change or end
+            JobKind::Apply
+            | JobKind::Update
+            | JobKind::Downgrade
+            | JobKind::Cleanup
+            | JobKind::Bootstrap
+            | JobKind::Reboot
+            | JobKind::DeviceMode
+            | JobKind::Repartition
+            | JobKind::BootPartition => &[Menu, Login, Route],
             // a job of the supplier: what it sees on the port changes with the device it feeds
-            JobKind::PowerCycle => &[Login, Route, Leftovers, Neighbors, InterfaceLive],
-            // `Partitions`: whether they can be split depends on the device mode
-            JobKind::DeviceMode => &[
-                Login,
-                Route,
-                Config,
-                Leftovers,
-                Partitions,
-                DeviceMode,
-                Neighbors,
-                InterfaceLive,
-            ],
-            JobKind::Repartition | JobKind::BootPartition => &[
-                Login,
-                Route,
-                Config,
-                RouterosState,
-                Leftovers,
-                Partitions,
-                Neighbors,
-                InterfaceLive,
-            ],
-            // NetBox changes a fact's key (addresses, cables), not what the device says
-            // its update jobs drop what they change
+            JobKind::PowerCycle => &[Menu, Login, Route],
+            // NetBox changes what is worked out from the facts, not what the device says; its
+            // update jobs drop what they change
             JobKind::NetboxWrite | JobKind::NetboxUndo | JobKind::SiteDiff | JobKind::Rollout => {
                 &[]
             }
@@ -499,13 +444,9 @@ impl JobKind {
     }
 }
 
-/// What a setup changes on the neighbor it works through: what that sees on its port, and the
-/// login the setup let through with a password for a moment.
-const THROUGH_INVALIDATES: &[FactKind] = &[
-    FactKind::Neighbors,
-    FactKind::InterfaceLive,
-    FactKind::Login,
-];
+/// What a setup changes on the neighbor it works through: what it reads there (its port), and
+/// the login the setup let through with a password for a moment.
+const THROUGH_INVALIDATES: &[FactKind] = &[FactKind::Menu, FactKind::Login];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
 pub enum JobState {
@@ -648,52 +589,7 @@ impl Job {
         if let Some(JobSubject::Device(through)) = self.through {
             facts::invalidate(through, THROUGH_INVALIDATES);
         }
-        if let (JobSubject::Device(device), JobState::Done) = (self.subject, state) {
-            self.keep_in_line(device);
-        }
         self.log.changed();
-    }
-    /// An apply whose check found the device in line, with no fallback left or fired after it,
-    /// keeps that as what is known of its diff (`site_diff::known`): „Abweichung von NetBox“
-    /// shows it without reading the device again.
-    fn keep_in_line(&self, device: DeviceId) {
-        if self.kind != JobKind::Apply {
-            return;
-        }
-        let checked = {
-            let events = self.log.events.lock_anyway();
-            let last = events
-                .iter()
-                .rposition(|logged| matches!(logged.event, Event::ApplyChecked(_)));
-            last.and_then(|index| {
-                let after = &events[index + 1..];
-                let fell_back = after.iter().any(|logged| {
-                    matches!(
-                        logged.event,
-                        Event::FallbackLeft(_) | Event::FallbackFired(_)
-                    )
-                });
-                match &events[index].event {
-                    Event::ApplyChecked(checked)
-                        if checked.error.is_none()
-                            && checked.remaining.is_empty()
-                            && !fell_back =>
-                    {
-                        Some(Duration::from(events[index].at))
-                    }
-                    _ => None,
-                }
-            })
-        };
-        if let Some(at) = checked {
-            let as_of = tokio::time::Instant::from_std(self.log.started + at);
-            let key = facts::FactKey::new(
-                FactKind::Config,
-                Some(device),
-                format!("checked by job {}", self.id),
-            );
-            facts::put(key, GeneratedCfg::in_line(as_of), as_of);
-        }
     }
     pub fn job_id(&self) -> u32 {
         self.id

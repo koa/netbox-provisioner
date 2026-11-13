@@ -886,8 +886,9 @@ impl AccessibleDevice {
     }
     /// The diff to apply, planned (`ApplyPlanned`); an empty one is nothing to do.
     pub(crate) async fn plan_apply(&self, log: &Log) -> Result<PlannedApply, Error> {
-        let mut cfg = DeviceCfg::fetch(&self.client, &self.device_config).await?;
-        cfg.generate_live(&self.device_config, &self.client).await?;
+        let mut cfg = DeviceCfg::fetch(&self.login.client, &self.device_config).await?;
+        cfg.generate_live(&self.device_config, &self.login.client)
+            .await?;
         let mutations = cfg.sorted_mutations()?;
         let script = render_script(&mutations)?;
         let restarts_radio = restarts_radio(&mutations);
@@ -1048,37 +1049,31 @@ impl AccessibleDevice {
     /// The packages besides `routeros` the device needs (`needed_radio_package`); none on a
     /// CHR, which has no RouterBOARD.
     pub async fn wanted_packages(&self) -> Result<Box<[Box<str>]>, Error> {
-        let model = <SystemRouterboardState as SingleResource>::fetch(&self.client)
+        let model = <SystemRouterboardState as SingleResource>::fetch(&self.login.client)
             .await
             .ok()
             .flatten()
             .map(|routerboard| routerboard.model.0);
-        self.wanted_packages_for(model.as_deref()).await
+        self.wanted_packages_for(&self.login.client, model.as_deref())
+            .await
     }
     /// [`Self::wanted_packages`] of a board `model` read already (`DeviceState::model`).
     pub async fn wanted_packages_for(
         &self,
+        raw: &impl Reads,
         model: Option<&[u8]>,
     ) -> Result<Box<[Box<str>]>, Error> {
         let needed = model.and_then(|model| needed_radio_package(&self.device_config, model));
         // a legacy CAPsMAN NetBox doesn't know of (its CAPs' radios aren't in NetBox) stays
         // as it is (`DeviceCfg::fetch`), so does the package it runs in
         let needed = match needed {
-            None if self.runs_legacy_capsman().await => Some(RadioPackage::Wireless),
+            None if runs_legacy_capsman(raw).await => Some(RadioPackage::Wireless),
             needed => needed,
         };
         Ok(needed
             .map(|package| package.name().into())
             .into_iter()
             .collect())
-    }
-    /// Whether `/caps-man/manager` is on (it fails without `wireless`).
-    async fn runs_legacy_capsman(&self) -> bool {
-        <CapsManManagerCfg as SingleResource>::fetch(&self.client)
-            .await
-            .ok()
-            .flatten()
-            .is_some_and(|manager| manager.enabled)
     }
     /// Whether the checks keep the watch address as the device has it (`radio_hold`).
     pub(crate) fn hold_watchdog(&self, held: bool) {
@@ -1124,4 +1119,13 @@ impl AccessibleDevice {
         .await
         .unwrap_or(Err(Error::Timeout(self.address)))
     }
+}
+
+/// Whether `/caps-man/manager` is on (it fails without `wireless`).
+async fn runs_legacy_capsman(raw: &impl Reads) -> bool {
+    <CapsManManagerCfg as SingleResource>::fetch(raw)
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|manager| manager.enabled)
 }

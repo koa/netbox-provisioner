@@ -2,13 +2,14 @@
 //!
 //! Reading the link-state database from one router of a site: the management proxy's device
 //! if it is there (it is reached directly), else the site's OSPF routers by name, the first
-//! that answers. As a fact (`FactKind::Lsdb`), so the map's viewers share a reading.
+//! that answers. What it answers is a fact (`access::Reader::at`), so the map's viewers share a
+//! reading.
 
 use super::{edges::Lsdb, lsa::Lsa};
 use crate::{
     Error,
     config::CONFIG,
-    facts::{self, Fact, FactKey, FactKind, Freshness},
+    facts::Freshness,
     topology::access::{DeviceTarget, device::DeviceAccess},
 };
 use mikrotik_model::{model::RoutingOspfLsaState, resource::collect_resource};
@@ -32,7 +33,9 @@ pub fn readers(devices: &[DeviceAccess]) -> Vec<DeviceAccess> {
 /// An LSDB and the device it is from ([`read`]).
 pub struct LsdbRead {
     pub device: DeviceAccess,
-    pub lsdb: Fact<Lsdb>,
+    pub lsdb: Lsdb,
+    /// when the device was read for it
+    pub as_of: tokio::time::Instant,
 }
 
 /// The LSDB of the first of `readers` that answers, and which one it was; the last failure
@@ -48,23 +51,16 @@ pub async fn read(readers: &[DeviceAccess]) -> Result<Option<LsdbRead>, Error> {
                 continue;
             }
         };
-        let ask = async move {
-            Ok(collect_resource::<RoutingOspfLsaState>(accessible.reader())
-                .await?
-                .iter()
-                .filter_map(Lsa::from_state)
-                .collect::<Lsdb>())
-        };
-        let key = FactKey::new(FactKind::Lsdb, Some(device.id()), "");
-        let fact = facts::get(key, Freshness::MaxAge(LSDB_AGE), ask).await;
-        match fact.value {
-            Ok(_) => {
+        let reader = accessible.reader().at(Freshness::MaxAge(LSDB_AGE));
+        match collect_resource::<RoutingOspfLsaState>(&reader).await {
+            Ok(rows) => {
                 return Ok(Some(LsdbRead {
                     device: device.clone(),
-                    lsdb: fact,
+                    lsdb: rows.iter().filter_map(Lsa::from_state).collect(),
+                    as_of: reader.as_of(),
                 }));
             }
-            Err(_) => failure = fact.result().err(),
+            Err(error) => failure = Some(error.into()),
         }
     }
     failure.map_or(Ok(None), Err)

@@ -351,7 +351,7 @@ Historie, ergänzend.
    nicht dargestellt – ausser ein reiner Switch, der laut LSDB zwei Nachbarn verbindet, siehe
    oben –, mit Unit-Tests dafür (`network_state::graphql::test`).
 3. Gerätedaten: Health, Ressourcen. **Umgesetzt** (2026-11-02): `/system/health/print` und
-   `/system/resource/print` alle 30 s pro Gerät (`network_state::device_data`, `FactKind::DeviceMapData`),
+   `/system/resource/print` alle 30 s pro Gerät (`network_state::device_data`, jedes Menü als Fakt),
    nur für Geräte mit eigenem OSPF (nicht für einen Switch, der nach Schritt 2 nur als Relais
    auf der Karte ist); im Tooltip beim Überfahren statt einer Seitenleiste
    (Entschieden 2026-11-02). Unit-Tests der Zeilen-Auswertung (`device_data::test`).

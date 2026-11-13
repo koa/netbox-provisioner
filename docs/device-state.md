@@ -3,9 +3,11 @@
 Was der Provisioner über ein Gerät herausfindet, merkt er sich, solange es stimmt, und jede
 Anzeige sieht es, sobald es nicht mehr stimmt:
 
-- Teure Erkenntnisse (alles, was ein Gerät oder MikroTik fragt) liegen in einem zentralen Cache
-  (`backend/src/facts.rs`). Billige (was aus NetBox und gecachten Erkenntnissen folgt) werden
-  jedes Mal neu gerechnet.
+- Gespeichert wird nur, was gemessen wurde (Basis-Fakten): die Antwort eines Geräts auf einen
+  Befehl, der nichts ändert (Print, Monitor einmal, Ping), ein Login-Versuch, die neueste
+  Version bei MikroTik. Sie liegen in einem zentralen Cache (`backend/src/facts.rs`). Alles
+  darüber (Konfiguration und Diff, Live-Prüfung, Karte, Metriken) wird bei jedem Zugriff daraus
+  und aus NetBox gerechnet ([Zugriff auf die Geräte](device-access.md#basis-fakten)).
 - Eine Aktion, die eine Erkenntnis ändern kann, verwirft sie, sobald sie fertig ist.
 - Jede Erkenntnis hat einen Stand. Wer sie braucht, sagt, wie alt sie sein darf; ist sie älter,
   wird neu gefragt. Der Cache hält nichts länger als 15 Minuten.
@@ -31,7 +33,7 @@ Anzeige sieht es, sobald es nicht mehr stimmt:
   sie verpasst haben.
 - **Alter:** wie lange der Stand her ist. Nur das Alter geht zwischen Server und UI hin und her.
 - **Generation:** ein Zähler pro Gerät, der am Ende jeder Aktion steigt, die das Gerät verändern
-  kann, und einer für die Topologie, der bei jeder Änderung in NetBox steigt.
+  kann; dazu einer pro Gerät, den jeder schreibende API-Befehl erhöht (`access::generation`).
 
 ## Zeit: absolut speichern, relativ übertragen
 
@@ -76,9 +78,8 @@ Anfrage bekommt etwas Älteres, auch mit grösserem `maxAge`.
 
 `get_judged` lässt den Verwender zusätzlich über einen gefundenen Wert urteilen (der Login, der
 seine Verbindung nur gibt, wenn sie noch antwortet). `peek` und `peek_newest` schauen nach, ohne
-zu fragen; `dropped` sagt, seit wann die Erkenntnisse eines Geräts verworfen sind. `put` legt
-einen Fakt ab, den ein Job ohne eigene Abfrage kennt (siehe
-[Abweichung von NetBox](#abweichung-von-netbox)).
+zu fragen; `dropped` sagt, seit wann die Erkenntnisse eines Geräts verworfen sind. Ein Job legt
+nichts ab: was er weiss, liest der Nächste neu.
 
 ### Fehlschläge
 
@@ -105,47 +106,51 @@ SSH-Blacklist von RouterOS).
 - Andere Zugangsdaten ändern den Schlüssel; ein alter Fehlschlag gilt dann gar nicht erst.
   Ad-hoc-Zugangsdaten stehen als Hash im Schlüssel, und was mit ihnen gelesen wurde, trägt den
   Zugang ebenfalls im Schlüssel.
-- Die Vorschau eines Helfers (`generating_for`) hat eigene Schlüssel und teilt nichts mit dem
-  echten Gerät.
+- Die Vorschau eines Helfers (`generating_for`) liest dieselben Menüs wie das echte Gerät und
+  rechnet sie mit der Topologie der Vorschau; gespeichert ist nur, was das Gerät antwortete.
 
 ### Was gecacht wird
 
 | Erkenntnis (`FactKind`) | Schlüssel | verworfen nach |
 |---|---|---|
-| `Login`: geht, oder warum nicht | Gerät, Adresse, Weg, Zugangsdaten | jedem Job auf dem Gerät, auch über es; Topologie-Generation |
+| `Menu`: die Antworten des Geräts auf einen Befehl, der nichts ändert, ungelesen (`access::Reader::at`) | Gerät, Zugangsdaten, Befehl mit seinen Wörtern | jedem Job auf dem Gerät, auch über es; jedem schreibenden API-Befehl an das Gerät; „Neu laden“, „Nochmals lesen“, „Erneut prüfen“ |
+| `Login`: geht, oder warum nicht | Gerät, Adresse, Weg, Zugangsdaten | jedem Job auf dem Gerät, auch über es |
 | `Route`: das Durchprobieren | Gerät, Zugang | wird nicht gespeichert |
-| `Config`: die generierte Konfiguration mit Diff und Live-Prüfungen (`generateCfg`) | Gerät, Zugang | Apply, Update, Downgrade, Cleanup, Device-Mode, Bootstrap, Reboot, Power-Cycle; jede Änderung in NetBox |
-| `RouterosState`: Version, Pakete (`update::read_state`) | Gerät | Update, Downgrade, Cleanup, Repartition, Boot-Partition, Bootstrap; jede Änderung in NetBox |
 | `NewestVersion` pro Kanal (`update::newest`) | global, Kanal | nichts |
-| `Leftovers` (`leftovers::read`) | Gerät | jedem Job auf dem Gerät |
-| `Partitions`, `DeviceMode` | Gerät | Repartition, Boot-Partition, Device-Mode, Update; `DeviceMode` auch jede Änderung in NetBox |
-| `Neighbors`: was das Gerät sieht (`neighbors::read_table`), oder an einem Port (Bootstrap) | Gerät, Port | jedem Job auf dem Gerät, auch über es |
-| `Interfaces` des Nachbarn (Portnamen für mac-telnet) | Nachbar | Apply auf dem Nachbarn |
-| `InterfaceLive`: die Live-Prüfung der Interfaces | Gerät | jedem Job auf dem Gerät, auch über es; jede Änderung in NetBox |
 
-Weil `Config`, `RouterosState` und `DeviceMode` gewünschte Pakete und Device-Mode aus NetBox
-mitrechnen, verwirft eine Änderung der Topologie sie für alle Geräte
-(`facts::invalidate_everywhere`), ebenso `InterfaceLive`, das gegen NetBox prüft. Damit ein neues
-Laden ohne Änderung nicht als Änderung gilt, sortiert `fetch` die Listen eines Prefix.
+Ein `Menu`-Fakt ist der ganze Befehl mit seinen Wörtern (Pfad, Filter, Attribute): zwei Typen, die
+dasselbe Menü verschieden fragen, sind zwei Fakten. Die Antworten liegen roh da
+(`mikrotik_api::device::Reply`), und jeder Typ liest sie wieder (`Replies::kept`). Antworten, die
+eine abgebrochene Verbindung sind, gelten nicht (`failed`). Ein Menü, das fehlt (Paket nicht
+installiert), ist eine Antwort wie jede andere.
 
-Billig und daher nie gecacht: Warnungen, `bootstrap::plans`, Befunde, Watchdog-Beziehungen,
-`wanted_packages`, der Vergleich des Gelesenen mit NetBox.
+Nicht gespeichert, sondern bei jedem Zugriff gerechnet wird alles, was aus Menüs und NetBox
+folgt: die generierte Konfiguration mit Diff und Warnungen, RouterOS-Stand und gewünschte
+Pakete, Reste, Partitionen, Device-Mode, was das Gerät sieht, die Live-Prüfung, das LSDB der
+Karte, Health und Metriken, die Portnamen und Nachbarn der Ersteinrichtung. Eine Änderung in
+NetBox verwirft deshalb nichts; sie meldet nur `Change::Topology`. Die Rechnungen halten aus,
+dass verschiedene Menüs verschieden alt sind: Lesen über mehrere Menüs war nie atomar. Damit
+ein neues Laden ohne Änderung nicht als Änderung gilt, sortiert `fetch` die Listen eines Prefix.
 
 ### Verwerfen nach Aktionen
 
-Jede `JobKind` sagt, welche Arten sie verwirft (`JobKind::invalidates`, die Tabelle oben
-umgekehrt gelesen); jeder Job auf einem Gerät verwirft `Neighbors` und `InterfaceLive`, das
-Gerät, über das er läuft (`through`), verliert `Neighbors`, `InterfaceLive` und `Login`
-(`THROUGH_INVALIDATES`), ein Batch betrifft jedes seiner Geräte.
+Jede `JobKind` sagt, welche Arten sie verwirft (`JobKind::invalidates`): jeder Job auf einem
+Gerät `Menu`, `Login` und `Route`, das Gerät, über das er läuft (`through`), `Menu` und `Login`
+(`THROUGH_INVALIDATES`), ein Batch betrifft jedes seiner Geräte. Die NetBox-Jobs verwerfen
+nichts.
 
 Verworfen wird **nach der Ausführung**, egal ob der Job gelang, fehlschlug oder abgebrochen
 wurde; dabei steigt die Generation, und was während des Jobs gelesen wurde, wird nicht
-gespeichert. Während der Job läuft, gelten die Einträge von vorher weiter.
+gespeichert. Dazu verwirft ein Leser die Menüs seines Geräts, sobald ein schreibender
+API-Befehl an das Gerät ging, seit er zuletzt las (`written_since_read`), auf jeder Verbindung.
+Während der Job läuft, gelten die Einträge von vorher sonst weiter. Ein Job holt an seinem Ende
+nichts und legt nichts ab: wer danach liest, fragt neu, und nur, was er braucht.
 
 Was der Provisioner nicht sieht (Winbox, Stromausfall), deckt das Alter des Verwenders ab, plus
 „Neu laden“: Es verwirft die Erkenntnisse des Geräts (`refreshDevice`), damit alle Seiten, die
 es zeigen, neu fragen. „Nochmals lesen“ im Vergleich mit den Geräten (`refreshNeighbors`) und
-„Erneut prüfen“ der Live-Prüfung (`refreshInterfaceLive`) verwerfen nur ihren Fakt.
+„Erneut prüfen“ der Live-Prüfung (`refreshInterfaceLive`) verwerfen die Menüs des Geräts, die
+ganze Seite liest dann neu.
 
 ### Wie alt darf es sein
 
@@ -163,8 +168,8 @@ Der Verwender entscheidet; die Werte stehen bei ihm als Konstanten mit ihrem Gru
 | Ersteinrichtung | Nachbarn am Port (`DISCOVERED_AGE`) | 10 s | das neue Gerät wird gerade eingesteckt |
 | Ersteinrichtung | Portnamen des Nachbarn (`PORT_NAMES_AGE`) | 10 min | ändern sich nur mit einem Apply dort |
 | „Vergleich mit den Geräten“ | was das Gerät sieht (`NEIGHBORS_AGE`) | 10 min | ein Kabel wandert selten |
-| Live-Prüfung der Interfaces (`INTERFACE_LIVE_AGE`) | | 1 min | mit „Stand“; Jobs und NetBox verwerfen |
-| Log, Ping | | `MaxAge(ZERO)` | der Moment |
+| Live-Prüfung der Interfaces (`INTERFACE_LIVE_AGE`) | | 1 min | mit „Stand“; Jobs verwerfen |
+| Log, PoE-Beobachtung | | live, ohne Cache | der Moment |
 
 GraphQL nimmt `maxAge` (Sekunden) an `access(maxAge:)`; es darf die Vorgabe des Resolvers nur
 verkleinern. `generateCfg`, `routeros`, `neighborsAge` und `interfaceLiveAge` geben das Alter
@@ -240,7 +245,7 @@ setzen können; das Binary prüft das Token wie den Header von `/graphql`.
   gestartet hat. Endet einer, liest die Seite Verlauf und Interfaces neu.
 
 Abonniert sind die Übersicht der Geräteseite (`DeviceOverview`) mit „Stand“ und „Neu laden“,
-ihre Interfaces (`InterfaceView`) mit der Live-Prüfung (`InterfaceLive`) und ihrem „Stand“, die
+ihre Interfaces (`InterfaceView`) mit der Live-Prüfung (`interfaceLive`) und ihrem „Stand“, die
 Befunde (`Findings`), die Site-Liste (`ListSites`), die Geräte einer Site (`SiteDevices`) und
 „Abweichung von NetBox“ (`SiteDiffKnown`).
 
@@ -257,18 +262,14 @@ Ereignisse ihres Prüf-Jobs noch jede Sekunde ab (`components/site/site_diff.rs`
 ### Abweichung von NetBox
 
 Die Karte „Abweichung von NetBox“ einer Site zeigt die Ereignisse ihres letzten Prüf-Jobs
-(`diffSite`). Der Job liest jedes Gerät über denselben Fakt wie die Geräteseite (`Config`, mit
-`Since` seinem Start); der Fakt trägt dafür die Änderungen pro Menü. Daneben abonniert die Karte
-`knownDiff` der Geräte: das Neueste, was der Provisioner weiss, ohne zu fragen, und seit wann
-das Gelesene verworfen ist (`facts::dropped`). Pro Gerät zeigt sie, was nach dem Start des Jobs
-gelesen wurde, sonst das Ergebnis des Jobs, oder „seit der Prüfung verändert“, wenn es danach
-verworfen wurde.
-
-Ein Apply, dessen Kontrolle das Gerät wie NetBox fand (ohne Fallback danach), legt das an seinem
-Ende als Fakt ab, nach dem Verwerfen (`facts::put`, `Job::keep_in_line`): Die Karte zeigt
-„entspricht NetBox“ auch ohne offene Geräteseite. Bleibt nach der Kontrolle etwas übrig, legt es
-nichts ab (die Änderungen pro Menü kennt die Kontrolle nicht), und die Karte zeigt „seit der
-Prüfung verändert“.
+(`diffSite`). Der Job liest jedes Gerät über dieselben Menü-Fakten wie die Geräteseite (mit
+`Since` seinem Start) und rechnet die Änderungen pro Menü. Daneben abonniert die Karte
+`knownDiff` der Geräte: dieselbe Rechnung über die gespeicherten Menüs, ohne zu fragen
+(`access::Reader::stored`; fehlt eines, zählt das Gerät als nicht gelesen), und seit wann sie
+verworfen sind (`facts::dropped`). Pro Gerät zeigt sie, was nach dem Start des Jobs gelesen
+wurde, sonst das Ergebnis des Jobs, oder „seit der Prüfung verändert“, wenn es danach verworfen
+wurde. Nach einem Apply ist das so, bis eine Seite oder ein Prüf-Job das Gerät wieder liest:
+der Job verwirft an seinem Ende, was seine Kontrolle las, und legt nichts ab.
 
 ## Metriken
 
@@ -284,9 +285,7 @@ an, das Binary registriert sie in der Registry von `/metrics` am Management-Port
 | `fact_cache_entries` | Gauge | `kind` | Grösse des Caches |
 | `fact_queries_running` | Gauge | `kind` | laufende Abfragen, z.B. hängende Verbindungen |
 
-- `kind`: die Art in snake_case (`login`, `route`, `config`, `routeros_state`,
-  `newest_version`, `leftovers`, `partitions`, `device_mode`, `neighbors`, `interfaces`,
-  `interface_live`).
+- `kind`: die Art in snake_case (`menu`, `login`, `route`, `newest_version`).
 - `outcome`: `ok`, `refused` (Login verweigert), `timeout`, `wrong_device`, `error` (alles
   andere). Jede dieser Zeitreihen entsteht mit 0, sobald eine Art über einen Weg zum ersten Mal
   gefragt wird: Prometheus' `increase` zählt den ersten Wert einer neuen Zeitreihe nicht, und der

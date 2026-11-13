@@ -190,7 +190,7 @@ mod test {
     #[tokio::test]
     async fn a_fact_asked_counts_for_the_operation() {
         let ((), sent) = counted(async {
-            let key = FactKey::new(FactKind::DeviceMapData, Some(DeviceId(7)), "");
+            let key = FactKey::new(FactKind::Menu, Some(DeviceId(7)), "");
             let fact = facts::get(key, Freshness::MaxAge(Duration::ZERO), async {
                 note(DeviceId(7), b"/system/resource/print");
                 note(DeviceId(7), b"/system/resource/print");

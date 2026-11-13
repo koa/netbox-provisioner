@@ -809,14 +809,14 @@ impl MutationAuthenticated {
     /// Drops the live checks of a device's interfaces: who shows them reads them anew, a
     /// subscription right away („Erneut prüfen“).
     async fn refresh_interface_live(&self, id: u32) -> bool {
-        crate::facts::invalidate(DeviceId(id), &[crate::facts::FactKind::InterfaceLive]);
+        crate::facts::invalidate(DeviceId(id), &[crate::facts::FactKind::Menu]);
         true
     }
     /// Drops the neighbors the devices were seen to see (`neighborFindings`): who shows them
     /// reads them anew, a subscription right away („Nochmals prüfen“).
     async fn refresh_neighbors(&self, ids: Vec<u32>) -> bool {
         for id in ids {
-            crate::facts::invalidate(DeviceId(id), &[crate::facts::FactKind::Neighbors]);
+            crate::facts::invalidate(DeviceId(id), &[crate::facts::FactKind::Menu]);
         }
         true
     }

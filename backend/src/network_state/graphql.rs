@@ -28,7 +28,6 @@ use mikrotik_model::model::InterfaceEthernetPoePoeOutStatus;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr},
-    sync::Arc,
 };
 
 #[derive(SimpleObject)]
@@ -195,7 +194,7 @@ pub struct MapPoeEdge {
 /// (`device::poe::feeding`), with a cable to the fed port.
 fn poe_edges(
     candidates: &[DeviceAccess],
-    device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>,
+    device_data: &BTreeMap<DeviceId, DeviceMapData>,
 ) -> Vec<MapPoeEdge> {
     let mut found = Vec::new();
     for device in candidates {
@@ -309,9 +308,13 @@ pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
     let readers = readers(&devices);
     let lsdb_result = read(&readers).await;
     let (read_from, age, lsdb, error) = match lsdb_result {
-        Ok(Some(LsdbRead { device, lsdb: fact })) => {
-            let age = fact.age().as_secs() as u32;
-            (Some(device), age, fact.value.ok(), None)
+        Ok(Some(LsdbRead {
+            device,
+            lsdb,
+            as_of,
+        })) => {
+            let age = as_of.elapsed().as_secs() as u32;
+            (Some(device), age, Some(lsdb), None)
         }
         Ok(None) => (None, 0, None, None),
         Err(error) => (None, 0, None, Some(ErrorInfo::from(&error))),
@@ -502,13 +505,13 @@ pub async fn network_state_details(devices: Vec<DeviceAccess>) -> NetworkStateDe
 /// The synchronous part of [`network_state_details`]: testable without a device to read from.
 fn build_details(
     candidates: &[DeviceAccess],
-    device_data: &BTreeMap<DeviceId, Arc<DeviceMapData>>,
+    device_data: &BTreeMap<DeviceId, DeviceMapData>,
 ) -> NetworkStateDetails {
     let mut nodes = candidates
         .iter()
         .filter_map(|device| {
             let data = device_data.get(&device.id())?;
-            let (health, resources) = (&**data).into();
+            let (health, resources) = data.into();
             Some(MapNodeDetails {
                 device: device_ref(device),
                 health: health.into(),

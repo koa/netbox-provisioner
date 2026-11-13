@@ -11,7 +11,7 @@ use crate::{
 };
 use mikrotik_model::MacAddress;
 use prometheus::proto::MetricFamily;
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 fn client() -> MacAddress {
     MacAddress::new([0x02, 0, 0, 0, 0, 0x01])
@@ -32,7 +32,7 @@ fn snapshot() -> Snapshot {
         device: "router".into(),
         site: "berg".into(),
         up: true,
-        map: Some(Arc::new(DeviceMapData {
+        map: Some(DeviceMapData {
             health: vec![
                 HealthRow {
                     name: "temperature".into(),
@@ -68,8 +68,8 @@ fn snapshot() -> Snapshot {
                 .into(),
             },
             poe_load: Box::default(),
-        })),
-        metrics: Some(Arc::new(DeviceMetrics {
+        }),
+        metrics: Some(DeviceMetrics {
             wlan_clients: Box::new([]),
             radios: Box::new([]),
             ethernet: Box::new([
@@ -104,7 +104,7 @@ fn snapshot() -> Snapshot {
                 mac_address: client(),
                 hostname: Some("laptop".into()),
             }]),
-        })),
+        }),
         wlan_groups: Box::new([]),
     };
     let ap = DeviceSample {
@@ -112,7 +112,7 @@ fn snapshot() -> Snapshot {
         site: "berg".into(),
         up: true,
         map: None,
-        metrics: Some(Arc::new(DeviceMetrics {
+        metrics: Some(DeviceMetrics {
             wlan_clients: Box::new([WlanClient {
                 mac_address: client(),
                 interface: "cap-stall-1".into(),
@@ -159,7 +159,7 @@ fn snapshot() -> Snapshot {
             ethernet: Box::new([]),
             interfaces: Box::new([]),
             leases: Box::new([]),
-        })),
+        }),
         wlan_groups: Box::new([group("wlan-berg", &["berg"], &["cap-stall"])]),
     };
     let down = DeviceSample {

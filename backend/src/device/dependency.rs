@@ -96,7 +96,7 @@ impl Paths {
             .ok()
             .and_then(Result::ok)
             .flatten()
-            .and_then(|read| read.lsdb.value.ok());
+            .map(|read| read.lsdb);
         let proxy = CONFIG.management_proxy.as_ref().map(|proxy| &*proxy.device);
         let tree = ManagementTree::of(device.topology(), proxy);
         let topology = device.topology();
@@ -108,10 +108,11 @@ impl Paths {
                 .collect(),
             links: HashMap::new(),
         };
-        for edge in edges(&devices, lsdb.as_deref().unwrap_or(&Default::default())) {
+        let answered = lsdb.is_some();
+        for edge in edges(&devices, &lsdb.unwrap_or_default()) {
             let up = match edge.state {
                 EdgeState::Up | EdgeState::V3Down | EdgeState::NotOspf => true,
-                EdgeState::Down(_) => lsdb.is_none(),
+                EdgeState::Down(_) => !answered,
             };
             let end = |interface| {
                 topology

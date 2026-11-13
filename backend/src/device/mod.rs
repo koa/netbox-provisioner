@@ -173,7 +173,7 @@ pub(crate) async fn login(
                     access::generation(device.id()),
                 )
                 .await?;
-                let client = Reader::new(client, Some(device.id()));
+                let client = Reader::new(client, Some(device.id()), scope(&path, &credentials));
                 let identity: Box<str> = SystemIdentityCfg::fetch(&client)
                     .await?
                     .map(|identity| identity.name.to_string().into())
@@ -237,6 +237,14 @@ fn judge_login(login: &Result<Arc<Login>, Arc<Error>>) -> Option<Duration> {
             _ => LOGIN_NO_ANSWER,
         },
     })
+}
+
+/// The password the newest login to `device` went with, without logging in; the current one
+/// without such a login.
+pub(crate) fn known_password(device: crate::topology::DeviceId) -> Password {
+    facts::peek_newest::<Login>(FactKind::Login, device, |_| true)
+        .and_then(|fact| fact.value.ok())
+        .map_or(Password::Current, |login| login.password)
 }
 
 /// Whether a login to `device` at `address` along `path` went within [`LOGIN_WENT`]: such a
@@ -316,20 +324,16 @@ pub struct AccessibleDevice {
     address: IpAddr,
     path: Path,
     credentials: Credentials,
-    /// which of the credentials' passwords the login went with
-    password: Password,
-    client: Reader,
+    /// the login (`login`'s fact): the connection, the identity of the device answering at
+    /// `address` and which of the credentials' passwords it went with
+    login: Arc<Login>,
     device_config: DeviceAccess,
-    /// `/system/identity` of the device answering at `address`
-    identity: Box<str>,
     /// an apply changing a radio suspended its watch address (`radio_hold`): the checks after
     /// it keep what the device has there
     watchdog_held: std::sync::atomic::AtomicBool,
     /// the youngest age the request takes facts at (`access(maxAge:)`), below the resolvers'
     /// own
     max_age: Option<Duration>,
-    /// generating for a helper's plan (`generating_for`): its facts are its own
-    preview: bool,
 }
 
 /// The device a connection reached. Only the identity tells it apart from another one at the
@@ -381,9 +385,6 @@ impl AccessibleDevice {
     /// after a helper's plan (`NetboxPlan.previewAccess`).
     pub(crate) fn generating_for(mut self, device: DeviceAccess) -> Self {
         self.device_config = device;
-        // what it works out from the planned NetBox isn't the device's fact
-        self.preview = true;
-        self.max_age = Some(Duration::ZERO);
         self
     }
     /// Logs in to `device_config` at `address` along `path` ([`login`]: a login that went a
@@ -397,42 +398,20 @@ impl AccessibleDevice {
         let login = login(&device_config, address, &path, &credentials)
             .await
             .result()?;
-        // TODO: Warum wird der Login hier zerlegt und cloned?
         Ok(AccessibleDevice {
             address,
             path,
             credentials,
-            password: login.password,
-            client: login.client.clone(),
+            login,
             device_config,
-            identity: login.identity.clone(),
             watchdog_held: Default::default(),
             max_age: None,
-            preview: false,
         })
     }
     /// The same, taking facts at most `max_age` old (`access(maxAge:)`).
     pub(crate) fn with_max_age(mut self, max_age: Option<Duration>) -> Self {
         self.max_age = max_age;
         self
-    }
-    /// Another handle on the same connection, for work that outlives the request (a fact
-    /// asked on its own, `facts::get`).
-    // TODO: Das erscheint mir falsch. Warum werden hier zustandsdaten kopiert, statt die ganzen Daten in ein Arc<> zu packen?
-    pub(crate) fn duplicate(&self) -> AccessibleDevice {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        AccessibleDevice {
-            address: self.address,
-            path: self.path.clone(),
-            credentials: self.credentials.clone(),
-            password: self.password,
-            client: self.client.clone(),
-            device_config: self.device_config.clone(),
-            identity: self.identity.clone(),
-            watchdog_held: AtomicBool::new(self.watchdog_held.load(Ordering::SeqCst)),
-            max_age: self.max_age,
-            preview: self.preview,
-        }
     }
     /// The device actually answering: where, how and with which identity.
     pub fn connected_device(&self) -> Connected {
@@ -443,13 +422,13 @@ impl AccessibleDevice {
                 Path::Routed => None,
                 Path::Neighbor(plan) => Some(plan.neighbor.as_str().into()),
             },
-            identity: self.identity.clone(),
-            same_name: *self.identity == *self.device_config.name(),
+            identity: self.login.identity.clone(),
+            same_name: *self.login.identity == *self.device_config.name(),
         }
     }
     /// What reads over the login, shared by everyone reading the device in this request.
     pub(crate) fn reader(&self) -> &Reader {
-        &self.client
+        &self.login.client
     }
     /// A job's own connection to the same device ([`Session`]).
     pub(crate) async fn connect_again(&self) -> Result<Session, Error> {
@@ -458,16 +437,20 @@ impl AccessibleDevice {
             self.address,
             &self.path,
             &self.credentials,
-            self.password,
+            self.login.password,
             generation,
         )
         .await?;
-        Ok(Session::of(connection, self.device_config.id()))
+        Ok(Session::of(
+            connection,
+            self.device_config.id(),
+            scope(&self.path, &self.credentials),
+        ))
     }
     /// Which password the login went with: [`Password::Previous`] is a deviation an apply
     /// takes away ([`Self::set_current_password`]).
     pub fn password(&self) -> Password {
-        self.password
+        self.login.password
     }
     /// The user of the credentials it logged in with.
     pub(crate) fn credentials_user(&self) -> Box<str> {
@@ -500,7 +483,7 @@ impl update::DeviceLink for AccessibleDevice {
         data: &[u8],
         progress: &(impl Fn(usize) + Sync),
     ) -> Result<(), Error> {
-        let UserPassword { user, password } = resolve(&self.credentials, self.password)?;
+        let UserPassword { user, password } = resolve(&self.credentials, self.login.password)?;
         let stream = open_stream(self.address, &self.path, 22).await?;
         terminal::upload(stream, user, password, name, data, progress).await?;
         Ok(())
@@ -596,7 +579,16 @@ pub(crate) async fn connect(
             .await?
             .client,
         device.id(),
+        scope(path, credentials),
     ))
+}
+
+/// Whose facts what is read along `path` with `credentials` is (`access::Scope`).
+fn scope(path: &Path, credentials: &Credentials) -> access::Scope {
+    access::Scope {
+        credentials: credentials.fact_key().into(),
+        way: path.label(),
+    }
 }
 
 /// [`connect`], for what only reads.

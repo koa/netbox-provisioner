@@ -2,8 +2,8 @@
 //! radios, interface counters, Ethernet links and DHCP leases; not their rendering as metrics
 //! (`crate::metrics`).
 //!
-//! What the mikrotik-metrik-exporter read (C14), as a fact per device
-//! (`FactKind::DeviceMetrics`), over the same way as everything else (`DeviceAccess::connect`).
+//! What the mikrotik-metrik-exporter read (C14), each menu as a fact (`access::Reader::at`), over
+//! the same way as everything else (`DeviceAccess::connect`).
 //! Health, resources and PoE come from the network map's reading
 //! (`network_state::device_data`), which the map's viewers share.
 //!
@@ -30,10 +30,7 @@ use super::{
     AccessibleDevice,
     access::{Reader, Row, collect_if_present, field, observe},
 };
-use crate::{
-    Error,
-    facts::{self, Fact, FactKey, FactKind, Freshness},
-};
+use crate::{Error, facts::Freshness};
 use mikrotik_model::value::RosValue;
 use mikrotik_model::{
     MacAddress,
@@ -146,16 +143,12 @@ pub struct Lease {
 
 impl AccessibleDevice {
     /// The device's [`DeviceMetrics`], as fresh as `freshness` asks (a scrape: begun since it).
-    pub async fn metrics(&self, freshness: Freshness) -> Fact<DeviceMetrics> {
-        let key = FactKey::new(FactKind::DeviceMetrics, Some(self.device_config.id()), "");
-        let device = self.duplicate();
-        let ask = async move { read(&device).await };
-        facts::get(key, freshness, ask).await
+    pub async fn metrics(&self, freshness: Freshness) -> Result<DeviceMetrics, Error> {
+        read(&self.reader().at(freshness)).await
     }
 }
 
-async fn read(device: &AccessibleDevice) -> Result<DeviceMetrics, Error> {
-    let client = device.reader();
+async fn read(client: &Reader) -> Result<DeviceMetrics, Error> {
     let capsman = LegacyCapsman::read(client).await?;
     let mut wlan_clients = wifi_clients(client).await?;
     wlan_clients.extend(legacy_clients(client, &capsman).await?);

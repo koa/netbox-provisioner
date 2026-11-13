@@ -78,75 +78,35 @@ impl Freshness {
     }
 }
 
-/// What a fact is about.
+/// What a fact is about: only what was asked of a device or MikroTik is kept; what is worked
+/// out from it (the config, the live checks, the map) is worked out on each use
+/// (`docs/device-access.md`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FactKind {
+    /// what a device answered to one command that changes nothing (a print, a monitor once, a
+    /// ping), unread (`access::Reader::at`)
+    Menu,
     /// a login at one address, way and credentials: works, or why not
     Login,
     /// the way a device is reached at, after trying its addresses and neighbors
     Route,
-    /// the config as the device has it (`DeviceCfg::fetch`)
-    Config,
-    /// RouterOS version and packages (`update::read_state`)
-    RouterosState,
     /// the newest release in a channel, from MikroTik
     NewestVersion,
-    /// what jobs left on the device (`leftovers::read`)
-    Leftovers,
-    Partitions,
-    DeviceMode,
-    /// the neighbors a device sees on a port (`/ip/neighbor`)
-    Neighbors,
-    /// a device's interfaces as it names them
-    Interfaces,
-    /// the live checks of the interface view (`interface_live::read`), against NetBox
-    InterfaceLive,
-    /// the OSPF link-state database a router has (`network_state::read`)
-    Lsdb,
-    /// a device's health and resources for the network map (`network_state::device_data`)
-    DeviceMapData,
-    /// a device's WLAN clients, interface counters and leases for `/metrics`
-    /// (`device::metrics`)
-    DeviceMetrics,
 }
 
 impl FactKind {
     /// every kind about a device: what „Neu laden“ drops
-    pub const ABOUT_DEVICES: &[FactKind] = &[
-        FactKind::Login,
-        FactKind::Route,
-        FactKind::Config,
-        FactKind::RouterosState,
-        FactKind::Leftovers,
-        FactKind::Partitions,
-        FactKind::DeviceMode,
-        FactKind::Neighbors,
-        FactKind::Interfaces,
-        FactKind::InterfaceLive,
-        FactKind::Lsdb,
-        FactKind::DeviceMapData,
-        FactKind::DeviceMetrics,
-    ];
+    pub const ABOUT_DEVICES: &[FactKind] = &[FactKind::Menu, FactKind::Login, FactKind::Route];
 }
 
 impl FactKind {
     /// the label in the metrics
     pub fn label(self) -> &'static str {
         match self {
+            FactKind::Menu => "menu",
             FactKind::Login => "login",
             FactKind::Route => "route",
-            FactKind::Config => "config",
-            FactKind::RouterosState => "routeros_state",
             FactKind::NewestVersion => "newest_version",
-            FactKind::Leftovers => "leftovers",
-            FactKind::Partitions => "partitions",
-            FactKind::DeviceMode => "device_mode",
-            FactKind::Neighbors => "neighbors",
-            FactKind::Interfaces => "interfaces",
-            FactKind::InterfaceLive => "interface_live",
-            FactKind::Lsdb => "lsdb",
-            FactKind::DeviceMapData => "device_map_data",
-            FactKind::DeviceMetrics => "device_metrics",
         }
     }
 }
@@ -293,13 +253,10 @@ struct Slot {
 
 struct Store {
     slots: HashMap<FactKey, Slot>,
-    /// when facts of a kind about a device were dropped last ([`invalidate`]; `None`:
-    /// about every device, [`invalidate_everywhere`])
-    dropped: HashMap<(Option<DeviceId>, FactKind), Instant>,
+    /// when facts of a kind about a device were dropped last ([`invalidate`])
+    dropped: HashMap<(DeviceId, FactKind), Instant>,
     /// per device, raised by [`invalidate`]; a fact begun under an older one isn't stored
     generations: HashMap<DeviceId, u64>,
-    /// raised by [`invalidate_everywhere`], counts for every device
-    everywhere: u64,
     swept: Instant,
 }
 
@@ -308,7 +265,6 @@ fn new_store() -> Mutex<Store> {
         slots: HashMap::new(),
         dropped: HashMap::new(),
         generations: HashMap::new(),
-        everywhere: 0,
         swept: Instant::now(),
     })
 }
@@ -338,10 +294,9 @@ fn store() -> std::sync::MutexGuard<'static, Store> {
 
 impl Store {
     fn generation(&self, device: Option<DeviceId>) -> u64 {
-        self.everywhere
-            + device
-                .and_then(|d| self.generations.get(&d).copied())
-                .unwrap_or(0)
+        device
+            .and_then(|d| self.generations.get(&d).copied())
+            .unwrap_or(0)
     }
     fn sweep(&mut self, now: Instant) {
         if now.saturating_duration_since(self.swept) < SWEEP {
@@ -713,7 +668,7 @@ pub fn invalidate(device: DeviceId, kinds: &'static [FactKind]) {
         *store.generations.entry(device).or_default() += 1;
         let now = Instant::now();
         for kind in kinds {
-            store.dropped.insert((Some(device), *kind), now);
+            store.dropped.insert((device, *kind), now);
         }
         for (key, slot) in &mut store.slots {
             if key.device == Some(device) && kinds.contains(&key.kind) && slot.done.take().is_some()
@@ -723,22 +678,6 @@ pub fn invalidate(device: DeviceId, kinds: &'static [FactKind]) {
         }
     }
     announce(Change::Invalidated(device, kinds));
-}
-
-/// The facts of `kinds` about every device go: NetBox changed what they are worked out from
-/// (the generated config, the packages an update keeps).
-pub fn invalidate_everywhere(kinds: &'static [FactKind]) {
-    let mut store = store();
-    store.everywhere += 1;
-    let now = Instant::now();
-    for kind in kinds {
-        store.dropped.insert((None, *kind), now);
-    }
-    for (key, slot) in &mut store.slots {
-        if kinds.contains(&key.kind) && slot.done.take().is_some() {
-            METRICS.entries.with_label_values(&[key.kind.label()]).dec();
-        }
-    }
 }
 
 /// The fact `key` as stored, whatever its age (but within [`LIMIT`]); `None` without one.
@@ -768,9 +707,7 @@ pub fn peek_newest<T: Send + Sync + 'static>(
     device: DeviceId,
     filter: impl Fn(&FactKey) -> bool,
 ) -> Option<Fact<T>> {
-    let _ = READING.try_with(|reading| {
-        reading.lock_anyway().peeked.insert((device, kind));
-    });
+    note_peeked(device, kind);
     let store = store();
     let (_, done) = store
         .slots
@@ -790,27 +727,18 @@ pub fn peek_newest<T: Send + Sync + 'static>(
     })
 }
 
-/// When facts of `kind` about `device` were dropped last (a job on it, NetBox changed), if
-/// they were.
-pub fn dropped(kind: FactKind, device: DeviceId) -> Option<Instant> {
-    let store = store();
-    let about_device = store.dropped.get(&(Some(device), kind));
-    let everywhere = store.dropped.get(&(None, kind));
-    about_device.into_iter().chain(everywhere).max().copied()
+/// Notes that the subscription answering (if any) looked at facts of `kind` about `device`
+/// without asking ([`peek`]): it answers again when one is stored or dropped.
+pub fn note_peeked(device: DeviceId, kind: FactKind) {
+    let _ = READING.try_with(|reading| {
+        reading.lock_anyway().peeked.insert((device, kind));
+    });
 }
 
-/// Stores `value` as the fact `key`, read at `as_of`: what a job saw itself at its end (an
-/// apply's check), put after its end dropped the facts about the device.
-pub fn put<T: Send + Sync + 'static>(key: FactKey, value: T, as_of: Instant) {
-    {
-        let mut store = store();
-        let value: Stored = Arc::new(Ok::<_, Arc<Error>>(Arc::new(value)));
-        let slot = store.slots.entry(key.clone()).or_default();
-        if slot.done.replace(Done { value, as_of }).is_none() {
-            METRICS.entries.with_label_values(&[key.kind.label()]).inc();
-        }
-    }
-    announce(Change::Stored(key));
+/// When facts of `kind` about `device` were dropped last (a job on it, read anew), if they
+/// were.
+pub fn dropped(kind: FactKind, device: DeviceId) -> Option<Instant> {
+    store().dropped.get(&(device, kind)).copied()
 }
 
 /// Drops the one fact `key`, e.g. a connection found broken.
