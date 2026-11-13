@@ -86,9 +86,10 @@ impl NetboxHelper {
                 text: t::port_vlan_port(
                     &port.name,
                     port.label.as_deref(),
-                    port.vlan
-                        .as_ref()
-                        .map(|vlan| (vlan.vid, vlan.name.as_str())),
+                    port.vlan.as_ref().map(|vlan| t::Vlan {
+                        vid: vlan.vid,
+                        name: &vlan.name,
+                    }),
                 ),
             })
             .collect();

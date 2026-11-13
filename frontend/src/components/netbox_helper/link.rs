@@ -92,7 +92,7 @@ impl NetboxHelper {
             .find(|port| port.id as u32 == id)
     }
     /// A port of any router, with its device's name.
-    pub(super) fn any_port(&self, id: u32) -> Option<(&str, &LinkPort)> {
+    pub(super) fn any_port(&self, id: u32) -> Option<PortOf<'_>> {
         self.ports()?
             .topology
             .all_devices
@@ -102,26 +102,33 @@ impl NetboxHelper {
                     .link_ports
                     .iter()
                     .find(|port| port.id as u32 == id)
-                    .map(|port| (device.name.as_str(), port))
+                    .map(|port| PortOf {
+                        device: device.name.as_str(),
+                        port,
+                    })
             })
     }
     /// The chosen ends of „Verbindung“ whose link is in the way: a cable elsewhere, or an IPv4
     /// not in a network with the other end.
-    pub(super) fn in_the_way(&self) -> Vec<(String, u32)> {
+    /// As buttons: the port's id, and what disconnecting it reads as.
+    pub(super) fn in_the_way(&self) -> Vec<Choice> {
         let (Some(own), Some(peer)) = (self.link.port, self.link.peer) else {
             return Vec::new();
         };
         let ends = [(own, peer), (peer, own)];
         ends.iter()
             .filter_map(|&(end, other)| {
-                let (device, port) = self.any_port(end).or_else(|| {
+                let PortOf { device, port } = self.any_port(end).or_else(|| {
                     // the device's own port (the device may not be a router in the list)
                     let device = self.ports()?.topology.device_by_id.as_ref()?;
-                    self.port(end).map(|port| (device.name.as_str(), port))
+                    self.port(end).map(|port| PortOf {
+                        device: device.name.as_str(),
+                        port,
+                    })
                 })?;
                 let other_port = self
                     .any_port(other)
-                    .map(|(_, p)| p)
+                    .map(|of| of.port)
                     .or_else(|| self.port(other));
                 let cabled_elsewhere =
                     port.cabled && !port.connected.iter().any(|far| far.id as u32 == other);
@@ -130,8 +137,10 @@ impl NetboxHelper {
                         .and_then(|other| other.ipv4.as_deref())
                         .is_some_and(|other| same_network(own, other))
                 });
-                (cabled_elsewhere || addressed_elsewhere)
-                    .then(|| (t::disconnect_port(device, &port.name), end))
+                (cabled_elsewhere || addressed_elsewhere).then(|| Choice {
+                    id: end,
+                    text: t::disconnect_port(device, &port.name),
+                })
             })
             .collect()
     }
@@ -156,7 +165,7 @@ impl NetboxHelper {
         // a port at the far end, from „Verbindung“
         if let Some(id) = self.disconnect
             && !entries.iter().any(|entry| entry.id == id)
-            && let Some((device, port)) = self.any_port(id)
+            && let Some(PortOf { device, port }) = self.any_port(id)
         {
             entries.push(Choice {
                 id,
@@ -257,11 +266,11 @@ impl NetboxHelper {
                 </FormGroup>
                 if !in_the_way.is_empty() {
                     <div class="helper-actions">
-                        { for in_the_way.into_iter().map(|(label, port)| html! {
+                        { for in_the_way.into_iter().map(|Choice { id, text }| html! {
                             <Button
                                 variant={ButtonVariant::Secondary}
-                                label={label}
-                                onclick={ctx.link().callback(move |_| LinkMsg::DisconnectPort(port))}
+                                label={text}
+                                onclick={ctx.link().callback(move |_| LinkMsg::DisconnectPort(id))}
                             />
                         })}
                     </div>
@@ -278,9 +287,10 @@ pub(super) fn port_choice(port: &LinkPort) -> Choice {
         text: t::link_port(
             &port.name,
             port.label.as_deref(),
-            port.connected
-                .first()
-                .map(|far| (far.device.name.as_str(), far.name.as_str())),
+            port.connected.first().map(|far| t::Port {
+                device: &far.device.name,
+                name: &far.name,
+            }),
             port.cabled,
             port.ipv4.as_deref(),
             port.bridge.as_deref(),
@@ -306,4 +316,10 @@ pub(super) fn same_network(a: &str, b: &str) -> bool {
         Some((u32::from(address) & mask, len))
     };
     matches!((parse(a), parse(b)), (Some(a), Some(b)) if a == b)
+}
+
+/// A router's port, with its device's name ([`NetboxHelper::any_port`]).
+pub(super) struct PortOf<'a> {
+    device: &'a str,
+    port: &'a LinkPort,
 }

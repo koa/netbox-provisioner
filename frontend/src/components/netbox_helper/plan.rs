@@ -11,7 +11,7 @@ use crate::graphql::{
             FindingKinds, HelperJobs, HelperJobsVariables, NetboxPlanPreview,
             NetboxPlanPreviewVariables, NetboxPlanQuery, NetboxPlanVariables, PlanStep as Step,
         },
-        types::{IpVersion, JobKind, JobState, PoeMode, RadioRole, VlanRef},
+        types::{InterfaceRef, IpVersion, JobKind, JobState, PoeMode, RadioRole, VlanRef},
     },
     request,
 };
@@ -90,10 +90,7 @@ pub(super) fn describe(step: &Step) -> String {
             &create.interface,
             &create.prefix,
         ),
-        Step::CreateCable(create) => t::create_cable(
-            (&create.a.device.name, &create.a.name),
-            (&create.b.device.name, &create.b.name),
-        ),
+        Step::CreateCable(create) => t::create_cable(port(&create.a), port(&create.b)),
         Step::CreatePrefix(create) => t::create_prefix(
             &create.prefix,
             &create.pool,
@@ -104,30 +101,30 @@ pub(super) fn describe(step: &Step) -> String {
             t::create_ip_range(&create.start, &create.end, &create.description)
         }
         Step::UpdateInterface(update) => t::update_interface(
-            (&update.interface.device.name, &update.interface.name),
-            update
-                .label
-                .as_deref()
-                .map(|label| (label, update.label_before.as_deref())),
-            update.mtu.map(|mtu| (mtu, update.mtu_before)),
+            port(&update.interface),
+            update.label.as_deref().map(|label| t::Change {
+                to: label,
+                before: update.label_before.as_deref(),
+            }),
+            update.mtu.map(|mtu| t::Change {
+                to: mtu,
+                before: update.mtu_before,
+            }),
             &update.tags_added.iter().map(tag_slug).collect::<Vec<_>>(),
             &update.tags_removed.iter().map(tag_slug).collect::<Vec<_>>(),
             match (&update.poe, update.poe_removed) {
-                (Some(poe), _) => Some((
-                    Some(plan_poe_mode(poe)),
-                    update.poe_before.as_ref().map(plan_poe_mode),
-                )),
-                (None, true) => Some((None, update.poe_before.as_ref().map(plan_poe_mode))),
+                (Some(poe), _) => Some(Some(plan_poe_mode(poe))),
+                (None, true) => Some(None),
                 (None, false) => None,
-            },
+            }
+            .map(|to| t::Change {
+                to,
+                before: Some(update.poe_before.as_ref().map(plan_poe_mode)),
+            }),
         ),
-        Step::DeleteCable(delete) => t::delete_cable(
-            (&delete.port.device.name, &delete.port.name),
-            delete
-                .far
-                .as_ref()
-                .map(|far| (far.device.name.as_str(), far.name.as_str())),
-        ),
+        Step::DeleteCable(delete) => {
+            t::delete_cable(port(&delete.port), delete.far.as_ref().map(port))
+        }
         Step::DeleteAddress(delete) => t::delete_address(
             &delete.address,
             &delete.interface.device.name,
@@ -135,45 +132,43 @@ pub(super) fn describe(step: &Step) -> String {
         ),
         Step::DeletePrefix(delete) => t::delete_prefix(&delete.prefix),
         Step::UpdatePort(update) => t::update_port(
-            (&update.interface.device.name, &update.interface.name),
+            port(&update.interface),
             update.name.as_deref(),
-            update
-                .rf_role
-                .as_ref()
-                .map(|role| (rf_role(role), update.rf_role_before.as_ref().map(rf_role))),
+            update.rf_role.as_ref().map(|role| t::Change {
+                to: rf_role(role),
+                before: update.rf_role_before.as_ref().map(rf_role),
+            }),
             update.bridge.as_deref(),
             update.leaves_bridge.as_deref(),
         ),
-        Step::CreateWirelessLink(create) => t::create_wireless_link(
-            (&create.a.device.name, &create.a.name),
-            (&create.b.device.name, &create.b.name),
-            &create.ssid,
-        ),
+        Step::CreateWirelessLink(create) => {
+            t::create_wireless_link(port(&create.a), port(&create.b), &create.ssid)
+        }
         Step::UpdatePortVlan(update) => {
-            fn vlan(vlan: &VlanRef) -> (i32, &str) {
-                (vlan.vid, vlan.name.as_str())
+            fn vlan(vlan: &VlanRef) -> t::Vlan<'_> {
+                t::Vlan {
+                    vid: vlan.vid,
+                    name: &vlan.name,
+                }
             }
             t::update_port_vlan(
-                (&update.interface.device.name, &update.interface.name),
+                port(&update.interface),
                 update.vlan.as_ref().map(vlan),
                 update.vlan_before.as_ref().map(vlan),
                 &update.tagged_before.iter().map(vlan).collect::<Vec<_>>(),
             )
         }
-        Step::DeleteInterface(delete) => {
-            t::delete_interface((&delete.interface.device.name, &delete.interface.name))
+        Step::DeleteInterface(delete) => t::delete_interface(port(&delete.interface)),
+        Step::DeleteWirelessLink(delete) => {
+            t::delete_wireless_link(port(&delete.a), port(&delete.b))
         }
-        Step::DeleteWirelessLink(delete) => t::delete_wireless_link(
-            (&delete.a.device.name, &delete.a.name),
-            (&delete.b.device.name, &delete.b.name),
-        ),
         Step::UpdateWirelessLink(update) => t::update_wireless_link(
-            (&update.a.device.name, &update.a.name),
-            (&update.b.device.name, &update.b.name),
-            update
-                .ssid
-                .as_deref()
-                .map(|ssid| (ssid, update.ssid_before.as_str())),
+            port(&update.a),
+            port(&update.b),
+            update.ssid.as_deref().map(|ssid| t::Change {
+                to: ssid,
+                before: Some(&update.ssid_before),
+            }),
             update.psk_set,
         ),
         Step::SetPrimaryIp(set) => t::set_primary(
@@ -263,6 +258,13 @@ pub(super) fn fetch_preview(
         });
         scope.send_message(NetboxHelperMsg::Preview(preview));
     });
+}
+
+fn port(interface: &InterfaceRef) -> t::Port<'_> {
+    t::Port {
+        device: &interface.device.name,
+        name: &interface.name,
+    }
 }
 
 fn rf_role(role: &RadioRole) -> &str {

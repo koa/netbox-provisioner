@@ -640,11 +640,17 @@ fn script_lines(progress: &Progress) -> Vec<String> {
         lines: script.lines,
         section: script.section,
         done: script.done,
-        error: script.error_line.zip(script.error.as_deref()),
+        error: script
+            .error_line
+            .zip(script.error.as_deref())
+            .map(|(line, error)| i18n::job::event::ScriptError { line, error }),
         probe: script
             .probe
             .as_deref()
-            .map(|probe| (probe, script.probe_answered)),
+            .map(|address| i18n::job::event::Probe {
+                address,
+                answered_before: script.probe_answered,
+            }),
         lost: &script.lost,
         back: &script.back,
         rearmed: script

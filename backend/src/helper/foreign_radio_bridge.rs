@@ -136,7 +136,11 @@ pub(super) async fn plan_with(
     {
         radio_bridge::radios(
             &mut plan,
-            [(ap_radio, &ap), (station_radio, &station)],
+            radio_bridge::RadioLink {
+                ap: ap_radio,
+                ap_device: &ap,
+                station: station_radio,
+            },
             input.ssid.as_deref(),
             false,
         )?;
@@ -144,12 +148,10 @@ pub(super) async fn plan_with(
     networks(topology, &mut plan, &sides, routes).await?;
     let cables = sides
         .iter()
-        .map(|side| {
-            (
-                side.router_port.clone(),
-                side.ether.clone(),
-                side.device.clone(),
-            )
+        .map(|side| radio_bridge::BridgeCable {
+            router_port: side.router_port.clone(),
+            ether: side.ether.clone(),
+            device: side.device.clone(),
         })
         .collect::<Vec<_>>();
     radio_bridge::labels(&mut plan, &cables);

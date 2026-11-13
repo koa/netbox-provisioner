@@ -119,8 +119,7 @@ pub struct NetboxHelper {
     net_options: Option<Result<NetOptions, FrontendError>>,
     port_vlan: PortVlanChoice,
     port_vlan_options: Option<Result<PortVlanOptionsData, FrontendError>>,
-    /// „Kabel übernehmen“: the port and the one the device sees there
-    cable_takeover: Option<(u32, u32)>,
+    cable_takeover: Option<CableTakeover>,
     poe: PoeChoice,
     poe_options: Option<Result<PoeOptionsData, FrontendError>>,
     /// what the device reports feeding, once asked
@@ -271,7 +270,10 @@ impl Component for NetboxHelper {
                 HelperKind::PortVlan
             }
             Some(HelperPreset::CableTakeover { port, peer }) => {
-                cable_takeover = Some((*port, *peer));
+                cable_takeover = Some(CableTakeover {
+                    port: *port,
+                    peer: *peer,
+                });
                 HelperKind::CableTakeover
             }
             Some(HelperPreset::BridgeLeave(port)) => {
@@ -738,7 +740,7 @@ impl NetboxHelper {
                 vlan: self.port_vlan.vlan?,
             }),
             HelperKind::CableTakeover => {
-                let (port, peer) = self.cable_takeover?;
+                let CableTakeover { port, peer } = self.cable_takeover?;
                 Some(HelperChoice::CableTakeover { port, peer })
             }
             HelperKind::RadioDisconnect => Some(HelperChoice::RadioDisconnect {
@@ -810,4 +812,11 @@ impl NetboxHelper {
             fetch_plan(ctx.link().clone(), ctx.props().id, choice);
         }
     }
+}
+
+/// „Kabel übernehmen“: the port and the one the device sees there.
+#[derive(Clone, Copy)]
+struct CableTakeover {
+    port: u32,
+    peer: u32,
 }

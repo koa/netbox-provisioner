@@ -6,20 +6,74 @@ use super::{MARGIN, OUTSIDE};
 use crate::graphql::authenticated::network_map::NetworkState as State;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+/// A position on the map (SVG space). Stored as `[x, y]` (a browser's own arrangement in
+/// `localStorage` has it so).
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(from = "[f64; 2]", into = "[f64; 2]")]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl From<[f64; 2]> for Point {
+    fn from([x, y]: [f64; 2]) -> Self {
+        Point { x, y }
+    }
+}
+
+impl From<Point> for [f64; 2] {
+    fn from(point: Point) -> Self {
+        [point.x, point.y]
+    }
+}
+
+/// A line between two nodes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) struct Edge<K> {
+    pub(super) a: K,
+    pub(super) b: K,
+}
+
+impl<K: PartialEq> Edge<K> {
+    fn touches(&self, node: K) -> bool {
+        self.a == node || self.b == node
+    }
+}
+
+/// The nodes and edges of a map ([`graph`]).
+pub(super) struct Graph {
+    pub(super) nodes: Vec<i32>,
+    pub(super) edges: Vec<Edge<i32>>,
+}
+
+/// Where [`clustered_layout`] puts the devices, and the sites' circles.
+pub(super) struct Clustered {
+    pub(super) positions: HashMap<i32, Point>,
+    pub(super) circles: Vec<SiteCircle>,
+}
+
 /// `state`'s nodes (plus the outside node, if any, pulled toward the routers it borders) and
 /// edges, as plain ids, for [`force_layout`].
-pub(super) fn graph(state: &State) -> (Vec<i32>, Vec<(i32, i32)>) {
+pub(super) fn graph(state: &State) -> Graph {
     let mut nodes: Vec<i32> = state.nodes.iter().map(|n| n.device.id).collect();
-    let mut edges: Vec<(i32, i32)> = state
+    let mut edges: Vec<Edge<i32>> = state
         .edges
         .iter()
-        .map(|e| (e.a.device.id, e.b.device.id))
+        .map(|e| Edge {
+            a: e.a.device.id,
+            b: e.b.device.id,
+        })
         .collect();
     if state.outside > 0 {
         nodes.push(OUTSIDE);
-        edges.extend(state.outside_at.iter().map(|&id| (OUTSIDE, id)));
+        edges.extend(
+            state
+                .outside_at
+                .iter()
+                .map(|&id| Edge { a: OUTSIDE, b: id }),
+        );
     }
-    (nodes, edges)
+    Graph { nodes, edges }
 }
 
 /// A side length that gives `count` nodes roughly as much room as the old column layout did
@@ -48,18 +102,18 @@ pub(super) const ITERATIONS: u32 = 300;
 
 pub(super) fn force_layout(
     nodes: &[i32],
-    edges: &[(i32, i32)],
-    pinned: &HashMap<i32, (f64, f64)>,
+    edges: &[Edge<i32>],
+    pinned: &HashMap<i32, Point>,
     radii: &HashMap<i32, f64>,
     gap: f64,
     side: f64,
-    seed: &HashMap<i32, (f64, f64)>,
-) -> HashMap<i32, (f64, f64)> {
+    seed: &HashMap<i32, Point>,
+) -> HashMap<i32, Point> {
     if nodes.is_empty() {
         return HashMap::new();
     }
     let k = (side * side / nodes.len() as f64).sqrt();
-    let mut pos: HashMap<i32, (f64, f64)> = nodes
+    let mut pos: HashMap<i32, Point> = nodes
         .iter()
         .map(|&id| {
             (
@@ -73,10 +127,10 @@ pub(super) fn force_layout(
         })
         .collect();
     for step in 0..ITERATIONS {
-        let mut disp = HashMap::<i32, (f64, f64)>::new();
+        let mut disp = HashMap::<i32, Point>::new();
         for (i, &a) in nodes.iter().enumerate() {
             for &b in &nodes[i + 1..] {
-                let (dx, dy) = (pos[&a].0 - pos[&b].0, pos[&a].1 - pos[&b].1);
+                let (dx, dy) = (pos[&a].x - pos[&b].x, pos[&a].y - pos[&b].y);
                 let dist = dx.hypot(dy).max(0.01);
                 let effective_k = (radii.get(&a).copied().unwrap_or(0.0)
                     + radii.get(&b).copied().unwrap_or(0.0)
@@ -85,51 +139,51 @@ pub(super) fn force_layout(
                 let force = effective_k * effective_k / dist;
                 let (ux, uy) = (dx / dist * force, dy / dist * force);
                 let da = disp.entry(a).or_default();
-                da.0 += ux;
-                da.1 += uy;
+                da.x += ux;
+                da.y += uy;
                 let db = disp.entry(b).or_default();
-                db.0 -= ux;
-                db.1 -= uy;
+                db.x -= ux;
+                db.y -= uy;
             }
         }
-        for &(a, b) in edges {
+        for &Edge { a, b } in edges {
             let (Some(&pa), Some(&pb)) = (pos.get(&a), pos.get(&b)) else {
                 continue;
             };
-            let (dx, dy) = (pa.0 - pb.0, pa.1 - pb.1);
+            let (dx, dy) = (pa.x - pb.x, pa.y - pb.y);
             let dist = dx.hypot(dy).max(0.01);
             let force = dist * dist / k;
             let (ux, uy) = (dx / dist * force, dy / dist * force);
             let da = disp.entry(a).or_default();
-            da.0 -= ux;
-            da.1 -= uy;
+            da.x -= ux;
+            da.y -= uy;
             let db = disp.entry(b).or_default();
-            db.0 += ux;
-            db.1 += uy;
+            db.x += ux;
+            db.y += uy;
         }
         let temperature = side * 0.1 * (1.0 - f64::from(step) / f64::from(ITERATIONS));
         for &id in nodes {
             if pinned.contains_key(&id) {
                 continue;
             }
-            let (dx, dy) = disp.get(&id).copied().unwrap_or_default();
+            let Point { x: dx, y: dy } = disp.get(&id).copied().unwrap_or_default();
             let dist = dx.hypot(dy).max(0.01);
             let limited = dist.min(temperature);
             let p = pos.get_mut(&id).expect("every node has a position");
-            p.0 = (p.0 + dx / dist * limited).clamp(0.0, side);
-            p.1 = (p.1 + dy / dist * limited).clamp(0.0, side);
+            p.x = (p.x + dx / dist * limited).clamp(0.0, side);
+            p.y = (p.y + dy / dist * limited).clamp(0.0, side);
         }
     }
     for p in pos.values_mut() {
-        p.0 += MARGIN;
-        p.1 += MARGIN;
+        p.x += MARGIN;
+        p.y += MARGIN;
     }
     pos
 }
 
 /// A position hashed from `id` (MurmurHash3's finalizer), not random, so a layout without a
 /// pinned position for every node still comes out the same way every time.
-pub(super) fn seeded(id: i32, side: f64) -> (f64, f64) {
+pub(super) fn seeded(id: i32, side: f64) -> Point {
     let mut h = id as u64 ^ 0x9E37_79B9_7F4A_7C15;
     h ^= h >> 33;
     h = h.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
@@ -138,7 +192,10 @@ pub(super) fn seeded(id: i32, side: f64) -> (f64, f64) {
     h ^= h >> 33;
     let x = (h & 0xFFFF_FFFF) as f64 / f64::from(u32::MAX);
     let y = (h >> 32) as f64 / f64::from(u32::MAX);
-    (x * side, y * side)
+    Point {
+        x: x * side,
+        y: y * side,
+    }
 }
 
 /// A graph-structure-aware starting layout for [`force_layout`]'s `seed`, used for
@@ -155,11 +212,11 @@ pub(super) fn seeded(id: i32, side: f64) -> (f64, f64) {
 /// only a head start for what follows, not a replacement for it.
 pub(super) fn seed_from_graph(
     nodes: &[i32],
-    edges: &[(i32, i32)],
+    edges: &[Edge<i32>],
     side: f64,
-) -> HashMap<i32, (f64, f64)> {
+) -> HashMap<i32, Point> {
     let mut adjacency: HashMap<i32, Vec<i32>> = HashMap::new();
-    for &(a, b) in edges {
+    for &Edge { a, b } in edges {
         adjacency.entry(a).or_default().push(b);
         adjacency.entry(b).or_default().push(a);
     }
@@ -197,7 +254,13 @@ pub(super) fn seed_from_graph(
                 let x = origin_x
                     + width / 2.0
                     + (i as f64 - (layer.len() as f64 - 1.0) / 2.0) * spacing;
-                pos.insert(id, (x, depth as f64 * spacing));
+                pos.insert(
+                    id,
+                    Point {
+                        x,
+                        y: depth as f64 * spacing,
+                    },
+                );
             }
         }
         origin_x += width + spacing;
@@ -221,7 +284,7 @@ pub(super) enum Cluster {
 pub(super) struct SiteCircle {
     pub(super) site: i32,
     pub(super) name: String,
-    pub(super) center: (f64, f64),
+    pub(super) center: Point,
     pub(super) radius: f64,
 }
 
@@ -236,14 +299,9 @@ pub(super) const SITE_GAP: f64 = 25.0;
 /// Whether segments `p1`-`p2` and `p3`-`p4` cross in their interior (touching at an endpoint,
 /// or being collinear, doesn't count — good enough for a visual heuristic over lines that share
 /// no endpoint, which is the only way [`reduce_crossings`] calls this).
-pub(super) fn segments_cross(
-    p1: (f64, f64),
-    p2: (f64, f64),
-    p3: (f64, f64),
-    p4: (f64, f64),
-) -> bool {
-    fn orientation(p: (f64, f64), q: (f64, f64), r: (f64, f64)) -> i8 {
-        let val = (q.1 - p.1) * (r.0 - q.0) - (q.0 - p.0) * (r.1 - q.1);
+pub(super) fn segments_cross(p1: Point, p2: Point, p3: Point, p4: Point) -> bool {
+    fn orientation(p: Point, q: Point, r: Point) -> i8 {
+        let val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
         if val.abs() < 1e-9 {
             0
         } else if val > 0.0 {
@@ -262,14 +320,14 @@ pub(super) fn segments_cross(
 }
 
 pub(super) fn count_crossings<K: Eq + std::hash::Hash + Copy>(
-    positions: &HashMap<K, (f64, f64)>,
-    edges: &[(K, K)],
+    positions: &HashMap<K, Point>,
+    edges: &[Edge<K>],
 ) -> usize {
     let mut n = 0;
     for i in 0..edges.len() {
         for j in (i + 1)..edges.len() {
-            let (a1, b1) = edges[i];
-            let (a2, b2) = edges[j];
+            let Edge { a: a1, b: b1 } = edges[i];
+            let Edge { a: a2, b: b2 } = edges[j];
             if a1 == a2 || a1 == b2 || b1 == a2 || b1 == b2 {
                 continue; // sharing a site isn't a crossing, the lines are meant to meet there
             }
@@ -302,8 +360,8 @@ pub(super) fn count_crossings<K: Eq + std::hash::Hash + Copy>(
 /// this (a device-level swap, within one circle's own local coordinates, needs no such backstop:
 /// it only ever swaps two positions already inside the circle, so it can't push one out of it).
 pub(super) fn reduce_crossings<K: Eq + std::hash::Hash + Ord + Copy>(
-    positions: &mut HashMap<K, (f64, f64)>,
-    edges: &[(K, K)],
+    positions: &mut HashMap<K, Point>,
+    edges: &[Edge<K>],
 ) {
     let mut nodes: Vec<K> = positions.keys().copied().collect();
     nodes.sort(); // deterministic order: a HashMap's own would make the swap sequence, and so
@@ -317,9 +375,9 @@ pub(super) fn reduce_crossings<K: Eq + std::hash::Hash + Ord + Copy>(
 /// The local search of [`reduce_crossings`] over `movable` (the others keep their place, an
 /// anchor standing for another site's direction), keeping a swap where `badness` drops.
 pub(super) fn reduce_by_swaps<K: Eq + std::hash::Hash + Copy>(
-    positions: &mut HashMap<K, (f64, f64)>,
+    positions: &mut HashMap<K, Point>,
     nodes: &[K],
-    badness: impl Fn(&HashMap<K, (f64, f64)>) -> usize,
+    badness: impl Fn(&HashMap<K, Point>) -> usize,
 ) {
     for _ in 0..nodes.len().min(30) {
         let mut improved = false;
@@ -350,13 +408,13 @@ pub(super) const DEVICE_CLEARANCE: f64 = 16.0;
 /// How many times one of `edges` passes through one of `devices` it doesn't end at (closer than
 /// [`DEVICE_CLEARANCE`]): it reads as connecting to that device too.
 pub(super) fn count_through_devices<K: Eq + std::hash::Hash + Copy>(
-    positions: &HashMap<K, (f64, f64)>,
-    edges: &[(K, K)],
+    positions: &HashMap<K, Point>,
+    edges: &[Edge<K>],
     devices: &[K],
 ) -> usize {
     edges
         .iter()
-        .map(|&(a, b)| {
+        .map(|&Edge { a, b }| {
             devices
                 .iter()
                 .filter(|&&id| {
@@ -379,12 +437,12 @@ pub(super) fn count_through_devices<K: Eq + std::hash::Hash + Copy>(
 /// device, and other edges passing through one of them. A swap of two devices changes only
 /// these, so comparing them before and after is the whole change.
 fn faults_at(
-    positions: &HashMap<i32, (f64, f64)>,
-    edges: &[(i32, i32)],
+    positions: &HashMap<i32, Point>,
+    edges: &[Edge<i32>],
     devices: &[i32],
     at: [i32; 2],
 ) -> usize {
-    let touches = |&(a, b): &(i32, i32)| at.contains(&a) || at.contains(&b);
+    let touches = |e: &Edge<i32>| at.contains(&e.a) || at.contains(&e.b);
     let mut n = 0;
     for (i, e) in edges.iter().enumerate() {
         if !touches(e) {
@@ -392,14 +450,14 @@ fn faults_at(
         }
         for (j, f) in edges.iter().enumerate() {
             // a pair of edges both at `at` counts once
-            if (touches(f) && j <= i) || [e.0, e.1].iter().any(|x| *x == f.0 || *x == f.1) {
+            if (touches(f) && j <= i) || f.touches(e.a) || f.touches(e.b) {
                 continue;
             }
             if segments_cross(
-                positions[&e.0],
-                positions[&e.1],
-                positions[&f.0],
-                positions[&f.1],
+                positions[&e.a],
+                positions[&e.b],
+                positions[&f.a],
+                positions[&f.b],
             ) {
                 n += 1;
             }
@@ -410,7 +468,7 @@ fn faults_at(
         &edges.iter().copied().filter(touches).collect::<Vec<_>>(),
         devices,
     );
-    let others: Vec<(i32, i32)> = edges.iter().copied().filter(|e| !touches(e)).collect();
+    let others: Vec<Edge<i32>> = edges.iter().copied().filter(|e| !touches(e)).collect();
     n + count_through_devices(positions, &others, &at)
 }
 
@@ -420,8 +478,8 @@ fn faults_at(
 /// could still cross on the way, or one leave through a device (E21). A swap stays within a
 /// circle, so it can't push a device out of it.
 pub(super) fn reduce_faults_within_sites(
-    positions: &mut HashMap<i32, (f64, f64)>,
-    edges: &[(i32, i32)],
+    positions: &mut HashMap<i32, Point>,
+    edges: &[Edge<i32>],
     members: &[Vec<i32>],
 ) {
     let mut devices: Vec<i32> = positions.keys().copied().collect();
@@ -456,21 +514,16 @@ pub(super) fn reduce_faults_within_sites(
 /// The point on segment `p1`-`p2` closest to `center` is nearer than `radius`: the segment passes
 /// through the circle, not just near it — touching the boundary exactly (`==`) doesn't count, same
 /// convention as [`segments_cross`] treating a shared endpoint as "meeting there," not a crossing.
-pub(super) fn segment_intersects_circle(
-    p1: (f64, f64),
-    p2: (f64, f64),
-    center: (f64, f64),
-    radius: f64,
-) -> bool {
-    let (dx, dy) = (p2.0 - p1.0, p2.1 - p1.1);
+pub(super) fn segment_intersects_circle(p1: Point, p2: Point, center: Point, radius: f64) -> bool {
+    let (dx, dy) = (p2.x - p1.x, p2.y - p1.y);
     let len_sq = dx * dx + dy * dy;
     let t = if len_sq > 0.0 {
-        (((center.0 - p1.0) * dx + (center.1 - p1.1) * dy) / len_sq).clamp(0.0, 1.0)
+        (((center.x - p1.x) * dx + (center.y - p1.y) * dy) / len_sq).clamp(0.0, 1.0)
     } else {
         0.0
     };
-    let (cx, cy) = (p1.0 + t * dx, p1.1 + t * dy);
-    (cx - center.0).hypot(cy - center.1) < radius
+    let (cx, cy) = (p1.x + t * dx, p1.y + t * dy);
+    (cx - center.x).hypot(cy - center.y) < radius
 }
 
 /// How many of `edges`, drawn at `positions`, pass through a site circle neither of their own two
@@ -478,14 +531,14 @@ pub(super) fn segment_intersects_circle(
 /// whether it also crosses another edge on the way, so [`reduce_site_crossings`] weighs it the
 /// same as an actual crossing.
 pub(super) fn count_intrusions(
-    positions: &HashMap<i32, (f64, f64)>,
-    edges: &[(i32, i32)],
+    positions: &HashMap<i32, Point>,
+    edges: &[Edge<i32>],
     cluster_of_node: &HashMap<i32, Cluster>,
-    centers: &HashMap<Cluster, (f64, f64)>,
+    centers: &HashMap<Cluster, Point>,
     radii: &HashMap<Cluster, f64>,
 ) -> usize {
     let mut n = 0;
-    for &(a, b) in edges {
+    for &Edge { a, b } in edges {
         let (ca, cb) = (cluster_of_node[&a], cluster_of_node[&b]);
         for (&site, &radius) in radii {
             if site == ca || site == cb {
@@ -514,21 +567,31 @@ pub(super) fn count_intrusions(
 /// overlapping (this only moves centers, blind to radius) — left for the caller's own radius-aware
 /// cleanup, same as any other cause of overlap.
 pub(super) fn reduce_site_crossings(
-    positions: &mut HashMap<i32, (f64, f64)>,
-    centers: &mut HashMap<Cluster, (f64, f64)>,
+    positions: &mut HashMap<i32, Point>,
+    centers: &mut HashMap<Cluster, Point>,
     cluster_of_node: &HashMap<i32, Cluster>,
     members: &BTreeMap<Cluster, Vec<i32>>,
-    edges: &[(i32, i32)],
+    edges: &[Edge<i32>],
     radii: &HashMap<Cluster, f64>,
 ) {
-    let offsets: HashMap<i32, (f64, f64)> = positions
+    let offsets: HashMap<i32, Point> = positions
         .iter()
-        .map(|(&id, &(x, y))| {
+        .map(|(&id, &p)| {
             let center = centers[&cluster_of_node[&id]];
-            (id, (x - center.0, y - center.1))
+            (
+                id,
+                Point {
+                    x: p.x - center.x,
+                    y: p.y - center.y,
+                },
+            )
         })
         .collect();
-    let badness = |positions: &HashMap<i32, (f64, f64)>, centers: &HashMap<Cluster, (f64, f64)>| {
+    let at = |center: Point, id: i32| Point {
+        x: center.x + offsets[&id].x,
+        y: center.y + offsets[&id].y,
+    };
+    let badness = |positions: &HashMap<i32, Point>, centers: &HashMap<Cluster, Point>| {
         count_crossings(positions, edges)
             + count_intrusions(positions, edges, cluster_of_node, centers, radii)
     };
@@ -546,16 +609,10 @@ pub(super) fn reduce_site_crossings(
                 let (center_i, center_j) = (centers[&ci], centers[&cj]);
                 let before = badness(positions, centers);
                 for &id in &members[&ci] {
-                    positions.insert(
-                        id,
-                        (center_j.0 + offsets[&id].0, center_j.1 + offsets[&id].1),
-                    );
+                    positions.insert(id, at(center_j, id));
                 }
                 for &id in &members[&cj] {
-                    positions.insert(
-                        id,
-                        (center_i.0 + offsets[&id].0, center_i.1 + offsets[&id].1),
-                    );
+                    positions.insert(id, at(center_i, id));
                 }
                 centers.insert(ci, center_j);
                 centers.insert(cj, center_i);
@@ -563,16 +620,10 @@ pub(super) fn reduce_site_crossings(
                     improved = true;
                 } else {
                     for &id in &members[&ci] {
-                        positions.insert(
-                            id,
-                            (center_i.0 + offsets[&id].0, center_i.1 + offsets[&id].1),
-                        );
+                        positions.insert(id, at(center_i, id));
                     }
                     for &id in &members[&cj] {
-                        positions.insert(
-                            id,
-                            (center_j.0 + offsets[&id].0, center_j.1 + offsets[&id].1),
-                        );
+                        positions.insert(id, at(center_j, id));
                     }
                     centers.insert(ci, center_i);
                     centers.insert(cj, center_j);
@@ -592,13 +643,16 @@ pub(super) fn reduce_site_crossings(
 /// their own single-node "site" in the meta layout (pulled toward what they're cabled to) but
 /// get no circle. Edges between devices are drawn at the devices' own, now clustered, positions
 /// — only where a node ends up, not what it's grouped under, changes.
-pub(super) fn clustered_layout(
-    state: &State,
-    pinned: &HashMap<i32, (f64, f64)>,
-) -> (HashMap<i32, (f64, f64)>, Vec<SiteCircle>) {
-    let (node_ids, edge_pairs) = graph(state);
+pub(super) fn clustered_layout(state: &State, pinned: &HashMap<i32, Point>) -> Clustered {
+    let Graph {
+        nodes: node_ids,
+        edges: edge_pairs,
+    } = graph(state);
     if node_ids.is_empty() {
-        return (HashMap::new(), Vec::new());
+        return Clustered {
+            positions: HashMap::new(),
+            circles: Vec::new(),
+        };
     }
     let site_of: HashMap<i32, Option<i32>> = state
         .nodes
@@ -640,11 +694,14 @@ pub(super) fn clustered_layout(
         .map(|(i, &c)| (c, i as i32))
         .collect();
     let meta_ids: Vec<i32> = (0..clusters.len() as i32).collect();
-    let meta_edges: Vec<(i32, i32)> = edge_pairs
+    let meta_edges: Vec<Edge<i32>> = edge_pairs
         .iter()
-        .filter_map(|&(a, b)| {
+        .filter_map(|&Edge { a, b }| {
             let (ca, cb) = (cluster_of_node[&a], cluster_of_node[&b]);
-            (ca != cb).then(|| (meta_id_of[&ca], meta_id_of[&cb]))
+            (ca != cb).then(|| Edge {
+                a: meta_id_of[&ca],
+                b: meta_id_of[&cb],
+            })
         })
         .collect();
     // reused, unchanged, for both the meta layout's repulsion and the final circle below: the
@@ -674,7 +731,7 @@ pub(super) fn clustered_layout(
         meta_side,
         &meta_seed,
     );
-    let mut meta_positions: HashMap<Cluster, (f64, f64)> = clusters
+    let mut meta_positions: HashMap<Cluster, Point> = clusters
         .iter()
         .map(|&c| (c, meta_positions_by_id[&meta_id_of[&c]]))
         .collect();
@@ -682,12 +739,15 @@ pub(super) fn clustered_layout(
         &mut meta_positions,
         &meta_edges
             .iter()
-            .map(|&(a, b)| (clusters[a as usize], clusters[b as usize]))
+            .map(|&Edge { a, b }| Edge {
+                a: clusters[a as usize],
+                b: clusters[b as usize],
+            })
             .collect::<Vec<_>>(),
     );
 
     // each site's devices around its center, facing the sites they are cabled to
-    let lay_out_sites = |meta_positions: &HashMap<Cluster, (f64, f64)>| {
+    let lay_out_sites = |meta_positions: &HashMap<Cluster, Point>| {
         let mut positions = HashMap::new();
         let mut circles = Vec::new();
         let mut circle_members: Vec<Vec<i32>> = Vec::new();
@@ -699,51 +759,58 @@ pub(super) fn clustered_layout(
             // `promised_radius`): called once below for the plain case, and, where a device of this
             // site is pinned (dragged, live or settled), a second time so the others can be laid
             // out reacting to it rather than just having it stamped on top afterwards.
-            let recenter =
-                |local: &HashMap<i32, (f64, f64)>| -> (HashMap<i32, (f64, f64)>, f64, f64, f64) {
-                    let (sx, sy) = local
-                        .values()
-                        .fold((0.0, 0.0), |(sx, sy), p| (sx + p.0, sy + p.1));
-                    let n = local.len() as f64;
-                    let (dx, dy) = (center.0 - sx / n, center.1 - sy / n);
-                    let mut radius = 0.0f64;
-                    let mut recentered = HashMap::with_capacity(local.len());
-                    for (&id, &(x, y)) in local {
-                        let p = (x + dx, y + dy);
-                        radius = radius.max((p.0 - center.0).hypot(p.1 - center.1));
-                        recentered.insert(id, p);
-                    }
-                    // the anchors below pull devices toward wherever their external neighbors are,
-                    // which can spread them wider than a plain internal-only layout would — further
-                    // than `promised_radius` (what the meta layout, above, already reserved this
-                    // site against every other site's own radius): shrink evenly around the center
-                    // to fit back within it, rather than let two sites whose circles the meta
-                    // layout kept apart end up overlapping anyway once each is actually drawn at
-                    // its real size.
-                    let shrink = if radius > promised_radius {
-                        promised_radius / radius
-                    } else {
-                        1.0
+            let recenter = |local: &HashMap<i32, Point>| -> Recentered {
+                let (sx, sy) = local
+                    .values()
+                    .fold((0.0, 0.0), |(sx, sy), p| (sx + p.x, sy + p.y));
+                let n = local.len() as f64;
+                let (dx, dy) = (center.x - sx / n, center.y - sy / n);
+                let mut radius = 0.0f64;
+                let mut recentered = HashMap::with_capacity(local.len());
+                for (&id, &p) in local {
+                    let p = Point {
+                        x: p.x + dx,
+                        y: p.y + dy,
                     };
-                    let out = recentered
-                        .into_iter()
-                        .map(|(id, (x, y))| {
-                            (
-                                id,
-                                (
-                                    center.0 + (x - center.0) * shrink,
-                                    center.1 + (y - center.1) * shrink,
-                                ),
-                            )
-                        })
-                        .collect();
-                    (out, dx, dy, shrink)
+                    radius = radius.max((p.x - center.x).hypot(p.y - center.y));
+                    recentered.insert(id, p);
+                }
+                // the anchors below pull devices toward wherever their external neighbors are,
+                // which can spread them wider than a plain internal-only layout would — further
+                // than `promised_radius` (what the meta layout, above, already reserved this
+                // site against every other site's own radius): shrink evenly around the center
+                // to fit back within it, rather than let two sites whose circles the meta
+                // layout kept apart end up overlapping anyway once each is actually drawn at
+                // its real size.
+                let shrink = if radius > promised_radius {
+                    promised_radius / radius
+                } else {
+                    1.0
                 };
+                let positions = recentered
+                    .into_iter()
+                    .map(|(id, p)| {
+                        (
+                            id,
+                            Point {
+                                x: center.x + (p.x - center.x) * shrink,
+                                y: center.y + (p.y - center.y) * shrink,
+                            },
+                        )
+                    })
+                    .collect();
+                Recentered {
+                    positions,
+                    dx,
+                    dy,
+                    shrink,
+                }
+            };
             let final_local = if ids.len() > 1 {
                 let internal_edges = edge_pairs
                     .iter()
                     .copied()
-                    .filter(|&(a, b)| {
+                    .filter(|&Edge { a, b }| {
                         cluster_of_node[&a] == cluster && cluster_of_node[&b] == cluster
                     })
                     .collect::<Vec<_>>();
@@ -754,11 +821,14 @@ pub(super) fn clustered_layout(
                 // to, making that connection longer than it has to be and more likely to cross
                 // another site's circle on the way.
                 let side = area_side(ids.len());
-                let local_center = (side / 2.0, side / 2.0);
+                let local_center = Point {
+                    x: side / 2.0,
+                    y: side / 2.0,
+                };
                 let mut anchor_of_cluster = HashMap::<Cluster, i32>::new();
-                let mut anchors = HashMap::<i32, (f64, f64)>::new();
+                let mut anchors = HashMap::<i32, Point>::new();
                 let mut anchor_edges = Vec::new();
-                for &(a, b) in &edge_pairs {
+                for &Edge { a, b } in &edge_pairs {
                     let (ca, cb) = (cluster_of_node[&a], cluster_of_node[&b]);
                     let (local_end, other) = if ca == cluster && cb != cluster {
                         (a, cb)
@@ -774,50 +844,57 @@ pub(super) fn clustered_layout(
                         .entry(other)
                         .or_insert_with(|| -1_000_000 - anchors.len() as i32);
                     anchors.entry(anchor_id).or_insert_with(|| {
-                        let (dx, dy) = (other_center.0 - center.0, other_center.1 - center.1);
+                        let (dx, dy) = (other_center.x - center.x, other_center.y - center.y);
                         let dist = dx.hypot(dy).max(0.01);
-                        (
-                            local_center.0 + dx / dist * side,
-                            local_center.1 + dy / dist * side,
-                        )
+                        Point {
+                            x: local_center.x + dx / dist * side,
+                            y: local_center.y + dy / dist * side,
+                        }
                     });
-                    anchor_edges.push((local_end, anchor_id));
+                    anchor_edges.push(Edge {
+                        a: local_end,
+                        b: anchor_id,
+                    });
                 }
                 let all_ids: Vec<i32> =
                     ids.iter().copied().chain(anchors.keys().copied()).collect();
-                let all_edges: Vec<(i32, i32)> =
+                let all_edges: Vec<Edge<i32>> =
                     internal_edges.iter().copied().chain(anchor_edges).collect();
-                let compute_local =
-                    |extra_pins: &HashMap<i32, (f64, f64)>| -> HashMap<i32, (f64, f64)> {
-                        let mut pins = anchors.clone();
-                        pins.extend(extra_pins);
-                        let raw = force_layout(
-                            &all_ids,
-                            &all_edges,
-                            &pins,
-                            &HashMap::new(),
-                            0.0,
-                            side,
-                            &HashMap::new(),
-                        );
-                        // untangle the devices' cabling within the circle too, by swapping devices
-                        // as the meta layout above does: the anchors bias which side of the circle
-                        // a device ends up on, but a device cabled outside could still sit behind
-                        // the others, its line leaving across the circle (E21). So a line to an
-                        // anchor counts like a cable, it stands for the way out toward that site,
-                        // and so does a line passing through a device it doesn't end at.
-                        let mut local = raw;
-                        let mut movable = ids.clone();
-                        movable.sort_unstable();
-                        reduce_by_swaps(&mut local, &movable, |local| {
-                            count_crossings(local, &all_edges)
-                                + count_through_devices(local, &all_edges, &movable)
-                        });
-                        local.retain(|id, _| !anchors.contains_key(id));
-                        local
-                    };
-                let (local, dx, dy, shrink) = recenter(&compute_local(&HashMap::new()));
-                let pinned_here: HashMap<i32, (f64, f64)> = ids
+                let compute_local = |extra_pins: &HashMap<i32, Point>| -> HashMap<i32, Point> {
+                    let mut pins = anchors.clone();
+                    pins.extend(extra_pins);
+                    let raw = force_layout(
+                        &all_ids,
+                        &all_edges,
+                        &pins,
+                        &HashMap::new(),
+                        0.0,
+                        side,
+                        &HashMap::new(),
+                    );
+                    // untangle the devices' cabling within the circle too, by swapping devices
+                    // as the meta layout above does: the anchors bias which side of the circle
+                    // a device ends up on, but a device cabled outside could still sit behind
+                    // the others, its line leaving across the circle (E21). So a line to an
+                    // anchor counts like a cable, it stands for the way out toward that site,
+                    // and so does a line passing through a device it doesn't end at.
+                    let mut local = raw;
+                    let mut movable = ids.clone();
+                    movable.sort_unstable();
+                    reduce_by_swaps(&mut local, &movable, |local| {
+                        count_crossings(local, &all_edges)
+                            + count_through_devices(local, &all_edges, &movable)
+                    });
+                    local.retain(|id, _| !anchors.contains_key(id));
+                    local
+                };
+                let Recentered {
+                    positions: local,
+                    dx,
+                    dy,
+                    shrink,
+                } = recenter(&compute_local(&HashMap::new()));
+                let pinned_here: HashMap<i32, Point> = ids
                     .iter()
                     .filter_map(|id| Some((*id, *pinned.get(id)?)))
                     .collect();
@@ -832,37 +909,40 @@ pub(super) fn clustered_layout(
                     // which this inversion still assumes — but close enough for a live, reacting
                     // picture; the exact position is guaranteed separately, by `map()`'s own
                     // post-override of `positions` after this returns.
-                    let local_pins: HashMap<i32, (f64, f64)> = pinned_here
+                    let local_pins: HashMap<i32, Point> = pinned_here
                         .iter()
-                        .map(|(&id, &(x, y))| {
+                        .map(|(&id, &p)| {
                             (
                                 id,
-                                (
-                                    (x - center.0) / shrink + center.0 - dx,
-                                    (y - center.1) / shrink + center.1 - dy,
-                                ),
+                                Point {
+                                    x: (p.x - center.x) / shrink + center.x - dx,
+                                    y: (p.y - center.y) / shrink + center.y - dy,
+                                },
                             )
                         })
                         .collect();
-                    recenter(&compute_local(&local_pins)).0
+                    recenter(&compute_local(&local_pins)).positions
                 }
             } else {
-                recenter(&HashMap::from([(ids[0], center)])).0
+                recenter(&HashMap::from([(ids[0], center)])).positions
             };
             // a device cabled to another site to the rim, at the angle the anchors gave it: its
             // lines leave the circle without crossing it (E21)
-            for (id, (x, y)) in final_local {
-                let external = edge_pairs.iter().any(|&(a, b)| {
+            for (id, p) in final_local {
+                let external = edge_pairs.iter().any(|&Edge { a, b }| {
                     (a == id && cluster_of_node[&b] != cluster)
                         || (b == id && cluster_of_node[&a] != cluster)
                 });
-                let (dx, dy) = (x - center.0, y - center.1);
+                let (dx, dy) = (p.x - center.x, p.y - center.y);
                 let dist = dx.hypot(dy);
                 let pos = if external && ids.len() > 1 && dist > 0.01 && !pinned.contains_key(&id) {
                     let rim = promised_radius * RIM;
-                    (center.0 + dx / dist * rim, center.1 + dy / dist * rim)
+                    Point {
+                        x: center.x + dx / dist * rim,
+                        y: center.y + dy / dist * rim,
+                    }
                 } else {
-                    (x, y)
+                    p
                 };
                 positions.insert(id, pos);
             }
@@ -877,9 +957,17 @@ pub(super) fn clustered_layout(
                 circle_members.push(ids.clone());
             }
         }
-        (positions, circles, circle_members)
+        SitesLaidOut {
+            positions,
+            circles,
+            circle_members,
+        }
     };
-    let (mut positions, mut circles, mut circle_members) = lay_out_sites(&meta_positions);
+    let SitesLaidOut {
+        mut positions,
+        mut circles,
+        mut circle_members,
+    } = lay_out_sites(&meta_positions);
 
     let site_radii: HashMap<Cluster, f64> = circles
         .iter()
@@ -898,7 +986,11 @@ pub(super) fn clustered_layout(
         .iter()
         .any(|c| c.center != meta_positions[&Cluster::Site(c.site)])
     {
-        (positions, circles, circle_members) = lay_out_sites(&meta_positions);
+        SitesLaidOut {
+            positions,
+            circles,
+            circle_members,
+        } = lay_out_sites(&meta_positions);
     }
 
     // a hard backstop, not the primary mechanism: the meta layout's radius-aware repulsion
@@ -914,8 +1006,8 @@ pub(super) fn clustered_layout(
         for i in 0..circles.len() {
             for j in (i + 1)..circles.len() {
                 let (dx, dy) = (
-                    circles[j].center.0 - circles[i].center.0,
-                    circles[j].center.1 - circles[i].center.1,
+                    circles[j].center.x - circles[i].center.x,
+                    circles[j].center.y - circles[i].center.y,
                 );
                 let dist = dx.hypot(dy).max(0.01);
                 let min_dist = circles[i].radius + circles[j].radius + SITE_GAP;
@@ -925,20 +1017,20 @@ pub(super) fn clustered_layout(
                 moved = true;
                 let push = (min_dist - dist) / 2.0;
                 let (ux, uy) = (dx / dist * push, dy / dist * push);
-                circles[i].center.0 -= ux;
-                circles[i].center.1 -= uy;
-                circles[j].center.0 += ux;
-                circles[j].center.1 += uy;
+                circles[i].center.x -= ux;
+                circles[i].center.y -= uy;
+                circles[j].center.x += ux;
+                circles[j].center.y += uy;
                 for &id in &circle_members[i] {
                     if let Some(p) = positions.get_mut(&id) {
-                        p.0 -= ux;
-                        p.1 -= uy;
+                        p.x -= ux;
+                        p.y -= uy;
                     }
                 }
                 for &id in &circle_members[j] {
                     if let Some(p) = positions.get_mut(&id) {
-                        p.0 += ux;
-                        p.1 += uy;
+                        p.x += ux;
+                        p.y += uy;
                     }
                 }
             }
@@ -954,22 +1046,39 @@ pub(super) fn clustered_layout(
     // recentering above can have pushed a cluster's devices, or a circle's edge, past it
     let min_x = positions
         .values()
-        .map(|p| p.0)
-        .chain(circles.iter().map(|c| c.center.0 - c.radius))
+        .map(|p| p.x)
+        .chain(circles.iter().map(|c| c.center.x - c.radius))
         .fold(f64::INFINITY, f64::min);
     let min_y = positions
         .values()
-        .map(|p| p.1)
-        .chain(circles.iter().map(|c| c.center.1 - c.radius))
+        .map(|p| p.y)
+        .chain(circles.iter().map(|c| c.center.y - c.radius))
         .fold(f64::INFINITY, f64::min);
     let (shift_x, shift_y) = (MARGIN - min_x, MARGIN - min_y);
     for p in positions.values_mut() {
-        p.0 += shift_x;
-        p.1 += shift_y;
+        p.x += shift_x;
+        p.y += shift_y;
     }
     for c in &mut circles {
-        c.center.0 += shift_x;
-        c.center.1 += shift_y;
+        c.center.x += shift_x;
+        c.center.y += shift_y;
     }
-    (positions, circles)
+    Clustered { positions, circles }
+}
+
+/// A site's devices laid out around a center (`clustered_layout`'s `recenter`), with the shift
+/// and shrink that took them there.
+struct Recentered {
+    positions: HashMap<i32, Point>,
+    dx: f64,
+    dy: f64,
+    shrink: f64,
+}
+
+/// Every site laid out around its center (`clustered_layout`'s `lay_out_sites`).
+struct SitesLaidOut {
+    positions: HashMap<i32, Point>,
+    circles: Vec<SiteCircle>,
+    /// the devices of each of `circles`
+    circle_members: Vec<Vec<i32>>,
 }

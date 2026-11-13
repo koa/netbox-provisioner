@@ -31,8 +31,8 @@ pub enum NewDeviceMsg {
     DeviceType(Choice),
     Role(Choice),
     WlanGroup(Option<u32>),
-    /// the device written: its site and id, for the link
-    Written(Option<(u32, u32)>),
+    /// the device written, for the link
+    Written(Option<WrittenDevice>),
 }
 
 /// What the router sees at the port: a MikroTik NetBox doesn't know.
@@ -55,8 +55,7 @@ pub struct NewDeviceChoice {
     pub(super) device_type: Option<u32>,
     pub(super) role: Option<u32>,
     pub(super) wlan_group: Option<u32>,
-    /// the written device's site and id
-    pub(super) written: Option<(u32, u32)>,
+    pub(super) written: Option<WrittenDevice>,
 }
 
 impl NewDeviceChoice {
@@ -143,7 +142,7 @@ impl NetboxHelper {
     }
     pub(super) fn new_device_form(&self, ctx: &Context<Self>) -> Html {
         let choice = &self.new_device;
-        if let Some((site, id)) = choice.written {
+        if let Some(WrittenDevice { site, id }) = choice.written {
             return html! {
                 <p><Link<AppRoute> to={AppRoute::device(site, id)}>{t::NEW_DEVICE_OPEN}</Link<AppRoute>></p>
             };
@@ -281,8 +280,20 @@ pub(super) fn fetch_written_device(scope: Scope<NetboxHelper>, name: String) {
                     .all_devices
                     .into_iter()
                     .find(|d| d.name.eq_ignore_ascii_case(name.trim()))
-                    .and_then(|d| Some((d.site?.id as u32, d.id as u32)))
+                    .and_then(|d| {
+                        Some(WrittenDevice {
+                            site: d.site?.id as u32,
+                            id: d.id as u32,
+                        })
+                    })
             });
         scope.send_message(NewDeviceMsg::Written(device));
     });
+}
+
+/// The device written: its site and id.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WrittenDevice {
+    site: u32,
+    id: u32,
 }

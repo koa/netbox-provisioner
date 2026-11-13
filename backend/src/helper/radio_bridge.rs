@@ -110,12 +110,10 @@ pub(crate) async fn plan_with(
     segment(topology, &mut plan, &sides, routes).await?;
     let ends = sides
         .iter()
-        .map(|side| {
-            (
-                side.router_port.clone(),
-                side.ether.clone(),
-                side.device.clone(),
-            )
+        .map(|side| BridgeCable {
+            router_port: side.router_port.clone(),
+            ether: side.ether.clone(),
+            device: side.device.clone(),
         })
         .collect::<Vec<_>>();
     labels(&mut plan, &ends);
@@ -125,11 +123,13 @@ pub(crate) async fn plan_with(
 /// Each cable end's label the name of the device at the other end, in the interface's update
 /// where the plan has one already (a second one would find the label changed); per cable the
 /// router port, the bridge's Ethernet port and the bridge device.
-pub(super) fn labels(
-    plan: &mut NetboxPlan,
-    cables: &[(InterfaceAccess, InterfaceAccess, DeviceAccess)],
-) {
-    for (router_port, ether, device) in cables {
+pub(super) fn labels(plan: &mut NetboxPlan, cables: &[BridgeCable]) {
+    for BridgeCable {
+        router_port,
+        ether,
+        device,
+    } in cables
+    {
         let Some(router) = router_port.device() else {
             continue;
         };
@@ -213,12 +213,13 @@ fn link_plan(topology: &Arc<Topology>, input: &RadioBridgeInput) -> Result<LinkP
             other,
         )?);
     }
-    let ends = sides
-        .iter()
-        .map(|side| (&side.radio, &side.device))
-        .collect::<Vec<_>>();
+    let link = RadioLink {
+        ap: &sides[0].radio,
+        ap_device: &sides[0].device,
+        station: &sides[1].radio,
+    };
     // the station only hears the AP again once both have the new radio settings
-    if radios(&mut plan, [ends[0], ends[1]], input.ssid.as_deref(), true)? {
+    if radios(&mut plan, link, input.ssid.as_deref(), true)? {
         plan.apply_together = vec![device_ref(&ap), device_ref(&station)];
     }
     Ok(LinkPlan { plan, sides })
@@ -409,12 +410,31 @@ pub(super) fn is_radio(interface: &InterfaceAccess) -> bool {
         )
 }
 
-/// The wireless link between the two radios (AP first, each with its device): created, or
-/// given what it lacks; a PSK only with `add_psk` (radios set up by hand run with a key NetBox
-/// doesn't know). Whether the radios change, by it or by an earlier step of the plan.
+/// A cable of a radio bridge ([`labels`]): the router port, the bridge's Ethernet port and the
+/// bridge device.
+pub(super) struct BridgeCable {
+    pub(super) router_port: InterfaceAccess,
+    pub(super) ether: InterfaceAccess,
+    pub(super) device: DeviceAccess,
+}
+
+/// The two radios of a link ([`radios`]), the AP's with its device (it names the SSID).
+pub(super) struct RadioLink<'a> {
+    pub(super) ap: &'a InterfaceAccess,
+    pub(super) ap_device: &'a DeviceAccess,
+    pub(super) station: &'a InterfaceAccess,
+}
+
+/// The wireless link between the two radios: created, or given what it lacks; a PSK only with
+/// `add_psk` (radios set up by hand run with a key NetBox doesn't know). Whether the radios
+/// change, by it or by an earlier step of the plan.
 pub(super) fn radios(
     plan: &mut NetboxPlan,
-    [(ap, ap_device), (station, _)]: [(&InterfaceAccess, &DeviceAccess); 2],
+    RadioLink {
+        ap,
+        ap_device,
+        station,
+    }: RadioLink,
     ssid: Option<&str>,
     add_psk: bool,
 ) -> Result<bool, Error> {

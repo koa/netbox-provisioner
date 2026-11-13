@@ -11,19 +11,31 @@ use crate::graphql::authenticated::{
 };
 use std::collections::BTreeMap;
 
+fn point(x: f64, y: f64) -> Point {
+    Point { x, y }
+}
+
+fn line<K>(a: K, b: K) -> Edge<K> {
+    Edge { a, b }
+}
+
+fn distance(p: Point, q: Point) -> f64 {
+    (p.x - q.x).hypot(p.y - q.y)
+}
+
 /// Two edges crossing like a square's diagonals: swapping either diagonal's endpoints with the
 /// other's untangles them into two non-crossing sides, which the local search should find.
 #[test]
 fn reduce_crossings_untangles_two_crossing_edges() {
     let mut positions = HashMap::from([
-        (Cluster::Site(1), (0.0, 0.0)),
-        (Cluster::Site(2), (10.0, 10.0)),
-        (Cluster::Site(3), (10.0, 0.0)),
-        (Cluster::Site(4), (0.0, 10.0)),
+        (Cluster::Site(1), point(0.0, 0.0)),
+        (Cluster::Site(2), point(10.0, 10.0)),
+        (Cluster::Site(3), point(10.0, 0.0)),
+        (Cluster::Site(4), point(0.0, 10.0)),
     ]);
     let edges = [
-        (Cluster::Site(1), Cluster::Site(2)),
-        (Cluster::Site(3), Cluster::Site(4)),
+        line(Cluster::Site(1), Cluster::Site(2)),
+        line(Cluster::Site(3), Cluster::Site(4)),
     ];
     assert_eq!(
         count_crossings(&positions, &edges),
@@ -48,16 +60,20 @@ fn reduce_crossings_untangles_two_crossing_edges() {
 #[test]
 fn reduce_site_crossings_untangles_a_badly_ordered_site() {
     let (l, m, r) = (Cluster::Site(1), Cluster::Site(2), Cluster::Site(3));
-    let mut centers = HashMap::from([(l, (0.0, 0.0)), (m, (200.0, 0.0)), (r, (400.0, 0.0))]);
+    let mut centers = HashMap::from([
+        (l, point(0.0, 0.0)),
+        (m, point(200.0, 0.0)),
+        (r, point(400.0, 0.0)),
+    ]);
     let cluster_of_node = HashMap::from([(10, l), (20, m), (30, r), (31, r)]);
     let members = BTreeMap::from([(l, vec![10]), (m, vec![20]), (r, vec![30, 31])]);
     let mut positions = HashMap::from([
-        (10, (0.0, -50.0)),
-        (20, (200.0, 50.0)),
-        (30, (400.0, 50.0)),
-        (31, (400.0, -50.0)),
+        (10, point(0.0, -50.0)),
+        (20, point(200.0, 50.0)),
+        (30, point(400.0, 50.0)),
+        (31, point(400.0, -50.0)),
     ]);
-    let edges = [(10, 30), (20, 31)];
+    let edges = [line(10, 30), line(20, 31)];
     assert_eq!(
         count_crossings(&positions, &edges),
         1,
@@ -85,11 +101,15 @@ fn reduce_site_crossings_untangles_a_badly_ordered_site() {
 #[test]
 fn reduce_site_crossings_moves_a_site_out_of_a_through_edges_way() {
     let (l, m, r) = (Cluster::Site(1), Cluster::Site(2), Cluster::Site(3));
-    let mut centers = HashMap::from([(l, (0.0, 0.0)), (m, (200.0, 0.0)), (r, (400.0, 0.0))]);
+    let mut centers = HashMap::from([
+        (l, point(0.0, 0.0)),
+        (m, point(200.0, 0.0)),
+        (r, point(400.0, 0.0)),
+    ]);
     let cluster_of_node = HashMap::from([(10, l), (30, r)]);
     let members = BTreeMap::from([(l, vec![10]), (m, vec![]), (r, vec![30])]);
-    let mut positions = HashMap::from([(10, (0.0, 0.0)), (30, (400.0, 0.0))]);
-    let edges = [(10, 30)];
+    let mut positions = HashMap::from([(10, point(0.0, 0.0)), (30, point(400.0, 0.0))]);
+    let edges = [line(10, 30)];
     let radii = HashMap::from([(l, 15.0), (m, 20.0), (r, 15.0)]);
     assert!(
         segment_intersects_circle(positions[&10], positions[&30], centers[&m], radii[&m]),
@@ -118,11 +138,11 @@ fn reduce_site_crossings_moves_a_site_out_of_a_through_edges_way() {
 #[test]
 fn seed_from_graph_lays_out_a_chain_in_order() {
     let nodes = [1, 2, 3, 4];
-    let edges = [(1, 2), (2, 3), (3, 4)];
+    let edges = [line(1, 2), line(2, 3), line(3, 4)];
     let side = area_side(nodes.len());
     let seed = seed_from_graph(&nodes, &edges, side);
     assert_eq!(seed.len(), 4);
-    let depth = |id: i32| seed[&id].1;
+    let depth = |id: i32| seed[&id].y;
     assert!(
         depth(1) < depth(2) && depth(2) < depth(3) && depth(3) < depth(4),
         "a chain should be seeded in depth order: {seed:?}"
@@ -147,15 +167,13 @@ fn seed_from_graph_lays_out_a_chain_in_order() {
 #[test]
 fn seed_from_graph_separates_disconnected_components() {
     let nodes = [1, 2, 3, 4];
-    let edges = [(1, 2), (3, 4)];
+    let edges = [line(1, 2), line(3, 4)];
     let side = area_side(nodes.len());
     let seed = seed_from_graph(&nodes, &edges, side);
     for &a in &[1, 2] {
         for &b in &[3, 4] {
-            let (ax, ay) = seed[&a];
-            let (bx, by) = seed[&b];
             assert!(
-                (ax - bx).hypot(ay - by) > 1.0,
+                distance(seed[&a], seed[&b]) > 1.0,
                 "{a} and {b}, in different components, ended up on top of each other"
             );
         }
@@ -183,21 +201,19 @@ fn unconnected_nodes_spread_out_within_bounds() {
             if a == b {
                 continue;
             }
-            let (ax, ay) = pos[&a];
-            let (bx, by) = pos[&b];
             assert!(
-                (ax - bx).hypot(ay - by) > 1.0,
+                distance(pos[&a], pos[&b]) > 1.0,
                 "{a} and {b} ended up on top of each other"
             );
         }
     }
     for &p in pos.values() {
         assert!(
-            (MARGIN..=side + MARGIN).contains(&p.0),
+            (MARGIN..=side + MARGIN).contains(&p.x),
             "{p:?} outside the area"
         );
         assert!(
-            (MARGIN..=side + MARGIN).contains(&p.1),
+            (MARGIN..=side + MARGIN).contains(&p.y),
             "{p:?} outside the area"
         );
     }
@@ -208,7 +224,7 @@ fn unconnected_nodes_spread_out_within_bounds() {
 #[test]
 fn connected_nodes_end_up_closer_than_distant_ones() {
     let nodes = [1, 2, 3, 4, 5];
-    let edges = [(1, 2), (2, 3), (3, 4), (4, 5)];
+    let edges = [line(1, 2), line(2, 3), line(3, 4), line(4, 5)];
     let side = area_side(nodes.len());
     let pos = force_layout(
         &nodes,
@@ -219,11 +235,7 @@ fn connected_nodes_end_up_closer_than_distant_ones() {
         side,
         &HashMap::new(),
     );
-    let dist = |a: i32, b: i32| {
-        let (ax, ay) = pos[&a];
-        let (bx, by) = pos[&b];
-        (ax - bx).hypot(ay - by)
-    };
+    let dist = |a: i32, b: i32| distance(pos[&a], pos[&b]);
     assert!(
         dist(2, 3) < dist(1, 5),
         "neighbors 2-3 should be closer than the line's two ends 1-5"
@@ -234,9 +246,9 @@ fn connected_nodes_end_up_closer_than_distant_ones() {
 #[test]
 fn a_pinned_node_does_not_move() {
     let nodes = [1, 2, 3];
-    let edges = [(1, 2), (2, 3)];
+    let edges = [line(1, 2), line(2, 3)];
     let side = area_side(nodes.len());
-    let pinned = HashMap::from([(2, (side / 2.0, side / 2.0))]);
+    let pinned = HashMap::from([(2, point(side / 2.0, side / 2.0))]);
     let pos = force_layout(
         &nodes,
         &edges,
@@ -246,16 +258,16 @@ fn a_pinned_node_does_not_move() {
         side,
         &HashMap::new(),
     );
-    assert_eq!(pos[&2], (side / 2.0 + MARGIN, side / 2.0 + MARGIN));
+    assert_eq!(pos[&2], point(side / 2.0 + MARGIN, side / 2.0 + MARGIN));
 }
 
 /// Every node pinned: nothing left to move, the layout is exactly the pinned positions.
 #[test]
 fn every_node_pinned_is_unchanged() {
     let nodes = [1, 2];
-    let edges = [(1, 2)];
+    let edges = [line(1, 2)];
     let side = area_side(nodes.len());
-    let pinned = HashMap::from([(1, (10.0, 10.0)), (2, (200.0, 200.0))]);
+    let pinned = HashMap::from([(1, point(10.0, 10.0)), (2, point(200.0, 200.0))]);
     let pos = force_layout(
         &nodes,
         &edges,
@@ -265,15 +277,15 @@ fn every_node_pinned_is_unchanged() {
         side,
         &HashMap::new(),
     );
-    assert_eq!(pos[&1], (10.0 + MARGIN, 10.0 + MARGIN));
-    assert_eq!(pos[&2], (200.0 + MARGIN, 200.0 + MARGIN));
+    assert_eq!(pos[&1], point(10.0 + MARGIN, 10.0 + MARGIN));
+    assert_eq!(pos[&2], point(200.0 + MARGIN, 200.0 + MARGIN));
 }
 
 /// Same graph, same result every time: no randomness, `seeded` only.
 #[test]
 fn the_layout_is_deterministic() {
     let nodes = [10, 20, 30, 40];
-    let edges = [(10, 20), (20, 30), (30, 40), (40, 10)];
+    let edges = [line(10, 20), line(20, 30), line(30, 40), line(40, 10)];
     let side = area_side(nodes.len());
     let a = force_layout(
         &nodes,
@@ -358,12 +370,11 @@ fn many_small_sites_dont_overlap() {
         nodes,
         edges,
     };
-    let (_, circles) = clustered_layout(&state, &HashMap::new());
+    let Clustered { circles, .. } = clustered_layout(&state, &HashMap::new());
     assert_eq!(circles.len(), sites as usize);
     for i in 0..circles.len() {
         for j in (i + 1)..circles.len() {
-            let dist = (circles[i].center.0 - circles[j].center.0)
-                .hypot(circles[i].center.1 - circles[j].center.1);
+            let dist = distance(circles[i].center, circles[j].center);
             assert!(
                 dist >= circles[i].radius + circles[j].radius,
                 "{} and {} overlap: centers {:?}/{:?}, radii {}/{}, dist {dist}",
@@ -397,12 +408,8 @@ fn a_device_with_an_external_edge_is_pulled_toward_it() {
         ],
         edges: vec![edge(1, 2), edge(2, 3), edge(1, 3), edge(1, 4)],
     };
-    let (positions, _) = clustered_layout(&state, &HashMap::new());
-    let dist = |a: i32, b: i32| {
-        let (ax, ay) = positions[&a];
-        let (bx, by) = positions[&b];
-        (ax - bx).hypot(ay - by)
-    };
+    let Clustered { positions, .. } = clustered_layout(&state, &HashMap::new());
+    let dist = |a: i32, b: i32| distance(positions[&a], positions[&b]);
     assert!(
         dist(1, 4) < dist(2, 4),
         "1, cabled to 4, should end up closer to it than 2, which isn't"
@@ -431,7 +438,7 @@ fn two_sites_get_their_own_circle() {
         ],
         edges: vec![],
     };
-    let (positions, circles) = clustered_layout(&state, &HashMap::new());
+    let Clustered { positions, circles } = clustered_layout(&state, &HashMap::new());
     assert_eq!(positions.len(), 4);
     assert_eq!(circles.len(), 2);
     let names = circles.iter().map(|c| c.name.as_str()).collect::<Vec<_>>();
@@ -439,12 +446,11 @@ fn two_sites_get_their_own_circle() {
     for circle in &circles {
         let members: &[i32] = if circle.name == "A" { &[1, 2] } else { &[3, 4] };
         for &id in members {
-            let (x, y) = positions[&id];
-            let dist = (x - circle.center.0).hypot(y - circle.center.1);
+            let dist = distance(positions[&id], circle.center);
             assert!(
                 dist <= circle.radius,
                 "{id} at {:?} is outside its own site's circle (center {:?}, r {})",
-                (x, y),
+                positions[&id],
                 circle.center,
                 circle.radius
             );
@@ -469,7 +475,7 @@ fn a_device_without_a_site_gets_no_circle() {
         ],
         edges: vec![],
     };
-    let (positions, circles) = clustered_layout(&state, &HashMap::new());
+    let Clustered { positions, circles } = clustered_layout(&state, &HashMap::new());
     assert_eq!(circles.len(), 1);
     assert_eq!(circles[0].name, "A");
     assert!(
@@ -494,7 +500,7 @@ fn a_lone_device_at_a_site_still_gets_a_circle() {
         nodes: vec![node(1, Some(10), Some("A")), node(2, Some(20), Some("B"))],
         edges: vec![],
     };
-    let (positions, circles) = clustered_layout(&state, &HashMap::new());
+    let Clustered { positions, circles } = clustered_layout(&state, &HashMap::new());
     assert_eq!(circles.len(), 2);
     for circle in &circles {
         let id = if circle.name == "A" { 1 } else { 2 };
@@ -522,19 +528,23 @@ fn a_pinned_device_in_a_clustered_site_lets_others_react_around_it() {
         ],
         edges: vec![edge(1, 2), edge(2, 3), edge(1, 3)],
     };
-    let (unpinned, _) = clustered_layout(&state, &HashMap::new());
-    let desired = (unpinned[&1].0 + 500.0, unpinned[&1].1 + 500.0);
-    let (pinned, _) = clustered_layout(&state, &HashMap::from([(1, desired)]));
-    let dist = |p: (f64, f64), q: (f64, f64)| (p.0 - q.0).hypot(p.1 - q.1);
+    let Clustered {
+        positions: unpinned,
+        ..
+    } = clustered_layout(&state, &HashMap::new());
+    let desired = point(unpinned[&1].x + 500.0, unpinned[&1].y + 500.0);
+    let Clustered {
+        positions: pinned, ..
+    } = clustered_layout(&state, &HashMap::from([(1, desired)]));
     assert!(
-        dist(pinned[&1], desired) < dist(unpinned[&1], desired),
+        distance(pinned[&1], desired) < distance(unpinned[&1], desired),
         "pinning 1 should pull it noticeably closer to the desired spot: unpinned {:?}, pinned {:?}, desired {:?}",
         unpinned[&1],
         pinned[&1],
         desired
     );
     assert!(
-        dist(pinned[&2], unpinned[&2]) > 1.0 || dist(pinned[&3], unpinned[&3]) > 1.0,
+        distance(pinned[&2], unpinned[&2]) > 1.0 || distance(pinned[&3], unpinned[&3]) > 1.0,
         "2 or 3 should have moved in reaction to 1 being pinned, not stayed exactly where they'd be unpinned"
     );
 }
@@ -555,8 +565,14 @@ fn clustered_layout_is_deterministic() {
         ],
         edges: vec![],
     };
-    let (pos_a, circ_a) = clustered_layout(&state, &HashMap::new());
-    let (pos_b, circ_b) = clustered_layout(&state, &HashMap::new());
+    let Clustered {
+        positions: pos_a,
+        circles: circ_a,
+    } = clustered_layout(&state, &HashMap::new());
+    let Clustered {
+        positions: pos_b,
+        circles: circ_b,
+    } = clustered_layout(&state, &HashMap::new());
     assert_eq!(pos_a, pos_b);
     assert_eq!(
         circ_a
@@ -583,7 +599,7 @@ fn the_outside_node_is_only_added_when_there_is_one() {
         outside: 0,
         outside_at: vec![],
     };
-    let (nodes, edges) = graph(&none);
+    let Graph { nodes, edges } = graph(&none);
     assert!(!nodes.contains(&OUTSIDE));
     assert!(edges.is_empty());
 
@@ -592,9 +608,9 @@ fn the_outside_node_is_only_added_when_there_is_one() {
         outside_at: vec![42],
         ..none
     };
-    let (nodes, edges) = graph(&some);
+    let Graph { nodes, edges } = graph(&some);
     assert!(nodes.contains(&OUTSIDE));
-    assert_eq!(edges, [(OUTSIDE, 42)]);
+    assert_eq!(edges, [line(OUTSIDE, 42)]);
 }
 
 /// The map's graph of the stored export (`docs/netbox-response-example.json`: the devices with
@@ -702,15 +718,15 @@ struct Faults {
     through_circles: usize,
 }
 
-fn faults(state: &State, positions: &HashMap<i32, (f64, f64)>, circles: &[SiteCircle]) -> Faults {
-    let edges: Vec<(i32, i32)> = state
+fn faults(state: &State, positions: &HashMap<i32, Point>, circles: &[SiteCircle]) -> Faults {
+    let edges: Vec<Edge<i32>> = state
         .edges
         .iter()
-        .map(|e| (e.a.device.id, e.b.device.id))
+        .map(|e| line(e.a.device.id, e.b.device.id))
         .collect();
     let through_devices = edges
         .iter()
-        .map(|&(a, b)| {
+        .map(|&Edge { a, b }| {
             positions
                 .iter()
                 .filter(|&(&id, &p)| {
@@ -766,7 +782,7 @@ fn export_state() -> State {
 #[test]
 fn the_exports_map_draws_with_few_faults() {
     let state = export_state();
-    let (positions, circles) = clustered_layout(&state, &HashMap::new());
+    let Clustered { positions, circles } = clustered_layout(&state, &HashMap::new());
     let faults = faults(&state, &positions, &circles);
     assert!(faults.crossings <= 1, "{faults:?}");
     assert_eq!(

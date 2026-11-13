@@ -146,8 +146,8 @@ impl Component for JobView {
             .lost
             .then(|| html!(<p>{t::LOST_TEXT}{if fallback { t::LOST_FALLBACK } else { "" }}</p>));
         let running = job.state == JobState::Running && !self.lost;
-        let (title, kind) = if self.lost {
-            (t::LOST.to_string(), AlertType::Warning)
+        let Title { text: title, kind } = if self.lost {
+            Title::new(t::LOST, AlertType::Warning)
         } else {
             title(job)
         };
@@ -176,7 +176,22 @@ impl Component for JobView {
     }
 }
 
-fn title(job: &Job) -> (String, AlertType) {
+/// A job's alert: its headline and how it reads.
+struct Title {
+    text: String,
+    kind: AlertType,
+}
+
+impl Title {
+    fn new(text: impl Into<String>, kind: AlertType) -> Self {
+        Title {
+            text: text.into(),
+            kind,
+        }
+    }
+}
+
+fn title(job: &Job) -> Title {
     let what = match &job.kind {
         JobKind::Update => t::UPDATE,
         JobKind::Downgrade => t::DOWNGRADE,
@@ -198,7 +213,7 @@ fn title(job: &Job) -> (String, AlertType) {
     if job.state == JobState::Done {
         let nothing = |e: &Event| matches!(e, Event::ApplyPlanned(p) if p.script.trim().is_empty());
         if events().any(nothing) {
-            return (t::NOTHING_TO_APPLY.into(), AlertType::Success);
+            return Title::new(t::NOTHING_TO_APPLY, AlertType::Success);
         }
         let incomplete = events().any(|e| match e {
             Event::ApplyRunning(running) => running.error.is_some(),
@@ -211,31 +226,37 @@ fn title(job: &Job) -> (String, AlertType) {
             _ => false,
         });
         if incomplete {
-            return (t::NOT_ALL_APPLIED.into(), AlertType::Warning);
+            return Title::new(t::NOT_ALL_APPLIED, AlertType::Warning);
         }
         if events().any(|e| matches!(e, Event::ApplyChecked(_))) {
-            return (t::APPLIED.into(), AlertType::Success);
+            return Title::new(t::APPLIED, AlertType::Success);
         }
         if let Some(address) = events().find_map(|e| match e {
             Event::SetupDone(done) => Some(&done.address),
             _ => None,
         }) {
-            return (t::set_up(address), AlertType::Success);
+            return Title::new(t::set_up(address), AlertType::Success);
         }
     }
     match &job.state {
-        JobState::Running => (t::running(what), AlertType::Info),
+        JobState::Running => Title::new(t::running(what), AlertType::Info),
         JobState::Done => {
             let update = events().find_map(|event| match event {
-                Event::UpdateDone(done) => Some((done.from.as_str(), done.to.as_str())),
-                Event::Downgraded(done) => Some((done.from.as_str(), done.to.as_str())),
+                Event::UpdateDone(done) => Some(t::Versions {
+                    from: &done.from,
+                    to: &done.to,
+                }),
+                Event::Downgraded(done) => Some(t::Versions {
+                    from: &done.from,
+                    to: &done.to,
+                }),
                 _ => None,
             });
-            (t::done(what, update), AlertType::Success)
+            Title::new(t::done(what, update), AlertType::Success)
         }
-        JobState::Failed => (t::failed(what), AlertType::Danger),
-        JobState::Cancelled => (t::cancelled(what), AlertType::Warning),
-        JobState::Other(other) => (t::other_state(what, other), AlertType::Warning),
+        JobState::Failed => Title::new(t::failed(what), AlertType::Danger),
+        JobState::Cancelled => Title::new(t::cancelled(what), AlertType::Warning),
+        JobState::Other(other) => Title::new(t::other_state(what, other), AlertType::Warning),
     }
 }
 
@@ -420,11 +441,14 @@ fn script_progress(progress: &ScriptProgress, planned: Option<&str>) -> Html {
         error: progress
             .error_line
             .zip(progress.error.as_deref())
-            .map(|(line, error)| (line as u32, error)),
-        probe: progress
-            .probe
-            .as_deref()
-            .map(|probe| (probe, progress.probe_answered)),
+            .map(|(line, error)| t::event::ScriptError {
+                line: line as u32,
+                error,
+            }),
+        probe: progress.probe.as_deref().map(|address| t::event::Probe {
+            address,
+            answered_before: progress.probe_answered,
+        }),
         lost: &lost,
         back: &back,
         rearmed: progress.rearmed.map(seconds),
@@ -477,7 +501,10 @@ macro_rules! watching {
         let ports = $watching
             .poe_pings
             .iter()
-            .map(|ping| (ping.port.as_str(), ping.address.as_str()))
+            .map(|ping| e::PingedPort {
+                port: &ping.port,
+                address: &ping.address,
+            })
             .collect::<Vec<_>>();
         e::watching($watching.watch_address.as_deref(), &ports)
     }};

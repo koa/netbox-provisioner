@@ -2,7 +2,11 @@
 //!
 //! What a helper is opened with (`HelperPreset`), which one is shown (`HelperKind`), what it is
 //! planned for (`HelperChoice`) and that as the input of a query (`helper`).
-use super::{flags::Flag, new_device::SeenPreset, t};
+use super::{
+    flags::{Flag, FlagChange},
+    new_device::SeenPreset,
+    t,
+};
 use crate::graphql::authenticated::helper as input;
 use std::fmt::{self, Display, Formatter};
 
@@ -121,7 +125,7 @@ pub enum HelperChoice {
     /// the link of this port, on the device or at the far end of one of its links
     Disconnect(u32),
     /// the tags switched: interface, tag, set
-    Flags(Vec<(u32, Flag, bool)>),
+    Flags(Vec<FlagChange>),
     CustomerNet {
         target: NetTarget,
         parent: Option<u32>,
@@ -233,17 +237,23 @@ pub(crate) fn helper(choice: HelperChoice, id: u32) -> input::Helper {
             device,
             changes: changes
                 .into_iter()
-                .map(|(interface, flag, set)| TagChange {
-                    interface: interface as i32,
-                    tag: match flag {
-                        Flag::Ospf => InterfaceTag::Ospf,
-                        Flag::Dhcp => InterfaceTag::Dhcp,
-                        Flag::DhcpClient => InterfaceTag::DhcpClient,
-                        Flag::Nat => InterfaceTag::Nat,
-                        Flag::Internet => InterfaceTag::Internet,
+                .map(
+                    |FlagChange {
+                         interface,
+                         flag,
+                         set,
+                     }| TagChange {
+                        interface: interface as i32,
+                        tag: match flag {
+                            Flag::Ospf => InterfaceTag::Ospf,
+                            Flag::Dhcp => InterfaceTag::Dhcp,
+                            Flag::DhcpClient => InterfaceTag::DhcpClient,
+                            Flag::Nat => InterfaceTag::Nat,
+                            Flag::Internet => InterfaceTag::Internet,
+                        },
+                        set,
                     },
-                    set,
-                })
+                )
                 .collect(),
         }),
         HelperChoice::CustomerNet {

@@ -85,12 +85,12 @@ pub struct NetworkMap {
     /// NetBox's published positions; cleared by `ResetOverrides`, written to `localStorage` once
     /// a drag ends. Dragging a whole site's circle writes every one of its members here too, by
     /// device id, same as dragging one of them individually would.
-    overridden: HashMap<i32, (f64, f64)>,
+    overridden: HashMap<i32, Point>,
     /// a site's circle, dragged to this center instead of wherever `clustered_layout` puts it;
     /// by site id, stored and reset alongside `overridden` (same key, see [`Overrides`]). Devices
     /// have no circle of their own to carry this, so it can't reuse `overridden` the way dragging
     /// a site's members already does.
-    site_overrides: HashMap<i32, (f64, f64)>,
+    site_overrides: HashMap<i32, Point>,
     /// what's currently grabbed, and whether it actually moved yet (a plain click, pointer down
     /// and up without a move between, must still navigate as before)
     dragging: Option<(DragTarget, bool)>,
@@ -104,11 +104,11 @@ pub struct NetworkMap {
     /// two such events would add its step onto a position `map()` hadn't caught up to yet —
     /// losing part of the movement. Recomputing from a fixed origin every time is immune to how
     /// many events land between renders, or in what order they're drained.
-    drag_base: HashMap<i32, (f64, f64)>,
-    drag_base_site: Option<(i32, (f64, f64))>,
+    drag_base: HashMap<i32, Point>,
+    drag_base_site: Option<(i32, Point)>,
     /// the pointer's own SVG-space position at the first `DragMove` after `DragStart`, the
     /// origin `drag_base`'s positions move from; `None` until that first move sets it
-    drag_origin: Option<(f64, f64)>,
+    drag_origin: Option<Point>,
     /// set by `DragEnd` when the drag moved its target, consumed by the next `Open`: the pointer
     /// up after a drag fires a click too, which must not also navigate away from the map
     suppress_click: bool,
@@ -147,18 +147,14 @@ pub enum NetworkMapMsg {
     /// fresh from a render that just happened, before any native event can get ahead of Yew's
     /// own one (unlike a `DragMove` in the middle of a drag, `DragStart` is a single discrete
     /// event, not a rapid-fire stream, so a render-time snapshot taken right here is never stale)
-    DragStart(
-        DragTarget,
-        Vec<(i32, (f64, f64))>,
-        Option<(i32, (f64, f64))>,
-    ),
+    DragStart(DragTarget, Vec<(i32, Point)>, Option<(i32, Point)>),
     /// the pointer's new SVG-space position, nothing else: every `DragMove` recomputes the full
     /// move from `drag_base`/`drag_origin`, so the closure that sends this needs to carry no
     /// drag-specific state of its own (see `drag_base`'s own doc comment for why)
-    DragMove(f64, f64),
+    DragMove(Point),
     DragEnd,
     ResetOverrides,
-    Publish(Vec<(i32, (f64, f64))>),
+    Publish(Vec<(i32, Point)>),
     Published(Result<u32, FrontendError>),
 }
 
@@ -176,9 +172,9 @@ fn storage_key(site: Option<u32>) -> String {
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct Overrides {
     #[serde(default)]
-    devices: HashMap<i32, (f64, f64)>,
+    devices: HashMap<i32, Point>,
     #[serde(default)]
-    sites: HashMap<i32, (f64, f64)>,
+    sites: HashMap<i32, Point>,
 }
 
 fn load_overrides(site: Option<u32>) -> Overrides {
@@ -250,7 +246,7 @@ impl Component for NetworkMap {
                 self.drag_base_site = site_base;
                 self.drag_origin = None;
             }
-            NetworkMapMsg::DragMove(x, y) => {
+            NetworkMapMsg::DragMove(point) => {
                 let Some((target, _)) = self.dragging else {
                     return false;
                 };
@@ -260,27 +256,31 @@ impl Component for NetworkMap {
                     // rather than keeping wherever on it the drag started; unlike a site's rigid
                     // group move below, there's nothing else that needs a stable delta from a
                     // fixed origin for this.
-                    if self.drag_base.get(&id).copied() == Some((x, y)) {
+                    if self.drag_base.get(&id).copied() == Some(point) {
                         return false;
                     }
                     self.dragging = Some((target, true));
-                    self.overridden.insert(id, (x, y));
+                    self.overridden.insert(id, point);
                     return true;
                 }
-                let Some((ox, oy)) = self.drag_origin else {
-                    self.drag_origin = Some((x, y));
+                let Some(origin) = self.drag_origin else {
+                    self.drag_origin = Some(point);
                     return false;
                 };
-                let (dx, dy) = (x - ox, y - oy);
+                let (dx, dy) = (point.x - origin.x, point.y - origin.y);
+                let moved = |base: Point| Point {
+                    x: base.x + dx,
+                    y: base.y + dy,
+                };
                 if dx == 0.0 && dy == 0.0 {
                     return false;
                 }
                 self.dragging = Some((target, true));
-                for (&id, &(bx, by)) in &self.drag_base {
-                    self.overridden.insert(id, (bx + dx, by + dy));
+                for (&id, &base) in &self.drag_base {
+                    self.overridden.insert(id, moved(base));
                 }
-                if let Some((site, (bx, by))) = self.drag_base_site {
-                    self.site_overrides.insert(site, (bx + dx, by + dy));
+                if let Some((site, base)) = self.drag_base_site {
+                    self.site_overrides.insert(site, moved(base));
                 }
             }
             NetworkMapMsg::DragEnd => {
@@ -313,10 +313,10 @@ impl Component for NetworkMap {
                     let variables = PublishLayoutVariables {
                         positions: positions
                             .into_iter()
-                            .map(|(device_id, (x, y))| DevicePositionInput {
+                            .map(|(device_id, position)| DevicePositionInput {
                                 device_id,
-                                x: x.round() as i32,
-                                y: y.round() as i32,
+                                x: position.x.round() as i32,
+                                y: position.y.round() as i32,
                             })
                             .collect(),
                     };
@@ -456,8 +456,8 @@ fn poll_details(scope: Scope<NetworkMap>, site: Option<u32>, alive: Rc<Cell<bool
 /// The interaction state [`map`] needs beyond the polled graph itself: dragging, the browser's
 /// own overrides and publishing them (`docs/concepts/network-map.md`, "Positionen speichern").
 struct Interaction<'a> {
-    overridden: &'a HashMap<i32, (f64, f64)>,
-    site_overrides: &'a HashMap<i32, (f64, f64)>,
+    overridden: &'a HashMap<i32, Point>,
+    site_overrides: &'a HashMap<i32, Point>,
     allow_netbox_write: bool,
     publish: &'a PublishState,
     svg_ref: &'a NodeRef,
@@ -478,13 +478,19 @@ fn map(
     // NetBox's published layout, overlaid by whatever the user dragged in this browser (wins
     // where both exist); fed into the layout below as pinned positions, so other nodes still
     // arrange themselves around a pinned one ([`force_layout`]'s own doc comment).
-    let mut pinned: HashMap<i32, (f64, f64)> = state
+    let mut pinned: HashMap<i32, Point> = state
         .nodes
         .iter()
         .filter_map(|n| {
-            n.position
-                .as_ref()
-                .map(|p| (n.device.id, (p.x as f64, p.y as f64)))
+            n.position.as_ref().map(|p| {
+                (
+                    n.device.id,
+                    Point {
+                        x: p.x as f64,
+                        y: p.y as f64,
+                    },
+                )
+            })
         })
         .collect();
     pinned.extend(overridden.iter());
@@ -494,19 +500,33 @@ fn map(
         .filter_map(|n| n.device.site)
         .collect::<HashSet<_>>()
         .len();
-    let (mut positions, mut circles) = if site_count > 1 {
+    let Clustered {
+        mut positions,
+        mut circles,
+    } = if site_count > 1 {
         clustered_layout(state, &pinned)
     } else {
-        let (node_ids, edge_pairs) = graph(state);
+        let Graph {
+            nodes: node_ids,
+            edges: edge_pairs,
+        } = graph(state);
         // `pinned` holds the desired final rendered position, but `force_layout` adds `MARGIN`
         // to every position, pinned ones included, right before returning it; undo that here so
         // a pin actually lands where it says, rather than MARGIN further out.
-        let pinned_for_layout: HashMap<i32, (f64, f64)> = pinned
+        let pinned_for_layout: HashMap<i32, Point> = pinned
             .iter()
-            .map(|(&id, &(x, y))| (id, (x - MARGIN, y - MARGIN)))
+            .map(|(&id, &p)| {
+                (
+                    id,
+                    Point {
+                        x: p.x - MARGIN,
+                        y: p.y - MARGIN,
+                    },
+                )
+            })
             .collect();
-        (
-            force_layout(
+        Clustered {
+            positions: force_layout(
                 &node_ids,
                 &edge_pairs,
                 &pinned_for_layout,
@@ -515,8 +535,8 @@ fn map(
                 area_side(node_ids.len()),
                 &HashMap::new(),
             ),
-            Vec::new(),
-        )
+            circles: Vec::new(),
+        }
     };
     if site_count > 1 {
         // clustered_layout's two-level physics can't take a pin without first inverting its
@@ -544,15 +564,15 @@ fn map(
         .collect::<HashMap<_, _>>();
     let width = positions
         .values()
-        .map(|p| p.0)
-        .chain(circles.iter().map(|c| c.center.0 + c.radius))
+        .map(|p| p.x)
+        .chain(circles.iter().map(|c| c.center.x + c.radius))
         .fold(0.0, f64::max)
         + MARGIN
         + 40.0;
     let height = positions
         .values()
-        .map(|p| p.1)
-        .chain(circles.iter().map(|c| c.center.1 + c.radius))
+        .map(|p| p.y)
+        .chain(circles.iter().map(|c| c.center.y + c.radius))
         .fold(0.0, f64::max)
         + MARGIN;
     // every device of a site, for a dragged site's circle to carry them all along as its
@@ -566,7 +586,7 @@ fn map(
     let site_circles = circles.iter().map(|c| {
         let site = c.site;
         let center = c.center;
-        let bases: Vec<(i32, (f64, f64))> =
+        let bases: Vec<(i32, Point)> =
             site_members.get(&site).into_iter().flatten().filter_map(|&id| Some((id, positions.get(&id).copied()?))).collect();
         let onpointerdown = scope.callback(move |e: web_sys::PointerEvent| {
             e.prevent_default();
@@ -574,8 +594,8 @@ fn map(
         });
         html! {
             <g class="map-site" {onpointerdown}>
-                <circle cx={c.center.0.to_string()} cy={c.center.1.to_string()} r={c.radius.to_string()}/>
-                <text x={c.center.0.to_string()} y={(c.center.1 - c.radius - 8.0).to_string()}>{&c.name}</text>
+                <circle cx={c.center.x.to_string()} cy={c.center.y.to_string()} r={c.radius.to_string()}/>
+                <text x={c.center.x.to_string()} y={(c.center.y - c.radius - 8.0).to_string()}>{&c.name}</text>
             </g>
         }
     });
@@ -628,8 +648,8 @@ fn map(
         Some(html! {
             <line
                 class={format!("map-edge {class}{radio}")}
-                x1={(pa.0 + offset).to_string()} y1={(pa.1 + offset).to_string()}
-                x2={(pb.0 + offset).to_string()} y2={(pb.1 + offset).to_string()}
+                x1={(pa.x + offset).to_string()} y1={(pa.y + offset).to_string()}
+                x2={(pb.x + offset).to_string()} y2={(pb.y + offset).to_string()}
             ><title>{title}</title></line>
         })
     });
@@ -659,8 +679,8 @@ fn map(
         Some(html! {
             <line
                 class={class}
-                x1={(pa.0 + offset).to_string()} y1={(pa.1 + offset).to_string()}
-                x2={(pb.0 + offset).to_string()} y2={(pb.1 + offset).to_string()}
+                x1={(pa.x + offset).to_string()} y1={(pa.y + offset).to_string()}
+                x2={(pb.x + offset).to_string()} y2={(pb.y + offset).to_string()}
                 marker-end={if problem_text.is_some() { "url(#poe-arrow-problem)" } else { "url(#poe-arrow)" }}
             ><title>{title}</title></line>
         })
@@ -670,14 +690,14 @@ fn map(
         .flatten()
         .map(|p| {
             let lines = state.outside_at.iter().filter_map(|id| positions.get(id)).map(|q| {
-                html!(<line class="map-edge outside" x1={p.0.to_string()} y1={p.1.to_string()} x2={q.0.to_string()} y2={q.1.to_string()}/>)
+                html!(<line class="map-edge outside" x1={p.x.to_string()} y1={p.y.to_string()} x2={q.x.to_string()} y2={q.y.to_string()}/>)
             });
             html! {
                 <>
                     {for lines}
                     <g class="map-node outside">
-                        <circle cx={p.0.to_string()} cy={p.1.to_string()} r="14"/>
-                        <text x={p.0.to_string()} y={(p.1 + 30.0).to_string()}>{t::outside(state.outside as u32)}</text>
+                        <circle cx={p.x.to_string()} cy={p.y.to_string()} r="14"/>
+                        <text x={p.x.to_string()} y={(p.y + 30.0).to_string()}>{t::outside(state.outside as u32)}</text>
                     </g>
                 </>
             }
@@ -701,14 +721,14 @@ fn map(
             NetworkMapMsg::DragStart(DragTarget::Device(id), vec![(id, base)], None)
         });
         let shape = if node.routeros {
-            html!(<circle cx={p.0.to_string()} cy={p.1.to_string()} r="14"/>)
+            html!(<circle cx={p.x.to_string()} cy={p.y.to_string()} r="14"/>)
         } else {
-            html!(<rect x={(p.0 - 10.0).to_string()} y={(p.1 - 10.0).to_string()} width="20" height="20"/>)
+            html!(<rect x={(p.x - 10.0).to_string()} y={(p.y - 10.0).to_string()} width="20" height="20"/>)
         };
         Some(html! {
             <g class={format!("map-node {class}")} {onclick} {onmouseenter} {onmouseleave} {onpointerdown}>
                 {shape}
-                <text x={p.0.to_string()} y={(p.1 + 30.0).to_string()}>{&node.device.name}</text>
+                <text x={p.x.to_string()} y={(p.y + 30.0).to_string()}>{&node.device.name}</text>
             </g>
         })
     });
@@ -728,11 +748,11 @@ fn map(
         };
         let x = (f64::from(e.client_x()) - rect.left()) * scale;
         let y = (f64::from(e.client_y()) - rect.top()) * scale;
-        Some(NetworkMapMsg::DragMove(x, y))
+        Some(NetworkMapMsg::DragMove(Point { x, y }))
     });
     let onpointerup = scope.callback(move |_: web_sys::PointerEvent| NetworkMapMsg::DragEnd);
     let onpointerleave = onpointerup.clone();
-    let publish_positions: Vec<(i32, (f64, f64))> = state
+    let publish_positions: Vec<(i32, Point)> = state
         .nodes
         .iter()
         .filter_map(|n| positions.get(&n.device.id).map(|&p| (n.device.id, p)))
@@ -794,7 +814,7 @@ fn map(
         };
         let detail = match details {
             None => return Some(html! {
-                <div class="map-popup" style={format!("left:{}px; top:{}px", p.0 + 18.0, p.1 - 10.0)}>
+                <div class="map-popup" style={format!("left:{}px; top:{}px", p.x + 18.0, p.y - 10.0)}>
                     <div>{format!("{}: {text}", node.device.name)}</div>
                     <Spinner size={SpinnerSize::Sm} aria_label={t::LOADING.to_string()}/>
                 </div>
@@ -802,7 +822,7 @@ fn map(
             Some(d) => d.nodes.iter().find(|n| n.device.id == id),
         };
         Some(html! {
-            <div class="map-popup" style={format!("left:{}px; top:{}px", p.0 + 18.0, p.1 - 10.0)}>
+            <div class="map-popup" style={format!("left:{}px; top:{}px", p.x + 18.0, p.y - 10.0)}>
                 <div>{format!("{}: {text}", node.device.name)}</div>
                 if let Some(detail) = detail {
                     if let Some(r) = &detail.resources {

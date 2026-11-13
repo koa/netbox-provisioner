@@ -37,7 +37,7 @@ const PROPERTIES: &[&str] = &[
 /// standalone SVG document, not just a fragment that only parses inside an HTML page. The width
 /// and height that follow are parsed back out of the live element's own `viewBox`, for the PNG
 /// path's canvas.
-fn standalone_markup(svg_ref: &NodeRef) -> Option<(String, f64, f64)> {
+fn standalone_markup(svg_ref: &NodeRef) -> Option<Standalone> {
     let svg_el = svg_ref.cast::<Element>()?;
     let window = web_sys::window()?;
     let clone: Element = svg_el.clone_node_with_deep(true).ok()?.dyn_into().ok()?;
@@ -106,14 +106,21 @@ fn standalone_markup(svg_ref: &NodeRef) -> Option<(String, f64, f64)> {
         .insert_before(&background_rect, clone.first_child().as_ref())
         .ok()?;
 
-    Some((
-        format!(
+    Some(Standalone {
+        markup: format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{}",
             clone.outer_html()
         ),
         width,
         height,
-    ))
+    })
+}
+
+/// [`standalone_markup`]'s document, and its size from the `viewBox`.
+struct Standalone {
+    markup: String,
+    width: f64,
+    height: f64,
 }
 
 /// A click-and-remove on a throwaway `<a download>`: the standard way to make a browser save
@@ -133,7 +140,7 @@ fn trigger_download(href: &str, filename: &str) -> Option<()> {
 /// Saves the map as a standalone SVG file: self-contained (see the module doc comment), opens in
 /// a browser or any vector tool, stays crisp at any zoom.
 pub fn download_svg(svg_ref: &NodeRef, filename: &str) {
-    let Some((markup, ..)) = standalone_markup(svg_ref) else {
+    let Some(Standalone { markup, .. }) = standalone_markup(svg_ref) else {
         return;
     };
     let parts = js_sys::Array::of1(&JsValue::from_str(&markup));
@@ -154,7 +161,12 @@ pub fn download_svg(svg_ref: &NodeRef, filename: &str) {
 /// sharp only at that one size. Rasterizing is inherently asynchronous in a browser (there's no
 /// synchronous "draw this SVG string onto a canvas") — an `<img>` has to load it first.
 pub async fn download_png(svg_ref: &NodeRef, filename: &str) {
-    let Some((markup, width, height)) = standalone_markup(svg_ref) else {
+    let Some(Standalone {
+        markup,
+        width,
+        height,
+    }) = standalone_markup(svg_ref)
+    else {
         return;
     };
     let parts = js_sys::Array::of1(&JsValue::from_str(&markup));

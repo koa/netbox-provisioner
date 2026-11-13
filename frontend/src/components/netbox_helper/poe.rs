@@ -30,8 +30,8 @@ pub enum PoeMsg {
     Peer(Choice),
     Observe,
     Observed(Result<Vec<Observed>, FrontendError>),
-    /// what the device reports: its port feeds the other end (device, port) if known
-    Take(u32, Option<(u32, u32)>),
+    /// what the device reports: its port feeds the other end if known
+    Take(u32, Option<FarPort>),
 }
 
 /// Whether the device feeds at its port, is fed there, or the port has no PoE.
@@ -115,8 +115,8 @@ impl NetboxHelper {
                 self.poe = PoeChoice {
                     direction: PoeDirection::Feeds,
                     port: Some(port),
-                    peer_device: far.map(|(device, _)| device),
-                    peer: far.map(|(_, port)| port),
+                    peer_device: far.map(|far| far.device),
+                    peer: far.map(|far| far.port),
                 };
                 self.choose(ctx);
             }
@@ -147,9 +147,10 @@ impl NetboxHelper {
                         &port.name,
                         port.label.as_deref(),
                         port.poe.as_ref().map(poe_mode),
-                        port.connected
-                            .first()
-                            .map(|far| (far.device.name.as_str(), far.name.as_str())),
+                        port.connected.first().map(|far| t::Port {
+                            device: &far.device.name,
+                            name: &far.name,
+                        }),
                         port.cabled,
                     ),
                 })
@@ -221,14 +222,20 @@ impl NetboxHelper {
                         && far.is_some_and(|far| mode(far.id) == Some(PoeMode::Pd));
                     let text = t::poe_observed(
                         &o.port.name,
-                        far.map(|far| (far.device.name.as_str(), far.name.as_str())),
+                        far.map(|far| t::Port {
+                    device: &far.device.name,
+                    name: &far.name,
+                }),
                         o.from_neighbor,
                         recorded,
                     );
                     let take = o.port.interface.as_ref().filter(|_| !recorded).map(|port| {
                         let (port, far) = (
                             port.id as u32,
-                            far.map(|far| (far.device.id as u32, far.id as u32)),
+                            far.map(|far| FarPort {
+                                device: far.device.id as u32,
+                                port: far.id as u32,
+                            }),
                         );
                         html! {
                             <Button
@@ -341,4 +348,11 @@ fn poe_mode(mode: &PoeMode) -> &str {
         PoeMode::Pd => "PD",
         PoeMode::Other(other) => other,
     }
+}
+
+/// The other end of a port's cable: its device and port.
+#[derive(Clone, Copy)]
+pub struct FarPort {
+    device: u32,
+    port: u32,
 }

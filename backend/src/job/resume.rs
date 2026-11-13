@@ -7,6 +7,7 @@ use crate::{
     device::connect_for_job,
     device::{
         AccessibleDevice, Connecting,
+        batch::SavedMember,
         dependency::PowerChain,
         update,
         watchdog::{self, restore_watchdogs},
@@ -125,6 +126,13 @@ pub async fn resume_saved_jobs(topology: &TopologyHolder) {
     crate::journal::close_interrupted(&resumed).await;
 }
 
+/// A member of a saved batch ([`resume_batch`]): its device, its saved job and the apply in it.
+struct Member {
+    device: DeviceAccess,
+    saved: saved_job::SavedJob,
+    apply: saved_job::SavedApply,
+}
+
 /// A batch saved before the restart, its devices `batch` ([`resume_saved_jobs`]): all of
 /// them saved and in NetBox, they go on together; else none does, and their fallbacks take
 /// all of it back.
@@ -148,9 +156,11 @@ async fn resume_batch(
             _ => None,
         });
         match (saved, apply, topology.devices_by_id(*id).await) {
-            (Some(saved), Some(apply), Some(device)) => {
-                members.push((device, saved.clone(), (**apply).clone()))
-            }
+            (Some(saved), Some(apply), Some(device)) => members.push(Member {
+                device,
+                saved: saved.clone(),
+                apply: (**apply).clone(),
+            }),
             _ => {
                 for id in batch {
                     saved_job::hold_back(*id, saved_job::HeldBack::BatchIncomplete);
@@ -161,26 +171,23 @@ async fn resume_batch(
     }
     let Some(delay) = members
         .first()
-        .and_then(|(_, _, apply)| apply.batch.as_ref())
+        .and_then(|member| member.apply.batch.as_ref())
         .map(|batch| batch.delay)
     else {
         return;
     };
     let fires = members
         .iter()
-        .map(|(_, _, apply)| saved_job::instant(apply.script.fires))
+        .map(|member| saved_job::instant(member.apply.script.fires))
         .min()
         .unwrap_or_else(std::time::Instant::now);
     for id in batch {
         saved_job::take(*id);
     }
-    let devices: Vec<DeviceAccess> = members
-        .iter()
-        .map(|(device, _, _)| device.clone())
-        .collect();
+    let devices: Vec<DeviceAccess> = members.iter().map(|member| member.device.clone()).collect();
     let entries: Vec<Option<u64>> = members
         .iter()
-        .map(|(_, saved, _)| saved.journal_entry)
+        .map(|member| member.saved.journal_entry)
         .collect();
     let started = job::start_all(
         &devices,
@@ -189,7 +196,15 @@ async fn resume_batch(
             entry: entries[index],
         },
         |logs| async move {
-            for (log, (device, saved, apply)) in logs.iter().zip(&members) {
+            for (
+                log,
+                Member {
+                    device,
+                    saved,
+                    apply,
+                },
+            ) in logs.iter().zip(&members)
+            {
                 let after = SystemTime::now()
                     .duration_since(saved.saved_at)
                     .unwrap_or_default();
@@ -204,7 +219,7 @@ async fn resume_batch(
             }
             let members = members
                 .into_iter()
-                .map(|(device, _, apply)| (device, apply))
+                .map(|Member { device, apply, .. }| SavedMember { device, apply })
                 .collect();
             crate::device::batch::resume(members, logs, fires, delay).await
         },

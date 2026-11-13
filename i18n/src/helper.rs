@@ -1,4 +1,39 @@
 //! Scope: The texts of the NetBox helpers; not the modal around them (`helper_flow`).
+use std::fmt::{self, Display, Formatter};
+
+/// A port of a device, written „device port“.
+#[derive(Debug, Clone, Copy)]
+pub struct Port<'a> {
+    pub device: &'a str,
+    pub name: &'a str,
+}
+
+impl Display for Port<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.device, self.name)
+    }
+}
+
+/// A VLAN, written „VLAN vid (name)“.
+#[derive(Debug, Clone, Copy)]
+pub struct Vlan<'a> {
+    pub vid: i32,
+    pub name: &'a str,
+}
+
+impl Display for Vlan<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "VLAN {} ({})", self.vid, self.name)
+    }
+}
+
+/// A value a step sets, with the one before (none: not set before).
+#[derive(Debug, Clone, Copy)]
+pub struct Change<T> {
+    pub to: T,
+    pub before: Option<T>,
+}
+
 pub const TITLE: &str = "NetBox ergänzen";
 pub const LOOPBACK: &str = "Loopback";
 pub const CONNECTION: &str = "Verbindung";
@@ -81,20 +116,13 @@ pub const POE_OBSERVED_NONE: &str = "Das Gerät speist an keinem Port etwas.";
 pub const POE_TAKE: &str = "Übernehmen";
 /// a port the device reports feeding, and what is at its other end; `recorded`: NetBox
 /// has it so (cable, PSE, PD)
-pub fn poe_observed(
-    port: &str,
-    far: Option<(&str, &str)>,
-    from_neighbor: bool,
-    recorded: bool,
-) -> String {
+pub fn poe_observed(port: &str, far: Option<Port>, from_neighbor: bool, recorded: bool) -> String {
     match far {
-        Some((device, far)) if recorded => {
-            format!("{port} speist {device} {far}, in NetBox so erfasst")
+        Some(far) if recorded => format!("{port} speist {far}, in NetBox so erfasst"),
+        Some(far) if from_neighbor => {
+            format!("{port} speist, dort sieht das Gerät {far} (kein Kabel in NetBox)")
         }
-        Some((device, far)) if from_neighbor => {
-            format!("{port} speist, dort sieht das Gerät {device} {far} (kein Kabel in NetBox)")
-        }
-        Some((device, far)) => format!("{port} speist {device} {far} (Kabel in NetBox)"),
+        Some(far) => format!("{port} speist {far} (Kabel in NetBox)"),
         None => format!("{port} speist, die Gegenseite ist unbekannt"),
     }
 }
@@ -103,7 +131,7 @@ pub fn poe_port(
     name: &str,
     label: Option<&str>,
     poe: Option<&str>,
-    connected: Option<(&str, &str)>,
+    connected: Option<Port>,
     cabled: bool,
 ) -> String {
     let mut text = match label {
@@ -114,7 +142,7 @@ pub fn poe_port(
         text.push_str(&format!(", {poe}"));
     }
     match connected {
-        Some((device, port)) => text.push_str(&format!(" – Kabel zu {device} {port}")),
+        Some(far) => text.push_str(&format!(" – Kabel zu {far}")),
         None if cabled => text.push_str(" – Kabel"),
         None => {}
     }
@@ -155,9 +183,9 @@ pub fn radio_candidate(device: &str, radio: &str, peer: Option<&str>) -> String 
     }
 }
 pub fn update_port(
-    port: (&str, &str),
+    port: Port,
     name: Option<&str>,
-    role: Option<(&str, Option<&str>)>,
+    role: Option<Change<&str>>,
     bridge: Option<&str>,
     leaves_bridge: Option<&str>,
 ) -> String {
@@ -165,7 +193,7 @@ pub fn update_port(
     if let Some(name) = name {
         changes.push(format!("heisst {name}"));
     }
-    if let Some((role, before)) = role {
+    if let Some(Change { to: role, before }) = role {
         changes.push(match before {
             Some(before) => format!("RF-Rolle {role} (vorher {before})"),
             None => format!("RF-Rolle {role}"),
@@ -177,38 +205,23 @@ pub fn update_port(
     if let Some(bridge) = leaves_bridge {
         changes.push(format!("nicht mehr Port von {bridge}"));
     }
-    format!("{} {}: {}", port.0, port.1, changes.join(", "))
+    format!("{port}: {}", changes.join(", "))
 }
-pub fn create_wireless_link(a: (&str, &str), b: (&str, &str), ssid: &str) -> String {
-    format!(
-        "Wireless Link {} {} – {} {} anlegen, SSID {ssid}, WPA mit neuem PSK",
-        a.0, a.1, b.0, b.1
-    )
+pub fn create_wireless_link(a: Port, b: Port, ssid: &str) -> String {
+    format!("Wireless Link {a} – {b} anlegen, SSID {ssid}, WPA mit neuem PSK")
 }
-pub fn update_wireless_link(
-    a: (&str, &str),
-    b: (&str, &str),
-    ssid: Option<(&str, &str)>,
-    psk: bool,
-) -> String {
+pub fn update_wireless_link(a: Port, b: Port, ssid: Option<Change<&str>>, psk: bool) -> String {
     let mut changes = Vec::new();
-    if let Some((ssid, before)) = ssid {
+    if let Some(Change { to: ssid, before }) = ssid {
         changes.push(match before {
-            "" => format!("SSID {ssid}"),
-            before => format!("SSID {ssid} (vorher {before})"),
+            None | Some("") => format!("SSID {ssid}"),
+            Some(before) => format!("SSID {ssid} (vorher {before})"),
         });
     }
     if psk {
         changes.push("WPA mit neuem PSK".to_string());
     }
-    format!(
-        "Wireless Link {} {} – {} {}: {}",
-        a.0,
-        a.1,
-        b.0,
-        b.1,
-        changes.join(", ")
-    )
+    format!("Wireless Link {a} – {b}: {}", changes.join(", "))
 }
 pub const FLAGS: &str = "Flags";
 pub const FLAGS_HINT: &str = "Die Tags der Interfaces: ospf (OSPF), dhcp (DHCP-Server), \
@@ -249,51 +262,42 @@ pub const APPLY_TOGETHER: &str = "Die Funkeinstellungen ändern sich: die beiden
 pub fn disconnect_port(device: &str, port: &str) -> String {
     format!("Verbindung an {device} {port} abräumen")
 }
-pub fn delete_cable(port: (&str, &str), far: Option<(&str, &str)>) -> String {
+pub fn delete_cable(port: Port, far: Option<Port>) -> String {
     match far {
-        Some(far) => format!("Kabel {} {} – {} {} löschen", port.0, port.1, far.0, far.1),
-        None => format!("Kabel an {} {} löschen", port.0, port.1),
+        Some(far) => format!("Kabel {port} – {far} löschen"),
+        None => format!("Kabel an {port} löschen"),
     }
 }
 pub fn delete_address(address: &str, device: &str, interface: &str) -> String {
     format!("Adresse {address} auf {device} {interface} löschen")
 }
-pub fn delete_wireless_link(a: (&str, &str), b: (&str, &str)) -> String {
-    format!("Wireless Link {} {} – {} {} löschen", a.0, a.1, b.0, b.1)
+pub fn delete_wireless_link(a: Port, b: Port) -> String {
+    format!("Wireless Link {a} – {b} löschen")
 }
 pub fn update_port_vlan(
-    port: (&str, &str),
-    vlan: Option<(i32, &str)>,
-    before: Option<(i32, &str)>,
-    tagged_before: &[(i32, &str)],
+    port: Port,
+    vlan: Option<Vlan>,
+    before: Option<Vlan>,
+    tagged_before: &[Vlan],
 ) -> String {
-    let name = |(vid, name): (i32, &str)| format!("VLAN {vid} ({name})");
     let mut text = match (vlan, before) {
-        (Some(vlan), Some(before)) => {
-            format!(
-                "{} {}: untagged {} statt {}",
-                port.0,
-                port.1,
-                name(vlan),
-                name(before)
-            )
-        }
-        (Some(vlan), None) => format!("{} {}: untagged {}", port.0, port.1, name(vlan)),
-        (None, Some(before)) => format!("{} {}: {} weg", port.0, port.1, name(before)),
-        (None, None) => format!("{} {}:", port.0, port.1),
+        (Some(vlan), Some(before)) => format!("{port}: untagged {vlan} statt {before}"),
+        (Some(vlan), None) => format!("{port}: untagged {vlan}"),
+        (None, Some(before)) => format!("{port}: {before} weg"),
+        (None, None) => format!("{port}:"),
     };
     if !tagged_before.is_empty() {
         let tagged = tagged_before
             .iter()
-            .map(|v| name(*v))
+            .map(Vlan::to_string)
             .collect::<Vec<_>>()
             .join(", ");
         text.push_str(&format!(", tagged {tagged} weg"));
     }
     text
 }
-pub fn delete_interface(interface: (&str, &str)) -> String {
-    format!("Interface {} {} löschen", interface.0, interface.1)
+pub fn delete_interface(interface: Port) -> String {
+    format!("Interface {interface} löschen")
 }
 pub const BRIDGE_LEAVE: &str = "Aus Bridge lösen";
 pub const BRIDGE_LEAVE_HINT: &str = "Nimmt den Port aus seiner Bridge, mit den VLANs des Ports \
@@ -388,13 +392,13 @@ pub const NO_PORT_VLAN_VLANS: &str = "Kein VLAN, das ein Port erreicht: eines de
     eines aus einer VLAN-Gruppe mit vxlan_vni. Weggelassen sind VLANs mit einer VID, die auf dem \
     Gerät schon ein anderes hat, und VLANs einer Gruppe, deren VXLAN auf dem Gerät an einer \
     anderen Bridge hängt.";
-pub fn port_vlan_port(name: &str, label: Option<&str>, vlan: Option<(i32, &str)>) -> String {
+pub fn port_vlan_port(name: &str, label: Option<&str>, vlan: Option<Vlan>) -> String {
     let mut text = match label {
         Some(label) => format!("{name} ({label})"),
         None => name.to_string(),
     };
-    if let Some((vid, vlan)) = vlan {
-        text.push_str(&format!(", jetzt VLAN {vid} ({vlan})"));
+    if let Some(vlan) = vlan {
+        text.push_str(&format!(", jetzt {vlan}"));
     }
     text
 }
@@ -528,8 +532,8 @@ pub fn create_interface(
 pub fn create_address(address: &str, device: &str, interface: &str, prefix: &str) -> String {
     format!("Adresse {address} auf {device} {interface} anlegen (aus {prefix})")
 }
-pub fn create_cable(a: (&str, &str), b: (&str, &str)) -> String {
-    format!("Kabel {} {} – {} {} anlegen", a.0, a.1, b.0, b.1)
+pub fn create_cable(a: Port, b: Port) -> String {
+    format!("Kabel {a} – {b} anlegen")
 }
 /// with the DHCP lease time in seconds, where the prefix gets one
 pub fn create_ip_range(start: &str, end: &str, description: &str) -> String {
@@ -547,32 +551,33 @@ pub fn create_prefix(prefix: &str, pool: &str, description: &str, lease: Option<
         None => created,
     }
 }
-/// the new label and MTU, each with the one before, and whether `ospf` is added
+/// the new label, MTU and PoE mode (none: no PoE), each with the one before, and the tags
+/// added and removed
 pub fn update_interface(
-    port: (&str, &str),
-    label: Option<(&str, Option<&str>)>,
-    mtu: Option<(i32, Option<i32>)>,
+    port: Port,
+    label: Option<Change<&str>>,
+    mtu: Option<Change<i32>>,
     tags_added: &[&str],
     tags_removed: &[&str],
-    poe: Option<(Option<&str>, Option<&str>)>,
+    poe: Option<Change<Option<&str>>>,
 ) -> String {
     let mut changes = Vec::new();
-    if let Some((poe, before)) = poe {
-        changes.push(match (poe, before) {
+    if let Some(Change { to: poe, before }) = poe {
+        changes.push(match (poe, before.flatten()) {
             (Some(poe), Some(before)) => format!("PoE {poe} (vorher {before})"),
             (Some(poe), None) => format!("PoE {poe}"),
             (None, Some(before)) => format!("kein PoE mehr (vorher {before})"),
             (None, None) => "kein PoE".to_string(),
         });
     }
-    if let Some((label, before)) = label {
+    if let Some(Change { to: label, before }) = label {
         changes.push(match before {
             Some(before) if label.is_empty() => format!("Label {before} weg"),
             Some(before) => format!("Label {label} (vorher {before})"),
             None => format!("Label {label}"),
         });
     }
-    if let Some((mtu, before)) = mtu {
+    if let Some(Change { to: mtu, before }) = mtu {
         changes.push(match before {
             Some(before) => format!("MTU {mtu} (vorher {before})"),
             None => format!("MTU {mtu} (vorher 1500)"),
@@ -592,7 +597,7 @@ pub fn update_interface(
             tags_removed.join(", ")
         ));
     }
-    format!("{} {}: {}", port.0, port.1, changes.join(", "))
+    format!("{port}: {}", changes.join(", "))
 }
 fn tags_word(tags: &[&str]) -> &'static str {
     if tags.len() == 1 { "Tag" } else { "Tags" }
@@ -601,7 +606,7 @@ fn tags_word(tags: &[&str]) -> &'static str {
 pub fn link_port(
     name: &str,
     label: Option<&str>,
-    connected: Option<(&str, &str)>,
+    connected: Option<Port>,
     cabled: bool,
     ipv4: Option<&str>,
     bridge: Option<&str>,
@@ -611,7 +616,7 @@ pub fn link_port(
         None => name.to_string(),
     };
     match connected {
-        Some((device, port)) => text.push_str(&format!(" – Kabel zu {device} {port}")),
+        Some(far) => text.push_str(&format!(" – Kabel zu {far}")),
         None if cabled => text.push_str(" – Kabel"),
         None => {}
     }

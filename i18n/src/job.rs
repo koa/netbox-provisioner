@@ -47,10 +47,15 @@ pub fn set_up(address: &str) -> String {
 pub fn running(what: &str) -> String {
     format!("{what} läuft")
 }
-/// `update`: from and to version
-pub fn done(what: &str, update: Option<(&str, &str)>) -> String {
+/// The RouterOS versions an update went from and to.
+pub struct Versions<'a> {
+    pub from: &'a str,
+    pub to: &'a str,
+}
+
+pub fn done(what: &str, update: Option<Versions>) -> String {
     match update {
-        Some((from, to)) => format!("{what} abgeschlossen: RouterOS {from} → {to}"),
+        Some(Versions { from, to }) => format!("{what} abgeschlossen: RouterOS {from} → {to}"),
         None => format!("{what} abgeschlossen"),
     }
 }
@@ -127,13 +132,23 @@ pub mod event {
         pub lines: u32,
         pub section: Option<u32>,
         pub done: bool,
-        pub error: Option<(u32, &'a str)>,
-        /// the provisioner's address, and whether it answered before the script
-        pub probe: Option<(&'a str, bool)>,
+        pub error: Option<ScriptError<'a>>,
+        pub probe: Option<Probe<'a>>,
         pub lost: &'a [u32],
         pub back: &'a [u32],
         pub rearmed: Option<u64>,
         pub after_fallback: bool,
+    }
+    /// Where the script stopped, and why.
+    pub struct ScriptError<'a> {
+        pub line: u32,
+        pub error: &'a str,
+    }
+    /// The script's ping to the provisioner: its address, and whether it answered before the
+    /// script.
+    pub struct Probe<'a> {
+        pub address: &'a str,
+        pub answered_before: bool,
     }
     pub fn script_progress(p: Progress) -> Vec<String> {
         let mut out = Vec::new();
@@ -143,7 +158,7 @@ pub mod event {
             ""
         };
         out.push(match (p.done, p.error) {
-            (_, Some((line, error))) => format!(
+            (_, Some(ScriptError { line, error })) => format!(
                 "{read}Das Skript hat in Zeile {line} von {} angehalten: {error}; die Zeilen \
                  davor sind angewendet",
                 p.lines
@@ -162,14 +177,17 @@ pub mod event {
             None => {
                 out.push("Ohne Ping zum Provisioner: das Gerät kennt seine Adresse nicht".into())
             }
-            Some((address, false)) => out.push(format!(
+            Some(Probe {
+                address,
+                answered_before: false,
+            }) => out.push(format!(
                 "Der Provisioner ({address}) antwortete schon vor dem Skript nicht auf Ping, \
                  die Marken sagen nichts darüber, wo das Gerät abgeschnitten wurde"
             )),
-            Some((address, true)) if p.lost.is_empty() => out.push(format!(
+            Some(Probe { address, .. }) if p.lost.is_empty() => out.push(format!(
                 "Der Provisioner ({address}) antwortete nach jeder Zeile auf Ping"
             )),
-            Some((address, true)) => {
+            Some(Probe { address, .. }) => {
                 for (index, lost) in p.lost.iter().enumerate() {
                     let back = match p.back.get(index) {
                         Some(back) => format!(", wieder ab Zeile {back}"),
@@ -565,16 +583,21 @@ pub mod event {
     pub fn watchdog_not_set(device: &str) -> String {
         format!("{device} hat keinen Watchdog, der auslösen könnte: nichts auszusetzen")
     }
+    /// A port that power cycles what it feeds when its ping to `address` goes unanswered.
+    pub struct PingedPort<'a> {
+        pub port: &'a str,
+        pub address: &'a str,
+    }
     /// what a device's watchdogs watch: its watch address and the ports power cycling
-    /// the updating device (port, address)
-    pub fn watching(address: Option<&str>, ports: &[(&str, &str)]) -> String {
+    /// the updating device
+    pub fn watching(address: Option<&str>, ports: &[PingedPort]) -> String {
         address
             .map(|address| format!("watch-address {address}"))
             .into_iter()
             .chain(
-                ports
-                    .iter()
-                    .map(|(port, address)| format!("PoE-Ping an {port} auf {address}")),
+                ports.iter().map(|PingedPort { port, address }| {
+                    format!("PoE-Ping an {port} auf {address}")
+                }),
             )
             .collect::<Vec<_>>()
             .join(", ")

@@ -10,6 +10,8 @@
 //   clicklast:Text          click the last element with this text (a card title after links)
 //   clickrow:Text=Label     click the button with this label in the table row containing Text
 //   expand:Text             click the first button (a table's toggle) in the row containing Text
+//   check:Label             click the element with this label (a checkbox without text)
+//   drag:Text=DX,DY         drag the element with this text by DX, DY pixels (the network map)
 //   fill:Placeholder=Value  type into the input with this placeholder
 //   waitfor:Text|Other      wait until one of the texts shows up (WAIT_TIMEOUT_MS, 5 min)
 //   wait:ms                 wait a fixed time
@@ -90,6 +92,22 @@ for (const step of args) {
         .first()
         .waitFor({ timeout: Number(process.env.WAIT_TIMEOUT_MS ?? 300000) });
       break;
+    case 'check':
+      // an element by its label, a checkbox without text of its own
+      await page.getByLabel(value, { exact: true }).first().click();
+      break;
+    case 'drag': {
+      // drag:TEXT=DX,DY moves the element with TEXT by DX, DY pixels (the network map)
+      const [text, ...by] = value.split('=');
+      const [dx, dy] = by.join('=').split(',').map(Number);
+      const box = await page.getByText(text, { exact: true }).last().boundingBox();
+      const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      for (let i = 1; i <= 10; i++) await page.mouse.move(x + (dx * i) / 10, y + (dy * i) / 10);
+      await page.mouse.up();
+      break;
+    }
     case 'wait':
       await page.waitForTimeout(Number(value));
       break;

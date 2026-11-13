@@ -73,7 +73,7 @@ impl AdjustTarget {
         })
     }
 
-    fn split_target(target: &SelectedTarget) -> (Box<str>, Box<str>, Box<str>, Box<str>) {
+    fn split_target(target: &SelectedTarget) -> TargetFields {
         let (selected_credential, adhoc_username, adhoc_password) = match &target.credentials {
             SelectedCredentials::Default => Default::default(),
             SelectedCredentials::Named(name) => (name.clone(), Box::default(), Box::default()),
@@ -85,13 +85,21 @@ impl AdjustTarget {
             .address
             .map(|ip| ip.to_string().into_boxed_str())
             .unwrap_or_default();
-        (
+        TargetFields {
             selected_credential,
             adhoc_username,
             adhoc_password,
             current_ip_address,
-        )
+        }
     }
+}
+
+/// A target as the form's fields show it ([`AdjustTarget::split_target`]).
+struct TargetFields {
+    selected_credential: Box<str>,
+    adhoc_username: Box<str>,
+    adhoc_password: Box<str>,
+    current_ip_address: Box<str>,
 }
 
 pub enum AdjustTargetMsg {
@@ -108,8 +116,12 @@ impl Component for AdjustTarget {
 
     fn create(ctx: &Context<Self>) -> Self {
         let props = ctx.props();
-        let (selected_credential, adhoc_username, adhoc_password, current_ip_address) =
-            Self::split_target(&props.value);
+        let TargetFields {
+            selected_credential,
+            adhoc_username,
+            adhoc_password,
+            current_ip_address,
+        } = Self::split_target(&props.value);
         Self {
             callback: props.onchange.clone(),
             available_credentials: Box::new([]),
@@ -165,8 +177,12 @@ impl Component for AdjustTarget {
             modified = true;
         }
         if self.last_sent_target.as_ref() != Some(&props.value) {
-            let (selected_credential, adhoc_username, adhoc_password, current_ip_address) =
-                Self::split_target(&props.value);
+            let TargetFields {
+                selected_credential,
+                adhoc_username,
+                adhoc_password,
+                current_ip_address,
+            } = Self::split_target(&props.value);
             if selected_credential != self.selected_credential {
                 self.selected_credential = selected_credential;
                 modified = true;

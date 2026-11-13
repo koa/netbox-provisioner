@@ -774,12 +774,18 @@ pub(crate) async fn run<M: Planning>(
     watch(running, &logs, &timing, fires, delay, results).await
 }
 
+/// A member of a batch saved before a restart of the provisioner, with its saved apply.
+pub struct SavedMember {
+    pub device: DeviceAccess,
+    pub apply: SavedApply,
+}
+
 /// Goes on with a batch saved before a restart of the provisioner (`saved_job`): each of
-/// `members` with its saved apply and its job's log, the fallbacks firing at `fires` after
+/// `members` with its job's log, the fallbacks firing at `fires` after
 /// `delay`. As after the start of the scripts: all through and in line, the fallbacks go,
 /// else all go back.
 pub async fn resume(
-    members: Vec<(DeviceAccess, SavedApply)>,
+    members: Vec<SavedMember>,
     logs: Vec<Log>,
     fires: Instant,
     delay: Duration,
@@ -788,21 +794,32 @@ pub async fn resume(
         .into_iter()
         .zip(&logs)
         .enumerate()
-        .map(|(index, ((device, saved), log))| Running {
-            index,
-            name: device.name().into(),
-            log: log.clone(),
-            fallback: saved.script.armed,
-            member: Rejoined {
-                device,
-                saved,
-                link: Default::default(),
-                hold: Mutex::new(None),
-                seen: Mutex::new(Seen::default()),
+        .map(
+            |(
+                index,
+                (
+                    SavedMember {
+                        device,
+                        apply: saved,
+                    },
+                    log,
+                ),
+            )| Running {
+                index,
+                name: device.name().into(),
                 log: log.clone(),
+                fallback: saved.script.armed,
+                member: Rejoined {
+                    device,
+                    saved,
+                    link: Default::default(),
+                    hold: Mutex::new(None),
+                    seen: Mutex::new(Seen::default()),
+                    log: log.clone(),
+                },
+                checked: None,
             },
-            checked: None,
-        })
+        )
         .collect();
     let results = logs.iter().map(|_| None).collect();
     watch(running, &logs, &batch_timing(), fires, delay, results).await
