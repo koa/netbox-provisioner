@@ -13,6 +13,7 @@ use super::{
     read::{LsdbRead, read, readers},
 };
 use crate::device::rollout::status::{self, RolloutNode};
+use crate::error_info::ErrorInfo;
 use crate::graphql::scalars::{ScalarDuration, ScalarU64};
 use crate::{
     device::poe::{self, PoeProblem},
@@ -38,7 +39,7 @@ pub struct NetworkState {
     /// seconds since the reading
     age: u32,
     /// why no router answered
-    error: Option<String>,
+    error: Option<ErrorInfo>,
     nodes: Box<[MapNode]>,
     edges: Box<[MapEdge]>,
     /// routers in the LSDB that are no device in NetBox (production behind the lab's uplink)
@@ -183,7 +184,7 @@ pub struct MapPoeEdge {
     pse: InterfaceRef,
     pd: InterfaceRef,
     /// `poe-out-status` as the device reports it
-    status: Option<String>,
+    status: Option<poe::PoeOutStatus>,
     /// `poe-out-power`, watts; only while `status` is `powered-on`
     power: Option<f64>,
     /// where the device contradicts NetBox's PoE mode (`device::poe::Feeding`)
@@ -211,11 +212,7 @@ fn poe_edges(
             found.push(MapPoeEdge {
                 pse: feeding.port,
                 pd,
-                status: feeding
-                    .status
-                    .as_ref()
-                    .map(poe::status_text)
-                    .map(Into::into),
+                status: feeding.status.as_ref().map(poe::PoeOutStatus::from),
                 power: feeding.power,
                 problem: feeding.problem,
             });
@@ -317,7 +314,7 @@ pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
             (Some(device), age, fact.value.ok(), None)
         }
         Ok(None) => (None, 0, None, None),
-        Err(error) => (None, 0, None, Some(error.to_string())),
+        Err(error) => (None, 0, None, Some(ErrorInfo::from(&error))),
     };
     let lsdb = lsdb.unwrap_or_default();
     NetworkState {
@@ -334,7 +331,7 @@ fn build(
     lsdb: &Lsdb,
     read_from: Option<DeviceAccess>,
     age: u32,
-    error: Option<String>,
+    error: Option<ErrorInfo>,
 ) -> NetworkState {
     let map_edges = edges(devices, lsdb);
     let topology = devices.first().map(|d| d.topology().clone());

@@ -27,7 +27,6 @@ use mikrotik_model::{
         IpNeighborState,
     },
     resource::{collect_monitor_once, collect_resource},
-    value::RosValue,
 };
 use std::collections::HashMap;
 
@@ -70,9 +69,45 @@ impl From<&InterfaceEthernet> for EthernetPort {
     }
 }
 
-/// `poe-out-status` as RouterOS names it.
-pub(crate) fn status_text(status: &InterfaceEthernetPoePoeOutStatus) -> Box<str> {
-    String::from_utf8_lossy(&status.encode_ros()).into()
+/// `poe-out-status` (`InterfaceEthernetPoePoeOutStatus`), for GraphQL.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
+pub enum PoeOutStatus {
+    Disabled,
+    WaitingForLoad,
+    ShortCircuit,
+    PoweredOn,
+    Overload,
+    VoltageTooLow,
+    VoltageTooHigh,
+    CurrentTooLow,
+    VoltageOnPoeIn,
+    Off,
+    PowerReset,
+    ControllerInit,
+    ControllerUpgrade,
+    ControllerError,
+}
+
+impl From<&InterfaceEthernetPoePoeOutStatus> for PoeOutStatus {
+    fn from(status: &InterfaceEthernetPoePoeOutStatus) -> Self {
+        use InterfaceEthernetPoePoeOutStatus as S;
+        match status {
+            S::Disabled => Self::Disabled,
+            S::WaitingForLoad => Self::WaitingForLoad,
+            S::ShortCircuit => Self::ShortCircuit,
+            S::PoweredOn => Self::PoweredOn,
+            S::Overload => Self::Overload,
+            S::VoltageTooLow => Self::VoltageTooLow,
+            S::VoltageTooHigh => Self::VoltageTooHigh,
+            S::CurrentTooLow => Self::CurrentTooLow,
+            S::VoltageOnPoeIn => Self::VoltageOnPoeIn,
+            S::Off => Self::Off,
+            S::PowerReset => Self::PowerReset,
+            S::ControllerInit => Self::ControllerInit,
+            S::ControllerUpgrade => Self::ControllerUpgrade,
+            S::ControllerError => Self::ControllerError,
+        }
+    }
 }
 
 /// Reads the Ethernet ports and the state of their PoE out.
@@ -135,7 +170,7 @@ pub struct PoeMismatch {
     pub port: InterfaceRef,
     pub problem: PoeProblem,
     /// `poe-out-status` as the device reports it
-    pub status: Option<Box<str>>,
+    pub status: Option<PoeOutStatus>,
 }
 
 /// A PoE-capable Ethernet port, modeled to feed or fed in NetBox or reporting `powered-on`,
@@ -286,7 +321,7 @@ pub fn mismatches(device: &DeviceAccess, ports: &PoePorts) -> Vec<PoeMismatch> {
             Some(problem) => Some(PoeMismatch {
                 port: f.port,
                 problem,
-                status: f.status.as_ref().map(status_text),
+                status: f.status.as_ref().map(PoeOutStatus::from),
             }),
         })
         .collect()

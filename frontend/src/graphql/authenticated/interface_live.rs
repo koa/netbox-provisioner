@@ -7,7 +7,7 @@ use super::{
     interfaces::RowAction,
     neighbor_findings::{NeighborFinding, SeenNeighbor},
     schema::schema,
-    types::{DeviceRef, DeviceTarget, InterfaceRef, PoeProblem},
+    types::{DeviceRef, DeviceTarget, InterfaceRef, PoeOutStatus, PoeProblem},
 };
 
 #[derive(cynic::QueryVariables, Debug)]
@@ -123,7 +123,7 @@ pub struct BridgeAnswer {
 pub struct PoeMismatch {
     pub port: InterfaceRef,
     pub problem: PoeProblem,
-    pub status: Option<String>,
+    pub status: Option<PoeOutStatus>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

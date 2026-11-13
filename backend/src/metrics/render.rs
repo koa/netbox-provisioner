@@ -11,11 +11,10 @@ use crate::{
     device::metrics::{
         Capsman, DeviceMetrics, EthernetLink, InterfaceCounters, Lease, WirelessRadio, WlanClient,
     },
-    device::poe::status_text,
     network_state::device_data::{DeviceMapData, HealthRow, Resources},
     topology::access::device::DeviceAccess,
 };
-use mikrotik_model::{MacAddress, model::InterfaceEthernetPoeMonitor};
+use mikrotik_model::{MacAddress, model::InterfaceEthernetPoeMonitor, value::RosValue};
 use prometheus::{CounterVec, GaugeVec, Opts, core::Collector, proto::MetricFamily};
 use std::{collections::HashMap, sync::Arc};
 
@@ -598,7 +597,8 @@ impl PoeFamilies {
     fn push(&mut self, device: &str, site: &str, reading: &InterfaceEthernetPoeMonitor) {
         let interface = reading.name.to_string();
         let interface = interface.as_str();
-        let status = status_text(&reading.poe_out_status);
+        // RouterOS's name as the label value
+        let status = String::from_utf8_lossy(&reading.poe_out_status.encode_ros()).into_owned();
         self.status
             .push(labels([device, site, interface, &status]), 1.0);
         let port = || labels([device, site, interface]);

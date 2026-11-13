@@ -30,3 +30,6 @@ pub mod apply_warning;
 /// The features of a device-mode change, with why each is needed (the device page,
 /// `components::job`).
 pub mod device_mode;
+
+/// A port's PoE state (the network map, the interfaces' live rows).
+pub mod poe;

@@ -19,7 +19,7 @@
 //! device, slower), asked and polled independently and shown in a popup on hovering a node,
 //! with a spinner until the first answer of its own poll arrives.
 use crate::{
-    error::FrontendError,
+    error::{FrontendError, ServerProblem},
     graphql::{
         RETRY,
         authenticated::{
@@ -357,7 +357,7 @@ impl Component for NetworkMap {
                 };
                 let source = match (&state.read_from, &state.error) {
                     (Some(device), _) => t::read_from(&device.name, state.age as u32),
-                    (None, Some(error)) => t::unreadable(error),
+                    (None, Some(error)) => t::unreadable(&ServerProblem::from(error).text()),
                     (None, None) => no_router.to_string(),
                 };
                 let interaction = Interaction {
@@ -672,7 +672,7 @@ fn map(
         let title = t::poe_edge(
             &format!("{} {}", edge.pse.device.name, edge.pse.name),
             &format!("{} {}", edge.pd.device.name, edge.pd.name),
-            edge.status.as_deref(),
+            edge.status.as_ref().map(crate::i18n::poe::status),
             edge.power,
             problem_text,
         );

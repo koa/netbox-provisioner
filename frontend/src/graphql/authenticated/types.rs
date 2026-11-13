@@ -461,6 +461,28 @@ pub enum DeviceModeFeature {
     Other(String),
 }
 
+/// `poe-out-status` of a port (`PoeOutStatus`).
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum PoeOutStatus {
+    Disabled,
+    WaitingForLoad,
+    ShortCircuit,
+    PoweredOn,
+    Overload,
+    VoltageTooLow,
+    VoltageTooHigh,
+    CurrentTooLow,
+    VoltageOnPoeIn,
+    Off,
+    PowerReset,
+    ControllerInit,
+    ControllerUpgrade,
+    ControllerError,
+    #[cynic(fallback)]
+    Other(String),
+}
+
 /// The mode of `/system/device-mode` (`DeviceModeName`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
 #[cynic(schema = "authenticated")]

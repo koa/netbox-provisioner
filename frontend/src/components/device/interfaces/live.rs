@@ -212,7 +212,7 @@ pub fn details(netbox: &str, live: &RowLive, device: impl Fn(&Device) -> Html) -
                                     // shared and must still match exhaustively.
                                     PoeProblem::Undocumented | PoeProblem::Other => t::PoeMismatch::Other,
                                 },
-                                m.status.as_deref(),
+                                m.status.as_ref().map(crate::i18n::poe::status),
                             )}
                         </div>
                     }) }

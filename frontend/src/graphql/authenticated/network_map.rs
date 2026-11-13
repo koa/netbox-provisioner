@@ -5,7 +5,7 @@
 //! published to NetBox (`publishLayout`).
 use super::{
     schema::schema,
-    types::{DeviceRef, InterfaceRef, PoeProblem, WideInt},
+    types::{DeviceRef, ErrorInfo, InterfaceRef, PoeOutStatus, PoeProblem, WideInt},
 };
 
 #[derive(cynic::QueryVariables, Debug)]
@@ -40,7 +40,7 @@ pub struct MapTopology {
 pub struct NetworkState {
     pub read_from: Option<DeviceRef>,
     pub age: i32,
-    pub error: Option<String>,
+    pub error: Option<ErrorInfo>,
     pub outside: i32,
     pub outside_at: Vec<i32>,
     pub nodes: Vec<MapNode>,
@@ -171,7 +171,7 @@ pub struct MapResources {
 pub struct MapPoeEdge {
     pub pse: InterfaceRef,
     pub pd: InterfaceRef,
-    pub status: Option<String>,
+    pub status: Option<PoeOutStatus>,
     pub power: Option<f64>,
     pub problem: Option<PoeProblem>,
 }
