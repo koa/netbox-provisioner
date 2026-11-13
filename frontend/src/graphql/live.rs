@@ -78,7 +78,10 @@ fn start<T: DeserializeOwned + 'static, S: Component>(
     deliver: impl Fn(Result<Response<T>, FrontendError>) + 'static,
 ) -> Subscription {
     let deliver = Callback::from(move |answer| {
-        deliver(serde_json::from_value(answer).map_err(FrontendError::from));
+        let response = serde_json::from_value::<Response<Value>>(answer)
+            .and_then(super::decode)
+            .map_err(FrontendError::from);
+        deliver(response);
     });
     CONNECTION.with(|connection| {
         let scope = scope.clone();

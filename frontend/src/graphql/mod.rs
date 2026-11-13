@@ -132,7 +132,17 @@ async fn post<T: DeserializeOwned>(
         });
     }
     auth::report(false);
-    let Response { data, errors } = response.json::<Response<serde_json::Value>>().await?;
+    Ok(decode(
+        response.json::<Response<serde_json::Value>>().await?,
+    )?)
+}
+
+/// The data of `response` as `T`; with errors `data` may lack the fields that failed
+/// (async-graphql leaves out a non-null field with an error), then it is only the errors.
+pub(crate) fn decode<T: DeserializeOwned>(
+    response: Response<serde_json::Value>,
+) -> Result<Response<T>, serde_json::Error> {
+    let Response { data, errors } = response;
     let data = match data {
         Some(data) if errors.as_ref().is_some_and(|errors| !errors.is_empty()) => {
             serde_json::from_value(data).ok()
