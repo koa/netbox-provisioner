@@ -229,6 +229,7 @@ impl DeviceCfg {
             following_renames(&self.base_target, &self.base_current, &self.radio_renames());
         super::syslog::after_switch_to_cef(&mut current);
         super::l2::after_vlan_filtering_off(&self.base_target, &mut current);
+        super::speed::after_negotiation_on(&self.base_target, &mut current);
         let mut mutations = self
             .base_target
             .generate_mutations(&current)?

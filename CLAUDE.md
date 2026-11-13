@@ -941,8 +941,10 @@ restarts a `wlan` radio; on a DFS weather radar channel (5600-5650 MHz) it liste
 NetBox's interface `speed` (kbit/s) fixes an Ethernet port's speed without auto-negotiation
 (`setup_speed`, `device/ros/speed.rs`); the RouterOS speed names the medium, which for a cage
 comes from the cable's NetBox `type` (DAC, fiber, copper). Both RouterOS ends need the same, and
-the board must advertise it there. The model keeps a device's `speed` where none is given
-(`speed: k`): RouterOS refuses it empty and a negotiating port ignores it.
+the board must advertise it there. A port going back to negotiation has its
+`speed` left out of the `set` (`speed::after_negotiation_on`, like
+`l2::after_vlan_filtering_off`): RouterOS refuses `speed=""`, `!speed` is a syntax error in a
+script (lab-hex, 7.24.6), and a negotiating port doesn't report it.
 `DeviceCfg::generate_from` (the real path) calls the target's steps itself, not
 `BaseDeviceDataTarget::generate_from` (which only tests use): a step added to one must be in the
 other too. PoE out (`setup_poe`) was only in the latter, so the real path never set it before.

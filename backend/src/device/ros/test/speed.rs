@@ -2,7 +2,10 @@
 //!
 //! The speed NetBox gives a port: without auto-negotiation, named with the medium of its cable.
 use crate::{
-    device::ros::{BaseDeviceDataTarget, SetupError, l2::KeepNameGenerator},
+    device::ros::{
+        BaseDeviceDataTarget, SetupError, l2::KeepNameGenerator, speed::after_negotiation_on,
+        test::empty_current,
+    },
     topology::{
         Cable, CablePort, Device, Duplex, Interface, PhysicalPortId, TopologyHolder,
         access::device::DeviceAccess, builder::TopologyBuilder,
@@ -159,4 +162,66 @@ async fn a_speed_the_port_lacks_is_an_error() {
         port(&sw2, CRS326, "sfp-sfpplus1"),
         Err(SetupError::SpeedNotOnPort { .. })
     ));
+}
+
+/// A port going back to auto-negotiation (lab-hex `ether2`, 7.24.6): RouterOS refuses
+/// `speed=""` and `!speed` is a syntax error in a script, so the `set` leaves the speed out;
+/// the port doesn't report it once it negotiates.
+#[tokio::test]
+async fn negotiating_again_leaves_the_speed_out() {
+    let [sw1, _] = topology([None, None], Some("dac-passive"), None).await;
+    let mut target = BaseDeviceDataTarget::new(CRS354).unwrap();
+    target.generate_from(&sw1, KeepNameGenerator).unwrap();
+    let mut current = empty_current(&target);
+    let lane = current
+        .ethernet
+        .iter_mut()
+        .find(|port| port.default_name == AsciiString::from("qsfpplus1-1"))
+        .unwrap();
+    // as klr-sw-1 reports the fixed lane
+    lane.data.auto_negotiation = false;
+    lane.data.speed = Some(EthernetSpeed::_10GBaseCr);
+    lane.data.advertise = Default::default();
+    after_negotiation_on(&target, &mut current);
+    let mutations = target.generate_mutations(&current).unwrap();
+    let fields = |mutation: &mikrotik_model::resource::ResourceMutation| {
+        let mut fields = mutation
+            .fields
+            .iter()
+            .map(|field| String::from_utf8_lossy(field.key).into_owned())
+            .filter(|key| key != "name")
+            .collect::<Vec<_>>();
+        fields.sort();
+        fields
+    };
+    let lane = mutations
+        .iter()
+        .filter(|m| m.resource == b"interface/ethernet")
+        .map(fields)
+        .find(|fields| fields.iter().any(|key| key == "auto-negotiation"))
+        .expect("the lane negotiates again");
+    assert_eq!(lane, ["advertise", "auto-negotiation"]);
+}
+
+/// A port that stays fixed keeps its speed in the diff: a new one is set.
+#[tokio::test]
+async fn a_fixed_port_changes_its_speed() {
+    let [sw1, _] = topology([Some(10_000_000); 2], Some("dac-passive"), None).await;
+    let mut target = BaseDeviceDataTarget::new(CRS354).unwrap();
+    target.generate_from(&sw1, KeepNameGenerator).unwrap();
+    let mut current = empty_current(&target);
+    let lane = current
+        .ethernet
+        .iter_mut()
+        .find(|port| port.default_name == AsciiString::from("qsfpplus1-1"))
+        .unwrap();
+    lane.data.speed = Some(EthernetSpeed::_10GBaseSrLr);
+    after_negotiation_on(&target, &mut current);
+    let lane = &current
+        .ethernet
+        .iter()
+        .find(|port| port.default_name == AsciiString::from("qsfpplus1-1"))
+        .unwrap()
+        .data;
+    assert_eq!(lane.speed, Some(EthernetSpeed::_10GBaseSrLr));
 }

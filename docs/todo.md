@@ -52,8 +52,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
-| B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B38 | mikrotik-model: `/ipv6/firewall/mangle`, `nat` und `raw` sind ungeprüfte Rohfassungen, die niemand nutzt: fast jedes Feld Pflicht, `address-list` ein Enum mit dem einzigen Wert `bgp-networks`, `hop-limit` und `ipsec-policy` Enums, wo RouterOS `equal:1` und `in,ipsec` meldet (Match-Felder sind Text, wie in `/ipv6/firewall/filter`). Vorschlag: entfernen, bis eine gebraucht wird, dann wie `filter` am CHR verfeinern | S | offen |
 
 ## C. Konzepte zum Umsetzen
 

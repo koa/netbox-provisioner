@@ -8,9 +8,10 @@
 //! for the RJ45 speeds up to 1G, half where NetBox says so.
 //!
 //! Without a `speed` the port negotiates, and RouterOS keeps whatever `speed` it has without
-//! using it; it refuses one empty ("ambiguous value of speed"), so the model keeps it then
-//! (`speed: k`).
-use super::{BaseDeviceDataTarget, SetupError};
+//! using it or reporting it (7.24.6). It refuses one empty ("ambiguous value of speed"), and
+//! `!speed` is a syntax error in a script (lab-hex, 7.24.6), so going back to negotiation
+//! leaves the speed out ([`after_negotiation_on`]).
+use super::{BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError};
 use crate::topology::{
     Duplex, PhysicalPortId,
     access::{device::DeviceAccess, interface::InterfaceAccess},
@@ -166,5 +167,24 @@ impl BaseDeviceDataTarget {
             ethernet_port.advertise = Default::default();
         }
         Ok(())
+    }
+}
+
+/// `current` as the diff sees it: a port the target takes back to auto-negotiation has its
+/// fixed speed taken out, so the `set` doesn't clear it (refused); RouterOS doesn't report it
+/// once the port negotiates. Only for that change: a port that stays fixed keeps its speed in
+/// the diff.
+pub(super) fn after_negotiation_on(
+    target: &BaseDeviceDataTarget,
+    current: &mut BaseDeviceDataCurrent,
+) {
+    for port in current.ethernet.iter_mut() {
+        let current = &mut port.data;
+        let Some(target) = target.ethernet.get(&port.default_name) else {
+            continue;
+        };
+        if !current.auto_negotiation && target.auto_negotiation && target.speed.is_none() {
+            current.speed = None;
+        }
     }
 }
