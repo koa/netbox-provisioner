@@ -17,7 +17,7 @@ ipnet = { version = "2.12.2", features = ["serde"] }
 regex = "1.13.1"
 surge-ping = "0.9.1"
 #encoding_rs = "0.8.35"
-# local builds in the workspace take the sibling checkouts (`[patch]` in its `.cargo/config.toml`)
+# while a library is changed, `path = "../../<library>"` here, never committed (CLAUDE.md)
 mikrotik-api = { version = "0.1.0", git = "https://github.com/koa/mikrotik-api", branch = "master" }
 mikrotik-model = { version = "0.1.0", git = "https://github.com/koa/mikrotik-model", branch = "master" }
 tokio-socks = "0.5.3"
