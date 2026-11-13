@@ -6,8 +6,9 @@
 use super::{
     schema::schema,
     types::{
-        ApplyWarning, Channel, DeviceModeChange, DeviceRef, DeviceTarget, DeviceVariablesFields,
-        ErrorInfo, JobId, JobState, LeftoverAction, Mac, Partition, Watching,
+        ApplyWarning, Channel, DeviceModeChange, DeviceModeName, DeviceRef, DeviceTarget,
+        DeviceVariablesFields, ErrorInfo, JobId, JobState, LeftoverAction, Mac, Partition,
+        Watching,
     },
 };
 
@@ -168,7 +169,7 @@ pub enum WwwCertificate {
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
 pub struct DeviceMode {
-    pub mode: String,
+    pub mode: DeviceModeName,
     pub changes: Vec<DeviceModeChange>,
 }
 

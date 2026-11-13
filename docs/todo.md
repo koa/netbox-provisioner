@@ -53,7 +53,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B37 | mikrotik-model: dieselbe Wertemenge in mehreren Menüs als ein benanntes Enum in `enums.yaml` statt je eines `enum=` pro Feld (Benutzer, 2026-11-13; eine Durchsicht fand rund 20, z. B. `arp`, `vlan-mode`, `guard-interval`, `installation`, `tls-mode`, `loop-protect`, `poe-out`; Fehltreffer wie einwertige Enums aussortieren). Das Funk-Band (`WirelessBand`) ist schon so. Die Typnamen im Provisioner ändern mit | M | offen |
+| B38 | mikrotik-model: `/ipv6/firewall/mangle`, `nat` und `raw` sind ungeprüfte Rohfassungen, die niemand nutzt: fast jedes Feld Pflicht, `address-list` ein Enum mit dem einzigen Wert `bgp-networks`, `hop-limit` und `ipsec-policy` Enums, wo RouterOS `equal:1` und `in,ipsec` meldet (Match-Felder sind Text, wie in `/ipv6/firewall/filter`). Vorschlag: entfernen, bis eine gebraucht wird, dann wie `filter` am CHR verfeinern | S | offen |
 
 ## C. Konzepte zum Umsetzen
 

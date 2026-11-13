@@ -7,7 +7,7 @@ use crate::{
     device::ros::warning::{ApplyWarning, PoeCut},
     topology::access::device::DeviceAccess,
 };
-use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetPoeOut};
+use mikrotik_model::{ascii::AsciiString, model::PoeOut};
 use std::collections::HashSet;
 
 /// A port whose PoE out the target switches off ([`BaseDeviceDataTarget::poe_switched_off`]).
@@ -36,9 +36,9 @@ impl BaseDeviceDataTarget {
                 // poe-out" - breaking the rename bundled into the same call.
                 if ethernet_port.poe_out.is_some() {
                     ethernet_port.poe_out = Some(match (port.enable_poe(), port.passive_poe()) {
-                        (true, true) => InterfaceEthernetPoeOut::ForcedOn,
-                        (true, false) => InterfaceEthernetPoeOut::AutoOn,
-                        (false, _) => InterfaceEthernetPoeOut::Off,
+                        (true, true) => PoeOut::ForcedOn,
+                        (true, false) => PoeOut::AutoOn,
+                        (false, _) => PoeOut::Off,
                     });
                 }
             }
@@ -58,11 +58,11 @@ impl BaseDeviceDataTarget {
             else {
                 continue;
             };
-            if target.poe_out == Some(InterfaceEthernetPoeOut::Off)
+            if target.poe_out == Some(PoeOut::Off)
                 && current
                     .data
                     .poe_out
-                    .is_some_and(|poe_out| poe_out != InterfaceEthernetPoeOut::Off)
+                    .is_some_and(|poe_out| poe_out != PoeOut::Off)
             {
                 let cut = PoeCut {
                     port: target.name.to_string().into(),

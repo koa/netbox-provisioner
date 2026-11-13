@@ -33,13 +33,13 @@ use crate::{
     topology::access::device::DeviceAccess,
 };
 use async_graphql::{Enum, SimpleObject, futures_util::StreamExt};
+use log::warn;
 use mikrotik_api::simple::SimpleResult;
 use mikrotik_model::{
     action::DeviceModeUpdate,
     command::Reads,
-    model::{PartitionsState, SystemDeviceModeState},
+    model::{self, PartitionsState, SystemDeviceModeState},
     resource::{self, SingleResource},
-    value::RosValue,
 };
 use std::time::Duration;
 use tokio::time::{Instant, sleep, timeout, timeout_at};
@@ -98,11 +98,38 @@ impl DeviceModeFeature {
     }
 }
 
+/// The mode of `/system/device-mode`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
+pub enum DeviceModeName {
+    Advanced,
+    Basic,
+    Enterprise,
+    Home,
+    Rose,
+    /// one this provisioner doesn't know (logged)
+    Unknown,
+}
+
+impl From<&model::DeviceMode> for DeviceModeName {
+    fn from(mode: &model::DeviceMode) -> Self {
+        match mode {
+            model::DeviceMode::Advanced => DeviceModeName::Advanced,
+            model::DeviceMode::Basic => DeviceModeName::Basic,
+            model::DeviceMode::Enterprise => DeviceModeName::Enterprise,
+            model::DeviceMode::Home => DeviceModeName::Home,
+            model::DeviceMode::Rose => DeviceModeName::Rose,
+            model::DeviceMode::Value(text) => {
+                warn!("unknown device mode {text}");
+                DeviceModeName::Unknown
+            }
+        }
+    }
+}
+
 /// The device mode of a device and what it lacks.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct DeviceMode {
-    /// `home`, `basic`, `advanced`, …
-    pub mode: Box<str>,
+    pub mode: DeviceModeName,
     /// the features the provisioner needs that are off
     pub changes: Box<[DeviceModeChange]>,
 }
@@ -189,7 +216,7 @@ async fn read_with(
         Err(error) => return Err(error.into()),
     };
     Ok(mode.map(|mode| DeviceMode {
-        mode: String::from_utf8_lossy(&mode.mode.encode_ros()).into(),
+        mode: (&mode.mode).into(),
         changes: missing(&mode, wanted).into(),
     }))
 }

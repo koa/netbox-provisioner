@@ -5,8 +5,8 @@
 use super::{
     schema::schema,
     types::{
-        DeviceModeChange, ErrorInfo, JobId, JobKind, JobPhase, JobState, LeftoverAction, Partition,
-        Watching, WideInt,
+        DeviceModeChange, DeviceModeName, ErrorInfo, JobId, JobKind, JobPhase, JobState,
+        LeftoverAction, Partition, Watching, WideInt,
     },
 };
 
@@ -273,7 +273,7 @@ pub struct FallbackArmed {
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
 pub struct FallbackUnavailable {
-    pub device_mode: String,
+    pub device_mode: DeviceModeName,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

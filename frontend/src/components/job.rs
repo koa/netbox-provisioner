@@ -524,7 +524,7 @@ fn describe(event: &Logged) -> Html {
             armed.radio_wait.map(seconds),
         ),
         Event::FallbackUnavailable(unavailable) => {
-            e::fallback_unavailable(&unavailable.device_mode)
+            e::fallback_unavailable(device_mode::name(&unavailable.device_mode))
         }
         Event::ApplyRunning(running) => match &running.error {
             Some(error) => e::script_not_started(&problem(error)),

@@ -10,12 +10,12 @@ use crate::{
     },
     topology::{Device, Interface, PhysicalPortId, TopologyHolder, builder::TopologyBuilder},
 };
-use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetPoeOut};
+use mikrotik_model::{ascii::AsciiString, model::PoeOut};
 
 /// A PoE switch with `ether1` feeding (`poe_mode=pse`), `ether2` in NetBox without PoE and
 /// `ether3` not in NetBox, all three with PoE out on at the device as given, and `powered`
 /// the ports powering something.
-async fn warnings(current_poe_out: InterfaceEthernetPoeOut, powered: &[&str]) -> Vec<ApplyWarning> {
+async fn warnings(current_poe_out: PoeOut, powered: &[&str]) -> Vec<ApplyWarning> {
     let mut builder = TopologyBuilder::default();
     let device = builder.devices.next_id();
     builder.devices.insert(
@@ -50,7 +50,7 @@ async fn warnings(current_poe_out: InterfaceEthernetPoeOut, powered: &[&str]) ->
     }
     assert_eq!(
         target.ethernet[&AsciiString::from("ether2")].poe_out,
-        Some(InterfaceEthernetPoeOut::Off)
+        Some(PoeOut::Off)
     );
     let powered = powered
         .iter()
@@ -63,11 +63,7 @@ async fn warnings(current_poe_out: InterfaceEthernetPoeOut, powered: &[&str]) ->
 /// know keeps the board's default.
 #[tokio::test]
 async fn warns_where_poe_is_switched_off() {
-    let warnings = warnings(
-        InterfaceEthernetPoeOut::AutoOn,
-        &["ether1", "ether2", "ether3"],
-    )
-    .await;
+    let warnings = warnings(PoeOut::AutoOn, &["ether1", "ether2", "ether3"]).await;
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert_eq!(
         warnings[0],
@@ -80,17 +76,13 @@ async fn warns_where_poe_is_switched_off() {
 
 #[tokio::test]
 async fn no_warning_where_poe_is_already_off() {
-    assert!(warnings(InterfaceEthernetPoeOut::Off, &[]).await.is_empty());
+    assert!(warnings(PoeOut::Off, &[]).await.is_empty());
 }
 
 /// PoE out on, but nothing to power (`waiting-for-load`): switching it off cuts nothing.
 #[tokio::test]
 async fn no_warning_where_poe_powers_nothing() {
-    assert!(
-        warnings(InterfaceEthernetPoeOut::AutoOn, &["ether1"])
-            .await
-            .is_empty()
-    );
+    assert!(warnings(PoeOut::AutoOn, &["ether1"]).await.is_empty());
 }
 
 /// A `pse` port gets `auto-on`, with a passive `poe_type` `forced-on` (a UISP Wave Nano isn't
@@ -125,7 +117,7 @@ async fn a_passive_port_feeds_without_detecting() {
     let mut target = BaseDeviceDataTarget::new(b"CRS318-16P-2S+").unwrap();
     target.generate_from(&device, KeepNameGenerator).unwrap();
     let poe_out = |port: &str| target.ethernet[&AsciiString::from(port)].poe_out;
-    assert_eq!(poe_out("ether1"), Some(InterfaceEthernetPoeOut::AutoOn));
-    assert_eq!(poe_out("ether2"), Some(InterfaceEthernetPoeOut::ForcedOn));
-    assert_eq!(poe_out("ether3"), Some(InterfaceEthernetPoeOut::Off));
+    assert_eq!(poe_out("ether1"), Some(PoeOut::AutoOn));
+    assert_eq!(poe_out("ether2"), Some(PoeOut::ForcedOn));
+    assert_eq!(poe_out("ether3"), Some(PoeOut::Off));
 }

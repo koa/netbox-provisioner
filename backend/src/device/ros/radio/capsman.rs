@@ -12,9 +12,9 @@ use crate::{
 };
 use mikrotik_model::{
     model::{
-        CapsAuthenticationTypes, CapsEncryption, CapsManConfigurationMode, CapsManDatapathVlanMode,
+        CapsAuthenticationTypes, CapsEncryption, CapsManConfigurationMode,
         CapsManProvisioningAction, CapsManProvisioningCfg, CapsManProvisioningNameFormat,
-        WifiCountryLower as CapsManWifiCountry,
+        WifiCountryLower as CapsManWifiCountry, WirelessVlanMode,
     },
     value::{HasNone, ParseRosValueResult, RosValue},
 };
@@ -79,7 +79,7 @@ impl CapsManDeviceDataTarget {
             datapath.local_forwarding = Some(true);
             datapath.client_to_client_forwarding = Some(true);
             if let Some(vlan) = wlan.vlan().and_then(|vlan| vlan.vlan_id()) {
-                datapath.vlan_mode = Some(CapsManDatapathVlanMode::UseTag);
+                datapath.vlan_mode = Some(WirelessVlanMode::UseTag);
                 datapath.vlan_id = Some(vlan);
             }
             names.push(name);

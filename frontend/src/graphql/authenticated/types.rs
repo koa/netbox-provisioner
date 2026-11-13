@@ -461,6 +461,20 @@ pub enum DeviceModeFeature {
     Other(String),
 }
 
+/// The mode of `/system/device-mode` (`DeviceModeName`).
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum DeviceModeName {
+    Advanced,
+    Basic,
+    Enterprise,
+    Home,
+    Rose,
+    Unknown,
+    #[cynic(fallback)]
+    Other(String),
+}
+
 /// A partition of the flash (`Partition`).
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]

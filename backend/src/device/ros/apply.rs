@@ -4,6 +4,7 @@
 //! Applying the generated config (`AccessibleDevice::apply`): the script on the device, its
 //! fallback, the checks after it, and the job events of all that.
 use super::cfg::{DeviceCfg, in_script, render_script};
+use crate::device::device_mode::DeviceModeName;
 use crate::{
     Error,
     config::CONFIG,
@@ -72,7 +73,7 @@ pub struct FallbackArmed {
 /// page). The apply goes on; should it cut the device off, nothing brings the old config back.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct FallbackUnavailable {
-    pub device_mode: Box<str>,
+    pub device_mode: DeviceModeName,
 }
 
 /// The script runs on the device; once it is through, the provisioner has `timeout` to reach

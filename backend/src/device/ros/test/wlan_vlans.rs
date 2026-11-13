@@ -23,8 +23,8 @@ use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
-        CapsManDatapathVlanMode, InterfaceWifiConfigurationByName, InterfaceWifiDatapathByName,
-        ReferenceType, WifiManagement, YesNo,
+        InterfaceWifiConfigurationByName, InterfaceWifiDatapathByName, ReferenceType,
+        WifiManagement, WirelessVlanMode, YesNo,
     },
     resource::{ResourceMutation, ResourceMutationOperation},
     value::HasNone,
@@ -415,7 +415,7 @@ async fn ac_cap_on_wireless_joins_the_legacy_capsman() {
     target.generate_from(&controller).unwrap();
     for vid in [104, 105] {
         let datapath = &target.datapath[&AsciiString::from(format!("wlan{vid}"))].0;
-        assert_eq!(datapath.vlan_mode, Some(CapsManDatapathVlanMode::UseTag));
+        assert_eq!(datapath.vlan_mode, Some(WirelessVlanMode::UseTag));
         assert_eq!(datapath.vlan_id, Some(vid));
         assert_eq!(datapath.local_forwarding, Some(true));
     }

@@ -12,6 +12,7 @@
 //! order would have to be restored). The price is the reboot, only when the fallback fires.
 //! Checked on a CHR (7.24.5): `/system backup load` from a scheduler asks nothing.
 
+use crate::device::device_mode::DeviceModeName;
 use crate::{
     Error,
     device::access::{act, remove_if_present},
@@ -25,7 +26,6 @@ use mikrotik_model::{
         SystemSchedulerCfg,
     },
     resource::{self, Creatable, KeyedResource, SingleResource, apply_mutation},
-    value::RosValue,
 };
 use rand::{RngExt, distr::Alphanumeric};
 use std::time::Duration;
@@ -45,7 +45,7 @@ fn backup_file() -> String {
 /// provisioner didn't see to the end is replaced. `Some(mode)` and nothing saved where the
 /// device mode `mode` has the scheduler off (`home`): RouterOS refuses the entry ("not allowed
 /// by device-mode", berghof-hansueli, 7.21.5), so there is no fallback.
-pub async fn arm(raw: &impl Writes, delay: Duration) -> Result<Option<Box<str>>, Error> {
+pub async fn arm(raw: &impl Writes, delay: Duration) -> Result<Option<DeviceModeName>, Error> {
     if let Some(mode) = without_scheduler(raw).await? {
         return Ok(Some(mode));
     }
@@ -85,7 +85,7 @@ pub async fn arm(raw: &impl Writes, delay: Duration) -> Result<Option<Box<str>>,
 
 /// The device mode, where it has the scheduler off; `None` with the scheduler on, or before
 /// RouterOS 7.17, which has no device mode.
-async fn without_scheduler(raw: &impl Reads) -> Result<Option<Box<str>>, Error> {
+async fn without_scheduler(raw: &impl Reads) -> Result<Option<DeviceModeName>, Error> {
     let mode = match SystemDeviceModeState::fetch(raw).await {
         Ok(mode) => mode,
         // no such menu
@@ -94,7 +94,7 @@ async fn without_scheduler(raw: &impl Reads) -> Result<Option<Box<str>>, Error> 
     };
     Ok(mode
         .filter(|mode| mode.scheduler == Some(false))
-        .map(|mode| String::from_utf8_lossy(&mode.mode.encode_ros()).into()))
+        .map(|mode| (&mode.mode).into()))
 }
 
 /// Where the fallback stands on the device.

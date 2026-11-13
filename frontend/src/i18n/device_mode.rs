@@ -1,5 +1,5 @@
-//! Scope: The words of the device mode's features; nothing else.
-use crate::graphql::authenticated::types::{DeviceModeFeature, DeviceModeReason};
+//! Scope: The words of the device mode and its features; nothing else.
+use crate::graphql::authenticated::types::{DeviceModeFeature, DeviceModeName, DeviceModeReason};
 use ::i18n::common::{DeviceModeNeed, device_mode_feature};
 
 /// The features of a device-mode change, each with why it is needed (also on the device page).
@@ -25,4 +25,17 @@ pub fn features<'a>(
             )
         })
         .collect()
+}
+
+/// The mode, by RouterOS's own name.
+pub fn name(mode: &DeviceModeName) -> &str {
+    match mode {
+        DeviceModeName::Advanced => "advanced",
+        DeviceModeName::Basic => "basic",
+        DeviceModeName::Enterprise => "enterprise",
+        DeviceModeName::Home => "home",
+        DeviceModeName::Rose => "rose",
+        DeviceModeName::Unknown => ::i18n::common::UNKNOWN_DEVICE_MODE,
+        DeviceModeName::Other(other) => other,
+    }
 }

@@ -60,7 +60,7 @@ impl Component for DeviceMode {
         };
         html! {<>
             <dt>{t::DEVICE_MODE}</dt><dd>
-                { mode.mode.clone() }
+                { device_mode::name(&mode.mode) }
                 if !missing.is_empty() {
                     { t::device_mode_missing(&missing) }
                     <div class="device-mode">

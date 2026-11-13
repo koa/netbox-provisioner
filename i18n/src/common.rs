@@ -21,6 +21,8 @@ pub fn device_mode_feature(feature: &str, need: DeviceModeNeed) -> String {
 pub const CANCEL: &str = "Abbrechen";
 /// a list without entries
 pub const NONE: &str = "keine";
+/// a device mode RouterOS reports and the provisioner doesn't know
+pub const UNKNOWN_DEVICE_MODE: &str = "unbekannt";
 
 /// `items` joined, or [`NONE`].
 pub fn list(items: &[String]) -> String {

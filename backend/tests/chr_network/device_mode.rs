@@ -13,7 +13,8 @@ use crate::chr_network::vm::{RunningNode, boot_node};
 use backend::Error;
 use backend::device::dependency::PowerChain;
 use backend::device::device_mode::{
-    DeviceModeChange, DeviceModeChanged, DeviceModeFeature, DeviceModeReason, change_to,
+    DeviceModeChange, DeviceModeChanged, DeviceModeFeature, DeviceModeName, DeviceModeReason,
+    change_to,
 };
 use backend::device::reboot::{Reboot, RebootReason};
 use backend::device_state::DeviceModeState;
@@ -215,7 +216,7 @@ async fn home_mode_has_no_fallback() {
     let armed = backend::device::ros::fallback::arm(&device, Duration::from_secs(60))
         .await
         .expect("arm");
-    assert_eq!(armed.as_deref(), Some("home"));
+    assert_eq!(armed, Some(DeviceModeName::Home));
     for file in collect_resource::<File>(&device).await.expect("files") {
         let name = file.cfg.name.to_string();
         assert!(!name.contains("netbox-provisioner"), "{name}");

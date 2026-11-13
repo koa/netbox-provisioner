@@ -20,8 +20,8 @@ use ipnet::IpNet;
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
-        CapsAuthenticationTypes, CapsManDatapathVlanMode, CapsManProvisioningNameFormat,
-        InterfaceBridgeCfg, InterfaceBridgeProtocolMode, InterfaceWirelessByDefaultName,
+        CapsAuthenticationTypes, CapsManProvisioningNameFormat, InterfaceBridgeCfg,
+        InterfaceBridgeProtocolMode, InterfaceWirelessByDefaultName, WirelessVlanMode,
     },
     value::HasNone,
 };
@@ -275,7 +275,7 @@ async fn controller_runs_the_legacy_capsman() {
     assert_eq!(security.passphrase, Some("lab-wlan-preshared-key".into()));
     let datapath = &target.datapath[&name].0;
     assert_eq!(datapath.bridge, None);
-    assert_eq!(datapath.vlan_mode, Some(CapsManDatapathVlanMode::UseTag));
+    assert_eq!(datapath.vlan_mode, Some(WirelessVlanMode::UseTag));
     assert_eq!(datapath.vlan_id, Some(104));
     assert_eq!(datapath.local_forwarding, Some(true));
     let provisioning = target.provisioning.values().next().unwrap();
