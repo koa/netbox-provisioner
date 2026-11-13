@@ -2,8 +2,8 @@
 
 Status: umgesetzt: die Regel beim Neustart (`device/dependency.rs`), der Plan (`rolloutPlan`,
 `device/rollout.rs`) und der Rollout (`startRollout`, `device/rollout/run.rs`), auf der Seite
-`/rollout` „Netz aktualisieren“ (im Site-Menü der Breadcrumb). Offen: der CHR-Test der Kette
-und die Netz-Ansicht mit eingefärbten Knoten. Aufgabe C10 in [todo.md](../todo.md).
+`/rollout` „Netz aktualisieren“ (im Site-Menü der Breadcrumb), und die Netz-Ansicht mit
+eingefärbten Knoten. Offen: der CHR-Test der Kette. Aufgabe C10 in [todo.md](../todo.md).
 Baut auf dem Server-Log (Events, Jobs) auf, das erledigt ist, und profitiert vom
 [Update-Fallback](../update-fallback.md).
 
@@ -160,7 +160,14 @@ alle 2 s nachgeführt), „offline“, solange es selbst oder ein Gerät, hinter
 es speist, neu startet, „Ablauf“ klappt den Job des Geräts unter der Tabelle auf; „Überspringen“
 für die noch nicht gestarteten, bei einer Pause „Weiter“ und „Rollout beenden“. Die Seite fragt die Events
 jede Sekunde ab, wie die Abweichung einer Site, und nimmt beim Öffnen den neuesten Rollout auf.
-Später die [Netz-Ansicht](../network-map.md) mit eingefärbten Knoten.
+Die [Netz-Ansicht](../network-map.md) zeigt einen laufenden Rollout als Ring um jeden Knoten,
+den er aktualisiert (`NetworkState.rollout`, `device::rollout::status` aus den Events des
+neuesten Rollouts, solange er läuft): grau gestrichelt „kommt noch dran“, blau „wird
+aktualisiert“, gestrichelt „offline“ (es oder ein Gerät, hinter dem es hängt oder das es speist,
+startet neu, wie auf der Rollout-Seite), grün „aktualisiert“, rot „fehlgeschlagen“, im Popup als
+Zeile. Die Füllung bleibt die Erreichbarkeit (Z16). **Umgesetzt** 2026-11-13; im Browser gegen
+das Lab mit eingesetzten Zuständen geprüft (die Lab-Geräte sind alle aktuell, ein Rollout hätte
+nichts zu tun).
 
 ## Testen
 

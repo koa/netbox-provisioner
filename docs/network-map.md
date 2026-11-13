@@ -323,6 +323,12 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   zusätzliches `siteId` hätte keinen eigenen Nutzen.
 - Alles nur lesend; `allow_apply` ist dafür nicht nötig.
 
+## Rollout
+
+Während ein Rollout läuft ([Updates im ganzen Netz](concepts/network-update.md)), hat jeder
+Knoten, den er aktualisiert, einen Ring in der Farbe seines Stands (`NetworkState.rollout`);
+die Füllung bleibt die Erreichbarkeit. **Umgesetzt** 2026-11-13.
+
 ## Alternative: Log-Aggregator (spätere Stufe)
 
 Die ursprüngliche Idee: Alle Router schicken ihre OSPF-Meldungen per Syslog

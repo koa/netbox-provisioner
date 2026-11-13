@@ -36,6 +36,14 @@ pub fn not_on_segment(device: &str) -> String {
     format!("{device} ist nicht im Netz des Ports")
 }
 pub const LEGEND: &str = "Legende";
+pub const ROLLOUT_PENDING: &str = "Rollout: kommt noch dran";
+pub const ROLLOUT_WAITING: &str = "Rollout: wartet auf einen anderen Job des Geräts";
+pub const ROLLOUT_UPDATING: &str = "Rollout: wird aktualisiert";
+pub const ROLLOUT_DONE: &str = "Rollout: aktualisiert";
+pub const ROLLOUT_FAILED: &str = "Rollout: fehlgeschlagen";
+pub const ROLLOUT_CANCELLED: &str = "Rollout: abgebrochen";
+pub const ROLLOUT_SKIPPED: &str = "Rollout: übersprungen";
+pub const ROLLOUT_OFFLINE: &str = "Rollout: offline, ein Gerät auf dem Weg startet neu";
 /// Not judged, only shown (`docs/network-map.md`, step 3): memory and disk as MiB,
 /// for readability, nothing more.
 pub fn resources(

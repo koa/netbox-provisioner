@@ -610,6 +610,29 @@ ul.device-history {
 .map-node.outside circle {
   stroke-dasharray: 3 2;
 }
+.map-node circle.map-rollout {
+  fill: none;
+  stroke-width: 3;
+}
+.map-node circle.map-rollout.pending {
+  stroke: var(--pf-t--global--text--color--regular);
+  stroke-dasharray: 4 3;
+}
+.map-node circle.map-rollout.updating {
+  stroke: var(--pf-t--global--color--status--info--default);
+}
+.map-node circle.map-rollout.offline {
+  stroke-dasharray: 4 3;
+}
+.map-node circle.map-rollout.done {
+  stroke: var(--pf-t--global--color--status--success--default);
+}
+.map-node circle.map-rollout.failed {
+  stroke: var(--pf-t--global--color--status--danger--default);
+}
+.map-node circle.map-rollout.left {
+  stroke: var(--pf-t--global--text--color--regular);
+}
 .map-node text {
   text-anchor: middle;
   font-size: 12px;

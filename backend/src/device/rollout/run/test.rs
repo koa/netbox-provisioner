@@ -95,7 +95,7 @@ impl Devices {
     }
 }
 
-fn device(id: u32, pilot: bool) -> PlannedDevice {
+pub(in crate::device::rollout) fn device(id: u32, pilot: bool) -> PlannedDevice {
     PlannedDevice {
         id,
         name: format!("d{id}").into(),
@@ -118,7 +118,7 @@ fn device(id: u32, pilot: bool) -> PlannedDevice {
     }
 }
 
-fn plan(devices: Vec<PlannedDevice>) -> RolloutPlan {
+pub(in crate::device::rollout) fn plan(devices: Vec<PlannedDevice>) -> RolloutPlan {
     RolloutPlan {
         channel: Channel::LongTerm,
         target: "7.24.6".into(),

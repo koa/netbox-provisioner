@@ -398,4 +398,4 @@ fn related(a: &PlannedDevice, b: &PlannedDevice) -> bool {
 }
 
 #[cfg(test)]
-mod test;
+pub(super) mod test;

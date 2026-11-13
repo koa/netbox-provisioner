@@ -539,7 +539,10 @@ The frontend shows health, resources and PoE in a popup on hovering a node
 queries' results are in, so it starts as a spinner (`details` not loaded yet) and fills in once
 the details poll answers; a node not in that answer (not a candidate, or it didn't answer) stays
 at its base state text, no spinner left spinning forever. Clicking a node still navigates to its
-device page, no sidebar.
+device page, no sidebar. While a rollout runs, `NetworkState.rollout` gives each device it
+updates its state (`device::rollout::status::nodes`, from the newest rollout's events: the
+last `RolloutDevice` per device, offline as the rollout page has it), drawn as a ring around
+the node, so the fill stays reachability (Z16).
 
 ## Device access, setup and updates
 

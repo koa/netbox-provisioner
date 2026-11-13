@@ -12,6 +12,7 @@ use super::{
     edges::{DownReason, EdgeKind, EdgeState, Lsdb, edges},
     read::{LsdbRead, read, readers},
 };
+use crate::device::rollout::status::{self, RolloutNode};
 use crate::graphql::scalars::{ScalarDuration, ScalarU64};
 use crate::{
     device::poe::{self, PoeProblem},
@@ -44,6 +45,9 @@ pub struct NetworkState {
     outside: u32,
     /// the site's routers that share a segment with those
     outside_at: Box<[u32]>,
+    /// the devices of the rollout running now, each where it is (`rollout::status`); none
+    /// without one
+    rollout: Box<[RolloutNode]>,
 }
 
 /// `Query.topology.networkStateDetails`: health, resources and PoE edges of `network_state`'s
@@ -316,7 +320,10 @@ pub async fn network_state(devices: Vec<DeviceAccess>) -> NetworkState {
         Err(error) => (None, 0, None, Some(error.to_string())),
     };
     let lsdb = lsdb.unwrap_or_default();
-    build(&devices, &readers, &lsdb, read_from, age, error)
+    NetworkState {
+        rollout: status::running(),
+        ..build(&devices, &readers, &lsdb, read_from, age, error)
+    }
 }
 
 /// The synchronous part of [`network_state`], once the LSDB (or none, read-only, after a
@@ -478,6 +485,7 @@ fn build(
         edges: result_edges.into(),
         outside: outside.len() as u32,
         outside_at,
+        rollout: Box::default(),
     }
 }
 

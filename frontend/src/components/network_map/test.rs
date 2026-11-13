@@ -367,6 +367,7 @@ fn many_small_sites_dont_overlap() {
         error: None,
         outside: 0,
         outside_at: vec![],
+        rollout: vec![],
         nodes,
         edges,
     };
@@ -400,6 +401,7 @@ fn a_device_with_an_external_edge_is_pulled_toward_it() {
         error: None,
         outside: 0,
         outside_at: vec![],
+        rollout: vec![],
         nodes: vec![
             node(1, Some(10), Some("A")),
             node(2, Some(10), Some("A")),
@@ -430,6 +432,7 @@ fn two_sites_get_their_own_circle() {
         error: None,
         outside: 0,
         outside_at: vec![],
+        rollout: vec![],
         nodes: vec![
             node(1, Some(10), Some("A")),
             node(2, Some(10), Some("A")),
@@ -472,6 +475,7 @@ fn a_device_without_a_site_gets_no_circle() {
         error: None,
         outside: 1,
         outside_at: vec![1],
+        rollout: vec![],
         nodes: vec![
             node(1, Some(10), Some("A")),
             node(2, Some(10), Some("A")),
@@ -501,6 +505,7 @@ fn a_lone_device_at_a_site_still_gets_a_circle() {
         error: None,
         outside: 0,
         outside_at: vec![],
+        rollout: vec![],
         nodes: vec![node(1, Some(10), Some("A")), node(2, Some(20), Some("B"))],
         edges: vec![],
     };
@@ -525,6 +530,7 @@ fn a_pinned_device_in_a_clustered_site_lets_others_react_around_it() {
         error: None,
         outside: 0,
         outside_at: vec![],
+        rollout: vec![],
         nodes: vec![
             node(1, Some(10), Some("A")),
             node(2, Some(10), Some("A")),
@@ -562,6 +568,7 @@ fn clustered_layout_is_deterministic() {
         error: None,
         outside: 1,
         outside_at: vec![1],
+        rollout: vec![],
         nodes: vec![
             node(1, Some(10), Some("A")),
             node(2, Some(10), Some("A")),
@@ -602,6 +609,7 @@ fn the_outside_node_is_only_added_when_there_is_one() {
         edges: vec![],
         outside: 0,
         outside_at: vec![],
+        rollout: vec![],
     };
     let Graph { nodes, edges } = graph(&none);
     assert!(!nodes.contains(&OUTSIDE));
@@ -610,6 +618,7 @@ fn the_outside_node_is_only_added_when_there_is_one() {
     let some = State {
         outside: 3,
         outside_at: vec![42],
+        rollout: vec![],
         ..none
     };
     let Graph { nodes, edges } = graph(&some);
@@ -771,6 +780,7 @@ fn export_state() -> State {
         error: None,
         outside: 0,
         outside_at: vec![],
+        rollout: vec![],
         nodes: EXPORT_NODES
             .iter()
             .map(|&(id, site)| node(id, Some(site), Some(&format!("site {site}"))))

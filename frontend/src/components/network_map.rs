@@ -27,7 +27,7 @@ use crate::{
                 DevicePositionInput, MapDownReason, MapEdgeKind, MapEdgeState, MapVariables,
                 NetworkMap as NetworkMapQuery, NetworkMapDetails as NetworkMapDetailsQuery,
                 NetworkState as State, NetworkStateDetails as DetailsState, NodeState,
-                PublishLayout as PublishLayoutQuery, PublishLayoutVariables,
+                PublishLayout as PublishLayoutQuery, PublishLayoutVariables, RolloutNodeState,
             },
             types::PoeProblem,
         },
@@ -725,8 +725,14 @@ fn map(
         } else {
             html!(<rect x={(p.x - 10.0).to_string()} y={(p.y - 10.0).to_string()} width="20" height="20"/>)
         };
+        let rollout = state.rollout.iter().find(|r| r.device == id).map(|r| {
+            let offline = if r.offline { " offline" } else { "" };
+            let class = format!("map-rollout {}{offline}", rollout_class(&r.state));
+            html!(<circle {class} cx={p.x.to_string()} cy={p.y.to_string()} r="19"/>)
+        });
         Some(html! {
             <g class={format!("map-node {class}")} {onclick} {onmouseenter} {onmouseleave} {onpointerdown}>
+                {for rollout}
                 {shape}
                 <text x={p.x.to_string()} y={(p.y + 30.0).to_string()}>{&node.device.name}</text>
             </g>
@@ -824,6 +830,9 @@ fn map(
         Some(html! {
             <div class="map-popup" style={format!("left:{}px; top:{}px", p.x + 18.0, p.y - 10.0)}>
                 <div>{format!("{}: {text}", node.device.name)}</div>
+                if let Some(r) = state.rollout.iter().find(|r| r.device == id) {
+                    <div>{if r.offline { t::ROLLOUT_OFFLINE } else { rollout_text(&r.state) }}</div>
+                }
                 if let Some(detail) = detail {
                     if let Some(r) = &detail.resources {
                         <div>{t::resources(
@@ -865,6 +874,32 @@ fn map(
     }
 }
 
+/// The class of a rollout state's ring (`local.css`).
+fn rollout_class(state: &RolloutNodeState) -> &'static str {
+    match state {
+        RolloutNodeState::Pending | RolloutNodeState::Waiting => "pending",
+        RolloutNodeState::Updating => "updating",
+        RolloutNodeState::Done => "done",
+        RolloutNodeState::Failed => "failed",
+        RolloutNodeState::Cancelled | RolloutNodeState::Skipped | RolloutNodeState::Other(_) => {
+            "left"
+        }
+    }
+}
+
+fn rollout_text(state: &RolloutNodeState) -> &str {
+    match state {
+        RolloutNodeState::Pending => t::ROLLOUT_PENDING,
+        RolloutNodeState::Waiting => t::ROLLOUT_WAITING,
+        RolloutNodeState::Updating => t::ROLLOUT_UPDATING,
+        RolloutNodeState::Done => t::ROLLOUT_DONE,
+        RolloutNodeState::Failed => t::ROLLOUT_FAILED,
+        RolloutNodeState::Cancelled => t::ROLLOUT_CANCELLED,
+        RolloutNodeState::Skipped => t::ROLLOUT_SKIPPED,
+        RolloutNodeState::Other(other) => other,
+    }
+}
+
 fn legend() -> Html {
     let edge = |class: &str, text: &str| {
         html! {
@@ -878,6 +913,19 @@ fn legend() -> Html {
         html! {
             <li>
                 <svg width="30" height="20"><g class={format!("map-node {class}")}><circle cx="15" cy="10" r="7"/></g></svg>
+                {" "}{text.to_string()}
+            </li>
+        }
+    };
+    let ring = |class: &str, text: &str| {
+        html! {
+            <li>
+                <svg width="30" height="24">
+                    <g class="map-node">
+                        <circle class={format!("map-rollout {class}")} cx="15" cy="12" r="10"/>
+                        <circle cx="15" cy="12" r="6"/>
+                    </g>
+                </svg>
                 {" "}{text.to_string()}
             </li>
         }
@@ -897,6 +945,11 @@ fn legend() -> Html {
                 {edge("up radio", t::RADIO)}
                 {edge("poe", t::EDGE_POE)}
                 {edge("poe problem", t::EDGE_POE_PROBLEM)}
+                {ring("pending", t::ROLLOUT_PENDING)}
+                {ring("updating", t::ROLLOUT_UPDATING)}
+                {ring("updating offline", t::ROLLOUT_OFFLINE)}
+                {ring("done", t::ROLLOUT_DONE)}
+                {ring("failed", t::ROLLOUT_FAILED)}
             </ul>
         </details>
     }

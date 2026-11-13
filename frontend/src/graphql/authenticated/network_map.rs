@@ -45,6 +45,30 @@ pub struct NetworkState {
     pub outside_at: Vec<i32>,
     pub nodes: Vec<MapNode>,
     pub edges: Vec<MapEdge>,
+    pub rollout: Vec<RolloutNode>,
+}
+
+/// A device of the rollout running now.
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct RolloutNode {
+    pub device: i32,
+    pub state: RolloutNodeState,
+    pub offline: bool,
+}
+
+#[derive(cynic::Enum, Debug, Clone, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum RolloutNodeState {
+    Pending,
+    Waiting,
+    Updating,
+    Done,
+    Failed,
+    Cancelled,
+    Skipped,
+    #[cynic(fallback)]
+    Other(String),
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

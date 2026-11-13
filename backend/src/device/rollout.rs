@@ -518,6 +518,7 @@ fn order(candidates: &[Candidate]) -> Vec<InOrder> {
 }
 
 pub mod run;
+pub mod status;
 
 #[cfg(test)]
 mod test;
