@@ -1,6 +1,6 @@
 //! Scope: The network map as SVG with its nodes, edges and dragging; not its layout (`layout`).
 //!
-//! The network map (`Query.topology.networkState`, `docs/concepts/network-map.md`): devices
+//! The network map (`Query.topology.networkState`, `docs/network-map.md`): devices
 //! and NetBox's cables and wireless links as an SVG, coloured by what the OSPF database of one
 //! router says; devices without OSPF, and their edges, are left out. Scoped to one site, or
 //! without a site to every device of every site. Asked anew every few seconds; reading only.
@@ -454,7 +454,7 @@ fn poll_details(scope: Scope<NetworkMap>, site: Option<u32>, alive: Rc<Cell<bool
 }
 
 /// The interaction state [`map`] needs beyond the polled graph itself: dragging, the browser's
-/// own overrides and publishing them (`docs/concepts/network-map.md`, "Positionen speichern").
+/// own overrides and publishing them (`docs/network-map.md`, "Positionen speichern").
 struct Interaction<'a> {
     overridden: &'a HashMap<i32, Point>,
     site_overrides: &'a HashMap<i32, Point>,
@@ -835,6 +835,7 @@ fn map(
                             &r.version,
                         )}</div>
                     }
+                    { for detail.poe_load.iter().map(|l| html!(<div>{t::poe_load(&l.first, &l.last, l.high_voltage, l.current, l.limit)}</div>)) }
                     { for detail.health.iter().map(|h| html!(<div>{t::health_row(&h.name, &h.value, h.unit.as_deref())}</div>)) }
                 }
             </div>

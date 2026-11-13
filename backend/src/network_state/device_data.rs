@@ -1,7 +1,7 @@
 //! Scope: Health, resources and PoE out of each device for the map; not the link state (`edges`).
 //!
 //! Health, resources and PoE out of a device, for the network map's nodes and PoE edges
-//! (`docs/concepts/network-map.md`, steps 3 and 4): read over the same way as everything else
+//! (`docs/network-map.md`, steps 3 and 4): read over the same way as everything else
 //! (`DeviceAccess::connect`), as a fact (`FactKind::DeviceMapData`) per device, so the map's
 //! viewers share a reading. Not judged, only shown: the rows of `/system/health/print` as name,
 //! value and unit, the few fields of `/system/resource/print` worth a column of their own, and
@@ -10,7 +10,7 @@
 use crate::{
     Error,
     device::AccessibleDevice,
-    device::poe::{self, PoePorts},
+    device::poe::{self, PoeLoad, PoePorts},
     facts::{self, FactKey, FactKind, Freshness},
     topology::{
         DeviceId,
@@ -20,7 +20,7 @@ use crate::{
 use async_graphql::futures_util::future::join_all;
 use mikrotik_model::{
     command::Reads,
-    model::{SystemHealthState, SystemResourceState},
+    model::{SystemHealthState, SystemResourceState, SystemRouterboardState},
     resource::{SingleResource, collect_resource},
 };
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
@@ -55,6 +55,8 @@ pub struct DeviceMapData {
     pub health: Box<[HealthRow]>,
     pub resources: Option<Resources>,
     pub poe: PoePorts,
+    /// what its PoE out groups draw against the board's limits (`device::poe::load`)
+    pub poe_load: Box<[PoeLoad]>,
 }
 
 /// The health and resources of every device of `devices` that answers, by its id; one that
@@ -97,8 +99,18 @@ async fn read(api: &impl Reads) -> Result<DeviceMapData, Error> {
     let health = collect_resource::<SystemHealthState>(api).await?;
     let resources = SystemResourceState::fetch(api).await?;
     let poe = poe::read_ports(api).await?;
+    // the board's limits; read only where a port feeds
+    let poe_load = if poe.ethernet.iter().any(|port| port.poe_out) {
+        match SystemRouterboardState::fetch(api).await? {
+            Some(board) => poe::load(&board.model.0, &poe).into(),
+            None => Box::default(),
+        }
+    } else {
+        Box::default()
+    };
     Ok(DeviceMapData {
         poe,
+        poe_load,
         ..from_states(&health, resources.as_ref())
     })
 }
@@ -133,6 +145,7 @@ fn from_states(
         health,
         resources,
         poe: PoePorts::default(),
+        poe_load: Box::default(),
     }
 }
 

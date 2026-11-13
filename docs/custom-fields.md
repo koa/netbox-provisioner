@@ -91,7 +91,7 @@ nächsten Anwenden auf, solange das Feld nicht gesetzt ist.
 
 ### `map_position` (Device, JSON)
 
-Die Position des Geräts auf der Netz-Karte (`docs/concepts/network-map.md`), `{"x": …, "y": …}`
+Die Position des Geräts auf der Netz-Karte (`docs/network-map.md`), `{"x": …, "y": …}`
 in Pixeln der SVG-Karte. Von Hand nichts eintragen: Ein Admin „publiziert“ die Anordnung aus der
 Karte heraus (Mutation `publishLayout`, `allow_netbox_write`), das Feld ist nur deren Ziel. Ohne
 Wert legt die Karte das Gerät selbst an (kräftebasiertes Layout).

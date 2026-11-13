@@ -69,6 +69,53 @@ pub fn same_board(a: &str, b: &str) -> bool {
     plain(a) == plain(b)
 }
 
+/// A port's PoE out counts as high voltage from this on (`poe-out-voltage`): the boards' limits
+/// are given below and above 30 V.
+pub const POE_HIGH_VOLTAGE: f64 = 30.0;
+
+/// Ports whose PoE out shares one current limit, as the product page gives it, in mA: `low`
+/// for the ports running below [`POE_HIGH_VOLTAGE`], `high` above (`None`: the board feeds no
+/// high voltage). A netPower switches the voltage per port and has no converter: 24 V comes
+/// from a PSU at its first jack, 48 V from one at its second, both only with two PSUs (lab-np2:
+/// `psu1-voltage` 24.2, `psu2-voltage` 48.5). So one group can run both, each from its own PSU,
+/// and the limits are taken as separate (the manual doesn't say how they combine).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PoeGroup {
+    /// the `etherN` numbers of the ports
+    pub ports: RangeInclusive<u8>,
+    pub low: u32,
+    pub high: Option<u32>,
+}
+
+/// The PoE out groups of the board (mikrotik.com product pages and manual, 2026-11-13); empty
+/// for a board without PoE out, or one whose limits aren't entered yet.
+pub fn poe_groups(model: &[u8]) -> &'static [PoeGroup] {
+    const fn group(ports: RangeInclusive<u8>, low: u32, high: Option<u32>) -> PoeGroup {
+        PoeGroup { ports, low, high }
+    }
+    match model {
+        // 2.8 A per 8-port group below 30 V, 1.4 A above; which ports form a group the manual
+        // doesn't say
+        b"CRS318-16P-2S+" => {
+            const {
+                &[
+                    group(1..=8, 2800, Some(1400)),
+                    group(9..=16, 2800, Some(1400)),
+                ]
+            }
+        }
+        // hEX PoE: 2 A in total
+        b"RB960PGS" => const { &[group(2..=5, 2000, Some(2000))] },
+        // hAP ac: ether5, 700 mA, 350 mA above 30 V
+        b"RB962UiGS-5HacT2HnT" => const { &[group(5..=5, 700, Some(350))] },
+        // hAP ax²: ether1, 600 mA; it takes 18-28 V only
+        b"C52iG-5HaxD2HaxD" => const { &[group(1..=1, 600, None)] },
+        // cAP ax: ether2, 600 mA, 400 mA above 30 V
+        b"cAPGi-5HaxD2HaxD" => const { &[group(2..=2, 600, Some(400))] },
+        _ => &[],
+    }
+}
+
 /// The package for the board's radios; `None` for a board without any.
 pub fn radio_package(model: &[u8]) -> Option<RadioPackage> {
     match model {

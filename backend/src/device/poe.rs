@@ -7,7 +7,10 @@
 //! Whether a port takes PoE in RouterOS doesn't report, and of other devices nothing is known.
 use crate::{
     Error,
-    device::neighbors::{PortRef, Seen, port_named},
+    device::{
+        neighbors::{PortRef, Seen, port_named},
+        ros::hw_facts,
+    },
     topology::{
         PoeMode,
         access::device::DeviceAccess,
@@ -137,7 +140,7 @@ pub struct PoeMismatch {
 
 /// A PoE-capable Ethernet port, modeled to feed or fed in NetBox or reporting `powered-on`,
 /// with what the device says now. For the network map's PSE→PD arrows
-/// (`network_state::graphql`, `docs/concepts/network-map.md` step 4) and, filtered to a
+/// (`network_state::graphql`, `docs/network-map.md` step 4) and, filtered to a
 /// problem, [`mismatches`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Feeding {
@@ -203,6 +206,73 @@ pub fn feeding(device: &DeviceAccess, ports: &PoePorts) -> Vec<Feeding> {
         })
         .collect();
     found.sort_by_cached_key(|f| naturalize_interface(&f.port.name));
+    found
+}
+
+/// What a group of PoE out ports ([`hw_facts::PoeGroup`]) draws at one voltage class, against
+/// its limit.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct PoeLoad {
+    /// the group's first and last port, by NetBox's name (`ether1`, `ether8`)
+    pub first: Box<str>,
+    pub last: Box<str>,
+    /// the ports run above [`hw_facts::POE_HIGH_VOLTAGE`]
+    pub high_voltage: bool,
+    /// the sum of `poe-out-current` of the ports feeding at this voltage, A
+    pub current: f64,
+    /// the board's limit for the group at this voltage, A; none where the board feeds none at it
+    pub limit: Option<f64>,
+}
+
+/// The load of each PoE out group of `board` ([`hw_facts::poe_groups`]), per voltage class a
+/// port reports (a netPower switches it per port): one entry per class with a port feeding,
+/// none for a group feeding nothing or a board without entered limits.
+pub fn load(board: &[u8], ports: &PoePorts) -> Vec<PoeLoad> {
+    let mut found = Vec::new();
+    for group in hw_facts::poe_groups(board) {
+        let readings = ports
+            .ethernet
+            .iter()
+            .filter(|port| {
+                port.default_name
+                    .strip_prefix("ether")
+                    .and_then(|n| n.parse::<u8>().ok())
+                    .is_some_and(|n| group.ports.contains(&n))
+            })
+            .filter_map(|port| {
+                ports
+                    .monitor
+                    .iter()
+                    .find(|m| *m.name.0 == *port.name.as_bytes())
+            })
+            .filter(|m| m.poe_out_status == Status::PoweredOn)
+            .collect::<Vec<_>>();
+        for high_voltage in [false, true] {
+            let class = readings
+                .iter()
+                .filter(|m| {
+                    m.poe_out_voltage
+                        .is_some_and(|v| v >= hw_facts::POE_HIGH_VOLTAGE)
+                        == high_voltage
+                })
+                .collect::<Vec<_>>();
+            if class.is_empty() {
+                continue;
+            }
+            let milliamps = if high_voltage {
+                group.high
+            } else {
+                Some(group.low)
+            };
+            found.push(PoeLoad {
+                first: format!("ether{}", group.ports.start()).into(),
+                last: format!("ether{}", group.ports.end()).into(),
+                high_voltage,
+                current: class.iter().filter_map(|m| m.poe_out_current).sum::<f64>() / 1000.0,
+                limit: milliamps.map(|ma| f64::from(ma) / 1000.0),
+            });
+        }
+    }
     found
 }
 
@@ -506,5 +576,75 @@ mod test {
             mismatches(&sw, &ports).is_empty(),
             "neither is a mismatch mismatches() would report"
         );
+    }
+
+    /// lab-np2 (netPower 16P, two PSUs): lab-wap at 47.7 V and lab-hex at 24 V in the first
+    /// group, lab-sxt-b in the second; a port waiting for a load draws nothing.
+    #[test]
+    fn a_netpower_group_draws_per_voltage() {
+        let ports = PoePorts {
+            ethernet: vec![
+                ethernet("e03-lab-wap", "ether3", true),
+                ethernet("e05-hex", "ether5", true),
+                ethernet("e07", "ether7", true),
+                ethernet("e13-lab-sxt-b", "ether13", true),
+            ]
+            .into(),
+            monitor: vec![
+                monitor_reading(&[
+                    ("name", "e03-lab-wap"),
+                    ("poe-out-status", "powered-on"),
+                    ("poe-out-voltage", "47.7"),
+                    ("poe-out-current", "52"),
+                ]),
+                monitor_reading(&[
+                    ("name", "e05-hex"),
+                    ("poe-out-status", "powered-on"),
+                    ("poe-out-voltage", "24.1"),
+                    ("poe-out-current", "150"),
+                ]),
+                monitor_reading(&[("name", "e07"), ("poe-out-status", "waiting-for-load")]),
+                monitor_reading(&[
+                    ("name", "e13-lab-sxt-b"),
+                    ("poe-out-status", "powered-on"),
+                    ("poe-out-voltage", "24.0"),
+                    ("poe-out-current", "200"),
+                ]),
+            ]
+            .into(),
+        };
+        let found = load(b"CRS318-16P-2S+", &ports)
+            .into_iter()
+            .map(|l| (l.first, l.high_voltage, l.current, l.limit))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            found,
+            [
+                ("ether1".into(), false, 0.15, Some(2.8)),
+                ("ether1".into(), true, 0.052, Some(1.4)),
+                ("ether9".into(), false, 0.2, Some(2.8)),
+            ]
+        );
+    }
+
+    /// A board without entered limits, or one feeding nothing, has no load to show.
+    #[test]
+    fn no_limits_no_load() {
+        let ports = PoePorts {
+            ethernet: vec![ethernet("e01", "ether1", true)].into(),
+            monitor: vec![monitor_reading(&[
+                ("name", "e01"),
+                ("poe-out-status", "powered-on"),
+                ("poe-out-voltage", "24.0"),
+                ("poe-out-current", "100"),
+            ])]
+            .into(),
+        };
+        assert!(load(b"RB5009UPr+S+", &ports).is_empty());
+        let idle = PoePorts {
+            ethernet: ports.ethernet.clone(),
+            monitor: Box::default(),
+        };
+        assert!(load(b"C52iG-5HaxD2HaxD", &idle).is_empty());
     }
 }

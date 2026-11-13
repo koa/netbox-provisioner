@@ -1,6 +1,6 @@
 //! Scope: The network as OSPF sees it, for the network map; not the map's drawing (frontend).
 //!
-//! The network as OSPF sees it, for the network map (`docs/concepts/network-map.md`): the
+//! The network as OSPF sees it, for the network map (`docs/network-map.md`): the
 //! link-state database read from one router (`lsa`) and the state of NetBox's edges from it
 //! (`edges`).
 

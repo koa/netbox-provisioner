@@ -2,7 +2,7 @@
 //! (`read`, `device_data`).
 //!
 //! `Query.topology.networkState`: a site's, or every site's, devices and edges with their state
-//! from the LSDB, for the network map (`docs/concepts/network-map.md`, step 2). Fast: only the
+//! from the LSDB, for the network map (`docs/network-map.md`, step 2). Fast: only the
 //! LSDB, no device polled. `Query.topology.networkStateDetails` is health, resources and PoE
 //! (steps 3 and 4), asked separately so the overview doesn't wait on a round trip to every
 //! device.
@@ -52,7 +52,7 @@ pub struct NetworkState {
 #[derive(SimpleObject)]
 pub struct NetworkStateDetails {
     nodes: Box<[MapNodeDetails]>,
-    /// PSE→PD arrows, one per port currently feeding or modeled to (`docs/concepts/network-map.md`,
+    /// PSE→PD arrows, one per port currently feeding or modeled to (`docs/network-map.md`,
     /// step 4), only where NetBox has a cable to the fed port
     poe_edges: Box<[MapPoeEdge]>,
 }
@@ -60,9 +60,11 @@ pub struct NetworkStateDetails {
 #[derive(SimpleObject)]
 pub struct MapNodeDetails {
     device: DeviceRef,
-    /// `/system/health/print`, generic, not judged (`docs/concepts/network-map.md`, step 3)
+    /// `/system/health/print`, generic, not judged (`docs/network-map.md`, step 3)
     health: Box<[MapHealth]>,
     resources: Option<MapResources>,
+    /// what its PoE out groups draw against the board's limits (`device::poe::load`, step 4)
+    poe_load: Box<[poe::PoeLoad]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
@@ -244,7 +246,7 @@ struct OnMap {
 
 /// The devices to show: those with OSPF themselves (`supports_ospf`), and every plain device
 /// (a switch, an unmanaged device) on a run of cables between two that are OSPF neighbors over
-/// the segment it carries (an L2 segment over several cables, `docs/concepts/network-map.md`) —
+/// the segment it carries (an L2 segment over several cables, `docs/network-map.md`) —
 /// as opposed to a leaf with nothing OSPF beyond it (a customer's printer), which stays off.
 /// Also which of the OSPF devices such a run confirms as currently adjacent, hence reached,
 /// since none of its own cables can ever be `EdgeState::Up` (a plain device's port is never an
@@ -506,6 +508,7 @@ fn build_details(
                 device: device_ref(device),
                 health: health.into(),
                 resources,
+                poe_load: data.poe_load.clone(),
             })
         })
         .collect::<Vec<_>>();

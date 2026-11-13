@@ -67,6 +67,7 @@ fn snapshot() -> Snapshot {
                 ])]
                 .into(),
             },
+            poe_load: Box::default(),
         })),
         metrics: Some(Arc::new(DeviceMetrics {
             wlan_clients: Box::new([]),

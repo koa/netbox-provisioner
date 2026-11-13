@@ -44,7 +44,7 @@ auf CHR 7.24.5 (`watchdog_is_restored_or_restores_itself`).
   aktualisiert.
 - **Kanten:** Kabel und Funkbrücken (Wireless Links) zwischen Ports mit OSPF, aus NetBox, wie
   sie `bootstrap::plans` und `PowerChain::of` schon durchlaufen. Dazu nur die Kanten, die laut
-  OSPF gerade wirklich oben sind (siehe [Netz-Ansicht](network-map.md), gleiche Datenquelle). Ein
+  OSPF gerade wirklich oben sind (siehe [Netz-Ansicht](../network-map.md), gleiche Datenquelle). Ein
   Weg, der in NetBox steht, aber gerade tot ist, darf nicht als Ausweichweg zählen.
 
 ### Regel beim Neustart
@@ -160,7 +160,7 @@ alle 2 s nachgeführt), „offline“, solange es selbst oder ein Gerät, hinter
 es speist, neu startet, „Ablauf“ klappt den Job des Geräts unter der Tabelle auf; „Überspringen“
 für die noch nicht gestarteten, bei einer Pause „Weiter“ und „Rollout beenden“. Die Seite fragt die Events
 jede Sekunde ab, wie die Abweichung einer Site, und nimmt beim Öffnen den neuesten Rollout auf.
-Später die [Netz-Ansicht](network-map.md) mit eingefärbten Knoten.
+Später die [Netz-Ansicht](../network-map.md) mit eingefärbten Knoten.
 
 ## Testen
 

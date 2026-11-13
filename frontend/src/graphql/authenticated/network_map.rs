@@ -109,6 +109,17 @@ pub struct MapNodeDetails {
     pub device: DeviceRef,
     pub health: Vec<MapHealth>,
     pub resources: Option<MapResources>,
+    pub poe_load: Vec<PoeLoad>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct PoeLoad {
+    pub first: String,
+    pub last: String,
+    pub high_voltage: bool,
+    pub current: f64,
+    pub limit: Option<f64>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

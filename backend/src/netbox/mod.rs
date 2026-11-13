@@ -57,7 +57,7 @@ pub struct JSON {
     /// On a prefix: the lease time of its DHCP server in seconds; without, RouterOS's 30 min.
     pub dhcp_lease_time: Option<u32>,
     /// On a device: its position on the network map, published by an admin
-    /// (`Mutation.publishLayout`, `docs/concepts/network-map.md`).
+    /// (`Mutation.publishLayout`, `docs/network-map.md`).
     pub map_position: Option<MapPosition>,
     /// On a device: what its ping watchdog watches, empty its parent, `none` nothing, else
     /// an IPv4 (`topology::WatchdogTarget`).

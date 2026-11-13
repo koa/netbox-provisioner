@@ -2,7 +2,7 @@
 
 Status: Konzept, zum Teil umgesetzt: Health, PoE, WLAN-Clients, System, Interfaces und Leases
 liefert der Provisioner an `/metrics` ([Gerätemetriken](../device-metrics.md), C14). Der Rest ist
-Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](network-map.md) auf.
+Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](../network-map.md) auf.
 
 ## Ziel
 
@@ -17,7 +17,7 @@ Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](network-map.md) a
 - Der Provisioner liest Geräte nur, wenn jemand eine Seite öffnet oder einen Job startet.
   Dauerhaft fragt er nichts ab.
 - Er hat schon `/metrics` (Prometheus) am Management-Port, heute nur mit HTTP-Metriken.
-- Die [Netz-Karte](network-map.md) beschreibt Ist-Zustand aus der OSPF-LSDB eines Routers (ca.
+- Die [Netz-Karte](../network-map.md) beschreibt Ist-Zustand aus der OSPF-LSDB eines Routers (ca.
   alle 5 s), Farben für Knoten und Kanten, Health (Spannung, Temperatur) und PoE.
 - Aus der Konfiguration kennt der Provisioner Sollwerte: OSPF-Nachbarn aus NetBox, Watchdogs,
   PoE-Beziehungen, Funkstrecken.
@@ -28,7 +28,7 @@ Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](network-map.md) a
 
 | Was | woher | wie oft |
 |---|---|---|
-| Strecken und Router | OSPF-LSDB eines Routers ([Netz-Karte](network-map.md)) | 5 s |
+| Strecken und Router | OSPF-LSDB eines Routers ([Netz-Karte](../network-map.md)) | 5 s |
 | Funk: Signal, CCQ/MCS, Rate | `/interface/wireless/registration-table`, `w60g` monitor, auf AP-Seite | 60 s |
 | Health: Spannung, Temperatur | `/system/health` | 5 min |
 | Uplink-Qualität: Verlust und Latenz zum Gateway des Uplinks | `/ping` vom `internet`-Router auf sein Default-Gateway | 60 s |
@@ -70,4 +70,4 @@ Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
 
 - Alarme **nur über Prometheus/Alertmanager**, keine im Provisioner.
 - Der Uplink-Ping geht an das **Gateway des Uplinks**, kein konfiguriertes Ziel.
-- Health wird nicht beurteilt, nur angezeigt (wie in der [Netz-Karte](network-map.md)).
+- Health wird nicht beurteilt, nur angezeigt (wie in der [Netz-Karte](../network-map.md)).

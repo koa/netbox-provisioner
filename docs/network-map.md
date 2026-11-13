@@ -1,10 +1,12 @@
-# Konzept: Netz-Ansicht (Ist-Zustand, Health, PoE)
+# Netz-Ansicht (Ist-Zustand, Health, PoE)
 
-Status: Schritt 1 bis 3 und 5 der [Reihenfolge](#reihenfolge-der-umsetzung) umgesetzt (LSA-Parser,
-Zustand der Kanten und Knoten, `Query.topology.networkState(siteId)`, SVG-Karte, Health und
-Ressourcen im Popup, `backend/src/network_state/`, `components::network_map`; Schritt 5: Drag,
-`localStorage`, `publishLayout`), Schritt 4 ohne das Budget (PSE→PD-Pfeile mit Soll-gegen-Ist),
-der Rest ist Konzept. Aufgabe C9 in [todo.md](../todo.md).
+Gebaut als C9 (2026-11-01 bis 2026-11-13), alle fünf Schritte der
+[Reihenfolge](#reihenfolge-der-umsetzung): LSA-Parser, Zustand der Kanten und Knoten,
+`Query.topology.networkState(siteId)`, SVG-Karte, Health und Ressourcen im Popup
+(`backend/src/network_state/`, `components::network_map`), PSE→PD-Pfeile mit Soll-gegen-Ist und
+die Last der PoE-Gruppen gegen ihre Grenzen, Drag, `localStorage`, `publishLayout`. Nicht
+gebaut: der Klick auf eine Kante (keine Seitenleiste, entschieden) und der Log-Aggregator
+(spätere Stufe, unten).
 
 Eine Seite pro Site, und eine über alle Sites (`/network-map`, im Site-Menü der Breadcrumb; die
 Karte einer Site im Geräte-Menü): das Netz als Graph, Soll aus
@@ -167,11 +169,19 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   - Strom fliesst an einem Port ohne `pse` in NetBox: orange („nicht modelliert“,
     `PoeProblem::Undocumented`, nur für die Karte – `mismatches` meldet das weiterhin nicht, wie
     schon vor dieser Karte).
-- **Am speisenden Gerät:** Summe (`poe-out-consumption`) gegen Budget. **Nicht umgesetzt:** das
-  Budget pro Board kommt aus `hw_facts.rs`, wo die Board-Fakten liegen; die Werte sind dort noch
-  für kein Board nachgetragen. Das ist Dateneingabe aus dem RouterOS-Handbuch je Board-Typ, kein
-  Code – ohne echte Werte für jedes vorkommende Board würde der Check falsche Zahlen zeigen statt
-  nichts.
+- **Am speisenden Gerät:** was jede PoE-Gruppe zieht, gegen ihre Grenze, im Popup des Knotens
+  (`device::poe::load`). **Umgesetzt** (2026-11-13). MikroTik gibt das Budget als Strom an,
+  nicht als Leistung, pro Gruppe von Ports und getrennt unter und über 30 V
+  (`hw_facts::poe_groups`, aus den Produktseiten): netPower 16P je 8 Ports 2,8 A / 1,4 A, hEX PoE
+  2 A, hAP ac 0,7 A / 0,35 A, hAP ax² 0,6 A, cAP ax 0,6 A / 0,4 A. Ein netPower schaltet die
+  Spannung pro Port und hat keinen Wandler: 24 V aus dem Netzteil an der ersten Buchse, 48 V aus
+  dem an der zweiten, beide nur mit zwei Netzteilen (Benutzer, 2026-11-13). Darum zählt jeder
+  Port nach der Spannung, die er meldet (`poe-out-voltage`), und die beiden Grenzen einer Gruppe
+  gelten getrennt (das Handbuch sagt nicht, wie sie zusammenwirken; welche 8 Ports eine Gruppe
+  sind, auch nicht: angenommen ether1–8 und ether9–16). Ein Board ohne eingetragene Grenzen
+  zeigt nichts statt einer falschen Zahl. RouterOS meldet nur die Summe
+  (`poe-out-consumption`), kein Budget. Im Lab an lab-np2 (zwei Netzteile): ether1–8 unter
+  30 V 0,11 A von 2,8 A, über 30 V 0,05 A von 1,4 A, ether9–16 über 30 V 0,08 A von 1,4 A.
 - Die PoE-Kette ist dieselbe, die Updates beachten. Ein Update, das auf ein gespeistes Gerät
   wartet, kann die Ansicht direkt an der Kante zeigen.
 
@@ -274,7 +284,7 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
   **Nicht umgesetzt** (nur der Tooltip, kein Klick-Verhalten für Kanten, konsistent mit
   „keine Seitenleiste“ oben).
 - **Aktualisierung:** Die Seite fragt alle 5 s nach (wie die Job-Seite jede Sekunde). Die
-  Subscriptions ([Gerätezustand](../device-state.md)) wecken nur bei Änderungen des Caches, die
+  Subscriptions ([Gerätezustand](device-state.md)) wecken nur bei Änderungen des Caches, die
   Karte zeigt aber Zähler, die sich laufend ändern; Polling reicht hier. **Umgesetzt**
   (2026-11-02), in zwei getrennten Abfragen: `networkState` (Übersicht: Knoten, Kanten,
   OSPF-Zustand) kommt allein aus der LSDB, ohne ein Gerät zu fragen, und ist darum schnell;
@@ -339,13 +349,12 @@ Historie, ergänzend.
    nur für Geräte mit eigenem OSPF (nicht für einen Switch, der nach Schritt 2 nur als Relais
    auf der Karte ist); im Tooltip beim Überfahren statt einer Seitenleiste
    (Entschieden 2026-11-02). Unit-Tests der Zeilen-Auswertung (`device_data::test`).
-4. PoE-Kanten und -Budget. **Teilweise umgesetzt** (2026-11-02): PSE→PD-Pfeile mit Leistung
-   (`poe-out-power`) und Soll-gegen-Ist (`device::poe::feeding`, geteilt mit `mismatches` der
-   Geräteseite), im Tooltip die Leistung und, bei Abweichung, welche. Das Budget pro Board
-   bleibt offen: `hw_facts.rs` hat die nötigen Werte noch nicht pro Board nachgetragen (siehe
-   oben), das ist Dateneingabe aus dem Handbuch je Board, kein Code, und würde ohne echte Werte
-   nur falsche Zahlen zeigen. Unit-Tests in `helper::poe::test` (`feeding`) und
-   `network_state::graphql::test` (die Pfeile selbst).
+4. PoE-Kanten und -Budget. **Umgesetzt**: PSE→PD-Pfeile mit Leistung (`poe-out-power`) und
+   Soll-gegen-Ist (`device::poe::feeding`, geteilt mit `mismatches` der Geräteseite), im
+   Tooltip die Leistung und, bei Abweichung, welche (2026-11-02); die Last der PoE-Gruppen
+   gegen ihre Grenzen im Popup des speisenden Knotens (2026-11-13, siehe [PoE](#poe)).
+   Unit-Tests in `device::poe::test` (`feeding`, `load`) und `network_state::graphql::test`
+   (die Pfeile selbst).
 5. Verschiebbare Knoten, Positionen im Browser, Publizieren des offiziellen Layouts.
    **Umgesetzt** (2026-11-02): der Algorithmus (`force_layout`, siehe Darstellung oben), Drag,
    `localStorage`, NetBox-Feld `map_position` und die Mutation `publishLayout`, alles gegen das

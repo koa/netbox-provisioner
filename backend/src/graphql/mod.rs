@@ -407,7 +407,7 @@ impl MutationAuthenticated {
         )?)
     }
     /// Publishes `positions` as the network map's official layout, custom field `map_position`
-    /// of each device (`docs/concepts/network-map.md`). One write per device, not a `NetboxPlan`:
+    /// of each device (`docs/network-map.md`). One write per device, not a `NetboxPlan`:
     /// a position is a single idempotent field with nothing else depending on it, so none of
     /// that machinery's fingerprint check, undo log or job buys anything here. Not a job itself
     /// either, since a handful of fast field writes don't need one; the topology is fetched

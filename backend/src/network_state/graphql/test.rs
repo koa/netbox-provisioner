@@ -166,7 +166,7 @@ fn both_ospf_routers_are_on_the_map() {
 
 /// r1 and r2, both OSPF routers with an address in the same /30, cabled only through a plain
 /// switch without RouterOS: the segment an L2 run carries over several cables
-/// (`docs/concepts/network-map.md`).
+/// (`docs/network-map.md`).
 fn bridged_net() -> (Vec<DeviceAccess>, Arc<Topology>) {
     let mut builder = TopologyBuilder::default();
     let r1 = device(&mut builder, "r1", true, Some("172.16.1.1/32"));
@@ -203,7 +203,7 @@ fn poe_net() -> (Vec<DeviceAccess>, Arc<Topology>) {
 }
 
 /// r1 feeds r2 over their cable, `pse`/`pd` as NetBox has it, reporting `powered-on` with 3.9 W:
-/// one PSE→PD arrow (`docs/concepts/network-map.md`, step 4).
+/// one PSE→PD arrow (`docs/network-map.md`, step 4).
 #[test]
 fn a_feeding_port_gets_a_poe_edge() {
     let (devices, _topology) = poe_net();

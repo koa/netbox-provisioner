@@ -447,12 +447,16 @@ every metric has `device` and `site` from NetBox. The dashboards `mikrotik-overv
 `mikrotik-health.json` (from the user's exports of the old exporters' dashboards) are built on
 them, checked in Grafana 13.3 against the lab.
 
-`backend/src/network_state/` is steps 1 to 3, and PSE→PD arrows of step 4, of the network map (C9,
-`docs/concepts/network-map.md`): `lsa` parses `/routing/ospf/lsa/print` rows (router and network
+`backend/src/network_state/` is the network map (C9,
+`docs/network-map.md`): `lsa` parses `/routing/ospf/lsa/print` rows (router and network
 LSAs of `default-v2`/`-v3`), `edges` gives each cable and wireless link of a set of devices an
 `EdgeState` from that LSDB. A router that went away leaves its LSAs for an hour, so a segment
 counts only for routers whose own router LSA links to its DR. CHR test
-`the_lsdb_gives_the_state_of_each_edge`. `read::read` gets the LSDB from one router (the
+`the_lsdb_gives_the_state_of_each_edge`. A feeding node's popup shows what each PoE out group draws
+against its limit (`device::poe::load`): the limits are currents per group of ports, below and
+above 30 V, from the product pages (`hw_facts::poe_groups`); a port counts at the voltage it
+reports, as a netPower with two PSUs feeds 24 V and 48 V per port. A board without entered
+limits shows nothing. `read::read` gets the LSDB from one router (the
 management proxy's device if it has OSPF, else a site's or the whole topology's OSPF routers by
 name), as the fact `FactKind::Lsdb` (`read::LSDB_AGE`, 5 s). `graphql::network_state` turns that
 into `NetworkState` (nodes, edges, the router read from, the routers outside NetBox and where

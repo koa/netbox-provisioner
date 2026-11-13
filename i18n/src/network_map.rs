@@ -36,7 +36,7 @@ pub fn not_on_segment(device: &str) -> String {
     format!("{device} ist nicht im Netz des Ports")
 }
 pub const LEGEND: &str = "Legende";
-/// Not judged, only shown (`docs/concepts/network-map.md`, step 3): memory and disk as MiB,
+/// Not judged, only shown (`docs/network-map.md`, step 3): memory and disk as MiB,
 /// for readability, nothing more.
 pub fn resources(
     uptime_seconds: u64,
@@ -67,6 +67,32 @@ pub fn health_row(name: &str, value: &str, unit: Option<&str>) -> String {
         None => format!("{name}: {value}"),
     }
 }
+/// What a group of PoE out ports draws at one voltage, against the board's limit.
+pub fn poe_load(
+    first: &str,
+    last: &str,
+    high_voltage: bool,
+    current: f64,
+    limit: Option<f64>,
+) -> String {
+    let ports = if first == last {
+        first.to_owned()
+    } else {
+        format!("{first}–{last}")
+    };
+    let voltage = if high_voltage {
+        "über 30 V"
+    } else {
+        "unter 30 V"
+    };
+    match limit {
+        Some(limit) if current > limit => {
+            format!("PoE {ports} {voltage}: {current:.2} A von {limit:.1} A, über der Grenze")
+        }
+        Some(limit) => format!("PoE {ports} {voltage}: {current:.2} A von {limit:.1} A"),
+        None => format!("PoE {ports} {voltage}: {current:.2} A, das Board speist so nicht"),
+    }
+}
 pub const LOADING: &str = "Lädt …";
 pub const EDGE_POE: &str = "PoE";
 pub const EDGE_POE_PROBLEM: &str = "PoE: Soll und Ist stimmen nicht";
@@ -75,7 +101,7 @@ pub const POE_NO_LOAD: &str = "speist laut NetBox, am anderen Ende bezieht nicht
 pub const POE_PD_MISSING: &str = "speist, die Gegenseite ist in NetBox nicht als gespeist erfasst";
 pub const POE_FEEDS_INSTEAD: &str = "in NetBox gespeist, speist aber selbst";
 pub const POE_UNDOCUMENTED: &str = "speist, ohne PoE-Modus in NetBox";
-/// Not judged beyond `problem` (`docs/concepts/network-map.md`, step 4): `status` as
+/// Not judged beyond `problem` (`docs/network-map.md`, step 4): `status` as
 /// `poe-out-status`, `power` as `poe-out-power` in watts.
 pub fn poe_edge(
     pse: &str,
