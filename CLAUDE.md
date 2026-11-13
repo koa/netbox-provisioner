@@ -1342,6 +1342,10 @@ QEMU's, the golden image's dhcp-client is bound to it).
   actions like `power-cycle`) goes through `device::raw` (`command`, `rows`, `field`), which
   turns a `!trap` into `Error::Refused` naming the command; don't write another loop over
   `SimpleResult`. Older raw prints are moved to models in task B36 (todo.md).
+  Device access is being rebuilt (`docs/concepts/device-access.md`): every command a type
+  with its effect, actions in mikrotik-model's catalog. A `RawCommand` is a code smell: each
+  one is a command missing from the catalog, and if they multiply, the concept needs another
+  look before one more is written.
 - The backend sends data, the frontend words it: no sentence for the user is built in the
   backend (no German there at all; the journal takes its text from the crate `i18n`). What the UI shows is a typed GraphQL object or union with
   the values the text needs (`job::Event`, `ApplyWarning`), an enum for a case to tell apart

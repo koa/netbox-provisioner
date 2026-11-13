@@ -64,6 +64,9 @@ Dazu je Effekt ein Marker-Trait (`ReadCommand`, `ObserveCommand`, `WriteCommand`
   was `device::raw` heute schickt.
 - Was (noch) keinen Typ hat, geht als `RawCommand { path, attributes, effect }`: auch dort ist
   die Wirkung ausdrücklich, unklassifizierte Befehle gibt es nicht.
+  `RawCommand` ist ein Code-Smell (Benutzer, 2026-11-13): jede Verwendung ist ein Befehl, der
+  in den Katalog gehört. Vermehren sie sich, ist das ein Zeichen, dass das Konzept nicht
+  trägt: dann zuerst über das Konzept nachdenken, nicht einen weiteren `RawCommand` schreiben.
 - Fehlende Menüs bekommen ihr Modell (Stand 2026-11-13, CHR 7.24.5 gelesen): `/file`,
   `/system/scheduler`, `/system/device-mode`, `/partitions`, `/ip/neighbor`, `/system/script`,
   `/system/script/job`, `/user/ssh-keys`, `/user/active`, `/log`, `/ipv6/route`.
