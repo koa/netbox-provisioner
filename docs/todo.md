@@ -53,7 +53,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B36 | Raw-`print` durch mikrotik-model-Typen ersetzen ([Code-Regeln](../CLAUDE.md#code-conventions): raw nur für Monitore und Aktionen): 69 Stellen in 20 Dateien (Stand 2026-11-12), am meisten `device/update.rs` (8), `ros/fallback.rs`, `interface_live.rs` (je 6), `partitions.rs`, `leftovers.rs` (je 5), `watchdog.rs`, `update_fallback.rs`, `rollout.rs`, `neighbors.rs`, `bootstrap.rs` (je 4). Fehlende Menüs in mikrotik-model ergänzen; ein Befehl in einem Skript, das auf dem Gerät läuft, ist kein API-Read und bleibt | M | offen |
+| B36 | Zugriff auf die Geräte, Schritte 1–3: `Connection` mit Fassaden und `Command`/`Effect` in mikrotik-api, Befehle jedes Menüs, fehlende Modelle und Aktionskatalog in mikrotik-model, `Reader`/`Session` im Provisioner statt `device::raw` (68 Raw-`print`s in 20 Dateien, Stand 2026-11-13); alte Methoden `#[deprecated]`, dann entfernt. Ein Befehl in einem Skript, das auf dem Gerät läuft, ist kein API-Read und bleibt ([Zugriff auf die Geräte](concepts/device-access.md)) | L | in Arbeit |
 
 ## C. Konzepte zum Umsetzen
 
@@ -65,7 +65,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | C8 | Überwachung: Collector, Prometheus-Metriken (Alarme dort, Z13), Ping zum Uplink-Gateway (Z14), Zustandsseite, Ansicht für Anwohner | [Überwachung](concepts/monitoring.md) | L | offen |
 | C9 | Netz-Karte: Graph aus der OSPF-LSDB, SVG, Farben nach Erreichbarkeit, Health nur angezeigt (Z16), PoE, Layout publizieren oder im Browser (Z15) | [Netz-Karte](concepts/network-map.md) | L | Schritt 1–3 und 5 erledigt (Drag, `localStorage`, `publishLayout`, gegen das Lab geprüft), Schritt 4 ohne Budget (PSE→PD-Pfeile mit Soll-gegen-Ist aus `device::poe::feeding`, Budget pro Board offen: `hw_facts.rs` fehlen die Watt-Werte je Board) |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | Regel, Plan und Rollout erledigt; offen: CHR-Test der Kette `entry -- a -- target`, Netz-Ansicht mit eingefärbten Knoten |
-| C17 | Einmal laden pro GraphQL-Operation: ein Rahmen pro Operation (Extension, `task_local`), Topologie einmal, Lese-Cache der Gerätemenüs in mikrotik-api, HTTP nach URL, Warten liest frisch | [Einmal laden pro Operation](concepts/operation-cache.md) | M | offen |
+| C17 | Zugriff auf die Geräte, Schritt 4: geteilte Lese-Verbindung pro Gerät (Pool), Menü-Facts mit Generation, Rahmen pro GraphQL-Operation (Topologie einmal, HTTP nach URL, Warten liest frisch) | [Zugriff auf die Geräte](concepts/device-access.md) | M | offen, nach B36 |
 | C18 | Reiner L2-Switch als „Extender“: Ein alter Switch ohne L3-Offload oder mit anderen Problemen (CRS2xx, CRS354) hängt an einem modernen Switch oder Router, der seine L3-Funktionen über einen Trunk übernimmt: Port oder Bridge, mit IP oder VLAN (Z39) | [Reiner L2-Switch](concepts/l2-extender.md) | M–L | offen |
 
 ## D. In Arbeit, Rest offen
