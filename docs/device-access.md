@@ -3,7 +3,7 @@
 Wie der Provisioner mit den Geräten spricht: jeder Befehl ein Typ mit seiner Wirkung, jede
 Verbindung hinter einer Fassade mit Rechten. Gebaut in B36 (2026-11-13), nach dem Konzept
 [Zugriff auf die Geräte](concepts/device-access.md); was davon offen ist (geteilte
-Lese-Verbindung, Menü-Facts, Rahmen pro Operation), steht dort als C17.
+Lese-Verbindung, Basis-Fakten, Rahmen pro Operation), steht dort als C17.
 
 ## Befehle: was sie bewirken (mikrotik-api)
 
@@ -82,7 +82,7 @@ dasselbe Gerät ging. Jobs laufen ausserhalb und zählen nicht. Messung im Lab (
 auf dem Gerät `/system/routerboard` und `/ip/service` dreimal, `/system/resource`,
 `/system/package`, `/system/identity`, `/file`, `/certificate`, `/partitions` und
 `/interface/wifi/capsman` zweimal: verschiedene Facts (Config, RouterOS-Stand, Leftovers,
-Partitionen, Zertifikat) lesen dieselben Menüs, das ist, was die Menü-Facts
+Partitionen, Zertifikat) lesen dieselben Menüs, das ist, was die Basis-Fakten
 ([Konzept](concepts/device-access.md)) beheben sollen.
 
 ## Der CHR-Harness

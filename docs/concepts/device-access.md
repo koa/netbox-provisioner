@@ -1,6 +1,7 @@
 # Zugriff auf die Geräte
 
-Stand 2026-11-13, besprochen mit dem Benutzer. Die Schritte 1–3 (B36: Befehle als Typen mit
+Stand 2026-11-13, besprochen mit dem Benutzer (Basis-Fakten und Ableitungen am selben Tag
+nach der Messung). Die Schritte 1–3 (B36: Befehle als Typen mit
 ihrer Wirkung, `Connection`, Aktionskatalog, `Reader`/`Session`) sind gebaut und in
 [device-access.md](../device-access.md) beschrieben; offen ist Schritt 4 (C17: einmal laden pro
 GraphQL-Operation, früher `operation-cache.md`).
@@ -38,7 +39,7 @@ GraphQL-Operation, früher `operation-cache.md`).
   gesteuert von seinem `Effect`, nicht vom Pfad; alle Verbindungen eines Geräts teilen sie.
 - Der Pool gibt nur `Reader` heraus: eine GraphQL-Operation schreibt nie, ohne einen Job zu
   starten. `Session` gibt es nur mit der Sperre des Geräts.
-- `Reader` liest künftig über die Menü-Facts (`read` mit `Freshness`), `observe` immer live;
+- `Reader` liest künftig über die Basis-Fakten (`read` und `observe` mit `Freshness`);
   `Session::reader` liest frisch, ohne Cache.
 - `Reader` und `Session` bleiben im Provisioner, nicht in mikrotik-api: sie kennen Pool,
   Job-Sperre und Facts.
@@ -55,35 +56,65 @@ GraphQL-Operation, früher `operation-cache.md`).
 - Ein Semaphor pro Gerät hält die Reads eines Geräts nacheinander (schwache CPU und RAM), für
   alle Operationen gemeinsam.
 
-## Gelesenes: Menü-Facts
+## Basis-Fakten und Ableitungen
 
-Statt eines zweiten Caches ist jedes gelesene Menü ein Fact (`FactKind::Menu { path, query }`),
-dessen Wert die rohen Sätze sind; jeder Leser parst sie mit seinem Typ. So gelten, was die
-Facts schon können: Alter nach Nutzer (`MaxAge`, `Since`), Mitlaufen bei einer laufenden
-Anfrage, Metriken, Live-Updates (`LiveExtension` notiert gelesene Facts). Die heutigen Facts
-(Config, InterfaceLive, RouterosState, …) bauen darauf auf, so liest eine Seite, die
-`/system/resource` zweimal braucht, es einmal, auch bei vielen Benutzern.
+Gespeichert wird nur, was gemessen wurde: ein **Basis-Fakt** ist eine Frage an etwas draussen
+mit ihrer Antwort, auch einer Absage oder keiner. Alles darüber wird bei jedem Zugriff daraus
+abgeleitet und nicht gespeichert.
 
-Ungültig wird ein Menü-Fact:
+Basis-Fakten, jeder unter dem Schlüssel dessen, was gefragt wurde:
 
-1. **durch Schreiben, auf jeder Verbindung**: es merkt sich die Generation, bei der es gelesen
-   wurde; ist der Zähler des Geräts seither gestiegen, gilt es nicht mehr. Ein Read, der
-   während eines Schreibens lief, wird nicht gespeichert. Ein Apply, das über seine offene
-   Verbindung `set`s schickt, macht die Facts damit sofort ungültig, ohne etwas zu melden.
-2. **während ein Job das Gerät hält**: ein Apply-Script läuft nach `/execute` minutenlang ohne
-   API-Befehl, dazu Fallback, Reboot, Paketinstallation beim Booten. Solange die Sperre
-   besteht, lesen `Reader` frisch über den Pool und speichern nichts; am Ende des Jobs steigt
-   die Generation noch einmal und der Pool-Eintrag geht (wie heute `JobKind::invalidates`).
+- der **Print eines Menüs**, immer die ganze Liste, ohne Filter und `.proplist`: wer nur einen
+  Teil braucht, filtert im gespeicherten Ergebnis. Ausnahme sind Menüs, deren ganze Liste zu
+  gross ist (`/ip/route` mit BGP, `/log`, Host-Tabelle der Bridge, Leases grosser Server): dort
+  gehört der Filter zum Schlüssel. Ein Menü, das fehlt (Paket nicht installiert,
+  `collect_if_present`), ist auch eine Antwort;
+- ein **Monitor als Single Shot** (`monitor … once`, PoE, Ethernet): strukturell dasselbe wie ein
+  Print;
+- ein **Ping** von einem Gerät an eine Adresse (Funkbrücken der Interface-Ansicht,
+  Watchdog-Ziele in `generate_live`);
+- ein **Login-Versuch** an einer Adresse auf einem Pfad mit Credentials: ging, verweigert,
+  keine Antwort, anderes Gerät. Auch die Unerreichbarkeit ist gemessen und gilt, solange die
+  `Freshness` des Lesers reicht (wie heute `judge_login`);
+- **HTTP zu MikroTik** (neueste Version eines Kanals, Paketgrössen), nach URL; sie darf in der
+  Regel länger gelten als eine Messung am Gerät.
+
+Wer liest, gibt die `Freshness` an (`MaxAge`, `Since`), wie heute; Mitlaufen bei einer
+laufenden Frage, Metriken und Live-Updates (`LiveExtension` notiert gelesene Fakten) gelten für
+Basis-Fakten wie heute für die Facts. Nicht gespeichert wird, was einen Vorgang über die Zeit
+beobachtet (der Countdown des Device-Mode, `observe` beim Warten auf eine Bedingung).
+
+**Ableitungen** sind die heutigen Facts, die aus Prints, Monitoren und Pings bestehen: Config
+(`DeviceCfg::fetch`), RouterosState, Leftovers, Partitions, DeviceMode, Interfaces, Neighbors,
+InterfaceLive, Lsdb, DeviceMapData, DeviceMetrics, Route (der erste Login, der geht). Sie lesen
+über `Reader` und rechnen; so liest eine Seite, die `/system/resource` für drei Ableitungen
+braucht, es einmal, auch bei vielen Benutzern. Die Abfragen über mehrere Menüs waren nie
+atomar: eine Ableitung muss Inkonsistenzen zwischen Menüs verschiedenen Alters aushalten
+(heute zwischen Menüs, die kurz nacheinander gelesen wurden).
+
+Ungültig wird ein Basis-Fakt:
+
+1. **durch Schreiben, auf jeder Verbindung**: er merkt sich die Generation, bei der er gelesen
+   wurde; ist der Zähler des Geräts seither gestiegen, gilt er nicht mehr. Ein Read, der
+   während eines Schreibens lief, wird nicht gespeichert.
+2. **durch das, was ein Job oder eine Mutation bewirkt**: sie holen danach nichts von sich aus
+   und legen nichts ab (`facts::put` und `keep_in_line` fallen weg), sie machen aber an jeder
+   Stelle ungültig, die etwas verändert haben kann. API-Befehle tun das über die Generation von
+   selbst; was ohne API-Befehl wirkt (das Apply-Script nach `/execute`, Fallback, Reboot,
+   Paketinstallation beim Booten, Power-Cycle des Speisers), erhöht die Generation dort, wo es
+   ausgelöst wird, und am Ende des Jobs noch einmal (wie heute `JobKind::invalidates`). Wer
+   danach liest, der Check des Applys oder die Geräteseite, fragt neu, und nur, was er braucht.
 3. **durch das Alter**: was niemand meldet (Winbox, Leases, Nachbarn, OSPF), begrenzt nur das
-   Alter, das der Nutzer zulässt (höchstens 15 min, wie heute).
+   Alter, das der Leser zulässt (höchstens 15 min, wie heute).
 
-`Observe` wird nie gespeichert.
+Eine Topologie-Änderung in NetBox macht keinen Basis-Fakt ungültig: was aus NetBox kommt,
+rechnen die Ableitungen beim nächsten Zugriff neu (heute `invalidate_everywhere` für Config).
 
 ## Der Rahmen pro Operation
 
 Eine async-graphql-Extension legt um jede Ausführung (Query, Mutation, jede Runde einer
 Subscription, wie `live::rounds` sie zählt) einen `operation::Scope` (`tokio::task_local!`).
-Er hält nichts selbst und lädt nichts: er merkt sich, welchen Stand jedes Menü-Facts und welche
+Er hält nichts selbst und lädt nichts: er merkt sich, welchen Stand jedes Basis-Fakts und welche
 Topologie die Operation zuerst bekam, und gibt ihr für den Rest genau den. Wird ein Fact
 mittendrin ungültig, sieht die Operation weiter ihr eines Bild; die nächste Operation oder
 Runde liest neu, die Subscription erfährt es über `facts::Change`.
@@ -104,19 +135,27 @@ Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern, `update::state_
 
 ## Offen
 
-- `DeviceCfg::fetch` (mikrotik-model) liest viele Menüs intern, vor allem in Jobs (frisch,
-  nicht betroffen) und für die Diff-Ansicht. Über die Menü-Facts ginge es nur mit einem
-  Lese-Haken in mikrotik-model (generisch, kein `dyn`); erst einbauen, wenn die Messung zeigt,
-  dass es nötig ist.
+- Welche Typen von mikrotik-model mit `.proplist` oder Filter lesen (dann zwei Schlüssel für
+  dasselbe Menü): beim Umbau prüfen und auf die ganze Liste umstellen.
+- `DeviceCfg::fetch` liest seit B36 über `Reads`, also künftig auch über die Basis-Fakten;
+  prüfen, ob es Menüs mit Filter liest.
+- Die Metriken `device_query_*` zählen heute nach Fact-Art; nach Menü wären es viele Reihen:
+  Pfade zu Gruppen zusammenfassen oder nur Art (Print, Monitor, Ping, Login, HTTP) als Label.
+- Die Rechenzeit der Ableitungen (der Diff jeder Geräteseite, der Site-Diff über alle Geräte)
+  messen, wenn sie nicht mehr gespeichert sind.
 
 ## Schritte
 
 1.–3. gebaut (B36, [device-access.md](../device-access.md)).
-4. **Provisioner**: Pool, Menü-Facts, Generation, Operationsrahmen, HTTP im Rahmen (C17).
+4. **Provisioner**: Pool, Basis-Fakten, Generation, Operationsrahmen, HTTP im Rahmen (C17).
    Gebaut ist der Zähler aus „Prüfen“ (`operation`, [device-access.md](../device-access.md)),
    die Generation pro Gerät (`access::generation`), und als Pool dient der Fact `Login`, der
    eine Verbindung 60 s wieder gibt. Die Messung (2026-11-13) zeigt Doppel nur noch auf der
    Geräteseite: 10 Menüs des Geräts zwei- oder dreimal bei 67 Befehlen, je Laden der Seite.
+   Reihenfolge: (a) mikrotik-api gibt die rohen Antworten heraus und baut aus gespeicherten
+   wieder `Replies`; (b) Prints als Basis-Fakten im `Reader`, die Geräteseite messen; (c)
+   Monitor, Ping, Login und HTTP als Basis-Fakten; (d) die Ableitungen aus dem Store nehmen,
+   Jobs nur noch ungültig machen lassen (`put`, `keep_in_line` weg).
 
 ## Prüfen
 

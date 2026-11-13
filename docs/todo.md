@@ -61,7 +61,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | C7 | Self-Service und Personas: Rollen aus OIDC, NetBox-Owner als Anwohner, Leserechte in NetBox nur auf eigene WLANs (Z10, Z11), Leases, SSID/PSK, Ports, eigene APs, Apply sofort (Z12) | [Self-Service](concepts/self-service.md) | L | offen |
 | C8 | Überwachung: Collector, Prometheus-Metriken (Alarme dort, Z13), Ping zum Uplink-Gateway (Z14), Zustandsseite, Ansicht für Anwohner | [Überwachung](concepts/monitoring.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | Regel, Plan, Rollout und eingefärbte Knoten der Netz-Ansicht erledigt; offen: CHR-Test der Kette `entry -- a -- target` |
-| C17 | Zugriff auf die Geräte, Schritt 4: geteilte Lese-Verbindung pro Gerät (Pool), Menü-Facts mit Generation, Rahmen pro GraphQL-Operation (Topologie einmal, HTTP nach URL, Warten liest frisch) | [Zugriff auf die Geräte](concepts/device-access.md) | M | offen |
+| C17 | Zugriff auf die Geräte, Schritt 4: geteilte Lese-Verbindung pro Gerät (Pool), Basis-Fakten mit Generation (Prints, Monitore, Pings, Logins, HTTP), alles darüber abgeleitet, Jobs machen nur ungültig, Rahmen pro GraphQL-Operation | [Zugriff auf die Geräte](concepts/device-access.md) | L | Zähler pro Operation erledigt, Rest offen |
 | C18 | Reiner L2-Switch als „Extender“: Ein alter Switch ohne L3-Offload oder mit anderen Problemen (CRS2xx, CRS354) hängt an einem modernen Switch oder Router, der seine L3-Funktionen über einen Trunk übernimmt: Port oder Bridge, mit IP oder VLAN (Z39) | [Reiner L2-Switch](concepts/l2-extender.md) | M–L | offen |
 
 ## D. In Arbeit, Rest offen
