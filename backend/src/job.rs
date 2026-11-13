@@ -1013,6 +1013,8 @@ fn add(
 pub(crate) async fn run<T: Send + 'static>(
     work: impl Future<Output = Result<T, Error>> + Send + 'static,
 ) -> Result<T, Error> {
+    // what it sends counts for the operation running, if any (`operation`)
+    let work = crate::operation::within(crate::operation::current(), work);
     tokio::spawn(work).await.unwrap_or_else(|join| {
         if !join.is_panic() {
             return Err(Error::Cancelled);

@@ -5,7 +5,7 @@
 //! nothing (`print`, monitors, ping), a [`Session`] is a job's own connection and also writes.
 //! Both go over a `mikrotik_api` [`Connection`]; each command is a type of mikrotik-model (a
 //! menu's model, an action of `mikrotik_model::action`), none a string.
-use crate::{Error, topology::DeviceId};
+use crate::{Error, operation, topology::DeviceId};
 use async_graphql::futures_util::StreamExt;
 use async_graphql::futures_util::future::join_all;
 use mikrotik_api::{
@@ -34,11 +34,19 @@ use std::{
 #[derive(Clone)]
 pub struct Reader {
     connection: Connection,
+    /// the NetBox device, whose commands the operation running counts (`operation`); none for
+    /// a connection without (the CHR harness)
+    device: Option<DeviceId>,
 }
 
 impl Reader {
-    pub(crate) fn new(connection: Connection) -> Self {
-        Reader { connection }
+    pub(crate) fn new(connection: Connection, device: Option<DeviceId>) -> Self {
+        Reader { connection, device }
+    }
+    fn note<C: Command>(&self, command: &C) {
+        if let Some(device) = self.device {
+            operation::note(device, &command.path());
+        }
     }
     /// The login is gone (the device rebooted, a tunnel closed).
     pub fn is_closed(&self) -> bool {
@@ -51,12 +59,14 @@ impl Reads for Reader {
         &self,
         command: &C,
     ) -> impl Future<Output = Replies<C::Reply>> + Send {
+        self.note(command);
         self.connection.run(command)
     }
     fn observe<C: Command<Effect = Observe> + Sync>(
         &self,
         command: &C,
     ) -> impl Future<Output = Replies<C::Reply>> + Send {
+        self.note(command);
         self.connection.run(command)
     }
 }
@@ -66,17 +76,27 @@ impl Reads for Reader {
 /// path, a reboot ends it), so a job opens its own (`AccessibleDevice::connect_again`).
 pub struct Session {
     connection: Connection,
+    device: Option<DeviceId>,
 }
 
 impl Session {
-    /// The provisioner takes one only with the device's lock (`job::start*`); the CHR harness,
-    /// which has no jobs, takes its own.
+    /// The CHR harness, which has no jobs nor NetBox devices, takes its own.
     pub fn new(connection: Connection) -> Self {
-        Session { connection }
+        Session {
+            connection,
+            device: None,
+        }
+    }
+    /// One to `device`: the provisioner takes one only with the device's lock (`job::start*`).
+    pub(crate) fn of(connection: Connection, device: DeviceId) -> Self {
+        Session {
+            connection,
+            device: Some(device),
+        }
     }
     /// The same connection, to hand to what only reads.
     pub fn reader(&self) -> Reader {
-        Reader::new(self.connection.clone())
+        Reader::new(self.connection.clone(), self.device)
     }
     /// Sends `command`, which acts as long as the connection lasts; dropping its replies or the
     /// session ends it.

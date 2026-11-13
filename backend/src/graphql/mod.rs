@@ -63,6 +63,7 @@ pub fn create_schema(topology: TopologyHolder) -> AuthenticatedGraphqlSchema {
         SubscriptionAuthenticated { topology },
     )
     .extension(live::LiveExtension)
+    .extension(crate::operation::OperationExtension)
     .finish()
 }
 pub fn create_anonymous_schema() -> AnonymousGraphqlSchema {

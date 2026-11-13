@@ -561,6 +561,13 @@ ages go to the frontend. The metrics (`device_query_*`, `fact_cache_*`) go into 
 `charts/netbox-provisioner/dashboards/device-queries.json`, a ConfigMap for the Grafana
 sidecar with `grafanaDashboard.enabled`.
 
+`operation` counts what each GraphQL operation (a query, a mutation, each answer of a
+subscription) sends to the devices: a `task_local` scope `Reader` notes each command into by
+device and path, carried into the tasks `facts::get`, `job::run` and the rollout plan spawn;
+at the end it logs on `debug` (`backend::operation`) the total and every path sent to a device
+more than once. A login hit is checked with `/system/identity` only when the connection didn't
+answer within `LOGIN_CHECKED` (2 s): every map poll sent two to each device.
+
 Pages stay live over subscriptions on the WebSocket `/graphql/ws` (`graphql-transport-ws`, the
 token in the `connection_init` payload, checked as the header of `/graphql`).
 `SubscriptionAuthenticated` has the query's fields with the same types (`topology`, `jobs`), each

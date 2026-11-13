@@ -63,6 +63,28 @@ mac-telnet), ist kein API-Befehl und bleibt Text.
 Funktionen, die nur lesen, nehmen `&impl Reads`, solche, die schreiben, `&impl Writes`: was
 eine Funktion darf, prüft der Compiler.
 
+Ein Login, der eben ging, dient wieder (Fact `Login`, 60 s); bevor er weitergegeben wird, prüft
+ihn ein `/system/identity`, ausser die Verbindung hat vor weniger als 2 s geantwortet
+(`LOGIN_CHECKED`): eine Seite holt den Login eines Geräts mehrmals (den Weg, dann den Login),
+und jede Netzkarten-Abfrage schickte so zwei Identity-Prints an jedes Gerät.
+
+## Befehle pro Operation zählen
+
+`operation` legt um jede GraphQL-Operation (Query, Mutation, jede Antwort einer
+Subscription) einen Rahmen (`tokio::task_local!`); `Reader` trägt darin jeden Befehl mit Gerät
+und Pfad ein, auch aus dem Task, den `facts::get` zum Fragen startet, aus `job::run` und den
+Lesern des Rollout-Plans. Am Ende schreibt die Operation auf `debug` (`backend::operation`), wie
+viele Befehle sie an wie viele Geräte schickte, und jeden Pfad, der mehr als einmal an
+dasselbe Gerät ging. Jobs laufen ausserhalb und zählen nicht. Messung im Lab (2026-11-13,
+`LOG_LEVEL=info,backend::operation=debug`): die Netzkarte schickt jeden Pfad pro Gerät einmal
+(`NetworkMap` 1 Befehl, `NetworkMapDetails` 6 an 6 Geräte), der Rollout-Plan über die Site Lab
+53 an 6 Geräte ohne Doppel; die Geräteseite (`DeviceOverview`, lab-hex) 67 an 4 Geräte, davon
+auf dem Gerät `/system/routerboard` und `/ip/service` dreimal, `/system/resource`,
+`/system/package`, `/system/identity`, `/file`, `/certificate`, `/partitions` und
+`/interface/wifi/capsman` zweimal: verschiedene Facts (Config, RouterOS-Stand, Leftovers,
+Partitionen, Zertifikat) lesen dieselben Menüs, das ist, was die Menü-Facts
+([Konzept](concepts/device-access.md)) beheben sollen.
+
 ## Der CHR-Harness
 
 Die CHR-Tests (`backend/tests/chr_network/`) erreichen ihre Knoten auf demselben Weg

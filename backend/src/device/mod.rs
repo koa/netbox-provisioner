@@ -1,5 +1,6 @@
 //! Scope: Reaching a device: credentials, the ways to it, the login and the connected
 //! `AccessibleDevice`; not what is done with it once connected (the submodules).
+use crate::lock::LockAnyway;
 use crate::{
     Error,
     config::CONFIG,
@@ -17,6 +18,7 @@ use surge_ping::{IcmpPacket, SurgeError, ping};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
+    time::Instant,
 };
 use tokio_socks::tcp::Socks5Stream;
 
@@ -113,6 +115,8 @@ pub struct Login {
     identity: Box<str>,
     /// it went with the credentials' `previous_password` only
     password: Password,
+    /// when the connection last answered ([`login`] checks it before giving it again)
+    checked: Arc<std::sync::Mutex<Instant>>,
 }
 
 /// Which password of a device's credentials a login went with (A9).
@@ -134,6 +138,10 @@ const LOGIN_REFUSED: Duration = Duration::from_secs(10 * 60);
 const LOGIN_WRONG_DEVICE: Duration = Duration::from_secs(60);
 /// How long a login without answer is taken as without: a cable may just have been plugged in.
 const LOGIN_NO_ANSWER: Duration = Duration::from_secs(20);
+/// How long a connection that answered is given again without checking it: a page asks for a
+/// device's login several times at once (its way, then the login itself), which checked it
+/// each time.
+const LOGIN_CHECKED: Duration = Duration::from_secs(2);
 /// How long a login may take, connection included; through the management proxy a missing
 /// route fails at once, a host that is down only after the TCP timeout.
 pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -165,7 +173,7 @@ pub(crate) async fn login(
                     access::generation(device.id()),
                 )
                 .await?;
-                let client = Reader::new(client);
+                let client = Reader::new(client, Some(device.id()));
                 let identity: Box<str> = SystemIdentityCfg::fetch(&client)
                     .await?
                     .map(|identity| identity.name.to_string().into())
@@ -181,6 +189,7 @@ pub(crate) async fn login(
                     client,
                     identity,
                     password,
+                    checked: Arc::new(Instant::now().into()),
                 })
             })
             .await
@@ -195,17 +204,24 @@ pub(crate) async fn login(
     )
     .await;
     if let (Came::Hit, Ok(login)) = (fact.came, &fact.value) {
+        let recent = login.checked.lock_anyway().elapsed() < LOGIN_CHECKED;
         // the connection may have gone since (a reboot, a tunnel closed)
-        let alive = tokio::time::timeout(
-            Duration::from_secs(5),
-            SystemIdentityCfg::fetch(&login.client),
-        )
-        .await;
-        if !matches!(alive, Ok(Ok(_))) {
+        let alive = !login.client.is_closed()
+            && (recent
+                || matches!(
+                    tokio::time::timeout(
+                        Duration::from_secs(5),
+                        SystemIdentityCfg::fetch(&login.client),
+                    )
+                    .await,
+                    Ok(Ok(_))
+                ));
+        if !alive {
             facts::forget(&key);
             return facts::get_judged(key, Freshness::MaxAge(Duration::ZERO), judge_login, ask())
                 .await;
         }
+        *login.checked.lock_anyway() = Instant::now();
     }
     fact
 }
@@ -446,7 +462,7 @@ impl AccessibleDevice {
             generation,
         )
         .await?;
-        Ok(Session::new(connection))
+        Ok(Session::of(connection, self.device_config.id()))
     }
     /// Which password the login went with: [`Password::Previous`] is a deviation an apply
     /// takes away ([`Self::set_current_password`]).
@@ -575,10 +591,11 @@ pub(crate) async fn connect(
     credentials: &Credentials,
 ) -> Result<Session, Error> {
     let generation = access::generation(device.id());
-    Ok(Session::new(
+    Ok(Session::of(
         connect_any(address, path, credentials, generation)
             .await?
             .client,
+        device.id(),
     ))
 }
 

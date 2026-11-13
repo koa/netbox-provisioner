@@ -573,7 +573,12 @@ where
                         answer: answer.clone(),
                     });
                     let ask = ask.take().expect("asked once");
-                    tokio::spawn(run(key.clone(), now, generation, ask, sender));
+                    // what it sends counts for the operation asking (`operation`)
+                    let asking = run(key.clone(), now, generation, ask, sender);
+                    tokio::spawn(crate::operation::within(
+                        crate::operation::current(),
+                        asking,
+                    ));
                     Waiting::Join(now, answer)
                 }
             }

@@ -129,11 +129,13 @@ pub async fn plan(sites: &[SiteAccess], channel: Channel) -> Result<RolloutPlan,
     let mut reads = JoinSet::new();
     for (index, device) in devices.iter().cloned().enumerate() {
         let (permits, target, sizes) = (permits.clone(), target.clone(), sizes.clone());
-        reads.spawn(async move {
+        // what it reads counts for the operation planning (`operation`)
+        let operation = crate::operation::current();
+        reads.spawn(crate::operation::within(operation, async move {
             let _permit = permits.acquire_owned().await;
             let read = crate::job::run(read(device.clone(), target, sizes)).await;
             (index, read)
-        });
+        }));
     }
     let mut read = BTreeMap::new();
     while let Some(done) = reads.join_next().await {

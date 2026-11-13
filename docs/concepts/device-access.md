@@ -113,6 +113,10 @@ Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern, `update::state_
 
 1.–3. gebaut (B36, [device-access.md](../device-access.md)).
 4. **Provisioner**: Pool, Menü-Facts, Generation, Operationsrahmen, HTTP im Rahmen (C17).
+   Gebaut ist der Zähler aus „Prüfen“ (`operation`, [device-access.md](../device-access.md)),
+   die Generation pro Gerät (`access::generation`), und als Pool dient der Fact `Login`, der
+   eine Verbindung 60 s wieder gibt. Die Messung (2026-11-13) zeigt Doppel nur noch auf der
+   Geräteseite: 10 Menüs des Geräts zwei- oder dreimal bei 67 Befehlen, je Laden der Seite.
 
 ## Prüfen
 
