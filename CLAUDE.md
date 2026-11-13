@@ -531,8 +531,8 @@ port `device::poe::feeding` has modeled as `pse` or reporting `powered-on`, with
 NetBox to the fed port; `feeding` is the shared base `mismatches` (the device page's own PoE
 check) now filters for a problem, so neither changed what it reports, and the one addition for
 the map (`PoeProblem::Undocumented`, a port feeding with no PoE mode in NetBox at all) stays
-invisible to `mismatches`. No PoE budget check yet: `hw_facts.rs` has no per-board PoE wattage to
-check a device's consumption against.
+invisible to `mismatches`. Where a port feeds, it reads `/system/routerboard` too and puts each PoE
+group's load on `MapNodeDetails.poeLoad` (`DeviceMapData.poe_load`).
 
 The frontend shows health, resources and PoE in a popup on hovering a node
 (`i18n::network_map::resources`/`health_row`, not judged), built from whichever of the two
