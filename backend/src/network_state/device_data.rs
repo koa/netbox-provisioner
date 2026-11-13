@@ -49,7 +49,7 @@ pub struct Resources {
 
 #[derive(Debug, Clone, Default)]
 pub struct DeviceMapData {
-    pub health: Vec<HealthRow>,
+    pub health: Box<[HealthRow]>,
     pub resources: Option<Resources>,
     pub poe: PoePorts,
 }

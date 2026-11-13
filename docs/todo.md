@@ -53,7 +53,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B9 | Ersatz für `speed: k` an `/interface/ethernet` suchen (nur mangels Alternative akzeptiert) | M | offen |
-| B34 | `String`/`Vec` in Feldern durch `Box<str>`/`Box<[_]>` ersetzen, wo der Wert nicht wächst ([Code-Regeln](../CLAUDE.md#code-conventions)): ohne die cynic-Fragmente (dort verlangt cynic `String`) rund 50 `String`-Felder im Backend (`network_state/graphql.rs`, `device/bootstrap.rs`, `config.rs`, `helper/`), 47 `Vec`-Felder, im Frontend rund 50 ausserhalb von `graphql/` (`components/netbox_helper` 31) | M | offen |
 | B36 | Raw-`print` durch mikrotik-model-Typen ersetzen ([Code-Regeln](../CLAUDE.md#code-conventions): raw nur für Monitore und Aktionen): 69 Stellen in 20 Dateien (Stand 2026-11-12), am meisten `device/update.rs` (8), `ros/fallback.rs`, `interface_live.rs` (je 6), `partitions.rs`, `leftovers.rs` (je 5), `watchdog.rs`, `update_fallback.rs`, `rollout.rs`, `neighbors.rs`, `bootstrap.rs` (je 4). Fehlende Menüs in mikrotik-model ergänzen; ein Befehl in einem Skript, das auf dem Gerät läuft, ist kein API-Read und bleibt | M | offen |
 
 ## C. Konzepte zum Umsetzen

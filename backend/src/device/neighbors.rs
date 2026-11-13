@@ -121,8 +121,8 @@ pub async fn read(
 pub struct NeighborTable {
     /// the interface list discovery runs on, when the device doesn't have it: it sees nobody
     discovery_off: Option<Box<str>>,
-    interfaces: Vec<Row>,
-    neighbors: Vec<Row>,
+    interfaces: Box<[Row]>,
+    neighbors: Box<[Row]>,
 }
 
 pub async fn read_table(client: &RawDevice<SimpleResult>) -> Result<NeighborTable, Error> {
@@ -135,14 +135,14 @@ pub async fn read_table(client: &RawDevice<SimpleResult>) -> Result<NeighborTabl
     {
         return Ok(NeighborTable {
             discovery_off: Some(list.into()),
-            interfaces: Vec::new(),
-            neighbors: Vec::new(),
+            interfaces: Box::default(),
+            neighbors: Box::default(),
         });
     }
     Ok(NeighborTable {
         discovery_off: None,
-        interfaces: rows(client, "/interface/print").await?,
-        neighbors: rows(client, "/ip/neighbor/print").await?,
+        interfaces: rows(client, "/interface/print").await?.into(),
+        neighbors: rows(client, "/ip/neighbor/print").await?.into(),
     })
 }
 

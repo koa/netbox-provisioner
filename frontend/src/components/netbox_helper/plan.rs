@@ -26,8 +26,8 @@ use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 /// script (`None`: the device isn't reachable).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Preview {
-    pub(super) before: Vec<String>,
-    pub(super) after: Vec<String>,
+    pub(super) before: Box<[String]>,
+    pub(super) after: Box<[String]>,
     pub(super) script: Option<String>,
 }
 

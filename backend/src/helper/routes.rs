@@ -24,7 +24,7 @@ use tokio::time::timeout;
 /// The routes of one router, IPv4 and IPv6.
 pub struct Routes {
     pub router: Box<str>,
-    routes: Vec<Route>,
+    routes: Box<[Route]>,
 }
 
 struct Route {
@@ -59,7 +59,7 @@ impl Routes {
                 Ok(Ok(routes)) => {
                     return Ok(Routes {
                         router: router.name().into(),
-                        routes,
+                        routes: routes.into(),
                     });
                 }
                 Ok(Err(error)) => failures.push(format!("{}: {error}", router.name())),
@@ -78,7 +78,7 @@ impl Routes {
     pub(crate) fn none(router: &str) -> Routes {
         Routes {
             router: router.into(),
-            routes: Vec::new(),
+            routes: Box::default(),
         }
     }
 

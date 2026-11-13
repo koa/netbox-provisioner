@@ -83,11 +83,11 @@ pub struct FlagInterface {
     pub name: Box<str>,
     pub label: Option<Box<str>>,
     /// with their length
-    pub addresses: Vec<Box<str>>,
+    pub addresses: Box<[Box<str>]>,
     /// the bridge it is a port of: the tags of the bridge count then, not its own
     pub bridge: Option<Box<str>>,
-    pub connected: Vec<InterfaceRef>,
-    pub tags: Vec<InterfaceTag>,
+    pub connected: Box<[InterfaceRef]>,
+    pub tags: Box<[InterfaceTag]>,
 }
 
 /// The interfaces whose tags count, in NetBox' order: all but the ports of a bridge, which
@@ -165,7 +165,7 @@ pub fn plan(topology: &Arc<Topology>, input: &FlagsInput) -> Result<NetboxPlan, 
             label_before: interface.label().map(Box::from),
             mtu: None,
             mtu_before: interface.mtu(),
-            tags_added: added,
+            tags_added: added.into(),
             tags_removed: removed,
             poe: None,
             poe_before: None,
@@ -210,7 +210,7 @@ mod test {
         let [PlanStep::UpdateInterface(update)] = &plan.steps[..] else {
             panic!("{:?}", plan.steps);
         };
-        assert_eq!(update.tags_added, [InterfaceTag::Nat]);
+        assert_eq!(*update.tags_added, [InterfaceTag::Nat]);
         assert_eq!(update.tags_removed, [InterfaceTag::Ospf]);
 
         let after = plan.preview_topology().expect("preview");

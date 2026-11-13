@@ -43,8 +43,8 @@ pub(crate) struct Facts {
 /// The device types (of every manufacturer) and roles to choose from.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct LeaseTakeoverOptions {
-    pub device_types: Vec<ClientTypeOption>,
-    pub roles: Vec<super::new_device::RoleOption>,
+    pub device_types: Box<[ClientTypeOption]>,
+    pub roles: Box<[super::new_device::RoleOption]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -86,8 +86,8 @@ pub async fn options() -> Result<LeaseTakeoverOptions, Error> {
         .collect::<Vec<_>>();
     roles.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(LeaseTakeoverOptions {
-        device_types,
-        roles,
+        device_types: device_types.into(),
+        roles: roles.into(),
     })
 }
 
@@ -189,7 +189,7 @@ pub(crate) fn base(
         name: INTERFACE.into(),
         kind: "other".into(),
         vlan: None,
-        tags: Vec::new(),
+        tags: Box::default(),
         mac: Some(mac.to_string().to_ascii_uppercase().into()),
     }));
     plan.steps.push(PlanStep::CreateAddress(CreateAddress {

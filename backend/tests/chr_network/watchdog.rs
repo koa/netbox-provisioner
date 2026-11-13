@@ -174,7 +174,7 @@ async fn two_jobs_share_a_suspended_watchdog() {
         vec![WatcherLink {
             device: "shared".into(),
             supplier: true,
-            powered: Vec::new(),
+            powered: Box::default(),
             link: Ok(Direct(node.api_port)),
         }]
     };

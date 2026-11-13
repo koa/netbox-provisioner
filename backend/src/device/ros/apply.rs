@@ -131,9 +131,9 @@ pub struct ScriptProgress {
     /// it answered before the script changed anything; without, the losses say nothing
     pub probe_answered: bool,
     /// the lines after which the ping stopped answering (about one line late)
-    pub lost: Vec<u32>,
+    pub lost: Box<[u32]>,
     /// the lines after which it answered again
-    pub back: Vec<u32>,
+    pub back: Box<[u32]>,
     /// the fallback's delay from the script's end, once brought forward
     pub rearmed: Option<ScalarDuration>,
     /// read after the fallback fired, from the device back with the config from before
@@ -690,7 +690,7 @@ impl AccessibleDevice {
             // a device without the marks (a file it couldn't write) counts as through after
             // this, as before them
             unmarked: SystemTime::now() + APPLY_TIMEOUT,
-            reprovision: planned.reprovisioned(),
+            reprovision: planned.reprovisioned().into(),
         };
         keep(&script);
         log.enter(ApplyState::ScriptRunning);

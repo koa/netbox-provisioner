@@ -737,7 +737,7 @@ pub async fn update_keeping(
             from: from.clone(),
             target: target.to_string().into(),
             newest_v6: newest_v6.to_string().into(),
-            wanted: wanted.to_vec(),
+            wanted: wanted.into(),
             partition: partition.clone(),
             wait,
             ospf: ospf.clone(),

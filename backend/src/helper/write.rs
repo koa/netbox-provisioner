@@ -35,7 +35,7 @@ pub struct NetboxWritten {
     #[graphql(skip)]
     pub before: Option<Box<str>>,
     /// what changed, for reading; empty for a created or deleted object
-    pub changes: Vec<FieldChange>,
+    pub changes: Box<[FieldChange]>,
     pub deleted: bool,
     /// the JSON `undo` creates a deleted object again with (it gets a new id)
     #[graphql(skip)]
@@ -327,7 +327,8 @@ async fn set_primary_ip(
             field: field.into(),
             value: shown(&object),
             previous: shown(&current),
-        }],
+        }]
+        .into(),
         deleted: false,
         recreate: None,
     }));
@@ -1106,7 +1107,7 @@ async fn write_update(
         path: path.into(),
         display: display(&object),
         before: Some(before.to_string().into()),
-        changes,
+        changes: changes.into(),
         deleted: false,
         recreate: None,
     }));
@@ -1141,7 +1142,7 @@ async fn deleted(
         path: path.into(),
         display: display(current),
         before: None,
-        changes: Vec::new(),
+        changes: Box::default(),
         deleted: true,
         recreate: Some(body.to_string().into()),
     }));
@@ -1214,7 +1215,7 @@ fn logged_create(log: &Log, path: &str, object: &Value) -> Result<u32, Error> {
         path: format!("{path}/{id}/").into(),
         display: display(object),
         before: None,
-        changes: Vec::new(),
+        changes: Box::default(),
         deleted: false,
         recreate: None,
     }));

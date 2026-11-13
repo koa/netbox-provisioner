@@ -30,19 +30,19 @@ const AT_ONCE: usize = 4;
 /// The devices the job reads, in NetBox' order.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct SiteDiffStarted {
-    pub devices: Vec<DiffedDevice>,
+    pub devices: Box<[DiffedDevice]>,
 }
 
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct DiffedDevice {
     pub id: u32,
-    pub name: String,
+    pub name: Box<str>,
 }
 
 /// What an apply would do in one menu (`ip/address`).
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct MenuChanges {
-    pub menu: String,
+    pub menu: Box<str>,
     pub added: u32,
     pub changed: u32,
     pub removed: u32,
@@ -53,7 +53,7 @@ pub struct MenuChanges {
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct DeviceDiffed {
     pub device: DiffedDevice,
-    pub menus: Vec<MenuChanges>,
+    pub menus: Box<[MenuChanges]>,
     pub error: Option<ErrorInfo>,
 }
 
@@ -87,7 +87,7 @@ pub async fn run(site: SiteAccess, log: Log) -> Result<(), Error> {
         };
         log.emit(DeviceDiffed {
             device: diffed_device(&device),
-            menus,
+            menus: menus.into(),
             error,
         });
     }
@@ -165,7 +165,7 @@ pub fn menu_changes(mutations: &[ResourceMutation<'_>]) -> Vec<MenuChanges> {
     menus
         .into_iter()
         .map(|(menu, (added, changed, removed))| MenuChanges {
-            menu: String::from_utf8_lossy(menu).into_owned(),
+            menu: String::from_utf8_lossy(menu).into_owned().into(),
             added,
             changed,
             removed,
@@ -177,9 +177,9 @@ pub fn menu_changes(mutations: &[ResourceMutation<'_>]) -> Vec<MenuChanges> {
 /// the login went with the previous one (A9, `user`; the password stays out of the script),
 /// WebFig's certificate (A7, `certificate`).
 pub(crate) fn add_change(menus: &mut Vec<MenuChanges>, name: &str) {
-    let at = menus.partition_point(|menu| menu.menu.as_str() < name);
+    let at = menus.partition_point(|menu| &*menu.menu < name);
     match menus.get_mut(at) {
-        Some(menu) if menu.menu == name => menu.changed += 1,
+        Some(menu) if menu.menu == name.into() => menu.changed += 1,
         _ => menus.insert(
             at,
             MenuChanges {
@@ -231,7 +231,7 @@ mod test {
         };
         let mut menus = vec![menu("system/identity"), menu("zzz")];
         add_change(&mut menus, "user");
-        let names: Vec<_> = menus.iter().map(|menu| menu.menu.as_str()).collect();
+        let names: Vec<_> = menus.iter().map(|menu| &*menu.menu).collect();
         assert_eq!(names, ["system/identity", "user", "zzz"]);
         assert_eq!(menus[1].changed, 1);
     }

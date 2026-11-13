@@ -65,7 +65,7 @@ use tokio::time::sleep;
 /// The devices of the batch.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct BatchApply {
-    pub devices: Vec<Box<str>>,
+    pub devices: Box<[Box<str>]>,
 }
 
 /// The batch stopped before any script started: `device` failed (its own job says why); the
@@ -79,8 +79,8 @@ pub struct BatchStopped {
 /// taken away, every device of the batch loads its config from before.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct BatchIncomplete {
-    pub devices: Vec<Box<str>>,
-    pub not_applied: Vec<Box<str>>,
+    pub devices: Box<[Box<str>]>,
+    pub not_applied: Box<[Box<str>]>,
 }
 
 /// How long setting up the fallback and leaving the script on a device may take.
@@ -303,7 +303,7 @@ impl Applying for Reached {
                         ),
                         fires: saved_job::system_time(fires),
                         unmarked: now + APPLY_TIMEOUT,
-                        reprovision: self.planned.reprovisioned(),
+                        reprovision: self.planned.reprovisioned().into(),
                     },
                     hold: self.hold.lock_anyway().as_ref().map(RadioHold::saved),
                     batch: Some(batch.clone()),
@@ -591,7 +591,7 @@ pub(crate) async fn run<M: Planning>(
 ) -> Vec<Result<(), Error>> {
     let count = members.len();
     let event = BatchApply {
-        devices: names.clone(),
+        devices: names.clone().into(),
     };
     logs.iter().for_each(|log| log.emit(event.clone()));
     let mut results: Vec<Option<Result<(), Error>>> = (0..count).map(|_| None).collect();
@@ -745,7 +745,7 @@ pub(crate) async fn run<M: Planning>(
     }
     let start = Instant::now();
     let saved_batch = SavedBatch {
-        devices: devices.clone(),
+        devices: devices.clone().into(),
         delay,
     };
     let saved_batch = &saved_batch;
@@ -947,8 +947,8 @@ pub(crate) async fn watch<M: Watched>(
         }
     } else {
         let event = BatchIncomplete {
-            devices: unreached.clone(),
-            not_applied: not_applied.clone(),
+            devices: unreached.clone().into(),
+            not_applied: not_applied.clone().into(),
         };
         let list: Box<str> = unreached
             .iter()

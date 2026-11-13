@@ -70,7 +70,7 @@ pub struct DeviceCfg {
     /// refuses to change
     bound_radios: Box<[AsciiString]>,
     /// what `generate_from` couldn't bring in line (a bound radio)
-    wifi_warnings: Vec<ApplyWarning>,
+    wifi_warnings: Box<[ApplyWarning]>,
     /// the board's radios NetBox leaves alone, with the CAP off (`CapOffOutsideWlanGroup`)
     idle_radios: Option<RadioPackage>,
     /// what `generate_live` found at the device: the addresses a watchdog would watch that
@@ -182,7 +182,7 @@ impl DeviceCfg {
                 },
             ));
         }
-        self.wifi_warnings = warnings;
+        self.wifi_warnings = warnings.into();
         Ok(())
     }
     /// [`Self::generate_from`] with the provisioner's own needs on top: the device the
@@ -369,7 +369,11 @@ impl DeviceCfg {
     ) -> Vec<ApplyWarning> {
         let ports = self.base_target.poe_switched_off(&self.base_current);
         if ports.is_empty() {
-            return [self.wifi_warnings.clone(), self.live_warnings.clone()].concat();
+            return [
+                self.wifi_warnings.clone(),
+                self.live_warnings.clone().into(),
+            ]
+            .concat();
         }
         let names = ports
             .iter()
@@ -384,7 +388,7 @@ impl DeviceCfg {
             info!("cannot read the PoE status: {error}");
             names.into_iter().collect()
         });
-        let mut warnings = self.wifi_warnings.clone();
+        let mut warnings = self.wifi_warnings.to_vec();
         warnings.extend(self.base_target.poe_warnings(&self.base_current, &powered));
         warnings.extend(self.live_warnings.iter().cloned());
         warnings
@@ -465,7 +469,7 @@ pub struct GeneratedCfg {
     /// empty if the device is in line already
     pub(super) script: Box<str>,
     /// what the script changes, by menu (`site_diff`)
-    pub(super) menus: Vec<crate::device::site_diff::MenuChanges>,
+    pub(super) menus: Box<[crate::device::site_diff::MenuChanges]>,
     /// what applying it would do that the operator should know before
     pub(super) warnings: Vec<ApplyWarning>,
     /// the login went with the credentials' previous password only: an apply sets the current
@@ -484,7 +488,7 @@ impl GeneratedCfg {
     pub(crate) fn in_line(as_of: tokio::time::Instant) -> GeneratedCfg {
         GeneratedCfg {
             script: "".into(),
-            menus: Vec::new(),
+            menus: Box::default(),
             warnings: Vec::new(),
             previous_password: false,
             www_certificate: WwwCertificate::Off,
@@ -684,7 +688,7 @@ impl DeviceCfg {
             switch_menu_current,
             switch_menu_target,
             bound_radios,
-            wifi_warnings: Vec::new(),
+            wifi_warnings: Box::default(),
             idle_radios,
             live_warnings: Vec::new(),
             www_certificate: WwwCertificate::Off,

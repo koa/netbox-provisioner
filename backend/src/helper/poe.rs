@@ -116,7 +116,7 @@ fn set_mode(plan: &mut NetboxPlan, port: &InterfaceAccess, mode: PoeMode) {
             label_before: port.label().map(Box::from),
             mtu: None,
             mtu_before: port.mtu(),
-            tags_added: Vec::new(),
+            tags_added: Box::default(),
             tags_removed: Vec::new(),
             poe: Some(mode),
             poe_before: port.poe(),
@@ -162,7 +162,7 @@ pub fn plan_remove(topology: &Arc<Topology>, input: &PoeRemoveInput) -> Result<N
             label_before: end.label().map(Box::from),
             mtu: None,
             mtu_before: end.mtu(),
-            tags_added: Vec::new(),
+            tags_added: Box::default(),
             tags_removed: Vec::new(),
             poe: None,
             poe_before: end.poe(),
@@ -180,7 +180,7 @@ pub struct PoePort {
     pub label: Option<Box<str>>,
     pub poe: Option<PoeMode>,
     pub cabled: bool,
-    pub connected: Vec<InterfaceRef>,
+    pub connected: Box<[InterfaceRef]>,
 }
 
 /// Another device of the site, with its Ethernet ports.
@@ -188,15 +188,15 @@ pub struct PoePort {
 pub struct PoePeer {
     pub id: u32,
     pub name: Box<str>,
-    pub ports: Vec<PoePort>,
+    pub ports: Box<[PoePort]>,
 }
 
 /// What „PoE“ chooses from: the device's Ethernet ports, and the other devices of its site
 /// (and those its cables reach) with theirs.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct PoeOptions {
-    pub ports: Vec<PoePort>,
-    pub peers: Vec<PoePeer>,
+    pub ports: Box<[PoePort]>,
+    pub peers: Box<[PoePeer]>,
 }
 
 pub fn options(device: &DeviceAccess) -> PoeOptions {
@@ -217,13 +217,13 @@ pub fn options(device: &DeviceAccess) -> PoeOptions {
     peers.retain(|d| d.id() != device.id());
     peers.sort_by_cached_key(|d| naturalize(d.name()));
     PoeOptions {
-        ports: poe_ports(device),
+        ports: poe_ports(device).into(),
         peers: peers
             .iter()
             .map(|peer| PoePeer {
                 id: peer.id().0,
                 name: peer.name().into(),
-                ports: poe_ports(peer),
+                ports: poe_ports(peer).into(),
             })
             .filter(|peer| !peer.ports.is_empty())
             .collect(),

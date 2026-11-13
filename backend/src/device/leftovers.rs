@@ -38,7 +38,7 @@ pub struct Leftovers {
     /// the script of an apply runs (`/system/script/job`); it ends by itself
     pub apply_script_running: bool,
     /// `.npk` files in the root, installed at the next boot (`installs_at_boot`)
-    pub packages: Vec<PackageLeft>,
+    pub packages: Box<[PackageLeft]>,
 }
 
 impl Leftovers {

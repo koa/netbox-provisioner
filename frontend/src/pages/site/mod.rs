@@ -98,7 +98,7 @@ impl Component for Devices {
                 let devices = rows
                     .iter()
                     .map(|row| (row.id, row.name.clone()))
-                    .collect::<Vec<_>>();
+                    .collect::<Box<[_]>>();
                 html!(<NeighborCheck {devices}/>)
             }
             _ => Html::default(),

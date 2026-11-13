@@ -637,7 +637,7 @@ fn a_radio_without_peer_and_router_is_incomplete() {
     assert_eq!(&*incomplete[0].devices, [r2]);
     assert!(
         matches!(&incomplete[0].kind, FindingKind::RadioPathIncomplete(r)
-        if r.missing == [RadioPathPart::RouterCable, RadioPathPart::WirelessLink])
+        if *r.missing == [RadioPathPart::RouterCable, RadioPathPart::WirelessLink])
     );
 }
 

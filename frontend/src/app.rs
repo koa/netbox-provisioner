@@ -35,8 +35,8 @@ use yew_oauth2::{
 /// Where the provider for the login is, from the backend (`authentication`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct AuthenticationData {
-    client_id: String,
-    issuer_url: String,
+    client_id: Box<str>,
+    issuer_url: Box<str>,
     scopes: Vec<String>,
 }
 
@@ -86,8 +86,8 @@ impl Component for App {
                                 scopes,
                             },
                     }) => AppMessage::AuthenticationData(AuthenticationData {
-                        client_id,
-                        issuer_url,
+                        client_id: client_id.into(),
+                        issuer_url: issuer_url.into(),
                         scopes,
                     }),
                     Err(error) => AppMessage::Error(error),

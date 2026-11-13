@@ -30,7 +30,7 @@ pub struct UpdateRequest {
 pub struct RouterosProps {
     pub routeros: Ros,
     /// the watchdogs that may fire while this device updates
-    pub watchdogs: Vec<Watchdog>,
+    pub watchdogs: Box<[Watchdog]>,
     /// the device feeding it over PoE and its port: a cold boot is possible
     pub power_supply: Option<PowerSupply>,
     /// nothing brings the device back from an update: only once confirmed

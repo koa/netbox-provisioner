@@ -10,8 +10,8 @@ use std::{
 
 #[derive(Deserialize)]
 pub struct Settings {
-    auth_client_id: String,
-    auth_issuer: String,
+    auth_client_id: Box<str>,
+    auth_issuer: Box<str>,
     /// OIDC scopes the frontend requests, space separated
     auth_scopes: Option<String>,
     pub auth_users: Box<[Box<str>]>,
@@ -20,8 +20,8 @@ pub struct Settings {
     server_mgmt_port: Option<u16>,
     server_bind_address: Option<IpAddr>,
 
-    pub netbox_url: String,
-    pub netbox_token: String,
+    pub netbox_url: Box<str>,
+    pub netbox_token: Box<str>,
     /// Writing to NetBox (the helpers): off unless set, and only with `netbox_write_token`.
     #[serde(default)]
     pub allow_netbox_write: bool,
@@ -239,8 +239,8 @@ settings:
             environment().source(Some(env)),
         )
         .unwrap();
-        assert_eq!(settings.netbox_token, "from-env");
-        assert_eq!(settings.netbox_url, "https://netbox.example");
+        assert_eq!(settings.netbox_token, "from-env".into());
+        assert_eq!(settings.netbox_url, "https://netbox.example".into());
         assert!(settings.allow_apply);
         assert_eq!(settings.server_port(), 9000);
         let lab = &settings.mikrotik_credentials["lab"];

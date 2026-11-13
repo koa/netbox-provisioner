@@ -304,7 +304,7 @@ async fn legacy_clients(
 
 /// What [`wireless`] found.
 struct Wireless {
-    clients: Vec<WlanClient>,
+    clients: Box<[WlanClient]>,
     /// the radios running
     radios: Vec<WirelessRadio>,
 }
@@ -326,7 +326,7 @@ async fn wireless(
         .collect::<Vec<_>>();
     if running.is_empty() {
         return Ok(Wireless {
-            clients: Vec::new(),
+            clients: Box::default(),
             radios: Vec::new(),
         });
     }

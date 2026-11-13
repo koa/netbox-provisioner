@@ -193,7 +193,7 @@ async fn device_mode_change_confirmed_by_a_cold_boot() {
     assert_eq!(
         log.events(),
         [Event::DeviceModeChanged(DeviceModeChanged {
-            changes: vec![]
+            changes: Box::default()
         })]
     );
 }

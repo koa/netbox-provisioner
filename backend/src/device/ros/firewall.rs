@@ -49,7 +49,7 @@ enum Action {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct Rule {
     /// what it is, in its comment: unique in its chain
-    name: String,
+    name: Box<str>,
     chain: &'static str,
     /// the drop ending the chain, after the rules of others
     last: bool,

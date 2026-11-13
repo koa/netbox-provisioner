@@ -441,10 +441,14 @@ fn two_sites_get_their_own_circle() {
     let Clustered { positions, circles } = clustered_layout(&state, &HashMap::new());
     assert_eq!(positions.len(), 4);
     assert_eq!(circles.len(), 2);
-    let names = circles.iter().map(|c| c.name.as_str()).collect::<Vec<_>>();
+    let names = circles.iter().map(|c| &*c.name).collect::<Vec<_>>();
     assert!(names.contains(&"A") && names.contains(&"B"));
     for circle in &circles {
-        let members: &[i32] = if circle.name == "A" { &[1, 2] } else { &[3, 4] };
+        let members: &[i32] = if circle.name == "A".into() {
+            &[1, 2]
+        } else {
+            &[3, 4]
+        };
         for &id in members {
             let dist = distance(positions[&id], circle.center);
             assert!(
@@ -477,7 +481,7 @@ fn a_device_without_a_site_gets_no_circle() {
     };
     let Clustered { positions, circles } = clustered_layout(&state, &HashMap::new());
     assert_eq!(circles.len(), 1);
-    assert_eq!(circles[0].name, "A");
+    assert_eq!(circles[0].name, "A".into());
     assert!(
         positions.contains_key(&3),
         "the siteless device should still be placed"
@@ -503,7 +507,7 @@ fn a_lone_device_at_a_site_still_gets_a_circle() {
     let Clustered { positions, circles } = clustered_layout(&state, &HashMap::new());
     assert_eq!(circles.len(), 2);
     for circle in &circles {
-        let id = if circle.name == "A" { 1 } else { 2 };
+        let id = if circle.name == "A".into() { 1 } else { 2 };
         assert_eq!(positions[&id], circle.center);
         assert!(circle.radius >= SITE_MIN_RADIUS);
     }
@@ -610,7 +614,7 @@ fn the_outside_node_is_only_added_when_there_is_one() {
     };
     let Graph { nodes, edges } = graph(&some);
     assert!(nodes.contains(&OUTSIDE));
-    assert_eq!(edges, [line(OUTSIDE, 42)]);
+    assert_eq!(*edges, [line(OUTSIDE, 42)]);
 }
 
 /// The map's graph of the stored export (`docs/netbox-response-example.json`: the devices with

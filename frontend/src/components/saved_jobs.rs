@@ -22,7 +22,7 @@ use patternfly_yew::prelude::{Alert, AlertType, Button, ButtonVariant};
 use yew::{Component, Context, Html, html, platform::spawn_local};
 
 pub struct SavedJobs {
-    saved: Vec<Saved>,
+    saved: Box<[Saved]>,
     allow_apply: bool,
     error: Option<FrontendError>,
 }
@@ -50,7 +50,7 @@ impl Component for SavedJobs {
     fn create(ctx: &Context<Self>) -> Self {
         Self::load(ctx);
         Self {
-            saved: Vec::new(),
+            saved: Vec::new().into(),
             allow_apply: false,
             error: None,
         }
@@ -59,7 +59,7 @@ impl Component for SavedJobs {
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             SavedJobsMsg::Loaded(Ok(data)) => {
-                self.saved = data.saved_jobs;
+                self.saved = data.saved_jobs.into();
                 self.allow_apply = data.allow_apply;
             }
             SavedJobsMsg::Loaded(Err(error)) => self.error = Some(error),

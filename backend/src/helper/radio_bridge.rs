@@ -152,7 +152,7 @@ pub(super) fn labels(plan: &mut NetboxPlan, cables: &[BridgeCable]) {
                     label_before: end.label().map(Box::from),
                     mtu: None,
                     mtu_before: end.mtu(),
-                    tags_added: Vec::new(),
+                    tags_added: Box::default(),
                     tags_removed: Vec::new(),
                     poe: None,
                     poe_before: None,
@@ -167,7 +167,7 @@ pub(super) fn labels(plan: &mut NetboxPlan, cables: &[BridgeCable]) {
 struct LinkPlan {
     plan: NetboxPlan,
     /// the two sides they found
-    sides: Vec<Side>,
+    sides: Box<[Side]>,
 }
 
 /// The steps for cables, bridges and radios, which need nothing but NetBox as the topology has
@@ -220,9 +220,12 @@ fn link_plan(topology: &Arc<Topology>, input: &RadioBridgeInput) -> Result<LinkP
     };
     // the station only hears the AP again once both have the new radio settings
     if radios(&mut plan, link, input.ssid.as_deref(), true)? {
-        plan.apply_together = vec![device_ref(&ap), device_ref(&station)];
+        plan.apply_together = vec![device_ref(&ap), device_ref(&station)].into();
     }
-    Ok(LinkPlan { plan, sides })
+    Ok(LinkPlan {
+        plan,
+        sides: sides.into(),
+    })
 }
 
 /// The radio, the Ethernet port, the router port and the bridge of `device`, with the steps for
@@ -272,7 +275,7 @@ fn side(
                 name: "bridge".into(),
                 kind: "bridge".into(),
                 vlan: None,
-                tags: vec![InterfaceTag::Ospf],
+                tags: vec![InterfaceTag::Ospf].into(),
                 mac: None,
             }));
             (Target::Step(plan.steps.len() - 1), Box::from("bridge"))
@@ -622,7 +625,7 @@ async fn segment(
                 label_before: interface.label().map(Box::from),
                 mtu: None,
                 mtu_before: interface.mtu(),
-                tags_added: vec![InterfaceTag::Ospf],
+                tags_added: vec![InterfaceTag::Ospf].into(),
                 tags_removed: Vec::new(),
                 poe: None,
                 poe_before: None,
@@ -935,7 +938,7 @@ mod test {
             .steps
             .iter()
             .filter_map(|step| match step {
-                PlanStep::UpdateInterface(update) if update.tags_added == [InterfaceTag::Ospf] => {
+                PlanStep::UpdateInterface(update) if *update.tags_added == [InterfaceTag::Ospf] => {
                     Some(update.interface.device.name.to_string())
                 }
                 _ => None,

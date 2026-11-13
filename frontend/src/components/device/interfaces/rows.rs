@@ -64,8 +64,8 @@ pub struct Row {
     pub task: Task,
     pub interface: InterfaceRef,
     pub label: Option<String>,
-    pub ports: Vec<InterfaceRef>,
-    pub addresses: Vec<AddressRef>,
+    pub ports: Box<[InterfaceRef]>,
+    pub addresses: Box<[AddressRef]>,
     pub ospf: bool,
     pub dhcp: bool,
     pub dhcp_client: bool,
@@ -73,15 +73,15 @@ pub struct Row {
     pub internet: bool,
     pub mtu: Option<i32>,
     pub untagged_vlan: Option<VlanRef>,
-    pub tagged_vlans: Vec<VlanRef>,
-    pub far_ends: Vec<InterfaceRef>,
+    pub tagged_vlans: Box<[VlanRef]>,
+    pub far_ends: Box<[InterfaceRef]>,
     pub radio_path: Option<RadioPath>,
-    pub gateways: Vec<DeviceRef>,
+    pub gateways: Box<[DeviceRef]>,
     pub free: bool,
-    pub findings: Vec<Finding>,
-    pub actions: Vec<Action>,
+    pub findings: Box<[Finding]>,
+    pub actions: Box<[Action]>,
     /// a bridge's ports, each chosen on its own
-    pub port_rows: Vec<PortRow>,
+    pub port_rows: Box<[PortRow]>,
 }
 
 /// A port of a bridge with its own actions.
@@ -89,8 +89,8 @@ pub struct Row {
 pub struct PortRow {
     pub interface: InterfaceRef,
     pub label: Option<String>,
-    pub far_ends: Vec<InterfaceRef>,
-    pub actions: Vec<Action>,
+    pub far_ends: Box<[InterfaceRef]>,
+    pub actions: Box<[Action]>,
 }
 
 /// What a button of a row does.
@@ -130,11 +130,11 @@ impl Action {
 /// the ones on none of its interfaces.
 #[derive(Debug, Clone, PartialEq)]
 pub struct View {
-    pub netbox: String,
-    pub rows: Vec<Row>,
-    pub device_findings: Vec<Finding>,
-    pub other_findings: Vec<Finding>,
-    pub loopback_actions: Vec<Action>,
+    pub netbox: Box<str>,
+    pub rows: Box<[Row]>,
+    pub device_findings: Box<[Finding]>,
+    pub other_findings: Box<[Finding]>,
+    pub loopback_actions: Box<[Action]>,
 }
 
 impl View {
@@ -145,10 +145,10 @@ impl View {
             .ok_or(FrontendError::MissingData)?
             .interface_view;
         Ok(View {
-            netbox: data.topology.netbox_url,
+            netbox: data.topology.netbox_url.into(),
             rows: view.rows.into_iter().map(Row::of).collect(),
-            device_findings: view.device_findings,
-            other_findings: view.other_findings,
+            device_findings: view.device_findings.into(),
+            other_findings: view.other_findings.into(),
             loopback_actions: view
                 .loopback_actions
                 .into_iter()
@@ -171,8 +171,8 @@ impl Row {
             task: Task::of(&row.task),
             interface: row.interface,
             label: row.label,
-            ports: row.ports,
-            addresses: row.addresses,
+            ports: row.ports.into(),
+            addresses: row.addresses.into(),
             ospf: row.ospf,
             dhcp: row.dhcp,
             dhcp_client: row.dhcp_client,
@@ -180,12 +180,12 @@ impl Row {
             internet: row.internet,
             mtu: row.mtu,
             untagged_vlan: row.untagged_vlan,
-            tagged_vlans: row.tagged_vlans,
-            far_ends: row.far_ends,
+            tagged_vlans: row.tagged_vlans.into(),
+            far_ends: row.far_ends.into(),
             radio_path: row.radio_path,
-            gateways: row.gateways,
+            gateways: row.gateways.into(),
             free: row.free,
-            findings: row.findings,
+            findings: row.findings.into(),
             actions: actions(row.actions),
             port_rows: row
                 .port_rows
@@ -193,7 +193,7 @@ impl Row {
                 .map(|port| PortRow {
                     interface: port.interface,
                     label: port.label,
-                    far_ends: port.far_ends,
+                    far_ends: port.far_ends.into(),
                     actions: actions(port.actions),
                 })
                 .collect(),
@@ -270,9 +270,9 @@ pub(super) fn action(action: RowAction, device: u32) -> Option<Action> {
             HelperPreset::NewDevice {
                 port: interface?,
                 seen: action.seen.map(|seen| SeenPreset {
-                    identity: seen.identity,
-                    board: seen.board,
-                    interface_name: seen.interface_name,
+                    identity: seen.identity.into(),
+                    board: seen.board.into(),
+                    interface_name: seen.interface_name.into(),
                 }),
             },
         ),

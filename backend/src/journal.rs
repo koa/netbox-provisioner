@@ -178,11 +178,11 @@ pub struct JournalEntry {
     pub outcome: JournalOutcome,
     /// the state it is in or ended in, by its GraphQL name (`SCRIPT_RUNNING`)
     pub state: Option<Box<str>>,
-    pub left: Vec<JournalLeft>,
+    pub left: Box<[JournalLeft]>,
     /// who started it; none for a job that went on after a restart
     pub by: Option<Box<str>>,
     /// the entry in NetBox' web UI
-    pub url: String,
+    pub url: Box<str>,
 }
 
 /// How the job of an entry stands or ended (`i18n::journal::Outcome`).
@@ -253,9 +253,9 @@ fn parse(entry: &Value, web: &str) -> Option<JournalEntry> {
             record["outcome"].as_str()?,
         )?,
         state: named(&record["state"]).map(Into::into),
-        left: journal_lefts(&record["left"]),
+        left: journal_lefts(&record["left"]).into(),
         by: named(&record["by"]).map(Into::into),
-        url: format!("{web}extras/journal-entries/{id}/"),
+        url: format!("{web}extras/journal-entries/{id}/").into(),
     })
 }
 
@@ -387,7 +387,7 @@ pub struct Entry {
     pub phase: Option<JobPhase>,
     pub error: Option<ErrorInfo>,
     pub took: Option<u64>,
-    pub events: Vec<Event>,
+    pub events: Box<[Event]>,
     /// the job's device, left out of the batch it was applied with
     pub device: Box<str>,
     /// the run of the apply script it wrote ([`crate::job::Log::script_run`])
@@ -405,7 +405,7 @@ impl Entry {
             phase: job.shown_phase(),
             error,
             took: job.ran_for().map(|took| took.as_secs()),
-            events,
+            events: events.into(),
             device: job.name().into(),
             run: job.log().script_run(),
         }

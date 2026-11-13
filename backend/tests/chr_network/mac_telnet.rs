@@ -152,7 +152,7 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
         terminal.stream_to(&log);
         let setup = MacTelnetSetup {
             macs: [mac_of(node.index, slot)].into(),
-            port: format!("ether{}", slot + 1),
+            port: format!("ether{}", slot + 1).into(),
             address: address.parse().unwrap(),
             on_bridge: false,
             neighbor_port: None,

@@ -19,7 +19,7 @@ pub enum ApplyWarning {
 /// misses).
 #[derive(Clone, Debug, PartialEq, SimpleObject)]
 pub struct ApiClientsOutside {
-    pub clients: Vec<Box<str>>,
+    pub clients: Box<[Box<str>]>,
 }
 
 /// A watchdog would watch `address` (on the PoE port `port`, else `/system/watchdog`), but it

@@ -149,7 +149,10 @@ async fn resume_batch(
             .and_then(|entry| entry.saved.as_ref().ok());
         let apply = saved.and_then(|saved| match &saved.work {
             SavedWork::Apply { apply, .. }
-                if apply.batch.as_ref().is_some_and(|b| b.devices == batch) =>
+                if apply
+                    .batch
+                    .as_ref()
+                    .is_some_and(|b| b.devices == batch.into()) =>
             {
                 Some(apply)
             }
@@ -247,7 +250,7 @@ pub(crate) fn saved_update(
             state: UpdateState::Rebooting,
             update: Box::new(saved_job::SavedUpdate {
                 credentials: Some(credentials.into()),
-                watchers: watchers.to_vec(),
+                watchers: watchers.into(),
                 run: run.clone(),
             }),
         },

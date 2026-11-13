@@ -52,7 +52,8 @@ fn snapshot() -> Snapshot {
                     value: "ok".into(),
                     unit: None,
                 },
-            ],
+            ]
+            .into(),
             resources: Some(Resources {
                 uptime: "1d2h3m4s".into(),
                 cpu_load: 12,
@@ -64,14 +65,15 @@ fn snapshot() -> Snapshot {
                 board_name: "hAP ax^2".into(),
             }),
             poe: PoePorts {
-                ethernet: Vec::new(),
+                ethernet: Box::default(),
                 monitor: vec![row(&[
                     ("name", "e07-lab-crs125"),
                     ("poe-out-status", "powered-on"),
                     ("poe-out-voltage", "24.1"),
                     ("poe-out-current", "150"),
                     ("poe-out-power", "3.6"),
-                ])],
+                ])]
+                .into(),
             },
         })),
         metrics: Some(Arc::new(DeviceMetrics {

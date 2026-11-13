@@ -14,7 +14,7 @@ use serde_json::{Map, Value};
 pub struct NetboxRest {
     client: reqwest::Client,
     /// NetBox' API, ending in `api/`
-    api: String,
+    api: Box<str>,
     /// set on every write
     changelog_message: Option<Box<str>>,
 }
@@ -51,7 +51,7 @@ impl NetboxRest {
             client: reqwest::Client::builder()
                 .default_headers(headers)
                 .build()?,
-            api: format!("{}api/", web_url()),
+            api: format!("{}api/", web_url()).into(),
             changelog_message,
         })
     }

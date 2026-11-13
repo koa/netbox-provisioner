@@ -196,7 +196,7 @@ pub struct NetboxPlan {
     /// the two ends of a radio link whose radio settings change: they hear each other only once
     /// both have them, so only applying them together works (one after the other, the first
     /// one's fallback brings its old settings back)
-    pub apply_together: Vec<DeviceRef>,
+    pub apply_together: Box<[DeviceRef]>,
     /// a bridge the plan takes the last port of: its network reaches nobody then
     pub emptied_bridge: Option<InterfaceRef>,
     #[graphql(skip)]
@@ -239,7 +239,7 @@ impl NetboxPlan {
             checked_with: None,
             undocumented: Vec::new(),
             cut_off: Vec::new(),
-            apply_together: Vec::new(),
+            apply_together: Box::default(),
             emptied_bridge: None,
             device: device.clone(),
         }
@@ -587,7 +587,7 @@ mod test {
                 name: "lo-test".into(),
                 kind: "virtual".into(),
                 vlan: None,
-                tags: Vec::new(),
+                tags: Box::default(),
                 mac: None,
             }),
             PlanStep::CreateAddress(CreateAddress {
@@ -656,7 +656,7 @@ mod test {
                 label_before: end.label().map(Box::from),
                 mtu: Some(2000),
                 mtu_before: end.mtu(),
-                tags_added: vec![flags::InterfaceTag::Ospf],
+                tags_added: vec![flags::InterfaceTag::Ospf].into(),
                 tags_removed: Vec::new(),
                 poe: None,
                 poe_before: None,

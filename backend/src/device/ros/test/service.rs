@@ -138,7 +138,7 @@ fn the_api_stays_open_for_a_client_outside() {
     assert_eq!(
         target.keep_api_open_for(&current.ip_service, &clients, &networks),
         Some(ApplyWarning::ApiClientsOutside(ApiClientsOutside {
-            clients: vec!["2a02:16a:fe00:8000::1".into()]
+            clients: vec!["2a02:16a:fe00:8000::1".into()].into()
         }))
     );
     let mutations = target.generate_mutations(&current).unwrap();

@@ -1323,7 +1323,8 @@ QEMU's, the golden image's dhcp-client is bound to it).
   them (mikrotik-model's `by_id` keys, `BTreeMap` entries) and for a pair inside one function.
 - A string that doesn't change is a `Box<str>`, a list a `Box<[_]>`; `String` and `Vec` only
   where it grows or an API requires it (cynic's `QueryFragment`s: cynic takes `Box<str>` for no
-  GraphQL `String`). A value read from RouterOS and written back unseen stays bytes
+  GraphQL `String`; a yew prop that takes a `String` or `Vec`, and a form field's text, which
+  goes back to yew as `value` on every render). A value read from RouterOS and written back unseen stays bytes
   (`AsciiString`, `Box<[u8]>`), without a round trip through UTF-8.
 - No `dyn` where a static type does: a generic (`impl Fn`) for a callback, an enum for a few
   kinds (`device::DeviceStream`), a local generic `fn` where a closure would take a `dyn`.
@@ -1357,7 +1358,7 @@ QEMU's, the golden image's dhcp-client is bound to it).
   `error_info::test::every_code_is_worded_in_german` fails for a code without its text.
 - Every text the UI shows is in the crate `i18n` (German), a module (file) per page or
   component, a `const` or a `fn` taking the values; components write none inline, so a second
-  language replaces that one crate. It takes plain values only (`&str`, numbers, its own enums;
+  language replaces that one crate. It takes plain values only (`&str`, numbers, its own enums and structs such as `helper::Port`;
   an error as `i18n::error::Problem`), so the backend can word with it too where it writes for
   people. What builds `Html` or words the frontend's own types (`findings`, `neighbors`,
   `target`, `interfaces`) stays in `frontend/src/i18n/`, which passes the crate's modules on as

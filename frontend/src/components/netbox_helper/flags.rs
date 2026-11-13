@@ -85,7 +85,7 @@ impl NetboxHelper {
                 self.check_flags(ctx);
                 self.choose(ctx);
             }
-            FlagsMsg::Findings(findings) if findings.changes != self.flag_changes() => {
+            FlagsMsg::Findings(findings) if *findings.changes != *self.flag_changes() => {
                 return false;
             }
             FlagsMsg::Findings(findings) => self.flag_findings = Some(findings),
@@ -116,7 +116,7 @@ impl NetboxHelper {
         if self
             .flag_findings
             .as_ref()
-            .is_some_and(|shown| shown.changes == changes)
+            .is_some_and(|shown| *shown.changes == *changes)
         {
             return;
         }
@@ -244,11 +244,11 @@ pub(super) fn fetch_flag_findings(scope: Scope<NetboxHelper>, id: u32, changes: 
         let result = request(scope.clone(), Findings::build(variables))
             .await
             .map(|data| NetboxFindings {
-                netbox: data.topology.netbox_url,
-                findings: data.topology.findings,
+                netbox: data.topology.netbox_url.into(),
+                findings: data.topology.findings.into(),
             });
         scope.send_message(FlagsMsg::Findings(FlagFindings {
-            changes,
+            changes: changes.into(),
             findings: result,
         }));
     });
@@ -258,14 +258,14 @@ pub(super) type FlagInterface = helper_options::FlagInterface;
 
 /// The device's findings after these switches.
 pub struct FlagFindings {
-    changes: Vec<FlagChange>,
+    changes: Box<[FlagChange]>,
     findings: Result<NetboxFindings, FrontendError>,
 }
 
 /// Findings, with NetBox' address for their links.
 pub struct NetboxFindings {
-    netbox: String,
-    findings: Vec<Finding>,
+    netbox: Box<str>,
+    findings: Box<[Finding]>,
 }
 
 /// A tag as NetBox names it.

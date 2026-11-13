@@ -56,7 +56,7 @@ const COPY_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// The partitions of a device and whether [`repartition`] can split them.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct Partitions {
-    pub partitions: Vec<Partition>,
+    pub partitions: Box<[Partition]>,
     /// one partition on enough flash, and the device mode allows partitions
     pub can_split: bool,
 }
@@ -72,7 +72,7 @@ pub struct RepartitionStarted {
 /// The device is back with these partitions; `missing_files`: files there before that are gone.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct Repartitioned {
-    pub partitions: Vec<Partition>,
+    pub partitions: Box<[Partition]>,
     pub missing_files: Box<[Box<str>]>,
 }
 
@@ -126,7 +126,7 @@ pub async fn read(device: &RawDevice<SimpleResult>) -> Result<Option<Partitions>
     }
     let can_split = can_split(&partitions, allowed(device).await?);
     Ok(Some(Partitions {
-        partitions,
+        partitions: partitions.into(),
         can_split,
     }))
 }
@@ -343,7 +343,7 @@ pub async fn repartition(
         return Err(Error::CannotRepartition(partitions.len() as u32));
     }
     log.emit(Repartitioned {
-        partitions,
+        partitions: partitions.into(),
         missing_files,
     });
     Ok(())

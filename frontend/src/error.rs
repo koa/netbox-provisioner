@@ -17,10 +17,10 @@ use yew::{Html, html};
 /// `error`, a job event), worded by [`i18n::error::server`](crate::i18n::error::server).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ServerProblem {
-    pub code: String,
-    pub params: Vec<(String, String)>,
+    pub code: Box<str>,
+    pub params: Box<[(String, String)]>,
     /// the backend's English text, for a code the frontend doesn't word yet
-    pub message: String,
+    pub message: Box<str>,
 }
 
 impl ServerProblem {
@@ -56,9 +56,9 @@ impl ServerProblem {
             })
             .unwrap_or_default();
         ServerProblem {
-            code,
+            code: code.into(),
             params,
-            message: error.message.clone(),
+            message: error.message.clone().into(),
         }
     }
 }
@@ -78,13 +78,13 @@ impl t::Problem for ServerProblem {
 impl From<&ErrorInfo> for ServerProblem {
     fn from(problem: &ErrorInfo) -> Self {
         ServerProblem {
-            code: problem.code.clone(),
+            code: problem.code.clone().into(),
             params: problem
                 .params
                 .iter()
                 .map(|param| (param.name.clone(), param.value.clone()))
                 .collect(),
-            message: problem.message.clone(),
+            message: problem.message.clone().into(),
         }
     }
 }

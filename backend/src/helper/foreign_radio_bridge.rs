@@ -309,7 +309,7 @@ async fn networks(
                 label_before: end.label().map(Box::from),
                 mtu: None,
                 mtu_before: end.mtu(),
-                tags_added,
+                tags_added: tags_added.into(),
                 tags_removed: Vec::new(),
                 poe: None,
                 poe_before: None,
@@ -515,7 +515,7 @@ mod test {
             tags,
             [(
                 "np2".into(),
-                vec![InterfaceTag::Ospf, InterfaceTag::Dhcp],
+                [InterfaceTag::Ospf, InterfaceTag::Dhcp].into(),
                 Some("wave-b".into())
             )]
         );

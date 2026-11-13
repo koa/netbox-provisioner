@@ -233,7 +233,7 @@ fn update(updates: &mut Vec<UpdateInterface>, interface: &InterfaceAccess) -> us
         label_before: interface.label().map(Box::from),
         mtu: None,
         mtu_before: interface.mtu(),
-        tags_added: Vec::new(),
+        tags_added: Box::default(),
         tags_removed: Vec::new(),
         poe: None,
         poe_before: None,

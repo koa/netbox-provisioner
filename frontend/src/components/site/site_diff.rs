@@ -59,7 +59,7 @@ pub struct Known {
 
 struct Row {
     id: i32,
-    name: String,
+    name: Box<str>,
     read: Read,
 }
 
@@ -71,7 +71,7 @@ pub struct SiteDiff {
     known: HashMap<i32, Known>,
     _known_subscription: Subscription,
     /// the devices of the job, in NetBox' order, as read so far
-    rows: Vec<Row>,
+    rows: Box<[Row]>,
     state: Option<JobState>,
     job_error: Option<ServerProblem>,
     error: Option<FrontendError>,
@@ -129,7 +129,7 @@ impl Component for SiteDiff {
             job_started: None,
             known: HashMap::new(),
             _known_subscription: known_subscription,
-            rows: Vec::new(),
+            rows: Vec::new().into(),
             state: None,
             job_error: None,
             error: None,
@@ -168,7 +168,7 @@ impl Component for SiteDiff {
                                 .into_iter()
                                 .map(|device| Row {
                                     id: device.id,
-                                    name: device.name,
+                                    name: device.name.into(),
                                     read: Read::Pending,
                                 })
                                 .collect();
@@ -252,7 +252,7 @@ impl Component for SiteDiff {
                     <dl class="neighbor-results">
                         { for rows.into_iter().map(|(row, read)| html! {
                             <>
-                                <dt><Link<AppRoute> to={AppRoute::device(site, row.id as u32)}>{row.name.clone()}</Link<AppRoute>></dt>
+                                <dt><Link<AppRoute> to={AppRoute::device(site, row.id as u32)}>{&*row.name}</Link<AppRoute>></dt>
                                 <dd>{read_view(&read)}</dd>
                             </>
                         }) }
@@ -298,7 +298,7 @@ impl SiteDiff {
         self.alive.set(false);
         self.alive = Rc::new(Cell::new(true));
         self.job = Some(id);
-        self.rows.clear();
+        self.rows = Box::default();
         self.lost = false;
         self.job_error = None;
         poll(ctx.link().clone(), id, self.alive.clone());

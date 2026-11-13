@@ -38,9 +38,9 @@ pub enum NewDeviceMsg {
 /// What the router sees at the port: a MikroTik NetBox doesn't know.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeenPreset {
-    pub identity: String,
-    pub board: String,
-    pub interface_name: String,
+    pub identity: Box<str>,
+    pub board: Box<str>,
+    pub interface_name: Box<str>,
 }
 
 /// What „Neues Gerät“ is choosing; the texts as typed and as planned.
@@ -62,7 +62,7 @@ impl NewDeviceChoice {
     pub fn new(port: u32, seen: Option<SeenPreset>) -> Self {
         let far_port = seen
             .as_ref()
-            .map(|seen| seen.interface_name.clone())
+            .map(|seen| seen.interface_name.to_string())
             .unwrap_or_else(|| "ether1".into());
         Self {
             port: Some(port),

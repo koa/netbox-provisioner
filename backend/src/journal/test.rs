@@ -39,7 +39,7 @@ fn entry(kind: JobKind, outcome: Outcome, events: Vec<Event>) -> Entry {
         phase: None,
         error: None,
         took: None,
-        events,
+        events: events.into(),
         device: "lab-core".into(),
         run: None,
     }
@@ -104,7 +104,7 @@ fn a_finished_entry_has_its_results() {
         Outcome::Done,
         vec![
             Event::BatchApply(BatchApply {
-                devices: vec!["lab-core".into(), "lab-np1".into()],
+                devices: vec!["lab-core".into(), "lab-np1".into()].into(),
             }),
             armed(),
             stopped(),
@@ -140,7 +140,8 @@ fn a_failed_entry_words_its_error() {
         params: vec![ErrorParam {
             name: "address",
             value: "192.168.100.3".into(),
-        }],
+        }]
+        .into(),
         message: "timeout".into(),
     });
     assert_eq!(
@@ -185,13 +186,13 @@ fn an_entry_is_read_from_its_record() {
         }}
     });
     let read = parse(&entry, "https://netbox/").unwrap();
-    assert_eq!(read.url, "https://netbox/extras/journal-entries/3/");
+    assert_eq!(read.url, "https://netbox/extras/journal-entries/3/".into());
     assert_eq!(read.id, 3);
     assert_eq!(read.kind, Some(JobKind::Reboot));
     assert_eq!(read.observation, None);
     assert_eq!(read.outcome, JournalOutcome::Interrupted);
     assert_eq!(read.state.as_deref(), Some("REBOOTING"));
-    assert_eq!(read.left, vec![JournalLeft::UpdateFallback]);
+    assert_eq!(read.left, vec![JournalLeft::UpdateFallback].into());
     assert_eq!(read.by.as_deref(), Some("Lab Admin"));
     // an entry with the tag but no record (written by hand) is left out
     assert_eq!(

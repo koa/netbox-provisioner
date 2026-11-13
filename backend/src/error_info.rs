@@ -11,7 +11,7 @@ use async_graphql::{ErrorExtensions, Name, SimpleObject, Value};
 #[derive(Clone, Debug, PartialEq, SimpleObject)]
 pub struct ErrorInfo {
     pub code: &'static str,
-    pub params: Vec<ErrorParam>,
+    pub params: Box<[ErrorParam]>,
     pub message: Box<str>,
 }
 
@@ -580,7 +580,7 @@ mod test {
             .filter(|&code| {
                 let info = ErrorInfo {
                     code,
-                    params: vec![],
+                    params: Box::default(),
                     message: "untranslated".into(),
                 };
                 i18n::error::server(&info) == "untranslated"

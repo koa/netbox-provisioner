@@ -549,7 +549,7 @@ pub struct WatcherLink<L> {
     pub device: Box<str>,
     pub supplier: bool,
     /// the updating device's addresses, for the ports of a supplier
-    pub powered: Vec<IpAddr>,
+    pub powered: Box<[IpAddr]>,
     pub link: Result<L, Error>,
 }
 
@@ -660,7 +660,7 @@ impl<L> Suspended<L> {
 /// up, and the addresses its suppliers' PoE ports ping.
 pub(crate) struct Watchers {
     watchers: Vec<Watcher>,
-    powered: Vec<IpAddr>,
+    powered: Box<[IpAddr]>,
 }
 
 impl Watchers {
@@ -670,7 +670,7 @@ impl Watchers {
                 true => watchers(device, &ManagementTree::of_device(device)),
                 false => Vec::new(),
             },
-            powered: addresses(device),
+            powered: addresses(device).into(),
         }
     }
     /// Only the devices powering `device`, for its setup: a device in factory state doesn't

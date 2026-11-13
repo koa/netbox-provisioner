@@ -57,7 +57,7 @@ pub struct ShowDevice {
     job_through: Option<String>,
     job_running: bool,
     /// the jobs of a batch started here (this device first), shown side by side instead of `job`
-    batch_jobs: Vec<BatchJob>,
+    batch_jobs: Box<[BatchJob]>,
     /// how many of them are over
     batch_finished: usize,
     /// what the bootstrap neighbor sees on its port; `None` while it is asked
@@ -103,7 +103,7 @@ pub struct ShowDeviceData {
     /// what a job that didn't see its work to the end left on the device
     leftovers: Option<Left>,
     /// the newest entries of the device's log, oldest first
-    log: Vec<LogEntry>,
+    log: Box<[LogEntry]>,
     /// `None` before RouterOS 7.17, or when it couldn't be read
     device_mode: Option<Mode>,
     /// `None` without partitions (16 MiB of flash), or when they couldn't be read
@@ -112,9 +112,9 @@ pub struct ShowDeviceData {
     bootstrap_problem: Option<ErrorInfo>,
     /// the watchdogs that may fire while this one updates, of the devices powering it and of
     /// those reaching the network through it
-    watchdogs: Vec<Watchdog>,
+    watchdogs: Box<[Watchdog]>,
     /// the neighbors it stays reachable through after an update that cut it off from OSPF
-    update_neighbors: Vec<String>,
+    update_neighbors: Box<[String]>,
     /// the device feeding it over PoE and its port: a cold boot is possible
     power_supply: Option<PowerSupply>,
     /// the job running on the device, and the device it works on when that isn't this one (a
@@ -122,7 +122,7 @@ pub struct ShowDeviceData {
     running_job: Option<(i32, Option<String>)>,
     /// the jobs of the device over, also those that ran elsewhere: when one more is, the
     /// history and the interfaces are read again
-    jobs_over: Vec<i32>,
+    jobs_over: Box<[i32]>,
 }
 #[derive(Debug, Properties, Clone, PartialEq)]
 pub struct ShowDeviceProps {
@@ -181,7 +181,7 @@ impl Component for ShowDevice {
             job: None,
             job_through: None,
             job_running: false,
-            batch_jobs: Vec::new(),
+            batch_jobs: Vec::new().into(),
             batch_finished: 0,
             candidates: None,
             power_job: None,
@@ -294,7 +294,7 @@ impl Component for ShowDevice {
                 self.job = Some(id);
                 self.job_through = Some(device);
                 self.job_running = true;
-                self.batch_jobs.clear();
+                self.batch_jobs = Box::default();
                 true
             }
             ShowDeviceMessage::JobStarted(result) => {
@@ -303,7 +303,7 @@ impl Component for ShowDevice {
                         self.job = Some(id);
                         self.job_through = None;
                         self.job_running = true;
-                        self.batch_jobs.clear();
+                        self.batch_jobs = Box::default();
                     }
                     Err(error) => {
                         self.job_running = false;
@@ -314,7 +314,7 @@ impl Component for ShowDevice {
             }
             ShowDeviceMessage::BatchStarted(jobs) => {
                 self.job = None;
-                self.batch_jobs = jobs;
+                self.batch_jobs = jobs.into();
                 self.batch_finished = 0;
                 self.job_running = true;
                 self.applying = true;
@@ -462,10 +462,10 @@ impl ShowDevice {
                                 <Link<AppRoute>
                                     to={AppRoute::device(site as u32, job.device as u32)}
                                 >
-                                    {&job.name}
+                                    {&*job.name}
                                 </Link<AppRoute>>
                             } else {
-                                {&job.name}
+                                {&*job.name}
                             }
                         </h3>
                         <JobView id={job.job} on_finished={ctx.link().callback(|_| ShowDeviceMessage::BatchJobFinished)}/>
@@ -751,7 +751,8 @@ fn overview_message(id: u32, response: Response<DeviceOverview>) -> ShowDeviceMe
                     .access
                     .as_mut()
                     .and_then(|a| a.log.take())
-                    .unwrap_or_default(),
+                    .unwrap_or_default()
+                    .into(),
                 leftovers: d.access.as_mut().and_then(|a| a.leftovers.take()),
                 device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
                 partitions: d.access.as_mut().and_then(|a| a.partitions.take()),
@@ -761,7 +762,7 @@ fn overview_message(id: u32, response: Response<DeviceOverview>) -> ShowDeviceMe
                     board_matches: a.device_stats.board_matches,
                     cfg: a.generate_cfg.map(|cfg| GeneratedCfg {
                         script: cfg.script.into_boxed_str(),
-                        warnings: cfg.warnings,
+                        warnings: cfg.warnings.into(),
                         previous_password: cfg.previous_password,
                         www_certificate_needed: cfg.www_certificate
                             == crate::graphql::authenticated::device::WwwCertificate::Needed,
@@ -770,8 +771,8 @@ fn overview_message(id: u32, response: Response<DeviceOverview>) -> ShowDeviceMe
                 }),
                 bootstrap_plan: d.bootstrap_plan,
                 bootstrap_problem: d.bootstrap_problem,
-                watchdogs: d.watchdogs,
-                update_neighbors: d.update_neighbors,
+                watchdogs: d.watchdogs.into(),
+                update_neighbors: d.update_neighbors.into(),
                 power_supply: d.power_supply,
                 running_job,
                 jobs_over,

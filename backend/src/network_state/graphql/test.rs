@@ -218,12 +218,14 @@ fn a_feeding_port_gets_a_poe_edge() {
                 ("name", "ether1"),
                 ("default-name", "ether1"),
                 ("poe-out", "auto-on"),
-            ])],
+            ])]
+            .into(),
             monitor: vec![poe_row(&[
                 ("name", "ether1"),
                 ("poe-out-status", "powered-on"),
                 ("poe-out-power", "3.9"),
-            ])],
+            ])]
+            .into(),
         },
         ..DeviceMapData::default()
     });
@@ -257,11 +259,13 @@ fn a_poe_edge_needs_no_reading_from_the_far_device() {
                 ("name", "ether1"),
                 ("default-name", "ether1"),
                 ("poe-out", "auto-on"),
-            ])],
+            ])]
+            .into(),
             monitor: vec![poe_row(&[
                 ("name", "ether1"),
                 ("poe-out-status", "waiting-for-load"),
-            ])],
+            ])]
+            .into(),
         },
         ..DeviceMapData::default()
     });

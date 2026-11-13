@@ -204,7 +204,7 @@ struct OspfEnd {
     /// the router ID of its device
     router: Ipv4Addr,
     /// the IPv4 addresses (with OSPF) of the port or its bridge
-    nets: Vec<Ipv4Net>,
+    nets: Box<[Ipv4Net]>,
 }
 
 /// An end as OSPF sees it.
@@ -228,7 +228,7 @@ fn ospf_end(interface: &InterfaceAccess) -> Option<OspfEnd> {
     (!nets.is_empty()).then_some(OspfEnd {
         device: device.id(),
         router: router_id,
-        nets,
+        nets: nets.into(),
     })
 }
 

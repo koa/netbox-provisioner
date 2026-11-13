@@ -103,7 +103,7 @@ fn device(id: u32, pilot: bool) -> PlannedDevice {
         site: "site".into(),
         version: Some("7.23.8".into()),
         architecture: Some("arm".into()),
-        files: Vec::new(),
+        files: Box::default(),
         step: None,
         download: None,
         free_space: None,
@@ -113,8 +113,8 @@ fn device(id: u32, pilot: bool) -> PlannedDevice {
         error: None,
         pilot,
         depth: Some(1),
-        related: Vec::new(),
-        cut_by: Vec::new(),
+        related: Box::default(),
+        cut_by: Box::default(),
     }
 }
 
@@ -122,7 +122,7 @@ fn plan(devices: Vec<PlannedDevice>) -> RolloutPlan {
     RolloutPlan {
         channel: Channel::LongTerm,
         target: "7.24.6".into(),
-        devices,
+        devices: devices.into(),
     }
 }
 
@@ -286,7 +286,7 @@ async fn related_devices_take_turns() {
     let goes = [(1, Goes::Hangs), (2, Goes::Hangs), (4, Goes::Hangs)];
     let devices = Devices::new(&goes);
     let mut switch = device(3, false);
-    switch.related = vec![1, 2];
+    switch.related = vec![1, 2].into();
     let (log, _, handle) = start(
         plan(vec![
             device(1, false),
@@ -314,7 +314,7 @@ async fn related_devices_take_turns() {
 async fn a_device_waits_for_the_one_in_front() {
     let devices = Devices::new(&[]);
     let mut switch = device(3, false);
-    switch.related = vec![1];
+    switch.related = vec![1].into();
     let (log, _, handle) = start(plan(vec![switch, device(1, false)]), devices);
     handle.await.unwrap().unwrap();
     assert_eq!(

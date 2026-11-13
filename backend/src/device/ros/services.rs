@@ -151,7 +151,7 @@ impl BaseDeviceDataTarget {
             *target = current.data.clone();
         }
         Some(ApplyWarning::ApiClientsOutside(ApiClientsOutside {
-            clients: outside,
+            clients: outside.into(),
         }))
     }
 

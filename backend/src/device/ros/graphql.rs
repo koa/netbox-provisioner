@@ -203,7 +203,7 @@ impl AccessibleDevice {
                 packages: state.packages,
                 wanted: ["routeros".into()].into_iter().chain(wanted).collect(),
                 default_channel: CONFIG.routeros_channel.unwrap_or_default(),
-                channels,
+                channels: channels.into(),
             })
         };
         let fact = facts::get(
@@ -362,7 +362,7 @@ impl AccessibleDevice {
             }
             Ok(GeneratedCfg {
                 script,
-                menus,
+                menus: menus.into(),
                 previous_password,
                 www_certificate,
                 warnings: device_cfg
@@ -467,7 +467,7 @@ pub struct RouterOsVersions {
     wanted: Box<[Box<str>]>,
     /// the channel preselected for updates (`routeros_channel` of the config)
     default_channel: update::Channel,
-    channels: Vec<ChannelUpdate>,
+    channels: Box<[ChannelUpdate]>,
     /// whether the packages differ from `wanted`, which an update without channel fixes at
     /// the running version
     adjust_packages: bool,

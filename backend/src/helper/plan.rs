@@ -156,7 +156,7 @@ pub struct CreateInterface {
     pub kind: Box<str>,
     #[graphql(skip)]
     pub vlan: Option<u32>,
-    pub tags: Vec<flags::InterfaceTag>,
+    pub tags: Box<[flags::InterfaceTag]>,
     pub mac: Option<Box<str>>,
 }
 
@@ -273,7 +273,7 @@ pub struct UpdateInterface {
     pub label_before: Option<Box<str>>,
     pub mtu: Option<u16>,
     pub mtu_before: Option<u16>,
-    pub tags_added: Vec<flags::InterfaceTag>,
+    pub tags_added: Box<[flags::InterfaceTag]>,
     pub tags_removed: Vec<flags::InterfaceTag>,
     pub poe: Option<PoeMode>,
     pub poe_before: Option<PoeMode>,
@@ -354,7 +354,7 @@ pub struct UpdatePortVlan {
     pub interface: InterfaceRef,
     pub vlan: Option<VlanRef>,
     pub vlan_before: Option<VlanRef>,
-    pub tagged_before: Vec<VlanRef>,
+    pub tagged_before: Box<[VlanRef]>,
 }
 
 /// The interface `interface`, a virtual one without addresses left (they go in earlier

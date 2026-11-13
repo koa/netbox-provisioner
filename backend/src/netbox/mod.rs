@@ -152,7 +152,7 @@ pub async fn fetch_topology() -> Result<fetch_topology::FetchTopology, NetboxErr
 }
 
 fn netbox_url() -> &'static str {
-    CONFIG.netbox_url.as_str()
+    &CONFIG.netbox_url
 }
 
 /// NetBox' web UI, for links to its objects: `netbox_url` (the GraphQL endpoint) without
@@ -190,7 +190,7 @@ fn netbox_client() -> Result<reqwest::Client, NetboxError> {
     let mut headers = HeaderMap::new();
     headers.insert(
         AUTHORIZATION,
-        authorization_header(CONFIG.netbox_token.as_str()).parse()?,
+        authorization_header(&CONFIG.netbox_token).parse()?,
     );
 
     Ok(reqwest::Client::builder()

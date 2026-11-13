@@ -20,12 +20,12 @@ fn saved(device: u32) -> SavedJob {
             state: UpdateState::Rebooting,
             update: Box::new(SavedUpdate {
                 credentials: Some("lab".into()),
-                watchers: vec![("lab-np1".into(), Watching::default())],
+                watchers: vec![("lab-np1".into(), Watching::default())].into(),
                 run: UpdateRun {
                     from: "7.23.8".into(),
                     target: "7.24.5".into(),
                     newest_v6: "7.24.5".into(),
-                    wanted: vec!["wifi-qcom".into()],
+                    wanted: vec!["wifi-qcom".into()].into(),
                     partition: "part0".into(),
                     wait: Duration::from_secs(1500),
                     ospf: ["default-v2 192.168.100.1".into()].into(),
@@ -54,17 +54,17 @@ fn a_saved_job_is_read_back() {
                 armed_at: SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_000),
                 fires: SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_210),
                 unmarked: SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_000_090),
-                reprovision: vec!["/interface/wifi/radio".into()],
+                reprovision: vec!["/interface/wifi/radio".into()].into(),
             },
             hold: Some(SavedHold {
                 own: Some(Watching {
                     watch_address: Some("192.168.100.1".into()),
                     poe_pings: Vec::new(),
                 }),
-                others: vec![("lab-np1".into(), Watching::default())],
+                others: vec![("lab-np1".into(), Watching::default())].into(),
             }),
             batch: Some(SavedBatch {
-                devices: vec![DeviceId(7), DeviceId(8)],
+                devices: vec![DeviceId(7), DeviceId(8)].into(),
                 delay: Duration::from_secs(265),
             }),
         }),

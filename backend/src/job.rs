@@ -1303,7 +1303,7 @@ mod tests {
                         armed_at: SystemTime::now(),
                         fires: SystemTime::now(),
                         unmarked: SystemTime::now(),
-                        reprovision: Vec::new(),
+                        reprovision: Box::default(),
                     },
                     hold: None,
                     batch: None,

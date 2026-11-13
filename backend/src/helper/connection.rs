@@ -173,7 +173,7 @@ pub struct LinkPort {
     pub bridge: Option<Box<str>>,
     /// whether it has a cable, and the interfaces it reaches
     pub cabled: bool,
-    pub connected: Vec<InterfaceRef>,
+    pub connected: Box<[InterfaceRef]>,
 }
 
 /// The device's Ethernet ports (SFP included, no `lo` or radio: a direct link is a cable) in

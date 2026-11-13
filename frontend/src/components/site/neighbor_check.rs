@@ -36,7 +36,7 @@ use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
 #[derive(Debug, Clone, PartialEq, Properties)]
 pub struct NeighborCheckProps {
     /// id and name of each device to read
-    pub devices: Vec<(u32, Box<str>)>,
+    pub devices: Box<[(u32, Box<str>)]>,
 }
 
 pub enum DeviceResult {
@@ -57,7 +57,7 @@ pub struct NeighborCheck {
     /// the findings (device, finding) whose cable is being taken over
     taking_over: HashSet<(usize, usize)>,
     /// per device, once started: answers again when NetBox or the device changed
-    subscriptions: Vec<Subscription>,
+    subscriptions: Box<[Subscription]>,
 }
 
 pub enum NeighborCheckMsg {
@@ -76,7 +76,7 @@ impl Component for NeighborCheck {
         Self {
             results: None,
             taking_over: HashSet::new(),
-            subscriptions: Vec::new(),
+            subscriptions: Vec::new().into(),
         }
     }
 
@@ -86,7 +86,7 @@ impl Component for NeighborCheck {
                 let devices = &ctx.props().devices;
                 self.results = Some(devices.iter().map(|_| DeviceResult::Pending).collect());
                 self.taking_over.clear();
-                self.subscriptions.clear();
+                self.subscriptions = Box::default();
                 let scope = ctx.link().clone();
                 let ids = devices.iter().map(|(id, _)| *id as i32).collect();
                 spawn_local(async move {

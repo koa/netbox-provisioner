@@ -31,7 +31,7 @@ use yew_nested_router::components::Link;
 pub struct BatchJob {
     pub job: i32,
     pub device: i32,
-    pub name: String,
+    pub name: Box<str>,
     /// for the link to the device's page; `None` for the page's own device
     pub site: Option<i32>,
 }
@@ -141,7 +141,7 @@ impl Component for BatchApply {
                             .map(|(job, device, name)| BatchJob {
                                 job,
                                 device,
-                                name,
+                                name: name.into(),
                                 site: site(device),
                             })
                             .collect();

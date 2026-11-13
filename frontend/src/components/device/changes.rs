@@ -17,7 +17,7 @@ use yew::{Callback, Children, Html, Properties, function_component, html};
 #[derive(Debug, Clone, PartialEq)]
 pub struct GeneratedCfg {
     pub script: Box<str>,
-    pub warnings: Vec<Warning>,
+    pub warnings: Box<[Warning]>,
     /// the login went with the previous password: applying sets the current one, also without a
     /// script
     pub previous_password: bool,

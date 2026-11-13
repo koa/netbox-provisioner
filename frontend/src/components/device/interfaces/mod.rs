@@ -301,7 +301,7 @@ impl Interfaces {
                 />
             </div>
         };
-        let netbox: Rc<str> = view.netbox.as_str().into();
+        let netbox: Rc<str> = (&*view.netbox).into();
         let sections = tasks
             .iter()
             .filter(|task| self.filter.is_none_or(|filter| filter == **task))
@@ -314,7 +314,7 @@ impl Interfaces {
                 checked.other_addresses.clone(),
                 checked.other_leases.clone(),
             ),
-            _ => (Vec::new(), Vec::new(), Vec::new()),
+            _ => (Box::default(), Box::default(), Box::default()),
         };
         let unchecked = match &self.live {
             Live::Unchecked(message) => Some(html! {

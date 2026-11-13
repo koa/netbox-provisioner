@@ -304,7 +304,7 @@ pub struct VlanRef {
 pub struct VlanWithSeveralGateways {
     pub vlan: VlanRef,
     /// the interfaces with the addresses, on different devices
-    pub interfaces: Vec<InterfaceRef>,
+    pub interfaces: Box<[InterfaceRef]>,
 }
 /// No device has an address in the VLAN within one domain: its clients reach nothing. Not for
 /// the management VLAN of a WLAN group, which CAPsMAN uses on L2.
@@ -312,7 +312,7 @@ pub struct VlanWithSeveralGateways {
 pub struct VlanWithoutGateway {
     pub vlan: VlanRef,
     /// the interfaces with the VLAN untagged in that domain
-    pub interfaces: Vec<InterfaceRef>,
+    pub interfaces: Box<[InterfaceRef]>,
 }
 /// An Ethernet port carries tagged VLANs (its own, or its bridge's): not wanted, a VLAN goes to
 /// another device over VXLAN (`vxlan_vni` of its group), own APs and switches over a direct
@@ -347,7 +347,7 @@ pub enum RadioPathPart {
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct RadioPathIncomplete {
     pub radio: InterfaceRef,
-    pub missing: Vec<RadioPathPart>,
+    pub missing: Box<[RadioPathPart]>,
 }
 /// The label of a port cabled to a RouterOS device doesn't name it (`None`: no label). The
 /// generated port name carries it (`e02-ap1`), and „Verbindung“ sets it so.
@@ -691,7 +691,7 @@ fn vlans(topo: &Arc<Topology>, findings: &mut Vec<Finding>) {
                         devices: domain.iter().copied().collect(),
                         kind: FindingKind::VlanWithoutGateway(VlanWithoutGateway {
                             vlan: vlan_ref.clone(),
-                            interfaces,
+                            interfaces: interfaces.into(),
                         }),
                     });
                 }
@@ -1112,7 +1112,10 @@ fn radio_path(device: &DeviceAccess, findings: &mut Vec<Finding>) {
         findings.push(Finding {
             severity: Severity::Warning,
             devices: devices.into_iter().collect(),
-            kind: FindingKind::RadioPathIncomplete(RadioPathIncomplete { radio, missing }),
+            kind: FindingKind::RadioPathIncomplete(RadioPathIncomplete {
+                radio,
+                missing: missing.into(),
+            }),
         });
     }
 }

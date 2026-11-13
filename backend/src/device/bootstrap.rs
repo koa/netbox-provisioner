@@ -87,7 +87,7 @@ pub struct BootstrapPlan {
     /// the device that runs `/tool mac-telnet`
     pub neighbor: String,
     /// its port the cable starts at
-    pub neighbor_port: String,
+    pub neighbor_port: Box<str>,
     #[graphql(skip)]
     pub setup: MacTelnetSetup,
     #[graphql(skip)]
@@ -143,11 +143,11 @@ const PORT_NAMES_AGE: Duration = Duration::from_secs(10 * 60);
 #[derive(Clone, Debug, SimpleObject)]
 pub struct Discovered {
     pub mac: ScalarMac,
-    pub identity: String,
-    pub board: String,
-    pub version: String,
+    pub identity: Box<str>,
+    pub board: Box<str>,
+    pub version: Box<str>,
     /// the port as the neighbor names it (`ether2,bridge` behind a bridge)
-    pub interface: String,
+    pub interface: Box<str>,
 }
 
 /// What [`set_up`] does over a neighbor's console.
@@ -156,7 +156,7 @@ pub struct MacTelnetSetup {
     /// tried in this order, at least one; empty in a [`plan`] until the operator picks the device
     pub macs: Box<[MacAddress]>,
     /// factory name of the port the MAC belongs to
-    pub port: String,
+    pub port: Box<str>,
     /// address the port gets
     pub address: IpNet,
     /// NetBox has the address on the port's bridge: it goes on the bridge the port is in on the
@@ -276,7 +276,7 @@ pub fn plans(device: &DeviceAccess) -> Result<Vec<BootstrapPlan>, Error> {
                 neighbor_port: far.name().into(),
                 setup: MacTelnetSetup {
                     macs: Box::new([]),
-                    port: factory_name.to_string(),
+                    port: factory_name.to_string().into(),
                     address: port_address,
                     on_bridge,
                     neighbor_address: neighbor_port_address,
@@ -320,7 +320,7 @@ async fn discover(plan: BootstrapPlan) -> Result<Vec<Discovered>, Error> {
     let neighbor =
         connect::<SimpleResult>(plan.neighbor_address, &Path::Routed, &credentials).await?;
     // NetBox has the factory name, `/ip/neighbor` the one the provisioner gave the port
-    let mut names = vec![plan.neighbor_port.clone()];
+    let mut names = vec![plan.neighbor_port.to_string()];
     names.extend(neighbor_port_name(&plan).await.result()?.as_ref().clone());
     let mut found = Vec::new();
     for row in rows(&neighbor, "/ip/neighbor/print").await? {
@@ -335,9 +335,9 @@ async fn discover(plan: BootstrapPlan) -> Result<Vec<Discovered>, Error> {
         let text = |name| field(&row, name).unwrap_or_default().to_string();
         found.push(Discovered {
             mac: mac.into(),
-            identity: text("identity"),
-            board: text("board"),
-            version: text("version"),
+            identity: text("identity").into(),
+            board: text("board").into(),
+            version: text("version").into(),
             interface: interface.into(),
         });
     }
@@ -359,7 +359,7 @@ async fn check_neighbor(plan: &BootstrapPlan) -> Result<String, Error> {
                 let known = facts::peek::<Option<String>>(&key).and_then(|fact| fact.value.ok());
                 return Ok(known
                     .and_then(|name| name.as_ref().clone())
-                    .unwrap_or_else(|| plan.neighbor_port.clone()));
+                    .unwrap_or_else(|| plan.neighbor_port.to_string()));
             }
         };
     // RouterOS never answers a forward it doesn't allow, the tunnel would only time out
@@ -376,10 +376,10 @@ async fn check_neighbor(plan: &BootstrapPlan) -> Result<String, Error> {
         Ok(name) => name
             .as_ref()
             .clone()
-            .unwrap_or_else(|| plan.neighbor_port.clone()),
+            .unwrap_or_else(|| plan.neighbor_port.to_string()),
         Err(error) => {
             warn!("cannot read the port names of {}: {error}", plan.neighbor);
-            plan.neighbor_port.clone()
+            plan.neighbor_port.to_string()
         }
     })
 }
@@ -473,7 +473,7 @@ pub async fn bootstrap(
     log.enter(BootstrapState::Console);
     log.emit(SetupStarted {
         neighbor: plan.neighbor.as_str().into(),
-        neighbor_port: plan.neighbor_port.as_str().into(),
+        neighbor_port: plan.neighbor_port.clone(),
         macs: plan
             .setup
             .macs

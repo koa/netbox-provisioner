@@ -111,7 +111,7 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
                     label_before: end.label().map(Box::from),
                     mtu: None,
                     mtu_before: end.mtu(),
-                    tags_added: Vec::new(),
+                    tags_added: Box::default(),
                     tags_removed: end
                         .use_ospf()
                         .then_some(InterfaceTag::Ospf)

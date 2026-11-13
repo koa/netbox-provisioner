@@ -71,21 +71,21 @@ pub struct DeviceMode {
     /// `home`, `basic`, `advanced`, …
     pub mode: Box<str>,
     /// the features the provisioner needs that are off
-    pub changes: Vec<DeviceModeChange>,
+    pub changes: Box<[DeviceModeChange]>,
 }
 
 /// The device counts down: confirm by pressing its button or cutting its power within
 /// `timeout`.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct DeviceModeConfirm {
-    pub changes: Vec<DeviceModeChange>,
+    pub changes: Box<[DeviceModeChange]>,
     pub timeout: ScalarDuration,
 }
 
 /// The device runs with these features on (none: they were on already).
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct DeviceModeChanged {
-    pub changes: Vec<DeviceModeChange>,
+    pub changes: Box<[DeviceModeChange]>,
 }
 
 /// The features the provisioner needs on `device`; `partitions`: its flash can take two.
@@ -157,7 +157,7 @@ async fn read_with(
     };
     Ok(mode.map(|mode| DeviceMode {
         mode: field(&mode, "mode").unwrap_or_default().into(),
-        changes: missing(&mode, wanted),
+        changes: missing(&mode, wanted).into(),
     }))
 }
 

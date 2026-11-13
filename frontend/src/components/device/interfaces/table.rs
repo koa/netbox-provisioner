@@ -138,7 +138,7 @@ impl Entry {
     /// replace one of the row with the same helper (a link from the port, the other end open).
     fn actions(&self) -> Vec<Action> {
         let live = match &self.live {
-            RowLive::Checked(live) => live.actions.as_slice(),
+            RowLive::Checked(live) => &live.actions[..],
             RowLive::Pending | RowLive::Unchecked => &[],
         };
         let own = match &self.port {

@@ -110,7 +110,8 @@ fn standalone_markup(svg_ref: &NodeRef) -> Option<Standalone> {
         markup: format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{}",
             clone.outer_html()
-        ),
+        )
+        .into(),
         width,
         height,
     })
@@ -118,7 +119,7 @@ fn standalone_markup(svg_ref: &NodeRef) -> Option<Standalone> {
 
 /// [`standalone_markup`]'s document, and its size from the `viewBox`.
 struct Standalone {
-    markup: String,
+    markup: Box<str>,
     width: f64,
     height: f64,
 }

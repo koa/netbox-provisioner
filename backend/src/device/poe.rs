@@ -36,9 +36,9 @@ pub struct PoeObserved {
 #[derive(Debug, Clone, Default)]
 pub struct PoePorts {
     /// `/interface/ethernet/print`: a port with PoE out has `poe-out`
-    pub ethernet: Vec<Row>,
+    pub ethernet: Box<[Row]>,
     /// `/interface/ethernet/poe/monitor` of those ports
-    pub monitor: Vec<Row>,
+    pub monitor: Box<[Row]>,
 }
 
 /// Reads the Ethernet ports and the state of their PoE out.
@@ -60,7 +60,10 @@ pub async fn read_ports(client: &RawDevice<SimpleResult>) -> Result<PoePorts, Er
             .await?
         }
     };
-    Ok(PoePorts { ethernet, monitor })
+    Ok(PoePorts {
+        ethernet: ethernet.into(),
+        monitor: monitor.into(),
+    })
 }
 
 /// Reads which ports of the device feed something now, and what NetBox and the neighbors say is
@@ -433,14 +436,16 @@ mod test {
                 with_poe("ether5", "ether5"),
                 with_poe("ether6", "ether6"),
                 with_poe("ether7", "ether7"),
-            ],
+            ]
+            .into(),
             monitor: vec![
                 status("e03-cam", "waiting-for-load"),
                 status("ether4", "powered-on"),
                 status("ether5", "powered-on"),
                 status("ether6", "waiting-for-load"),
                 status("ether7", "powered-on"),
-            ],
+            ]
+            .into(),
         };
         let found = mismatches(&sw, &ports_read)
             .into_iter()
@@ -477,11 +482,12 @@ mod test {
         };
         let status = |name: &str, status: &str| row(&[("name", name), ("poe-out-status", status)]);
         let ports = PoePorts {
-            ethernet: vec![with_poe("ether2"), with_poe("ether3")],
+            ethernet: vec![with_poe("ether2"), with_poe("ether3")].into(),
             monitor: vec![
                 status("ether2", "powered-on"),
                 status("ether3", "powered-on"),
-            ],
+            ]
+            .into(),
         };
         let found = feeding(&sw, &ports)
             .into_iter()

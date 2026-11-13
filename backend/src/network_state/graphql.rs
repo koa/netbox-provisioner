@@ -37,12 +37,12 @@ pub struct NetworkState {
     age: u32,
     /// why no router answered
     error: Option<String>,
-    nodes: Vec<MapNode>,
-    edges: Vec<MapEdge>,
+    nodes: Box<[MapNode]>,
+    edges: Box<[MapEdge]>,
     /// routers in the LSDB that are no device in NetBox (production behind the lab's uplink)
     outside: u32,
     /// the site's routers that share a segment with those
-    outside_at: Vec<u32>,
+    outside_at: Box<[u32]>,
 }
 
 /// `Query.topology.networkStateDetails`: health, resources and PoE edges of `network_state`'s
@@ -50,17 +50,17 @@ pub struct NetworkState {
 /// asked separately so `networkState` doesn't wait on it.
 #[derive(SimpleObject)]
 pub struct NetworkStateDetails {
-    nodes: Vec<MapNodeDetails>,
+    nodes: Box<[MapNodeDetails]>,
     /// PSE→PD arrows, one per port currently feeding or modeled to (`docs/concepts/network-map.md`,
     /// step 4), only where NetBox has a cable to the fed port
-    poe_edges: Vec<MapPoeEdge>,
+    poe_edges: Box<[MapPoeEdge]>,
 }
 
 #[derive(SimpleObject)]
 pub struct MapNodeDetails {
     device: DeviceRef,
     /// `/system/health/print`, generic, not judged (`docs/concepts/network-map.md`, step 3)
-    health: Vec<MapHealth>,
+    health: Box<[MapHealth]>,
     resources: Option<MapResources>,
 }
 
@@ -99,19 +99,19 @@ pub struct MapPosition {
 
 #[derive(SimpleObject)]
 pub struct MapHealth {
-    name: String,
-    value: String,
+    name: Box<str>,
+    value: Box<str>,
     unit: Option<String>,
 }
 
 #[derive(SimpleObject)]
 pub struct MapResources {
-    uptime: String,
+    uptime: Box<str>,
     cpu_load: u32,
     free_memory: ScalarU64,
     total_memory: ScalarU64,
     free_hdd_space: ScalarU64,
-    version: String,
+    version: Box<str>,
 }
 
 impl From<&DeviceMapData> for (Vec<MapHealth>, Option<MapResources>) {
@@ -120,18 +120,18 @@ impl From<&DeviceMapData> for (Vec<MapHealth>, Option<MapResources>) {
             .health
             .iter()
             .map(|row| MapHealth {
-                name: row.name.to_string(),
-                value: row.value.to_string(),
+                name: row.name.clone(),
+                value: row.value.clone(),
                 unit: row.unit.as_deref().map(str::to_string),
             })
             .collect();
         let resources = data.resources.as_ref().map(|r| MapResources {
-            uptime: r.uptime.to_string(),
+            uptime: r.uptime.clone(),
             cpu_load: r.cpu_load,
             free_memory: r.free_memory.into(),
             total_memory: r.total_memory.into(),
             free_hdd_space: r.free_hdd_space.into(),
-            version: r.version.to_string(),
+            version: r.version.clone(),
         });
         (health, resources)
     }
@@ -465,8 +465,8 @@ fn build(
         read_from: read_from.as_ref().map(device_ref),
         age,
         error,
-        nodes: result_nodes,
-        edges: result_edges,
+        nodes: result_nodes.into(),
+        edges: result_edges.into(),
         outside: outside.len() as u32,
         outside_at,
     }
@@ -497,14 +497,17 @@ fn build_details(
             let (health, resources) = (&**data).into();
             Some(MapNodeDetails {
                 device: device_ref(device),
-                health,
+                health: health.into(),
                 resources,
             })
         })
         .collect::<Vec<_>>();
     nodes.sort_by(|a, b| a.device.name.cmp(&b.device.name));
     let poe_edges = poe_edges(candidates, device_data);
-    NetworkStateDetails { nodes, poe_edges }
+    NetworkStateDetails {
+        nodes: nodes.into(),
+        poe_edges: poe_edges.into(),
+    }
 }
 
 #[cfg(test)]

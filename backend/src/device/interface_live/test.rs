@@ -151,7 +151,7 @@ fn findings_go_to_the_row_of_their_port() {
     );
     assert_eq!(live_row(&live, &r1, "ether1").findings.len(), 1);
     assert!(matches!(
-        live.other_findings.as_slice(),
+        &live.other_findings[..],
         [NeighborFinding {
             kind: NeighborFindingKind::DiscoveryOff(_),
             ..
@@ -440,7 +440,8 @@ fn device_only_leases_go_to_the_row_of_their_server() {
         servers: vec![row(&[
             ("name", "dhcp-bridge-clients"),
             ("interface", "bridge-clients"),
-        ])],
+        ])]
+        .into(),
         leases: vec![
             lease(&[
                 ("address", "10.10.0.50"),
@@ -469,7 +470,8 @@ fn device_only_leases_go_to_the_row_of_their_server() {
                 ("address", "172.17.1.10"),
                 ("mac-address", "AA:BB:CC:DD:EE:05"),
             ]),
-        ],
+        ]
+        .into(),
     };
     let neighbors = Neighbors {
         findings: Vec::new(),

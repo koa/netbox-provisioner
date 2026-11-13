@@ -36,9 +36,9 @@ pub struct PortVlanInput {
 /// What „VLAN am Port“ can choose from for a device.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct PortVlanOptions {
-    pub ports: Vec<PortVlanPort>,
+    pub ports: Box<[PortVlanPort]>,
     /// the VLAN groups with a VLAN a port can have, by name
-    pub groups: Vec<PortVlanGroup>,
+    pub groups: Box<[PortVlanGroup]>,
     /// the group to start with: of a VLAN the device has, one of a WLAN first
     pub group: Option<u32>,
 }
@@ -238,7 +238,7 @@ pub fn options(device: &DeviceAccess) -> PortVlanOptions {
                 vlan: port.untagged_vlan().as_ref().and_then(vlan_ref),
             })
             .collect(),
-        groups,
+        groups: groups.into(),
         group,
     }
 }

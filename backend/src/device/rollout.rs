@@ -41,7 +41,7 @@ pub struct RolloutPlan {
     /// the newest release of the channel
     pub target: Box<str>,
     /// the devices to update in their order, then those left out
-    pub devices: Vec<PlannedDevice>,
+    pub devices: Box<[PlannedDevice]>,
 }
 
 /// One RouterOS device of the sites chosen.
@@ -56,7 +56,7 @@ pub struct PlannedDevice {
     pub architecture: Option<Box<str>>,
     /// the package files the update installs (only the packages where it stays at its
     /// version)
-    pub files: Vec<Box<str>>,
+    pub files: Box<[Box<str>]>,
     /// the version of those files: the update's first step (the newest v6 for a v6 device)
     pub step: Option<Box<str>>,
     /// their size, from MikroTik's server
@@ -77,10 +77,10 @@ pub struct PlannedDevice {
     pub depth: Option<u32>,
     /// the devices of the plan it doesn't update at the same time as (ids): those behind it on
     /// the ways, those it powers and those powering it
-    pub related: Vec<u32>,
+    pub related: Box<[u32]>,
     /// the devices of the plan whose reboot takes it offline (ids): those it is behind on the
     /// ways and those powering it
-    pub cut_by: Vec<u32>,
+    pub cut_by: Box<[u32]>,
 }
 
 /// How the device comes back from an update that fails.
@@ -154,8 +154,8 @@ pub async fn plan(sites: &[SiteAccess], channel: Channel) -> Result<RolloutPlan,
         .map(|(index, device)| {
             let result = read.remove(&index).unwrap_or(Err(Error::Cancelled));
             let mut planned = planned_device(device, result, depths.get(device.name()).copied());
-            planned.related = related(device, &paths, &ids);
-            planned.cut_by = cut_by(device, &behind, &ids);
+            planned.related = related(device, &paths, &ids).into();
+            planned.cut_by = cut_by(device, &behind, &ids).into();
             planned
         })
         .collect::<Vec<_>>();
@@ -370,7 +370,7 @@ fn planned_device(
             .unwrap_or_default(),
         version: None,
         architecture: None,
-        files: Vec::new(),
+        files: Box::default(),
         step: None,
         download: None,
         free_space: None,
@@ -384,8 +384,8 @@ fn planned_device(
         error: None,
         pilot: false,
         depth,
-        related: Vec::new(),
-        cut_by: Vec::new(),
+        related: Box::default(),
+        cut_by: Box::default(),
     };
     let read = match read {
         Ok(read) => read,
@@ -407,7 +407,7 @@ fn planned_device(
         return planned;
     };
     planned.step = Some(step.version.to_string().into());
-    planned.files = step.files.into_vec();
+    planned.files = step.files;
     planned.download = read.download.map(ScalarU64);
     planned.skip = if read.leftovers {
         Some(RolloutSkip::Leftovers)

@@ -79,7 +79,7 @@ impl Component for Partitions {
                             asking: self.confirm_boot.as_ref() == Some(&p.name),
                             question: t::PARTITION_BOOT_CONFIRM.into(),
                             now: t::PARTITION_BOOT_NOW,
-                            ask: t::partition_boot(&p.name),
+                            ask: t::partition_boot(&p.name).into(),
                             disabled: props.disabled,
                         }
                         .view(

@@ -59,7 +59,7 @@ pub(crate) struct RadioHold {
     device: Box<str>,
     /// the applied device's own, as it was
     own: Option<Watching>,
-    others: Vec<Suspended<AccessibleDevice>>,
+    others: Box<[Suspended<AccessibleDevice>]>,
 }
 
 impl RadioHold {
@@ -108,7 +108,7 @@ impl RadioHold {
         let mut hold = RadioHold {
             device,
             own,
-            others: Vec::new(),
+            others: Box::default(),
         };
         let mut links = Vec::new();
         for watcher in depending(&link.device_config, applied, claimed) {
@@ -120,12 +120,12 @@ impl RadioHold {
             links.push(WatcherLink {
                 device: watcher.name().into(),
                 supplier: false,
-                powered: Vec::new(),
+                powered: Box::default(),
                 link: reached,
             });
         }
         match watchdog::suspend_all(links, log).await {
-            Ok(others) => hold.others = others,
+            Ok(others) => hold.others = others.into(),
             Err(error) => {
                 hold.release(link, log).await;
                 return Err(error);
@@ -159,7 +159,7 @@ impl RadioHold {
                 }),
             }
         }
-        watchdog::restore_all(self.others, log).await;
+        watchdog::restore_all(self.others.into_vec(), log).await;
     }
 
     /// What it holds, to hold it again after a restart (`saved_job`).
@@ -234,7 +234,7 @@ impl RadioHold {
         RadioHold {
             device,
             own: saved.own.clone(),
-            others,
+            others: others.into(),
         }
     }
 

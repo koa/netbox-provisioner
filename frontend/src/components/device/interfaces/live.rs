@@ -49,11 +49,11 @@ pub struct Checked {
     pub read_at: f64,
     /// by the row's interface
     pub rows: HashMap<i32, Rc<LiveRow>>,
-    pub other_findings: Vec<NeighborFinding>,
+    pub other_findings: Box<[NeighborFinding]>,
     /// the addresses only the device has on an interface of no row
-    pub other_addresses: Vec<DeviceOnly>,
+    pub other_addresses: Box<[DeviceOnly]>,
     /// the static leases only the device has of a server on no row
-    pub other_leases: Vec<DeviceOnlyLease>,
+    pub other_leases: Box<[DeviceOnlyLease]>,
 }
 
 /// What a row's live checks say.
@@ -66,21 +66,21 @@ pub enum RowLive {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LiveRow {
-    pub seen: Vec<Seen>,
-    pub ospf: Vec<OspfNeighbor>,
-    pub ospf_missing: Vec<Device>,
+    pub seen: Box<[Seen]>,
+    pub ospf: Box<[OspfNeighbor]>,
+    pub ospf_missing: Box<[Device]>,
     /// an adjacency where NetBox has no `ospf`: the next apply cuts it
     pub ospf_untagged: bool,
-    pub bridges: Vec<BridgeAnswer>,
-    pub findings: Vec<NeighborFinding>,
+    pub bridges: Box<[BridgeAnswer]>,
+    pub findings: Box<[NeighborFinding]>,
     /// the addresses only the device has there: the next apply removes them
-    pub device_only: Vec<DeviceOnly>,
+    pub device_only: Box<[DeviceOnly]>,
     /// the static leases only the device has there: the next apply removes them
-    pub device_only_leases: Vec<DeviceOnlyLease>,
+    pub device_only_leases: Box<[DeviceOnlyLease]>,
     /// its ports whose PoE mode in NetBox the device contradicts
-    pub poe: Vec<PoeMismatch>,
+    pub poe: Box<[PoeMismatch]>,
     /// what the findings suggest, as the row's actions
-    pub actions: Vec<Action>,
+    pub actions: Box<[Action]>,
 }
 
 impl Live {
@@ -319,15 +319,15 @@ impl Checked {
             .into_iter()
             .map(|row| {
                 let live = LiveRow {
-                    seen: row.seen,
-                    ospf: row.ospf,
-                    ospf_missing: row.ospf_missing,
+                    seen: row.seen.into(),
+                    ospf: row.ospf.into(),
+                    ospf_missing: row.ospf_missing.into(),
                     ospf_untagged: row.ospf_untagged,
-                    bridges: row.bridges,
-                    findings: row.findings,
-                    device_only: row.device_only_addresses,
-                    device_only_leases: row.device_only_leases,
-                    poe: row.poe,
+                    bridges: row.bridges.into(),
+                    findings: row.findings.into(),
+                    device_only: row.device_only_addresses.into(),
+                    device_only_leases: row.device_only_leases.into(),
+                    poe: row.poe.into(),
                     actions: row
                         .actions
                         .into_iter()
@@ -340,9 +340,9 @@ impl Checked {
         Some(Checked {
             read_at: read_at(access.interface_live_age),
             rows,
-            other_findings: live.other_findings,
-            other_addresses: live.other_addresses,
-            other_leases: live.other_leases,
+            other_findings: live.other_findings.into(),
+            other_addresses: live.other_addresses.into(),
+            other_leases: live.other_leases.into(),
         })
     }
 }

@@ -535,7 +535,7 @@ fn map(
                 area_side(node_ids.len()),
                 &HashMap::new(),
             ),
-            circles: Vec::new(),
+            circles: Vec::new().into(),
         }
     };
     if site_count > 1 {
@@ -595,7 +595,7 @@ fn map(
         html! {
             <g class="map-site" {onpointerdown}>
                 <circle cx={c.center.x.to_string()} cy={c.center.y.to_string()} r={c.radius.to_string()}/>
-                <text x={c.center.x.to_string()} y={(c.center.y - c.radius - 8.0).to_string()}>{&c.name}</text>
+                <text x={c.center.x.to_string()} y={(c.center.y - c.radius - 8.0).to_string()}>{&*c.name}</text>
             </g>
         }
     });

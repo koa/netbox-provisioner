@@ -42,14 +42,14 @@ impl<K: PartialEq> Edge<K> {
 
 /// The nodes and edges of a map ([`graph`]).
 pub(super) struct Graph {
-    pub(super) nodes: Vec<i32>,
-    pub(super) edges: Vec<Edge<i32>>,
+    pub(super) nodes: Box<[i32]>,
+    pub(super) edges: Box<[Edge<i32>]>,
 }
 
 /// Where [`clustered_layout`] puts the devices, and the sites' circles.
 pub(super) struct Clustered {
     pub(super) positions: HashMap<i32, Point>,
-    pub(super) circles: Vec<SiteCircle>,
+    pub(super) circles: Box<[SiteCircle]>,
 }
 
 /// `state`'s nodes (plus the outside node, if any, pulled toward the routers it borders) and
@@ -73,7 +73,10 @@ pub(super) fn graph(state: &State) -> Graph {
                 .map(|&id| Edge { a: OUTSIDE, b: id }),
         );
     }
-    Graph { nodes, edges }
+    Graph {
+        nodes: nodes.into(),
+        edges: edges.into(),
+    }
 }
 
 /// A side length that gives `count` nodes roughly as much room as the old column layout did
@@ -283,7 +286,7 @@ pub(super) enum Cluster {
 /// A site's devices, grouped into their own circle.
 pub(super) struct SiteCircle {
     pub(super) site: i32,
-    pub(super) name: String,
+    pub(super) name: Box<str>,
     pub(super) center: Point,
     pub(super) radius: f64,
 }
@@ -651,7 +654,7 @@ pub(super) fn clustered_layout(state: &State, pinned: &HashMap<i32, Point>) -> C
     if node_ids.is_empty() {
         return Clustered {
             positions: HashMap::new(),
-            circles: Vec::new(),
+            circles: Vec::new().into(),
         };
     }
     let site_of: HashMap<i32, Option<i32>> = state
@@ -950,7 +953,7 @@ pub(super) fn clustered_layout(state: &State, pinned: &HashMap<i32, Point>) -> C
                 let name = site_name_of.get(&site).cloned().unwrap_or_default();
                 circles.push(SiteCircle {
                     site,
-                    name,
+                    name: name.into(),
                     center,
                     radius: promised_radius + SITE_PADDING,
                 });
@@ -959,8 +962,8 @@ pub(super) fn clustered_layout(state: &State, pinned: &HashMap<i32, Point>) -> C
         }
         SitesLaidOut {
             positions,
-            circles,
-            circle_members,
+            circles: circles.into(),
+            circle_members: circle_members.into(),
         }
     };
     let SitesLaidOut {
@@ -1078,7 +1081,7 @@ struct Recentered {
 /// Every site laid out around its center (`clustered_layout`'s `lay_out_sites`).
 struct SitesLaidOut {
     positions: HashMap<i32, Point>,
-    circles: Vec<SiteCircle>,
+    circles: Box<[SiteCircle]>,
     /// the devices of each of `circles`
-    circle_members: Vec<Vec<i32>>,
+    circle_members: Box<[Vec<i32>]>,
 }

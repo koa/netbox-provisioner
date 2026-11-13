@@ -36,13 +36,13 @@ use std::{collections::BTreeSet, net::IpAddr};
 
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct InterfaceLive {
-    pub rows: Vec<LiveRow>,
+    pub rows: Box<[LiveRow]>,
     /// the neighbor findings on no row (a port NetBox doesn't have, discovery off)
-    pub other_findings: Vec<NeighborFinding>,
+    pub other_findings: Box<[NeighborFinding]>,
     /// the addresses only the device has on an interface of no row
-    pub other_addresses: Vec<DeviceOnlyAddress>,
+    pub other_addresses: Box<[DeviceOnlyAddress]>,
     /// the static leases only the device has of a server on no row
-    pub other_leases: Vec<DeviceOnlyLease>,
+    pub other_leases: Box<[DeviceOnlyLease]>,
 }
 
 /// What the device shows at a row.
@@ -53,22 +53,22 @@ pub struct LiveRow {
     /// who the device sees at its ports
     pub seen: Vec<SeenNeighbor>,
     /// its OSPF neighbors at the row's interface
-    pub ospf: Vec<OspfNeighbor>,
+    pub ospf: Box<[OspfNeighbor]>,
     /// the routers NetBox puts at the other end (OSPF on the row) with no adjacency there
-    pub ospf_missing: Vec<DeviceRef>,
+    pub ospf_missing: Box<[DeviceRef]>,
     /// an OSPF neighbor is adjacent at the row, whose interface NetBox has without `ospf`: the
     /// next apply takes OSPF off there and cuts it (E8)
     pub ospf_untagged: bool,
     /// the bridge devices of a radio link, asked at their primary IPv4
-    pub bridges: Vec<BridgeAnswer>,
+    pub bridges: Box<[BridgeAnswer]>,
     /// the neighbor findings about its ports, the worst first
     pub findings: Vec<NeighborFinding>,
     /// the addresses the device has at the row's interfaces and NetBox doesn't: the next apply
     /// removes them
-    pub device_only_addresses: Vec<DeviceOnlyAddress>,
+    pub device_only_addresses: Box<[DeviceOnlyAddress]>,
     /// the static DHCP leases of the row's server that NetBox has no client for: the next
     /// apply removes them
-    pub device_only_leases: Vec<DeviceOnlyLease>,
+    pub device_only_leases: Box<[DeviceOnlyLease]>,
     /// the row's ports whose PoE mode in NetBox the device contradicts
     pub poe: Vec<PoeMismatch>,
     /// what the findings suggest: the link to the router the device sees at a port, an
@@ -90,7 +90,7 @@ pub struct DeviceOnlyLease {
     pub name: Option<Box<str>>,
     pub disabled: bool,
     /// its settings NetBox doesn't hold and a takeover loses (`block-access`, `rate-limit` …)
-    pub settings: Vec<Box<str>>,
+    pub settings: Box<[Box<str>]>,
     /// NetBox has the address on this device, which isn't a lease client (RouterOS, no MAC)
     pub elsewhere: Option<DeviceRef>,
     /// NetBox has the address on no interface
@@ -149,8 +149,8 @@ pub async fn read(
     let hand_made = hand_made_interfaces(&rows(client, "/interface/print").await?);
     addresses.retain(|row| !field(row, "interface").is_some_and(|name| hand_made.contains(name)));
     let dhcp = Dhcp {
-        servers: rows(client, "/ip/dhcp-server/print").await?,
-        leases: rows(client, "/ip/dhcp-server/lease/print").await?,
+        servers: rows(client, "/ip/dhcp-server/print").await?.into(),
+        leases: rows(client, "/ip/dhcp-server/lease/print").await?.into(),
     };
     let rows = device.interface_rows();
     let bridges = rows
@@ -207,8 +207,8 @@ pub fn place_poe(live: &mut InterfaceLive, rows: &[RowOf], poe: Vec<PoeMismatch>
 /// What the device answers about DHCP: its servers and leases.
 #[derive(Debug, Default)]
 pub struct Dhcp {
-    pub servers: Vec<Row>,
-    pub leases: Vec<Row>,
+    pub servers: Box<[Row]>,
+    pub leases: Box<[Row]>,
 }
 
 /// [`read`] on what the device answered.
@@ -387,13 +387,13 @@ pub fn check(
             LiveRow {
                 interface: row.interface.id,
                 seen,
-                ospf: ospf_here,
+                ospf: ospf_here.into(),
                 ospf_missing,
                 ospf_untagged,
                 bridges,
                 findings,
-                device_only_addresses,
-                device_only_leases,
+                device_only_addresses: device_only_addresses.into(),
+                device_only_leases: device_only_leases.into(),
                 poe: Vec::new(),
                 actions,
             }

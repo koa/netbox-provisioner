@@ -62,7 +62,7 @@ pub enum HelperFlowMsg {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bridge {
     id: u32,
-    text: String,
+    text: Box<str>,
 }
 
 impl Display for Bridge {
@@ -230,7 +230,7 @@ impl HelperFlow {
                     if bridges.is_empty() {
                         <p>{t::NO_BRIDGE_DEVICES}</p>
                     } else if locked {
-                        <p>{ self.bridge.as_ref().map(|b| b.text.clone()).unwrap_or_default() }</p>
+                        <p>{ self.bridge.as_ref().map(|b| &*b.text).unwrap_or_default() }</p>
                     } else {
                         <Select<Bridge>
                             placeholder={t::CHOOSE_BRIDGE_DEVICE}
@@ -274,7 +274,8 @@ fn fetch_bridges(ctx: &Context<HelperFlow>) {
                         &candidate.device.name,
                         &candidate.radio.name,
                         candidate.peer.as_ref().map(|peer| peer.name.as_str()),
-                    ),
+                    )
+                    .into(),
                 })
                 .collect()
         });

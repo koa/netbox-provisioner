@@ -57,9 +57,9 @@ pub(crate) struct Facts {
 /// The device types, roles and WLAN groups to choose from.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct NewDeviceOptions {
-    pub device_types: Vec<DeviceTypeOption>,
-    pub roles: Vec<RoleOption>,
-    pub wlan_groups: Vec<WlanGroupOption>,
+    pub device_types: Box<[DeviceTypeOption]>,
+    pub roles: Box<[RoleOption]>,
+    pub wlan_groups: Box<[WlanGroupOption]>,
 }
 
 /// A WLAN group with its controller (one without is ignored by the generator).
@@ -130,9 +130,9 @@ pub async fn options(topology: &Arc<Topology>) -> Result<NewDeviceOptions, Error
         .collect::<Vec<_>>();
     wlan_groups.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(NewDeviceOptions {
-        device_types,
-        roles,
-        wlan_groups,
+        device_types: device_types.into(),
+        roles: roles.into(),
+        wlan_groups: wlan_groups.into(),
     })
 }
 
@@ -327,7 +327,7 @@ pub(crate) fn base(
         name: far_port.into(),
         kind: port_type(far_port).into(),
         vlan: None,
-        tags: Vec::new(),
+        tags: Box::default(),
         mac: None,
     }));
     let new_port = InterfaceRef {
@@ -356,7 +356,7 @@ pub(crate) fn base(
             label_before: None,
             mtu: None,
             mtu_before: None,
-            tags_added: Vec::new(),
+            tags_added: Box::default(),
             tags_removed: Vec::new(),
             poe: Some(PoeMode::Pd),
             poe_before: None,

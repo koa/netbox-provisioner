@@ -106,7 +106,7 @@ pub struct SavedUpdate {
     /// the credentials it was reached with, by name, as for an apply
     pub credentials: Option<Box<str>>,
     /// the watchdogs of other devices it suspended (`suspendWatchdogs`), by device
-    pub watchers: Vec<(Box<str>, Watching)>,
+    pub watchers: Box<[(Box<str>, Watching)]>,
     #[serde(flatten)]
     pub run: UpdateRun,
 }
@@ -119,7 +119,7 @@ pub struct UpdateRun {
     pub target: Box<str>,
     /// the newest RouterOS 6, a step on the way from 6 (the target where it started on 7)
     pub newest_v6: Box<str>,
-    pub wanted: Vec<Box<str>>,
+    pub wanted: Box<[Box<str>]>,
     /// the partition the fallback switches back to
     pub partition: Box<str>,
     /// how long a reboot is waited for, counted from entering `Rebooting`
@@ -136,7 +136,7 @@ pub struct UpdateRun {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SavedBatch {
     /// all its devices, this one among them
-    pub devices: Vec<DeviceId>,
+    pub devices: Box<[DeviceId]>,
     /// the delay of its fallbacks, firing together
     pub delay: Duration,
 }
@@ -157,14 +157,14 @@ pub struct ScriptRun {
     #[serde(with = "unix_seconds")]
     pub unmarked: SystemTime,
     /// the radios provisioned again after it (`reprovisioned_menus`)
-    pub reprovision: Vec<Box<str>>,
+    pub reprovision: Box<[Box<str>]>,
 }
 
 /// The watchdogs an apply holds suspended: the device's own (as it was), and others' by name.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SavedHold {
     pub own: Option<Watching>,
-    pub others: Vec<(Box<str>, Watching)>,
+    pub others: Box<[(Box<str>, Watching)]>,
 }
 
 /// `at`, by the server's clock, as an `Instant` of this run.

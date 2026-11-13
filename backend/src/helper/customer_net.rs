@@ -72,10 +72,10 @@ pub struct DhcpRangeInput {
 /// What „Kunden-Netz“ can choose from for a device.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct CustomerNetOptions {
-    pub interfaces: Vec<CustomerNetInterface>,
-    pub vlans: Vec<CustomerNetVlan>,
-    pub parents: Vec<CustomerNetParent>,
-    pub parents_v6: Vec<CustomerNetParent>,
+    pub interfaces: Box<[CustomerNetInterface]>,
+    pub vlans: Box<[CustomerNetVlan]>,
+    pub parents: Box<[CustomerNetParent]>,
+    pub parents_v6: Box<[CustomerNetParent]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -164,8 +164,8 @@ pub fn options(device: &DeviceAccess) -> CustomerNetOptions {
             .collect()
     };
     CustomerNetOptions {
-        interfaces: free,
-        vlans,
+        interfaces: free.into(),
+        vlans: vlans.into(),
         parents: parents(false),
         parents_v6: parents(true),
     }
@@ -319,7 +319,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
             label_before: interface.label().map(Box::from),
             mtu: None,
             mtu_before: interface.mtu(),
-            tags_added: vec![InterfaceTag::Dhcp],
+            tags_added: vec![InterfaceTag::Dhcp].into(),
             tags_removed: Vec::new(),
             poe: None,
             poe_before: None,
@@ -471,7 +471,7 @@ mod test {
                 name: name.clone(),
                 kind: "virtual".into(),
                 vlan: Some(vlan.id.0),
-                tags: vec![InterfaceTag::Dhcp],
+                tags: vec![InterfaceTag::Dhcp].into(),
                 mac: None,
             }),
             PlanStep::CreatePrefix(CreatePrefix {

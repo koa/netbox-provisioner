@@ -46,14 +46,14 @@ pub enum InterfaceTask {
 /// The interfaces of a device by task, in NetBox' order of names.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct InterfaceView {
-    pub rows: Vec<InterfaceRow>,
+    pub rows: Box<[InterfaceRow]>,
     /// the findings about the device as a whole (no `lo`, the primary IPv4): they belong
     /// with the loopback
-    pub device_findings: Vec<Finding>,
+    pub device_findings: Box<[Finding]>,
     /// the findings of the device on none of its interfaces (a WLAN of its group)
-    pub other_findings: Vec<Finding>,
+    pub other_findings: Box<[Finding]>,
     /// what the helpers can do for the loopback (also where there is none)
-    pub loopback_actions: Vec<RowAction>,
+    pub loopback_actions: Box<[RowAction]>,
 }
 
 /// What a button of a row does: complete what is there, take the link out of NetBox, give an
@@ -145,10 +145,10 @@ pub struct InterfaceRow {
     pub interface: InterfaceRef,
     pub label: Option<Box<str>>,
     /// the ports of a bridge
-    pub ports: Vec<InterfaceRef>,
+    pub ports: Box<[InterfaceRef]>,
     /// the same ports, each with what it is cabled to and its own actions
-    pub port_rows: Vec<PortRow>,
-    pub addresses: Vec<AddressRef>,
+    pub port_rows: Box<[PortRow]>,
+    pub addresses: Box<[AddressRef]>,
     pub ospf: bool,
     pub dhcp: bool,
     pub dhcp_client: bool,
@@ -156,13 +156,13 @@ pub struct InterfaceRow {
     pub internet: bool,
     pub mtu: Option<u16>,
     pub untagged_vlan: Option<VlanRef>,
-    pub tagged_vlans: Vec<VlanRef>,
+    pub tagged_vlans: Box<[VlanRef]>,
     /// the interfaces its cables (or its ports' cables) end at, on other devices
-    pub far_ends: Vec<InterfaceRef>,
+    pub far_ends: Box<[InterfaceRef]>,
     /// a radio link: the way to the router on the other side
     pub radio_path: Option<RadioPath>,
     /// a customer port without an address here: the devices with an address on its VLAN
-    pub gateways: Vec<DeviceRef>,
+    pub gateways: Box<[DeviceRef]>,
     /// no cable, no address, no VLAN, no tag, no label: nothing in NetBox
     pub free: bool,
     /// the worst first
@@ -177,7 +177,7 @@ pub struct PortRow {
     pub interface: InterfaceRef,
     pub label: Option<Box<str>>,
     /// the interfaces its cable ends at
-    pub far_ends: Vec<InterfaceRef>,
+    pub far_ends: Box<[InterfaceRef]>,
     pub actions: Vec<RowAction>,
 }
 
@@ -307,8 +307,8 @@ impl DeviceAccess {
             .collect();
         InterfaceView {
             rows: rows.into_iter().map(|of| of.row).collect(),
-            device_findings,
-            other_findings,
+            device_findings: device_findings.into(),
+            other_findings: other_findings.into(),
             loopback_actions,
         }
     }
@@ -437,9 +437,9 @@ fn row(interface: &InterfaceAccess, ports: &[InterfaceAccess]) -> RowOf {
             .tagged_vlans()
             .filter_map(|v| vlan_ref(&v))
             .collect(),
-        far_ends: far_end_refs,
+        far_ends: far_end_refs.into(),
         radio_path,
-        gateways,
+        gateways: gateways.into(),
         free,
         findings: Vec::new(),
         actions: Vec::new(),

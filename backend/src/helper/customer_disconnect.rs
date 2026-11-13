@@ -89,7 +89,7 @@ pub fn plan(
             label_before: l3.label().map(Box::from),
             mtu: None,
             mtu_before: l3.mtu(),
-            tags_added: Vec::new(),
+            tags_added: Box::default(),
             tags_removed: vec![InterfaceTag::Dhcp],
             poe: None,
             poe_before: None,
