@@ -170,7 +170,9 @@ pub fn menu_changes(mutations: &[ResourceMutation<'_>]) -> Vec<MenuChanges> {
     for mutation in mutations.iter().filter(|mutation| in_script(mutation)) {
         let (added, changed, removed) = menus.entry(mutation.resource).or_default();
         match mutation.operation {
-            ResourceMutationOperation::Add => *added += 1,
+            ResourceMutationOperation::Add | ResourceMutationOperation::AddThenSet { .. } => {
+                *added += 1
+            }
             ResourceMutationOperation::RemoveByKey(_) => *removed += 1,
             ResourceMutationOperation::UpdateSingle
             | ResourceMutationOperation::UpdateByKey(_)

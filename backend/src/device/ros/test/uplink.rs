@@ -1,8 +1,9 @@
 //! Scope: Tests of the internet uplink: DHCP clients, NAT and the default route; nothing else.
 //!
 //! The internet uplink (`dhcp-client`, `nat`): its IPv6 DHCP client with prefix delegation
-//! (`BaseDeviceDataTarget::enable_dhcp_v6_client`, `keep_dhcp_v6_clients`) and the list
-//! `uplink` (`add_to_uplinks`).
+//! (`BaseDeviceDataTarget::enable_dhcp_v6_client`, `keep_dhcp_v6_clients`), the router
+//! advertisements it may take (`keep_router_advertisements`) and the list `uplink`
+//! (`add_to_uplinks`).
 use super::empty_current;
 use crate::{
     device::ros::{BaseDeviceDataTarget, firewall::UPLINK_LIST, l2::KeepNameGenerator},
@@ -10,7 +11,9 @@ use crate::{
 };
 use mikrotik_model::{
     ascii::AsciiString,
-    model::{Ipv6DhcpClientByInterface, Ipv6DhcpClientRequest},
+    model::{
+        Ipv6DhcpClientByInterface, Ipv6DhcpClientRequest, Ipv6SettingsAcceptRouterAdvertisements,
+    },
 };
 
 /// A router with `ether1` the internet uplink (`dhcp-client`, `nat`) and `ether2` a DHCP
@@ -124,6 +127,19 @@ async fn a_client_set_up_by_hand_gets_prefix_delegation() {
         target.dhcp_v_6_client[&AsciiString::from("sfp-sfpplus1")],
         current.dhcp_v_6_client[1]
     );
+}
+
+/// A router taking its uplink's route from router advertisements keeps doing so: the
+/// provisioner doesn't manage that, the diff leaves `/ipv6/settings` alone.
+#[tokio::test]
+async fn router_advertisements_stay_as_the_device_takes_them() {
+    let mut target = uplink_router().await;
+    let mut current = empty_current(&target);
+    current.ipv_6_settings.forward = Some(true);
+    current.ipv_6_settings.accept_router_advertisements =
+        Some(Ipv6SettingsAcceptRouterAdvertisements::Yes);
+    target.keep_router_advertisements(&current);
+    assert_eq!(target.ipv_6_settings, current.ipv_6_settings);
 }
 
 /// Only the port with `nat` is in the list `uplink`, which hand-made firewall rules use.

@@ -172,6 +172,8 @@ impl DeviceCfg {
             .collect::<Vec<_>>();
         self.base_target
             .keep_hand_made_addresses(&self.base_current, &radios);
+        self.base_target
+            .keep_router_advertisements(&self.base_current);
         let renamed =
             following_renames(&self.base_target, &self.base_current, &self.radio_renames());
         self.base_target.keep_dhcp_v6_clients(&renamed);

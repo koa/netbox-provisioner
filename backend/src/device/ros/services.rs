@@ -167,7 +167,7 @@ impl BaseDeviceDataTarget {
         let nd = &mut self
             .ipv_6_nd
             .entry(b"all".into())
-            .or_insert_with(|| Ipv6NdByInterface(Ipv6NdCfg::new(b"all".into())))
+            .or_insert_with(|| Ipv6NdByInterface(Ipv6NdCfg::new(b"all".into(), false)))
             .0;
         if !servers.is_empty() {
             let v4 = servers

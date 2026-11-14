@@ -361,6 +361,15 @@ impl BaseDeviceDataTarget {
         );
     }
 
+    /// Whether the device routes IPv6 and takes router advertisements stays as on the device:
+    /// the provisioner doesn't manage it (every device it sets up routes, RouterOS's default),
+    /// and a router may take its uplink's route from them.
+    pub(super) fn keep_router_advertisements(&mut self, current: &BaseDeviceDataCurrent) {
+        let current = &current.ipv_6_settings;
+        self.ipv_6_settings.forward = current.forward;
+        self.ipv_6_settings.accept_router_advertisements = current.accept_router_advertisements;
+    }
+
     /// The IPv6 clients of `current` (as after the renames): one where the target has its own
     /// keeps what the device set by hand but the prefix delegation, the default route and an
     /// existing pool's name, which other settings may refer to; any other stays as it is.
