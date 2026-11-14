@@ -192,10 +192,12 @@ impl AccessibleDevice {
             // RouterOS 6 goes to 7 for its packages (`next_step`)
             let adjust_packages = state.version.major() >= 7
                 && update::next_step(&state, &state.version, &state.version, &wanted).is_some();
-            // an update of this run brought the running one: the way back to the one before
+            // an update of this run brought the running one: the way back to the one before,
+            // unless a downgrade can't go there (from RouterOS 6, lab-crs226)
             let previous =
                 crate::job::version_before_update(device.device_config.id()).filter(|previous| {
-                    update::Version::parse(previous).is_some_and(|v| v < state.version)
+                    update::Version::parse(previous)
+                        .is_some_and(|v| update::downgradable(&state.version, &v))
                 });
             Ok::<_, Error>(RouterOsVersions {
                 as_of: reader.as_of(),
@@ -418,8 +420,8 @@ pub struct RouterOsVersions {
     /// whether the packages differ from `wanted`, which an update without channel fixes at
     /// the running version
     adjust_packages: bool,
-    /// the older version the device ran before an update of this run of the provisioner
-    /// (`downgradeRouteros` takes it back there)
+    /// the older version the device ran before an update of this run of the provisioner, where
+    /// `downgradeRouteros` can take it back there (not to RouterOS 6)
     previous: Option<Box<str>>,
 }
 

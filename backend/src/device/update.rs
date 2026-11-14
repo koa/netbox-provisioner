@@ -372,11 +372,16 @@ pub fn next_step(
     })
 }
 
-/// The packages of `target` replacing those the device runs, for a downgrade: RouterOS 7 to an
-/// older RouterOS 7, the same packages (a package `target` lacks fails its download, before
-/// anything is uploaded).
+/// Whether a downgrade from `running` to `target` is possible: RouterOS 7 to an older RouterOS 7.
+pub fn downgradable(running: &Version, target: &Version) -> bool {
+    running.major() >= 7 && target.major() >= 7 && target < running
+}
+
+/// The packages of `target` replacing those the device runs, for a downgrade (`downgradable`),
+/// the same packages (a package `target` lacks fails its download, before anything is
+/// uploaded).
 pub fn downgrade_step(state: &DeviceState, target: &Version) -> Result<UpdateStep, Error> {
-    if state.version.major() < 7 || target.major() < 7 || *target >= state.version {
+    if !downgradable(&state.version, target) {
         return Err(Error::NoDowngrade {
             running: state.version.to_string().into(),
             target: target.to_string().into(),
