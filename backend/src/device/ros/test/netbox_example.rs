@@ -166,6 +166,7 @@ fn declared_ports(
                 PhysicalPortId::SfpSfpPlus(n) => {
                     (EthernetNamePattern::SfpSfpPlus, n, &ADVERTISE_10G)
                 }
+                PhysicalPortId::SfpPlus(n) => (EthernetNamePattern::SfpPlus, n, &ADVERTISE_10G),
                 PhysicalPortId::Sfp28(n) => (EthernetNamePattern::Sfp28, n, &ADVERTISE_25G),
                 PhysicalPortId::Sfp(n) => (EthernetNamePattern::Sfp, n, &ADVERTISE_1G_SFP),
                 PhysicalPortId::Combo(n) => (EthernetNamePattern::Combo, n, &ADVERTISE_1G_SFP),

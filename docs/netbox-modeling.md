@@ -198,6 +198,7 @@ Der Provisioner erkennt ein Interface nur am **Namen** als physischen Port (`Phy
 |-----------------------|---------------------------------------------------|
 | `ether<N>`            | Ethernet-Port N (`/interface ethernet`, `ether<N>`) |
 | `sfp-sfpplus<N>`      | SFP+-Port N                                       |
+| `sfpplus<N>`          | SFP+-Port N ohne SFP (der zweite Käfig eines `CRS226…`) |
 | `sfp<N>`              | SFP-Port N (z.B. `RB962…`, `CRS109…`)             |
 | `combo<N>`            | Combo-Port N (z.B. `CCR1009…`)                    |
 | `qsfpplus<N>-<L>`     | Lane L des QSFP+-Ports N (z.B. `CRS354…`)         |

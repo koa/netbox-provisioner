@@ -325,6 +325,7 @@ mod physical_port_names {
         for (name, id, short) in [
             ("ether7", PhysicalPortId::Ethernet(7), "e07"),
             ("sfp-sfpplus2", PhysicalPortId::SfpSfpPlus(2), "s02"),
+            ("sfpplus2", PhysicalPortId::SfpPlus(2), "s02"),
             ("sfp1", PhysicalPortId::Sfp(1), "s01"),
             ("combo1", PhysicalPortId::Combo(1), "c01"),
             ("qsfpplus1-2", PhysicalPortId::QsfpPlus(1, 2), "q01-2"),

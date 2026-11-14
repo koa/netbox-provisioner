@@ -370,7 +370,22 @@ enum PoeOut {
     PowerControl,
 }
 
-/// A run of alike ports of a board, numbered on from the run before of the same name pattern.
+/// An SFP+ cage that advertises neither 2.5G nor 5G, as a CRS226-24G-2S+ reports it (7.24.6).
+const ADVERTISE_10G_WITHOUT_25G_5G: [EthernetSpeed; 10] = [
+    EthernetSpeed::_10MBaseTHalf,
+    EthernetSpeed::_10MBaseTFull,
+    EthernetSpeed::_100MBaseTHalf,
+    EthernetSpeed::_100MBaseTFull,
+    EthernetSpeed::_1GBaseTHalf,
+    EthernetSpeed::_1GBaseTFull,
+    EthernetSpeed::_1GBaseX,
+    EthernetSpeed::_10GBaseT,
+    EthernetSpeed::_10GBaseCr,
+    EthernetSpeed::_10GBaseSrLr,
+];
+
+/// A run of alike ports of a board, numbered on from the run before of the same name pattern
+/// (`sfpplus` on from `sfp-sfpplus`: RouterOS counts the SFP+ cages through, `numbering`).
 #[derive(Debug, Clone, Copy)]
 struct Ports {
     name: EthernetNamePattern,
@@ -399,14 +414,24 @@ const fn poe_out(poe_out: PoeOut, ports: Ports) -> Ports {
     Ports { poe_out, ..ports }
 }
 
+/// The pattern whose numbers a pattern goes on with: an `sfpplus` cage is numbered on from the
+/// `sfp-sfpplus` ones (a CRS226-24G-2S+ has `sfp-sfpplus1` and `sfpplus2`).
+fn numbering(name: EthernetNamePattern) -> EthernetNamePattern {
+    match name {
+        EthernetNamePattern::SfpPlus => EthernetNamePattern::SfpSfpPlus,
+        name => name,
+    }
+}
+
 /// The ethernet ports of the runs, in their order.
 fn build_runs(runs: &[Ports]) -> Box<[InterfaceEthernetByDefaultName]> {
     let mut numbers: Vec<(EthernetNamePattern, usize)> = Vec::new();
     let mut built = Vec::new();
     for run in runs {
-        let first = match numbers.iter_mut().find(|(name, _)| *name == run.name) {
+        let numbering = numbering(run.name);
+        let first = match numbers.iter_mut().find(|(name, _)| *name == numbering) {
             Some((_, last)) => last,
-            None => &mut numbers.push_mut((run.name, 0)).1,
+            None => &mut numbers.push_mut((numbering, 0)).1,
         };
         let generator =
             generate_ethernet(run.name, run.speeds, run.l2mtu, run.poe_out != PoeOut::No);
@@ -425,7 +450,7 @@ fn build_runs(runs: &[Ports]) -> Box<[InterfaceEthernetByDefaultName]> {
 /// The ethernet ports of a board, by the model `/system/routerboard` reports; none for a board
 /// not listed.
 pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName]> {
-    use EthernetNamePattern::{Combo, Ether, QsfpPlus, Sfp, Sfp28, SfpSfpPlus};
+    use EthernetNamePattern::{Combo, Ether, QsfpPlus, Sfp, Sfp28, SfpPlus, SfpSfpPlus};
     use PoeOut::{PowerControl, PowerCycle};
     let runs: &[Ports] = match model {
         // hAP ac: PoE-out on ether5, with the power cycling of a hung PD (ap-klr-solar, 7.23.7)
@@ -518,6 +543,12 @@ pub fn build_ethernet_ports(model: &[u8]) -> Box<[InterfaceEthernetByDefaultName
         b"CRS125-24G-1S" => &[
             ports(Ether, &ADVERTISE_1G, 1588, 24),
             ports(Sfp, &ADVERTISE_1G_SFP, 1588, 1),
+        ],
+        // lab-crs226 (7.24.6): no PoE; `sfp-sfpplus1` and `sfpplus2`
+        b"CRS226-24G-2S+" => &[
+            ports(Ether, &ADVERTISE_1G, 1588, 24),
+            ports(SfpSfpPlus, &ADVERTISE_10G_WITHOUT_25G_5G, 1588, 1),
+            ports(SfpPlus, &ADVERTISE_10G_WITHOUT_25G_5G, 1588, 1),
         ],
         _ => &[],
     };

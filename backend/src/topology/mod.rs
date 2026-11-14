@@ -749,6 +749,9 @@ pub enum PortType {
 pub enum PhysicalPortId {
     Ethernet(u16),
     SfpSfpPlus(u16),
+    /// `sfpplus{id}`: an SFP+ cage without SFP, numbered on from the `sfp-sfpplus` ones (a
+    /// CRS226-24G-2S+ has `sfp-sfpplus1` and `sfpplus2`)
+    SfpPlus(u16),
     /// `sfp28-{id}`: a 25G SFP28 cage
     Sfp28(u16),
     Sfp(u16),
@@ -797,6 +800,8 @@ static ETHER_PORT_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^ether([0-9]+)$").unwrap());
 static SFP_PLUS_PORT_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^sfp-sfpplus([0-9]+)$").unwrap());
+static SFPPLUS_PORT_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^sfpplus([0-9]+)$").unwrap());
 static SFP28_PORT_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^sfp28-([0-9]+)$").unwrap());
 static SFP_PORT_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new("^sfp([0-9]+)$").unwrap());
@@ -820,7 +825,9 @@ impl PhysicalPortId {
     pub fn short_name(&self) -> AsciiString {
         AsciiString::from(match self {
             PhysicalPortId::Ethernet(id) => format!("e{id:02}"),
-            PhysicalPortId::SfpSfpPlus(id) | PhysicalPortId::Sfp(id) => format!("s{id:02}"),
+            PhysicalPortId::SfpSfpPlus(id)
+            | PhysicalPortId::SfpPlus(id)
+            | PhysicalPortId::Sfp(id) => format!("s{id:02}"),
             PhysicalPortId::Sfp28(id) => format!("x{id:02}"),
             PhysicalPortId::Combo(id) => format!("c{id:02}"),
             PhysicalPortId::QsfpPlus(port, lane) => format!("q{port:02}-{lane}"),
@@ -834,6 +841,7 @@ impl PhysicalPortId {
         match self {
             PhysicalPortId::Ethernet(_)
             | PhysicalPortId::SfpSfpPlus(_)
+            | PhysicalPortId::SfpPlus(_)
             | PhysicalPortId::Sfp28(_)
             | PhysicalPortId::Sfp(_)
             | PhysicalPortId::Combo(_)
@@ -849,6 +857,7 @@ impl PhysicalPortId {
         match self {
             PhysicalPortId::Ethernet(_)
             | PhysicalPortId::SfpSfpPlus(_)
+            | PhysicalPortId::SfpPlus(_)
             | PhysicalPortId::Sfp28(_)
             | PhysicalPortId::Sfp(_)
             | PhysicalPortId::Combo(_)
@@ -875,6 +884,8 @@ impl FromStr for PhysicalPortId {
             Ok(PhysicalPortId::Ethernet(id))
         } else if let Some(id) = number(&SFP_PLUS_PORT_PATTERN, 1) {
             Ok(PhysicalPortId::SfpSfpPlus(id))
+        } else if let Some(id) = number(&SFPPLUS_PORT_PATTERN, 1) {
+            Ok(PhysicalPortId::SfpPlus(id))
         } else if let Some(id) = number(&SFP28_PORT_PATTERN, 1) {
             Ok(PhysicalPortId::Sfp28(id))
         } else if let Some(id) = number(&SFP_PORT_PATTERN, 1) {
@@ -903,6 +914,7 @@ impl Display for PhysicalPortId {
         match self {
             PhysicalPortId::Ethernet(id) => write!(f, "ether{id}"),
             PhysicalPortId::SfpSfpPlus(id) => write!(f, "sfp-sfpplus{id}"),
+            PhysicalPortId::SfpPlus(id) => write!(f, "sfpplus{id}"),
             PhysicalPortId::Sfp28(id) => write!(f, "sfp28-{id}"),
             PhysicalPortId::Sfp(id) => write!(f, "sfp{id}"),
             PhysicalPortId::Combo(id) => write!(f, "combo{id}"),

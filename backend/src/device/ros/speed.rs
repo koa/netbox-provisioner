@@ -73,6 +73,7 @@ pub(crate) fn fixed_speed(port: &InterfaceAccess) -> Result<Option<EthernetSpeed
         Some(
             PhysicalPortId::Sfp(_)
             | PhysicalPortId::SfpSfpPlus(_)
+            | PhysicalPortId::SfpPlus(_)
             | PhysicalPortId::Sfp28(_)
             | PhysicalPortId::QsfpPlus(..)
             | PhysicalPortId::Combo(_),

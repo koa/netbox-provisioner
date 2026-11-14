@@ -118,6 +118,31 @@ fn rb750gl_has_five_ports_on_its_switch_chip() {
     );
 }
 
+/// As lab-crs226 reports it (7.24.6): 24 ports and two SFP+ cages with `l2mtu=1588`, the cages
+/// advertising up to 10G without 2.5G and 5G, on the switch of a CRS1xx/2xx.
+#[test]
+fn crs226_has_24_ports_and_two_sfp_plus_cages() {
+    let ports = build_ethernet_ports(b"CRS226-24G-2S+");
+    let names: Vec<_> = ports
+        .iter()
+        .map(|port| port.default_name.to_string())
+        .collect();
+    let mut wanted: Vec<_> = (1..=24).map(|n| format!("ether{n}")).collect();
+    wanted.extend(["sfp-sfpplus1".to_string(), "sfpplus2".to_string()]);
+    assert_eq!(names, wanted);
+    assert!(
+        ports
+            .iter()
+            .all(|port| port.data.l_2_mtu == Some(1588) && port.data.poe_out.is_none())
+    );
+    assert_eq!(ports[0].data.advertise.len(), 6);
+    assert_eq!(ports[24].data.advertise.len(), 10);
+    assert_eq!(
+        SwitchChips::of(b"CRS226-24G-2S+").chip_of(PhysicalPortId::SfpPlus(2)),
+        Some(SwitchChip::Crs1xx)
+    );
+}
+
 /// As groove-38 reports it (7.14.1): `ether1` with `l2mtu=1600`, advertising up to 1G, no
 /// switch chip, a radio of the legacy stack.
 #[test]
