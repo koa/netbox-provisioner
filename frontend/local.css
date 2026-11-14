@@ -13,6 +13,9 @@ body {
     & > .pf-v6-c-page__main-container {
         max-height: none;
         overflow: visible;
+        /* a grid item: else it grows to its content's widest line and the page gets wider than
+           a phone, with a helper's modal centered in that width and cut off on the right */
+        min-width: 0;
     }
 
     & .pf-v6-c-page__main {
