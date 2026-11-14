@@ -1077,11 +1077,13 @@ device, over IPv6 where the device has one. RouterOS writes `remote` with the po
 one without brackets (`2a02:610:7501:1000::201:0`), so the address is what is before the last
 colon (`remote_address`).
 
-A bridge snoops IGMP/MLD (`snoop_multicast`, without a querier): without it Android and
-ChromeOS, which take IPv6 by SLAAC only, got no address in a WLAN behind srv-router-berg while a
-PC on the LAN did, and turning it on at the router's bridge fixed it (2026-10-26). Only a bridge
-without radio, VXLAN or CAPsMAN leaves it off, where a chip of its ports would offload it
-without snooping but not with it (`L2Setup::snoops_multicast`).
+A bridge snoops IGMP/MLD (`snoop_multicast`) and is the querier and a permanent multicast router
+where the device has an address on it (`L2Setup::queries_multicast`, docs/l2-generation.md; the
+querier alone kept RS and NS of a client in the VLAN from the router's CPU on a CHR): without
+snooping Android and ChromeOS, which take IPv6 by SLAAC only, got no address in a WLAN behind
+srv-router-berg while a PC on the LAN did, and turning it on at the router's bridge fixed it
+(2026-10-26). Only a bridge without radio, VXLAN or CAPsMAN leaves it off, where a chip of its
+ports would offload it without snooping but not with it (`L2Setup::snoops_multicast`).
 
 A WLAN with a VLAN ends where NetBox puts its network (e.g. the controller, over the VLAN
 group's VXLAN). A tagged bridge whose only way to other bridges is one VXLAN (a CAP's

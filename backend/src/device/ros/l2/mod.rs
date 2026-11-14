@@ -133,6 +133,12 @@ impl SimpleBridge {
             )
         })
     }
+    /// Whether the device has an address on it ([`L2Setup::queries_multicast`]).
+    pub fn has_address(&self) -> bool {
+        self.ports
+            .iter()
+            .any(|port| matches!(port, SimpleBridgePort::Ip(_)))
+    }
 }
 
 impl TaggedBridge {
@@ -166,6 +172,13 @@ impl TaggedBridge {
                 | L2Port::CapMgmt => true,
                 L2Port::Ip { .. } => false,
             })
+    }
+    /// Whether the device has an address in one of its VLANs ([`L2Setup::queries_multicast`]).
+    pub fn has_address(&self) -> bool {
+        self.ports
+            .values()
+            .flat_map(|entry| &entry.ports)
+            .any(|port| matches!(port, L2Port::Ip { .. }))
     }
 }
 
@@ -901,6 +914,23 @@ impl<G: NameGenerator> L2Setup<G> {
                         && !chip.offloads_igmp_snooping()
                         && (!vlan_filtering || chip.offloads_vlan_filtering())
                 })
+    }
+
+    /// Whether a bridge that snoops ([`Self::snoops_multicast`]) is the querier and a
+    /// permanent multicast router too (`multicast-router=permanent` of the bridge itself, its
+    /// CPU gets every group): where the device has an address on it, in the WLAN the router.
+    /// Android and ChromeOS in the WLAN behind srv-router-berg lost their IPv6 address now and
+    /// then (internal websites unreachable, IPv6 only). On a CHR (`tests/chr_network/
+    /// multicast.rs`) the querier alone broke it every time: the bridge registers its own
+    /// groups in VLAN 1 only, not in the VLAN of its VLAN interface, so a client coming back
+    /// got no answer to its RS and couldn't reach the router, till the next unsolicited RA;
+    /// as a permanent multicast router it worked. In the WLAN the cause were other devices'
+    /// router advertisements (`setup_router_advertisements`); with only the router's it works
+    /// there with both set. Not on a bridge without an address of the device (an AP between
+    /// its WLAN and the VXLAN): its IGMP queries would come from 0.0.0.0, which some clients
+    /// ignore. Two queriers in a segment elect one, the lowest address.
+    pub fn queries_multicast(&self, snoops: bool, has_address: bool) -> bool {
+        snoops && has_address
     }
 
     /// The bridges `merge_simple` and `merge_tagged` pick as one VLAN-filtering bridge; the

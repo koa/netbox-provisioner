@@ -15,9 +15,9 @@ use mikrotik_model::{
     ascii::AsciiString,
     generator::Generator,
     model::{
-        InterfaceBridgePortById, InterfaceBridgePortCfg, InterfaceBridgeVlanById,
-        InterfaceBridgeVlanCfg, InterfaceVxlanVtepsById, InterfaceVxlanVtepsCfg,
-        RoutingOriginateDefault, RoutingRedistribute,
+        InterfaceBridgeMulticastRouter, InterfaceBridgePortById, InterfaceBridgePortCfg,
+        InterfaceBridgeVlanById, InterfaceBridgeVlanCfg, InterfaceVxlanVtepsById,
+        InterfaceVxlanVtepsCfg, RoutingOriginateDefault, RoutingRedistribute,
     },
     resource::{ResourceMutation, ResourceMutationOperation},
     value::Id,
@@ -2551,6 +2551,77 @@ async fn a_snooping_bridge_of_a_hex_stays_out() {
             ("bridge-switch-tinkerforge".into(), false)
         ]
     );
+}
+
+/// The querier and permanent multicast router is a snooping bridge with an address of the
+/// device: on a hEX the bridge with the radio (it has the clients' gateway), not the other
+/// one, which doesn't snoop.
+#[tokio::test]
+async fn a_snooping_bridge_with_an_address_is_the_querier() {
+    let device = switch_with_two_bridges(true).await;
+    let (mut target, _) = setup_testdata(b"RB750Gr3").unwrap();
+    let l2 = L2Setup::new(&device, EndpointNameGenerator)
+        .unwrap()
+        .for_switch_chips(SwitchChips::of(b"RB750Gr3"));
+    target.setup_addressing(&device, &l2).unwrap();
+    target.setup_ports(&device, &l2, None).unwrap();
+    let queriers = target
+        .bridge
+        .iter()
+        .map(|(name, bridge)| {
+            (
+                name.to_string(),
+                bridge.0.igmp_snooping,
+                bridge.0.multicast_querier,
+                bridge.0.multicast_router,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        queriers,
+        [
+            (
+                "bridge-switch-clients".into(),
+                true,
+                true,
+                InterfaceBridgeMulticastRouter::Permanent
+            ),
+            (
+                "bridge-switch-tinkerforge".into(),
+                false,
+                false,
+                InterfaceBridgeMulticastRouter::TemporaryQuery
+            )
+        ]
+    );
+}
+
+/// An AP between its VXLAN and the WLAN has no address there: its bridge snoops, but isn't
+/// the querier; the switch with the VLAN's gateway is.
+#[tokio::test]
+async fn a_bridge_without_an_address_is_no_querier() {
+    let (switch, ap) = build_tunnel_topology(|builder, ids| {
+        add_vlan_interface(builder, ids.switch, ids.vlan, "lan", [10, 192, 3, 1], true);
+    })
+    .await;
+    for (device, querier) in [(switch, true), (ap, false)] {
+        let (mut target, _) = setup_testdata(b"CRS326-24G-2S+").unwrap();
+        let l2 = L2Setup::new(&device, KeepNameGenerator).unwrap();
+        target.setup_addressing(&device, &l2).unwrap();
+        target.setup_ports(&device, &l2, None).unwrap();
+        let bridges = target
+            .bridge
+            .values()
+            .map(|bridge| {
+                (
+                    bridge.0.igmp_snooping,
+                    bridge.0.multicast_querier,
+                    bridge.0.multicast_router == InterfaceBridgeMulticastRouter::Permanent,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(bridges, [(true, querier, querier)], "{}", device.name());
+    }
 }
 
 /// A hAP ac (QCA8337) doesn't filter VLANs in hardware: the flat bridges stay, without

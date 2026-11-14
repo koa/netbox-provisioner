@@ -173,6 +173,26 @@ Hardware nähme und mit nicht (MT7621-Familie, QCA8337-Familie und Atheros8227 b
 Bridge). Wird Snooping abgeschaltet, meldet RouterOS die Multicast-Felder nicht mehr (CHR
 7.24.5), es bleibt also kein Diff.
 
+**Querier und Multicast-Router** (`L2Setup::queries_multicast`). Eine snoopende Bridge, auf
+der das Gerät eine Adresse hat (im WLAN der Router), ist Querier und selbst permanenter
+Multicast-Router (`multicast-router=permanent` der Bridge: ihre CPU bekommt jede Gruppe).
+Android und ChromeOS im WLAN hinter srv-router-berg verloren ab und zu ihre IPv6-Adresse
+(interne Webseiten, nur IPv6, unerreichbar). Der CHR-Test `tests/chr_network/multicast.rs`
+misst, wie lange ein Client nach dem Wiederkommen bis zu Adresse und Ping zum Router braucht
+(CHR 7.24.6, je 3 Runden, nachdem die beim Boot gelernten Gruppen abgelaufen sind): ohne Querier
+rund 6 s, ohne Snooping rund 8 s, mit der Router-Bridge als Querier allein nie innerhalb von
+11 min. Die Bridge meldet ihre eigenen Gruppen dann nur in VLAN 1 an, nicht im VLAN ihres
+VLAN-Interfaces, und RS und NS des Clients erreichen ihre CPU nicht; erst das nächste
+unsolicited RA (alle 200–600 s) bringt die Adresse. Als permanenter Multicast-Router ging es auch
+mit Querier in 6 s. Im Feld fehlte IPv6 auch damit nach dem Wechsel; dort lag es an den
+Router Advertisements anderer Geräte im VXLAN (1og-sw2, ap-klr-solar), die sich den Clients als
+Default-Router ankündigten (Android und ChromeOS verwerfen IPv6, wenn sie einen davon nicht
+erreichen). Seit nur noch der Router sie sendet (`setup_router_advertisements`,
+docs/netbox-modeling.md), ist die Adresse nach dem Wechsel sofort da (srv-router-berg mit
+Querier und `permanent`). Eine Bridge ohne eigene Adresse (ein AP zwischen WLAN und VXLAN) ist keins von
+beiden: Ihre IGMP-Queries kämen von 0.0.0.0, was manche Clients ignorieren. Zwei Querier in
+einem Segment wählen einen, den mit der kleinsten Adresse.
+
 **VLANs im Switch-Menü eines CRS1xx/2xx** (`L2Setup::switch_vlans`, `device/ros/switch_menu.rs`).
 Eine VLAN-Filtering-Bridge läuft dort auf der CPU; die VLANs baut stattdessen der Switch selbst
 (MikroTiks Handbuch, „CRS1xx/2xx series switches examples“). Das gilt für eine getaggte Bridge,

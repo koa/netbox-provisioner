@@ -19,6 +19,7 @@ mod chr_network {
     pub mod golden_image;
     pub mod leftovers;
     pub mod mac_telnet;
+    pub mod multicast;
     pub mod network_map;
     pub mod node;
     pub mod ospf_chain;

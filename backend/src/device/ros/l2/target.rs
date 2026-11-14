@@ -10,8 +10,8 @@ use crate::{
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
-        InterfaceBridgeProtocolMode, InterfaceVlanByName, InterfaceVlanCfg, InterfaceVxlanByName,
-        InterfaceVxlanCfg, VlanFrameTypes,
+        InterfaceBridgeMulticastRouter, InterfaceBridgeProtocolMode, InterfaceVlanByName,
+        InterfaceVlanCfg, InterfaceVxlanByName, InterfaceVxlanCfg, VlanFrameTypes,
     },
     value,
 };
@@ -60,8 +60,14 @@ impl BaseDeviceDataTarget {
             let bridge_cfg = self.bridge.entry(bridge.name.clone()).or_default();
             bridge_cfg.0.vlan_filtering = false;
             bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Rstp;
-            if setup.snoops_multicast(bridge.switch_ports(), bridge.carries_radio(), false) {
+            let snoops =
+                setup.snoops_multicast(bridge.switch_ports(), bridge.carries_radio(), false);
+            if snoops {
                 bridge_cfg.0.snoop_multicast();
+            }
+            if setup.queries_multicast(snoops, bridge.has_address()) {
+                bridge_cfg.0.multicast_querier = true;
+                bridge_cfg.0.multicast_router = InterfaceBridgeMulticastRouter::Permanent;
             }
             // Without vlan filtering RouterOS accepts the vlan fields but never reports them,
             // so a value here would be a diff forever; mvrp is reported by some versions
@@ -120,12 +126,17 @@ impl BaseDeviceDataTarget {
                 bridge_cfg.0.mvrp = Some(false);
                 bridge_cfg.0.protocol_mode = InterfaceBridgeProtocolMode::Mstp;
             }
-            if setup.snoops_multicast(
+            let snoops = setup.snoops_multicast(
                 bridge.switch_ports(),
                 bridge.carries_radio(),
                 !in_switch_menu,
-            ) {
+            );
+            if snoops {
                 bridge_cfg.0.snoop_multicast();
+            }
+            if setup.queries_multicast(snoops, bridge.has_address()) {
+                bridge_cfg.0.multicast_querier = true;
+                bridge_cfg.0.multicast_router = InterfaceBridgeMulticastRouter::Permanent;
             }
             // A bridge whose only way to other bridges is one VXLAN (a CAP's `bridge-caps`;
             // its radios are clients) closes no loop, and STP over the VXLAN, a segment it
