@@ -439,7 +439,7 @@ impl Rollout {
             (Some(done), _) => html! {
                 <Alert
                     inline=true
-                    r#type={AlertType::Success}
+                    r#type={done_type(done)}
                     title={t::done(done.updated, done.skipped, done.failed)}
                 />
             },
@@ -786,4 +786,33 @@ fn poll(scope: Scope<Rollout>, id: i32, alive: Rc<Cell<bool>>) {
             sleep(POLL).await;
         }
     });
+}
+
+/// How the end of a rollout shows: a device left behind is still to be updated, no success.
+fn done_type(done: &RolloutDone) -> AlertType {
+    if done.failed > 0 {
+        AlertType::Danger
+    } else if done.skipped > 0 {
+        AlertType::Warning
+    } else {
+        AlertType::Success
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{AlertType, RolloutDone, done_type};
+
+    #[test]
+    fn a_rollout_leaving_devices_behind_is_no_success() {
+        let done = |skipped, failed| RolloutDone {
+            updated: 1,
+            skipped,
+            failed,
+        };
+        assert_eq!(done_type(&done(0, 1)), AlertType::Danger);
+        assert_eq!(done_type(&done(1, 1)), AlertType::Danger);
+        assert_eq!(done_type(&done(1, 0)), AlertType::Warning);
+        assert_eq!(done_type(&done(0, 0)), AlertType::Success);
+    }
 }
