@@ -999,8 +999,11 @@ IPv6 /64 is advertised for SLAAC. IPv6 is on everywhere (`/ipv6/settings disable
 with it off the addresses are `invalid` and OSPFv3 never comes up, while the diff looks applied.
 
 DNS servers come from the device's NetBox config context (`dns_servers`, in priority order):
-client networks get them by DHCP (v4) and RDNSS (v6, only on devices with client networks),
-every device asks them itself, and none resolves for others, but one with an own address in the
+client networks get them by DHCP (v4) and RDNSS (v6). Router advertisements go out only on the
+interfaces whose prefix the device announces (`setup_router_advertisements`, an `advertise`
+address); RouterOS's own `all` entry made 1og-sw2 and ap-klr-solar default routers to the WLAN's
+clients, so a device without such an interface has it off (it can't be removed). Every device
+asks the DNS servers itself, and none resolves for others, but one with an own address in the
 list (router-faesigrund-keller's loopbacks): it asks the others only and resolves. Without the
 context, a router with a DHCP server answers DNS (its networks get its own address), and one
 without a `dhcp-client` forwards to the loopbacks of the `nat` routers. The perimeter firewall

@@ -92,7 +92,9 @@ Was das auf den Geräten ergibt: [firewall.md](firewall.md#freigaben).
 Die DNS-Server der Client-Netze, der erste wird zuerst gefragt (z.B. Blocky mit Adfilter, dann
 ein Fallback). Zuweisen wie jeder Config Context, z.B. pro Tenant oder Site. Der Provisioner
 verteilt die IPv4-Server per DHCP und die IPv6-Server per Router Advertisement (RDNSS), letzteres
-nur auf Geräten mit Client-Netz. Jedes Gerät fragt die Server auch selbst
+nur auf den Interfaces, deren /64 das Gerät ankündigt (ein Client-Netz mit `dhcp`). Nur dort
+sendet ein Gerät überhaupt Router Advertisements; eines ohne solches Interface (ein AP, ein
+Switch im VXLAN eines WLANs) sendet keine, sonst nähmen die Clients es als Default-Router. Jedes Gerät fragt die Server auch selbst
 (`/ip dns servers`), beantwortet aber keine DNS-Anfragen (`allow-remote-requests=no`). Steht
 eine eigene Adresse des Geräts in der Liste (im Beispiel die Loopbacks von
 router-faesigrund-keller), ist es selbst ein Resolver: Es fragt nur die übrigen Server und

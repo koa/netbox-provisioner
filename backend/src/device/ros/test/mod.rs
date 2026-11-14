@@ -10,6 +10,7 @@ mod mtu;
 mod netbox_example;
 mod poe;
 mod radio;
+mod router_advertisements;
 mod service;
 mod socks;
 mod speed;

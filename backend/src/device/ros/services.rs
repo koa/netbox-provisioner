@@ -17,7 +17,10 @@ use mikrotik_model::{
     },
     resource::OWNED_LAST,
 };
-use std::{collections::HashSet, net::IpAddr};
+use std::{
+    collections::{BTreeSet, HashSet},
+    net::IpAddr,
+};
 
 impl BaseDeviceDataTarget {
     /// Makes this device the provisioner's way into the network: `/ip socks` as SOCKS5, only
@@ -156,19 +159,14 @@ impl BaseDeviceDataTarget {
     }
 
     /// DNS of the client networks. With DNS servers from the config context they get these:
-    /// the IPv4 ones by DHCP, the IPv6 ones by router advertisement (RDNSS), in their
-    /// order; the device asks them too and resolves for nobody. One of them its own (its
-    /// loopback, router-faesigrund-keller) makes it a resolver: it asks the others, not
-    /// itself, and answers its networks. Without, the DHCP networks name the device itself,
+    /// the IPv4 ones by DHCP, the IPv6 ones by router advertisement (RDNSS,
+    /// `setup_router_advertisements`), in their order; the device asks them too and resolves
+    /// for nobody. One of them its own (its loopback, router-faesigrund-keller) makes it a
+    /// resolver: it asks the others, not itself, and answers its networks. Without, the DHCP networks name the device itself,
     /// so it answers them; one without a DHCP client learns no DNS server and asks the NAT
     /// routers (NetBox tag `nat`). The perimeter firewall keeps the internet out of it.
     pub(super) fn setup_dns(&mut self, device: &DeviceAccess) {
         let servers = device.dns_servers();
-        let nd = &mut self
-            .ipv_6_nd
-            .entry(b"all".into())
-            .or_insert_with(|| Ipv6NdByInterface(Ipv6NdCfg::new(b"all".into(), false)))
-            .0;
         if !servers.is_empty() {
             let v4 = servers
                 .iter()
@@ -177,23 +175,6 @@ impl BaseDeviceDataTarget {
                     IpAddr::V6(_) => None,
                 })
                 .collect::<Box<[_]>>();
-            let v6 = servers
-                .iter()
-                .filter_map(|ip| match ip {
-                    IpAddr::V6(ip) => Some(*ip),
-                    IpAddr::V4(_) => None,
-                })
-                .collect::<Box<[_]>>();
-            // only where there are client networks to announce them to
-            let client_networks = !self.dhcp_v_4_server_network.is_empty()
-                || self
-                    .ipv_6_address
-                    .values()
-                    .any(|address| address.0.advertise);
-            if client_networks && !v6.is_empty() {
-                nd.dns = Some(v6);
-                nd.advertise_dns = Some(true);
-            }
             for network in self.dhcp_v_4_server_network.values_mut() {
                 network.0.dns_server = v4.clone();
             }
@@ -229,6 +210,47 @@ impl BaseDeviceDataTarget {
                 .filter(|other| other.interfaces().iter().any(|i| i.is_nat()))
                 .filter_map(|other| other.loopback_ip().and_then(|ip| ip.addr()))
                 .collect();
+        }
+    }
+}
+
+impl BaseDeviceDataTarget {
+    /// Router advertisements only on the interfaces with a prefix the device announces
+    /// (`advertise`, a client network's /64 or one set up by hand), with the IPv6 DNS servers
+    /// of the config context (RDNSS). RouterOS's own entry for `all` made every device a
+    /// router on every interface: an AP or switch in a WLAN's VXLAN (1og-sw2, ap-klr-solar)
+    /// announced itself as a default router to the clients there, where it has no address.
+    /// That entry can't be removed (`reuse`: it takes one of the interfaces); without any it
+    /// is turned off. Runs again after the hand-made addresses are kept.
+    pub(super) fn setup_router_advertisements(&mut self, device: &DeviceAccess) {
+        let dns = device
+            .dns_servers()
+            .iter()
+            .filter_map(|ip| match ip {
+                IpAddr::V6(ip) => Some(*ip),
+                IpAddr::V4(_) => None,
+            })
+            .collect::<Box<[_]>>();
+        let interfaces = self
+            .ipv_6_address
+            .values()
+            .filter(|address| address.0.advertise)
+            .map(|address| address.0.interface.clone())
+            .collect::<BTreeSet<_>>();
+        self.ipv_6_nd.clear();
+        for interface in interfaces {
+            let mut nd = Ipv6NdCfg::new(interface.clone(), false);
+            if !dns.is_empty() {
+                nd.dns = Some(dns.clone());
+                nd.advertise_dns = Some(true);
+            }
+            self.ipv_6_nd.insert(interface, Ipv6NdByInterface(nd));
+        }
+        if self.ipv_6_nd.is_empty() {
+            self.ipv_6_nd.insert(
+                b"all".into(),
+                Ipv6NdByInterface(Ipv6NdCfg::new(b"all".into(), true)),
+            );
         }
     }
 }

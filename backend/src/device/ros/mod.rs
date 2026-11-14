@@ -480,6 +480,7 @@ impl BaseDeviceDataTarget {
     ) -> Result<(), SetupError> {
         self.setup_ip_addresses(l2)?;
         self.setup_dns(device);
+        self.setup_router_advertisements(device);
         self.setup_perimeter(device);
         self.setup_ospf(device, l2);
         Ok(())

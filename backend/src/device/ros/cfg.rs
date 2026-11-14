@@ -172,6 +172,7 @@ impl DeviceCfg {
             .collect::<Vec<_>>();
         self.base_target
             .keep_hand_made_addresses(&self.base_current, &radios);
+        self.base_target.setup_router_advertisements(device);
         self.base_target
             .keep_router_advertisements(&self.base_current);
         let renamed =

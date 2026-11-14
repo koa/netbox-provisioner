@@ -25,6 +25,7 @@ mod chr_network {
     pub mod ospf_segment;
     pub mod perimeter;
     pub mod qemu;
+    pub mod router_advertisements;
     pub mod scenario;
     pub mod serial;
     pub mod update;
