@@ -485,7 +485,16 @@ impl update::DeviceLink for AccessibleDevice {
     ) -> Result<(), Error> {
         let UserPassword { user, password } = resolve(&self.credentials, self.login.password)?;
         let stream = open_stream(self.address, &self.path, 22).await?;
-        terminal::upload(stream, user, password, name, data, progress).await?;
+        match terminal::upload(stream, user, password, name, data, progress).await {
+            // the first SSH login after the initial setup of lab-crs226 (6.47.10) got no answer
+            // in time, the next one went through: likely RouterOS making its host key then
+            Err(terminal::TerminalError::LoginTimeout(_)) => {
+                log::info!("{}: no SSH login in time, trying once more", self.address);
+                let stream = open_stream(self.address, &self.path, 22).await?;
+                terminal::upload(stream, user, password, name, data, progress).await?;
+            }
+            result => result?,
+        }
         Ok(())
     }
 }

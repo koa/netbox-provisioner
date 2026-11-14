@@ -780,7 +780,9 @@ logins, topic `account`: the provisioner's own drowned the rest).
 Nothing waits on a device or the way to it without a limit: over a radio link a connection can
 stall for good without ending (jobs hung at the setup, before the upload, after it). Opening a
 connection, directly or through the management proxy, has 20 s (`device::OPEN_TIMEOUT`, each
-try); an SSH key exchange and login 30 s (`terminal::SSH_LOGIN_TIMEOUT`, also the tunnel's);
+try); an SSH key exchange and login 30 s (`terminal::SSH_LOGIN_TIMEOUT`, also the tunnel's; an
+upload tries a second login after it: lab-crs226's first after its setup, 6.47.10, got no
+answer in time, likely RouterOS making its host key, the next went through);
 an API login 30 s and every API command 120 s without a reply (mikrotik-api's `LOGIN_TIMEOUT`,
 `REPLY_TIMEOUT`, `Error::ReplyTimeout`; a reply restarts it, so a monitor that keeps answering
 goes on). A command that rightly stays silent longer says so in its
