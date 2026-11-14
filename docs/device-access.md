@@ -95,9 +95,10 @@ einen Befehl, der nichts ändert (Print, Monitor einmal, Ping; Fact `Menu`), ein
 - Eine Rechnung über mehrere Menüs muss aushalten, dass sie verschieden alt sind: Lesen über
   Menüs war nie atomar.
 
-Ein Befehl, der dasselbe Menü mit Filter fragt, ist ein eigener Fakt (`/ip/service` mit
-`?name=` neben dem ganzen Print): mikrotik-model soll die ganze Liste lesen und selbst filtern
-(offen, im Konzept).
+Ein Befehl, der dasselbe Menü mit Filter fragt, wäre ein eigener Fakt. Deshalb fragt
+mikrotik-model auch ein Menü mit Schlüssel ganz (`PrintKeyed`) und lässt die Zeilen, die es
+nicht will (anderer Schlüssel, `dynamic`, `builtin`), selbst weg: `/ip/service` ging so vorher
+zweimal an jedes Gerät, mit `?name=` und ohne.
 
 ## Befehle pro Operation zählen
 
@@ -111,9 +112,9 @@ dasselbe Gerät ging; gezählt wird der Pfad, Pings an verschiedene Adressen sin
 (`LOG_LEVEL=info,backend::operation=debug`): die Netzkarte schickt jeden Pfad pro Gerät einmal
 (`NetworkMap` 1 Befehl, `NetworkMapDetails` 6 an 6 Geräte), der Rollout-Plan über die Site Lab
 53 an 6 Geräte ohne Doppel. Die Geräteseite (`DeviceOverview`, lab-hex) schickte vor den
-Basis-Fakten 67 Befehle an 4 Geräte, zehn Menüs zwei- oder dreimal; mit ihnen 56, doppelt nur
-noch `/ip/service` (mit und ohne Filter, siehe oben) und `/system/identity` (der Login und
-seine Prüfung, ob die Verbindung noch lebt, wenn sie seit `LOGIN_CHECKED` nicht antwortete).
+Basis-Fakten 67 Befehle an 4 Geräte, zehn Menüs zwei- oder dreimal; mit ihnen 56, mit den
+ganzen Listen 53, doppelt nur noch `/system/identity` (der Login und seine Prüfung, ob die
+Verbindung noch lebt, wenn sie seit `LOGIN_CHECKED` nicht antwortete).
 
 ## Der CHR-Harness
 

@@ -3,8 +3,8 @@
 Stand 2026-11-13, besprochen mit dem Benutzer (Basis-Fakten und Ableitungen am selben Tag
 nach der Messung). Gebaut und in [device-access.md](../device-access.md) beschrieben sind die
 Befehle als Typen mit ihrer Wirkung, `Connection`, Aktionskatalog, `Reader`/`Session` (B36) und
-die Basis-Fakten mit den Ableitungen (C17). Offen sind der Rahmen pro Operation, die ganzen
-Listen statt Filter und die Punkte unter „Offen“.
+die Basis-Fakten mit den Ableitungen und die ganzen Listen statt Filter (C17). Offen sind der
+Rahmen pro Operation, der Pool und die Punkte unter „Offen“.
 
 ## Ziel
 
@@ -30,15 +30,6 @@ Listen statt Filter und die Punkte unter „Offen“.
   (`update::state_from`, `leftovers::read_with_files`, `progress::root_in_ram_of`,
   `wanted_packages_for`); mit den Basis-Fakten wäre das nicht mehr nötig.
 - NetBox-REST und die Paketgrössen bei MikroTik werden pro Aufruf gelesen.
-
-## Ganze Listen statt Filter
-
-mikrotik-model liest bei `PrintKeyed` (`KeyedResource::fetch`) mit `?name=` und einem Filter auf
-`dynamic`/`builtin`: so ist dasselbe Menü zwei Fakten (`/ip/service` auf jeder Geräteseite
-doppelt). Künftig liest es die ganze Liste und filtert selbst (Schlüssel vorhanden, `dynamic` und
-`builtin` an der rohen Zeile vor dem Parsen). Menüs, deren ganze Liste zu gross ist
-(`/ip/route`, `/ipv6/route`, `/log`, Host-Tabelle der Bridge, Leases), behalten den Filter des
-Geräts, markiert im Modell.
 
 ## Geteilte Lese-Verbindung (Pool)
 
@@ -91,10 +82,8 @@ Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern, `update::state_
 
 ## Schritte
 
-1. mikrotik-model: ganze Listen statt Filter (oben), dann `/ip/service` auf der Geräteseite
-   messen.
-2. Provisioner: Rahmen pro Operation mit Topologie und HTTP, die Handarbeiten weg.
-3. Pool mit Leerlaufzeit und Semaphor pro Gerät, falls die Messung es noch braucht.
+1. Provisioner: Rahmen pro Operation mit Topologie und HTTP, die Handarbeiten weg.
+2. Pool mit Leerlaufzeit und Semaphor pro Gerät, falls die Messung es noch braucht.
 
 ## Prüfen
 
