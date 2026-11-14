@@ -272,28 +272,27 @@ settings:
         );
     }
 
-    /// The chart writes the certificate into the file and hands the key over as a variable;
-    /// both keep their lines, which PEM needs.
+    /// The chart hands certificate and key over as variables (each a value or a key of a
+    /// Secret, cert-manager's `tls.crt` and `tls.key`), none in the file; both keep their
+    /// lines, which PEM needs.
     #[test]
-    fn www_ca_takes_its_key_from_the_environment() {
-        let yaml = format!(
-            "{YAML}  www_ca:\n    certificate: \"-----BEGIN CERTIFICATE-----\\nAAAA\\n\
-             -----END CERTIFICATE-----\\n\"\n"
-        );
+    fn www_ca_comes_from_the_environment() {
+        let certificate = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n";
         let key = "-----BEGIN PRIVATE KEY-----\nBBBB\n-----END PRIVATE KEY-----\n";
-        let env = [("APP_SETTINGS__WWW_CA__KEY".to_owned(), key.to_owned())]
-            .into_iter()
-            .collect();
+        let env = [
+            ("APP_SETTINGS__WWW_CA__CERTIFICATE", certificate),
+            ("APP_SETTINGS__WWW_CA__KEY", key),
+        ]
+        .into_iter()
+        .map(|(name, value)| (name.to_owned(), value.to_owned()))
+        .collect();
         let settings = settings_from(
-            File::from_str(&yaml, FileFormat::Yaml),
+            File::from_str(YAML, FileFormat::Yaml),
             environment().source(Some(env)),
         )
         .unwrap();
         let ca = settings.www_ca.expect("www_ca");
-        assert_eq!(
-            &*ca.certificate,
-            "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"
-        );
+        assert_eq!(&*ca.certificate, certificate);
         assert_eq!(&*ca.key, key);
     }
 }

@@ -48,7 +48,9 @@ always build the pushed revisions in `Cargo.lock`. A change of
 it). The Helm chart is `charts/netbox-provisioner`: every setting of `config.yaml` is a value
 of its own (`settings`), the chart writes them to a ConfigMap without the secrets; a secret
 (`netbox_token`, `netbox_write_token`, a credential's or the proxy's `password`) is a `value` or
-a `secretKeyRef` and reaches the binary as `APP_SETTINGS__…` variable. A new setting in
+a `secretKeyRef` and reaches the binary as `APP_SETTINGS__…` variable; so do both parts of
+`www_ca`, the certificate too, as it comes from the same Secret as its key (cert-manager's
+`tls.crt`, `tls.key`). A new setting in
 `backend/src/config.rs` belongs in `values.yaml` and `templates/configmap.yaml` (a secret one in
 `netbox-provisioner.secrets` of `_helpers.tpl`).
 

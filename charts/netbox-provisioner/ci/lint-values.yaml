@@ -29,6 +29,11 @@ settings:
   apply_fallback_seconds: 120
   device_metrics: false
   api_networks: [192.168.0.0/16, "2a02:16a:fe00:8000::/50"]
+  www_ca:
+    certificate:
+      secretKeyRef: {name: webfig-ca, key: tls.crt}
+    key:
+      secretKeyRef: {name: webfig-ca, key: tls.key}
   device_syslog:
     remote: "2a02:16a:fe00:1a0::10:8"
     topics: [info, warning, error, critical]

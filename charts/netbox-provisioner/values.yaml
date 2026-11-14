@@ -70,9 +70,13 @@ settings:
   api_networks: []
   # the CA issuing each device's certificate for WebFig over HTTPS (PEM, with a subject key
   # identifier); with it, an apply installs one per device, turns www-ssl on and www (HTTP)
-  # off. The admins import `certificate` into their browsers once. Empty: WebFig stays on HTTP
+  # off. The admins import `certificate` into their browsers once. Empty: WebFig stays on HTTP.
+  # Both like a secret; from a cert-manager Certificate (`isCA: true`, the key kept with
+  # `privateKey.rotationPolicy: Never`) its Secret's `tls.crt` and `tls.key`
   www_ca:
-    certificate: ""
+    certificate:
+      value: ""
+      secretKeyRef: {}
     key:
       value: ""
       secretKeyRef: {}

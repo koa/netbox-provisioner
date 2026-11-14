@@ -43,8 +43,12 @@ chart's Secret, `secret` the setting ({value} or {secretKeyRef}); only those giv
 {{- if $s.management_proxy.device -}}
 {{- $all = append $all (dict "env" "APP_SETTINGS__MANAGEMENT_PROXY__PASSWORD" "key" "management_proxy_password" "secret" $s.management_proxy.password) -}}
 {{- end -}}
-{{- if and $s.www_ca $s.www_ca.certificate -}}
-{{- $all = append $all (dict "env" "APP_SETTINGS__WWW_CA__KEY" "key" "www_ca_key" "secret" $s.www_ca.key) -}}
+{{- with $s.www_ca -}}
+{{- if kindIs "string" .certificate -}}
+{{- fail "settings.www_ca.certificate: value or secretKeyRef (e.g. cert-manager's tls.crt)" -}}
+{{- end -}}
+{{- $all = append $all (dict "env" "APP_SETTINGS__WWW_CA__CERTIFICATE" "key" "www_ca_certificate" "secret" .certificate) -}}
+{{- $all = append $all (dict "env" "APP_SETTINGS__WWW_CA__KEY" "key" "www_ca_key" "secret" .key) -}}
 {{- end -}}
 {{- range $name, $c := $s.mikrotik_credentials -}}
 {{- if or $c.password $c.previous_password -}}
@@ -76,8 +80,8 @@ chart's Secret, `secret` the setting ({value} or {secretKeyRef}); only those giv
 {{- if not (has "netbox_token" $keys) -}}
 {{- fail "settings.netbox_token: value or secretKeyRef" -}}
 {{- end -}}
-{{- if and $s.www_ca $s.www_ca.certificate (not (has "www_ca_key" $keys)) -}}
-{{- fail "settings.www_ca.key: value or secretKeyRef" -}}
+{{- if ne (has "www_ca_certificate" $keys) (has "www_ca_key" $keys) -}}
+{{- fail "settings.www_ca: certificate and key, each value or secretKeyRef" -}}
 {{- end -}}
 {{- if and $s.management_proxy.device (not (has "management_proxy_password" $keys)) -}}
 {{- fail "settings.management_proxy.password: value or secretKeyRef" -}}

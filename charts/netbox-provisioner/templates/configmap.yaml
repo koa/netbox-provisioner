@@ -48,12 +48,6 @@ data:
       {{- with $s.api_networks }}
       api_networks: {{ . | toJson }}
       {{- end }}
-      {{- with $s.www_ca }}
-      {{- if .certificate }}
-      www_ca:
-        certificate: {{ .certificate | quote }}
-      {{- end }}
-      {{- end }}
       {{- with $s.device_syslog }}
       {{- if .remote }}
       device_syslog:

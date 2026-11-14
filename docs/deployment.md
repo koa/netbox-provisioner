@@ -26,10 +26,13 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   Nachbarn (Tunnel, Konsole der Ersteinrichtung) und beim mac-telnet-Login der Ersteinrichtung.
   Ein Gerät mit dem alten zeigt auf der Geräteseite eine Abweichung, sein Anwenden setzt das
   neue; es geschieht nichts von selbst. Sind alle umgestellt, fällt `previous_password` weg.
-- **WebFig über HTTPS (A7):** mit `www_ca` (`certificate` und `key`, PEM; im Chart das
-  Zertifikat als Wert, der Schlüssel als `value` oder `secretKeyRef`, `www_ca_key`) stellt der
-  Provisioner jedem Gerät ein Zertifikat aus: ECDSA P-256, 397 Tage, mit allen Adressen des
-  Geräts aus NetBox (ohne Link-Local) und seinem Namen, wo der ein DNS-Name ist. Die CA braucht
+- **WebFig über HTTPS (A7):** mit `www_ca` (`certificate` und `key`, PEM; im Chart beide als
+  `value` oder `secretKeyRef`, `www_ca_certificate` und `www_ca_key`, etwa `tls.crt` und
+  `tls.key` des Secrets eines cert-manager-Certificate mit `isCA: true` und
+  `privateKey.rotationPolicy: Never`: ein neuer Schlüssel hiesse eine neue CA in den
+  Browsern) stellt der Provisioner jedem Gerät ein Zertifikat aus: ECDSA P-256, 397 Tage,
+  mit allen Adressen des Geräts aus NetBox (ohne Link-Local) und seinem Namen, wo der ein
+  DNS-Name ist. Die CA braucht
   einen Subject Key Identifier (`openssl req -x509` setzt ihn). Das Anwenden legt es an, wenn
   keines passt (andere Adressen, andere CA, weniger als 30 Tage übrig), hängt es an `www-ssl`
   und entfernt ältere des Provisioners (`netbox-provisioner-www-<Sekunde>`), die kein anderer
