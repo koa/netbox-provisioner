@@ -124,6 +124,13 @@ dieselbe Tabelle verschieden fragen, sind zwei Fakten. Die Antworten liegen roh 
 eine abgebrochene Verbindung sind, gelten nicht (`failed`). Eine Tabelle, die fehlt (Paket nicht
 installiert), ist eine Antwort wie jede andere.
 
+Innerhalb einer GraphQL-Operation (Query, Mutation, Runde einer Subscription) gilt von jedem
+`Table`- und `NewestVersion`-Fakt der Stand, den sie zuerst bekam (`facts::Pins`), wie alt ein
+weiteres Fragen ihn auch wollte: die ganze Operation rechnet auf einem Bild. Neu gefragt wird
+nur, wer mit `Since` Neueres will, oder nach `invalidate`/`forget` in der Operation; eine
+Antwort, die eine abgebrochene Verbindung ist, wird nicht festgehalten. Logins und Wege nicht:
+ein Login wird bei jedem Gebrauch geprüft, ob er noch lebt.
+
 Nicht gespeichert, sondern bei jedem Zugriff gerechnet wird alles, was aus Tabellen und NetBox
 folgt: die generierte Konfiguration mit Diff und Warnungen, RouterOS-Stand und gewünschte
 Pakete, Reste, Partitionen, Device-Mode, was das Gerät sieht, die Live-Prüfung, das LSDB der
@@ -292,7 +299,7 @@ an, das Binary registriert sie in der Registry von `/metrics` am Management-Port
   erste Fehlschlag fehlte sonst.
 - `path`: `routed` oder `neighbor`, damit man sieht, was der Umweg über einen Nachbarn kostet;
   leer für Abfragen, die an keinem Gerät hängen (`route`, `newest_version`).
-- `result`: `hit`, `joined`, `miss`.
+- `result`: `hit`, `joined`, `pinned` (der Stand, den die GraphQL-Operation zuerst bekam), `miss`.
 
 Das Histogram hat kein Label `device`, pro Gerät zählt nur der Counter. Die Buckets sind für
 Heatmaps fein und logarithmisch gestuft, von 25 ms bis 60 s (0.025, 0.05, 0.1, 0.2, 0.35, 0.5,
@@ -309,7 +316,7 @@ es über Dashboards → Import. Geprüft mit Grafana 13.3 und Prometheus 3.15. I
 Gruppen (direkt erreichbar und über einen Nachbarn, schnelle Geräte und alte RouterBOARDs), die
 ein p95 zu einer Zahl verwischt.
 
-- **Überblick:** Erfolgsrate pro Art, Trefferquote des Caches (`hit` und `joined`), laufende
+- **Überblick:** Erfolgsrate pro Art, Trefferquote des Caches (`hit`, `joined` und `pinned`), laufende
   Abfragen, Fakten im Cache, Abfragen pro Minute nach Ergebnis.
 - **Antwortzeiten:** eine Heatmap pro Art (Repeat über `$kind`), je eine nach Weg (`routed`,
   `neighbor`), eine der Fehlschläge (kommen sie schnell, verweigert, oder am Timeout), und die

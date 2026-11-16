@@ -44,6 +44,8 @@ pub struct Operation {
     netbox: Answers<serde_json::Value>,
     /// the sizes of MikroTik's package files it asked, by URL
     package_sizes: Answers<Option<u64>>,
+    /// the facts it got first
+    facts: crate::facts::Pins,
 }
 
 /// What was read over HTTP, by URL; a failed reading isn't kept, the next asker reads again.
@@ -74,7 +76,12 @@ impl Operation {
             topology: tokio::sync::OnceCell::new(),
             netbox: Mutex::default(),
             package_sizes: Mutex::default(),
+            facts: crate::facts::Pins::default(),
         })
+    }
+    /// The facts it got first (`facts::Pins`).
+    pub fn pins(&self) -> &crate::facts::Pins {
+        &self.facts
     }
     /// How often each path went to each device.
     fn counts(&self) -> Vec<(DeviceId, Box<str>, u32)> {

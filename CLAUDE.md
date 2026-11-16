@@ -594,9 +594,11 @@ NetBox is read every 10 s (`live::watch_netbox`). Within one GraphQL request eve
 loaded once, unless waiting for a condition: each operation (a query, a mutation, a round of a
 subscription) keeps the topology it got first (`TopologyHolder::current`, `operation::topology`)
 and what a NetBox reader or the package sizes got by URL (`operation::netbox`,
-`operation::package_size`); what reads a device several times reads it through one facts
-reader (`Reader::at`, the rollout plan with `Freshness::Since` its start), so each table is
-asked once and no rows are handed on by hand. Jobs run outside any operation and read anew.
+`operation::package_size`), and of each table and newest release the state it got first
+(`facts::Pins`; one older than a `Since` is asked anew, `invalidate` drops the device's; no
+logins or ways, a login is checked on each use); what reads a device several times reads it
+through one facts reader (`Reader::at`, the rollout plan with `Freshness::Since` its start), so
+each table is asked once and no rows are handed on by hand. Jobs run outside any operation and read anew.
 Over HTTP a subscription is answered with
 its first answer (`live::execute_once`): a view asking once shares the document and generated
 types with the views subscribing (`Findings`, `InterfaceView`, `SiteDevices`, `ListSites`).

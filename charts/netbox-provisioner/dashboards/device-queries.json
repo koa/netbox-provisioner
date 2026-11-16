@@ -122,7 +122,7 @@
     {
       "type": "timeseries",
       "title": "Trefferquote des Caches",
-      "description": "Anteil der Verwender eines Fakts, die ihn aus dem Cache bekamen oder einer laufenden Abfrage anhingen (hit, joined), statt neu zu fragen (miss).",
+      "description": "Anteil der Verwender eines Fakts, die ihn aus dem Cache bekamen, einer laufenden Abfrage anhingen oder den Stand ihrer Operation nahmen (hit, joined, pinned), statt neu zu fragen (miss).",
       "id": 3,
       "datasource": {
         "type": "prometheus",
@@ -140,7 +140,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (kind) (rate(fact_cache_requests_total{result=~\"hit|joined\",kind=~\"$kind\"}[5m])) / sum by (kind) (rate(fact_cache_requests_total{kind=~\"$kind\"}[5m]))",
+          "expr": "sum by (kind) (rate(fact_cache_requests_total{result=~\"hit|joined|pinned\",kind=~\"$kind\"}[5m])) / sum by (kind) (rate(fact_cache_requests_total{kind=~\"$kind\"}[5m]))",
           "legendFormat": "{{kind}}",
           "refId": "A",
           "range": true,

@@ -299,3 +299,70 @@ fn a_subscription_gets_only_the_events_not_delivered() {
     assert_eq!(reading_in(reading.clone(), || events_from(8, 3)), 3);
     assert_eq!(events_from(7, 0), 0);
 }
+
+/// Within an operation a table is the one it got first, however fresh the next asking wants
+/// it; one begun before a `Since` is asked anew, so is one after `invalidate`. The next
+/// operation asks anew.
+#[tokio::test(start_paused = true)]
+async fn an_operation_keeps_the_table_it_got_first() {
+    let asker = Asker::default();
+    let ((), _) = crate::operation::counted(async {
+        let first = get(key(40), Freshness::MaxAge(MINUTE), asker.ask(SECOND, Ok(1))).await;
+        let again = get(
+            key(40),
+            Freshness::MaxAge(Duration::ZERO),
+            asker.ask(SECOND, Ok(2)),
+        )
+        .await;
+        assert_eq!((*first.value.unwrap(), *again.value.unwrap()), (1, 1));
+        assert_eq!(again.came, Came::Pinned);
+        assert_eq!(asker.asked(), 1);
+        let newer = Freshness::Since(Instant::now());
+        let since = get(key(40), newer, asker.ask(SECOND, Ok(3))).await;
+        assert_eq!(*since.value.unwrap(), 3);
+        let pinned = get(
+            key(40),
+            Freshness::MaxAge(Duration::ZERO),
+            asker.ask(SECOND, Ok(4)),
+        )
+        .await;
+        assert_eq!(*pinned.value.unwrap(), 3);
+        invalidate(DeviceId(40), &[FactKind::Table]);
+        let after = get(key(40), Freshness::MaxAge(MINUTE), asker.ask(SECOND, Ok(5))).await;
+        assert_eq!(*after.value.unwrap(), 5);
+    })
+    .await;
+    assert_eq!(asker.asked(), 3);
+    let next = crate::operation::counted(get(
+        key(40),
+        Freshness::MaxAge(Duration::ZERO),
+        asker.ask(SECOND, Ok(6)),
+    ))
+    .await
+    .0;
+    assert_eq!(*next.value.unwrap(), 6);
+}
+
+/// A login isn't kept by the operation: each use may find it gone.
+#[tokio::test(start_paused = true)]
+async fn an_operation_keeps_no_login() {
+    let asker = Asker::default();
+    let login = FactKey::new(FactKind::Login, Some(DeviceId(41)), "");
+    let ((), _) = crate::operation::counted(async {
+        get(
+            login.clone(),
+            Freshness::MaxAge(MINUTE),
+            asker.ask(SECOND, Ok(1)),
+        )
+        .await;
+        let again = get(
+            login.clone(),
+            Freshness::MaxAge(Duration::ZERO),
+            asker.ask(SECOND, Ok(2)),
+        )
+        .await;
+        assert_eq!(*again.value.unwrap(), 2);
+    })
+    .await;
+    assert_eq!(asker.asked(), 2);
+}

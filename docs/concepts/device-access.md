@@ -4,8 +4,8 @@ Stand 2026-11-13, besprochen mit dem Benutzer (Basis-Fakten und Ableitungen am s
 nach der Messung). Gebaut und in [device-access.md](../device-access.md) beschrieben sind die
 Befehle als Typen mit ihrer Wirkung, `Connection`, Aktionskatalog, `Reader`/`Session` (B36) und
 die Basis-Fakten mit den Ableitungen und die ganzen Listen statt Filter (C17), vom Rahmen pro
-Operation die Topologie und HTTP (`operation`), ohne Handarbeiten. Offen sind die Stände der
-Basis-Fakten im Rahmen, der Pool und die Punkte unter „Offen“.
+Operation die Topologie, HTTP und die Stände der Tabellen (`operation`, `facts::Pins`), ohne
+Handarbeiten. Offen sind der Pool und die Punkte unter „Offen“.
 
 ## Ziel
 
@@ -62,7 +62,8 @@ Runde liest neu, die Subscription erfährt es über `facts::Change`.
 - **Warten**: wer auf eine Bedingung wartet, liest frisch (`operation::fresh(fut)`). Fast alles
   Warten läuft in Jobs, die keinen Rahmen haben.
 - **Facts**: `facts::get` startet das Fragen als eigenen Task; der Rahmen geht mit, damit zwei
-  Facts derselben Operation dieselben Stände sehen.
+  Facts derselben Operation dieselben Stände sehen (gebaut: `facts::Pins` für `Table` und
+  `NewestVersion`; Logins und Wege nicht, ein Login wird bei jedem Gebrauch geprüft).
 - Eine Mutation ohne Job, die schreibt und danach liest, braucht `operation::fresh`; beim Umbau
   prüfen, ob es eine gibt (Kandidaten: `publishLayout`, die NetBox-Schreiber, die nur NetBox
   schreiben). Geprüft: keine. `publishLayout` liest nach dem Schreiben nichts mehr, die

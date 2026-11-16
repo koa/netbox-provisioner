@@ -97,6 +97,14 @@ pub enum FactKind {
 impl FactKind {
     /// every kind about a device: what „Neu laden“ drops
     pub const ABOUT_DEVICES: &[FactKind] = &[FactKind::Table, FactKind::Login, FactKind::Route];
+    /// Whether an operation keeps the one it got first (`Pins`): what is read, not the way to
+    /// read it. A login is checked for being alive on each use, a way found anew where it fails.
+    fn pinned(self) -> bool {
+        match self {
+            FactKind::Table | FactKind::NewestVersion => true,
+            FactKind::Login | FactKind::Route => false,
+        }
+    }
 }
 
 impl FactKind {
@@ -204,6 +212,8 @@ pub enum Came {
     Joined,
     /// asked it
     Asked,
+    /// the one the operation got before (`Pins`)
+    Pinned,
 }
 
 impl Came {
@@ -212,6 +222,7 @@ impl Came {
             Came::Hit => "hit",
             Came::Joined => "joined",
             Came::Asked => "miss",
+            Came::Pinned => "pinned",
         }
     }
 }
@@ -482,6 +493,42 @@ where
     obtain(key, freshness, max_age, ask).await
 }
 
+/// What an operation got of each fact first (`operation`): it sees that one for the rest of
+/// it, however old the next asking of it would want it, so all of the operation works on one
+/// picture. Only what is read ([`FactKind::pinned`]), and no answer that is the connection
+/// failing. One begun before a `Since` wants is asked anew and pinned instead (who waits for
+/// something newer); [`invalidate`] and [`forget`] within the operation drop its pins too.
+#[derive(Default)]
+pub struct Pins(Mutex<HashMap<FactKey, Done>>);
+
+impl fmt::Debug for Pins {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Pins({})", self.0.lock_anyway().len())
+    }
+}
+
+impl Pins {
+    fn get(&self, key: &FactKey, freshness: Freshness) -> Option<Done> {
+        let pins = self.0.lock_anyway();
+        let done = pins.get(key)?;
+        match freshness {
+            Freshness::MaxAge(_) => Some(done.clone()),
+            Freshness::Since(since) => (done.as_of >= since).then(|| done.clone()),
+        }
+    }
+    fn pin(&self, key: &FactKey, done: Done) {
+        self.0.lock_anyway().insert(key.clone(), done);
+    }
+    fn forget(&self, key: &FactKey) {
+        self.0.lock_anyway().remove(key);
+    }
+    fn drop_device(&self, device: DeviceId, kinds: &[FactKind]) {
+        self.0
+            .lock_anyway()
+            .retain(|key, _| key.device != Some(device) || !kinds.contains(&key.kind));
+    }
+}
+
 async fn obtain<T, F>(
     key: FactKey,
     freshness: Freshness,
@@ -492,11 +539,43 @@ where
     T: Send + Sync + 'static,
     F: Future<Output = Result<T, Error>> + Send + 'static,
 {
+    let operation = crate::operation::current().filter(|_| key.kind.pinned());
+    let pins = operation.as_deref().map(crate::operation::Operation::pins);
+    if let Some(done) = pins.and_then(|pins| pins.get(&key, freshness)) {
+        note(&key, done.as_of, age_of(freshness, &done.value, &max_age));
+        return fact(&key, done.value, done.as_of, Came::Pinned);
+    }
+    // on the heap: a fact is asked deep in the resolvers, the worker's stack is small
+    let got = Box::pin(obtain_anew(&key, freshness, &max_age, ask)).await;
+    // an answer that is the connection failing is none (`get_judged`): not kept either
+    if let Some(pins) = pins.filter(|_| max_age(&got.value) != Some(Duration::ZERO)) {
+        let value: Stored = Arc::new(got.value.clone());
+        pins.pin(
+            &key,
+            Done {
+                value,
+                as_of: got.as_of,
+            },
+        );
+    }
+    got
+}
+
+async fn obtain_anew<T, F>(
+    key: &FactKey,
+    freshness: Freshness,
+    max_age: &impl Fn(&Result<Arc<T>, Arc<Error>>) -> Option<Duration>,
+    ask: F,
+) -> Fact<T>
+where
+    T: Send + Sync + 'static,
+    F: Future<Output = Result<T, Error>> + Send + 'static,
+{
     let takes = |done: &Done, now| {
         let judged = done
             .value
             .downcast_ref::<Result<Arc<T>, Arc<Error>>>()
-            .and_then(&max_age);
+            .and_then(max_age);
         judged
             .map_or(freshness, Freshness::MaxAge)
             .takes(done.as_of, now)
@@ -512,8 +591,8 @@ where
             if let Some(done) = slot.done.as_ref().filter(|done| takes(done, now)) {
                 let done = done.clone();
                 drop(store);
-                note(&key, done.as_of, age_of(freshness, &done.value, &max_age));
-                return fact(&key, done.value, done.as_of, Came::Hit);
+                note(key, done.as_of, age_of(freshness, &done.value, max_age));
+                return fact(key, done.value, done.as_of, Came::Hit);
             }
             match &slot.running {
                 Some(running) if freshness.joins(running.started) => {
@@ -554,8 +633,8 @@ where
                         Arc::new(failed)
                     }
                 };
-                note(&key, started, age_of(freshness, &value, &max_age));
-                return fact(&key, value, started, came);
+                note(key, started, age_of(freshness, &value, max_age));
+                return fact(key, value, started, came);
             }
             Waiting::Before(mut answer) => {
                 let _ = answer.wait_for(Option::is_some).await;
@@ -670,6 +749,10 @@ pub fn invalidate(device: DeviceId, kinds: &'static [FactKind]) {
         for kind in kinds {
             store.dropped.insert((device, *kind), now);
         }
+        // the operation invalidating reads them anew too
+        if let Some(operation) = crate::operation::current() {
+            operation.pins().drop_device(device, kinds);
+        }
         for (key, slot) in &mut store.slots {
             if key.device == Some(device) && kinds.contains(&key.kind) && slot.done.take().is_some()
             {
@@ -743,6 +826,9 @@ pub fn dropped(kind: FactKind, device: DeviceId) -> Option<Instant> {
 
 /// Drops the one fact `key`, e.g. a connection found broken.
 pub fn forget(key: &FactKey) {
+    if let Some(operation) = crate::operation::current() {
+        operation.pins().forget(key);
+    }
     let mut store = store();
     if let Some(slot) = store.slots.get_mut(key)
         && slot.done.take().is_some()
