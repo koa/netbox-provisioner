@@ -5,7 +5,8 @@ nach der Messung). Gebaut und in [device-access.md](../device-access.md) beschri
 Befehle als Typen mit ihrer Wirkung, `Connection`, Aktionskatalog, `Reader`/`Session` (B36) und
 die Basis-Fakten mit den Ableitungen und die ganzen Listen statt Filter (C17), vom Rahmen pro
 Operation die Topologie, HTTP und die Stände der Tabellen (`operation`, `facts::Pins`), ohne
-Handarbeiten. Offen sind der Pool und die Punkte unter „Offen“.
+Handarbeiten. Der Pool ist laut Messung nicht nötig (2026-11-16, unter „Schritte“); offen sind die
+Punkte unter „Offen“.
 
 ## Ziel
 
@@ -88,7 +89,9 @@ Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern, `update::state_
 ## Schritte
 
 1. Provisioner: Rahmen pro Operation mit Topologie und HTTP, die Handarbeiten weg.
-2. Pool mit Leerlaufzeit und Semaphor pro Gerät, falls die Messung es noch braucht.
+2. Pool mit Leerlaufzeit und Semaphor pro Gerät, falls die Messung es noch braucht. Gemessen
+   2026-11-16 im Lab: ein zweiter Browser auf derselben Geräteseite schickt 1 Befehl statt 54,
+   ein Login dient beiden (Fact `Login`); der Pool bleibt weg, bis eine Messung ihn verlangt.
 
 ## Prüfen
 
