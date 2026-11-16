@@ -597,19 +597,23 @@ fn http() -> &'static reqwest::Client {
     })
 }
 
-/// The size of a package file on MikroTik's server, without downloading it.
+/// The size of a package file on MikroTik's server, without downloading it; asked once per
+/// operation (`operation::package_size`).
 pub async fn package_size(version: &Version, file: &str) -> Result<Option<u64>, Error> {
     let url = format!("{DOWNLOAD_URL}/{version}/{file}");
     let failed = |e: reqwest::Error| Error::Download(url.as_str().into(), e);
-    Ok(http()
-        .head(&url)
-        .send()
-        .await
-        .and_then(|r| r.error_for_status())
-        .map_err(failed)?
-        .headers()
-        .get(reqwest::header::CONTENT_LENGTH)
-        .and_then(|length| length.to_str().ok()?.parse().ok()))
+    let load = async {
+        Ok(http()
+            .head(&url)
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .map_err(failed)?
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|length| length.to_str().ok()?.parse().ok()))
+    };
+    crate::operation::package_size(&url, load).await
 }
 
 /// The packages downloaded while a rollout runs ([`DownloadCache`]), by version and file: its

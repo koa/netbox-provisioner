@@ -30,7 +30,7 @@ use mikrotik_model::{
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 use tokio::{sync::Semaphore, task::JoinSet};
 
@@ -124,16 +124,15 @@ pub async fn plan(sites: &[SiteAccess], channel: Channel) -> Result<RolloutPlan,
         Some(device) => Paths::of(device).await,
         None => Paths::default(),
     };
-    let sizes = Arc::new(Mutex::new(HashMap::new()));
     let permits = Arc::new(Semaphore::new(AT_ONCE));
     let mut reads = JoinSet::new();
     for (index, device) in devices.iter().cloned().enumerate() {
-        let (permits, target, sizes) = (permits.clone(), target.clone(), sizes.clone());
+        let (permits, target) = (permits.clone(), target.clone());
         // what it reads counts for the operation planning (`operation`)
         let operation = crate::operation::current();
         reads.spawn(crate::operation::within(operation, async move {
             let _permit = permits.acquire_owned().await;
-            let read = crate::job::run(read(device.clone(), target, sizes)).await;
+            let read = crate::job::run(read(device.clone(), target)).await;
             (index, read)
         }));
     }
@@ -285,11 +284,7 @@ struct Read {
     leftovers: bool,
 }
 
-async fn read(
-    device: DeviceAccess,
-    target: Version,
-    sizes: Arc<Mutex<HashMap<Box<str>, Option<u64>>>>,
-) -> Result<Read, Error> {
+async fn read(device: DeviceAccess, target: Version) -> Result<Read, Error> {
     let link = device
         .connect(DeviceTarget::default())
         .await?
@@ -327,18 +322,9 @@ async fn read(
     let left = leftovers::read_with_files(raw, &files).await?;
     let mut download = Some(0);
     for file in step.iter().flat_map(|step| step.files.iter()) {
-        let known = sizes.lock().ok().and_then(|sizes| sizes.get(file).copied());
-        let size = match known {
-            Some(size) => size,
-            None => {
-                let version = step.as_ref().map(|step| &step.version).unwrap_or(&target);
-                let size = package_size(version, file).await.ok().flatten();
-                if let Ok(mut sizes) = sizes.lock() {
-                    sizes.insert(file.clone(), size);
-                }
-                size
-            }
-        };
+        // asked once per operation, for all devices of the plan
+        let version = step.as_ref().map(|step| &step.version).unwrap_or(&target);
+        let size = package_size(version, file).await.ok().flatten();
         download = download.zip(size).map(|(sum, size)| sum + size);
     }
     Ok(Read {

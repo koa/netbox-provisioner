@@ -3,8 +3,9 @@
 Stand 2026-11-13, besprochen mit dem Benutzer (Basis-Fakten und Ableitungen am selben Tag
 nach der Messung). Gebaut und in [device-access.md](../device-access.md) beschrieben sind die
 Befehle als Typen mit ihrer Wirkung, `Connection`, Aktionskatalog, `Reader`/`Session` (B36) und
-die Basis-Fakten mit den Ableitungen und die ganzen Listen statt Filter (C17). Offen sind der
-Rahmen pro Operation, der Pool und die Punkte unter „Offen“.
+die Basis-Fakten mit den Ableitungen und die ganzen Listen statt Filter (C17), vom Rahmen pro
+Operation die Topologie und HTTP (`operation`). Offen sind die Handarbeiten, der Pool und die
+Punkte unter „Offen“.
 
 ## Ziel
 
@@ -23,13 +24,14 @@ Rahmen pro Operation, der Pool und die Punkte unter „Offen“.
 - Gespeichert sind nur Basis-Fakten (Menüs, Logins, neueste Version), die Ableitungen werden bei
   jedem Zugriff gerechnet ([device-access.md](../device-access.md#basis-fakten)).
 - Als Pool dient der Fact `Login`, der eine Verbindung 60 s wieder gibt.
-- Die Topologie (`TopologyHolder::topo_lock`) wird neu aus NetBox gelesen, sobald sie älter als
-  10 s ist, auch mitten in einer Anfrage; die Resolver nehmen dafür von Hand einen
-  `TopologyHolder::snapshot`.
+- Die Topologie (`TopologyHolder::current`) hält jede Operation fest, die sie zuerst bekam;
+  ausserhalb (Jobs) wird sie neu aus NetBox gelesen, sobald sie älter als 10 s ist.
 - Wo eine Funktion ein Menü mehrfach brauchte, reicht sie die Zeilen noch von Hand weiter
   (`update::state_from`, `leftovers::read_with_files`, `progress::root_in_ram_of`,
   `wanted_packages_for`); mit den Basis-Fakten wäre das nicht mehr nötig.
-- NetBox-REST und die Paketgrössen bei MikroTik werden pro Aufruf gelesen.
+- NetBox-REST-GETs eines Readers und die Paketgrössen bei MikroTik liest eine Operation einmal
+  pro URL (`operation::netbox`, `operation::package_size`); ein Writer liest immer neu, er liest,
+  was er gleich ändert.
 
 ## Geteilte Lese-Verbindung (Pool)
 
@@ -54,18 +56,20 @@ Topologie die Operation zuerst bekam, und gibt ihr für den Rest genau den. Wird
 mittendrin ungültig, sieht die Operation weiter ihr eines Bild; die nächste Operation oder
 Runde liest neu, die Subscription erfährt es über `facts::Change`.
 
-- **Topologie**: `topo_lock` gibt im Rahmen die Topologie, die er beim ersten Zugriff nahm
-  (heute `TopologyHolder::snapshot` von Hand in den Resolvern).
-- **HTTP**: NetBox-REST-GETs und MikroTik-Metadaten nach URL im Rahmen.
+- **Topologie**: `TopologyHolder::current` gibt im Rahmen die Topologie, die er beim ersten
+  Zugriff nahm (gebaut).
+- **HTTP**: NetBox-REST-GETs und MikroTik-Metadaten nach URL im Rahmen (gebaut).
 - **Warten**: wer auf eine Bedingung wartet, liest frisch (`operation::fresh(fut)`). Fast alles
   Warten läuft in Jobs, die keinen Rahmen haben.
 - **Facts**: `facts::get` startet das Fragen als eigenen Task; der Rahmen geht mit, damit zwei
   Facts derselben Operation dieselben Stände sehen.
 - Eine Mutation ohne Job, die schreibt und danach liest, braucht `operation::fresh`; beim Umbau
   prüfen, ob es eine gibt (Kandidaten: `publishLayout`, die NetBox-Schreiber, die nur NetBox
-  schreiben).
+  schreiben). Geprüft: keine. `publishLayout` liest nach dem Schreiben nichts mehr, die
+  NetBox-Schreiber laufen als Jobs; `refetch` setzt die Topologie des Holders, nicht die der
+  Operation.
 
-Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern, `update::state_from`,
+Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern: weg, `update::state_from`,
 `leftovers::read_with_files`, `progress::root_in_ram_of`, `wanted_packages_for`).
 
 ## Offen

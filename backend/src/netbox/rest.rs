@@ -58,12 +58,26 @@ impl NetboxRest {
 
     /// `path` below `api/`, e.g. `ipam/prefixes/1/available-ips/`.
     pub async fn get(&self, path: &str) -> Result<Value, NetboxError> {
-        self.send(Method::GET, path, &[], None).await
+        self.read(path, &[]).await
     }
     /// The objects below `path` (e.g. `dcim/devices/`) matching `filters`, which go into the
     /// URL encoded: a name may hold `#`, `&` or `+`.
     pub async fn find(&self, path: &str, filters: &[(&str, &str)]) -> Result<Value, NetboxError> {
-        self.send(Method::GET, path, filters, None).await
+        self.read(path, filters).await
+    }
+    /// A reader's GET once per URL within an operation (`operation::netbox`); a writer's always:
+    /// it reads what it is about to change.
+    async fn read(&self, path: &str, filters: &[(&str, &str)]) -> Result<Value, NetboxError> {
+        let load = self.send(Method::GET, path, filters, None);
+        if self.changelog_message.is_some() {
+            return load.await;
+        }
+        let url = self
+            .request(Method::GET, path, filters)
+            .build()?
+            .url()
+            .to_string();
+        crate::operation::netbox(&url, load).await
     }
     /// Creates an object, returns it as NetBox does (with its `id`).
     pub async fn create(&self, path: &str, object: Value) -> Result<Value, NetboxError> {

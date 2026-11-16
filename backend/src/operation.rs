@@ -1,10 +1,11 @@
 //! Scope: One GraphQL operation (a query, a mutation, a round of a subscription): the topology
-//! it works on and what it sent to the devices, counted and logged at its end; not the sending
+//! and HTTP answers it works on and what it sent to the devices, counted and logged at its end; not the sending
 //! (`device::access`) nor what is kept of it (`facts`).
 //!
 //! The topology is the one the operation got first ([`topology`]): every resolver sees the
 //! same, read from NetBox at most once, however long the operation takes; the next operation
-//! or round reads anew.
+//! or round reads anew. So is what it reads over HTTP, by URL: NetBox's REST answers to a
+//! reader ([`netbox`]) and the sizes of MikroTik's packages ([`package_size`]).
 //!
 //! The measurement of `docs/concepts/device-access.md` („Prüfen“): every command a [`Reader`]
 //! sends within an operation is noted by device and path; at the end the operation logs on
@@ -25,7 +26,7 @@ use async_graphql::{
 };
 use log::{debug, log_enabled};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     future::Future,
     pin::Pin,
     sync::{Arc, Mutex},
@@ -39,7 +40,14 @@ pub struct Operation {
     sent: Mutex<BTreeMap<Sent, u32>>,
     /// the topology it got first, of the holder that gave it
     topology: tokio::sync::OnceCell<Pinned>,
+    /// NetBox's REST answers it read, by URL
+    netbox: Answers<serde_json::Value>,
+    /// the sizes of MikroTik's package files it asked, by URL
+    package_sizes: Answers<Option<u64>>,
 }
+
+/// What was read over HTTP, by URL; a failed reading isn't kept, the next asker reads again.
+type Answers<T> = Mutex<HashMap<Box<str>, Arc<tokio::sync::OnceCell<T>>>>;
 
 #[derive(Debug)]
 struct Pinned {
@@ -64,6 +72,8 @@ impl Operation {
             name: name.unwrap_or("(unnamed)").into(),
             sent: Mutex::default(),
             topology: tokio::sync::OnceCell::new(),
+            netbox: Mutex::default(),
+            package_sizes: Mutex::default(),
         })
     }
     /// How often each path went to each device.
@@ -140,6 +150,38 @@ pub async fn topology(
         Some(load) if pinned.holder != holder => load.await,
         _ => pinned.topology.clone(),
     }
+}
+
+/// NetBox's answer to the GET of `url` for the operation running: the one it got first,
+/// `load`ed on the first ask; outside an operation (a job) `load`ed each time.
+pub async fn netbox<E>(
+    url: &str,
+    load: impl Future<Output = Result<serde_json::Value, E>>,
+) -> Result<serde_json::Value, E> {
+    let Some(operation) = current() else {
+        return load.await;
+    };
+    once_per_url(&operation.netbox, url, load).await
+}
+
+/// The size of MikroTik's package file at `url` for the operation running, as [`netbox`].
+pub async fn package_size<E>(
+    url: &str,
+    load: impl Future<Output = Result<Option<u64>, E>>,
+) -> Result<Option<u64>, E> {
+    let Some(operation) = current() else {
+        return load.await;
+    };
+    once_per_url(&operation.package_sizes, url, load).await
+}
+
+async fn once_per_url<T: Clone, E>(
+    answers: &Answers<T>,
+    url: &str,
+    load: impl Future<Output = Result<T, E>>,
+) -> Result<T, E> {
+    let cell = answers.lock_anyway().entry(url.into()).or_default().clone();
+    cell.get_or_try_init(|| load).await.cloned()
 }
 
 /// The operation running, to hand to a task spawned for it ([`within`]).
@@ -286,6 +328,37 @@ mod test {
         assert_eq!(loads.load(Ordering::SeqCst), 2);
         topology(1, load()).await;
         topology(1, load()).await;
+        assert_eq!(loads.load(Ordering::SeqCst), 4);
+    }
+
+    /// NetBox is asked once per URL within an operation, again after a failure; outside one
+    /// each time.
+    #[tokio::test]
+    async fn an_operation_reads_each_url_once() {
+        use super::netbox;
+        use serde_json::{Value, json};
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let counter = AtomicU32::new(0);
+        let loads = &counter;
+        let load = |ok: bool| async move {
+            loads.fetch_add(1, Ordering::SeqCst);
+            match ok {
+                true => Ok(json!({ "id": 1 })),
+                false => Err(()),
+            }
+        };
+        let (answers, _) = counted(async {
+            let failed = netbox("dcim/devices/1/", load(false)).await;
+            let first = netbox("dcim/devices/1/", load(true)).await;
+            let second = netbox("dcim/devices/1/", load(true)).await;
+            let other = netbox("dcim/devices/2/", load(true)).await;
+            [failed, first, second, other]
+        })
+        .await;
+        let ok = Ok::<Value, ()>(json!({ "id": 1 }));
+        assert_eq!(answers, [Err(()), ok.clone(), ok.clone(), ok]);
+        assert_eq!(loads.load(Ordering::SeqCst), 3);
+        netbox("dcim/devices/1/", load(true)).await.unwrap();
         assert_eq!(loads.load(Ordering::SeqCst), 4);
     }
 
