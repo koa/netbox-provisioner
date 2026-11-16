@@ -100,7 +100,10 @@ SSH-Blacklist von RouterOS).
 - Das ganze Durchprobieren ist selbst ein Fakt (`FactKind::Route`): Es läuft für ein Gerät und
   einen Zugang nur einmal gleichzeitig, wird aber nicht gespeichert (`MaxAge(ZERO)`).
 - Ein Login, der vor höchstens einer Minute ging, gibt seine Verbindung wieder. Vorher prüft ein
-  `/system/identity` sie; eine tote wird verworfen und neu aufgebaut.
+  `/system/identity` sie, ausser das Gerät hat auf ihr vor weniger als 2 s geantwortet (jede
+  Antwort zählt, `Reader::answered`); eine tote wird verworfen und neu aufgebaut. Die Prüfung und
+  die Identität des neuen Logins gehen über die Facts (`Since` der letzten Antwort): Prüfungen
+  zugleich teilen sich eine, und wer die Identität danach liest, nimmt sie von dort.
 - `working_plan` und `tunnel` lesen den Login der Nachbarn aus dem Cache: Hat die Seite des
   Nachbarn ihn gerade erreicht, kostet es nichts mehr.
 - Andere Zugangsdaten ändern den Schlüssel; ein alter Fehlschlag gilt dann gar nicht erst.

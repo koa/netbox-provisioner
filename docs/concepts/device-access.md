@@ -80,9 +80,6 @@ Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern, `update::state_
   es viele Reihen: Pfade zu Gruppen zusammenfassen oder nur Art (Print, Monitor, Ping) als Label.
 - Die Rechenzeit der Ableitungen messen (der Diff jeder Geräteseite, der Site-Diff über alle
   Geräte), jetzt wo sie nicht mehr gespeichert sind.
-- Der Login prüft eine Verbindung, die seit `LOGIN_CHECKED` nicht antwortete, mit einem
-  `/system/identity`: auf der Geräteseite der einzige echte Doppel-Befehl. Zählte jede Antwort
-  auf der Verbindung als Prüfung, fiele er weg.
 - Nach einem Apply zeigt „Abweichung von NetBox“ „seit der Prüfung verändert“, bis jemand das
   Gerät liest (früher legte das Apply seinen Befund ab, `keep_in_line`).
 

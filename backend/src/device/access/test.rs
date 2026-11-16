@@ -139,3 +139,16 @@ fn a_missing_table_is_told_apart() {
     ));
     assert!(!is_missing_table(None, b"not enough permissions (9)"));
 }
+
+/// What a reader with an age reads counts as an answer of the device for every reader of the
+/// login (`answered`), so the login needs no check of its own.
+#[tokio::test(start_paused = true)]
+async fn a_read_counts_as_the_device_answering() {
+    let (connection, _, device) = fake_device().await;
+    let login = Reader::new(connection, Some(device), scope("credentials lab"));
+    let made = login.answered();
+    tokio::time::advance(Duration::from_secs(10)).await;
+    let kept = login.at(Freshness::MaxAge(Duration::from_secs(60)));
+    identity(&kept).await;
+    assert!(login.answered() >= made + Duration::from_secs(10));
+}

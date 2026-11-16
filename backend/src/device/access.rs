@@ -55,6 +55,10 @@ pub struct Reader {
     scope: Scope,
     /// when the oldest it read was asked
     as_of: Arc<Mutex<Option<Instant>>>,
+    /// when the device last answered on its connection (anything but the connection failing),
+    /// shared with every reader of the connection: a login answering a moment ago needs no
+    /// check (`device::login`)
+    answered: Arc<Mutex<Instant>>,
 }
 
 /// Whose facts a reader's are: the credentials it logged in with (`Credentials::fact_key`;
@@ -88,6 +92,8 @@ impl Reader {
             device,
             scope,
             as_of: Arc::default(),
+            // it was made after the login answered
+            answered: Arc::new(Instant::now().into()),
         }
     }
     /// What the facts hold of `device` as read with the credentials `scope`, without a login:
@@ -102,6 +108,7 @@ impl Reader {
                 way: "",
             },
             as_of: Arc::default(),
+            answered: Arc::new(Instant::now().into()),
         }
     }
     /// The same login, taking what it reads from the facts as old as `freshness` takes it;
@@ -119,6 +126,7 @@ impl Reader {
             device: self.device,
             scope: self.scope.clone(),
             as_of: Arc::default(),
+            answered: self.answered.clone(),
         }
     }
     /// When the oldest of what it read was asked (now before it read anything): what a value
@@ -132,6 +140,14 @@ impl Reader {
             Source::Device(connection) | Source::Facts { connection, .. } => connection.is_closed(),
             Source::Stored(_) => true,
         }
+    }
+    /// When the device last answered on its connection, the login included.
+    pub(crate) fn answered(&self) -> Instant {
+        *self.answered.lock_anyway()
+    }
+    /// The device answered on its connection just now.
+    pub(crate) fn note_answered(&self) {
+        *self.answered.lock_anyway() = Instant::now();
     }
     fn read_at(&self, at: Instant) {
         let mut as_of = self.as_of.lock_anyway();
@@ -165,9 +181,13 @@ impl Reader {
             facts::invalidate(device, &[FactKind::Table]);
         }
         let connection = connection.clone();
+        let answered = self.answered.clone();
         let ask = async move {
             operation::note(device, prepared.path());
             let replies: Vec<Reply> = connection.run(&prepared).await.unparsed().collect().await;
+            if !replies.iter().any(Reply::is_failure) {
+                *answered.lock_anyway() = Instant::now();
+            }
             Ok(Kept(replies.into()))
         };
         let fact = facts::get_judged(key, freshness, failed, ask).await;

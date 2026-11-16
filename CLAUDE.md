@@ -574,8 +574,10 @@ sidecar with `grafanaDashboard.enabled`.
 subscription) sends to the devices: a `task_local` scope `Reader` notes each command into by
 device and path, carried into the tasks `facts::get`, `job::run` and the rollout plan spawn;
 at the end it logs on `debug` (`backend::operation`) the total and every path sent to a device
-more than once. A login hit is checked with `/system/identity` only when the connection didn't
-answer within `LOGIN_CHECKED` (2 s): every map poll sent two to each device.
+more than once. A login hit is checked with `/system/identity` only when the device didn't
+answer on it within `LOGIN_CHECKED` (2 s; any reply counts, `Reader::answered`): every map poll
+sent two to each device. The check and a new login's identity go through the facts with
+`Since` the last answer, so checks at once share one and the page's identity read takes it.
 
 Pages stay live over subscriptions on the WebSocket `/graphql/ws` (`graphql-transport-ws`, the
 token in the `connection_init` payload, checked as the header of `/graphql`).

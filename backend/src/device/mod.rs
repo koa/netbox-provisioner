@@ -1,6 +1,5 @@
 //! Scope: Reaching a device: credentials, the ways to it, the login and the connected
 //! `AccessibleDevice`; not what is done with it once connected (the submodules).
-use crate::lock::LockAnyway;
 use crate::{
     Error,
     config::CONFIG,
@@ -18,7 +17,6 @@ use surge_ping::{IcmpPacket, SurgeError, ping};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
-    time::Instant,
 };
 use tokio_socks::tcp::Socks5Stream;
 
@@ -115,8 +113,6 @@ pub struct Login {
     identity: Box<str>,
     /// it went with the credentials' `previous_password` only
     password: Password,
-    /// when the connection last answered ([`login`] checks it before giving it again)
-    checked: Arc<std::sync::Mutex<Instant>>,
 }
 
 /// Which password of a device's credentials a login went with (A9).
@@ -174,7 +170,8 @@ pub(crate) async fn login(
                 )
                 .await?;
                 let client = Reader::new(client, Some(device.id()), scope(&path, &credentials));
-                let identity: Box<str> = SystemIdentityCfg::fetch(&client)
+                // through the facts: the page asking next takes it from there
+                let identity: Box<str> = SystemIdentityCfg::fetch(&checking(&client))
                     .await?
                     .map(|identity| identity.name.to_string().into())
                     .unwrap_or_default();
@@ -189,7 +186,6 @@ pub(crate) async fn login(
                     client,
                     identity,
                     password,
-                    checked: Arc::new(Instant::now().into()),
                 })
             })
             .await
@@ -204,14 +200,15 @@ pub(crate) async fn login(
     )
     .await;
     if let (Came::Hit, Ok(login)) = (fact.came, &fact.value) {
-        let recent = login.checked.lock_anyway().elapsed() < LOGIN_CHECKED;
+        // any answer on the connection counts (`Reader::answered`), a read of a page too
+        let recent = login.client.answered().elapsed() < LOGIN_CHECKED;
         // the connection may have gone since (a reboot, a tunnel closed)
         let alive = !login.client.is_closed()
             && (recent
                 || matches!(
                     tokio::time::timeout(
                         Duration::from_secs(5),
-                        SystemIdentityCfg::fetch(&login.client),
+                        SystemIdentityCfg::fetch(&checking(&login.client)),
                     )
                     .await,
                     Ok(Ok(_))
@@ -221,9 +218,16 @@ pub(crate) async fn login(
             return facts::get_judged(key, Freshness::MaxAge(Duration::ZERO), judge_login, ask())
                 .await;
         }
-        *login.checked.lock_anyway() = Instant::now();
+        login.client.note_answered();
     }
     fact
+}
+
+/// `client` asking anew what was read before the device last answered (the operation's pins
+/// too, `facts::Pins`), keeping what it got as the fact any reader of the login takes next.
+/// Checks at once join one asking begun since.
+fn checking(client: &Reader) -> Reader {
+    client.at(Freshness::Since(client.answered()))
 }
 
 /// How old a login may be, by what it came to.

@@ -64,9 +64,12 @@ Funktionen, die nur lesen, nehmen `&impl Reads`, solche, die schreiben, `&impl W
 eine Funktion darf, prüft der Compiler.
 
 Ein Login, der eben ging, dient wieder (Fact `Login`, 60 s); bevor er weitergegeben wird, prüft
-ihn ein `/system/identity`, ausser die Verbindung hat vor weniger als 2 s geantwortet
-(`LOGIN_CHECKED`): eine Seite holt den Login eines Geräts mehrmals (den Weg, dann den Login),
-und jede Netzkarten-Abfrage schickte so zwei Identity-Prints an jedes Gerät.
+ihn ein `/system/identity`, ausser das Gerät hat auf der Verbindung vor weniger als 2 s
+geantwortet (`LOGIN_CHECKED`; jede Antwort zählt, `Reader::answered`): eine Seite holt den Login
+eines Geräts mehrmals (den Weg, dann den Login), und jede Netzkarten-Abfrage schickte so zwei
+Identity-Prints an jedes Gerät. Prüfung und Identität eines neuen Logins gehen über die Facts
+(`Since` der letzten Antwort): Prüfungen zugleich teilen sich eine, und die Seite nimmt die
+Identität danach von dort.
 
 ## Basis-Fakten
 
