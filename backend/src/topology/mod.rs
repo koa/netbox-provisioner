@@ -19,10 +19,7 @@ use std::{
     sync::{Arc, LazyLock},
     time::Duration,
 };
-use tokio::{
-    sync::{Mutex, MutexGuard},
-    time::Instant,
-};
+use tokio::{sync::Mutex, time::Instant};
 
 pub mod access;
 pub mod builder;
@@ -43,8 +40,7 @@ pub struct TopologyHolder {
     /// held while NetBox is read: who finds the topology old while it is, waits for that
     /// reading instead of starting another
     fetching: Arc<Mutex<()>>,
-    /// a topology given once, never read from NetBox: a GraphQL request's (`snapshot`), which
-    /// loads it once however long the request takes, and the tests' (`From<TopologyBuilder>`),
+    /// a topology given once, never read from NetBox: the tests' (`From<TopologyBuilder>`),
     /// which went out of date after 10 s like a fetched one and read NetBox without a
     /// `config.yaml`
     fixed: bool,
@@ -71,7 +67,8 @@ impl TopologyHolder {
             Err(err) => Err(err),
         }
     }
-    pub async fn topo_lock(&self) -> MutexGuard<'_, Option<Arc<Topology>>> {
+    /// The topology as fetched last, fetched again first if it is older than 10 s.
+    async fn load(&self) -> Option<Arc<Topology>> {
         let outdated = || async {
             let guard = self.data.lock().await;
             if let Some(data) = &*guard {
@@ -92,39 +89,31 @@ impl TopologyHolder {
             }
             info!("Topology fetched");
         }
-        self.data.lock().await
-    }
-
-    /// The topology as it is now (fetched again if it is old), kept for one GraphQL request:
-    /// within one, every resolver works on the same topology, read from NetBox at most once.
-    pub async fn snapshot(&self) -> TopologyHolder {
-        TopologyHolder {
-            data: Arc::new(Mutex::new(self.current().await)),
-            fetching: Default::default(),
-            fixed: true,
-        }
+        self.data.lock().await.clone()
     }
 
     /// The topology as fetched last (again if it is old), `None` when NetBox couldn't be read.
+    /// Within a GraphQL operation the one it got first (`operation::topology`): every resolver
+    /// works on the same, read from NetBox at most once, however long the operation takes.
     pub async fn current(&self) -> Option<Arc<Topology>> {
-        self.topo_lock().await.as_ref().cloned()
+        crate::operation::topology(Arc::as_ptr(&self.data) as usize, self.load()).await
     }
     pub async fn devices(&self) -> Box<[DeviceAccess]> {
-        if let Some(device) = self.topo_lock().await.as_ref().cloned() {
+        if let Some(device) = self.current().await {
             device.list_devices().collect()
         } else {
             Box::default()
         }
     }
     pub async fn devices_by_id(&self, id: DeviceId) -> Option<DeviceAccess> {
-        if let Some(topo) = self.topo_lock().await.as_ref().cloned() {
+        if let Some(topo) = self.current().await {
             topo.get_device_by_id(&id)
         } else {
             None
         }
     }
     pub async fn site(&self, id: SiteId) -> Option<access::site::SiteAccess> {
-        let topo = self.topo_lock().await.as_ref().cloned()?;
+        let topo = self.current().await?;
         topo.sites
             .contains_key(&id)
             .then(|| <access::site::SiteAccess as access::AccessTopology>::create(topo.clone(), id))

@@ -1,6 +1,10 @@
-//! Scope: What one GraphQL operation (a query, a mutation, a round of a subscription) sent to
-//! the devices, counted and logged at its end; not the sending (`device::access`) nor what is
-//! kept of it (`facts`).
+//! Scope: One GraphQL operation (a query, a mutation, a round of a subscription): the topology
+//! it works on and what it sent to the devices, counted and logged at its end; not the sending
+//! (`device::access`) nor what is kept of it (`facts`).
+//!
+//! The topology is the one the operation got first ([`topology`]): every resolver sees the
+//! same, read from NetBox at most once, however long the operation takes; the next operation
+//! or round reads anew.
 //!
 //! The measurement of `docs/concepts/device-access.md` („Prüfen“): every command a [`Reader`]
 //! sends within an operation is noted by device and path; at the end the operation logs on
@@ -9,7 +13,10 @@
 //! ([`within`]). Jobs run outside any operation and aren't counted.
 //!
 //! [`Reader`]: crate::device::access::Reader
-use crate::{lock::LockAnyway, topology::DeviceId};
+use crate::{
+    lock::LockAnyway,
+    topology::{DeviceId, Topology},
+};
 use async_graphql::{
     Response,
     async_trait::async_trait,
@@ -25,11 +32,20 @@ use std::{
     task::{Context, Poll},
 };
 
-/// What an operation sent, by device and path.
+/// What an operation works on and sent, by device and path.
 #[derive(Debug, Default)]
 pub struct Operation {
     name: Box<str>,
     sent: Mutex<BTreeMap<Sent, u32>>,
+    /// the topology it got first, of the holder that gave it
+    topology: tokio::sync::OnceCell<Pinned>,
+}
+
+#[derive(Debug)]
+struct Pinned {
+    /// the holder's data, by address: the server has one, a test may have several
+    holder: usize,
+    topology: Option<Arc<Topology>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -47,6 +63,7 @@ impl Operation {
         Arc::new(Operation {
             name: name.unwrap_or("(unnamed)").into(),
             sent: Mutex::default(),
+            topology: tokio::sync::OnceCell::new(),
         })
     }
     /// How often each path went to each device.
@@ -95,6 +112,34 @@ pub fn note(device: DeviceId, path: &[u8]) {
             .entry(Sent { device, path })
             .or_default() += 1;
     });
+}
+
+/// The topology of the holder `holder` (its data's address) for the operation running: the one
+/// it got first, `load`ed on the first ask; outside an operation (a job), or from another holder
+/// than the first, `load`ed each time.
+pub async fn topology(
+    holder: usize,
+    load: impl Future<Output = Option<Arc<Topology>>>,
+) -> Option<Arc<Topology>> {
+    let Some(operation) = current() else {
+        return load.await;
+    };
+    let mut load = Some(load);
+    let pinned = operation
+        .topology
+        .get_or_init(|| async {
+            let load = load.take().expect("loaded once");
+            Pinned {
+                holder,
+                topology: load.await,
+            }
+        })
+        .await;
+    match load {
+        // the cell was another holder's: this one's isn't kept
+        Some(load) if pinned.holder != holder => load.await,
+        _ => pinned.topology.clone(),
+    }
 }
 
 /// The operation running, to hand to a task spawned for it ([`within`]).
@@ -208,6 +253,40 @@ mod test {
                 (DeviceId(7), "/system/resource/print".into(), 2),
             ]
         );
+    }
+
+    /// Within an operation the topology is loaded once and the same for every ask; outside
+    /// (a job) each ask loads.
+    #[tokio::test]
+    async fn an_operation_keeps_the_topology_it_got_first() {
+        use super::topology;
+        use crate::topology::builder::TopologyBuilder;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicU32, Ordering},
+        };
+        let loads = AtomicU32::new(0);
+        let load = || async {
+            loads.fetch_add(1, Ordering::SeqCst);
+            Some(Arc::new(TopologyBuilder::default().build()))
+        };
+        let ((first, second, other), _) = counted(async {
+            let first = topology(1, load()).await;
+            let second = topology(1, load()).await;
+            // another holder's is loaded, not kept
+            let other = topology(2, load()).await;
+            (first, second, other)
+        })
+        .await;
+        assert!(Arc::ptr_eq(
+            first.as_ref().unwrap(),
+            second.as_ref().unwrap()
+        ));
+        assert!(other.is_some());
+        assert_eq!(loads.load(Ordering::SeqCst), 2);
+        topology(1, load()).await;
+        topology(1, load()).await;
+        assert_eq!(loads.load(Ordering::SeqCst), 4);
     }
 
     /// Outside any operation nothing is noted (a job).

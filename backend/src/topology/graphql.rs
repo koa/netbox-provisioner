@@ -23,9 +23,8 @@ impl TopologyHolder {
     /// In NetBox' order of names.
     async fn all_devices(&self, filter: Option<DeviceListFilter>) -> Box<[DeviceAccess]> {
         let mut devices: Box<[DeviceAccess]> = self
-            .topo_lock()
+            .current()
             .await
-            .as_ref()
             .map(|topo| {
                 topo.list_devices()
                     .filter(|d| {
@@ -49,7 +48,7 @@ impl TopologyHolder {
     }
     /// Sorted by name, the ones with a device with RouterOS.
     async fn all_sites(&self) -> Box<[SiteAccess]> {
-        let Some(topo) = self.topo_lock().await.as_ref().cloned() else {
+        let Some(topo) = self.current().await else {
             return Box::default();
         };
         let mut sites = topo
@@ -62,7 +61,7 @@ impl TopologyHolder {
         sites
     }
     async fn site_by_id(&self, id: u32) -> Option<SiteAccess> {
-        let topo = self.topo_lock().await.as_ref().cloned()?;
+        let topo = self.current().await?;
         topo.sites
             .contains_key(&SiteId(id))
             .then(|| SiteAccess::create(topo.clone(), SiteId(id)))
@@ -76,7 +75,7 @@ impl TopologyHolder {
         device_id: Option<u32>,
         after: Option<Helper>,
     ) -> Result<Vec<Finding>, ApiError> {
-        let Some(mut topo) = self.topo_lock().await.as_ref().cloned() else {
+        let Some(mut topo) = self.current().await else {
             return Ok(Vec::new());
         };
         if let Some(helper) = after {
@@ -99,11 +98,7 @@ impl TopologyHolder {
         })
     }
     async fn device_by_id(&self, id: u32) -> Option<DeviceAccess> {
-        if let Some(topo) = self.topo_lock().await.as_ref() {
-            topo.get_device_by_id(&DeviceId(id))
-        } else {
-            None
-        }
+        self.current().await?.get_device_by_id(&DeviceId(id))
     }
     /// The devices and edges of the site `site_id`, or without it of every site, as OSPF sees
     /// them, for the network map; read anew after `network_state::read::LSDB_AGE`. Fast: only
@@ -131,9 +126,8 @@ impl TopologyHolder {
     /// `site_id`'s devices, or without it every device of every site, for `network_state` and
     /// `network_state_details`.
     async fn map_devices(&self, site_id: Option<u32>) -> Vec<DeviceAccess> {
-        self.topo_lock()
+        self.current()
             .await
-            .as_ref()
             .map(|topo| match site_id {
                 Some(id) => SiteAccess::create(topo.clone(), SiteId(id))
                     .devices()

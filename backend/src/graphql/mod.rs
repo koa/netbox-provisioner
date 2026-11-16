@@ -73,7 +73,7 @@ pub fn create_anonymous_schema() -> AnonymousGraphqlSchema {
 #[Object]
 impl QueryAuthenticated {
     async fn topology(&self) -> TopologyHolder {
-        self.topology.snapshot().await
+        self.topology.clone()
     }
     async fn list_credentials(&self) -> Box<[&str]> {
         CONFIG
@@ -134,7 +134,7 @@ impl QueryAuthenticated {
         site_ids: Vec<u32>,
         channel: Option<update::Channel>,
     ) -> Result<crate::device::rollout::RolloutPlan, ApiError> {
-        let topology = self.topology.snapshot().await;
+        let topology = self.topology.clone();
         let mut sites = Vec::new();
         for id in site_ids {
             let site = topology.site(SiteId(id)).await;
@@ -166,7 +166,7 @@ impl SubscriptionAuthenticated {
         let topology = self.topology.clone();
         live::rounds(move || {
             let topology = topology.clone();
-            async move { topology.snapshot().await }
+            async move { topology }
         })
     }
     /// `job` of the query, again whenever it logs or ends, its `events` then only the new ones;
@@ -517,7 +517,7 @@ impl MutationAuthenticated {
         channel: Option<update::Channel>,
         pilots: Option<Vec<u32>>,
     ) -> Result<Arc<Job>, ApiError> {
-        let snapshot = self.topology.snapshot().await;
+        let snapshot = self.topology.clone();
         let mut sites = Vec::new();
         for id in site_ids {
             let site = snapshot.site(SiteId(id)).await;
@@ -791,7 +791,7 @@ impl MutationAuthenticated {
         ctx: &Context<'_>,
         ids: Vec<u32>,
     ) -> Result<Vec<Arc<Job>>, ApiError> {
-        let topology = self.topology.snapshot().await;
+        let topology = self.topology.clone();
         let mut devices = Vec::new();
         for id in ids {
             let device = topology
