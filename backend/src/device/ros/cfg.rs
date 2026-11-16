@@ -26,7 +26,7 @@ use crate::{
     topology::{PhysicalPortId, access::device::DeviceAccess},
 };
 use async_graphql::SimpleObject;
-use log::{debug, info};
+use log::{debug, info, warn};
 use mikrotik_model::{
     action::PoeMonitorOnce,
     ascii::AsciiString,
@@ -39,6 +39,8 @@ use mikrotik_model::{
     },
     resource::{ResourceMutation, ResourceMutationOperation, SingleResource, collect_resource},
 };
+use prometheus::{HistogramOpts, HistogramVec, Registry};
+use std::sync::LazyLock;
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
@@ -90,6 +92,30 @@ pub(in crate::device) fn capsman_generated(names: [Option<AsciiString>; 2]) -> B
         .filter(|name| !name.is_empty())
         .filter(|name| !name.0.starts_with(www_certificate::PREFIX.as_bytes()))
         .collect()
+}
+
+/// How long working out a device's config took, by part: the target from NetBox (`generate`),
+/// the mutations against the device, sorted (`sort`). Without the reading, which waits for the
+/// device: a page, the map's diff of each device and the site diff work it out on each use.
+static COMPUTE: LazyLock<HistogramVec> = LazyLock::new(|| {
+    HistogramVec::new(
+        HistogramOpts::new(
+            "config_compute_seconds",
+            "How long working out a device's config took, without reading the device",
+        )
+        .buckets(vec![
+            0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0,
+        ]),
+        &["part"],
+    )
+    .expect("histogram")
+});
+
+/// Registers [`COMPUTE`].
+pub fn register(registry: &Registry) {
+    if let Err(error) = registry.register(Box::new(COMPUTE.clone())) {
+        warn!("Cannot register the metrics of the config: {error}");
+    }
 }
 
 impl DeviceCfg {
@@ -193,6 +219,7 @@ impl DeviceCfg {
     /// provisioner reaches the network through gets its SOCKS proxy, and the watchdogs find
     /// their way to it too.
     pub fn generate_for(&mut self, device: &DeviceAccess) -> Result<(), SetupError> {
+        let _timer = COMPUTE.with_label_values(&["generate"]).start_timer();
         self.generate_from(device, EndpointNameGenerator)?;
         self.base_target.setup_watchdog(
             device,
@@ -352,6 +379,7 @@ impl DeviceCfg {
     /// The diff from [`Self::generate_mutations`] in an order where everything a command
     /// refers to exists before it.
     pub fn sorted_mutations(&self) -> Result<Box<[ResourceMutation<'_>]>, Error> {
+        let _timer = COMPUTE.with_label_values(&["sort"]).start_timer();
         let mutations = self.generate_mutations()?;
         for m in &mutations {
             debug!("Mutation generated: {:?}", m);

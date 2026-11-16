@@ -78,8 +78,6 @@ Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern, `update::state_
 
 - Die Metriken `device_query_*` zählen nach Fact-Art, also alle Tabellen als `table`; nach Pfad wären
   es viele Reihen: Pfade zu Gruppen zusammenfassen oder nur Art (Print, Monitor, Ping) als Label.
-- Die Rechenzeit der Ableitungen messen (der Diff jeder Geräteseite, der Site-Diff über alle
-  Geräte), jetzt wo sie nicht mehr gespeichert sind.
 - Nach einem Apply zeigt „Abweichung von NetBox“ „seit der Prüfung verändert“, bis jemand das
   Gerät liest (früher legte das Apply seinen Befund ab, `keep_in_line`).
 

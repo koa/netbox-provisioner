@@ -294,6 +294,7 @@ an, das Binary registriert sie in der Registry von `/metrics` am Management-Port
 | `fact_cache_requests_total` | Counter | `kind`, `result` | Treffer, angehängt, neu gefragt |
 | `fact_cache_entries` | Gauge | `kind` | Grösse des Caches |
 | `fact_queries_running` | Gauge | `kind` | laufende Abfragen, z.B. hängende Verbindungen |
+| `config_compute_seconds` | Histogram | `part` (`generate`, `sort`) | Rechenzeit der Konfiguration eines Geräts ohne das Lesen: das Ziel aus NetBox, die sortierten Mutationen (`device::ros::cfg::register`) |
 
 - `kind`: die Art in snake_case (`table`, `login`, `route`, `newest_version`).
 - `outcome`: `ok`, `refused` (Login verweigert), `timeout`, `wrong_device`, `error` (alles
