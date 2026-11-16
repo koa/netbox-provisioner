@@ -4,8 +4,8 @@ Stand 2026-11-13, besprochen mit dem Benutzer (Basis-Fakten und Ableitungen am s
 nach der Messung). Gebaut und in [device-access.md](../device-access.md) beschrieben sind die
 Befehle als Typen mit ihrer Wirkung, `Connection`, Aktionskatalog, `Reader`/`Session` (B36) und
 die Basis-Fakten mit den Ableitungen und die ganzen Listen statt Filter (C17), vom Rahmen pro
-Operation die Topologie und HTTP (`operation`). Offen sind die Handarbeiten, der Pool und die
-Punkte unter „Offen“.
+Operation die Topologie und HTTP (`operation`), ohne Handarbeiten. Offen sind die Stände der
+Basis-Fakten im Rahmen, der Pool und die Punkte unter „Offen“.
 
 ## Ziel
 
@@ -26,9 +26,9 @@ Punkte unter „Offen“.
 - Als Pool dient der Fact `Login`, der eine Verbindung 60 s wieder gibt.
 - Die Topologie (`TopologyHolder::current`) hält jede Operation fest, die sie zuerst bekam;
   ausserhalb (Jobs) wird sie neu aus NetBox gelesen, sobald sie älter als 10 s ist.
-- Wo eine Funktion ein Menü mehrfach brauchte, reicht sie die Zeilen noch von Hand weiter
-  (`update::state_from`, `leftovers::read_with_files`, `progress::root_in_ram_of`,
-  `wanted_packages_for`); mit den Basis-Fakten wäre das nicht mehr nötig.
+- Wo eine Funktion eine Tabelle mehrfach braucht, liest sie sie über einen Facts-Reader
+  (`Reader::at`; der Rollout-Plan mit `Freshness::Since` seinem Beginn): jede Tabelle einmal
+  gefragt, keine Zeilen mehr von Hand weitergereicht.
 - NetBox-REST-GETs eines Readers und die Paketgrössen bei MikroTik liest eine Operation einmal
   pro URL (`operation::netbox`, `operation::package_size`); ein Writer liest immer neu, er liest,
   was er gleich ändert.
@@ -69,8 +69,8 @@ Runde liest neu, die Subscription erfährt es über `facts::Change`.
   NetBox-Schreiber laufen als Jobs; `refetch` setzt die Topologie des Holders, nicht die der
   Operation.
 
-Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern: weg, `update::state_from`,
-`leftovers::read_with_files`, `progress::root_in_ram_of`, `wanted_packages_for`).
+Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern, `update::state_from`,
+`leftovers::read_with_files`, `progress::root_in_ram_of`, `wanted_packages_for`): weg.
 
 ## Offen
 

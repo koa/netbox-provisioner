@@ -303,10 +303,11 @@ fn start_update(
         Some(UpdateState::Reading.into()),
         target,
         move |device, access, power, log| async move {
-            let wanted = device.wanted_packages().await?;
+            let api = device.api().await?;
+            let wanted = device.wanted_packages(&api).await?;
             let version = match channel {
                 Some(channel) => update::newest(7, channel).await?,
-                None => update::read_state(&device.api().await?).await?.version,
+                None => update::read_state(&api).await?.version,
             };
             log.emit(update::UpdateTarget {
                 version: version.to_string().into(),

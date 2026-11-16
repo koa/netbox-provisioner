@@ -550,16 +550,6 @@ pub async fn read_state(device: &impl Reads) -> Result<DeviceState, Error> {
     let packages = collect_resource::<SystemPackageState>(device).await?;
     // CHR has no RouterBOARD; the command fails there
     let routerboard = SystemRouterboardState::fetch(device).await.ok().flatten();
-    state_from(resource.as_ref(), &packages, routerboard.as_ref())
-}
-
-/// [`DeviceState`] from `/system/resource`, `/system/package` and `/system/routerboard`, for who
-/// reads them for more anyway.
-pub(crate) fn state_from(
-    resource: Option<&SystemResourceState>,
-    packages: &[SystemPackageState],
-    routerboard: Option<&SystemRouterboardState>,
-) -> Result<DeviceState, Error> {
     let resource = resource.ok_or(Error::MissingDeviceState("/system/resource"))?;
     let version = Version::parse(&resource.version.to_string())
         .ok_or(Error::MissingDeviceState("version"))?;
@@ -568,7 +558,7 @@ pub(crate) fn state_from(
         .filter(|package| !package.disabled)
         .map(|package| package.name.to_string().into())
         .collect();
-    let firmware = routerboard.map(|routerboard| {
+    let firmware = routerboard.as_ref().map(|routerboard| {
         (
             routerboard.current_firmware.to_string().into(),
             routerboard.upgrade_firmware.to_string().into(),

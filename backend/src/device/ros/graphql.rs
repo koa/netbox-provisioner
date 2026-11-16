@@ -160,9 +160,7 @@ impl AccessibleDevice {
         let device = self;
         let versions = async {
             let state = update::read_state(&reader).await?;
-            let wanted = device
-                .wanted_packages_for(&reader, state.model.as_deref().map(str::as_bytes))
-                .await?;
+            let wanted = device.wanted_packages(&reader).await?;
             let newest_v6 = if state.version.major() < 7 {
                 Some(newest(6, update::Channel::LongTerm).await?)
             } else {

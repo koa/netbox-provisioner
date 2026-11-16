@@ -28,19 +28,14 @@ pub const FILE: &str = "netbox-provisioner-progress.txt";
 /// Whether the device's root directory is in RAM: it has a disk `flash` (16 MiB of flash), and
 /// what is uploaded to the root takes memory, not flash.
 pub async fn root_in_ram(raw: &impl Reads) -> Result<bool, Error> {
-    Ok(root_in_ram_of(&collect_resource::<File>(raw).await?))
-}
-
-/// [`root_in_ram`] from `/file` read already.
-pub fn root_in_ram_of(files: &[File]) -> bool {
-    files.iter().any(|file| {
+    Ok(collect_resource::<File>(raw).await?.iter().any(|file| {
         *file.cfg.name.0 == *b"flash"
             && file
                 .cfg
                 ._type
                 .as_ref()
                 .is_some_and(|kind| *kind.0 == *b"disk")
-    })
+    }))
 }
 
 /// Where [`FILE`] outlasts a reboot: under `flash/` where the device has that disk, its root is

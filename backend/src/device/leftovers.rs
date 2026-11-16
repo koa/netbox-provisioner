@@ -119,11 +119,7 @@ pub struct LeftoverCleared {
 
 /// Reads what is left on the device.
 pub async fn read(device: &impl Reads) -> Result<Leftovers, Error> {
-    read_with_files(device, &collect_resource::<File>(device).await?).await
-}
-
-/// [`read`] with `/file` read already.
-pub async fn read_with_files(device: &impl Reads, files: &[File]) -> Result<Leftovers, Error> {
+    let files = collect_resource::<File>(device).await?;
     let schedulers = collect_resource::<SystemScheduler>(device).await?;
     let scheduled = |name: &str| {
         schedulers

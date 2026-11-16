@@ -16,6 +16,7 @@ use crate::{
         update_fallback,
     },
     error_info::ErrorInfo,
+    facts::Freshness,
     graphql::scalars::ScalarU64,
     job::Log,
     topology::{
@@ -24,10 +25,7 @@ use crate::{
     },
 };
 use async_graphql::{Enum, SimpleObject};
-use mikrotik_model::{
-    model::{File, SystemPackageState, SystemResourceState, SystemRouterboardState},
-    resource::{SingleResource, collect_resource},
-};
+use mikrotik_model::{model::SystemResourceState, resource::SingleResource};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
@@ -289,18 +287,15 @@ async fn read(device: DeviceAccess, target: Version) -> Result<Read, Error> {
         .connect(DeviceTarget::default())
         .await?
         .ok_or(Error::MissingCredentials)?;
-    let raw = link.reader();
-    // each menu once (`/system/resource` for the state and the free space, `/file` for the
-    // root and the leftover packages)
+    // each table asked once for the plan, the parts below read it from the facts
+    // (`/system/resource` for the state and the free space, `/file` for the root and the
+    // leftover packages)
+    let raw = &link
+        .reader()
+        .at(Freshness::Since(tokio::time::Instant::now()));
     let resource = SystemResourceState::fetch(raw).await?;
-    let packages = collect_resource::<SystemPackageState>(raw).await?;
-    // CHR has no RouterBOARD; the command fails there
-    let routerboard = SystemRouterboardState::fetch(raw).await.ok().flatten();
-    let files = collect_resource::<File>(raw).await?;
-    let state = update::state_from(resource.as_ref(), &packages, routerboard.as_ref())?;
-    let wanted = link
-        .wanted_packages_for(raw, state.model.as_deref().map(str::as_bytes))
-        .await?;
+    let state = update::read_state(raw).await?;
+    let wanted = link.wanted_packages(raw).await?;
     let newest_v6 = match state.version.major() < 7 {
         true => Some(newest(6, Channel::LongTerm).await?),
         false => None,
@@ -313,13 +308,13 @@ async fn read(device: DeviceAccess, target: Version) -> Result<Read, Error> {
     );
     // the uploads go to the root, in RAM on a device with 16 MiB of flash (1og-sw2, a CRS with
     // 2.8 MiB of flash free, takes its 11.7 MiB update there)
-    let in_ram = progress::root_in_ram_of(&files);
+    let in_ram = progress::root_in_ram(raw).await?;
     let free_space = resource.as_ref().and_then(|resource| match in_ram {
         true => resource.free_memory,
         false => resource.free_hdd_space,
     });
     let partition = partitions::other(&partitions::list(raw).await).is_some();
-    let left = leftovers::read_with_files(raw, &files).await?;
+    let left = leftovers::read(raw).await?;
     let mut download = Some(0);
     for file in step.iter().flat_map(|step| step.files.iter()) {
         // asked once per operation, for all devices of the plan

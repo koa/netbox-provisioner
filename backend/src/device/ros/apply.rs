@@ -1046,24 +1046,17 @@ impl AccessibleDevice {
             }
         }
     }
-    /// The packages besides `routeros` the device needs (`needed_radio_package`); none on a
-    /// CHR, which has no RouterBOARD.
-    pub async fn wanted_packages(&self) -> Result<Box<[Box<str>]>, Error> {
-        let model = <SystemRouterboardState as SingleResource>::fetch(&self.login.client)
+    /// The packages besides `routeros` the device needs (`needed_radio_package`), read with
+    /// `raw`; none on a CHR, which has no RouterBOARD.
+    pub async fn wanted_packages(&self, raw: &impl Reads) -> Result<Box<[Box<str>]>, Error> {
+        let model = <SystemRouterboardState as SingleResource>::fetch(raw)
             .await
             .ok()
             .flatten()
             .map(|routerboard| routerboard.model.0);
-        self.wanted_packages_for(&self.login.client, model.as_deref())
-            .await
-    }
-    /// [`Self::wanted_packages`] of a board `model` read already (`DeviceState::model`).
-    pub async fn wanted_packages_for(
-        &self,
-        raw: &impl Reads,
-        model: Option<&[u8]>,
-    ) -> Result<Box<[Box<str>]>, Error> {
-        let needed = model.and_then(|model| needed_radio_package(&self.device_config, model));
+        let needed = model
+            .as_deref()
+            .and_then(|model| needed_radio_package(&self.device_config, model));
         // a legacy CAPsMAN NetBox doesn't know of (its CAPs' radios aren't in NetBox) stays
         // as it is (`DeviceCfg::fetch`), so does the package it runs in
         let needed = match needed {
