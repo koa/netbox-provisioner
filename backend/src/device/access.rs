@@ -8,7 +8,7 @@
 //!
 //! A [`Reader`] given an age ([`Reader::at`]) takes what it reads from the facts: each print,
 //! monitor once and ping is a fact of its own (`FactKind::Table`), its replies kept unread and
-//! read again by whichever type asks (`docs/concepts/device-access.md`, Basis-Fakten).
+//! read again by whichever type asks (`docs/device-access.md`, Basis-Fakten).
 use crate::{
     Error,
     facts::{self, FactKey, FactKind, Freshness},
@@ -212,6 +212,7 @@ impl Reader {
             ),
         )
         .via(self.scope.way)
+        .sent_as(command_label(prepared.path()))
     }
     fn stored_replies<C: Command>(&self, device: DeviceId, command: &C) -> Replies<C::Reply> {
         facts::note_peeked(device, FactKind::Table);
@@ -227,6 +228,17 @@ impl Reader {
             None => not_kept(),
         };
         Replies::kept(kept, command.context())
+    }
+}
+
+/// The command a path sends, as the metrics label it: the last part of the path (`print`,
+/// `monitor`, `ping`), `other` for one of the few else (`/tool/fetch`).
+fn command_label(path: &[u8]) -> &'static str {
+    match path.rsplit(|byte| *byte == b'/').next() {
+        Some(b"print") => "print",
+        Some(b"monitor") => "monitor",
+        Some(b"ping") => "ping",
+        _ => "other",
     }
 }
 

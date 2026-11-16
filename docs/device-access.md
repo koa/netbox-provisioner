@@ -2,8 +2,7 @@
 
 Wie der Provisioner mit den Geräten spricht: jeder Befehl ein Typ mit seiner Wirkung, jede
 Verbindung hinter einer Fassade mit Rechten, und gespeichert nur, was ein Gerät antwortete. Gebaut
-in B36 und C17 (2026-11-13), nach dem Konzept [Zugriff auf die Geräte](concepts/device-access.md);
-was davon offen ist (Rahmen pro Operation, ganze Listen statt Filter), steht dort.
+in B36 und C17 (2026-11-13 bis 2026-11-16).
 
 ## Befehle: was sie bewirken (mikrotik-api)
 
@@ -102,6 +101,38 @@ Ein Befehl, der dieselbe Tabelle mit Filter fragt, wäre ein eigener Fakt. Desha
 mikrotik-model auch eine Tabelle mit Schlüssel ganz (`PrintKeyed`) und lässt die Zeilen, die es
 nicht will (anderer Schlüssel, `dynamic`, `builtin`), selbst weg: `/ip/service` ging so vorher
 zweimal an jedes Gerät, mit `?name=` und ohne.
+
+## Der Rahmen pro Operation
+
+Innerhalb einer GraphQL-Operation wird jeder Datensatz einmal geladen, ausser es wird auf eine
+Bedingung gewartet (Regel 2026-11-07). `operation` legt um jede Operation (Query, Mutation, jede
+Runde einer Subscription) einen Rahmen (`tokio::task_local!`), der nichts selbst lädt: er merkt
+sich, was die Operation zuerst bekam, und gibt ihr für den Rest genau das. Wird etwas mittendrin
+ungültig, sieht die Operation weiter ihr eines Bild; die nächste Operation oder Runde liest neu,
+die Subscription erfährt es über `facts::Change`.
+
+- Topologie: `TopologyHolder::current` gibt die, die die Operation zuerst bekam
+  (`operation::topology`); ausserhalb (Jobs) wird sie neu aus NetBox gelesen, sobald sie älter
+  als 10 s ist.
+- HTTP: die NetBox-REST-GETs eines Readers und die Paketgrössen bei MikroTik nach URL
+  (`operation::netbox`, `operation::package_size`); ein Writer liest immer neu, er liest, was er
+  gleich ändert.
+- Facts: von jeder Tabelle und neuesten Version der erste Stand (`facts::Pins`, in den Metriken
+  `pinned`); einer älter als ein `Since` wird neu gefragt, `invalidate` und „Neu laden“ werfen
+  die des Geräts weg. Logins und Wege nicht: ein Login wird bei jedem Gebrauch geprüft.
+- Wo eine Funktion eine Tabelle mehrfach braucht, liest sie über einen Facts-Reader
+  (`Reader::at`; der Rollout-Plan mit `Freshness::Since` seinem Beginn): jede Tabelle einmal
+  gefragt, keine Zeilen von Hand weitergereicht.
+
+Eine Mutation ohne Job, die schreibt und danach liest, bräuchte frische Stände; es gibt keine
+(`publishLayout` liest nach dem Schreiben nichts, die NetBox-Schreiber laufen als Jobs). Jobs
+laufen ausserhalb jedes Rahmens und lesen neu.
+
+Einen Pool von Lese-Verbindungen pro Gerät gibt es nicht: als solcher dient der Fact `Login`
+(eine Verbindung, die vor höchstens 60 s ging). Gemessen 2026-11-16 im Lab: ein zweiter Browser
+auf derselben Geräteseite schickt 1 Befehl statt 54, ein Login dient beiden. Ein Pool (eine
+Verbindung pro Gerät mit Leerlaufzeit, ein Semaphor für die Reads) kommt erst, wenn eine Messung
+ihn verlangt.
 
 ## Befehle pro Operation zählen
 

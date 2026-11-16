@@ -7,7 +7,7 @@
 //! or round reads anew. So is what it reads over HTTP, by URL: NetBox's REST answers to a
 //! reader ([`netbox`]) and the sizes of MikroTik's packages ([`package_size`]).
 //!
-//! The measurement of `docs/concepts/device-access.md` („Prüfen“): every command a [`Reader`]
+//! The count of `docs/device-access.md` („Befehle pro Operation zählen“): every command a [`Reader`]
 //! sends within an operation is noted by device and path; at the end the operation logs on
 //! `debug` how many it sent and every path sent more than once to the same device. A fact asked
 //! within an operation counts for it, also in the task `facts::get` spawns for the asking

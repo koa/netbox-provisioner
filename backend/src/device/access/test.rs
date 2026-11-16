@@ -1,5 +1,5 @@
 //! The facades over a fake device: what a [`Reader`] with an age keeps, and the refusals.
-use super::{Reader, Scope, generation, is_missing_table};
+use super::{Reader, Scope, command_label, generation, is_missing_table};
 use crate::{facts::Freshness, topology::DeviceId};
 use mikrotik_api::prelude::{Connection, TrapCategory};
 use mikrotik_model::{model::SystemIdentityCfg, resource::SingleResource};
@@ -151,4 +151,12 @@ async fn a_read_counts_as_the_device_answering() {
     let kept = login.at(Freshness::MaxAge(Duration::from_secs(60)));
     identity(&kept).await;
     assert!(login.answered() >= made + Duration::from_secs(10));
+}
+
+#[test]
+fn the_metrics_name_the_command() {
+    assert_eq!(command_label(b"/system/resource/print"), "print");
+    assert_eq!(command_label(b"/interface/ethernet/poe/monitor"), "monitor");
+    assert_eq!(command_label(b"/ping"), "ping");
+    assert_eq!(command_label(b"/tool/fetch"), "other");
 }

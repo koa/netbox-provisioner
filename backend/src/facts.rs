@@ -129,6 +129,9 @@ pub struct FactKey {
     /// the way it goes (`routed`, `neighbor`), a label of the metrics; empty for none. Not
     /// part of which fact it is: a key built without it finds the fact all the same.
     pub path: &'static str,
+    /// the command of a `Table` (`print`, `monitor`, `ping`), a label of the metrics; empty
+    /// for the other kinds. Not part of which fact it is, as it comes from `detail`.
+    pub command: &'static str,
 }
 
 impl PartialEq for FactKey {
@@ -152,11 +155,17 @@ impl FactKey {
             device,
             detail: detail.to_string().into(),
             path: "",
+            command: "",
         }
     }
     /// The same over `path` (`routed`, `neighbor`).
     pub fn via(mut self, path: &'static str) -> Self {
         self.path = path;
+        self
+    }
+    /// The same labelled with its `command` (`print`, `monitor`, `ping`).
+    pub fn sent_as(mut self, command: &'static str) -> Self {
+        self.command = command;
         self
     }
 }
@@ -671,7 +680,7 @@ fn fact<T: Send + Sync + 'static>(
 ) -> Fact<T> {
     METRICS
         .requests
-        .with_label_values(&[key.kind.label(), came.label()])
+        .with_label_values(&[key.kind.label(), came.label(), key.command])
         .inc();
     let value = value
         .downcast::<Result<Arc<T>, Arc<Error>>>()
@@ -702,14 +711,16 @@ async fn run<T, F>(
     // every outcome's series is there from the first asking on, at 0: Prometheus' `increase`
     // doesn't count the first sample of a new series, so the first failure would be lost
     for each in OUTCOMES {
-        METRICS.duration.with_label_values(&[label, each, key.path]);
+        METRICS
+            .duration
+            .with_label_values(&[label, each, key.path, key.command]);
         METRICS
             .total
             .with_label_values(&[device.as_str(), label, each]);
     }
     METRICS
         .duration
-        .with_label_values(&[label, outcome, key.path])
+        .with_label_values(&[label, outcome, key.path, key.command])
         .observe(took.as_secs_f64());
     METRICS
         .total
@@ -861,11 +872,11 @@ fn outcome<T>(result: &Result<T, Error>) -> &'static str {
 
 /// The metrics of the facts, registered with the server's registry ([`register`]).
 struct Metrics {
-    /// how long askings took, by kind and outcome
+    /// how long askings took, by kind, outcome, way and command
     duration: HistogramVec,
     /// askings by device, kind and outcome
     total: IntCounterVec,
-    /// users by kind and how they got the fact
+    /// users by kind, how they got the fact and command
     requests: IntCounterVec,
     entries: IntGaugeVec,
     running: IntGaugeVec,
@@ -884,7 +895,7 @@ static METRICS: LazyLock<Metrics> = LazyLock::new(|| Metrics {
             "How long asking a device or MikroTik took (not the facts from the store)",
         )
         .buckets(BUCKETS.to_vec()),
-        &["kind", "outcome", "path"],
+        &["kind", "outcome", "path", "command"],
     )
     .expect("histogram"),
     total: IntCounterVec::new(
@@ -897,7 +908,7 @@ static METRICS: LazyLock<Metrics> = LazyLock::new(|| Metrics {
             "fact_cache_requests_total",
             "Users of a fact, by how they got it",
         ),
-        &["kind", "result"],
+        &["kind", "result", "command"],
     )
     .expect("counter"),
     entries: IntGaugeVec::new(

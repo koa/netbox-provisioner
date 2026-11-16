@@ -565,7 +565,8 @@ stored) and stores nothing; a write over the API drops the device's tables at th
 (`access::written_since_read`); a topology changed in NetBox drops nothing. Jobs that write read
 anew (`Session::reader`), they don't use the facts of the page. Times are `tokio::time::Instant`s, only
 ages go to the frontend. The metrics (`device_query_*`, `fact_cache_*`) go into `/metrics`
-(`facts::register`), every outcome's series created at 0 on a kind's first asking over a way
+(`facts::register`), a table's by its command too (`command`: `print`, `monitor`, `ping`, the
+path's last part, `access::command_label`; per path they'd be too many series), every outcome's series created at 0 on a kind's first asking over a way
 (`increase` drops a new series' first sample); their Grafana dashboard is
 `charts/netbox-provisioner/dashboards/device-queries.json`, a ConfigMap for the Grafana
 sidecar with `grafanaDashboard.enabled`.

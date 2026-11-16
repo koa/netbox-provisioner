@@ -293,9 +293,9 @@ an, das Binary registriert sie in der Registry von `/metrics` am Management-Port
 
 | Metrik | Typ | Labels | wofür |
 |---|---|---|---|
-| `device_query_duration_seconds` | Histogram | `kind`, `outcome`, `path` | Verteilung der Dauer der echten Abfragen (nicht der Treffer im Cache) |
+| `device_query_duration_seconds` | Histogram | `kind`, `outcome`, `path`, `command` | Verteilung der Dauer der echten Abfragen (nicht der Treffer im Cache) |
 | `device_query_total` | Counter | `device`, `kind`, `outcome` | Erfolgsrate pro Gerät (NetBox-ID) |
-| `fact_cache_requests_total` | Counter | `kind`, `result` | Treffer, angehängt, neu gefragt |
+| `fact_cache_requests_total` | Counter | `kind`, `result`, `command` | Treffer, angehängt, neu gefragt |
 | `fact_cache_entries` | Gauge | `kind` | Grösse des Caches |
 | `fact_queries_running` | Gauge | `kind` | laufende Abfragen, z.B. hängende Verbindungen |
 | `config_compute_seconds` | Histogram | `part` (`generate`, `sort`) | Rechenzeit der Konfiguration eines Geräts ohne das Lesen: das Ziel aus NetBox, die sortierten Mutationen (`device::ros::cfg::register`) |
@@ -308,6 +308,10 @@ an, das Binary registriert sie in der Registry von `/metrics` am Management-Port
 - `path`: `routed` oder `neighbor`, damit man sieht, was der Umweg über einen Nachbarn kostet;
   leer für Abfragen, die an keinem Gerät hängen (`route`, `newest_version`).
 - `result`: `hit`, `joined`, `pinned` (der Stand, den die GraphQL-Operation zuerst bekam), `miss`.
+- `command`: bei `table` der Befehl, der letzte Teil des Pfads (`print`, `monitor`, `ping`,
+  sonst `other`), leer bei den anderen Arten. Nach Pfad wären es sehr viele Reihen, so trennt es
+  das Lesen der Konfiguration vom Beobachten; der Pfad steht im Log der Operation
+  (`backend::operation`). `device_query_total` hat es nicht, es ist schon pro Gerät.
 
 Das Histogram hat kein Label `device`, pro Gerät zählt nur der Counter. Die Buckets sind für
 Heatmaps fein und logarithmisch gestuft, von 25 ms bis 60 s (0.025, 0.05, 0.1, 0.2, 0.35, 0.5,
