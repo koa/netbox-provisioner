@@ -15,3 +15,4 @@ pub mod network_map;
 pub mod saved_jobs;
 pub mod site;
 pub mod widgets;
+pub mod www_ca;

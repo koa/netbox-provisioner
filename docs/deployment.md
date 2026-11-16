@@ -26,20 +26,25 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   Nachbarn (Tunnel, Konsole der Ersteinrichtung) und beim mac-telnet-Login der Ersteinrichtung.
   Ein Gerät mit dem alten zeigt auf der Geräteseite eine Abweichung, sein Anwenden setzt das
   neue; es geschieht nichts von selbst. Sind alle umgestellt, fällt `previous_password` weg.
-- **WebFig über HTTPS (A7):** mit `www_ca` (`certificate` und `key`, PEM; im Chart beide als
-  `value` oder `secretKeyRef`, `www_ca_certificate` und `www_ca_key`, etwa `tls.crt` und
-  `tls.key` des Secrets eines cert-manager-Certificate mit `isCA: true` und
-  `privateKey.rotationPolicy: Never`: ein neuer Schlüssel hiesse eine neue CA in den
-  Browsern) stellt der Provisioner jedem Gerät ein Zertifikat aus: ECDSA P-256, 397 Tage,
-  mit allen Adressen des Geräts aus NetBox (ohne Link-Local) und seinem Namen, wo der ein
-  DNS-Name ist. Die CA braucht
-  einen Subject Key Identifier (`openssl req -x509` setzt ihn). Das Anwenden legt es an, wenn
-  keines passt (andere Adressen, andere CA, weniger als 30 Tage übrig), hängt es an `www-ssl`
-  und entfernt ältere des Provisioners (`netbox-provisioner-www-<Sekunde>`), die kein anderer
-  Dienst nennt; erst dann schaltet die Konfiguration `www-ssl` ein (wie `www` auf
-  `api_networks` beschränkt) und `www` aus. Die Admins importieren das CA-Zertifikat einmal in
-  den Browser. Ohne `www_ca` bleibt WebFig auf HTTP. Eine CA, die sich nicht lesen lässt, hält
-  den Start auf.
+- **WebFig über HTTPS (A7):** mit `www_ca` (PEM: `certificate` die ausstellende CA, dahinter
+  die über ihr; `key` ihr Schlüssel; `root` die Root-CA, ohne sie die selbst signierte aus
+  `certificate`; im Chart alle als `value` oder `secretKeyRef`, `www_ca_certificate`,
+  `www_ca_key`, `www_ca_root`, etwa `tls.crt`, `tls.key` und `ca.crt` des Secrets eines
+  cert-manager-Certificate mit `isCA: true` und `privateKey.rotationPolicy: Never`: ein neuer
+  Schlüssel hiesse neue Zertifikate auf allen Geräten) stellt der Provisioner jedem Gerät ein
+  Zertifikat aus: ECDSA P-256, 397 Tage, mit allen Adressen des Geräts aus NetBox (ohne
+  Link-Local) und seinem Namen, wo der ein DNS-Name ist. Jede CA ausser der Root braucht einen
+  Subject Key Identifier. Das Anwenden legt es an, wenn keines passt (andere Adressen, andere
+  CA, weniger als 30 Tage übrig), hängt es an `www-ssl` und entfernt ältere des Provisioners
+  (`netbox-provisioner-www-<Sekunde>`), die kein anderer Dienst nennt. Die Zertifikate
+  zwischen dem des Geräts und der Root legt es ohne Schlüssel und ohne Vertrauen des Geräts
+  dazu (`netbox-provisioner-ca-<Sekunde>-<n>`, `trusted=no`), damit WebFig sie mitschickt;
+  die einer früheren CA entfernt es. Die Root selbst kommt nicht aufs Gerät, der Browser hat
+  sie. Erst dann schaltet die Konfiguration `www-ssl` ein (wie `www` auf `api_networks`
+  beschränkt) und `www` aus. Die Admins laden die Root-CA einmal vom Provisioner
+  (`/www-ca.crt`, Link auf der Seite der Sites) und importieren sie im Browser als
+  Zertifizierungsstelle. Ohne `www_ca` bleibt WebFig auf HTTP. Eine CA, die sich nicht lesen
+  lässt, hält den Start auf.
 - **Zustand:** nur die weiterführbaren Aufträge in `state_dir` (Vorgabe `state` neben
   `config.yaml`, mit Sperrdatei gegen eine zweite Instanz;
   [Jobs](jobs.md#weiterführen-nach-einem-neustart)). Alle anderen Jobs leben im Prozess.

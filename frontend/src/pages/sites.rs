@@ -3,6 +3,7 @@ use crate::{
     components::{
         findings::{self, FindingsList},
         saved_jobs::SavedJobs,
+        www_ca::WwwCa,
     },
     error::FrontendError,
     graphql::{
@@ -80,6 +81,7 @@ impl Component for Sites {
                 <SavedJobs/>
                 <FindingsList site={None::<u32>}/>
                 <div class="site-list">{content}</div>
+                <WwwCa/>
             </>
         }
     }

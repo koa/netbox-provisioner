@@ -49,6 +49,9 @@ chart's Secret, `secret` the setting ({value} or {secretKeyRef}); only those giv
 {{- end -}}
 {{- $all = append $all (dict "env" "APP_SETTINGS__WWW_CA__CERTIFICATE" "key" "www_ca_certificate" "secret" .certificate) -}}
 {{- $all = append $all (dict "env" "APP_SETTINGS__WWW_CA__KEY" "key" "www_ca_key" "secret" .key) -}}
+{{- with .root -}}
+{{- $all = append $all (dict "env" "APP_SETTINGS__WWW_CA__ROOT" "key" "www_ca_root" "secret" .) -}}
+{{- end -}}
 {{- end -}}
 {{- range $name, $c := $s.mikrotik_credentials -}}
 {{- if or $c.password $c.previous_password -}}

@@ -42,3 +42,5 @@ env_logger = "0.11.11"
 sha2 = "0.11.1"
 encoding_rs = "0.8.44"
 tokio-stream = "0.1.19"
+# the chain WebFig sends (CHR test `webfig_gets_a_certificate_of_the_ca`)
+tokio-rustls = "0.26"

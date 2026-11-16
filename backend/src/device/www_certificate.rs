@@ -4,7 +4,11 @@
 //!
 //! The provisioner issues a certificate for the device's NetBox addresses and name, uploads
 //! it with its key (`/file/add`, then `/certificate/import`, which takes the files away) and
-//! attaches it to `www-ssl` over the API, before the apply plans. Only once the device has
+//! attaches it to `www-ssl` over the API, before the apply plans. The CA certificates between
+//! it and the root go along (`Ca::chain`), without key and not trusted by the device: only with
+//! them in the store `www-ssl` sends them, so a browser trusting the root alone (downloaded from
+//! `/www-ca.crt`) gets the whole chain. The root isn't uploaded: lab-np2 (netPower 16P, 7.24.6)
+//! never sent a self-signed one, its intermediate CA it does (a CHR sends both). Only once the device has
 //! such a certificate attached the generated config turns `www-ssl` on and `www` off
 //! (`services::use_www_ssl`): the services' target keeps the `certificate` the device has, so
 //! the diff leaves it as attached here. RouterOS lets a certificate in use be removed (the service then
@@ -25,7 +29,7 @@ use mikrotik_model::{
     command::{Reads, Writes},
     model::{Certificate, CertificateByName, FileByName, FileCfg, IpService, IpServiceByName},
     resource::{Creatable, KeyedResource, Updatable, apply_mutation, collect_resource},
-    value::HasNone,
+    value::{HasNone, SubjectAltName},
 };
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, Issuer, KeyPair, KeyUsagePurpose,
@@ -35,15 +39,20 @@ use std::{
     collections::BTreeSet,
     net::IpAddr,
     sync::LazyLock,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 /// The start of the names of the provisioner's certificates on a device; each has the second
 /// it was issued after it.
 pub(crate) const PREFIX: &str = "netbox-provisioner-www";
+/// The same for the CA's certificate on a device.
+const CA_PREFIX: &str = "netbox-provisioner-ca";
 /// How long a certificate is valid: browsers refuse longer ones from public CAs, and some
 /// apply the limit to every CA.
 const VALIDITY: Duration = Duration::from_secs(397 * 24 * 3600);
+/// How long attaching a just imported certificate is tried: with its CA in the store RouterOS
+/// refuses it for a few seconds ("input does not match any value of certificate", CHR 7.24.6).
+const ATTACH_WITHIN: Duration = Duration::from_secs(20);
 /// A certificate expiring within this is issued anew at the next apply.
 const RENEW_BEFORE: Duration = Duration::from_secs(30 * 24 * 3600);
 
@@ -54,8 +63,8 @@ pub enum WwwCertificate {
     Off,
     /// a valid certificate of the CA is attached to `www-ssl`: the config uses it
     InPlace,
-    /// none, or it doesn't hold the device's addresses, expires soon or isn't attached: an apply
-    /// issues and attaches one first
+    /// none, or it doesn't hold the device's addresses, expires soon or isn't attached, or the
+    /// CA's certificate is missing for the chain: an apply puts it in place first
     Needed,
 }
 
@@ -65,20 +74,38 @@ pub struct Ca {
     /// its subject key identifier, upper-case hex as RouterOS prints the `akid` of what it
     /// signed
     key_id: Box<str>,
+    /// the certificates a device sends along with its own: the issuing CA's and the ones above
+    /// it up to the root, without the root, which the browsers have
+    chain: Box<[ChainCertificate]>,
+    /// the root CA's certificate (PEM), for the admins' browsers
+    root: Box<str>,
+}
+
+/// One certificate of [`Ca::chain`].
+pub(crate) struct ChainCertificate {
+    pem: Box<str>,
+    /// its subject key identifier as RouterOS prints it (`skid`)
+    key_id: Box<str>,
 }
 
 static CA: LazyLock<Option<Result<Ca, Box<str>>>> = LazyLock::new(|| {
     CONFIG
         .www_ca
         .as_ref()
-        .map(|ca| read_ca(&ca.certificate, &ca.key))
+        .map(|ca| read_ca(&ca.certificate, ca.root.as_deref(), &ca.key))
 });
 
 impl Ca {
-    /// The CA of `certificate` and `key` (PEM); it needs a subject key identifier, which
-    /// RouterOS shows as the `akid` of what it signed.
-    pub fn from_pem(certificate: &str, key: &str) -> Result<Ca, Error> {
-        read_ca(certificate, key).map_err(Error::WwwCaInvalid)
+    /// The CA of `certificate` (PEM, the issuing CA's, then the ones above it), its `key` and
+    /// `root` (PEM; without, the self-signed one of `certificate`); every one but the root
+    /// needs a subject key identifier, which RouterOS shows as the `akid` of what it signed.
+    pub fn from_pem(certificate: &str, root: Option<&str>, key: &str) -> Result<Ca, Error> {
+        read_ca(certificate, root, key).map_err(Error::WwwCaInvalid)
+    }
+
+    /// The root CA's certificate (PEM).
+    pub fn root(&self) -> &str {
+        &self.root
     }
 }
 
@@ -86,10 +113,23 @@ fn text(error: impl std::fmt::Display) -> Box<str> {
     error.to_string().into()
 }
 
-fn read_ca(certificate: &str, key: &str) -> Result<Ca, Box<str>> {
-    let key = KeyPair::from_pem(key).map_err(text)?;
-    let issuer = Issuer::from_ca_cert_pem(certificate, key).map_err(text)?;
-    let (_, pem) = x509_parser::pem::parse_x509_pem(certificate.as_bytes()).map_err(text)?;
+/// The certificates of a PEM text, each as its own PEM.
+fn pem_blocks(text: &str) -> impl Iterator<Item = &str> {
+    const END: &str = "-----END CERTIFICATE-----";
+    text.split_inclusive(END)
+        .filter(|block| block.contains(END))
+        .map(str::trim)
+}
+
+/// A certificate read from PEM: whether it signed itself and its key identifier, upper-case
+/// hex, if it has one.
+struct Read {
+    self_signed: bool,
+    key_id: Option<Box<str>>,
+}
+
+fn read_certificate(pem: &str) -> Result<Read, Box<str>> {
+    let (_, pem) = x509_parser::pem::parse_x509_pem(pem.as_bytes()).map_err(text)?;
     let cert = pem.parse_x509().map_err(text)?;
     let key_id = cert
         .extensions()
@@ -98,11 +138,55 @@ fn read_ca(certificate: &str, key: &str) -> Result<Ca, Box<str>> {
             x509_parser::extensions::ParsedExtension::SubjectKeyIdentifier(id) => Some(id.0),
             _ => None,
         })
-        .ok_or("the CA certificate has no subject key identifier")?;
+        .map(|id| id.iter().map(|byte| format!("{byte:02X}")).collect());
+    Ok(Read {
+        self_signed: cert.subject().as_raw() == cert.issuer().as_raw(),
+        key_id,
+    })
+}
+
+fn read_ca(certificate: &str, root: Option<&str>, key: &str) -> Result<Ca, Box<str>> {
+    let blocks = pem_blocks(certificate).collect::<Box<[_]>>();
+    let issuing = *blocks.first().ok_or("no certificate")?;
+    let key = KeyPair::from_pem(key).map_err(text)?;
+    let issuer = Issuer::from_ca_cert_pem(issuing, key).map_err(text)?;
+    let no_key_id = || "the CA certificate has no subject key identifier";
+    let key_id = read_certificate(issuing)?.key_id.ok_or_else(no_key_id)?;
+    let mut chain = Vec::new();
+    let mut self_signed = None;
+    for block in &blocks {
+        let read = read_certificate(block)?;
+        if read.self_signed {
+            self_signed = Some(*block);
+        } else {
+            chain.push(ChainCertificate {
+                pem: (*block).into(),
+                key_id: read.key_id.ok_or_else(no_key_id)?,
+            });
+        }
+    }
+    let root = match root {
+        Some(root) => {
+            let root = pem_blocks(root).next().ok_or("root: no certificate")?;
+            read_certificate(root)?;
+            root
+        }
+        None => self_signed.ok_or(
+            "no root CA: give `root` (cert-manager's `ca.crt`) or put it last in `certificate`",
+        )?,
+    };
     Ok(Ca {
         issuer,
-        key_id: key_id.iter().map(|byte| format!("{byte:02X}")).collect(),
+        key_id,
+        chain: chain.into(),
+        root: root.into(),
     })
+}
+
+/// The root CA's certificate of the config, `None` without `www_ca` or with one that can't be
+/// read (the server doesn't start then).
+pub fn root() -> Option<&'static str> {
+    ca()?.ok().map(Ca::root)
 }
 
 /// Reads the CA of the config, if any, so the server doesn't start with one it can't use.
@@ -164,16 +248,19 @@ struct OnDevice {
     private_key: bool,
 }
 
-/// The `subject-alt-name` as RouterOS prints it: `IP:127.0.0.1,DNS:chr`.
-fn parse_names(text: &str) -> Names {
+/// The names of a `subject-alt-name`.
+fn names_of(subject_alt_name: &BTreeSet<SubjectAltName>) -> Names {
     let mut names = Names::default();
-    for entry in text.split(',').map(str::trim) {
-        if let Some(ip) = entry.strip_prefix("IP:") {
-            if let Ok(ip) = ip.parse() {
-                names.ips.insert(ip);
+    for entry in subject_alt_name {
+        match entry {
+            SubjectAltName::Ip(ip) => {
+                names.ips.insert(*ip);
             }
-        } else if let Some(dns) = entry.strip_prefix("DNS:") {
-            names.dns.insert(dns.to_ascii_lowercase().into());
+            SubjectAltName::Dns(dns) => {
+                names
+                    .dns
+                    .insert(dns.to_string().to_ascii_lowercase().into());
+            }
         }
     }
     names
@@ -188,11 +275,7 @@ fn on_device(certificate: &Certificate) -> Option<OnDevice> {
     Some(OnDevice {
         name: name.into(),
         akid: status.akid.as_ref().map(|akid| akid.to_string().into()),
-        names: status
-            .subject_alt_name
-            .as_ref()
-            .map(|names| parse_names(&names.to_string()))
-            .unwrap_or_default(),
+        names: names_of(&status.subject_alt_name),
         expires_after: status.expires_after,
         private_key: status.private_key == Some(true),
     })
@@ -225,6 +308,10 @@ pub struct Found {
     usable: Option<Box<str>>,
     /// the provisioner's certificates no service but `www-ssl` names
     unused: Box<[Box<str>]>,
+    /// the key identifiers of [`Ca::chain`] the store lacks, under any name
+    missing_chain: Box<[Box<str>]>,
+    /// the provisioner's CA certificates (`CA_PREFIX`) not of the chain: a former CA's
+    other_cas: Box<[Box<str>]>,
 }
 
 impl Found {
@@ -246,13 +333,13 @@ pub async fn read_for(raw: &impl Reads, names: &Names, ca: Option<&Ca>) -> Resul
             state: WwwCertificate::Off,
             usable: None,
             unused: Box::default(),
+            missing_chain: Box::default(),
+            other_cas: Box::default(),
         });
     };
-    let certificates = collect_resource::<Certificate>(raw)
-        .await?
-        .iter()
-        .filter_map(on_device)
-        .collect::<Box<[_]>>();
+    let all = collect_resource::<Certificate>(raw).await?;
+    let certificates = all.iter().filter_map(on_device).collect::<Box<[_]>>();
+    let cas = CaCertificates::of(&all, &ca.chain);
     let services = collect_resource::<IpService>(raw).await?;
     let www_ssl = |service: &IpService| *service.status.name.0 == *b"www-ssl";
     // `www-ssl`'s own is free once the new one is attached
@@ -267,7 +354,11 @@ pub async fn read_for(raw: &impl Reads, names: &Names, ca: Option<&Ca>) -> Resul
         .and_then(certificate_of);
     let usable = usable(&certificates, names, &ca.key_id).map(|cert| cert.name.clone());
     let state = match (&usable, attached) {
-        (Some(usable), Some(attached)) if *usable == attached => WwwCertificate::InPlace,
+        (Some(usable), Some(attached))
+            if *usable == attached && cas.missing.is_empty() && cas.others.is_empty() =>
+        {
+            WwwCertificate::InPlace
+        }
         _ => WwwCertificate::Needed,
     };
     Ok(Found {
@@ -278,7 +369,50 @@ pub async fn read_for(raw: &impl Reads, names: &Names, ca: Option<&Ca>) -> Resul
             .filter(|cert| !named.contains(&cert.name))
             .map(|cert| cert.name.clone())
             .collect(),
+        missing_chain: cas.missing,
+        other_cas: cas.others,
     })
+}
+
+/// The CA certificates on a device against the chain it is to send.
+struct CaCertificates {
+    /// the key identifiers of the chain no certificate has
+    missing: Box<[Box<str>]>,
+    /// the provisioner's not of the chain
+    others: Box<[Box<str>]>,
+}
+
+impl CaCertificates {
+    fn of(certificates: &[Certificate], chain: &[ChainCertificate]) -> CaCertificates {
+        let skid = |certificate: &Certificate| {
+            certificate
+                .status
+                .skid
+                .as_ref()
+                .map(|skid| skid.to_string())
+        };
+        let in_store = certificates
+            .iter()
+            .filter_map(skid)
+            .collect::<BTreeSet<_>>();
+        let of_chain = |certificate: &Certificate| {
+            skid(certificate).is_some_and(|skid| chain.iter().any(|ca| *ca.key_id == *skid))
+        };
+        CaCertificates {
+            missing: chain
+                .iter()
+                .filter(|ca| !in_store.contains(&*ca.key_id))
+                .map(|ca| ca.key_id.clone())
+                .collect(),
+            others: certificates
+                .iter()
+                .filter(|certificate| !of_chain(certificate))
+                .map(|certificate| certificate.cfg.name.to_string())
+                .filter(|name| name.starts_with(CA_PREFIX))
+                .map(Box::from)
+                .collect(),
+        }
+    }
 }
 
 /// A certificate and its key, as PEM.
@@ -362,6 +496,14 @@ pub async fn install_for(
         return;
     }
     let installed = async {
+        for (index, missing) in ca
+            .chain
+            .iter()
+            .enumerate()
+            .filter(|(_, chained)| found.missing_chain.contains(&chained.key_id))
+        {
+            upload_ca(raw, &missing.pem, index).await?;
+        }
         let name = match &found.usable {
             Some(name) => name.clone(),
             None => upload(raw, names, ca).await?,
@@ -371,7 +513,8 @@ pub async fn install_for(
     };
     match installed.await {
         Ok(name) => {
-            for old in found.unused.iter().filter(|old| **old != name) {
+            let old = found.unused.iter().filter(|old| **old != name);
+            for old in old.chain(&found.other_cas) {
                 if let Err(error) =
                     remove_if_present::<CertificateByName>(raw, &AsciiString::from(&**old)).await
                 {
@@ -395,8 +538,27 @@ pub async fn install_for(
     }
 }
 
-/// Attaches the certificate `name` to `www-ssl`.
+/// Attaches the certificate `name` to `www-ssl`, waiting up to [`ATTACH_WITHIN`] for RouterOS
+/// to take it.
 async fn attach(raw: &impl Writes, name: &str) -> Result<(), Error> {
+    let start = Instant::now();
+    loop {
+        match attach_once(raw, name).await {
+            Err(Error::MikrotikModel(mikrotik_model::resource::Error::Trap(trap)))
+                if trap
+                    .message
+                    .starts_with(b"input does not match any value of certificate")
+                    && start.elapsed() < ATTACH_WITHIN =>
+            {
+                log::debug!("certificate {name} not taken yet");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            result => return result,
+        }
+    }
+}
+
+async fn attach_once(raw: &impl Writes, name: &str) -> Result<(), Error> {
     let current = IpServiceByName::fetch(raw, &AsciiString::from("www-ssl"))
         .await?
         .ok_or_else(|| Error::Refused("/ip/service: no www-ssl".into()))?;
@@ -406,28 +568,61 @@ async fn attach(raw: &impl Writes, name: &str) -> Result<(), Error> {
     Ok(())
 }
 
+/// A new name of a certificate: `prefix` and the second `now`.
+fn new_name(prefix: &str, now: SystemTime) -> String {
+    format!(
+        "{prefix}-{}",
+        now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+    )
+}
+
+/// Uploads `contents` as `file` and imports it as the certificate `name` (its key, if a key).
+async fn import(raw: &impl Writes, name: &str, file: &str, contents: &str) -> Result<(), Error> {
+    let mut entry = FileCfg::new(file.into());
+    entry.contents = Some(contents.into());
+    apply_mutation(raw, &entry.calculate_create()).await?;
+    let import = CertificateImport {
+        file_name: file,
+        passphrase: "",
+        name,
+    };
+    act(raw, &import).await?;
+    Ok(())
+}
+
+/// Imports the `index`th certificate of the chain, `pem`, under a new name, not trusted by
+/// the device.
+async fn upload_ca(raw: &impl Writes, pem: &str, index: usize) -> Result<(), Error> {
+    let name = format!("{}-{index}", new_name(CA_PREFIX, SystemTime::now()));
+    let file = format!("{name}.crt");
+    let imported = async {
+        import(raw, &name, &file, pem).await?;
+        let current = CertificateByName::fetch(raw, &AsciiString::from(name.as_str()))
+            .await?
+            .ok_or_else(|| Error::WwwCertificateNotImported(name.as_str().into()))?;
+        let mut target = current.clone();
+        target.0.trusted = Some(false);
+        apply_mutation(raw, &target.calculate_update(&current)).await?;
+        Ok(())
+    };
+    let result = imported.await;
+    let _ = remove_if_present::<FileByName>(raw, &AsciiString::from(file.as_str())).await;
+    if result.is_err() {
+        let _ =
+            remove_if_present::<CertificateByName>(raw, &AsciiString::from(name.as_str())).await;
+    }
+    result
+}
+
 /// Issues a certificate for `names` and imports it with its key under a new name.
 async fn upload(raw: &impl Writes, names: &Names, ca: &Ca) -> Result<Box<str>, Error> {
     let now = SystemTime::now();
     let pem = issue(ca, names, now)?;
-    let name = format!(
-        "{PREFIX}-{}",
-        now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
-    );
+    let name = new_name(PREFIX, now);
     let files = [format!("{name}.crt"), format!("{name}.key")];
     let imported = async {
         for (file, contents) in files.iter().zip([&pem.certificate, &pem.key]) {
-            let mut entry = FileCfg::new(file.as_str().into());
-            entry.contents = Some((&**contents).into());
-            apply_mutation(raw, &entry.calculate_create()).await?;
-        }
-        for file in &files {
-            let import = CertificateImport {
-                file_name: file,
-                passphrase: "",
-                name: &name,
-            };
-            act(raw, &import).await?;
+            import(raw, &name, file, contents).await?;
         }
         let with_key = collect_resource::<Certificate>(raw)
             .await?

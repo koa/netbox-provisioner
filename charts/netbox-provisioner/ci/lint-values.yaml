@@ -34,6 +34,8 @@ settings:
       secretKeyRef: {name: webfig-ca, key: tls.crt}
     key:
       secretKeyRef: {name: webfig-ca, key: tls.key}
+    root:
+      secretKeyRef: {name: webfig-ca, key: ca.crt}
   device_syslog:
     remote: "2a02:16a:fe00:1a0::10:8"
     topics: [info, warning, error, critical]

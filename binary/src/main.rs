@@ -208,6 +208,18 @@ async fn health() -> &'static str {
     "Ok"
 }
 
+/// The root CA of WebFig over HTTPS (`www_ca`), for the admins' browsers; public, as every
+/// certificate: a browser opens its import with this type.
+#[get("/www-ca.crt")]
+async fn www_ca() -> HttpResponse {
+    match backend::device::www_certificate::root() {
+        Some(root) => HttpResponse::Ok()
+            .content_type("application/x-x509-ca-cert")
+            .body(format!("{root}\n")),
+        None => HttpResponse::NotFound().finish(),
+    }
+}
+
 /// What `/metrics` renders: the registry's metrics and the devices' (`backend::metrics`).
 struct Scrape {
     registry: prometheus::Registry,
@@ -328,6 +340,7 @@ async fn main() -> Result<(), BackendError> {
             )
             .service(anonymous_graphql("/graphql_anonymous"))
             .service(anonymous_graphql("/graphql_anonymous/"))
+            .service(www_ca)
             .service(ResourceFiles::new("/", resources).resolve_not_found_to_root())
     })
     .bind((bind_addr, api_port))?

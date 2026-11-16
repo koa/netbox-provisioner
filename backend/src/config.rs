@@ -102,12 +102,16 @@ pub struct ManagementProxy {
     pub password: Box<str>,
 }
 
-/// The CA issuing the devices' certificates for WebFig over HTTPS (A7), both PEM; the admins
-/// import `certificate` into their browsers once.
+/// The CA issuing the devices' certificates for WebFig over HTTPS (A7), all PEM: `certificate`
+/// the issuing CA's, then the ones above it (a device sends them along with its own, but the
+/// root), `key` its key, `root` the root CA's (without: the self-signed one of `certificate`),
+/// which the admins download from the provisioner (`/www-ca.crt`) and import into their
+/// browsers once.
 #[derive(Deserialize)]
 pub struct WwwCa {
     pub certificate: Box<str>,
     pub key: Box<str>,
+    pub root: Option<Box<str>>,
 }
 
 #[derive(Deserialize)]

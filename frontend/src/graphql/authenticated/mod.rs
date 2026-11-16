@@ -23,3 +23,4 @@ pub mod saved_jobs;
 pub mod schema;
 pub mod site_diff;
 pub mod types;
+pub mod www_ca;

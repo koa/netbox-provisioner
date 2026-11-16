@@ -1069,7 +1069,18 @@ has, so the diff leaves it. Only with a usable one attached (`DeviceCfg.www_cert
 (`services::use_www_ssl`); `Needed` enables „Anwenden“ without a script and is a change of
 `certificate` in the site diff. RouterOS removes a certificate in use and leaves the service a
 dangling `*N` (CHR 7.24.6), so the provisioner's older ones go only once no other service names
-them (CHR test `webfig_gets_a_certificate_of_the_ca`, HTTPS checked against the CA). CAPsMAN
+them (CHR test `webfig_gets_a_certificate_of_the_ca`, HTTPS checked against the root). `www_ca.certificate`
+is the issuing CA's, then the ones above it; `root` the root's (without: the self-signed one of
+`certificate`), public at `/www-ca.crt` for the browsers (link on the sites page with the
+`wwwCa` query). The ones between the device's and the root (`Ca::chain`) go along
+(`netbox-provisioner-ca-<second>-<n>`, no key, `trusted=no`): `www-ssl` sends only what is in
+the store (untrusted too). The root isn't uploaded: lab-np2 (netPower 16P, 7.24.6) never sent a
+self-signed one, the intermediate it does; a CHR sends both. Lacking one of the chain, under
+any name (`skid`), or with a provisioner's CA certificate not of it (a former CA's, removed
+once the new one is in), the state is `Needed`. With a CA in the store RouterOS
+refuses a just imported certificate for a few seconds ("input does not match any value of
+certificate", CHR 7.24.6), so `attach` tries for up to 20 s (`ATTACH_WITHIN`). The CHR test
+checks the chain over the node's SOCKS with rustls (`served_chain`). CAPsMAN
 keeps a removed certificate's id in `generated-*`, which RouterOS gives a new one later, so the
 provisioner's are never CAPsMAN's (`cfg::capsman_generated`): lab-wap's apply removed WebFig's.
 With `api_networks` the plain API and www answer only those, written as `address`, which RouterOS

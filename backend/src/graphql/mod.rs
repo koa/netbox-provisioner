@@ -87,6 +87,11 @@ impl QueryAuthenticated {
     async fn allow_apply(&self) -> bool {
         CONFIG.allow_apply
     }
+    /// Whether the root CA of WebFig over HTTPS can be downloaded (`/www-ca.crt`, with
+    /// `www_ca`).
+    async fn www_ca(&self) -> bool {
+        crate::device::www_certificate::root().is_some()
+    }
     /// NetBox' web UI, ending in `/`, for links to the objects of findings.
     async fn netbox_url(&self) -> String {
         netbox::web_url()

@@ -18,11 +18,21 @@ fi
 device_password="$(cat "$root/.lab-netbox/device-password")"
 # the address lab-np2 sees this machine at; the devices behind it see lab-np2's
 own_address="$(python3 -c 'import socket; s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("172.17.1.82", 9)); print(s.getsockname()[0])')"
-# the CA of WebFig over HTTPS, made once; import www-ca.pem into the browser to trust it
-if [ ! -s "$root/.lab-netbox/www-ca.key" ]; then
+# the CAs of WebFig over HTTPS, made once: a root (www-root.pem, the browser's, from
+# /www-ca.crt) and the intermediate CA under it issuing the devices' certificates (www-ca.pem),
+# which the devices send along
+lab="$root/.lab-netbox"
+if [ ! -s "$lab/www-root.key" ]; then
   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 \
-    -subj "/CN=netbox-provisioner lab CA" \
-    -keyout "$root/.lab-netbox/www-ca.key" -out "$root/.lab-netbox/www-ca.pem" 2>/dev/null
+    -subj "/CN=netbox-provisioner lab root CA" \
+    -keyout "$lab/www-root.key" -out "$lab/www-root.pem" 2>/dev/null
+  openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+    -subj "/CN=netbox-provisioner lab CA" -keyout "$lab/www-ca.key" -out "$lab/www-ca.csr" 2>/dev/null
+  printf '%s\n' basicConstraints=critical,CA:TRUE keyUsage=critical,keyCertSign,cRLSign \
+    subjectKeyIdentifier=hash authorityKeyIdentifier=keyid >"$lab/www-ca.ext"
+  openssl x509 -req -in "$lab/www-ca.csr" -CA "$lab/www-root.pem" -CAkey "$lab/www-root.key" \
+    -CAcreateserial -days 3650 -extfile "$lab/www-ca.ext" -out "$lab/www-ca.pem" 2>/dev/null
+  rm "$lab/www-ca.csr" "$lab/www-ca.ext"
 fi
 pem() { sed 's/^/      /' "$1"; }
 cat >"$out/config.yaml" <<YAML
@@ -54,6 +64,8 @@ settings:
 $(pem "$root/.lab-netbox/www-ca.pem")
     key: |
 $(pem "$root/.lab-netbox/www-ca.key")
+    root: |
+$(pem "$root/.lab-netbox/www-root.pem")
   mikrotik_credentials:
     lab:
       user: admin
