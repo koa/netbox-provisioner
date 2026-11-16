@@ -34,7 +34,7 @@ use crate::{
 use async_graphql::{Enum, SimpleObject};
 use log::{info, warn};
 use mikrotik_model::{
-    action::{self, Execute, RadioMenu, RadioProvision},
+    action::{self, Execute, RadioProvision, RadioTable},
     ascii::AsciiString,
     command::{Reads, Writes},
     model::{
@@ -219,10 +219,10 @@ pub enum CapsmanRadios {
 }
 
 impl CapsmanRadios {
-    fn table(self) -> RadioMenu {
+    fn table(self) -> RadioTable {
         match self {
-            CapsmanRadios::Wifi => RadioMenu::Wifi,
-            CapsmanRadios::Legacy => RadioMenu::CapsMan,
+            CapsmanRadios::Wifi => RadioTable::Wifi,
+            CapsmanRadios::Legacy => RadioTable::CapsMan,
         }
     }
 }
@@ -295,7 +295,7 @@ async fn provision_radios(raw: &impl Writes, table: CapsmanRadios) -> Result<usi
     }
     let numbers = ids.join(",");
     let provision = RadioProvision {
-        menu: table.table(),
+        table: table.table(),
         numbers: &numbers,
     };
     act(raw, &provision).await?;
