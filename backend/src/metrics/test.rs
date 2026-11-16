@@ -4,7 +4,8 @@ use super::render::{DeviceSample, Snapshot, WlanGroupSample, families, wlan_grou
 use super::{DEVICE_TIMEOUT, device_budget};
 use crate::{
     device::metrics::{
-        Capsman, DeviceMetrics, EthernetLink, InterfaceCounters, Lease, WirelessRadio, WlanClient,
+        Capsman, DeviceMetrics, EthernetCounters, EthernetLink, InterfaceCounters, Lease,
+        WirelessRadio, WlanClient,
     },
     device::poe::{PoePorts, monitor_reading},
     network_state::device_data::{DeviceMapData, HealthRow, Resources},
@@ -84,6 +85,14 @@ fn snapshot() -> Snapshot {
                     rate_bits_per_second: None,
                 },
             ]),
+            ethernet_counters: Box::new([EthernetCounters {
+                name: "e01-uplink".into(),
+                rx_fcs_errors: Some(3),
+                rx_overflows: None,
+                rx_drops: Some(4),
+                tx_drops: Some(5),
+                collisions: None,
+            }]),
             interfaces: Box::new([InterfaceCounters {
                 name: "e01-uplink".into(),
                 kind: "ether".into(),
@@ -157,6 +166,7 @@ fn snapshot() -> Snapshot {
                 },
             ]),
             ethernet: Box::new([]),
+            ethernet_counters: Box::new([]),
             interfaces: Box::new([]),
             leases: Box::new([]),
         }),
@@ -454,4 +464,20 @@ fn the_devices_have_the_time_prometheus_waits() {
         device_budget(Some(Duration::from_millis(500))),
         Duration::ZERO
     );
+}
+
+/// An Ethernet port's counters, only those the board reports.
+#[test]
+fn an_ethernet_port_s_drops_and_errors() {
+    let families = families(&snapshot());
+    let port = labels(&["device=router", "site=berg", "interface=e01-uplink"]);
+    assert_eq!(
+        samples(&families, "mikrotik_ethernet_rx_fcs_errors_total"),
+        [(port.clone(), 3.0)]
+    );
+    assert_eq!(
+        samples(&families, "mikrotik_ethernet_tx_drops_total"),
+        [(port, 5.0)]
+    );
+    assert!(samples(&families, "mikrotik_ethernet_rx_overflows_total").is_empty());
 }

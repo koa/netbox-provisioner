@@ -38,8 +38,8 @@ use mikrotik_model::{
     ascii::AsciiString,
     model::{
         CapsManActualInterfaceConfiguration, CapsManInterface, CapsManRadioState,
-        CapsManRegistrationTableState, InterfaceState, InterfaceWifi, InterfaceWifiRadioState,
-        InterfaceWifiRegistrationTableState, InterfaceWireless,
+        CapsManRegistrationTableState, InterfaceEthernetState, InterfaceState, InterfaceWifi,
+        InterfaceWifiRadioState, InterfaceWifiRegistrationTableState, InterfaceWireless,
         InterfaceWirelessRegistrationTableState, IpDhcpServerLease,
     },
     resource::collect_resource,
@@ -52,6 +52,7 @@ pub struct DeviceMetrics {
     pub radios: Box<[WirelessRadio]>,
     pub interfaces: Box<[InterfaceCounters]>,
     pub ethernet: Box<[EthernetLink]>,
+    pub ethernet_counters: Box<[EthernetCounters]>,
     pub leases: Box<[Lease]>,
 }
 
@@ -114,6 +115,25 @@ pub struct EthernetLink {
     pub rate_bits_per_second: Option<u64>,
 }
 
+/// What an Ethernet port's switch or driver counts (`/interface/ethernet`): the drops and errors
+/// `/interface` lacks on a switch chip's ports. Each board reports some of them, a counter it
+/// doesn't is `None`: `rx-drop`/`tx-drop` (hEX, SXT), `rx-overflow`/`tx-drop-packet` (CRS1xx/2xx,
+/// CRS318), `tx-collision` or `tx-total-collision` (SXT), `rx-fcs-error` every board of the lab.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EthernetCounters {
+    /// the port's name (`/interface`), by its `default-name`
+    pub name: Box<str>,
+    /// frames with a wrong checksum: a bad cable or connector
+    pub rx_fcs_errors: Option<u64>,
+    /// frames received, dropped for want of room
+    pub rx_overflows: Option<u64>,
+    pub rx_drops: Option<u64>,
+    /// packets to send, dropped (`tx-drop`, else `tx-drop-packet`)
+    pub tx_drops: Option<u64>,
+    /// `tx-collision`, else `tx-total-collision`: a duplex mismatch
+    pub collisions: Option<u64>,
+}
+
 /// A row of `/interface/print`; a counter the interface doesn't report is `None`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InterfaceCounters {
@@ -160,6 +180,11 @@ async fn read(client: &Reader) -> Result<DeviceMetrics, Error> {
     radios.extend(capsman_radios(client, &capsman).await?);
     let interfaces = collect_resource::<InterfaceState>(client).await?;
     let ethernet = ethernet_links(client, &interfaces).await?;
+    let ethernet_counters = collect_resource::<InterfaceEthernetState>(client)
+        .await?
+        .iter()
+        .filter_map(|port| ethernet_counters(port, &interfaces))
+        .collect();
     let interfaces = interfaces.iter().map(interface_counters).collect();
     let leases = collect_if_present::<IpDhcpServerLease>(client)
         .await?
@@ -171,6 +196,7 @@ async fn read(client: &Reader) -> Result<DeviceMetrics, Error> {
         radios: radios.into(),
         interfaces,
         ethernet,
+        ethernet_counters,
         leases,
     })
 }
@@ -512,6 +538,25 @@ pub(crate) fn interface_counters(interface: &InterfaceState) -> InterfaceCounter
         tx_drops: interface.tx_drop,
         link_downs: interface.link_downs,
     }
+}
+
+/// The counters of an Ethernet port, named as `/interface` names the port with its
+/// `default-name`; none for a port `/interface` doesn't list.
+pub(crate) fn ethernet_counters(
+    port: &InterfaceEthernetState,
+    interfaces: &[InterfaceState],
+) -> Option<EthernetCounters> {
+    let interface = interfaces
+        .iter()
+        .find(|interface| interface.default_name.as_ref() == Some(&port.default_name))?;
+    Some(EthernetCounters {
+        name: interface.name.to_string().into(),
+        rx_fcs_errors: port.rx_fcs_error,
+        rx_overflows: port.rx_overflow,
+        rx_drops: port.rx_drop,
+        tx_drops: port.tx_drop.or(port.tx_drop_packet),
+        collisions: port.tx_collision.or(port.tx_total_collision),
+    })
 }
 
 /// The lease while it is bound to a client: its address and MAC as the client has them.

@@ -64,6 +64,10 @@ Prometheus-Konventionen: Einheit im Namen, `_total` für einen Zähler des Gerä
 | `mikrotik_interface_link_downs_total` | Counter | `interface` | |
 | `mikrotik_ethernet_link_up` | Gauge | `interface` | `/interface/ethernet/monitor`, `status` `link-ok` |
 | `mikrotik_ethernet_rate_bits_per_second` | Gauge | `interface` | `rate`, nur mit Link |
+| `mikrotik_ethernet_rx_fcs_errors_total` | Counter | `interface` | `/interface/ethernet`, `rx-fcs-error`: Kabel oder Stecker |
+| `mikrotik_ethernet_rx_overflows_total` | Counter | `interface` | `rx-overflow`, nur wo gemeldet |
+| `mikrotik_ethernet_{rx,tx}_drops_total` | Counter | `interface` | `rx-drop`; `tx-drop`, sonst `tx-drop-packet`; nur wo gemeldet |
+| `mikrotik_ethernet_collisions_total` | Counter | `interface` | `tx-collision`, sonst `tx-total-collision`: Duplex falsch |
 | `mikrotik_wireless_radio_info` | Gauge (1) | `interface`, `ssid`, `band`, `wlan_group`, `ap`, `capsman` | laufende Radios von `/interface/wireless` und, am Controller, der CAPs von `/caps-man` |
 | `mikrotik_wireless_radio_frequency_hertz` | Gauge | `interface` | `monitor`, `channel`; am Controller `current-channel` |
 | `mikrotik_wireless_radio_noise_floor_dbm` | Gauge | `interface` | `monitor`, `noise-floor` |
@@ -133,9 +137,15 @@ Grafana-Sidecar wie `device-queries.json`, beide mit den Variablen Datenquelle, 
   `by (address, …)`): Die Ziel-Labels, die Prometheus anhängt (`namespace`, `pod`, `service`
   …), sind keine Spalten.
 - **Mikrotik Geräte** (`mikrotik-health.json`): Health, PoE pro Port (ein Panel je Port) und das
-  Log aus Loki (Variable `loki`), dessen Label `hostname` die Identity des Geräts ist, also sein
+  Log aus Loki mit Zeitstempeln (Variable `loki`), dessen Label `hostname` die Identity des Geräts ist, also sein
   NetBox-Name. Die Logins des Provisioners blendet es aus: Variable „Benutzer des
   Provisioners“ (Vorgabe `admin`), einige pro Gerät und Scrape.
+- **Mikrotik Anschlüsse** (`mikrotik-interfaces.json`): Verkehr, Pakete, verworfene Pakete,
+  Fehler und Link-Abbrüche jedes Anschlusses, für mehrere Geräte und Anschlüsse auf einmal
+  (Variablen Gerät und Anschluss, je mit „All“), empfangen nach unten, gesendet nach oben. Oben
+  eine Tabelle mit den Summen über den Zeitraum, eine Zeile pro Anschluss, nach Spalten
+  sortierbar. Verworfen zählt bei Ethernet-Ports der Port selbst (`mikrotik_ethernet_*`), sonst
+  `/interface`: Auf den Ports eines Switch-Chips meldet `/interface` weder Drops noch Fehler.
 
 ## Geprüft
 
@@ -144,6 +154,10 @@ aller Geräte, Radio und Client der Funkstrecke lab-sxt-a → lab-sxt-b (`capsma
 Signal/Rauschen); der PoE-Strom passt zu Spannung und Leistung (lab-np2 → lab-wap:
 47,6 V × 0,051 A = 2,4 W). Die Dashboards mit Grafana 13.3 und Prometheus 3.16 gegen den
 Lab-Provisioner: jedes Panel mit Daten, ausser Leases, Lüfter und dem Log (kein Loki dort).
+Die Port-Zähler von `/interface/ethernet` (2026-11-16, 7 Geräte): jedes Board liest die Tabelle
+getypt; lab-np2 (CRS318), lab-crs125 und lab-crs226 melden `rx-overflow` und `tx-drop-packet`,
+lab-hex und die SXT `rx-drop` und `tx-drop`, lab-wap nur FCS-Fehler und Kollisionen. „Mikrotik
+Anschlüsse“ zeigt so auch die Ports von lab-np2, wo `/interface` nichts meldet.
 Im Lab gibt es weder Clients von `/interface/wifi` oder `/caps-man` noch einen gebundenen Lease:
 diese sind nur mit Unit-Tests geprüft (`metrics::test`, `device::metrics::test`).
 

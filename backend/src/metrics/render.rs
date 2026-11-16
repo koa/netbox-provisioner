@@ -9,7 +9,8 @@
 
 use crate::{
     device::metrics::{
-        Capsman, DeviceMetrics, EthernetLink, InterfaceCounters, Lease, WirelessRadio, WlanClient,
+        Capsman, DeviceMetrics, EthernetCounters, EthernetLink, InterfaceCounters, Lease,
+        WirelessRadio, WlanClient,
     },
     network_state::device_data::{DeviceMapData, HealthRow, Resources},
     topology::access::device::DeviceAccess,
@@ -255,6 +256,11 @@ struct InterfaceFamilies {
 struct EthernetFamilies {
     up: Family,
     rate: Family,
+    rx_fcs_errors: Family,
+    rx_overflows: Family,
+    rx_drops: Family,
+    tx_drops: Family,
+    collisions: Family,
 }
 
 struct RadioFamilies {
@@ -362,6 +368,26 @@ impl Default for Families {
                     "the rate the Ethernet port's link runs at",
                     WITH_INTERFACE,
                 ),
+                rx_fcs_errors: interface(
+                    "mikrotik_ethernet_rx_fcs_errors_total",
+                    "frames received with a wrong checksum (rx-fcs-error)",
+                ),
+                rx_overflows: interface(
+                    "mikrotik_ethernet_rx_overflows_total",
+                    "frames received, dropped for want of room (rx-overflow)",
+                ),
+                rx_drops: interface(
+                    "mikrotik_ethernet_rx_drops_total",
+                    "frames received, dropped (rx-drop)",
+                ),
+                tx_drops: interface(
+                    "mikrotik_ethernet_tx_drops_total",
+                    "packets to send, dropped (tx-drop, tx-drop-packet)",
+                ),
+                collisions: interface(
+                    "mikrotik_ethernet_collisions_total",
+                    "collisions sending (tx-collision, tx-total-collision)",
+                ),
             },
             radio: RadioFamilies {
                 info: Family::new(
@@ -465,6 +491,9 @@ impl Families {
             for counters in &metrics.interfaces {
                 self.interface.push(device, site, counters);
             }
+            for counters in &metrics.ethernet_counters {
+                self.ethernet.push_counters(device, site, counters);
+            }
             for link in &metrics.ethernet {
                 self.ethernet.push(device, site, link);
             }
@@ -536,6 +565,11 @@ impl Families {
             interface.link_downs,
             ethernet.up,
             ethernet.rate,
+            ethernet.rx_fcs_errors,
+            ethernet.rx_overflows,
+            ethernet.rx_drops,
+            ethernet.tx_drops,
+            ethernet.collisions,
             radio.info,
             radio.frequency,
             radio.noise_floor,
@@ -647,6 +681,21 @@ impl EthernetFamilies {
         self.up.push(port(), if link.up { 1.0 } else { 0.0 });
         if let Some(rate) = link.rate_bits_per_second {
             self.rate.push(port(), rate as f64);
+        }
+    }
+    /// A port's counters, those the board reports.
+    fn push_counters(&mut self, device: &str, site: &str, counters: &EthernetCounters) {
+        let port = || labels([device, site, &counters.name]);
+        for (family, value) in [
+            (&mut self.rx_fcs_errors, counters.rx_fcs_errors),
+            (&mut self.rx_overflows, counters.rx_overflows),
+            (&mut self.rx_drops, counters.rx_drops),
+            (&mut self.tx_drops, counters.tx_drops),
+            (&mut self.collisions, counters.collisions),
+        ] {
+            if let Some(value) = value {
+                family.push(port(), value as f64);
+            }
         }
     }
 }

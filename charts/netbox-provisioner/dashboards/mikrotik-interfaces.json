@@ -1,0 +1,812 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Datenverkehr, verworfene Pakete und Fehler jedes Anschlusses der MikroTik-Geräte, aus /metrics des Provisioners (mikrotik_interface_*, mikrotik_ethernet_*), docs/device-metrics.md",
+  "editable": true,
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": [
+    "netbox-provisioner"
+  ],
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Mikrotik Anschlüsse",
+  "uid": "netbox-provisioner-mikrotik-interfaces",
+  "version": 1,
+  "templating": {
+    "list": [
+      {
+        "type": "datasource",
+        "name": "datasource",
+        "label": "Datenquelle",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "type": "query",
+        "name": "site",
+        "label": "Site",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(mikrotik_up, site)",
+          "refId": "site"
+        },
+        "definition": "label_values(mikrotik_up, site)",
+        "refresh": 2,
+        "sort": 1,
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "type": "query",
+        "name": "device",
+        "label": "Gerät",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(mikrotik_up{site=\"$site\"}, device)",
+          "refId": "device"
+        },
+        "definition": "label_values(mikrotik_up{site=\"$site\"}, device)",
+        "refresh": 2,
+        "sort": 1,
+        "current": {},
+        "hide": 0,
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "type": "query",
+        "name": "interface",
+        "label": "Anschluss",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(mikrotik_interface_rx_bytes_total{site=\"$site\",device=~\"$device\"}, interface)",
+          "refId": "interface"
+        },
+        "definition": "label_values(mikrotik_interface_rx_bytes_total{site=\"$site\",device=~\"$device\"}, interface)",
+        "refresh": 2,
+        "sort": 1,
+        "current": {},
+        "hide": 0,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "table",
+      "id": 1,
+      "title": "Anschlüsse im Zeitraum",
+      "description": "Jeder Anschluss der gewählten Geräte über den ganzen Zeitraum, der meiste Verkehr zuoberst; ein Klick auf eine Spalte sortiert nach ihr (etwa „Verworfen ein“). Verworfen zählt bei Ethernet-Ports der Port selbst (/interface/ethernet), sonst /interface. Was RouterOS nicht meldet, bleibt leer.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum by (device, interface) (increase(mikrotik_interface_rx_bytes_total{site=\"$site\",device=~\"$device\",interface=~\"$interface\"}[$__range]))",
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "sum by (device, interface) (increase(mikrotik_interface_tx_bytes_total{site=\"$site\",device=~\"$device\",interface=~\"$interface\"}[$__range]))",
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "C",
+          "expr": "sum by (device, interface) (increase({__name__=~\"mikrotik_ethernet_rx_(drops|overflows)_total\",device=~\"$device\",interface=~\"$interface\"}[$__range])) or sum by (device, interface) (increase({__name__=~\"mikrotik_interface_rx_drops_total\",device=~\"$device\",interface=~\"$interface\"}[$__range]))",
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "D",
+          "expr": "sum by (device, interface) (increase({__name__=~\"mikrotik_ethernet_tx_drops_total\",device=~\"$device\",interface=~\"$interface\"}[$__range])) or sum by (device, interface) (increase({__name__=~\"mikrotik_interface_tx_drops_total\",device=~\"$device\",interface=~\"$interface\"}[$__range]))",
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "E",
+          "expr": "sum by (device, interface) (increase({__name__=~\"mikrotik_ethernet_rx_fcs_errors_total\",device=~\"$device\",interface=~\"$interface\"}[$__range]))",
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "F",
+          "expr": "sum by (device, interface) (increase({__name__=~\"mikrotik_interface_rx_errors_total\",device=~\"$device\",interface=~\"$interface\"}[$__range]))",
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "G",
+          "expr": "sum by (device, interface) (increase({__name__=~\"mikrotik_interface_tx_errors_total\",device=~\"$device\",interface=~\"$interface\"}[$__range]))",
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "H",
+          "expr": "sum by (device, interface) (increase({__name__=~\"mikrotik_ethernet_collisions_total\",device=~\"$device\",interface=~\"$interface\"}[$__range]))",
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "I",
+          "expr": "sum by (device, interface) (increase(mikrotik_interface_link_downs_total{site=\"$site\",device=~\"$device\",interface=~\"$interface\"}[$__range]))",
+          "editorMode": "code",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "device": "Gerät",
+              "interface": "Anschluss",
+              "Value #A": "Ein",
+              "Value #B": "Aus",
+              "Value #C": "Verworfen ein",
+              "Value #D": "Verworfen aus",
+              "Value #E": "FCS-Fehler",
+              "Value #F": "Fehler ein",
+              "Value #G": "Fehler aus",
+              "Value #H": "Kollisionen",
+              "Value #I": "Link down"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Ein",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "custom": {
+            "align": "auto",
+            "minWidth": 80
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Ein|Aus)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Verworfen|Fehler|FCS|Kollisionen|Link).*"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 1000
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gerät"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Anschluss"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "type": "row",
+      "id": 10,
+      "title": "Datenverkehr",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 11,
+      "title": "Datenverkehr",
+      "description": "Bits pro Sekunde, empfangen (Ein, nach unten) und gesendet (Aus)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 11
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "8 * sum by (device, interface) (rate(mikrotik_interface_rx_bytes_total{device=~\"$device\",interface=~\"$interface\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "legendFormat": "Ein {{device}} {{interface}}",
+          "range": true,
+          "instant": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "8 * sum by (device, interface) (rate(mikrotik_interface_tx_bytes_total{device=~\"$device\",interface=~\"$interface\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "legendFormat": "Aus {{device}} {{interface}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "min": null,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisCenteredZero": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^Ein .*"
+            },
+            "properties": [
+              {
+                "id": "custom.transform",
+                "value": "negative-Y"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 12,
+      "title": "Pakete",
+      "description": "Pakete pro Sekunde, empfangen (Ein, nach unten) und gesendet (Aus)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 11
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum by (device, interface) (rate(mikrotik_interface_rx_packets_total{device=~\"$device\",interface=~\"$interface\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "legendFormat": "Ein {{device}} {{interface}}",
+          "range": true,
+          "instant": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "sum by (device, interface) (rate(mikrotik_interface_tx_packets_total{device=~\"$device\",interface=~\"$interface\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "legendFormat": "Aus {{device}} {{interface}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "min": null,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisCenteredZero": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^Ein .*"
+            },
+            "properties": [
+              {
+                "id": "custom.transform",
+                "value": "negative-Y"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "id": 20,
+      "title": "Verworfen und Fehler",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 21,
+      "title": "Verworfene Pakete",
+      "description": "Verworfene Pakete pro Sekunde, beim Empfang (Ein, nach unten) und beim Senden (Aus). Bei Ethernet-Ports zählt der Port selbst (/interface/ethernet: rx-drop und rx-overflow, tx-drop), sonst /interface; nur wo RouterOS sie meldet.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum by (device, interface) (rate({__name__=~\"mikrotik_ethernet_rx_(drops|overflows)_total\",device=~\"$device\",interface=~\"$interface\"}[$__rate_interval])) or sum by (device, interface) (rate({__name__=~\"mikrotik_interface_rx_drops_total\",device=~\"$device\",interface=~\"$interface\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "legendFormat": "Ein {{device}} {{interface}}",
+          "range": true,
+          "instant": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "sum by (device, interface) (rate({__name__=~\"mikrotik_ethernet_tx_drops_total\",device=~\"$device\",interface=~\"$interface\"}[$__rate_interval])) or sum by (device, interface) (rate({__name__=~\"mikrotik_interface_tx_drops_total\",device=~\"$device\",interface=~\"$interface\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "legendFormat": "Aus {{device}} {{interface}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "min": null,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisCenteredZero": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^Ein .*"
+            },
+            "properties": [
+              {
+                "id": "custom.transform",
+                "value": "negative-Y"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 22,
+      "title": "Fehler",
+      "description": "Fehlerhafte Pakete pro Sekunde: beim Empfang (Ein, nach unten) Prüfsummenfehler eines Ethernet-Ports (FCS: Kabel oder Stecker) und die Fehler von /interface, beim Senden (Aus) die Fehler von /interface und Kollisionen (Duplex falsch); nur wo RouterOS sie meldet.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum by (device, interface) (rate({__name__=~\"mikrotik_ethernet_rx_fcs_errors_total\",device=~\"$device\",interface=~\"$interface\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "legendFormat": "Ein FCS {{device}} {{interface}}",
+          "range": true,
+          "instant": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "sum by (device, interface) (rate({__name__=~\"mikrotik_interface_rx_errors_total\",device=~\"$device\",interface=~\"$interface\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "legendFormat": "Ein {{device}} {{interface}}",
+          "range": true,
+          "instant": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "C",
+          "expr": "sum by (device, interface) (rate({__name__=~\"mikrotik_interface_tx_errors_total\",device=~\"$device\",interface=~\"$interface\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "legendFormat": "Aus {{device}} {{interface}}",
+          "range": true,
+          "instant": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "D",
+          "expr": "sum by (device, interface) (rate({__name__=~\"mikrotik_ethernet_collisions_total\",device=~\"$device\",interface=~\"$interface\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "legendFormat": "Aus Kollision {{device}} {{interface}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "min": null,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisCenteredZero": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^Ein .*"
+            },
+            "properties": [
+              {
+                "id": "custom.transform",
+                "value": "negative-Y"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 23,
+      "title": "Link down",
+      "description": "Wie oft der Link im Intervall wegging",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum by (device, interface) (increase(mikrotik_interface_link_downs_total{device=~\"$device\",interface=~\"$interface\"}[$__rate_interval]))",
+          "editorMode": "code",
+          "legendFormat": "{{device}} {{interface}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": null,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisCenteredZero": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ]
+}

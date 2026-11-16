@@ -439,15 +439,18 @@ fact (`network_state::device_data::read_one`); WLAN clients (`/interface/wifi`, 
 `/interface/wireless`, `capsman="none"`), the running wireless radios (a CAP's radio the
 legacy CAPsMAN manages has no SSID there and no `info`, nor its clients; the controller
 reports them from `/caps-man`, `capsman_radios`), `/interface`
-counters, Ethernet links (one `monitor ... once` of all ports) and bound leases are
+counters, Ethernet links (one `monitor ... once` of all ports), the ports' own drops and
+errors (`/interface/ethernet`, `EthernetCounters`: a switch chip's ports report none in
+`/interface`, and each board names them otherwise) and bound leases are
 `device::metrics`, each table read with its mikrotik-model type and
 the two monitors as actions of its catalog; a table a package brings has no rows without it
 (`access::collect_if_present`, `is_missing_table`). A WLAN client takes hostname and address from a lease of any device
 by MAC, and a client or radio its `wlan_group` from NetBox (`render::wlan_group_of`: the one
 group of the device with that SSID and, for a CAP's client, that CAP; else empty). Names follow Prometheus' conventions (unit in the name, `_total` for device counters),
 every metric has `device` and `site` from NetBox. The dashboards `mikrotik-overview.json` and
-`mikrotik-health.json` (from the user's exports of the old exporters' dashboards) are built on
-them, checked in Grafana 13.3 against the lab.
+`mikrotik-health.json` (from the user's exports of the old exporters' dashboards) and
+`mikrotik-interfaces.json` (traffic, drops and errors per port) are built on them, checked in
+Grafana 13.3 against the lab.
 
 `backend/src/network_state/` is the network map (C9,
 `docs/network-map.md`): `lsa` parses `/routing/ospf/lsa/print` rows (router and network

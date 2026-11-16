@@ -1,11 +1,11 @@
 //! Scope: Tests of `device::metrics`'s parsing; nothing else.
 
 use super::{
-    Capsman, LegacyCapsman, bits_per_second, capsman_radio_rows, ethernet_link, interface_counters,
-    standalone_client, wireless_radio,
+    Capsman, LegacyCapsman, bits_per_second, capsman_radio_rows, ethernet_counters, ethernet_link,
+    interface_counters, standalone_client, wireless_radio,
 };
 use crate::device::{access::Row, answer::parsed as parse};
-use mikrotik_model::ascii::AsciiString;
+use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetState};
 use std::{collections::HashMap, time::Duration};
 
 fn row(fields: &[(&str, &str)]) -> Row {
@@ -381,4 +381,73 @@ fn actual_configuration(
     fields: &[(&str, &str)],
 ) -> mikrotik_model::model::CapsManActualInterfaceConfiguration {
     parse(&with_fields(ACTUAL_CONFIGURATION, fields))
+}
+
+/// A port of `/interface/ethernet` with the counters given, as the lab's boards report it
+/// (7.24.6), the fields every row has besides.
+fn ethernet_port(default_name: &str, counters: &[(&str, &str)]) -> InterfaceEthernetState {
+    let mut fields = vec![
+        (".id", "*2"),
+        ("default-name", default_name),
+        ("orig-mac-address", "D4:01:C3:29:67:64"),
+        ("running", "true"),
+        ("loop-protect-status", "off"),
+    ];
+    fields.extend_from_slice(counters);
+    parse(&fields)
+}
+
+/// The port's counters go by its name in `/interface`; each board names its drops otherwise:
+/// lab-np2 (CRS318) `tx-drop-packet` and `rx-overflow`, lab-hex `rx-drop` and `tx-drop`,
+/// lab-sxt-a `tx-total-collision`.
+#[test]
+fn ethernet_counters_of_each_board() {
+    let interfaces = [
+        parse(&[
+            (".id", "*1"),
+            ("name", "e01-lab-crs125"),
+            ("default-name", "ether1"),
+            ("type", "ether"),
+            ("running", "true"),
+        ]),
+        parse(&[
+            (".id", "*2"),
+            ("name", "e02"),
+            ("default-name", "ether2"),
+            ("type", "ether"),
+            ("running", "false"),
+        ]),
+    ];
+    let np2 = ethernet_port(
+        "ether1",
+        &[
+            ("rx-fcs-error", "3"),
+            ("rx-overflow", "7"),
+            ("tx-drop-packet", "12"),
+            ("tx-collision", "0"),
+        ],
+    );
+    let counters = ethernet_counters(&np2, &interfaces).unwrap();
+    assert_eq!(&*counters.name, "e01-lab-crs125");
+    assert_eq!(counters.rx_fcs_errors, Some(3));
+    assert_eq!(counters.rx_overflows, Some(7));
+    assert_eq!(counters.rx_drops, None);
+    assert_eq!(counters.tx_drops, Some(12));
+    assert_eq!(counters.collisions, Some(0));
+    let hex = ethernet_port(
+        "ether2",
+        &[
+            ("rx-drop", "4"),
+            ("tx-drop", "5"),
+            ("tx-total-collision", "6"),
+        ],
+    );
+    let counters = ethernet_counters(&hex, &interfaces).unwrap();
+    assert_eq!(&*counters.name, "e02");
+    assert_eq!(counters.rx_drops, Some(4));
+    assert_eq!(counters.tx_drops, Some(5));
+    assert_eq!(counters.collisions, Some(6));
+    assert_eq!(counters.rx_fcs_errors, None);
+    // a port `/interface` doesn't list
+    assert!(ethernet_counters(&ethernet_port("ether9", &[]), &interfaces).is_none());
 }
