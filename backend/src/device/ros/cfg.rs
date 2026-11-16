@@ -26,7 +26,7 @@ use crate::{
     topology::{PhysicalPortId, access::device::DeviceAccess},
 };
 use async_graphql::SimpleObject;
-use log::info;
+use log::{debug, info};
 use mikrotik_model::{
     action::PoeMonitorOnce,
     ascii::AsciiString,
@@ -354,7 +354,7 @@ impl DeviceCfg {
     pub fn sorted_mutations(&self) -> Result<Box<[ResourceMutation<'_>]>, Error> {
         let mutations = self.generate_mutations()?;
         for m in &mutations {
-            info!("Mutation generated: {:?}", m);
+            debug!("Mutation generated: {:?}", m);
         }
         let sorted = ResourceMutation::sort_mutations_with_provided_dependencies(
             mutations.as_ref(),
