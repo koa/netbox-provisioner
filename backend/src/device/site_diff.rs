@@ -134,6 +134,31 @@ pub struct KnownDiff {
     pub changed_age: Option<u64>,
 }
 
+/// Reads `device`'s diff anew right after its apply ended: the job dropped what was read, and
+/// the site's overview, which only looks at what is kept ([`known`]), would show it changed
+/// until someone read it. Only reads; a failure is logged and nothing else.
+pub async fn read_after_apply(device: DeviceAccess) {
+    // one without credentials, the tests' jobs, has nothing to read with
+    if device.credentials().is_none() {
+        return;
+    }
+    let since = Freshness::Since(tokio::time::Instant::now());
+    let read = async {
+        let link = device
+            .connect(DeviceTarget::default())
+            .await?
+            .ok_or(Error::MissingCredentials)?;
+        link.generated_cfg(since).await
+    };
+    match read.await {
+        Ok(_) => log::debug!("{}: diff read after the apply", device.name()),
+        Err(error) => log::info!(
+            "{}: cannot read the diff after the apply: {error}",
+            device.name()
+        ),
+    }
+}
+
 pub async fn known(device: &DeviceAccess) -> KnownDiff {
     let changed_age = facts::dropped(FactKind::Table, device.id()).map(|at| at.elapsed().as_secs());
     let Some(credentials) = device.credentials() else {

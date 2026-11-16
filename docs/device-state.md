@@ -154,7 +154,10 @@ wurde; dabei steigt die Generation, und was während des Jobs gelesen wurde, wir
 gespeichert. Dazu verwirft ein Leser die Tabellen seines Geräts, sobald ein schreibender
 API-Befehl an das Gerät ging, seit er zuletzt las (`written_since_read`), auf jeder Verbindung.
 Während der Job läuft, gelten die Einträge von vorher sonst weiter. Ein Job holt an seinem Ende
-nichts und legt nichts ab: wer danach liest, fragt neu, und nur, was er braucht.
+nichts und legt nichts ab: wer danach liest, fragt neu, und nur, was er braucht. Die eine
+Ausnahme ist ein gelungenes Apply: Nach dem Verwerfen liest der Provisioner den Diff des Geräts
+einmal (`job::after_end`, `site_diff::read_after_apply`), damit die Übersicht der Site nicht bis
+zum nächsten Lesen „seit der Prüfung verändert“ zeigt.
 
 Was der Provisioner nicht sieht (Winbox, Stromausfall), deckt das Alter des Verwenders ab, plus
 „Neu laden“: Es verwirft die Erkenntnisse des Geräts (`refreshDevice`), damit alle Seiten, die
@@ -278,8 +281,9 @@ Die Karte „Abweichung von NetBox“ einer Site zeigt die Ereignisse ihres letz
 (`access::Reader::stored`; fehlt eines, zählt das Gerät als nicht gelesen), und seit wann sie
 verworfen sind (`facts::dropped`). Pro Gerät zeigt sie, was nach dem Start des Jobs gelesen
 wurde, sonst das Ergebnis des Jobs, oder „seit der Prüfung verändert“, wenn es danach verworfen
-wurde. Nach einem Apply ist das so, bis eine Seite oder ein Prüf-Job das Gerät wieder liest:
-der Job verwirft an seinem Ende, was seine Kontrolle las, und legt nichts ab.
+wurde. Nach einem gelungenen Apply liest der Provisioner den Diff des Geräts gleich selbst neu
+(`site_diff::read_after_apply`, über die Facts mit `Since` dem Ende des Jobs), die Übersicht
+zeigt danach seinen Stand statt „seit der Prüfung verändert“.
 
 ## Metriken
 

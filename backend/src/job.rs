@@ -657,7 +657,7 @@ where
     };
     let job = register(&[member], through.map(subject_of), kind)?.swap_remove(0);
     write_journal(&job, &started);
-    spawn(job.clone(), work);
+    spawn_for(job.clone(), device.clone(), work);
     Ok(job)
 }
 
@@ -734,6 +734,27 @@ where
     });
 }
 
+/// [`spawn`] for a job of `device`, followed by [`after_end`].
+fn spawn_for<F>(job: Arc<Job>, device: DeviceAccess, work: F)
+where
+    F: Future<Output = Result<(), Error>> + Send + 'static,
+{
+    RUNTIME.spawn(async move {
+        let result = run(work).await;
+        job.log.ended();
+        job.finish_with(result);
+        after_end(&job, device);
+    });
+}
+
+/// What follows the end of `job` on `device`: an apply done has the diff read anew
+/// (`site_diff::read_after_apply`), once its end dropped what was read.
+fn after_end(job: &Job, device: DeviceAccess) {
+    if job.kind == JobKind::Apply && job.state() == JobState::Done {
+        RUNTIME.spawn(crate::device::site_diff::read_after_apply(device));
+    }
+}
+
 /// Has the journal entry of a device's job written from now on, if entries are written.
 fn write_journal(job: &Arc<Job>, started: &Started) {
     let JobSubject::Device(device) = job.subject else {
@@ -803,6 +824,7 @@ where
         .enumerate()
         .for_each(|(index, job)| write_journal(job, &started(index)));
     let running = jobs.clone();
+    let devices = devices.to_vec();
     RUNTIME.spawn(async move {
         let result = run(async move { Ok(work.await) }).await;
         running.iter().for_each(|job| job.log.ended());
@@ -822,6 +844,9 @@ where
                     job.finish(JobState::Failed, Some(error.clone()));
                 }
             }
+        }
+        for (job, device) in running.iter().zip(devices) {
+            after_end(job, device);
         }
     });
     Ok(jobs)
