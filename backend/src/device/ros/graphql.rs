@@ -351,25 +351,25 @@ pub(crate) async fn generate(
 ) -> Result<GeneratedCfg, Error> {
     let mut device_cfg = DeviceCfg::fetch(reader, device).await?;
     device_cfg.generate_live(device, reader).await?;
-    let (script, mut menus) = {
+    let (script, mut tables) = {
         let mutations = device_cfg.sorted_mutations()?;
         (
             render_script(&mutations)?,
-            crate::device::site_diff::menu_changes(&mutations),
+            crate::device::site_diff::table_changes(&mutations),
         )
     };
     let previous_password = password == Password::Previous;
     if previous_password {
-        crate::device::site_diff::add_change(&mut menus, "user");
+        crate::device::site_diff::add_change(&mut tables, "user");
     }
     let www_certificate = device_cfg.www_certificate();
     if www_certificate == crate::device::www_certificate::WwwCertificate::Needed {
-        crate::device::site_diff::add_change(&mut menus, "certificate");
+        crate::device::site_diff::add_change(&mut tables, "certificate");
     }
     let warnings = device_cfg.warnings(reader).await;
     Ok(GeneratedCfg {
         script,
-        menus: menus.into(),
+        tables: tables.into(),
         previous_password,
         www_certificate,
         warnings,

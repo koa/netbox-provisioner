@@ -2,7 +2,7 @@
 //! radios, interface counters, Ethernet links and DHCP leases; not their rendering as metrics
 //! (`crate::metrics`).
 //!
-//! What the mikrotik-metrik-exporter read (C14), each menu as a fact (`access::Reader::at`), over
+//! What the mikrotik-metrik-exporter read (C14), each table as a fact (`access::Reader::at`), over
 //! the same way as everything else (`DeviceAccess::connect`).
 //! Health, resources and PoE come from the network map's reading
 //! (`network_state::device_data`), which the map's viewers share.
@@ -18,12 +18,12 @@
 //! - **Interfaces:** `/interface`, which carries the counters without `stats`.
 //! - **Ethernet links:** `/interface/ethernet/monitor` of every `ether` interface, link and rate.
 //!
-//! Every menu is read with its mikrotik-model type; the monitors are actions of mikrotik-model's
+//! Every table is read with its mikrotik-model type; the monitors are actions of mikrotik-model's
 //! catalog.
 //! - **Leases:** the bound ones of `/ip/dhcp-server/lease`, to name a WLAN client by its DHCP
 //!   hostname wherever its lease is (on the router, not the AP).
 //!
-//! A menu the device doesn't have (no `wifi` package, no legacy CAPsMAN) has no rows
+//! A table the device doesn't have (no `wifi` package, no legacy CAPsMAN) has no rows
 //! (`access::collect_if_present`).
 
 use super::{
@@ -175,7 +175,7 @@ async fn read(client: &Reader) -> Result<DeviceMetrics, Error> {
     })
 }
 
-/// The rows of `R`'s menu; none where the device hasn't the menu (its package missing).
+/// The rows of `R`'s table; none where the device hasn't the table (its package missing).
 async fn wifi_clients(client: &Reader) -> Result<Vec<WlanClient>, Error> {
     let registrations = collect_if_present::<InterfaceWifiRegistrationTableState>(client).await?;
     if registrations.is_empty() {

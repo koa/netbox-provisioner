@@ -1,4 +1,4 @@
-//! Scope: The generator's frame: the models of the menus it writes (`mikrotik_model!`, whose
+//! Scope: The generator's frame: the models of the tables it writes (`mikrotik_model!`, whose
 //! types are private to this module and its children), names several steps share and the order
 //! of the base config's steps; not a step's own content (its topic module).
 use crate::{
@@ -45,7 +45,7 @@ pub mod progress;
 pub(crate) mod radio;
 mod services;
 pub(crate) mod speed;
-mod switch_menu;
+mod switch_table;
 pub(crate) mod syslog;
 #[cfg(test)]
 mod test;
@@ -199,7 +199,7 @@ mikrotik_model!(
 );
 
 mikrotik_model!(
-    name = SwitchMenuData,
+    name = SwitchTableData,
     detect = new,
     fields(
         switch(single = "interface/ethernet/switch"),
@@ -505,10 +505,10 @@ impl BaseDeviceDataTarget {
 }
 
 /// What the generator's firewall entries begin their comment with: only those are the
-/// provisioner's, the others on the device stay (the `owned` firewall menus of the model).
+/// provisioner's, the others on the device stay (the `owned` firewall tables of the model).
 const FIREWALL_PREFIX: &str = "netbox-provisioner:";
 
-/// The comment of a firewall entry: the prefix and what the entry is, unique in its menu, as
+/// The comment of a firewall entry: the prefix and what the entry is, unique in its table, as
 /// the order of the rules finds them by it (`move [find comment=…]`).
 fn firewall_comment(parts: &[&str]) -> AsciiString {
     AsciiString::from(format!("{FIREWALL_PREFIX} {}", parts.join(" ")).as_str())

@@ -106,42 +106,42 @@ SSH-Blacklist von RouterOS).
 - Andere Zugangsdaten ändern den Schlüssel; ein alter Fehlschlag gilt dann gar nicht erst.
   Ad-hoc-Zugangsdaten stehen als Hash im Schlüssel, und was mit ihnen gelesen wurde, trägt den
   Zugang ebenfalls im Schlüssel.
-- Die Vorschau eines Helfers (`generating_for`) liest dieselben Menüs wie das echte Gerät und
+- Die Vorschau eines Helfers (`generating_for`) liest dieselben Tabellen wie das echte Gerät und
   rechnet sie mit der Topologie der Vorschau; gespeichert ist nur, was das Gerät antwortete.
 
 ### Was gecacht wird
 
 | Erkenntnis (`FactKind`) | Schlüssel | verworfen nach |
 |---|---|---|
-| `Menu`: die Antworten des Geräts auf einen Befehl, der nichts ändert, ungelesen (`access::Reader::at`) | Gerät, Zugangsdaten, Befehl mit seinen Wörtern | jedem Job auf dem Gerät, auch über es; jedem schreibenden API-Befehl an das Gerät; „Neu laden“, „Nochmals lesen“, „Erneut prüfen“ |
+| `Table`: die Antworten des Geräts auf einen Befehl, der nichts ändert, ungelesen (`access::Reader::at`) | Gerät, Zugangsdaten, Befehl mit seinen Wörtern | jedem Job auf dem Gerät, auch über es; jedem schreibenden API-Befehl an das Gerät; „Neu laden“, „Nochmals lesen“, „Erneut prüfen“ |
 | `Login`: geht, oder warum nicht | Gerät, Adresse, Weg, Zugangsdaten | jedem Job auf dem Gerät, auch über es |
 | `Route`: das Durchprobieren | Gerät, Zugang | wird nicht gespeichert |
 | `NewestVersion` pro Kanal (`update::newest`) | global, Kanal | nichts |
 
-Ein `Menu`-Fakt ist der ganze Befehl mit seinen Wörtern (Pfad, Filter, Attribute): zwei Typen, die
-dasselbe Menü verschieden fragen, sind zwei Fakten. Die Antworten liegen roh da
+Ein `Table`-Fakt ist der ganze Befehl mit seinen Wörtern (Pfad, Filter, Attribute): zwei Typen, die
+dieselbe Tabelle verschieden fragen, sind zwei Fakten. Die Antworten liegen roh da
 (`mikrotik_api::device::Reply`), und jeder Typ liest sie wieder (`Replies::kept`). Antworten, die
-eine abgebrochene Verbindung sind, gelten nicht (`failed`). Ein Menü, das fehlt (Paket nicht
+eine abgebrochene Verbindung sind, gelten nicht (`failed`). Eine Tabelle, die fehlt (Paket nicht
 installiert), ist eine Antwort wie jede andere.
 
-Nicht gespeichert, sondern bei jedem Zugriff gerechnet wird alles, was aus Menüs und NetBox
+Nicht gespeichert, sondern bei jedem Zugriff gerechnet wird alles, was aus Tabellen und NetBox
 folgt: die generierte Konfiguration mit Diff und Warnungen, RouterOS-Stand und gewünschte
 Pakete, Reste, Partitionen, Device-Mode, was das Gerät sieht, die Live-Prüfung, das LSDB der
 Karte, Health und Metriken, die Portnamen und Nachbarn der Ersteinrichtung. Eine Änderung in
 NetBox verwirft deshalb nichts; sie meldet nur `Change::Topology`. Die Rechnungen halten aus,
-dass verschiedene Menüs verschieden alt sind: Lesen über mehrere Menüs war nie atomar. Damit
+dass verschiedene Tabellen verschieden alt sind: Lesen über mehrere Tabellen war nie atomar. Damit
 ein neues Laden ohne Änderung nicht als Änderung gilt, sortiert `fetch` die Listen eines Prefix.
 
 ### Verwerfen nach Aktionen
 
 Jede `JobKind` sagt, welche Arten sie verwirft (`JobKind::invalidates`): jeder Job auf einem
-Gerät `Menu`, `Login` und `Route`, das Gerät, über das er läuft (`through`), `Menu` und `Login`
+Gerät `Table`, `Login` und `Route`, das Gerät, über das er läuft (`through`), `Table` und `Login`
 (`THROUGH_INVALIDATES`), ein Batch betrifft jedes seiner Geräte. Die NetBox-Jobs verwerfen
 nichts.
 
 Verworfen wird **nach der Ausführung**, egal ob der Job gelang, fehlschlug oder abgebrochen
 wurde; dabei steigt die Generation, und was während des Jobs gelesen wurde, wird nicht
-gespeichert. Dazu verwirft ein Leser die Menüs seines Geräts, sobald ein schreibender
+gespeichert. Dazu verwirft ein Leser die Tabellen seines Geräts, sobald ein schreibender
 API-Befehl an das Gerät ging, seit er zuletzt las (`written_since_read`), auf jeder Verbindung.
 Während der Job läuft, gelten die Einträge von vorher sonst weiter. Ein Job holt an seinem Ende
 nichts und legt nichts ab: wer danach liest, fragt neu, und nur, was er braucht.
@@ -149,7 +149,7 @@ nichts und legt nichts ab: wer danach liest, fragt neu, und nur, was er braucht.
 Was der Provisioner nicht sieht (Winbox, Stromausfall), deckt das Alter des Verwenders ab, plus
 „Neu laden“: Es verwirft die Erkenntnisse des Geräts (`refreshDevice`), damit alle Seiten, die
 es zeigen, neu fragen. „Nochmals lesen“ im Vergleich mit den Geräten (`refreshNeighbors`) und
-„Erneut prüfen“ der Live-Prüfung (`refreshInterfaceLive`) verwerfen die Menüs des Geräts, die
+„Erneut prüfen“ der Live-Prüfung (`refreshInterfaceLive`) verwerfen die Tabellen des Geräts, die
 ganze Seite liest dann neu.
 
 ### Wie alt darf es sein
@@ -262,9 +262,9 @@ Ereignisse ihres Prüf-Jobs noch jede Sekunde ab (`components/site/site_diff.rs`
 ### Abweichung von NetBox
 
 Die Karte „Abweichung von NetBox“ einer Site zeigt die Ereignisse ihres letzten Prüf-Jobs
-(`diffSite`). Der Job liest jedes Gerät über dieselben Menü-Fakten wie die Geräteseite (mit
-`Since` seinem Start) und rechnet die Änderungen pro Menü. Daneben abonniert die Karte
-`knownDiff` der Geräte: dieselbe Rechnung über die gespeicherten Menüs, ohne zu fragen
+(`diffSite`). Der Job liest jedes Gerät über dieselben Tabellen-Fakten wie die Geräteseite (mit
+`Since` seinem Start) und rechnet die Änderungen pro Tabelle. Daneben abonniert die Karte
+`knownDiff` der Geräte: dieselbe Rechnung über die gespeicherten Tabellen, ohne zu fragen
 (`access::Reader::stored`; fehlt eines, zählt das Gerät als nicht gelesen), und seit wann sie
 verworfen sind (`facts::dropped`). Pro Gerät zeigt sie, was nach dem Start des Jobs gelesen
 wurde, sonst das Ergebnis des Jobs, oder „seit der Prüfung verändert“, wenn es danach verworfen
@@ -285,7 +285,7 @@ an, das Binary registriert sie in der Registry von `/metrics` am Management-Port
 | `fact_cache_entries` | Gauge | `kind` | Grösse des Caches |
 | `fact_queries_running` | Gauge | `kind` | laufende Abfragen, z.B. hängende Verbindungen |
 
-- `kind`: die Art in snake_case (`menu`, `login`, `route`, `newest_version`).
+- `kind`: die Art in snake_case (`table`, `login`, `route`, `newest_version`).
 - `outcome`: `ok`, `refused` (Login verweigert), `timeout`, `wrong_device`, `error` (alles
   andere). Jede dieser Zeitreihen entsteht mit 0, sobald eine Art über einen Weg zum ersten Mal
   gefragt wird: Prometheus' `increase` zählt den ersten Wert einer neuen Zeitreihe nicht, und der

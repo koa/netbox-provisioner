@@ -5,8 +5,8 @@
 //! between them (`GeneratedCfg`).
 use crate::device::ros::l2::{EndpointNameGenerator, KeptNames, L2Setup, NameGenerator};
 use crate::device::ros::{
-    CapsManDeviceDataCurrent, CapsManDeviceDataTarget, SwitchMenuDataCurrent, SwitchMenuDataTarget,
-    WifiDeviceDataCurrent, WifiDeviceDataTarget,
+    CapsManDeviceDataCurrent, CapsManDeviceDataTarget, SwitchTableDataCurrent,
+    SwitchTableDataTarget, WifiDeviceDataCurrent, WifiDeviceDataTarget,
 };
 use crate::{
     Error,
@@ -63,9 +63,9 @@ pub struct DeviceCfg {
     /// the legacy CAPsMAN, on a controller with CAPs of it
     capsman_current: Option<CapsManDeviceDataCurrent>,
     capsman_target: Option<CapsManDeviceDataTarget>,
-    /// the VLAN menus of a CRS1xx/2xx switch (`switch_menu`), on such a board only
-    switch_menu_current: Option<SwitchMenuDataCurrent>,
-    switch_menu_target: Option<SwitchMenuDataTarget>,
+    /// the VLAN tables of a CRS1xx/2xx switch (`switch_table`), on such a board only
+    switch_table_current: Option<SwitchTableDataCurrent>,
+    switch_table_target: Option<SwitchTableDataTarget>,
     /// the radios (default names) CAPsMAN has bound, which RouterOS flags dynamic and
     /// refuses to change
     bound_radios: Box<[AsciiString]>,
@@ -147,9 +147,10 @@ impl DeviceCfg {
         if let Some(capsman_target) = self.capsman_target.as_mut() {
             capsman_target.generate_from(device)?;
         }
-        if let (Some(target), Some(current)) =
-            (self.switch_menu_target.as_mut(), &self.switch_menu_current)
-        {
+        if let (Some(target), Some(current)) = (
+            self.switch_table_target.as_mut(),
+            &self.switch_table_current,
+        ) {
             target.generate_from(&l2.switch_vlans(), current);
         }
         self.base_target
@@ -253,7 +254,8 @@ impl DeviceCfg {
         if let (Some(target), Some(current)) = (&self.capsman_target, &self.capsman_current) {
             mutations.extend(target.generate_mutations(current)?);
         }
-        if let (Some(target), Some(current)) = (&self.switch_menu_target, &self.switch_menu_current)
+        if let (Some(target), Some(current)) =
+            (&self.switch_table_target, &self.switch_table_current)
         {
             mutations.extend(target.generate_mutations(current)?);
         }
@@ -400,10 +402,10 @@ impl DeviceCfg {
 pub(crate) fn provided_by_routeros() -> [(ReferenceType, std::borrow::Cow<'static, [u8]>); 7] {
     [
         (ReferenceType::Interface, b"lo".into()),
-        // a CRS1xx/2xx switch's port towards the CPU (`switch_menu`)
+        // a CRS1xx/2xx switch's port towards the CPU (`switch_table`)
         (
             ReferenceType::Interface,
-            super::switch_menu::CPU_PORT.into(),
+            super::switch_table::CPU_PORT.into(),
         ),
         // `/ipv6/nd`'s own entry: every interface
         (ReferenceType::Interface, b"all".into()),
@@ -462,8 +464,8 @@ async fn powered_ports(
 pub struct GeneratedCfg {
     /// empty if the device is in line already
     pub(super) script: Box<str>,
-    /// what the script changes, by menu (`site_diff`)
-    pub(super) menus: Box<[crate::device::site_diff::MenuChanges]>,
+    /// what the script changes, by table (`site_diff`)
+    pub(super) tables: Box<[crate::device::site_diff::TableChanges]>,
     /// what applying it would do that the operator should know before
     pub(super) warnings: Vec<ApplyWarning>,
     /// the login went with the credentials' previous password only: an apply sets the current
@@ -485,8 +487,8 @@ impl GeneratedCfg {
 }
 
 impl GeneratedCfg {
-    pub fn menu_changes(&self) -> &[crate::device::site_diff::MenuChanges] {
-        &self.menus
+    pub fn table_changes(&self) -> &[crate::device::site_diff::TableChanges] {
+        &self.tables
     }
 }
 
@@ -579,7 +581,7 @@ impl DeviceCfg {
         } else {
             (None, None, Box::default())
         };
-        // the 60 GHz radios have their own menu (in `wireless` too); such a board has no other
+        // the 60 GHz radios have their own table (in `wireless` too); such a board has no other
         // radio, a `wlan<N>` or `wifi<N>` in NetBox is its `wlan60-<N>` misnamed
         if !build_w60g_ports(model).is_empty()
             && let Some(port) = device.interfaces().iter().find_map(|interface| {
@@ -615,12 +617,12 @@ impl DeviceCfg {
         } else {
             (None, None)
         };
-        // the switch menus only on a board whose VLANs go there: the others have none of these
-        let (switch_menu_current, switch_menu_target) =
-            if SwitchChips::of(model).have_switch_menu_vlans() {
+        // the switch tables only on a board whose VLANs go there: the others have none of these
+        let (switch_table_current, switch_table_target) =
+            if SwitchChips::of(model).have_switch_table_vlans() {
                 (
-                    Some(SwitchMenuDataCurrent::fetch(client).await?),
-                    Some(SwitchMenuDataTarget::detect_device(client).await?),
+                    Some(SwitchTableDataCurrent::fetch(client).await?),
+                    Some(SwitchTableDataTarget::detect_device(client).await?),
                 )
             } else {
                 (None, None)
@@ -664,8 +666,8 @@ impl DeviceCfg {
             w60g_target,
             capsman_current,
             capsman_target,
-            switch_menu_current,
-            switch_menu_target,
+            switch_table_current,
+            switch_table_target,
             bound_radios,
             wifi_warnings: Box::default(),
             idle_radios,

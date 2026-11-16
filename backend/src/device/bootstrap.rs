@@ -871,7 +871,7 @@ fn setup_commands(
     ));
     // A device reset to CAPs mode manages its radios by CAPsMAN, which refuses the first apply
     // to rename them; the apply turns the CAP on again where NetBox wants one. `:parse`, since
-    // a menu is missing without its package. A configured CAP keeps serving its clients.
+    // a table is missing without its package. A configured CAP keeps serving its clients.
     if factory {
         commands.push(
             ":foreach m in=(\"/interface wireless cap set enabled=no\",\"/interface wifi cap set enabled=no\") do={:do {:local f [:parse $m]; $f} on-error={}}"

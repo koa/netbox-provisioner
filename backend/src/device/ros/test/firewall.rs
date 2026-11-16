@@ -195,7 +195,7 @@ async fn the_stage_time_comes_from_the_config_context() {
 }
 
 /// The provisioner's networks come after `invalid`, before the SSH stages, each in its
-/// family's menu; a device without uplink gets none.
+/// family's table; a device without uplink gets none.
 #[tokio::test]
 async fn the_provisioner_gets_in_before_the_ssh_stages() {
     let networks = [

@@ -211,7 +211,7 @@ async fn read_with(
 ) -> Result<Option<DeviceMode>, Error> {
     let mode = match SystemDeviceModeState::fetch(device).await {
         Ok(mode) => mode,
-        // no such menu
+        // no such table
         Err(resource::Error::Trap(_)) => None,
         Err(error) => return Err(error.into()),
     };

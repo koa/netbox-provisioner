@@ -88,7 +88,7 @@ pub async fn arm(raw: &impl Writes, delay: Duration) -> Result<Option<DeviceMode
 async fn without_scheduler(raw: &impl Reads) -> Result<Option<DeviceModeName>, Error> {
     let mode = match SystemDeviceModeState::fetch(raw).await {
         Ok(mode) => mode,
-        // no such menu
+        // no such table
         Err(resource::Error::Trap(_)) => None,
         Err(error) => return Err(error.into()),
     };

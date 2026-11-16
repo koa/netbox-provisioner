@@ -1,7 +1,7 @@
 //! Scope: The typed commands the tests send a node for their setup and checks; not booting it
 //! (`vm`), not what a test checks.
 //!
-//! Like the provisioner, the tests reach a node only through mikrotik-model: a menu's model
+//! Like the provisioner, the tests reach a node only through mikrotik-model: a table's model
 //! for a `print`, `add` or `set`, an action of its catalog for the rest. So they exercise the
 //! same typed commands, and a model missing something they need gets it there.
 
@@ -71,7 +71,7 @@ pub async fn add<R: Creatable>(node: &impl Writes, entry: &R) -> anyhow::Result<
     Ok(())
 }
 
-/// Changes the one entry of `R`'s menu (`/ip/socks`) as `change` does: what differs is set.
+/// Changes the one entry of `R`'s table (`/ip/socks`) as `change` does: what differs is set.
 pub async fn set_single<R: SingleResource + CfgResource + Clone>(
     node: &Session,
     change: impl FnOnce(&mut R),
@@ -85,7 +85,7 @@ pub async fn set_single<R: SingleResource + CfgResource + Clone>(
     Ok(())
 }
 
-/// Changes the entry of `R`'s menu with `key` as `change` does: what differs is set.
+/// Changes the entry of `R`'s table with `key` as `change` does: what differs is set.
 pub async fn set_keyed<R: KeyedResource + Updatable<R> + Clone + Send>(
     node: &Session,
     key: &R::Key,

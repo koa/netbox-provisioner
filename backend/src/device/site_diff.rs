@@ -3,7 +3,7 @@
 //!
 //! How far each device of a site is from NetBox (`diffSite`, „Abweichung von NetBox“ in
 //! `docs/config-helper.md`): a job of the site reads its RouterOS devices, a few at
-//! a time, and reports for each, as it is read, what an apply would change by menu, or why it
+//! a time, and reports for each, as it is read, what an apply would change by table, or why it
 //! couldn't be read. It only reads, so its devices stay free for jobs of their own.
 use crate::{
     Error,
@@ -41,21 +41,21 @@ pub struct DiffedDevice {
     pub name: Box<str>,
 }
 
-/// What an apply would do in one menu (`ip/address`).
+/// What an apply would do in one table (`ip/address`).
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
-pub struct MenuChanges {
-    pub menu: Box<str>,
+pub struct TableChanges {
+    pub table: Box<str>,
     pub added: u32,
     pub changed: u32,
     pub removed: u32,
 }
 
-/// One device read: its changes by menu (none: it is as NetBox has it), or why it couldn't be
+/// One device read: its changes by table (none: it is as NetBox has it), or why it couldn't be
 /// read.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct DeviceDiffed {
     pub device: DiffedDevice,
-    pub menus: Box<[MenuChanges]>,
+    pub tables: Box<[TableChanges]>,
     pub error: Option<ErrorInfo>,
 }
 
@@ -76,20 +76,20 @@ pub async fn run(site: SiteAccess, log: Log) -> Result<(), Error> {
         let permits = permits.clone();
         reads.spawn(async move {
             let _permit = permits.acquire_owned().await;
-            let menus = job::run(changes_of(device.clone(), started)).await;
-            (device, menus)
+            let tables = job::run(changes_of(device.clone(), started)).await;
+            (device, tables)
         });
     }
     // cancelled: the reads still going end with `reads`
     while let Some(read) = log.unless_cancelled(reads.join_next()).await? {
-        let Ok((device, menus)) = read else { continue };
-        let (menus, error) = match menus {
-            Ok(menus) => (menus, None),
+        let Ok((device, tables)) = read else { continue };
+        let (tables, error) = match tables {
+            Ok(tables) => (tables, None),
             Err(error) => (Vec::new(), Some(ErrorInfo::from(&error))),
         };
         log.emit(DeviceDiffed {
             device: diffed_device(&device),
-            menus: menus.into(),
+            tables: tables.into(),
             error,
         });
     }
@@ -107,14 +107,14 @@ fn diffed_device(device: &DeviceAccess) -> DiffedDevice {
 async fn changes_of(
     device: DeviceAccess,
     started: tokio::time::Instant,
-) -> Result<Vec<MenuChanges>, Error> {
+) -> Result<Vec<TableChanges>, Error> {
     let generated = device
         .connect(DeviceTarget::default())
         .await?
         .ok_or(Error::MissingCredentials)?
         .generated_cfg(Freshness::Since(started))
         .await?;
-    Ok(generated.menu_changes().to_vec())
+    Ok(generated.table_changes().to_vec())
 }
 
 /// What the provisioner knows of how far a device is from NetBox, without asking it: the
@@ -122,9 +122,9 @@ async fn changes_of(
 /// left), and since when what was read was dropped.
 #[derive(Debug, SimpleObject)]
 pub struct KnownDiff {
-    /// the changes by menu (none: it is as NetBox has it); `null` when what they come from
+    /// the changes by table (none: it is as NetBox has it); `null` when what they come from
     /// isn't known (anymore)
-    pub menus: Option<Vec<MenuChanges>>,
+    pub tables: Option<Vec<TableChanges>>,
     /// why the device couldn't be reached last, when it couldn't
     pub error: Option<ErrorInfo>,
     /// seconds since the oldest of what they come from was read
@@ -135,10 +135,10 @@ pub struct KnownDiff {
 }
 
 pub async fn known(device: &DeviceAccess) -> KnownDiff {
-    let changed_age = facts::dropped(FactKind::Menu, device.id()).map(|at| at.elapsed().as_secs());
+    let changed_age = facts::dropped(FactKind::Table, device.id()).map(|at| at.elapsed().as_secs());
     let Some(credentials) = device.credentials() else {
         return KnownDiff {
-            menus: None,
+            tables: None,
             error: None,
             age: None,
             changed_age,
@@ -148,13 +148,13 @@ pub async fn known(device: &DeviceAccess) -> KnownDiff {
     let reader = Reader::stored(device.id(), &scope);
     match generate(&reader, device, known_password(device.id())).await {
         Ok(generated) => KnownDiff {
-            menus: Some(generated.menu_changes().to_vec()),
+            tables: Some(generated.table_changes().to_vec()),
             error: None,
             age: Some(reader.as_of().elapsed().as_secs()),
             changed_age,
         },
         Err(_) => KnownDiff {
-            menus: None,
+            tables: None,
             error: device.unreached().map(|error| ErrorInfo::from(&*error)),
             age: None,
             changed_age,
@@ -162,13 +162,13 @@ pub async fn known(device: &DeviceAccess) -> KnownDiff {
     }
 }
 
-/// The mutations counted by menu and kind, the menus in alphabetical order. Like the script,
+/// The mutations counted by table and kind, the tables in alphabetical order. Like the script,
 /// it leaves out what has no fields but a removal or a move: the diff has an update for every
 /// entry, most of them without a change. A move of the firewall rules counts as one change.
-pub fn menu_changes(mutations: &[ResourceMutation<'_>]) -> Vec<MenuChanges> {
-    let mut menus = BTreeMap::<&[u8], (u32, u32, u32)>::new();
+pub fn table_changes(mutations: &[ResourceMutation<'_>]) -> Vec<TableChanges> {
+    let mut tables = BTreeMap::<&[u8], (u32, u32, u32)>::new();
     for mutation in mutations.iter().filter(|mutation| in_script(mutation)) {
-        let (added, changed, removed) = menus.entry(mutation.resource).or_default();
+        let (added, changed, removed) = tables.entry(mutation.resource).or_default();
         match mutation.operation {
             ResourceMutationOperation::Add | ResourceMutationOperation::AddThenSet { .. } => {
                 *added += 1
@@ -179,10 +179,10 @@ pub fn menu_changes(mutations: &[ResourceMutation<'_>]) -> Vec<MenuChanges> {
             | ResourceMutationOperation::Move { .. } => *changed += 1,
         }
     }
-    menus
+    tables
         .into_iter()
-        .map(|(menu, (added, changed, removed))| MenuChanges {
-            menu: String::from_utf8_lossy(menu).into_owned().into(),
+        .map(|(table, (added, changed, removed))| TableChanges {
+            table: String::from_utf8_lossy(table).into_owned().into(),
             added,
             changed,
             removed,
@@ -190,17 +190,17 @@ pub fn menu_changes(mutations: &[ResourceMutation<'_>]) -> Vec<MenuChanges> {
         .collect()
 }
 
-/// A change an apply makes outside the script, counted in `menu`: the current password where
+/// A change an apply makes outside the script, counted in `table`: the current password where
 /// the login went with the previous one (A9, `user`; the password stays out of the script),
 /// WebFig's certificate (A7, `certificate`).
-pub(crate) fn add_change(menus: &mut Vec<MenuChanges>, name: &str) {
-    let at = menus.partition_point(|menu| &*menu.menu < name);
-    match menus.get_mut(at) {
-        Some(menu) if menu.menu == name.into() => menu.changed += 1,
-        _ => menus.insert(
+pub(crate) fn add_change(tables: &mut Vec<TableChanges>, name: &str) {
+    let at = tables.partition_point(|table| &*table.table < name);
+    match tables.get_mut(at) {
+        Some(table) if table.table == name.into() => table.changed += 1,
+        _ => tables.insert(
             at,
-            MenuChanges {
-                menu: name.into(),
+            TableChanges {
+                table: name.into(),
                 added: 0,
                 changed: 1,
                 removed: 0,
@@ -211,7 +211,7 @@ pub(crate) fn add_change(menus: &mut Vec<MenuChanges>, name: &str) {
 
 #[cfg(test)]
 mod test {
-    use super::{MenuChanges, add_change, menu_changes};
+    use super::{TableChanges, add_change, table_changes};
     use mikrotik_model::{
         resource::{ResourceMutation, ResourceMutationOperation},
         value::KeyValuePair,
@@ -240,21 +240,21 @@ mod test {
 
     #[test]
     fn a_password_change_goes_in_order() {
-        let menu = |menu: &str| MenuChanges {
-            menu: menu.into(),
+        let table = |table: &str| TableChanges {
+            table: table.into(),
             added: 1,
             changed: 0,
             removed: 0,
         };
-        let mut menus = vec![menu("system/identity"), menu("zzz")];
-        add_change(&mut menus, "user");
-        let names: Vec<_> = menus.iter().map(|menu| &*menu.menu).collect();
+        let mut tables = vec![table("system/identity"), table("zzz")];
+        add_change(&mut tables, "user");
+        let names: Vec<_> = tables.iter().map(|table| &*table.table).collect();
         assert_eq!(names, ["system/identity", "user", "zzz"]);
-        assert_eq!(menus[1].changed, 1);
+        assert_eq!(tables[1].changed, 1);
     }
 
     #[test]
-    fn counts_by_menu_and_kind() {
+    fn counts_by_table_and_kind() {
         let mutations = [
             mutation(b"ip/address", ResourceMutationOperation::RemoveByKey(key())),
             mutation(b"ip/address", ResourceMutationOperation::RemoveByKey(key())),
@@ -274,20 +274,20 @@ mod test {
                 ..mutation(b"ip/address", ResourceMutationOperation::UpdateByKey(key()))
             },
         ];
-        let menu = |menu: &str, added, changed, removed| MenuChanges {
-            menu: menu.into(),
+        let table = |table: &str, added, changed, removed| TableChanges {
+            table: table.into(),
             added,
             changed,
             removed,
         };
         assert_eq!(
-            menu_changes(&mutations),
+            table_changes(&mutations),
             [
-                menu("interface/ethernet", 0, 1, 0),
-                menu("ip/address", 1, 0, 2),
-                menu("system/identity", 0, 1, 0),
+                table("interface/ethernet", 0, 1, 0),
+                table("ip/address", 1, 0, 2),
+                table("system/identity", 0, 1, 0),
             ]
         );
-        assert!(menu_changes(&[]).is_empty());
+        assert!(table_changes(&[]).is_empty());
     }
 }

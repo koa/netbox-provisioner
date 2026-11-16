@@ -740,7 +740,7 @@ pub async fn update_keeping(
         let device = link.api().await?;
         let ospf = update_fallback::ospf_up(&device).await?;
         log.enter(UpdateState::ArmingFallback);
-        // RouterOS 6 has no partitions to copy to with this menu
+        // RouterOS 6 has no partitions to copy to with this table
         let armed = match state.version.major() >= 7 {
             true => update_fallback::arm(&device, fallback, way_back, log).await?,
             false => {

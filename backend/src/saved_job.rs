@@ -156,7 +156,7 @@ pub struct ScriptRun {
     /// a device without marks counts as through after this
     #[serde(with = "unix_seconds")]
     pub unmarked: SystemTime,
-    /// the radios provisioned again after it (`reprovisioned_menus`)
+    /// the radios provisioned again after it (`reprovisioned_tables`)
     pub reprovision: Box<[CapsmanRadios]>,
 }
 

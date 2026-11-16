@@ -21,7 +21,7 @@ Basis-Fakten im Rahmen, der Pool und die Punkte unter „Offen“.
 
 ## Heute
 
-- Gespeichert sind nur Basis-Fakten (Menüs, Logins, neueste Version), die Ableitungen werden bei
+- Gespeichert sind nur Basis-Fakten (Tabellen, Logins, neueste Version), die Ableitungen werden bei
   jedem Zugriff gerechnet ([device-access.md](../device-access.md#basis-fakten)).
 - Als Pool dient der Fact `Login`, der eine Verbindung 60 s wieder gibt.
 - Die Topologie (`TopologyHolder::current`) hält jede Operation fest, die sie zuerst bekam;
@@ -74,7 +74,7 @@ Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern, `update::state_
 
 ## Offen
 
-- Die Metriken `device_query_*` zählen nach Fact-Art, also alle Menüs als `menu`; nach Pfad wären
+- Die Metriken `device_query_*` zählen nach Fact-Art, also alle Tabellen als `table`; nach Pfad wären
   es viele Reihen: Pfade zu Gruppen zusammenfassen oder nur Art (Print, Monitor, Ping) als Label.
 - Die Rechenzeit der Ableitungen messen (der Diff jeder Geräteseite, der Site-Diff über alle
   Geräte), jetzt wo sie nicht mehr gespeichert sind.
@@ -94,4 +94,4 @@ Danach fallen die Handarbeiten weg (`snapshot` in den Resolvern, `update::state_
 - CHR-Tests wie bisher.
 - Ein Zähler der Befehle pro Gerät und Pfad (Log auf `debug` oder Metrik): Geräteseite,
   Netzkarte und Rollout-Plan im Lab zeigen jeden Pfad pro Gerät und Operation einmal, und zwei
-  Browser auf derselben Geräteseite einen Login und ein Lesen pro Menü.
+  Browser auf derselben Geräteseite einen Login und ein Lesen pro Tabelle.

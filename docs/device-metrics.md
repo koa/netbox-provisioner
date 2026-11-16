@@ -20,20 +20,20 @@ sind danach nicht mehr nötig. Der Provisioner liest mit seinen eigenen Zugangsd
   fertig ist, zählt in diesem Scrape als nicht erreicht (`mikrotik_up` 0, sonst keine Serie);
   ein gescheiterter Scrape nähme dagegen allen Geräten ihre Serien.
   `device_metrics: false` liest keine Geräte, `/metrics` hat dann nur die eigenen Metriken.
-- Gelesen wird über denselben Weg wie überall (`DeviceAccess::connect`), jedes Menü als Fakt des
+- Gelesen wird über denselben Weg wie überall (`DeviceAccess::connect`), jede Tabelle als Fakt des
   [Gerätezustands](device-state.md): Health, Ressourcen und PoE liest der Scrape wie die
-  Netz-Karte (`network_state::device_data`) und teilt die Menüs mit ihr, WLAN-Clients, Radios,
+  Netz-Karte (`network_state::device_data`) und teilt die Tabellen mit ihr, WLAN-Clients, Radios,
   Interfaces, Ethernet-Links und Leases liest `device::metrics`. Ein Scrape nimmt nur Fakten,
   die nach seinem Beginn begonnen haben
   (`Freshness::Since`): Nichts ist älter als der Scrape, und eine Lesung, die seither schon
   läuft (ein zweiter Scrape, die Netz-Karte), wird mitgenommen, so fragt ein Scrape jedes Gerät
   einmal. Dauer und Erfolg der Lesungen stehen deshalb auch in
   `device_query_duration_seconds` (`kind="device_metrics"`).
-- Es wird nur gelesen, jedes Menü mit seinem Typ aus mikrotik-model; die Monitore
+- Es wird nur gelesen, jede Tabelle mit ihrem Typ aus mikrotik-model; die Monitore
   (`/interface/ethernet/monitor` und `/interface/wireless/monitor` mit `once`, alle Ports in
   einem Befehl) sind Aktionen seines Katalogs ([Zugriff auf die Geräte](device-access.md)). Ein
-  Menü, das ein Gerät nicht hat (kein `wifi`- oder `wireless`-Paket, kein Legacy-CAPsMAN), hat
-  keine Zeilen (`access::collect_if_present`, `is_missing_menu`); jeder andere Fehler macht das Gerät für den Scrape unerreicht.
+  Tabelle, die ein Gerät nicht hat (kein `wifi`- oder `wireless`-Paket, kein Legacy-CAPsMAN), hat
+  keine Zeilen (`access::collect_if_present`, `is_missing_table`); jeder andere Fehler macht das Gerät für den Scrape unerreicht.
 
 ## Metriken
 

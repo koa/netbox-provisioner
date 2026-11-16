@@ -432,9 +432,9 @@ impl JobKind {
             | JobKind::Reboot
             | JobKind::DeviceMode
             | JobKind::Repartition
-            | JobKind::BootPartition => &[Menu, Login, Route],
+            | JobKind::BootPartition => &[Table, Login, Route],
             // a job of the supplier: what it sees on the port changes with the device it feeds
-            JobKind::PowerCycle => &[Menu, Login, Route],
+            JobKind::PowerCycle => &[Table, Login, Route],
             // NetBox changes what is worked out from the facts, not what the device says; its
             // update jobs drop what they change
             JobKind::NetboxWrite | JobKind::NetboxUndo | JobKind::SiteDiff | JobKind::Rollout => {
@@ -446,7 +446,7 @@ impl JobKind {
 
 /// What a setup changes on the neighbor it works through: what it reads there (its port), and
 /// the login the setup let through with a password for a moment.
-const THROUGH_INVALIDATES: &[FactKind] = &[FactKind::Menu, FactKind::Login];
+const THROUGH_INVALIDATES: &[FactKind] = &[FactKind::Table, FactKind::Login];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Enum)]
 pub enum JobState {

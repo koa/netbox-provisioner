@@ -4,10 +4,10 @@
 //! The facades of `docs/device-access.md`: a [`Reader`] sends only what changes
 //! nothing (`print`, monitors, ping), a [`Session`] is a job's own connection and also writes.
 //! Both go over a `mikrotik_api` [`Connection`]; each command is a type of mikrotik-model (a
-//! menu's model, an action of `mikrotik_model::action`), none a string.
+//! table's model, an action of `mikrotik_model::action`), none a string.
 //!
 //! A [`Reader`] given an age ([`Reader::at`]) takes what it reads from the facts: each print,
-//! monitor once and ping is a fact of its own (`FactKind::Menu`), its replies kept unread and
+//! monitor once and ping is a fact of its own (`FactKind::Table`), its replies kept unread and
 //! read again by whichever type asks (`docs/concepts/device-access.md`, Basis-Fakten).
 use crate::{
     Error,
@@ -162,7 +162,7 @@ impl Reader {
         let prepared = Prepared::of(command);
         let key = self.key(device, &prepared);
         if written_since_read(device) {
-            facts::invalidate(device, &[FactKind::Menu]);
+            facts::invalidate(device, &[FactKind::Table]);
         }
         let connection = connection.clone();
         let ask = async move {
@@ -182,7 +182,7 @@ impl Reader {
     /// The fact of `command` on `device` with this reader's credentials.
     fn key<E: EffectKind>(&self, device: DeviceId, prepared: &Prepared<E>) -> FactKey {
         FactKey::new(
-            FactKind::Menu,
+            FactKind::Table,
             Some(device),
             format!(
                 "{} {}{}",
@@ -194,7 +194,7 @@ impl Reader {
         .via(self.scope.way)
     }
     fn stored_replies<C: Command>(&self, device: DeviceId, command: &C) -> Replies<C::Reply> {
-        facts::note_peeked(device, FactKind::Menu);
+        facts::note_peeked(device, FactKind::Table);
         let key = self.key(device, &Prepared::of(command));
         let kept = match facts::peek::<Kept>(&key) {
             Some(fact) => {
@@ -338,29 +338,29 @@ fn written_since_read(device: DeviceId) -> bool {
     })
 }
 
-/// The rows of `R`'s menu, none where the device hasn't the menu (a package or a RouterOS
+/// The rows of `R`'s table, none where the device hasn't the table (a package or a RouterOS
 /// version without it, `/partitions` on a CHR).
 pub async fn collect_if_present<R: DeserializeRosResource + RosResource>(
     device: &impl Reads,
 ) -> Result<Box<[R]>, Error> {
     match collect_resource::<R>(device).await {
-        Err(resource::Error::Trap(trap)) if is_missing_menu(trap.category, &trap.message) => {
+        Err(resource::Error::Trap(trap)) if is_missing_table(trap.category, &trap.message) => {
             Ok(Box::new([]))
         }
         rows => Ok(rows?),
     }
 }
 
-/// RouterOS's answer to a menu it hasn't: `no such command prefix` without a category (the
+/// RouterOS's answer to a table it hasn't: `no such command prefix` without a category (the
 /// package missing), or a missing item or command.
-pub fn is_missing_menu(category: Option<TrapCategory>, message: &[u8]) -> bool {
+pub fn is_missing_table(category: Option<TrapCategory>, message: &[u8]) -> bool {
     match category {
         None => message == b"no such command prefix",
         Some(category) => category == TrapCategory::MissingItemOrCommand,
     }
 }
 
-/// Removes the entry of `R`'s menu with `key`, where there is one (removing one that isn't
+/// Removes the entry of `R`'s table with `key`, where there is one (removing one that isn't
 /// fails).
 pub async fn remove_if_present<R>(device: &impl Writes, key: &R::Key) -> Result<(), Error>
 where

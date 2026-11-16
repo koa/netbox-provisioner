@@ -26,13 +26,18 @@ use mikrotik_model::model::{
 use mikrotik_model::resource::collect_resource;
 use std::time::Duration;
 
-/// RouterOS's answer to adding a configuration to `menu` with `country` spelled as given.
+/// RouterOS's answer to adding a configuration to `table` with `country` spelled as given.
 ///
-/// Raw on purpose: the typed configurations take only the spelling their menu writes
+/// Raw on purpose: the typed configurations take only the spelling their table writes
 /// (`WifiCountry`, `WifiCountryLower`), so the other one, which this test checks RouterOS
 /// refuses, can't be written typed.
-async fn add_spelled(device: &Session, menu: &str, name: &str, country: &str) -> Result<(), Error> {
-    let add = RawCommand::<Write>::new(format!("{menu}/add").into_bytes())
+async fn add_spelled(
+    device: &Session,
+    table: &str,
+    name: &str,
+    country: &str,
+) -> Result<(), Error> {
+    let add = RawCommand::<Write>::new(format!("{table}/add").into_bytes())
         .attribute(b"name".as_slice(), name.as_bytes())
         .attribute(b"ssid".as_slice(), name.as_bytes())
         .attribute(b"country".as_slice(), country.as_bytes());

@@ -128,7 +128,7 @@ pub struct FallbackFired {
 pub struct ScriptProgress {
     /// the lines of the script
     pub lines: u32,
-    /// the line of the last menu begun
+    /// the line of the last table begun
     pub section: Option<u32>,
     pub done: bool,
     /// the line it stopped at
@@ -219,7 +219,7 @@ pub enum CapsmanRadios {
 }
 
 impl CapsmanRadios {
-    fn menu(self) -> RadioMenu {
+    fn table(self) -> RadioMenu {
         match self {
             CapsmanRadios::Wifi => RadioMenu::Wifi,
             CapsmanRadios::Legacy => RadioMenu::CapsMan,
@@ -227,11 +227,11 @@ impl CapsmanRadios {
     }
 }
 
-/// A controller provisioned `count` CAP radios of `menu` again, since the WLANs changed (their
+/// A controller provisioned `count` CAP radios of `table` again, since the WLANs changed (their
 /// clients reconnect); or couldn't (`error`).
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct RadiosReprovisioned {
-    pub menu: CapsmanRadios,
+    pub table: CapsmanRadios,
     pub count: u32,
     pub error: Option<ErrorInfo>,
 }
@@ -244,10 +244,10 @@ pub struct PasswordSet {
     pub error: Option<ErrorInfo>,
 }
 
-/// The `radio` menus of the CAPsMANs whose WLANs `mutations` change: a CAP only takes a new
+/// The `radio` tables of the CAPsMANs whose WLANs `mutations` change: a CAP only takes a new
 /// WLAN (a slave configuration) when its radios are provisioned again.
-pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<CapsmanRadios> {
-    let touches = |menu: &str| {
+pub(super) fn reprovisioned_tables(mutations: &[ResourceMutation]) -> Vec<CapsmanRadios> {
+    let touches = |table: &str| {
         mutations
             .iter()
             .filter(|mutation| in_script(mutation))
@@ -258,7 +258,7 @@ pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<Capsman
                     .unwrap_or(mutation.resource);
                 ["configuration", "provisioning", "datapath", "security"]
                     .iter()
-                    .any(|entry| path == format!("{menu}/{entry}").as_bytes())
+                    .any(|entry| path == format!("{table}/{entry}").as_bytes())
             })
     };
     [
@@ -266,15 +266,15 @@ pub(super) fn reprovisioned_menus(mutations: &[ResourceMutation]) -> Vec<Capsman
         ("caps-man", CapsmanRadios::Legacy),
     ]
     .into_iter()
-    .filter(|(menu, _)| touches(menu))
+    .filter(|(table, _)| touches(table))
     .map(|(_, radios)| radios)
     .collect()
 }
 
-/// Provisions the CAPs' radios of `menu` again (not the controller's own); how many there are.
-async fn provision_radios(raw: &impl Writes, menu: CapsmanRadios) -> Result<usize, Error> {
+/// Provisions the CAPs' radios of `table` again (not the controller's own); how many there are.
+async fn provision_radios(raw: &impl Writes, table: CapsmanRadios) -> Result<usize, Error> {
     // `/caps-man/radio` names the CAP in `remote-cap-identity`, `/interface/wifi/radio` in `cap`
-    let ids = match menu {
+    let ids = match table {
         CapsmanRadios::Wifi => collect_resource::<InterfaceWifiRadioState>(raw)
             .await?
             .iter()
@@ -295,7 +295,7 @@ async fn provision_radios(raw: &impl Writes, menu: CapsmanRadios) -> Result<usiz
     }
     let numbers = ids.join(",");
     let provision = RadioProvision {
-        menu: menu.menu(),
+        menu: table.table(),
         numbers: &numbers,
     };
     act(raw, &provision).await?;
@@ -500,11 +500,11 @@ impl PlannedApply {
         }
         Ok(())
     }
-    /// The radios to provision again after it (`reprovisioned_menus`).
+    /// The radios to provision again after it (`reprovisioned_tables`).
     pub(crate) fn reprovisioned(&self) -> Vec<CapsmanRadios> {
         self.cfg
             .sorted_mutations()
-            .map(|mutations| reprovisioned_menus(&mutations))
+            .map(|mutations| reprovisioned_tables(&mutations))
             .unwrap_or_default()
     }
     /// The device is in line already.
@@ -973,7 +973,7 @@ impl AccessibleDevice {
     pub(crate) async fn after_apply(&self, planned: &PlannedApply, log: &Log) -> Result<(), Error> {
         self.after_script(&planned.reprovisioned(), log).await
     }
-    /// [`Self::after_apply`] with the radios to provision again (`reprovisioned_menus`); a
+    /// [`Self::after_apply`] with the radios to provision again (`reprovisioned_tables`); a
     /// device logged in with the previous password gets the current one
     /// ([`Self::set_current_password`]), before the other partition copies the config.
     pub(crate) async fn after_script(
@@ -1019,30 +1019,30 @@ impl AccessibleDevice {
             }
         }
     }
-    /// Provisions the radios of `menus` (`reprovisioned_menus`) again, which reconnects the
+    /// Provisions the radios of `tables` (`reprovisioned_tables`) again, which reconnects the
     /// CAPs' clients.
-    async fn reprovision(&self, menus: &[CapsmanRadios], log: &Log) {
-        if menus.is_empty() {
+    async fn reprovision(&self, tables: &[CapsmanRadios], log: &Log) {
+        if tables.is_empty() {
             return;
         }
-        let failed = |menu: CapsmanRadios, error: Error| RadiosReprovisioned {
-            menu,
+        let failed = |table: CapsmanRadios, error: Error| RadiosReprovisioned {
+            table,
             count: 0,
             error: Some(ErrorInfo::from(&error)),
         };
         let raw = match self.connect_again().await {
             Ok(raw) => raw,
-            Err(error) => return log.emit(failed(menus[0], error)),
+            Err(error) => return log.emit(failed(tables[0], error)),
         };
-        for &menu in menus {
-            match provision_radios(&raw, menu).await {
+        for &table in tables {
+            match provision_radios(&raw, table).await {
                 Ok(0) => {}
                 Ok(count) => log.emit(RadiosReprovisioned {
-                    menu,
+                    table,
                     count: count as u32,
                     error: None,
                 }),
-                Err(error) => log.emit(failed(menu, error)),
+                Err(error) => log.emit(failed(table, error)),
             }
         }
     }

@@ -3,7 +3,7 @@
 //!
 //! Partitions of the NAND flash (`/partitions`), for the planned update fallback
 //! (`docs/update-fallback.md`): a second partition keeps the RouterOS from before. A
-//! device with at least 128 MiB of NAND lists its one partition there; a CHR has no such menu, a
+//! device with at least 128 MiB of NAND lists its one partition there; a CHR has no such table, a
 //! 16 MiB device lists none. Splitting needs `partitions` in the device mode
 //! ([`device_mode`](super::device_mode)).
 //!

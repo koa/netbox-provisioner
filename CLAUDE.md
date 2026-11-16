@@ -69,8 +69,8 @@ board's switch chips offload, port by port, is in `hw_facts::SwitchChips` (from 
 manual; every chip but a CRS1xx/2xx's offloads one bridge only). `L2Setup::for_switch_chips`
 turns the bridges on chips that filter VLANs in hardware into VLANs of one bridge
 (`into_one_bridge`) and `snoops_multicast` leaves snooping off where it would cost the
-hardware; on a CRS1xx/2xx `switch_vlans` puts the VLANs into the switch's own menus
-(`switch_menu.rs`) and the bridge stays without VLAN filtering. The generated examples don't
+hardware; on a CRS1xx/2xx `switch_vlans` puts the VLANs into the switch's own tables
+(`switch_table.rs`) and the bridge stays without VLAN filtering. The generated examples don't
 know the board and keep their bridges.
 What the provisioner does beyond generating has a doc of its own in `docs/` too (device page,
 jobs, device state, interface view, config helper, update fallback, watchdog, deployment;
@@ -95,7 +95,7 @@ and their VXLAN like a CAP of `/interface/wifi`, so it is a VTEP; RouterOS hangs
 virtual radios into that bridge with the `pvid` of their WLAN (tagged members of a dynamic bridge
 VLAN entry). A CAP only gets a new WLAN when its radios are provisioned again, so an apply on a
 controller that changes a CAPsMAN's WLAN definitions provisions its CAPs' radios again after
-it (`reprovisioned_menus`, the job event `RadiosReprovisioned`; their clients reconnect).
+it (`reprovisioned_tables`, the job event `RadiosReprovisioned`; their clients reconnect).
 A controller that is an AP of its group with radios in NetBox (`runs_own_radios`) has them run
 by its own CAPsMAN as local radios (`L` in `/interface/wifi/radio`, berghof-burri, 7.23.8): bound
 with the CAP off, even after a reboot with CAPsMAN off, dynamic and unchangeable, provisioned
@@ -246,7 +246,7 @@ its plan runs `L2Setup` on the preview for the rest); its query
 hands the findings on to the type of `Findings` by serializing them (`rows::findings`), so
 `components::findings` words them. The live checks of the rows are `device/interface_live.rs`
 (`AccessibleDevice.interfaceLive`, a subscription of its own after the view, grouped onto the same
-rows, `DeviceAccess::interface_rows`; worked out on each answer from menus up to 1 min old,
+rows, `DeviceAccess::interface_rows`; worked out on each answer from tables up to 1 min old,
 shown with the time of the oldest, which „Erneut prüfen“ (`refreshInterfaceLive`) and every
 job on the device drop): who the device sees (`neighbors::read`), its OSPF
 neighbors there, and the radio link's bridge devices answering a ping (`access::answering`). An
@@ -266,16 +266,16 @@ its steps shifted behind (`PlanStep::shift`); a cable over a patch panel is refu
 `components::site::site_diff`): a job of the site (`job::start_site`, `JobSubject::Site`; a site's
 job locks none of its devices, a second start gives back the running one) reads its RouterOS
 devices, four at a time, and emits `DeviceDiffed` per device with the changes of an apply by
-menu (`AccessibleDevice::menu_changes`: the sorted mutations counted like the script, which
+table (`AccessibleDevice::table_changes`: the sorted mutations counted like the script, which
 leaves out every update without fields) or the error. A job's `deviceId`/`deviceName` are
 `null` for a site's job, `siteId`/`siteName` then say which.
 
 `device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's
 cables (`AccessibleDevice.neighborFindings`, read-only; the site page asks every device at once,
-`components::site::neighbor_check`). What the device answers is read from its menus' facts
+`components::site::neighbor_check`). What the device answers is read from its tables' facts
 (`neighbors::read_table`, `neighborsAge`), compared with NetBox anew on each answer
 (`evaluate`), so the card subscribes after the click and a cable taken over in NetBox drops its
-finding; the click drops the device's menus first (`refreshNeighbors`), every job on a device
+finding; the click drops the device's tables first (`refreshNeighbors`), every job on a device
 drops its own. Ports on the device and the ports neighbors report carry the names
 the generated config gives them: match by NetBox's (default) name or the short name before the
 first `-` (`s01-core` is `sfp-sfpplus1`), never by MAC. A cable to a radio bridge device can't be
@@ -440,9 +440,9 @@ fact (`network_state::device_data::read_one`); WLAN clients (`/interface/wifi`, 
 legacy CAPsMAN manages has no SSID there and no `info`, nor its clients; the controller
 reports them from `/caps-man`, `capsman_radios`), `/interface`
 counters, Ethernet links (one `monitor ... once` of all ports) and bound leases are
-`device::metrics`, each menu read with its mikrotik-model type and
-the two monitors as actions of its catalog; a menu a package brings has no rows without it
-(`access::collect_if_present`, `is_missing_menu`). A WLAN client takes hostname and address from a lease of any device
+`device::metrics`, each table read with its mikrotik-model type and
+the two monitors as actions of its catalog; a table a package brings has no rows without it
+(`access::collect_if_present`, `is_missing_table`). A WLAN client takes hostname and address from a lease of any device
 by MAC, and a client or radio its `wlan_group` from NetBox (`render::wlan_group_of`: the one
 group of the device with that SSID and, for a CAP's client, that CAP; else empty). Names follow Prometheus' conventions (unit in the name, `_total` for device counters),
 every metric has `device` and `site` from NetBox. The dashboards `mikrotik-overview.json` and
@@ -460,7 +460,7 @@ above 30 V, from the product pages (`hw_facts::poe_groups`); a port counts at th
 reports, as a netPower with two PSUs feeds 24 V and 48 V per port. A board without entered
 limits shows nothing. `read::read` gets the LSDB from one router (the
 management proxy's device if it has OSPF, else a site's or the whole topology's OSPF routers by
-name), its menu up to `read::LSDB_AGE` (5 s) old. `graphql::network_state` turns that
+name), its table up to `read::LSDB_AGE` (5 s) old. `graphql::network_state` turns that
 into `NetworkState` (nodes, edges, the router read from, the routers outside NetBox and where
 they come in), left out for a device without OSPF (no RouterOS, no primary IPv4, or no `ospf`
 interface anywhere, `graphql::supports_ospf`) and its edges, unless it is a plain switch
@@ -525,7 +525,7 @@ Health, resources and PoE are a second query, `Query.topology.networkStateDetail
 asked and polled independently (its own 5 s loop in the frontend) so a slow round trip to every
 device never holds up the overview. `device_data::read_all` reads `/system/health/print`,
 `/system/resource/print` and every PoE-capable port (`device::poe::read_ports`) of every device
-with OSPF of its own (not a plain switch on the map only as a relay), menus up to
+with OSPF of its own (not a plain switch on the map only as a relay), tables up to
 `device_data::DEVICE_DATA_AGE` (30 s) old (a device that doesn't answer is left out). `graphql::network_state_details` puts health and resources on `MapNodeDetails`, and
 turns the PoE readings into `MapPoeEdge` (`NetworkStateDetails.poeEdges`): one PSE→PD arrow per
 port `device::poe::feeding` has modeled as `pse` or reporting `powered-on`, with a cable in
@@ -550,18 +550,18 @@ the node, so the fill stays reachability (Z16).
 What is asked of devices and MikroTik goes through `facts` (`docs/device-state.md`):
 `facts::get(key, Freshness, ask)` gives a stored fact young enough for the user, joins the asking
 running already or asks, never twice at once per key, the asking spawned so a page closed leaves
-it to the others. Only what was asked outside is stored (`FactKind`: `Menu`, `Login`, `Route`,
-`NewestVersion`): a `Menu` is the replies of one command that changes nothing (a print, a
+it to the others. Only what was asked outside is stored (`FactKind`: `Table`, `Login`, `Route`,
+`NewestVersion`): a `Table` is the replies of one command that changes nothing (a print, a
 monitor once, a ping), kept unread (`mikrotik_api::device::Reply`) and keyed by the command's
 words and the credentials, which a `Reader` given an age (`Reader::at`) answers from;
 `Reader::stored` only looks. Everything worked out from them (the config and its diff, the
 RouterOS state, leftovers, the live checks, the map, metrics) is worked out on each use and
-copes with menus of different ages. Failures are facts too (`get_judged`: the age a stored one
+copes with tables of different ages. Failures are facts too (`get_judged`: the age a stored one
 may have by what it says, a refused login 10 min, no answer 20 s; replies that are the
 connection failing none). Each user says how old (`MaxAge`, `Since` for a job that plans from
 it); nothing is kept over 15 min. A job drops what its kind may change when it ends
 (`JobKind::invalidates`, raising the device's generation: what was asked meanwhile isn't
-stored) and stores nothing; a write over the API drops the device's menus at the next read
+stored) and stores nothing; a write over the API drops the device's tables at the next read
 (`access::written_since_read`); a topology changed in NetBox drops nothing. Jobs that write read
 anew (`Session::reader`), they don't use the facts of the page. Times are `tokio::time::Instant`s, only
 ages go to the frontend. The metrics (`device_query_*`, `fact_cache_*`) go into `/metrics`
@@ -586,7 +586,7 @@ the query's resolvers while `LiveExtension` notes the facts and job devices they
 dropped, the topology) or when the youngest fact read gets older than taken. A subscription has
 one root field: what a page needs hangs under it (the device's `jobs`). A fact stored anew
 concerns only who looked without asking (`facts::peek_newest`, `facts::note_peeked`, e.g. the
-device's `knownDiff` that „Abweichung von NetBox“ works out from the stored menus); for who
+device's `knownDiff` that „Abweichung von NetBox“ works out from the stored tables); for who
 asks it is no change
 (two live pages would keep asking for each other); „Neu laden“ drops the device's
 facts (`refreshDevice`), so every page showing it reads anew. While a subscription is open
@@ -641,7 +641,7 @@ with a hint instead of failing on the click); `apply` runs the diff as a script 
 the device, started in the background, so it completes even when it changes the path the
 connection takes, then diffs again: a script stops at its first error, so whatever is left is
 what failed. The script leaves marks in a file on the device as it goes (`device::ros::progress`,
-`ScriptProgress`): each menu begun, its end or the line it stopped at with RouterOS' message, and
+`ScriptProgress`): each table begun, its end or the line it stopped at with RouterOS' message, and
 the lines after which a ping from the device to the provisioner (the address most of its API
 sessions come from, behind the SOCKS proxy the proxy's) stopped or came back. The ping lags
 about one line behind the change that cut it. The file is under `flash/` where the device has
@@ -773,7 +773,7 @@ where it is done; `mac_telnet_setup_survives_a_stalled_device`). The port leaves
 bridge once `/user active` has no mac-telnet session left, not after a delay. A home AP's
 factory ether1 is WAN (firewall, no MAC server or discovery there), so it is set up after a reset
 to CAPs mode (`docs/netbox-modeling.md`); `set_up` turns the CAP that mode enables off again
-(`:parse`, the menus depend on the packages), since CAPsMAN refuses the first apply renaming the
+(`:parse`, the tables depend on the packages), since CAPsMAN refuses the first apply renaming the
 radios. Only after a factory login: a device logging in with its credentials (one that lost
 its address after an update, the update fallback's rescue) keeps the rest of its config, its CAP
 included, and its log is on the device page (`AccessibleDevice.log`, the newest 30 entries without the
@@ -1015,14 +1015,14 @@ context, a router with a DHCP server answers DNS (its networks get its own addre
 without a `dhcp-client` forwards to the loopbacks of the `nat` routers. The perimeter firewall
 keeps the internet out of the resolver (the `close_dns` rules before it went with it).
 `mu; ordered` makes a list field a `Box<[V]>` whose order counts (`dns-server`, `servers`).
-An uplink tagged `nat` gets a masquerade rule. In the firewall menus (`/ip/firewall/filter`,
+An uplink tagged `nat` gets a masquerade rule. In the firewall tables (`/ip/firewall/filter`,
 `nat`, `/ipv6/firewall/filter`, `address-list`) only the entries whose comment starts with
 `netbox-provisioner:` are the provisioner's (`owned` in `mikrotik_model!`, Z1); every other
 entry stays. Its rules come first, in the target's order (the filters are lists, the order of
 the rules counts), before the others (`ordered`: a `move [find comment=…] destination=<first
 other>`), but those whose comment goes on with `last ` after the prefix, which go after all
 others (mikrotik-model `OWNED_LAST`): the drop ending a chain mustn't take what a hand-made rule
-lets in. Each own comment is unique in its menu (`firewall_comment`), and has no `_`
+lets in. Each own comment is unique in its table (`firewall_comment`), and has no `_`
 (RouterOS's script escapes it). A rule without a comment that is an own one but for it is taken
 over: the rules of the versions before had none.
 
@@ -1385,7 +1385,7 @@ QEMU's, the golden image's dhcp-client is bound to it).
   `KeyedResource::fetch`), every change is a mutation of one (`calculate_create`,
   `calculate_update`, `apply_mutation`), and every other command an action of mikrotik-model's
   catalog (`action.rs`: monitors, `power-cycle`, `/execute`, …), sent with `access::act` or
-  `observe`, which turn a `!trap` into `Error::Refused` naming the command. A menu or action
+  `observe`, which turn a `!trap` into `Error::Refused` naming the command. A table or action
   without a type gets one in mikrotik-model (`ros_model/*.txt`, `action.rs`), with a decode
   test of what a device answered; a passphrase in the rows or a read for one field is no
   reason for raw. The provisioner reads through a `Reader` and writes through a `Session`

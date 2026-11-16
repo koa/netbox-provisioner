@@ -1,5 +1,5 @@
 //! The facades over a fake device: what a [`Reader`] with an age keeps, and the refusals.
-use super::{Reader, Scope, generation, is_missing_menu};
+use super::{Reader, Scope, generation, is_missing_table};
 use crate::{facts::Freshness, topology::DeviceId};
 use mikrotik_api::prelude::{Connection, TrapCategory};
 use mikrotik_model::{model::SystemIdentityCfg, resource::SingleResource};
@@ -89,10 +89,10 @@ async fn identity(reader: &Reader) -> Box<str> {
         .into()
 }
 
-/// Read again within its age, a menu comes from the facts; a reader without an age asks the
+/// Read again within its age, a table comes from the facts; a reader without an age asks the
 /// device each time.
 #[tokio::test]
-async fn a_menu_read_within_its_age_is_asked_once() {
+async fn a_table_read_within_its_age_is_asked_once() {
     let (connection, commands, device) = fake_device().await;
     let live = Reader::new(connection, Some(device), scope("credentials lab"));
     let kept = live.at(Freshness::MaxAge(Duration::from_secs(60)));
@@ -129,13 +129,13 @@ async fn other_credentials_read_for_themselves() {
     assert_eq!(commands.load(Ordering::SeqCst), 2);
 }
 
-/// A missing package's menu has no rows; another refusal stays an error.
+/// A missing package's table has no rows; another refusal stays an error.
 #[test]
-fn a_missing_menu_is_told_apart() {
-    assert!(is_missing_menu(None, b"no such command prefix"));
-    assert!(is_missing_menu(
+fn a_missing_table_is_told_apart() {
+    assert!(is_missing_table(None, b"no such command prefix"));
+    assert!(is_missing_table(
         Some(TrapCategory::MissingItemOrCommand),
         b""
     ));
-    assert!(!is_missing_menu(None, b"not enough permissions (9)"));
+    assert!(!is_missing_table(None, b"not enough permissions (9)"));
 }

@@ -101,7 +101,7 @@ Die Übergänge sind mit ihrer Quelle bezeichnet: **(B)** Bedienung, **(G)** Beo
   `apply_fallback_seconds`). Das Ende des Skripts zieht den Fallback auf die Frist ab dann vor.
 - Gezählt wird nach der **Uptime** des Geräts, nicht nach seiner Uhr: Ein NTP-Sprung nach dem
   Anwenden liess einen Fallback sofort fällig aussehen (1og-sw1).
-- Das Skript schreibt **Marken** unter `flash/` (Menü begonnen, Ende oder Fehlerzeile, Ping zum
+- Das Skript schreibt **Marken** unter `flash/` (Tabelle begonnen, Ende oder Fehlerzeile, Ping zum
   Provisioner weg/zurück). Sie überdauern den Neustart des Fallbacks und sagen, wo es abriss.
 - Innerhalb von 10 s vor dem Auslösen wird der Fallback nicht mehr weggenommen (`DUE`).
 - Eine Funkänderung verlängert die Frist um 24 min (DFS-Kanäle hören vorher auf Radar) und setzt
@@ -550,7 +550,7 @@ Eintritt in einen dieser Zustände (temporär schreiben, dann umbenennen) und ge
 Auftrag sie verlässt oder endet. Sie hält:
 
 - **Anwenden:** Gerät, Zustand, ob ein Fallback gesetzt ist, den Lauf des Skripts (für die
-  Marken), die Fristen (Aufgeben, Rückkehr nach dem Fallback) als Uhrzeit des Servers, die Menüs,
+  Marken), die Fristen (Aufgeben, Rückkehr nach dem Fallback) als Uhrzeit des Servers, die Tabellen,
   deren CAPs neu provisioniert werden, und die ausgesetzten Watchdogs anderer Geräte (Gerät und
   was sie überwachen). Beim gemeinsamen Anwenden hat jedes Gerät seine Datei mit den Ids der
   ganzen Gruppe; weitergeführt wird die Gruppe zusammen.

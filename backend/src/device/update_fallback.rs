@@ -121,7 +121,7 @@ pub fn neighbors(device: &DeviceAccess) -> Box<[Box<str>]> {
     neighbors.into()
 }
 
-/// An update of RouterOS 6, which has no partitions in this menu.
+/// An update of RouterOS 6, which has no partitions in this table.
 pub fn arm_v6(way_back: &WayBack, log: &Log) -> Result<(), Error> {
     way_back.without_partitions(0, log)
 }
@@ -275,7 +275,7 @@ pub(crate) fn is_adjacent(
 }
 
 /// Whether the device has a 5 GHz radio on: `/interface/wireless` with a `5ghz` band, or an
-/// `/interface/wifi` radio with `5ghz` among its bands. A menu its packages lack doesn't count.
+/// `/interface/wifi` radio with `5ghz` among its bands. A table its packages lack doesn't count.
 async fn has_5ghz_radio(device: &impl Reads) -> bool {
     use mikrotik_model::model::WirelessBand as Band;
     let wireless = collect_resource::<InterfaceWireless>(device)

@@ -13,7 +13,7 @@ use mikrotik_model::{
     value::Id,
 };
 
-/// The script lines of the logging menus `target` sends to `current`.
+/// The script lines of the logging tables `target` sends to `current`.
 fn logging_script(target: &BaseDeviceDataTarget, current: &BaseDeviceDataCurrent) -> String {
     let mut current = current.clone();
     crate::device::ros::syslog::after_switch_to_cef(&mut current);

@@ -164,7 +164,7 @@ mikrotik-model): `bridge=""` lässt RouterOS ohne Fehler stehen, `vlan-id=""` le
 
 Neue WLANs (Slave-Configurations) bekommt ein CAP erst, wenn seine Radios neu provisioniert
 werden. Ändert das Anwenden auf dem Controller Configurations, Provisioning, Datapaths oder
-Security eines CAPsMAN (`reprovisioned_menus`), provisioniert der Provisioner danach die Radios
+Security eines CAPsMAN (`reprovisioned_tables`), provisioniert der Provisioner danach die Radios
 der CAPs dieses CAPsMAN neu (`/caps-man/radio provision`, `/interface/wifi/radio provision`;
 nicht die eigenen des Controllers). Ihre Clients verbinden sich dabei neu, ein Radio auf einem
 DFS-Kanal sendet erst nach der Radarprüfung wieder. Das UI zeigt, wie viele Radios es waren.
@@ -176,7 +176,7 @@ Radios eines CAP erkennen lässt, ist mangels 802.11ax-Gerät ungeprüft.
 Ein wAP ac läuft auch mit `wireless` (`hw_facts::runs_wireless`): Hat er in NetBox `wlan<N>`-Ports,
 will `needed_radio_package` `wireless`, und „Pakete anpassen“ tauscht die Pakete bei gleicher
 Version. `wireless` installiert seine Radios ausgeschaltet; der Legacy-CAP schaltet sie ein. Die
-Radios von `/interface/wifi` bleiben ohne Paket inaktiv stehen (das Menü gehört zu `routeros`) und
+Radios von `/interface/wifi` bleiben ohne Paket inaktiv stehen (die Tabelle gehört zu `routeros`) und
 behalten ihre Namen (`w01`); ohne Paket von `/interface/wifi` bekommen sie ihren Standardnamen
 zurück (`wifi1`), und `DeviceCfg::generate_mutations` stellt `/interface/wifi` vor
 `/interface/wireless`, damit der Name frei ist, bevor `wlan1` ihn bekommt. Umgekehrt verschwindet

@@ -6,7 +6,7 @@
 //! `site` from NetBox: each scrape reads every device with RouterOS and credentials, all at
 //! once, each within [`DEVICE_TIMEOUT`] (`device_metrics: false` reads none). The readings are
 //! facts begun after the scrape began (`Freshness::Since`): nothing older is served, and a
-//! reading of the same device and menus begun since (a second scrape, the network map) is
+//! reading of the same device and tables begun since (a second scrape, the network map) is
 //! joined, so each scrape asks each device once. It only reads, as the network map does, and
 //! shares that reading (health, resources, PoE).
 

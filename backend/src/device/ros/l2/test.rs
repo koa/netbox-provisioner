@@ -460,11 +460,11 @@ async fn switch_with_household_vlans() -> DeviceAccess {
 }
 
 /// A CRS1xx/2xx runs a VLAN-filtering bridge on the CPU (E17): its VLANs go to the switch's
-/// menus, each with its access port untagged, the uplink tagged, and the CPU port tagged as
+/// tables, each with its access port untagged, the uplink tagged, and the CPU port tagged as
 /// the device has an address in it. The bridge stays without VLAN filtering, its ports plain,
 /// and `/interface/bridge/vlan` empty; the VLAN interfaces stay on the bridge.
 #[tokio::test]
-async fn vlans_of_a_crs1xx_go_to_the_switch_menu() {
+async fn vlans_of_a_crs1xx_go_to_the_switch_table() {
     let device = switch_with_household_vlans().await;
     let l2 = L2Setup::new(&device, KeepNameGenerator)
         .unwrap()
@@ -512,13 +512,13 @@ async fn vlans_of_a_crs1xx_go_to_the_switch_menu() {
         && port.pvid == 1));
     assert_eq!(target.vlan.len(), 2);
 
-    let switch_current = crate::device::ros::SwitchMenuDataCurrent {
+    let switch_current = crate::device::ros::SwitchTableDataCurrent {
         switch: Default::default(),
         switch_vlan: Box::new([]),
         egress_vlan_tag: Box::new([]),
         ingress_vlan_translation: Box::new([]),
     };
-    let mut switch = crate::device::ros::SwitchMenuDataTarget::new(b"CRS125-24G-1S");
+    let mut switch = crate::device::ros::SwitchTableDataTarget::new(b"CRS125-24G-1S");
     switch.generate_from(&vlans, &switch_current);
     let tagged = switch
         .egress_vlan_tag
@@ -554,7 +554,7 @@ async fn vlans_of_a_crs1xx_go_to_the_switch_menu() {
     );
 }
 
-/// The same switch on a CRS3xx keeps its VLAN-filtering bridge: nothing for the switch menus.
+/// The same switch on a CRS3xx keeps its VLAN-filtering bridge: nothing for the switch tables.
 #[tokio::test]
 async fn vlans_of_a_crs3xx_stay_on_the_bridge() {
     let device = switch_with_household_vlans().await;
@@ -564,7 +564,7 @@ async fn vlans_of_a_crs3xx_stay_on_the_bridge() {
     assert!(l2.switch_vlans().is_empty());
 }
 
-/// lab-crs125 (7.24.6): its VLAN-filtering bridge turned into one for the switch menus, and the
+/// lab-crs125 (7.24.6): its VLAN-filtering bridge turned into one for the switch tables, and the
 /// diff cleared `ether-type`, `frame-types`, `ingress-filtering` and `pvid`, which RouterOS
 /// hides without VLAN filtering. Only `vlan-filtering` and the protocol change.
 #[tokio::test]

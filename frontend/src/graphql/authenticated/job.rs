@@ -351,8 +351,8 @@ pub enum CapsmanRadios {
 }
 
 impl CapsmanRadios {
-    /// The RouterOS menu, as the job names it.
-    pub fn menu(&self) -> &str {
+    /// The RouterOS table, as the job names it.
+    pub fn table(&self) -> &str {
         match self {
             CapsmanRadios::Wifi => "/interface/wifi/radio",
             CapsmanRadios::Legacy => "/caps-man/radio",
@@ -364,7 +364,7 @@ impl CapsmanRadios {
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
 pub struct RadiosReprovisioned {
-    pub menu: CapsmanRadios,
+    pub table: CapsmanRadios,
     pub count: i32,
     pub error: Option<ErrorInfo>,
 }

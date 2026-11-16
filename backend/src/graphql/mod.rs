@@ -779,7 +779,7 @@ impl MutationAuthenticated {
     /// for all of them, taken away only once every one is reached again (`device::batch`).
     #[graphql(guard = "WritesAllowed")]
     /// Starts reading how far each RouterOS device of the site is from NetBox (what an apply
-    /// would change, by menu; `device::site_diff`), or gives back the one still running. Only
+    /// would change, by table; `device::site_diff`), or gives back the one still running. Only
     /// reads, so it needs no `allow_apply`.
     async fn diff_site(&self, site_id: u32) -> Result<Arc<Job>, ApiError> {
         let site = self.site(site_id).await?;
@@ -815,14 +815,14 @@ impl MutationAuthenticated {
     /// Drops the live checks of a device's interfaces: who shows them reads them anew, a
     /// subscription right away („Erneut prüfen“).
     async fn refresh_interface_live(&self, id: u32) -> bool {
-        crate::facts::invalidate(DeviceId(id), &[crate::facts::FactKind::Menu]);
+        crate::facts::invalidate(DeviceId(id), &[crate::facts::FactKind::Table]);
         true
     }
     /// Drops the neighbors the devices were seen to see (`neighborFindings`): who shows them
     /// reads them anew, a subscription right away („Nochmals prüfen“).
     async fn refresh_neighbors(&self, ids: Vec<u32>) -> bool {
         for id in ids {
-            crate::facts::invalidate(DeviceId(id), &[crate::facts::FactKind::Menu]);
+            crate::facts::invalidate(DeviceId(id), &[crate::facts::FactKind::Table]);
         }
         true
     }

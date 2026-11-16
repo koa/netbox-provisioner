@@ -2,7 +2,7 @@
 //!
 //! Health, resources and PoE out of a device, for the network map's nodes and PoE edges
 //! (`docs/network-map.md`, steps 3 and 4): read over the same way as everything else
-//! (`DeviceAccess::connect`), each menu as a fact (`access::Reader::at`), so the map's viewers
+//! (`DeviceAccess::connect`), each table as a fact (`access::Reader::at`), so the map's viewers
 //! share a reading. Not judged, only shown: the rows of `/system/health/print` as name,
 //! value and unit, the few fields of `/system/resource/print` worth a column of their own, and
 //! every PoE-capable port (`device::poe::PoePorts`).

@@ -11,7 +11,7 @@
 //! provisioner has the fallback's window to reach the device, instead of a delay counted from
 //! the start that has to cover a script of any length.
 //!
-//! Checked on a CHR (7.24.5): a menu line (`/ip/address`) inside `:onerror … in={}` keeps its
+//! Checked on a CHR (7.24.5): a table line (`/ip/address`) inside `:onerror … in={}` keeps its
 //! context across the script's own `:set`/`:if` lines, `$e` holds RouterOS' message, `/ping
 //! … count=1` gives the number of replies, and `/file set … contents=` takes text.
 use crate::{Error, device::ros::fallback::Rearmed};
@@ -58,7 +58,7 @@ pub struct Instrument<'a> {
     /// how long the script waits before it changes anything
     pub lead: Duration,
     /// the provisioner's address as the device sees it: pinged after each line, until it
-    /// doesn't answer, and then before each menu, until it answers again
+    /// doesn't answer, and then before each table, until it answers again
     pub probe: Option<IpAddr>,
     /// the fallback's new delay from the script's end, or after its error; `None` without a
     /// fallback
@@ -67,8 +67,8 @@ pub struct Instrument<'a> {
     pub fallback: &'a str,
 }
 
-/// `script` (a generated one: a menu line, then a command per line) with the marks of `how`.
-/// Lines are counted from 1 as `script` has them, menu lines included.
+/// `script` (a generated one: a table line, then a command per line) with the marks of `how`.
+/// Lines are counted from 1 as `script` has them, table lines included.
 pub fn instrument(script: &str, how: &Instrument) -> String {
     let mut out = String::new();
     let file = how.file;
@@ -161,7 +161,7 @@ pub fn instrument(script: &str, how: &Instrument) -> String {
 pub struct Progress {
     /// the lines of the script
     pub lines: u32,
-    /// the line of the last menu begun
+    /// the line of the last table begun
     pub section: Option<u32>,
     pub done: bool,
     /// the line it stopped at and RouterOS' reason

@@ -7,7 +7,7 @@ use crate::{
     device::ros::{
         CapsManDeviceDataCurrent, CapsManDeviceDataTarget, SetupError, WifiDeviceDataCurrent,
         WifiDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
-        apply::{CapsmanRadios, reprovisioned_menus, restarts_radio},
+        apply::{CapsmanRadios, reprovisioned_tables, restarts_radio},
         cfg::provided_by_routeros,
         hw_facts::{RadioPackage, build_wifi_ports, build_wireless_ports},
         l2::{KeepNameGenerator, L2Setup},
@@ -501,7 +501,7 @@ async fn new_wlan_reprovisions_the_caps() {
     ]
     .concat();
     assert_eq!(
-        reprovisioned_menus(&mutations),
+        reprovisioned_tables(&mutations),
         [CapsmanRadios::Wifi, CapsmanRadios::Legacy]
     );
     let cap_only = mutations
@@ -510,7 +510,7 @@ async fn new_wlan_reprovisions_the_caps() {
         .cloned()
         .collect::<Vec<_>>();
     assert!(!cap_only.is_empty());
-    assert!(reprovisioned_menus(&cap_only).is_empty());
+    assert!(reprovisioned_tables(&cap_only).is_empty());
 }
 
 /// An update without fields isn't in the script and changes nothing: no radio waits for it, no
@@ -533,7 +533,7 @@ fn an_empty_update_changes_no_radio() {
         empty(b"interface/wifi/configuration"),
         empty(b"interface/wireless"),
     ];
-    assert!(reprovisioned_menus(&mutations).is_empty());
+    assert!(reprovisioned_tables(&mutations).is_empty());
     assert!(!restarts_radio(&mutations));
     let changed = ResourceMutation {
         fields: Box::new([mikrotik_model::value::KeyValuePair {
@@ -542,7 +542,7 @@ fn an_empty_update_changes_no_radio() {
         }]),
         ..empty(b"caps-man/configuration")
     };
-    assert_eq!(reprovisioned_menus(&[changed]), [CapsmanRadios::Legacy]);
+    assert_eq!(reprovisioned_tables(&[changed]), [CapsmanRadios::Legacy]);
 }
 
 /// With three WLANs the provisioning has two slaves; the sort finds each configuration

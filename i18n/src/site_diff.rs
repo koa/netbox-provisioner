@@ -24,8 +24,8 @@ pub fn changes(count: u32) -> String {
         count => format!("{count} Änderungen"),
     }
 }
-/// the changes of one menu: added, changed, removed
-pub fn menu(menu: &str, added: i64, changed: i64, removed: i64) -> String {
+/// the changes of one table: added, changed, removed
+pub fn table(table: &str, added: i64, changed: i64, removed: i64) -> String {
     let mut parts = Vec::new();
     if added > 0 {
         parts.push(format!("+{added}"));
@@ -36,7 +36,7 @@ pub fn menu(menu: &str, added: i64, changed: i64, removed: i64) -> String {
     if removed > 0 {
         parts.push(format!("−{removed}"));
     }
-    format!("/{menu} {}", parts.join(" "))
+    format!("/{table} {}", parts.join(" "))
 }
 /// the parts that need a closer look
 pub fn removes_addresses(count: i64) -> String {

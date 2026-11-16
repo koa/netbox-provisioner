@@ -298,11 +298,11 @@ pub mod event {
     pub fn setup_done(address: &str) -> String {
         format!("Das Gerät antwortet an {address}")
     }
-    pub fn radios_reprovisioned(count: i64, menu: &str) -> String {
-        format!("{count} Radios neu provisioniert ({menu})")
+    pub fn radios_reprovisioned(count: i64, table: &str) -> String {
+        format!("{count} Radios neu provisioniert ({table})")
     }
-    pub fn radios_not_reprovisioned(menu: &str, error: &str) -> String {
-        format!("{menu} nicht neu provisioniert: {error}")
+    pub fn radios_not_reprovisioned(table: &str, error: &str) -> String {
+        format!("{table} nicht neu provisioniert: {error}")
     }
     pub fn www_certificate_installed(name: &str, days: i64) -> String {
         format!("Zertifikat für WebFig über HTTPS angelegt ({name}, {days} Tage gültig)")

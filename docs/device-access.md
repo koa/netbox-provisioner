@@ -26,21 +26,21 @@ darauf). Wie lange ein Befehl ohne Antwort bleiben darf, sagt er selbst
 
 ## Die Befehle (mikrotik-model)
 
-- **Menüs**: `print` liest als Modell des Menüs (`collect_resource`, `SingleResource::fetch`,
+- **Tabellen**: `print` liest als Modell der Tabelle (`collect_resource`, `SingleResource::fetch`,
   `KeyedResource::fetch`), `monitor once` als sein Monitor-Modell (`collect_monitor_once`).
   Geändert wird über Mutationen: `calculate_create` (ohne die leeren Felder),
   `generate_single_update`/`calculate_update` (nur, was sich unterscheidet),
-  `ResourceMutation::remove`, angewendet mit `apply_mutation`. Ein Menü, das gebraucht wird,
-  bekommt sein Modell (`ros_model/*.txt`), mit einem Test, der eine echte Antwort eines Geräts
+  `ResourceMutation::remove`, angewendet mit `apply_mutation`. Eine Tabelle, die gebraucht wird,
+  bekommt ihr Modell (`ros_model/*.txt`), mit einem Test, der eine echte Antwort eines Geräts
   liest (`src/model/test/device_reads.rs`).
-- **Aktionen**: was kein `print`/`add`/`set`/`remove`/`move` eines Menüs ist, ist ein Typ im
+- **Aktionen**: was kein `print`/`add`/`set`/`remove`/`move` einer Tabelle ist, ist ein Typ im
   Katalog `action.rs`, mit seinen Parametern getypt: Reboot, Shutdown, Ping, die Monitore ohne
   Modell, Power-Cycle, Partitionen, Device-Mode, Pakete, Zertifikat-Import, `/execute`,
   `/tool/fetch`, ein Passwort, ein Skript-Job.
 - **`RawCommand`**: ein Befehl ohne eigenen Typ, mit ausdrücklicher Wirkung. Er ist ein
   Code-Smell (Benutzer, 2026-11-13): jede Verwendung ist ein Befehl, der in den Katalog gehört.
   Vermehren sie sich, trägt das Konzept nicht mehr, und es ist zuerst neu zu überlegen. Es gibt
-  zwei begründete Ausnahmen: `examples/print_device.rs` zeigt, was ein beliebiges Menü antwortet,
+  zwei begründete Ausnahmen: `examples/print_device.rs` zeigt, was eine beliebige Tabelle antwortet,
   auch eines ohne Modell, und der CHR-Test `wifi_country` prüft, dass RouterOS eine Schreibweise
   des Landes ablehnt, die das getypte Modell gar nicht schreiben kann.
 
@@ -57,8 +57,8 @@ mac-telnet), ist kein API-Befehl und bleibt Text.
   öffnen ihre eigenen Verbindungen, weil deren Lebensdauer zählt (Device-Mode-Countdown, ein
   Apply schneidet seinen Weg ab, Reboot).
 - `act` (Write) und `observe` schicken eine Aktion und geben ihre Zeilen; ein `!trap` wird
-  `Error::Refused` mit dem Befehl. `collect_if_present` liest ein Menü, das ein Paket bringt,
-  ohne das Paket als leer (`is_missing_menu`).
+  `Error::Refused` mit dem Befehl. `collect_if_present` liest eine Tabelle, die ein Paket bringt,
+  ohne das Paket als leer (`is_missing_table`).
 
 Funktionen, die nur lesen, nehmen `&impl Reads`, solche, die schreiben, `&impl Writes`: was
 eine Funktion darf, prüft der Compiler.
@@ -71,7 +71,7 @@ und jede Netzkarten-Abfrage schickte so zwei Identity-Prints an jedes Gerät.
 ## Basis-Fakten
 
 Gespeichert wird nur, was gemessen wurde (Benutzer, 2026-11-13): die Antworten eines Geräts auf
-einen Befehl, der nichts ändert (Print, Monitor einmal, Ping; Fact `Menu`), ein Login-Versuch
+einen Befehl, der nichts ändert (Print, Monitor einmal, Ping; Fact `Table`), ein Login-Versuch
 (`Login`, auch keine Antwort oder eine Absage) und die neueste Version bei MikroTik
 (`NewestVersion`). Alles darüber wird bei jedem Zugriff daraus gerechnet.
 
@@ -83,20 +83,20 @@ einen Befehl, der nichts ändert (Print, Monitor einmal, Ping; Fact `Menu`), ein
   Zugangsdaten sehen vielleicht weniger). `as_of` sagt, wie alt das Älteste ist, das er las:
   der Stand dessen, was daraus gerechnet wird. Ohne Alter liest er live (`Session::reader`, die
   Jobs, das Log, die PoE-Beobachtung). `Reader::stored` schaut nur nach (`knownDiff`, der
-  Portname der Ersteinrichtung, wenn der Nachbar nicht antwortet); ein fehlendes Menü ist dann
+  Portname der Ersteinrichtung, wenn der Nachbar nicht antwortet); eine fehlende Tabelle ist dann
   eine abgebrochene Verbindung.
-- Antworten, die eine abgebrochene Verbindung sind, gelten nicht; ein fehlendes Menü (Paket
+- Antworten, die eine abgebrochene Verbindung sind, gelten nicht; eine fehlende Tabelle (Paket
   nicht installiert) ist eine Antwort.
-- Ungültig wird ein Menü durch jeden schreibenden API-Befehl an das Gerät, auf jeder Verbindung
-  (`access::generation`: ein Leser verwirft die Menüs, wenn seit seinem letzten Lesen
+- Ungültig wird eine Tabelle durch jeden schreibenden API-Befehl an das Gerät, auf jeder Verbindung
+  (`access::generation`: ein Leser verwirft die Tabellen, wenn seit seinem letzten Lesen
   geschrieben wurde), durch das Ende jedes Jobs auf dem Gerät (`JobKind::invalidates`), durch
   „Neu laden“, „Nochmals lesen“ und „Erneut prüfen“, und durch das Alter, das der Leser zulässt.
   Ein Job holt an seinem Ende nichts und legt nichts ab; eine Änderung in NetBox verwirft nichts.
-- Eine Rechnung über mehrere Menüs muss aushalten, dass sie verschieden alt sind: Lesen über
-  Menüs war nie atomar.
+- Eine Rechnung über mehrere Tabellen muss aushalten, dass sie verschieden alt sind: Lesen über
+  Tabellen war nie atomar.
 
-Ein Befehl, der dasselbe Menü mit Filter fragt, wäre ein eigener Fakt. Deshalb fragt
-mikrotik-model auch ein Menü mit Schlüssel ganz (`PrintKeyed`) und lässt die Zeilen, die es
+Ein Befehl, der dieselbe Tabelle mit Filter fragt, wäre ein eigener Fakt. Deshalb fragt
+mikrotik-model auch eine Tabelle mit Schlüssel ganz (`PrintKeyed`) und lässt die Zeilen, die es
 nicht will (anderer Schlüssel, `dynamic`, `builtin`), selbst weg: `/ip/service` ging so vorher
 zweimal an jedes Gerät, mit `?name=` und ohne.
 
@@ -112,7 +112,7 @@ dasselbe Gerät ging; gezählt wird der Pfad, Pings an verschiedene Adressen sin
 (`LOG_LEVEL=info,backend::operation=debug`): die Netzkarte schickt jeden Pfad pro Gerät einmal
 (`NetworkMap` 1 Befehl, `NetworkMapDetails` 6 an 6 Geräte), der Rollout-Plan über die Site Lab
 53 an 6 Geräte ohne Doppel. Die Geräteseite (`DeviceOverview`, lab-hex) schickte vor den
-Basis-Fakten 67 Befehle an 4 Geräte, zehn Menüs zwei- oder dreimal; mit ihnen 56, mit den
+Basis-Fakten 67 Befehle an 4 Geräte, zehn Tabellen zwei- oder dreimal; mit ihnen 56, mit den
 ganzen Listen 53, doppelt nur noch `/system/identity` (der Login und seine Prüfung, ob die
 Verbindung noch lebt, wenn sie seit `LOGIN_CHECKED` nicht antwortete).
 

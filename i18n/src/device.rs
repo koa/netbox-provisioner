@@ -236,14 +236,14 @@ pub mod warning {
 
     /// the board's radios run with `package`
     pub fn cap_off_outside_wlan_group(package: &str) -> String {
-        let menu = if package == "wireless" {
+        let table = if package == "wireless" {
             "/interface wireless"
         } else {
             "/interface wifi"
         };
         format!(
             "Das Gerät ist in NetBox in keiner WLAN-Gruppe und nutzt keinen seiner Funk-Ports: \
-             sein CAP ({menu} cap) ist danach aus, es sendet kein WLAN. Für einen Access Point \
+             sein CAP ({table} cap) ist danach aus, es sendet kein WLAN. Für einen Access Point \
              die WLAN-Gruppe in NetBox ergänzen."
         )
     }

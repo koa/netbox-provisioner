@@ -7,7 +7,7 @@
 //! an SSH tunnel to that neighbor, like a device after its initial setup.
 //!
 //! Anything but a `.../print` is refused, so this can't change a device. The prints are raw
-//! commands, the one place in the provisioner where that is the point: it shows what a menu
+//! commands, the one place in the provisioner where that is the point: it shows what a table
 //! answers, also one mikrotik-model has no type for yet.
 use backend::{
     config::CONFIG,

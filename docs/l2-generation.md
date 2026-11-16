@@ -137,7 +137,7 @@ meldet keinen) oder eines, das die Tabelle nicht nennt, behält, was jedes Board
 | Marvell Prestera | CRS3xx/4xx/5xx/8xx, CCR2116, CCR2216 | ✓ | ✓ |
 | 88E6393X, 88E6191X, 88E6190 | RB5009, L009, CCR2004-16G-2S+ | ✓ | ✓ |
 | MT7621, MT7531, EN7523, RTL8367 | hEX, hEX S, RB4011 | ✓ | ✗ |
-| CRS1xx/2xx | CRS109, CRS125 | im Switch-Menü | ✓ |
+| CRS1xx/2xx | CRS109, CRS125 | in den Switch-Tabellen | ✓ |
 | QCA8337, Atheros8327/8316 | hAP ac, hEX PoE, wAP ac, CCR1009-8G | ✗ | ✗ |
 | Atheros8227/7240 | hAP lite, hEX lite | ✗ | ✗ |
 | IPQ-PPE, QCA8386, 98PX1012 | hAP ax², cAP ax, CCR2004-1G-12S+2XS | nichts in Hardware | |
@@ -193,11 +193,11 @@ Querier und `permanent`). Eine Bridge ohne eigene Adresse (ein AP zwischen WLAN 
 beiden: Ihre IGMP-Queries kämen von 0.0.0.0, was manche Clients ignorieren. Zwei Querier in
 einem Segment wählen einen, den mit der kleinsten Adresse.
 
-**VLANs im Switch-Menü eines CRS1xx/2xx** (`L2Setup::switch_vlans`, `device/ros/switch_menu.rs`).
+**VLANs in den Switch-Tabellen eines CRS1xx/2xx** (`L2Setup::switch_vlans`, `device/ros/switch_table.rs`).
 Eine VLAN-Filtering-Bridge läuft dort auf der CPU; die VLANs baut stattdessen der Switch selbst
 (MikroTiks Handbuch, „CRS1xx/2xx series switches examples“). Das gilt für eine getaggte Bridge,
 deren Ports alle Ethernet-Ports am Switch-Chip sind und die ausser Adressen nichts enthält
-(`L2Setup::vlans_in_switch_menu`); eine mit VXLAN, Funk oder CAPsMAN bleibt
+(`L2Setup::vlans_in_switch_table`); eine mit VXLAN, Funk oder CAPsMAN bleibt
 VLAN-Filtering-Bridge, sie läuft so oder so auf der CPU. Die Bridge bleibt dann ohne
 VLAN-Filtering (RSTP), ihre Ports ohne `pvid` und `/interface/bridge/vlan` leer, und pro VLAN
 entsteht:
@@ -210,9 +210,9 @@ entsteht:
 
 Der Switch verwirft, was an einem dieser Ports ausserhalb seiner VLANs ankommt
 (`drop-if-invalid-or-src-port-not-member-of-vlan-on-ports`). lab-crs125 (CRS125-24G-1S, 7.24.6)
-behält so alle Bridge-Ports in Hardware (`hw=yes`). Das Switch-Menü selbst kennt dort kein
-`set <numbers>` (`/console/inspect`), mikrotik-model führt es deshalb als Einzelmenü; ein Board
-mit mehreren Switches könnte es so nicht nehmen.
+behält so alle Bridge-Ports in Hardware (`hw=yes`). Die Struktur `/interface/ethernet/switch`
+selbst kennt dort kein `set <numbers>` (`/console/inspect`), mikrotik-model führt sie deshalb
+als einzelne Struktur (`single`); ein Board mit mehreren Switches könnte sie so nicht nehmen.
 
 Beim Wechsel von einer VLAN-Filtering-Bridge meldet RouterOS `ether-type`, `frame-types`,
 `ingress-filtering` und `pvid` der Bridge nicht mehr; der Diff leert sie deshalb nicht

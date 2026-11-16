@@ -127,7 +127,7 @@ pub enum DiffEvent {
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
 pub struct KnownDiff {
-    pub menus: Option<Vec<MenuChanges>>,
+    pub tables: Option<Vec<TableChanges>>,
     pub error: Option<ErrorInfo>,
     pub age: Option<i32>,
     pub changed_age: Option<i32>,
@@ -143,14 +143,14 @@ pub struct SiteDiffStarted {
 #[cynic(schema = "authenticated")]
 pub struct DeviceDiffed {
     pub device: DiffedDevice,
-    pub menus: Vec<MenuChanges>,
+    pub tables: Vec<TableChanges>,
     pub error: Option<ErrorInfo>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
-pub struct MenuChanges {
-    pub menu: String,
+pub struct TableChanges {
+    pub table: String,
     pub added: i32,
     pub changed: i32,
     pub removed: i32,

@@ -116,7 +116,7 @@ pub enum Error {
     /// what MikroTik answers at this address instead of a version
     #[error("{0} names no RouterOS version: {1}")]
     UnknownRelease(Box<str>, Box<str>),
-    /// a `/system/resource` field, or that menu itself
+    /// a `/system/resource` field, or that table itself
     #[error("The device does not report {0}")]
     MissingDeviceState(&'static str),
     #[error("{0} is missing on the device after the upload")]

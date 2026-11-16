@@ -359,7 +359,7 @@ eingetragen.
   Bridges VLANs einer einzigen Bridge, denn jeder Chip ausser CRS1xx/2xx übernimmt nur eine
   Bridge in Hardware; eine Bridge ohne VLAN bekommt eine lokale VLAN-ID ab 4094 abwärts
   ([l2-generation.md](l2-generation.md#nach-dem-switch-chip-l2setupfor_switch_chips)). In NetBox
-  ändert sich dafür nichts. Auf einem CRS1xx/2xx kommen die VLANs stattdessen ins Switch-Menü,
+  ändert sich dafür nichts. Auf einem CRS1xx/2xx kommen die VLANs stattdessen in die Switch-Tabellen,
   die Bridge bleibt ohne VLAN-Filtering
   ([l2-generation.md](l2-generation.md#nach-dem-switch-chip-l2setupfor_switch_chips)).
 - Führt eine modellierte Bridge eine VLAN, kommen bridge-lose Ports und VLAN-Interfaces mit

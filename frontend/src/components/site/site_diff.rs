@@ -12,9 +12,9 @@ use crate::{
         POLL, RETRY,
         authenticated::{
             site_diff::{
-                DiffEvent as Event, DiffJob as Job, DiffSite, KnownDevice, MenuChanges as Menu,
-                SiteDiffEvents, SiteDiffEventsVariables, SiteDiffJobs, SiteDiffKnown,
-                SiteVariables,
+                DiffEvent as Event, DiffJob as Job, DiffSite, KnownDevice, SiteDiffEvents,
+                SiteDiffEventsVariables, SiteDiffJobs, SiteDiffKnown, SiteVariables,
+                TableChanges as Table,
             },
             types::{JobKind, JobState},
         },
@@ -44,7 +44,7 @@ pub struct SiteDiffProps {
 #[derive(Clone)]
 enum Read {
     Pending,
-    Done(Vec<Menu>),
+    Done(Vec<Table>),
     Failed(ServerProblem),
     /// changed since the check, not read again
     Changed,
@@ -179,7 +179,7 @@ impl Component for SiteDiff {
                             {
                                 row.read = match &diffed.error {
                                     Some(problem) => Read::Failed(ServerProblem::from(problem)),
-                                    None => Read::Done(diffed.menus),
+                                    None => Read::Done(diffed.tables),
                                 };
                             }
                         }
@@ -219,7 +219,7 @@ impl Component for SiteDiff {
             .count();
         let in_line = reads
             .iter()
-            .filter(|(_, read)| matches!(read, Read::Done(menus) if total(menus) == 0))
+            .filter(|(_, read)| matches!(read, Read::Done(tables) if total(tables) == 0))
             .count();
         let progress = (!self.rows.is_empty()).then(|| {
             let text = if running {
@@ -232,7 +232,7 @@ impl Component for SiteDiff {
         let mut rows = reads;
         // the most changes first, then the unread, then the ones in line
         rows.sort_by_key(|(_, read)| match read {
-            Read::Done(menus) if total(menus) > 0 => (0, u32::MAX - total(menus)),
+            Read::Done(tables) if total(tables) > 0 => (0, u32::MAX - total(tables)),
             Read::Failed(_) | Read::Changed => (1, 0),
             Read::Pending => (2, 0),
             Read::Done(_) => (3, 0),
@@ -305,19 +305,19 @@ impl SiteDiff {
     }
 }
 
-fn total(menus: &[Menu]) -> u32 {
-    menus
+fn total(tables: &[Table]) -> u32 {
+    tables
         .iter()
-        .map(|menu| (menu.added + menu.changed + menu.removed) as u32)
+        .map(|table| (table.added + table.changed + table.removed) as u32)
         .sum()
 }
 
 /// What is known of a device, in milliseconds since the epoch from the ages.
 fn known(device: KnownDevice) -> (i32, Known) {
     let diff = device.known_diff;
-    let read = match (diff.menus, &diff.error) {
+    let read = match (diff.tables, &diff.error) {
         (_, Some(problem)) => Some(Read::Failed(ServerProblem::from(problem))),
-        (Some(menus), None) => Some(Read::Done(menus)),
+        (Some(tables), None) => Some(Read::Done(tables)),
         (None, None) => None,
     };
     (
@@ -335,45 +335,45 @@ fn read_view(read: &Read) -> Html {
         Read::Pending => html!(<Spinner size={SpinnerSize::Sm}/>),
         Read::Changed => html!({ t::CHANGED_SINCE }),
         Read::Failed(problem) => html!({ t::unreadable(&problem.text()) }),
-        Read::Done(menus) if total(menus) == 0 => html!({ t::IN_LINE }),
-        Read::Done(menus) => {
-            let addresses = menus
+        Read::Done(tables) if total(tables) == 0 => html!({ t::IN_LINE }),
+        Read::Done(tables) => {
+            let addresses = tables
                 .iter()
-                .filter(|menu| menu.menu == "ip/address" || menu.menu == "ipv6/address")
-                .map(|menu| i64::from(menu.removed))
+                .filter(|table| table.table == "ip/address" || table.table == "ipv6/address")
+                .map(|table| i64::from(table.removed))
                 .sum::<i64>();
             let mut closer_look = Vec::new();
             if addresses > 0 {
                 closer_look.push(t::removes_addresses(addresses));
             }
-            let leases = menus
+            let leases = tables
                 .iter()
-                .filter(|menu| menu.menu == "ip/dhcp-server/lease")
-                .map(|menu| i64::from(menu.removed))
+                .filter(|table| table.table == "ip/dhcp-server/lease")
+                .map(|table| i64::from(table.removed))
                 .sum::<i64>();
             if leases > 0 {
                 closer_look.push(t::removes_leases(leases));
             }
-            if menus
+            if tables
                 .iter()
-                .any(|menu| menu.menu.starts_with("routing/ospf"))
+                .any(|table| table.table.starts_with("routing/ospf"))
             {
                 closer_look.push(t::TOUCHES_OSPF.to_string());
             }
-            if menus
+            if tables
                 .iter()
-                .any(|menu| menu.menu == "interface/bridge/port")
+                .any(|table| table.table == "interface/bridge/port")
             {
                 closer_look.push(t::TOUCHES_BRIDGE_PORTS.to_string());
             }
-            let list = menus
+            let list = tables
                 .iter()
-                .map(|m| t::menu(&m.menu, m.added.into(), m.changed.into(), m.removed.into()))
+                .map(|m| t::table(&m.table, m.added.into(), m.changed.into(), m.removed.into()))
                 .collect::<Vec<_>>()
                 .join(", ");
             html! {
                 <>
-                    <strong>{t::changes(total(menus))}</strong>
+                    <strong>{t::changes(total(tables))}</strong>
                     { for closer_look.into_iter().map(|text| html!(<>{", "}<strong>{text}</strong></>)) }
                     <div>{list}</div>
                 </>

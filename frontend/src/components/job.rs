@@ -570,8 +570,8 @@ fn describe(event: &Logged) -> Html {
             None => e::apply_started(seconds(started.starts_in)),
         },
         Event::RadiosReprovisioned(radios) => match &radios.error {
-            None => e::radios_reprovisioned(radios.count.into(), radios.menu.menu()),
-            Some(error) => e::radios_not_reprovisioned(radios.menu.menu(), &problem(error)),
+            None => e::radios_reprovisioned(radios.count.into(), radios.table.table()),
+            Some(error) => e::radios_not_reprovisioned(radios.table.table(), &problem(error)),
         },
         Event::WwwCertificateInstalled(installed) => match (&installed.error, &installed.name) {
             (Some(error), _) => e::www_certificate_not_installed(&problem(error)),

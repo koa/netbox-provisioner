@@ -1,4 +1,4 @@
-//! Scope: The VLAN menus of a CRS1xx/2xx switch (E17), from the VLANs `l2` gives it; not
+//! Scope: The VLAN tables of a CRS1xx/2xx switch (E17), from the VLANs `l2` gives it; not
 //! the bridge (`l2::target`).
 //!
 //! A CRS1xx/2xx runs a VLAN-filtering bridge on the CPU, so its bridge stays without VLAN
@@ -9,7 +9,7 @@
 //! switch drops what comes in at a port outside its VLANs
 //! (`drop-if-invalid-or-src-port-not-member-of-vlan-on-ports`). The CPU port is a member where
 //! the device is in the VLAN, over a VLAN interface on the bridge.
-use super::{SwitchMenuDataCurrent, SwitchMenuDataTarget, l2::SwitchVlan};
+use super::{SwitchTableDataCurrent, SwitchTableDataTarget, l2::SwitchVlan};
 use mikrotik_model::{
     ascii::AsciiString,
     model::{
@@ -22,7 +22,7 @@ use std::collections::BTreeSet;
 /// The port of the switch towards the CPU, RouterOS's own.
 pub(crate) const CPU_PORT: &[u8] = b"switch1-cpu";
 
-impl SwitchMenuDataTarget {
+impl SwitchTableDataTarget {
     pub(in crate::device::ros) fn new(_model: &[u8]) -> Self {
         Self {
             switch: Default::default(),
@@ -31,12 +31,12 @@ impl SwitchMenuDataTarget {
             ingress_vlan_translation: Default::default(),
         }
     }
-    /// The menus for `vlans`, the switch itself as `current` has it but for the ports it
+    /// The tables for `vlans`, the switch itself as `current` has it but for the ports it
     /// filters: every member of a VLAN.
     pub(in crate::device::ros) fn generate_from(
         &mut self,
         vlans: &[SwitchVlan],
-        current: &SwitchMenuDataCurrent,
+        current: &SwitchTableDataCurrent,
     ) {
         let cpu = AsciiString::from(CPU_PORT);
         let mut filtered = BTreeSet::new();

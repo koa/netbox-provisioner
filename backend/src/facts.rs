@@ -85,7 +85,7 @@ impl Freshness {
 pub enum FactKind {
     /// what a device answered to one command that changes nothing (a print, a monitor once, a
     /// ping), unread (`access::Reader::at`)
-    Menu,
+    Table,
     /// a login at one address, way and credentials: works, or why not
     Login,
     /// the way a device is reached at, after trying its addresses and neighbors
@@ -96,14 +96,14 @@ pub enum FactKind {
 
 impl FactKind {
     /// every kind about a device: what „Neu laden“ drops
-    pub const ABOUT_DEVICES: &[FactKind] = &[FactKind::Menu, FactKind::Login, FactKind::Route];
+    pub const ABOUT_DEVICES: &[FactKind] = &[FactKind::Table, FactKind::Login, FactKind::Route];
 }
 
 impl FactKind {
     /// the label in the metrics
     pub fn label(self) -> &'static str {
         match self {
-            FactKind::Menu => "menu",
+            FactKind::Table => "table",
             FactKind::Login => "login",
             FactKind::Route => "route",
             FactKind::NewestVersion => "newest_version",

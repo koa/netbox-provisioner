@@ -209,7 +209,7 @@ impl TaggedBridgeEntry {
     }
 }
 
-/// A VLAN a CRS1xx/2xx switch carries in its own menus instead of its bridge (E17,
+/// A VLAN a CRS1xx/2xx switch carries in its own tables instead of its bridge (E17,
 /// [`L2Setup::switch_vlans`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SwitchVlan {
@@ -833,12 +833,12 @@ impl<G: NameGenerator> L2Setup<G> {
         )
     }
 
-    /// Whether the VLANs of `bridge` go into the switch's own menus
-    /// ([`SwitchChip::vlans_in_switch_menu`], E17): every port of it is an Ethernet port on
+    /// Whether the VLANs of `bridge` go into the switch's own tables
+    /// ([`SwitchChip::vlans_in_switch_table`], E17): every port of it is an Ethernet port on
     /// such a chip, every VLAN has an ID of RouterOS's range, and nothing but addresses is in
     /// it besides (a VXLAN, radio or CAPsMAN needs the CPU, which bridges them in software
     /// anyway). Such a bridge stays without VLAN filtering.
-    pub fn vlans_in_switch_menu(&self, bridge: &TaggedBridge) -> bool {
+    pub fn vlans_in_switch_table(&self, bridge: &TaggedBridge) -> bool {
         bridge.switch_ports().next().is_some()
             && bridge
                 .ports
@@ -854,20 +854,20 @@ impl<G: NameGenerator> L2Setup<G> {
                             && self
                                 .switch_chips
                                 .chip_of(*port)
-                                .is_some_and(SwitchChip::vlans_in_switch_menu)
+                                .is_some_and(SwitchChip::vlans_in_switch_table)
                     }
                     L2Port::Ip { .. } => true,
                     _ => false,
                 })
     }
 
-    /// The VLANs of the bridges whose VLANs go into the switch's menus
-    /// ([`Self::vlans_in_switch_menu`]), by VLAN ID.
+    /// The VLANs of the bridges whose VLANs go into the switch's tables
+    /// ([`Self::vlans_in_switch_table`]), by VLAN ID.
     pub fn switch_vlans(&self) -> Box<[SwitchVlan]> {
         let mut vlans = self
             .tagged_bridges
             .iter()
-            .filter(|bridge| self.vlans_in_switch_menu(bridge))
+            .filter(|bridge| self.vlans_in_switch_table(bridge))
             .flat_map(|bridge| &bridge.ports)
             .map(|(&vlan_id, entry)| {
                 let mut vlan = SwitchVlan {
@@ -1139,7 +1139,7 @@ pub struct LogicalInterface<'a> {
 /// RouterOS interface name: lowercase, German umlauts transliterated (`Büro` ->
 /// `buero`), every run of other characters outside `[a-z0-9]` (spaces, `/`, `.`,
 /// accents...) a single `-`, no leading/trailing `-`. Interface names have to stay
-/// ASCII, and a `/` would even be misread as a menu path in a RouterOS script.
+/// ASCII, and a `/` would even be misread as a table path in a RouterOS script.
 /// Deliberately no case-based word splitting (`to_case`), which would also split
 /// at digits and turn `1og-sw2` into `1-og-sw-2`.
 fn name_part(raw: &str) -> String {
