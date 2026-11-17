@@ -49,9 +49,13 @@ leerem Diff sind nicht betroffen. Dann:
   am anderen Ende einer Strecke, ein VTEP desselben VXLAN): Die Automatik rollt **nicht
   teilweise** aus. Die Änderung wartet, bis ein Admin sie freigibt (dann mit dem manuellen Gerät
   in der Transaktion) oder die Geräte von Hand anwendet.
-- **Von Hand geändert:** Was auf einem automatischen Gerät NetBox widerspricht, geht mit der
-  nächsten Transaktion zurück: der Diff ist immer der ganze Unterschied zu NetBox, nicht nur der
-  der Änderung. Welcher Teil von Hand kam, lässt sich nicht verlässlich erkennen (ein früher
+- **Von Hand geändert:** Was auf einem automatischen Gerät NetBox widerspricht, geht spätestens
+  nach 30 min zurück, damit ein Problem damit gleich auftritt und nicht erst bei einer Änderung,
+  die nichts damit zu tun hat. Der Provisioner liest dafür die Abweichung jedes automatischen
+  Bereichs mindestens alle 30 min (wie „Abweichung von NetBox“ der Site, vier Geräte zugleich);
+  hat ein Gerät einen Diff, ist das eine Transaktion wie nach einer Änderung in NetBox, mit
+  denselben Regeln (Internet, Funkstrecken, nie automatisch). Eine Transaktion nimmt es ohnehin
+  mit: der Diff ist immer der ganze Unterschied zu NetBox, nicht nur der der Änderung. Welcher Teil von Hand kam, lässt sich nicht verlässlich erkennen (ein früher
   gescheitertes Anwenden sieht gleich aus), darum wird es nicht versucht. Damit nachzulesen ist,
   was überschrieben wurde, nennt der [Journal-Eintrag](../protocol.md) eines automatischen
   Anwendens die Änderungen pro Tabelle (heute nennt er nur, ob angewendet wurde). Ein
@@ -128,14 +132,12 @@ Die Automatik muss einen Neustart des Servers überleben:
 - Wo der Zustand gespeichert wird (neben dem, was ein Auftrag heute für das Weiterführen
   speichert, oder eigene Tabellen).
 - Wie „nie automatisch“ im Diff erkannt wird (Weg des Provisioners, Ankündigungen).
-- Ob Änderungen von Hand auch ohne NetBox-Änderung zurückgehen (z.B. eine Prüfung jede Nacht),
-  oder erst mit der nächsten.
 
 ## Entschieden (2026-11-17)
 
 - **Bereich:** Custom Field `auto_rollout` an der Site, mit einer Ausnahme pro Gerät.
 - **Einschalten** nur mit leeren Diffs; was danach von Hand auf ein automatisches Gerät kommt
-  und NetBox widerspricht, nimmt die nächste Transaktion zurück, im Journal nachzulesen.
+  und NetBox widerspricht, geht spätestens nach 30 min zurück, im Journal nachzulesen.
 - **Ein manuelles Gerät betroffen:** kein teilweises Rollout, ein Admin gibt frei.
 - **Vorher nicht erreichbare Geräte** werden übergangen und bekommen die Änderung nachgeholt,
   ebenso das andere Ende ihrer Funkstrecken; nur ein Fehler während der Transaktion nimmt alles
