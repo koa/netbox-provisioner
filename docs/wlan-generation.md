@@ -94,7 +94,10 @@ CAP bridged den Verkehr lokal.
 Ist ein Gerät nicht mehr Controller oder CAP, wird `WifiDeviceData` trotzdem gelesen, solange
 CAPsMAN oder CAP noch an sind oder die Zertifikate noch da sind, die CAPsMAN für sich generiert hat
 (`/interface/wifi/capsman` nennt sie in `generated-ca-certificate`/`generated-certificate`, auch
-ausgeschaltet). Die Generierung schaltet dann beides aus, entfernt Configurations, Provisioning und
+ausgeschaltet, und sie tragen noch RouterOS' Namen `WiFi-CAPsMAN-CA-<MAC>`/`WiFi-CAPsMAN-<MAC>`).
+CAPsMAN nennt ein entferntes oder umbenanntes Zertifikat weiter über seine ID, die RouterOS
+später einem anderen gibt: so hielt lab-wap das von WebFig für CAPsMANs, router-schmidrueti eine
+von Hand angelegte CA (`CA_Neu`), und das Apply entfernte sie. Die Generierung schaltet dann beides aus, entfernt Configurations, Provisioning und
 Datapaths und diese beiden Zertifikate. Verweise auf einen Datapath (`datapath`,
 `datapath.bridge`, `slaves-datapath`) und `datapath.vlan-id` löscht das Modell mit `!feld`
 (Flag `unset`): `datapath=""` ignoriert RouterOS ohne Fehler, `datapath.bridge=""` lehnt es als

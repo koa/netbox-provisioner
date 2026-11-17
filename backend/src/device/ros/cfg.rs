@@ -82,15 +82,16 @@ pub struct DeviceCfg {
     www_certificate: WwwCertificate,
 }
 
-/// The certificates CAPsMAN names as generated for itself. It keeps the id of one removed
-/// since, which RouterOS gives a new certificate later, so the provisioner's own are never
-/// among them: lab-wap's CAPsMAN named WebFig's that way (7.24.6), and its apply removed it.
+/// The certificates CAPsMAN names as generated for itself, as long as they carry the names
+/// RouterOS gives them (`WiFi-CAPsMAN-CA-<MAC>`, `WiFi-CAPsMAN-<MAC>`, CHR 7.24.6). CAPsMAN keeps
+/// the id of one removed or renamed since, which RouterOS gives another certificate later:
+/// lab-wap's CAPsMAN named WebFig's that way (7.24.6), router-schmidrueti's a hand-made CA
+/// (`CA_Neu`, with the CA's id dangling as `*1`), and the apply removed them.
 pub(in crate::device) fn capsman_generated(names: [Option<AsciiString>; 2]) -> Box<[AsciiString]> {
     names
         .into_iter()
         .flatten()
-        .filter(|name| !name.is_empty())
-        .filter(|name| !name.0.starts_with(www_certificate::PREFIX.as_bytes()))
+        .filter(|name| name.0.starts_with(b"WiFi-CAPsMAN-"))
         .collect()
 }
 

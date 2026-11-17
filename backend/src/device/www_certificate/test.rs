@@ -1,5 +1,4 @@
 use super::*;
-use mikrotik_model::ascii::AsciiString;
 use rcgen::{BasicConstraints, IsCa, Issuer};
 use x509_parser::extensions::{GeneralName, ParsedExtension};
 
@@ -139,15 +138,22 @@ fn a_device_name_is_a_dns_name_only_if_it_can_be() {
     assert!(!is_dns_name("router_1"));
 }
 
-/// CAPsMAN names a removed certificate by its id, which RouterOS gave WebFig's later
-/// (lab-wap, 7.24.6): the provisioner's own are never CAPsMAN's, to be cleaned up.
+/// CAPsMAN names a removed certificate by its id, which RouterOS gives another one later:
+/// WebFig's (lab-wap, 7.24.6), a hand-made CA (router-schmidrueti). Only those still carrying
+/// RouterOS' names are CAPsMAN's, to be cleaned up.
 #[test]
-fn webfig_s_certificate_is_never_capsman_s() {
+fn only_certificates_named_by_routeros_are_capsman_s() {
     let generated = crate::device::ros::cfg::capsman_generated([
         Some("netbox-provisioner-www-1794381103".into()),
-        Some("capsman-cert".into()),
+        Some("CA_Neu".into()),
     ]);
-    assert_eq!(&*generated, [AsciiString::from("capsman-cert")]);
+    assert!(generated.is_empty());
+    let generated = crate::device::ros::cfg::capsman_generated([
+        Some("WiFi-CAPsMAN-CA-F07AAC44DF79".into()),
+        Some("WiFi-CAPsMAN-5B8D49CBC3E9".into()),
+    ]);
+    assert_eq!(generated.len(), 2);
+    assert!(crate::device::ros::cfg::capsman_generated([Some("*1".into()), None]).is_empty());
 }
 
 /// A certificate as RouterOS prints it (CHR 7.24.5), named `name` with `skid`.

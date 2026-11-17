@@ -1091,8 +1091,9 @@ once the new one is in), the state is `Needed`. With a CA in the store RouterOS
 refuses a just imported certificate for a few seconds ("input does not match any value of
 certificate", CHR 7.24.6), so `attach` tries for up to 20 s (`ATTACH_WITHIN`). The CHR test
 checks the chain over the node's SOCKS with rustls (`served_chain`). CAPsMAN
-keeps a removed certificate's id in `generated-*`, which RouterOS gives a new one later, so the
-provisioner's are never CAPsMAN's (`cfg::capsman_generated`): lab-wap's apply removed WebFig's.
+keeps a removed certificate's id in `generated-*`, which RouterOS gives a new one later, so only
+those still named as RouterOS names them (`WiFi-CAPsMAN-…`) are CAPsMAN's
+(`cfg::capsman_generated`): lab-wap's apply removed WebFig's, router-schmidrueti's a hand-made CA.
 With `api_networks` the plain API and www answer only those, written as `address`, which RouterOS
 7.24 still takes for its `available-from`, unless the device reports `available-from` already
 (an open service reports neither). `generate_live` reads the API's open connections (dynamic
@@ -1161,7 +1162,8 @@ wifi package they get their default names back, and `/interface/wifi` mutations 
 channel brings the packages in line without changing the version (`updateRouteros` without
 `channel`). A device that is no controller or CAP anymore still
 gets `WifiDeviceData` read while CAPsMAN/CAP are on or the certificates CAPsMAN generated (named in
-`/interface/wifi/capsman generated-*`, not recognizable by trust store) are left, and these are
+`/interface/wifi/capsman generated-*` and still by RouterOS' names `WiFi-CAPsMAN-…`, not
+recognizable by trust store) are left, and these are
 removed. A VLAN interface on a tagged bridge only exists where the device has L3 in that VLAN.
 
 A device that powers another one over PoE (NetBox `poe_mode=pse` on the port cabled to it) must
