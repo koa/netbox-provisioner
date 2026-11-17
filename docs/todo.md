@@ -55,6 +55,11 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z50 | Anschluss (Uplink-Port) eines Geräts automatisch erkennen? | ja, über die Nachbarn; übernommen wird mit einem Klick, nicht von selbst (2026-11-17) | C21 |
 | Z51 | Rückgängig nach gescheitertem Ausrollen? | nein, es bleibt als Abweichung sichtbar; eine ausgerollte Änderung lässt sich als neue Änderung zurücknehmen (2026-11-17) | C20, C21 |
 | Z52 | Darf ein Admin das UI eines Anwohners sehen und dort ändern? | ja, Support-Ansicht mit Auswahl des Anwohners; der Verlauf nennt beide; später vielleicht Stufen (nur sehen) (2026-11-17) | C21 |
+| Z53 | Welcher Teil des Netzes rollt automatisch aus? | die Sites mit dem Custom Field `auto_rollout`, ein Gerät kann ausgenommen werden; einschalten nur mit leeren Diffs (2026-11-17) | C20 |
+| Z54 | Was, wenn eine Änderung ein manuelles Gerät betrifft? | kein teilweises Rollout, ein Admin gibt frei oder wendet von Hand an (2026-11-17) | C20 |
+| Z55 | Was, wenn ein automatisches Gerät vor dem Rollout nicht erreichbar ist? | es wird zurückgestellt und bekommt die Änderung nachgeholt; nur ein Fehler während der Transaktion nimmt alles zurück (2026-11-17) | C20 |
+| Z56 | Diff ohne NetBox-Änderung (Drift) in einem automatischen Bereich? | Fehlerzustand, kein Rollout (2026-11-17) | C20 |
+| Z57 | Internet vor und nach einem automatischen Rollout? | von jedem Gerät geprüft, IPv4 und IPv6 gleich wichtig; ohne beides beginnt es nicht, fehlt eines danach, geht alles zurück und der Bereich in den Fehlerzustand (2026-11-17) | C20 |
 
 ## A. Sicherheit
 
@@ -77,7 +82,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | Regel, Plan, Rollout und eingefärbte Knoten der Netz-Ansicht erledigt; offen: CHR-Test der Kette `entry -- a -- target` |
 | C18 | Reiner L2-Switch als „Extender“: Ein alter Switch ohne L3-Offload oder mit anderen Problemen (CRS2xx, CRS354) hängt an einem modernen Switch oder Router, der seine L3-Funktionen über einen Trunk übernimmt: Port oder Bridge, mit IP oder VLAN (Z39) | [Reiner L2-Switch](concepts/l2-extender.md) | M–L | offen |
 | C19 | DNS für alle Adressen auf Geräte-Ports: Vorwärts- (A, AAAA) und Rückwärts-Einträge (PTR) aus NetBox, ein Server dafür (Z40); zuerst ein Konzept | – | M–L | offen |
-| C20 | Automatisches Rollout der NetBox-Änderungen (Z46): was ein Anwohner (oder ein Helfer) in NetBox ändert, erreicht die betroffenen Geräte ohne Anwenden von Hand, in sicherer Reihenfolge und mit Fallback; den Stand pro Gerät und Änderung festhalten (ausstehend, ausgerollt, wartet auf ein nicht erreichbares Gerät, gescheitert), weil das Anwohner-UI ihn pro Element zeigt (Z51); zuerst ein Konzept | – | L | offen |
+| C20 | Automatisches Rollout der NetBox-Änderungen (Z46): was ein Anwohner (oder ein Helfer) in NetBox ändert, erreicht die betroffenen Geräte ohne Anwenden von Hand, in sicherer Reihenfolge und mit Fallback; den Stand pro Gerät und Änderung festhalten (ausstehend, ausgerollt, wartet auf ein nicht erreichbares Gerät, gescheitert), weil das Anwohner-UI ihn pro Element zeigt (Z51); Bereich pro Site (Z53), eine Transaktion über `applyBatch`, Internet vorher und nachher (Z57), Fehlerzustand pro Bereich (Z54–Z56) | [Automatisches Rollout](concepts/auto-rollout.md) | L | offen |
 | C21 | Anwohner-UI nach dem Prototyp: Tabs Dosen und Geräte (Ports als Dosen, Räume, Kabel, Geräte pro Port aus der Bridge-Host-Tabelle), Netze (WLAN ein/aus, SSID, Passwort, QR-Code, Clients mit Band und Signal), Änderungen (Stand pro Gerät, Zurücknehmen); Entwürfe mit Zurücksetzen und Vorschau; ein Status-Label pro Element aus Rollout (C20) und Live-Reads; Anschluss erkennen und übernehmen (Z50); Raum per Popup; Support-Ansicht für Admins mit Filter nach Besitz im Provisioner (Z52) | [Self-Service](concepts/self-service.md#anwohner-ui) | L | offen |
 
 ## D. In Arbeit, Rest offen

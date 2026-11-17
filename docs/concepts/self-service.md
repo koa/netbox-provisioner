@@ -249,7 +249,8 @@ Das automatische Rollout (C20) braucht es ab Schritt 3, damit eine Änderung die
 - **Fremde VLANs** müssen nicht von seinem Gerät ferngehalten werden: Er konfiguriert es nur über
   den Provisioner.
 - Die Mutationen regeln nur, was ein Anwohner **in NetBox** eintragen darf; Auswirkungen auf
-  fremde Geräte sind erlaubt. Die Geräte erreicht es über ein **automatisches Rollout** (C20).
+  fremde Geräte sind erlaubt. Die Geräte erreicht es über ein **automatisches Rollout** (C20,
+  [Konzept](auto-rollout.md)).
 - Ein Anwohner **legt keine WLANs an**; er ändert Ports und das Passwort bestehender WLANs.
   Ergänzt nach dem Prototyp: auch SSID (eindeutig in der WLAN-Gruppe) und ein/aus.
 
