@@ -373,6 +373,9 @@ pub struct Device {
     pub map_position: Option<crate::netbox::MapPosition>,
     /// Custom field `watchdog_target`: what its ping watchdog watches.
     pub watchdog_target: WatchdogTarget,
+    /// Custom field `auto_rollout`: `Some(false)` leaves it to the operator in a site that
+    /// rolls out automatically.
+    pub auto_rollout: Option<bool>,
 }
 
 /// What a device's ping watchdog watches (custom field `watchdog_target`, `docs/watchdog.md`).
@@ -430,6 +433,8 @@ impl DeviceRole {
 pub struct SiteData {
     pub name: Box<str>,
     pub devices: Box<[DeviceId]>,
+    /// Custom field `auto_rollout`: its devices get NetBox' changes without an apply by hand.
+    pub auto_rollout: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

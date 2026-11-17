@@ -128,6 +128,7 @@ lange aus.
 | Journal Entry       | `provisioner_job`      | JSON                         | Stand eines Jobs, vom Provisioner geschrieben |
 | Device              | `map_position`         | JSON                         | Position auf der Netz-Karte, von dort publiziert |
 | Device              | `watchdog_target`      | Text (mit Regex)             | was der Ping-Watchdog überwacht (leer: Parent, `none`, IPv4) |
+| Site, Device        | `auto_rollout`         | Boolean                      | Änderungen automatisch ausrollen; am Gerät `false` nimmt es aus |
 
 Die Namen müssen exakt stimmen. Anlegen, Werte und Wirkung im Einzelnen:
 [custom-fields.md](custom-fields.md).

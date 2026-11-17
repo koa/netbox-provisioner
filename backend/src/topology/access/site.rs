@@ -38,6 +38,10 @@ impl SiteAccess {
     pub fn name(&self) -> &str {
         self.data().map(|d| &*d.name).unwrap_or_default()
     }
+    /// Custom field `auto_rollout`: its devices get NetBox' changes without an apply by hand.
+    pub fn auto_rollout(&self) -> bool {
+        self.data().is_some_and(|d| d.auto_rollout)
+    }
     pub fn devices(&self) -> impl Iterator<Item = DeviceAccess> {
         self.data()
             .into_iter()
@@ -69,5 +73,47 @@ impl SiteAccess {
     /// The findings about its devices, the worst first.
     async fn findings(&self) -> Vec<Finding> {
         self.topology.site_findings(self.id)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::topology::{
+        SiteData, access::AccessTopology, access::device::DeviceAccess, interfaces::test::Net,
+    };
+    use std::sync::Arc;
+
+    /// A device of a site with `auto_rollout` rolls out automatically, unless its own field
+    /// is `false`; one of another site doesn't.
+    #[test]
+    fn a_site_rolls_out_its_devices_but_those_left_out() {
+        let mut net = Net::new();
+        let automatic = net.builder.sites.next_id();
+        net.builder.sites.insert(
+            automatic,
+            SiteData {
+                name: "auto".into(),
+                devices: Box::new([net.r1, net.r2]),
+                auto_rollout: true,
+            },
+        );
+        let manual = net.builder.sites.next_id();
+        net.builder.sites.insert(
+            manual,
+            SiteData {
+                name: "manual".into(),
+                devices: Box::new([net.b1]),
+                auto_rollout: false,
+            },
+        );
+        for (device, site) in [(net.r1, automatic), (net.r2, automatic), (net.b1, manual)] {
+            net.builder.devices.get_mut(&device).unwrap().site = Some(site);
+        }
+        net.builder.devices.get_mut(&net.r2).unwrap().auto_rollout = Some(false);
+        let topology = Arc::new(net.builder.build());
+        let automatic = |id| DeviceAccess::create(topology.clone(), id).rolls_out_automatically();
+        assert!(automatic(net.r1));
+        assert!(!automatic(net.r2));
+        assert!(!automatic(net.b1));
     }
 }

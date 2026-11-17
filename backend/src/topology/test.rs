@@ -131,6 +131,11 @@ pub(crate) fn example_topology() -> Arc<Topology> {
             device
                 .entry("config_context")
                 .or_insert_with(|| serde_json::json!({}));
+            // and before the sites' custom fields were: none rolls out automatically
+            if let Some(site) = device.get_mut("site").and_then(|site| site.as_object_mut()) {
+                site.entry("custom_field_data")
+                    .or_insert_with(|| serde_json::json!({}));
+            }
         }
     }
     // Exports from before prefixes were queried with tags, scope, description and custom

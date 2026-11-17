@@ -97,6 +97,7 @@ fn build() -> Net {
         SiteData {
             name: "site".into(),
             devices: Box::new([router, client]),
+            auto_rollout: false,
         },
     );
     for id in [router, client] {

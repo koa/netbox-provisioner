@@ -17,6 +17,7 @@ werden, beschreibt [netbox-modeling.md](netbox-modeling.md).
 | `propagate_default_route` | Device          | Boolean                         | OSPF gibt die Default-Route des Geräts weiter |
 | `map_position`         | Device             | JSON                             | Position auf der Netz-Karte, von dort publiziert |
 | `watchdog_target`      | Device             | Text (mit Regex)                | was der Ping-Watchdog überwacht             |
+| `auto_rollout`         | Site, Device       | Boolean                         | Änderungen automatisch ausrollen (Gerät: `false` nimmt es aus) |
 | `controller`           | Wireless LAN Group | Object → Device                 | CAPsMAN-Controller der Gruppe               |
 | `wlan_mgmt`            | Wireless LAN Group | Object → VLAN                   | Management-VLAN der Gruppe                  |
 | `vxlan_vni`            | VLAN Group         | Integer                         | VLANs der Gruppe über VXLAN verbinden       |
@@ -110,6 +111,13 @@ Watchdog überwacht dann wie ohne das Feld. Damit es nicht so weit kommt, beim A
 ```
 ^(none|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]))$
 ```
+
+### `auto_rollout` (Site und Device, Boolean)
+
+Ein Feld für beide Objekt-Typen. An der Site: Die RouterOS-Geräte der Site bekommen, was sich in
+NetBox ändert, ohne Anwenden von Hand ([Automatisches Rollout](concepts/auto-rollout.md), noch
+nicht umgesetzt: bisher wird das Feld nur gelesen). Am Gerät: `false` nimmt es in einer solchen
+Site aus, es bleibt beim Anwenden von Hand; leer oder `true` folgt der Site. Nur Admins setzen es.
 
 ### `controller` (Wireless LAN Group, Object → Device)
 

@@ -34,6 +34,16 @@ search_weight: 1000
 filter_logic: loose
 weight: 100
 ---
+name: auto_rollout
+label: Auto rollout
+type: boolean
+object_types: dcim.site,dcim.device
+description: "Site: NetBox changes reach its devices without a manual apply; device: false leaves it manual"
+required: false
+search_weight: 1000
+filter_logic: loose
+weight: 100
+---
 name: watchdog_target
 label: Watchdog target
 type: text

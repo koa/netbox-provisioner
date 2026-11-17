@@ -394,6 +394,7 @@ fn site_with(
                 .copied()
                 .chain([client])
                 .collect(),
+            auto_rollout: false,
         },
     );
     builder.sites.insert(
@@ -401,6 +402,7 @@ fn site_with(
         SiteData {
             name: "internet".into(),
             devices: routers[nat.len()..].into(),
+            auto_rollout: false,
         },
     );
     for (index, (addresses, ports)) in services.iter().enumerate() {

@@ -243,6 +243,14 @@ impl DeviceAccess {
     pub fn site(&self) -> Option<SiteAccess> {
         self.data().and_then(|d| d.site).map(self.create_access())
     }
+    /// Whether NetBox' changes reach it without an apply by hand
+    /// (`docs/concepts/auto-rollout.md`): RouterOS, at a site with `auto_rollout`, and not
+    /// left to the operator by its own `auto_rollout: false`.
+    pub fn rolls_out_automatically(&self) -> bool {
+        self.has_routeros()
+            && self.data().and_then(|d| d.auto_rollout) != Some(false)
+            && self.site().is_some_and(|site| site.auto_rollout())
+    }
     pub fn wlan_controller_of(&self) -> Option<WlanGroupAccess> {
         self.data()
             .and_then(|d| d.wlan_controller_of)

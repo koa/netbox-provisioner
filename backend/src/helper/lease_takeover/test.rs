@@ -20,6 +20,7 @@ fn net() -> Net {
         crate::topology::SiteData {
             name: "Lab".into(),
             devices: Box::new([net.r1]),
+            auto_rollout: false,
         },
     );
     net.builder.devices.get_mut(&net.r1).unwrap().site = Some(site);

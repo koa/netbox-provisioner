@@ -161,6 +161,7 @@ pub struct Site {
     pub name: String,
     pub tenant: Option<TenantRef>,
     pub region: Option<Region>,
+    pub custom_field_data: JSON,
 }
 
 /// Up to six levels of a site's region hierarchy: the topmost one is the country.

@@ -20,8 +20,8 @@ das Auslösen, der Bereich, die Prüfung des Internets und der Fehlerzustand.
 
 - **Custom Field `auto_rollout` an der Site** (Boolean, nur Admins): Alle Geräte der Site sind
   automatisch.
-- **Ausnahme pro Gerät:** ein Custom Field am Gerät, das es manuell lässt (z.B. ein heikler
-  Core-Router in einer automatischen Site). Name noch offen.
+- **Ausnahme pro Gerät:** dasselbe Feld am Gerät, `false` lässt es manuell (z.B. ein heikler
+  Core-Router in einer automatischen Site); leer folgt es der Site.
 - **Einschalten** geht nur, wenn alle Geräte der Site einen leeren Diff haben. Sonst zeigt der
   Provisioner die Diffs; der Admin wendet sie zuerst an. Sonst ginge mit der ersten Änderung
   alles mit, was sich vorher angesammelt hat.
@@ -128,7 +128,6 @@ Die Automatik muss einen Neustart des Servers überleben:
 
 - Webhook aus NetBox oder Abfragen des Changelogs, und die Länge der Ruhezeit.
 - Die Ziele für den Internet-Test (IPv4 und IPv6).
-- Der Name des Custom Fields, das ein Gerät in einer automatischen Site manuell lässt.
 - Wo der Zustand gespeichert wird (neben dem, was ein Auftrag heute für das Weiterführen
   speichert, oder eigene Tabellen).
 - Wie „nie automatisch“ im Diff erkannt wird (Weg des Provisioners, Ankündigungen).

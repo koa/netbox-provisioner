@@ -83,12 +83,19 @@ pub(crate) fn build_topology_from(
     builder.build(fetch_time, source, services, management_proxy)
 }
 
+/// A site while its devices are gathered.
+struct SiteGathered {
+    name: Box<str>,
+    devices: Vec<DeviceId>,
+    auto_rollout: bool,
+}
+
 /// The topology's maps while [`build_topology_from`] fills them, and what one pass gathers
 /// for a later one (the interfaces of an address, of a VLAN, the prefix of a network).
 #[derive(Default)]
 struct Builder {
     devices: HashMap<DeviceId, Device>,
-    sites: HashMap<SiteId, (Box<str>, Vec<DeviceId>)>,
+    sites: HashMap<SiteId, SiteGathered>,
     interfaces: HashMap<InterfaceId, Interface>,
     interface_of_address: HashMap<IpAddressId, InterfaceId>,
     interfaces_of_vlan: HashMap<VlanId, BTreeSet<InterfaceId>>,
@@ -187,8 +194,12 @@ impl Builder {
         if let Some(site) = site {
             self.sites
                 .entry(site)
-                .or_insert_with(|| (device.site.name.as_str().into(), Vec::new()))
-                .1
+                .or_insert_with(|| SiteGathered {
+                    name: device.site.name.as_str().into(),
+                    devices: Vec::new(),
+                    auto_rollout: device.site.custom_field_data.auto_rollout == Some(true),
+                })
+                .devices
                 .push(device_id);
         }
         let country = device.site.region.as_ref().map(country_of_region);
@@ -319,6 +330,7 @@ impl Builder {
                 watchdog_target: super::WatchdogTarget::parse(
                     device.custom_field_data.watchdog_target.as_deref(),
                 ),
+                auto_rollout: device.custom_field_data.auto_rollout,
             },
         );
     }
@@ -734,9 +746,13 @@ impl Builder {
             sites: self
                 .sites
                 .into_iter()
-                .map(|(id, (name, devices))| {
-                    let devices = devices.into_boxed_slice();
-                    (id, SiteData { name, devices })
+                .map(|(id, site)| {
+                    let data = SiteData {
+                        name: site.name,
+                        devices: site.devices.into_boxed_slice(),
+                        auto_rollout: site.auto_rollout,
+                    };
+                    (id, data)
                 })
                 .collect(),
             interfaces: self.interfaces,
