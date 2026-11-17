@@ -41,6 +41,7 @@ pub struct SiteAutoRollout {
     pub error: Option<SiteAutoRolloutError>,
     pub last_round: Option<LastRound>,
     pub released: Vec<i32>,
+    pub holding: Vec<i32>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -119,4 +120,16 @@ pub struct ReleaseAutoRollout {
     #[arguments(deviceIds: $devices)]
     #[expect(dead_code, reason = "selected because a mutation needs a field")]
     pub release_auto_rollout: bool,
+}
+
+#[derive(cynic::QueryFragment, Debug)]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "MutationAuthenticated",
+    variables = "ReleaseVariables"
+)]
+pub struct AcceptAutoRolloutDiff {
+    #[arguments(deviceIds: $devices)]
+    #[expect(dead_code, reason = "selected because a mutation needs a field")]
+    pub accept_auto_rollout_diff: bool,
 }

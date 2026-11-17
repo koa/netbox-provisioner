@@ -67,6 +67,10 @@ pub struct State {
     pub baselines: BTreeMap<DeviceId, Fingerprint>,
     /// manual devices an admin released: the next round applies them with the automatic ones
     pub released: BTreeSet<DeviceId>,
+    /// the diffs of the manual devices holding the last round back, which an admin may take
+    /// over as their baselines ([`accept`])
+    #[serde(default)]
+    pub holding: BTreeMap<DeviceId, Fingerprint>,
     /// the last round
     pub last: Option<RoundDone>,
 }
@@ -233,6 +237,22 @@ pub fn release(devices: &[DeviceId]) {
     wake();
 }
 
+/// Takes the diffs with which manual devices hold the rounds back as their baselines: they
+/// stay on the devices, and the next round goes on without them. A diff changed since holds
+/// back again.
+pub fn accept(devices: &[DeviceId]) {
+    {
+        let mut state = STATE.lock_anyway();
+        for device in devices {
+            if let Some(fingerprint) = state.holding.remove(device) {
+                state.baselines.insert(*device, fingerprint);
+            }
+        }
+        save(&state);
+    }
+    wake();
+}
+
 /// Starts the rounds (with `allow_apply` only), after reading what was kept.
 pub fn start(topology: TopologyHolder) {
     if !CONFIG.allow_apply {
@@ -337,6 +357,14 @@ async fn round(topology: Arc<Topology>) -> Duration {
     {
         let mut state = STATE.lock_anyway();
         state.baselines = decision.baselines.clone();
+        state.holding = seen
+            .iter()
+            .filter(|s| decision.held_by.contains(&s.device))
+            .filter_map(|s| match &s.diff {
+                Diff::Changes(fingerprint) => Some((s.device, fingerprint.clone())),
+                _ => None,
+            })
+            .collect();
         state.sites.retain(|site, _| sites.contains(site));
         state.site_names = site_names;
         for site in &new_sites {

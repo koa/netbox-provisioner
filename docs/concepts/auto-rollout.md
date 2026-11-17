@@ -50,7 +50,7 @@ Offen ist, wie das im Diff erkannt wird.
 - **Bereich:** Custom Field `auto_rollout` an der Site, mit einer Ausnahme pro Gerät.
 - **Einschalten** nur mit leeren Diffs; was danach von Hand auf ein automatisches Gerät kommt
   und NetBox widerspricht, geht spätestens nach 30 min zurück, im Journal nachzulesen.
-- **Ein manuelles Gerät betroffen:** kein teilweises Rollout, ein Admin gibt frei; erkannt an
+- **Ein manuelles Gerät betroffen:** kein teilweises Rollout, ein Admin gibt frei oder übernimmt den Diff als Stand (2026-11-17); erkannt an
   einem Diff, der sich seit der letzten Runde geändert hat.
 - **Vorher nicht erreichbare Geräte** werden übergangen und bekommen die Änderung nachgeholt,
   ebenso das andere Ende ihrer Funkstrecken; nur ein Fehler während der Transaktion nimmt alles

@@ -797,6 +797,14 @@ impl MutationAuthenticated {
         crate::auto_rollout::release(&devices);
         true
     }
+    /// Takes the diffs with which manual devices hold the automatic rollout back as theirs:
+    /// they stay on the devices, unapplied, and the next round goes on without them.
+    #[graphql(guard = "WritesAllowed")]
+    async fn accept_auto_rollout_diff(&self, device_ids: Vec<u32>) -> bool {
+        let devices: Vec<DeviceId> = device_ids.into_iter().map(DeviceId).collect();
+        crate::auto_rollout::accept(&devices);
+        true
+    }
     /// Starts applying the generated config to `ids` together (`allow_apply` must be set),
     /// each with its NetBox address and credentials: one job per device, with one fallback
     /// for all of them, taken away only once every one is reached again (`device::batch`).

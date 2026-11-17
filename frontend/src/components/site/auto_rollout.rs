@@ -8,8 +8,9 @@ use crate::{
     graphql::{
         authenticated::{
             auto_rollout::{
-                ClearAutoRolloutError, LastRound, ReleaseAutoRollout, ReleaseVariables,
-                RoundOutcome, SiteAutoRollout, SiteAutoRolloutQuery, SiteError, SiteVariables,
+                AcceptAutoRolloutDiff, ClearAutoRolloutError, LastRound, ReleaseAutoRollout,
+                ReleaseVariables, RoundDevice, RoundOutcome, SiteAutoRollout, SiteAutoRolloutQuery,
+                SiteError, SiteVariables,
             },
             device::AllowApply,
         },
@@ -41,7 +42,8 @@ pub enum AutoRolloutMsg {
     AllowApply(bool),
     Error(FrontendError),
     Clear,
-    Release(Vec<i32>),
+    Release(i32),
+    Accept(i32),
 }
 
 impl Component for AutoRollout {
@@ -98,11 +100,23 @@ impl Component for AutoRollout {
                 });
                 return false;
             }
-            AutoRolloutMsg::Release(devices) => {
+            AutoRolloutMsg::Release(device) => {
                 let scope = ctx.link().clone();
                 spawn_local(async move {
+                    let devices = vec![device];
                     let release = ReleaseAutoRollout::build(ReleaseVariables { devices });
                     if let Err(error) = request(scope.clone(), release).await {
+                        scope.send_message(AutoRolloutMsg::Error(error));
+                    }
+                });
+                return false;
+            }
+            AutoRolloutMsg::Accept(device) => {
+                let scope = ctx.link().clone();
+                spawn_local(async move {
+                    let devices = vec![device];
+                    let accept = AcceptAutoRolloutDiff::build(ReleaseVariables { devices });
+                    if let Err(error) = request(scope.clone(), accept).await {
                         scope.send_message(AutoRolloutMsg::Error(error));
                     }
                 });
@@ -131,7 +145,8 @@ impl Component for AutoRollout {
             html! {
                 <Alert inline=true r#type={AlertType::Danger}
                     title={t::error(reason, &devices, &t::ago(error.age.into()))}>
-                    <Button variant={ButtonVariant::Secondary} disabled={!self.allow_apply} {onclick}>
+                    <Button variant={ButtonVariant::Secondary} disabled={!self.allow_apply}
+                        {onclick}>
                         {t::CLEAR}
                     </Button>
                 </Alert>
@@ -142,7 +157,7 @@ impl Component for AutoRollout {
         let last = state
             .last_round
             .as_ref()
-            .map(|last| self.last_round(ctx, last, &state.released));
+            .map(|last| self.last_round(ctx, last, state));
         html! {
             <Card class="findings">
                 <CardHeader><CardTitle>{t::TITLE}</CardTitle></CardHeader>
@@ -159,7 +174,7 @@ impl Component for AutoRollout {
 }
 
 impl AutoRollout {
-    fn last_round(&self, ctx: &Context<Self>, last: &LastRound, released: &[i32]) -> Html {
+    fn last_round(&self, ctx: &Context<Self>, last: &LastRound, state: &SiteAutoRollout) -> Html {
         let outcome = match &last.outcome {
             RoundOutcome::NothingToDo => t::Outcome::NothingToDo,
             RoundOutcome::NotInLine => t::Outcome::NotInLine,
@@ -175,21 +190,16 @@ impl AutoRollout {
         let deferred = (!last.deferred.is_empty())
             .then(|| html!(<p>{t::deferred(&names(&last.deferred))}</p>));
         let held_by = (!last.held_by.is_empty()).then(|| {
-            let ids: Vec<i32> = last.held_by.iter().map(|device| device.id).collect();
-            let all_released = ids.iter().all(|id| released.contains(id));
-            let onclick = ctx
-                .link()
-                .callback(move |_| AutoRolloutMsg::Release(ids.clone()));
             html! {
                 <Alert inline=true r#type={AlertType::Warning} title={t::HELD_BY}>
-                    <p>{names(&last.held_by).join(", ")}</p>
-                    if all_released {
-                        <p>{t::RELEASED}</p>
-                    } else {
-                        <Button variant={ButtonVariant::Secondary} disabled={!self.allow_apply} {onclick}>
-                            {t::RELEASE}
-                        </Button>
-                    }
+                    <dl class="neighbor-results">
+                        { for last.held_by.iter().map(|device| html! {
+                            <>
+                                <dt>{device.name.clone()}</dt>
+                                <dd>{self.held_device(ctx, device, state)}</dd>
+                            </>
+                        }) }
+                    </dl>
                 </Alert>
             }
         });
@@ -201,8 +211,39 @@ impl AutoRollout {
             </>
         }
     }
+
+    /// What an admin does about a manual device holding the rounds back.
+    fn held_device(
+        &self,
+        ctx: &Context<Self>,
+        device: &RoundDevice,
+        state: &SiteAutoRollout,
+    ) -> Html {
+        let id = device.id;
+        if state.released.contains(&id) {
+            return html!({ t::RELEASED });
+        }
+        if !state.holding.contains(&id) {
+            return html!({ t::ACCEPTED });
+        }
+        let release = ctx.link().callback(move |_| AutoRolloutMsg::Release(id));
+        let accept = ctx.link().callback(move |_| AutoRolloutMsg::Accept(id));
+        html! {
+            <>
+                <Button variant={ButtonVariant::Secondary} disabled={!self.allow_apply}
+                    onclick={release}>
+                    {t::RELEASE}
+                </Button>
+                {" "}
+                <Button variant={ButtonVariant::Secondary} disabled={!self.allow_apply}
+                    onclick={accept}>
+                    {t::ACCEPT}
+                </Button>
+            </>
+        }
+    }
 }
 
-fn names(devices: &[crate::graphql::authenticated::auto_rollout::RoundDevice]) -> Vec<String> {
+fn names(devices: &[RoundDevice]) -> Vec<String> {
     devices.iter().map(|device| device.name.clone()).collect()
 }

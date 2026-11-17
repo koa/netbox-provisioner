@@ -8,6 +8,8 @@ pub const READY: &str = "Bereit: Änderungen in NetBox gehen ohne Anwenden von H
 pub const CLEAR: &str = "Fehler aufheben und ausrollen";
 pub const RELEASE: &str = "Freigeben und mit ausrollen";
 pub const RELEASED: &str = "Freigegeben, kommt mit der nächsten Runde";
+pub const ACCEPT: &str = "Als Stand übernehmen";
+pub const ACCEPTED: &str = "Als Stand übernommen, bleibt auf dem Gerät";
 
 /// Since how long, from seconds.
 pub fn ago(seconds: i64) -> String {
@@ -88,4 +90,6 @@ pub fn deferred(devices: &[String]) -> String {
 }
 
 pub const HELD_BY: &str = "Diese manuellen Geräte haben eine neue Abweichung von NetBox; die \
-    Automatik wartet, bis sie freigegeben oder von Hand angewendet sind:";
+    Automatik wartet, bis sie von Hand angewendet, freigegeben (ihre Abweichung geht mit hinaus) \
+    oder als Stand übernommen sind (sie bleibt auf dem Gerät, erst eine weitere Änderung hält \
+    wieder an):";

@@ -724,7 +724,8 @@ only): rounds after NetBox's webhook (`/netbox-webhook`, HMAC-SHA512 with
 back) and 5 min after a deferral. A round reads the diffs of the automatic devices and the
 manual ones next to them (`related`), decides without a device (`auto_rollout::decide`:
 unreached devices and their radio partners deferred, a manual device whose diff fingerprint
-changed holds all back until released, a site seen automatic first with diffs goes into
+changed holds all back until released or its diff accepted as baseline
+(`accept`, from `State.holding`), a site seen automatic first with diffs goes into
 `NotInLine`) and starts one `batch::apply` with `needs_internet` (`Started::Automatic`); a
 failure puts the members' sites into their error state, which an admin clears
 (`clearAutoRolloutError`). State in `state_dir/auto_rollout.json`; the site page's card

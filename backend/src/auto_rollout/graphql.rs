@@ -15,6 +15,9 @@ pub struct SiteAutoRollout {
     pub last_round: Option<LastRound>,
     /// manual devices an admin released, applied with the next round
     pub released: Box<[u32]>,
+    /// manual devices holding back whose diff an admin may still take over; one of the last
+    /// round's `heldBy` missing here is taken over already
+    pub holding: Box<[u32]>,
 }
 
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -74,5 +77,6 @@ pub fn of_site(site: SiteId) -> SiteAutoRollout {
             },
         ),
         released: state.released.iter().map(|id| id.0).collect(),
+        holding: state.holding.keys().map(|id| id.0).collect(),
     }
 }

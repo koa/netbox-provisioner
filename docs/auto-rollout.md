@@ -45,9 +45,11 @@ Entschieden wird ohne Gerät (`auto_rollout::decide`, getestet in `decide/test.r
   Änderung an nur einer Seite kann die Strecke trennen. Die übrigen gehen ohne sie.
 - **Manuelles Gerät daneben:** Hat es einen anderen Diff als in der Runde zuvor (seine
   Grundlinie), hält es die ganze Runde an, kein teilweises Rollout. Es hält an, bis es von Hand
-  angewendet ist (leerer Diff) oder ein Admin es freigibt; dann geht es mit den automatischen in
-  dieselbe Transaktion. Einen Diff, den es schon hatte, behält es als Grundlinie: was ein
-  Operator dort liegen liess, hält nichts an.
+  angewendet ist (leerer Diff) oder ein Admin entscheidet: **freigeben** (`releaseAutoRollout`),
+  dann geht es mit den automatischen in dieselbe Transaktion, oder **als Stand übernehmen**
+  (`acceptAutoRolloutDiff`), dann wird der Diff, mit dem es anhielt, seine Grundlinie und bleibt
+  auf dem Gerät; erst ein weiter geänderter Diff hält wieder an. Einen Diff, den es schon hatte,
+  behält es als Grundlinie: was ein Operator dort liegen liess, hält nichts an.
 
 Die Transaktion ist ein Gemeinsam anwenden (`job::start_all`, `batch::apply` mit Internet),
 im Journal „Vom automatischen Rollout gestartet“. Ist eines der Geräte mit einem anderen
@@ -72,15 +74,16 @@ Metriken an `/metrics`, für den Alarm im Alertmanager:
 
 In `state_dir/auto_rollout.json` (`saved_job::state_file`), damit ein Neustart nichts
 vergisst: der Zustand jeder automatischen Site (bereit, Fehler mit Grund, Geräten und
-Zeitpunkt), die Grundlinien der manuellen Geräte, die freigegebenen Geräte und die letzte
+Zeitpunkt), die Grundlinien der manuellen Geräte, die Diffs der anhaltenden (`holding`, zum
+Übernehmen), die freigegebenen Geräte und die letzte
 Runde (Ergebnis, angewendete, zurückgestellte und anhaltende Geräte).
 
 ## Auf der Seite der Site
 
 Die Karte „Automatisches Rollout“ (`components::site::auto_rollout`, nur bei einer Site mit
 `auto_rollout`; `SiteAccess.autoRollout`) zeigt, ob die Site bereit ist oder im Fehler, die
-letzte Runde, die zurückgestellten Geräte und die anhaltenden manuellen mit „Freigeben und mit
-ausrollen“ (`releaseAutoRollout`). Sie abonniert den Zustand: jede Änderung daran meldet
+letzte Runde, die zurückgestellten Geräte und die anhaltenden manuellen, jedes mit „Freigeben
+und mit ausrollen“ und „Als Stand übernehmen“. Sie abonniert den Zustand: jede Änderung daran meldet
 `facts::Change::AutoRollout`.
 
 ## Im Lab geprüft (2026-11-17)
@@ -90,4 +93,6 @@ Site in den Fehler „nicht wie in NetBox“ (lab-wap, lab-crs226, lab-sxt-a/b: 
 Multicast-Querier, WebFig-Zertifikat). Nach dem Aufheben rollte die Runde die vier gemeinsam
 aus, Internet vorher und nachher über IPv4 und IPv6 erreicht. Ein Label an einem freien Port
 von lab-hex in NetBox: 20 s nach dem Webhook die Runde, 53 s nach der Änderung war der
-umbenannte Port auf dem Gerät; das Label gelöscht, ebenso zurück.
+umbenannte Port auf dem Gerät; das Label gelöscht, ebenso zurück. Ein Label an einem freien
+Port von lab-np2 (manuell) hielt die Runde an; im Browser als Stand übernommen, ging die
+nächste Runde weiter, ohne lab-np2 anzuwenden.
