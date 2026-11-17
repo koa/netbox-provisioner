@@ -1,0 +1,1178 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mein Netz</title>
+<!-- Prototype of the resident UI (docs/concepts/self-service.md#anwohner-ui), a Design Component:
+     ./support.js is the runtime of the design canvas, not part of this repository. -->
+<script src="./support.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@patternfly/patternfly@6/patternfly.min.css">
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+/* socket row: socket card, cable, device or net card; on a phone stacked with a vertical cable */
+.sock-row{display:flex;flex-wrap:wrap;align-items:flex-start;row-gap:12px}
+.sock-conn{flex:0 0 72px;align-self:stretch;padding-top:34px}
+.sock-line{border-top:2px var(--cable,solid) var(--pf-t--global--border--color--default)}
+.sock-text{text-align:center;padding-top:4px}
+@media (max-width: 767px){
+.sock-row{row-gap:0}
+.sock-conn{flex:1 1 100%;padding:0 0 0 32px;display:flex;align-items:center;gap:8px;min-height:12px}
+.sock-line{border-top:0;border-left:2px var(--cable,solid) var(--pf-t--global--border--color--default);height:32px}
+.sock-text{padding:0}
+}
+</style>
+</helmet>
+<div class="pf-v6-c-page" style="min-height: 100vh">
+
+<header class="pf-v6-c-masthead">
+<div class="pf-v6-c-masthead__main">
+<div class="pf-v6-c-masthead__brand">
+<span class="pf-v6-c-title pf-m-lg" style="color: inherit">Mein Netz</span>
+</div>
+</div>
+<div class="pf-v6-c-masthead__content">
+<span class="pf-v6-c-content" style="margin-left: auto"><small>{{whoText}}</small></span>
+</div>
+</header>
+
+<div class="pf-v6-c-page__main-container">
+<main class="pf-v6-c-page__main" tabindex="-1">
+<sc-if value="{{impersonating}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-banner pf-m-orange" style="position: sticky; top: 0; z-index: 20">
+<div style="width: 100%; max-width: 1240px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<span style="flex-grow: 1"><strong>Support-Ansicht:</strong> Du siehst das Netz so, wie es dieser Anwohner sieht, und kannst für ihn ändern.</span>
+<span class="pf-v6-c-form-control" style="width: 280px"><select aria-label="Anwohner" value="{{resident}}" onChange="{{pickResident}}"><sc-for list="{{residentOptions}}" as="o" hint-placeholder-count="3"><option value="{{o.v}}">{{o.label}}</option></sc-for></select><span class="pf-v6-c-form-control__utilities"><span class="pf-v6-c-form-control__toggle-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span></span></span>
+<button class="pf-v6-c-button pf-m-secondary pf-m-small" type="button" onClick="{{leave}}"><span class="pf-v6-c-button__text">Support-Ansicht beenden</span></button>
+</div>
+</div>
+</sc-if>
+
+<section class="pf-v6-c-page__main-section" style="padding-block-end: 0">
+<div style="width: 100%; max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px">
+<h1 class="pf-v6-c-title pf-m-2xl">{{pageTitle}}</h1>
+<sc-if value="{{showResident}}" hint-placeholder-val="{{ true }}">
+<div class="pf-v6-c-content"><p>Deine Dosen und Geräte, und welches deiner Netze darauf läuft. Änderungen sammelst du und speicherst sie zusammen.</p></div>
+<div class="pf-v6-c-tabs">
+<ul class="pf-v6-c-tabs__list" role="tablist">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+<li class="{{t.cls}}" role="presentation">
+<button class="pf-v6-c-tabs__link" role="tab" aria-selected="{{t.on}}" onClick="{{t.go}}"><span class="pf-v6-c-tabs__item-text">{{t.label}}</span>
+<sc-if value="{{t.hasBadge}}" hint-placeholder-val="{{ false }}"><span class="pf-v6-c-badge pf-m-unread" style="margin-left: 6px">{{t.badge}}</span></sc-if>
+</button>
+</li>
+</sc-for>
+</ul>
+</div>
+</sc-if>
+</div>
+</section>
+
+<section class="pf-v6-c-page__main-section">
+<div style="width: 100%; max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px">
+<sc-if value="{{hasDraft}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-alert pf-m-inline pf-m-warning" style="position: sticky; top: 0; z-index: 10">
+<div class="pf-v6-c-alert__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"></path><path d="M12 10v5"></path><path d="M12 18h.01"></path></svg></div>
+<p class="pf-v6-c-alert__title"><span class="pf-v6-screen-reader">Warnung:</span>{{draftText}}</p>
+<div class="pf-v6-c-alert__description"><p>Erst nach dem Speichern wird es ausgerollt.</p></div>
+<div class="pf-v6-c-alert__action-group">
+<button class="pf-v6-c-button pf-m-link pf-m-inline" type="button" onClick="{{openPreview}}"><span class="pf-v6-c-button__text">Vorschau und speichern</span></button>
+<button class="pf-v6-c-button pf-m-link pf-m-inline" type="button" onClick="{{discard}}"><span class="pf-v6-c-button__text">Alle verwerfen</span></button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{adminHome}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-card">
+<div class="pf-v6-c-card__title"><h2 class="pf-v6-c-card__title-text">Als Anwohner ansehen</h2></div>
+<div class="pf-v6-c-card__body" style="display: flex; flex-direction: column; gap: 12px">
+<div class="pf-v6-c-content"><p>Für den Support: die Ansicht eines Anwohners öffnen, genau so, wie er sie sieht. (Im Provisioner steht das im Admin-UI; hier nur angedeutet.)</p></div>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+<span class="pf-v6-c-form-control" style="width: 280px"><select aria-label="Anwohner" value="{{resident}}" onChange="{{pickResident}}"><sc-for list="{{residentOptions}}" as="o" hint-placeholder-count="3"><option value="{{o.v}}">{{o.label}}</option></sc-for></select><span class="pf-v6-c-form-control__utilities"><span class="pf-v6-c-form-control__toggle-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span></span></span>
+<button class="pf-v6-c-button pf-m-primary" type="button" onClick="{{impersonate}}"><span class="pf-v6-c-button__text">Ansicht öffnen</span></button>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{showSummary}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{issues}}" as="is" hint-placeholder-count="2">
+<div class="{{is.cls}}">
+<div class="pf-v6-c-alert__icon"><sc-if value="{{is.success}}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12.5l3 3 5-6"></path></svg></sc-if><sc-if value="{{is.warning}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"></path><path d="M12 10v5"></path><path d="M12 18h.01"></path></svg></sc-if><sc-if value="{{is.danger}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9 9l6 6"></path><path d="M15 9l-6 6"></path></svg></sc-if><sc-if value="{{is.info}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6"></path><path d="M12 7.5h.01"></path></svg></sc-if></div>
+<p class="pf-v6-c-alert__title"><span class="pf-v6-screen-reader">Status:</span>{{is.title}}</p>
+<div class="pf-v6-c-alert__description"><p>{{is.text}}</p></div>
+<sc-if value="{{is.hasAction}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-alert__action-group"><button class="pf-v6-c-button pf-m-link pf-m-inline" type="button" onClick="{{is.go}}"><span class="pf-v6-c-button__text">{{is.action}}</span></button></div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<!-- Anschlüsse -->
+<sc-if value="{{isPorts}}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{locations}}" as="loc" hint-placeholder-count="2">
+<div class="pf-v6-c-card">
+<div class="pf-v6-c-card__title"><h2 class="pf-v6-c-card__title-text">{{loc.name}}</h2></div>
+<div class="pf-v6-c-card__body" style="display: flex; flex-direction: column; gap: 20px">
+<sc-for list="{{loc.rows}}" as="r" hint-placeholder-count="2">
+<div class="sock-row">
+
+<!-- links: der Port -->
+<div style="flex: 0 1 340px; min-width: 260px">
+<sc-if value="{{r.left.none}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-card pf-m-compact pf-m-plain" style="border: 1px dashed var(--pf-t--global--border--color--default)"><div class="pf-v6-c-card__body">
+<strong>Nicht angeschlossen</strong>
+<div class="pf-v6-c-content"><small>Wähle rechts beim Gerät, wo du es anschliesst.</small></div>
+</div></div>
+</sc-if>
+<sc-if value="{{r.left.patch}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-card pf-m-compact"><div class="pf-v6-c-card__body">
+<strong>Patchkabel von {{r.left.from}}</strong>
+<div class="pf-v6-c-content"><small>Die Dose ist in einem anderen Raum; das Kabel führt hierher.</small></div>
+</div></div>
+</sc-if>
+<sc-if value="{{r.left.port}}" hint-placeholder-val="{{ true }}">
+<div class="pf-v6-c-card pf-m-compact" style="{{r.left.cardStyle}}">
+<div class="pf-v6-c-card__header">
+<div class="pf-v6-c-card__actions" style="gap: 4px">
+<sc-if value="{{r.left.changed}}" hint-placeholder-val="{{ false }}"><button class="pf-v6-c-button pf-m-link pf-m-inline pf-m-small" type="button" onClick="{{r.left.reset}}"><span class="pf-v6-c-button__text">Zurücksetzen</span></button></sc-if>
+<span class="{{r.left.stLabelClass}}"><span class="pf-v6-c-label__content"><span class="pf-v6-c-label__text">{{r.left.stLabel}}</span></span></span>
+</div>
+<div class="pf-v6-c-card__header-main">
+<div class="pf-v6-c-card__title"><h3 class="pf-v6-c-card__title-text">{{r.left.name}}</h3></div>
+</div>
+</div>
+<div class="pf-v6-c-card__body" style="display: flex; flex-direction: column; gap: 12px">
+<div class="pf-v6-c-content"><small>{{r.left.sub}}</small></div>
+<sc-if value="{{r.left.stHasText}}" hint-placeholder-val="{{ false }}"><div class="pf-v6-c-helper-text"><div class="{{r.left.stHelperClass}}"><span class="pf-v6-c-helper-text__item-text">{{r.left.stText}}</span></div></div></sc-if>
+<sc-if value="{{r.left.free}}" hint-placeholder-val="{{ true }}">
+<div class="pf-v6-c-form__group">
+<div class="pf-v6-c-form__group-label"><label class="pf-v6-c-form__label" for="{{r.left.vlanId}}"><span class="pf-v6-c-form__label-text">Netz</span></label></div>
+<div class="pf-v6-c-form__group-control">
+<span class="pf-v6-c-form-control">
+<select id="{{r.left.vlanId}}" value="{{r.left.vlanValue}}" onChange="{{r.left.setVlan}}">
+<sc-for list="{{r.left.vlanOptions}}" as="o" hint-placeholder-count="4"><option value="{{o.v}}">{{o.label}}</option></sc-for>
+</select>
+<span class="pf-v6-c-form-control__utilities"><span class="pf-v6-c-form-control__toggle-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span></span>
+</span>
+</div>
+</div>
+<div class="pf-v6-c-form__group">
+<div class="pf-v6-c-form__group-label"><label class="pf-v6-c-form__label" for="{{r.left.attachId}}"><span class="pf-v6-c-form__label-text">Oder Gerät anschliessen</span></label></div>
+<div class="pf-v6-c-form__group-control">
+<span class="pf-v6-c-form-control">
+<select id="{{r.left.attachId}}" value="" onChange="{{r.left.attach}}">
+<sc-for list="{{r.left.attachOptions}}" as="o" hint-placeholder-count="2"><option value="{{o.v}}">{{o.label}}</option></sc-for>
+</select>
+<span class="pf-v6-c-form-control__utilities"><span class="pf-v6-c-form-control__toggle-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span></span>
+</span>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{r.left.occupied}}" hint-placeholder-val="{{ false }}">
+<div>
+<button class="pf-v6-c-button pf-m-secondary pf-m-danger" type="button" onClick="{{r.left.remove}}"><span class="pf-v6-c-button__text">Gerät entfernen</span></button>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+</div>
+
+<!-- Verbindung -->
+<div class="sock-conn">
+<sc-if value="{{r.cabled}}" hint-placeholder-val="{{ true }}">
+<div class="sock-line" style="{{r.cableStyle}}"></div>
+<div class="sock-text"><small>{{r.cableText}}</small></div>
+</sc-if>
+</div>
+
+<!-- rechts: das Gerät oder das Netz -->
+<div style="flex: 1 1 520px; min-width: 0">
+<sc-if value="{{r.remote}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-card pf-m-compact">
+<div class="pf-v6-c-card__header">
+<div class="pf-v6-c-card__actions"><span class="{{r.remoteLabelClass}}"><span class="pf-v6-c-label__content"><span class="pf-v6-c-label__text">{{r.remoteLabel}}</span></span></span></div>
+<div class="pf-v6-c-card__header-main"><div class="pf-v6-c-card__title"><h3 class="pf-v6-c-card__title-text">{{r.remoteName}}</h3></div></div>
+</div>
+<div class="pf-v6-c-card__body">Steht in {{r.remoteRoom}}, siehe dort.</div>
+</div>
+</sc-if>
+<sc-if value="{{r.noDevice}}" hint-placeholder-val="{{ false }}">
+<div class="{{r.netCardClass}}" style="{{r.netBoxStyle}}">
+<div class="pf-v6-c-card__header"><div class="pf-v6-c-card__header-main"><div class="pf-v6-c-card__title"><h3 class="pf-v6-c-card__title-text">{{r.noDeviceText}}</h3></div></div></div>
+<div class="pf-v6-c-card__body">
+<sc-if value="{{r.hasLeases}}" hint-placeholder-val="{{ true }}">
+<table class="pf-v6-c-table pf-m-compact pf-m-no-border-rows" aria-label="Geräte an {{r.left.name}}" style="margin-top: 8px">
+<thead class="pf-v6-c-table__thead pf-v6-screen-reader"><tr class="pf-v6-c-table__tr" role="row"><th class="pf-v6-c-table__th" role="columnheader" scope="col">Gerät</th><th class="pf-v6-c-table__th" role="columnheader" scope="col">Adresse</th></tr></thead>
+<tbody class="pf-v6-c-table__tbody" role="rowgroup">
+<sc-for list="{{r.leases}}" as="c" hint-placeholder-count="1">
+<tr class="pf-v6-c-table__tr" role="row">
+<td class="pf-v6-c-table__td" role="cell">{{c.name}}</td>
+<td class="pf-v6-c-table__td" role="cell"><code title="{{c.macTitle}}" style="cursor: help">{{c.ip}}</code></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</sc-if>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{r.hasDevice}}" hint-placeholder-val="{{ true }}">
+<div class="pf-v6-c-card pf-m-compact" style="{{r.dev.cardStyle}}">
+<div class="pf-v6-c-card__header">
+<div class="pf-v6-c-card__actions" style="gap: 4px">
+<sc-if value="{{r.dev.changed}}" hint-placeholder-val="{{ false }}"><button class="pf-v6-c-button pf-m-link pf-m-inline pf-m-small" type="button" onClick="{{r.dev.reset}}"><span class="pf-v6-c-button__text">Zurücksetzen</span></button></sc-if>
+<span class="{{r.dev.stLabelClass}}"><span class="pf-v6-c-label__content"><span class="pf-v6-c-label__text">{{r.dev.stLabel}}</span></span></span>
+</div>
+<div class="pf-v6-c-card__header-main">
+<div class="pf-v6-c-card__title" style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px"><h3 class="pf-v6-c-card__title-text">{{r.dev.name}}</h3>
+<button class="pf-v6-c-button pf-m-link pf-m-inline pf-m-small" type="button" onClick="{{r.dev.openRoom}}"><span class="pf-v6-c-button__text">{{r.dev.roomAction}}</span></button></div>
+</div>
+</div>
+<div class="pf-v6-c-card__body">
+<div style="display: flex; flex-wrap: wrap; gap: 24px">
+<div style="flex: 1 1 220px; display: flex; flex-direction: column; gap: 12px">
+<div class="pf-v6-c-content"><small>{{r.dev.model}}</small></div>
+<sc-if value="{{r.dev.stHasText}}" hint-placeholder-val="{{ false }}"><div class="pf-v6-c-helper-text"><div class="{{r.dev.stHelperClass}}"><span class="pf-v6-c-helper-text__item-text">{{r.dev.stText}}</span></div></div></sc-if>
+<div class="pf-v6-c-form__group">
+<div class="pf-v6-c-form__group-label"><label class="pf-v6-c-form__label" for="{{r.dev.placeId}}"><span class="pf-v6-c-form__label-text">Angeschlossen an</span></label></div>
+<div class="pf-v6-c-form__group-control">
+<span class="pf-v6-c-form-control">
+<select id="{{r.dev.placeId}}" value="{{r.dev.placeValue}}" onChange="{{r.dev.setPlace}}">
+<sc-for list="{{r.dev.placeOptions}}" as="o" hint-placeholder-count="3"><option value="{{o.v}}">{{o.label}}</option></sc-for>
+</select>
+<span class="pf-v6-c-form-control__utilities"><span class="pf-v6-c-form-control__toggle-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span></span>
+</span>
+</div>
+</div>
+</div>
+<div class="pf-v6-c-form__group">
+<div class="pf-v6-c-form__group-label"><span class="pf-v6-c-form__label"><span class="pf-v6-c-form__label-text">Anschluss</span></span></div>
+<div class="pf-v6-c-form__group-control">
+<sc-if value="{{r.dev.uplinkAuto}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<strong>{{r.dev.uplinkValue}}</strong>
+<span class="{{r.dev.seenClass}}"><span class="pf-v6-c-label__content"><span class="pf-v6-c-label__text">{{r.dev.seenText}}</span></span></span>
+<button class="pf-v6-c-button pf-m-link pf-m-inline" type="button" onClick="{{r.dev.manualUplink}}"><span class="pf-v6-c-button__text">von Hand wählen</span></button>
+</div>
+</sc-if>
+<sc-if value="{{r.dev.uplinkManual}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<span class="pf-v6-c-form-control" style="flex: 1 1 160px">
+<select id="{{r.dev.uplinkId}}" aria-label="Anschluss von {{r.dev.name}}" value="{{r.dev.uplinkValue}}" onChange="{{r.dev.setUplink}}">
+<sc-for list="{{r.dev.uplinkOptions}}" as="o" hint-placeholder-count="3"><option value="{{o.v}}">{{o.label}}</option></sc-for>
+</select>
+<span class="pf-v6-c-form-control__utilities"><span class="pf-v6-c-form-control__toggle-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span></span>
+</span>
+<button class="pf-v6-c-button pf-m-link pf-m-inline" type="button" onClick="{{r.dev.autoUplink}}"><span class="pf-v6-c-button__text">erkannten verwenden</span></button>
+</div>
+</sc-if>
+<div class="pf-v6-c-form__helper-text"><div class="pf-v6-c-helper-text"><div class="pf-v6-c-helper-text__item"><span class="pf-v6-c-helper-text__item-text">{{r.dev.uplinkHint}}</span></div></div></div>
+</div>
+</div>
+<sc-if value="{{r.dev.misplugged}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-alert pf-m-inline pf-m-warning">
+<div class="pf-v6-c-alert__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"></path><path d="M12 10v5"></path><path d="M12 18h.01"></path></svg></div>
+<p class="pf-v6-c-alert__title"><span class="pf-v6-screen-reader">Warnung:</span>Das Kabel steckt an {{r.dev.seenPort}}, nicht an {{r.dev.uplinkValue}}</p>
+<div class="pf-v6-c-alert__description"><p>Übernimm {{r.dev.seenPort}} als Anschluss, oder steck das Kabel an {{r.dev.uplinkValue}} um.</p></div>
+<div class="pf-v6-c-alert__action-group"><button class="pf-v6-c-button pf-m-link pf-m-inline" type="button" onClick="{{r.dev.adoptSeen}}"><span class="pf-v6-c-button__text">{{r.dev.seenPort}} übernehmen</span></button></div>
+</div>
+</sc-if>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+</div>
+
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</sc-if>
+
+<!-- Netze -->
+<sc-if value="{{isNets}}" hint-placeholder-val="{{ false }}">
+<sc-for list="{{nets}}" as="n" hint-placeholder-count="3">
+<div class="pf-v6-c-card">
+<div class="pf-v6-c-card__header">
+<div class="pf-v6-c-card__actions">
+<sc-if value="{{n.changed}}" hint-placeholder-val="{{ false }}"><button class="pf-v6-c-button pf-m-link pf-m-inline pf-m-small" type="button" onClick="{{n.reset}}"><span class="pf-v6-c-button__text">Zurücksetzen</span></button></sc-if>
+<span class="{{n.stLabelClass}}"><span class="pf-v6-c-label__content"><span class="pf-v6-c-label__text">{{n.stLabel}}</span></span></span>
+</div>
+<div class="pf-v6-c-card__header-main">
+<div class="pf-v6-c-card__title"><h2 class="pf-v6-c-card__title-text">Netz {{n.label}}</h2></div>
+<sc-if value="{{n.stHasText}}" hint-placeholder-val="{{ false }}"><div class="pf-v6-c-helper-text"><div class="{{n.stHelperClass}}"><span class="pf-v6-c-helper-text__item-text">{{n.stText}}</span></div></div></sc-if>
+</div>
+</div>
+<div class="pf-v6-c-card__body">
+<div style="display: flex; flex-wrap: wrap; gap: 32px">
+<div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 16px">
+<label class="pf-v6-c-switch" for="{{n.switchId}}">
+<input class="pf-v6-c-switch__input" type="checkbox" role="switch" id="{{n.switchId}}" checked="{{n.wlanOn}}" onChange="{{n.toggleWlan}}">
+<span class="pf-v6-c-switch__toggle"></span>
+<span class="pf-v6-c-switch__label">WLAN „{{n.ssid}}“</span>
+</label>
+<sc-if value="{{n.wlanOff}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-helper-text"><div class="pf-v6-c-helper-text__item"><span class="pf-v6-c-helper-text__item-text">Aus: Das Netz gibt es nur per Kabel.</span></div></div>
+</sc-if>
+<sc-if value="{{n.wlanOn}}" hint-placeholder-val="{{ true }}">
+<div class="pf-v6-c-form__group">
+<div class="pf-v6-c-form__group-label"><span class="pf-v6-c-form__label"><span class="pf-v6-c-form__label-text">WLAN-Name (SSID)</span></span></div>
+<div class="pf-v6-c-form__group-control">
+<sc-if value="{{n.ssidViewing}}" hint-placeholder-val="{{ true }}">
+<div class="pf-v6-c-input-group">
+<div class="pf-v6-c-input-group__item pf-m-fill"><span class="pf-v6-c-form-control pf-m-readonly"><input type="text" readonly="readonly" value="{{n.ssid}}" aria-label="WLAN-Name im Netz {{n.name}}"></span></div>
+<div class="pf-v6-c-input-group__item"><button class="pf-v6-c-button pf-m-control" type="button" onClick="{{n.startSsid}}"><span class="pf-v6-c-button__text">Ändern</span></button></div>
+</div>
+</sc-if>
+<sc-if value="{{n.ssidEditing}}" hint-placeholder-val="{{ false }}">
+<span class="{{fieldControlClass}}"><input type="text" value="{{draftText}}" onChange="{{onDraft}}" aria-label="Neuer WLAN-Name im Netz {{n.name}}" autocomplete="off"></span>
+<div class="pf-v6-c-form__helper-text"><div class="pf-v6-c-helper-text"><div class="{{fieldHelperClass}}"><span class="pf-v6-c-helper-text__item-text">{{fieldHelper}}</span></div></div></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px">
+<button class="{{fieldTakeClass}}" type="button" disabled="{{fieldInvalid}}" onClick="{{n.takeSsid}}"><span class="pf-v6-c-button__text">Übernehmen</span></button>
+<button class="pf-v6-c-button pf-m-link" type="button" onClick="{{cancelEdit}}"><span class="pf-v6-c-button__text">Abbrechen</span></button>
+</div>
+</sc-if>
+</div>
+</div>
+<div class="pf-v6-c-form__group">
+<div class="pf-v6-c-form__group-label"><span class="pf-v6-c-form__label"><span class="pf-v6-c-form__label-text">Passwort</span></span></div>
+<div class="pf-v6-c-form__group-control">
+<sc-if value="{{n.pskViewing}}" hint-placeholder-val="{{ true }}">
+<div class="pf-v6-c-input-group">
+<div class="pf-v6-c-input-group__item pf-m-fill"><span class="pf-v6-c-form-control pf-m-readonly"><input type="text" readonly="readonly" value="{{n.pskShown}}" aria-label="WLAN-Passwort im Netz {{n.name}}" style="font-family: var(--pf-t--global--font--family--mono)"></span></div>
+<div class="pf-v6-c-input-group__item"><button class="pf-v6-c-button pf-m-control" type="button" onClick="{{n.toggleShow}}"><span class="pf-v6-c-button__text">{{n.showLabel}}</span></button></div>
+<div class="pf-v6-c-input-group__item"><button class="pf-v6-c-button pf-m-control" type="button" onClick="{{n.startPsk}}"><span class="pf-v6-c-button__text">Ändern</span></button></div>
+</div>
+</sc-if>
+<sc-if value="{{n.pskEditing}}" hint-placeholder-val="{{ false }}">
+<span class="{{fieldControlClass}}"><input type="text" value="{{draftText}}" onChange="{{onDraft}}" aria-label="Neues WLAN-Passwort im Netz {{n.name}}" autocomplete="off" style="font-family: var(--pf-t--global--font--family--mono)"></span>
+<div class="pf-v6-c-form__helper-text"><div class="pf-v6-c-helper-text"><div class="{{fieldHelperClass}}"><span class="pf-v6-c-helper-text__item-text">{{fieldHelper}}</span></div></div></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px">
+<button class="{{fieldTakeClass}}" type="button" disabled="{{fieldInvalid}}" onClick="{{n.takePsk}}"><span class="pf-v6-c-button__text">Übernehmen</span></button>
+<button class="pf-v6-c-button pf-m-secondary" type="button" onClick="{{generatePsk}}"><span class="pf-v6-c-button__text">Zufällig erzeugen</span></button>
+<button class="pf-v6-c-button pf-m-link" type="button" onClick="{{cancelEdit}}"><span class="pf-v6-c-button__text">Abbrechen</span></button>
+</div>
+</sc-if>
+</div>
+</div>
+<div>
+<button class="pf-v6-c-button pf-m-secondary" type="button" onClick="{{n.showQr}}">
+<span class="pf-v6-c-button__icon pf-m-start"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><path d="M14 14h3v3h-3zM18 18h3v3h-3zM14 20h2M20 14v2"></path></svg></span>
+<span class="pf-v6-c-button__text">QR-Code zum Verbinden</span>
+</button>
+</div>
+<div class="pf-v6-c-helper-text"><div class="pf-v6-c-helper-text__item"><span class="pf-v6-c-helper-text__item-text">{{apCount}} Access Points</span></div></div>
+</sc-if>
+<dl class="pf-v6-c-description-list pf-m-compact">
+<div class="pf-v6-c-description-list__group"><dt class="pf-v6-c-description-list__term"><span class="pf-v6-c-description-list__text">Per Kabel an</span></dt><dd class="pf-v6-c-description-list__description"><div class="pf-v6-c-description-list__text">{{n.ports}}</div></dd></div>
+</dl>
+</div>
+<div style="flex: 2 1 420px; min-width: 0; overflow-x: auto">
+<table class="pf-v6-c-table pf-m-compact pf-m-grid-md" aria-label="Verbundene Geräte im Netz {{n.name}}">
+<caption class="pf-v6-c-table__caption">Verbundene Geräte ({{n.clientCount}})</caption>
+<thead class="pf-v6-c-table__thead">
+<tr class="pf-v6-c-table__tr" role="row">
+<th class="pf-v6-c-table__th" role="columnheader" scope="col">Gerät</th>
+<th class="pf-v6-c-table__th" role="columnheader" scope="col">Adresse</th>
+<th class="pf-v6-c-table__th" role="columnheader" scope="col">Verbunden über</th>
+<th class="pf-v6-c-table__th" role="columnheader" scope="col">Band</th>
+<th class="pf-v6-c-table__th" role="columnheader" scope="col">Signal</th>
+</tr>
+</thead>
+<tbody class="pf-v6-c-table__tbody" role="rowgroup">
+<sc-for list="{{n.clients}}" as="c" hint-placeholder-count="3">
+<tr class="pf-v6-c-table__tr" role="row">
+<td class="pf-v6-c-table__td" role="cell" data-label="Gerät">{{c.name}}</td>
+<td class="pf-v6-c-table__td" role="cell" data-label="Adresse"><code title="{{c.macTitle}}" style="cursor: help">{{c.ip}}</code></td>
+<td class="pf-v6-c-table__td" role="cell" data-label="Verbunden über">{{c.viaText}}</td>
+<td class="pf-v6-c-table__td" role="cell" data-label="Band">{{c.band}}</td>
+<td class="pf-v6-c-table__td" role="cell" data-label="Signal">
+<sc-if value="{{c.isWlan}}" hint-placeholder-val="{{ true }}"><span class="{{c.signalClass}}"><span class="pf-v6-c-label__content"><span class="pf-v6-c-label__text">{{c.signalText}}</span></span></span></sc-if>
+<sc-if value="{{c.isCable}}" hint-placeholder-val="{{ false }}">–</sc-if>
+</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</sc-for>
+</sc-if>
+
+<!-- Änderungen -->
+<sc-if value="{{isChanges}}" hint-placeholder-val="{{ false }}">
+<sc-if value="{{noChanges}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-empty-state pf-m-sm">
+<div class="pf-v6-c-empty-state__content">
+<div class="pf-v6-c-empty-state__header"><div class="pf-v6-c-empty-state__title"><h2 class="pf-v6-c-empty-state__title-text">Noch nichts gespeichert</h2></div></div>
+<div class="pf-v6-c-empty-state__body">Was du speicherst, siehst du hier, bis es auf allen Geräten ist.</div>
+</div>
+</div>
+</sc-if>
+<sc-for list="{{changes}}" as="ch" hint-placeholder-count="2">
+<div class="pf-v6-c-card pf-m-compact">
+<div class="pf-v6-c-card__header">
+<div class="pf-v6-c-card__actions">
+<span class="{{ch.labelClass}}"><span class="pf-v6-c-label__content"><span class="pf-v6-c-label__text">{{ch.stateText}}</span></span></span>
+</div>
+<div class="pf-v6-c-card__header-main">
+<div class="pf-v6-c-card__title"><h3 class="pf-v6-c-card__title-text">{{ch.title}}</h3></div>
+</div>
+</div>
+<div class="pf-v6-c-card__body">
+<div class="pf-v6-c-content" style="margin-bottom: 8px"><small>{{ch.by}}</small></div>
+<div class="{{ch.progressClass}}">
+<div class="pf-v6-c-progress__description">{{ch.detail}}</div>
+<div class="pf-v6-c-progress__status"><span class="pf-v6-c-progress__measure">{{ch.percent}} %</span></div>
+<div class="pf-v6-c-progress__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ch.percent}}" aria-label="{{ch.title}}">
+<div class="pf-v6-c-progress__indicator" style="{{ch.barStyle}}"></div>
+</div>
+</div>
+<dl class="pf-v6-c-description-list pf-m-horizontal pf-m-compact" style="margin-top: 12px">
+<sc-for list="{{ch.devs}}" as="cd" hint-placeholder-count="3">
+<div class="pf-v6-c-description-list__group"><dt class="pf-v6-c-description-list__term"><span class="pf-v6-c-description-list__text">{{cd.name}}</span></dt><dd class="pf-v6-c-description-list__description"><div class="pf-v6-c-description-list__text"><span class="{{cd.cls}}"><span class="pf-v6-c-label__content"><span class="pf-v6-c-label__text">{{cd.text}}</span></span></span></div></dd></div>
+</sc-for>
+</dl>
+<sc-if value="{{ch.failed}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-alert pf-m-inline pf-m-danger pf-m-plain" style="margin-top: 12px">
+<div class="pf-v6-c-alert__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9 9l6 6"></path><path d="M15 9l-6 6"></path></svg></div>
+<p class="pf-v6-c-alert__title"><span class="pf-v6-screen-reader">Fehler:</span>Dort gilt noch das Alte. Das bleibt als Abweichung sichtbar, bis das Gerät die Konfiguration hat; der Provisioner versucht es weiter, der Netzbetreiber ist informiert.</p>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{ch.canTakeBack}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-card__footer">
+<button class="pf-v6-c-button pf-m-secondary" type="button" onClick="{{ch.takeBack}}"><span class="pf-v6-c-button__text">Zurücknehmen</span></button>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</sc-if>
+
+</div>
+</section>
+
+
+</main>
+</div>
+
+<sc-if value="{{previewOpen}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-backdrop">
+<div class="pf-v6-l-bullseye">
+<div class="pf-v6-c-modal-box pf-m-md" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+<div class="pf-v6-c-modal-box__close">
+<button class="pf-v6-c-button pf-m-plain" type="button" aria-label="Schliessen" onClick="{{closePreview}}"><span class="pf-v6-c-button__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></span></button>
+</div>
+<header class="pf-v6-c-modal-box__header">
+<h1 class="pf-v6-c-modal-box__title" id="preview-title">Das ändert sich</h1>
+<div class="pf-v6-c-modal-box__description">Noch nichts gespeichert.</div>
+</header>
+<div class="pf-v6-c-modal-box__body" style="display: flex; flex-direction: column; gap: 16px">
+<ul class="pf-v6-c-list">
+<sc-for list="{{previewLines}}" as="pl" hint-placeholder-count="3"><li>{{pl.text}}</li></sc-for>
+</ul>
+<sc-for list="{{warnings}}" as="wl" hint-placeholder-count="1">
+<div class="pf-v6-c-alert pf-m-inline pf-m-warning">
+<div class="pf-v6-c-alert__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"></path><path d="M12 10v5"></path><path d="M12 18h.01"></path></svg></div>
+<p class="pf-v6-c-alert__title"><span class="pf-v6-screen-reader">Warnung:</span>{{wl.title}}</p>
+<div class="pf-v6-c-alert__description"><p>{{wl.text}}</p></div>
+</div>
+</sc-for>
+<div>
+<h2 class="pf-v6-c-title pf-m-md">Betroffene Geräte ({{affectedCount}})</h2>
+<dl class="pf-v6-c-description-list pf-m-horizontal pf-m-compact" style="margin-top: 8px">
+<sc-for list="{{affected}}" as="af" hint-placeholder-count="2">
+<div class="pf-v6-c-description-list__group"><dt class="pf-v6-c-description-list__term"><span class="pf-v6-c-description-list__text">{{af.name}}</span></dt><dd class="pf-v6-c-description-list__description"><div class="pf-v6-c-description-list__text">{{af.whose}}</div></dd></div>
+</sc-for>
+</dl>
+</div>
+<div class="pf-v6-c-helper-text"><div class="pf-v6-c-helper-text__item"><span class="pf-v6-c-helper-text__item-text">Der Provisioner bringt die Änderung danach selbst auf diese Geräte.</span></div></div>
+<sc-if value="{{impersonating}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-alert pf-m-inline pf-m-info pf-m-plain">
+<div class="pf-v6-c-alert__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6"></path><path d="M12 7.5h.01"></path></svg></div>
+<p class="pf-v6-c-alert__title"><span class="pf-v6-screen-reader">Info:</span>Du speicherst als {{adminName}} (Admin) für {{residentName}}; im Verlauf steht beides.</p>
+</div>
+</sc-if>
+</div>
+<footer class="pf-v6-c-modal-box__footer">
+<button class="pf-v6-c-button pf-m-primary" type="button" onClick="{{save}}"><span class="pf-v6-c-button__text">Speichern</span></button>
+<button class="pf-v6-c-button pf-m-link" type="button" onClick="{{closePreview}}"><span class="pf-v6-c-button__text">Weiter bearbeiten</span></button>
+</footer>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{roomOpen}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-backdrop">
+<div class="pf-v6-l-bullseye">
+<div class="pf-v6-c-modal-box pf-m-sm" role="dialog" aria-modal="true" aria-labelledby="room-title">
+<div class="pf-v6-c-modal-box__close">
+<button class="pf-v6-c-button pf-m-plain" type="button" aria-label="Schliessen" onClick="{{closeRoom}}"><span class="pf-v6-c-button__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></span></button>
+</div>
+<header class="pf-v6-c-modal-box__header">
+<h1 class="pf-v6-c-modal-box__title" id="room-title">Wo steht {{roomDevName}}?</h1>
+<div class="pf-v6-c-modal-box__description">Nur nötig, wenn ein Patchkabel von der Dose in einen anderen Raum führt.</div>
+</header>
+<div class="pf-v6-c-modal-box__body">
+<div class="pf-v6-c-form__group">
+<div class="pf-v6-c-form__group-label"><label class="pf-v6-c-form__label" for="room-select"><span class="pf-v6-c-form__label-text">Raum</span></label></div>
+<div class="pf-v6-c-form__group-control">
+<span class="pf-v6-c-form-control">
+<select id="room-select" value="{{roomDraft}}" onChange="{{pickRoom}}">
+<sc-for list="{{roomOptions}}" as="o" hint-placeholder-count="3"><option value="{{o.v}}">{{o.label}}</option></sc-for>
+</select>
+<span class="pf-v6-c-form-control__utilities"><span class="pf-v6-c-form-control__toggle-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span></span>
+</span>
+</div>
+</div>
+</div>
+<footer class="pf-v6-c-modal-box__footer">
+<button class="pf-v6-c-button pf-m-primary" type="button" onClick="{{applyRoom}}"><span class="pf-v6-c-button__text">Übernehmen</span></button>
+<button class="pf-v6-c-button pf-m-link" type="button" onClick="{{closeRoom}}"><span class="pf-v6-c-button__text">Abbrechen</span></button>
+</footer>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{qrOpen}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-backdrop">
+<div class="pf-v6-l-bullseye">
+<div class="pf-v6-c-modal-box pf-m-sm" role="dialog" aria-modal="true" aria-labelledby="qr-title">
+<div class="pf-v6-c-modal-box__close">
+<button class="pf-v6-c-button pf-m-plain" type="button" aria-label="Schliessen" onClick="{{closeQr}}"><span class="pf-v6-c-button__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></span></button>
+</div>
+<header class="pf-v6-c-modal-box__header">
+<h1 class="pf-v6-c-modal-box__title" id="qr-title">„{{qrSsid}}“ verbinden</h1>
+<div class="pf-v6-c-modal-box__description">Mit der Kamera des Telefons scannen.</div>
+</header>
+<div class="pf-v6-c-modal-box__body" style="display: flex; flex-direction: column; align-items: center; gap: 16px">
+<sc-if value="{{qrUnsaved}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-alert pf-m-inline pf-m-warning pf-m-plain">
+<div class="pf-v6-c-alert__icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"></path><path d="M12 10v5"></path><path d="M12 18h.01"></path></svg></div>
+<p class="pf-v6-c-alert__title"><span class="pf-v6-screen-reader">Warnung:</span>Noch nicht gespeichert: Der Code gilt erst, wenn die Änderung auf den Geräten ist.</p>
+</div>
+</sc-if>
+<sc-if value="{{qrReady}}" hint-placeholder-val="{{ true }}">
+<svg width="240" height="240" viewBox="{{qrBox}}" role="img" aria-label="QR-Code für das WLAN {{qrSsid}}" shape-rendering="crispEdges" style="background: #ffffff"><path d="{{qrD}}" fill="#000000"></path></svg>
+</sc-if>
+<sc-if value="{{qrMissing}}" hint-placeholder-val="{{ false }}">
+<div class="pf-v6-c-helper-text"><div class="pf-v6-c-helper-text__item"><span class="pf-v6-c-helper-text__item-text">Der QR-Code lädt noch.</span></div></div>
+</sc-if>
+<dl class="pf-v6-c-description-list pf-m-horizontal pf-m-compact" style="align-self: stretch">
+<div class="pf-v6-c-description-list__group"><dt class="pf-v6-c-description-list__term"><span class="pf-v6-c-description-list__text">WLAN</span></dt><dd class="pf-v6-c-description-list__description"><div class="pf-v6-c-description-list__text">{{qrSsid}}</div></dd></div>
+<div class="pf-v6-c-description-list__group"><dt class="pf-v6-c-description-list__term"><span class="pf-v6-c-description-list__text">Passwort</span></dt><dd class="pf-v6-c-description-list__description"><div class="pf-v6-c-description-list__text"><code>{{qrPsk}}</code></div></dd></div>
+</dl>
+</div>
+<footer class="pf-v6-c-modal-box__footer">
+<button class="pf-v6-c-button pf-m-primary" type="button" onClick="{{closeQr}}"><span class="pf-v6-c-button__text">Fertig</span></button>
+</footer>
+</div>
+</div>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"rolloutFails":{"editor":"boolean","default":false,"section":"Szenario"},"rolle":{"editor":"enum","options":["Anwohner","Admin"],"default":"Anwohner","section":"Szenario"},"stoerung":{"editor":"enum","options":["keine","ap-mueller-kueche aus","Kabel Dose rechts gezogen","ap-mueller-wohnzimmer an e03 gesteckt"],"default":"keine","section":"Szenario"},"$preview":{"width":1280,"height":1400}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      tab: 'ports', ops: [], previewOpen: false,
+      showPsk: {}, manualUplink: {}, roomDev: null, roomDraft: '', edit: null, draftText: '', qrNet: null,
+      changes: [], nextChange: 1,
+      base: {
+        // a resident's net is one VLAN with at most one WLAN, which he switches on and off
+        nets: [
+          { id: 'allg', name: 'Allgemein', ssid: 'Mueller', psk: 'Sommer-am-Berg-2024', wlan: true },
+          { id: 'gast', name: 'Gast', ssid: 'Mueller-Gast', psk: 'Willkommen-bei-uns', wlan: true },
+          { id: 'server', name: 'Server', ssid: 'Server', psk: 'Nas-und-Drucker-77', wlan: false }
+        ],
+        // ports assigned to him in NetBox: an interface of a switch or a front port of a patch panel
+        ports: [
+          { id: 'p1', loc: 'wz', name: 'Dose links', kind: 'Front-Port', where: 'Patchpanel pp-1og, 7 → sw-1og e07', sw: 'sw-1og', vlan: null },
+          { id: 'p2', loc: 'wz', name: 'Dose rechts', kind: 'Front-Port', where: 'Patchpanel pp-1og, 8 → sw-1og e08', sw: 'sw-1og', vlan: 'server' },
+          { id: 'p3', loc: 'kz', name: 'Dose', kind: 'Interface', where: 'sw-2og e03', sw: 'sw-2og', vlan: 'gast' },
+          { id: 'p4', loc: 'buero', name: 'Dose Schreibtisch', kind: 'Front-Port', where: 'Patchpanel pp-eg, 3 → sw-eg e05', sw: 'sw-eg', vlan: null }
+        ],
+        // devices handed to him; `at` is a port ('p:p1') or a port of another own device ('d:d1:e04');
+        // `room` (NetBox location) only when a patch cable leads into another room than the socket's
+        devices: [
+          { id: 'd1', name: 'ap-mueller-wohnzimmer', model: 'hAP ax² · 5 Ports, PoE', ports: ['e01', 'e02', 'e03', 'e04', 'e05'], uplink: 'e01', at: 'p:p1', vlans: { e02: 'allg', e03: 'server' } },
+          { id: 'd3', name: 'ap-mueller-kueche', model: 'cAP ax · 1 Port', ports: ['e01'], uplink: 'e01', at: 'd:d1:e04', room: 'kueche', vlans: {} },
+          { id: 'd2', name: 'ap-mueller-garten', model: 'cAP ax · 1 Port', ports: ['e01'], uplink: 'e01', at: null, vlans: {} }
+        ]
+      }
+    };
+    // all rooms (NetBox locations) of the building (site) the resident has sockets or devices in
+    this.rooms = [{ id: 'keller', name: 'Keller' }, { id: 'eg', name: 'Wohnung EG' }, { id: 'buero', name: 'Büro EG' }, { id: 'treppenhaus', name: 'Treppenhaus' },
+      { id: 'wz', name: 'Wohnzimmer 1. OG' }, { id: 'kueche', name: 'Küche 1. OG' }, { id: 'kz', name: 'Kinderzimmer 2. OG' }, { id: 'dach', name: 'Dachboden' }];
+    this.neighborAps = ['ap-treppenhaus', 'ap-keller', 'ap-dach'];
+    // SSIDs of the neighbours in the same WLAN group: his own must differ from them
+    this.groupSsids = ['Hausnetz-Berg', 'Meier', 'Meier-Gast', 'Werkstatt'];
+    // name: the host name the client sent with its DHCP request, empty when it sent none
+    const wlan = (name, mac, ip, ap, band, signal) => ({ name, mac, ip, wlan: true, ap, band, signal });
+    const cable = (name, mac, ip, port) => ({ name, mac, ip, wlan: false, port });
+    this.clients = {
+      allg: [
+        wlan('iPhone-Anna', '3A:1F:62:D0:4B:9C', '10.20.10.23', 'ap-mueller-wohnzimmer', '5 GHz (ax)', -52),
+        wlan('Laptop-Ben', 'F0:2B:7C:11:A3:11', '10.20.10.41', 'ap-treppenhaus', '5 GHz (ac)', -67),
+        wlan('Thermostat', '68:C6:3A:0E:51:D2', '10.20.10.55', 'ap-mueller-kueche', '2.4 GHz (n)', -78),
+        wlan('', '5E:A1:07:93:2C:E4', '10.20.10.62', 'ap-treppenhaus', '5 GHz (ax)', -63),
+        cable('Fernseher', '00:1E:A6:42:91:A4', '10.20.10.17', 'ap-mueller-wohnzimmer e02')
+      ],
+      gast: [ wlan('Galaxy-S24', '6E:90:13:D5:77:02', '10.20.11.8', 'ap-treppenhaus', '2.4 GHz (ax)', -71), cable('Spielkonsole', '7C:BB:8A:3E:19:C2', '10.20.11.21', 'Kinderzimmer 2. OG, Dose') ],
+      server: [ cable('nas', '00:11:32:8A:0C:5D', '10.20.12.10', 'Wohnzimmer 1. OG, Dose rechts'), cable('Drucker', '30:05:5C:21:F6:7E', '10.20.12.30', 'ap-mueller-wohnzimmer e03') ]
+    };
+    const meier = {
+      nets: [
+        { id: 'allg', name: 'Allgemein', ssid: 'Meier', psk: 'Kaffee-am-Morgen-9', wlan: true },
+        { id: 'gast', name: 'Gast', ssid: 'Meier-Gast', psk: 'Hallo-Besuch-2025', wlan: true }
+      ],
+      ports: [
+        { id: 'm1', loc: 'eg', name: 'Dose Wohnzimmer', kind: 'Front-Port', where: 'Patchpanel pp-eg, 1 → sw-eg e01', sw: 'sw-eg', vlan: 'allg' },
+        { id: 'm2', loc: 'eg', name: 'Dose Küche', kind: 'Interface', where: 'sw-eg e02', sw: 'sw-eg', vlan: null }
+      ],
+      devices: []
+    };
+    this.residents = {
+      mueller: { name: 'Familie Müller', user: 'anna.mueller', base: this.state.base, clients: this.clients, groupSsids: this.groupSsids },
+      meier: { name: 'Familie Meier', user: 'tom.meier', base: meier,
+        clients: { allg: [wlan('Pixel-Tom', 'A2:4C:19:7E:03:B1', '10.20.20.14', 'ap-treppenhaus', '5 GHz (ax)', -58), cable('', '00:0D:B9:5A:22:10', '10.20.20.40', 'Wohnung EG, Dose Wohnzimmer')], gast: [] },
+        groupSsids: ['Hausnetz-Berg', 'Mueller', 'Mueller-Gast', 'Werkstatt'] }
+    };
+    this.state.resident = 'mueller';
+    this.state.adminHome = false;
+  }
+
+  // the state with the unsaved changes applied
+  cur() {
+    const b = this.state.base;
+    const st = { nets: b.nets.map((n) => ({ ...n })), ports: b.ports.map((p) => ({ ...p })), devices: b.devices.map((d) => ({ ...d, vlans: { ...d.vlans } })) };
+    this.state.ops.forEach((op) => this.applyOp(st, op));
+    return st;
+  }
+  applyOp(st, op) {
+    const dev = (id) => st.devices.find((d) => d.id === id);
+    if (op.t === 'portVlan') st.ports.find((p) => p.id === op.port).vlan = op.vlan;
+    if (op.t === 'connect') {
+      dev(op.dev).at = op.place;
+      if (op.place && dev(op.dev).room === this.placeRoom(st, op.place)) dev(op.dev).room = null;
+      if (op.place && op.place.startsWith('p:')) st.ports.find((p) => p.id === op.place.slice(2)).vlan = null;
+      if (op.place && op.place.startsWith('d:')) { const [, d, n] = op.place.split(':'); dev(d).vlans[n] = null; }
+    }
+    if (op.t === 'uplink') { const d = dev(op.dev); d.vlans[op.port] = null; d.uplink = op.port; }
+    if (op.t === 'devPortVlan') dev(op.dev).vlans[op.port] = op.vlan;
+    if (op.t === 'room') dev(op.dev).room = op.room;
+    if (op.t === 'psk') st.nets.find((n) => n.id === op.net).psk = op.psk;
+    if (op.t === 'wlan') st.nets.find((n) => n.id === op.net).wlan = op.on;
+    if (op.t === 'ssid') st.nets.find((n) => n.id === op.net).ssid = op.ssid;
+  }
+  baseValue(op) {
+    const b = this.state.base;
+    if (op.t === 'portVlan') return b.ports.find((p) => p.id === op.port).vlan;
+    if (op.t === 'connect') return b.devices.find((d) => d.id === op.dev).at;
+    if (op.t === 'uplink') return b.devices.find((d) => d.id === op.dev).uplink;
+    if (op.t === 'devPortVlan') return b.devices.find((d) => d.id === op.dev).vlans[op.port] || null;
+    if (op.t === 'room') return b.devices.find((d) => d.id === op.dev).room || null;
+    if (op.t === 'psk') return b.nets.find((n) => n.id === op.net).psk;
+    if (op.t === 'wlan') return b.nets.find((n) => n.id === op.net).wlan;
+    if (op.t === 'ssid') return b.nets.find((n) => n.id === op.net).ssid;
+  }
+  // drafts that set every element a saved change touched back to its value before that change
+  takeBack(c) {
+    const was = c.before, dev = (id) => was.devices.find((d) => d.id === id), net = (id) => was.nets.find((n) => n.id === id);
+    const back = c.ops.map((o) => o.t === 'portVlan' ? { ...o, vlan: was.ports.find((x) => x.id === o.port).vlan }
+      : o.t === 'connect' ? { ...o, place: dev(o.dev).at } : o.t === 'uplink' ? { ...o, port: dev(o.dev).uplink }
+      : o.t === 'devPortVlan' ? { ...o, vlan: dev(o.dev).vlans[o.port] || null } : o.t === 'room' ? { ...o, room: dev(o.dev).room || null }
+      : o.t === 'psk' ? { ...o, psk: net(o.net).psk } : o.t === 'ssid' ? { ...o, ssid: net(o.net).ssid } : { ...o, on: net(o.net).wlan });
+    const ops = back.reduce((acc, o) => this.withOp(acc, o), this.state.ops);
+    this.setState({ ops, previewOpen: ops.length > 0 });
+  }
+  // drop the drafts matching `pred`; the element is back to what is saved
+  revert(pred) { this.setState({ ops: this.state.ops.filter((o) => !pred(o)) }); }
+  // `ops` with `op` replacing the draft for the same thing; dropped when it equals what is saved
+  withOp(ops, op) {
+    const key = (o) => [o.t, o.port || '', o.dev || '', o.net || ''].join('|');
+    const value = op.vlan !== undefined ? op.vlan : op.place !== undefined ? op.place : op.room !== undefined ? op.room : op.t === 'uplink' ? op.port : op.t === 'wlan' ? op.on : op.t === 'ssid' ? op.ssid : op.psk;
+    const rest = ops.filter((o) => key(o) !== key(op));
+    return value !== this.baseValue(op) ? rest.concat([op]) : rest;
+  }
+  setOp(op) { this.setState({ ops: this.withOp(this.state.ops, op) }); }
+
+  // the net's name, with its SSID behind it when they differ
+  netLabel(n) { return n.wlan && n.ssid !== n.name ? n.name + ' (' + n.ssid + ')' : n.name; }
+  netName(st, id) { const n = st.nets.find((x) => x.id === id); return n ? this.netLabel(n) : ''; }
+  // the text a phone's camera reads as a WLAN to join
+  qrPath(ssid, psk) {
+    if (!window.qrcode) return null;
+    const esc = (t) => t.replace(/([\\;,:"])/g, '\\$1');
+    qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+    const q = qrcode(0, 'M');
+    q.addData('WIFI:T:WPA;S:' + esc(ssid) + ';P:' + esc(psk) + ';;');
+    q.make();
+    const size = q.getModuleCount();
+    let d = '';
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (q.isDark(r, c)) d += 'M' + c + ' ' + r + 'h1v1h-1z';
+    return { d, box: '-4 -4 ' + (size + 8) + ' ' + (size + 8) };
+  }
+  res() { return this.residents[this.state.resident]; }
+  isAdmin() { return (this.props.rolle ?? 'Anwohner') === 'Admin'; }
+  locName(id) { return this.rooms.find((l) => l.id === id).name; }
+  // the room a socket is in: a wall port's location, or the room of the device it belongs to
+  placeRoom(st, ref) {
+    if (ref.startsWith('p:')) return st.ports.find((x) => x.id === ref.slice(2)).loc;
+    return this.devRoom(st, st.devices.find((x) => x.id === ref.split(':')[1]));
+  }
+  devRoom(st, d) { return d.room || (d.at ? this.placeRoom(st, d.at) : null); }
+  placeLabel(st, ref) {
+    if (!ref) return 'nicht angeschlossen';
+    if (ref.startsWith('p:')) { const p = st.ports.find((x) => x.id === ref.slice(2)); return this.locName(p.loc) + ', ' + p.name; }
+    const [, d, n] = ref.split(':'); return 'Port ' + n + ' von ' + st.devices.find((x) => x.id === d).name;
+  }
+  placeSwitch(st, ref) {
+    if (ref.startsWith('p:')) return { name: st.ports.find((x) => x.id === ref.slice(2)).sw, whose: 'Netzbetreiber' };
+    return { name: st.devices.find((x) => x.id === ref.split(':')[1]).name, whose: 'dein Gerät' };
+  }
+  occupant(st, ref) { return st.devices.find((d) => d.at === ref); }
+  // devices hanging (transitively) below `dev`, which can't become its uplink
+  below(st, dev) {
+    const out = [];
+    const walk = (d) => st.devices.filter((x) => x.at && x.at.startsWith('d:' + d.id + ':')).forEach((x) => { out.push(x.id); walk(x); });
+    walk(dev);
+    return out;
+  }
+  apCount(st) { return this.neighborAps.length + st.devices.filter((d) => d.at).length; }
+  // what the provisioner's live reads see broken right now (scenario)
+  faults() {
+    const f = this.state.resident === 'mueller' ? this.props.stoerung ?? 'keine' : 'keine';
+    // replug: the neighbour at the device's port (the switch, via /ip/neighbor) sees it at another port than its uplink
+    return { offline: f === 'ap-mueller-kueche aus' ? ['ap-mueller-kueche'] : [], down: f === 'Kabel Dose rechts gezogen' ? ['p2'] : [],
+      replug: f === 'ap-mueller-wohnzimmer an e03 gesteckt' ? { dev: 'd1', port: 'e03' } : null };
+  }
+  changeState(devs) {
+    if (devs.some((d) => d.state === 'pending')) return 'rolling';
+    if (devs.some((d) => d.state === 'failed')) return 'failed';
+    if (devs.some((d) => d.state === 'waiting')) return 'waiting';
+    return 'done';
+  }
+  // the latest unfinished or failed rollout an element (port, device, net) is part of
+  // a device that has not got everything saved yet, whatever element the change was about
+  devRollout(name) {
+    const c = this.state.changes.find((x) => x.devs.some((d) => d.name === name));
+    const d = c && c.devs.find((x) => x.name === name);
+    if (!d || d.state === 'done') return null;
+    if (d.state === 'pending') return { kind: 'rolling', text: 'Bekommt gerade: ' + c.title };
+    if (d.state === 'failed') return { kind: 'failed', text: 'Hat noch den alten Stand von: ' + c.title };
+    return { kind: 'waiting', text: 'Nicht erreichbar; bekommt danach: ' + c.title };
+  }
+  rolloutOf(key) {
+    const c = this.state.changes.find((x) => x.items[key]);
+    if (!c) return null;
+    const mine = c.devs.filter((d) => c.items[key].indexOf(d.name) >= 0);
+    const names = (st) => mine.filter((d) => d.state === st).map((d) => d.name).join(', ');
+    if (mine.some((d) => d.state === 'pending')) return { kind: 'rolling', text: 'Wird ausgerollt: ' + mine.filter((d) => d.state === 'done').length + ' von ' + mine.length + ' Geräten.' };
+    if (mine.some((d) => d.state === 'failed')) return { kind: 'failed', text: 'Auf ' + names('failed') + ' nicht ausgerollt; dort gilt noch das Alte. Bleibt als Abweichung, bis es klappt.' };
+    if (mine.some((d) => d.state === 'waiting')) return { kind: 'waiting', text: 'Wartet auf ' + names('waiting') + ' (nicht erreichbar); wird nachgeholt, sobald es wieder da ist.' };
+    return null;
+  }
+
+  // one line per change, warnings, and the devices the rollout touches
+  plan() {
+    const b = this.state.base, st = this.cur();
+    const lines = [], warnings = [], affected = [];
+    // items: per element (port, device, net) the devices its part of the rollout runs on
+    const items = {};
+    let opItems = [], opDevs = [];
+    const touch = (a) => { if (!affected.some((x) => x.name === a.name)) affected.push(a); if (opDevs.indexOf(a.name) < 0) opDevs.push(a.name); };
+    const item = (k) => { if (k && opItems.indexOf(k) < 0) opItems.push(k); };
+    const placeItem = (ref) => ref ? (ref.startsWith('p:') ? ref : 'd:' + ref.split(':')[1]) : null;
+    const portItem = (ref) => ref && ref.startsWith('d:') ? ref : null;
+    this.state.ops.forEach((op) => {
+      opItems = []; opDevs = [];
+      if (op.port && op.t === 'portVlan') item('p:' + op.port);
+      if (op.dev) item('d:' + op.dev);
+      if (op.net) item('n:' + op.net);
+      if (op.t === 'connect') { const was = b.devices.find((x) => x.id === op.dev).at; [op.place, was].forEach((r) => { item(placeItem(r)); item(portItem(r)); }); }
+      if (op.t === 'devPortVlan') item('d:' + op.dev + ':' + op.port);
+      if (op.t === 'portVlan') {
+        const p = st.ports.find((x) => x.id === op.port);
+        lines.push(this.locName(p.loc) + ', ' + p.name + ': ' + (op.vlan ? 'Netz „' + this.netName(st, op.vlan) + '“' : 'kein Netz mehr') + '.');
+        if (!op.vlan) warnings.push({ title: p.name + ' wird abgeschaltet', text: 'Was an der Dose steckt, hat danach kein Netz mehr.' });
+        touch({ name: p.sw, whose: 'Netzbetreiber' });
+      }
+      if (op.t === 'connect') {
+        const d = st.devices.find((x) => x.id === op.dev), was = b.devices.find((x) => x.id === op.dev).at;
+        if (!op.place) {
+          lines.push(d.name + ' von ' + this.placeLabel(b, was) + ' entfernen; der Port ist danach frei. Das Gerät bleibt deins.');
+          warnings.push({ title: d.name + ' strahlt nichts mehr aus', text: 'Auch was an seinen Ports hängt, hat danach kein Netz.' });
+        } else {
+          lines.push('Kabel: ' + this.placeLabel(st, op.place) + ' ↔ ' + d.name + ', Port ' + d.uplink + '. Routing-Link mit Schlüssel.');
+          if (was) warnings.push({ title: d.name + ' zieht um', text: 'Bis es an ' + this.placeLabel(st, op.place) + ' steckt, ist es nicht erreichbar.' });
+          touch(this.placeSwitch(st, op.place));
+        }
+        if (was) touch(this.placeSwitch(b, was));
+        touch({ name: d.name, whose: 'dein Gerät' });
+        touch({ name: 'router-berg (WLAN-Controller)', whose: 'Netzbetreiber' });
+      }
+      if (op.t === 'uplink') {
+        const d = st.devices.find((x) => x.id === op.dev), was = b.devices.find((x) => x.id === op.dev).uplink;
+        const f = this.faults(), adopted = f.replug && f.replug.dev === op.dev && f.replug.port === op.port;
+        const before = b.devices.find((x) => x.id === op.dev).vlans[op.port];
+        lines.push(d.name + ': Anschluss jetzt Port ' + op.port + ' statt ' + was + (adopted ? ', dort steckt das Kabel schon.' : '.'));
+        if (!adopted) warnings.push({ title: 'Kabel umstecken', text: 'Stecke das Kabel von ' + was + ' auf ' + op.port + ' um, sonst ist ' + d.name + ' nicht mehr erreichbar.' });
+        if (before) warnings.push({ title: 'Port ' + op.port + ' verliert sein Netz', text: 'Er war im Netz ' + this.netName(st, before) + '; was dort hing, stecke an ' + was + ' um und wähle das Netz dort.' });
+        touch({ name: d.name, whose: 'dein Gerät' });
+        if (d.at) touch(this.placeSwitch(st, d.at));
+      }
+      if (op.t === 'devPortVlan') {
+        const d = st.devices.find((x) => x.id === op.dev);
+        lines.push(d.name + ', Port ' + op.port + ': ' + (op.vlan ? 'Netz „' + this.netName(st, op.vlan) + '“' : 'kein Netz') + '.');
+        touch({ name: d.name, whose: 'dein Gerät' });
+      }
+      if (op.t === 'psk') {
+        const n = st.nets.find((x) => x.id === op.net);
+        lines.push('Neues Passwort für „' + n.ssid + '“, auf allen ' + this.apCount(st) + ' Access Points im Haus.');
+        warnings.push({ title: 'Alle Geräte in „' + n.ssid + '“ verlieren die Verbindung', text: 'Sie brauchen das neue Passwort, auch Drucker oder Fernseher.' });
+        touch({ name: 'router-berg (WLAN-Controller)', whose: 'Netzbetreiber' });
+        this.neighborAps.forEach((a) => touch({ name: a, whose: 'Netzbetreiber' }));
+        st.devices.filter((d) => d.at).forEach((d) => touch({ name: d.name, whose: 'dein Gerät' }));
+      }
+      if (op.t === 'room') {
+        const d = st.devices.find((x) => x.id === op.dev);
+        lines.push(d.room ? d.name + ' steht in ' + this.locName(d.room) + (d.at ? ' (Patchkabel von ' + this.placeLabel(st, d.at) + ').' : '.') : d.name + ' steht im selben Raum wie seine Dose.');
+      }
+      if (op.t === 'ssid') {
+        const n = st.nets.find((x) => x.id === op.net), was = b.nets.find((x) => x.id === op.net).ssid;
+        lines.push('Das WLAN „' + was + '“ im Netz ' + n.name + ' heisst neu „' + op.ssid + '“.');
+        warnings.push({ title: 'Geräte im WLAN „' + was + '“ müssen sich neu verbinden', text: 'Sie suchen den alten Namen; verbinde sie mit „' + op.ssid + '“ (z.B. über den QR-Code).' });
+        touch({ name: 'router-berg (WLAN-Controller)', whose: 'Netzbetreiber' });
+        this.neighborAps.forEach((a) => touch({ name: a, whose: 'Netzbetreiber' }));
+        st.devices.filter((d) => d.at).forEach((d) => touch({ name: d.name, whose: 'dein Gerät' }));
+      }
+      if (op.t === 'wlan') {
+        const n = st.nets.find((x) => x.id === op.net);
+        if (op.on) lines.push('WLAN „' + n.ssid + '“ im Netz ' + n.name + ' einschalten: alle ' + this.apCount(st) + ' Access Points im Haus strahlen es aus.');
+        else {
+          lines.push('WLAN „' + n.ssid + '“ im Netz ' + n.name + ' ausschalten. Was per Kabel im Netz ist, bleibt.');
+          warnings.push({ title: 'Geräte im WLAN „' + n.ssid + '“ verlieren die Verbindung', text: 'Nur Geräte am Kabel bleiben im Netz ' + n.name + '.' });
+        }
+        touch({ name: 'router-berg (WLAN-Controller)', whose: 'Netzbetreiber' });
+        this.neighborAps.forEach((a) => touch({ name: a, whose: 'Netzbetreiber' }));
+        st.devices.filter((d) => d.at).forEach((d) => touch({ name: d.name, whose: 'dein Gerät' }));
+      }
+      opItems.forEach((k) => { items[k] = (items[k] || []).concat(opDevs.filter((n) => (items[k] || []).indexOf(n) < 0)); });
+    });
+    return { lines, warnings, affected, items };
+  }
+
+  save() {
+    const p = this.plan();
+    const id = this.state.nextChange;
+    const before = this.state.base;
+    const offline = this.faults().offline;
+    const reachable = p.affected.map((a) => a.name).filter((n) => offline.indexOf(n) < 0 && n.indexOf('router-berg') < 0);
+    const failing = (this.props.rolloutFails ?? false) && reachable.length ? reachable[reachable.length - 1] : null;
+    const change = { id, title: p.lines[0] + (p.lines.length > 1 ? ' (und ' + (p.lines.length - 1) + ' weitere)' : ''), state: p.affected.length ? 'saved' : 'done', items: p.items,
+      by: this.isAdmin() ? 'Gespeichert von koa (Admin) für ' + this.res().name : 'Gespeichert von ' + this.res().user,
+      devs: p.affected.map((a) => ({ name: a.name, state: 'pending' })), failing, before, ops: this.state.ops };
+    this.setState({ base: this.cur(), ops: [], previewOpen: false, tab: 'changes', changes: [change].concat(this.state.changes), nextChange: id + 1 });
+    const tick = () => {
+      const c = this.state.changes.find((x) => x.id === id);
+      if (!c) return;
+      const i = c.devs.findIndex((d) => d.state === 'pending');
+      if (i < 0) return;
+      const name = c.devs[i].name;
+      const next = this.faults().offline.indexOf(name) >= 0 ? 'waiting' : name === c.failing ? 'failed' : 'done';
+      const devs = c.devs.map((d, k) => k === i ? { ...d, state: next } : d);
+      const state = this.changeState(devs);
+      this.setState({ changes: this.state.changes.map((x) => x.id === id ? { ...x, devs, state } : x) });
+      if (state === 'rolling') setTimeout(tick, 800);
+    };
+    setTimeout(tick, 1200);
+  }
+
+  renderVals() {
+    const s = this.state, b = s.base, st = this.cur();
+    const label = (kind) => 'pf-v6-c-label pf-m-compact' + ({ free: '', net: ' pf-m-blue', dev: ' pf-m-green', warn: ' pf-m-orange', bad: ' pf-m-red' })[kind];
+    const faults = this.faults();
+    const stKinds = {
+      active: ['pf-m-green', 'Ok', 'pf-m-success'], off: ['', 'aus', ''],
+      rolling: ['pf-m-blue', 'wird ausgerollt', 'pf-m-indeterminate'], waiting: ['pf-m-blue', 'wartet', 'pf-m-warning'],
+      failed: ['pf-m-red', 'nicht ausgerollt', 'pf-m-error'], down: ['pf-m-orange', 'gestört', 'pf-m-warning'], limited: ['pf-m-orange', 'Problem', 'pf-m-warning']
+    };
+    // one label: unsaved wins, then the rollout, then what the live reads see
+    const status = (key, live, changed) => {
+      if (changed) return { stLabelClass: 'pf-v6-c-label pf-m-compact pf-m-orange', stLabel: 'ungespeichert', stHasText: false, stHelperClass: 'pf-v6-c-helper-text__item pf-m-warning', stText: 'Noch nicht gespeichert.' };
+      const r = this.rolloutOf(key) || (key.startsWith('d:') && key.split(':').length === 2 ? this.devRollout(st.devices.find((d) => d.id === key.slice(2)).name) : null) || live;
+      const k = stKinds[r.kind];
+      return { stLabelClass: 'pf-v6-c-label pf-m-compact ' + k[0], stLabel: r.label || k[1], stHasText: r.kind !== 'active' && r.kind !== 'off', stHelperClass: 'pf-v6-c-helper-text__item ' + k[2], stText: r.text };
+    };
+    const devName = (id) => st.devices.find((x) => x.id === id).name;
+    // why a device is unreachable: itself off, or something on its way up
+    const deviceDown = (d) => {
+      if (faults.offline.indexOf(d.name) >= 0) return 'Nicht erreichbar seit 14:02. Abgeschaltet, ohne Strom oder Kabel gezogen?';
+      if (faults.replug && faults.replug.dev === d.id && faults.replug.port !== d.uplink) return 'Das Kabel steckt an ' + faults.replug.port + ' statt an ' + d.uplink + '; so ist es nicht erreichbar.';
+      if (!d.at) return null;
+      if (d.at.startsWith('p:')) return faults.down.indexOf(d.at.slice(2)) >= 0 ? 'Nicht erreichbar: kein Link an ' + this.placeLabel(st, d.at) + '.' : null;
+      const up = st.devices.find((x) => x.id === d.at.split(':')[1]);
+      const why = deviceDown(up);
+      return why ? 'Nicht erreichbar, weil ' + up.name + ' nicht erreichbar ist.' : null;
+    };
+    const changedStyle = (on) => on ? 'border: 2px solid var(--pf-t--global--border--color--status--warning--default)' : '';
+    const netOptions = (none) => [{ v: '', label: none }].concat(st.nets.map((n) => ({ v: n.id, label: this.netLabel(n) })));
+    // which drafts belong to a socket (wall port or device port), a device itself, or a net
+    const ofSocket = (ref) => (o) => o.t === 'portVlan' && 'p:' + o.port === ref || o.t === 'devPortVlan' && 'd:' + o.dev + ':' + o.port === ref
+      || o.t === 'connect' && (o.place === ref || b.devices.find((d) => d.id === o.dev).at === ref);
+    const ofDev = (id) => (o) => o.dev === id && (o.t === 'connect' || o.t === 'uplink' || o.t === 'room');
+    const ofNet = (id) => (o) => o.net === id && (o.t === 'psk' || o.t === 'wlan' || o.t === 'ssid');
+    const touchedDev = (id) => s.ops.some(ofDev(id));
+
+    const devCard = (d) => {
+      const taken = (ref) => st.devices.some((x) => x.id !== d.id && x.at === ref);
+      const blocked = this.below(st, d).concat([d.id]);
+      const places = [{ v: '', label: 'Nicht angeschlossen' }]
+        .concat(st.ports.filter((p) => !taken('p:' + p.id)).map((p) => ({ v: 'p:' + p.id, label: this.locName(p.loc) + ', ' + p.name + (p.vlan ? ' (jetzt „' + this.netName(st, p.vlan) + '“)' : '') })))
+        .concat(st.devices.filter((x) => blocked.indexOf(x.id) < 0 && x.at).flatMap((x) => x.ports.filter((n) => n !== x.uplink && !taken('d:' + x.id + ':' + n)).map((n) => ({ v: 'd:' + x.id + ':' + n, label: 'Port ' + n + ' von ' + x.name }))));
+      const changed = touchedDev(d.id);
+      const down = deviceDown(d);
+      // the port the neighbour sees the device at; none when nothing answers
+      const seen = faults.replug && faults.replug.dev === d.id ? faults.replug.port : d.at && !down ? d.uplink : null;
+      return {
+        ...status('d:' + d.id, !d.at ? { kind: 'off', label: 'nicht angeschlossen', text: '' } : down ? { kind: 'down', text: down } : { kind: 'active', text: 'Ausgerollt, erreichbar.' }, changed),
+        name: d.name, model: d.model, changed, cardStyle: changedStyle(changed), reset: () => this.revert(ofDev(d.id)),
+        placeId: 'place-' + d.id, placeValue: d.at || '', placeOptions: places,
+        setPlace: (e) => this.setOp({ t: 'connect', dev: d.id, place: e.target.value || null }),
+        roomAction: d.room ? 'in ' + this.locName(d.room) : 'Raum ändern',
+        openRoom: () => this.setState({ roomDev: d.id, roomDraft: d.room || '' }),
+        uplinkId: 'uplink-' + d.id, uplinkValue: d.uplink,
+        uplinkAuto: !s.manualUplink[d.id], uplinkManual: !!s.manualUplink[d.id],
+        manualUplink: () => this.setState({ manualUplink: { ...s.manualUplink, [d.id]: true } }),
+        autoUplink: () => { this.setState({ manualUplink: { ...s.manualUplink, [d.id]: false } }); if (seen && seen !== d.uplink) this.setOp({ t: 'uplink', dev: d.id, port: seen }); else this.revert((o) => o.t === 'uplink' && o.dev === d.id); },
+        seenPort: seen || '', misplugged: !!seen && seen !== d.uplink,
+        seenClass: 'pf-v6-c-label pf-m-compact ' + (!seen ? '' : seen === d.uplink ? 'pf-m-green' : 'pf-m-orange'),
+        seenText: !seen ? 'nicht erkannt' : seen === d.uplink ? 'erkannt' : 'Kabel an ' + seen,
+        adoptSeen: () => this.setOp({ t: 'uplink', dev: d.id, port: seen }),
+        uplinkHint: d.at ? 'Hier steckt das Kabel zu ' + this.placeLabel(st, d.at) + '.' : 'Hier steckst du das Kabel ein, das zum gewählten Anschluss führt.',
+        uplinkOptions: d.ports.filter((n) => !this.occupant(st, 'd:' + d.id + ':' + n)).map((n) => ({ v: n, label: n })),
+        setUplink: (e) => this.setOp({ t: 'uplink', dev: d.id, port: e.target.value }),
+      };
+    };
+    // one row per socket: a wall port from NetBox or a port of an own device; left the socket, right its device or net
+    const socketRow = (o) => {
+      const occ = this.occupant(st, o.ref);
+      const down = o.downText ? o.downText() : null;
+      const live = down ? { kind: 'down', text: down }
+        : occ && faults.offline.indexOf(occ.name) >= 0 ? { kind: 'down', text: 'Kein Link: ' + occ.name + ' antwortet nicht.' }
+        : !occ && !o.vlan ? { kind: 'off', text: '' } : { kind: 'active', text: 'Ausgerollt.' };
+      const attachable = st.devices.filter((d) => d.at !== o.ref && o.blocked.indexOf(d.id) < 0);
+      const left = {
+        ...status(o.key, live, o.changed),
+        none: false, port: true, patch: false, free: !occ, occupied: !!occ, name: o.name, sub: o.sub, changed: o.changed, cardStyle: changedStyle(o.changed), reset: () => this.revert(ofSocket(o.ref)),
+        remove: () => { if (occ) this.setOp({ t: 'connect', dev: occ.id, place: null }); },
+        vlanId: 'vlan-' + o.key, vlanValue: o.vlan || '', vlanOptions: netOptions('Kein Netz'),
+        setVlan: o.setVlan,
+        attachId: 'attach-' + o.key,
+        attachOptions: [{ v: '', label: 'Gerät wählen …' }].concat(attachable.map((d) => ({ v: d.id, label: d.name + (d.at ? ' (umziehen)' : '') }))),
+        attach: (e) => { if (e.target.value) this.setOp({ t: 'connect', dev: e.target.value, place: o.ref }); }
+      };
+      // DHCP leases of the socket's net whose client sits behind it (bridge host table)
+      const leases = !o.vlan || occ || down ? [] : (this.res().clients[o.vlan] || []).filter((c) => !c.wlan && c.port === o.here).map(lease);
+      // every cable looks the same; that it leads into another room the cards say
+      const cable = () => ({ cableStyle: '', cableText: 'Kabel' });
+      // the device stands in another room: here only a pointer, the device and its ports are listed there
+      if (occ && this.devRoom(st, occ) !== o.room) {
+        const oc = devCard(occ);
+        return [{ left, cabled: true, ...cable(), hasDevice: false, noDevice: false, remote: true, dev: {},
+          remoteName: occ.name, remoteRoom: this.locName(this.devRoom(st, occ)), remoteLabel: oc.stLabel, remoteLabelClass: oc.stLabelClass }];
+      }
+      const rows = [{ left, cabled: !!occ, ...cable(), remote: false, hasDevice: !!occ, noDevice: !occ, dev: occ ? devCard(occ) : {},
+        noDeviceText: o.vlan ? this.netName(st, o.vlan) : 'Kein Netz',
+        netCardClass: 'pf-v6-c-card pf-m-compact' + (o.vlan ? '' : ' pf-m-plain'), netBoxStyle: o.vlan ? '' : 'border: 1px dashed var(--pf-t--global--border--color--default)',
+        leases, hasLeases: leases.length > 0 }];
+      if (occ) devRows(occ, rows);
+      return rows;
+    };
+    // the ports of an own device besides its uplink, each as a socket of its own
+    const devRows = (d, rows) => d.ports.filter((n) => n !== d.uplink).forEach((n) => {
+      const ref = 'd:' + d.id + ':' + n;
+      rows.push(...socketRow({ ref, key: ref, room: this.devRoom(st, d), name: 'Port ' + n + ' von ' + d.name, sub: 'dein Gerät, ' + d.model.split(' · ')[0], here: d.name + ' ' + n,
+        vlan: this.occupant(st, ref) ? null : d.vlans[n], changed: s.ops.some(ofSocket(ref)), blocked: this.below(st, d).concat([d.id]),
+        downText: () => deviceDown(d) ? 'Nicht erreichbar, weil ' + d.name + ' nicht erreichbar ist.' : null,
+        setVlan: (e) => this.setOp({ t: 'devPortVlan', dev: d.id, port: n, vlan: e.target.value || null }) }));
+    });
+    const portRow = (p) => socketRow({ ref: 'p:' + p.id, key: 'p:' + p.id, room: p.loc, name: p.name, sub: p.kind + ' · ' + p.where, here: this.locName(p.loc) + ', ' + p.name,
+      vlan: p.vlan, changed: s.ops.some(ofSocket('p:' + p.id)), blocked: [],
+      downText: () => faults.down.indexOf(p.id) >= 0 ? 'Kein Link seit 09:15. Steckt das Kabel?' : null,
+      setVlan: (e) => this.setOp({ t: 'portVlan', port: p.id, vlan: e.target.value || null }) });
+    const lease = (c) => ({ name: c.name, ip: c.ip, macTitle: 'MAC ' + c.mac + ((parseInt(c.mac.slice(0, 2), 16) & 2) ? ' (zufällige Adresse)' : '') });
+    // a device a patch cable leads into another room: listed in its room, behind the socket it hangs at
+    const patchedRows = (d) => {
+      const rows = [{ left: { none: false, port: false, patch: true, from: this.placeLabel(st, d.at), stLabelClass: '', stLabel: '', stHelperClass: '', stText: '' },
+        cabled: true, cableStyle: '', cableText: 'Kabel', remote: false, hasDevice: true, noDevice: false, dev: devCard(d) }];
+      devRows(d, rows);
+      return rows;
+    };
+    const locations = this.rooms.map((l) => ({ name: l.name, rows: st.ports.filter((p) => p.loc === l.id).flatMap(portRow)
+      .concat(st.devices.filter((d) => d.at && d.room === l.id && this.placeRoom(st, d.at) !== l.id).flatMap(patchedRows)) })).filter((l) => l.rows.length);
+    const loose = st.devices.filter((d) => !d.at);
+    if (loose.length) locations.push({ name: 'Nicht angeschlossen', rows: loose.flatMap((d) => { const rows = [{ left: { none: true, port: false, patch: false, stLabelClass: '', stLabel: '', stHelperClass: '', stText: '' }, cabled: false, remote: false, hasDevice: true, noDevice: false, dev: devCard(d) }]; devRows(d, rows); return rows; }) });
+
+    // nets
+    const edit = s.edit, text = s.draftText;
+    let fieldError = '', fieldHint = '';
+    if (edit && edit.field === 'psk') {
+      fieldHint = 'Mindestens 12 Zeichen.';
+      if (text.length < 12) fieldError = text.length ? 'Noch ' + (12 - text.length) + ' Zeichen zu kurz.' : ' ';
+    }
+    if (edit && edit.field === 'ssid') {
+      fieldHint = 'So heisst das WLAN auf den Telefonen. Höchstens 32 Zeichen.';
+      const t = text.trim();
+      const own = st.nets.filter((n) => n.id !== edit.net && n.wlan).map((n) => n.ssid);
+      if (!t) fieldError = ' ';
+      else if (new TextEncoder().encode(t).length > 32) fieldError = 'Höchstens 32 Zeichen.';
+      else if (own.concat(this.res().groupSsids).some((x) => x.toLowerCase() === t.toLowerCase())) fieldError = '„' + t + '“ gibt es in deinem Haus (WLAN-Gruppe Haus Berg) schon.';
+    }
+    const fieldInvalid = !!fieldError;
+    const signalText = (dbm) => (dbm >= -60 ? 'sehr gut' : dbm >= -70 ? 'gut' : 'schwach') + ' (' + String(dbm).replace('-', '−') + ' dBm)';
+    const signalClass = (dbm) => 'pf-v6-c-label pf-m-compact ' + (dbm >= -60 ? 'pf-m-green' : dbm >= -70 ? 'pf-m-blue' : 'pf-m-orange');
+    const nets = st.nets.map((n) => {
+      const ports = st.ports.filter((p) => p.vlan === n.id).map((p) => this.locName(p.loc) + ', ' + p.name)
+        .concat(st.devices.flatMap((d) => Object.keys(d.vlans).filter((k) => d.vlans[k] === n.id && k !== d.uplink).map((k) => 'Port ' + k + ' von ' + d.name)));
+      const gone = (c) => c.wlan ? faults.offline.indexOf(c.ap) >= 0 : faults.offline.some((o) => c.port.indexOf(o) === 0) || (faults.down.indexOf('p2') >= 0 && c.port.indexOf('Dose rechts') >= 0);
+      const aps = this.apCount(st), apsOff = st.devices.filter((d) => d.at && deviceDown(d)).map((d) => d.name);
+      const netLive = !n.wlan ? { kind: 'active', text: 'Ausgerollt, nur per Kabel.' }
+        : apsOff.length ? { kind: 'limited', text: 'WLAN nur auf ' + (aps - apsOff.length) + ' von ' + aps + ' Access Points; ' + apsOff.join(', ') + ' ist nicht erreichbar.' }
+        : { kind: 'active', text: 'Ausgerollt, WLAN auf allen ' + aps + ' Access Points.' };
+      // a device port reads like everywhere else: 'Port e02 von ap-…'
+      const viaPort = (t) => { const d = st.devices.find((x) => t.indexOf(x.name + ' ') === 0); return d ? 'Port ' + t.slice(d.name.length + 1) + ' von ' + d.name : t; };
+      const clients = (this.res().clients[n.id] || []).filter((c) => (n.wlan || !c.wlan) && !gone(c)).map((c) => ({
+        name: c.name,
+        // a locally administered address: the phone made it up for this WLAN
+        macTitle: 'MAC ' + c.mac + ((parseInt(c.mac.slice(0, 2), 16) & 2) ? ' (zufällige Adresse)' : ''),
+        ip: c.ip, isWlan: c.wlan, isCable: !c.wlan,
+        viaText: c.wlan ? 'WLAN · ' + c.ap : 'Kabel · ' + viaPort(c.port), band: c.wlan ? c.band : '–',
+        signalText: c.wlan ? signalText(c.signal) : '', signalClass: c.wlan ? signalClass(c.signal) : ''
+      }));
+      const editing = (f) => !!edit && edit.net === n.id && edit.field === f;
+      const take = (f) => () => {
+        if (fieldInvalid) return;
+        this.setOp(f === 'ssid' ? { t: 'ssid', net: n.id, ssid: text.trim() } : { t: 'psk', net: n.id, psk: text });
+        this.setState({ edit: null });
+      };
+      return {
+        ...status('n:' + n.id, netLive, s.ops.some(ofNet(n.id))), changed: s.ops.some(ofNet(n.id)),
+        reset: () => { this.revert(ofNet(n.id)); this.setState({ edit: null }); },
+        name: n.name, label: this.netLabel(n), ssid: n.ssid,
+        changed: s.ops.some((o) => (o.t === 'psk' || o.t === 'wlan' || o.t === 'ssid') && o.net === n.id),
+        wlanOn: n.wlan, wlanOff: !n.wlan, switchId: 'wlan-' + n.id,
+        toggleWlan: () => { this.setOp({ t: 'wlan', net: n.id, on: !n.wlan }); this.setState({ edit: null }); },
+        ssidViewing: !editing('ssid'), ssidEditing: editing('ssid'),
+        startSsid: () => this.setState({ edit: { net: n.id, field: 'ssid' }, draftText: n.ssid }),
+        takeSsid: take('ssid'),
+        pskViewing: !editing('psk'), pskEditing: editing('psk'),
+        pskShown: s.showPsk[n.id] ? n.psk : '••••••••••••', showLabel: s.showPsk[n.id] ? 'Verbergen' : 'Zeigen',
+        toggleShow: () => this.setState({ showPsk: { ...s.showPsk, [n.id]: !s.showPsk[n.id] } }),
+        startPsk: () => this.setState({ edit: { net: n.id, field: 'psk' }, draftText: '' }),
+        takePsk: take('psk'),
+        showQr: () => this.setState({ qrNet: n.id }),
+        ports: ports.length ? ports.join(', ') : 'keiner Dose',
+        clients, clientCount: clients.length
+      };
+    });
+    const qrNet = s.qrNet ? st.nets.find((n) => n.id === s.qrNet) : null;
+    const qr = qrNet ? this.qrPath(qrNet.ssid, qrNet.psk) : null;
+    const qrUnsaved = !!qrNet && s.ops.some((o) => (o.t === 'psk' || o.t === 'ssid' || o.t === 'wlan') && o.net === qrNet.id);
+
+    const preview = s.previewOpen ? this.plan() : { lines: [], warnings: [], affected: [] };
+    const stateText = { saved: 'wird ausgerollt', rolling: 'wird ausgerollt', waiting: 'wartet', done: 'Ok', failed: 'nicht ausgerollt' };
+    const stateKind = { saved: 'net', rolling: 'net', waiting: 'warn', done: 'dev', failed: 'bad' };
+    const changes = s.changes.map((c) => {
+      const done = c.devs.filter((d) => d.state === 'done').length, percent = c.devs.length ? Math.round(100 * done / c.devs.length) : 100;
+      const devText = { pending: ['', 'ausstehend'], done: ['pf-m-green', 'ausgerollt'], waiting: ['pf-m-orange', 'nicht erreichbar, wartet'], failed: ['pf-m-red', 'nicht ausgerollt'] };
+      return {
+        title: c.title, by: c.by, stateText: stateText[c.state], canTakeBack: c.state === 'done', takeBack: () => this.takeBack(c), labelClass: label(stateKind[c.state]),
+        detail: !c.devs.length ? 'Nichts auszurollen' : done + ' von ' + c.devs.length + ' Geräten ausgerollt',
+        devs: c.devs.map((d) => ({ name: d.name, cls: 'pf-v6-c-label pf-m-compact ' + devText[d.state][0], text: devText[d.state][1] })),
+        percent, barStyle: 'width: ' + percent + '%',
+        progressClass: 'pf-v6-c-progress pf-m-sm' + (c.state === 'failed' ? ' pf-m-danger' : c.state === 'done' ? ' pf-m-success' : ''),
+        failed: c.state === 'failed',
+      };
+    });
+    const admin = this.isAdmin(), home = admin && s.adminHome;
+    const roomDev = s.roomDev ? st.devices.find((d) => d.id === s.roomDev) : null;
+    const running = s.changes.filter((c) => c.state === 'saved' || c.state === 'rolling' || c.state === 'waiting').length;
+    const toChanges = s.tab === 'changes' ? null : () => this.setState({ tab: 'changes' });
+    const alert = (kind, title, text, go, action) => ({ cls: 'pf-v6-c-alert pf-m-inline pf-m-' + kind, [kind]: true, title, text, hasAction: !!go, go: go || null, action: action || 'Details' });
+    const issues = [];
+    s.changes.forEach((c) => {
+      if (c.state === 'failed') issues.push(alert('danger', 'Nicht ausgerollt: ' + c.title, 'Auf ' + c.devs.filter((d) => d.state === 'failed').map((d) => d.name).join(', ') + ' hat es nicht geklappt; dort gilt noch das Alte.', toChanges));
+      if (c.state === 'waiting') issues.push(alert('warning', 'Wartet: ' + c.title, c.devs.filter((d) => d.state === 'waiting').map((d) => d.name).join(', ') + ' ist nicht erreichbar; wird nachgeholt, sobald es wieder da ist.', toChanges));
+      if (c.state === 'saved' || c.state === 'rolling') issues.push(alert('info', 'Wird ausgerollt: ' + c.title, c.devs.filter((d) => d.state === 'done').length + ' von ' + c.devs.length + ' Geräten ausgerollt.', toChanges));
+    });
+    faults.offline.forEach((n) => issues.push(alert('warning', n + ' ist nicht erreichbar', 'Seit 14:02. Es strahlt keine WLANs aus, und was an ihm hängt, hat kein Netz. Abgeschaltet oder ohne Strom?', null)));
+    if (faults.replug) {
+      const d = st.devices.find((x) => x.id === faults.replug.dev);
+      if (d && d.uplink !== faults.replug.port) issues.push(alert('warning', d.name + ': Kabel steckt an ' + faults.replug.port + ' statt ' + d.uplink, 'So ist das Gerät nicht erreichbar. Übernimm ' + faults.replug.port + ' als Anschluss oder steck das Kabel um.', () => this.setOp({ t: 'uplink', dev: d.id, port: faults.replug.port }), faults.replug.port + ' übernehmen'));
+    }
+    faults.down.forEach((id) => issues.push(alert('warning', 'Kein Link an ' + this.placeLabel(st, 'p:' + id), 'Seit 09:15. Steckt das Kabel an der Dose und am Gerät?', null)));
+    if (!issues.length) issues.push(alert('success', 'Alles ok', 'Zuletzt geprüft vor 20 Sekunden.', null));
+    const tab = (id, text, badge) => ({ label: text, on: s.tab === id, cls: 'pf-v6-c-tabs__item' + (s.tab === id ? ' pf-m-current' : ''), go: () => this.setState({ tab: id }), hasBadge: badge > 0, badge });
+
+    return {
+      tabs: [tab('ports', 'Dosen und Geräte', 0), tab('nets', 'Netze', 0), tab('changes', 'Änderungen', running)],
+      isPorts: !home && s.tab === 'ports', isNets: !home && s.tab === 'nets', isChanges: !home && s.tab === 'changes',
+      adminHome: home, showResident: !home, impersonating: admin && !home,
+      pageTitle: home ? 'Provisioner · Admin' : admin ? 'Netz von ' + this.res().name : 'Mein Netz',
+      whoText: admin ? 'koa (Admin)' : this.res().name + ' · ' + this.res().user,
+      adminName: 'koa', residentName: this.res().name, resident: s.resident,
+      residentOptions: Object.keys(this.residents).map((k) => ({ v: k, label: this.residents[k].name + ' (' + this.residents[k].user + ')' })),
+      pickResident: (e) => { const k = e.target.value; this.setState({ resident: k, base: this.residents[k].base, ops: [], changes: [], tab: 'ports', edit: null, qrNet: null, previewOpen: false }); },
+      leave: () => this.setState({ adminHome: true }),
+      impersonate: () => this.setState({ adminHome: false }),
+      locations, nets, apCount: this.apCount(st),
+      draftText: text, onDraft: (e) => this.setState({ draftText: e.target.value }),
+      generatePsk: () => { const w = ['Ahorn', 'Bergbach', 'Dachs', 'Eule', 'Fichte', 'Gämse', 'Heidel', 'Kiesel', 'Lerche', 'Moos']; const pick = () => w[Math.floor(Math.random() * w.length)]; this.setState({ draftText: pick() + '-' + pick() + '-' + (10 + Math.floor(Math.random() * 89)) + '-' + pick() }); },
+      cancelEdit: () => this.setState({ edit: null }),
+      fieldInvalid,
+      fieldControlClass: 'pf-v6-c-form-control' + (fieldError.trim() ? ' pf-m-error' : ''),
+      fieldHelperClass: 'pf-v6-c-helper-text__item' + (fieldError.trim() ? ' pf-m-error' : ''),
+      fieldHelper: fieldError.trim() || fieldHint,
+      fieldTakeClass: 'pf-v6-c-button pf-m-primary' + (fieldInvalid ? ' pf-m-disabled' : ''),
+      qrOpen: !!qrNet, qrSsid: qrNet ? qrNet.ssid : '', qrPsk: qrNet ? qrNet.psk : '',
+      qrReady: !!qr, qrMissing: !!qrNet && !qr, qrD: qr ? qr.d : '', qrBox: qr ? qr.box : '0 0 1 1', qrUnsaved,
+      closeQr: () => this.setState({ qrNet: null }),
+      roomOpen: !!roomDev, roomDevName: roomDev ? roomDev.name : '', roomDraft: s.roomDraft,
+      roomOptions: !roomDev ? [] : [{ v: '', label: roomDev.at ? 'Wie die Dose (' + this.locName(this.placeRoom(st, roomDev.at)) + ')' : 'Wie die Dose' }]
+        .concat(this.rooms.filter((l) => !roomDev.at || l.id !== this.placeRoom(st, roomDev.at)).map((l) => ({ v: l.id, label: l.name }))),
+      pickRoom: (e) => this.setState({ roomDraft: e.target.value }),
+      closeRoom: () => this.setState({ roomDev: null }),
+      applyRoom: () => { this.setOp({ t: 'room', dev: roomDev.id, room: s.roomDraft || null }); this.setState({ roomDev: null }); },
+      hasDraft: !home && s.ops.length > 0, draftCount: s.ops.length, draftText: s.ops.length === 1 ? '1 ungespeicherte Änderung' : s.ops.length + ' ungespeicherte Änderungen',
+      discard: () => this.setState({ ops: [] }),
+      openPreview: () => this.setState({ previewOpen: true }),
+      closePreview: () => this.setState({ previewOpen: false }),
+      previewOpen: s.previewOpen,
+      previewLines: preview.lines.map((t) => ({ text: t })), warnings: preview.warnings,
+      affected: preview.affected, affectedCount: preview.affected.length,
+      save: () => this.save(),
+      changes, noChanges: s.changes.length === 0,
+      issues, showSummary: !home && s.tab !== 'changes' || issues.some((x) => x.cls.indexOf('success') < 0)
+    };
+  }
+}
+</script>
+</body>
+</html>

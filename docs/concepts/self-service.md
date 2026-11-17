@@ -129,6 +129,10 @@ Sinn, denn seine Änderung betrifft oft mehrere Geräte, auch fremde.
 
 Ein klickbarer Prototyp (PatternFly 6, Design-Canvas „Anwohner-UI“,
 https://claude.ai/artifact/LbpkF1eYc9r3pV92eh4RCa) hat die Abläufe durchgespielt (2026-11-17).
+Eine Kopie liegt in [self-service-ui.dc.html](self-service-ui.dc.html): eine Design Component
+(Vorlage mit `{{…}}` und der Logik in `class Component`); dargestellt wird sie mit der Runtime
+der Design-Canvas (`support.js`), die nicht im Repository liegt. Die Tweaks `rolle`, `stoerung`
+und `rolloutFails` spielen Admin, Störungen und ein gescheitertes Ausrollen durch.
 Was er festlegt:
 
 - **Ersteinrichtung macht der Admin** (vorerst): Gerät übergeben, Besitz setzen, WLAN-Gruppe.
