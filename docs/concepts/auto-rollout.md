@@ -56,7 +56,10 @@ leerem Diff sind nicht betroffen. Dann:
   ist (ein Anwohner hat seinem AP den Strom gezogen), wird **zurückgestellt**: Die Transaktion
   läuft ohne es, es bekommt die Änderung nachgeholt, sobald es wieder da ist (im Anwohner-UI
   „wartet“). Sonst hielte ein einziges ausgeschaltetes Gerät die Automatik eines ganzen Bereichs
-  an.
+  an. Ist ein Ende einer Funkstrecke nicht erreichbar, wird auch das andere zurückgestellt: eine
+  Änderung an nur einer Seite kann die Strecke trennen.
+- **Erreichbar, aber ohne Internet:** Erreicht ein Gerät das Internet nicht, beginnt die
+  Transaktion gar nicht (siehe [Internet](#internet)); es wird nicht zurückgestellt.
 - **Nie automatisch** (die Änderung wartet auf einen Admin):
   - was den Weg des Provisioners zu einem Gerät ändert (Management-Adresse, MTU auf dem Weg);
   - was nach aussen etwas ankündigt, das nicht in den freigegebenen Bereichen liegt (OSPF am
@@ -74,8 +77,8 @@ Transaktion aus** (`/ping` auf dem Gerät, über seine eigene Routing-Tabelle), 
 Netz der Anwohner: Es geht darum, dass das Netz im Grossen und Ganzen geht und das Management
 noch funktioniert. **IPv6 zählt gleich wie IPv4.**
 
-- **Vorher:** Eine Transaktion beginnt nur, wenn jedes ihrer Geräte das Internet über IPv4
-  **und** IPv6 erreicht. Sonst beginnt sie nicht; die Änderung wartet in der Warteschlange. Das
+- **Vorher:** Eine Transaktion beginnt nur, wenn jedes ihrer erreichbaren Geräte das Internet
+  über IPv4 **und** IPv6 erreicht; ein einziges ohne genügt, dass gar nichts automatisch geschieht. Sonst beginnt sie nicht; die Änderung wartet in der Warteschlange. Das
   ist kein Fehlerzustand: ein Ausfall beim Provider soll die Automatik nicht stilllegen, sie geht
   weiter, wenn das Internet zurück ist.
 - **Nachher:** Die Fallbacks gehen nur weg, wenn jedes Gerät das Internet über IPv4 und IPv6
@@ -127,8 +130,9 @@ Die Automatik muss einen Neustart des Servers überleben:
 - **Bereich:** Custom Field `auto_rollout` an der Site, mit einer Ausnahme pro Gerät.
 - **Einschalten** nur mit leeren Diffs; **Drift** führt in den Fehlerzustand.
 - **Ein manuelles Gerät betroffen:** kein teilweises Rollout, ein Admin gibt frei.
-- **Vorher nicht erreichbare Geräte** werden zurückgestellt und bekommen die Änderung nachgeholt;
-  nur ein Fehler während der Transaktion nimmt alles zurück.
-- **Internet:** von jedem Gerät geprüft, nicht aus jedem Netz; IPv4 und IPv6 gleich wichtig.
-  Ohne beides beginnt die Automatik nicht; danach müssen beide noch gehen, sonst geht alles
+- **Vorher nicht erreichbare Geräte** werden übergangen und bekommen die Änderung nachgeholt,
+  ebenso das andere Ende ihrer Funkstrecken; nur ein Fehler während der Transaktion nimmt alles
   zurück.
+- **Internet:** von jedem Gerät geprüft, nicht aus jedem Netz; IPv4 und IPv6 gleich wichtig.
+  Erreicht ein erreichbares Gerät nicht beides, geschieht nichts automatisch; danach müssen beide
+  noch gehen, sonst geht alles zurück.
