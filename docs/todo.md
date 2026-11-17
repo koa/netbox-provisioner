@@ -49,7 +49,12 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z44 | Wie wird ein fremdes Gerät am Port eines Anwohners kein OSPF-Nachbar? | OSPF-Authentisierung pro Link (2026-11-17) | A10, C7 |
 | Z45 | Fremde VLANs von einem Gerät des Anwohners fernhalten? | nein, er konfiguriert es nur über den Provisioner (2026-11-17) | C7 |
 | Z46 | Dürfen Anwohner-Änderungen fremde Geräte betreffen? | ja; die Mutationen regeln nur, was er in NetBox eintragen darf, auf die Geräte kommt es über ein automatisches Rollout (2026-11-17) | C7, C20 |
-| Z47 | Darf ein Anwohner WLANs anlegen? | nein, vorerst nur Ports und das Passwort bestehender WLANs (2026-11-17) | C7 |
+| Z47 | Darf ein Anwohner WLANs anlegen? | nein, vorerst nur Ports und bestehende WLANs: Passwort, nach dem Prototyp auch SSID (eindeutig in der WLAN-Gruppe) und ein/aus (2026-11-17) | C7, C21 |
+| Z48 | Wer richtet ein Gerät eines Anwohners ein? | vorerst der Admin (2026-11-17) | C7 |
+| Z49 | Was ist ein Netz für den Anwohner? | ein VLAN mit höchstens einem WLAN, das er ein- und ausschaltet (2026-11-17) | C21, E27 |
+| Z50 | Anschluss (Uplink-Port) eines Geräts automatisch erkennen? | ja, über die Nachbarn; übernommen wird mit einem Klick, nicht von selbst (2026-11-17) | C21 |
+| Z51 | Rückgängig nach gescheitertem Ausrollen? | nein, es bleibt als Abweichung sichtbar; eine ausgerollte Änderung lässt sich als neue Änderung zurücknehmen (2026-11-17) | C20, C21 |
+| Z52 | Darf ein Admin das UI eines Anwohners sehen und dort ändern? | ja, Support-Ansicht mit Auswahl des Anwohners; der Verlauf nennt beide; später vielleicht Stufen (nur sehen) (2026-11-17) | C21 |
 
 ## A. Sicherheit
 
@@ -67,12 +72,13 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
 | C3 | Interne Firewall: `guest` und `protected` am Gateway-Interface, Freigaben als Custom Fields (Z4), nur ein Router pro Netz | [Firewall](concepts/firewall.md#interne-firewall) | M | offen |
-| C7 | Self-Service und Personas: Rollen aus OIDC, NetBox-Owner als Anwohner mit Geräten, Ports und VLANs, WLANs und Gruppe abgeleitet (Z10, Z11, Z42, Z43, Z45), Leserechte in NetBox nur auf eigene WLANs, Leases, Clients, Passwort der WLANs (Z47), Ports, eigene Geräte anschliessen (A10); die Geräte über C20 (Z46) | [Self-Service](concepts/self-service.md) | L | offen |
+| C7 | Self-Service und Personas: Rollen aus OIDC, NetBox-Owner als Anwohner mit Geräten, Ports und VLANs, WLANs und Gruppe abgeleitet (Z10, Z11, Z42, Z43, Z45), Leserechte in NetBox nur auf eigene WLANs, Leases, Clients, WLANs: Passwort, SSID, ein/aus (Z47), Ports, eigene Geräte anschliessen (A10), Anschluss und Raum eines Geräts; Ersteinrichtung durch den Admin (Z48); die Geräte über C20 (Z46); das UI in C21 | [Self-Service](concepts/self-service.md) | L | offen |
 | C8 | Überwachung: Collector, Prometheus-Metriken (Alarme dort, Z13), Ping zum Uplink-Gateway (Z14), Zustandsseite, Ansicht für Anwohner | [Überwachung](concepts/monitoring.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | Regel, Plan, Rollout und eingefärbte Knoten der Netz-Ansicht erledigt; offen: CHR-Test der Kette `entry -- a -- target` |
 | C18 | Reiner L2-Switch als „Extender“: Ein alter Switch ohne L3-Offload oder mit anderen Problemen (CRS2xx, CRS354) hängt an einem modernen Switch oder Router, der seine L3-Funktionen über einen Trunk übernimmt: Port oder Bridge, mit IP oder VLAN (Z39) | [Reiner L2-Switch](concepts/l2-extender.md) | M–L | offen |
 | C19 | DNS für alle Adressen auf Geräte-Ports: Vorwärts- (A, AAAA) und Rückwärts-Einträge (PTR) aus NetBox, ein Server dafür (Z40); zuerst ein Konzept | – | M–L | offen |
-| C20 | Automatisches Rollout der NetBox-Änderungen (Z46): was ein Anwohner (oder ein Helfer) in NetBox ändert, erreicht die betroffenen Geräte ohne Anwenden von Hand, in sicherer Reihenfolge und mit Fallback; zuerst ein Konzept | – | L | offen |
+| C20 | Automatisches Rollout der NetBox-Änderungen (Z46): was ein Anwohner (oder ein Helfer) in NetBox ändert, erreicht die betroffenen Geräte ohne Anwenden von Hand, in sicherer Reihenfolge und mit Fallback; den Stand pro Gerät und Änderung festhalten (ausstehend, ausgerollt, wartet auf ein nicht erreichbares Gerät, gescheitert), weil das Anwohner-UI ihn pro Element zeigt (Z51); zuerst ein Konzept | – | L | offen |
+| C21 | Anwohner-UI nach dem Prototyp: Tabs Dosen und Geräte (Ports als Dosen, Räume, Kabel, Geräte pro Port aus der Bridge-Host-Tabelle), Netze (WLAN ein/aus, SSID, Passwort, QR-Code, Clients mit Band und Signal), Änderungen (Stand pro Gerät, Zurücknehmen); Entwürfe mit Zurücksetzen und Vorschau; ein Status-Label pro Element aus Rollout (C20) und Live-Reads; Anschluss erkennen und übernehmen (Z50); Raum per Popup; Support-Ansicht für Admins mit Filter nach Besitz im Provisioner (Z52) | [Self-Service](concepts/self-service.md#anwohner-ui) | L | offen |
 
 ## D. In Arbeit, Rest offen
 
@@ -93,4 +99,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | E22 | Diff-Darstellung bei allen Diffs: neben dem Skript zum Anwenden auch das Skript zurück und eine Ansicht der geänderten Objekte und Felder (wie ein Diff in der IDE oder ein Vergleich zweier DB-Tabellen); verwandt mit E13 | [Geräteseite](device-page.md) | M | offen |
 | E23 | Umbenennung von Geräten: Die Gerätenamen sind heute unstrukturiert, einige werden sich ändern. Nach einer Umbenennung in NetBox soll man im Provisioner den neuen Namen dem alten zuweisen können, damit die Gerätekonfiguration nachgezogen wird (heute zeigt die Geräteseite nur, dass `/system/identity` nicht der NetBox-Name ist; heisst das Gerät wie ein anderes NetBox-Gerät, gilt es als `WrongDevice`) | [Geräteseite](device-page.md) | M | offen |
 | E25 | Fehler beim Start des Apply-Skripts zeigen: Lehnt RouterOS das Skript schon beim Parsen ab (lab-crs125, 7.24.6: `expected end of command (line 61 column 5)` im Log, Topic `script,error`), setzt es keine Marke; der Job endet mit „Nicht alles wurde angewendet“ und dem ganzen Restskript, aber ohne den Grund. Fehlt nach `unmarked` jede Marke, die Meldung aus `/log` lesen und mit Zeile und Befehl beim Job zeigen | [Jobs](jobs.md) | S | offen |
+| E27 | Ausgeschaltete WLANs: `status` des Wireless LAN mitlesen (`fetch_topology.rs` liest nur SSID, Sicherheit, PSK und VLAN) und ein ausgeschaltetes nicht generieren. Heute käme auch ein in NetBox deaktiviertes WLAN auf die Geräte; Voraussetzung für den WLAN-Schalter der Anwohner (Z49) | [WLAN](netbox-modeling.md#wlan) | S | offen |
+| E28 | Band der WLAN-Clients: `WlanClient` (`device/metrics`) um Band und Standard (2.4/5 GHz, ax) ergänzen, aus der Registrierungstabelle von `/interface/wifi` und `/caps-man` | [Self-Service](concepts/self-service.md#clients) | S | offen |
+| E29 | Geräte pro Port: die Host-Tabelle der Bridge (`/interface/bridge/host`) lesen und Leases damit einem Port zuordnen (welche MAC an welchem Port gelernt wurde), für die Dosen im Anwohner-UI; verwandt mit E15 | [Self-Service](concepts/self-service.md#leases) | M | offen |
 | E26 | Zertifikat für einen OpenVPN-Server: das Zertifikat aus einer CA ausstellen, hochladen und belassen wie das von WebFig (`www_certificate`), wo NetBox einen OpenVPN-Server nennt (Z41). Dass Apply eine OpenVPN-CA entfernte, ist behoben (in done.md) | [Deployment](deployment.md) | M | offen |
