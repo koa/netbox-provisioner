@@ -35,6 +35,10 @@ pub enum Error {
         "not reached after the apply: {0}; every device of the batch loads its config from before"
     )]
     BatchIncomplete(Box<str>),
+    /// the device doesn't reach the internet over both IPv4 and IPv6 before a batch that
+    /// needs it: nothing is applied
+    #[error("{0} doesn't reach the internet over IPv4 and IPv6")]
+    NoInternet(Box<str>),
     #[error("Error accessing device: {0}")]
     MikrotikApi(#[from] mikrotik_api::error::Error),
     #[error("Error on data model: {0}")]

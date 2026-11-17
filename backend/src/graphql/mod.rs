@@ -809,7 +809,7 @@ impl MutationAuthenticated {
             &devices,
             JobKind::Apply,
             |_| Started::By(user.clone()),
-            |logs| crate::device::batch::apply(members, logs),
+            |logs| crate::device::batch::apply(members, logs, false),
         )?)
     }
     /// Drops the live checks of a device's interfaces: who shows them reads them anew, a

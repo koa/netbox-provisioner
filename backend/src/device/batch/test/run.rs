@@ -2,6 +2,7 @@
 //!
 //! The rules of a batch, with stand-ins for the devices.
 use crate::device::batch::{Applying, PendingSeen, Planning, Running, Timing, Watched, run, watch};
+use crate::device::internet::InternetReached;
 use crate::{
     Error,
     device::ros::{apply::FallbackLeftReason, fallback::Pending},
@@ -31,6 +32,13 @@ struct Fake {
     no_scheduler: bool,
     /// where its fallback stands at the first check that reaches it
     pending: Option<Pending>,
+    /// it doesn't reach the internet before the batch
+    offline_before: bool,
+    /// how many looks after its script find it without the internet (OSPF converging)
+    offline_looks: usize,
+    /// it never reaches the internet after its script
+    offline_after: bool,
+    looks: Arc<Mutex<usize>>,
     seen: Arc<Mutex<Option<Instant>>>,
     calls: Arc<Mutex<Vec<String>>>,
     delays: Arc<Mutex<Vec<Duration>>>,
@@ -64,6 +72,13 @@ impl Planning for Fake {
 impl Applying for Fake {
     fn radio_wait(&self) -> Option<Duration> {
         self.radio.then_some(Duration::from_millis(200))
+    }
+    async fn internet_before(&self) -> InternetReached {
+        self.call("internet");
+        InternetReached {
+            v4: true,
+            v6: !self.offline_before,
+        }
     }
     async fn hold(&mut self, _log: &Log) -> Result<(), Error> {
         if self.radio {
@@ -135,6 +150,15 @@ impl Watched for Fake {
             Ok("".into())
         }
     }
+    async fn internet_after(&self) -> Option<InternetReached> {
+        let mut looks = self.looks.lock().unwrap();
+        *looks += 1;
+        let online = !self.offline_after && *looks > self.offline_looks;
+        Some(InternetReached {
+            v4: online,
+            v6: online,
+        })
+    }
     async fn stop(&self, _fires: Instant, _delay: Duration, _log: &Log) -> Result<(), Error> {
         self.call("stop");
         Ok(())
@@ -146,6 +170,16 @@ impl Watched for Fake {
 
 /// `near` and `far`: the calls and the outcomes.
 async fn batch(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>, Vec<Log>) {
+    batch_needing(near, far, false).await
+}
+
+/// [`batch`], every device needing the internet before and after (the automatic rollout) with
+/// `needs_internet`.
+async fn batch_needing(
+    near: Fake,
+    far: Fake,
+    needs_internet: bool,
+) -> (Vec<String>, Vec<Result<(), Error>>, Vec<Log>) {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let delays = Arc::new(Mutex::new(Vec::new()));
     let near = Fake {
@@ -175,6 +209,7 @@ async fn batch(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>, V
             settle: Duration::ZERO,
             margin: Duration::ZERO,
         },
+        needs_internet,
     )
     .await;
     // every path of the batch keeps to the apply's state machine
@@ -356,6 +391,7 @@ async fn a_radio_change_lengthens_every_fallback() {
             settle: Duration::ZERO,
             margin: Duration::ZERO,
         },
+        false,
     )
     .await;
     assert!(results.iter().all(Result::is_ok), "{results:?}");
@@ -636,6 +672,7 @@ async fn resumed(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>,
             fallback: !member.no_scheduler,
             member,
             checked: None,
+            internet: None,
         }
     })
     .collect();
@@ -656,6 +693,7 @@ async fn resumed(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>,
         fires,
         timing.delay,
         vec![None, None],
+        false,
     )
     .await;
     for log in &logs {
@@ -689,4 +727,87 @@ async fn a_resumed_batch_keeps_its_rules() {
     );
     assert_eq!(left(&logs[0]), [FallbackLeftReason::BatchIncomplete]);
     assert_eq!(left(&logs[1]), [FallbackLeftReason::NotReached]);
+}
+
+/// Needing the internet (the automatic rollout), a device without it over IPv6 stops the
+/// batch before anything is armed.
+#[tokio::test]
+async fn no_internet_before_applies_nothing() {
+    let (calls, results, _) = batch_needing(
+        Fake::default(),
+        Fake {
+            offline_before: true,
+            ..Fake::default()
+        },
+        true,
+    )
+    .await;
+    assert_eq!(
+        calls,
+        ["plan near", "plan far", "internet near", "internet far"]
+    );
+    assert!(matches!(&results[1], Err(Error::NoInternet(d)) if &**d == "far"));
+    assert!(matches!(&results[0], Err(Error::BatchStopped(d)) if &**d == "far"));
+}
+
+/// The internet coming back a few looks after the scripts (OSPF converging) is waited for;
+/// then the fallbacks go.
+#[tokio::test]
+async fn the_internet_is_waited_for_after_the_scripts() {
+    let (calls, results, _) = batch_needing(
+        Fake {
+            offline_looks: 3,
+            ..Fake::default()
+        },
+        Fake::default(),
+        true,
+    )
+    .await;
+    assert!(results.iter().all(Result::is_ok), "{results:?}");
+    assert!(calls.iter().any(|call| call == "stop near"), "{calls:?}");
+}
+
+/// A device in line but without the internet after its script sends all back.
+#[tokio::test]
+async fn no_internet_after_sends_all_back() {
+    let (calls, results, logs) = batch_needing(
+        Fake::default(),
+        Fake {
+            offline_after: true,
+            ..Fake::default()
+        },
+        true,
+    )
+    .await;
+    assert!(
+        !calls.iter().any(|call| call.starts_with("stop")),
+        "{calls:?}"
+    );
+    assert!(
+        results
+            .iter()
+            .all(|r| matches!(r, Err(Error::BatchIncomplete(d)) if &**d == "far")),
+        "{results:?}"
+    );
+    assert_eq!(left(&logs[0]), [FallbackLeftReason::BatchIncomplete]);
+    assert_eq!(left(&logs[1]), [FallbackLeftReason::NoInternet]);
+}
+
+/// Without the need, nothing pings the internet.
+#[tokio::test]
+async fn a_batch_by_hand_doesnt_ask_for_the_internet() {
+    let (calls, results, _) = batch(
+        Fake {
+            offline_before: true,
+            offline_after: true,
+            ..Fake::default()
+        },
+        Fake::default(),
+    )
+    .await;
+    assert!(results.iter().all(Result::is_ok), "{results:?}");
+    assert!(
+        !calls.iter().any(|call| call.starts_with("internet")),
+        "{calls:?}"
+    );
 }

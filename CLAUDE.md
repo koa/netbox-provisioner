@@ -710,7 +710,12 @@ be reached after a single apply. A script that didn't start leaves its device no
 so that too sends all back. A problem before the start (planning, arming, writing) takes the
 scripts and fallbacks away again, with nothing applied (`BatchStopped`). The steps are the
 traits `batch::Planning` (giving the planned member, none with nothing to do) and
-`batch::Applying`, so the rules are tested with stand-ins (`batch::test::run`).
+`batch::Applying`, so the rules are tested with stand-ins (`batch::test::run`). With
+`needs_internet` (the automatic rollout, C20; `applyBatch` by hand passes `false`) every member
+pings `internet_targets` (`device::internet`, one answer per family) before its fallback
+(`CheckingInternet`; one without IPv4 and IPv6 stops all with `NO_INTERNET`) and, in line after
+its script, until both answer or the batch gives up; one without sends all back
+(`BatchIncomplete.no_internet`, `FallbackLeftReason::NoInternet`). `SavedBatch` keeps the flag.
 
 A device that doesn't answer gets its initial setup over `/tool mac-telnet` from a neighbor that
 does (`device::bootstrap`, on the device page): `plans` lists the cabled ports with an IPv4 (on

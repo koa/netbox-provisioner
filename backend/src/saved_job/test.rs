@@ -66,6 +66,7 @@ fn a_saved_job_is_read_back() {
             batch: Some(SavedBatch {
                 devices: vec![DeviceId(7), DeviceId(8)].into(),
                 delay: Duration::from_secs(265),
+                needs_internet: true,
             }),
         }),
     };

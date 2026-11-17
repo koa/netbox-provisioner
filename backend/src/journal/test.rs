@@ -299,3 +299,32 @@ fn a_leftover_no_entry_names_is_found() {
         }
     );
 }
+
+/// Every state of every job has its words in the journal, not its GraphQL name.
+#[test]
+fn every_state_is_worded() {
+    use crate::device_state::{
+        ApplyState, BootstrapState, CleanupState, DeviceModeState, NetboxState, PowerCycleState,
+        RebootState, UpdateState,
+    };
+    use async_graphql::resolver_utils::EnumType;
+    fn missing<E: EnumType>() -> Vec<&'static str> {
+        E::items()
+            .iter()
+            .map(|item| item.name)
+            .filter(|name| i18n::job::phase::of(name).is_none())
+            .collect()
+    }
+    let missing: Vec<_> = [
+        missing::<ApplyState>(),
+        missing::<UpdateState>(),
+        missing::<RebootState>(),
+        missing::<PowerCycleState>(),
+        missing::<DeviceModeState>(),
+        missing::<BootstrapState>(),
+        missing::<CleanupState>(),
+        missing::<NetboxState>(),
+    ]
+    .concat();
+    assert!(missing.is_empty(), "{missing:?}");
+}

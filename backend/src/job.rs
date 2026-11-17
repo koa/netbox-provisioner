@@ -87,6 +87,7 @@ pub enum Event {
     BatchApply(batch::BatchApply),
     BatchStopped(batch::BatchStopped),
     BatchIncomplete(batch::BatchIncomplete),
+    InternetChecked(device::internet::InternetChecked),
     SetupStarted(bootstrap::SetupStarted),
     ConsoleOutput(terminal::ConsoleOutput),
     WaitingForApi(bootstrap::WaitingForApi),

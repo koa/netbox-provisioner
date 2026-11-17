@@ -46,6 +46,7 @@ cynic::impl_scalar!(Mac, schema::ScalarMac);
 pub enum ApplyState {
     Planning,
     InstallingCertificate,
+    CheckingInternet,
     SuspendingWatchdogs,
     ArmingFallback,
     WritingScript,

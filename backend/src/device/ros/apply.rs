@@ -207,6 +207,9 @@ pub enum FallbackLeftReason {
     /// another device of the batch wasn't reached or isn't in line (`BatchIncomplete`): all
     /// go back
     BatchIncomplete,
+    /// reached and in line, but it doesn't reach the internet over IPv4 and IPv6 anymore, in
+    /// a batch that needs it: all go back
+    NoInternet,
 }
 
 /// The radios of a CAPsMAN, which [`provision_radios`] provisions again.

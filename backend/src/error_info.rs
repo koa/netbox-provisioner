@@ -205,6 +205,7 @@ impl From<&Error> for ErrorInfo {
             Error::BatchIncomplete(devices) => {
                 ("BATCH_INCOMPLETE", vec![("devices", devices.to_string())])
             }
+            Error::NoInternet(device) => ("NO_INTERNET", vec![("device", device.to_string())]),
             Error::UnknownJob(id) => ("UNKNOWN_JOB", vec![("id", id.to_string())]),
             Error::NoSavedJob(device) => ("NO_SAVED_JOB", vec![("device", device.to_string())]),
             Error::Cancelled => ("CANCELLED", vec![]),

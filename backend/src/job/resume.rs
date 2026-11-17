@@ -172,13 +172,13 @@ async fn resume_batch(
             }
         }
     }
-    let Some(delay) = members
+    let Some(saved_batch) = members
         .first()
-        .and_then(|member| member.apply.batch.as_ref())
-        .map(|batch| batch.delay)
+        .and_then(|member| member.apply.batch.clone())
     else {
         return;
     };
+    let (delay, needs_internet) = (saved_batch.delay, saved_batch.needs_internet);
     let fires = members
         .iter()
         .map(|member| saved_job::instant(member.apply.script.fires))
@@ -224,7 +224,7 @@ async fn resume_batch(
                 .into_iter()
                 .map(|Member { device, apply, .. }| SavedMember { device, apply })
                 .collect();
-            crate::device::batch::resume(members, logs, fires, delay).await
+            crate::device::batch::resume(members, logs, fires, delay, needs_internet).await
         },
     );
     if let Err(error) = started {

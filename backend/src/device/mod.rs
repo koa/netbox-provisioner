@@ -28,6 +28,7 @@ pub mod bootstrap;
 pub mod dependency;
 pub mod device_mode;
 pub mod interface_live;
+pub mod internet;
 pub mod leftovers;
 pub mod metrics;
 pub mod neighbors;

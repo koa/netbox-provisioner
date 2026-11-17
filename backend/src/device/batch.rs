@@ -30,6 +30,7 @@ use crate::{
         AccessibleDevice,
         access::Session,
         bootstrap,
+        internet::{self, InternetChecked, InternetReached},
         radio_hold::RadioHold,
         ros::{
             apply::{
@@ -76,12 +77,14 @@ pub struct BatchStopped {
     pub device: Box<str>,
 }
 
-/// After the scripts, `devices` weren't reached and `not_applied` not in line: no fallback is
+/// After the scripts, `devices` weren't reached, `not_applied` not in line and `no_internet`
+/// didn't reach the internet over IPv4 and IPv6 (where the batch needs it): no fallback is
 /// taken away, every device of the batch loads its config from before.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct BatchIncomplete {
     pub devices: Box<[Box<str>]>,
     pub not_applied: Box<[Box<str>]>,
+    pub no_internet: Box<[Box<str>]>,
 }
 
 /// How long setting up the fallback and leaving the script on a device may take.
@@ -115,6 +118,8 @@ pub(crate) trait Watched: Send + Sync {
     fn pending(&self) -> Option<PendingSeen>;
     /// A last look at a device [`Self::check`] never found in line.
     fn last_look(&self) -> impl Future<Output = Result<Box<str>, Error>> + Send;
+    /// What of the internet the device reaches after its script; `None` not reached.
+    fn internet_after(&self) -> impl Future<Output = Option<InternetReached>> + Send;
     /// Takes the fallback away (`FallbackStopped`, or `FallbackLeft`).
     fn stop(
         &self,
@@ -142,6 +147,8 @@ pub(crate) trait Planning {
 pub(crate) trait Applying: Watched {
     /// How much longer the fallback waits for a radio the plan changes, if it does.
     fn radio_wait(&self) -> Option<Duration>;
+    /// What of the internet the device reaches before anything is applied.
+    fn internet_before(&self) -> impl Future<Output = InternetReached> + Send;
     /// Suspends the watchdogs a radio the plan changes may set off (`radio_hold`); nothing
     /// without one.
     fn hold(&mut self, log: &Log) -> impl Future<Output = Result<(), Error>> + Send;
@@ -247,6 +254,9 @@ impl Applying for Reached {
     fn radio_wait(&self) -> Option<Duration> {
         self.planned.radio_wait()
     }
+    async fn internet_before(&self) -> InternetReached {
+        internet::reached(&self.control).await
+    }
     async fn hold(&mut self, log: &Log) -> Result<(), Error> {
         if self.planned.radio_wait().is_some() {
             let (batch, claimed) = (&self.batch, &self.claimed);
@@ -334,6 +344,9 @@ impl Watched for Reached {
         let run = self.run.lock_anyway().clone();
         last_look_on(&self.link, run.as_deref(), &self.seen, &self.log).await
     }
+    async fn internet_after(&self) -> Option<InternetReached> {
+        internet_on(&self.link).await
+    }
     async fn stop(&self, fires: Instant, delay: Duration, log: &Log) -> Result<(), Error> {
         let rearmed = self.seen.lock_anyway().rearmed;
         self.link.stop_fallback(fires, delay, rearmed, log).await
@@ -381,6 +394,21 @@ async fn check_on(
     show(seen, log, look.progress.as_ref(), false);
     link.check_applied(settled).await
 }
+
+/// [`Watched::internet_after`] of a device reached at `link`: `None` when it can't be reached,
+/// or the pings take longer than [`INTERNET_TIMEOUT`].
+async fn internet_on(link: &AccessibleDevice) -> Option<InternetReached> {
+    tokio::time::timeout(INTERNET_TIMEOUT, async {
+        let session = link.connect_again().await.ok()?;
+        Some(internet::reached(&session).await)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// How long the pings to the internet may take after a script: each target has 10 s.
+const INTERNET_TIMEOUT: Duration = Duration::from_secs(70);
 
 /// [`Watched::last_look`] of a device reached at `link`.
 async fn last_look_on(
@@ -488,6 +516,9 @@ impl Watched for Rejoined {
             )),
         }
     }
+    async fn internet_after(&self) -> Option<InternetReached> {
+        internet_on(&*self.link().await?).await
+    }
     async fn stop(&self, fires: Instant, delay: Duration, log: &Log) -> Result<(), Error> {
         let rearmed = self.seen.lock_anyway().rearmed;
         match self.link().await {
@@ -525,8 +556,14 @@ pub(crate) struct Timing {
 }
 
 /// Applies the config to `devices` together, each emitting to its log in `logs`; each job's
-/// outcome, in the order of `devices`.
-pub async fn apply(devices: Vec<DeviceAccess>, logs: Vec<Log>) -> Vec<Result<(), Error>> {
+/// outcome, in the order of `devices`. With `needs_internet` (the automatic rollout) every
+/// device has to reach the internet over IPv4 and IPv6 before, or nothing is applied, and
+/// after its script, or all go back.
+pub async fn apply(
+    devices: Vec<DeviceAccess>,
+    logs: Vec<Log>,
+    needs_internet: bool,
+) -> Vec<Result<(), Error>> {
     let names: Vec<Box<str>> = devices.iter().map(|d| d.name().into()).collect();
     let ids: Vec<DeviceId> = devices.iter().map(DeviceAccess::id).collect();
     let batch = Arc::new(ids.iter().copied().collect::<BTreeSet<_>>());
@@ -539,7 +576,7 @@ pub async fn apply(devices: Vec<DeviceAccess>, logs: Vec<Log>) -> Vec<Result<(),
             claimed: claimed.clone(),
         })
         .collect();
-    run(members, ids, names, logs, batch_timing()).await
+    run(members, ids, names, logs, batch_timing(), needs_internet).await
 }
 
 fn batch_timing() -> Timing {
@@ -565,6 +602,8 @@ pub(crate) struct Running<M> {
     /// what the check after the scripts found: `None` while the device isn't in line, or
     /// can't be reached
     checked: Option<Result<Box<str>, Error>>,
+    /// what it reached of the internet after its script, last seen (a batch needing it)
+    internet: Option<InternetReached>,
 }
 
 /// A member that failed and how.
@@ -589,6 +628,7 @@ pub(crate) async fn run<M: Planning>(
     names: Vec<Box<str>>,
     logs: Vec<Log>,
     timing: Timing,
+    needs_internet: bool,
 ) -> Vec<Result<(), Error>> {
     let count = members.len();
     let event = BatchApply {
@@ -650,6 +690,7 @@ pub(crate) async fn run<M: Planning>(
                 member,
                 fallback: true,
                 checked: None,
+                internet: None,
             }),
             Err(error) if failure.is_none() => failure = Some((index, error)),
             // its own reason, not the first one's
@@ -665,6 +706,26 @@ pub(crate) async fn run<M: Planning>(
     }
     if running.is_empty() {
         return finish(results);
+    }
+
+    // the internet, from each device, before anything is applied
+    if needs_internet {
+        let reached = join_all(running.iter().map(|m| async {
+            m.log.enter(ApplyState::CheckingInternet);
+            let reached = m.member.internet_before().await;
+            m.log.emit(InternetChecked::of(reached, false));
+            reached
+        }))
+        .await;
+        if let Some(failed) = running
+            .iter()
+            .zip(&reached)
+            .find_map(|(m, reached)| (!reached.both()).then_some(m))
+        {
+            let (index, name) = (failed.index, failed.name.clone());
+            stop(&mut results, index, Error::NoInternet(name));
+            return finish(results);
+        }
     }
 
     // the watchdogs a changed radio may set off, one device after the other
@@ -748,6 +809,7 @@ pub(crate) async fn run<M: Planning>(
     let saved_batch = SavedBatch {
         devices: devices.clone().into(),
         delay,
+        needs_internet,
     };
     let saved_batch = &saved_batch;
     join_all(running.iter().map(|m| async move {
@@ -772,7 +834,16 @@ pub(crate) async fn run<M: Planning>(
     .await;
     // from here on the scripts apply without the provisioner: cancelled, the fallbacks stay
     sleep(timing.lead.saturating_sub(start.elapsed())).await;
-    watch(running, &logs, &timing, fires, delay, results).await
+    watch(
+        running,
+        &logs,
+        &timing,
+        fires,
+        delay,
+        results,
+        needs_internet,
+    )
+    .await
 }
 
 /// A member of a batch saved before a restart of the provisioner, with its saved apply.
@@ -790,6 +861,7 @@ pub async fn resume(
     logs: Vec<Log>,
     fires: Instant,
     delay: Duration,
+    needs_internet: bool,
 ) -> Vec<Result<(), Error>> {
     let running = members
         .into_iter()
@@ -819,11 +891,22 @@ pub async fn resume(
                     log: log.clone(),
                 },
                 checked: None,
+                internet: None,
             },
         )
         .collect();
     let results = logs.iter().map(|_| None).collect();
-    watch(running, &logs, &batch_timing(), fires, delay, results).await
+    let timing = batch_timing();
+    watch(
+        running,
+        &logs,
+        &timing,
+        fires,
+        delay,
+        results,
+        needs_internet,
+    )
+    .await
 }
 
 /// The batch once its scripts run: waits until every device is reached and checked, then
@@ -835,6 +918,7 @@ pub(crate) async fn watch<M: Watched>(
     fires: Instant,
     delay: Duration,
     mut results: Vec<Option<Result<(), Error>>>,
+    needs_internet: bool,
 ) -> Vec<Result<(), Error>> {
     let finish = |results: Vec<Option<Result<(), Error>>>| {
         results
@@ -846,6 +930,9 @@ pub(crate) async fn watch<M: Watched>(
     // latest, or the earliest a device reached said, as each script brings its own forward
     let settled = Instant::now() + timing.settle;
     let latest = fires.checked_sub(timing.margin).unwrap_or(fires);
+    fn in_line<M>(m: &Running<M>) -> bool {
+        matches!(&m.checked, Some(Ok(left)) if left.trim().is_empty())
+    }
     loop {
         sleep(timing.poll).await;
         if cancelled(logs).is_err() {
@@ -864,6 +951,22 @@ pub(crate) async fn watch<M: Watched>(
                 member.checked = checked;
             }
         }
+        // in line, the internet from it, until both families answer (OSPF takes a while)
+        if needs_internet {
+            let looks = join_all(
+                running
+                    .iter()
+                    .filter(|m| in_line(m) && !m.internet.is_some_and(|i| i.both()))
+                    .map(|m| async move { (m.index, m.member.internet_after().await) }),
+            )
+            .await;
+            for (index, reached) in looks {
+                if let Some(member) = running.iter_mut().find(|m| m.index == index) {
+                    member.internet = reached.or(member.internet);
+                }
+            }
+        }
+        let online = |m: &Running<M>| !needs_internet || m.internet.is_some_and(|i| i.both());
         let pending: Vec<_> = running.iter().filter_map(|m| m.member.pending()).collect();
         // one that fired takes the batch back, waiting on the others is for nothing
         let fired = pending.iter().any(|seen| seen.pending == Pending::Gone);
@@ -879,12 +982,15 @@ pub(crate) async fn watch<M: Watched>(
             .chain([latest])
             .min()
             .unwrap_or(latest);
-        if running.iter().all(|m| m.checked.is_some()) || fired || Instant::now() >= give_up {
+        let done = running
+            .iter()
+            .all(|m| m.checked.is_some() && (!in_line(m) || online(m)));
+        if done || fired || Instant::now() >= give_up {
             break;
         }
         let waiting: Vec<_> = running
             .iter()
-            .filter(|m| m.checked.is_none())
+            .filter(|m| m.checked.is_none() || (in_line(m) && !online(m)))
             .map(|m| m.name.as_ref())
             .collect();
         info!("batch: waiting for {}", waiting.join(", "));
@@ -909,13 +1015,22 @@ pub(crate) async fn watch<M: Watched>(
         .filter(|m| m.checked.is_none())
         .map(|m| m.name.clone())
         .collect();
-    let in_line = |m: &Running<M>| matches!(&m.checked, Some(Ok(left)) if left.trim().is_empty());
     let not_applied: Vec<Box<str>> = running
         .iter()
         .filter(|m| m.checked.is_some() && !in_line(m))
         .map(|m| m.name.clone())
         .collect();
-    if unreached.is_empty() && not_applied.is_empty() {
+    let no_internet: Vec<Box<str>> = running
+        .iter()
+        .filter(|m| needs_internet && in_line(m))
+        .inspect(|m| {
+            let reached = m.internet.unwrap_or_default();
+            m.log.emit(InternetChecked::of(reached, true));
+        })
+        .filter(|m| !m.internet.is_some_and(|i| i.both()))
+        .map(|m| m.name.clone())
+        .collect();
+    if unreached.is_empty() && not_applied.is_empty() && no_internet.is_empty() {
         let stopped = join_all(running.iter().map(|m| async {
             let stopped = match m.fallback {
                 true => {
@@ -950,10 +1065,12 @@ pub(crate) async fn watch<M: Watched>(
         let event = BatchIncomplete {
             devices: unreached.clone().into(),
             not_applied: not_applied.clone().into(),
+            no_internet: no_internet.clone().into(),
         };
         let list: Box<str> = unreached
             .iter()
             .chain(&not_applied)
+            .chain(&no_internet)
             .map(AsRef::as_ref)
             .collect::<Vec<&str>>()
             .join(", ")
@@ -966,6 +1083,8 @@ pub(crate) async fn watch<M: Watched>(
                 FallbackLeftReason::NotReached
             } else if !in_line(member) {
                 FallbackLeftReason::NotApplied
+            } else if no_internet.contains(&member.name) {
+                FallbackLeftReason::NoInternet
             } else {
                 FallbackLeftReason::BatchIncomplete
             };
@@ -993,6 +1112,7 @@ async fn take_back<M: Applying>(
             Some(JobPhase::Apply(
                 ApplyState::Planning
                     | ApplyState::InstallingCertificate
+                    | ApplyState::CheckingInternet
                     | ApplyState::SuspendingWatchdogs
             ))
         ) {

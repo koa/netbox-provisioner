@@ -133,6 +133,10 @@ stateDiagram-v2
     ZertifikatAnlegen --> Planen: angelegt und an www-ssl, oder Event mit Fehler
     Planen --> [*]: Diff leer → fertig
     Planen --> Nacharbeit: Diff leer, Login mit dem vorherigen Passwort
+    Planen --> InternetPrüfen: gemeinsam, mit Internet als Bedingung
+    InternetPrüfen --> WatchdogsAussetzen: alle erreichen es über IPv4 und IPv6, Funkänderung (G)
+    InternetPrüfen --> FallbackSetzen: dito, sonst (G)
+    InternetPrüfen --> [*]: eines nicht (G) → fehlgeschlagen, nichts angewendet
     Planen --> WatchdogsAussetzen: Funkänderung
     Planen --> FallbackSetzen: sonst
     WatchdogsAussetzen --> FallbackSetzen: ausgesetzt (G)
@@ -160,6 +164,7 @@ stateDiagram-v2
 |---|---|---|---|
 | `Planen` (`Planning`) | ja, Ende | unterbrochen | – |
 | `ZertifikatAnlegen` (`InstallingCertificate`) | nach dem Zustand | unterbrochen | + Zertifikat an `www-ssl`, − alte des Provisioners |
+| `InternetPrüfen` (`CheckingInternet`) | ja, Ende | unterbrochen | – |
 | `WatchdogsAussetzen` (`SuspendingWatchdogs`) | ja, Watchdogs zurück | unterbrochen | + Sicherheitsnetz (bei den Überwachenden) |
 | `FallbackSetzen` (`ArmingFallback`) | ja, Fallback weg | unterbrochen, Fallback beobachten | + Apply-Fallback |
 | `SkriptSchreiben` (`WritingScript`) | ja, Fallback weg | unterbrochen | – |
@@ -516,17 +521,26 @@ Funkstrecke: Einzeln geändert schneidet das erste Ende dem zweiten den Weg ab.
 - Die Fallbacks gehen nur weg, wenn **jedes** Gerät erreicht und durch ist; sonst laden alle
   zusammen ihre Konfiguration von vorher.
 - Abbrechen eines Geräts bricht alle ab.
+- **Mit Internet als Bedingung** (das automatische Rollout,
+  [Konzept](concepts/auto-rollout.md); `applyBatch` von Hand stellt sie nicht): Jedes Gerät
+  pingt vor dem Fallback die `internet_targets` ([Betrieb](deployment.md)); erreicht eines das
+  Internet nicht über IPv4 **und** IPv6, wird nichts angewendet (`NO_INTERNET`). Nach dem
+  Skript pingt jedes, das in Reihe ist, bis beide Familien antworten (OSPF braucht nach dem
+  Skript eine Weile) oder die Frist bis zum Fallback um ist; fehlt dann eines, gehen alle
+  zurück (`BatchIncomplete.noInternet`, Grund `NoInternet`). Event `InternetChecked` vorher und
+  nachher.
 
 **Bewusst nicht:** Teilerfolg. Lieber alles zurück als eine halbe Funkstrecke.
 
-Ein Anwenden pro Gerät, alle mit Verweis auf die Gruppe. Drei Übergänge haben eine Bedingung über
+Ein Anwenden pro Gerät, alle mit Verweis auf die Gruppe. Diese Übergänge haben eine Bedingung über
 die Gruppe:
 
 | Übergang | Bedingung |
 |---|---|
 | `Planen → FallbackSetzen` (oder `WatchdogsAussetzen`) | `[alle Geräte der Gruppe haben geplant]`; das Aussetzen geschieht eins nach dem anderen |
 | `SkriptSchreiben → SkriptStarten` | `[alle haben ihr Skript geschrieben]`, dann starten alle gleichzeitig |
-| `SkriptLäuft → FallbackWegnehmen` | `[alle sind durch, erreicht und in Reihe]`, sonst gehen alle nach `NichtErreicht` (`BatchIncomplete`) und der Auftrag endet dort, ohne auf den Fallback zu warten. Nachgeprüft wird schon in `SkriptLäuft`, nach `FallbackWegnehmen` folgt direkt `Nacharbeit` |
+| `Planen → InternetPrüfen` | mit Internet als Bedingung, `[alle haben geplant]`, dann prüfen alle gleichzeitig; `[alle erreichen es über IPv4 und IPv6]`, sonst endet jedes Gerät dort (`NO_INTERNET` bzw. `BatchStopped`) |
+| `SkriptLäuft → FallbackWegnehmen` | `[alle sind durch, erreicht und in Reihe]`, mit Internet als Bedingung auch `[alle erreichen es über IPv4 und IPv6]`, sonst gehen alle nach `NichtErreicht` (`BatchIncomplete`) und der Auftrag endet dort, ohne auf den Fallback zu warten. Nachgeprüft wird schon in `SkriptLäuft`, nach `FallbackWegnehmen` folgt direkt `Nacharbeit` |
 
 Ein Fehler eines Geräts vor dem Start nimmt bei allen den Fallback weg (`BatchStopped`).
 

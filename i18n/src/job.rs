@@ -232,18 +232,45 @@ pub mod event {
             "Skript nicht gestartet: {problem}; das Gerät bleibt, wie es ist, und alle gehen zurück"
         )
     }
+    /// What of the internet the device reached, before the batch's scripts or `after_script`.
+    pub fn internet_checked(v4: bool, v6: bool, after_script: bool) -> String {
+        let family = |reached: bool| {
+            if reached {
+                "erreicht"
+            } else {
+                "nicht erreicht"
+            }
+        };
+        let when = if after_script {
+            "Nach dem Skript"
+        } else {
+            "Vor dem Anwenden"
+        };
+        format!(
+            "{when}: Internet über IPv4 {}, über IPv6 {}",
+            family(v4),
+            family(v6)
+        )
+    }
     pub fn batch_stopped(device: &str) -> String {
         format!(
             "Gemeinsames Anwenden abgebrochen, bevor etwas angewendet wurde: {device} ging nicht"
         )
     }
-    pub fn batch_incomplete(unreached: &[String], not_applied: &[String]) -> String {
+    pub fn batch_incomplete(
+        unreached: &[String],
+        not_applied: &[String],
+        no_internet: &[String],
+    ) -> String {
         let mut parts = Vec::new();
         if !unreached.is_empty() {
             parts.push(format!("nicht wieder erreicht: {}", unreached.join(", ")));
         }
         if !not_applied.is_empty() {
             parts.push(format!("nicht angewendet: {}", not_applied.join(", ")));
+        }
+        if !no_internet.is_empty() {
+            parts.push(format!("ohne Internet: {}", no_internet.join(", ")));
         }
         format!(
             "Nicht alle durch ({}). Kein Fallback wird weggenommen, alle Geräte laden die \
@@ -259,6 +286,7 @@ pub mod event {
         Due,
         NotApplied,
         BatchIncomplete,
+        NoInternet,
         Other(&'a str),
     }
     pub fn fallback_left(reason: FallbackLeft, seconds: u64) -> String {
@@ -277,6 +305,11 @@ pub mod event {
             }
             FallbackLeft::BatchIncomplete => {
                 "Ein anderes Gerät des gemeinsamen Anwendens ist nicht durch, der Fallback bleibt"
+                    .into()
+            }
+            FallbackLeft::NoInternet => {
+                "Erreichbar und angewendet, aber ohne Internet über IPv4 und IPv6, der Fallback \
+                 bleibt"
                     .into()
             }
             FallbackLeft::Other(other) => format!("Fallback bleibt ({other})"),
@@ -686,6 +719,7 @@ pub mod phase {
 
     pub const PLANNING: &str = "Planen";
     pub const INSTALLING_CERTIFICATE: &str = "Zertifikat anlegen";
+    pub const CHECKING_INTERNET: &str = "Internet prüfen";
     pub const SUSPENDING_WATCHDOGS: &str = "Watchdogs aussetzen";
     pub const ARMING_FALLBACK: &str = "Fallback setzen";
     pub const WRITING_SCRIPT: &str = "Skript schreiben";
@@ -732,6 +766,8 @@ pub mod phase {
     pub fn of(name: &str) -> Option<&'static str> {
         Some(match name {
             "PLANNING" => PLANNING,
+            "INSTALLING_CERTIFICATE" => INSTALLING_CERTIFICATE,
+            "CHECKING_INTERNET" => CHECKING_INTERNET,
             "SUSPENDING_WATCHDOGS" => SUSPENDING_WATCHDOGS,
             "ARMING_FALLBACK" => ARMING_FALLBACK,
             "WRITING_SCRIPT" => WRITING_SCRIPT,

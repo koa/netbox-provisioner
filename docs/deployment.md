@@ -45,6 +45,11 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   (`/www-ca.crt`, Link auf der Seite der Sites) und importieren sie im Browser als
   Zertifizierungsstelle. Ohne `www_ca` bleibt WebFig auf HTTP. Eine CA, die sich nicht lesen
   lässt, hält den Start auf.
+- **Internet-Ziele:** `internet_targets`, die Adressen, die ein Gerät anpingt, um zu sehen, ob
+  es das Internet über IPv4 und IPv6 erreicht ([Gemeinsam anwenden](jobs.md#gemeinsam-anwenden)
+  mit dieser Bedingung, für das automatische Rollout). Eine antwortende pro Familie genügt.
+  Vorgabe: die Anycast-Resolver von Cloudflare, Quad9 und Google (`1.1.1.1`, `9.9.9.9`,
+  `8.8.8.8`, `2606:4700:4700::1111`, `2620:fe::fe`, `2001:4860:4860::8888`).
 - **Zustand:** nur die weiterführbaren Aufträge in `state_dir` (Vorgabe `state` neben
   `config.yaml`, mit Sperrdatei gegen eine zweite Instanz;
   [Jobs](jobs.md#weiterführen-nach-einem-neustart)). Alle anderen Jobs leben im Prozess.

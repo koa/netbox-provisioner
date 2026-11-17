@@ -68,6 +68,10 @@ settings:
   # Must hold the provisioner's address as each device sees it (its own, or the management
   # proxy's), or an apply locks it out and the fallback takes the apply back
   api_networks: []
+  # what a device pings to see whether it reaches the internet (automatic rollout), IPv4 and
+  # IPv6, one answering per family is enough; empty: the anycast DNS resolvers of Cloudflare,
+  # Quad9 and Google
+  internet_targets: []
   # the CA issuing each device's certificate for WebFig over HTTPS (PEM: the issuing CA's, then
   # the ones above it, each with a subject key identifier); with it, an apply installs one per
   # device with the ones between it and the root, turns www-ssl on and www (HTTP) off. `root`

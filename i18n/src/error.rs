@@ -215,6 +215,10 @@ pub fn server(problem: &impl Problem) -> String {
             "Gemeinsames Anwenden abgebrochen: {} ging nicht",
             p("device")
         ),
+        "NO_INTERNET" => format!(
+            "{} erreicht das Internet nicht über IPv4 und IPv6, nichts wurde angewendet",
+            p("device")
+        ),
         "BATCH_INCOMPLETE" => format!(
             "Nicht durch: {}; alle Geräte laden die Konfiguration von vorher",
             p("devices")

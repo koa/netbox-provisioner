@@ -139,6 +139,9 @@ pub struct SavedBatch {
     pub devices: Box<[DeviceId]>,
     /// the delay of its fallbacks, firing together
     pub delay: Duration,
+    /// every device has to reach the internet after the scripts (the automatic rollout)
+    #[serde(default)]
+    pub needs_internet: bool,
 }
 
 /// What an apply knows once its script runs, enough to watch it to the end.

@@ -53,6 +53,9 @@ pub enum ApplyState {
     /// WebFig's certificate issued, imported and attached to `www-ssl` before the plan (A7,
     /// `www_certificate::install`), then planning again
     InstallingCertificate,
+    /// in a batch that needs it: whether the device reaches the internet over IPv4 and IPv6
+    /// (`device::internet`)
+    CheckingInternet,
     /// a radio changes: the watchdogs it may set off are suspended (`RadioHold`)
     SuspendingWatchdogs,
     /// the backup and the scheduler entry loading it (`arm_fallback_on`)
@@ -85,11 +88,13 @@ impl States for ApplyState {
             // an empty diff with the previous password: setting the current one (A9)
             Planning => &[
                 InstallingCertificate,
+                CheckingInternet,
                 SuspendingWatchdogs,
                 ArmingFallback,
                 Finishing,
             ],
             InstallingCertificate => &[Planning],
+            CheckingInternet => &[SuspendingWatchdogs, ArmingFallback],
             SuspendingWatchdogs => &[ArmingFallback],
             // in a batch another device failing takes it back
             ArmingFallback => &[WritingScript, TakingBack],

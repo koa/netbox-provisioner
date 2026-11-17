@@ -48,6 +48,9 @@ data:
       {{- with $s.api_networks }}
       api_networks: {{ . | toJson }}
       {{- end }}
+      {{- with $s.internet_targets }}
+      internet_targets: {{ . | toJson }}
+      {{- end }}
       {{- with $s.device_syslog }}
       {{- if .remote }}
       device_syslog:

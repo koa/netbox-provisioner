@@ -309,6 +309,7 @@ fn phase_line(job: &Job, running: bool) -> Option<String> {
         Phase::ApplyPhase(phase) => match &phase.apply {
             A::Planning => p::PLANNING.into(),
             A::InstallingCertificate => p::INSTALLING_CERTIFICATE.into(),
+            A::CheckingInternet => p::CHECKING_INTERNET.into(),
             A::SuspendingWatchdogs => p::SUSPENDING_WATCHDOGS.into(),
             A::ArmingFallback => p::ARMING_FALLBACK.into(),
             A::WritingScript => p::WRITING_SCRIPT.into(),
@@ -549,6 +550,7 @@ fn describe(event: &Logged) -> Html {
                 FallbackLeftReason::NotApplied => e::FallbackLeft::NotApplied,
                 FallbackLeftReason::Due => e::FallbackLeft::Due,
                 FallbackLeftReason::BatchIncomplete => e::FallbackLeft::BatchIncomplete,
+                FallbackLeftReason::NoInternet => e::FallbackLeft::NoInternet,
                 FallbackLeftReason::Other(other) => e::FallbackLeft::Other(other),
             },
             seconds(left.fires_in),
@@ -561,8 +563,13 @@ fn describe(event: &Logged) -> Html {
         Event::SetupDone(done) => e::setup_done(&done.address),
         Event::BatchApply(batch) => e::batch_apply(&batch.devices),
         Event::BatchStopped(stopped) => e::batch_stopped(&stopped.device),
-        Event::BatchIncomplete(incomplete) => {
-            e::batch_incomplete(&incomplete.devices, &incomplete.not_applied)
+        Event::BatchIncomplete(incomplete) => e::batch_incomplete(
+            &incomplete.devices,
+            &incomplete.not_applied,
+            &incomplete.no_internet,
+        ),
+        Event::InternetChecked(checked) => {
+            e::internet_checked(checked.v4, checked.v6, checked.after_script)
         }
         Event::ApplyWritten(written) => e::apply_written(seconds(written.lead)),
         Event::ApplyStarted(started) => match &started.error {

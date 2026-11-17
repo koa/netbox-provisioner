@@ -90,6 +90,7 @@ pub enum Event {
     BatchApply(BatchApply),
     BatchStopped(BatchStopped),
     BatchIncomplete(BatchIncomplete),
+    InternetChecked(InternetChecked),
     SetupStarted(SetupStarted),
     ConsoleOutput(ConsoleOutput),
     WaitingForApi(WaitingForApi),
@@ -401,6 +402,15 @@ pub struct BatchStopped {
 pub struct BatchIncomplete {
     pub devices: Vec<String>,
     pub not_applied: Vec<String>,
+    pub no_internet: Vec<String>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct InternetChecked {
+    pub v4: bool,
+    pub v6: bool,
+    pub after_script: bool,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -608,6 +618,7 @@ pub enum FallbackLeftReason {
     Due,
     NotApplied,
     BatchIncomplete,
+    NoInternet,
     #[cynic(fallback)]
     Other(String),
 }

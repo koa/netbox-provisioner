@@ -69,7 +69,25 @@ pub struct Settings {
     /// Where the jobs that go on after a restart are saved (`saved_job`), and the lock that
     /// keeps a second provisioner off them (default `state`, next to `config.yaml`).
     state_dir: Option<std::path::PathBuf>,
+    /// What a device pings to see whether it reaches the internet, IPv4 and IPv6 (the
+    /// automatic rollout, `docs/concepts/auto-rollout.md`): a family is reached when one of
+    /// its targets answers. Default: the anycast DNS resolvers of Cloudflare, Quad9 and Google.
+    internet_targets: Option<Box<[IpAddr]>>,
 }
+
+/// [`Settings::internet_targets`] without the setting.
+const INTERNET_TARGETS: [IpAddr; 6] = [
+    IpAddr::V4(std::net::Ipv4Addr::new(1, 1, 1, 1)),
+    IpAddr::V4(std::net::Ipv4Addr::new(9, 9, 9, 9)),
+    IpAddr::V4(std::net::Ipv4Addr::new(8, 8, 8, 8)),
+    IpAddr::V6(std::net::Ipv6Addr::new(
+        0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111,
+    )),
+    IpAddr::V6(std::net::Ipv6Addr::new(0x2620, 0xfe, 0, 0, 0, 0, 0, 0xfe)),
+    IpAddr::V6(std::net::Ipv6Addr::new(
+        0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888,
+    )),
+];
 
 #[derive(Deserialize)]
 pub struct DeviceSyslog {
@@ -145,6 +163,11 @@ impl Settings {
     }
     pub fn update_fallback(&self) -> std::time::Duration {
         std::time::Duration::from_secs(self.update_fallback_seconds.unwrap_or(900))
+    }
+    pub fn internet_targets(&self) -> &[IpAddr] {
+        self.internet_targets
+            .as_deref()
+            .unwrap_or(&INTERNET_TARGETS)
     }
     pub fn state_dir(&self) -> &std::path::Path {
         self.state_dir
