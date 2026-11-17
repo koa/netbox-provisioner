@@ -30,7 +30,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z7 | Befehle ohne Strings: lohnt Stufe 2? | vorerst nur Stufe 1, Stufe 2 nicht geplant (2026-10-23) | C5 |
 | Z10 | Anwohner als Tenant oder Contact Group, und wo stehen seine Benutzer? | weder noch: ein NetBox-Owner mit seinen NetBox-Benutzern in `users` (Login über Pocket-ID), in der Pflicht-Owner-Group „Anwohner“; Mitglieder werden in NetBox gepflegt, damit dieselbe Zuordnung die Leserechte in NetBox steuert (in der Lab-NetBox geprüft, 2026-10-23) | C7 |
 | Z11 | Ports eines Anwohners an einem fremden Switch? | NetBox-Feld `owner` am Interface, kein Custom Field (2026-10-23) | C7 |
-| Z12 | Apply eines Anwohners sofort oder mit Admin-Freigabe? | sofort (2026-10-23) | C7 |
+| Z12 | Apply eines Anwohners sofort oder mit Admin-Freigabe? | sofort (2026-10-23); abgelöst durch Z46: der Anwohner schreibt nur NetBox, die Geräte erreicht es über das automatische Rollout | C7 |
 | Z13 | Alarme im Provisioner oder über Prometheus? | nur Prometheus/Alertmanager (2026-10-23) | C8 |
 | Z14 | Ziel des Uplink-Pings? | das Gateway des Uplinks (2026-10-23) | C8 |
 | Z15 | Wo liegen die Positionen der Netz-Karte? | Admins publizieren das offizielle Layout in ein NetBox Custom Field; andere nehmen es oder speichern Änderungen im Browser (2026-10-23) | C9 |
@@ -43,12 +43,20 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z36 | Watchdog-Befunde (E1): Geräte ohne `ospf` (APs, Switches, CAPs) haben nie einen Parent; eine Warnung „kein Weg zu einer Wurzel“ für jedes wäre Rauschen. Warnen nur bei Geräten mit `ospf`-Interface, aber ohne Weg zu einer Wurzel (und ohne `propagate_default_route`)? Und das Custom Field für Sonderfälle: am Gerät `watchdog_target` (Text: leer automatisch, `none` aus, sonst eine feste IPv4), oder lieber eine Auswahl plus ein IP-Feld? Ein neues Custom Field muss auch in die produktive NetBox importiert werden | Warnen nur bei Geräten mit `ospf`-Interface ohne Weg zu einer Wurzel und ohne `propagate_default_route`; ein Textfeld `watchdog_target` am Gerät (leer automatisch, `none` aus, sonst eine IPv4) mit Validierungs-Regex in NetBox, keine widersprüchlichen Kombinationen (2026-11-06) | E1 |
 | Z39 | Reiner L2-Switch (C18): Wie wird er in NetBox modelliert, und welche VLANs trägt sein Trunk? | Custom Field `l3_uplink` am Port des alten Switches zum L3-Switch, dessen L3-Funktionen dort umgesetzt werden; VLAN-IDs automatisch aus einem auf beiden Switches unbenutzten Bereich (2026-11-07) | C18 |
 | Z40 | DNS der Geräte-Adressen (C19): Welcher Server beantwortet die Einträge? (a) ein eigener autoritativer Server (im Provisioner oder daneben, Zone aus NetBox), an den die übergeordnete Zone delegiert, Vorwärts- und Rückwärts-Zonen; (b) im bestehenden Blocky, als Einträge seiner Konfiguration (`customDNS`), die der Provisioner schreiben müsste; (c) wie (a), Blocky gibt die Zonen per `conditional` an den eigenen Server weiter, wo es keine Delegation gibt (intern). Was Blocky davon kann (Reload, PTR), ist noch zu prüfen. Und welche Namen: `<port>.<gerät>.<zone>`, oder `dns_name` der NetBox-Adresse, wo gesetzt? | **offen** | C19 |
+| C20 | Automatisches Rollout der NetBox-Änderungen (Z46): was ein Anwohner (oder ein Helfer) in NetBox ändert, erreicht die betroffenen Geräte ohne Anwenden von Hand, in sicherer Reihenfolge und mit Fallback; zuerst ein Konzept | – | L | offen |
 | Z41 | Zertifikat eines OpenVPN-Servers (E26): Woher weiss der Provisioner, dass ein Gerät einen OpenVPN-Server hat (ein Service in NetBox, ein Custom Field am Gerät)? Stellt `www_ca` auch dieses Zertifikat aus, oder eine eigene CA für OpenVPN (die Clients sollten nur ihr trauen)? | **offen** | E26 |
+| Z42 | Was bekommt ein Anwohner, und woher weiss man, welche WLANs und welche WLAN-Gruppe ihm gehören? | Geräte, Ports fremder Geräte und VLANs (`owner`); die WLANs auf seinen VLANs gehören ihm, seine WLAN-Gruppe ist die seiner WLANs (2026-11-17; Bedingung `vlan__owner__users` in der Lab-NetBox geprüft) | C7 |
+| Z43 | Eine WLAN-Gruppe pro Anwohner oder alle APs einer Gruppe mit allen WLANs? | alle APs strahlen alle WLANs der Gruppe aus (2026-11-17) | C7 |
+| Z44 | Wie wird ein fremdes Gerät am Port eines Anwohners kein OSPF-Nachbar? | OSPF-Authentisierung pro Link (2026-11-17) | A10, C7 |
+| Z45 | Fremde VLANs von einem Gerät des Anwohners fernhalten? | nein, er konfiguriert es nur über den Provisioner (2026-11-17) | C7 |
+| Z46 | Dürfen Anwohner-Änderungen fremde Geräte betreffen? | ja; die Mutationen regeln nur, was er in NetBox eintragen darf, auf die Geräte kommt es über ein automatisches Rollout (2026-11-17) | C7, C20 |
+| Z47 | Darf ein Anwohner WLANs anlegen? | nein, vorerst nur Ports und das Passwort bestehender WLANs (2026-11-17) | C7 |
 
 ## A. Sicherheit
 
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
+| A10 | OSPF-Authentisierung pro Link (Z44): ein Schlüssel pro Link, den nur der Provisioner kennt (nicht in NetBox), an beiden Enden; ein Gerät ohne ihn wird kein Nachbar. Vor allem für Ports von Anwohnern (C7); Wechsel ohne Unterbruch beider Enden bedenken | M | offen |
 
 ## B. Bereinigungen
 
@@ -60,7 +68,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
 | C3 | Interne Firewall: `guest` und `protected` am Gateway-Interface, Freigaben als Custom Fields (Z4), nur ein Router pro Netz | [Firewall](concepts/firewall.md#interne-firewall) | M | offen |
-| C7 | Self-Service und Personas: Rollen aus OIDC, NetBox-Owner als Anwohner, Leserechte in NetBox nur auf eigene WLANs (Z10, Z11), Leases, SSID/PSK, Ports, eigene APs, Apply sofort (Z12) | [Self-Service](concepts/self-service.md) | L | offen |
+| C7 | Self-Service und Personas: Rollen aus OIDC, NetBox-Owner als Anwohner mit Geräten, Ports und VLANs, WLANs und Gruppe abgeleitet (Z10, Z11, Z42, Z43, Z45), Leserechte in NetBox nur auf eigene WLANs, Leases, Clients, Passwort der WLANs (Z47), Ports, eigene Geräte anschliessen (A10); die Geräte über C20 (Z46) | [Self-Service](concepts/self-service.md) | L | offen |
 | C8 | Überwachung: Collector, Prometheus-Metriken (Alarme dort, Z13), Ping zum Uplink-Gateway (Z14), Zustandsseite, Ansicht für Anwohner | [Überwachung](concepts/monitoring.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | Regel, Plan, Rollout und eingefärbte Knoten der Netz-Ansicht erledigt; offen: CHR-Test der Kette `entry -- a -- target` |
 | C18 | Reiner L2-Switch als „Extender“: Ein alter Switch ohne L3-Offload oder mit anderen Problemen (CRS2xx, CRS354) hängt an einem modernen Switch oder Router, der seine L3-Funktionen über einen Trunk übernimmt: Port oder Bridge, mit IP oder VLAN (Z39) | [Reiner L2-Switch](concepts/l2-extender.md) | M–L | offen |
