@@ -28,6 +28,9 @@ pub struct Settings {
     /// A NetBox token with write permission, used only by the helpers; `netbox_token` can
     /// stay read-only.
     pub netbox_write_token: Option<String>,
+    /// The secret NetBox signs its webhook's calls with (`/netbox-webhook`, the automatic
+    /// rollout, `X-Hook-Signature`); without, no call is taken.
+    pub netbox_webhook_secret: Option<Box<str>>,
 
     pub mikrotik_credentials: HashMap<Box<str>, MikrotikCredentials>,
     /// with it, WebFig goes over HTTPS with a certificate of this CA on every device, and plain

@@ -30,6 +30,11 @@ settings:
   netbox_write_token:
     value: ""
     secretKeyRef: {}
+  # the secret of NetBox' webhook to `/netbox-webhook` (automatic rollout): NetBox signs each
+  # call with it; without, the provisioner takes no call
+  netbox_webhook_secret:
+    value: ""
+    secretKeyRef: {}
 
   # --- devices
   # by name, as a tenant's custom field `mikrotik_credentials` names them; a name with a

@@ -38,6 +38,7 @@ pub fn started_by(user: &str) -> String {
     format!("Gestartet von {user}")
 }
 pub const RESUMED: &str = "Nach einem Neustart des Provisioners weitergeführt";
+pub const AUTOMATIC: &str = "Vom automatischen Rollout gestartet";
 
 pub fn took(seconds: u64) -> String {
     match seconds {

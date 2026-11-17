@@ -5,6 +5,7 @@
 //! (`schema.graphql`, `schema`); one module per page or component.
 
 pub mod adjust_target;
+pub mod auto_rollout;
 pub mod batch_apply;
 pub mod device;
 pub mod findings;

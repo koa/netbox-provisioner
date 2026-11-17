@@ -19,6 +19,7 @@ Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
 - [Interfaces nach Aufgabe](interface-view.md): die Karte „Interfaces“, Aufgaben, Prüfungen, Aktionen pro Port.
 - [Config-Helper](config-helper.md): Befunde über NetBox und gegen das Gerät, die Helfer, die NetBox ergänzen, Pools.
 - [Update-Fallback](update-fallback.md): Partitionen, Rettung über den Nachbarn, Downgrade, Device-Mode, Strom aus und ein.
+- [Automatisches Rollout](auto-rollout.md): Sites, deren Geräte NetBox-Änderungen ohne Anwenden von Hand bekommen, Runden, Fehlerzustand, Webhook.
 - [Protokoll](protocol.md): ein Eintrag pro Job im Journal des Geräts in NetBox, Beobachtungen ohne Job, der Verlauf auf der Geräteseite.
 - [Watchdog](watchdog.md): Hardware-, Ping- und PoE-Watchdog, ihre Ziele aus der Topologie, das Aussetzen bei Update und Funkänderung.
 - [Gerätemetriken](device-metrics.md): WLAN-Clients, Health, PoE, System, Interfaces und Leases der Geräte an `/metrics`, statt des mikrotik-metrik-exporter.

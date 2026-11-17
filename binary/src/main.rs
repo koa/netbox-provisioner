@@ -220,6 +220,26 @@ async fn www_ca() -> HttpResponse {
     }
 }
 
+/// NetBox' webhook (an event rule on every change): the automatic rollout runs a round once
+/// NetBox is quiet. Only with `netbox_webhook_secret`, and only a call NetBox signed with it.
+#[actix_web::post("/netbox-webhook")]
+async fn netbox_webhook(request: HttpRequest, body: actix_web::web::Bytes) -> HttpResponse {
+    let Some(secret) = CONFIG.netbox_webhook_secret.as_deref() else {
+        return HttpResponse::NotFound().finish();
+    };
+    let signature = request
+        .headers()
+        .get("X-Hook-Signature")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    if !backend::auto_rollout::webhook::signed(secret, &body, signature) {
+        warn!("NetBox webhook: call without a valid signature refused");
+        return HttpResponse::Forbidden().finish();
+    }
+    backend::auto_rollout::netbox_changed();
+    HttpResponse::NoContent().finish()
+}
+
 /// What `/metrics` renders: the registry's metrics and the devices' (`backend::metrics`).
 struct Scrape {
     registry: prometheus::Registry,
@@ -303,6 +323,8 @@ async fn main() -> Result<(), BackendError> {
     topology.fetch().await?;
     backend::job::resume::resume_saved_jobs(&topology).await;
     backend::graphql::live::watch_netbox(topology.clone());
+    backend::auto_rollout::register(&registry);
+    backend::auto_rollout::start(topology.clone());
 
     let schema = create_schema(topology.clone());
     let anonymous_schema = create_anonymous_schema();
@@ -342,6 +364,7 @@ async fn main() -> Result<(), BackendError> {
             .service(anonymous_graphql("/graphql_anonymous"))
             .service(anonymous_graphql("/graphql_anonymous/"))
             .service(www_ca)
+            .service(netbox_webhook)
             .service(ResourceFiles::new("/", resources).resolve_not_found_to_root())
     })
     .bind((bind_addr, api_port))?

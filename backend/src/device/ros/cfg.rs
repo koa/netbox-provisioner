@@ -519,6 +519,24 @@ impl GeneratedCfg {
     pub fn table_changes(&self) -> &[crate::device::site_diff::TableChanges] {
         &self.tables
     }
+    /// What an apply would change, as a hash (SHA-256, hex) of its script, the same across
+    /// restarts; `None` when an apply has nothing to do (`auto_rollout`). Setting the current
+    /// password (A9) or WebFig's certificate counts as a change too.
+    pub fn fingerprint(&self) -> Option<Box<str>> {
+        use sha2::Digest;
+        let extra = match (self.previous_password, self.www_certificate) {
+            (false, WwwCertificate::Off | WwwCertificate::InPlace) => {
+                if self.script.trim().is_empty() {
+                    return None;
+                }
+                ""
+            }
+            (true, _) => "\n# previous password",
+            (false, WwwCertificate::Needed) => "\n# www certificate",
+        };
+        let hash = sha2::Sha256::digest(format!("{}{extra}", self.script).as_bytes());
+        Some(hash.iter().map(|byte| format!("{byte:02x}")).collect())
+    }
 }
 
 impl DeviceCfg {

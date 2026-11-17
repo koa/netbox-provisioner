@@ -74,6 +74,13 @@ impl SiteAccess {
     async fn findings(&self) -> Vec<Finding> {
         self.topology.site_findings(self.id)
     }
+    /// With the custom field `auto_rollout`: what the automatic rollout did and where it
+    /// stands; `null` for a site without.
+    #[graphql(name = "autoRollout")]
+    async fn api_auto_rollout(&self) -> Option<crate::auto_rollout::graphql::SiteAutoRollout> {
+        self.auto_rollout()
+            .then(|| crate::auto_rollout::graphql::of_site(self.id))
+    }
 }
 
 #[cfg(test)]

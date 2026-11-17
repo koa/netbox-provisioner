@@ -2,6 +2,7 @@
 use crate::{
     components::{
         findings::{self, FindingsList},
+        site::auto_rollout::AutoRollout,
         site::device_entry_card::{DeviceEntryCard, DeviceRow},
         site::neighbor_check::NeighborCheck,
         site::site_diff::SiteDiff,
@@ -122,6 +123,7 @@ impl Component for Devices {
         html! {
             <>
                 <FindingsList site={Some(site)}/>
+                <AutoRollout {site}/>
                 <SiteDiff {site}/>
                 {check}
                 <div class="device-list">

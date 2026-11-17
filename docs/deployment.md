@@ -50,6 +50,17 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   mit dieser Bedingung, für das automatische Rollout). Eine antwortende pro Familie genügt.
   Vorgabe: die Anycast-Resolver von Cloudflare, Quad9 und Google (`1.1.1.1`, `9.9.9.9`,
   `8.8.8.8`, `2606:4700:4700::1111`, `2620:fe::fe`, `2001:4860:4860::8888`).
+- **Webhook aus NetBox** (das [automatische Rollout](auto-rollout.md)):
+  `netbox_webhook_secret` (ein Secret im Chart, `value` oder `secretKeyRef`). Ohne antwortet
+  `/netbox-webhook` mit 404, mit falscher Signatur 403. In NetBox ein Webhook auf
+  `https://<provisioner>/netbox-webhook`, Methode `POST`, Content-Type `application/json`, mit
+  demselben Secret (NetBox signiert mit HMAC-SHA512 im Header `X-Hook-Signature`), und eine
+  Event Rule, die ihn bei Erstellen, Ändern und Löschen der Objekte auslöst, die der
+  Provisioner liest (Sites, Geräte, Interfaces, Kabel, Front- und Rear-Ports,
+  MAC-Adressen, IP-Adressen, Prefixe, IP-Ranges, VLANs, VLAN-Gruppen, Services, WLANs,
+  WLAN-Gruppen, Wireless Links, Config Contexts, Tenants, Circuit Terminations). NetBox
+  schickt Webhooks aus seinem `rqworker`, der laufen muss. Ohne Webhook rollt die Automatik
+  nur alle 30 min aus. Der Zustand der Automatik liegt in `state_dir/auto_rollout.json`.
 - **Zustand:** nur die weiterführbaren Aufträge in `state_dir` (Vorgabe `state` neben
   `config.yaml`, mit Sperrdatei gegen eine zweite Instanz;
   [Jobs](jobs.md#weiterführen-nach-einem-neustart)). Alle anderen Jobs leben im Prozess.

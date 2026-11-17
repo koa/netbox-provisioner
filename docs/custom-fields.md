@@ -115,8 +115,7 @@ Watchdog überwacht dann wie ohne das Feld. Damit es nicht so weit kommt, beim A
 ### `auto_rollout` (Site und Device, Boolean)
 
 Ein Feld für beide Objekt-Typen. An der Site: Die RouterOS-Geräte der Site bekommen, was sich in
-NetBox ändert, ohne Anwenden von Hand ([Automatisches Rollout](concepts/auto-rollout.md), noch
-nicht umgesetzt: bisher wird das Feld nur gelesen). Am Gerät: `false` nimmt es in einer solchen
+NetBox ändert, ohne Anwenden von Hand ([Automatisches Rollout](auto-rollout.md)). Am Gerät: `false` nimmt es in einer solchen
 Site aus, es bleibt beim Anwenden von Hand; leer oder `true` folgt der Site. Nur Admins setzen es.
 
 ### `controller` (Wireless LAN Group, Object → Device)

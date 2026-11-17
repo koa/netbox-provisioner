@@ -4,6 +4,7 @@ use crate::device::ros::SetupError;
 use mikrotik_model::resource::{MissingDependenciesError, ResourceMutationError};
 use thiserror::Error;
 
+pub mod auto_rollout;
 pub mod config;
 pub mod context;
 pub mod device;

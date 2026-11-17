@@ -249,6 +249,8 @@ pub enum Change {
     Job(DeviceId),
     /// the topology was read from NetBox again
     Topology,
+    /// the automatic rollout's state changed (`auto_rollout`)
+    AutoRollout,
 }
 
 type Stored = Arc<dyn Any + Send + Sync>;
@@ -373,6 +375,8 @@ pub struct Reading {
     pub peeked: std::collections::HashSet<(DeviceId, FactKind)>,
     /// it saw the jobs of all devices (or of a site)
     pub all_jobs: bool,
+    /// it saw the automatic rollout's state ([`note_auto_rollout`])
+    pub auto_rollout: bool,
     /// when the first fact read gets older than its user took it
     pub outdated: Option<Instant>,
     /// how many events of each job (by id) the subscription delivered; unlike the rest kept
@@ -397,6 +401,7 @@ impl Reading {
             }
             Change::Job(device) => self.all_jobs || self.devices.contains(device),
             Change::Topology => true,
+            Change::AutoRollout => self.auto_rollout,
         }
     }
 }
@@ -823,6 +828,14 @@ pub fn peek_newest<T: Send + Sync + 'static>(
 
 /// Notes that the subscription answering (if any) looked at facts of `kind` about `device`
 /// without asking ([`peek`]): it answers again when one is stored or dropped.
+/// The subscription answering saw the automatic rollout's state: it answers again when that
+/// changes.
+pub fn note_auto_rollout() {
+    let _ = READING.try_with(|reading| {
+        reading.lock_anyway().auto_rollout = true;
+    });
+}
+
 pub fn note_peeked(device: DeviceId, kind: FactKind) {
     let _ = READING.try_with(|reading| {
         reading.lock_anyway().peeked.insert((device, kind));

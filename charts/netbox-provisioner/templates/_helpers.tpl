@@ -39,7 +39,8 @@ chart's Secret, `secret` the setting ({value} or {secretKeyRef}); only those giv
 {{- $s := .Values.settings -}}
 {{- $all := list
   (dict "env" "APP_SETTINGS__NETBOX_TOKEN" "key" "netbox_token" "secret" $s.netbox_token)
-  (dict "env" "APP_SETTINGS__NETBOX_WRITE_TOKEN" "key" "netbox_write_token" "secret" $s.netbox_write_token) -}}
+  (dict "env" "APP_SETTINGS__NETBOX_WRITE_TOKEN" "key" "netbox_write_token" "secret" $s.netbox_write_token)
+  (dict "env" "APP_SETTINGS__NETBOX_WEBHOOK_SECRET" "key" "netbox_webhook_secret" "secret" $s.netbox_webhook_secret) -}}
 {{- if $s.management_proxy.device -}}
 {{- $all = append $all (dict "env" "APP_SETTINGS__MANAGEMENT_PROXY__PASSWORD" "key" "management_proxy_password" "secret" $s.management_proxy.password) -}}
 {{- end -}}

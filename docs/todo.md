@@ -82,13 +82,13 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](concepts/network-update.md) | L | Regel, Plan, Rollout und eingefärbte Knoten der Netz-Ansicht erledigt; offen: CHR-Test der Kette `entry -- a -- target` |
 | C18 | Reiner L2-Switch als „Extender“: Ein alter Switch ohne L3-Offload oder mit anderen Problemen (CRS2xx, CRS354) hängt an einem modernen Switch oder Router, der seine L3-Funktionen über einen Trunk übernimmt: Port oder Bridge, mit IP oder VLAN (Z39) | [Reiner L2-Switch](concepts/l2-extender.md) | M–L | offen |
 | C19 | DNS für alle Adressen auf Geräte-Ports: Vorwärts- (A, AAAA) und Rückwärts-Einträge (PTR) aus NetBox, ein Server dafür (Z40); zuerst ein Konzept | – | M–L | offen |
-| C20 | Automatisches Rollout der NetBox-Änderungen (Z46): was ein Anwohner (oder ein Helfer) in NetBox ändert, erreicht die betroffenen Geräte ohne Anwenden von Hand, in sicherer Reihenfolge und mit Fallback; den Stand pro Gerät und Änderung festhalten (ausstehend, ausgerollt, wartet auf ein nicht erreichbares Gerät, gescheitert), weil das Anwohner-UI ihn pro Element zeigt (Z51); Bereich pro Site (Z53), eine Transaktion über `applyBatch`, Internet vorher und nachher (Z57), Fehlerzustand pro Bereich (Z54, Z55), Änderungen von Hand gehen zurück (Z56) | [Automatisches Rollout](concepts/auto-rollout.md) | L | offen |
 | C21 | Anwohner-UI nach dem Prototyp: Tabs Dosen und Geräte (Ports als Dosen, Räume, Kabel, Geräte pro Port aus der Bridge-Host-Tabelle), Netze (WLAN ein/aus, SSID, Passwort, QR-Code, Clients mit Band und Signal), Änderungen (Stand pro Gerät, Zurücknehmen); Entwürfe mit Zurücksetzen und Vorschau; ein Status-Label pro Element aus Rollout (C20) und Live-Reads; Anschluss erkennen und übernehmen (Z50); Raum per Popup; Support-Ansicht für Admins mit Filter nach Besitz im Provisioner (Z52) | [Self-Service](concepts/self-service.md#anwohner-ui) | L | offen |
 
 ## D. In Arbeit, Rest offen
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
+| C20 | Automatisches Rollout, Rest: der Journal-Eintrag nennt die Änderungen pro Tabelle (Z56); „nie automatisch“ erkennen (Weg des Provisioners, Ankündigungen ausserhalb der freigegebenen Bereiche, Umstecken, Warnungen des Anwendens wie `PoeCut`); selbst anstossen, wenn der Provisioner schreibt; Stand pro Änderung und Gerät für das Anwohner-UI (Z51); Vorschau beim Aufheben des Fehlers | [Automatisches Rollout](concepts/auto-rollout.md) | M–L | Bereich, Runden, Transaktion, Fehlerzustand, Karte erledigt |
 
 ## E. Erweiterungen umgesetzter Teile
 

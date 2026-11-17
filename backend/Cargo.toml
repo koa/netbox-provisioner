@@ -31,6 +31,9 @@ prometheus = "0.14.0"
 rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem", "x509-parser"] }
 x509-parser = "0.18"
 time = "0.3"
+# the automatic rollout: a diff's fingerprint, the NetBox webhook's signature (HMAC-SHA512)
+sha2 = "0.11.1"
+hmac = "0.13"
 
 [build-dependencies]
 cynic-codegen = { version = "3.14", default-features = false }
@@ -39,7 +42,6 @@ cynic-codegen = { version = "3.14", default-features = false }
 tokio = { version = "1.54.1", features = ["full", "test-util"] }
 anyhow = "1.0.104"
 env_logger = "0.11.11"
-sha2 = "0.11.1"
 encoding_rs = "0.8.44"
 tokio-stream = "0.1.19"
 # the chain WebFig sends (CHR test `webfig_gets_a_certificate_of_the_ca`)

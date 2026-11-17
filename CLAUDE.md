@@ -717,6 +717,21 @@ pings `internet_targets` (`device::internet`, one answer per family) before its 
 its script, until both answer or the batch gives up; one without sends all back
 (`BatchIncomplete.no_internet`, `FallbackLeftReason::NoInternet`). `SavedBatch` keeps the flag.
 
+`auto_rollout` (C20, `docs/auto-rollout.md`) applies NetBox changes to the RouterOS devices of
+sites with the custom field `auto_rollout` (a device's `false` leaves it out; `allow_apply`
+only): rounds after NetBox's webhook (`/netbox-webhook`, HMAC-SHA512 with
+`netbox_webhook_secret`, `auto_rollout::webhook`; 20 s quiet), every 30 min (manual changes go
+back) and 5 min after a deferral. A round reads the diffs of the automatic devices and the
+manual ones next to them (`related`), decides without a device (`auto_rollout::decide`:
+unreached devices and their radio partners deferred, a manual device whose diff fingerprint
+changed holds all back until released, a site seen automatic first with diffs goes into
+`NotInLine`) and starts one `batch::apply` with `needs_internet` (`Started::Automatic`); a
+failure puts the members' sites into their error state, which an admin clears
+(`clearAutoRolloutError`). State in `state_dir/auto_rollout.json`; the site page's card
+(`components::site::auto_rollout`, `SiteAccess.autoRollout`) is live through
+`facts::Change::AutoRollout`; metrics `auto_rollout_*`. The lab NetBox runs a `rqworker` for
+the webhooks.
+
 A device that doesn't answer gets its initial setup over `/tool mac-telnet` from a neighbor that
 does (`device::bootstrap`, on the device page): `plans` lists the cabled ports with an IPv4 (on
 the port or its bridge) whose other end has a primary IP in NetBox, and `working_plan` takes the

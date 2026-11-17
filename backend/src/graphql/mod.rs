@@ -774,10 +774,6 @@ impl MutationAuthenticated {
             false => Err(Error::NoSavedJob(device_id).into()),
         }
     }
-    /// Starts applying the generated config to `ids` together (`allow_apply` must be set),
-    /// each with its NetBox address and credentials: one job per device, with one fallback
-    /// for all of them, taken away only once every one is reached again (`device::batch`).
-    #[graphql(guard = "WritesAllowed")]
     /// Starts reading how far each RouterOS device of the site is from NetBox (what an apply
     /// would change, by table; `device::site_diff`), or gives back the one still running. Only
     /// reads, so it needs no `allow_apply`.
@@ -787,6 +783,24 @@ impl MutationAuthenticated {
             crate::device::site_diff::run(site, log)
         }))
     }
+    /// Clears the error state of an automatic site: the next round, at once, applies its
+    /// devices (`auto_rollout`).
+    #[graphql(guard = "WritesAllowed")]
+    async fn clear_auto_rollout_error(&self, site_id: u32) -> bool {
+        crate::auto_rollout::clear_error(SiteId(site_id))
+    }
+    /// Releases manual devices holding the automatic rollout back: the next round, at once,
+    /// applies them with the automatic ones.
+    #[graphql(guard = "WritesAllowed")]
+    async fn release_auto_rollout(&self, device_ids: Vec<u32>) -> bool {
+        let devices: Vec<DeviceId> = device_ids.into_iter().map(DeviceId).collect();
+        crate::auto_rollout::release(&devices);
+        true
+    }
+    /// Starts applying the generated config to `ids` together (`allow_apply` must be set),
+    /// each with its NetBox address and credentials: one job per device, with one fallback
+    /// for all of them, taken away only once every one is reached again (`device::batch`).
+    #[graphql(guard = "WritesAllowed")]
     async fn apply_batch(
         &self,
         ctx: &Context<'_>,

@@ -40,6 +40,8 @@ pub enum Started {
     By(Box<str>),
     /// went on after a restart of the provisioner, writing on in its entry from before
     Resumed { entry: Option<u64> },
+    /// by the automatic rollout (`auto_rollout`)
+    Automatic,
 }
 
 /// The job's entry in NetBox' journal couldn't be written; the next state tries again.
@@ -72,7 +74,7 @@ pub async fn follow(
             }
             entry
         }
-        Started::By(_) => None,
+        Started::By(_) | Started::Automatic => None,
     };
     let mut failing = false;
     loop {
@@ -446,7 +448,7 @@ impl Entry {
             "run": self.run,
             "by": match &self.started {
                 Started::By(user) => Some(user),
-                Started::Resumed { .. } => None,
+                Started::Resumed { .. } | Started::Automatic => None,
             },
             "at": SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
         })
@@ -459,6 +461,7 @@ impl Entry {
         lines.push(match &self.started {
             Started::By(user) => t::started_by(user),
             Started::Resumed { .. } => t::RESUMED.into(),
+            Started::Automatic => t::AUTOMATIC.into(),
         });
         if self.outcome != Outcome::Done
             && let Some(phase) = self.phase

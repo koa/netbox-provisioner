@@ -328,6 +328,12 @@ fn file(jobs: &Path, device: DeviceId) -> PathBuf {
     jobs.join(format!("{}.json", device.0))
 }
 
+/// `name` in `state_dir`, once it is open; for what else is kept there (`auto_rollout`).
+pub fn state_file(name: &str) -> Option<PathBuf> {
+    let store = STORE.get()?;
+    Some(store.jobs.parent()?.join(name))
+}
+
 /// Writes `saved` for its device, replacing what was saved for it. A failure only goes to the
 /// log: the job goes on as it would without `state_dir`, a restart then ends it.
 pub fn save(saved: &SavedJob) {

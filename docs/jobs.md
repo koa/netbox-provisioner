@@ -522,7 +522,7 @@ Funkstrecke: Einzeln geändert schneidet das erste Ende dem zweiten den Weg ab.
   zusammen ihre Konfiguration von vorher.
 - Abbrechen eines Geräts bricht alle ab.
 - **Mit Internet als Bedingung** (das automatische Rollout,
-  [Konzept](concepts/auto-rollout.md); `applyBatch` von Hand stellt sie nicht): Jedes Gerät
+  [Automatisches Rollout](auto-rollout.md); `applyBatch` von Hand stellt sie nicht): Jedes Gerät
   pingt vor dem Fallback die `internet_targets` ([Betrieb](deployment.md)); erreicht eines das
   Internet nicht über IPv4 **und** IPv6, wird nichts angewendet (`NO_INTERNET`). Nach dem
   Skript pingt jedes, das in Reihe ist, bis beide Familien antworten (OSPF braucht nach dem
