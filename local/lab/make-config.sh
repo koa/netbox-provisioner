@@ -10,6 +10,11 @@ if [ ! -s "$root/.lab-netbox/socks-password" ]; then
   head -c 18 /dev/urandom | base64 | tr -d "/+=" >"$root/.lab-netbox/socks-password"
 fi
 socks_password="$(cat "$root/.lab-netbox/socks-password")"
+# the secret the lab NetBox signs its webhook with (automatic rollout)
+if [ ! -s "$root/.lab-netbox/webhook-secret" ]; then
+  head -c 18 /dev/urandom | base64 | tr -d "/+=" >"$root/.lab-netbox/webhook-secret"
+fi
+webhook_secret="$(cat "$root/.lab-netbox/webhook-secret")"
 # the admin password of the lab devices stays out of the repository
 if [ ! -s "$root/.lab-netbox/device-password" ]; then
   echo "put the lab devices' admin password into .lab-netbox/device-password" >&2
@@ -46,6 +51,7 @@ settings:
   # the helpers write to the lab NetBox with the same (admin) token
   allow_netbox_write: true
   netbox_write_token: "$(cat "$root/.lab-netbox/api-token")"
+  netbox_webhook_secret: "$webhook_secret"
   # the lab's entry point: everything behind lab-np2 is reached through its /ip socks
   management_proxy:
     device: lab-np2

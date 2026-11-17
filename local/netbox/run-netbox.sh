@@ -35,7 +35,11 @@ fi
 pg_ctl -D "$pg" -o "-k $socket -c listen_addresses=''" -l "$LAB_NETBOX_DATA/pg.log" -w start
 redis-server --port "$LAB_REDIS_PORT" --bind 127.0.0.1 --save '' --daemonize yes \
   --logfile "$LAB_NETBOX_DATA/redis.log"
+# sends the webhooks (the provisioner's automatic rollout)
+netbox rqworker high default low >"$LAB_NETBOX_DATA/rqworker.log" 2>&1 &
+rqworker=$!
 cleanup() {
+  kill "$rqworker" 2>/dev/null || true
   redis-cli -p "$LAB_REDIS_PORT" shutdown nosave >/dev/null 2>&1 || true
   pg_ctl -D "$pg" -m fast stop >/dev/null 2>&1 || true
 }
