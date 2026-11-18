@@ -65,7 +65,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
-| A10 | OSPF-Authentisierung pro Link (Z44): ein Schlüssel pro Link, den nur der Provisioner kennt (nicht in NetBox), an beiden Enden; ein Gerät ohne ihn wird kein Nachbar. Vor allem für Ports von Anwohnern (C7); Wechsel ohne Unterbruch beider Enden bedenken | M | offen |
+| A10 | OSPF-Authentisierung pro Link (Z44): ein Schlüssel pro Link, den nur der Provisioner kennt (nicht in NetBox), an beiden Enden; ein Gerät ohne ihn wird kein Nachbar. Vor allem für Ports von Anwohnern (C7); Wechsel ohne Unterbruch beider Enden bedenken; [Konzept](concepts/ospf-auth.md): nur wenn alle Enden des Segments im selben Batch sind | M | offen |
 
 ## B. Bereinigungen
 
