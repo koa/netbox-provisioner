@@ -20,6 +20,7 @@ pub mod metrics;
 pub mod netbox;
 pub mod network_state;
 pub mod operation;
+pub mod role;
 pub mod saved_job;
 pub mod topology;
 

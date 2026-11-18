@@ -55,6 +55,10 @@ VLANs müssen nicht von ihm ferngehalten werden.
 
 ## Wer ist wer
 
+Gebaut: Besitz, Rollen und die lesende Schnittstelle der Anwohner
+([self-service.md](../self-service.md)). Offen bleiben NetBox über Pocket-ID mit der Gruppe
+„Anwohner“ und die Prüfung der Claims bei Pocket-ID.
+
 - **Anmelden:** NetBox und Provisioner melden beide über denselben OIDC-Provider an
   (Pocket-ID). NetBox legt einen Benutzer beim ersten Login an und gibt ihm die Gruppen aus
   `REMOTE_AUTH_DEFAULT_GROUPS` (`user_default_groups_handler` in der Login-Pipeline von 4.7.1);

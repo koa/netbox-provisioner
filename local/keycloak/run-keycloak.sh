@@ -2,7 +2,9 @@
 # Local Keycloak for the lab login, from nixpkgs (dev mode, in-memory database, so every start
 # imports realm.json afresh; no containers):
 # realm "lab" from realm.json with the public client "netbox-provisioner" and the users
-# admin/admin and reader/reader (subjects "lab-admin", "lab-reader").
+# admin/admin (group admin), reader/reader and the residents meier/meier and huber/huber
+# (subjects "lab-<name>"; NetBox owners from local/netbox/seed-residents.py); the token
+# carries the claim groups.
 # Issuer http://localhost:8180/realms/lab, admin console admin/admin. Stays in the foreground.
 #
 # Keycloak rebuilds itself into its own lib/ on the first start, so it runs from a writable copy

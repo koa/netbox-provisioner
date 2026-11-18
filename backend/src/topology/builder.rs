@@ -283,8 +283,14 @@ impl TopologyBuilder {
 }
 impl From<TopologyBuilder> for TopologyHolder {
     fn from(value: TopologyBuilder) -> Self {
+        Arc::new(value.build()).into()
+    }
+}
+/// A topology given once, never read from NetBox (tests, the CHR harness).
+impl From<Arc<Topology>> for TopologyHolder {
+    fn from(value: Arc<Topology>) -> Self {
         TopologyHolder {
-            data: Arc::new(Mutex::new(Some(Arc::new(value.build())))),
+            data: Arc::new(Mutex::new(Some(value))),
             fetching: Default::default(),
             fixed: true,
         }

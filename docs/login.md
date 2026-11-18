@@ -5,7 +5,9 @@ Secret) und schickt das ID-Token als `Bearer` an `/graphql`: Nur darin steht bei
 Name des Benutzers, das Access-Token trägt nur `sub`, `client_id` und `scope`. Liefert ein Refresh
 kein neues ID-Token, geht das Access-Token mit (der Name fehlt dann, in den Metriken steht `sub`).
 Das Backend prüft das Token gegen
-den Issuer und lässt nur die Benutzer aus `auth_users` herein. Bei den Zeiten (`iat`, `nbf`,
+den Issuer und lässt nur Admins herein: die Benutzer aus `auth_users` und die mit der Gruppe
+`admin` im Claim `groups`. Die Anwohner fragen `/graphql/resident`
+([self-service.md](self-service.md#rollen)). Bei den Zeiten (`iat`, `nbf`,
 `exp`) lässt es 60 s Abweichung zu: ohne lehnte ein Server, dessen Uhr eine Sekunde hinter
 Pocket-ID ging, jedes frische Token ab. Lehnt es ein Token mit gültiger Signatur ab (`403`
 „Token does not have sufficient rights“), steht der Grund im Log (`token refused: …`, mit den
@@ -46,7 +48,8 @@ settings:
   ausstellt, nicht durch.
 - **`auth_users`**: Verglichen wird `sub`, nicht der Benutzername. Wer angemeldet ist, aber nicht in
   der Liste steht, bekommt bei jeder Abfrage `403` („Kein Zugriff“ im UI); das Serverlog nennt
-  das `sub` (`user refused, not in auth_users`).
+  das `sub` (`user refused, no admin`). Statt der Liste macht auch die Gruppe `admin` im Claim
+  `groups` zum Admin; die Liste bleibt als Notschalter.
 - **`auth_scopes`**: `offline_access` (Refresh-Token) kennt nicht jeder Provider; dann die Scopes
   ohne ihn angeben. Ohne Refresh-Token erneuert das UI das Token nicht: Ist es abgelaufen,
   antwortet der Server `403` (und schliesst den WebSocket bei `connection_init`), bis man sich
@@ -78,10 +81,19 @@ Client, PKCE und 1 min Laufzeit des Access-Tokens, `accessTokenDurationMinutes`)
 Refresh-Token, jedes Refresh bringt ein neues ID-Token mit `name`, und das UI blieb über 4 min
 angemeldet, ohne Hinweis und ohne abgelehntes Token. `auth_scopes` bleibt darum ohne Angabe.
 
+Für die Rollen ([self-service.md](self-service.md#rollen)) braucht das ID-Token den Claim
+`groups` (Admins) und `preferred_username` (der Benutzername, den NetBox beim Login über
+Pocket-ID anlegt). Bei Pocket-ID kommt `groups` mit dem Scope `groups`, also
+`auth_scopes: "openid profile email groups offline_access"`. Mit Pocket-ID ist das noch nicht
+geprüft, ebenso wenig, welchen Claim NetBox als Benutzernamen nimmt.
+
 ## Keycloak (Lab)
 
 `local/keycloak/realm.json` zeigt, was ein Provider liefern muss: ein Public Client
 `netbox-provisioner` mit PKCE (`S256`), Redirect-URIs auf den Provisioner, und ein
 Audience-Mapper, da Keycloak die Client ID sonst nicht in `aud` des Access-Tokens setzt. Die
 Benutzer haben feste IDs (`lab-admin`, `lab-reader`), damit `auth_users` in
-`local/lab/make-config.sh` sie nennen kann; nur `lab-admin` steht dort.
+`local/lab/make-config.sh` sie nennen kann; nur `lab-admin` steht dort. `admin` ist zudem in der
+Gruppe `admin`, ein Group-Membership-Mapper setzt den Claim `groups`. Die Anwohner
+`meier`/`meier` und `huber`/`huber` sind in der Lab-NetBox Mitglieder ihrer Owner
+(`local/netbox/seed-residents.py`); `reader` ist weder Admin noch Anwohner.

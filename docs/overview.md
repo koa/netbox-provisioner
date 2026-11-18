@@ -21,6 +21,7 @@ Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
 - [Update-Fallback](update-fallback.md): Partitionen, Rettung über den Nachbarn, Downgrade, Device-Mode, Strom aus und ein.
 - [Automatisches Rollout](auto-rollout.md): Sites, deren Geräte NetBox-Änderungen ohne Anwenden von Hand bekommen, Runden, Fehlerzustand, Webhook.
 - [Protokoll](protocol.md): ein Eintrag pro Job im Journal des Geräts in NetBox, Beobachtungen ohne Job, der Verlauf auf der Geräteseite.
+- [Self-Service](self-service.md): Anwohner als NetBox-Owner, Rollen, die Schnittstelle der Anwohner.
 - [OSPF-Authentisierung](ospf-auth.md): ein Schlüssel pro Segment, nur gewechselt, wenn alle Enden im selben Anwenden sind.
 - [Watchdog](watchdog.md): Hardware-, Ping- und PoE-Watchdog, ihre Ziele aus der Topologie, das Aussetzen bei Update und Funkänderung.
 - [Gerätemetriken](device-metrics.md): WLAN-Clients, Health, PoE, System, Interfaces und Leases der Geräte an `/metrics`, statt des mikrotik-metrik-exporter.

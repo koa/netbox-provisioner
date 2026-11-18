@@ -143,7 +143,14 @@ ends, so their cables end there as before.
 A resident (C7, `docs/concepts/self-service.md`) is a NetBox owner: `owner` is read at
 devices, interfaces and VLANs (`Topology.owners`, what NetBox gives each directly), and
 `topology::ownership` derives the rest (`Topology::owned_by`: the ports of its devices, the
-WLANs on its VLANs, their groups). It changes nothing in the generated configs. An export
+WLANs on its VLANs, their groups). It changes nothing in the generated configs. Who a user
+is decides `role::of` per request: admin, else a resident by the owners NetBox has its
+`preferred_username` in (`netbox::owners`, kept 30 s), else nobody. Residents ask
+`/graphql/resident` (`graphql::resident`, `docs/self-service.md`), a schema of its own that
+shows only plain objects of what they have, never the admins' access types; `binary`'s
+`require_role` refuses nobody with `403` and hands the role to the request. An admin gets
+every resident there (support view). The lab has two residents (`meier`, `huber`: Keycloak
+and `local/netbox/seed-residents.py`). An export
 without owners gets them as `null` (`topology::test::example_response`), as do the objects a
 helper's preview creates.
 
@@ -630,7 +637,8 @@ its first answer (`live::execute_once`): a view asking once shares the document 
 types with the views subscribing (`Findings`, `InterfaceView`, `SiteDevices`, `ListSites`).
 
 The UI logs in over OIDC (`yew-oauth2` in the frontend, structure taken from the cable-editor);
-the backend checks the JWT against `auth_issuer` and lets only `auth_users` in, both as
+the backend checks the JWT against `auth_issuer` and lets only admins in (`role::is_admin`:
+`auth_users` or the group `admin` in the claim `groups`), both as
 middleware of `/graphql` in `binary` (`authenticated_graphql`: `403` otherwise, and the server
 log says why; the frontend words the status, `i18n::error::refused`; without a refresh token
 `yew-oauth2` keeps an expired token as authenticated, so every page shows „Anmeldung

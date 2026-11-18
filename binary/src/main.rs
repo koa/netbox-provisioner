@@ -36,8 +36,10 @@ use backend::{
     context::UserInfo,
     graphql::{
         AnonymousGraphqlSchema, AuthenticatedGraphqlSchema, create_anonymous_schema, create_schema,
+        resident::{ResidentGraphqlSchema, create_resident_schema},
     },
     netbox::NetboxError,
+    role::Role,
     topology::TopologyHolder,
 };
 
@@ -186,8 +188,9 @@ fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<Authenticated>
         return Err(async_graphql::Error::new("token refused"));
     }
     let subject = info.payload.registered.subject.as_deref();
-    if !subject.is_some_and(|subject| CONFIG.auth_users.iter().any(|id| **id == *subject)) {
-        warn!("user refused on the WebSocket, not in auth_users: {subject:?}");
+    let user = serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok();
+    if !backend::role::is_admin(subject, user.as_ref()) {
+        warn!("user refused on the WebSocket, no admin: {subject:?}");
         return Err(async_graphql::Error::new("user not in auth_users"));
     }
     // `exp` is required by `validation_options`
@@ -197,10 +200,7 @@ fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<Authenticated>
         .expiry
         .ok_or_else(|| async_graphql::Error::new("token without exp"))?;
     let expiry = TokenExpiry(*expiry + chrono::Duration::seconds(LEEWAY_SECONDS));
-    Ok(Authenticated {
-        user: serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok(),
-        expiry,
-    })
+    Ok(Authenticated { user, expiry })
 }
 
 #[get("/health")]
@@ -271,6 +271,7 @@ struct ApplicationContext {
     graphql_request_histogram: HistogramVec,
     schema: AuthenticatedGraphqlSchema,
     anonymous_schema: AnonymousGraphqlSchema,
+    resident_schema: ResidentGraphqlSchema,
 }
 
 #[derive(Error, Debug)]
@@ -328,6 +329,7 @@ async fn main() -> Result<(), BackendError> {
 
     let schema = create_schema(topology.clone());
     let anonymous_schema = create_anonymous_schema();
+    let resident_schema = create_resident_schema(topology.clone());
 
     let issuer_keys = IssuerKeys::fetch(CONFIG.auth_issuer()).await?;
     issuer_keys.clone().keep_fresh();
@@ -340,6 +342,7 @@ async fn main() -> Result<(), BackendError> {
         graphql_request_histogram,
         schema,
         anonymous_schema,
+        resident_schema,
     });
     let main_server = HttpServer::new(move || {
         let resources = generate();
@@ -361,6 +364,10 @@ async fn main() -> Result<(), BackendError> {
                     .guard(actix_web::guard::Get())
                     .to(graphql_ws),
             )
+            .service(resident_graphql(
+                "/graphql/resident",
+                biscuit_validator.clone(),
+            ))
             .service(anonymous_graphql("/graphql_anonymous"))
             .service(anonymous_graphql("/graphql_anonymous/"))
             .service(www_ca)
@@ -415,25 +422,81 @@ fn authenticated_graphql(
         .to(graphql)
 }
 
+/// The residents' API (`backend::graphql::resident`): a valid token as for
+/// [`authenticated_graphql`] of an admin or a resident (`require_role`), otherwise `403`.
+fn resident_graphql(
+    path: &'static str,
+    biscuit_validator: OidcBiscuitValidator,
+) -> impl HttpServiceFactory {
+    resource(path)
+        .guard(Post())
+        .wrap(from_fn(require_role))
+        .wrap(biscuit_validator)
+        .wrap(from_fn(log_refused_token))
+        .wrap(from_fn(with_issuer_keys))
+        .to(graphql_resident)
+}
+
+/// Finds the user's role (`backend::role::of`) after the token is checked and hands it on to
+/// the request; `403` for nobody.
+async fn require_role(
+    mut req: ServiceRequest,
+    next: Next<impl MessageBody + 'static>,
+) -> Result<ServiceResponse<BoxBody>, actix_web::Error> {
+    use actix_web::HttpMessage;
+    let info = req.extract::<DecodedInfo>().await.ok();
+    let subject = info
+        .as_ref()
+        .and_then(|info| info.payload.registered.subject.clone());
+    let user = info
+        .as_ref()
+        .and_then(|info| serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok());
+    let role = backend::role::of(subject.as_deref(), user.as_ref()).await;
+    if role == Role::Nobody {
+        warn!("user refused, neither admin nor resident: {subject:?}");
+        return Ok(req.into_response(HttpResponse::Forbidden().body("no role")));
+    }
+    req.extensions_mut().insert(role);
+    Ok(next.call(req).await?.map_into_boxed_body())
+}
+
+async fn graphql_resident(
+    context: Data<ApplicationContext>,
+    role: actix_web::web::ReqData<Role>,
+    request: GraphQLRequest,
+) -> GraphQLResponse {
+    let histogram = context.graphql_request_histogram.clone();
+    let request = request.into_inner();
+    let timer = histogram
+        .with_label_values(&[request.operation_name.as_deref().unwrap_or_default(), ""])
+        .start_timer();
+    let response = context
+        .resident_schema
+        .execute(request.data(role.into_inner()))
+        .await;
+    timer.stop_and_record();
+    response.into()
+}
+
 fn anonymous_graphql(path: &'static str) -> impl HttpServiceFactory {
     resource(path).guard(Post()).to(graphql_anonymous)
 }
 
-/// Lets only the users of `auth_users` (their `sub`) in, after the token is checked.
+/// Lets only admins in (`backend::role::is_admin`: `auth_users` or the group `admin`), after
+/// the token is checked.
 async fn require_allowed_user(
     mut req: ServiceRequest,
     next: Next<impl MessageBody + 'static>,
 ) -> Result<ServiceResponse<BoxBody>, actix_web::Error> {
-    let subject = req
-        .extract::<DecodedInfo>()
-        .await
-        .ok()
-        .and_then(|info| info.payload.registered.subject);
-    if !subject
-        .as_deref()
-        .is_some_and(|subject| CONFIG.auth_users.iter().any(|id| **id == *subject))
-    {
-        warn!("user refused, not in auth_users: {subject:?}");
+    let info = req.extract::<DecodedInfo>().await.ok();
+    let subject = info
+        .as_ref()
+        .and_then(|info| info.payload.registered.subject.clone());
+    let user = info
+        .as_ref()
+        .and_then(|info| serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok());
+    if !backend::role::is_admin(subject.as_deref(), user.as_ref()) {
+        warn!("user refused, no admin: {subject:?}");
         return Ok(req.into_response(HttpResponse::Forbidden().body("user not in auth_users")));
     }
     Ok(next.call(req).await?.map_into_boxed_body())

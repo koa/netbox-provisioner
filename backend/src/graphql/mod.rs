@@ -34,6 +34,7 @@ use async_graphql::{
 use serde_json::json;
 use std::sync::Arc;
 pub mod live;
+pub mod resident;
 pub mod scalars;
 pub type AuthenticatedGraphqlSchema =
     Schema<QueryAuthenticated, MutationAuthenticated, SubscriptionAuthenticated>;

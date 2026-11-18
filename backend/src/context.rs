@@ -10,6 +10,12 @@ pub struct UserInfo {
     pub email: Option<String>,
     pub email_verified: Option<bool>,
     pub hd: Option<String>,
+    /// The login name, which NetBox takes for its user (`role`)
+    pub preferred_username: Option<Box<str>>,
+    /// The groups of the provider (`groups` claim, Pocket-ID with the scope `groups`): `admin`
+    /// makes an admin (`role`)
+    #[serde(default)]
+    pub groups: Box<[Box<str>]>,
 }
 
 #[cfg(test)]

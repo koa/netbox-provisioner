@@ -213,3 +213,72 @@ pub(crate) fn example_response() -> serde_json::Value {
     }
     raw
 }
+
+/// The stored export with owners: owner 1 („Familie Meier“) at a device, at a port of another
+/// device and at a VLAN with a WLAN, owner 2 („Huber AG“) at another VLAN.
+pub(crate) struct OwnedExample {
+    pub raw: serde_json::Value,
+    /// owner 1's device
+    pub device: u32,
+    /// owner 1's port of another device
+    pub port: u32,
+    /// owner 1's VLAN, with `wlan` on it
+    pub vlan: u32,
+    pub wlan: u32,
+}
+
+pub(crate) fn owned_example() -> OwnedExample {
+    fn id(value: &serde_json::Value) -> u32 {
+        value["id"]
+            .as_str()
+            .and_then(|id| id.parse().ok())
+            .expect("id")
+    }
+    fn set_owner(object: &mut serde_json::Value, owner: u32, name: &str) {
+        object["owner"] = serde_json::json!({ "id": owner.to_string(), "name": name });
+    }
+    let mut raw = example_response();
+    let (vlan, wlan) = raw["data"]["wireless_lan_group_list"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|group| group["wireless_lans"].as_array().into_iter().flatten())
+        .find(|wlan| wlan["vlan"].is_object())
+        .map(|wlan| (id(&wlan["vlan"]), id(wlan)))
+        .expect("a WLAN on a VLAN");
+    let devices = raw["data"]["device_list"].as_array_mut().expect("devices");
+    let mut with_ports = devices.iter_mut().filter(|device| {
+        device["interfaces"]
+            .as_array()
+            .is_some_and(|interfaces| interfaces.len() >= 2)
+    });
+    let device = with_ports.next().expect("a device");
+    set_owner(device, 1, "Familie Meier");
+    let device_id = id(device);
+    let other = with_ports.next().expect("another device");
+    let port = &mut other["interfaces"][0];
+    set_owner(port, 1, "Familie Meier");
+    let port_id = id(port);
+    let mut other_vlan_owned = false;
+    for group in raw["data"]["vlan_group_list"]
+        .as_array_mut()
+        .expect("groups")
+    {
+        for candidate in group["vlans"].as_array_mut().into_iter().flatten() {
+            if id(candidate) == vlan {
+                set_owner(candidate, 1, "Familie Meier");
+            } else if !other_vlan_owned {
+                set_owner(candidate, 2, "Huber AG");
+                other_vlan_owned = true;
+            }
+        }
+    }
+    assert!(other_vlan_owned, "a second VLAN in the export");
+    OwnedExample {
+        raw,
+        device: device_id,
+        port: port_id,
+        vlan,
+        wlan,
+    }
+}

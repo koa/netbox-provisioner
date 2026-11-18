@@ -8,6 +8,7 @@ use std::net::IpAddr;
 use thiserror::Error;
 
 pub mod fetch_topology;
+pub mod owners;
 pub mod rest;
 
 /// NetBox' `BigInt` (an interface's `speed`), sent as a number or as a string.
@@ -127,7 +128,14 @@ pub enum NetboxError {
 }
 
 pub async fn fetch_topology() -> Result<fetch_topology::FetchTopology, NetboxError> {
-    let request_body = fetch_topology::FetchTopology::build(());
+    query(fetch_topology::FetchTopology::build(())).await
+}
+
+/// Sends `operation` to NetBox' GraphQL with the provisioner's token.
+pub(crate) async fn query<Data: serde::de::DeserializeOwned, Variables: Serialize>(
+    operation: cynic::Operation<Data, Variables>,
+) -> Result<Data, NetboxError> {
+    let request_body = operation;
     let client = netbox_client()?;
     let response = client.post(netbox_url()).json(&request_body).send().await?;
     let status = response.status();
@@ -144,7 +152,7 @@ pub async fn fetch_topology() -> Result<fetch_topology::FetchTopology, NetboxErr
     if !status.is_success() {
         return Err(unexpected(None));
     }
-    let response_body: GraphQlResponse<fetch_topology::FetchTopology> =
+    let response_body: GraphQlResponse<Data> =
         serde_json::from_str(&body).map_err(|error| unexpected(Some(error)))?;
     if let Some(errors) = response_body.errors.filter(|data| !data.is_empty()) {
         Err(NetboxError::Graphql(errors.into()))

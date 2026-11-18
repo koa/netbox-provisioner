@@ -1,73 +1,19 @@
 //! Scope: Tests of `topology::ownership`; nothing else.
-use crate::topology::test::{example_response, topology_from};
+use crate::topology::test::{OwnedExample, example_response, owned_example, topology_from};
 use crate::topology::{CablePort, DeviceId, InterfaceId, OwnerId, VlanId, WlanId};
-use serde_json::{Value, json};
 use std::collections::BTreeSet;
-
-fn id(value: &Value) -> u32 {
-    value["id"]
-        .as_str()
-        .and_then(|id| id.parse().ok())
-        .expect("id")
-}
-
-/// A VLAN with a WLAN on it in the export, and that WLAN.
-fn vlan_with_wlan(raw: &Value) -> (u32, u32) {
-    raw["data"]["wireless_lan_group_list"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .flat_map(|group| group["wireless_lans"].as_array().into_iter().flatten())
-        .find(|wlan| wlan["vlan"].is_object())
-        .map(|wlan| (id(&wlan["vlan"]), id(wlan)))
-        .expect("a WLAN on a VLAN")
-}
-
-fn set_owner(object: &mut Value, owner: u32, name: &str) {
-    object["owner"] = json!({ "id": owner.to_string(), "name": name });
-}
-
-/// The export with owner 1 at a device, at a port of another device and at a VLAN with a
-/// WLAN; owner 2 at another VLAN. Gives the device, the port, the VLAN and its WLAN.
-fn owned_export() -> (Value, u32, u32, u32, u32) {
-    let mut raw = example_response();
-    let (vlan, wlan) = vlan_with_wlan(&raw);
-    let devices = raw["data"]["device_list"].as_array_mut().expect("devices");
-    let mut with_ports = devices.iter_mut().filter(|device| {
-        device["interfaces"]
-            .as_array()
-            .is_some_and(|i| i.len() >= 2)
-    });
-    let device = with_ports.next().expect("a device");
-    set_owner(device, 1, "Familie Meier");
-    let device_id = id(device);
-    let other = with_ports.next().expect("another device");
-    let port = &mut other["interfaces"][0];
-    set_owner(port, 1, "Familie Meier");
-    let port_id = id(port);
-    let mut other_vlan_owned = false;
-    for group in raw["data"]["vlan_group_list"]
-        .as_array_mut()
-        .expect("groups")
-    {
-        for candidate in group["vlans"].as_array_mut().into_iter().flatten() {
-            if id(candidate) == vlan {
-                set_owner(candidate, 1, "Familie Meier");
-            } else if !other_vlan_owned {
-                set_owner(candidate, 2, "Huber AG");
-                other_vlan_owned = true;
-            }
-        }
-    }
-    assert!(other_vlan_owned, "a second VLAN in the export");
-    (raw, device_id, port_id, vlan, wlan)
-}
 
 /// An owner has its devices with all their ports, the ports of other devices NetBox gives
 /// it, its VLANs, the WLANs on them and their groups.
 #[test]
 fn an_owner_has_its_devices_ports_vlans_and_their_wlans() {
-    let (raw, device, port, vlan, wlan) = owned_export();
+    let OwnedExample {
+        raw,
+        device,
+        port,
+        vlan,
+        wlan,
+    } = owned_example();
     let topology = topology_from(raw);
     let owned = topology.owned_by(OwnerId(1));
     assert_eq!(owned.devices, BTreeSet::from([DeviceId(device)]));
@@ -91,7 +37,13 @@ fn an_owner_has_its_devices_ports_vlans_and_their_wlans() {
 /// of the other's.
 #[test]
 fn owners_have_nothing_of_each_other() {
-    let (raw, device, port, vlan, _) = owned_export();
+    let OwnedExample {
+        raw,
+        device,
+        port,
+        vlan,
+        ..
+    } = owned_example();
     let topology = topology_from(raw);
     let other = topology.owned_by(OwnerId(2));
     assert!(other.devices.is_empty());
