@@ -111,9 +111,14 @@ Enden im Anwenden (welche fehlen), eine Adresse an einem Gerät ohne RouterOS od
 ein fremder Nachbar (Router-ID), ein erwarteter Nachbar fehlt, die Enden haben verschiedene
 Credentials.
 
+## Bewusst nicht
+
+- Die Automatik (C20) nimmt die anderen Enden eines ausstehenden Segments nicht in ihre Runde:
+  zu viel Aufwand für den Nutzen (Entscheid 2026-11-18). Ein Segment wechselt, wenn der
+  Operator alle Enden zusammen anwendet; bis dahin bleibt es, mit dem Hinweis.
+
 ## Offen
 
-- Die Automatik (C20) nimmt die anderen Enden eines ausstehenden Segments in ihre Runde.
 - „Gemeinsam anwenden“ wählt die fehlenden Enden eines Segments vor (heute nur die Partner
   der Funkstrecken).
 - Ein Batch, der nach einem Neustart weiterläuft, hat keine Entscheidung: die Prüfung behält
