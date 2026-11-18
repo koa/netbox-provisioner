@@ -21,6 +21,14 @@ if [ ! -s "$root/.lab-netbox/device-password" ]; then
   exit 1
 fi
 device_password="$(cat "$root/.lab-netbox/device-password")"
+# OSPF authentication (A10): a secret per version, made once, and the version the segments go
+# to (.lab-netbox/ospf-auth-current, 1 if missing)
+for version in 1 2; do
+  if [ ! -s "$root/.lab-netbox/ospf-auth-secret-$version" ]; then
+    head -c 24 /dev/urandom | base64 | tr -d "/+=" >"$root/.lab-netbox/ospf-auth-secret-$version"
+  fi
+done
+ospf_auth_current="$(cat "$root/.lab-netbox/ospf-auth-current" 2>/dev/null || echo 1)"
 # the address lab-np2 sees this machine at; the devices behind it see lab-np2's
 own_address="$(python3 -c 'import socket; s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("172.17.1.82", 9)); print(s.getsockname()[0])')"
 # the CAs of WebFig over HTTPS, made once: a root (www-root.pem, the browser's, from
@@ -72,6 +80,11 @@ $(pem "$root/.lab-netbox/www-ca.pem")
 $(pem "$root/.lab-netbox/www-ca.key")
     root: |
 $(pem "$root/.lab-netbox/www-root.pem")
+  ospf_auth:
+    current: $ospf_auth_current
+    secrets:
+      1: "$(cat "$root/.lab-netbox/ospf-auth-secret-1")"
+      2: "$(cat "$root/.lab-netbox/ospf-auth-secret-2")"
   mikrotik_credentials:
     lab:
       user: admin
