@@ -65,7 +65,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
-| A10 | OSPF-Authentisierung pro Segment, Rest: „Gemeinsam anwenden“ wählt die anderen Enden eines ausstehenden Segments vor, ein nach einem Neustart weiterlaufender Batch wartet auch auf die Nachbarn der gewechselten Segmente | [OSPF-Authentisierung](ospf-auth.md#offen) | M | offen |
 
 ## B. Bereinigungen
 

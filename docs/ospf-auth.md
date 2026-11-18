@@ -113,13 +113,14 @@ Credentials.
 
 ## Bewusst nicht
 
-- Die Automatik (C20) nimmt die anderen Enden eines ausstehenden Segments nicht in ihre Runde:
-  zu viel Aufwand für den Nutzen (Entscheid 2026-11-18). Ein Segment wechselt, wenn der
-  Operator alle Enden zusammen anwendet; bis dahin bleibt es, mit dem Hinweis.
+Entschieden am 2026-11-18, zu viel Aufwand für den Nutzen:
 
-## Offen
-
-- „Gemeinsam anwenden“ wählt die fehlenden Enden eines Segments vor (heute nur die Partner
-  der Funkstrecken).
+- Die Automatik (C20) nimmt die anderen Enden eines ausstehenden Segments nicht in ihre
+  Runde. Ein Segment wechselt, wenn der Operator alle Enden zusammen anwendet; bis dahin
+  bleibt es, mit dem Hinweis.
+- „Gemeinsam anwenden“ wählt die fehlenden Enden eines Segments nicht vor (nur die Partner
+  der Funkstrecken); der Hinweis nennt sie.
 - Ein Batch, der nach einem Neustart weiterläuft, hat keine Entscheidung: die Prüfung behält
-  die Credentials, wie sie sind (kein Diff), wartet aber nicht auf die Nachbarn.
+  die Credentials, wie sie sind (kein Diff), wartet aber nicht auf die Nachbarn der
+  gewechselten Segmente. In Kauf genommen: ein Ende, dessen Skript nicht durchkam, ist nicht in
+  Reihe und schickt alle zurück.
