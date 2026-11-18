@@ -140,6 +140,13 @@ NetBox' trace does, so a fiber between buildings connects the devices at both en
 exports lack `circuit_list` and the ids of the circuit ends; `example_topology` drops those
 ends, so their cables end there as before.
 
+A resident (C7, `docs/concepts/self-service.md`) is a NetBox owner: `owner` is read at
+devices, interfaces and VLANs (`Topology.owners`, what NetBox gives each directly), and
+`topology::ownership` derives the rest (`Topology::owned_by`: the ports of its devices, the
+WLANs on its VLANs, their groups). It changes nothing in the generated configs. An export
+without owners gets them as `null` (`topology::test::example_response`), as do the objects a
+helper's preview creates.
+
 `topology/findings.rs` computes the findings about NetBox itself (`docs/config-helper.md`,
 Befund „NetBox in sich“) once per built topology (`Topology::with_findings`, called by
 `build_topology_from` and `TopologyBuilder::build`; a test changing the topology after `build`

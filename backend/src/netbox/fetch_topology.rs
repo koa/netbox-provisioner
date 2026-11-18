@@ -53,6 +53,8 @@ pub struct Device {
     pub serial: String,
     pub custom_field_data: JSON,
     pub config_context: JSON,
+    /// a resident's (`topology::ownership`)
+    pub owner: Option<OwnerRef>,
 }
 
 #[derive(cynic::QueryFragment, Serialize, Debug, Clone)]
@@ -101,6 +103,8 @@ pub struct Interface {
     pub rf_channel_width: Option<Decimal>,
     pub tx_power: Option<i32>,
     pub wireless_link: Option<WirelessLink>,
+    /// a port of someone else's device that a resident has (`topology::ownership`)
+    pub owner: Option<OwnerRef>,
 }
 
 #[derive(cynic::QueryFragment, Serialize, Debug, Clone)]
@@ -279,6 +283,16 @@ pub struct Vlan {
     pub id: Id,
     pub name: String,
     pub vid: i32,
+    /// a resident's network (`topology::ownership`)
+    pub owner: Option<OwnerRef>,
+}
+
+/// The NetBox owner of an object: a resident, household or company (`docs/concepts/self-service.md`).
+#[derive(cynic::QueryFragment, Serialize, Debug, Clone)]
+#[cynic(graphql_type = "OwnerType", rename_all = "None")]
+pub struct OwnerRef {
+    pub id: Id,
+    pub name: String,
 }
 
 #[derive(cynic::QueryFragment, Serialize, Debug, Clone)]

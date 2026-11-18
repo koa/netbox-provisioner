@@ -319,6 +319,8 @@ impl NetboxPlan {
                             Some(group) => json!({ "wlan_group": group }),
                             None => json!({}),
                         };
+                        // a new device is the operator's; a resident gets it from an admin
+                        new["owner"] = Value::Null;
                         new["tenant"] = match create.tenant_id {
                             Some(tenant) => json!({ "id": tenant.to_string() }),
                             None => Value::Null,
@@ -353,6 +355,7 @@ impl NetboxPlan {
                             "rf_channel_width": null,
                             "tx_power": null,
                             "wireless_link": null,
+                            "owner": null,
                             "primary_mac_address": create.mac.as_ref().map(|mac| json!({ "mac_address": mac })),
                         }));
                     }

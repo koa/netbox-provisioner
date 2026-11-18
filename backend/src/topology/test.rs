@@ -13,6 +13,23 @@ use tokio::time::Instant;
 /// The topology of `docs/netbox-response-example.json`, with what older exports lack
 /// filled in as empty.
 pub(crate) fn example_topology() -> Arc<Topology> {
+    topology_from(example_response())
+}
+
+/// The topology of a NetBox response as [`example_response`] gives it.
+pub(crate) fn topology_from(raw: serde_json::Value) -> Arc<Topology> {
+    let response: cynic::GraphQlResponse<FetchTopology> =
+        serde_json::from_value(raw).expect("parse example response");
+    Arc::new(build_topology_from(
+        response.data.expect("response without data"),
+        Instant::now(),
+        None,
+    ))
+}
+
+/// `docs/netbox-response-example.json` with what older exports lack filled in as empty, for
+/// a test to change before [`topology_from`].
+pub(crate) fn example_response() -> serde_json::Value {
     let raw = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../docs/netbox-response-example.json"
@@ -168,11 +185,31 @@ pub(crate) fn example_topology() -> Arc<Topology> {
                 .or_insert_with(|| serde_json::json!({"model": "", "manufacturer": {"slug": ""}}));
         }
     }
-    let response: cynic::GraphQlResponse<FetchTopology> =
-        serde_json::from_value(raw).expect("parse example response");
-    Arc::new(build_topology_from(
-        response.data.expect("response without data"),
-        Instant::now(),
-        None,
-    ))
+    // Exports from before the owners were queried lack them: nothing belongs to a resident.
+    for device in raw["data"]["device_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        for interface in device["interfaces"].as_array_mut().into_iter().flatten() {
+            if let Some(interface) = interface.as_object_mut() {
+                interface.entry("owner").or_insert(serde_json::Value::Null);
+            }
+        }
+        if let Some(device) = device.as_object_mut() {
+            device.entry("owner").or_insert(serde_json::Value::Null);
+        }
+    }
+    for group in raw["data"]["vlan_group_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        for vlan in group["vlans"].as_array_mut().into_iter().flatten() {
+            if let Some(vlan) = vlan.as_object_mut() {
+                vlan.entry("owner").or_insert(serde_json::Value::Null);
+            }
+        }
+    }
+    raw
 }

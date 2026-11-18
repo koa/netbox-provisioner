@@ -30,6 +30,7 @@ mod graphql;
 pub mod interfaces;
 pub mod management;
 pub mod natural;
+pub mod ownership;
 #[cfg(test)]
 pub(crate) mod test;
 pub mod vlan_domain;
@@ -144,6 +145,8 @@ pub struct Topology {
     ip_range_idx: HashMap<IpNet, Box<[IpRangeId]>>,
     /// the NetBox services with tag `forward` (`forwards`)
     services: HashMap<ServiceId, ForwardData>,
+    /// the NetBox owners of devices, ports and VLANs, the residents (`ownership`)
+    owners: HashMap<OwnerId, OwnerData>,
     /// `findings::collect`, computed when the topology is built (`Topology::with_findings`)
     findings: Box<[findings::Finding]>,
     /// the NetBox response it is built from, which a helper's plan is tried on
@@ -185,6 +188,7 @@ impl Topology {
             ip_ranges,
             ip_range_idx,
             services,
+            owners,
             findings,
             source: _,
             management_proxy: _,
@@ -214,6 +218,7 @@ impl Topology {
             ("ip_ranges", *ip_ranges == other.ip_ranges),
             ("ip_range_idx", *ip_range_idx == other.ip_range_idx),
             ("services", *services == other.services),
+            ("owners", *owners == other.owners),
             ("findings", *findings == other.findings),
         ]
         .into_iter()
@@ -971,6 +976,24 @@ impl From<u32> for ServiceId {
     fn from(value: u32) -> Self {
         ServiceId(value)
     }
+}
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct OwnerId(pub u32);
+impl From<u32> for OwnerId {
+    fn from(value: u32) -> Self {
+        OwnerId(value)
+    }
+}
+
+/// A NetBox owner of devices, ports or VLANs, and what NetBox gives it directly; what follows
+/// from that is `ownership::Owned`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct OwnerData {
+    pub name: Box<str>,
+    pub devices: Box<[DeviceId]>,
+    /// ports of other devices (a socket on a switch of the operator)
+    pub interfaces: Box<[InterfaceId]>,
+    pub vlans: Box<[VlanId]>,
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]

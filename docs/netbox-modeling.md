@@ -144,6 +144,22 @@ Die Namen müssen exakt stimmen. Anlegen, Werte und Wirkung im Einzelnen:
   werden bis zu sechs Ebenen. Gebraucht wird das Land für die Funkregeln einer
   [Funkbrücke](#funkbrücke).
 
+## Besitz (Anwohner)
+
+Ein Anwohner (Haushalt, Firma) ist ein **Owner** in NetBox (Feld `owner`, NetBox 4.7), in einer
+Owner Group (NetBox verlangt eine; der Provisioner beachtet sie nicht). Gelesen wird `owner` an
+**Gerät**, **Interface** und **VLAN**, gesetzt nur von Admins:
+
+- ein Gerät gehört ihm mit allen seinen Ports;
+- ein Port eines fremden Geräts (die Wohnungsdose an einem Switch des Betreibers) über `owner`
+  am Interface;
+- ein VLAN ist sein Netz; die WLANs auf seinen VLANs gehören ihm damit, und deren WLAN-Gruppe
+  ist seine. `owner` am Wireless LAN wird nicht gelesen.
+
+Was ihm gehört, berechnet `topology::ownership`. Auf die Konfiguration der Geräte hat der
+Besitz keinen Einfluss. Wer sich als welcher Anwohner anmeldet, steht im
+[Konzept](concepts/self-service.md#wer-ist-wer).
+
 ## Zugangsdaten
 
 Der Provisioner speichert keine Passwörter in NetBox. Stattdessen:

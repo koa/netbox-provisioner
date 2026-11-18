@@ -9,11 +9,11 @@ use crate::{
     topology::{
         Cable, CableId, CablePort, CircuitTermination, CircuitTerminationId, Device, DeviceId,
         DeviceRole, Duplex, ForwardData, FrontPort, FrontPortId, Interface, InterfaceId,
-        IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId,
-        PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink, RadioRole, RearPort,
-        RearPortId, ServiceId, ServicePort, SiteData, SiteId, Topology, VlanData, VlanGroupData,
-        VlanGroupId, VlanId, VxlanData, VxlanId, WirelessLinkEnd, WlanAuth, WlanData,
-        WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
+        IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId, OwnerData,
+        OwnerId, PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink, RadioRole,
+        RearPort, RearPortId, ServiceId, ServicePort, SiteData, SiteId, Topology, VlanData,
+        VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WirelessLinkEnd, WlanAuth,
+        WlanData, WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
     },
 };
 use ipnet::IpNet;
@@ -119,9 +119,27 @@ struct Builder {
     ranges_of_prefix: HashMap<IpPrefixId, Vec<IpRangeId>>,
     ip_addresses: HashMap<IpAddressId, IpAddressData>,
     ip_addresses_of_prefix: HashMap<IpPrefixId, Vec<IpAddressId>>,
+    owners: HashMap<OwnerId, OwnerGathered>,
+}
+
+/// An owner as the objects name it, and what each gives it.
+#[derive(Default)]
+struct OwnerGathered {
+    name: Box<str>,
+    devices: Vec<DeviceId>,
+    interfaces: Vec<InterfaceId>,
+    vlans: Vec<VlanId>,
 }
 
 impl Builder {
+    /// The owner `owner` names, with its name; `None` without one.
+    fn owner(&mut self, owner: Option<&fetch_topology::OwnerRef>) -> Option<&mut OwnerGathered> {
+        let owner = owner?;
+        let id = owner.id.inner().parse().ok().map(OwnerId)?;
+        let gathered = self.owners.entry(id).or_default();
+        gathered.name = owner.name.as_str().into();
+        Some(gathered)
+    }
     /// A WLAN group with its WLANs; one without `controller` only by name.
     fn add_wlan_group(&mut self, wlan_group: fetch_topology::WirelessLanGroup) {
         if let (Some(wlan_group_id), None) = (
@@ -189,6 +207,9 @@ impl Builder {
         let Some(device_id) = device.id.inner().parse().ok().map(DeviceId) else {
             return;
         };
+        if let Some(owner) = self.owner(device.owner.as_ref()) {
+            owner.devices.push(device_id);
+        }
         let role = DeviceRole::from_slug(device.role.slug.as_str());
         let site = device.site.id.inner().parse().ok().map(SiteId);
         if let Some(site) = site {
@@ -342,6 +363,9 @@ impl Builder {
         interface: fetch_topology::Interface,
     ) -> Option<InterfaceId> {
         let id = interface.id.inner().parse().ok().map(InterfaceId)?;
+        if let Some(owner) = self.owner(interface.owner.as_ref()) {
+            owner.interfaces.push(id);
+        }
         let ips = interface
             .ip_addresses
             .into_iter()
@@ -488,6 +512,9 @@ impl Builder {
             for vlan in vlan_group.vlans {
                 if let Some(vlan_id) = vlan.id.inner().parse().ok().map(VlanId) {
                     vlan_ids.insert(vlan_id);
+                    if let Some(owner) = self.owner(vlan.owner.as_ref()) {
+                        owner.vlans.push(vlan_id);
+                    }
                     self.vlans.insert(
                         vlan_id,
                         VlanData {
@@ -775,6 +802,19 @@ impl Builder {
                 .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
                 .collect(),
             services,
+            owners: self
+                .owners
+                .into_iter()
+                .map(|(id, owner)| {
+                    let data = OwnerData {
+                        name: owner.name,
+                        devices: owner.devices.into_boxed_slice(),
+                        interfaces: owner.interfaces.into_boxed_slice(),
+                        vlans: owner.vlans.into_boxed_slice(),
+                    };
+                    (id, data)
+                })
+                .collect(),
             findings: Box::default(),
         }
         .with_findings()

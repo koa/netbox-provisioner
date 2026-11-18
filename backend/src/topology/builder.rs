@@ -2,9 +2,9 @@
 use crate::topology::{
     Cable, CableId, CablePort, CircuitTermination, CircuitTerminationId, Device, DeviceId,
     ForwardData, FrontPort, FrontPortId, Interface, InterfaceId, IpAddressData, IpAddressId,
-    IpPrefixData, IpPrefixId, IpRangeData, IpRangeId, RearPort, RearPortId, ServiceId, SiteData,
-    SiteId, Topology, TopologyHolder, VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData,
-    VxlanId, WlanData, WlanGroupData, WlanGroupId, WlanId,
+    IpPrefixData, IpPrefixId, IpRangeData, IpRangeId, OwnerData, OwnerId, RearPort, RearPortId,
+    ServiceId, SiteData, SiteId, Topology, TopologyHolder, VlanData, VlanGroupData, VlanGroupId,
+    VlanId, VxlanData, VxlanId, WlanData, WlanGroupData, WlanGroupId, WlanId,
 };
 use std::{
     collections::HashMap,
@@ -34,6 +34,8 @@ pub struct TopologyBuilder {
     pub ip_prefixes: MapBuilder<IpPrefixId, IpPrefixData>,
     pub ip_ranges: MapBuilder<IpRangeId, IpRangeData>,
     pub forwards: MapBuilder<ServiceId, ForwardData>,
+    /// the residents and what NetBox gives each (`Topology::owners`)
+    pub owners: MapBuilder<OwnerId, OwnerData>,
     /// the management proxy's device (`Topology::management_proxy`)
     pub management_proxy: Option<Box<str>>,
 }
@@ -271,6 +273,7 @@ impl TopologyBuilder {
                 .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
                 .collect(),
             services: self.forwards.into(),
+            owners: self.owners.into(),
             findings: Box::default(),
             source: None,
             management_proxy: self.management_proxy,
